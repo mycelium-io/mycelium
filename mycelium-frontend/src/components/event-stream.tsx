@@ -250,7 +250,7 @@ function parseEvent(msg: Record<string, unknown>, room: string): Event {
         thread = notice.episode;
         content = notice.title ?? notice.key;
         mtype = NOTICE_TYPE;
-        raw = { ...raw, taskKey: notice.key, by: notice.by, kind: notice.kind, subkind: notice.subkind };
+        raw = { ...raw, taskKey: notice.key, by: notice.by, kind: notice.kind, subkind: notice.subkind, for: notice.assignee };
         break;
       }
       // The live SSE stream wraps human/agent messages as an L9 exchange
@@ -390,11 +390,9 @@ interface Props {
   /** Open a memory by key — wired to `[[wikilinks]]` in chat so a message can
    *  link a room's memory and a reader (or agent author) can jump straight to it. */
   onOpenMemory?: (key: string) => void;
-  /** Open an episode by short id — wired to the episode tags on coordination
-   *  notices, so the episode a notice names is one click from its record. */
-  onOpenEpisode?: (shortId: string) => void;
-  /** Open a thread by its episode URN — from a ping in the channel, or from the
-   *  board row the thread belongs to. */
+  /** Open a thread by its episode URN — from a ping in the channel, from the
+   *  board row the thread belongs to, or from an episode tag on a coordination
+   *  notice. */
   onOpenThread?: (episode: string) => void;
   /** Optional controlled tab (e.g. driven by the onboarding tour). */
   view?: View;
@@ -407,7 +405,7 @@ interface Props {
   onFocusConsumed?: () => void;
 }
 
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, onOpenEpisode, onOpenThread, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, onOpenThread, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const connected = useRoomConnected(roomName);
@@ -731,14 +729,16 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                 const episode = ev.thread;
                 const by = ev.raw.by as string | undefined;
                 const subkind = (ev.raw.subkind as string) || "filed";
-                // Green when work lands or closes, yellow when it comes back up
-                // for grabs, accent while it is in hand.
+                // Green when work lands, closes or clears; red when it stalls on a
+                // blocker; yellow when it comes back up for grabs; accent in hand.
                 const dot =
-                  subkind === "resolved" || subkind === "filed"
+                  subkind === "resolved" || subkind === "filed" || subkind === "unblocked"
                     ? "var(--green)"
-                    : subkind === "released"
-                      ? "var(--yellow)"
-                      : "var(--accent)";
+                    : subkind === "blocked"
+                      ? "var(--red)"
+                      : subkind === "released"
+                        ? "var(--yellow)"
+                        : "var(--accent)";
                 return (
                   <SystemNotice
                     key={ev.id}
@@ -755,7 +755,13 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                       <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
                       <span className="truncate">{ev.content}</span>
                     </button>
-                    {by && <span>· {subkind === "filed" ? "by " : ""}@{by}</span>}
+                    {/* A filed task reads by who it is for; a lease event by who
+                        moved it. Fall back to the filer when a task is for no one. */}
+                    {subkind === "filed" && ev.raw.for ? (
+                      <span>· for @{String(ev.raw.for).replace(/^@/, "")}</span>
+                    ) : by ? (
+                      <span>· {subkind === "filed" ? "by " : ""}@{by}</span>
+                    ) : null}
                   </SystemNotice>
                 );
               }
@@ -794,7 +800,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                   >
                     <span>in</span>
                     {shortId ? (
-                      <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenEpisode} />
+                      <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined} />
                     ) : (
                       <span className="font-mono">episode</span>
                     )}
@@ -831,7 +837,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                     <span className="font-medium text-muted-foreground">@{handle}</span>
                     <span>joined</span>
                     {shortId ? (
-                      <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenEpisode} />
+                      <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined} />
                     ) : null}
                     {intent ? <span>· &ldquo;{intent}&rdquo;</span> : null}
                   </SystemNotice>

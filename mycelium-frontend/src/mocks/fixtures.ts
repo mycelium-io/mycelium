@@ -336,6 +336,7 @@ function atlasNotice(
   by: string,
   minutesAgo: number,
   kind?: string,
+  assignee?: string,
 ): Record<string, unknown> {
   const id = `notice-${subkind}-${key}`;
   return {
@@ -352,7 +353,10 @@ function atlasNotice(
           message: { id, parents: [], episode: ATLAS_LIVE },
           participants: { actors: [{ id: "system", role: "coordinator" }] },
         },
-        payload: { type: "notice", data: { subkind, key, title, episode, by, ...(kind ? { kind } : {}) } },
+        payload: {
+          type: "notice",
+          data: { subkind, key, title, episode, by, ...(kind ? { kind } : {}), ...(assignee ? { for: assignee } : {}) },
+        },
       },
     },
   };
@@ -711,12 +715,13 @@ const atlas: RoomFixture = {
     atlasNotice("resolved", "work/path-traversal", "Fix path traversal in the memory key encoder", atlasEpisode("a9c1e3"), "risk", 1200),
     atlasNotice("filed", "work/jwt-auth", "Migrate auth → JWT", atlasEpisode("d6f8b0"), "growth", 139.8, "action"),
     atlasNotice("filed", "failed/thin-spoke", "Enable thin-spoke join without a local replica", atlasEpisode("b4d6f8"), "julia", 129.8, "blocked"),
+    atlasNotice("blocked", "failed/thin-spoke", "Enable thin-spoke join without a local replica", atlasEpisode("b4d6f8"), "julia", 128),
     atlasNotice("filed", "work/cache-sweep", "Cache TTL sweep across the memory index", atlasEpisode("e7a9c1"), "julia", 94.8, "action"),
     atlasNotice("filed", "failed/offer-snap", "Aligner stalls when a proposer replies with prose only", atlasEpisode("f8b0d2"), "risk", 57.8, "concern"),
     // The two the cutover agreement compiled, filed by the aligner right after its
     // "filing the work" line (iso(40)).
-    atlasNotice("filed", "work/flip-reads-behind-a-flag", "flip reads behind a flag", ATLAS_FLIP_THREAD, "aligner", 39.9, "action"),
-    atlasNotice("filed", "work/retire-the-legacy-store", "48h soak, then retire the legacy store", ATLAS_RETIRE_THREAD, "aligner", 39.8, "action"),
+    atlasNotice("filed", "work/flip-reads-behind-a-flag", "flip reads behind a flag", ATLAS_FLIP_THREAD, "aligner", 39.9, "action", "@growth"),
+    atlasNotice("filed", "work/retire-the-legacy-store", "48h soak, then retire the legacy store", ATLAS_RETIRE_THREAD, "aligner", 39.8, "action", "@risk"),
     atlasNotice("filed", "work/custody-review", "@risk opened PR #504 — eyes on the custody seam", atlasEpisode("c5e7a9"), "risk", 13.8, "review"),
     atlasNotice("filed", "decisions/token-ttl", "JWT access-token TTL: 15m or 60m?", atlasEpisode("a1c3e5"), "risk", 5.8, "decision"),
     // growth takes the flag row before working it, then the thread moves.

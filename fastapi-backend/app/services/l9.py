@@ -100,8 +100,8 @@ NOTICE_PAYLOAD_TYPE = "notice"
 #: What a notice can be about, as a closed set frozen in
 #: ``contracts/slim-l9-wire.json``. ``filed`` also carries the row's board
 #: ``kind`` (so the line reads "New decision", not always "New task") and who it
-#: is ``for``; the custody subkinds carry ``by`` (who moved it).
-NOTICE_SUBKINDS = frozenset({"filed", "claimed", "released", "resolved"})
+#: is ``for``; the custody and lifecycle subkinds carry ``by`` (who moved it).
+NOTICE_SUBKINDS = frozenset({"filed", "claimed", "released", "resolved", "blocked", "unblocked"})
 
 
 class L9ValidationError(ValueError):

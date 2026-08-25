@@ -86,11 +86,12 @@ describe("reading a notice", () => {
 
   it("carries what happened, to which task, its thread, and who moved it", () => {
     // Like a ping, it rides in `live` and names the task in its payload, so a
-    // notice can open the same thread the row's own chip does.
+    // notice can open the same thread the row's own chip does. `for` (who a
+    // filing is for) reads back as `assignee`.
     const notice = noticeOf(
-      noticeFrame({ subkind: "filed", key: "work/flip", title: "flip reads", episode: THREAD, by: "aligner", kind: "action" }),
+      noticeFrame({ subkind: "filed", key: "work/flip", title: "flip reads", episode: THREAD, by: "aligner", kind: "action", for: "@growth" }),
     );
-    expect(notice).toEqual({ subkind: "filed", key: "work/flip", title: "flip reads", episode: THREAD, by: "aligner", kind: "action" });
+    expect(notice).toEqual({ subkind: "filed", key: "work/flip", title: "flip reads", episode: THREAD, by: "aligner", kind: "action", assignee: "@growth" });
   });
 
   it("reads a lease event with no board kind", () => {

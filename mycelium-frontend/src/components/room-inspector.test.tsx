@@ -6,13 +6,10 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The three rails fetch a room's data; this file is about the chrome around
-// them, so each stands in as a marker the assertions can look for.
+// The rails fetch a room's data; this file is about the chrome around them, so
+// each stands in as a marker the assertions can look for.
 vi.mock("@/components/agents-panel", () => ({
   AgentsPanel: () => <div>members panel</div>,
-}));
-vi.mock("@/components/episodes-rail", () => ({
-  EpisodesRail: () => <div>episodes panel</div>,
 }));
 vi.mock("@/components/memory-panel", () => ({
   MemoryPanel: () => <div>memory panel</div>,
@@ -59,7 +56,7 @@ describe("<RoomInspector /> tab strip", () => {
     renderInspector();
     await railWidth(TAB_LABELS_MIN_WIDTH + 40);
 
-    for (const label of ["Members", "Episodes", "Memory"]) {
+    for (const label of ["Members", "Memory"]) {
       expect(screen.getByRole("button", { name: label })).toHaveTextContent(label);
     }
   });
@@ -68,7 +65,7 @@ describe("<RoomInspector /> tab strip", () => {
     renderInspector();
     await railWidth(TAB_LABELS_MIN_WIDTH - 40);
 
-    for (const label of ["Members", "Episodes", "Memory"]) {
+    for (const label of ["Members", "Memory"]) {
       // Still addressable by name — the label moved to the accessible name and
       // the tooltip rather than disappearing.
       expect(screen.getByRole("button", { name: label })).toHaveTextContent("");
@@ -97,8 +94,8 @@ describe("<RoomInspector /> collapse", () => {
     await user.click(screen.getByRole("button", { name: /^Collapse the rail/ }));
     expect(screen.queryByText("members panel")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Episodes" }));
-    expect(screen.getByText("episodes panel")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Memory" }));
+    expect(screen.getByText("memory panel")).toBeInTheDocument();
   });
 
   it("names the keybind on the toggle, since the badge can't draw it", async () => {

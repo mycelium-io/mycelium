@@ -36,9 +36,14 @@ export const PING_PAYLOAD_FIELDS = ["episode", "sender", "message"] as const;
  */
 export const PING_TYPE = "thread_ping";
 
+/** The URN of a room episode, from the room and the session (short id) it tags. */
+export function episodeUrn(room: string, session: string): string {
+  return `urn:ioc:mycelium:episode:${room}:${session}`;
+}
+
 /** The URN of a room's own channel — where a message with no thread lands. */
 export function liveEpisodeUrn(room: string): string {
-  return `urn:ioc:mycelium:episode:${room}:${LIVE_SESSION}`;
+  return episodeUrn(room, LIVE_SESSION);
 }
 
 /**
@@ -94,7 +99,14 @@ export const NOTICE_TYPE = "notice";
 
 /** What a board event did to a task — the closed set the backend raises, frozen
  *  in `contracts/slim-l9-wire.json` and asserted by `threads.contract.test.ts`. */
-export const NOTICE_SUBKINDS = ["filed", "claimed", "released", "resolved"] as const;
+export const NOTICE_SUBKINDS = [
+  "filed",
+  "claimed",
+  "released",
+  "resolved",
+  "blocked",
+  "unblocked",
+] as const;
 
 export type NoticeSubkind = (typeof NOTICE_SUBKINDS)[number];
 
@@ -107,6 +119,8 @@ export interface Notice {
   by: string | null;
   /** The board kind, on a `filed` notice, so the line reads "New decision". */
   kind: string | null;
+  /** Who a `filed` task is for (its assignee), so the line can read "for @x". */
+  assignee: string | null;
 }
 
 /**
@@ -132,6 +146,7 @@ export function noticeOf(raw: Record<string, unknown> | null | undefined): Notic
     episode: str(data.episode),
     by: str(data.by),
     kind: str(data.kind),
+    assignee: str(data.for),
   };
 }
 
@@ -158,6 +173,10 @@ export function noticeLabel(subkind: string, kind: string | null | undefined): s
       return "Released";
     case "resolved":
       return "Resolved";
+    case "blocked":
+      return "Blocked";
+    case "unblocked":
+      return "Unblocked";
     default:
       return subkind;
   }
