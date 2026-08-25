@@ -57,6 +57,20 @@ from app.services.a2a_card import A2aCardError, resolve_raw_card
 from app.services.agent_registry import norm_handle
 from app.services.persister import envelope_message_id, envelope_sender
 
+
+def _bare_sender(value: str | None) -> str | None:
+    """Normalise an L9 sender to a bare slug, stripping any ``#session`` qualifier.
+
+    Stored slugs (allow_from, owner, agent handles) carry no session suffix;
+    L9 actor ids may carry one (``alice#a8f3``). Stripping before any comparison
+    against stored values ensures session-qualified senders are treated as their
+    underlying handle.
+    """
+    if not isinstance(value, str):
+        return None
+    return norm_handle(value.partition("#")[0])
+
+
 if TYPE_CHECKING:
     from app.services.l9_models import L9
     from app.services.room_channels import RoomChannelManager
@@ -277,21 +291,24 @@ class A2aResponder:
         if ref is None:
             return  # not an a2a agent — let the engines / a teammate handle it
         sender = envelope_sender(envelope)
-        if norm_handle(sender) == norm_handle(handle):
+        # Strip any #session qualifier from the sender before all comparisons
+        # against stored slugs — manifests store bare handles, L9 actor ids may
+        # carry a qualifier (alice#a8f3).
+        sender_bare = _bare_sender(sender)
+        if sender_bare == norm_handle(handle):
             return  # never answer our own message (loop guard)
         # Runaway guard: an a2a agent's auto-reply must not summon another a2a
         # agent. Two agents that mention each other would otherwise ping-pong
         # forever, each hop a real remote call. Humans, the aligner, and resident
         # agents still trigger a reply; only registered-a2a -> registered-a2a is cut.
-        if sender and resolve_a2a_agent(room, sender) is not None:
+        if sender_bare and resolve_a2a_agent(room, sender_bare) is not None:
             logger.debug("a2a responder: skip @%s summoned by a2a agent @%s", handle, sender)
             return
         # Summon gate: if the manifest names an allow_from list, only those
         # handles may trigger a remote call (and spend its bearer token / quota).
         # The agent's owner is always permitted — a restrictive allowlist must
         # not lock the operator out of their own agent.
-        sender_norm = norm_handle(sender)
-        if ref.allow_from and sender_norm not in ref.allow_from and sender_norm != ref.owner:
+        if ref.allow_from and sender_bare not in ref.allow_from and sender_bare != ref.owner:
             logger.debug(
                 "a2a responder: @%s not in allow_from for @%s — ignoring summon", sender, handle
             )
@@ -349,13 +366,14 @@ class A2aResponder:
         auth_token: str | None = None,
     ) -> None:
         summoner = envelope_sender(envelope)
+        summoner_bare = _bare_sender(summoner)
         # Thread context is per summoner: two members addressing the same remote
-        # agent must not share one remote contextId (context bleed). In-memory
-        # only — a restart resets threads, but the room transcript is durable.
-        thread_key = (room, norm_handle(handle), norm_handle(summoner))
+        # agent must not share one remote contextId (context bleed). Use the bare
+        # handle so a reconnecting session continues the same remote conversation.
+        thread_key = (room, norm_handle(handle), summoner_bare)
         # Name the speaker so the remote agent can follow a multi-party room; the
         # threaded context id carries the rest of the history on the remote side.
-        addressed = f"@{norm_handle(summoner)}: {prompt}" if summoner else prompt
+        addressed = f"@{summoner_bare}: {prompt}" if summoner_bare else prompt
         # Telemetry for the Network views: the bridge hop leaves no trace on the
         # channel, so both outcomes are recorded here (#739).
         started = time.monotonic()
