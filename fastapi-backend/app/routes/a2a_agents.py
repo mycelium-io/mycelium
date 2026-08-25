@@ -94,10 +94,14 @@ async def create_a2a_agent(room_name: str, payload: A2aAgentCreate, request: Req
         "a2a_skills": card.skill_ids,
         # Only the env var NAME lands in room memory; the token stays in the env.
         "a2a_auth_env": payload.auth_env.strip() if payload.auth_env else None,
-        "allow_from": [h for h in (norm_handle(a) for a in payload.allow_from) if h],
+        # Strip any #session qualifier — stored slugs must be bare handles so
+        # the summon gate's _bare_sender comparisons always match.
+        "allow_from": [
+            h for a in payload.allow_from if (h := norm_handle((a or "").partition("#")[0]))
+        ],
         # Default owner to the authenticated registrar so the allow_from owner
         # exemption works even when the caller doesn't supply an explicit owner.
-        "owner": norm_handle(payload.owner) or norm_handle(registrar),
+        "owner": norm_handle((payload.owner or registrar or "").partition("#")[0]) or None,
         "team": norm_handle(payload.team),
     }
     await write_agent_manifest(room_name, handle, body, created_by=registrar or "web-ui")
