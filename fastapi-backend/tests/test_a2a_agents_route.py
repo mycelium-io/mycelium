@@ -120,6 +120,41 @@ async def test_missing_room_404(client, stub_card):
 
 
 @pytest.mark.asyncio
+async def test_owner_defaults_to_registrar(client, stub_card):
+    """When owner is omitted, it is set to created_by so the allow_from exemption works."""
+    await _make_room(client)
+    resp = await client.post(
+        "/api/rooms/portfolio/a2a-agents",
+        json={
+            "handle": "researcher",
+            "card": "https://remote.example",
+            "created_by": "selina",
+            "allow_from": ["avery"],
+            # owner intentionally omitted
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()["owner"] == "selina"
+
+
+@pytest.mark.asyncio
+async def test_explicit_owner_wins_over_registrar(client, stub_card):
+    """An explicit owner in the payload takes precedence over created_by."""
+    await _make_room(client)
+    resp = await client.post(
+        "/api/rooms/portfolio/a2a-agents",
+        json={
+            "handle": "researcher",
+            "card": "https://remote.example",
+            "created_by": "selina",
+            "owner": "avery",
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()["owner"] == "avery"
+
+
+@pytest.mark.asyncio
 async def test_non_http_card_scheme_rejected():
     """Hermetic: the scheme guard trips before any network I/O."""
     with pytest.raises(A2aCardError):
