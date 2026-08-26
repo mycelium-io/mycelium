@@ -26,6 +26,7 @@ import {
   type L9Envelope,
 } from "@/lib/api";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
+import { unwrapContent } from "@/lib/room-events";
 
 // The L9 protocol inspector renders the AOP layer legibly: the live L9 payloads
 // crossing a room's channel (exchange ticks/replies, commit verdicts with
@@ -99,16 +100,7 @@ export function toL9Frame(msg: Record<string, unknown>): L9Frame | null {
   const created = String(msg.created_at ?? "");
   const time = created.length >= 19 ? created.slice(11, 19) : "";
 
-  let content: Record<string, unknown> = {};
-  if (typeof msg.content === "string") {
-    try {
-      content = JSON.parse(msg.content);
-    } catch {
-      content = {};
-    }
-  } else {
-    content = asRecord(msg.content);
-  }
+  const content = unwrapContent(msg);
 
   // The envelope may be embedded under `l9`, OR be the content itself (the
   // persister feeds the bus a bare `{header, payload}` envelope as `l9_<kind>`),
