@@ -6,7 +6,8 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SETTLE_MS, useCollapsibleRail } from "@/lib/use-collapsible-rail";
+import { useCollapsibleRail } from "@/lib/use-collapsible-rail";
+import { SETTLE_MS } from "@/lib/use-viewport";
 
 const FOLD_WIDTH = 600;
 

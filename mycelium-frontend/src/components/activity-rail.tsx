@@ -94,10 +94,13 @@ export function ActivityRail({
     });
 
   return (
-    <div className="flex-shrink-0 border-b border-border bg-surface-2/40 px-5 py-2">
+    <div className="flex-shrink-0 border-b border-border bg-surface-2/40 px-3 py-2 sm:px-5">
       <div className="flex items-center gap-2 text-micro text-muted-foreground">
         <span className="font-medium">Recently updated</span>
-        <span className="text-faint">
+        {/* The count is the header's least load-bearing word — the rows below
+            are the answer — so it is the first thing to go when the row is
+            competing with a task title for the same inch. */}
+        <span className="hidden text-faint sm:inline">
           {items.length} {items.length === 1 ? "task" : "tasks"}
         </span>
         {items.length > SHOWN && (
@@ -153,7 +156,9 @@ export function ActivityRail({
                 <span className="hidden max-w-[12rem] flex-shrink-0 truncate lg:inline">
                   {item.actors.map((h) => `@${h}`).join(", ")}
                 </span>
-                <span className="tabular flex-shrink-0 text-faint">{item.time.slice(0, 5)}</span>
+                <span className="tabular hidden flex-shrink-0 text-faint sm:inline">
+                  {item.time.slice(0, 5)}
+                </span>
                 {/* Its conversation, kept as its own target: the details and the
                     argument about them are two places, and the rail should not
                     make a reader guess which one the name goes to. */}
@@ -173,7 +178,7 @@ export function ActivityRail({
                   type="button"
                   onClick={() => toggle(item.subject)}
                   aria-expanded={open}
-                  aria-label={`${open ? "Hide" : "Show"} ${item.updates.length} updates to ${item.title}`}
+                  aria-label={`${open ? "Hide" : "Show"} ${item.updates.length} ${item.updates.length === 1 ? "update" : "updates"} to ${item.title}`}
                   className="inline-flex flex-shrink-0 items-center gap-0.5 rounded px-1 text-faint transition-colors hover:bg-surface-2 hover:text-muted-foreground"
                 >
                   {open ? (
@@ -181,7 +186,13 @@ export function ActivityRail({
                   ) : (
                     <ChevronRight className="size-3" strokeWidth={1.9} />
                   )}
-                  {item.updates.length} {item.updates.length === 1 ? "update" : "updates"}
+                  {/* The bare count where the row is competing with the task's
+                      own name for the same inch, the whole phrase where it is
+                      not. Two spellings of one label, not two nodes of one. */}
+                  <span className="sm:hidden">{item.updates.length}</span>
+                  <span className="hidden sm:inline">
+                    {item.updates.length} {item.updates.length === 1 ? "update" : "updates"}
+                  </span>
                 </button>
               </div>
               {open && (

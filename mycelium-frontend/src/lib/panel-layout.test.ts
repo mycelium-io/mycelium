@@ -11,6 +11,7 @@ import {
   ROOMS_PANEL,
   TAB_LABELS_MIN_WIDTH,
   WORKSPACE_PANEL,
+  SHEET_LAYOUT_WIDTH,
 } from "@/lib/panel-layout";
 
 const px = (value: string) => Number.parseInt(value, 10);
@@ -81,5 +82,27 @@ describe("folding a rail away", () => {
     expect(px(ROOMS_PANEL.collapsed) + px(WORKSPACE_PANEL.min) + 1).toBeLessThan(
       ROOMS_FOLD_WIDTH,
     );
+  });
+
+  // The invariant the sheet layout exists for. A rail opened back into the
+  // group needs its own default plus the workspace's floor plus the other
+  // rail's strip, and a group handed constraints it cannot satisfy refuses to
+  // move at all — which reads, to the reader who just tapped, as a rail that
+  // does not open. So the sheet has to have taken over before that width, for
+  // both rails.
+  it("takes over before either rail stops fitting as a panel", () => {
+    const roomsAsPanel =
+      px(ROOMS_PANEL.default) + px(MAIN_PANEL.min) + px(INSPECTOR_PANEL.collapsed) + 2;
+    const inspectorAsPanel =
+      px(ROOMS_PANEL.collapsed) + px(MAIN_PANEL.min) + px(INSPECTOR_PANEL.default) + 2;
+    expect(SHEET_LAYOUT_WIDTH).toBeGreaterThanOrEqual(roomsAsPanel);
+    expect(SHEET_LAYOUT_WIDTH).toBeGreaterThanOrEqual(inspectorAsPanel);
+  });
+
+  // Tailwind's `md`. The layout switch and the classes that drop chrome at the
+  // same width are two halves of one breakpoint, and a surface that changed
+  // shape at one of them and not the other is the crowding this fixed.
+  it("matches the breakpoint the classes use", () => {
+    expect(SHEET_LAYOUT_WIDTH).toBe(768);
   });
 });

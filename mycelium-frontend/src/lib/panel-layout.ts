@@ -127,6 +127,22 @@ export const ROOMS_FOLD_WIDTH =
   px(ROOMS_PANEL.default) + px(MAIN_PANEL.min) + px(INSPECTOR_PANEL.collapsed) + 2 * SEAM + FOLD_MARGIN;
 
 /**
+ * Below this the shell stops being a split at all.
+ *
+ * A phone has room for exactly one of the three columns, so the rails stop
+ * being panels in the group and become sheets drawn over the workspace. That
+ * isn't a smaller version of the desktop layout, it's a different one: a rail
+ * at its own minimum plus the workspace at its own minimum is already wider
+ * than the window, and `react-resizable-panels` answers a constraint set it
+ * can't satisfy by refusing to move — which is what made the rails unopenable
+ * here rather than merely cramped.
+ *
+ * Matches Tailwind's `md`, so the classes that hide chrome at this width and
+ * the layout switch always agree on where the boundary is.
+ */
+export const SHEET_LAYOUT_WIDTH = 768;
+
+/**
  * Below this the inspector's tab strip can't hold "Members / Episodes /
  * Memory" as words, so the tabs drop to icons alone. Measured against the
  * rail, not the viewport: the rail is what the tabs have to fit inside.

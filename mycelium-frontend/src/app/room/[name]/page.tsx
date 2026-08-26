@@ -40,6 +40,8 @@ import {
   layoutStorage,
 } from "@/lib/panel-layout";
 import { useCollapsibleRail } from "@/lib/use-collapsible-rail";
+import { useSheetLayout } from "@/lib/use-viewport";
+import { RailSheet } from "@/components/rail-sheet";
 
 function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string; color: string } | null {
   if (!episodes || episodes.length === 0) return null;
@@ -250,6 +252,11 @@ function RoomWorkspace() {
   // Folded, the inspector is a plain strip beside the group rather than a panel
   // inside it: a panel that isn't there can't be squeezed, and it comes back at
   // the width it left at.
+  // Too narrow for a split: the rail leaves the group and becomes a sheet over
+  // the room, with its icon strip left in place to open and close it.
+  const sheetLayout = useSheetLayout();
+  const inspectorInPanel = inspectorOpen && !sheetLayout;
+
   const {
     panelRef: inspectorPanelRef,
     size: inspectorSize,
@@ -261,6 +268,28 @@ function RoomWorkspace() {
     onOpenChange: setInspectorOpen,
   });
 
+  const closeInspector = useCallback(() => setInspectorOpen(false), []);
+
+  // The rail, wherever it is standing: a panel in the split, the icon strip
+  // beside it, or a sheet over the room. One call site rather than three
+  // copies of eleven props — they have to stay identical for the rail to keep
+  // its tab and its selection as the window crosses the breakpoint.
+  const inspector = (open: boolean, onOpenChange = setInspectorOpen as (open: boolean) => void) => (
+    <RoomInspector
+      roomName={roomName}
+      masId={room?.mas_id ?? null}
+      tab={inspectorTab}
+      onTabChange={setInspectorTab}
+      open={open}
+      onOpenChange={onOpenChange}
+      engineInvite={inviteEngine}
+      onEngineInviteShown={handleEngineInviteShown}
+      focus={focus}
+      onFocusConsumed={clearFocus}
+      focusMemory={focusMemory}
+    />
+  );
+
   const statusLeft = (
     <>
       <span
@@ -268,7 +297,7 @@ function RoomWorkspace() {
         // actually connected — the screenshot pipeline gates on this rather
         // than on the label text, which is a translation away from breaking.
         data-connection={connected ? "live" : "reconnecting"}
-        className="rounded px-1.5 py-0.5 text-micro font-medium"
+        className="flex-shrink-0 rounded px-1.5 py-0.5 text-micro font-medium"
         style={{
           color: connected ? "var(--green)" : "var(--yellow)",
           background: connected
@@ -281,12 +310,17 @@ function RoomWorkspace() {
       {episodeLabel && (
         // A plain, ambient signal that a negotiation is live in the room. Its
         // old destination (the Episodes rail) is gone, so it no longer clicks.
-        <span className="px-1.5 py-0.5 text-micro font-medium" style={{ color: episodeLabel.color }}>
+        <span className="flex-shrink-0 px-1.5 py-0.5 text-micro font-medium" style={{ color: episodeLabel.color }}>
           {episodeLabel.text}
         </span>
       )}
       {openTasks !== null && openTasks > 0 && (
-        <span className="px-1.5 tabular">{openTasks} open task{openTasks === 1 ? "" : "s"}</span>
+        <span className="flex-shrink-0 px-1.5 tabular">
+          <span className="sm:hidden">{openTasks} open</span>
+          <span className="hidden sm:inline">
+            {openTasks} open task{openTasks === 1 ? "" : "s"}
+          </span>
+        </span>
       )}
     </>
   );
@@ -294,7 +328,12 @@ function RoomWorkspace() {
   const statusRight = (
     <>
       {agents !== null && (
-        <StatusButton onClick={() => openTab("agents")} tooltip="View agents" action="rail.agents">
+        <StatusButton
+          onClick={() => openTab("agents")}
+          tooltip="View agents"
+          action="rail.agents"
+          className="flex-shrink-0"
+        >
           <span className="tabular">{agents} agent{agents === 1 ? "" : "s"}</span>
         </StatusButton>
       )}
@@ -307,7 +346,9 @@ function RoomWorkspace() {
       <span className="text-ui font-semibold text-text truncate">{roomName}</span>
       {room?.mas_id && (
         <Tooltip content="MAS id" side="bottom">
-          <span className="font-mono text-micro text-faint truncate">{room.mas_id}</span>
+          {/* Below `md` the header has room for the room's name or its id, and
+              the name is the one a reader is orienting by. */}
+          <span className="hidden truncate font-mono text-micro text-faint md:inline">{room.mas_id}</span>
         </Tooltip>
       )}
     </>
@@ -326,19 +367,30 @@ function RoomWorkspace() {
           defaultLayout={defaultLayout}
           // Only while both panels are here: a one-panel layout saved over the
           // split would be the rail's remembered width, gone.
-          onLayoutChange={inspectorOpen ? onLayoutChange : undefined}
-          onLayoutChanged={inspectorOpen ? onLayoutChanged : undefined}
+          onLayoutChange={inspectorInPanel ? onLayoutChange : undefined}
+          onLayoutChanged={inspectorInPanel ? onLayoutChanged : undefined}
         >
           <ResizablePanel
             id={PANEL_MAIN}
             // While a thread is open PANEL_MAIN holds the room surface AND the
             // thread split, so its floor rises to fit both — the inspector gives
-            // way rather than the split having nowhere to go.
-            minSize={threadTarget ? MAIN_WITH_THREAD_MIN : MAIN_PANEL.min}
+            // way rather than the split having nowhere to go. Under the sheet
+            // layout it holds one surface at whatever width the window has, and
+            // a floor wider than the window is a constraint nothing satisfies.
+            minSize={sheetLayout ? "0px" : threadTarget ? MAIN_WITH_THREAD_MIN : MAIN_PANEL.min}
             className="flex min-w-0"
           >
             <main className="flex min-w-0 flex-1 overflow-hidden">
-              {threadTarget ? (
+              {threadTarget && sheetLayout ? (
+                // No room for two surfaces: the thread takes the window, and
+                // closing it hands the window back to the room.
+                <ThreadView
+                  roomName={roomName}
+                  target={threadTarget}
+                  onClose={closeThread}
+                  onOpenMemory={openMemory}
+                />
+              ) : threadTarget ? (
                 // The room surface and the task's thread, split by a handle the
                 // reader can drag. Its own group so the width it is dragged to is
                 // remembered independently of the inspector's.
@@ -372,7 +424,7 @@ function RoomWorkspace() {
               )}
             </main>
           </ResizablePanel>
-          {inspectorOpen && (
+          {inspectorInPanel && (
             <>
               <ResizableHandle withHandle />
               <ResizablePanel
@@ -387,41 +439,28 @@ function RoomWorkspace() {
                 className="flex"
                 onResize={onInspectorResize}
               >
-                <RoomInspector
-                  roomName={roomName}
-                  masId={room?.mas_id ?? null}
-                  tab={inspectorTab}
-                  onTabChange={setInspectorTab}
-                  open={inspectorOpen}
-                  onOpenChange={setInspectorOpen}
-                  engineInvite={inviteEngine}
-                  onEngineInviteShown={handleEngineInviteShown}
-                  focus={focus}
-                  onFocusConsumed={clearFocus}
-                  focusMemory={focusMemory}
-                />
+                {inspector(true)}
               </ResizablePanel>
             </>
           )}
         </ResizablePanelGroup>
 
-        {!inspectorOpen && (
+        {!inspectorInPanel && (
           <div className="flex w-12 flex-none border-l border-border">
-            <RoomInspector
-            roomName={roomName}
-            masId={room?.mas_id ?? null}
-            tab={inspectorTab}
-            onTabChange={setInspectorTab}
-            open={inspectorOpen}
-            onOpenChange={setInspectorOpen}
-            engineInvite={inviteEngine}
-            onEngineInviteShown={handleEngineInviteShown}
-            focus={focus}
-            onFocusConsumed={clearFocus}
-            focusMemory={focusMemory}
-            />
+            {/* A toggle rather than "expand": while the sheet is open the strip
+                is still on screen behind it, and the control that opened it is
+                the one a reader reaches for to put it away. */}
+            {inspector(false, () => setInspectorOpen(open => !open))}
           </div>
         )}
+        <RailSheet
+          open={sheetLayout && inspectorOpen}
+          onClose={closeInspector}
+          side="right"
+          label="Room inspector"
+        >
+          {inspector(true, closeInspector)}
+        </RailSheet>
       </div>
 
       <RoomTour
