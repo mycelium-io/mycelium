@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import type { MemoryLink, MemoryLinksIntegrity } from "@/lib/api";
+import type { MemoryLink } from "@/lib/api";
 
 /** One-hop neighbors for the full-page "Related" section.
  *
@@ -42,33 +42,4 @@ export function linkErrorLabel(error?: string | null): string {
  */
 export function isBrokenLinkError(error?: string | null): boolean {
   return error !== "cross_room";
-}
-
-export interface MemoryIntegrityNotes {
-  brokenOutbound: number;
-  /** inbound === 0 AND outbound === 0 — fully isolated, no connections. */
-  isOrphan: boolean;
-  /** inbound === 0 AND outbound > 0 — entry point, nothing links here yet. */
-  isRoot: boolean;
-  /** inbound > 0 AND outbound === 0 — dead end, links arrive but go no further. */
-  isLeaf: boolean;
-}
-
-/** Per-memory slice of a room integrity report for inline banners.
- *
- * Returns null when there is nothing notable to surface — no broken outbound
- * links and the memory is neither orphaned nor a leaf. Roots (inbound === 0
- * with outbound links) are included in the notes but do not trigger a banner
- * on their own, since being an entry point is intentional, not a problem. */
-export function integrityNotesForMemory(
-  key: string,
-  integrity: MemoryLinksIntegrity | null,
-): MemoryIntegrityNotes | null {
-  if (!integrity) return null;
-  const brokenOutbound = integrity.broken.filter(b => b.source === key).length;
-  const isOrphan = integrity.orphans.includes(key);
-  const isRoot = (integrity.roots ?? []).includes(key);
-  const isLeaf = (integrity.leaves ?? []).includes(key);
-  if (brokenOutbound === 0 && !isOrphan && !isLeaf) return null;
-  return { brokenOutbound, isOrphan, isRoot, isLeaf };
 }

@@ -37,10 +37,9 @@ vi.mock("@/lib/api", () => ({
   logFetchError: () => () => undefined,
   fetchMemory: vi.fn(),
   fetchMemoryExpanded: vi.fn(),
-  fetchMemoryIntegrity: vi.fn(),
 }));
 
-import { fetchMemory, fetchMemoryExpanded, fetchMemoryIntegrity } from "@/lib/api";
+import { fetchMemory, fetchMemoryExpanded } from "@/lib/api";
 import { MemoryPageView } from "@/components/memory-page-view";
 
 const MEMORY = {
@@ -59,14 +58,6 @@ describe("<MemoryPageView />", () => {
       rendered: "",
       expansions: [],
       found: false,
-    });
-    vi.mocked(fetchMemoryIntegrity).mockResolvedValue({
-      broken: [],
-      orphans: [],
-      roots: [],
-      leaves: [],
-      total_memories: 1,
-      total_links: 0,
     });
   });
 

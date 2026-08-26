@@ -25,7 +25,6 @@ import {
   fetchA2aBridge,
   fetchEpisodes,
   fetchMemories,
-  fetchMemoryIntegrity,
   fetchMessages,
   fetchNetworkStatus,
   fetchRoom,
@@ -39,7 +38,6 @@ import {
   type AgentSummary,
   type EpisodeSummary,
   type Memory,
-  type MemoryLinksIntegrity,
   type NetworkStatus,
   type PresenceMember,
   type Room,
@@ -127,7 +125,6 @@ type RoomResource =
   | "memories"
   | "skills"
   | "episodes"
-  | "integrity"
   | "status"
   | "a2a";
 
@@ -392,14 +389,6 @@ export function useRoomMemories(room: string, opts: RoomQueryOptions = {}) {
     room, "memories", fetchMemories, NO_MEMORIES, POLL.memories, opts,
   );
   return { memories: data, loading, refresh };
-}
-
-/** Not polled; memory writes revalidate the room. */
-export function useRoomMemoryIntegrity(room: string, opts: RoomQueryOptions = {}) {
-  const { data, loading, refresh } = useRoomQuery(
-    room, "integrity", fetchMemoryIntegrity, null as MemoryLinksIntegrity | null, 0, opts,
-  );
-  return { integrity: data, loading, refresh };
 }
 
 export function useRoomSkills(room: string, opts: RoomQueryOptions = {}) {

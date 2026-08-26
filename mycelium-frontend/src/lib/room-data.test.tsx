@@ -10,7 +10,6 @@ vi.mock("@/lib/api", () => ({
   fetchRoomMembers: vi.fn(),
   fetchMessages: vi.fn(),
   fetchMemories: vi.fn(),
-  fetchMemoryIntegrity: vi.fn(),
   fetchSkills: vi.fn(),
   fetchPlan: vi.fn(),
   fetchEpisodes: vi.fn(),

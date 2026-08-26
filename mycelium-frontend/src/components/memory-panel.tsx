@@ -25,7 +25,7 @@ import {
   type Memory,
   type MemorySearchResult,
 } from "@/lib/api";
-import { useRoomMemories, useRoomMemoryIntegrity, useRoomRevalidate } from "@/lib/room-data";
+import { useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
 import { memoryGraphHref, memoryHref } from "@/lib/memory-routes";
 import { expandedPathsForKey, resolveMemoryPeekNavigation } from "@/lib/memory-panel-nav";
 import { MemoryPreviewCard, type PreviewAnchor } from "@/components/memory-preview-card";
@@ -284,11 +284,9 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
     [endPeek, guard],
   );
 
-  // The tree, plus the room-wide integrity report the drawer reads to flag a
-  // broken or orphaned memory without a per-open round trip. Both revalidate
-  // when a memory write reaches the room, so neither needs a refresh prop.
+  // The tree revalidates when a memory write reaches the room, so it needs no
+  // refresh prop.
   const { memories, loading } = useRoomMemories(roomName);
-  const { integrity } = useRoomMemoryIntegrity(roomName);
   const memoriesRef = useRef(memories);
   useLayoutEffect(() => { memoriesRef.current = memories; }, [memories]);
 
@@ -579,8 +577,7 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
                 roomName={roomName}
                 onNavigate={openMemoryByKey}
                 renderedBody={renderedBody}
-                integrity={integrity}
-                // Only where a discussion follows the body — see the full page.
+                    // Only where a discussion follows the body — see the full page.
                 collapseBodyAt={hasDiscussion ? BODY_CLAMP_PX : null}
                 bodyFade="elevated"
               />

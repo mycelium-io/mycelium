@@ -8,14 +8,9 @@ import { ArrowUpRight, CornerDownLeft, Share2 } from "lucide-react";
 import { highlightJson } from "@/components/l9-inspector";
 import { MarkdownContent } from "@/components/markdown-content";
 import { Expandable } from "@/components/ui/expandable";
-import { fetchMemoryLinks, type MemoryLink, type MemoryLinksIntegrity } from "@/lib/api";
+import { fetchMemoryLinks, type MemoryLink } from "@/lib/api";
 import { isJsonRawText, prettyPrintJsonRawText } from "@/lib/json-text";
-import {
-  integrityNotesForMemory,
-  linkErrorLabel,
-  neighborKeys,
-  type MemoryIntegrityNotes,
-} from "@/lib/memory-links";
+import { linkErrorLabel, neighborKeys } from "@/lib/memory-links";
 
 export interface MemoryLike {
   key: string;
@@ -144,34 +139,12 @@ interface Props {
   /** When set, Rendered mode shows expanded transclusions instead of raw
    *  `![[…]]` markers. */
   renderedBody?: string | null;
-  /** Room integrity report; surfaces this memory's broken-link / graph-role
-   *  notes in either variant when supplied. */
-  integrity?: MemoryLinksIntegrity | null;
   /** Clamp a body taller than this many pixels behind an Expand button. Set by
    *  surfaces that put a conversation under the body, where a long body would
    *  otherwise push it out of reach. Unset renders the body whole. */
   collapseBodyAt?: number | null;
   /** The surface the body sits on, so its fade matches. */
   bodyFade?: "bg" | "paper" | "surface" | "elevated";
-}
-
-function IntegrityBanner({ notes }: { notes: MemoryIntegrityNotes }) {
-  const parts: string[] = [];
-  if (notes.brokenOutbound > 0) {
-    parts.push(
-      `${notes.brokenOutbound} broken outbound link${notes.brokenOutbound === 1 ? "" : "s"}`,
-    );
-  }
-  if (notes.isOrphan) parts.push("no connections at all (orphan)");
-  else if (notes.isLeaf) parts.push("nothing is reachable from here (leaf)");
-  return (
-    <div
-      role="status"
-      className="mx-5 mt-4 rounded-lg border border-yellow/30 bg-yellow/10 px-3 py-2 text-label text-yellow"
-    >
-      {parts.join(" · ")}
-    </div>
-  );
 }
 
 function NeighborChips({
@@ -242,7 +215,6 @@ export function MemoryDetail({
   onNavigate,
   variant = "rail",
   renderedBody = null,
-  integrity = null,
   collapseBodyAt = null,
   bodyFade = "bg",
 }: Props) {
@@ -303,15 +275,9 @@ export function MemoryDetail({
     () => (variant === "page" ? neighborKeys(memory.key, outbound, backlinks) : []),
     [variant, memory.key, outbound, backlinks],
   );
-  // Integrity banner shows in both variants when a report is supplied.
-  const integrityNotes = useMemo(
-    () => integrityNotesForMemory(memory.key, integrity),
-    [memory.key, integrity],
-  );
 
   return (
     <div>
-      {integrityNotes && <IntegrityBanner notes={integrityNotes} />}
       {/* A skill is just a `skills/…` memory — no special pane, just a tag. */}
       {memory.key.startsWith("skills/") && (
         <div className={`${pad} pt-4`}>

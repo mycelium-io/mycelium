@@ -12,7 +12,7 @@ import {
   fetchMemoryExpanded,
   type Memory,
 } from "@/lib/api";
-import { useRoomMemoryIntegrity, useRoomRevalidate } from "@/lib/room-data";
+import { useRoomRevalidate } from "@/lib/room-data";
 import { memoryHref } from "@/lib/memory-routes";
 import { isLiveEpisode } from "@/lib/threads";
 import { MemoryDetail } from "@/components/memory-detail";
@@ -40,7 +40,6 @@ export function MemoryPageView({ roomName, memoryKey }: Props) {
   const [memory, setMemory] = useState<Memory | null | undefined>(undefined);
   const [renderedBody, setRenderedBody] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const { integrity } = useRoomMemoryIntegrity(roomName);
   const { principal } = useCurrentUser();
   const revalidate = useRoomRevalidate(roomName);
   const { setDirty, guard, dialog: unsavedDialog } = useUnsavedGuard();
@@ -151,9 +150,9 @@ export function MemoryPageView({ roomName, memoryKey }: Props) {
             actor={principal}
             onDirtyChange={setDirty}
             onSaved={() => {
-              // revalidate() refreshes every SWR-backed room resource, which
-              // covers integrity. The memory and its expanded body are local
-              // state, so refetch those directly.
+              // revalidate() refreshes every SWR-backed room resource. The
+              // memory and its expanded body are local state, so refetch those
+              // directly.
               revalidate();
               setIsEditing(false);
               fetchMemory(roomName, memoryKey).then(m => { if (m) setMemory(m); });
@@ -171,7 +170,6 @@ export function MemoryPageView({ roomName, memoryKey }: Props) {
             onNavigate={onNavigate}
             variant="page"
             renderedBody={renderedBody}
-            integrity={integrity}
             // Only where a discussion follows the body: on a page that is body
             // and nothing else, clamping would hide the whole point of opening
             // it full screen.
