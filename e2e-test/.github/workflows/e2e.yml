@@ -267,22 +267,35 @@ jobs:
           # which regresses all the way back to the original bug with no
           # visible error.
           #
-          # chown ONLY the reported/globbed path, never `-R` over the whole
-          # rooms/ tree: a run with inotify confirmed working still lost the
-          # race 100% of the time by tier_b_001, because a full recursive
-          # chown over every room accumulated so far in the suite is slow
-          # enough to blow a 400ms window. The CLI's write-guard only checks
-          # the room dir itself (the nearest existing ancestor), and the
-          # default ACL above already covers everything the backend needs —
-          # chowning just the room dir, not its contents, is all this needs.
+          # chown ONLY the reported path, never `-R` over the whole rooms/
+          # tree: a run with inotify confirmed working still lost the race
+          # 100% of the time by tier_b_001, because a full recursive chown
+          # over every room accumulated so far in the suite is slow enough
+          # to blow a 400ms window.
+          #
+          # This has to watch recursively (-r), not just the room dir level:
+          # `mycelium agent create` is itself a dual write — its own HTTP
+          # call creates room/agents/ server-side (uid 1000) as a side
+          # effect, then the CLI mirrors the manifest file locally. The
+          # first agent in a room only hits the pre-check against the room
+          # dir (already chowned, passes) and its write succeeds under the
+          # ACL's permissive mode regardless of ownership — but the SECOND
+          # agent (and the aligner's `engine create`) walks up to the now-
+          # existing agents/ dir, sees it's backend-owned, and the CLI's
+          # pre-check bails on ownership alone even though the ACL would
+          # have let the actual write through. A room-level-only watch never
+          # catches agents/ being created, so it can never fix that.
           sudo apt-get update -qq 2>/dev/null; sudo apt-get install -y inotify-tools 2>/dev/null
           if command -v inotifywait >/dev/null 2>&1; then
             echo "ownership watcher: using inotify"
-            ( inotifywait -m -e create,moved_to --format '%w%f' ~/.mycelium/rooms 2>/dev/null \
+            ( inotifywait -m -r -e create,moved_to --format '%w%f' ~/.mycelium/rooms 2>/dev/null \
                 | while read -r path; do sudo chown "$USER" "$path" 2>/dev/null; done ) &
           else
             echo "ownership watcher: inotify-tools unavailable, falling back to tight poll"
-            ( while true; do sudo chown "$USER" ~/.mycelium/rooms/*/ 2>/dev/null; sleep 0.2; done ) &
+            ( while true; do
+                sudo chown "$USER" ~/.mycelium/rooms/*/ ~/.mycelium/rooms/*/agents/ 2>/dev/null
+                sleep 0.2
+              done ) &
           fi
           echo $! > /tmp/mycelium-chown-watcher.pid
 
