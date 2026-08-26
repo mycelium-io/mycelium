@@ -1,0 +1,93 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Mycelium Contributors
+
+"use client";
+
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
+
+/** The surface the region sits on, so the fade lands on the right colour. */
+const FADE = {
+  bg: "var(--bg)",
+  paper: "var(--paper)",
+  surface: "var(--surface)",
+  elevated: "var(--elevated)",
+} as const;
+
+/** Below this much overshoot, clamping would hide a line or two and cost a
+ *  click to read them — worse than just showing the whole thing. */
+const SLACK = 48;
+
+interface Props {
+  /** Height, in px, the region clamps to while collapsed. */
+  collapsedHeight: number;
+  /** The surface behind the region. */
+  fade?: keyof typeof FADE;
+  /** Names what expands, for the button's accessible label. */
+  label?: string;
+  children: ReactNode;
+}
+
+/**
+ * A region that clamps itself when it is long, and only then.
+ *
+ * The alternative — a fixed-height inner scrollbox — is what a pane reaches for
+ * first and is worse in the one way that matters: it puts a second scrollbar
+ * inside the first, so the wheel does different things a few pixels apart. This
+ * keeps one scroll for the whole column and makes length a thing you opt into
+ * reading, the way an issue body works.
+ *
+ * Content shorter than {@link Props.collapsedHeight} renders untouched, with no
+ * button and no fade: nothing here appears until there is something to hide.
+ */
+export function Expandable({ collapsedHeight, fade = "bg", label, children }: Props) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [overflows, setOverflows] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  // Measured rather than estimated from the text: the body renders markdown, so
+  // its height is a function of the rendering, not of how many characters came
+  // back. The observer keeps that true as images load and the pane resizes.
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const measure = () => setOverflows(el.scrollHeight > collapsedHeight + SLACK);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [collapsedHeight]);
+
+  const clamped = overflows && !expanded;
+
+  return (
+    <div>
+      <div
+        ref={contentRef}
+        className="relative"
+        style={clamped ? { maxHeight: collapsedHeight, overflow: "hidden" } : undefined}
+      >
+        {children}
+        {clamped && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-20"
+            style={{ background: `linear-gradient(to top, ${FADE[fade]}, transparent)` }}
+          />
+        )}
+      </div>
+      {overflows && (
+        <button
+          type="button"
+          onClick={() => setExpanded(v => !v)}
+          aria-expanded={expanded}
+          aria-label={label ? `${expanded ? "Collapse" : "Expand"} ${label}` : undefined}
+          className="mt-1 inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2.5 py-1 text-micro font-medium text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+        >
+          {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+          {expanded ? "Collapse" : "Expand"}
+        </button>
+      )}
+    </div>
+  );
+}
