@@ -141,6 +141,42 @@ def _write_user(user: UserManifest, created_by: str) -> None:
         create_api.sync(client=client, body=body)
 
 
+def align_identity(
+    handle: str,
+    *,
+    config: MyceliumConfig,
+    display_name: str | None = None,
+    teams: list[str] | None = None,
+) -> tuple[UserManifest, bool]:
+    """Make *handle* this machine's identity and ensure its ``users/`` record exists.
+
+    Two halves with different homes: the identity is this machine's config, the
+    user record is the hub's. Registering can fail on its own, and the local half
+    still has to land — otherwise a hub outage leaves you unable to say who you
+    are here. The returned flag says whether the hub took the record.
+
+    Raises ``ValidationError`` when *handle* isn't a valid handle.
+    """
+    manifest = UserManifest(handle=handle, display_name=display_name or "", teams=teams or [])
+
+    registered = True
+    try:
+        # Preserve an existing display name / teams when the caller didn't pass them.
+        existing = load_user(manifest.handle)
+        if existing is not None:
+            if display_name is None:
+                manifest.display_name = existing.display_name
+            if not teams:
+                manifest.teams = existing.teams
+        _write_user(manifest, created_by=manifest.handle)
+    except (httpx.HTTPError, UnexpectedStatus):
+        registered = False
+
+    config.identity.name = manifest.handle
+    config.save()
+    return manifest, registered
+
+
 def _owned_lines(read: UserRead) -> list[tuple[str, str, str]]:
     """The hub's roll-up for a user as ``(handle, adapter, room)`` triples."""
     owns = _unset_to_none(getattr(read, "owns", None)) or []
@@ -442,33 +478,14 @@ def iam(
         return
 
     try:
+        config = MyceliumConfig.load()
         try:
-            manifest = UserManifest(handle=handle, display_name=name or "", teams=team or [])
+            manifest, registered = align_identity(
+                handle, config=config, display_name=name, teams=team
+            )
         except ValidationError as exc:
             typer.secho(f"Invalid handle: {exc}", fg=typer.colors.RED)
             raise typer.Exit(1) from exc
-
-        config = MyceliumConfig.load()
-
-        # Two halves with different homes: the identity is this machine's config,
-        # the user record is the hub's. Registering can fail on its own, and the
-        # local half still has to land — otherwise a hub outage leaves you unable
-        # to say who you are here.
-        registered = True
-        try:
-            # Preserve an existing display name / teams when the caller didn't pass them.
-            existing = load_user(manifest.handle)
-            if existing is not None:
-                if name is None:
-                    manifest.display_name = existing.display_name
-                if not team:
-                    manifest.teams = existing.teams
-            _write_user(manifest, created_by=manifest.handle)
-        except (httpx.HTTPError, UnexpectedStatus):
-            registered = False
-
-        config.identity.name = manifest.handle
-        config.save()
 
         team_line = f" · teams: {', '.join(manifest.teams)}" if manifest.teams else ""
         console.print(

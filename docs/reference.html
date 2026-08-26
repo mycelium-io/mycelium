@@ -1961,7 +1961,7 @@ role     = &quot;user&quot;</code></pre>
       <p><code>mycelium whoami</code> (and <code>mycelium iam</code> with no arguments) reports the handle from your <strong>token</strong> when you&#x27;re signed in, and the self-asserted <code>identity.name</code> when you&#x27;re not:</p>
       <pre><code>acting as @avery  (avery#a8f3)
   signed in (<span class="url">https://sso.example.com/realms/mycelium,</span> expires in 42 min)</code></pre>
-      <p>Because a gated hub attributes writes to the token (see <em>The token is the author</em> below), a self-asserted handle that names someone else is a 403 in waiting; <code>login</code> and <code>iam</code> both say so when they disagree.</p>
+      <p>Because a gated hub attributes writes to the token (see <em>The token is the author</em> below), a self-asserted handle that names someone else is a 403 in waiting. The token wins that disagreement, so <code>login</code> settles it for you: on a successful sign-in it points <code>identity.name</code> at the token&#x27;s own handle and registers the <code>users/</code> record — the same thing <code>mycelium iam &lt;handle&gt;</code> does, without the second command. If that can&#x27;t land (no readable handle claim, or a handle the store rejects), <code>login</code> falls back to naming the mismatch and the command that fixes it. Setting a handle your token won&#x27;t back with <code>iam</code> still warns.</p>
       <h3 id="auth-configuration">Configuration</h3>
       <div class="table-wrap">
         <table>

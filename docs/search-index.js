@@ -1930,7 +1930,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#auth-who-you-are",
     "t": "Who you are",
     "s": "Guides › Authentication",
-    "x": "mycelium whoami (and mycelium iam with no arguments) reports the handle from your token when you're signed in, and the self-asserted identity.name when you're not: acting as @avery (avery#a8f3) signed in (https://sso.example.com/realms/mycelium, expires in 42 min) Because a gated hub attributes writes to the token (see The token is the author below), a self-asserted handle that names someone else is a 403 in waiting;",
+    "x": "mycelium whoami (and mycelium iam with no arguments) reports the handle from your token when you're signed in, and the self-asserted identity.name when you're not: acting as @avery (avery#a8f3) signed in (https://sso.example.com/realms/mycelium, expires in 42 min) Because a gated hub attributes writes to the token (see The token is the author below), a self-asserted handle that names someone else is a 403 in waiting.",
     "p": "Reference"
   },
   {

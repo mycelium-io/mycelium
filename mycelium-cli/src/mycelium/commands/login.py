@@ -8,7 +8,9 @@ The browser flow (Authorization Code + PKCE) is the default; ``--device`` is the
 fallback for a shell whose browser can't reach this machine's loopback address:
 SSH, CI, a container. Both end the same way: the session lands in the ``0600``
 token cache (``mycelium.tokens``) and every subsequent backend call carries it,
-because they all build their client through ``mycelium.client``.
+because they all build their client through ``mycelium.client``. A successful
+login also points this machine's ``identity.name`` at the token's own handle,
+since a gated hub refuses a write that claims a different one.
 
 Logging in is opt-in. Nothing here runs unless the user asks for it, and a hub
 with its gate off never needs it.
@@ -83,26 +85,64 @@ def _persist_login_config(
         console.print(f"[dim]Saved login settings to {MyceliumConfig.get_config_path()}[/dim]")
 
 
-def _report(token: StoredToken, config: MyceliumConfig, *, json_output: bool) -> None:
-    handle = token.handle(config.auth.handle_claim) or token.handle() or "(unknown)"
+# What ``_align_identity`` did with the token's handle, for ``_report`` to narrate.
+_SKIPPED = "skipped"  # no readable handle claim; there is nothing to align to
+_ALREADY = "already"  # identity.name already names the token's principal
+_ALIGNED = "aligned"
+_UNREGISTERED = "unregistered"  # identity.name landed, the hub didn't take the record
+_FAILED = "failed"
+
+
+def _align_identity(config: MyceliumConfig, handle: str) -> str:
+    """Point this machine's identity at the token's own handle.
+
+    A token is authoritative over a self-asserted local name, and a gated hub
+    refuses a write that claims a different one — so login does the alignment
+    itself rather than printing a second command for the human to relay back.
+    Same path ``mycelium iam <handle>`` takes: ``identity.name`` plus the
+    ``users/`` record.
+    """
+    asserted = (config.identity.name or "").strip().lstrip("@").lower()
+    if asserted == handle:
+        return _ALREADY
+
+    from mycelium.commands.user import align_identity
+
+    try:
+        _manifest, registered = align_identity(handle, config=config)
+    except Exception:  # noqa: BLE001 — a login that worked must not fail on this
+        return _FAILED
+    return _ALIGNED if registered else _UNREGISTERED
+
+
+def _report(
+    token: StoredToken,
+    config: MyceliumConfig,
+    *,
+    handle: str | None,
+    alignment: str,
+    json_output: bool,
+) -> None:
+    shown = handle or "(unknown)"
     remaining = token.expires_in()
 
     if json_output:
         typer.echo(
             json_module.dumps(
                 {
-                    "handle": handle,
+                    "handle": shown,
                     "issuer": token.issuer,
                     "client_id": token.client_id,
                     "expires_at": token.expires_at,
                     "refreshable": bool(token.refresh_token),
+                    "identity": config.identity.name,
                 },
                 indent=2,
             )
         )
         return
 
-    console.print(f"[green]Signed in as[/green] [cyan]@{handle}[/cyan] [dim]({token.issuer})[/dim]")
+    console.print(f"[green]Signed in as[/green] [cyan]@{shown}[/cyan] [dim]({token.issuer})[/dim]")
     if remaining is not None:
         console.print(f"[dim]Access token valid for {int(remaining // 60)} min[/dim]")
     if not token.refresh_token:
@@ -112,15 +152,23 @@ def _report(token: StoredToken, config: MyceliumConfig, *, json_output: bool) ->
         )
     console.print(f"[dim]Session cached at {token_path()} (mode 0600).[/dim]")
 
-    # A self-asserted identity that names someone else is a 403 waiting to happen, so warn.
-    asserted = (config.identity.name or "").strip().lstrip("@").lower()
-    if asserted and asserted != handle:
+    if alignment in (_ALIGNED, _UNREGISTERED):
+        console.print(f"[dim]This machine now writes as @{shown} (identity.name).[/dim]")
+    if alignment == _UNREGISTERED:
+        console.print(
+            f"[yellow]Not registered on the hub[/yellow] [dim]— couldn't reach "
+            f"{config.server.api_url}. Re-run: mycelium iam {shown}[/dim]"
+        )
+    if alignment == _FAILED:
+        # Couldn't align, so say what a self-asserted identity naming someone
+        # else costs: a gated hub turns it into a 403 at the first write.
+        asserted = (config.identity.name or "").strip().lstrip("@").lower() or "(unset)"
         console.print(
             f"\n[yellow]Heads up:[/yellow] this machine writes as [cyan]@{asserted}[/cyan], "
-            f"but your token says [cyan]@{handle}[/cyan]. A gated hub refuses writes that "
+            f"but your token says [cyan]@{shown}[/cyan]. A gated hub refuses writes that "
             "claim a different handle."
         )
-        console.print(f"[dim]Align them with: mycelium iam {handle}[/dim]")
+        console.print(f"[dim]Align them with: mycelium iam {shown}[/dim]")
 
 
 @doc_ref(
@@ -232,7 +280,10 @@ def login(
         audience=audience,
         scope=scope,
     )
-    _report(token, config, json_output=json_output)
+
+    handle = token.handle(config.auth.handle_claim) or token.handle()
+    alignment = _align_identity(config, handle) if handle else _SKIPPED
+    _report(token, config, handle=handle, alignment=alignment, json_output=json_output)
 
 
 @doc_ref(

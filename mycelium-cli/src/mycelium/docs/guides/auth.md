@@ -133,8 +133,13 @@ acting as @avery  (avery#a8f3)
 ```
 
 Because a gated hub attributes writes to the token (see *The token is the author*
-below), a self-asserted handle that names someone else is a 403 in waiting;
-`login` and `iam` both say so when they disagree.
+below), a self-asserted handle that names someone else is a 403 in waiting. The
+token wins that disagreement, so `login` settles it for you: on a successful
+sign-in it points `identity.name` at the token's own handle and registers the
+`users/` record — the same thing `mycelium iam <handle>` does, without the second
+command. If that can't land (no readable handle claim, or a handle the store
+rejects), `login` falls back to naming the mismatch and the command that fixes
+it. Setting a handle your token won't back with `iam` still warns.
 
 ### Configuration
 
