@@ -49,6 +49,16 @@ function synthesizeRaw(edge: MemoryGraphEdge): string {
   return `[[${edge.target}]]`;
 }
 
+/** The backward cursor's test, as the backend applies it: strictly before, and
+ *  a row with no readable stamp is kept rather than filtered out. */
+function olderThan(stamp: string | undefined, before: string | null): boolean {
+  if (!before) return true;
+  const at = Date.parse(stamp ?? "");
+  const cursor = Date.parse(before);
+  if (Number.isNaN(at) || Number.isNaN(cursor)) return true;
+  return at < cursor;
+}
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -338,9 +348,15 @@ export async function handleMock(req: Request): Promise<Response | null> {
     }
 
     case "messages": {
-      // GET /messages/l9 — the L9 wire feed for the Network pane.
+      // GET /messages/l9 — the L9 wire feed for the Network pane, and the half
+      // of the channel's feed that carries pings and board notices. Oldest
+      // first, the last `limit` of what is older than the cursor — the shape
+      // the backend's transcript replay serves.
       if (sub[1] === "l9" && method === "GET") {
-        return json(fx.l9 ?? []);
+        const limit = Number(searchParams.get("limit") ?? "200");
+        const before = searchParams.get("before");
+        const frames = (fx.l9 ?? []).filter((f) => olderThan(f.created_at as string | undefined, before));
+        return json(limit > 0 ? frames.slice(-limit) : frames);
       }
       if (method === "GET") {
         // The backend serves newest-first; the UI reverses to oldest-first.
@@ -349,7 +365,13 @@ export async function handleMock(req: Request): Promise<Response | null> {
         // `live` URN. Exact-match, as the backend filters, so the mock can't let
         // a thread pane pass while the real read returns everything.
         const episode = searchParams.get("episode");
-        const scoped = episode ? fx.messages.filter((m) => m.episode === episode) : fx.messages;
+        // `?before=` is the backward cursor the channel walks by. Filtered
+        // before the count, as the backend counts it — `total` is what is older
+        // than the cursor, which is how a reader knows it has reached the start.
+        const before = searchParams.get("before");
+        const scoped = fx.messages.filter(
+          (m) => (!episode || m.episode === episode) && olderThan(m.created_at, before),
+        );
         const ordered = [...scoped].reverse();
         const messages = limit > 0 ? ordered.slice(0, limit) : ordered;
         return json({ messages, total: scoped.length });

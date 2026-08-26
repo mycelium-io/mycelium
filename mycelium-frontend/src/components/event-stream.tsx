@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   fetchL9History,
   fetchMessages,
@@ -26,7 +26,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Monogram } from "@/components/ui/monogram";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { ArrowDown, Bot, MessageSquare, MessagesSquare } from "lucide-react";
+import { ArrowDown, Bot, Loader2, MessageSquare, MessagesSquare } from "lucide-react";
 
 interface Event {
   /** Render key only — synthesized, so a message republished by a status
@@ -478,6 +478,46 @@ function activityLine(ev: Event): { label: string; detail: string } {
  *  so a stray wheel tick doesn't detach them. */
 const PIN_TOLERANCE_PX = 64;
 
+/** One page of the channel, on both of its reads.
+ *
+ *  The two used to disagree: the prose took the backend's default (50) while the
+ *  control frames took 200, so the conversation was the shallower half of a feed
+ *  assembled from both — and in a busy room the newest fifty are the churn, which
+ *  is how a room with hundreds of messages in it read as having none. Same page
+ *  size on both reads, and every older page is fetched the same way. */
+const CHANNEL_PAGE = 200;
+
+/** How close to the top of the viewport counts as asking for the page before. */
+const LOAD_OLDER_MARGIN_PX = 240;
+
+/** The two reads the channel is assembled from, as one page of it.
+ *
+ *  `/messages` is what the room *said*; the L9 replay is where a ping and a
+ *  board notice survive, and neither reaches the conversational read. So a page
+ *  is both, merged by time — the initial window and every older one land here.
+ *
+ *  Dedup is by the backend's id, because the live stream never stops while you
+ *  are reading back: a page can overlap rows that arrived over SSE, and an
+ *  amendment already folded into a message on screen would otherwise unfold
+ *  itself into a second copy. An event with no id is kept — there is nothing to
+ *  compare it by, and dropping it would lose a row to save a duplicate. */
+function mergePage(existing: Event[], page: Event[]): Event[] {
+  const seen = new Set(existing.map((e) => e.messageId).filter(Boolean));
+  const fresh = page.filter((e) => !e.messageId || !seen.has(e.messageId));
+  if (fresh.length === 0) return existing;
+  return [...existing, ...fresh].sort((a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0));
+}
+
+/** The earliest stamp in a page — the cursor the page before it is fetched by. */
+function oldestAt(page: Event[]): string | null {
+  let oldest: string | null = null;
+  for (const event of page) {
+    if (!Date.parse(event.at)) continue;
+    if (oldest === null || Date.parse(event.at) < Date.parse(oldest)) oldest = event.at;
+  }
+  return oldest;
+}
+
 /** Fold an amendment into the message it revises, or keep it as its own row.
  *
  *  The backend folds a cold read; the live stream carries the amendment as the
@@ -551,6 +591,18 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     [agents],
   );
 
+  // Where reading back has got to: the cursor the next older page is asked for,
+  // whether both reads have run out, and whether one is in flight. Refs rather
+  // than state because the scroll handler reads them on every wheel tick and
+  // must not be re-bound to see the current values.
+  const older = useRef({ cursor: null as string | null, exhausted: false, loading: false });
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [reachedStart, setReachedStart] = useState(false);
+  // Distance from the bottom, captured before a prepend and restored after it.
+  // The distance from the *top* is what the new page changes, which is why the
+  // view would otherwise jump the moment older messages landed above it.
+  const anchor = useRef<number | null>(null);
+
   // Two reads, one feed.
   //
   // The room's messages are what was *said*; a ping is a control frame and the
@@ -560,22 +612,39 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // the pings are lifted out of it and merged back in by time. Everything else
   // in that replay already reaches the feed as a message, so only pings are
   // taken; reading both is what makes a reload say what the room said.
+  //
+  // Both are paged, and this is what a page is: the window a room opens on, and
+  // every older one behind it.
+  const readPage = useCallback(
+    async (before: string | null) => {
+      const [data, frames] = await Promise.all([
+        fetchMessages(roomName, CHANNEL_PAGE, { before }),
+        fetchL9History(roomName, CHANNEL_PAGE, before),
+      ]);
+      const said = (data.messages || []).map((m) => parseEvent(m, roomName));
+      const notices = frames
+        .map((frame) => parseEvent(frame, roomName))
+        .filter((e) => e.type === PING_TYPE || e.type === NOTICE_TYPE);
+      // `total` counts everything older than the cursor, so a page shorter than
+      // it is the honest end of the prose. The replay carries no such count, so
+      // a short page is the only thing it can say — one wasted request at the
+      // start of the room, against paging a room forever.
+      const more = (data.total ?? said.length) > said.length || frames.length >= CHANNEL_PAGE;
+      return { page: [...said, ...notices], more };
+    },
+    [roomName],
+  );
+
   useEffect(() => {
     let live = true;
-    Promise.all([fetchMessages(roomName), fetchL9History(roomName)])
-      .then(([data, frames]) => {
+    older.current = { cursor: null, exhausted: false, loading: false };
+    readPage(null)
+      .then(({ page, more }) => {
         if (!live) return;
-        const said = (data.messages || []).map((m) => parseEvent(m, roomName));
-        // The L9 replay is where the room's board notices live — a ping about a
-        // thread, and a task filed into the room — neither of which survives the
-        // conversational read of `/messages`. Merge those in so the channel is
-        // the room's timeline, not just its prose.
-        const notices = frames
-          .map((frame) => parseEvent(frame, roomName))
-          .filter((e) => e.type === PING_TYPE || e.type === NOTICE_TYPE);
-        setEvents(
-          [...said, ...notices].sort((a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0)),
-        );
+        older.current.cursor = oldestAt(page);
+        older.current.exhausted = !more || older.current.cursor === null;
+        setReachedStart(older.current.exhausted);
+        setEvents([...page].sort((a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0)));
         setHistoryLoaded(true);
       })
       .catch((err) => {
@@ -585,7 +654,40 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     return () => {
       live = false;
     };
-  }, [roomName]);
+  }, [roomName, readPage]);
+
+  // The page before the one on screen, fetched when the reader nears the top.
+  //
+  // Keyed off the oldest message loaded rather than an offset: the live stream
+  // never stops, and every offset in the room shifts under a message arriving
+  // while you read back. A page lands prepended, with the scroll position
+  // anchored to what was already there, so reaching the top reveals history
+  // instead of moving it.
+  const loadOlder = useCallback(() => {
+    const state = older.current;
+    if (state.loading || state.exhausted || !state.cursor) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    state.loading = true;
+    setLoadingOlder(true);
+    const from = el.scrollHeight - el.scrollTop;
+    readPage(state.cursor)
+      .then(({ page, more }) => {
+        const cursor = oldestAt(page);
+        // No cursor means the page carried nothing datable to ask before, so
+        // there is no next request to make even if the room has more.
+        state.exhausted = !more || cursor === null;
+        if (cursor) state.cursor = cursor;
+        if (state.exhausted) setReachedStart(true);
+        anchor.current = from;
+        setEvents((prev) => mergePage(prev, page));
+      })
+      .catch(logFetchError("fetchMessages"))
+      .finally(() => {
+        state.loading = false;
+        setLoadingOlder(false);
+      });
+  }, [readPage]);
 
   // Live room messages, off the app's one multiplexed connection.
   useRoomStream(roomName, (data) => {
@@ -682,9 +784,12 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // meanwhile, so leaving the tail doesn't read as a quiet room.
   const [atBottom, setAtBottom] = useState(true);
   const atBottomRef = useRef(true);
-  // visible.length at the moment the reader left the tail.
-  const [detachedAt, setDetachedAt] = useState(0);
-  const visibleCount = useRef(0);
+  // The last row the reader had reached when they left the tail — the row
+  // itself, not how many there were. A count is wrong the moment a page of
+  // older messages is prepended: every one of them lands *above* the mark, and
+  // none of it is news.
+  const [detachedAt, setDetachedAt] = useState<string | null>(null);
+  const lastVisible = useRef<string | null>(null);
 
   useEffect(() => {
     // Only the channel renders this viewport; the other views replace it, so
@@ -695,15 +800,39 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     // put a pinned reader back on the tail rather than in the archive.
     if (atBottomRef.current) el.scrollTop = el.scrollHeight;
     const measure = () => {
+      if (el.scrollTop <= LOAD_OLDER_MARGIN_PX) loadOlder();
       const pinned = el.scrollHeight - el.scrollTop - el.clientHeight <= PIN_TOLERANCE_PX;
       if (pinned === atBottomRef.current) return;
       atBottomRef.current = pinned;
-      if (!pinned) setDetachedAt(visibleCount.current);
+      if (!pinned) setDetachedAt(lastVisible.current);
       setAtBottom(pinned);
     };
     el.addEventListener("scroll", measure, { passive: true });
     return () => el.removeEventListener("scroll", measure);
-  }, [view]);
+  }, [view, loadOlder]);
+
+  // Put the reader back where they were reading. Before paint, and before the
+  // follow-the-tail effect below runs — which it won't, since anyone reading
+  // back is by definition off the tail.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const from = anchor.current;
+    if (!el || from === null) return;
+    anchor.current = null;
+    el.scrollTop = el.scrollHeight - from;
+  }, [visible]);
+
+  // A page of the room is not a page of the channel: the thread prose in it is
+  // placed rather than shown, and the churn goes up to the rail, so two hundred
+  // messages can leave a handful of rows and nothing to scroll. Keep pulling
+  // until the viewport actually overflows — otherwise the one gesture that
+  // reaches the older pages is a gesture the reader has no way to make.
+  useEffect(() => {
+    if (!historyLoaded) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    if (el.scrollHeight <= el.clientHeight + LOAD_OLDER_MARGIN_PX) loadOlder();
+  }, [historyLoaded, visible, loadOlder]);
 
   const jumpToLatest = () => {
     const el = scrollRef.current;
@@ -713,13 +842,17 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   };
 
-  const unread = atBottom ? 0 : Math.max(0, visible.length - detachedAt);
+  const unread = useMemo(() => {
+    if (atBottom || detachedAt === null) return 0;
+    const mark = visible.findIndex((e) => e.id === detachedAt);
+    return mark === -1 ? 0 : visible.length - 1 - mark;
+  }, [atBottom, detachedAt, visible]);
 
   // Auto-scroll when new events arrive — but not over a message the user was
   // just sent to, which is the one place in the feed they're looking, and not
   // over history they scrolled up to read.
   useEffect(() => {
-    visibleCount.current = visible.length;
+    lastVisible.current = visible[visible.length - 1]?.id ?? null;
     if (highlight || !atBottomRef.current) return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [visible, highlight]);
@@ -809,6 +942,16 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
           />
         ) : (
         <div className="py-3">
+        {/* The head of the walk back. Says which of the two it is — still
+            fetching, or there is genuinely nothing before this. */}
+        {loadingOlder ? (
+          <div className="flex items-center justify-center gap-2 py-3 text-micro text-muted-foreground">
+            <Loader2 className="size-3 animate-spin" />
+            Loading earlier messages…
+          </div>
+        ) : reachedStart ? (
+          <div className="py-3 text-center text-micro text-muted-foreground">Beginning of the room</div>
+        ) : null}
         {visible.map((ev, idx) => {
               // Coordination + plan lifecycle events render as slim, centered
               // system notices — quiet dividers woven into the conversation,

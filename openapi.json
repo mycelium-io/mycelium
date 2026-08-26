@@ -764,6 +764,25 @@
             "description": "Only messages created at/after this time"
           },
           {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only messages created strictly before this time. The backward cursor: a page defined relative to content rather than position, so scrolling back does not shift under messages arriving live.",
+              "title": "Before"
+            },
+            "description": "Only messages created strictly before this time. The backward cursor: a page defined relative to content rather than position, so scrolling back does not shift under messages arriving live."
+          },
+          {
             "name": "episode",
             "in": "query",
             "required": false,
@@ -812,7 +831,7 @@
           "messages"
         ],
         "summary": "List L9 Wire",
-        "description": "The room's L9 wire feed, replayed from the transcript (oldest first).\n\nBackfills the live L9 inspector: the SSE bus carries no history, so a freshly\nopened tab would otherwise start empty. Frames are the exact shape the bus\npushes, so the client projects backfill and live frames identically.",
+        "description": "The room's L9 wire feed, replayed from the transcript (oldest first).\n\nBackfills the live L9 inspector: the SSE bus carries no history, so a freshly\nopened tab would otherwise start empty. Frames are the exact shape the bus\npushes, so the client projects backfill and live frames identically.\n\n``before`` is the same backward cursor ``GET /messages`` takes, and the\nchannel needs both: its feed is those two reads merged, so paging only the\nprose would hand back older pages with the control frames missing.",
         "operationId": "list_l9_wire_api_rooms__room_name__messages_l9_get",
         "parameters": [
           {
@@ -834,6 +853,25 @@
               "default": 200,
               "title": "Limit"
             }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only frames recorded strictly before this time (backward cursor)",
+              "title": "Before"
+            },
+            "description": "Only frames recorded strictly before this time (backward cursor)"
           }
         ],
         "responses": {

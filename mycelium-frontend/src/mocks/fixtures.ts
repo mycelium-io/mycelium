@@ -1229,6 +1229,33 @@ const generalSaid: MockMessage[] = [
   },
 ];
 
+/**
+ * The room before today — the half that used to be unreachable.
+ *
+ * The channel's window was the newest fifty messages with no way back, so a
+ * room like this one read as whatever churn happened last. A fixture that only
+ * carries what fits in one window cannot show that being fixed, or show it
+ * regressing: this is deep enough that the mock room has to be walked back
+ * through several pages to reach its start.
+ */
+const generalBacklog: MockMessage[] = Array.from({ length: 260 }, (_, i) => {
+  const said = [
+    "Rebased onto main; the compose smoke build is green again.",
+    "The presence lease expiring mid-turn is what dropped that reply, not SLIM.",
+    "Reindexed after the import — search is answering for the new rows now.",
+    "Anyone else seeing the aligner take two rounds to notice the agreement?",
+    "That was a stale .env — config apply and it picked the model up.",
+  ];
+  return {
+    id: `gb-${i}`,
+    sender_handle: i % 3 === 0 ? "juliarvalenti@gmail.com" : `task-${800 + (i % 40)}`,
+    message_type: "broadcast",
+    created_at: iso(60 * 26 - i * 5),
+    episode: GENERAL_LIVE,
+    content: said[i % said.length],
+  };
+});
+
 const general: RoomFixture = {
   room: {
     id: 4,
@@ -1239,7 +1266,7 @@ const general: RoomFixture = {
     mas_id: "mas_9f3c02de",
   },
   memories: generalMemories,
-  messages: [...generalKnowledgePushes, ...generalSaid].sort(
+  messages: [...generalBacklog, ...generalKnowledgePushes, ...generalSaid].sort(
     (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at),
   ),
   episodes: [],

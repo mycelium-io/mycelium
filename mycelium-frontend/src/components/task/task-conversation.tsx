@@ -72,7 +72,8 @@ function scrollParentOf(el: HTMLElement | null): HTMLElement | null {
  * conversation never replaces the room's feed with a filtered slice of itself.
  */
 export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: Props) {
-  const { messages, loading, refresh } = useThreadMessages(roomName, episode);
+  const { messages, loading, refresh, hasOlder, loadOlder, loadingOlder } =
+    useThreadMessages(roomName, episode);
   const { agents } = useRoomAgents(roomName);
   const agentHandles = new Set(agents.map(a => a.handle));
   const endRef = useRef<HTMLDivElement>(null);
@@ -153,6 +154,22 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
         />
       ) : (
         <div className="py-3">
+          {/* A control, not a scroll trigger. This conversation owns no scroll —
+              it is the lower half of the task's own column — so "near the top"
+              is a position in the task above it, not in the thread. Asking is
+              the honest gesture here. */}
+          {hasOlder && (
+            <div className="px-5 pb-2 text-center">
+              <button
+                type="button"
+                onClick={loadOlder}
+                disabled={loadingOlder}
+                className="text-micro text-muted-foreground underline-offset-2 hover:underline disabled:no-underline disabled:opacity-60"
+              >
+                {loadingOlder ? "Loading earlier replies…" : "Load earlier replies"}
+              </button>
+            </div>
+          )}
           {ordered.map(({ message, text }, i) => {
             const sender = message.sender_handle ?? message.updated_by ?? "?";
             const previous = ordered[i - 1]?.message;

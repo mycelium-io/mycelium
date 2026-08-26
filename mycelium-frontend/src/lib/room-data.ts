@@ -18,7 +18,7 @@
  * module is only for what the hub owns.
  */
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { RoomStatus } from "@/lib/board/upstream";
 import useSWR, { useSWRConfig, type SWRConfiguration } from "swr";
 import {
@@ -80,7 +80,8 @@ const POSTER_LIMIT = 200;
  *  scans a short window past any protocol ticks on top of it. */
 const LATEST_LIMIT = 20;
 
-/** A thread is one task's conversation, so its whole history is a short read. */
+/** A thread is one task's conversation, so its whole history is usually one
+ *  read. Where it is not, the window grows by another of these. */
 const THREAD_LIMIT = 200;
 
 /** What a thread belongs to, for anything that has to name it. */
@@ -253,6 +254,16 @@ export function useRoomMessages(room: string, limit = 200, opts: RoomQueryOption
  * into a thread refreshes the thread and the room together.
  *
  * A null episode parks the hook, so a closed pane fetches nothing.
+ *
+ * **Older messages arrive by widening the window, not by paging behind a
+ * cursor.** The read is newest-first, so the newest N always contains the
+ * newest M before it: widening is idempotent against the live stream in the way
+ * an offset is not, and it stays one cache entry — which is what keeps a pushed
+ * write reaching every reader through `useRoomRevalidate`. The channel pages by
+ * cursor instead because it assembles its feed by hand from two reads plus the
+ * SSE tail, and re-reading the head each time would throw that away. Here the
+ * whole conversation is the read. `hasOlder` is exact: the room answers with
+ * how many messages matched, not just the page it returned.
  */
 export function useThreadMessages(
   room: string,
@@ -260,15 +271,41 @@ export function useThreadMessages(
   limit = THREAD_LIMIT,
   opts: RoomQueryOptions = {},
 ) {
-  const { data, isLoading, mutate } = useSWR(
-    room && episode ? (["room", room, "messages", "thread", episode, limit] as const) : null,
-    () => fetchMessages(room, limit, { episode }),
-    { refreshInterval: opts.refreshInterval ?? POLL.messages },
+  const [depth, setDepth] = useState(limit);
+  // A different thread, or a caller changing its page size, starts the walk over.
+  const [scope, setScope] = useState(`${episode}:${limit}`);
+  if (scope !== `${episode}:${limit}`) {
+    setScope(`${episode}:${limit}`);
+    setDepth(limit);
+  }
+  const { data, isLoading, isValidating, mutate } = useSWR(
+    room && episode ? (["room", room, "messages", "thread", episode, depth] as const) : null,
+    () => fetchMessages(room, depth, { episode }),
+    {
+      refreshInterval: opts.refreshInterval ?? POLL.messages,
+      // Widening changes the key, and without this the conversation would blank
+      // out and re-enter on its own skeleton every time someone asked for more
+      // of it. The narrower window is a prefix of the wider one, so the messages
+      // already on screen are the right thing to keep showing.
+      keepPreviousData: true,
+    },
   );
   const refresh = useCallback(() => {
     void mutate();
   }, [mutate]);
-  return { messages: data?.messages ?? NO_MESSAGES, loading: isLoading, refresh };
+  const messages = data?.messages ?? NO_MESSAGES;
+  const hasOlder = (data?.total ?? 0) > messages.length;
+  const loadOlder = useCallback(() => setDepth((d) => d + limit), [limit]);
+  return {
+    messages,
+    loading: isLoading,
+    refresh,
+    hasOlder,
+    loadOlder,
+    // A widened window that the answer has not caught up with yet. A poll of a
+    // window already filled is not this, which is why the length is compared.
+    loadingOlder: isValidating && hasOlder && depth > messages.length,
+  };
 }
 
 /**

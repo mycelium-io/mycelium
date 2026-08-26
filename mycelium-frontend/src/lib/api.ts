@@ -530,6 +530,13 @@ const isMessagesResponse = (d: unknown): d is MessagesResponse =>
 export interface MessageQuery {
   /** An episode URN: a task's thread, or the room's own `live` URN. */
   episode?: string | null;
+  /**
+   * The backward cursor: only messages created strictly before this stamp.
+   * A page defined relative to content rather than position, so walking back
+   * through a room does not shift under messages arriving live — which is
+   * exactly what an offset does.
+   */
+  before?: string | null;
 }
 
 export async function fetchMessages(
@@ -540,6 +547,7 @@ export async function fetchMessages(
   const params = new URLSearchParams();
   if (limit) params.set("limit", String(limit));
   if (query.episode) params.set("episode", query.episode);
+  if (query.before) params.set("before", query.before);
   const qs = params.toString();
   return apiFetch<MessagesResponse>(
     `/api/rooms/${roomName}/messages${qs ? `?${qs}` : ""}`,
@@ -557,12 +565,18 @@ export async function fetchMessages(
 export async function fetchL9History(
   roomName: string,
   limit = 200,
+  before?: string | null,
 ): Promise<Record<string, unknown>[]> {
-  return apiFetch<Record<string, unknown>[]>(`/api/rooms/${roomName}/messages/l9?limit=${limit}`, {
-    cache: "no-store",
-    fallback: [],
-    guard: isArray as (d: unknown) => d is Record<string, unknown>[],
-  });
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (before) params.set("before", before);
+  return apiFetch<Record<string, unknown>[]>(
+    `/api/rooms/${roomName}/messages/l9?${params.toString()}`,
+    {
+      cache: "no-store",
+      fallback: [],
+      guard: isArray as (d: unknown) => d is Record<string, unknown>[],
+    },
+  );
 }
 
 export async function sendRoomMessage(

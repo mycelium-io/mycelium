@@ -686,7 +686,9 @@ def l9_bus_frame(room: str, record: TranscriptRecord) -> dict[str, Any]:
     }
 
 
-def l9_wire_history(room: str, limit: int = 200) -> list[dict[str, Any]]:
+def l9_wire_history(
+    room: str, limit: int = 200, before: datetime | None = None
+) -> list[dict[str, Any]]:
     """The room's L9 wire feed replayed from the durable transcript (oldest first).
 
     The live inspector is fed only by the bus (SSE, no history), so a freshly
@@ -694,8 +696,18 @@ def l9_wire_history(room: str, limit: int = 200) -> list[dict[str, Any]]:
     through the same frame shape so the tab can seed itself, then append live — the
     history-then-live pattern the room chat feed already uses. Returns at most the
     last ``limit`` frames.
+
+    ``before`` narrows that window to what was recorded strictly earlier, which is
+    what walking back through the room asks for. A record whose stamp cannot be
+    read is kept: dropping it would put a hole in the replay to save a comparison.
     """
     records = load_transcript(room)
+    if before is not None:
+        records = [
+            r
+            for r in records
+            if (recorded := parse_recorded_at(r.recorded_at)) is None or recorded < before
+        ]
     if limit and len(records) > limit:
         records = records[-limit:]
     return [l9_bus_frame(room, r) for r in records]
