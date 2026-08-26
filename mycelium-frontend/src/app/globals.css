@@ -273,14 +273,26 @@ body {
 .markdown-body ol { list-style: decimal; }
 .markdown-body li { margin: 0.15em 0; line-height: 1.55; color: var(--text2); }
 .markdown-body li::marker { color: var(--muted); }
-.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
-  margin: 0.8em 0 0.4em; color: var(--text); font-weight: 700; line-height: 1.25;
+/* Headings are document structure, so they descend in size and hold primary
+ * contrast the whole way down. Sized in em rather than the UI scale: that scale
+ * tops out at 16px for chrome, and a body renders at whatever size its surface
+ * sets, so the ramp has to be relative to it. */
+.markdown-body h1, .markdown-body h2, .markdown-body h3,
+.markdown-body h4, .markdown-body h5, .markdown-body h6 {
+  margin: 1.3em 0 0.5em; color: var(--text); font-weight: 700; line-height: 1.3;
   font-family: 'IBM Plex Sans', sans-serif;
 }
-.markdown-body h1 { font-size: var(--text-ui); }
-.markdown-body h2 { font-size: var(--text-body); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text2); }
-.markdown-body h3 { font-size: var(--text-label); text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
-.markdown-body h4 { font-size: var(--text-label); color: var(--text2); }
+.markdown-body h1 { font-size: 1.5em; letter-spacing: -0.01em; }
+.markdown-body h2 { font-size: 1.25em; }
+.markdown-body h3 { font-size: 1.1em; }
+.markdown-body h4 { font-size: 1em; }
+/* Past h4 there is no size left to spend; weight and one contrast step carry it. */
+.markdown-body h5 { font-size: 1em; font-weight: 600; color: var(--text2); }
+.markdown-body h6 { font-size: 0.92em; font-weight: 600; color: var(--text2); }
+/* A heading directly under a heading opens no section of its own to separate. */
+.markdown-body :is(h1, h2, h3, h4, h5, h6) + :is(h1, h2, h3, h4, h5, h6) {
+  margin-top: 0.6em;
+}
 .markdown-body code {
   font-family: 'Geist Mono', 'SF Mono', Menlo, monospace;
   font-size: 0.9em;
