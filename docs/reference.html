@@ -567,7 +567,7 @@
         <div class="cmd-ref-header">
           <code><span class="bin">mycelium</span> <span class="cmd">login</span> [<span class="flag">--issuer</span> <span class="arg">URL</span>] [<span class="flag">--device</span>] [<span class="flag">--no-browser</span>] [<span class="flag">--client-id</span> <span class="arg">ID</span>]</code>
         </div>
-        <div class="cmd-ref-body">Sign in to a gated hub via OIDC (Authorization Code + PKCE, or device code).</div>
+        <div class="cmd-ref-body">Sign in to a gated hub via OIDC (Authorization Code + PKCE, or device code); the issuer is discovered from the hub when it isn't configured.</div>
       </div>
 
       <div class="cmd-ref">
@@ -1944,10 +1944,18 @@ role     = &quot;user&quot;</code></pre>
       <p>Each <code>[[auth.issuers]]</code> block takes <code>issuer</code> (the exact <code>iss</code> to trust), <code>jwks_url</code> (optional; omit to resolve it from the issuer&#x27;s OIDC discovery document), <code>audience</code> (optional per-issuer override), and <code>role</code>.</p>
       <h2 id="auth-signing-in-from-the-cli">Signing in from the CLI</h2>
       <p>The gate above is the hub&#x27;s half. <code>mycelium login</code> is yours: it obtains an OIDC token for <strong>you</strong>, caches it, and every later command sends it.</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> login.issuer <span class="url">https://sso.example.com/realms/mycelium</span>
-<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> login.audience <span class="bin">mycelium</span>      # match the hub&#x27;s auth.audience
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> login.audience <span class="bin">mycelium</span>      # match the hub&#x27;s auth.audience
 <span class="bin">mycelium</span> <span class="cmd">login</span></code></pre>
       <p>Your browser opens, you sign in at your identity provider, and the CLI takes it from there: <code>mycelium memory</code>, <code>mycelium room</code>, <code>await</code>, <code>respond</code> and the rest now carry <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+      <h3 id="auth-the-issuer-comes-from-the-hub">The issuer comes from the hub</h3>
+      <p>You do not set <code>login.issuer</code> to sign in. A gated hub advertises the issuers it trusts in the <code>auth</code> block of its <code>/health</code>, and <code>server.api_url</code> already points at it — so with no issuer configured and none passed, <code>login</code> asks the hub and uses the answer, remembering it once the sign-in it drove has actually worked.</p>
+      <p>Three cases where it steps back and tells you instead, rather than guessing:</p>
+      <ul>
+        <li><strong>The hub is unreachable</strong> — nothing to ask, so you get the original &quot;set <code>login.issuer</code>&quot; error.</li>
+        <li><strong>The hub&#x27;s gate is off</strong> — it needs no login at all, and says so.</li>
+        <li><strong>The hub trusts more than one issuer</strong> — which one you sign in against decides who the hub thinks you are, so it lists them and asks you to pick with <code>--issuer</code>. The lookup is still done for you; only the choice isn&#x27;t.</li>
+      </ul>
+      <p><code>--issuer</code> and a configured <code>login.issuer</code> both win over discovery, so nothing about an existing setup changes and the hub is not consulted at all.</p>
       <p><strong>On a machine with no browser</strong> (SSH, CI, a container) use the device flow. The CLI prints a URL and a short code you enter from any other device:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">login</span> <span class="flag">--device</span></code></pre>
       <p>The CLI falls back to this automatically when it finds no browser to open, so <code>mycelium login</code> over SSH does the right thing without the flag.</p>
@@ -1976,7 +1984,7 @@ role     = &quot;user&quot;</code></pre>
             <tr>
               <td><code>login.issuer</code></td>
               <td><em>(unset)</em></td>
-              <td>OIDC issuer to log in against. Unset means no login is configured.</td>
+              <td>OIDC issuer to log in against. Unset means <code>login</code> asks the hub for one and caches what it gets.</td>
             </tr>
             <tr>
               <td><code>login.client_id</code></td>

@@ -79,7 +79,6 @@ The gate above is the hub's half. `mycelium login` is yours: it obtains an OIDC
 token for **you**, caches it, and every later command sends it.
 
 ```bash
-mycelium config set login.issuer https://sso.example.com/realms/mycelium
 mycelium config set login.audience mycelium      # match the hub's auth.audience
 mycelium login
 ```
@@ -87,6 +86,25 @@ mycelium login
 Your browser opens, you sign in at your identity provider, and the CLI takes it
 from there: `mycelium memory`, `mycelium room`, `await`, `respond` and the rest
 now carry `Authorization: Bearer <token>`.
+
+### The issuer comes from the hub
+
+You do not set `login.issuer` to sign in. A gated hub advertises the issuers it
+trusts in the `auth` block of its `/health`, and `server.api_url` already points
+at it — so with no issuer configured and none passed, `login` asks the hub and
+uses the answer, remembering it once the sign-in it drove has actually worked.
+
+Three cases where it steps back and tells you instead, rather than guessing:
+
+- **The hub is unreachable** — nothing to ask, so you get the original "set
+  `login.issuer`" error.
+- **The hub's gate is off** — it needs no login at all, and says so.
+- **The hub trusts more than one issuer** — which one you sign in against decides
+  who the hub thinks you are, so it lists them and asks you to pick with
+  `--issuer`. The lookup is still done for you; only the choice isn't.
+
+`--issuer` and a configured `login.issuer` both win over discovery, so nothing
+about an existing setup changes and the hub is not consulted at all.
 
 **On a machine with no browser** (SSH, CI, a container) use the device flow.
 The CLI prints a URL and a short code you enter from any other device:
@@ -145,7 +163,7 @@ it. Setting a handle your token won't back with `iam` still warns.
 
 | Key | Default | What it does |
 |-----|---------|--------------|
-| `login.issuer` | *(unset)* | OIDC issuer to log in against. Unset means no login is configured. |
+| `login.issuer` | *(unset)* | OIDC issuer to log in against. Unset means `login` asks the hub for one and caches what it gets. |
 | `login.client_id` | `mycelium-cli` | OAuth client id registered for the CLI. |
 | `login.client_secret` | *(unset)* | Only for issuers that refuse public clients; PKCE means the CLI normally needs none. |
 | `login.scopes` | `openid profile email offline_access` | Scopes requested at login. |

@@ -933,7 +933,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#cli-setup",
     "t": "mycelium login [--issuer URL] [--device] [--no-browser] [--client-id ID]",
     "s": "CLI Reference",
-    "x": "Sign in to a gated hub via OIDC (Authorization Code + PKCE, or device code).",
+    "x": "Sign in to a gated hub via OIDC (Authorization Code + PKCE, or device code); the issuer is discovered from the hub when it isn't configured.",
     "k": "cmd",
     "p": "Reference"
   },
@@ -1909,7 +1909,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#auth-signing-in-from-the-cli",
     "t": "Signing in from the CLI",
     "s": "Guides › Authentication",
-    "x": "The gate above is the hub's half. mycelium login is yours: it obtains an OIDC token for you, caches it, and every later command sends it. mycelium config set login.issuer https://sso.example.com/realms/mycelium mycelium config set login.audience mycelium # match the hub's auth.audience mycelium login Your browser opens, you sign in at your identity provider, and the CLI takes it from there: mycelium memory, mycelium ",
+    "x": "The gate above is the hub's half. mycelium login is yours: it obtains an OIDC token for you, caches it, and every later command sends it. mycelium config set login.audience mycelium # match the hub's auth.audience mycelium login Your browser opens, you sign in at your identity provider, and the CLI takes it from there: mycelium memory, mycelium room, await, respond and the rest now carry Authorization: Bearer <token>",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#auth-the-issuer-comes-from-the-hub",
+    "t": "The issuer comes from the hub",
+    "s": "Guides › Authentication",
+    "x": "You do not set login.issuer to sign in. A gated hub advertises the issuers it trusts in the auth block of its /health, and server.api_url already points at it — so with no issuer configured and none passed, login asks the hub and uses the answer, remembering it once the sign-in it drove has actually worked. Three cases where it steps back and tells you instead, rather than guessing: The hub is unreachable — nothing t",
     "p": "Reference"
   },
   {
@@ -1937,7 +1944,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#auth-configuration",
     "t": "Configuration",
     "s": "Guides › Authentication",
-    "x": "Key Default What it does login.issuer (unset) OIDC issuer to log in against. Unset means no login is configured. login.client_id mycelium-cli OAuth client id registered for the CLI. login.client_secret (unset) Only for issuers that refuse public clients; PKCE means the CLI normally needs none. login.scopes openid profile email offline_access Scopes requested at login. login.audience (unset) Audience to request; shoul",
+    "x": "Key Default What it does login.issuer (unset) OIDC issuer to log in against. Unset means login asks the hub for one and caches what it gets. login.client_id mycelium-cli OAuth client id registered for the CLI. login.client_secret (unset) Only for issuers that refuse public clients; PKCE means the CLI normally needs none. login.scopes openid profile email offline_access Scopes requested at login. login.audience (unset",
     "p": "Reference"
   },
   {

@@ -12,6 +12,10 @@ because they all build their client through ``mycelium.client``. A successful
 login also points this machine's ``identity.name`` at the token's own handle,
 since a gated hub refuses a write that claims a different one.
 
+With no issuer configured, login asks the hub for one: a gated hub advertises
+what it trusts at ``/health``, so the URL is the backend's to supply rather than
+the human's to look up.
+
 Logging in is opt-in. Nothing here runs unless the user asks for it, and a hub
 with its gate off never needs it.
 """
@@ -61,6 +65,60 @@ def _announce_device(prompt: DevicePrompt) -> None:
     console.print("[dim]Waiting for you to approve…[/dim]")
 
 
+def _hub_issuers(config: MyceliumConfig) -> tuple[list[str], str | None]:
+    """The OIDC issuers the hub advertises at ``/health``, and why there are none.
+
+    The hub has to be reachable for a session to be worth anything, and it already
+    publishes what it trusts — so a spoke should not need a human to look the
+    issuer up and copy it back in. Returns the issuers and, when the list is
+    empty, a reason to print instead of a bare "no issuer configured".
+    """
+    import httpx
+
+    url = f"{config.server.api_url.rstrip('/')}/health"
+    try:
+        resp = httpx.get(url, timeout=5)
+        resp.raise_for_status()
+        body = resp.json()
+    except (httpx.HTTPError, ValueError):
+        return [], f"couldn't reach {url} to ask it"
+    auth = body.get("auth") or {} if isinstance(body, dict) else {}
+    if not auth.get("enabled"):
+        return [], f"{config.server.api_url} has its gate off, so it needs no login"
+    issuers = [str(i).strip().rstrip("/") for i in auth.get("issuers") or [] if str(i).strip()]
+    if not issuers:
+        return [], f"{config.server.api_url} is gated but advertises no issuer"
+    return issuers, None
+
+
+def _issuer_from_hub(config: MyceliumConfig, *, json_output: bool) -> str | None:
+    """The hub's issuer, when it names exactly one.
+
+    Several trusted issuers is not a default to guess at: which one you sign in
+    against decides who the hub thinks you are, so the choice is named rather
+    than taken. Prints what it found either way — the lookup is the friction, and
+    a listed issuer is one ``--issuer`` away even when it can't be picked here.
+    """
+    issuers, why = _hub_issuers(config)
+    if not issuers:
+        console.print(f"[red]Error:[/red] no OIDC issuer configured, and {why}.")
+        console.print(
+            "[dim]Set one with: mycelium config set login.issuer "
+            "https://sso.example.com/realms/mycelium[/dim]"
+        )
+        console.print("[dim]Or pass it once: mycelium login --issuer <url>[/dim]")
+        return None
+    if len(issuers) > 1:
+        console.print(f"[red]Error:[/red] {config.server.api_url} trusts more than one issuer:")
+        for candidate in issuers:
+            console.print(f"  {candidate}")
+        console.print("[dim]Pick one: mycelium login --issuer <url>[/dim]")
+        return None
+    if not json_output:
+        console.print(f"[dim]Issuer discovered from {config.server.api_url}: {issuers[0]}[/dim]")
+    return issuers[0]
+
+
 def _persist_login_config(
     config: MyceliumConfig,
     *,
@@ -68,8 +126,9 @@ def _persist_login_config(
     client_id: str | None,
     audience: str | None,
     scope: str | None,
+    json_output: bool,
 ) -> None:
-    """Remember explicitly-passed login settings so the next login needs no flags."""
+    """Remember the login settings this run resolved, so the next needs no flags."""
     changed = False
     for field, value in (
         ("issuer", issuer),
@@ -82,7 +141,8 @@ def _persist_login_config(
             changed = True
     if changed:
         config.save()
-        console.print(f"[dim]Saved login settings to {MyceliumConfig.get_config_path()}[/dim]")
+        if not json_output:
+            console.print(f"[dim]Saved login settings to {MyceliumConfig.get_config_path()}[/dim]")
 
 
 # What ``_align_identity`` did with the token's handle, for ``_report`` to narrate.
@@ -173,13 +233,18 @@ def _report(
 
 @doc_ref(
     usage="mycelium login [--issuer URL] [--device] [--no-browser] [--client-id ID]",
-    desc="Sign in to a gated hub via OIDC (Authorization Code + PKCE, or device code).",
+    desc=(
+        "Sign in to a gated hub via OIDC (Authorization Code + PKCE, or device code); "
+        "the issuer is discovered from the hub when it isn't configured."
+    ),
     group="setup",
 )
 def login(
     ctx: typer.Context,
     issuer: str | None = typer.Option(
-        None, "--issuer", help="OIDC issuer URL (default: login.issuer from config)."
+        None,
+        "--issuer",
+        help="OIDC issuer URL (default: login.issuer, else discovered from the hub).",
     ),
     client_id: str | None = typer.Option(
         None, "--client-id", help="OAuth client id to log in as (default: login.client_id)."
@@ -202,6 +267,10 @@ def login(
 ) -> None:
     """Obtain an OIDC token for the hub and cache it for subsequent commands.
 
+    With neither ``--issuer`` nor ``login.issuer``, the hub named by
+    ``server.api_url`` is asked for the issuer it trusts, and a single answer is
+    used and remembered.
+
     Examples:
         mycelium login
         mycelium login --issuer https://sso.example.com/realms/mycelium
@@ -211,14 +280,12 @@ def login(
     json_output = ctx.obj.get("json", False) if ctx.obj else False
 
     resolved_issuer = (issuer or config.login.issuer or "").strip().rstrip("/")
+    discovered = None
     if not resolved_issuer:
-        console.print("[red]Error:[/red] no OIDC issuer configured.")
-        console.print(
-            "[dim]Set one with: mycelium config set login.issuer "
-            "https://sso.example.com/realms/mycelium[/dim]"
-        )
-        console.print("[dim]Or pass it once: mycelium login --issuer <url>[/dim]")
-        raise typer.Exit(1)
+        discovered = _issuer_from_hub(config, json_output=json_output)
+        if not discovered:
+            raise typer.Exit(1)
+        resolved_issuer = discovered
 
     resolved_client_id = (client_id or config.login.client_id).strip()
     resolved_scope = (scope or config.login.scopes).strip()
@@ -275,10 +342,13 @@ def login(
 
     _persist_login_config(
         config,
-        issuer=issuer,
+        # A discovered issuer is remembered like a passed one: it cost a round
+        # trip, and it is only written once the login it drove actually worked.
+        issuer=issuer or discovered,
         client_id=client_id,
         audience=audience,
         scope=scope,
+        json_output=json_output,
     )
 
     handle = token.handle(config.auth.handle_claim) or token.handle()
