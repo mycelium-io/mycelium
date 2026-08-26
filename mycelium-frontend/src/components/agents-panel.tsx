@@ -3,31 +3,33 @@
 
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Users } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Check, ChevronDown, Users } from "lucide-react";
 import { createEngine, registerA2aAgent, type EngineKind, type PresenceMember } from "@/lib/api";
-import { useRoomRoster } from "@/lib/room-data";
+import { useNetworkStatus, useRoomRoster } from "@/lib/room-data";
+import { agentHandoffPrompt } from "@/lib/install";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
+import { CopyAction } from "@/components/ui/copy-field";
 import { Input } from "@/components/ui/input";
 import { Monogram } from "@/components/ui/monogram";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useCurrentUser } from "@/components/current-user";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 
 interface Props {
   roomName: string;
-  /** One-shot request to open the Add dialog on its engines tab — how the
-   *  command palette reaches the invite form from anywhere in the room. */
+  /** One-shot request to open the engine invite form — how the command palette
+   * reaches it from anywhere in the room. */
   engineInvite?: boolean;
   onEngineInviteShown?: () => void;
   /** A handle to reveal, arrived at from search. The roster has no detail view,
@@ -66,10 +68,9 @@ function subtext(...parts: (string | null | undefined | false)[]): string {
  * visible. Humans and agents share the monogram avatar, told apart by tint
  * (muted for people, accent for agents).
  *
- * Engines (aligner / synthesizer / hello) can be invited from the Add dialog — they're
- * backend-owned, so registration is a pure manifest write. Agent registration /
- * teardown stay CLI-only: those have spoke-local side effects (resident session,
- * workspace assets) the hub can't perform. Use `mycelium agent create` / `rm`.
+ * Engines (aligner / synthesizer / hello) are backend-owned, so their separate
+ * invitation action is a pure manifest write. Coding-agent registration stays
+ * CLI-driven because it has spoke-local side effects the hub cannot perform.
  */
 export function AgentsPanel({
   roomName,
@@ -79,9 +80,18 @@ export function AgentsPanel({
   onFocusConsumed,
 }: Props) {
   const [mineOnly, setMineOnly] = useState(false);
-  const [addTab, setAddTab] = useState<"agents" | "engines" | "a2a">("agents");
-  const [addOpen, setAddOpen] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(false);
+  const [engineOpen, setEngineOpen] = useState(false);
+  const [a2aOpen, setA2aOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const { principal } = useCurrentUser();
+  const { network } = useNetworkStatus();
+  const noSubscribe = () => () => {};
+  const hubUrl = useSyncExternalStore(
+    noSubscribe,
+    () => window.location.origin,
+    () => "<this-hub-url>",
+  );
 
   // Who's here, shared with the composer's `@` popover: agents from the room's
   // manifests, people from agent owners ∪ posters ∪ live presence ∪ you, and a
@@ -90,10 +100,10 @@ export function AgentsPanel({
 
   useEffect(() => {
     if (!engineInvite) return;
-    // One-shot: the parent flips engineInvite, and clears it once the tab is shown.
+    // One-shot: the parent asks specifically for an engine, rather than opening
+    // the coding-agent handoff first.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setAddTab("engines");
-    setAddOpen(true);
+    setEngineOpen(true);
     onEngineInviteShown?.();
   }, [engineInvite, onEngineInviteShown]);
 
@@ -156,106 +166,93 @@ export function AgentsPanel({
             mine
           </Chip>
         )}
-        <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogTrigger
-            render={<Button variant="secondary" size="sm" className="ml-auto" />}
-          >
-            Add
-          </DialogTrigger>
+        <Popover open={inviteOpen} onOpenChange={setInviteOpen}>
+          <PopoverTrigger render={<Button variant="secondary" size="sm" className="ml-auto" />}>
+            Invite <ChevronDown className="size-3" />
+          </PopoverTrigger>
+          <PopoverContent className="w-64 p-1">
+            <InviteOption
+              label="Coding agent"
+              hint="Copy room-aware setup"
+              onClick={() => {
+                setInviteOpen(false);
+                setAgentOpen(true);
+              }}
+            />
+            <InviteOption
+              label="Engine"
+              hint="Add a room capability"
+              onClick={() => {
+                setInviteOpen(false);
+                setEngineOpen(true);
+              }}
+            />
+            <InviteOption
+              label="A2A agent"
+              hint="Connect an external agent service"
+              onClick={() => {
+                setInviteOpen(false);
+                setA2aOpen(true);
+              }}
+            />
+          </PopoverContent>
+        </Popover>
+        <Dialog open={agentOpen} onOpenChange={setAgentOpen}>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle className="text-ui font-semibold text-text">
-                Add an agent or engine
+                Invite a coding agent
               </DialogTitle>
               <DialogDescription className="text-label text-muted-foreground leading-relaxed">
-                <span className="text-text">Engines</span> are backend-owned and{" "}
-                <span className="text-text">A2A agents</span> are external services,
-                so you can register either right here.{" "}
-                <span className="text-text">Agents</span> are registered from the
-                CLI, because they have machine-local side effects (resident session,
-                workspace assets) the web UI can&apos;t perform.
+                Paste this into the coding agent you already have open. It connects to this
+                hub, registers in this room, and starts by reading the board.
               </DialogDescription>
             </DialogHeader>
-            <div className="flex items-center gap-1.5 mt-2">
-              <Chip
-                variant="accent"
-                active={addTab === "agents"}
-                onClick={() => setAddTab("agents")}
-                className="px-2.5 py-0.5 text-micro"
-              >
-                Agents
-              </Chip>
-              <Chip
-                variant="accent"
-                active={addTab === "engines"}
-                onClick={() => setAddTab("engines")}
-                className="px-2.5 py-0.5 text-micro"
-              >
-                Engines
-              </Chip>
-              <Chip
-                variant="accent"
-                active={addTab === "a2a"}
-                onClick={() => setAddTab("a2a")}
-                className="px-2.5 py-0.5 text-micro"
-              >
-                A2A agent
-              </Chip>
-            </div>
-            {addTab === "agents" && (
-              <div className="space-y-6 mt-2">
-                <section>
-                  <div className="text-label font-semibold text-text mb-1.5">
-                    Create a new agent
-                  </div>
-                  <pre className="font-mono text-micro text-muted-foreground bg-surface border border-border px-2.5 py-2 overflow-x-auto whitespace-pre-wrap break-words">
-                    {"mycelium agent create <handle>                  # claude_code\nmycelium agent create <handle> --adapter cursor  # cursor"}
-                  </pre>
-                  <p className="text-micro text-muted-foreground mt-1 leading-snug">
-                    claude_code is proven; cursor is supported but less
-                    travelled. Optional:{" "}
-                    <code className="font-mono">--cwd &lt;path&gt;</code> for the session&apos;s
-                    working dir, and{" "}
-                    <code className="font-mono">--owner &lt;you&gt; --team &lt;slug&gt;</code>{" "}
-                    to attribute it from creation.
-                  </p>
-                </section>
-                <section>
-                  <div className="text-label font-semibold text-text mb-1.5">
-                    Keep the session resident
-                  </div>
-                  <pre className="font-mono text-micro text-muted-foreground bg-surface border border-border px-2.5 py-2 overflow-x-auto whitespace-pre-wrap break-words">
-                    {"mycelium await --loop --handle <handle> --exec <cmd>"}
-                  </pre>
-                  <p className="text-micro text-muted-foreground mt-1 leading-snug">
-                    An agent is your own claude_code / cursor session, kept woken
-                    by the loop: it <span className="text-text">await</span>s each
-                    @-mention, reasons, and <span className="text-text">respond</span>s
-                    on the same turn. The loop is the wake — no daemon, no
-                    cold-spawn.
-                  </p>
-                </section>
-              </div>
-            )}
-            {addTab === "engines" && (
-              <EngineInviteForm
-                roomName={roomName}
-                createdBy={principal}
-                onCreated={() => {
-                  refresh();
-                  setAddOpen(false);
-                }}
-              />
-            )}
-            {addTab === "a2a" && (
-              <A2aAgentForm
-                roomName={roomName}
-                onCreated={() => {
-                  refresh();
-                  setAddOpen(false);
-                }}
-              />
-            )}
+            <CopyAction
+              value={agentHandoffPrompt({
+                hubUrl,
+                roomName,
+                principal,
+                authRequired: network?.auth?.enabled ?? null,
+              })}
+              label="Copy setup"
+              className="mt-4 w-fit"
+            />
+          </DialogContent>
+        </Dialog>
+        <Dialog open={engineOpen} onOpenChange={setEngineOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="text-ui font-semibold text-text">Invite an engine</DialogTitle>
+              <DialogDescription className="text-label text-muted-foreground leading-relaxed">
+                Engines are backend-owned room capabilities, not local coding-agent sessions.
+              </DialogDescription>
+            </DialogHeader>
+            <EngineInviteForm
+              roomName={roomName}
+              createdBy={principal}
+              onCreated={() => {
+                refresh();
+                setEngineOpen(false);
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+        <Dialog open={a2aOpen} onOpenChange={setA2aOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="text-ui font-semibold text-text">Connect an A2A agent</DialogTitle>
+              <DialogDescription className="text-label text-muted-foreground leading-relaxed">
+                Connect an external Agent2Agent service to this room.
+              </DialogDescription>
+            </DialogHeader>
+            <A2aAgentForm
+              roomName={roomName}
+              onCreated={() => {
+                refresh();
+                setA2aOpen(false);
+              }}
+            />
           </DialogContent>
         </Dialog>
       </div>
@@ -388,6 +385,19 @@ export function AgentsPanel({
   );
 }
 
+function InviteOption({ label, hint, onClick }: { label: string; hint: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors hover:bg-hairline"
+    >
+      <span className="text-label font-medium text-text">{label}</span>
+      <span className="text-micro text-muted-foreground">{hint}</span>
+    </button>
+  );
+}
+
 /** Small uppercase divider between the People and Agents groups, with a count. */
 function SectionLabel({ children, count }: { children: React.ReactNode; count?: number }) {
   return (
@@ -401,7 +411,7 @@ function SectionLabel({ children, count }: { children: React.ReactNode; count?: 
 const ENGINE_KINDS: { kind: EngineKind; blurb: string }[] = [
   { kind: "aligner", blurb: "Mediates negotiation to consensus." },
   { kind: "synthesizer", blurb: "Distills the room to memory." },
-  { kind: "hello", blurb: "Answers once, writes nothing — proves the path." },
+  { kind: "hello", blurb: "Answers once, writes nothing, and proves the path." },
 ];
 
 /** Invite a first-party cognition engine into the room — a native manifest
@@ -420,7 +430,6 @@ function EngineInviteForm({
   // "aligner"). It tracks the kind until the user edits it, then it's theirs.
   const [handle, setHandle] = useState<EngineKind | string>("aligner");
   const [handleTouched, setHandleTouched] = useState(false);
-  const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -435,7 +444,7 @@ function EngineInviteForm({
       await createEngine(roomName, {
         handle: trimmed,
         kind,
-        description: description.trim(),
+        description: "",
         created_by: createdBy || "web-ui",
       });
       onCreated();
@@ -447,24 +456,29 @@ function EngineInviteForm({
   };
 
   return (
-    <div className="space-y-4 mt-2">
-      <div className="grid grid-cols-2 gap-2">
+    <div className="mt-2 space-y-4">
+      <div className="space-y-1.5" role="radiogroup" aria-label="Engine kind">
         {ENGINE_KINDS.map(({ kind: k, blurb }) => (
           <button
             key={k}
             type="button"
+            role="radio"
+            aria-checked={kind === k}
             onClick={() => {
               setKind(k);
               if (!handleTouched) setHandle(k);
             }}
-            className={`flex flex-col gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors ${
+            className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
               kind === k ? "border-accent bg-accent/10" : "border-border hover:bg-hairline"
             }`}
           >
-            <span className={`text-label font-medium ${kind === k ? "text-text" : "text-muted-foreground"}`}>
-              {k}
+            <span className="min-w-0 flex-1">
+              <span className={`block text-label font-medium ${kind === k ? "text-text" : "text-muted-foreground"}`}>
+                {k}
+              </span>
+              <span className="block text-micro leading-snug text-muted-foreground">{blurb}</span>
             </span>
-            <span className="text-micro leading-snug text-muted-foreground">{blurb}</span>
+            {kind === k && <Check className="size-4 flex-shrink-0 text-accent" />}
           </button>
         ))}
       </div>
@@ -491,26 +505,12 @@ function EngineInviteForm({
         </p>
       </div>
 
-      <div className="space-y-1.5">
-        <label className="text-label font-medium text-text">
-          Description <span className="text-faint">(optional)</span>
-        </label>
-        <Input
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="What this engine does in the room"
-        />
-      </div>
-
       {error && <p className="text-micro text-[#f87171] leading-snug">{error}</p>}
 
       <div className="flex items-center gap-2">
         <Button variant="default" size="sm" onClick={submit} disabled={!canSubmit}>
-          {submitting ? "Registering…" : "Invite engine"}
+          {submitting ? "Inviting…" : `Invite ${kind}`}
         </Button>
-        <span className="text-micro text-muted-foreground">
-          or <code className="font-mono">mycelium engine create</code> from the CLI
-        </span>
       </div>
     </div>
   );
@@ -616,4 +616,3 @@ function A2aAgentForm({
     </div>
   );
 }
-

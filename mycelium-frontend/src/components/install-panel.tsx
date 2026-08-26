@@ -5,16 +5,16 @@
 
 import { useState, useSyncExternalStore } from "react";
 import { Terminal } from "lucide-react";
-import { CopyField } from "@/components/ui/copy-field";
+import { CopyAction } from "@/components/ui/copy-field";
 import { useBackendHealth } from "@/lib/use-status";
+import { useCurrentUser } from "@/components/current-user";
+import { useNetworkStatus } from "@/lib/room-data";
 import {
-  CLI_INSTALL_COMMAND,
   DOCS_URL,
-  LOGIN_COMMAND,
   PLATFORMS,
-  PROMPT_COMMAND,
-  configSetCommand,
   detectPlatform,
+  hubSetupCommand,
+  hubSetupPrompt,
   type Platform,
 } from "@/lib/install";
 import { cn } from "@/lib/utils";
@@ -48,28 +48,14 @@ function ConnectionPill({ healthy }: { healthy: boolean | null }) {
   );
 }
 
-function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
-  return (
-    <li className="flex gap-3">
-      <span className="mt-0.5 flex size-6 flex-shrink-0 items-center justify-center rounded-md bg-surface font-mono text-micro font-semibold text-muted-foreground">
-        {n}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="text-label font-medium text-text">{title}</div>
-        {children}
-      </div>
-    </li>
-  );
-}
-
 interface Props {
   className?: string;
 }
 
 /**
  * The guided client-only setup surface (`docs/agents.md` Steps 1 + 4): get
- * the CLI, point it at this hub, and sign in if the hub asks for it. It never
- * offers to stand up a new hub, since this page is already served by one.
+ * a coding agent or a terminal user: configure the CLI against this already
+ * running hub, then verify it. It never offers to stand up another hub.
  *
  * The pill reflects whether this hub is answering right now. That's an
  * operator concern, not something the commands below can fix themselves:
@@ -77,12 +63,11 @@ interface Props {
  */
 export function InstallPanel({ className }: Props) {
   const healthy = useBackendHealth(WAITING_POLL);
+  const { network } = useNetworkStatus();
+  const { principal } = useCurrentUser();
 
-  // Server-rendered markup can't know the OS or this page's own origin: until
-  // the client snapshot arrives, no platform tab is preselected and the config
-  // command shows a placeholder host. The origin is only a first guess, since
-  // some deployments front the API on a different port than the UI, so it's
-  // there to edit — and the OS tabs override the detected platform.
+  // Server-rendered markup cannot know the OS or the page origin. Until the
+  // client snapshot arrives, the prompt carries a placeholder host.
   const noSubscribe = () => () => {};
   const detectedPlatform = useSyncExternalStore(
     noSubscribe,
@@ -94,19 +79,12 @@ export function InstallPanel({ className }: Props) {
     () => window.location.origin,
     () => "<this-hub-url>",
   );
-  const [platformOverride, setPlatform] = useState<Platform | null>(null);
-  const platform = platformOverride ?? detectedPlatform;
-  const note = PLATFORMS.find(p => p.id === platform)?.note;
+  const note = PLATFORMS.find(p => p.id === detectedPlatform)?.note;
 
-  // "Prompt" is a fourth tab alongside the OS ones, not a fifth platform: it
-  // swaps the manual steps for one line to hand a coding agent instead, same
-  // as the landing page's prompt/curl toggle. Selected by default, same as
-  // there. Pressing it again drops into the manual steps for the detected OS,
-  // which is what makes the detection above worth doing.
+  // This is a choice of recipient, not a platform picker: a running coding
+  // agent gets a direct hub-aware handoff, while a human gets one terminal block.
   const [usePrompt, setUsePrompt] = useState(true);
-
-  // One row, one selection: an OS tab reads as active only while Prompt isn't.
-  const osSelected = (id: Platform) => !usePrompt && platform === id;
+  const setup = { hubUrl, authRequired: network?.auth?.enabled ?? null, principal };
 
   return (
     <section className={cn("rounded-xl border border-border bg-paper p-5", className)}>
@@ -116,16 +94,16 @@ export function InstallPanel({ className }: Props) {
             <Terminal className="size-4" strokeWidth={1.75} />
           </span>
           <div className="min-w-0">
-            <h2 className="text-ui font-medium text-text">Connect your CLI to this hub</h2>
+            <h2 className="text-ui font-medium text-text">Connect to this hub</h2>
             <p className="mt-0.5 text-label text-muted-foreground">
-              A few terminal commands to join the hub.
+              This hub is already running. Hand the setup to your agent or run it yourself.
             </p>
           </div>
         </div>
         <ConnectionPill healthy={healthy} />
       </header>
 
-      <div className="mt-4 flex items-center gap-1.5" role="group" aria-label="Install method">
+      <div className="mt-4 flex items-center gap-1.5" role="group" aria-label="Setup method">
         <button
           type="button"
           aria-pressed={usePrompt}
@@ -137,57 +115,38 @@ export function InstallPanel({ className }: Props) {
               : "border-transparent text-muted-foreground hover:bg-hairline hover:text-text",
           )}
         >
-          Prompt
+          Coding agent
         </button>
-        {PLATFORMS.map(p => (
-          <button
-            key={p.id}
-            type="button"
-            aria-pressed={osSelected(p.id)}
-            onClick={() => {
-              setUsePrompt(false);
-              setPlatform(p.id);
-            }}
-            className={cn(
-              "rounded-md border px-2.5 py-1 text-micro font-medium transition-colors",
-              osSelected(p.id)
-                ? "border-border2 bg-surface text-text"
-                : "border-transparent text-muted-foreground hover:bg-hairline hover:text-text",
-            )}
-          >
-            {p.label}
-          </button>
-        ))}
+        <button
+          type="button"
+          aria-pressed={!usePrompt}
+          onClick={() => setUsePrompt(false)}
+          className={cn(
+            "rounded-md border px-2.5 py-1 text-micro font-medium transition-colors",
+            !usePrompt
+              ? "border-border2 bg-surface text-text"
+              : "border-transparent text-muted-foreground hover:bg-hairline hover:text-text",
+          )}
+        >
+          Terminal
+        </button>
       </div>
 
       {usePrompt ? (
         <div className="mt-4">
           <p className="text-micro text-muted-foreground">
-            Give this to a coding agent instead of a terminal. It reads{" "}
-            <code className="font-mono">agents.md</code> and does the setup itself.
+            Give this to the coding agent you already have open. It configures this hub directly.
           </p>
-          <CopyField value={PROMPT_COMMAND} className="mt-2" />
+          <CopyAction value={hubSetupPrompt(setup)} label="Copy setup" className="mt-3" />
         </div>
       ) : (
         <>
-          <ol className="mt-4 space-y-4">
-            <Step n={1} title="Install the CLI">
-              <p className="mt-0.5 text-micro text-muted-foreground">
-                Drops the <code className="font-mono">mycelium</code> binary on your PATH.
-              </p>
-              <CopyField value={CLI_INSTALL_COMMAND} className="mt-2" />
-            </Step>
-            <Step n={2} title="Point it at this hub">
-              <p className="mt-0.5 text-micro text-muted-foreground">This hub&apos;s address.</p>
-              <CopyField value={configSetCommand(hubUrl)} className="mt-2" />
-            </Step>
-            <Step n={3} title="Sign in">
-              <p className="mt-0.5 text-micro text-muted-foreground">
-                Only needed if this hub requires it. The CLI will tell you if it doesn&apos;t.
-              </p>
-              <CopyField value={LOGIN_COMMAND} className="mt-2" />
-            </Step>
-          </ol>
+          <div className="mt-4">
+            <p className="text-micro text-muted-foreground">
+              Install, connect, and verify in one paste.
+            </p>
+            <CopyAction value={hubSetupCommand(setup)} label="Copy setup" className="mt-3" />
+          </div>
 
           {note && (
             <p className="mt-3 rounded-lg bg-surface px-3 py-2 text-micro text-muted-foreground">
