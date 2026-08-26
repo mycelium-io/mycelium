@@ -156,8 +156,8 @@ const a2aManifest = (description: string, card: string, skills: string[]): strin
 const atlasEpisode = (shortId: string): string =>
   `urn:ioc:mycelium:episode:atlas-migration:${shortId}`;
 
-// The negotiation growth and risk ran. It is an *orphan* episode — no board row
-// is bound to it — because a task's thread is the task's own, not the
+// The cutover-day call the aligner brokered. It is an *orphan* episode — no board
+// row is bound to it — because a task's thread is the task's own, not the
 // conversation that produced it. The two tasks it compiled each carry their own
 // thread below; this URN stays the negotiation's record (Episodes rail, L9 feed).
 const ATLAS_EPISODE = atlasEpisode("e4f1a2");
@@ -165,24 +165,24 @@ const ATLAS_EPISODE = atlasEpisode("e4f1a2");
 // a thread is raised here — which is why the ping's own episode is this one and
 // the thread it names is in its payload.
 const ATLAS_LIVE = atlasEpisode("live");
-// The flip-reads task's own thread: where growth and risk work that one row, and
-// what the pings below point at. Its own episode, minted when the row was, not
+// The read-switch task's own thread: where reads and backfill stage that one row,
+// and what the pings below point at. Its own episode, minted when the row was, not
 // the negotiation's.
 const ATLAS_FLIP_THREAD = atlasEpisode("f1a5c7");
-// The retire-legacy task's thread. Its own, and still silent — a blank thread is
-// the common case, and the board shows the row with a thread to open regardless.
+// The backfill task's thread, where the reconciliation gets chased. Its own
+// episode, minted when the row was.
 const ATLAS_RETIRE_THREAD = atlasEpisode("d2b8e0");
 
-// The negotiation the aligner brokered: growth (big-bang, fast) vs risk
-// (phased, safe), converging over four rounds of Stacked Alternating Offers.
+// The one call the aligner brokered: which day to cut over. operator wanted
+// thursday; backfill wanted a reconciliation day first and countered friday;
+// they settled on friday am. A short, ordinary decision, not a set piece.
 //
-// This models the real flow faithfully: the *chat* is the source. Each agent
-// posts a reply in the channel (`say`), and the aligner reads it and emits the
-// structured L9 it implies. So one move drives three things — the agent's chat
-// broadcast, the coordination_tick it interprets that from, and the L9
-// envelope the Network feed shows — and they can't disagree. `ask` is the
-// aligner's prompt that precedes a reply (it @-addresses one agent at a time).
-const ATLAS_CONSENSUS = { cutover: "phased", window: "48h" };
+// The *chat* is the source. Each reply is a channel broadcast (`say`), and the
+// aligner reads it and emits the structured L9 it implies. So one move drives
+// three things — the broadcast, the coordination_tick it interprets that from,
+// and the L9 envelope the Network feed shows — and they can't disagree. `ask`
+// is the aligner's prompt that precedes a reply (it addresses one at a time).
+const ATLAS_CONSENSUS = { cutover: "friday am" };
 interface AtlasMove {
   round: number;
   who: string;
@@ -192,26 +192,17 @@ interface AtlasMove {
   ask?: string;
 }
 const atlasMoves: AtlasMove[] = [
-  { round: 1, who: "growth", action: "propose", offer: { cutover: "big-bang", window: "24h" },
-    ask: "Brokering. Two issues: cutover approach and window. @growth, opening offer?",
-    say: "Big-bang cutover, 24h window. It's simpler to reason about." },
-  { round: 1, who: "risk", action: "counter", offer: { cutover: "phased", window: "72h" },
-    ask: "@risk, your counter?",
-    say: "Phased with dual-write, 72h. Big-bang risks data loss." },
-  { round: 2, who: "growth", action: "counter", offer: { cutover: "phased", window: "24h" },
-    ask: "@growth, risk won't take big-bang. Move?",
-    say: "Fine, phased — but 24h. I don't want to dual-write for days." },
-  { round: 2, who: "risk", action: "counter", offer: { cutover: "phased", window: "60h" },
-    say: "24h is too tight to verify parity. 60h." },
-  { round: 3, who: "growth", action: "counter", offer: { cutover: "phased", window: "48h" },
-    say: "Split the difference: 48h." },
-  { round: 3, who: "risk", action: "counter", offer: { cutover: "phased", window: "48h" },
-    say: "48h works if reads stay behind a flag through the soak." },
-  { round: 4, who: "growth", action: "accept", offer: ATLAS_CONSENSUS,
-    ask: "Standing offer: phased, 48h. @growth @risk — accept?",
-    say: "Agreed. ✅" },
-  { round: 4, who: "risk", action: "accept", offer: ATLAS_CONSENSUS,
-    say: "Agreed." },
+  { round: 1, who: "operator", action: "propose", offer: { cutover: "thursday" },
+    ask: "cutover day. thursday or hold to next week? @operator?",
+    say: "thursday. we have the window and i don't want this slipping another week." },
+  { round: 1, who: "backfill", action: "counter", offer: { cutover: "friday am" },
+    ask: "@backfill, workable?",
+    say: "thursday's tight. copy finishes today but i want a full reconciliation day before reads point at it. friday am." },
+  { round: 2, who: "operator", action: "accept", offer: ATLAS_CONSENSUS,
+    ask: "standing: reconcile wednesday, flip friday am. accept?",
+    say: "yes. one day of buffer, i'll take it." },
+  { round: 2, who: "backfill", action: "accept", offer: ATLAS_CONSENSUS,
+    say: "agreed." },
 ];
 
 const atlasL9Chain: L9Envelope[] = [
@@ -234,8 +225,8 @@ const atlasL9Chain: L9Envelope[] = [
       participants: {
         actors: [
           { id: "aligner", role: "mediator" },
-          { id: "growth", role: "agent" },
-          { id: "risk", role: "agent" },
+          { id: "operator", role: "human" },
+          { id: "backfill", role: "agent" },
         ],
       },
       message: { id: `m${atlasMoves.length + 1}`, parents: [`m${atlasMoves.length}`], episode: ATLAS_EPISODE },
@@ -366,10 +357,10 @@ const atlasEpisodeSummary: EpisodeSummary = {
   topic: "urn:concept:mycelium:atlas-migration",
   outcome: "converged",
   subkind: "converged",
-  participants: ["growth", "risk", "aligner"],
+  participants: ["operator", "backfill", "aligner"],
   metrics: { mpc: 0.86, gar: 0.79, scr: 0.91, provenance_weight: 0.74, participants: 3 },
-  assignments: { cutover: "phased", window: "48h" },
-  tasks: ["work/flip-reads-behind-a-flag", "work/retire-the-legacy-store"],
+  assignments: { cutover: "friday am" },
+  tasks: ["work/read-switch", "work/decommission-old-store"],
   message_count: 3,
   updated_at: iso(42),
   updated_by: "aligner",
@@ -389,14 +380,13 @@ const atlasBoardRows: MockMemory[] = [
   // two tasks with two threads, not two rows sharing the conversation that
   // produced them — so each carries its own episode, not the negotiation's.
   {
-    key: "work/flip-reads-behind-a-flag",
+    key: "work/read-switch",
     value:
-      "flip reads behind a flag\n\n" +
-      "Gate the read path on `atlas.reads.v2` (default off). Flip only once replica " +
-      "lag has held under a second for an hour, and keep it reversible through the " +
-      "48h soak. Gated on #502 (auth) and #504 (custody seam).",
-    meta: { kind: "action", status: "open", assignee: "@growth", priority: "high", issue: "#502" },
-    content_text: "flip reads behind a flag — gated on #502 and #504.",
+      "Point reads at the new store\n\n" +
+      "Behind `catalog.reads.newstore`, default off. Don't flip until the copy is " +
+      "reconciled and backfill signs off. Waiting on the copy (#502).",
+    meta: { kind: "action", status: "open", assignee: "@reads", priority: "high", issue: "#502" },
+    content_text: "Point reads at the new store, behind a flag. Waiting on the copy.",
     created_by: "aligner",
     updated_by: "aligner",
     version: 1,
@@ -404,10 +394,10 @@ const atlasBoardRows: MockMemory[] = [
     episode: ATLAS_FLIP_THREAD,
   },
   {
-    key: "work/retire-the-legacy-store",
-    value: "48h soak, then retire the legacy store",
-    meta: { kind: "action", status: "open", assignee: "@risk", issue: "#499" },
-    content_text: "48h soak, then retire the legacy store.",
+    key: "work/decommission-old-store",
+    value: "Decommission the old store after the soak",
+    meta: { kind: "action", status: "open", assignee: "@reads", issue: "#499" },
+    content_text: "Decommission the old store once the soak is clean.",
     created_by: "aligner",
     updated_by: "aligner",
     version: 1,
@@ -415,153 +405,153 @@ const atlasBoardRows: MockMemory[] = [
     episode: ATLAS_RETIRE_THREAD,
   },
   {
-    key: "decisions/token-ttl",
-    value: "JWT access-token TTL: 15m or 60m?",
+    key: "decisions/decommission-window",
+    value: "Old store: keep it read-only for a week, or shut it at cutover?",
     meta: {
       status: "open",
       kind: "decision",
       owner: null,
       priority: "urgent",
-      choices: ["15m", "60m"],
-      asked_by: "@risk",
+      choices: ["read-only 1 week", "shut at cutover"],
+      asked_by: "@reads",
       ttl_minutes: 120,
     },
-    content_text: "JWT access-token TTL: 15m or 60m? Risk wants 15m; growth wants 60m to cut re-auth churn.",
-    created_by: "risk",
-    updated_by: "risk",
+    content_text: "Old store after cutover: read-only for a week as a fallback, or shut it off? Nobody's called it yet.",
+    created_by: "reads",
+    updated_by: "reads",
     version: 1,
     updated_at: iso(6),
     episode: atlasEpisode("a1c3e5"),
   },
   {
-    key: "failed/thin-spoke",
-    value: "Enable thin-spoke join without a local replica",
+    key: "failed/verify-archived",
+    value: "Verify the archived partition copied clean",
     meta: {
       status: "blocked",
       kind: "blocked",
-      owner: "@julia",
+      owner: "@operator",
       priority: "high",
       blocked_by: ["#502"],
       issue: "#502",
     },
-    content_text: "Thin-spoke join is blocked on the custody seam in #502.",
-    created_by: "julia",
-    updated_by: "julia",
+    content_text: "Can't verify the archived partition until the copy lands (#502).",
+    created_by: "operator",
+    updated_by: "operator",
     version: 1,
     updated_at: iso(40),
     episode: atlasEpisode("b4d6f8"),
   },
   {
-    key: "work/custody-review",
-    value: "@risk opened PR #504 — eyes on the custody seam",
+    key: "work/reconcile-review",
+    value: "Review the reconciliation script (PR #504)",
     meta: {
       status: "in_review",
       kind: "review",
-      owner: "@risk",
+      owner: "@reads",
       priority: "high",
       pr: "#504",
       ci: "green",
-      branch: "feat/custody-seam",
+      branch: "feat/reconcile",
       ttl_minutes: 720,
     },
-    content_text: "PR #504 opened on feat/custody-seam; CI green; wants a review.",
-    created_by: "risk",
-    updated_by: "risk",
+    content_text: "PR #504 on feat/reconcile; CI green; wants a review.",
+    created_by: "reads",
+    updated_by: "reads",
     version: 1,
     updated_at: iso(12),
     episode: atlasEpisode("c5e7a9"),
   },
   {
-    key: "work/jwt-auth",
-    value: "Migrate auth → JWT",
+    key: "work/backfill-catalog",
+    value: "Backfill the catalog into the new store",
     meta: {
       status: "in_progress",
       kind: "action",
-      owner: "@growth",
+      owner: "@backfill",
       priority: "high",
-      branch: "feat/jwt-auth",
+      branch: "feat/backfill",
       pr: "#502",
       ci: "green",
-      blocks: ["Enable thin-spoke join"],
+      blocks: ["Point reads at the new store"],
     },
-    content_text: "Auth migration to JWT in progress on feat/jwt-auth; PR #502; CI green.",
-    created_by: "growth",
-    updated_by: "growth",
+    content_text: "Copying the catalog into the new store on feat/backfill; PR #502; CI green.",
+    created_by: "backfill",
+    updated_by: "backfill",
     version: 2,
     updated_at: iso(12),
     episode: atlasEpisode("d6f8b0"),
   },
   {
-    key: "work/cache-sweep",
-    value: "Cache TTL sweep across the memory index",
+    key: "work/backfill-metrics",
+    value: "Watch backfill throughput during the run",
     meta: {
       status: "in_progress",
       kind: "action",
-      owner: "@julia",
+      owner: "@operator",
       priority: "normal",
-      branch: "feat/cache",
+      branch: "feat/backfill-metrics",
       ci: "running",
     },
-    content_text: "Sweeping cache TTLs across the memory index on feat/cache; CI running.",
-    created_by: "julia",
-    updated_by: "julia",
+    content_text: "Tracking rows/min and lag during the copy on feat/backfill-metrics; CI running.",
+    created_by: "operator",
+    updated_by: "operator",
     version: 1,
     updated_at: iso(3),
     episode: atlasEpisode("e7a9c1"),
   },
   {
-    key: "failed/offer-snap",
-    value: "Aligner stalls when a proposer replies with prose only",
+    key: "failed/backfill-throughput",
+    value: "Copy slows when the archive partition is hot",
     meta: {
       status: "in_review",
       kind: "concern",
-      owner: "@risk",
+      owner: "@backfill",
       priority: "normal",
       ci: "red",
-      branch: "fix/offer-snap",
+      branch: "fix/backfill-throughput",
       ttl_minutes: 1440,
     },
-    content_text: "Aligner stalls on prose-only replies; fix on fix/offer-snap; CI red.",
-    created_by: "risk",
-    updated_by: "risk",
+    content_text: "Throughput drops on the archive partition; fix on fix/backfill-throughput; CI red.",
+    created_by: "backfill",
+    updated_by: "backfill",
     version: 1,
     updated_at: iso(55),
     episode: atlasEpisode("f8b0d2"),
   },
   {
-    key: "work/path-traversal",
-    value: "Fix path traversal in the memory key encoder",
+    key: "work/dual-write-setup",
+    value: "Set up dual-write to both stores",
     meta: {
       status: "resolved",
       kind: "action",
-      owner: "@risk",
+      owner: "@backfill",
       priority: "urgent",
       pr: "#499",
       ci: "green",
       ttl_minutes: 1440,
     },
-    content_text: "Path traversal in the memory key encoder fixed and merged (PR #499).",
-    created_by: "risk",
-    updated_by: "risk",
+    content_text: "Dual-write to old and new stores is live and merged (PR #499).",
+    created_by: "backfill",
+    updated_by: "backfill",
     version: 2,
     updated_at: iso(62),
     episode: atlasEpisode("a9c1e3"),
   },
   {
-    key: "decisions/spire-retire",
-    value: "Retire the SPIRE identity tier",
+    key: "decisions/dual-write-through-soak",
+    value: "Keep dual-write on through the soak",
     meta: {
       status: "resolved",
       kind: "concern",
-      owner: "@julia",
+      owner: "@operator",
       priority: "normal",
       issue: "#668",
       promoted: true,
       ttl_minutes: 1440,
     },
-    content_text: "SPIRE identity tier retired; promoted to #668.",
-    created_by: "julia",
-    updated_by: "julia",
+    content_text: "Decided: leave dual-write running through the soak so a rollback is cheap.",
+    created_by: "operator",
+    updated_by: "operator",
     version: 1,
     updated_at: iso(200),
     episode: atlasEpisode("b0d2f4"),
@@ -579,16 +569,16 @@ const atlas: RoomFixture = {
   },
   memories: [
     {
-      key: "agents/growth",
-      value: agentManifest("Ships fast; optimizes for delivery velocity."),
+      key: "agents/backfill",
+      value: agentManifest("Copies the catalog into the new store and reconciles it."),
       created_by: "operator",
       version: 1,
       updated_at: iso(60 * 20),
       episode: atlasEpisode("a2c4e6"),
     },
     {
-      key: "agents/risk",
-      value: agentManifest("Guards reliability; wary of big-bang cutovers."),
+      key: "agents/reads",
+      value: agentManifest("Switches the read path to the new store, behind a flag."),
       created_by: "operator",
       version: 1,
       updated_at: iso(60 * 20),
@@ -612,8 +602,8 @@ const atlas: RoomFixture = {
     },
     {
       key: "decisions/cutover",
-      value: "Phased cutover over a 48h window; dual-write then flip reads.",
-      content_text: "Phased cutover over a 48h window; dual-write then flip reads.",
+      value: "Cut over friday am. Reconcile wednesday and thursday first; keep dual-write on through the soak.",
+      content_text: "Cut over friday am. Reconcile wednesday and thursday first; keep dual-write on through the soak.",
       created_by: "aligner",
       version: 3,
       updated_at: iso(41),
@@ -621,8 +611,8 @@ const atlas: RoomFixture = {
     },
     {
       key: "context/goal",
-      value: "Move the Atlas catalog off the legacy store with zero downtime.",
-      content_text: "Move the Atlas catalog off the legacy store with zero downtime.",
+      value: "Move the catalog off the old store with no downtime.",
+      content_text: "Move the catalog off the old store with no downtime.",
       created_by: "operator",
       version: 1,
       updated_at: iso(60 * 25),
@@ -630,9 +620,9 @@ const atlas: RoomFixture = {
     },
     {
       key: "status/sprint",
-      value: "Cutover rehearsal green; production flip scheduled Thursday.",
-      content_text: "Cutover rehearsal green; production flip scheduled Thursday.",
-      created_by: "growth",
+      value: "Dual-write live; copy running. Flip friday am after reconciliation.",
+      content_text: "Dual-write live; copy running. Flip friday am after reconciliation.",
+      created_by: "backfill",
       version: 2,
       updated_at: iso(120),
       episode: atlasEpisode("a8c0e2"),
@@ -640,13 +630,13 @@ const atlas: RoomFixture = {
     {
       key: "context/synthesis",
       value:
-        "# Atlas migration — room briefing\n\n" +
-        "**Decision.** Phased cutover over a 48h window; dual-write then flip reads.\n\n" +
-        "**Status.** Cutover rehearsal green; production flip scheduled Thursday.\n\n" +
-        "**Goal.** Move the Atlas catalog off the legacy store with zero downtime.\n\n" +
-        "_Owners:_ @growth drives delivery; @risk guards reliability.",
+        "# Atlas migration room briefing\n\n" +
+        "**Decision.** Cut over friday am. Reconcile wednesday and thursday; keep dual-write on through the soak.\n\n" +
+        "**Status.** Dual-write live, copy running. Read switch is staged behind a flag, off, waiting on the copy.\n\n" +
+        "**Goal.** Move the catalog off the old store with no downtime.\n\n" +
+        "_Owners:_ @backfill runs the copy; @reads owns the switch.",
       content_text:
-        "Atlas migration briefing: phased 48h cutover (dual-write then flip); rehearsal green, flip Thursday; zero-downtime goal.\n\n" +
+        "Atlas migration briefing: friday am cutover after reconciliation; dual-write live, copy running, read switch staged and waiting; no-downtime goal.\n\n" +
         "The goal this all serves, embedded verbatim:\n\n![[context/goal]]",
       created_by: "synthesizer",
       version: 1,
@@ -663,47 +653,53 @@ const atlas: RoomFixture = {
   // what it breaks into, then keep going.
   messages: [
     // ── standing the room up, and the early work (a day ago) ──
-    { id: "h1", sender_handle: "operator", message_type: "broadcast", content: "Standing up the Atlas migration room. Goal: move the catalog off the legacy store with zero downtime.", created_at: iso(60 * 25) },
-    { id: "h2", sender_handle: "julia", message_type: "broadcast", content: "First call: we're not keeping the SPIRE tier. Filing the decision so it's on the record.", created_at: iso(1440) },
-    { id: "h3", sender_handle: "risk", message_type: "broadcast", content: "And the path-traversal hole in the key encoder is a hard blocker for anything public — taking it now.", created_at: iso(1400) },
-    // ── the auth migration and the work hanging off it ──
-    { id: "h4", sender_handle: "growth", message_type: "broadcast", content: "Auth has to move to JWT before the cutover. I've got it — PR #502 is open.", created_at: iso(140) },
-    { id: "h5", sender_handle: "julia", message_type: "broadcast", content: "Thin-spoke join needs that landed first, so I'm filing it blocked on #502.", created_at: iso(130) },
-    { id: "h6", sender_handle: "julia", message_type: "broadcast", content: "Also sweeping the cache TTLs across the memory index while I'm in here.", created_at: iso(95) },
-    { id: "h7", sender_handle: "risk", message_type: "broadcast", content: "Filing a concern: the aligner stalls when a proposer replies with prose only. Fix is on fix/offer-snap but CI's red.", created_at: iso(58) },
-    // ── the cutover negotiation ──
-    { id: "a1", sender_handle: "operator", message_type: "broadcast", content: "@growth @risk let's settle the cutover strategy — approach and window. @aligner, broker it.", created_at: iso(48) },
-    { id: "a2", sender_handle: "growth", message_type: "coordination_join", content: JSON.stringify({ handle: "growth", intent: "ship the migration this week", episode: ATLAS_EPISODE }), created_at: iso(47), episode: ATLAS_EPISODE },
-    { id: "a3", sender_handle: "risk", message_type: "coordination_join", content: JSON.stringify({ handle: "risk", intent: "no downtime, no data loss", episode: ATLAS_EPISODE }), created_at: iso(47), episode: ATLAS_EPISODE },
-    // The aligner brokers four rounds of alternating offers. Each agent reply is
-    // a chat broadcast; the aligner reads it and emits the coordination_tick the
-    // Network pane reconstructs. The chat is the source (see atlasMoves).
+    { id: "h1", sender_handle: "operator", message_type: "broadcast", content: "setting up the atlas migration. goal: catalog off the old store, no downtime. @backfill @reads can you take the copy and the read switch.", created_at: iso(60 * 25) },
+    { id: "h2", sender_handle: "backfill", message_type: "broadcast", content: "on the copy. dual-write's on so new changes hit both stores. i'll set up the historical copy next.", created_at: iso(1440) },
+    { id: "h3", sender_handle: "backfill", message_type: "broadcast", content: "dual-write's merged (#499). starting the historical copy now.", created_at: iso(1400) },
+    // ── the copy runs, and the work hanging off it ──
+    { id: "h4", sender_handle: "backfill", message_type: "broadcast", content: "copy's running. ~2M rows at about 40k/min, so roughly an hour. i'll post when it's done and reconciled.", created_at: iso(140) },
+    { id: "h5", sender_handle: "reads", message_type: "broadcast", content: "i'll take the read switch. can start once the copy's verified.", created_at: iso(130) },
+    { id: "h6", sender_handle: "operator", message_type: "broadcast", content: "keeping an eye on throughput and lag during the run, filing it so it's tracked.", created_at: iso(95) },
+    { id: "h7", sender_handle: "backfill", message_type: "broadcast", content: "big batches were timing out (statement timeout). dropped the batch size, clean now. adds about 20min.", created_at: iso(58) },
+    // ── the read switch, and the correction ──
+    { id: "q1", sender_handle: "reads", message_type: "broadcast", content: "can i switch reads before the copy finishes? dual-write already has new rows in both stores.", created_at: iso(52) },
+    { id: "q2", sender_handle: "operator", message_type: "broadcast", content: "no. old rows aren't in the new store until the copy reaches them, so you'd miss anything not changed since dual-write went on. wait for the copy.", created_at: iso(51) },
+    { id: "q3", sender_handle: "reads", message_type: "broadcast", content: "right. reads wait for the copy. i'll stage the switch behind the flag so it's ready.", created_at: iso(50) },
+    // ── the cutover-day call ──
+    { id: "a1", sender_handle: "operator", message_type: "broadcast", content: "@backfill @reads we need a cutover day. @aligner run it.", created_at: iso(48) },
+    { id: "a2", sender_handle: "operator", message_type: "coordination_join", content: JSON.stringify({ handle: "operator", intent: "ship this week if we can", episode: ATLAS_EPISODE }), created_at: iso(47), episode: ATLAS_EPISODE },
+    { id: "a3", sender_handle: "backfill", message_type: "coordination_join", content: JSON.stringify({ handle: "backfill", intent: "a full reconciliation day before we flip", episode: ATLAS_EPISODE }), created_at: iso(47), episode: ATLAS_EPISODE },
+    // The aligner brokers a couple of short rounds. Each reply is a chat
+    // broadcast; the aligner reads it and emits the coordination_tick the Network
+    // pane reconstructs. The chat is the source (see atlasMoves).
     ...atlasNegotiation,
-    { id: "a6", sender_handle: "aligner", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { cutover: "phased", window: "48h" }, episode: ATLAS_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(41), episode: ATLAS_EPISODE },
-    // The room files the work the agreement breaks into. The two task-created
-    // notices land right after this line (see the `l9` feed below), so the chat
-    // reads "here is the work" → the tasks, in sequence, instead of them just
-    // appearing on the board.
-    { id: "file1", sender_handle: "aligner", message_type: "broadcast", content: "Settled: phased cutover over 48h. Filing the work it breaks into for us to pick up:", created_at: iso(40) },
-    { id: "a7", sender_handle: "growth", message_type: "broadcast", content: "Dual-write is live in staging. ✅", created_at: iso(30) },
-    // ── follow-on work after the agreement ──
-    { id: "h8", sender_handle: "risk", message_type: "broadcast", content: "PR #504 is up for the custody seam — filing it for review.", created_at: iso(14) },
-    { id: "h9", sender_handle: "risk", message_type: "broadcast", content: "One more thing to settle before auth ships: access-token TTL, 15m or 60m. Filing the decision.", created_at: iso(6) },
-    // Two agents working the flag row talk inside its thread. The channel does
-    // not carry this — that is the whole point — so the room hears the pings
-    // below instead, and the prose reads in the thread pane.
-    { id: "t1", sender_handle: "growth", message_type: "broadcast", content: "Flag is wired: reads flip on `atlas.reads.v2`, default off.", created_at: iso(22), episode: ATLAS_FLIP_THREAD },
-    { id: "t2", sender_handle: "risk", message_type: "broadcast", content: "Hold the flip until replica lag has been under a second for an hour.", created_at: iso(21), episode: ATLAS_FLIP_THREAD },
-    { id: "t3", sender_handle: "growth", message_type: "broadcast", content: "Agreed — gating the flip on the lag alarm.", created_at: iso(20), episode: ATLAS_FLIP_THREAD },
+    { id: "a6", sender_handle: "aligner", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { cutover: "friday am" }, episode: ATLAS_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(41), episode: ATLAS_EPISODE },
+    // The room files the work the call breaks into. The two task-created notices
+    // land right after this line (see the `l9` feed below), so the chat reads
+    // "here is the work" → the tasks, in sequence.
+    { id: "file1", sender_handle: "aligner", message_type: "broadcast", content: "settled: flip friday am, reconcile wednesday. filing the work:", created_at: iso(40) },
+    { id: "a7", sender_handle: "backfill", message_type: "broadcast", content: "copy done. 2.03M rows. starting reconciliation.", created_at: iso(30) },
+    // ── follow-on work ──
+    { id: "h8", sender_handle: "reads", message_type: "broadcast", content: "reconciliation script is up for review, #504.", created_at: iso(14) },
+    { id: "h9", sender_handle: "reads", message_type: "broadcast", content: "one still-open call: keep the old store read-only for a week after cutover, or shut it off? filing it.", created_at: iso(6) },
+    // Two agents staging the read-switch row talk inside its thread. The channel
+    // does not carry this, so the room hears the pings below instead, and the
+    // prose reads in the thread pane.
+    { id: "t1", sender_handle: "reads", message_type: "broadcast", content: "switch is staged. flag is `catalog.reads.newstore`, default off.", created_at: iso(22), episode: ATLAS_FLIP_THREAD },
+    { id: "t2", sender_handle: "backfill", message_type: "broadcast", content: "don't flip until reconciliation's clean. i'll drop the row-count diff here when it's done.", created_at: iso(21), episode: ATLAS_FLIP_THREAD },
+    { id: "t3", sender_handle: "reads", message_type: "broadcast", content: "yep, waiting on your sign-off.", created_at: iso(20), episode: ATLAS_FLIP_THREAD },
+    // The backfill row's own thread: the reconciliation chased down.
+    { id: "r1", sender_handle: "backfill", message_type: "broadcast", content: "reconciliation found 12 rows out of sync, all in the archived partition.", created_at: iso(16), episode: ATLAS_RETIRE_THREAD },
+    { id: "r2", sender_handle: "backfill", message_type: "broadcast", content: "dual-write gap during the 09:14 deploy. patched the 12 by hand, counts match now.", created_at: iso(15), episode: ATLAS_RETIRE_THREAD },
   ],
   episodes: [atlasEpisodeSummary],
   episodeDetails: { e4f1a2: { ...atlasEpisodeSummary, messages: atlasL9Chain } },
-  // growth holds an open SLIM socket; risk is present on a server-held await
+  // backfill holds an open SLIM socket; reads is present on a server-held await
   // lease. Both are agents in the roster, so the board projects a resident row
   // for each — the presence signal that a live SLIM node would otherwise supply.
   presence: [
-    { handle: "growth", kind: "slim", last_seen: null },
-    { handle: "risk", kind: "lease", last_seen: iso(1) },
+    { handle: "backfill", kind: "slim", last_seen: null },
+    { handle: "reads", kind: "lease", last_seen: iso(1) },
   ],
   // Every board row's origin, as the notice the room filed it with — each timed
   // just after the chat line that sets it up, so the channel reads talk → filing
@@ -712,27 +708,27 @@ const atlas: RoomFixture = {
   l9: [
     ...atlasL9Frames,
     // Every board row's origin — a `filed` notice — and, for two of them, the rest
-    // of the lifecycle the room saw: path-traversal resolved long ago, flip-reads
-    // claimed by growth just before he worked it. Read in order it is filed →
-    // claimed → activity → resolved, the whole arc of a unit of work.
-    atlasNotice("filed", "decisions/spire-retire", "Retire the SPIRE identity tier", atlasEpisode("b0d2f4"), "julia", 1439.8, "decision"),
-    atlasNotice("filed", "work/path-traversal", "Fix path traversal in the memory key encoder", atlasEpisode("a9c1e3"), "risk", 1399.8, "action"),
-    atlasNotice("resolved", "work/path-traversal", "Fix path traversal in the memory key encoder", atlasEpisode("a9c1e3"), "risk", 1200),
-    atlasNotice("filed", "work/jwt-auth", "Migrate auth → JWT", atlasEpisode("d6f8b0"), "growth", 139.8, "action"),
-    atlasNotice("filed", "failed/thin-spoke", "Enable thin-spoke join without a local replica", atlasEpisode("b4d6f8"), "julia", 129.8, "blocked"),
-    atlasNotice("blocked", "failed/thin-spoke", "Enable thin-spoke join without a local replica", atlasEpisode("b4d6f8"), "julia", 128),
-    atlasNotice("filed", "work/cache-sweep", "Cache TTL sweep across the memory index", atlasEpisode("e7a9c1"), "julia", 94.8, "action"),
-    atlasNotice("filed", "failed/offer-snap", "Aligner stalls when a proposer replies with prose only", atlasEpisode("f8b0d2"), "risk", 57.8, "concern"),
-    // The two the cutover agreement compiled, filed by the aligner right after its
+    // of the lifecycle the room saw: dual-write resolved long ago, the read switch
+    // claimed by reads just before staging it. Read in order it is filed →
+    // claimed → activity → resolved, the whole arc of a task.
+    atlasNotice("filed", "decisions/dual-write-through-soak", "Keep dual-write on through the soak", atlasEpisode("b0d2f4"), "operator", 1439.8, "decision"),
+    atlasNotice("filed", "work/dual-write-setup", "Set up dual-write to both stores", atlasEpisode("a9c1e3"), "backfill", 1399.8, "action"),
+    atlasNotice("resolved", "work/dual-write-setup", "Set up dual-write to both stores", atlasEpisode("a9c1e3"), "backfill", 1200),
+    atlasNotice("filed", "work/backfill-catalog", "Backfill the catalog into the new store", atlasEpisode("d6f8b0"), "backfill", 139.8, "action"),
+    atlasNotice("filed", "failed/verify-archived", "Verify the archived partition copied clean", atlasEpisode("b4d6f8"), "operator", 129.8, "blocked"),
+    atlasNotice("blocked", "failed/verify-archived", "Verify the archived partition copied clean", atlasEpisode("b4d6f8"), "operator", 128),
+    atlasNotice("filed", "work/backfill-metrics", "Watch backfill throughput during the run", atlasEpisode("e7a9c1"), "operator", 94.8, "action"),
+    atlasNotice("filed", "failed/backfill-throughput", "Copy slows when the archive partition is hot", atlasEpisode("f8b0d2"), "backfill", 57.8, "concern"),
+    // The two the cutover call compiled, filed by the aligner right after its
     // "filing the work" line (iso(40)).
-    atlasNotice("filed", "work/flip-reads-behind-a-flag", "flip reads behind a flag", ATLAS_FLIP_THREAD, "aligner", 39.9, "action", "@growth"),
-    atlasNotice("filed", "work/retire-the-legacy-store", "48h soak, then retire the legacy store", ATLAS_RETIRE_THREAD, "aligner", 39.8, "action", "@risk"),
-    atlasNotice("filed", "work/custody-review", "@risk opened PR #504 — eyes on the custody seam", atlasEpisode("c5e7a9"), "risk", 13.8, "review"),
-    atlasNotice("filed", "decisions/token-ttl", "JWT access-token TTL: 15m or 60m?", atlasEpisode("a1c3e5"), "risk", 5.8, "decision"),
-    // growth takes the flag row before working it, then the thread moves.
-    atlasNotice("claimed", "work/flip-reads-behind-a-flag", "flip reads behind a flag", ATLAS_FLIP_THREAD, "growth", 23),
-    atlasPing("t2", "risk", 21),
-    atlasPing("t3", "growth", 20),
+    atlasNotice("filed", "work/read-switch", "Point reads at the new store", ATLAS_FLIP_THREAD, "aligner", 39.9, "action", "@reads"),
+    atlasNotice("filed", "work/decommission-old-store", "Decommission the old store after the soak", ATLAS_RETIRE_THREAD, "aligner", 39.8, "action", "@reads"),
+    atlasNotice("filed", "work/reconcile-review", "Review the reconciliation script (PR #504)", atlasEpisode("c5e7a9"), "reads", 13.8, "review"),
+    atlasNotice("filed", "decisions/decommission-window", "Old store: keep it read-only for a week, or shut it at cutover?", atlasEpisode("a1c3e5"), "reads", 5.8, "decision"),
+    // reads takes the read-switch row before staging it, then the thread moves.
+    atlasNotice("claimed", "work/read-switch", "Point reads at the new store", ATLAS_FLIP_THREAD, "reads", 23),
+    atlasPing("t2", "backfill", 21),
+    atlasPing("t3", "reads", 20),
   ],
   // Three work rows name pull requests; the hub resolved them. The first row
   // mentions two, one green and one failing, so it shows the failing one and says
@@ -748,7 +744,7 @@ const atlas: RoomFixture = {
         url: "https://github.com/mycelium-io/mycelium/pull/502",
         freshness: "fresh", state: "failed", label: "CI failing",
         age_seconds: 95, error: null,
-        origins: ["memory:work/flip-reads-behind-a-flag"],
+        origins: ["memory:work/read-switch"],
       },
       {
         ref: "github:pull_request:mycelium-io/mycelium#504",
@@ -756,7 +752,7 @@ const atlas: RoomFixture = {
         url: "https://github.com/mycelium-io/mycelium/pull/504",
         freshness: "fresh", state: "ok", label: "approved",
         age_seconds: 95, error: null,
-        origins: ["memory:work/flip-reads-behind-a-flag"],
+        origins: ["memory:work/read-switch"],
       },
       {
         ref: "github:pull_request:mycelium-io/mycelium#499",
@@ -764,15 +760,15 @@ const atlas: RoomFixture = {
         url: "https://github.com/mycelium-io/mycelium/pull/499",
         freshness: "stale", state: "blocked", label: "changes requested",
         age_seconds: 5400, error: null,
-        origins: ["memory:work/retire-the-legacy-store"],
+        origins: ["memory:work/decommission-old-store"],
       },
     ],
     rows: {
-      "memory:work/flip-reads-behind-a-flag": [
+      "memory:work/read-switch": [
         "github:pull_request:mycelium-io/mycelium#502",
         "github:pull_request:mycelium-io/mycelium#504",
       ],
-      "memory:work/retire-the-legacy-store": ["github:pull_request:mycelium-io/mycelium#499"],
+      "memory:work/decommission-old-store": ["github:pull_request:mycelium-io/mycelium#499"],
     },
     refreshing: false,
   },

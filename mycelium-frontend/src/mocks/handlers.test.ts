@@ -89,7 +89,7 @@ describe("mock links handlers (#599)", () => {
     const expanded = body as { rendered: string; found: boolean; expansions: { target: string; resolved: boolean }[] };
     expect(expanded.found).toBe(true);
     expect(expanded.rendered).not.toContain("![[context/goal]]");
-    expect(expanded.rendered).toContain("Move the Atlas catalog");
+    expect(expanded.rendered).toContain("Move the catalog off the old store");
     expect(expanded.expansions).toContainEqual({ raw: "![[context/goal]]", target: "context/goal", resolved: true });
   });
 
