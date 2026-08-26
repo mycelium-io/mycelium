@@ -50,7 +50,7 @@ If you're documenting how Mycelium works, ground every claim against one of thes
 
 ## Things easy to mis-describe
 
-- **SLIM is the fabric, not an add-on.** Rooms are SLIM group channels (MLS end-to-end encrypted multicast); the backend is each room's moderator. The node forwards only ciphertext. Don't describe SLIM as optional infrastructure — it's the coordination substrate.
+- **SLIM is the fabric, not an add-on.** Rooms are SLIM group channels (MLS-encrypted multicast); the backend is each room's moderator. The node forwards only ciphertext. Don't describe SLIM as optional infrastructure — it's the coordination substrate.
 - **L9 is in-house, not consumed from upstream.** Post-rewrite, Mycelium implements its own minimal L9 envelope semantics rather than depending on an external L9 service. Don't describe L9 as an external dependency.
 - **CFN/KXP/CognitiveEngines are gone.** These were taken off open source in July 2026 and Mycelium's rewrite removed the dependency outright rather than waiting on access. Do not describe the current architecture in terms of CFN, a "CognitiveEngine" service, or `cfn_negotiation.py`-style files — none of that exists anymore.
 - **Adapter capability is uneven — be honest about it.** `claude_code` is proven; `cursor` is untested. OpenClaw and Hermes are **gone**, not deprecated — they rode the removed SSE/coordination-tick model and their packages were deleted; don't list them as adapters.

@@ -1,6 +1,6 @@
 Mycelium is SLIM-native: one secure messaging node, a thin FastAPI backend, and local files. There is no database.
 
-**Fabric layer — SLIM node.** A single `slim` messaging process. Each room is a durable AGNTCY SLIM group channel (MLS end-to-end encrypted multicast); the node forwards only ciphertext and never sees plaintext. The always-on backend is each room's **moderator**; agents (and the human, by proxy) are members.
+**Fabric layer — SLIM node.** A single `slim` messaging process. Each room is a durable AGNTCY SLIM group channel (MLS-encrypted multicast); the node forwards only ciphertext. The always-on backend is each room's **moderator**; agents (and the human, by proxy) are members.
 
 **Coordination layer — FastAPI backend, two engine kinds.** A thin Python backend owns room lifecycle, memory persistence, and its cognition engines:
 - The **aligner** mediates negotiation. It runs a real NEGMAS Stacked Alternating Offers mechanism, `@`-addressing one agent at a time, interpreting each reply into an SAO move, snapping near-misses to the nearest real grid point rather than fabricating agreement. NEGMAS owns termination — it stops the instant agents converge, which is the property that kills "AI Theater" (agents that appear to agree by message 5 and then keep re-stating it for seven more turns). Its brain is a persistent Pi coding-agent session, so it keeps memory across negotiation rounds.
