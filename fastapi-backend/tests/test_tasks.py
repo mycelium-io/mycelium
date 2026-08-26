@@ -97,13 +97,55 @@ class TestBoardFirstCreation:
         assert one.episode != two.episode
 
 
-@pytest.mark.asyncio
-class TestThreadOnEveryBoardWrite:
-    """The plain write path mints a thread for a board row, not just create_task.
+class TestThreadable:
+    """What can be discussed: everything a person authored, and nothing else.
 
-    A decision dropped with ``memory set``, a status posted, a blocked item — each
-    is a task and gets a thread the moment it exists, so nothing has to be
-    coordinated first for a row to have one to open.
+    The gate is a denylist, so a namespace nobody has invented yet is
+    discussable without anyone remembering to widen it.
+    """
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "work/passkey-login",
+            "decisions/db",
+            "context/goal",
+            "procedures/deploy",
+            "skills/review",
+            "notebook",
+            "context/synthesis-notes",
+        ],
+    )
+    def test_a_memory_a_person_wrote_can_be_discussed(self, key):
+        assert tasks.is_threadable(key)
+
+    @pytest.mark.parametrize(
+        "key",
+        ["agents/sec", "log/transcript", "log/episodes/a1b2c3d4", "context/synthesis"],
+    )
+    def test_what_the_hub_writes_for_itself_cannot(self, key):
+        assert not tasks.is_threadable(key)
+
+    def test_the_synthesizer_s_own_key_is_the_one_it_is_declared_as(self):
+        # Declared rather than imported, so the task model does not depend on a
+        # service. This is the check that the declaration is still true.
+        from app.services.synthesizer import SYNTHESIS_KEY
+
+        assert SYNTHESIS_KEY in tasks.SYSTEM_KEYS
+
+    def test_a_board_row_is_the_narrower_word_and_stays_narrow(self):
+        # Everything can be discussed; only these four are worked.
+        assert tasks.is_board_row("work/x") and tasks.is_threadable("work/x")
+        assert tasks.is_threadable("context/x") and not tasks.is_board_row("context/x")
+
+
+@pytest.mark.asyncio
+class TestThreadOnEveryWrite:
+    """The plain write path mints a thread for any memory, not just create_task.
+
+    A decision dropped with ``memory set``, a status posted, a ``context/``
+    design note, a ``skills/`` doc — each gets a thread the moment it exists, so
+    nothing has to be coordinated first for there to be somewhere to argue.
     """
 
     async def test_a_decision_written_plainly_gets_its_own_thread(self):
@@ -111,17 +153,32 @@ class TestThreadOnEveryBoardWrite:
         await _write(room, "decisions/token-ttl", "15m or 60m?")
         assert _meta(room, "decisions/token-ttl")[EPISODE_META]
 
-    async def test_each_board_row_gets_a_distinct_thread(self):
+    async def test_each_memory_gets_a_distinct_thread(self):
         room = _room("u-write-distinct")
         await _write(room, "work/one", "One")
         await _write(room, "decisions/two", "Two")
         assert _meta(room, "work/one")[EPISODE_META] != _meta(room, "decisions/two")[EPISODE_META]
 
-    async def test_a_non_board_note_gets_no_thread(self):
-        # A context note or an agent manifest is not a board row; it has no thread.
+    async def test_a_context_note_can_be_discussed_too(self):
+        # #872: the conversation about a design note lives attached to it rather
+        # than scrolling past in the room.
         room = _room("u-write-context")
         await _write(room, "context/goal", "Move off the legacy store")
-        assert EPISODE_META not in _meta(room, "context/goal")
+        assert _meta(room, "context/goal")[EPISODE_META]
+
+    async def test_a_skill_can_be_discussed_too(self):
+        room = _room("u-write-skill")
+        await _write(room, "skills/review", "How we review")
+        assert _meta(room, "skills/review")[EPISODE_META]
+
+    async def test_what_the_hub_writes_for_itself_gets_no_thread(self):
+        # An agent manifest is the runtime's, and a log record is already the
+        # record of a conversation; neither is a thing to have one about.
+        room = _room("u-write-system")
+        await _write(room, "agents/sec", "A manifest")
+        await _write(room, "log/episodes/a1b2c3d4", "A closed negotiation")
+        assert EPISODE_META not in _meta(room, "agents/sec")
+        assert EPISODE_META not in _meta(room, "log/episodes/a1b2c3d4")
 
     async def test_a_later_write_never_moves_the_thread(self):
         room = _room("u-write-stable")
@@ -251,15 +308,26 @@ class TestMigration:
         assert tasks.backfill_room(room) == 0
         assert _meta(room, "work/legacy")[EPISODE_META] == bound
 
-    async def test_every_board_row_is_bound_not_only_work(self):
-        # A decision is a task too — a board row with a thread of its own — so
-        # the backfill heals it alongside a work row. A non-board namespace (a
-        # plain context note) is left alone: it is not a board row.
+    async def test_every_threadable_memory_is_bound_not_only_the_board(self):
+        # #872: a room written before this gets a thread on its context notes and
+        # procedures too, so "every memory can be discussed" is true of the ones
+        # that already exist. What the hub writes for itself is left alone.
         room = _room("u-migrate-4")
         _write_unbound(room, "decisions/db", "PostgreSQL")
         _write_unbound(room, "failed/spoke", "Thin-spoke join")
         _write_unbound(room, "context/goal", "Move off the legacy store")
-        assert tasks.backfill_room(room) == 2
-        assert _meta(room, "decisions/db")[EPISODE_META]
-        assert _meta(room, "failed/spoke")[EPISODE_META]
-        assert EPISODE_META not in _meta(room, "context/goal")
+        _write_unbound(room, "procedures/deploy", "How we ship")
+        _write_unbound(room, "agents/sec", "A manifest")
+        _write_unbound(room, "log/episodes/a1b2c3d4", "A closed negotiation")
+        assert tasks.backfill_room(room) == 4
+        for key in ("decisions/db", "failed/spoke", "context/goal", "procedures/deploy"):
+            assert _meta(room, key)[EPISODE_META], key
+        assert EPISODE_META not in _meta(room, "agents/sec")
+        assert EPISODE_META not in _meta(room, "log/episodes/a1b2c3d4")
+
+    async def test_a_backfilled_memory_gets_a_thread_of_its_own(self):
+        room = _room("u-migrate-5")
+        _write_unbound(room, "context/one", "One")
+        _write_unbound(room, "context/two", "Two")
+        tasks.backfill_room(room)
+        assert _meta(room, "context/one")[EPISODE_META] != _meta(room, "context/two")[EPISODE_META]

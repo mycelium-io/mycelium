@@ -5130,7 +5130,7 @@
               }
             ],
             "title": "Episode",
-            "description": "The episode URN this row's coordination happens in \u2014 what makes a task a thread. Store-owned: minted by the backend, so it is absent from ``meta`` and cannot be set by a write. Null on a memory that is not a task, and on one no thread has been opened for."
+            "description": "The episode URN the conversation about this memory happens in \u2014 what makes a task a thread, and what makes every other memory discussable. Store-owned: minted by the backend on create, so it is absent from ``meta`` and cannot be set by a write. Null on what the hub writes for itself (an ``agents/`` manifest, a ``log/`` record) and on anything written before threading."
           },
           "expandable": {
             "type": "boolean",

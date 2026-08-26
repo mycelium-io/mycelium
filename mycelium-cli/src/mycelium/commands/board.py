@@ -635,24 +635,55 @@ def _row(room: str, row_id: str) -> LiveItem | None:
     return None
 
 
-def _thread(room: str, row_id: str) -> tuple[LiveItem, str]:
-    """The row a chat verb names and the thread inside it.
+def _memory_thread(room: str, key: str) -> tuple[bool, str | None]:
+    """The thread on a memory the board does not project, off the hub.
 
-    The resolution the board's chat verbs are: a reader types a row id and means
-    the conversation about that task. A row with nothing to speak into is
-    refused in its own terms rather than posted to the room instead — a message
-    that quietly went somewhere else is worse than one that did not go.
+    Two answers, because the caller says something different about each: whether
+    the room has this memory at all, and the thread on it if it does.
+    """
+    cfg = MyceliumConfig.load()
+    try:
+        with hub_client(cfg, timeout=30) as client:
+            resp = client.get(f"/api/rooms/{room}/memory/{key}")
+        if resp.status_code >= 400:
+            return False, None
+        episode = resp.json().get(EPISODE_FIELD)
+    except (httpx.HTTPError, ValueError):
+        return False, None
+    return True, episode or None
+
+
+def _thread(room: str, row_id: str) -> tuple[str, str]:
+    """Where a chat verb lands: what to call it, and the thread to write into.
+
+    The resolution the chat verbs are: a reader types an id and means the
+    conversation about that thing. The board is one way to name it and not the
+    only one — every memory a person authored carries a thread, so a
+    ``context/`` note or a ``skills/`` doc is addressable by its key even though
+    the board never projects it. **Everything can be discussed; only the board
+    namespaces are worked.**
+
+    Something with nothing to speak into is refused in its own terms rather than
+    posted to the room instead — a message that quietly went somewhere else is
+    worse than one that did not go.
     """
     item = _row(room, row_id)
-    if item is None:
-        console.print(f"[dim]No row '{row_id}' on this board.[/dim]")
+    if item is not None:
+        episode = item.text(EPISODE_FIELD)
+        if not episode:
+            why = THREAD_REFUSALS.get(item.source.kind, THREAD_REFUSALS["memory"])
+            console.print(f"[yellow]·[/yellow] {row_id} has no thread — {why}.")
+            raise typer.Exit(1)
+        return _thread_label(room, item.text("thread") or row_id), episode
+
+    exists, episode = _memory_thread(room, row_id)
+    if not exists:
+        console.print(f"[dim]No row '{row_id}' on this board, and no memory by that key.[/dim]")
         raise typer.Exit(1)
-    episode = item.text(EPISODE_FIELD)
     if not episode:
-        why = THREAD_REFUSALS.get(item.source.kind, THREAD_REFUSALS["memory"])
-        console.print(f"[yellow]·[/yellow] {row_id} has no thread — {why}.")
+        console.print(f"[yellow]·[/yellow] {row_id} has no thread — {THREAD_REFUSALS['memory']}.")
         raise typer.Exit(1)
-    return item, episode
+    return _thread_label(room, episode.rsplit(":", 1)[-1]), episode
 
 
 def _parent_key(room: str, row_id: str) -> str:
@@ -670,9 +701,9 @@ def _parent_key(room: str, row_id: str) -> str:
     return key
 
 
-def _thread_label(room: str, item: LiveItem, row_id: str) -> str:
-    """What a chat verb calls where it landed: the room, then the row in it."""
-    return f"{room}/{item.text('thread') or row_id}"
+def _thread_label(room: str, thread: str) -> str:
+    """What a chat verb calls where it landed: the room, then the thread in it."""
+    return f"{room}/{thread}"
 
 
 def _write_assignment(cfg: MyceliumConfig, room: str, action: str, **body: Any) -> None:
@@ -815,68 +846,78 @@ def board_new(
 
 @doc_ref(
     usage='mycelium board send <id> "<text>"',
-    desc="Post into the thread inside a row. The room sees that the task moved, not what was said.",
+    desc="Post into the thread on a row or any memory. The room sees that it moved, not what was said.",
     group="board",
 )
 @app.command(name="send")
 def board_send(
-    row_id: str = typer.Argument(..., help="Row id as shown on the board (e.g. t3, work/auth)"),
+    row_id: str = typer.Argument(
+        ..., help="Row id, thread id, or any memory key (e.g. t3, work/auth, context/api)"
+    ),
     content: str = typer.Argument(..., help="What to say. @handle mentions address agents."),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
     handle: str | None = typer.Option(
         None, "--handle", "-H", help="Your sender handle (defaults to identity config)"
     ),
 ) -> None:
-    """Say something in a row's thread.
+    """Say something in a thread.
 
-    Exactly ``mycelium room send``, scoped to one task. Everyone who may write in
-    the room may write in its threads — a thread separates attention, not access
-    — with one exception the hub enforces: a negotiation running inside a task
-    has frozen its roster, and an outsider dropping a position into that would
-    be scoring an exchange they were not part of.
+    Exactly ``mycelium room send``, scoped to one thing. That thing is usually a
+    task, but every memory a person authored carries a thread of its own, so a
+    ``context/`` design note or a ``skills/`` doc is addressable by its key —
+    the argument about a piece of room knowledge lives attached to it rather
+    than scrolling past in the room.
+
+    Everyone who may write in the room may write in its threads — a thread
+    separates attention, not access — with one exception the hub enforces: a
+    negotiation running inside a task has frozen its roster, and an outsider
+    dropping a position into that would be scoring an exchange they were not
+    part of.
     """
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
-    item, episode = _thread(name, row_id)
+    where, episode = _thread(name, row_id)
     chat.post(
         cfg,
         name,
         sender_handle=handle or cfg.get_current_identity(),
         content=content,
         episode=episode,
-        destination=_thread_label(name, item, row_id),
+        destination=where,
     )
 
 
 @doc_ref(
     usage="mycelium board messages <id> [--limit N]",
-    desc="Read one row's thread: the conversation about that task, and nothing else from the room.",
+    desc="Read one thread: the conversation about that row or memory, and nothing else from the room.",
     group="board",
 )
 @app.command(name="messages")
 def board_messages(
-    row_id: str = typer.Argument(..., help="Row id as shown on the board (e.g. t3, work/auth)"),
+    row_id: str = typer.Argument(
+        ..., help="Row id, thread id, or any memory key (e.g. t3, work/auth, context/api)"
+    ),
     limit: int = typer.Option(20, "--limit", "-l", help="Max messages to show (newest first)"),
     sender: str | None = typer.Option(
         None, "--sender", "-s", help="Only messages from this handle"
     ),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
 ) -> None:
-    """Read a row's thread.
+    """Read a thread.
 
-    This is what a ping is for. The room said a task moved; this is what moved
-    in it.
+    This is what a ping is for. The room said something moved; this is what
+    moved in it — a row's conversation, or a memory's.
     """
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
-    item, episode = _thread(name, row_id)
+    where, episode = _thread(name, row_id)
     chat.read(
         cfg,
         name,
         limit=limit,
         sender=sender,
         episode=episode,
-        label=_thread_label(name, item, row_id),
+        label=where,
         empty_note="nothing said in this thread yet",
     )
 
@@ -888,7 +929,9 @@ def board_messages(
 )
 @app.command(name="coordinate")
 def board_coordinate(
-    row_id: str = typer.Argument(..., help="Row id as shown on the board (e.g. t3, work/auth)"),
+    row_id: str = typer.Argument(
+        ..., help="Row id, thread id, or any memory key (e.g. t3, work/auth, context/api)"
+    ),
     engine: str = typer.Argument(..., help="Engine handle to run it (e.g. aligner)"),
     ask: str = typer.Argument(
         "please mediate us to an agreement.", help="What you're asking it to do"
@@ -921,7 +964,7 @@ def board_coordinate(
 
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
-    item, episode = _thread(name, row_id)
+    where, episode = _thread(name, row_id)
     target = engine.lstrip("@")
 
     with typed_client(cfg) as client:
@@ -945,10 +988,10 @@ def board_coordinate(
         sender_handle=handle or cfg.get_current_identity(),
         content=f"@{manifest.handle} {ask}",
         episode=episode,
-        destination=_thread_label(name, item, row_id),
+        destination=where,
     )
     console.print(
-        f"  [dim]the ask is in {item.text('thread') or row_id}'s thread; the "
+        f"  [dim]the ask is in {where.split('/', 1)[-1]}'s thread; the "
         f"{manifest.kind} engine opens its negotiation from there and addresses "
         "agents one at a time[/dim]"
     )

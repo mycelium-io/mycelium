@@ -350,6 +350,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
+    "u": "index.html#memory-every-memory-can-be-discussed",
+    "t": "Every memory can be discussed",
+    "s": "Concepts › Memory",
+    "x": "A memory is not only something to read. Every memory a person writes carries a thread of its own — the same threads the board uses, minted the moment the memory exists — so the argument about a design note lives attached to the note rather than scrolling past in the room: mycelium board send context/api-shape \"this predates the v2 routes — still true?\" mycelium board messages context/api-shape The verbs are the board",
+    "p": "Guide"
+  },
+  {
     "u": "index.html#memory-linking-memories",
     "t": "Linking memories",
     "s": "Concepts › Memory",
@@ -1099,7 +1106,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#cli-board",
     "t": "mycelium board send <id> \"<text>\"",
     "s": "CLI Reference",
-    "x": "Post into the thread inside a row. The room sees that the task moved, not what was said.",
+    "x": "Post into the thread on a row or any memory. The room sees that it moved, not what was said.",
     "k": "cmd",
     "p": "Reference"
   },
@@ -1107,7 +1114,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#cli-board",
     "t": "mycelium board messages <id> [--limit N]",
     "s": "CLI Reference",
-    "x": "Read one row's thread: the conversation about that task, and nothing else from the room.",
+    "x": "Read one thread: the conversation about that row or memory, and nothing else from the room.",
     "k": "cmd",
     "p": "Reference"
   },

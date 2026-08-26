@@ -37,6 +37,8 @@ runner = CliRunner()
 ROOM = "atlas"
 THREAD = "urn:ioc:mycelium:episode:atlas:t3aa11bb"
 SHORT = "t3aa11bb"
+OTHER = "urn:ioc:mycelium:episode:atlas:c0ffee42"
+OTHER_SHORT = "c0ffee42"
 
 
 def _unit(key: str = "work/passkey-login", episode: str | None = THREAD) -> dict:
@@ -51,8 +53,18 @@ def _unit(key: str = "work/passkey-login", episode: str | None = THREAD) -> dict
     }
 
 
-def _hub(monkeypatch: pytest.MonkeyPatch, *, memories: list[dict], posts: list | None = None):
-    """Stand in for every hub read the board makes, plus the write it may do."""
+def _hub(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    memories: list[dict],
+    posts: list | None = None,
+    keyed: dict[str, dict] | None = None,
+):
+    """Stand in for every hub read the board makes, plus the write it may do.
+
+    ``keyed`` is the by-key memory read, which is how a chat verb reaches a
+    memory the board never projects. A key absent from it 404s.
+    """
     fake_config = SimpleNamespace(
         server=SimpleNamespace(api_url="http://localhost:8000"),
         get_active_room=lambda: ROOM,
@@ -62,9 +74,9 @@ def _hub(monkeypatch: pytest.MonkeyPatch, *, memories: list[dict], posts: list |
     monkeypatch.setattr(board_cmd, "_resolve_room", lambda *_a, **_k: ROOM)
 
     class _Resp:
-        def __init__(self, payload):
+        def __init__(self, payload, status: int = 200):
             self._payload = payload
-            self.status_code = 200
+            self.status_code = status
             self.text = ""
 
         def raise_for_status(self):
@@ -90,6 +102,12 @@ def _hub(monkeypatch: pytest.MonkeyPatch, *, memories: list[dict], posts: list |
             return False
 
         def get(self, path, **_kw):
+            prefix = f"/api/rooms/{ROOM}/memory/"
+            if path.startswith(prefix) and "?" not in path:
+                key = path[len(prefix) :]
+                if key not in (keyed or {}):
+                    return _Resp({"detail": "Memory not found"}, status=404)
+                return _Resp({"key": key, **(keyed or {})[key]})
             return _Resp(routes.get(path, {}))
 
         def post(self, path, json=None, **_kw):  # noqa: A002 — httpx's own name
@@ -130,7 +148,7 @@ class TestResolution:
         assert result.exit_code == 0, result.output
         assert sent["post"]["episode"] == THREAD
 
-    def test_a_row_the_board_does_not_have_is_refused(
+    def test_a_key_the_room_does_not_have_at_all_is_refused(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _hub(monkeypatch, memories=[_unit()])
@@ -150,8 +168,66 @@ class TestResolution:
         result = runner.invoke(board_cmd.app, ["send", "decisions/db", "hello"])
         assert result.exit_code == 1
         assert "no thread" in result.output
-        assert "another namespace" in result.output
+        assert "the hub writes this memory for itself" in result.output
         assert sent == {}
+
+
+class TestBeyondTheBoard:
+    """Everything can be discussed; only the board namespaces are worked (#872).
+
+    A ``context/`` note carries a thread like any memory, but the board never
+    projects one, so the chat verbs have to resolve it off the store rather than
+    off the projection — and still refuse in the same terms when there is
+    nothing to speak into.
+    """
+
+    def test_a_memory_the_board_does_not_project_resolves_to_its_thread(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _hub(monkeypatch, memories=[_unit()], keyed={"context/api-shape": {"episode": OTHER}})
+        sent = _chat(monkeypatch)
+        result = runner.invoke(board_cmd.app, ["send", "context/api-shape", "this is stale"])
+        assert result.exit_code == 0, result.output
+        assert sent["post"]["episode"] == OTHER
+        assert sent["post"]["destination"] == f"{ROOM}/{OTHER_SHORT}"
+
+    def test_reading_a_memory_s_thread_reads_that_thread_and_nothing_else(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _hub(monkeypatch, memories=[_unit()], keyed={"skills/review": {"episode": OTHER}})
+        sent = _chat(monkeypatch)
+        result = runner.invoke(board_cmd.app, ["messages", "skills/review"])
+        assert result.exit_code == 0, result.output
+        assert sent["read"]["episode"] == OTHER
+        assert sent["read"]["label"] == f"{ROOM}/{OTHER_SHORT}"
+
+    def test_a_memory_the_hub_wrote_for_itself_is_refused_not_sent_to_the_room(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _hub(monkeypatch, memories=[_unit()], keyed={"agents/sec": {}})
+        sent = _chat(monkeypatch)
+        result = runner.invoke(board_cmd.app, ["send", "agents/sec", "hello"])
+        assert result.exit_code == 1
+        assert "no thread" in result.output
+        assert sent == {}
+
+    def test_a_memory_that_is_not_there_says_neither_row_nor_memory(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _hub(monkeypatch, memories=[_unit()])
+        sent = _chat(monkeypatch)
+        result = runner.invoke(board_cmd.app, ["send", "context/ghost", "hello"])
+        assert result.exit_code == 1
+        assert "no memory by that key" in result.output
+        assert sent == {}
+
+    def test_the_board_still_wins_when_a_key_is_both(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """One round trip, not two: a projected row already carries its thread."""
+        _hub(monkeypatch, memories=[_unit()], keyed={"work/passkey-login": {"episode": OTHER}})
+        sent = _chat(monkeypatch)
+        result = runner.invoke(board_cmd.app, ["send", "work/passkey-login", "hello"])
+        assert result.exit_code == 0, result.output
+        assert sent["post"]["episode"] == THREAD
 
 
 class TestChatVerbs:

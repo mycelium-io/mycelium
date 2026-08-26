@@ -195,6 +195,36 @@ def test_memory_get_reads_from_hub_without_local_files(monkeypatch: pytest.Monke
     assert "we chose postgres" in result.output
 
 
+def test_memory_get_names_the_thread_and_the_verb_that_reaches_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#872: every memory carries a thread, and nothing else in the CLI says so."""
+    _stub_get(
+        monkeypatch,
+        _memory_read(
+            "context/api-shape",
+            "the v1 routes",
+            episode="urn:ioc:mycelium:episode:demo:c0ffee42",
+        ),
+    )
+
+    result = runner.invoke(memory_cmd.app, ["get", "context/api-shape", "--room", "demo"])
+    assert result.exit_code == 0, result.output
+    assert "c0ffee42" in result.output
+    assert "board send context/api-shape" in result.output
+
+
+def test_memory_get_says_nothing_about_a_thread_a_memory_does_not_have(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_get(monkeypatch, _memory_read("agents/sec", "a manifest"))
+
+    result = runner.invoke(memory_cmd.app, ["get", "agents/sec", "--room", "demo"])
+    assert result.exit_code == 0, result.output
+    assert "thread" not in result.output
+    assert "board send" not in result.output
+
+
 def test_memory_get_renders_structured_value(monkeypatch: pytest.MonkeyPatch) -> None:
     value = _structured(text="deploy is green", logged_at=STAMP.isoformat(), category="status")
     _stub_get(monkeypatch, _memory_read("status/deploy", value))

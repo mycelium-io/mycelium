@@ -355,8 +355,16 @@ def memory_get(
         )
         return
 
-    console.print(f"[cyan]{mem.key}[/cyan]  [dim]v{mem.version}  {mem.created_by}[/dim]")
+    thread = _unset_to_none(mem.episode)
+    header = f"[cyan]{mem.key}[/cyan]  [dim]v{mem.version}  {mem.created_by}"
+    console.print(
+        f"{header}  thread {thread.rsplit(':', 1)[-1]}[/dim]" if thread else f"{header}[/dim]"
+    )
     console.print(content)
+    # Every memory a person wrote carries a thread, and nothing else in the CLI
+    # says so — a reader who does not know the verb has no way to find it.
+    if thread:
+        console.print(f'\n[dim]discuss it: mycelium board send {mem.key} "…"[/dim]')
 
 
 def _fetch_memories(room_name: str, prefix: str | None, limit: int) -> list[dict[str, Any]]:
