@@ -158,6 +158,13 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
             # Correlation key: the same envelope the persister records to the
             # transcript, so a cold read dedups this row against its transcript copy.
             msg.message_id = result.message_id
+            if result.unrecognized:
+                logger.warning(
+                    "send_message: @-mentioned handles not present and not registered "
+                    "in room %s — no delivery: %s",
+                    channel,
+                    result.unrecognized,
+                )
     # The human's message always lands in ``in_memory_store`` — its id backs PATCH /
     # event semantics and it's the live view. The persister records the same
     # message to the durable transcript (the read path's source of truth); the two

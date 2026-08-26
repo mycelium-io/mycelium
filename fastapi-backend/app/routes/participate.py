@@ -240,6 +240,8 @@ async def await_message(
                 continue
             if _addressed_to(record.content, handle):
                 _commit(i)
+                if scoped:
+                    persister.advance_cursor(handle, i)
                 _last_tick[key] = record.content
                 room_channels.manager.refresh_lease(room_name, handle)
                 return _describe(room_name, handle, record)

@@ -204,6 +204,9 @@ class HumanPublishResult:
 
     mentioned: list[str]
     recipients: list[str]
+    # Handles that were @-mentioned but are neither present in the room nor a
+    # registered agent — they received no delivery and triggered no action.
+    unrecognized: list[str] = field(default_factory=list)
     # The published envelope's L9 message id — the correlation key the POST route
     # stamps on its ``in_memory_store`` row so a cold read from the durable transcript
     # dedups against it instead of showing the human's message twice.
@@ -868,10 +871,12 @@ class RoomChannelManager:
         # turn is delivered via the durable transcript cursor its poll reads, not a
         # SLIM broadcast — so an @-mention of it is a wake, not an invite.
         present = set(self.members(room))
+        unrecognized: list[str] = []
         for handle in mentioned:
             if handle in present or handle == BACKEND_AGENT:
                 continue
             if not _is_own_registered_agent(room, handle):
+                unrecognized.append(handle)
                 continue
             if managed.lifecycle.frozen:
                 # Adding a member mid-negotiation would abort it (L9's
@@ -883,7 +888,12 @@ class RoomChannelManager:
                 self.invite_in_background(room, handle)
 
         recipients = [h for h in mentioned if h != BACKEND_AGENT]
-        return HumanPublishResult(mentioned=mentioned, recipients=recipients, message_id=message_id)
+        return HumanPublishResult(
+            mentioned=mentioned,
+            recipients=recipients,
+            unrecognized=unrecognized,
+            message_id=message_id,
+        )
 
     async def raise_ping(
         self,
