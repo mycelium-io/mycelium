@@ -460,7 +460,17 @@ class RoomChannelManager:
         managed.persister = RoomPersister(
             room,
             managed.channel,
-            members_provider=lambda: self.members(room),
+            # Real SLIM-connected members only — NOT `self.members(room)`, which
+            # also unions in server-held `await` leases. A lease holder never
+            # receives a push; it polls the transcript past its own cursor. If a
+            # lease-only handle were counted as "delivered", DeliveryLog.record
+            # would jump its cursor straight past a message that mentions it
+            # (see DeliveryLog.record), and its next `await` would silently never
+            # see it. A real SLIM member's cursor still advances live, and a
+            # lease-only handle correctly falls into the "recipients" branch
+            # (tracked at the message's own position on first sight), so its poll
+            # finds the mention as its undelivered tail.
+            members_provider=lambda: set(managed.members),
             on_summon=self._summon_adapter(room),
             on_converged=self._converged_adapter(room),
             on_member_left=lambda handle, _room=room: self._drop_member(_room, handle),
