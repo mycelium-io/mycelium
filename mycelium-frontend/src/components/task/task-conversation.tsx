@@ -12,7 +12,6 @@ import { pingOf } from "@/lib/threads";
 import { MarkdownContent } from "@/components/markdown-content";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Monogram } from "@/components/ui/monogram";
 
 interface Props {
@@ -47,8 +46,25 @@ function textOf(message: RoomMessage): string {
   }
 }
 
+/** How close to the bottom you have to be for a new reply to pull you down. */
+const STICK_PX = 120;
+
+/** The scrollable ancestor an element sits in, if it has one. */
+function scrollParentOf(el: HTMLElement | null): HTMLElement | null {
+  for (let node = el?.parentElement ?? null; node; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY;
+    if (overflow === "auto" || overflow === "scroll") return node;
+  }
+  return null;
+}
+
 /**
- * One task's conversation: the scrollable message region, and nothing else.
+ * One task's conversation: the messages, and nothing else.
+ *
+ * It owns no scroll. The task's body, its metadata and this conversation are
+ * one column in the surface's single scroll region, so a reply flows on below
+ * the task the way a comment follows an issue — rather than sitting in a
+ * fixed-height box with a scrollbar of its own a few pixels inside the pane's.
  *
  * The composer stays with the parent (a task is rendered in more than one place
  * and the composer's chrome differs), so this is just the read and its
@@ -59,7 +75,7 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
   const { messages, loading, refresh } = useThreadMessages(roomName, episode);
   const { agents } = useRoomAgents(roomName);
   const agentHandles = new Set(agents.map(a => a.handle));
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
 
   // Hand the parent our refresh once it is stable, so its composer's onSent can
   // re-read this episode after a send.
@@ -102,12 +118,27 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
     .map(message => ({ message, text: textOf(message) }))
     .filter(({ text }) => text.trim().length > 0);
 
+  // A reply that lands while you are reading the bottom pulls you down with it;
+  // one that lands while you are further up does not, and opening the task lands
+  // on the task rather than on its last comment. With one scroll for the whole
+  // column, sticking unconditionally would scroll the body out of view the
+  // moment anything arrived.
+  const count = ordered.length;
+  const seen = useRef<number | null>(null);
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [ordered.length]);
+    const first = seen.current === null;
+    seen.current = count;
+    if (first || count === 0) return;
+    const anchor = endRef.current;
+    const viewport = scrollParentOf(anchor);
+    if (!anchor || !viewport) return;
+    const fromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    if (fromBottom > STICK_PX) return;
+    anchor.scrollIntoView({ block: "end" });
+  }, [count]);
 
   return (
-    <ScrollArea className="min-h-0 flex-1" viewportRef={scrollRef}>
+    <div>
       {loading && ordered.length === 0 ? (
         <div className="flex flex-col gap-4 px-5 py-4">
           <Skeleton className="h-3 w-2/5" />
@@ -157,6 +188,7 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
           })}
         </div>
       )}
-    </ScrollArea>
+      <div ref={endRef} />
+    </div>
   );
 }

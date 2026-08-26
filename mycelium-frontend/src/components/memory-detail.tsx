@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, CornerDownLeft, Share2 } from "lucide-react";
 import { highlightJson } from "@/components/l9-inspector";
 import { MarkdownContent } from "@/components/markdown-content";
+import { Expandable } from "@/components/ui/expandable";
 import { fetchMemoryLinks, type MemoryLink, type MemoryLinksIntegrity } from "@/lib/api";
 import { isJsonRawText, prettyPrintJsonRawText } from "@/lib/json-text";
 import {
@@ -146,6 +147,12 @@ interface Props {
   /** Room integrity report; surfaces this memory's broken-link / graph-role
    *  notes in either variant when supplied. */
   integrity?: MemoryLinksIntegrity | null;
+  /** Clamp a body taller than this many pixels behind an Expand button. Set by
+   *  surfaces that put a conversation under the body, where a long body would
+   *  otherwise push it out of reach. Unset renders the body whole. */
+  collapseBodyAt?: number | null;
+  /** The surface the body sits on, so its fade matches. */
+  bodyFade?: "bg" | "paper" | "surface" | "elevated";
 }
 
 function IntegrityBanner({ notes }: { notes: MemoryIntegrityNotes }) {
@@ -209,6 +216,25 @@ function NeighborChips({
   );
 }
 
+/** The body, clamped where the surface asked for it and untouched where it
+ *  didn't — so a surface that renders the body alone keeps rendering it whole. */
+function MaybeExpandable({
+  collapseAt,
+  fade,
+  children,
+}: {
+  collapseAt: number | null;
+  fade: "bg" | "paper" | "surface" | "elevated";
+  children: React.ReactNode;
+}) {
+  if (!collapseAt) return <>{children}</>;
+  return (
+    <Expandable collapsedHeight={collapseAt} fade={fade} label="the task body">
+      {children}
+    </Expandable>
+  );
+}
+
 /** Read-only review/audit of one memory: metadata, its markdown body, its links. */
 export function MemoryDetail({
   memory,
@@ -217,6 +243,8 @@ export function MemoryDetail({
   variant = "rail",
   renderedBody = null,
   integrity = null,
+  collapseBodyAt = null,
+  bodyFade = "bg",
 }: Props) {
   const pad = variant === "page" ? "px-6 md:px-8" : "px-5";
   const [raw, setRaw] = useState(false);
@@ -354,19 +382,21 @@ export function MemoryDetail({
       </div>
 
       <div className={`${pad} py-4`}>
-        {raw ? (
-          <pre className="overflow-x-auto rounded-lg border border-border bg-surface p-3 font-mono text-micro leading-relaxed text-text whitespace-pre-wrap break-words">
-            {effectiveJsonView ? highlightJson(rawDisplay) : rawDisplay}
-          </pre>
-        ) : (
-          <MarkdownContent
-            className={`contrast leading-relaxed ${variant === "page" ? "text-body max-w-prose" : "text-body"}`}
-            onLinkClick={onNavigate}
-            brokenLinks={broken}
-          >
-            {displayText}
-          </MarkdownContent>
-        )}
+        <MaybeExpandable collapseAt={collapseBodyAt} fade={bodyFade}>
+          {raw ? (
+            <pre className="overflow-x-auto rounded-lg border border-border bg-surface p-3 font-mono text-micro leading-relaxed text-text whitespace-pre-wrap break-words">
+              {effectiveJsonView ? highlightJson(rawDisplay) : rawDisplay}
+            </pre>
+          ) : (
+            <MarkdownContent
+              className={`contrast leading-relaxed ${variant === "page" ? "text-body max-w-prose" : "text-body"}`}
+              onLinkClick={onNavigate}
+              brokenLinks={broken}
+            >
+              {displayText}
+            </MarkdownContent>
+          )}
+        </MaybeExpandable>
       </div>
 
       {variant === "page" && (

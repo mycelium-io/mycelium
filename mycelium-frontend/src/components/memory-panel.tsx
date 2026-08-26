@@ -106,6 +106,9 @@ function fileName(node: TreeNode): string {
 const ROW_H = 22; // px, matches vscode compact density
 const INDENT = 12; // px per depth level
 const PEEK_DELAY = 350; // ms of hover intent before the preview card opens
+/** How tall a memory body gets in the drawer before it clamps behind an Expand
+ *  button — the drawer is narrower than the page, so it clamps sooner. */
+const BODY_CLAMP_PX = 480;
 
 interface TreeRowsProps {
   nodes: TreeNode[];
@@ -382,6 +385,9 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
     if (focusMemory?.key) void openMemoryByKey(focusMemory.key);
   }, [focusMemory, openMemoryByKey]);
 
+  const hasDiscussion =
+    Boolean(selected?.episode) && !isLiveEpisode(roomName, selected?.episode ?? "");
+
   const toggleNs = useCallback((path: string) =>
     setCollapsed(prev => {
       const next = new Set(prev);
@@ -574,16 +580,21 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
                 onNavigate={openMemoryByKey}
                 renderedBody={renderedBody}
                 integrity={integrity}
+                // Only where a discussion follows the body — see the full page.
+                collapseBodyAt={hasDiscussion ? BODY_CLAMP_PX : null}
+                bodyFade="elevated"
               />
               {/* The memory's discussion, below its body — the drawer equivalent
                   of the full page's Discussion and the thread pane's conversation.
                   Only a real thread has one: a memory on the room's own live
                   episode (or none) is not a thread, and reading it as one would
                   empty the room's history. */}
-              {selected.episode && !isLiveEpisode(roomName, selected.episode) && (
-                <section className="mt-6 flex min-h-0 flex-col border-t border-border px-5 py-4">
+              {hasDiscussion && selected.episode && (
+                <section className="mt-6 border-t border-border px-5 py-4">
                   <h2 className="mb-2 text-micro uppercase tracking-wide text-faint">Discussion</h2>
-                  <div className="flex min-h-[16rem] flex-col rounded-xl border border-border bg-surface">
+                  {/* The card frames the discussion; the drawer scrolls it, same
+                      as the full page. */}
+                  <div className="rounded-xl border border-border bg-surface">
                     <TaskConversation
                       roomName={roomName}
                       episode={selected.episode}
