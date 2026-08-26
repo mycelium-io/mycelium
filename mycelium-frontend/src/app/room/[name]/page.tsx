@@ -159,6 +159,15 @@ function RoomWorkspace() {
   // all reachable without a pointer. The chat box focuses the textarea itself;
   // this only makes sure the pane holding it is the one on screen.
   useKeyScope("room");
+  // ⌘F belongs to the page rather than to the feed: find is a channel surface,
+  // so the pane has to be the channel before there is anything to find in. The
+  // counter is the message — the channel opens (or re-focuses) its find bar on
+  // every press, including the ones where the bar is already open.
+  const [findRequest, setFindRequest] = useState(0);
+  useKeyAction("chat.find", () => {
+    setEditorView("channel");
+    setFindRequest(n => n + 1);
+  });
   useKeyAction("pane.channel", () => setEditorView("channel"));
   useKeyAction("pane.board", () => setEditorView("board"));
   useKeyAction("pane.network", () => setEditorView("network"));
@@ -231,6 +240,7 @@ function RoomWorkspace() {
           onViewChange={setEditorView}
           focusMessageId={focus?.type === "message" ? focus.id : null}
           onFocusConsumed={clearFocus}
+          openFind={findRequest}
         />
       </div>
       <RoomChatBox roomName={roomName} className={editorView !== "channel" ? "hidden" : undefined} />

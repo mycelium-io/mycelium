@@ -8,6 +8,7 @@ import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { Tooltip } from "@/components/ui/tooltip";
+import { useHighlighter, type Highlight } from "@/components/ui/highlight-text";
 
 // Mentions, memory links, transclusions, and skill references, in one pass so a
 // body is split once. `![[…]]` is listed before `[[…]]` so the transclusion form
@@ -21,6 +22,21 @@ const TOKEN_RE =
 // syntax, not a link. A word followed by a colon *and whitespace* is a
 // directive; memory keys never contain ": ".
 const DIRECTIVE_RE = /^[A-Za-z][\w-]*:\s/;
+
+/** The plain text under a node.
+ *
+ *  A `[label](myc://key)` link is rendered as a chip, and the chip needs the
+ *  label as a string — but by the time the component runs, the walk above it
+ *  may already have replaced that text with the nodes it split it into. Reading
+ *  the text back out is what keeps the label the author's word rather than
+ *  whatever the last pass wrapped it in. */
+function nodeText(node: React.ReactNode): string {
+  if (node === null || node === undefined || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(nodeText).join("");
+  if (React.isValidElement(node)) return nodeText((node.props as { children?: React.ReactNode }).children);
+  return "";
+}
 
 interface ParsedLink {
   target: string;
@@ -134,19 +150,24 @@ interface Props {
   onLinkClick?: (key: string) => void;
   /** Targets known not to resolve, styled as broken rather than navigable. */
   brokenLinks?: Set<string>;
+  /** A find-in-page query to mark in the prose. `active` says this is the
+   *  message the find bar has stepped to, so its marks are drawn louder. */
+  highlight?: Highlight;
 }
 
-export function MarkdownContent({ children, className, onLinkClick, brokenLinks }: Props) {
+export function MarkdownContent({ children, className, onLinkClick, brokenLinks, highlight }: Props) {
+  const marked = useHighlighter(highlight);
+
   const renderText = React.useCallback(
     (text: string): React.ReactNode => {
       const parts = text.split(TOKEN_RE);
       return parts.map((part, i) => {
         // Odd indices are the captured tokens; even indices are plain text.
-        if (i % 2 === 0) return part;
+        if (i % 2 === 0) return highlight?.query ? <React.Fragment key={i}>{marked(part)}</React.Fragment> : part;
         if (part.startsWith("@")) {
           return (
             <span key={i} className="text-accent font-semibold">
-              {part}
+              {marked(part)}
             </span>
           );
         }
@@ -175,7 +196,7 @@ export function MarkdownContent({ children, className, onLinkClick, brokenLinks 
         );
       });
     },
-    [onLinkClick, brokenLinks],
+    [onLinkClick, brokenLinks, marked, highlight?.query],
   );
 
   const processNode = React.useCallback(
@@ -207,7 +228,7 @@ export function MarkdownContent({ children, className, onLinkClick, brokenLinks 
       if (href?.startsWith("myc://")) {
         const link = parseLink(href);
         if (link) {
-          const labelled = { ...link, label: link.label ?? String(children ?? link.target) };
+          const labelled = { ...link, label: link.label ?? (nodeText(children) || link.target) };
           return (
             <MemoryLinkChip
               link={labelled}
