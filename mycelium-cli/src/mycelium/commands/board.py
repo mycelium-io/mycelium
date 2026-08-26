@@ -857,7 +857,7 @@ def board_send(
     content: str = typer.Argument(..., help="What to say. @handle mentions address agents."),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
     handle: str | None = typer.Option(
-        None, "--handle", "-H", help="Your sender handle (defaults to identity config)"
+        None, "--as", "--handle", "-H", help="Your sender handle (defaults to identity config)"
     ),
 ) -> None:
     """Say something in a thread.
@@ -938,7 +938,7 @@ def board_coordinate(
     ),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
     handle: str | None = typer.Option(
-        None, "--handle", "-H", help="Your sender handle (defaults to identity config)"
+        None, "--as", "--handle", "-H", help="Your sender handle (defaults to identity config)"
     ),
 ) -> None:
     """Open a coordination phase on a row, run by an engine.

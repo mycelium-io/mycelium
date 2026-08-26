@@ -565,3 +565,36 @@ async def test_a2a_rpc_endpoint_is_gated_when_gate_on(client: AsyncClient, auth_
     }
     resp = await client.post("/api/rooms/ghost/a2a", json=rpc)
     assert resp.status_code == 401
+
+
+# ── /api/whoami: the one source of truth a client defaults its author to ───────
+
+
+@pytest.mark.asyncio
+async def test_whoami_ungated_reports_no_principal(client: AsyncClient):
+    """Gate off: a caller names itself, so there is no principal to report."""
+    resp = await client.get("/api/whoami")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["gated"] is False
+    assert body["handle"] is None
+
+
+@pytest.mark.asyncio
+async def test_whoami_gated_returns_the_token_principal(client: AsyncClient, auth_on, signing_key):
+    """The handle here is exactly what the gate enforces created_by against —
+    derived from the same claim, and normalized the same way — so a client that
+    defaults its write author to it never trips the mismatch."""
+    resp = await client.get("/api/whoami", headers=_bearer(_sign(signing_key, sub="@Julia")))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["gated"] is True
+    assert body["handle"] == "julia"
+
+
+@pytest.mark.asyncio
+async def test_whoami_gated_without_token_is_401(client: AsyncClient, auth_on):
+    """Gated and unauthenticated: the gate 401s before the handler, which a
+    client reads as "can't tell who I am" and falls back to local identity."""
+    resp = await client.get("/api/whoami")
+    assert resp.status_code == 401

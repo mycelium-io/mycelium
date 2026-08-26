@@ -33,6 +33,7 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
+from mycelium import identity
 from mycelium.client import hub_client
 from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
@@ -777,13 +778,15 @@ def agent_create(
     team: str | None = typer.Option(
         None, "--team", help="Team slug this agent is fielded by. Self-asserted."
     ),
-    handle_flag: str = typer.Option(
-        "cli-user",
+    handle_flag: str | None = typer.Option(
+        None,
         "--as",
+        "--handle",
         "-H",
         help=(
             "Your own handle (recorded as created_by, and made --owner by default "
-            "so you can act on the agent you just created; pass --owner to override)."
+            "so you can act on the agent you just created; pass --owner to override). "
+            "Defaults to your hub identity."
         ),
     ),
 ) -> None:
@@ -800,6 +803,7 @@ def agent_create(
     """
     try:
         config = MyceliumConfig.load()
+        handle_flag = identity.resolve_actor(config, override=handle_flag)
 
         # No handle in a terminal → interactive create form (mirrors the
         # `agent add` picker). Non-interactive with no handle → actionable
@@ -1103,7 +1107,7 @@ def agent_invoke(
         None, "--room", "-r", help="Room to send into (defaults to active room)."
     ),
     handle_flag: str | None = typer.Option(
-        None, "--as", "-H", help="Your sender handle (defaults to identity config)."
+        None, "--as", "--handle", "-H", help="Your sender handle (defaults to identity config)."
     ),
 ) -> None:
     """Send an @-addressed message to a registered agent.

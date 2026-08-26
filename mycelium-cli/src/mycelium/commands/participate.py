@@ -183,7 +183,7 @@ def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:
 def await_room(
     ctx: typer.Context,
     room: str | None = typer.Option(None, "--room", "-r", help="Room (default: active room)"),
-    handle: str = typer.Option("", "--handle", help="Handle to participate as"),
+    handle: str = typer.Option("", "--as", "--handle", "-H", help="Handle to participate as"),
     lease: str | None = typer.Option(
         None,
         "--lease",
@@ -372,7 +372,9 @@ def respond(
     ctx: typer.Context,
     text: str = typer.Argument(..., help="The reply / position text to publish"),
     room: str | None = typer.Option(None, "--room", "-r", help="Room (default: active room)"),
-    handle: str = typer.Option(..., "--handle", help="Handle to publish the reply as"),
+    handle: str = typer.Option(
+        ..., "--as", "--handle", "-H", help="Handle to publish the reply as"
+    ),
     task: str | None = typer.Option(
         None,
         "--task",
