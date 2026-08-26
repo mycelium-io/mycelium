@@ -225,9 +225,13 @@ jobs:
           MYCELIUM_BACKEND_URL=http://host.docker.internal:8000 \
             docker compose -f infra/compose.spokes.yaml up -d
           echo "Waiting for spokes to install CLI..."
+          # mycelium installs to /root/.local/bin inside the spoke containers
+          # (curl|bash runs as root); a bare `docker exec` doesn't have that
+          # on PATH, so this needs the same PATH export the actual tests use
+          # (see libs/host_exec.py) or it always reports "not ready".
           for container in e2e-spoke1 e2e-spoke2; do
             for i in $(seq 1 30); do
-              if docker exec "$container" mycelium --version >/dev/null 2>&1; then
+              if docker exec "$container" sh -c 'export PATH="$HOME/.local/bin:$PATH"; mycelium --version' >/dev/null 2>&1; then
                 echo "  $container ready"
                 break
               fi
