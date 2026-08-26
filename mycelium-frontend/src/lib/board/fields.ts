@@ -49,15 +49,15 @@ export const WRITABLE_SOURCE_KINDS = ["memory"];
  */
 export const THREAD_REFUSALS: Record<string, string> = {
   agent: "presence is a lease the runtime renews, not a conversation to join",
-  memory: "a thread belongs to a task; this row is in another namespace",
+  memory: "the hub writes this memory for itself; a thread belongs to something a person authored",
 };
 
 /**
  * Why this row's thread cannot be opened, or null when it can.
  *
- * Every task is minted a thread on creation, so a board row all but always has
- * one; the memory refusal is left for a memory outside the board namespaces,
- * which is genuinely in another namespace and has no thread to open.
+ * Every memory a person authored is minted a thread on creation, board
+ * namespace or not, so a row all but always has one; the memory refusal is left
+ * for what the hub writes for itself, which has no thread to open.
  */
 export function threadRefusal(item: LiveItem, episode: string | null): string | null {
   if (episode) return null;

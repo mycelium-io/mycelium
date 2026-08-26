@@ -103,9 +103,7 @@ def test_spoke_write_env_file_preserves_existing_secret(isolated_home) -> None:
     config_path = myc / "config.toml"
     env_path = myc / ".env"
 
-    env_path.write_text(
-        "MYCELIUM_SLIM_MASTER_SECRET=existing-spoke-secret-value-0123456789ab\n"
-    )
+    env_path.write_text("MYCELIUM_SLIM_MASTER_SECRET=existing-spoke-secret-value-0123456789ab\n")
 
     cfg = MyceliumConfig()
     cfg.server.api_url = "http://192.168.1.20:8000"
@@ -116,7 +114,10 @@ def test_spoke_write_env_file_preserves_existing_secret(isolated_home) -> None:
     rendered = _parse_env(env_path.read_text(encoding="utf-8"))
     assert rendered["MYCELIUM_SLIM_MASTER_SECRET"] == "existing-spoke-secret-value-0123456789ab"
     # config.toml also updated
-    assert MyceliumConfig.load(config_path).slim.master_secret == "existing-spoke-secret-value-0123456789ab"
+    assert (
+        MyceliumConfig.load(config_path).slim.master_secret
+        == "existing-spoke-secret-value-0123456789ab"
+    )
 
 
 def test_spoke_write_env_file_does_not_generate_new_secret(isolated_home) -> None:

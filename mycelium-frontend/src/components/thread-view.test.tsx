@@ -11,6 +11,7 @@ import { resetStreamHub } from "@/lib/stream-hub";
 
 const fetchMessages = vi.fn();
 const sendRoomMessage = vi.fn().mockResolvedValue(undefined);
+const fetchMemories = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   logFetchError: () => () => undefined,
@@ -18,7 +19,8 @@ vi.mock("@/lib/api", () => ({
   sendRoomMessage: (...args: unknown[]) => sendRoomMessage(...args),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
   fetchRoomMembers: vi.fn().mockResolvedValue([]),
-  fetchMemories: vi.fn().mockResolvedValue([]),
+  fetchMemories: (...args: unknown[]) => fetchMemories(...args),
+  fetchMemoryLinks: vi.fn().mockResolvedValue({ outbound: [], backlinks: [] }),
   fetchSkills: vi.fn().mockResolvedValue([]),
 }));
 
@@ -42,9 +44,20 @@ const NEWEST_FIRST = {
   ],
 };
 
+/** The row this thread is of, as the room's memories answer it. */
+const TASK = {
+  key: "work/flip-reads",
+  value: "the reads have to flip behind a flag",
+  content_text: "the reads have to flip behind a flag",
+  version: 1,
+  created_by: "julia",
+  episode: THREAD,
+};
+
 describe("<ThreadView />", () => {
   beforeEach(() => {
     fetchMessages.mockReset().mockResolvedValue(NEWEST_FIRST);
+    fetchMemories.mockReset().mockResolvedValue([]);
     sendRoomMessage.mockClear();
     resetStreamHub();
     FakeEventSource.reset();
@@ -162,6 +175,22 @@ describe("<ThreadView />", () => {
       es.emit({ message_type: "broadcast", sender_handle: "risk", content: "one more thing", episode: THREAD });
     });
     await waitFor(() => expect(fetchMessages.mock.calls.length).toBe(reads + 1));
+  });
+
+  it("is one scroll region — the task's body and its conversation share it", async () => {
+    // Two scroll areas a few pixels apart is the bug (#887): the wheel does
+    // different things depending on where the pointer happens to be. The task
+    // reads as one column, the way an issue body runs into its comments.
+    fetchMemories.mockResolvedValue([TASK]);
+    renderWithSWR(
+      <ThreadView roomName="atlas" target={{ episode: THREAD, title: "flip reads" }} onClose={vi.fn()} />,
+    );
+    await screen.findByText(/hold the flip/);
+
+    const viewports = document.querySelectorAll('[data-slot="scroll-area-viewport"]');
+    expect(viewports).toHaveLength(1);
+    expect(viewports[0]).toHaveTextContent("the reads have to flip behind a flag");
+    expect(viewports[0]).toHaveTextContent("hold the flip until lag is under a second");
   });
 
   it("re-reads on the ping that announces a write into it", async () => {

@@ -65,13 +65,17 @@ THREAD_STATES = ["open", "converged", "resolved", "rejected", "committed"]
 #: the container-outlives-the-negotiation rule as a list.
 TASK_FIELDS = ["status", "assignment", "owner", "kind", "priority"]
 
-#: Why a projected row has no thread to speak into, keyed by what produced it.
-#: A chat verb refuses in these terms rather than falling back to the room: a
-#: message that quietly went somewhere other than where it was addressed is
-#: worse than one that did not go.
+#: Why a row has no thread to speak into, keyed by what produced it. A chat verb
+#: refuses in these terms rather than falling back to the room: a message that
+#: quietly went somewhere other than where it was addressed is worse than one
+#: that did not go.
+#:
+#: The memory refusal is not about namespace. Every memory a person authored
+#: carries a thread wherever it lives, so what is left unthreaded is what the
+#: hub wrote for itself — an ``agents/`` manifest, a ``log/`` record.
 THREAD_REFUSALS = {
     "agent": "presence is a lease the runtime renews, not a conversation to join",
-    "memory": "a thread belongs to a task; this row is in another namespace",
+    "memory": "the hub writes this memory for itself; a thread belongs to something a person authored",
 }
 
 

@@ -124,7 +124,7 @@ describe("<RoomBoard /> thread affordance", () => {
     await userEvent.keyboard("t");
     expect(onOpenThread).not.toHaveBeenCalled();
     expect(
-      await screen.findByText(/a thread belongs to a task; this row is in another namespace/),
+      await screen.findByText(/the hub writes this memory for itself/),
     ).toBeInTheDocument();
   });
 

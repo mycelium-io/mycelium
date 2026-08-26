@@ -88,11 +88,12 @@ async def lifespan(app: FastAPI):
             logger.warning("auth: %s", warning)
     else:
         logger.info("HTTP-API JWT gate disabled — requests are unauthenticated")
-    # A work/ row written before the task binding carries no thread, so
-    # it reads as a task that was never coordinated anywhere. Minting one is a
-    # store annotation rather than an edit: the row keeps its version, its stamps
-    # and its place on a time-ordered board. Runs before the index scan, so the
-    # rows it rewrites are indexed once rather than caught on the next restart.
+    # A memory written before the binding carries no thread, so it reads as
+    # something there is nowhere to discuss. Minting one is a store annotation
+    # rather than an edit: the memory keeps its version, its stamps and its place
+    # on a time-ordered board. Runs before the index scan, so what it rewrites is
+    # indexed once rather than caught on the next restart — and walks the same
+    # files that scan is about to read anyway.
     from app.services.filesystem import list_room_names
     from app.services.tasks import backfill_room
 
@@ -103,7 +104,7 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.exception("task backfill failed for room %s", _room)
     if bound_units:
-        logger.info("bound %d pre-existing work row(s) to a thread on startup", bound_units)
+        logger.info("bound %d pre-existing memories to a thread on startup", bound_units)
 
     # Incremental scan of filesystem → JSONL search index
     from app.services.reindex import start_watcher, startup_scan, stop_watcher

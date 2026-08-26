@@ -18,6 +18,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Kbd } from "@/components/ui/kbd";
 import { Tooltip } from "@/components/ui/tooltip";
 
+/** How tall a task body gets in the pane before it clamps. The pane is narrow,
+ *  so this is roughly a screenful of prose — enough to read the task, not enough
+ *  to bury the conversation under it. */
+const BODY_CLAMP_PX = 320;
+
 /** What a thread is a thread *of*, as far as anything can tell. */
 export interface ThreadTarget {
   /** The episode URN the conversation is tagged with. */
@@ -166,20 +171,22 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
           />
         </div>
       ) : (
-        // The task's body over its conversation. Two scroll regions: the body
-        // takes at most half the pane so a long task can never push the
-        // conversation off screen, and the conversation owns the rest. A
-        // negotiation thread bound to no row is all conversation.
-        <div className="flex min-h-0 flex-1 flex-col">
+        // The task's body over its conversation, in one scroll. The body is
+        // clamped rather than boxed: a long task fades under an Expand button
+        // instead of taking a scrollbar of its own, so the wheel does one thing
+        // everywhere in the pane. A negotiation thread bound to no row is all
+        // conversation.
+        <ScrollArea className="min-h-0 flex-1">
           {task && (
-            <ScrollArea className="max-h-[45%] shrink-0 border-b border-border">
+            <div className="border-b border-border">
               <MemoryDetail
                 memory={task}
                 roomName={roomName}
                 variant="rail"
                 onNavigate={onOpenMemory}
+                collapseBodyAt={BODY_CLAMP_PX}
               />
-            </ScrollArea>
+            </div>
           )}
           <TaskConversation
             roomName={roomName}
@@ -187,7 +194,7 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
             onOpenMemory={onOpenMemory}
             onReady={onReady}
           />
-        </div>
+        </ScrollArea>
       )}
 
       <RoomChatBox

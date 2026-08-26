@@ -107,6 +107,29 @@ curl -s $HUB/api/rooms/atlas/memory/work/api-server | jq .meta
 > index also rebuilds when the backend starts and follows on-disk changes while
 > it runs.
 
+## Every memory can be discussed
+
+A memory is not only something to read. Every memory a person writes carries a
+**thread** of its own — the same threads the [board](#board) uses, minted the
+moment the memory exists — so the argument about a design note lives attached to
+the note rather than scrolling past in the room:
+
+```bash
+mycelium board send context/api-shape "this predates the v2 routes — still true?"
+mycelium board messages context/api-shape
+```
+
+The verbs are the board's because a thread is a thread; what you put in front of
+them is a row id, a thread id, or any memory key. The room sees one line saying
+that memory moved, never the prose.
+
+Two limits. **Everything can be discussed; only `decisions/`, `status/`,
+`work/` and `failed/` are worked** — a threaded `skills/` doc never shows up on
+the board as something to claim. And what the hub writes for itself carries no
+thread: an `agents/` manifest is a runtime's, a `log/` record is already the
+record of a conversation, and `context/synthesis` is rewritten on the
+synthesizer's schedule rather than yours.
+
 ## Linking memories
 
 Memories can point at each other, which turns a room's flat set of files into an

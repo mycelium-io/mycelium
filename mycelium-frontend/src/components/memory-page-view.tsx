@@ -29,6 +29,11 @@ interface Props {
   memoryKey: string;
 }
 
+/** How tall a memory body gets on the full page before it clamps. Generous —
+ *  the page is where you came to read it — but bounded, so a long task does not
+ *  put its discussion a thousand pixels below the fold. */
+const BODY_CLAMP_PX = 720;
+
 /** Full-page wiki view for one memory. */
 export function MemoryPageView({ roomName, memoryKey }: Props) {
   const router = useRouter();
@@ -98,6 +103,7 @@ export function MemoryPageView({ roomName, memoryKey }: Props) {
   }
 
   const crumbs = memoryKey.split("/");
+  const hasDiscussion = Boolean(memory.episode) && !isLiveEpisode(roomName, memory.episode ?? "");
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -166,6 +172,10 @@ export function MemoryPageView({ roomName, memoryKey }: Props) {
             variant="page"
             renderedBody={renderedBody}
             integrity={integrity}
+            // Only where a discussion follows the body: on a page that is body
+            // and nothing else, clamping would hide the whole point of opening
+            // it full screen.
+            collapseBodyAt={hasDiscussion ? BODY_CLAMP_PX : null}
           />
         )}
 
@@ -173,10 +183,14 @@ export function MemoryPageView({ roomName, memoryKey }: Props) {
             the thread pane's conversation. Only a real thread has one: a row
             written before threading carries the room's own live episode (or
             none), and reading that as a thread would empty the room's history. */}
-        {!isEditing && memory.episode && !isLiveEpisode(roomName, memory.episode) && (
-          <section className="mt-8 flex min-h-0 flex-col px-6 md:px-8">
+        {!isEditing && hasDiscussion && memory.episode && (
+          <section className="mt-8 px-6 md:px-8">
             <h2 className="mb-2 text-micro uppercase tracking-wide text-faint">Discussion</h2>
-            <div className="flex min-h-[16rem] flex-col rounded-xl border border-border bg-surface">
+            {/* The card frames the discussion; it does not scroll it. The page
+                is one scroll from the memory's metadata through its body to the
+                last reply, so the conversation grows the card rather than
+                filling a box of its own. */}
+            <div className="rounded-xl border border-border bg-surface">
               <TaskConversation
                 roomName={roomName}
                 episode={memory.episode}

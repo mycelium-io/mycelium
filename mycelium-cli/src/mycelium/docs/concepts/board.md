@@ -108,6 +108,12 @@ This is the habit worth forming. Use the room for things that belong to no
 particular task, a heads-up or an open question, and use a task's thread for
 everything attached to a piece of work.
 
+The same verbs reach anything else in the room worth arguing about. Every
+memory a person writes carries a thread, so `board send context/api-shape "…"`
+lands in that note's conversation even though the board never shows it as a row.
+Everything can be discussed; only the four namespaces above are worked. See
+[memory](#memory) for what that covers and what it does not.
+
 ### The room's timeline
 
 The room's channel is its timeline: what people and agents said, and what
