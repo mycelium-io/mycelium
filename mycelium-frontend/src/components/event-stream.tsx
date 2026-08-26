@@ -20,7 +20,6 @@ import { RoomBoard } from "@/components/board/room-board";
 import { ConsentDialog } from "@/components/consent-dialog";
 import { EpisodeTag } from "@/components/episode-tag";
 import { L9Inspector } from "@/components/l9-inspector";
-import { NegotiationView } from "@/components/negotiation-view";
 import { RoomA2aView } from "@/components/room-a2a";
 import { RoomSlimView } from "@/components/room-slim";
 import { EmptyState } from "@/components/empty-state";
@@ -264,7 +263,7 @@ function parseEvent(msg: Record<string, unknown>, room: string): Event {
     }
     case "l9_commit": {
       // Unwrap the L9 commit envelope into the coordination_consensus shape
-      // so NegotiationView can render it.
+      // the channel notice row and the L9 inspector both read.
       const l9env = (raw.l9 as Record<string, unknown> | undefined) ?? {};
       const header = (l9env.header as Record<string, unknown> | undefined) ?? {};
       const payload = (l9env.payload as Record<string, unknown> | undefined) ?? {};
@@ -379,14 +378,12 @@ function foldAmendment(events: Event[], amendment: Event): Event[] {
   );
 }
 
-export type View = "channel" | "negotiate" | "board" | "network";
-export type NegotiationPhase = "idle" | "negotiating" | "converged" | "rejected";
+export type View = "channel" | "board" | "network";
 
 interface Props {
   roomName: string;
   onMemoryChanged?: () => void;
   onConnectionChange?: (connected: boolean) => void;
-  onNegotiationPhaseChange?: (phase: NegotiationPhase) => void;
   /** Open a memory by key — wired to `[[wikilinks]]` in chat so a message can
    *  link a room's memory and a reader (or agent author) can jump straight to it. */
   onOpenMemory?: (key: string) => void;
@@ -405,7 +402,7 @@ interface Props {
   onFocusConsumed?: () => void;
 }
 
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, onOpenThread, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onOpenMemory, onOpenThread, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const connected = useRoomConnected(roomName);
@@ -592,29 +589,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
 
   const channelCount = visible.length;
 
-  // Negotiation phase, derived from the coordination stream. Drives the live
-  // tab dot and (via the callback) the onboarding tour's convergence sync.
-  const phase = useMemo<NegotiationPhase>(() => {
-    let lastTick = -1;
-    let lastConsensus = -1;
-    let consensusBroken = false;
-    events.forEach((e, i) => {
-      if (e.type === "coordination_tick") lastTick = i;
-      if (e.type === "coordination_consensus") {
-        lastConsensus = i;
-        consensusBroken = e.raw.broken === true;
-      }
-    });
-    if (lastConsensus > -1 && lastConsensus > lastTick) return consensusBroken ? "rejected" : "converged";
-    if (lastTick > -1) return "negotiating";
-    return "idle";
-  }, [events]);
-  const negotiating = phase === "negotiating";
-
-  useEffect(() => {
-    onNegotiationPhaseChange?.(phase);
-  }, [phase, onNegotiationPhaseChange]);
-
   return (
     <div className="flex flex-col h-full">
       <ConsentDialog
@@ -626,10 +600,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
         {/* Connection state lives in the shell status bar. */}
         <div className="ml-auto flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
           {([
-            { id: "channel" as const,   label: "Channel",   count: channelCount as number | null, dot: false },
-            { id: "negotiate" as const, label: "Negotiate", count: null,                          dot: negotiating },
-            { id: "board" as const,     label: "Board",     count: null,                          dot: false },
-            { id: "network" as const,   label: "Network",   count: null,                          dot: false },
+            { id: "channel" as const, label: "Channel", count: channelCount as number | null },
+            { id: "board" as const,   label: "Board",   count: null },
+            { id: "network" as const, label: "Network", count: null },
           ]).map(t => {
             // Hold the reveal modifier and each tab wears the key that selects it.
             const active = view === t.id;
@@ -646,7 +619,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
               >
                 {t.label}
                 <KeyBadge action={`pane.${t.id}`} />
-                {t.dot && <span className="inline-block size-1.5 rounded-full bg-accent" aria-label="live" />}
                 {t.count !== null && (
                   <span className={`text-micro tabular ${active ? "text-accent" : "text-muted-foreground"}`}>
                     {t.count}
@@ -675,10 +647,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           <div className="flex-1 min-h-0">
             <L9Inspector roomName={roomName} />
           </div>
-        </div>
-      ) : view === "negotiate" ? (
-        <div className="flex-1 min-h-0">
-          <NegotiationView events={events} />
         </div>
       ) : (
       <div className="relative flex flex-1 min-h-0 flex-col">

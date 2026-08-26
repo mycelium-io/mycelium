@@ -84,7 +84,7 @@ describe("<KeymapProvider />", () => {
 
     expect(document.querySelector("[data-key-badge]")).toBeNull();
     await user.keyboard("{Alt>}");
-    expect(document.querySelector("[data-key-badge]")).toHaveTextContent("W");
+    expect(document.querySelector("[data-key-badge]")).toHaveTextContent("N");
     await user.keyboard("{/Alt}");
     expect(document.querySelector("[data-key-badge]")).toBeNull();
   });
