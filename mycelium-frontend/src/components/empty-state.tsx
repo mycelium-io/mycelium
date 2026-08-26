@@ -17,7 +17,7 @@ interface Props {
 }
 
 /** The one empty state for the whole app — consistent icon chip, title, copy.
- *  Full-pane usages (Channel, Negotiate, L9) pass `className="h-full"`; the copy
+ *  Full-pane usages (Channel, Board, Network) pass `className="h-full"`; the copy
  *  stays top-aligned so it doesn't jump vertically as you switch between panes of
  *  differing height. Rail/list usages sit in flow near the top the same way. */
 export function EmptyState({ icon: Icon, title, description, action, size = "md", className }: Props) {

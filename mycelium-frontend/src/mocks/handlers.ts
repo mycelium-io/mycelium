@@ -167,7 +167,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
             provisioned: true,
             persister_alive: true,
             members: ["planner", "avery"],
-            pending_invites: 1,
+            deferred_invites: 1,
             episode_active: true,
             reserves: 3,
             reserve_failures: 0,
@@ -180,7 +180,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
             provisioned: true,
             persister_alive: true,
             members: [],
-            pending_invites: 0,
+            deferred_invites: 0,
             episode_active: false,
             reserves: 0,
             reserve_failures: 0,
@@ -484,17 +484,6 @@ export async function handleMock(req: Request): Promise<Response | null> {
       // Presence: a room's fixture may name resident members (there is no SLIM
       // node here to report them), which the board projects into resident rows.
       if (sub[1] === "members" && method === "GET") return json({ members: fx.presence ?? [] });
-      return null;
-    }
-
-    case "invites": {
-      // POST /invites/:id/accept|decline
-      if (sub[1] && (sub[2] === "accept" || sub[2] === "decline") && method === "POST") {
-        const id = decodeURIComponent(sub[1]);
-        const inv = fx.invites.find((i) => i.id === id);
-        return json({ ...(inv ?? { id, room: roomName, agent: "?", requested_by: "?", trigger_text: "", created_at: "" }), status: sub[2] === "accept" ? "accepted" : "declined" });
-      }
-      if (method === "GET") return json({ invites: fx.invites });
       return null;
     }
 

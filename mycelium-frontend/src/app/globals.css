@@ -262,7 +262,12 @@ body {
 .tabular { font-variant-numeric: tabular-nums; }
 
 /* ── markdown body ── */
-.markdown-body { color: inherit; }
+/* A body renders inside panes that shrink (the thread split, the rail): every
+ * ancestor is min-w-0, so the box compacts. Without this the text does not —
+ * a long unbreakable inline atom (a `code` span, a URL, a long path) keeps its
+ * intrinsic width and spills past the right edge rather than wrapping. Break on
+ * overflow so prose reflows; `pre` keeps its own `overflow-x` scroll below. */
+.markdown-body { color: inherit; overflow-wrap: break-word; }
 .markdown-body > *:first-child { margin-top: 0; }
 .markdown-body > *:last-child { margin-bottom: 0; }
 .markdown-body p { margin: 0.5em 0; line-height: 1.55; color: var(--text2); }

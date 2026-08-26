@@ -98,9 +98,9 @@ export function RoomSlimView({
             color={room?.episode_active ? "var(--accent)" : undefined}
           />
           <RailStat
-            label="invites"
-            value={room?.pending_invites ?? 0}
-            color={(room?.pending_invites ?? 0) > 0 ? "var(--yellow)" : undefined}
+            label="deferred"
+            value={room?.deferred_invites ?? 0}
+            color={(room?.deferred_invites ?? 0) > 0 ? "var(--yellow)" : undefined}
           />
           {(room?.receive_errors ?? 0) > 0 && (
             <RailStat label="recv-err" value={room?.receive_errors ?? 0} color="var(--red)" />
@@ -246,12 +246,12 @@ export function RoomSlimView({
                 {room.episode_active ? "active" : "idle"}
               </span>
             </Stat>
-            <Stat label="Pending invites">
+            <Stat label="Deferred invites">
               <span
                 className="tabular"
-                style={{ color: room.pending_invites > 0 ? "var(--yellow)" : "var(--text)" }}
+                style={{ color: room.deferred_invites > 0 ? "var(--yellow)" : "var(--text)" }}
               >
-                {room.pending_invites}
+                {room.deferred_invites}
               </span>
             </Stat>
             <Stat label="Durable inbox">

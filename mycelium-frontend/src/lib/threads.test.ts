@@ -3,8 +3,6 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  ACTIVITY_WINDOW_MS,
-  coalesceActivity,
   isLiveEpisode,
   liveEpisodeUrn,
   noticeLabel,
@@ -117,100 +115,5 @@ describe("reading a notice", () => {
     expect(noticeLabel("claimed", null)).toBe("Claimed");
     expect(noticeLabel("released", null)).toBe("Released");
     expect(noticeLabel("resolved", null)).toBe("Resolved");
-  });
-});
-
-describe("condensing a subject's activity", () => {
-  const TASK = "work/882-login-aligns-identity";
-  const OTHER = "work/886-activity-feed-coalescing";
-  const T0 = Date.parse("2026-08-26T00:00:00Z");
-
-  interface Row {
-    id: string;
-    subject: string | null;
-    at: string;
-    members?: Row[];
-  }
-  const row = (id: string, subject: string | null, offsetMs = 0): Row => ({
-    id,
-    subject,
-    at: new Date(T0 + offsetMs).toISOString(),
-  });
-  const said = (id: string, offsetMs = 0): Row => row(id, null, offsetMs);
-  const fold = (rows: Row[], windowMs?: number) =>
-    coalesceActivity(rows, r => r.subject, members => ({ ...members[0], members }), windowMs);
-
-  it("turns a burst about one task into a single block", () => {
-    const rows = fold([row("a", TASK), row("b", TASK, 1000), row("c", TASK, 2000)]);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].members?.map(m => m.id)).toEqual(["a", "b", "c"]);
-  });
-
-  it("folds a ping, a notice and a memory push about the same task into one", () => {
-    // The three ways the room says a task moved. Printed separately they read
-    // as three events; they are one.
-    const rows = fold([row("notice", TASK), row("knowledge", TASK, 500), row("ping", TASK, 900)]);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].members).toHaveLength(3);
-  });
-
-  it("keeps two active subjects apart", () => {
-    const rows = fold([row("a", TASK), row("b", OTHER, 100), row("c", TASK, 200)]);
-    expect(rows.map(r => r.subject)).toEqual([TASK, OTHER]);
-    expect(rows[0].members).toHaveLength(2);
-    expect(rows[1].members).toBeUndefined();
-  });
-
-  it("keeps folding across what is said in between", () => {
-    // The limitation this replaces: the old ping-only coalesce gave up the
-    // moment anything else was said, so a busy thread and a talkative room
-    // produced exactly the alternating feed the fold exists to prevent.
-    const rows = fold([row("a", TASK), said("m1", 100), row("b", TASK, 200)]);
-    expect(rows.map(r => r.id)).toEqual(["a", "m1"]);
-    expect(rows[0].members?.map(m => m.id)).toEqual(["a", "b"]);
-  });
-
-  it("grows the block where it started rather than moving it down the feed", () => {
-    // Folding forward would move a line the reader has already passed.
-    const rows = fold([row("a", TASK), said("m1", 100), said("m2", 200), row("b", TASK, 300)]);
-    expect(rows.map(r => r.id)).toEqual(["a", "m1", "m2"]);
-  });
-
-  it("opens a new block once the window has closed", () => {
-    // A subject that stays busy keeps saying so — at most one line per window.
-    const rows = fold([
-      row("a", TASK),
-      row("b", TASK, ACTIVITY_WINDOW_MS - 1),
-      row("c", TASK, ACTIVITY_WINDOW_MS + 1),
-    ]);
-    expect(rows.map(r => r.id)).toEqual(["a", "c"]);
-    expect(rows[0].members?.map(m => m.id)).toEqual(["a", "b"]);
-  });
-
-  it("measures the window from the block's first event, not its last", () => {
-    // A sliding gap would let a steadily busy task stay one block for hours,
-    // so genuinely new activity would only ever change a number further up.
-    const rows = fold(
-      [row("a", TASK), row("b", TASK, 60), row("c", TASK, 120), row("d", TASK, 180)],
-      100,
-    );
-    expect(rows.map(r => r.id)).toEqual(["a", "c"]);
-  });
-
-  it("hands the merge every member, oldest first, so nothing is lost", () => {
-    const rows = fold([row("a", TASK), row("b", TASK, 10), row("c", TASK, 20)]);
-    expect(rows[0].members?.map(m => m.at)).toEqual(
-      ["a", "b", "c"].map((_, i) => new Date(T0 + i * 10).toISOString()),
-    );
-  });
-
-  it("passes a subject that moved once through untouched", () => {
-    const only = row("a", TASK);
-    expect(fold([only, said("m1", 10)])[0]).toBe(only);
-  });
-
-  it("leaves a feed with no activity in it exactly as it found it", () => {
-    const rows = [said("m1"), said("m2", 10)];
-    expect(fold(rows)).toEqual(rows);
   });
 });

@@ -19,7 +19,7 @@ node**. This is the LAN path; the open-internet path is documented at the bottom
   the channel, never a second moderator.
 
 Membership is addressed by **identity** (`workspace/room/agent`), never by host, so the
-moderator invites a spoke's agent exactly as it would a local one: the consent →
+moderator invites a spoke's agent exactly as it would a local one: the mention →
 invite → join path needs no cross-machine mechanism.
 
 ## The hero flow, across two hosts
@@ -105,18 +105,18 @@ node or tunnel needs no new command, only operating it.
 ## Watching it in the browser
 
 The UI never speaks SLIM or L9. The backend moderator ingests every channel message and
-re-publishes it onto an in-process bus (`app/bus.py`); consent prompts, human messages,
-plan pushes, and every L9 envelope land there. The frontend reads that bus over a single
+re-publishes it onto an in-process bus (`app/bus.py`); human messages, plan pushes,
+and every L9 envelope land there. The frontend reads that bus over a single
 SSE stream (`/api/rooms/{room}/messages/stream`). Point a browser on **either** host at
-that host's backend; a spoke's UI talks to its own co-located backend, and the consent
-prompt is answered against the moderator's invite registry (the hub owns
-accept/decline), so a spoke's human can accept a prompt the hub raised.
+that host's backend; a spoke's UI talks to its own co-located backend, and the hub's
+moderator is the one that admits members, so what a spoke's human sees is membership
+the hub decided.
 
 Open a room at `/room/{name}` and watch three surfaces during the flow above:
 
 - **CHANNEL**: membership, the transcript, and lifecycle lines (JOIN, CONSENSUS →
-  `plan/tasks.md`), plus the **consent prompt**: an `@`-invite of an agent not in the
-  room raises an accept/decline dialog; nothing joins until Accept.
+  `plan/tasks.md`). An `@`-mention of a registered agent that isn't on the channel
+  brings it in, and its arrival shows up here as a JOIN.
 - **L9**: the protocol inspector. A live wire of the L9 payloads crossing the channel
   (`exchange` ticks/replies, `commit:converged`/`rejected` with **MPC/GAR/SCR**,
   `knowledge` pushes), each tagged with kind/subkind + episode, over an **episodes** list

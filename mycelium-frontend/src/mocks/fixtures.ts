@@ -13,8 +13,8 @@
  * Three rooms cover the states worth designing against:
  *   - `atlas-migration` — a rich, converged room (memories, agents, a compiled
  *     compiled work, a finished L9 episode);
- *   - `pricing-model`   — an in-progress negotiation (nothing compiled yet, a pending
- *     consent invite, a live-looking episode);
+ *   - `pricing-model`   — an in-progress negotiation (nothing compiled yet, a
+ *     live-looking episode);
  *   - `scratch`         — a brand-new empty room (empty states).
  */
 
@@ -27,7 +27,6 @@ import type {
   MemoryGraph,
   MemoryGraphEdge,
   MemoryGraphNode,
-  PendingInvite,
   PresenceMember,
 } from "@/lib/api";
 import type { RoomStatus } from "@/lib/board/upstream";
@@ -93,7 +92,6 @@ export interface RoomFixture {
   messages: MockMessage[];
   episodes: EpisodeSummary[];
   episodeDetails: Record<string, EpisodeDetail>;
-  invites: PendingInvite[];
   /** Live presence set, served at GET /sessions/members. A resident agent
    *  (one whose handle appears here) projects a board row; without a SLIM node
    *  there is otherwise no presence, so the board's resident rows come from here. */
@@ -181,7 +179,7 @@ const ATLAS_RETIRE_THREAD = atlasEpisode("d2b8e0");
 // This models the real flow faithfully: the *chat* is the source. Each agent
 // posts a reply in the channel (`say`), and the aligner reads it and emits the
 // structured L9 it implies. So one move drives three things — the agent's chat
-// broadcast, the coordination_tick the Negotiate pane reconstructs, and the L9
+// broadcast, the coordination_tick it interprets that from, and the L9
 // envelope the Network feed shows — and they can't disagree. `ask` is the
 // aligner's prompt that precedes a reply (it @-addresses one agent at a time).
 const ATLAS_CONSENSUS = { cutover: "phased", window: "48h" };
@@ -253,7 +251,7 @@ const atlasL9Chain: L9Envelope[] = [
 // The mediated negotiation as it appears on the wire: for each move, the
 // aligner's optional prompt and the agent's reply (both chat broadcasts, shown
 // in the channel), then the coordination_tick the aligner emits from that reply
-// (feeds Negotiate + Network, filtered out of the channel). Interleaved and
+// (feeds the Network pane, filtered out of the channel). Interleaved and
 // timestamped so the transcript reads in order — the chat drives the L9.
 const atlasNegotiation: MockMessage[] = (() => {
   const out: MockMessage[] = [];
@@ -671,7 +669,7 @@ const atlas: RoomFixture = {
     { id: "a3", sender_handle: "risk", message_type: "coordination_join", content: JSON.stringify({ handle: "risk", intent: "no downtime, no data loss", episode: ATLAS_EPISODE }), created_at: iso(47), episode: ATLAS_EPISODE },
     // The aligner brokers four rounds of alternating offers. Each agent reply is
     // a chat broadcast; the aligner reads it and emits the coordination_tick the
-    // Negotiate/Network panes reconstruct. The chat is the source (see atlasMoves).
+    // Network pane reconstructs. The chat is the source (see atlasMoves).
     ...atlasNegotiation,
     { id: "a6", sender_handle: "aligner", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { cutover: "phased", window: "48h" }, episode: ATLAS_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(41), episode: ATLAS_EPISODE },
     // The room files the work the agreement breaks into. The two task-created
@@ -692,7 +690,6 @@ const atlas: RoomFixture = {
   ],
   episodes: [atlasEpisodeSummary],
   episodeDetails: { e4f1a2: { ...atlasEpisodeSummary, messages: atlasL9Chain } },
-  invites: [],
   // growth holds an open SLIM socket; risk is present on a server-held await
   // lease. Both are agents in the roster, so the board projects a resident row
   // for each — the presence signal that a live SLIM node would otherwise supply.
@@ -847,17 +844,6 @@ const pricing: RoomFixture = {
     },
   ],
   episodeDetails: {},
-  invites: [
-    {
-      id: "inv1",
-      room: "pricing-model",
-      agent: "legal",
-      requested_by: "operator",
-      trigger_text: "@legal can you weigh in on the discount policy?",
-      status: "pending",
-      created_at: iso(3),
-    },
-  ],
   // The bridge state to design against: one external A2A agent consulted during
   // the negotiation (one answered call, one dead one), and the room's own card
   // having been read from outside.
@@ -939,7 +925,6 @@ const scratch: RoomFixture = {
   messages: [],
   episodes: [],
   episodeDetails: {},
-  invites: [],
 };
 
 // ── mycelium-general: the room as it actually reads under load ────────────────
@@ -1286,7 +1271,6 @@ const general: RoomFixture = {
   ),
   episodes: [],
   episodeDetails: {},
-  invites: [],
   l9: generalL9,
 };
 

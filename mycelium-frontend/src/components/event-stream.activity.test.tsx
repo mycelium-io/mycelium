@@ -24,8 +24,6 @@ vi.mock("@/lib/api", () => ({
   fetchL9History: vi.fn().mockResolvedValue([]),
   fetchMemories: vi.fn().mockResolvedValue([]),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
-  fetchPendingInvites: vi.fn().mockResolvedValue([]),
-  respondToInvite: vi.fn(),
   logFetchError: () => () => undefined,
 }));
 
@@ -132,7 +130,7 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     });
   }
 
-  it("gathers a task's whole run of churn into one rail entry, not a line each", async () => {
+  it("gathers a task's whole run into one rail entry, not a line each", async () => {
     await stream([
       knowledge(1, "claude-web"),
       ping("growth", "m-1", 500),
@@ -141,9 +139,32 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
       ping("risk", "m-2", 1900),
     ]);
 
-    const entry = await screen.findByRole("button", { name: new RegExp(TITLE) });
-    expect(within(entry).getByText("5 updates")).toBeInTheDocument();
-    expect(within(entry).getByText("@claude-web, @growth, @risk")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: `Show 5 updates to ${TITLE}` })).toBeInTheDocument();
+    expect(screen.getByText("@claude-web, @growth, @risk")).toBeInTheDocument();
+  });
+
+  it("opens a row to the individual updates, each with its own clock", async () => {
+    // The count is a way in, not a dead end: a row that says "4 updates" and
+    // cannot say which four leaves the reader where they started.
+    await stream([
+      notice("filed", "aligner"),
+      knowledge(1, "claude-web", 60_000),
+      ping("growth", "m-1", 120_000),
+      notice("resolved", "growth", 180_000),
+    ]);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: `Show 4 updates to ${TITLE}` }),
+    );
+
+    // Created, worked, resolved — in order, on the row the work happened on.
+    const rows = within(rail()).getAllByRole("listitem");
+    const opened = rows.map(r => r.textContent);
+    expect(opened.join("\n")).toMatch(/New task[\s\S]*Knowledge[\s\S]*Activity[\s\S]*Resolved/);
+    // Each update carries its own clock, so "when" is answerable per line
+    // rather than only for the run as a whole.
+    expect(within(rail()).getAllByText("10:00")).not.toHaveLength(0);
+    expect(within(rail()).getAllByText("10:02")).not.toHaveLength(0);
   });
 
   it("keeps every one of those out of the conversation", async () => {
@@ -161,39 +182,39 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     expect(screen.queryByText("Claimed")).not.toBeInTheDocument();
   });
 
-  it("still narrates a task arriving and finishing, in sequence with the talk", async () => {
+  it("keeps a task's own arrival and outcome on its row, not in the feed", async () => {
+    // Narrated in the feed, these were coalesced across tasks — a filing into a
+    // "New tasks" line, a resolve into a "Resolved" one — so the row nobody
+    // could read as created → worked → resolved was the row the work was on.
     await stream([
       notice("filed", "aligner"),
       said("taking this one", "growth", 400),
       notice("resolved", "growth", 800),
     ]);
 
-    expect(await screen.findByText("New task")).toBeInTheDocument();
-    expect(screen.getByText("Resolved")).toBeInTheDocument();
-    expect(screen.getByText("taking this one")).toBeInTheDocument();
+    expect(await screen.findByText("taking this one")).toBeInTheDocument();
+    expect(screen.queryByText("New task")).not.toBeInTheDocument();
+    expect(screen.queryByText("New tasks")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: `Show 2 updates to ${TITLE}` }),
+    ).toBeInTheDocument();
   });
 
-  it("folds a run of arrivals by what happened, not by which task", async () => {
-    // Several tasks filed in the same minute is one thing the room did. Naming
-    // the run "New task" would report all of them as one of them.
+  it("puts a stalled task first, where three rows stand open", async () => {
+    // The rail shows three at a time, so date order would let the one row that
+    // is asking for a human sit behind "N more".
+    const keys = ["a", "b", "c", "d"];
+    vi.mocked(fetchMemories).mockResolvedValue([
+      ...keys.map(k => row(`work/${k}`, `task ${k}`, null)),
+      row(TASK, TITLE, THREAD),
+    ]);
     await stream([
-      notice("filed", "aligner", 0, TASK, TITLE),
-      notice("filed", "aligner", 300, OTHER_TASK, OTHER_TITLE),
+      notice("blocked", "growth", 0, TASK, TITLE),
+      ...keys.map((k, i) => knowledge(1, "claude-web", (i + 1) * 100, `work/${k}`)),
     ]);
 
-    expect(await screen.findByText("New tasks")).toBeInTheDocument();
-    expect(screen.queryByText("New task")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Show 2 updates" }));
-    expect(screen.getByRole("button", { name: new RegExp(OTHER_TITLE) })).toBeInTheDocument();
-  });
-
-  it("will not fold an arrival into an outcome", async () => {
-    // Same task, same run of notices — but filed and resolved are two different
-    // pieces of news, and one line would report the second as the first.
-    await stream([notice("filed", "aligner"), notice("resolved", "growth", 400)]);
-
-    expect(await screen.findByText("New task")).toBeInTheDocument();
-    expect(screen.getByText("Resolved")).toBeInTheDocument();
+    const rows = within(rail()).getAllByRole("button", { name: /^Open task / });
+    expect(rows[0]).toHaveAccessibleName(new RegExp(TITLE));
   });
 
   it("leaves an agent's own manifest write out of both surfaces", async () => {
@@ -217,9 +238,67 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     expect(await screen.findByText("5 tasks")).toBeInTheDocument();
     // Three rows stand open and the rest are behind one control, so a busy hour
     // costs the same height as a quiet one.
-    expect(within(rail()).getAllByRole("button", { name: /^task / })).toHaveLength(3);
+    expect(within(rail()).getAllByRole("button", { name: /^Open task task / })).toHaveLength(3);
     await userEvent.click(screen.getByRole("button", { name: "Show all 5" }));
-    expect(within(rail()).getAllByRole("button", { name: /^task / })).toHaveLength(5);
+    expect(within(rail()).getAllByRole("button", { name: /^Open task task / })).toHaveLength(5);
+  });
+
+  it("opens the task's own details from its name", async () => {
+    // The row names a task; clicking it should reach that task, not just the
+    // argument about it. A rail whose only target was the thread left the
+    // details — body, status, who it is for — with no way in from here.
+    const onOpenMemory = vi.fn();
+    renderWithSWR(
+      <EventStream roomName={ROOM} onOpenThread={vi.fn()} onOpenMemory={onOpenMemory} />,
+    );
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+    await act(async () => {
+      es.open();
+      es.emit(knowledge(1, "claude-web"));
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: `Open task ${TITLE}` }));
+    expect(onOpenMemory).toHaveBeenCalledWith(TASK);
+  });
+
+  it("keeps the thread its own target beside the task", async () => {
+    // The details and the argument about them are two places, so the row should
+    // not make a reader guess which one the name goes to.
+    const onOpenThread = vi.fn();
+    renderWithSWR(
+      <EventStream roomName={ROOM} onOpenThread={onOpenThread} onOpenMemory={vi.fn()} />,
+    );
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+    await act(async () => {
+      es.open();
+      es.emit(knowledge(1, "claude-web"));
+    });
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: `Open thread for ${TITLE}` }),
+    );
+    expect(onOpenThread).toHaveBeenCalledWith(THREAD);
+  });
+
+  it("falls back to the thread when the room knows no row to open", async () => {
+    // A coordination phase opens its own episode and records no back-link, so
+    // there are no details to reach — the conversation is all there is.
+    const onOpenThread = vi.fn();
+    vi.mocked(fetchMemories).mockResolvedValue([]);
+    renderWithSWR(
+      <EventStream roomName={ROOM} onOpenThread={onOpenThread} onOpenMemory={vi.fn()} />,
+    );
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+    await act(async () => {
+      es.open();
+      es.emit(ping("growth", "m-1"));
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Open task t3aa11bb" }));
+    expect(onOpenThread).toHaveBeenCalledWith(THREAD);
   });
 
   it("orders the rail by what moved last", async () => {
@@ -228,7 +307,7 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
       knowledge(1, "claude-web", 500, OTHER_TASK),
     ]);
 
-    const rows = within(rail()).getAllByRole("button", { name: /flag|legacy store/ });
+    const rows = within(rail()).getAllByRole("button", { name: /^Open task / });
     expect(rows[0]).toHaveAccessibleName(new RegExp(OTHER_TITLE));
   });
 });

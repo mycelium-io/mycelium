@@ -343,7 +343,6 @@ const CHAT_TYPES = new Set(["broadcast", "direct", "announce", "delegate"]);
 const SKIP_TYPES = new Set([
   "memory_changed",
   "coordination_consensus",
-  "consent_request",
   "presence",
 ]);
 

@@ -383,7 +383,7 @@ export function RoomBoard({ roomName, onOpenThread }: Props) {
   const groupBy = view.groupBy;
 
   return (
-    <div className="@container flex h-full min-h-0 flex-col bg-bg">
+    <div data-tour="board" className="@container flex h-full min-h-0 flex-col bg-bg">
       <BoardHeader
         title={title}
         summary={summarize(items)}

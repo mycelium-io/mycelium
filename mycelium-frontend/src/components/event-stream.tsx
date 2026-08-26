@@ -7,21 +7,16 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import {
   fetchL9History,
   fetchMessages,
-  fetchPendingInvites,
-  respondToInvite,
   logFetchError,
-  type PendingInvite,
 } from "@/lib/api";
 import { useRoomAgents, useRoomRowNames, useRoomThreads, type RowNaming, type ThreadOwner } from "@/lib/room-data";
-import { NOTICE_TYPE, PING_TYPE, coalesceActivity, isLiveEpisode, noticeLabel, noticeOf, pingOf, threadShortId } from "@/lib/threads";
+import { NOTICE_TYPE, PING_TYPE, isLiveEpisode, noticeLabel, noticeOf, pingOf, threadShortId } from "@/lib/threads";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomBoard } from "@/components/board/room-board";
-import { ConsentDialog } from "@/components/consent-dialog";
 import { ActivityRail, type ActivityItem } from "@/components/activity-rail";
 import { EpisodeTag } from "@/components/episode-tag";
 import { L9Inspector } from "@/components/l9-inspector";
-import { NegotiationView } from "@/components/negotiation-view";
 import { RoomA2aView } from "@/components/room-a2a";
 import { RoomSlimView } from "@/components/room-slim";
 import { EmptyState } from "@/components/empty-state";
@@ -31,7 +26,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Monogram } from "@/components/ui/monogram";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { ArrowDown, Bot, ChevronDown, ChevronRight, Loader2, MessageSquare, MessagesSquare } from "lucide-react";
+import { ArrowDown, Bot, Loader2, MessageSquare, MessagesSquare } from "lucide-react";
 
 interface Event {
   /** Render key only — synthesized, so a message republished by a status
@@ -60,9 +55,6 @@ interface Event {
   /** The thread a **ping** is about — never the episode the ping itself rode,
    *  which is the room. Null on everything that is not a ping. */
   thread: string | null;
-  /** Every event this row stands for, oldest first, once a burst about one
-   *  subject has been folded into it. Empty on a row that is only itself. */
-  folded: Event[];
   /** Who wrote in the thread, on a ping. The row's own sender is the system
    *  that raised it, which is nobody, so the writer is read from the payload. */
   pingSenders: string[];
@@ -274,7 +266,7 @@ function parseEvent(msg: Record<string, unknown>, room: string): Event {
     }
     case "l9_commit": {
       // Unwrap the L9 commit envelope into the coordination_consensus shape
-      // so NegotiationView can render it.
+      // the channel notice row and the L9 inspector both read.
       const l9env = (raw.l9 as Record<string, unknown> | undefined) ?? {};
       const header = (l9env.header as Record<string, unknown> | undefined) ?? {};
       const payload = (l9env.payload as Record<string, unknown> | undefined) ?? {};
@@ -347,7 +339,6 @@ function parseEvent(msg: Record<string, unknown>, room: string): Event {
     amends,
     edited: typeof msg.edited_at === "string",
     thread,
-    folded: [],
     pingSenders: pingSender ? [pingSender] : [],
     raw,
   };
@@ -366,17 +357,6 @@ function inAThread(event: Event, room: string): boolean {
 }
 
 /**
- * Board events the room narrates, as against the ones it merely records.
- *
- * A task appearing, finishing or stalling is something a person would say out
- * loud, and it reads in sequence with the conversation. A task being picked up
- * or handed back is bookkeeping about who holds what — true, worth having, and
- * not worth interrupting anyone for. The first stays in the feed; the second
- * goes to the rail with the rest of the churn.
- */
-const NARRATED_SUBKINDS = new Set(["filed", "resolved", "blocked", "unblocked"]);
-
-/**
  * Whether this row is the room *doing* something rather than saying it.
  *
  * A room under load raises far more state than speech: a task being worked
@@ -384,14 +364,16 @@ const NARRATED_SUBKINDS = new Set(["filed", "resolved", "blocked", "unblocked"])
  * something anybody wrote. Woven into the feed, that is a changelog with the
  * conversation buried in it — so it is lifted out into {@link ActivityRail},
  * which holds a fixed number of rows however busy the room gets.
+ *
+ * A board notice included, its arrival and its outcome with the rest. Keeping
+ * those two in the feed scattered a task across three places: its filing folded
+ * into a cross-task "New tasks" line, its resolve into a "Resolved" one, and
+ * everything in between onto its rail row — so the row nobody could read as
+ * *created → worked → resolved* was the row the work actually happened on. One
+ * subject, one place, in order.
  */
 function isActivity(event: Event): boolean {
-  if (event.type === PING_TYPE) return true;
-  if (event.type === "l9_knowledge") return true;
-  if (event.type === NOTICE_TYPE) {
-    return !NARRATED_SUBKINDS.has((event.raw.subkind as string) || "filed");
-  }
-  return false;
+  return event.type === PING_TYPE || event.type === "l9_knowledge" || event.type === NOTICE_TYPE;
 }
 
 /**
@@ -556,14 +538,12 @@ function foldAmendment(events: Event[], amendment: Event): Event[] {
   );
 }
 
-export type View = "channel" | "negotiate" | "board" | "network";
-export type NegotiationPhase = "idle" | "negotiating" | "converged" | "rejected";
+export type View = "channel" | "board" | "network";
 
 interface Props {
   roomName: string;
   onMemoryChanged?: () => void;
   onConnectionChange?: (connected: boolean) => void;
-  onNegotiationPhaseChange?: (phase: NegotiationPhase) => void;
   /** Open a memory by key — wired to `[[wikilinks]]` in chat so a message can
    *  link a room's memory and a reader (or agent author) can jump straight to it. */
   onOpenMemory?: (key: string) => void;
@@ -574,15 +554,12 @@ interface Props {
   /** Optional controlled tab (e.g. driven by the onboarding tour). */
   view?: View;
   onViewChange?: (view: View) => void;
-  /** Hold back the consent-request modal (e.g. during the onboarding tour, so
-   *  its backdrop doesn't cover the coached highlights). */
-  suppressInvites?: boolean;
   /** A message to reveal in the channel, arrived at from search. */
   focusMessageId?: string | null;
   onFocusConsumed?: () => void;
 }
 
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, onOpenThread, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onOpenMemory, onOpenThread, view: viewProp, onViewChange, focusMessageId = null, onFocusConsumed }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const connected = useRoomConnected(roomName);
@@ -594,7 +571,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
   const [viewInternal, setViewInternal] = useState<View>("channel");
   const view = viewProp ?? viewInternal;
   const setView = (v: View) => { if (viewProp === undefined) setViewInternal(v); onViewChange?.(v); };
-  const [invites, setInvites] = useState<PendingInvite[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Know which senders are registered agents (to badge their replies) and whom
@@ -713,32 +689,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
       });
   }, [readPage]);
 
-  // Load any consent prompts already open (an @-invite raised before this
-  // client connected). Live ones arrive over SSE below.
-  useEffect(() => {
-    fetchPendingInvites(roomName)
-      .then((open) => setInvites(open.filter((i) => i.status === "pending")))
-      .catch(logFetchError("fetchPendingInvites"));
-  }, [roomName]);
-
-  const respond = (invite: PendingInvite, decision: "accept" | "decline") => {
-    setInvites((prev) => prev.filter((i) => i.id !== invite.id));
-    respondToInvite(roomName, invite.id, decision).catch(logFetchError("respondToInvite"));
-  };
-
   // Live room messages, off the app's one multiplexed connection.
   useRoomStream(roomName, (data) => {
     const msg = data as Record<string, unknown>;
-    // Consent prompts drive the accept/decline dialog, not the feed.
-    if (msg.message_type === "consent_request") {
-      try {
-        const invite = JSON.parse(msg.content as string) as PendingInvite;
-        setInvites((prev) =>
-          prev.some((i) => i.id === invite.id) ? prev : [...prev, invite],
-        );
-      } catch {}
-      return;
-    }
     const event = parseEvent(msg, roomName);
     setEvents(prev => (event.amends ? foldAmendment(prev, event) : [...prev, event]));
     if (event.type === "memory_changed") onMemoryChanged?.();
@@ -755,27 +708,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
 
   // The room's own timeline, split by what it is: a thread's prose is dropped
   // (it is not lost, it is placed, and the pane the ping opens is where it
-  // reads), the churn goes up to the rail, and what is left is the conversation
-  // plus the handful of board moves worth narrating — still folded per task, so
-  // a file and a resolve minutes apart read as one line.
+  // reads), everything the room raised about a task goes up to that task's rail
+  // row, and what is left in the feed is what people actually said.
   const inChannel = useMemo(
     () => events.filter(e => CHANNEL_VIEW_TYPES.has(e.type) && !inAThread(e, roomName)),
     [events, roomName],
   );
 
-  const visible = useMemo(
-    () =>
-      coalesceActivity(
-        inChannel.filter(e => !isActivity(e)),
-        // Narrated notices group by *what happened*, not by which task. Five
-        // tasks filed in the same minute is one thing the room did; the same
-        // task filed and resolved twenty minutes apart is two, and folding
-        // those together would report an outcome as if it were an arrival.
-        e => (e.type === NOTICE_TYPE ? `notice:${(e.raw.subkind as string) || "filed"}` : null),
-        members => ({ ...members[0], folded: members }),
-      ),
-    [inChannel],
-  );
+  const visible = useMemo(() => inChannel.filter(e => !isActivity(e)), [inChannel]);
 
   // What the room has been doing, one entry per task rather than one per frame.
   // No window here: the rail is the room's current state, so a task that has
@@ -795,33 +735,40 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
       .map(([subject, members]) => {
         const latest = members[members.length - 1];
         const { title, episode } = nameActivity(subject, members, threads, rowNames);
+        // The last board move the task made is the state it is standing in —
+        // the one thing about a row worth seeing without opening it.
+        const standing = [...members]
+          .reverse()
+          .find((m) => m.type === NOTICE_TYPE)?.raw.subkind as string | undefined;
         return {
           subject,
           title,
           episode,
-          count: members.length,
+          // A thread nobody's row is bound to has no details to open — the
+          // conversation is the whole of what the room knows about it.
+          memoryKey: subject.startsWith("urn:") ? null : subject,
           actors: actorsOf(members),
           time: latest.time,
+          standing: standing ?? null,
+          updates: members.map((member) => {
+            const { label, detail } = activityLine(member);
+            return { id: member.id, time: member.time, label, detail };
+          }),
           at: Date.parse(latest.at) || 0,
         };
       })
-      .sort((a, b) => b.at - a.at);
+      .sort((a, b) => {
+        // A blocked row is the one thing here that is asking for somebody. The
+        // rail shows three at a time, so leaving it in date order would let a
+        // blocker sit behind "N more" precisely when it is waiting on a human.
+        const stalled = (x: { standing: string | null }) => (x.standing === "blocked" ? 0 : 1);
+        return stalled(a) - stalled(b) || b.at - a.at;
+      });
   }, [inChannel, threads, rowNames]);
 
   // Arriving from search: mark the named message and scroll it into sight once
   // history has landed. The mark outlives the request that carried it — a
   // highlight cleared with the URL parameter would be gone before it was read.
-  // Which activity blocks the reader has opened. Keyed by the block's first
-  // event, which is the one row a growing block keeps — so a block does not
-  // close under someone the moment it absorbs another event.
-  const [openBlocks, setOpenBlocks] = useState<Set<string>>(() => new Set());
-  const toggleBlock = (id: string) =>
-    setOpenBlocks((prev) => {
-      const next = new Set(prev);
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
-
   const [highlight, setHighlight] = useState<string | null>(null);
   const highlightRow = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -917,44 +864,15 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
 
   const channelCount = visible.length;
 
-  // Negotiation phase, derived from the coordination stream. Drives the live
-  // tab dot and (via the callback) the onboarding tour's convergence sync.
-  const phase = useMemo<NegotiationPhase>(() => {
-    let lastTick = -1;
-    let lastConsensus = -1;
-    let consensusBroken = false;
-    events.forEach((e, i) => {
-      if (e.type === "coordination_tick") lastTick = i;
-      if (e.type === "coordination_consensus") {
-        lastConsensus = i;
-        consensusBroken = e.raw.broken === true;
-      }
-    });
-    if (lastConsensus > -1 && lastConsensus > lastTick) return consensusBroken ? "rejected" : "converged";
-    if (lastTick > -1) return "negotiating";
-    return "idle";
-  }, [events]);
-  const negotiating = phase === "negotiating";
-
-  useEffect(() => {
-    onNegotiationPhaseChange?.(phase);
-  }, [phase, onNegotiationPhaseChange]);
-
   return (
     <div className="flex flex-col h-full">
-      <ConsentDialog
-        invite={suppressInvites ? null : (invites[0] ?? null)}
-        onAccept={(invite) => respond(invite, "accept")}
-        onDecline={(invite) => respond(invite, "decline")}
-      />
       <div className="flex items-center gap-3 border-b border-border shrink-0 h-[48px] bg-paper px-4">
         {/* Connection state lives in the shell status bar. */}
         <div className="ml-auto flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
           {([
-            { id: "channel" as const,   label: "Channel",   count: channelCount as number | null, dot: false },
-            { id: "negotiate" as const, label: "Negotiate", count: null,                          dot: negotiating },
-            { id: "board" as const,     label: "Board",     count: null,                          dot: false },
-            { id: "network" as const,   label: "Network",   count: null,                          dot: false },
+            { id: "channel" as const, label: "Channel", count: channelCount as number | null },
+            { id: "board" as const,   label: "Board",   count: null },
+            { id: "network" as const, label: "Network", count: null },
           ]).map(t => {
             // Hold the reveal modifier and each tab wears the key that selects it.
             const active = view === t.id;
@@ -971,7 +889,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
               >
                 {t.label}
                 <KeyBadge action={`pane.${t.id}`} />
-                {t.dot && <span className="inline-block size-1.5 rounded-full bg-accent" aria-label="live" />}
                 {t.count !== null && (
                   <span className={`text-micro tabular ${active ? "text-accent" : "text-muted-foreground"}`}>
                     {t.count}
@@ -1001,22 +918,27 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
             <L9Inspector roomName={roomName} />
           </div>
         </div>
-      ) : view === "negotiate" ? (
-        <div className="flex-1 min-h-0">
-          <NegotiationView events={events} />
-        </div>
       ) : (
       <div className="relative flex flex-1 min-h-0 flex-col">
-      {historyLoaded && <ActivityRail items={activity} onOpenThread={onOpenThread} />}
+      {historyLoaded && (
+        <ActivityRail items={activity} onOpenThread={onOpenThread} onOpenMemory={onOpenMemory} />
+      )}
       <ScrollArea className="flex-1 min-h-0" viewportRef={scrollRef}>
         {!historyLoaded ? (
           <ChannelSkeleton />
         ) : visible.length === 0 ? (
+          // A room whose every message is task-scoped has a full rail and an
+          // empty feed, and "no messages yet" is then a false statement about a
+          // room with hundreds of them. Say where the talking went instead.
           <EmptyState
             className="h-full"
             icon={MessagesSquare}
-            title="No messages yet"
-            description="Post a position or @-mention an agent to get the room talking."
+            title={activity.length ? "The talking is inside the tasks" : "No messages yet"}
+            description={
+              activity.length
+                ? "Every message here belongs to a task. Open one from the rail above to read it."
+                : "Post a position or @-mention an agent to get the room talking."
+            }
           />
         ) : (
         <div className="py-3">
@@ -1034,87 +956,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
               // Coordination + plan lifecycle events render as slim, centered
               // system notices — quiet dividers woven into the conversation,
               // not loud rows. Chat messages group under one sender header.
-              // Everything the room raised about one task over a window, as one
-              // evolving line. Tucked away, not hidden: it opens to the events
-              // it stands for, and its subject still opens the thread.
-              if (ev.folded.length > 1) {
-                const subkind = (ev.raw.subkind as string) || "filed";
-                const label = noticeLabel(subkind, ev.raw.kind as string | undefined);
-                // "New task" over five of them reads as one of them.
-                const heading = subkind === "filed" ? "New tasks" : label;
-                // Two names and a remainder: enough to recognise the run, never
-                // enough to become the line.
-                const NAMED = 2;
-                const named = ev.folded.slice(0, NAMED);
-                const rest = ev.folded.length - named.length;
-                const who = actorsOf(ev.folded);
-                const open = openBlocks.has(ev.id);
-                return (
-                  <Fragment key={ev.id}>
-                    <SystemNotice
-                      time={ev.time}
-                      dot={
-                        subkind === "resolved" || subkind === "filed" || subkind === "unblocked"
-                          ? "var(--green)"
-                          : subkind === "blocked"
-                            ? "var(--red)"
-                            : "var(--accent)"
-                      }
-                      label={heading}
-                      trailing={
-                        <button
-                          type="button"
-                          onClick={() => toggleBlock(ev.id)}
-                          aria-expanded={open}
-                          aria-label={`${open ? "Hide" : "Show"} ${ev.folded.length} updates`}
-                          className="inline-flex flex-shrink-0 items-center gap-0.5 rounded px-1 text-faint transition-colors hover:bg-surface-2 hover:text-muted-foreground"
-                        >
-                          {open ? (
-                            <ChevronDown className="size-3" strokeWidth={1.9} />
-                          ) : (
-                            <ChevronRight className="size-3" strokeWidth={1.9} />
-                          )}
-                          {open ? "hide" : "details"}
-                        </button>
-                      }
-                    >
-                      <span className="truncate">{named.map((m) => m.content).join(" · ")}</span>
-                      {rest > 0 && <span className="flex-shrink-0 text-faint">+{rest}</span>}
-                      {who.length > 0 && (
-                        <span className="hidden flex-shrink-0 text-faint lg:inline">
-                          · {who.slice(0, 2).map((h) => `@${h}`).join(", ")}
-                          {who.length > 2 && ` +${who.length - 2}`}
-                        </span>
-                      )}
-                    </SystemNotice>
-                    {open && (
-                      <ul className="mb-1 ml-[1.75rem] flex flex-col gap-1 border-l border-border py-1 pl-3 pr-5 text-micro text-muted-foreground">
-                        {ev.folded.map((member) => (
-                          <li key={member.id} className="flex items-center gap-2">
-                            <span className="tabular flex-shrink-0 text-faint">
-                              {member.time.slice(0, 5)}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => member.thread && onOpenThread?.(member.thread)}
-                              disabled={!member.thread || !onOpenThread}
-                              className="inline-flex min-w-0 items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
-                            >
-                              <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
-                              <span className="truncate">{member.content}</span>
-                            </button>
-                            {activityLine(member).detail && (
-                              <span className="flex-shrink-0 text-faint">
-                                {activityLine(member).detail}
-                              </span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </Fragment>
-                );
-              }
               if (ev.type === PING_TYPE && ev.thread) {
                 const thread = ev.thread;
                 const shortId = threadShortId(thread) ?? "thread";

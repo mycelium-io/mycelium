@@ -38,7 +38,15 @@ from mycelium.oidc import (
     device_code_login,
     discover,
 )
-from mycelium.tokens import StoredToken, clear_token, load_token, save_token, token_path
+from mycelium.tokens import (
+    DEFAULT_LEEWAY_S,
+    StoredToken,
+    clear_token,
+    format_span,
+    load_token,
+    save_token,
+    token_path,
+)
 
 console = Console()
 
@@ -195,6 +203,10 @@ def _report(
                     "client_id": token.client_id,
                     "expires_at": token.expires_at,
                     "refreshable": bool(token.refresh_token),
+                    # Null means the issuer reported no refresh_expires_in, not
+                    # that renewal is unlimited.
+                    "refresh_expires_at": token.refresh_expires_at,
+                    "renewal_leeway_s": DEFAULT_LEEWAY_S,
                     "identity": config.identity.name,
                 },
                 indent=2,
@@ -204,11 +216,26 @@ def _report(
 
     console.print(f"[green]Signed in as[/green] [cyan]@{shown}[/cyan] [dim]({token.issuer})[/dim]")
     if remaining is not None:
-        console.print(f"[dim]Access token valid for {int(remaining // 60)} min[/dim]")
-    if not token.refresh_token:
+        console.print(f"[dim]Access token valid for {format_span(remaining)}.[/dim]")
+    if token.refresh_token:
+        # A short access-token lifetime reads as "sign in again in four minutes"
+        # unless the renewal is stated with it. There is no schedule to state:
+        # the next call that needs the token is what renews it.
         console.print(
-            "[dim]No refresh token was issued; add the 'offline_access' scope "
-            "if you want the session renewed automatically.[/dim]"
+            f"[dim]It renews on demand — the next command that needs it swaps in a fresh "
+            f"one once under {format_span(DEFAULT_LEEWAY_S)} is left. Nothing renews in the "
+            "background.[/dim]"
+        )
+        renewal_left = token.refresh_expires_in()
+        if renewal_left is not None:
+            console.print(
+                f"[dim]Signing in again is due in {format_span(renewal_left)}, when the "
+                "refresh token itself expires.[/dim]"
+            )
+    else:
+        console.print(
+            "[dim]No refresh token was issued, so the session ends when this access token "
+            "does; add the 'offline_access' scope if you want it renewed automatically.[/dim]"
         )
     console.print(f"[dim]Session cached at {token_path()} (mode 0600).[/dim]")
 
@@ -335,6 +362,7 @@ def login(
         client_id=resolved_client_id,
         refresh_token=grant.refresh_token,
         expires_at=grant.expires_at,
+        refresh_expires_at=grant.refresh_expires_at,
         token_endpoint=meta.token_endpoint,
         scope=grant.scope or resolved_scope,
     )
