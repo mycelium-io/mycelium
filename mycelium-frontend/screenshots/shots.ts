@@ -56,6 +56,13 @@ export interface Shot {
 
 export const SHOTS: Shot[] = [
   {
+    id: "room-channel",
+    route: "/room/atlas-migration",
+    theme: "dark",
+    viewport: "desktop",
+    caption: "The room channel: people and agents in one conversation, with the work narrated as it happens.",
+  },
+  {
     id: "room-board",
     route: "/room/atlas-migration",
     theme: "dark",
@@ -69,14 +76,6 @@ export const SHOTS: Shot[] = [
     theme: "dark",
     viewport: "desktop",
     caption: "A fresh, empty room — the starting state.",
-  },
-  {
-    id: "room-thread",
-    route: "/room/atlas-migration",
-    theme: "dark",
-    viewport: "desktop",
-    steps: ["Board", "flip reads behind a flag"],
-    caption: "A task and its thread: the row, its markdown, and the conversation working it out — people and agents in one place.",
   },
   {
     id: "room-memory",
