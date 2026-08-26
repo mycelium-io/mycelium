@@ -96,7 +96,11 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
     <section
       aria-label={`Thread ${shortId}`}
       data-thread={target.episode}
-      className="flex min-h-0 flex-1 flex-col bg-bg"
+      // min-w-0 + overflow-hidden so the pane shrinks to its panel track rather
+      // than letting content set a floor and spill under the inspector rail —
+      // the same bounding the room surface has. Without it a wide message or a
+      // long metadata value pushes the whole section past its right edge.
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-bg"
     >
       <header className="flex h-[48px] shrink-0 items-center gap-2 border-b border-border bg-paper px-4">
         <MessageSquare className="size-3.5 shrink-0 text-accent" strokeWidth={1.9} />
