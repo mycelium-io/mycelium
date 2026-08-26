@@ -13,6 +13,10 @@ import { useRoomAgents, useRoomRowNames, useRoomThreads, type RowNaming, type Th
 import { NOTICE_TYPE, PING_TYPE, isLiveEpisode, noticeLabel, noticeOf, pingOf, threadShortId } from "@/lib/threads";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { MarkdownContent } from "@/components/markdown-content";
+import { ChatFindBar } from "@/components/chat-find-bar";
+import { ChatMinimap, type MinimapTick } from "@/components/chat-minimap";
+import { HighlightText } from "@/components/ui/highlight-text";
+import { hasMatch, stepIndex } from "@/lib/chat-search";
 import { RoomBoard } from "@/components/board/room-board";
 import { ActivityRail, type ActivityItem } from "@/components/activity-rail";
 import { EpisodeTag } from "@/components/episode-tag";
@@ -62,6 +66,23 @@ interface Event {
 }
 
 const CHAT_TYPES = new Set(["broadcast", "direct", "announce", "delegate"]);
+
+/** Stable empties: find writes these back on every close, and a fresh array
+ *  each time would re-run the effects that read them. */
+const NO_MATCHES: string[] = [];
+const NO_TICKS: MinimapTick[] = [];
+
+/** The rendered row for a message, found by the id it carries in the DOM.
+ *  A scan rather than a selector: an event id is synthesized, and escaping one
+ *  into an attribute selector is a sharper edge than walking a handful of
+ *  nodes. */
+function rowNode(root: HTMLElement | null, id: string): HTMLElement | null {
+  if (!root) return null;
+  for (const node of root.querySelectorAll<HTMLElement>("[data-event-id]")) {
+    if (node.dataset.eventId === id) return node;
+  }
+  return null;
+}
 
 // The L9 "raise-up" whitelist: message types promoted from the L9 inspector
 // into the primary channel/chat surface. This must mirror
@@ -557,9 +578,13 @@ interface Props {
   /** A message to reveal in the channel, arrived at from search. */
   focusMessageId?: string | null;
   onFocusConsumed?: () => void;
+  /** Bumped by the room's ⌘F binding to open (or re-focus) the find bar. The
+   *  page owns the key because it owns the pane switch that has to happen
+   *  first; the channel owns the search itself. */
+  openFind?: number;
 }
 
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onOpenMemory, onOpenThread, view: viewProp, onViewChange, focusMessageId = null, onFocusConsumed }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onOpenMemory, onOpenThread, view: viewProp, onViewChange, focusMessageId = null, onFocusConsumed, openFind = 0 }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const connected = useRoomConnected(roomName);
@@ -779,6 +804,102 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     onFocusConsumed?.();
   }, [focusMessageId, onFocusConsumed]);
 
+  // ── Find in the channel ────────────────────────────────────────────────
+  //
+  // ⌘F is taken off the browser here rather than left alone, because the
+  // browser's own find reads the DOM and the channel is a window onto a paged
+  // feed: it would search whatever happened to be mounted, silently, with no
+  // way to say so. This one searches the messages the channel has actually
+  // loaded, says which ones, and can walk between them.
+  const [findOpen, setFindOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  // The hit the reader is standing on, held as the message rather than as an
+  // ordinal: a page of older messages lands at the *front* of the list, and an
+  // ordinal would then be pointing at somebody else's sentence. Null means they
+  // have not stepped yet and get the newest hit — the channel reads
+  // oldest-first, so the first match in the room is the furthest thing from
+  // where they were looking when they pressed the key.
+  const [standing, setStanding] = useState<string | null>(null);
+  const findInput = useRef<HTMLInputElement>(null);
+  const [ticks, setTicks] = useState<MinimapTick[]>(NO_TICKS);
+
+  const needle = query.trim();
+  const matches = useMemo(() => {
+    if (!findOpen || !needle) return NO_MATCHES;
+    // System notices are the feed's own narration, not what anyone said, and
+    // several carry an envelope rather than prose. Find searches messages.
+    return visible
+      .filter(e => !SYSTEM_TYPES.has(e.type) && (hasMatch(e.content, needle) || hasMatch(e.sender, needle)))
+      .map(e => e.id);
+  }, [findOpen, needle, visible]);
+
+  const matchSet = useMemo(() => new Set(matches), [matches]);
+  // Resolved at read time rather than corrected in an effect, so a message
+  // arriving or an amendment folding away cannot leave a stale count on screen
+  // for a frame. A standing hit that is no longer in the list falls back to the
+  // newest one rather than to nothing.
+  const standingAt = standing === null ? -1 : matches.indexOf(standing);
+  const position = matches.length === 0 ? null : standingAt === -1 ? matches.length - 1 : standingAt;
+  const activeId = position === null ? null : matches[position];
+
+  useEffect(() => {
+    if (!openFind) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFindOpen(true);
+  }, [openFind]);
+
+  // Focus follows the bar opening, and a second ⌘F selects what is in it, so
+  // the key that opens a search is also the key that starts a new one.
+  useEffect(() => {
+    if (!findOpen) return;
+    const input = findInput.current;
+    input?.focus();
+    input?.select();
+  }, [findOpen, openFind]);
+
+  const closeFind = useCallback(() => setFindOpen(false), []);
+
+  const stepMatch = (delta: 1 | -1) => {
+    if (matches.length === 0) return;
+    setStanding(matches[stepIndex(position ?? 0, matches.length, delta)]);
+  };
+
+  useEffect(() => {
+    if (!activeId) return;
+    rowNode(scrollRef.current, activeId)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [activeId]);
+
+  // Where each hit sits in the whole scrollable feed, as a fraction of it —
+  // measured off the live boxes rather than estimated from row counts, since a
+  // one-line reply and a forty-line write-up are both one message. Remeasured
+  // whenever the feed changes shape under it.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !findOpen || matches.length === 0) {
+      setTicks(NO_TICKS);
+      return;
+    }
+    const measure = () => {
+      const base = el.getBoundingClientRect().top;
+      const height = el.scrollHeight || 1;
+      const next: MinimapTick[] = [];
+      for (const id of matches) {
+        const row = rowNode(el, id);
+        if (!row) continue;
+        const top = row.getBoundingClientRect().top - base + el.scrollTop;
+        next.push({ id, top: Math.min(1, Math.max(0, top / height)) });
+      }
+      setTicks(next);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    // The content, too: a message rendering taller moves every hit below it
+    // without changing the viewport at all.
+    if (el.firstElementChild) observer.observe(el.firstElementChild);
+    return () => observer.disconnect();
+  }, [findOpen, matches, visible]);
+
   // The feed follows new messages only while the reader is on the tail; scroll
   // up and it holds still. A jump-back button carries the count of what landed
   // meanwhile, so leaving the tail doesn't read as a quiet room.
@@ -853,9 +974,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // over history they scrolled up to read.
   useEffect(() => {
     lastVisible.current = visible[visible.length - 1]?.id ?? null;
-    if (highlight || !atBottomRef.current) return;
+    // A live message must not pull the view off the hit the reader stepped to,
+    // any more than it may off a message they arrived at from search.
+    if (highlight || activeId || !atBottomRef.current) return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [visible, highlight]);
+  }, [visible, highlight, activeId]);
 
   useEffect(() => {
     if (!highlight) return;
@@ -920,10 +1043,28 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
         </div>
       ) : (
       <div className="relative flex flex-1 min-h-0 flex-col">
+      {findOpen && (
+        <ChatFindBar
+          query={query}
+          onQueryChange={value => {
+            setQuery(value);
+            // A new query is a new search: back to the newest hit rather than
+            // to wherever the last one had got to.
+            setStanding(null);
+          }}
+          count={matches.length}
+          position={position}
+          onStep={stepMatch}
+          onClose={closeFind}
+          inputRef={findInput}
+          partial={!reachedStart}
+        />
+      )}
       {historyLoaded && (
         <ActivityRail items={activity} onOpenThread={onOpenThread} onOpenMemory={onOpenMemory} />
       )}
-      <ScrollArea className="flex-1 min-h-0" viewportRef={scrollRef}>
+      <div className="relative flex-1 min-h-0">
+      <ScrollArea className="h-full" viewportRef={scrollRef}>
         {!historyLoaded ? (
           <ChannelSkeleton />
         ) : visible.length === 0 ? (
@@ -1132,13 +1273,17 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
               const color = isAgent ? undefined : "var(--avatar-neutral)";
               const marked = highlight !== null && ev.messageId === highlight;
               const owner = isAgent ? agentOwners.get(ev.sender) : undefined;
+              // The row's own share of the open find: whether to mark its prose
+              // at all, and whether it is the hit being stood on.
+              const hit = needle && matchSet.has(ev.id) ? { query: needle, active: ev.id === activeId } : undefined;
               return (
                 <div
                   key={ev.id}
+                  data-event-id={ev.id}
                   ref={marked ? highlightRow : undefined}
                   className={`group relative flex gap-3 px-5 hover:bg-hairline ${grouped ? "py-0.5" : "mt-3 pt-1 first:mt-0"} ${
                     marked ? "bg-accent/15" : ""
-                  }`}
+                  } ${hit?.active ? "bg-yellow/10 ring-1 ring-inset ring-yellow/40" : ""}`}
                 >
                   {/* Timestamp low-signal: right gutter, hover-revealed. */}
                   <span className="pointer-events-none absolute right-5 top-1.5 text-micro tabular text-faint opacity-0 transition-opacity group-hover:opacity-100">
@@ -1158,7 +1303,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                     {!grouped && (
                       <div className="flex items-center gap-1.5 pr-12">
                         <span className="text-label font-semibold text-text truncate">
-                          {ev.sender}
+                          <HighlightText text={ev.sender} highlight={hit} />
                         </span>
                         {isAgent && (
                           <Bot aria-label="agent" className="size-3 flex-shrink-0 text-accent" />
@@ -1170,7 +1315,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                         )}
                       </div>
                     )}
-                    <MarkdownContent className="contrast text-body leading-relaxed" onLinkClick={onOpenMemory}>
+                    <MarkdownContent
+                      className="contrast text-body leading-relaxed"
+                      onLinkClick={onOpenMemory}
+                      highlight={hit}
+                    >
                       {ev.content}
                     </MarkdownContent>
                     {ev.edited && (
@@ -1185,6 +1334,10 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
         </div>
         )}
       </ScrollArea>
+      {findOpen && ticks.length > 0 && (
+        <ChatMinimap viewportRef={scrollRef} ticks={ticks} activeId={activeId} onJump={setStanding} />
+      )}
+      </div>
       {!atBottom && visible.length > 0 && (
         <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
           <Button
