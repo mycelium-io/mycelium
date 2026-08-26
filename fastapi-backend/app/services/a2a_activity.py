@@ -25,6 +25,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from app.services.agent_registry import norm_handle
+
 #: Exchanges kept per room. The pane shows a live tail, not a history.
 RING = 50
 
@@ -103,10 +105,6 @@ def _preview(text: str) -> str:
     return cleaned if len(cleaned) <= PREVIEW_CHARS else cleaned[: PREVIEW_CHARS - 1] + "…"
 
 
-def _norm(handle: str | None) -> str:
-    return (handle or "").strip().lstrip("@").lower()
-
-
 def record_outbound(
     room: str,
     handle: str,
@@ -120,7 +118,7 @@ def record_outbound(
     duration_ms: int | None = None,
 ) -> A2aExchange:
     """Record a call this hub made to a registered agent's remote endpoint."""
-    handle = _norm(handle)
+    handle = norm_handle(handle) or handle
     at = datetime.now(UTC)
     exchange = A2aExchange(
         id=f"a2a-{next(_ids)}",
@@ -130,7 +128,7 @@ def record_outbound(
         status=status,
         at=at,
         endpoint=endpoint,
-        peer=_norm(peer) or None,
+        peer=norm_handle(peer),
         prompt=_preview(prompt),
         reply=_preview(reply),
         detail=detail,
@@ -164,7 +162,7 @@ def record_inbound(
     exchange = A2aExchange(
         id=f"a2a-{next(_ids)}",
         room=room,
-        handle=_norm(handle),
+        handle=norm_handle(handle) or handle,
         direction="inbound",
         status=status,
         at=at,
@@ -198,7 +196,7 @@ def recent(room: str, limit: int = RING) -> list[A2aExchange]:
 def agent_stats(room: str, handle: str) -> AgentStats:
     """Lifetime call counters for one bridged agent (zeroed when it has none)."""
     with _lock:
-        return _state(room).agents.get(_norm(handle), AgentStats())
+        return _state(room).agents.get(norm_handle(handle) or handle, AgentStats())
 
 
 def totals(room: str) -> RoomTotals:

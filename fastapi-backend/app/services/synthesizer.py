@@ -61,7 +61,6 @@ from app.config import settings
 # Reuse the aligner's manifest-kind gate and handle-fold implementations.
 from app.services import l9
 from app.services.aligner import _norm, _registered_engine_kind
-from app.services.l9_slim import serialize_content
 
 if TYPE_CHECKING:
     from app.services.in_memory_store import StoredMessage
@@ -477,13 +476,7 @@ class SynthesizerEngine:
             topic=l9.topic_urn(room),
             payload_type="message",
         )
-        content = serialize_content(env, extra={"content": text})
-        try:
-            await managed.channel.send(env, extra={"content": text})
-        except Exception:
-            logger.warning("synthesizer failed to broadcast message on room %s", room)
-        if managed.persister is not None:
-            managed.persister.ingest_local(env, content)
+        await managed.post(env, text)
 
     async def _write_summary(
         self, room: str, summary: str, created_by: str, cursor: dict[str, str] | None

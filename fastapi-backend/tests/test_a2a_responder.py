@@ -28,12 +28,15 @@ def _register_a2a(
     card: str = "https://remote.example",
     auth_env: str | None = None,
     allow_from: list[str] | None = None,
+    owner: str | None = None,
 ) -> None:
     manifest: dict = {"adapter": "a2a", "a2a_card": card, "description": "does research"}
     if auth_env:
         manifest["a2a_auth_env"] = auth_env
     if allow_from is not None:
         manifest["allow_from"] = allow_from
+    if owner is not None:
+        manifest["owner"] = owner
     write_memory_file(
         get_room_dir(_ROOM), f"agents/{handle}", yaml.safe_dump(manifest), created_by="web-ui"
     )
@@ -260,7 +263,7 @@ async def test_failed_call_is_recorded_with_its_reason(monkeypatch):
     assert a2a_activity.totals(_ROOM).outbound_failed == 1
 
 
-# ── Phase 1 correctness: allow_from, message_id, thread_key, auth_env ──────
+# ── Correctness: allow_from, message_id, thread_key, auth_env ───────────────
 
 
 @pytest.mark.asyncio
@@ -286,6 +289,51 @@ async def test_allow_from_blocks_unlisted_sender(monkeypatch):
 
     assert calls == []
     assert channel.sent == []
+
+
+@pytest.mark.asyncio
+async def test_owner_bypasses_allow_from_gate(monkeypatch):
+    """The agent owner must always be able to summon, even with a restrictive allow_from."""
+    _register_a2a(allow_from=["avery"], owner="selina")
+    responder, channel, _persister, calls = _responder(monkeypatch)
+
+    # "selina" is the owner but not in allow_from — must still go through.
+    responder.handle_summon(_ROOM, "researcher", _summon_envelope("selina"), [], "owner summon")
+    await _drain(responder)
+
+    assert len(calls) == 1
+    assert channel.sent
+
+
+@pytest.mark.asyncio
+async def test_session_qualified_sender_passes_allow_from(monkeypatch):
+    """A sender carrying a #session suffix must be treated as their bare handle."""
+    _register_a2a(allow_from=["avery"])
+    responder, channel, _persister, calls = _responder(monkeypatch)
+
+    # "avery#abc123" is avery with a session qualifier — must pass the gate.
+    responder.handle_summon(
+        _ROOM, "researcher", _summon_envelope("avery#abc123"), [], "session summon"
+    )
+    await _drain(responder)
+
+    assert len(calls) == 1
+    assert channel.sent
+
+
+@pytest.mark.asyncio
+async def test_session_qualified_owner_passes_allow_from(monkeypatch):
+    """The owner with a #session suffix must still bypass the allow_from gate."""
+    _register_a2a(allow_from=["avery"], owner="selina")
+    responder, channel, _persister, calls = _responder(monkeypatch)
+
+    responder.handle_summon(
+        _ROOM, "researcher", _summon_envelope("selina#xyz999"), [], "owner session"
+    )
+    await _drain(responder)
+
+    assert len(calls) == 1
+    assert channel.sent
 
 
 @pytest.mark.asyncio
@@ -355,7 +403,6 @@ async def test_threads_are_keyed_by_summoner(monkeypatch):
 @pytest.mark.asyncio
 async def test_declared_but_missing_auth_env_fails_closed(monkeypatch):
     """If auth_env is declared but the env var is absent, the call must not proceed."""
-    # auth_env declared, but NOT set in the environment.
     _register_a2a(auth_env="MISSING_TOKEN_VAR")
     monkeypatch.delenv("MISSING_TOKEN_VAR", raising=False)
     responder, channel, _persister, calls = _responder(monkeypatch)
@@ -363,10 +410,27 @@ async def test_declared_but_missing_auth_env_fails_closed(monkeypatch):
     responder.handle_summon(_ROOM, "researcher", _summon_envelope("avery"), [], "hello")
     await _drain(responder)
 
-    # Must not reach the remote.
     assert calls == []
     assert channel.sent == []
-    # And the failure must be visible in the activity log.
+    from app.services import a2a_activity
+
+    exchange = a2a_activity.recent(_ROOM)[-1]
+    assert exchange.status == "error"
+    assert "auth_env" in (exchange.detail or "")
+
+
+@pytest.mark.asyncio
+async def test_declared_but_empty_auth_env_fails_closed(monkeypatch):
+    """An auth_env var that is present but empty must also fail closed."""
+    _register_a2a(auth_env="EMPTY_TOKEN_VAR")
+    monkeypatch.setenv("EMPTY_TOKEN_VAR", "")
+    responder, channel, _persister, calls = _responder(monkeypatch)
+
+    responder.handle_summon(_ROOM, "researcher", _summon_envelope("avery"), [], "hello")
+    await _drain(responder)
+
+    assert calls == []
+    assert channel.sent == []
     from app.services import a2a_activity
 
     exchange = a2a_activity.recent(_ROOM)[-1]

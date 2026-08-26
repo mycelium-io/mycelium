@@ -149,6 +149,50 @@ class ManagedRoomChannel:
     # empty under the PSK default, where the moderator is the single member.
     custody: dict[str, CustodialSession] = field(default_factory=dict)
 
+    async def post(
+        self,
+        envelope: L9,
+        text: str,
+        *,
+        list_write: bool = False,
+        raise_on_send_failure: bool = False,
+    ) -> None:
+        """Serialize *envelope*, broadcast it, and ingest locally.
+
+        This is the canonical one-liner that replaces the repeated
+        ``serialize_content → channel.send → persister.ingest_local`` sequence
+        in the bridge, server, aligner, and synthesizer. The caller builds the
+        L9 envelope (since kind/recipients/payload vary per call site); this
+        method owns the three mechanical steps that follow it.
+
+        Args:
+            envelope: A fully constructed L9 envelope from :func:`l9.build_envelope`.
+            text: The human-readable message body, sent as the ``content`` extra.
+            list_write: Passed through to ``persister.ingest_local``. Set
+                ``True`` for agent replies that must appear in the in-memory
+                store list; ``False`` (default) for broker messages that ride
+                the transcript only.
+            raise_on_send_failure: When ``True``, re-raise after logging if
+                ``channel.send`` fails, so the caller can detect the failure and
+                skip waiting for a reply that will never arrive. When ``False``
+                (default) the failure is logged and local ingest still runs —
+                best-effort broadcast with a durable local record.
+        """
+        content = serialize_content(envelope, extra={"content": text})
+        try:
+            await self.channel.send(envelope, extra={"content": text})
+        except Exception as exc:
+            logger.warning(
+                "room %s: failed to broadcast envelope %s: %s",
+                self.room,
+                getattr(getattr(envelope, "header", None), "message", None),
+                exc,
+            )
+            if raise_on_send_failure:
+                raise
+        if self.persister is not None:
+            self.persister.ingest_local(envelope, content, list_write=list_write)
+
 
 @dataclass
 class HumanPublishResult:
