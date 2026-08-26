@@ -14,6 +14,32 @@ export function memoryValueText(value: unknown): string {
   return String(value);
 }
 
+/** First meaningful line of some text, as a title: skips blanks and `---`,
+ *  drops a leading heading marker, capped in length. */
+export function firstLine(text: string): string {
+  const line = text.split("\n").map(l => l.trim()).find(l => l && !l.startsWith("---"));
+  return (line ?? "").replace(/^#+\s*/, "").slice(0, 120);
+}
+
+/** What a memory is called: an explicit `title` in its structured value, else the
+ *  first line of its prose, read whichever way the store hands the body over
+ *  (`{text:…}`, a bare string, or `content_text`), else its key. One derivation,
+ *  so a task named on the board and named in the channel never disagree (#889). */
+export function memoryTitle(memory: Memory): string {
+  const value = memory.value;
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const title = (value as Record<string, unknown>).title;
+    if (typeof title === "string" && title.trim()) return title.trim();
+  }
+  const body =
+    typeof value === "string"
+      ? value
+      : value && typeof value === "object" && typeof (value as { text?: unknown }).text === "string"
+        ? (value as { text: string }).text
+        : (memory.content_text ?? memory.key);
+  return firstLine(body) || memory.key;
+}
+
 // The hovercard shows an excerpt, not a rendered document: markdown syntax is
 // flattened to the text it decorates so a cut-off construct can't leave a
 // dangling marker on screen.

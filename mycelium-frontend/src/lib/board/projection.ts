@@ -24,6 +24,7 @@ import type { PresenceMember } from "@/lib/api";
 import { ASSIGNMENT_FIELD, DEFAULT_TTL_MINUTES, ASSIGNABLE_NAMESPACES, assignmentOf } from "./assignment";
 import type { LiveItem } from "./item";
 import { memoryHref } from "@/lib/memory-routes";
+import { memoryTitle } from "@/lib/memory-preview";
 
 /** Namespaces whose memories read as coordination state rather than prose. */
 const LIVE_NAMESPACES = ["decisions", "status", "work", "failed"];
@@ -107,12 +108,7 @@ function memoryItem(memory: Memory, room: string): LiveItem {
   delete custom.text;
   delete custom.content;
 
-  const title =
-    typeof custom.title === "string"
-      ? custom.title
-      : typeof value === "string"
-        ? firstLine(value)
-        : firstLine(memory.content_text ?? memory.key);
+  const title = memoryTitle(memory);
 
   const derivedStatus = namespace === "decisions" ? "resolved" : "open";
 
@@ -203,11 +199,6 @@ function agentItem(agent: AgentSummary, presence: PresenceMember, now: string): 
       ttl_minutes: DEFAULT_TTL_MINUTES,
     },
   };
-}
-
-function firstLine(text: string): string {
-  const line = text.split("\n").map(l => l.trim()).find(l => l && !l.startsWith("---"));
-  return (line ?? "").replace(/^#+\s*/, "").slice(0, 120);
 }
 
 export interface ProjectionInput {
