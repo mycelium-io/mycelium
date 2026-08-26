@@ -169,9 +169,15 @@ jobs:
       - name: Start mycelium hub (SLIM node + backend)
         run: |
           mycelium init --api-url http://localhost:8000 2>/dev/null || true
-          # Pre-create dirs and open permissions so Docker container user can write
+          # Pre-create the rooms dir and set a default ACL so every future
+          # subdirectory created by the Docker backend (UID 1000 = packer on GH
+          # runners) is automatically world-writable. Without this, `mycelium
+          # agent create` fails writing agent manifests because new room dirs
+          # are owned by packer, not the runner user.
           mkdir -p ~/.mycelium/rooms
           chmod -R 777 ~/.mycelium
+          sudo setfacl -R -d -m o::rwx ~/.mycelium 2>/dev/null || \
+            echo "setfacl unavailable — using chmod loop fallback"
           if [ "$BUILD_FROM_SOURCE" = "true" ]; then
             mycelium up --build
           else
@@ -190,9 +196,8 @@ jobs:
             fi
             sleep 2
           done
-          # Fix ownership of any dirs created by the container's mycelium user
-          # (backend writes rooms/ through the bind mount as a different uid)
-          sudo chown -R "$USER" ~/.mycelium || true
+          # Fix any dirs the backend created before setfacl took effect
+          sudo chown -R "$USER" ~/.mycelium 2>/dev/null || true
           chmod -R 777 ~/.mycelium || true
 
       - name: Configure mycelium CLI
