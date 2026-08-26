@@ -517,7 +517,7 @@ function BoardHeader(props: {
   };
 
   return (
-    <header className={cn("shrink-0 border-b border-border px-5 pt-4", !showOptions && "pb-2.5")}>
+    <header className={cn("shrink-0 border-b border-border px-3 pt-4 sm:px-5", !showOptions && "pb-2.5")}>
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h2 className="truncate font-serif text-display italic leading-tight text-text">{props.title}</h2>
@@ -526,13 +526,16 @@ function BoardHeader(props: {
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <div className="flex items-center gap-0.5 rounded-lg bg-surface p-0.5">
+        {/* Four segments that are read as one control, so they scroll together
+            rather than wrapping: a segment broken across two lines stops
+            reading as a segment, and "Needs you" is two words. */}
+        <div className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg bg-surface p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {attentionFilters.map(attentionFilter => (
             <button
               key={attentionFilter}
               onClick={() => props.onAttentionFilter(attentionFilter)}
               className={cn(
-                "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-label transition-colors",
+                "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1 text-label transition-colors",
                 props.attentionFilter === attentionFilter ? "bg-elevated text-text shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-text",
               )}
             >

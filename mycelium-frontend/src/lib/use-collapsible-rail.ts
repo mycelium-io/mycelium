@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { usePanelRef, type PanelImperativeHandle, type PanelSize } from "react-resizable-panels";
 import { COLLAPSED_THRESHOLD_PX } from "@/lib/panel-layout";
+import { useNarrowerThan } from "@/lib/use-viewport";
 
 interface Options {
   /** Viewport width below which the rail folds itself away. */
@@ -26,41 +27,6 @@ interface Rail {
   size: string;
   /** Hand to the same panel's `onResize`. */
   onResize: (size: PanelSize) => void;
-}
-
-/** How long the window has to hold still before a rail acts on its width. A
- *  drag across the fold is a stream of widths, and the panel group measures
- *  itself against the one it has settled on, not the one mid-flight. */
-export const SETTLE_MS = 150;
-
-/** True while the settled window is narrower than `width`. Reports "wide" on
- *  the server and through hydration, then the real answer — which is also what
- *  makes a page loaded on a narrow window fold its rails on arrival. */
-function useNarrowerThan(width: number): boolean {
-  const query = `(max-width: ${width - 1}px)`;
-  const matches = useCallback(
-    () => typeof window !== "undefined" && !!window.matchMedia && window.matchMedia(query).matches,
-    [query],
-  );
-  const [narrow, setNarrow] = useState(matches);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const media = window.matchMedia(query);
-    let settle = 0;
-    const onChange = () => {
-      clearTimeout(settle);
-      settle = window.setTimeout(() => setNarrow(media.matches), SETTLE_MS);
-    };
-    setNarrow(media.matches);
-    media.addEventListener("change", onChange);
-    return () => {
-      clearTimeout(settle);
-      media.removeEventListener("change", onChange);
-    };
-  }, [query]);
-
-  return narrow;
 }
 
 /**

@@ -30,6 +30,8 @@ import {
   layoutStorage,
 } from "@/lib/panel-layout";
 import { useCollapsibleRail } from "@/lib/use-collapsible-rail";
+import { useSheetLayout } from "@/lib/use-viewport";
+import { RailSheet } from "@/components/rail-sheet";
 import { useKeyAction } from "@/components/keymap-provider";
 
 interface Props {
@@ -48,9 +50,9 @@ interface Props {
 function InstallCliButton() {
   const openInstallModal = useOpenInstallModal();
   return (
-    <Button variant="ghost" size="sm" className="gap-1.5" onClick={openInstallModal}>
+    <Button variant="ghost" size="sm" className="gap-1.5" onClick={openInstallModal} aria-label="Install CLI">
       <Terminal className="size-3.5" />
-      Install CLI
+      <span className="hidden sm:inline">Install CLI</span>
     </Button>
   );
 }
@@ -89,6 +91,11 @@ export function AppShell({
   });
   useKeyAction("rooms.toggle", () => setRoomsOpen(open => !open));
 
+  // Too narrow for a split: the rail leaves the group and becomes a sheet over
+  // the workspace, and its strip stays put so it is still one tap away.
+  const sheetLayout = useSheetLayout();
+  const railInPanel = roomsOpen && !sheetLayout;
+
   return (
     <GlobalSearch>
       <InstallModalProvider>
@@ -101,25 +108,38 @@ export function AppShell({
                 panel inside it. A panel that isn't there can't be squeezed, and
                 comes back at the width it left at — where a panel *told* to
                 collapse is at the mercy of a group still solving for the window
-                it had a frame ago. */}
-            {!roomsOpen && (
+                it had a frame ago. Under the sheet layout the strip is what the
+                rail always is, with the sheet drawn over the workspace beside
+                it. */}
+            {!railInPanel && (
               <div className="flex w-12 flex-none border-r border-border">
                 <RoomsSidebar
                   activeRoom={activeRoom}
                   collapsed
-                  onCollapsedChange={next => setRoomsOpen(!next)}
+                  // A toggle rather than "expand": while the sheet is open the
+                  // strip is still on screen behind it, and the control that
+                  // opened it is the one a reader reaches for to put it away.
+                  onCollapsedChange={() => setRoomsOpen(open => !open)}
                 />
               </div>
             )}
+            <RailSheet
+              open={sheetLayout && roomsOpen}
+              onClose={() => setRoomsOpen(false)}
+              side="left"
+              label="Rooms"
+            >
+              <RoomsSidebar activeRoom={activeRoom} onCollapsedChange={() => setRoomsOpen(false)} />
+            </RailSheet>
             <ResizablePanelGroup
               className="min-h-0 flex-1"
               defaultLayout={defaultLayout}
               // Only while both panels are here: a one-panel layout saved over
               // the split would be the rail's remembered width, gone.
-              onLayoutChange={roomsOpen ? onLayoutChange : undefined}
-              onLayoutChanged={roomsOpen ? onLayoutChanged : undefined}
+              onLayoutChange={railInPanel ? onLayoutChange : undefined}
+              onLayoutChanged={railInPanel ? onLayoutChanged : undefined}
             >
-              {roomsOpen && (
+              {railInPanel && (
                 <>
                   <ResizablePanel
                     id={PANEL_ROOMS}
@@ -148,11 +168,11 @@ export function AppShell({
                 minSize={WORKSPACE_PANEL.min}
                 className="flex min-w-0 flex-col"
               >
-                <header className="flex h-[52px] flex-shrink-0 items-center gap-3 border-b border-border bg-surface/50 px-5">
+                <header className="flex h-[52px] flex-shrink-0 items-center gap-2 border-b border-border bg-surface/50 px-3 sm:gap-3 sm:px-5">
                   {header}
                   {/* Appearance sits top-right, the corner every app puts it in,
                       rather than crowding the identity row at the other end. */}
-                  <div className="ml-auto flex flex-shrink-0 items-center gap-3">
+                  <div className="ml-auto flex flex-shrink-0 items-center gap-1 sm:gap-3">
                     {headerRight}
                     <InstallCliButton />
                     <DocsLink />
@@ -163,9 +183,14 @@ export function AppShell({
               </ResizablePanel>
             </ResizablePanelGroup>
           </div>
-          <footer className="flex h-6 flex-shrink-0 items-center gap-3 border-t border-border bg-surface px-3 text-micro text-muted-foreground">
+          {/* One line, always. Its cells are short but there are a lot of them,
+              and a bar that wraps to three rows on a phone eats the workspace
+              it is supposed to annotate — so it scrolls sideways instead, and
+              the cells that only name a keyboard drop out where there is no
+              keyboard to name. */}
+          <footer className="flex h-6 flex-shrink-0 items-center gap-3 overflow-x-auto border-t border-border bg-surface px-3 text-micro whitespace-nowrap text-muted-foreground [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {statusLeft}
-            <div className="ml-auto flex items-center gap-3">
+            <div className="ml-auto flex flex-shrink-0 items-center gap-3">
               {statusRight}
               <MetricsStatusLink />
               <GlobalSearchButton />

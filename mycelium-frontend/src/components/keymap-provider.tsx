@@ -392,7 +392,7 @@ export function KeymapHelpButton() {
       <button
         type="button"
         onClick={api.openHelp}
-        className="flex items-center gap-1.5 rounded px-1 text-micro text-muted-foreground transition-colors hover:text-text"
+        className="hidden flex-shrink-0 items-center gap-1.5 rounded px-1 text-micro text-muted-foreground transition-colors hover:text-text sm:flex"
       >
         <KbdChord size="xs" tone="muted" action="help.keys" /> keys
       </button>
@@ -409,7 +409,7 @@ export function CommandPaletteButton() {
       <button
         type="button"
         onClick={api.openPalette}
-        className="flex items-center gap-1.5 rounded px-1 text-micro text-muted-foreground transition-colors hover:text-text"
+        className="hidden flex-shrink-0 items-center gap-1.5 rounded px-1 text-micro text-muted-foreground transition-colors hover:text-text sm:flex"
       >
         <KbdChord size="xs" tone="muted" action="palette.open" mac={mac} /> commands
       </button>

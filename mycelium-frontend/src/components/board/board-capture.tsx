@@ -7,6 +7,7 @@ import { forwardRef, useMemo, useState } from "react";
 import { CornerDownLeft, Plus } from "lucide-react";
 import { parseCapture, type ParsedCapture } from "@/lib/board/capture";
 import { cn } from "@/lib/utils";
+import { useSheetLayout } from "@/lib/use-viewport";
 
 interface Props {
   actor: string;
@@ -25,9 +26,15 @@ export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCa
   const [text, setText] = useState("");
   const parsed = useMemo(() => parseCapture(text, actor, now), [text, actor, now]);
   const armed = parsed.title.length > 0;
+  // The capture grammar is a hint, and a hint clipped mid-token teaches
+  // nothing: on a field this narrow it is the ask that has to survive.
+  const sheet = useSheetLayout();
+  const placeholder = sheet
+    ? "Capture a concern…"
+    : "Capture a concern…  @owner · !urgent · #tag · #502 · ? for a decision";
 
   return (
-    <div className="mt-2 px-5 pb-2">
+    <div className="mt-2 px-3 pb-2 sm:px-5">
       <div
         className={cn(
           "flex items-center gap-2 rounded-lg border bg-surface/60 px-3 py-1.5 transition-colors",
@@ -46,7 +53,7 @@ export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCa
             }
             if (e.key === "Escape") (e.target as HTMLInputElement).blur();
           }}
-          placeholder="Capture a concern…  @owner · !urgent · #tag · #502 · ? for a decision"
+          placeholder={placeholder}
           className="min-w-0 flex-1 bg-transparent text-label text-text outline-none placeholder:text-faint"
         />
         {armed && (

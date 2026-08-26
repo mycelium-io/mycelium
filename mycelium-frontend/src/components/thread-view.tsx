@@ -111,7 +111,10 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
             otherwise the header is already the id, and this would repeat it. */}
         {target.title && (
           <Tooltip content={target.episode}>
-            <span className="shrink-0 rounded bg-hairline px-1.5 py-px font-mono text-micro text-muted-foreground">
+            {/* And only where the header is not already down to four characters
+                of that name: on a phone the pane is the window, and the title
+                is what says which task the window is. */}
+            <span className="hidden shrink-0 rounded bg-hairline px-1.5 py-px font-mono text-micro text-muted-foreground sm:inline">
               {shortId}
             </span>
           </Tooltip>
@@ -146,7 +149,9 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
               </Link>
             </Tooltip>
           )}
-          <Kbd size="xs" tone="muted">Esc</Kbd>
+          {/* The key that does what the ✕ beside it does — worth the width on a
+              keyboard, and worth none of it on a phone. */}
+          <Kbd size="xs" tone="muted" className="hidden sm:inline-flex">Esc</Kbd>
           <button
             type="button"
             onClick={onClose}

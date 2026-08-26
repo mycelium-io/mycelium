@@ -166,9 +166,11 @@ function HeaderBand({
   intervalSec: number;
   setIntervalSec: (s: number) => void;
 }) {
+  // One line, always — the same rule as the status bar below it. The controls
+  // are the row's point, so they scroll rather than wrap.
   return (
-    <div className="flex h-[44px] flex-shrink-0 items-center gap-4 border-b border-border bg-paper px-5">
-      <div className="font-mono text-micro text-muted-foreground">
+    <div className="flex h-[44px] flex-shrink-0 items-center gap-4 overflow-x-auto border-b border-border bg-paper px-3 whitespace-nowrap sm:px-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="hidden font-mono text-micro text-muted-foreground sm:block">
         {backend ? (
           <>
             up <span className="text-text">{fmtDur(backend.started_at)}</span>
@@ -180,8 +182,8 @@ function HeaderBand({
         )}
       </div>
 
-      <div className="ml-auto flex items-center gap-3">
-        <div className="flex items-center gap-2">
+      <div className="ml-auto flex flex-shrink-0 items-center gap-3">
+        <div className="flex flex-shrink-0 items-center gap-2">
           <span className="text-micro text-faint">Every</span>
           <div className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
             {[5, 10, 30, 60].map(s => {
@@ -201,7 +203,7 @@ function HeaderBand({
           </div>
         </div>
 
-        <div className="flex items-stretch overflow-hidden rounded-lg border border-border">
+        <div className="flex flex-shrink-0 items-stretch overflow-hidden rounded-lg border border-border">
           <button
             onClick={() => setPaused(!paused)}
             className={`flex items-center gap-1.5 border-r border-border px-2.5 text-micro font-medium transition-colors ${
@@ -277,7 +279,7 @@ function KpiPlate({
     return "var(--text)";
   })();
   return (
-    <div className="flex min-w-0 items-center gap-5 border-r border-border2 px-6 py-4 last:border-r-0">
+    <div className="flex min-w-0 items-center gap-5 border-b border-border2 px-4 py-4 sm:px-6 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <Caps>{label}</Caps>
         <div
@@ -441,7 +443,7 @@ function AgentActivityTable({ collector }: { collector: CollectorMetrics }) {
   const agents = deriveAgents(collector);
   const total = Math.max(0.0001, agents.reduce((s, a) => s + a.tokens, 0));
   return (
-    <div className="border-b border-border2 px-6 py-5">
+    <div className="border-b border-border2 px-3 py-5 sm:px-6">
       <div className="mb-3.5 flex items-baseline justify-between">
         <Caps className="text-muted-foreground">AGENT ACTIVITY</Caps>
         <span className="font-mono text-micro italic text-faint">
@@ -457,8 +459,8 @@ function AgentActivityTable({ collector }: { collector: CollectorMetrics }) {
           </p>
         </div>
       ) : (
-        <div className="border border-border2 bg-paper">
-          <div className="grid items-center gap-3.5 border-b border-border2 px-4 py-2"
+        <div className="overflow-x-auto border border-border2 bg-paper [scrollbar-width:thin]">
+          <div className="grid min-w-[38rem] items-center gap-3.5 border-b border-border2 px-4 py-2"
                style={{ gridTemplateColumns: AGENT_COLS }}>
             <Caps>AGENT</Caps>
             <Caps>TOKENS</Caps>
@@ -469,7 +471,7 @@ function AgentActivityTable({ collector }: { collector: CollectorMetrics }) {
           </div>
           {agents.map((a, i) => (
             <div key={a.agent}
-                 className={`grid items-center gap-3.5 px-4 py-2.5 ${
+                 className={`grid min-w-[38rem] items-center gap-3.5 px-4 py-2.5 ${
                    i < agents.length - 1 ? "border-b border-border" : ""
                  }`}
                  style={{ gridTemplateColumns: AGENT_COLS }}>
@@ -509,8 +511,8 @@ function ByModelTable({ models }: { models: ByModel[] }) {
     );
   }
   return (
-    <div className="border border-border2 bg-paper">
-      <div className="grid items-center gap-3.5 border-b border-border2 px-4 py-2"
+    <div className="overflow-x-auto border border-border2 bg-paper [scrollbar-width:thin]">
+      <div className="grid min-w-[38rem] items-center gap-3.5 border-b border-border2 px-4 py-2"
            style={{ gridTemplateColumns: MODEL_COLS }}>
         <Caps>MODEL</Caps>
         <Caps>IN</Caps>
@@ -521,7 +523,7 @@ function ByModelTable({ models }: { models: ByModel[] }) {
       </div>
       {models.map((m, i) => (
         <div key={m.model}
-             className={`grid items-center gap-3.5 px-4 py-2.5 ${
+             className={`grid min-w-[38rem] items-center gap-3.5 px-4 py-2.5 ${
                i < models.length - 1 ? "border-b border-border" : ""
              }`}
              style={{ gridTemplateColumns: MODEL_COLS }}>
@@ -611,7 +613,7 @@ function SpokeSitesTable({
 }) {
   if (hosts.length === 0) return null;
   return (
-    <div className="border-b border-border2 px-6 py-5">
+    <div className="border-b border-border2 px-3 py-5 sm:px-6">
       <div className="mb-3.5 flex items-baseline justify-between">
         <Caps className="text-muted-foreground">SPOKE SITES</Caps>
         <span className="font-mono text-micro italic text-faint">hosts reporting OTLP data</span>
@@ -751,8 +753,7 @@ export function MetricsScreen() {
 
       <div className="flex-1 overflow-y-auto">
         {/* ── KPI band ─────────────────────────────────────────────────── */}
-        <div className="grid border-b border-border2"
-             style={{ gridTemplateColumns: "1.1fr 1fr 1fr" }}>
+        <div className="grid grid-cols-1 border-b border-border2 sm:[grid-template-columns:1.1fr_1fr_1fr]">
           <KpiPlate
             label="SPEND"
             value={spendValue}
@@ -819,7 +820,7 @@ export function MetricsScreen() {
         ) : collectorOn && collector ? (
           <AgentActivityTable collector={collector} />
         ) : (
-          <div className="border-b border-border2 px-6 py-5">
+          <div className="border-b border-border2 px-3 py-5 sm:px-6">
             <CollectorOffPlate />
           </div>
         )}
@@ -830,7 +831,7 @@ export function MetricsScreen() {
         )}
 
         {/* ── Diagnostic grid ──────────────────────────────────────────── */}
-        <div className="px-6 py-5">
+        <div className="px-3 py-5 sm:px-6">
           <div className="mb-3.5 flex items-baseline justify-between">
             <Caps className="text-muted-foreground">DIAGNOSTICS · BACKEND COUNTERS</Caps>
             <span className="font-mono text-micro italic text-faint">always available · GET /api/observability</span>
