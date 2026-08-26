@@ -1965,10 +1965,21 @@ role     = &quot;user&quot;</code></pre>
       <h3 id="auth-where-the-token-lives">Where the token lives</h3>
       <p>In <code>~/.mycelium/token.json</code>, created mode <code>0600</code>, <strong>not</strong> in <code>config.toml</code>. Config is printed, copied between machines, and mirrored to <code>config.json</code> for the frontend; a token in there would leak by routine. Set <code>MYCELIUM_TOKEN_FILE</code> to cache it somewhere else (a CI runner with a shared home, say).</p>
       <p>The access token is renewed automatically when it expires, using the refresh token, on the way into the next call that needs it; you don&#x27;t re-run <code>login</code> on a schedule. Renewal needs a refresh token, which most issuers grant only for the <code>offline_access</code> scope; it is in the default <code>login.scopes</code> for that reason. If renewal fails, the CLI drops the header and tells you to sign in again rather than sending a token the hub will reject.</p>
+      <h3 id="auth-how-often-it-renews">How often it renews</h3>
+      <p><strong>On demand, not on a clock.</strong> There is no background refresh and no daemon: the next command that needs the token is what renews it, and only once the token is within 60 seconds of expiring (<code>tokens.DEFAULT_LEEWAY_S</code>, so a call can&#x27;t go out with a token that dies in flight). A machine that runs nothing for a week renews nothing for a week, then renews once, on the next command.</p>
+      <p>That is why <code>login</code> says both numbers rather than only the first:</p>
+      <pre><code>Signed in as @avery (<span class="url">https://sso.example.com/realms/mycelium)</span>
+Access token valid for 4 min.
+It renews on demand — the next command that needs it swaps in a fresh one once
+under 1 min is left. Nothing renews in the background.
+Signing in again is due in 30 days, when the refresh token itself expires.</code></pre>
+      <p>A short access-token lifetime is a property of the issuer&#x27;s realm, not of how long you stay signed in — four minutes is normal, and it costs you nothing.</p>
+      <p>The last line only appears when the issuer says how long the refresh token lasts. <code>refresh_expires_in</code> isn&#x27;t in RFC 6749; Keycloak reports it, others don&#x27;t, and the token is opaque, so there is nothing to read it off when it isn&#x27;t volunteered. No line means <em>unknown</em>, never <em>unlimited</em>. <code>mycelium login --json</code> carries the same facts as <code>refresh_expires_at</code> (null when unknown) and <code>renewal_leeway_s</code>.</p>
       <h3 id="auth-who-you-are">Who you are</h3>
       <p><code>mycelium whoami</code> (and <code>mycelium iam</code> with no arguments) reports the handle from your <strong>token</strong> when you&#x27;re signed in, and the self-asserted <code>identity.name</code> when you&#x27;re not:</p>
       <pre><code>acting as @avery  (avery#a8f3)
-  signed in (<span class="url">https://sso.example.com/realms/mycelium,</span> expires in 42 min)</code></pre>
+  signed in (<span class="url">https://sso.example.com/realms/mycelium,</span> expires in 42 min)
+  renewed on the next command that needs it, re-login due in 30 days</code></pre>
       <p>Because a gated hub attributes writes to the token (see <em>The token is the author</em> below), a self-asserted handle that names someone else is a 403 in waiting. The token wins that disagreement, so <code>login</code> settles it for you: on a successful sign-in it points <code>identity.name</code> at the token&#x27;s own handle and registers the <code>users/</code> record — the same thing <code>mycelium iam &lt;handle&gt;</code> does, without the second command. If that can&#x27;t land (no readable handle claim, or a handle the store rejects), <code>login</code> falls back to naming the mismatch and the command that fixes it. Setting a handle your token won&#x27;t back with <code>iam</code> still warns.</p>
       <h3 id="auth-configuration">Configuration</h3>
       <div class="table-wrap">

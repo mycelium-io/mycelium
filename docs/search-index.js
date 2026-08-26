@@ -1941,10 +1941,17 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Reference"
   },
   {
+    "u": "reference.html#auth-how-often-it-renews",
+    "t": "How often it renews",
+    "s": "Guides › Authentication",
+    "x": "On demand, not on a clock. There is no background refresh and no daemon: the next command that needs the token is what renews it, and only once the token is within 60 seconds of expiring (tokens.DEFAULT_LEEWAY_S, so a call can't go out with a token that dies in flight). A machine that runs nothing for a week renews nothing for a week, then renews once, on the next command. That is why login says both numbers rather t",
+    "p": "Reference"
+  },
+  {
     "u": "reference.html#auth-who-you-are",
     "t": "Who you are",
     "s": "Guides › Authentication",
-    "x": "mycelium whoami (and mycelium iam with no arguments) reports the handle from your token when you're signed in, and the self-asserted identity.name when you're not: acting as @avery (avery#a8f3) signed in (https://sso.example.com/realms/mycelium, expires in 42 min) Because a gated hub attributes writes to the token (see The token is the author below), a self-asserted handle that names someone else is a 403 in waiting.",
+    "x": "mycelium whoami (and mycelium iam with no arguments) reports the handle from your token when you're signed in, and the self-asserted identity.name when you're not: acting as @avery (avery#a8f3) signed in (https://sso.example.com/realms/mycelium, expires in 42 min) renewed on the next command that needs it, re-login due in 30 days Because a gated hub attributes writes to the token (see The token is the author below), ",
     "p": "Reference"
   },
   {

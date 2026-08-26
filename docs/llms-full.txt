@@ -3253,6 +3253,34 @@ a schedule. Renewal needs a refresh token, which most issuers grant only for the
 renewal fails, the CLI drops the header and tells you to sign in again rather
 than sending a token the hub will reject.
 
+### How often it renews
+
+**On demand, not on a clock.** There is no background refresh and no daemon: the
+next command that needs the token is what renews it, and only once the token is
+within 60 seconds of expiring (`tokens.DEFAULT_LEEWAY_S`, so a call can't go out
+with a token that dies in flight). A machine that runs nothing for a week renews
+nothing for a week, then renews once, on the next command.
+
+That is why `login` says both numbers rather than only the first:
+
+```
+Signed in as @avery (https://sso.example.com/realms/mycelium)
+Access token valid for 4 min.
+It renews on demand — the next command that needs it swaps in a fresh one once
+under 1 min is left. Nothing renews in the background.
+Signing in again is due in 30 days, when the refresh token itself expires.
+```
+
+A short access-token lifetime is a property of the issuer's realm, not of how
+long you stay signed in — four minutes is normal, and it costs you nothing.
+
+The last line only appears when the issuer says how long the refresh token
+lasts. `refresh_expires_in` isn't in RFC 6749; Keycloak reports it, others don't,
+and the token is opaque, so there is nothing to read it off when it isn't
+volunteered. No line means *unknown*, never *unlimited*. `mycelium login --json`
+carries the same facts as `refresh_expires_at` (null when unknown) and
+`renewal_leeway_s`.
+
 ### Who you are
 
 `mycelium whoami` (and `mycelium iam` with no arguments) reports the handle from
@@ -3262,6 +3290,7 @@ you're not:
 ```
 acting as @avery  (avery#a8f3)
   signed in (https://sso.example.com/realms/mycelium, expires in 42 min)
+  renewed on the next command that needs it, re-login due in 30 days
 ```
 
 Because a gated hub attributes writes to the token (see *The token is the author*

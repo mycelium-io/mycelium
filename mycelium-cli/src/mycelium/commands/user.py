@@ -411,14 +411,23 @@ def whoami(ctx: typer.Context) -> None:
         console.print(f"[bold]acting as[/bold] [cyan]@{principal}[/cyan]  [dim]({identity})[/dim]")
         console.print(f"  [dim]hub: {config.server.api_url}[/dim]")
         if token is not None:
+            from mycelium.tokens import format_span
+
             remaining = token.expires_in()
-            expiry = f", expires in {int(remaining // 60)} min" if remaining is not None else ""
+            expiry = f", expires in {format_span(remaining)}" if remaining is not None else ""
             source = "signed in" if token_handle else "signed in, no handle claim"
             console.print(f"  [green]{source}[/green] [dim]({token.issuer}{expiry})[/dim]")
-            # No issuer-side expiry for the refresh token itself (it's opaque),
-            # so this reports whether one exists at all, not a countdown.
             if token.refresh_token:
-                console.print("  [dim]refreshes automatically on expiry[/dim]")
+                # The refresh token is opaque, so its own deadline is only known
+                # when the issuer volunteered one; without it, say that renewal
+                # happens rather than inventing how long it keeps working.
+                renewal_left = token.refresh_expires_in()
+                due = (
+                    f", re-login due in {format_span(renewal_left)}"
+                    if renewal_left is not None
+                    else ""
+                )
+                console.print(f"  [dim]renewed on the next command that needs it{due}[/dim]")
             else:
                 console.print("  [dim]no refresh token — re-login required after expiry[/dim]")
         if hub_down:
