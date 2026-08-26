@@ -159,7 +159,7 @@ async def test_persister_members_provider_excludes_lease_only_handles(
     so if a lease-only handle were counted, a mention addressed to it would be
     marked delivered before its own poll ever read it — silently un-deliverable.
     ``manager.members(room)`` unions SLIM members with lease holders (correct for
-    the roster/consent-gate uses), so the persister must be wired to the
+    the roster/mention gate uses), so the persister must be wired to the
     channel's own live SLIM set instead, not that union.
     """
     monkeypatch.setattr(settings, "SLIM_ENABLED", True)
@@ -181,7 +181,7 @@ async def test_persister_members_provider_excludes_lease_only_handles(
     managed.members.add("slim-agent")
     manager.refresh_lease("room-a", "lease-only-agent")
 
-    # The union (roster/consent-gate use) legitimately includes both.
+    # The union (roster/mention gate use) legitimately includes both.
     assert set(manager.members("room-a")) == {"slim-agent", "lease-only-agent"}
     # The persister's delivery source must not.
     fake_persister = cast(_FakeRoomPersister, managed.persister)

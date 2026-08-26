@@ -292,7 +292,7 @@ class AlignerEngine:
         NEGMAS is synchronous, so ``mech.run()`` executes on a worker thread; each
         negotiator bridges back to this loop for its SLIM turn (see
         :mod:`app.services.mediator`). Always closes the episode in ``finally`` so
-        queued invites drain even on a mid-run failure.
+        deferred invites drain even on a mid-run failure.
         """
         from app.services import mediator
 

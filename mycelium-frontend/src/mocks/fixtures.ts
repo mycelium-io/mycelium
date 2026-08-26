@@ -13,8 +13,8 @@
  * Three rooms cover the states worth designing against:
  *   - `atlas-migration` — a rich, converged room (memories, agents, a compiled
  *     compiled work, a finished L9 episode);
- *   - `pricing-model`   — an in-progress negotiation (nothing compiled yet, a pending
- *     consent invite, a live-looking episode);
+ *   - `pricing-model`   — an in-progress negotiation (nothing compiled yet, a
+ *     live-looking episode);
  *   - `scratch`         — a brand-new empty room (empty states).
  */
 
@@ -27,7 +27,6 @@ import type {
   MemoryGraph,
   MemoryGraphEdge,
   MemoryGraphNode,
-  PendingInvite,
   PresenceMember,
 } from "@/lib/api";
 import type { RoomStatus } from "@/lib/board/upstream";
@@ -93,7 +92,6 @@ export interface RoomFixture {
   messages: MockMessage[];
   episodes: EpisodeSummary[];
   episodeDetails: Record<string, EpisodeDetail>;
-  invites: PendingInvite[];
   /** Live presence set, served at GET /sessions/members. A resident agent
    *  (one whose handle appears here) projects a board row; without a SLIM node
    *  there is otherwise no presence, so the board's resident rows come from here. */
@@ -692,7 +690,6 @@ const atlas: RoomFixture = {
   ],
   episodes: [atlasEpisodeSummary],
   episodeDetails: { e4f1a2: { ...atlasEpisodeSummary, messages: atlasL9Chain } },
-  invites: [],
   // growth holds an open SLIM socket; risk is present on a server-held await
   // lease. Both are agents in the roster, so the board projects a resident row
   // for each — the presence signal that a live SLIM node would otherwise supply.
@@ -847,17 +844,6 @@ const pricing: RoomFixture = {
     },
   ],
   episodeDetails: {},
-  invites: [
-    {
-      id: "inv1",
-      room: "pricing-model",
-      agent: "legal",
-      requested_by: "operator",
-      trigger_text: "@legal can you weigh in on the discount policy?",
-      status: "pending",
-      created_at: iso(3),
-    },
-  ],
   // The bridge state to design against: one external A2A agent consulted during
   // the negotiation (one answered call, one dead one), and the room's own card
   // having been read from outside.
@@ -939,7 +925,6 @@ const scratch: RoomFixture = {
   messages: [],
   episodes: [],
   episodeDetails: {},
-  invites: [],
 };
 
 // ── mycelium-general: the room as it actually reads under load ────────────────
@@ -1259,7 +1244,6 @@ const general: RoomFixture = {
   ),
   episodes: [],
   episodeDetails: {},
-  invites: [],
   l9: generalL9,
 };
 

@@ -38,7 +38,6 @@ from app.routes.briefing import router as briefing_router
 from app.routes.engines import router as engines_router
 from app.routes.episodes import router as episodes_router
 from app.routes.fields import router as fields_router
-from app.routes.invites import router as invites_router
 from app.routes.links import router as links_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
@@ -273,7 +272,6 @@ app.include_router(a2a_state_router, prefix="/api")
 app.include_router(engines_router, prefix="/api")
 app.include_router(rooms_router, prefix="/api")
 app.include_router(messages_router, prefix="/api")
-app.include_router(invites_router, prefix="/api")
 app.include_router(assignments_router, prefix="/api")
 app.include_router(fields_router, prefix="/api")
 app.include_router(tasks_router, prefix="/api")

@@ -15,9 +15,8 @@ Then browse:
 - `/` — the rooms dashboard (three seeded rooms).
 - `/room/atlas-migration` — a rich, **converged** room: memories, agents, a
   compiled plan with checked-off tasks, and a finished L9 episode in the inspector.
-- `/room/pricing-model` — an **in-progress** negotiation: no plan yet, a pending
-  consent invite (the dialog pops), and a scripted live negotiation that resolves
-  over SSE while you watch.
+- `/room/pricing-model` — an **in-progress** negotiation: no plan yet, and a
+  scripted live negotiation that resolves over SSE while you watch.
 - `/room/scratch` — a brand-new **empty** room (every empty state).
 - `/metrics` — populated observability (tokens/cost by agent + model, hosts).
 
