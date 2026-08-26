@@ -92,7 +92,11 @@ jobs:
       - name: Start mycelium hub
         run: |
           mycelium init --api-url http://localhost:8000 2>/dev/null || true
+          # See e2e.yml's "Start mycelium hub" step for why both the chmod
+          # and the default ACL are needed here, alongside the ownership
+          # watcher below.
           mkdir -p ~/.mycelium/rooms && chmod -R 777 ~/.mycelium
+          sudo setfacl -R -d -m o::rwx ~/.mycelium 2>/dev/null || true
           if [ -n "${{ github.event.inputs.mycelium_ref }}" ]; then
             mycelium up --build
           else

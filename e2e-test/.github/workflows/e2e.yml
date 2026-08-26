@@ -169,17 +169,24 @@ jobs:
       - name: Start mycelium hub (SLIM node + backend)
         run: |
           mycelium init --api-url http://localhost:8000 2>/dev/null || true
-          # The backend container always creates room/agent dirs as uid 1000
-          # (baked into fastapi-backend/Dockerfile), but the GH-hosted runner
-          # user is uid 1001. mycelium-cli's write guard
-          # (_check_writable_or_bail in mycelium-cli commands/agent.py) rejects
-          # writes based on an exact owner-uid match — chmod/setfacl "other"
-          # bits don't satisfy that check, only matching ownership does. See
-          # the "Start ownership watcher" step below for the actual fix; this
-          # is just the initial directory so `mycelium up` has somewhere to
-          # write.
+          # The backend container creates room dirs as uid 1000 (baked into
+          # fastapi-backend/Dockerfile); the GH-hosted runner is a different
+          # uid. Two independent problems follow from that, both needed here:
+          #
+          # 1. mycelium-cli's write guard (_check_writable_or_bail in
+          #    mycelium-cli commands/agent.py) rejects local writes (agent
+          #    create) on an exact owner-uid match, regardless of actual
+          #    permission bits — only the "Start ownership watcher" step
+          #    below (chown on room-dir creation) satisfies that.
+          # 2. Once that watcher chowns a room dir to the runner, the backend
+          #    (still uid 1000) needs an actual permission bit to keep
+          #    writing into it (new memory files, room delete) — a one-time
+          #    chmod doesn't cover dirs created later, so set a default ACL
+          #    here so every dir *created from now on*, by either side,
+          #    inherits world-writable "other" bits automatically.
           mkdir -p ~/.mycelium/rooms
           chmod -R 777 ~/.mycelium
+          sudo setfacl -R -d -m o::rwx ~/.mycelium 2>/dev/null || true
           if [ "$BUILD_FROM_SOURCE" = "true" ]; then
             mycelium up --build
           else
