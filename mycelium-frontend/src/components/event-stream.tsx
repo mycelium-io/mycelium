@@ -18,6 +18,7 @@ import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomBoard } from "@/components/board/room-board";
 import { ConsentDialog } from "@/components/consent-dialog";
+import { ActivityRail, type ActivityItem } from "@/components/activity-rail";
 import { EpisodeTag } from "@/components/episode-tag";
 import { L9Inspector } from "@/components/l9-inspector";
 import { NegotiationView } from "@/components/negotiation-view";
@@ -142,7 +143,10 @@ function SystemNotice({
     <div className="group mt-3 flex items-center gap-2 px-5 py-1 text-micro text-muted-foreground first:mt-0">
       <span aria-hidden className="inline-block size-1.5 flex-shrink-0 rounded-full" style={{ background: dot }} />
       {label && (
-        <span className={strong ? "font-semibold" : "font-medium"} style={{ color: labelColor ?? "var(--muted-foreground)" }}>
+        <span
+          className={`flex-shrink-0 whitespace-nowrap ${strong ? "font-semibold" : "font-medium"}`}
+          style={{ color: labelColor ?? "var(--muted-foreground)" }}
+        >
           {label}
         </span>
       )}
@@ -362,13 +366,42 @@ function inAThread(event: Event, room: string): boolean {
 }
 
 /**
- * What a row is *about*, so the feed can group by it.
+ * Board events the room narrates, as against the ones it merely records.
+ *
+ * A task appearing, finishing or stalling is something a person would say out
+ * loud, and it reads in sequence with the conversation. A task being picked up
+ * or handed back is bookkeeping about who holds what — true, worth having, and
+ * not worth interrupting anyone for. The first stays in the feed; the second
+ * goes to the rail with the rest of the churn.
+ */
+const NARRATED_SUBKINDS = new Set(["filed", "resolved", "blocked", "unblocked"]);
+
+/**
+ * Whether this row is the room *doing* something rather than saying it.
+ *
+ * A room under load raises far more state than speech: a task being worked
+ * writes memory, pings its thread and moves on the board, and none of it is
+ * something anybody wrote. Woven into the feed, that is a changelog with the
+ * conversation buried in it — so it is lifted out into {@link ActivityRail},
+ * which holds a fixed number of rows however busy the room gets.
+ */
+function isActivity(event: Event): boolean {
+  if (event.type === PING_TYPE) return true;
+  if (event.type === "l9_knowledge") return true;
+  if (event.type === NOTICE_TYPE) {
+    return !NARRATED_SUBKINDS.has((event.raw.subkind as string) || "filed");
+  }
+  return false;
+}
+
+/**
+ * What a row is *about*, so activity can be grouped by it.
  *
  * The room's task key, wherever the room knows one — that is what makes a
  * thread's ping, the board's notice about that task and the memory write behind
- * it fold into one block instead of alternating three ways of saying the same
- * task moved. A thread no single row is bound to is its own subject; naming it
- * after one of several rows would be picking at random.
+ * it fold into one entry instead of three ways of saying the same task moved. A
+ * thread no single row is bound to is its own subject; naming it after one of
+ * several rows would be picking at random.
  */
 function subjectOf(event: Event, threads: Map<string, ThreadOwner>): string | null {
   if (event.type === PING_TYPE && event.thread) {
@@ -376,7 +409,13 @@ function subjectOf(event: Event, threads: Map<string, ThreadOwner>): string | nu
     return owner && owner.keys.length === 1 ? owner.keys[0] : event.thread;
   }
   if (event.type === NOTICE_TYPE) return (event.raw.taskKey as string) || null;
-  if (event.type === "l9_knowledge") return (event.raw.key as string) || null;
+  if (event.type === "l9_knowledge") {
+    const key = (event.raw.key as string) || null;
+    // An agent writing its own manifest is the roster's news, and the Members
+    // rail already carries it. In a room of seven agents it is otherwise seven
+    // lines saying somebody arrived.
+    return key && !key.startsWith("agents/") ? key : null;
+  }
   return null;
 }
 
@@ -612,21 +651,60 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
     }
   });
 
-  // What the room actually says. A thread's prose is dropped — it is not lost,
-  // it is placed, and the pane the ping opens is where it reads — and everything
-  // the room raises *about* one task over a window condenses into a single
-  // evolving block, so the surface that exists to stay legible cannot be flooded
-  // by the mechanisms meant to protect it. The block keeps every event it stands
-  // for and opens to them, so this is where activity is tucked, never hidden.
+  // The room's own timeline, split by what it is: a thread's prose is dropped
+  // (it is not lost, it is placed, and the pane the ping opens is where it
+  // reads), the churn goes up to the rail, and what is left is the conversation
+  // plus the handful of board moves worth narrating — still folded per task, so
+  // a file and a resolve minutes apart read as one line.
+  const inChannel = useMemo(
+    () => events.filter(e => CHANNEL_VIEW_TYPES.has(e.type) && !inAThread(e, roomName)),
+    [events, roomName],
+  );
+
   const visible = useMemo(
     () =>
       coalesceActivity(
-        events.filter(e => CHANNEL_VIEW_TYPES.has(e.type) && !inAThread(e, roomName)),
-        e => subjectOf(e, threads),
+        inChannel.filter(e => !isActivity(e)),
+        // Narrated notices group by *what happened*, not by which task. Five
+        // tasks filed in the same minute is one thing the room did; the same
+        // task filed and resolved twenty minutes apart is two, and folding
+        // those together would report an outcome as if it were an arrival.
+        e => (e.type === NOTICE_TYPE ? `notice:${(e.raw.subkind as string) || "filed"}` : null),
         members => ({ ...members[0], folded: members }),
       ),
-    [events, roomName, threads],
+    [inChannel],
   );
+
+  // What the room has been doing, one entry per task rather than one per frame.
+  // No window here: the rail is the room's current state, so a task that has
+  // been written to all morning is one row that keeps moving up, never a row
+  // per burst. Sorted by what moved last, which is the order a reader wants.
+  const activity = useMemo<ActivityItem[]>(() => {
+    const bySubject = new Map<string, Event[]>();
+    for (const event of inChannel) {
+      if (!isActivity(event)) continue;
+      const subject = subjectOf(event, threads);
+      if (!subject) continue;
+      const group = bySubject.get(subject);
+      if (group) group.push(event);
+      else bySubject.set(subject, [event]);
+    }
+    return [...bySubject.entries()]
+      .map(([subject, members]) => {
+        const latest = members[members.length - 1];
+        const { title, episode } = nameActivity(subject, members, threads, rowNames);
+        return {
+          subject,
+          title,
+          episode,
+          count: members.length,
+          actors: actorsOf(members),
+          time: latest.time,
+          at: Date.parse(latest.at) || 0,
+        };
+      })
+      .sort((a, b) => b.at - a.at);
+  }, [inChannel, threads, rowNames]);
 
   // Arriving from search: mark the named message and scroll it into sight once
   // history has landed. The mark outlives the request that carried it — a
@@ -796,6 +874,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
         </div>
       ) : (
       <div className="relative flex flex-1 min-h-0 flex-col">
+      {historyLoaded && <ActivityRail items={activity} onOpenThread={onOpenThread} />}
       <ScrollArea className="flex-1 min-h-0" viewportRef={scrollRef}>
         {!historyLoaded ? (
           <ChannelSkeleton />
@@ -816,18 +895,29 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
               // evolving line. Tucked away, not hidden: it opens to the events
               // it stands for, and its subject still opens the thread.
               if (ev.folded.length > 1) {
-                const subject = subjectOf(ev, threads);
-                const { title, episode } = subject
-                  ? nameActivity(subject, ev.folded, threads, rowNames)
-                  : { title: "activity", episode: null };
+                const subkind = (ev.raw.subkind as string) || "filed";
+                const label = noticeLabel(subkind, ev.raw.kind as string | undefined);
+                // "New task" over five of them reads as one of them.
+                const heading = subkind === "filed" ? "New tasks" : label;
+                // Two names and a remainder: enough to recognise the run, never
+                // enough to become the line.
+                const NAMED = 2;
+                const named = ev.folded.slice(0, NAMED);
+                const rest = ev.folded.length - named.length;
                 const who = actorsOf(ev.folded);
                 const open = openBlocks.has(ev.id);
                 return (
                   <Fragment key={ev.id}>
                     <SystemNotice
                       time={ev.time}
-                      dot="var(--accent)"
-                      label="Activity"
+                      dot={
+                        subkind === "resolved" || subkind === "filed" || subkind === "unblocked"
+                          ? "var(--green)"
+                          : subkind === "blocked"
+                            ? "var(--red)"
+                            : "var(--accent)"
+                      }
+                      label={heading}
                       trailing={
                         <button
                           type="button"
@@ -845,34 +935,38 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                         </button>
                       }
                     >
-                      <span>in</span>
-                      <button
-                        type="button"
-                        onClick={() => episode && onOpenThread?.(episode)}
-                        disabled={!episode || !onOpenThread}
-                        title={episode ?? subject ?? undefined}
-                        className="inline-flex max-w-[18rem] items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
-                      >
-                        <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
-                        <span className="truncate">{title}</span>
-                      </button>
-                      <span>· {ev.folded.length} updates</span>
+                      <span className="truncate">{named.map((m) => m.content).join(" · ")}</span>
+                      {rest > 0 && <span className="flex-shrink-0 text-faint">+{rest}</span>}
                       {who.length > 0 && (
-                        <span className="truncate">· {who.map((h) => `@${h}`).join(", ")}</span>
+                        <span className="hidden flex-shrink-0 text-faint lg:inline">
+                          · {who.slice(0, 2).map((h) => `@${h}`).join(", ")}
+                          {who.length > 2 && ` +${who.length - 2}`}
+                        </span>
                       )}
                     </SystemNotice>
                     {open && (
                       <ul className="mb-1 ml-[1.75rem] flex flex-col gap-1 border-l border-border py-1 pl-3 pr-5 text-micro text-muted-foreground">
-                        {ev.folded.map((member) => {
-                          const { label, detail } = activityLine(member);
-                          return (
-                            <li key={member.id} className="flex items-center gap-2">
-                              <span className="tabular flex-shrink-0 text-faint">{member.time.slice(0, 5)}</span>
-                              <span className="flex-shrink-0 font-medium">{label}</span>
-                              {detail && <span className="truncate">{detail}</span>}
-                            </li>
-                          );
-                        })}
+                        {ev.folded.map((member) => (
+                          <li key={member.id} className="flex items-center gap-2">
+                            <span className="tabular flex-shrink-0 text-faint">
+                              {member.time.slice(0, 5)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => member.thread && onOpenThread?.(member.thread)}
+                              disabled={!member.thread || !onOpenThread}
+                              className="inline-flex min-w-0 items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
+                            >
+                              <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
+                              <span className="truncate">{member.content}</span>
+                            </button>
+                            {activityLine(member).detail && (
+                              <span className="flex-shrink-0 text-faint">
+                                {activityLine(member).detail}
+                              </span>
+                            )}
+                          </li>
+                        ))}
                       </ul>
                     )}
                   </Fragment>

@@ -92,8 +92,10 @@ describe("<EventStream /> and the threads inside the room", () => {
     // The argument is not lost, it is placed: `board messages` and the thread
     // pane read it. What the room gets is that the task moved.
     expect(screen.queryByText(/hold the flip/)).not.toBeInTheDocument();
-    expect(await screen.findByText("Activity")).toBeInTheDocument();
-    expect(screen.getByText("· @risk")).toBeInTheDocument();
+    // What the room gets is that the task moved — in the rail, which is where
+    // the room's state lives, not woven through what people are saying.
+    expect(await screen.findByText("Recently updated")).toBeInTheDocument();
+    expect(screen.getByText("@risk")).toBeInTheDocument();
   });
 
   it("still shows what was said in the room itself", async () => {
@@ -113,7 +115,7 @@ describe("<EventStream /> and the threads inside the room", () => {
     expect(screen.getByText("and the backfill finished")).toBeInTheDocument();
   });
 
-  it("collapses a burst from one thread into a single line with its count", async () => {
+  it("collapses a burst from one thread into a single rail entry with its count", async () => {
     renderWithSWR(<EventStream roomName={ROOM} />);
     await act(async () => {});
     const es = FakeEventSource.latest();
@@ -125,9 +127,8 @@ describe("<EventStream /> and the threads inside the room", () => {
       es.emit(ping("risk", "m-3"));
     });
 
-    expect(await screen.findByText("· 3 updates")).toBeInTheDocument();
-    expect(screen.getAllByText("Activity")).toHaveLength(1);
-    expect(screen.getByText("· @risk, @growth")).toBeInTheDocument();
+    expect(await screen.findByText("3 updates")).toBeInTheDocument();
+    expect(screen.getByText("@risk, @growth")).toBeInTheDocument();
   });
 
   it("opens the thread a ping names, by URN and not by short id", async () => {
@@ -141,7 +142,7 @@ describe("<EventStream /> and the threads inside the room", () => {
       es.emit(ping("risk", "m-1"));
     });
 
-    await userEvent.click(await screen.findByRole("button", { name: "Open thread t3aa11bb" }));
+    await userEvent.click(await screen.findByRole("button", { name: /t3aa11bb/ }));
     expect(onOpenThread).toHaveBeenCalledWith(THREAD);
   });
 
@@ -223,7 +224,7 @@ describe("<EventStream /> and the threads inside the room", () => {
     await act(async () => {});
 
     expect(await screen.findByText("morning")).toBeInTheDocument();
-    expect(screen.getByText("Activity")).toBeInTheDocument();
+    expect(screen.getByText("Recently updated")).toBeInTheDocument();
   });
 
   it("takes only the pings from the L9 replay, so nothing lands twice", async () => {
@@ -245,9 +246,8 @@ describe("<EventStream /> and the threads inside the room", () => {
     renderWithSWR(<EventStream roomName={ROOM} />);
     await act(async () => {});
 
-    // Once, and as its own line: a second copy would fold in beside the first
-    // and read as two updates to the row rather than as the duplicate it is.
-    expect(await screen.findAllByText("work/flip")).toHaveLength(1);
-    expect(screen.queryByText(/updates$/)).not.toBeInTheDocument();
+    // One update, not two: the L9 replay and the message list both carry this
+    // frame, and a rail that counted it twice would report a duplicate as work.
+    expect(await screen.findByText("1 update")).toBeInTheDocument();
   });
 });
