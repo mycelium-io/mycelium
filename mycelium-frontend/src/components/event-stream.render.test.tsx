@@ -156,7 +156,7 @@ describe("<EventStream /> live message rendering", () => {
     warn.mockRestore();
   });
 
-  it("renders an l9_knowledge streamed over SSE as a knowledge notice, not the unhandled fallback", async () => {
+  it("lifts an l9_knowledge streamed over SSE into the rail, not the unhandled fallback", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     renderWithSWR(<EventStream roomName="sprint" />);
     await act(async () => {});
@@ -178,9 +178,11 @@ describe("<EventStream /> live message rendering", () => {
       });
     });
 
-    expect(await screen.findByText("plan updated → plan/tasks.md")).toBeInTheDocument();
-    expect(screen.getByText("Knowledge")).toBeInTheDocument();
-    expect(screen.getByText("by @aligner", { exact: false })).toBeInTheDocument();
+    // A memory push is the room's state, not its speech: it reaches the rail
+    // under the row's own name, once, and never the conversation.
+    expect(await screen.findByText("Recently updated")).toBeInTheDocument();
+    expect(screen.getAllByText("plan/tasks.md")).toHaveLength(1);
+    expect(screen.getByText("@aligner")).toBeInTheDocument();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
   });

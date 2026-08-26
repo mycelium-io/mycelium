@@ -942,9 +942,331 @@ const scratch: RoomFixture = {
   invites: [],
 };
 
+// ── mycelium-general: the room as it actually reads under load ────────────────
+//
+// Lifted from a live capture of the hub's own room: seven agents each working a
+// task, and in ninety minutes the channel carried 76 system lines and not one
+// sentence anyone said. That is the shape the activity design has to survive, so
+// it is the shape the mock serves.
+
+const GENERAL_LIVE = "urn:ioc:mycelium:episode:mycelium-general:live";
+function generalEpisode(short: string): string {
+  return `urn:ioc:mycelium:episode:mycelium-general:${short}`;
+}
+
+const generalMemories: MockMemory[] = [
+  {
+    key: "work/860-retire-the-negotiate-pane-channel-board-netw",
+    value: "860: retire the Negotiate pane — Channel · Board · Network",
+    meta: { kind: "action", status: "open", assignee: "@fix-860" },
+    created_by: "fix-860",
+    version: 3,
+    updated_at: iso(63),
+    episode: generalEpisode("t860"),
+  },
+  {
+    key: "work/872-every-memory-can-be-discussed-widen-thread-m",
+    value: "872: every memory can be discussed",
+    meta: { kind: "action", status: "open", assignee: "@task-872" },
+    created_by: "task-872",
+    version: 3,
+    updated_at: iso(62),
+    episode: generalEpisode("t872"),
+  },
+  {
+    key: "work/881-mycelium-login-auto-discovers-the-oidc-issue",
+    value: "881: mycelium login auto-discovers the OIDC issuer from the hub",
+    meta: { kind: "action", status: "open", assignee: "@fix-881" },
+    created_by: "fix-881",
+    version: 3,
+    updated_at: iso(68),
+    episode: generalEpisode("t881"),
+  },
+  {
+    key: "work/886-activity-feed-needs-real-coalescing-group-kn",
+    value: "886: activity feed needs real coalescing — group Knowledge/pings/notices",
+    meta: { kind: "action", status: "open", assignee: "@task-886" },
+    created_by: "task-886",
+    version: 3,
+    updated_at: iso(67),
+    episode: generalEpisode("t886"),
+  },
+  {
+    key: "work/887-task-view-has-a-double-scroll-one-scroll-col",
+    value: "887: task view has a double-scroll — one scroll, collapsible markdown over the chat",
+    meta: { kind: "action", status: "open", assignee: "@task-887" },
+    created_by: "task-887",
+    version: 3,
+    updated_at: iso(60),
+    episode: generalEpisode("t887"),
+  },
+  {
+    key: "work/888-markdown-headings-are-uppercased-and-the-bod",
+    value: "888: markdown headings are uppercased and the body styling looks poor",
+    meta: { kind: "action", status: "open", assignee: "@task-888" },
+    created_by: "task-888",
+    version: 3,
+    updated_at: iso(6),
+    episode: generalEpisode("t888"),
+  },
+  {
+    key: "work/889-channel-ping-notice-rendering-slug-instead-o",
+    value: "889: channel ping/notice rendering — slug instead of title, ragged type",
+    meta: { kind: "action", status: "open", assignee: "@task-889" },
+    created_by: "task-889",
+    version: 3,
+    updated_at: iso(63),
+    episode: generalEpisode("t889"),
+  },
+  {
+    key: "agents/fix-860",
+    value: agentManifest("Working 860."),
+    created_by: "claude-web",
+    version: 1,
+    updated_at: iso(75),
+  },
+  {
+    key: "agents/task-872",
+    value: agentManifest("Working 872."),
+    created_by: "claude-web",
+    version: 1,
+    updated_at: iso(79),
+  },
+  {
+    key: "agents/task-886",
+    value: agentManifest("Working 886."),
+    created_by: "claude-web",
+    version: 1,
+    updated_at: iso(86),
+  },
+  {
+    key: "agents/task-887",
+    value: agentManifest("Working 887."),
+    created_by: "claude-web",
+    version: 1,
+    updated_at: iso(81),
+  },
+  {
+    key: "agents/task-888",
+    value: agentManifest("Working 888."),
+    created_by: "claude-web",
+    version: 1,
+    updated_at: iso(80),
+  },
+  {
+    key: "agents/task-889",
+    value: agentManifest("Working 889."),
+    created_by: "claude-web",
+    version: 1,
+    updated_at: iso(80),
+  },
+];
+
+const generalL9: Record<string, unknown>[] = [
+  generalNotice("filed", "work/886-activity-feed-needs-real-coalescing-group-kn", "886: activity feed needs real coalescing — group Knowledge/pings/notices", "task-886", 86),
+  generalNotice("claimed", "work/886-activity-feed-needs-real-coalescing-group-kn", "886: activity feed needs real coalescing — group Knowledge/pings/notices", "task-886", 86),
+  generalPing("work/886-activity-feed-needs-real-coalescing-group-kn", "task-886", "m5-0", 86),
+  generalNotice("filed", "work/887-task-view-has-a-double-scroll-one-scroll-col", "887: task view has a double-scroll — one scroll, collapsible markdown over the chat", "task-887", 81),
+  generalNotice("claimed", "work/887-task-view-has-a-double-scroll-one-scroll-col", "887: task view has a double-scroll — one scroll, collapsible markdown over the chat", "task-887", 80),
+  generalPing("work/887-task-view-has-a-double-scroll-one-scroll-col", "task-887", "m11-0", 80),
+  generalNotice("filed", "work/888-markdown-headings-are-uppercased-and-the-bod", "888: markdown headings are uppercased and the body styling looks poor", "task-888", 79),
+  generalNotice("claimed", "work/888-markdown-headings-are-uppercased-and-the-bod", "888: markdown headings are uppercased and the body styling looks poor", "task-888", 78),
+  generalPing("work/888-markdown-headings-are-uppercased-and-the-bod", "task-888", "m19-0", 78),
+  generalNotice("filed", "work/872-every-memory-can-be-discussed-widen-thread-m", "872: every memory can be discussed — widen thread-minting beyond the board namespaces", "task-872", 78),
+  generalNotice("claimed", "work/872-every-memory-can-be-discussed-widen-thread-m", "872: every memory can be discussed — widen thread-minting beyond the board namespaces", "task-872", 78),
+  generalPing("work/872-every-memory-can-be-discussed-widen-thread-m", "task-872", "m24-0", 78),
+  generalNotice("filed", "work/889-channel-ping-notice-rendering-slug-instead-o", "889: channel ping/notice rendering — slug instead of title, ragged type", "task-889", 77),
+  generalNotice("claimed", "work/889-channel-ping-notice-rendering-slug-instead-o", "889: channel ping/notice rendering — slug instead of title, ragged type", "task-889", 77),
+  generalPing("work/889-channel-ping-notice-rendering-slug-instead-o", "task-889", "m29-0", 77),
+  generalNotice("filed", "work/860-retire-the-negotiate-pane-channel-board-netw", "860: retire the Negotiate pane — Channel · Board · Network", "fix-860", 74),
+  generalNotice("claimed", "work/860-retire-the-negotiate-pane-channel-board-netw", "860: retire the Negotiate pane — Channel · Board · Network", "fix-860", 74),
+  generalPing("work/860-retire-the-negotiate-pane-channel-board-netw", "fix-860", "m35-0", 73),
+  generalPing("work/888-markdown-headings-are-uppercased-and-the-bod", "task-888", "m36-0", 70),
+  generalPing("work/886-activity-feed-needs-real-coalescing-group-kn", "task-886", "m37-0", 70),
+  generalPing("work/886-activity-feed-needs-real-coalescing-group-kn", "task-886", "m40-0", 69),
+  generalPing("work/881-mycelium-login-auto-discovers-the-oidc-issue", "fix-881", "m42-0", 68),
+  generalNotice("resolved", "work/881-mycelium-login-auto-discovers-the-oidc-issue", "881: mycelium login auto-discovers the OIDC issuer from the hub", "fix-881", 68),
+  generalPing("work/888-markdown-headings-are-uppercased-and-the-bod", "task-888", "m46-0", 68),
+  generalPing("work/886-activity-feed-needs-real-coalescing-group-kn", "task-886", "m47-0", 68),
+  generalNotice("resolved", "work/888-markdown-headings-are-uppercased-and-the-bod", "888: markdown headings are uppercased and the body styling looks poor", "task-888", 68),
+  generalNotice("claimed", "work/888-markdown-headings-are-uppercased-and-the-bod", "888: markdown headings are uppercased and the body styling looks poor", "task-888", 67),
+  generalPing("work/888-markdown-headings-are-uppercased-and-the-bod", "task-888", "m53-0", 67),
+  generalPing("work/889-channel-ping-notice-rendering-slug-instead-o", "task-889", "m54-0", 65),
+  generalPing("work/860-retire-the-negotiate-pane-channel-board-netw", "fix-860", "m55-0", 65),
+  generalPing("work/860-retire-the-negotiate-pane-channel-board-netw", "fix-860", "m58-0", 65),
+  generalPing("work/889-channel-ping-notice-rendering-slug-instead-o", "task-889", "m59-0", 63),
+  generalPing("work/889-channel-ping-notice-rendering-slug-instead-o", "task-889", "m59-1", 63),
+  generalPing("work/872-every-memory-can-be-discussed-widen-thread-m", "task-872", "m60-0", 63),
+  generalNotice("resolved", "work/889-channel-ping-notice-rendering-slug-instead-o", "889: channel ping/notice rendering — slug instead of title, ragged type", "task-889", 63),
+  generalPing("work/860-retire-the-negotiate-pane-channel-board-netw", "fix-860", "m63-0", 63),
+  generalNotice("resolved", "work/860-retire-the-negotiate-pane-channel-board-netw", "860: retire the Negotiate pane — Channel · Board · Network", "fix-860", 63),
+  generalPing("work/887-task-view-has-a-double-scroll-one-scroll-col", "task-887", "m67-0", 62),
+  generalPing("work/872-every-memory-can-be-discussed-widen-thread-m", "task-872", "m69-0", 62),
+  generalNotice("resolved", "work/872-every-memory-can-be-discussed-widen-thread-m", "872: every memory can be discussed", "task-872", 62),
+  generalPing("work/887-task-view-has-a-double-scroll-one-scroll-col", "juliarvalenti@gmail.com", "m73-0", 60),
+  generalPing("work/887-task-view-has-a-double-scroll-one-scroll-col", "juliarvalenti@gmail.com", "m73-1", 60),
+  generalPing("work/887-task-view-has-a-double-scroll-one-scroll-col", "juliarvalenti@gmail.com", "m73-2", 60),
+  generalNotice("claimed", "work/888-markdown-headings-are-uppercased-and-the-bod", "888: markdown headings are uppercased and the body styling looks poor", "task-888", 6),
+];
+
+const generalKnowledgePushes: MockMessage[] = [
+  generalKnowledge("agents/task-886", "claude-web", 86),
+  generalKnowledge("work/886-activity-feed-needs-real-coalescing-group-kn", "task-886", 86),
+  generalKnowledge("work/886-activity-feed-needs-real-coalescing-group-kn", "task-886", 86),
+  generalKnowledge("agents/task-887", "claude-web", 81),
+  generalKnowledge("work/887-task-view-has-a-double-scroll-one-scroll-col", "task-887", 81),
+  generalKnowledge("work/887-task-view-has-a-double-scroll-one-scroll-col", "task-887", 80),
+  generalKnowledge("agents/task-888", "claude-web", 80),
+  generalKnowledge("agents/task-889", "claude-web", 80),
+  generalKnowledge("work/888-markdown-headings-are-uppercased-and-the-bod", "task-888", 79),
+  generalKnowledge("agents/task-872", "claude-web", 79),
+  generalKnowledge("work/888-markdown-headings-are-uppercased-and-the-bod", "task-888", 78),
+  generalKnowledge("work/872-every-memory-can-be-discussed-widen-thread-m", "task-872", 78),
+  generalKnowledge("work/872-every-memory-can-be-discussed-widen-thread-m", "task-872", 78),
+  generalKnowledge("work/889-channel-ping-notice-rendering-slug-instead-o", "task-889", 77),
+  generalKnowledge("work/889-channel-ping-notice-rendering-slug-instead-o", "task-889", 77),
+  generalKnowledge("agents/fix-860", "claude-web", 75),
+  generalKnowledge("work/860-retire-the-negotiate-pane-channel-board-netw", "fix-860", 74),
+  generalKnowledge("work/860-retire-the-negotiate-pane-channel-board-netw", "fix-860", 74),
+  generalKnowledge("work/886-activity-feed-needs-real-coalescing-group-kn", "claude-web", 69),
+  generalKnowledge("work/888-markdown-headings-are-uppercased-and-the-bod", "claude-web", 69),
+  generalKnowledge("work/881-mycelium-login-auto-discovers-the-oidc-issue", "claude-web", 69),
+  generalKnowledge("work/881-mycelium-login-auto-discovers-the-oidc-issue", "fix-881", 68),
+  generalKnowledge("work/888-markdown-headings-are-uppercased-and-the-bod", "claude-web", 68),
+  generalKnowledge("work/888-markdown-headings-are-uppercased-and-the-bod", "task-888", 68),
+  generalKnowledge("work/886-activity-feed-needs-real-coalescing-group-kn", "claude-web", 67),
+  generalKnowledge("work/888-markdown-headings-are-uppercased-and-the-bod", "task-888", 67),
+  generalKnowledge("work/860-retire-the-negotiate-pane-channel-board-netw", "claude-web", 65),
+  generalKnowledge("work/889-channel-ping-notice-rendering-slug-instead-o", "claude-web", 65),
+  generalKnowledge("work/889-channel-ping-notice-rendering-slug-instead-o", "task-889", 63),
+  generalKnowledge("work/860-retire-the-negotiate-pane-channel-board-netw", "fix-860", 63),
+  generalKnowledge("work/889-channel-ping-notice-rendering-slug-instead-o", "claude-web", 63),
+  generalKnowledge("work/872-every-memory-can-be-discussed-widen-thread-m", "claude-web", 62),
+  generalKnowledge("work/872-every-memory-can-be-discussed-widen-thread-m", "task-872", 62),
+  generalKnowledge("work/887-task-view-has-a-double-scroll-one-scroll-col", "claude-web", 61),
+  generalKnowledge("work/888-markdown-headings-are-uppercased-and-the-bod", "task-888", 6),
+];
+
+/** A ping in mycelium-general's `live`, naming the thread that moved. */
+function generalPing(key: string, sender: string, message: string, minutesAgo: number): Record<string, unknown> {
+  const episode = generalEpisode(`t${key.replace(/^work\/(\d+)-.*$/, "$1")}`);
+  return {
+    id: `gp-${message}`,
+    sender_handle: "system",
+    message_type: "l9_exchange",
+    created_at: iso(minutesAgo),
+    room_name: "mycelium-general",
+    episode: GENERAL_LIVE,
+    content: {
+      l9: {
+        header: { kind: "exchange", message: { id: `gp-${message}`, parents: [], episode: GENERAL_LIVE } },
+        payload: { type: "ping", data: { episode, sender, message } },
+      },
+    },
+  };
+}
+
+/** A board event in mycelium-general's `live`. */
+function generalNotice(
+  subkind: string,
+  key: string,
+  title: string,
+  by: string,
+  minutesAgo: number,
+): Record<string, unknown> {
+  const id = `gn-${subkind}-${key}-${minutesAgo}`;
+  return {
+    id,
+    sender_handle: "system",
+    message_type: "l9_exchange",
+    created_at: iso(minutesAgo),
+    room_name: "mycelium-general",
+    episode: GENERAL_LIVE,
+    content: {
+      l9: {
+        header: { kind: "exchange", message: { id, parents: [], episode: GENERAL_LIVE } },
+        payload: {
+          type: "notice",
+          data: {
+            subkind,
+            key,
+            title,
+            episode: generalEpisode(`t${key.replace(/^work\/(\d+)-.*$/, "$1")}`),
+            by,
+            ...(subkind === "filed" ? { kind: "action" } : {}),
+          },
+        },
+      },
+    },
+  };
+}
+
+/** A memory push, as the persister announces one into the room. */
+function generalKnowledge(key: string, updatedBy: string, minutesAgo: number): MockMessage {
+  return {
+    id: `gk-${key}-${minutesAgo}`,
+    sender_handle: "system",
+    message_type: "l9_knowledge",
+    created_at: iso(minutesAgo),
+    episode: GENERAL_LIVE,
+    content: JSON.stringify({
+      content: `memory updated → ${key}`,
+      l9: { payload: { type: "extraction", data: { key, updated_by: updatedBy, version: 3 } } },
+    }),
+  };
+}
+
+/** The little that was actually said out loud while all of that went past. */
+const generalSaid: MockMessage[] = [
+  {
+    id: "gs-1",
+    sender_handle: "juliarvalenti@gmail.com",
+    message_type: "broadcast",
+    created_at: iso(70),
+    episode: GENERAL_LIVE,
+    content: "Is mycelium login now becoming an interactive terminal flow when it wasn't before?",
+  },
+  {
+    id: "gs-2",
+    sender_handle: "juliarvalenti@gmail.com",
+    message_type: "broadcast",
+    created_at: iso(30),
+    episode: GENERAL_LIVE,
+    content: "Which of these is actually blocked on me? I can't tell from here.",
+  },
+  {
+    id: "gs-3",
+    sender_handle: "juliarvalenti@gmail.com",
+    message_type: "broadcast",
+    created_at: iso(8),
+    episode: GENERAL_LIVE,
+    content: "Let's get 886 in first — the rest of this is unreadable until it lands.",
+  },
+];
+
+const general: RoomFixture = {
+  room: {
+    id: 4,
+    name: "mycelium-general",
+    created_at: iso(60 * 96),
+    is_public: true,
+    is_persistent: true,
+    mas_id: "mas_9f3c02de",
+  },
+  memories: generalMemories,
+  messages: [...generalKnowledgePushes, ...generalSaid].sort(
+    (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at),
+  ),
+  episodes: [],
+  episodeDetails: {},
+  invites: [],
+  l9: generalL9,
+};
+
 export const ROOM_FIXTURES: Record<string, RoomFixture> = {
   "atlas-migration": atlas,
   "pricing-model": pricing,
+  "mycelium-general": general,
   scratch,
 };
 

@@ -314,6 +314,31 @@ export function useRoomThreads(room: string): Map<string, ThreadOwner> {
   }, [memories]);
 }
 
+/** What a row is called, and the thread that opens it. */
+export interface RowNaming {
+  title: string;
+  episode: string | null;
+}
+
+/**
+ * Every row the room holds, keyed by its own key.
+ *
+ * The sibling of {@link useRoomThreads}, read the other way round: a notice and
+ * a memory push both name the *row* they are about, so a feed that wants to
+ * print a task's name rather than its `work/…` slug asks here. Off the same
+ * memories cache, so naming a row costs no request either.
+ */
+export function useRoomRowNames(room: string): Map<string, RowNaming> {
+  const { memories } = useRoomMemories(room);
+  return useMemo(() => {
+    const index = new Map<string, RowNaming>();
+    for (const memory of memories) {
+      index.set(memory.key, { title: memoryTitle(memory), episode: memory.episode ?? null });
+    }
+    return index;
+  }, [memories]);
+}
+
 /** The last readable line in a room, for an inbox-style row. Its own SWR key,
  *  so it never collides with the 200-message page `useRoomPosters` holds. */
 export function useRoomLatest(room: string, opts: RoomQueryOptions = {}) {
