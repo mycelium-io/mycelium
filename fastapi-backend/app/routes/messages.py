@@ -201,6 +201,14 @@ async def list_messages(
     kind: str | None = Query(None, description="Filter events by metadata.kind"),
     status: str | None = Query(None, description="Filter events by ledger status"),
     since: datetime | None = Query(None, description="Only messages created at/after this time"),
+    before: datetime | None = Query(
+        None,
+        description=(
+            "Only messages created strictly before this time. The backward cursor: "
+            "a page defined relative to content rather than position, so scrolling "
+            "back does not shift under messages arriving live."
+        ),
+    ),
     episode: str | None = Query(
         None, description="Only messages belonging to this L9 episode URN (one negotiation/session)"
     ),
@@ -224,6 +232,8 @@ async def list_messages(
             continue
         if since and m.created_at < since:
             continue
+        if before and m.created_at >= before:
+            continue
         if episode and m.episode != episode:
             continue
         filtered.append(m)
@@ -239,17 +249,27 @@ async def list_messages(
 
 
 @router.get("/l9")
-async def list_l9_wire(room_name: str, limit: int = Query(200, le=1000)) -> list[dict]:
+async def list_l9_wire(
+    room_name: str,
+    limit: int = Query(200, le=1000),
+    before: datetime | None = Query(
+        None, description="Only frames recorded strictly before this time (backward cursor)"
+    ),
+) -> list[dict]:
     """The room's L9 wire feed, replayed from the transcript (oldest first).
 
     Backfills the live L9 inspector: the SSE bus carries no history, so a freshly
     opened tab would otherwise start empty. Frames are the exact shape the bus
     pushes, so the client projects backfill and live frames identically.
+
+    ``before`` is the same backward cursor ``GET /messages`` takes, and the
+    channel needs both: its feed is those two reads merged, so paging only the
+    prose would hand back older pages with the control frames missing.
     """
     channel, coord = _resolve_channel(room_name)
     if coord is not None:
         return []  # a coordination session has no durable transcript
-    return persister.l9_wire_history(channel, limit=limit)
+    return persister.l9_wire_history(channel, limit=limit, before=before)
 
 
 def _find_amend_target(

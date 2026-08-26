@@ -214,4 +214,55 @@ describe("useThreadMessages", () => {
     await waitFor(() => expect(screen.getByTestId("closed")).toHaveTextContent("0"));
     expect(fetchMessages).not.toHaveBeenCalled();
   });
+
+  /** A thread pane that shows how deep it has read and can ask for more. */
+  function Pane({ room, episode }: { room: string; episode: string }) {
+    const { messages, hasOlder, loadOlder } = useThreadMessages(room, episode, 2);
+    return (
+      <>
+        <ul data-testid="pane">{messages.map((m, i) => <li key={i}>{String(m.content)}</li>)}</ul>
+        {hasOlder && (
+          <button type="button" onClick={loadOlder}>
+            older
+          </button>
+        )}
+      </>
+    );
+  }
+
+  it("widens its window rather than paging behind a cursor", async () => {
+    // Newest-first, so the newest N always contains the newest M before it:
+    // widening is idempotent against the live stream in the way an offset is
+    // not, and it stays one cache entry — which is what keeps a pushed write
+    // reaching this pane through `useRoomRevalidate`.
+    const thread = ["third", "second", "first"];
+    vi.mocked(fetchMessages).mockImplementation(async (_room, limit) => ({
+      messages: thread.slice(0, limit).map((content) => ({ content })),
+      total: thread.length,
+    }));
+
+    renderWithSWR(<Pane room="demo" episode={EPISODE} />);
+    await waitFor(() => expect(screen.getByTestId("pane")).toHaveTextContent("second"));
+    expect(screen.getByTestId("pane")).not.toHaveTextContent("first");
+
+    await act(async () => {
+      screen.getByRole("button", { name: "older" }).click();
+    });
+
+    await waitFor(() => expect(screen.getByTestId("pane")).toHaveTextContent("first"));
+    expect(vi.mocked(fetchMessages).mock.calls.map(([, limit]) => limit)).toEqual([2, 4]);
+  });
+
+  it("offers more only while the room says there is more", async () => {
+    // `total` is what matched, not what was returned, so this is exact rather
+    // than a full page inferred to mean there is another behind it.
+    vi.mocked(fetchMessages).mockResolvedValue({
+      messages: [{ content: "third" }, { content: "second" }],
+      total: 2,
+    });
+
+    renderWithSWR(<Pane room="demo" episode={EPISODE} />);
+    await waitFor(() => expect(screen.getByTestId("pane")).toHaveTextContent("second"));
+    expect(screen.queryByRole("button", { name: "older" })).not.toBeInTheDocument();
+  });
 });
