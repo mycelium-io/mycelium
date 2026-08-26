@@ -35,6 +35,24 @@ DEFAULT_LEEWAY_S = 60.0
 TOKEN_FILE_ENV = "MYCELIUM_TOKEN_FILE"
 
 
+def format_span(seconds: float) -> str:
+    """A span at the precision a human reads it at, not a countdown.
+
+    Rounded rather than floored: a token minted seconds ago with a 5-minute
+    lifetime has 299.9s left, and reporting that as "4 min" makes the issuer's
+    setting look like something else.
+    """
+    minutes = round(seconds / 60)
+    if minutes < 1:
+        return "under a minute"
+    if minutes < 90:  # noqa: PLR2004 — an hour and a half still reads better in minutes
+        return f"{minutes} min"
+    hours = round(minutes / 60)
+    if hours < 48:  # noqa: PLR2004 — two days is where days start reading better
+        return f"{hours} hours"
+    return f"{round(hours / 24)} days"
+
+
 def token_path() -> Path:
     """Where the session is cached (``~/.mycelium/token.json`` by default)."""
     override = os.environ.get(TOKEN_FILE_ENV, "").strip()
@@ -77,6 +95,11 @@ class StoredToken:
     #: Absolute epoch seconds, not a duration: a cached ``expires_in`` would
     #: silently mean something different every time the file is read.
     expires_at: float | None = None
+    #: When renewal itself runs out, so a session can say when a re-login is
+    #: actually due. ``None`` when the issuer reports no ``refresh_expires_in``,
+    #: which is most of them — the refresh token is opaque, so there is nothing
+    #: to read it off when it isn't volunteered.
+    refresh_expires_at: float | None = None
     token_endpoint: str | None = None
     scope: str | None = None
 
@@ -98,6 +121,16 @@ class StoredToken:
             return None
         return self.expires_at - (time.time() if now is None else now)
 
+    def refresh_expires_in(self, *, now: float | None = None) -> float | None:
+        """Seconds until renewal stops working, or ``None`` when unknown.
+
+        Unknown is the common case and reads as "no deadline to report", not as
+        "renewal never expires": an issuer that says nothing has said nothing.
+        """
+        if self.refresh_expires_at is None:
+            return None
+        return self.refresh_expires_at - (time.time() if now is None else now)
+
     def is_expired(self, *, leeway_s: float = DEFAULT_LEEWAY_S) -> bool:
         remaining = self.expires_in()
         return remaining is not None and remaining <= leeway_s
@@ -107,6 +140,7 @@ class StoredToken:
             "access_token": self.access_token,
             "refresh_token": self.refresh_token,
             "expires_at": self.expires_at,
+            "refresh_expires_at": self.refresh_expires_at,
             "issuer": self.issuer,
             "client_id": self.client_id,
             "token_endpoint": self.token_endpoint,
@@ -120,12 +154,16 @@ class StoredToken:
         if not isinstance(access_token, str) or not access_token:
             return None
         expires_at = data.get("expires_at")
+        refresh_expires_at = data.get("refresh_expires_at")
         return cls(
             access_token=access_token,
             issuer=str(data.get("issuer") or ""),
             client_id=str(data.get("client_id") or ""),
             refresh_token=data.get("refresh_token") or None,
             expires_at=float(expires_at) if isinstance(expires_at, int | float) else None,
+            refresh_expires_at=(
+                float(refresh_expires_at) if isinstance(refresh_expires_at, int | float) else None
+            ),
             token_endpoint=data.get("token_endpoint") or None,
             scope=data.get("scope") or None,
         )
