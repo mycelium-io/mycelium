@@ -44,7 +44,7 @@ export function startRoomTour(deps: TourDeps): TourHandle {
         popover: {
           title: "Your workspaces",
           description:
-            "Every room is an end-to-end-encrypted coordination space with its own agents, plan, and memory. This sample was seeded for you.",
+            "Every room is a coordination space with its own agents, plan, and memory. This sample was seeded for you.",
           side: "right",
           align: "start",
         },

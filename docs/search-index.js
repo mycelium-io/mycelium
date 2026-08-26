@@ -1538,7 +1538,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#dependencies-messaging-fabric-agntcy-slim",
     "t": "Messaging fabric (AGNTCY SLIM)",
     "s": "Dependencies",
-    "x": "Mycelium is SLIM-native: rooms are SLIM group channels and the node forwards only MLS ciphertext. This is the one deep coupling in the stack, so it comes first. Component Pinned version Role Upstream slim-bindings >=2.1,<2.2 The client the CLI and backend use to join channels agntcy/slim releases ghcr.io/agntcy/slim 2.1.0 The messaging node itself, a blind ciphertext forwarder ghcr.io/agntcy/slim Version lockstep. Th",
+    "x": "Mycelium is SLIM-native: rooms are SLIM group channels. This is the one deep coupling in the stack, so it comes first. Component Pinned version Role Upstream slim-bindings >=2.1,<2.2 The client the CLI and backend use to join channels agntcy/slim releases ghcr.io/agntcy/slim 2.1.0 The messaging node itself, a blind ciphertext forwarder ghcr.io/agntcy/slim Version lockstep. The node image and the slim-bindings wheel m",
     "p": "Reference"
   },
   {

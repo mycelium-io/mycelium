@@ -708,9 +708,8 @@ DEPENDENCY_GROUPS: list[dict] = [
         "heading": "Messaging fabric (AGNTCY SLIM)",
         "sidebar": "Messaging (SLIM)",
         "intro": (
-            "Mycelium is SLIM-native: rooms are SLIM group channels and the node "
-            "forwards only MLS ciphertext. This is the one deep coupling in the "
-            "stack, so it comes first."
+            "Mycelium is SLIM-native: rooms are SLIM group channels. This is the "
+            "one deep coupling in the stack, so it comes first."
         ),
         "components": [
             {
