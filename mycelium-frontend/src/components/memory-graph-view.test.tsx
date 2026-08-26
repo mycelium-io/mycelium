@@ -12,10 +12,6 @@ vi.mock("@/lib/api", () => ({
   fetchMemoryExpanded: vi.fn().mockResolvedValue({ found: false, rendered: "", expansions: [], key: "" }),
   // MemoryDetail loads the selected memory's links on mount.
   fetchMemoryLinks: vi.fn().mockResolvedValue({ outbound: [], backlinks: [] }),
-  // useRoomMemoryIntegrity (room-data) calls this; give it a stable no-op so
-  // it doesn't throw in the test environment. Banner behaviour is tested via
-  // <MemoryDetail> directly in memory-detail.test.tsx.
-  fetchMemoryIntegrity: vi.fn().mockResolvedValue({ broken: [], orphans: [], roots: [], leaves: [], total_memories: 0, total_links: 0 }),
 }));
 
 import { MemoryGraphView } from "@/components/memory-graph-view";

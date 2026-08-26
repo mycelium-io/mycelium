@@ -362,39 +362,6 @@ export async function fetchMemoryLinks(roomName: string, key: string): Promise<M
   return { key, outbound: data.outbound ?? [], backlinks: data.backlinks ?? [] };
 }
 
-export interface BrokenLink extends MemoryLink {
-  source: string;
-}
-
-export interface MemoryLinksIntegrity {
-  broken: BrokenLink[];
-  /** Fully isolated: inbound === 0 AND outbound === 0. */
-  orphans: string[];
-  /** Entry points: inbound === 0 AND outbound > 0. Nothing links here yet. */
-  roots: string[];
-  /** Dead ends: inbound > 0 AND outbound === 0. Links arrive but go no further. */
-  leaves: string[];
-  total_memories: number;
-  total_links: number;
-}
-
-const EMPTY_INTEGRITY: MemoryLinksIntegrity = {
-  broken: [],
-  orphans: [],
-  roots: [],
-  leaves: [],
-  total_memories: 0,
-  total_links: 0,
-};
-
-/** Room-wide link integrity — broken edges, orphans, roots, and leaves. Degrades to empty. */
-export async function fetchMemoryIntegrity(roomName: string): Promise<MemoryLinksIntegrity> {
-  return apiFetch<MemoryLinksIntegrity>(`/api/rooms/${roomName}/links/integrity`, {
-    cache: "no-store",
-    fallback: EMPTY_INTEGRITY,
-  });
-}
-
 export interface MemoryExpanded {
   key: string;
   rendered: string;
@@ -417,10 +384,10 @@ export async function fetchMemoryExpanded(roomName: string, key: string): Promis
 // ── Memory graph ─────────────────────────────────────────────────────────────
 // The whole room as a graph — one node per memory, one edge per link — for the
 // full-page graph view (#599). A thin read over the same link index that backs
-// `fetchMemoryLinks`/integrity, so graph-role facts (orphan = `inbound===0 &&
+// `fetchMemoryLinks`, so graph-role facts (orphan = `inbound===0 &&
 // outbound===0`, root = `inbound===0 && outbound>0`, leaf = `inbound>0 &&
 // outbound===0`) and broken-link facts (`resolved === false`) are derived
-// client-side from this one payload instead of a second integrity fetch.
+// client-side from this one payload.
 
 export interface MemoryGraphNode {
   key: string;
