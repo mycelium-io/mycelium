@@ -168,6 +168,70 @@ describe("<EventStream /> and the threads inside the room", () => {
     expect(await screen.findByText("flip reads behind a flag")).toBeInTheDocument();
   });
 
+  it("names a prose row by its first line, in the shape the store hands it over", async () => {
+    // The store keeps prose in the markdown body and rebuilds `value` from it,
+    // so a task row arrives as `{text: …}` rather than as a bare string. Reading
+    // only the string is what put a `work/…` slug in the channel where the
+    // board, one line above, was showing the row's name.
+    vi.mocked(fetchMemories).mockResolvedValue([
+      {
+        key: "work/flip-reads-behind-a-flag",
+        value: { text: "flip reads behind a flag\n\nGate the read path on the flag." },
+        content_text: "flip reads behind a flag\n\nGate the read path on the flag.",
+        version: 1,
+        created_by: "aligner",
+        updated_at: CREATED,
+        episode: THREAD,
+      },
+    ]);
+    renderWithSWR(<EventStream roomName={ROOM} onOpenThread={vi.fn()} />);
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+
+    await act(async () => {
+      es.open();
+      es.emit(ping("risk", "m-1"));
+    });
+
+    expect(await screen.findByText("flip reads behind a flag")).toBeInTheDocument();
+    expect(screen.queryByText("work/flip-reads-behind-a-flag")).not.toBeInTheDocument();
+  });
+
+  it("names the memory a knowledge push wrote, not the key it is filed under", async () => {
+    vi.mocked(fetchMemories).mockResolvedValue([
+      {
+        key: "context/synthesis",
+        value: { text: "where the room got to on the cutover" },
+        version: 3,
+        created_by: "synthesizer",
+        updated_at: CREATED,
+        episode: null,
+      },
+    ]);
+    renderWithSWR(<EventStream roomName={ROOM} />);
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+
+    await act(async () => {
+      es.open();
+      es.emit({
+        id: "k-1",
+        message_type: "l9_knowledge",
+        sender_handle: "system",
+        created_at: CREATED,
+        episode: LIVE,
+        content: JSON.stringify({
+          l9: {
+            payload: { type: "distillation", data: { key: "context/synthesis", updated_by: "synthesizer" } },
+          },
+        }),
+      });
+    });
+
+    expect(await screen.findByText("where the room got to on the cutover")).toBeInTheDocument();
+    expect(screen.queryByText("context/synthesis")).not.toBeInTheDocument();
+  });
+
   it("will not name a thread several rows share", async () => {
     // A converged negotiation binds every task it compiled to the episode it
     // converged in, so there is no one row to name — picking one would be the
@@ -245,6 +309,6 @@ describe("<EventStream /> and the threads inside the room", () => {
     renderWithSWR(<EventStream roomName={ROOM} />);
     await act(async () => {});
 
-    expect(await screen.findAllByText("memory updated → work/flip")).toHaveLength(1);
+    expect(await screen.findAllByText("work/flip")).toHaveLength(1);
   });
 });

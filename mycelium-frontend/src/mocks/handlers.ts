@@ -85,8 +85,18 @@ function stableUuid(seed: string): string {
  */
 function memoryRead(room: string, memory: MockMemory): Record<string, unknown> {
   const updated = memory.updated_at ?? MOCK_EPOCH;
+  const prose = typeof memory.value === "string";
   return {
     ...memory,
+    // The store keeps prose in the markdown body and rebuilds the API `value`
+    // from it (`routes/memory.py:_reconstruct_value`), so a prose memory reads
+    // back as `{text: …}` and never as the bare string a fixture writes. Doing
+    // that here rather than in the fixtures keeps them readable while every
+    // consumer sees the shape it will actually be handed — the divergence is
+    // what let a reader that understood only the string ship a slug where the
+    // channel expected a title.
+    value: prose ? { text: memory.value } : memory.value,
+    content_text: prose ? (memory.value as string) : memory.content_text,
     id: stableUuid(`${room}/${memory.key}`),
     room_name: memory.room_name ?? room,
     created_at: updated,

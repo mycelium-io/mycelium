@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   flattenMarkdown,
   memoryPreview,
+  memoryTitle,
   memoryValueText,
   previewCardTop,
 } from "@/lib/memory-preview";
@@ -20,6 +21,46 @@ describe("memoryValueText", () => {
 
   it("serialises a value with no text field", () => {
     expect(memoryValueText({ a: 1 })).toBe('{"a":1}');
+  });
+});
+
+describe("memoryTitle", () => {
+  const row = (over: Record<string, unknown>) =>
+    ({ key: "work/flip-reads-behind-a-flag", value: null, ...over }) as never;
+
+  it("reads the first line of a body the store handed back as `{text}`", () => {
+    // The shape the API actually returns for a markdown memory: prose lives in
+    // the body and `value` is rebuilt from it. A reader that understood only a
+    // bare string printed the key here, which is how a slug reached the channel.
+    expect(memoryTitle(row({ value: { text: "flip reads behind a flag\n\nbody" } }))).toBe(
+      "flip reads behind a flag",
+    );
+  });
+
+  it("reads a bare string value the same way", () => {
+    expect(memoryTitle(row({ value: "flip reads behind a flag\n\nbody" }))).toBe(
+      "flip reads behind a flag",
+    );
+  });
+
+  it("prefers a structured value's own title", () => {
+    expect(memoryTitle(row({ value: { title: "named", text: "first line" } }))).toBe("named");
+  });
+
+  it("strips a heading marker", () => {
+    expect(memoryTitle(row({ value: { text: "# flip reads behind a flag" } }))).toBe(
+      "flip reads behind a flag",
+    );
+  });
+
+  it("falls back to content_text when the value carries no prose", () => {
+    expect(memoryTitle(row({ value: { status: "open" }, content_text: "flip reads" }))).toBe(
+      "flip reads",
+    );
+  });
+
+  it("falls back to the key when there is no readable body at all", () => {
+    expect(memoryTitle(row({ value: {} }))).toBe("work/flip-reads-behind-a-flag");
   });
 });
 

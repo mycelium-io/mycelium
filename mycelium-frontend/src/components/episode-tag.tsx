@@ -23,7 +23,7 @@ interface Props {
  * clickable-reference look across chat, whichever kind of record it points at.
  */
 export function EpisodeTag({ urn, shortId, onOpen }: Props) {
-  const base = "rounded font-mono transition-colors";
+  const base = "rounded mono-inline transition-colors";
   if (!onOpen) {
     return (
       <Tooltip content={urn}>

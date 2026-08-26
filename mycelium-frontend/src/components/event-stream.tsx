@@ -12,7 +12,7 @@ import {
   logFetchError,
   type PendingInvite,
 } from "@/lib/api";
-import { useRoomAgents, useRoomThreads } from "@/lib/room-data";
+import { useRoomAgents, useRoomThreads, useRoomTitles } from "@/lib/room-data";
 import { NOTICE_TYPE, PING_TYPE, coalescePings, isLiveEpisode, noticeLabel, noticeOf, pingOf, threadShortId } from "@/lib/threads";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { MarkdownContent } from "@/components/markdown-content";
@@ -114,6 +114,50 @@ function ChannelSkeleton() {
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * What a system notice points at, drawn one way.
+ *
+ * A ping, a board notice and a knowledge push all name the same kind of thing —
+ * a task, by the name a human gave it — so they draw the same chip rather than
+ * three near-identical buttons that drift apart. The row it sits in is the
+ * caller's; what it points at, and how wide that is allowed to get, is here.
+ */
+function NoticeChip({
+  label,
+  what,
+  title,
+  onOpen,
+}: {
+  label: string;
+  /** What the chip points at, for the label a screen reader reads. */
+  what: string;
+  /** The underlying key or URN, for the reader who wants to check. */
+  title?: string;
+  onOpen?: () => void;
+}) {
+  const base = "inline-flex max-w-[20rem] items-center gap-1 truncate rounded px-1";
+  if (!onOpen) {
+    return (
+      <span className={`${base} text-text`} title={title}>
+        <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
+        <span className="truncate">{label}</span>
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={title}
+      aria-label={`Open ${what} ${label}`}
+      className={`${base} text-accent transition-colors hover:bg-accent-soft hover:underline`}
+    >
+      <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
+      <span className="truncate">{label}</span>
+    </button>
   );
 }
 
@@ -429,6 +473,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
   // six characters of URN. Off the room's shared memory read, so it costs
   // nothing; a thread no row is bound to simply has no name to give.
   const threads = useRoomThreads(roomName);
+  // And what each memory is called, for the events that name a key rather than
+  // a thread. Same cache again, so the third reader is still one request.
+  const titles = useRoomTitles(roomName);
   const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle)), [agents]);
   const agentOwners = useMemo(
     () => new Map(agents.filter((a) => a.owner).map((a) => [a.handle, a.owner as string])),
@@ -706,22 +753,16 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                 return (
                   <SystemNotice key={ev.id} time={ev.time} dot="var(--accent)" label="Activity">
                     <span>in</span>
-                    <button
-                      type="button"
-                      onClick={() => onOpenThread?.(thread)}
-                      disabled={!onOpenThread}
+                    <NoticeChip
+                      label={owner?.title ?? shortId}
+                      what="thread"
                       title={thread}
-                      aria-label={`Open thread ${shortId}`}
-                      className="inline-flex max-w-[18rem] items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default"
-                    >
-                      <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
-                      <span className="truncate">{owner?.title ?? shortId}</span>
-                    </button>
+                      onOpen={onOpenThread && (() => onOpenThread(thread))}
+                    />
                     <span>· {ev.pings} new</span>
                     {who.length > 0 && (
                       <span className="truncate">· {who.map(h => `@${h}`).join(", ")}</span>
                     )}
-                    {onOpenThread && <span className="text-faint">· click to open</span>}
                   </SystemNotice>
                 );
               }
@@ -746,15 +787,12 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                     dot={dot}
                     label={noticeLabel(subkind, ev.raw.kind as string | undefined)}
                   >
-                    <button
-                      type="button"
-                      onClick={() => episode && onOpenThread?.(episode)}
-                      disabled={!episode || !onOpenThread}
-                      className="inline-flex max-w-[20rem] items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
-                    >
-                      <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
-                      <span className="truncate">{ev.content}</span>
-                    </button>
+                    <NoticeChip
+                      label={ev.content}
+                      what="task"
+                      title={ev.raw.taskKey as string | undefined}
+                      onOpen={episode && onOpenThread ? () => onOpenThread(episode) : undefined}
+                    />
                     {/* A filed task reads by who it is for; a lease event by who
                         moved it. Fall back to the filer when a task is for no one. */}
                     {subkind === "filed" && ev.raw.for ? (
@@ -770,9 +808,20 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                 const updatedBy = ev.raw.updated_by as string | undefined;
                 return (
                   <SystemNotice key={ev.id} time={ev.time} dot="var(--yellow)" label="Knowledge">
-                    <span>{ev.content}</span>
-                    {key && <span className="font-mono text-muted-foreground">{key}</span>}
-                    {updatedBy ? <span>by @{updatedBy}</span> : null}
+                    {/* A knowledge push names a memory, so it reads by the same
+                        name the board and the ping give it — never the key it
+                        happens to be filed under. */}
+                    {key ? (
+                      <NoticeChip
+                        label={titles.get(key) ?? key}
+                        what="memory"
+                        title={key}
+                        onOpen={onOpenMemory && (() => onOpenMemory(key))}
+                      />
+                    ) : (
+                      <span className="truncate">{ev.content}</span>
+                    )}
+                    {updatedBy ? <span>· by @{updatedBy}</span> : null}
                   </SystemNotice>
                 );
               }
@@ -802,7 +851,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                     {shortId ? (
                       <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined} />
                     ) : (
-                      <span className="font-mono">episode</span>
+                      <span className="mono-inline">episode</span>
                     )}
                     {broken ? (
                       <span>· no agreement</span>
@@ -812,7 +861,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                         {gar !== undefined ? (
                           <Tooltip content="Genuine agreement ratio: how many agents actually moved toward the outcome">
                             <span
-                              className="font-mono"
+                              className="mono-inline"
                               aria-description="Genuine agreement ratio: how many agents actually moved toward the outcome"
                             >
                               · GAR {gar.toFixed(2)}
@@ -820,7 +869,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                           </Tooltip>
                         ) : null}
                         {planFile ? (
-                          <span>→ <span className="font-mono text-accent">{planFile}</span></span>
+                          <span>→ <span className="mono-inline text-accent">{planFile}</span></span>
                         ) : null}
                       </>
                     )}

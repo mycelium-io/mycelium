@@ -226,6 +226,16 @@ body {
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }
+/* An identifier set inline in sans copy — an episode's short id, a metric, a
+ * file name. Geist Mono runs optically larger than IBM Plex Sans at the same
+ * nominal size, so a bare `font-mono` inside a line of copy reads as a size
+ * change rather than a change of register; stepping it down is what makes the
+ * line one size. Relative, so it holds at every step of the scale. */
+.mono-inline {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
 .square-dot {
   display: inline-block;
   width: 8px;

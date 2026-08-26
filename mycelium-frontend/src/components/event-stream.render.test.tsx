@@ -178,7 +178,9 @@ describe("<EventStream /> live message rendering", () => {
       });
     });
 
-    expect(await screen.findByText("plan updated → plan/tasks.md")).toBeInTheDocument();
+    // No row in this room carries that key, so the chip reads as the key —
+    // the honest read, and the only case in which a slug reaches the channel.
+    expect(await screen.findByText("plan/tasks.md")).toBeInTheDocument();
     expect(screen.getByText("Knowledge")).toBeInTheDocument();
     expect(screen.getByText("by @aligner", { exact: false })).toBeInTheDocument();
     expect(warn).not.toHaveBeenCalled();

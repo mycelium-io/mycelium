@@ -14,6 +14,47 @@ export function memoryValueText(value: unknown): string {
   return String(value);
 }
 
+const TITLE_MAX = 120;
+
+/** The mapping a structured value is, or null when the value is prose. */
+function structuredValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+/** The first line with something on it, stripped of its heading marker. */
+function firstLine(text: string): string {
+  const line = text.split("\n").map(l => l.trim()).find(l => l && !l.startsWith("---"));
+  return (line ?? "").replace(/^#+\s*/, "").slice(0, TITLE_MAX);
+}
+
+/**
+ * What a memory is called.
+ *
+ * One derivation, because a task is a board row *and* a thread and the two must
+ * not disagree about its name: a structured value's own `title`, else the first
+ * readable line of the body, else the key.
+ *
+ * The body is whichever way the store hands it over. Prose lives in the
+ * markdown body and the API value is rebuilt from it, so a prose memory arrives
+ * as `{text: …}` rather than as a bare string — a reader that understands only
+ * the string falls through to the key and prints a slug where the room expects
+ * a name.
+ */
+export function memoryTitle(memory: Pick<Memory, "key" | "value" | "content_text">): string {
+  const structured = structuredValue(memory.value);
+  const explicit = structured?.title;
+  if (typeof explicit === "string" && explicit.trim()) return explicit.trim().slice(0, TITLE_MAX);
+  const body =
+    typeof memory.value === "string"
+      ? memory.value
+      : typeof structured?.text === "string"
+        ? structured.text
+        : memory.content_text ?? "";
+  return firstLine(body) || memory.key;
+}
+
 // The hovercard shows an excerpt, not a rendered document: markdown syntax is
 // flattened to the text it decorates so a cut-off construct can't leave a
 // dangling marker on screen.

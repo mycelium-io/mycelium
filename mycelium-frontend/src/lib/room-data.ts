@@ -20,6 +20,7 @@
 
 import { useCallback, useMemo } from "react";
 import type { RoomStatus } from "@/lib/board/upstream";
+import { memoryTitle } from "@/lib/memory-preview";
 import useSWR, { useSWRConfig, type SWRConfiguration } from "swr";
 import {
   fetchA2aBridge,
@@ -94,23 +95,6 @@ export interface ThreadOwner {
    * which is what is actually true of it.
    */
   title: string | null;
-}
-
-/** A row's own title where its frontmatter carries one, else its key.
- *
- * A task is a markdown row, so its title is the first line of its body; a
- * structured value keeps its `title` field. The key is the last resort, for a
- * row with no readable body at all. */
-function memoryTitle(memory: Memory): string {
-  const value = memory.value;
-  if (typeof value === "string" && value.trim()) {
-    return value.trim().split("\n")[0].replace(/^#+\s*/, "").trim() || memory.key;
-  }
-  const title =
-    value && typeof value === "object" && !Array.isArray(value)
-      ? (value as Record<string, unknown>).title
-      : null;
-  return typeof title === "string" && title.trim() ? title.trim() : memory.key;
 }
 
 // Stable empties: a fresh `[]` per render would break every downstream memo.
@@ -312,6 +296,22 @@ export function useRoomThreads(room: string): Map<string, ThreadOwner> {
     }
     return index;
   }, [memories]);
+}
+
+/**
+ * What each of a room's memories is called, by key.
+ *
+ * The sibling of {@link useRoomThreads} for the events that name a memory
+ * rather than a thread — a knowledge push carries the key it wrote and nothing
+ * else, and a channel that prints the key prints a slug. Off the same shared
+ * memories cache, so naming one costs no request.
+ */
+export function useRoomTitles(room: string): Map<string, string> {
+  const { memories } = useRoomMemories(room);
+  return useMemo(
+    () => new Map(memories.map(memory => [memory.key, memoryTitle(memory)])),
+    [memories],
+  );
 }
 
 /** The last readable line in a room, for an inbox-style row. Its own SWR key,
