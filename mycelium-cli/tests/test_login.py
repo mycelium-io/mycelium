@@ -885,3 +885,188 @@ def test_iam_flags_a_handle_the_token_will_not_back() -> None:
     assert result.exit_code == 0
     assert "you're signed in as @avery" in _flat(result.stdout)
     assert "refuse writes claiming a different handle" in _flat(result.stdout)
+
+
+# ── what a session says about renewing itself ────────────────────────────────
+
+
+def _login_with(
+    monkeypatch: pytest.MonkeyPatch,
+    grant: oidc.TokenResponse,
+    *,
+    json_output: bool = False,
+) -> Any:
+    """Run a successful browser login that lands *grant* in the cache."""
+    from mycelium.commands import login as login_cmd
+
+    monkeypatch.setattr(login_cmd, "_browser_available", lambda: True)
+    monkeypatch.setattr(login_cmd, "discover", lambda _issuer: _META)
+    monkeypatch.setattr(login_cmd, "authorization_code_login", lambda *_a, **_k: grant)
+    if json_output:
+        config = MyceliumConfig.load()
+        config.login.issuer = _META.issuer
+        config.save()
+        return runner.invoke(app, ["--json", "login"])
+    return runner.invoke(app, ["login", "--issuer", "https://idp.test/realms/mycelium"])
+
+
+def test_a_token_response_carries_the_refresh_deadline_when_the_issuer_reports_one() -> None:
+    grant = oidc._as_token_response(
+        {
+            "access_token": "at-1",
+            "refresh_token": "rt-1",
+            "expires_in": 300,
+            "refresh_expires_in": 1800,
+        }
+    )
+
+    assert grant.refresh_expires_at is not None
+    assert 1700 < grant.refresh_expires_at - time.time() <= 1800
+
+
+def test_a_silent_issuer_leaves_the_refresh_deadline_unknown() -> None:
+    """Unknown, never guessed: most issuers say nothing, and 0 means 'no expiry'."""
+    quiet = oidc._as_token_response({"access_token": "at-1", "expires_in": 300})
+    offline = oidc._as_token_response({"access_token": "at-1", "refresh_expires_in": 0})
+
+    assert quiet.refresh_expires_at is None
+    assert offline.refresh_expires_at is None
+
+
+def test_the_refresh_deadline_round_trips_through_the_cache() -> None:
+    deadline = time.time() + 1800
+    save_token(_token(refresh_expires_at=deadline))
+
+    cached = load_token()
+    assert cached is not None
+    assert cached.refresh_expires_at == deadline
+    assert cached.refresh_expires_in() is not None
+
+
+def test_login_says_the_session_renews_itself_and_when_it_stops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The 4-minute number reads as a re-login countdown unless renewal is stated."""
+    result = _login_with(
+        monkeypatch,
+        oidc.TokenResponse(
+            access_token=_jwt({"sub": "avery"}),
+            refresh_token="rt-1",
+            expires_at=time.time() + 300,
+            refresh_expires_at=time.time() + 30 * 86400,
+        ),
+    )
+
+    assert result.exit_code == 0
+    out = _flat(result.stdout)
+    # 299.9s left, one instant after minting: the issuer's 5 minutes, not 4.
+    assert "Access token valid for 5 min" in out
+    assert "renews on demand" in out
+    assert "under 1 min is left" in out
+    assert "Nothing renews in the background" in out
+    assert "Signing in again is due in 30 days" in out
+
+
+def test_login_says_nothing_about_a_deadline_the_issuer_never_gave(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = _login_with(
+        monkeypatch,
+        oidc.TokenResponse(
+            access_token=_jwt({"sub": "avery"}),
+            refresh_token="rt-1",
+            expires_at=time.time() + 240,
+        ),
+    )
+
+    assert result.exit_code == 0
+    out = _flat(result.stdout)
+    assert "renews on demand" in out
+    assert "Signing in again is due" not in out
+
+
+def test_login_without_a_refresh_token_says_that_is_the_whole_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = _login_with(
+        monkeypatch,
+        oidc.TokenResponse(access_token=_jwt({"sub": "avery"}), expires_at=time.time() + 240),
+    )
+
+    assert result.exit_code == 0
+    out = _flat(result.stdout)
+    assert "the session ends when this access token does" in out
+    assert "offline_access" in out
+    assert "renews on demand" not in out
+
+
+def test_login_json_carries_the_renewal_facts(monkeypatch: pytest.MonkeyPatch, hub: _Hub) -> None:
+    deadline = time.time() + 1800
+    result = _login_with(
+        monkeypatch,
+        oidc.TokenResponse(
+            access_token=_jwt({"sub": "avery"}),
+            refresh_token="rt-1",
+            expires_at=time.time() + 240,
+            refresh_expires_at=deadline,
+        ),
+        json_output=True,
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["refreshable"] is True
+    assert payload["refresh_expires_at"] == pytest.approx(deadline)
+    assert payload["renewal_leeway_s"] == tokens.DEFAULT_LEEWAY_S
+
+
+def test_a_refresh_carries_the_deadline_of_whichever_token_survives(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rotated refresh token brings its own deadline; a kept one keeps its own."""
+    original = time.time() + 1800
+    save_token(
+        _token(access_token="at-stale", expires_at=time.time() - 10, refresh_expires_at=original)
+    )
+
+    def rotated(_url: str, **_kw: Any) -> _Resp:
+        return _Resp(
+            {
+                "access_token": "at-fresh",
+                "refresh_token": "rt-2",
+                "expires_in": 3600,
+                "refresh_expires_in": 7200,
+            }
+        )
+
+    monkeypatch.setattr(httpx, "post", rotated)
+    renewed = client_mod.current_token()
+    assert renewed is not None
+    assert renewed.refresh_expires_at is not None
+    assert renewed.refresh_expires_at > original
+
+    save_token(
+        _token(access_token="at-stale", expires_at=time.time() - 10, refresh_expires_at=original)
+    )
+    monkeypatch.setattr(
+        httpx, "post", lambda _url, **_kw: _Resp({"access_token": "at-fresh", "expires_in": 3600})
+    )
+    kept = client_mod.current_token()
+    assert kept is not None
+    assert kept.refresh_expires_at == original
+
+
+def test_whoami_says_renewal_happens_on_the_next_command() -> None:
+    save_token(
+        _token(
+            access_token=_jwt({"sub": "avery", "exp": time.time() + 3600}),
+            refresh_expires_at=time.time() + 30 * 86400,
+        )
+    )
+
+    result = runner.invoke(app, ["whoami"])
+
+    assert result.exit_code == 0
+    out = _flat(result.stdout)
+    assert "renewed on the next command that needs it" in out
+    assert "re-login due in 30 days" in out

@@ -120,6 +120,11 @@ def _refresh(stored: StoredToken, config: MyceliumConfig) -> StoredToken | None:
         # Issuers that don't rotate refresh tokens omit it; keep the one we have.
         refresh_token=resp.refresh_token or stored.refresh_token,
         expires_at=resp.expires_at,
+        # The renewal deadline moves with the token it belongs to: a rotated
+        # refresh token brings its own, and a kept one keeps its own.
+        refresh_expires_at=(
+            resp.refresh_expires_at if resp.refresh_token else stored.refresh_expires_at
+        ),
         token_endpoint=endpoint,
         scope=resp.scope or stored.scope,
     )

@@ -70,6 +70,10 @@ class TokenResponse:
     access_token: str
     refresh_token: str | None = None
     expires_at: float | None = None
+    #: When the *refresh* token dies, from the issuer's ``refresh_expires_in``.
+    #: Not in RFC 6749 — Keycloak and friends report it, others don't — so it
+    #: is ``None`` whenever the issuer stayed quiet, never a guess.
+    refresh_expires_at: float | None = None
     scope: str | None = None
 
 
@@ -151,12 +155,24 @@ def _as_token_response(body: dict[str, Any]) -> TokenResponse:
     access_token = body.get("access_token")
     if not isinstance(access_token, str) or not access_token:
         raise OidcError("issuer returned no access_token")
+    now = time.time()
     expires_in = body.get("expires_in")
-    expires_at = time.time() + float(expires_in) if isinstance(expires_in, int | float) else None
+    expires_at = now + float(expires_in) if isinstance(expires_in, int | float) else None
+
+    # An offline token comes back with refresh_expires_in: 0, meaning the refresh
+    # token doesn't expire — reading that as a deadline in the past would invert it.
+    refresh_expires_in = body.get("refresh_expires_in")
+    refresh_expires_at = (
+        now + float(refresh_expires_in)
+        if isinstance(refresh_expires_in, int | float) and refresh_expires_in > 0
+        else None
+    )
+
     return TokenResponse(
         access_token=access_token,
         refresh_token=body.get("refresh_token") or None,
         expires_at=expires_at,
+        refresh_expires_at=refresh_expires_at,
         scope=body.get("scope") or None,
     )
 
