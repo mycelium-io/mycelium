@@ -26,7 +26,7 @@ from typing import Any
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.a2a_agents import router as a2a_agents_router
@@ -286,6 +286,33 @@ app.include_router(users_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
 app.include_router(status_router, prefix="/api")
+
+
+@app.get("/api/whoami", tags=["auth"])
+async def whoami(request: Request):
+    """Who the hub resolves this caller to, from the bearer token it verified.
+
+    The single source of truth for write attribution. A client defaults
+    ``created_by`` to the ``handle`` returned here, so the value it stamps is
+    exactly the one the gate enforces — both derive from the same
+    ``AUTH_HANDLE_CLAIM``, so a client never has to guess which claim a hub
+    trusts. ``gated`` is false when this hub runs no auth gate, where a caller
+    names itself and there is no principal to report; a client then falls back
+    to its local identity config.
+
+    A gated hub with no valid token never reaches here — ``auth_gate`` 401s
+    first — which a client reads as "the hub can't tell who I am" and also
+    falls back to local identity.
+    """
+    principal = getattr(request.state, "principal", None)
+    if principal is None:
+        return {"gated": settings.AUTH_ENABLED, "handle": None, "subject": None, "role": None}
+    return {
+        "gated": True,
+        "handle": principal.handle,
+        "subject": principal.subject,
+        "role": principal.role,
+    }
 
 
 @app.get("/", tags=["health"])

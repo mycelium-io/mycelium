@@ -3272,6 +3272,26 @@
         }
       }
     },
+    "/api/whoami": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Whoami",
+        "description": "Who the hub resolves this caller to, from the bearer token it verified.\n\nThe single source of truth for write attribution. A client defaults\n``created_by`` to the ``handle`` returned here, so the value it stamps is\nexactly the one the gate enforces \u2014 both derive from the same\n``AUTH_HANDLE_CLAIM``, so a client never has to guess which claim a hub\ntrusts. ``gated`` is false when this hub runs no auth gate, where a caller\nnames itself and there is no principal to report; a client then falls back\nto its local identity config.\n\nA gated hub with no valid token never reaches here \u2014 ``auth_gate`` 401s\nfirst \u2014 which a client reads as \"the hub can't tell who I am\" and also\nfalls back to local identity.",
+        "operationId": "whoami_api_whoami_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [

@@ -847,6 +847,7 @@ def send(
     ),
     handle: str | None = typer.Option(
         None,
+        "--as",
         "--handle",
         "-H",
         help="Your sender handle (defaults to identity config)",
@@ -910,7 +911,7 @@ def amend(
         None, "--room", "-r", help="Room the message is in (defaults to active room)"
     ),
     handle: str | None = typer.Option(
-        None, "--handle", "-H", help="Your sender handle (defaults to identity config)"
+        None, "--as", "--handle", "-H", help="Your sender handle (defaults to identity config)"
     ),
 ) -> None:
     """

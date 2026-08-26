@@ -26,6 +26,7 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
+from mycelium import identity
 from mycelium.client import current_token
 from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
@@ -201,8 +202,12 @@ def user_create(
     notify: str | None = typer.Option(
         None, "--notify", help="Where to route 'needs you' escalations (email/webhook)."
     ),
-    handle_flag: str = typer.Option(
-        "cli-user", "--as", "-H", help="Your own handle (recorded as created_by)."
+    handle_flag: str | None = typer.Option(
+        None,
+        "--as",
+        "--handle",
+        "-H",
+        help="Your own handle (recorded as created_by). Defaults to your hub identity.",
     ),
 ) -> None:
     """Create (or upsert) a user in the global store.
@@ -210,6 +215,7 @@ def user_create(
     Examples:
         mycelium user create avery --name "Avery Quinn" --team core
     """
+    handle_flag = identity.resolve_actor(MyceliumConfig.load(), override=handle_flag)
     try:
         try:
             user = UserManifest(

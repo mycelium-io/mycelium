@@ -22,6 +22,7 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
+from mycelium import identity
 from mycelium.client import hub_client, hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
@@ -184,7 +185,13 @@ def memory_set(
     room: str | None = typer.Option(
         None, "--room", "-r", help="Room name (defaults to active room)"
     ),
-    handle: str = typer.Option("cli-user", "--handle", "-H", help="Agent handle"),
+    handle: str | None = typer.Option(
+        None,
+        "--as",
+        "--handle",
+        "-H",
+        help="Author to attribute this to (created_by). Defaults to your hub identity.",
+    ),
     no_embed: bool = typer.Option(False, "--no-embed", help="Skip vector embedding"),
     tags: str | None = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
     expandable: bool = typer.Option(
@@ -223,6 +230,7 @@ def memory_set(
 
     value = _resolve_value(value, file)
     room_name = _get_active_room(room)
+    handle = identity.resolve_actor(MyceliumConfig.load(), override=handle)
 
     # Validate structured keys when category prefix is recognized
     entry: MemoryLogEntry | None = None
@@ -719,7 +727,13 @@ def memory_reindex(
 def memory_subscribe(
     pattern: str = typer.Argument(..., help="Key glob pattern (e.g. 'project/*')"),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-    handle: str = typer.Option("cli-user", "--handle", "-H", help="Subscriber agent handle"),
+    handle: str | None = typer.Option(
+        None,
+        "--as",
+        "--handle",
+        "-H",
+        help="Subscriber handle. Defaults to your hub identity.",
+    ),
 ) -> None:
     """Subscribe to memory change notifications."""
     from mycelium_backend_client.api.memory import (
@@ -728,6 +742,7 @@ def memory_subscribe(
     from mycelium_backend_client.models import SubscriptionCreate, SubscriptionRead
 
     room_name = _get_active_room(room)
+    handle = identity.resolve_actor(MyceliumConfig.load(), override=handle)
 
     with _get_client() as client:
         body = SubscriptionCreate(key_pattern=pattern, subscriber=handle)

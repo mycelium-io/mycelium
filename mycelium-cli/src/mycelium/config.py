@@ -795,22 +795,15 @@ class MyceliumConfig(BaseModel):
         self.save()
 
     def get_current_identity(self) -> str:
-        import os
+        """This machine's acting identity, for a sender handle.
 
-        from mycelium.identity import get_current_handle
+        A thin wrapper over the one resolver (:func:`mycelium.identity.resolve_actor`)
+        so a sender and a write's author are found the same way: an explicit
+        override the caller passes, then ``MYCELIUM_AGENT_HANDLE``, then the hub's
+        own view of our token, then local ``iam`` config, then ``"unknown"``.
+        ``require=False`` because a sender read must not raise — the caller decides
+        what an unresolved sender means.
+        """
+        from mycelium.identity import resolve_actor
 
-        # Env var set by Mycelium plugin (or Docker Compose) takes highest priority
-        env_handle = os.environ.get("MYCELIUM_AGENT_HANDLE", "").strip()
-        if env_handle:
-            return env_handle
-
-        try:
-            handle = get_current_handle(self)
-            if handle:
-                return handle
-        except Exception:
-            pass
-
-        if self.identity.name:
-            return self.identity.name
-        return "unknown"
+        return resolve_actor(self, require=False, fallback="unknown")
