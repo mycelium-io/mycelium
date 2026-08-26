@@ -1,6 +1,6 @@
 {
   "_comment": "Frozen vocabulary for the coordination board. The GUI (mycelium-frontend/src/lib/board/) and the CLI (mycelium-cli/src/mycelium/board/) each carry their own copy of the projection rules — the thin `uv tool` CLI can't import the frontend and vice versa — so the words they must agree on live here, the same way contracts/slim-l9-wire.json freezes the SLIM+L9 constants. A unit test on each side asserts against this file, so neither copy can drift without a red gate.",
-  "version": 2,
+  "version": 3,
   "statuses": [
     "open",
     "in_review",
@@ -86,10 +86,10 @@
       "kind",
       "priority"
     ],
-    "_refusals_comment": "Why a projected row has no thread to speak into, keyed by the source that produced it. A chat verb refuses in these terms rather than falling back to the room: a message that quietly went somewhere other than where it was addressed is worse than one that did not go. Keyed by source kind, so an episode row is absent — an episode IS a thread, and speaking into a recorded negotiation is a write the hub judges (a frozen roster refuses an outsider), not one the surface guesses at.",
+    "_refusals_comment": "Why a row has no thread to speak into, keyed by the source that produced it. A chat verb refuses in these terms rather than falling back to the room: a message that quietly went somewhere other than where it was addressed is worse than one that did not go. Keyed by source kind, so an episode row is absent — an episode IS a thread, and speaking into a recorded negotiation is a write the hub judges (a frozen roster refuses an outsider), not one the surface guesses at. The memory refusal is no longer about namespace: EVERY memory a person authored carries a thread, board namespace or not (#872), so the only unthreaded memory left is one the hub wrote for itself — an agents/ manifest, a log/ record, context/synthesis.",
     "refusals": {
       "agent": "presence is a lease the runtime renews, not a conversation to join",
-      "memory": "a thread belongs to a task; this row is in another namespace"
+      "memory": "the hub writes this memory for itself; a thread belongs to something a person authored"
     }
   },
   "log": {

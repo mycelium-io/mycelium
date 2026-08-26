@@ -59,7 +59,7 @@ from app.services.filesystem import (
     write_memory_file,
 )
 from app.services.search_index import stable_memory_id
-from app.services.tasks import is_board_row, mint_episode_urn
+from app.services.tasks import is_board_row, is_threadable, mint_episode_urn
 
 logger = logging.getLogger(__name__)
 
@@ -306,13 +306,15 @@ async def upsert_memories(
             extra_meta.update(system)
         extra_meta.update(system_meta(existing_meta))
 
-        # Every board row is a task with its own thread. If this write creates
-        # one in a board namespace and nothing has already bound it, mint its
-        # episode now — so a task, a decision or a blocked item carries a thread
-        # from the moment it exists, not only once a negotiation happens inside
-        # it. The merge above is write-once (an existing binding won), so this
-        # only ever fires on creation and each row gets a distinct URN.
-        if EPISODE_META not in extra_meta and is_board_row(item.key):
+        # Every memory a person authored can be discussed. If this write creates
+        # one and nothing has already bound it, mint its episode now — so a task,
+        # a decision, a `context/` note or a `skills/` doc carries a thread from
+        # the moment it exists, not only once someone wants to argue about it.
+        # Everything can be *discussed*; only the board namespaces are *worked*,
+        # which is why the gate here is wider than `is_board_row` below. The
+        # merge above is write-once (an existing binding won), so this only ever
+        # fires on creation and each memory gets a distinct URN.
+        if EPISODE_META not in extra_meta and is_threadable(item.key):
             extra_meta[EPISODE_META] = mint_episode_urn(room_name)
 
         # Persist structured values into frontmatter so non-text keys survive
@@ -403,6 +405,9 @@ async def upsert_memories(
         # a `filed` notice into the timeline, naming the task, its kind (so it
         # reads "New decision" not always "New task") and who it is for. Only on
         # creation — a later write is a state change, carried by its own verb.
+        # Board namespaces only, deliberately: a threaded `context/` note is
+        # something to discuss, and announcing it as filed work would put it on a
+        # timeline that reads as the board.
         if not existing and is_board_row(item.key):
             from app.services.room_channels import manager
 
