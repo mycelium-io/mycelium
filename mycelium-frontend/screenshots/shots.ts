@@ -71,12 +71,12 @@ export const SHOTS: Shot[] = [
     caption: "A fresh, empty room — the starting state.",
   },
   {
-    id: "room-negotiate",
+    id: "room-thread",
     route: "/room/atlas-migration",
     theme: "dark",
     viewport: "desktop",
-    steps: ["Negotiate"],
-    caption: "The negotiation pane: the standing offer, the aligner's per-round broker grid, and the consensus score.",
+    steps: ["Board", "flip reads behind a flag"],
+    caption: "A task and its thread: the row, its markdown, and the conversation working it out — people and agents in one place.",
   },
   {
     id: "room-memory",

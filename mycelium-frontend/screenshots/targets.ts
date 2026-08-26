@@ -48,7 +48,7 @@ export const TARGETS: Record<string, Target[]> = {
     { dir: SPLASH_DIR, name: "app-hero", retina: true },
   ],
   "room-empty": [{ dir: DOCS_DIR, name: "app-room-empty", retina: true }],
-  "room-negotiate": [{ dir: SPLASH_DIR, name: "app-negotiate", retina: true }],
+  "room-thread": [{ dir: SPLASH_DIR, name: "app-thread", retina: true }],
   "room-memory": [{ dir: SPLASH_DIR, name: "app-memory", retina: true }],
   "room-network": [{ dir: SPLASH_DIR, name: "app-network", retina: true }],
 };
