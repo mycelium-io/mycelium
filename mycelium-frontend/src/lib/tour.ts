@@ -6,14 +6,12 @@
 // The onboarding tour is a plain imperative controller, not a hook: driver.js
 // owns its own overlay/DOM/lifecycle, so wrapping it in React state adds
 // ceremony without benefit. `startRoomTour` holds all the logic (steps,
-// theming, convergence sync); a thin <RoomTour> seam wires it to `?tour=1`.
+// theming); a thin <RoomTour> seam wires it to `?tour=1`.
 
 import { driver, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import type { View } from "@/components/event-stream";
 import type { Tab as InspectorTab } from "@/components/room-inspector";
-
-export type NegotiationPhase = "idle" | "negotiating" | "converged" | "rejected";
 
 export interface TourDeps {
   setEditorView: (v: View) => void;
@@ -24,16 +22,7 @@ export interface TourDeps {
 
 export interface TourHandle {
   destroy: () => void;
-  /** Feed the live negotiation phase so the tour can pace itself to it. */
-  notifyPhase: (phase: NegotiationPhase) => void;
 }
-
-// Step indices that live inside the Negotiate view — when the sample
-// negotiation converges while the user is parked on the offer board or swim
-// lanes, we jump them straight to the consensus reveal (the synced payoff).
-const OFFER_BOARD_STEP = 3;
-const SWIMLANES_STEP = 4;
-const CONSENSUS_STEP = 5;
 
 export function startRoomTour(deps: TourDeps): TourHandle {
   const d: Driver = driver({
@@ -71,56 +60,35 @@ export function startRoomTour(deps: TourDeps): TourHandle {
         },
       },
       {
-        element: '[data-tour="tab-negotiate"]',
+        element: '[data-tour="tab-board"]',
         popover: {
-          title: "Summon the aligner",
+          title: "The board is the surface",
           description:
-            "When a room needs to decide something, the aligner brokers a real NEGMAS negotiation. Open it and watch this sample resolve.",
-          side: "bottom",
-          align: "end",
-        },
-        onHighlightStarted: () => deps.setEditorView("negotiate"),
-      },
-      {
-        element: '[data-tour="offer-board"]',
-        popover: {
-          title: "Offers, interpreted live",
-          description:
-            "Each natural-language reply is snapped to a move on the negotiation grid. The standing offer updates every round.",
-          side: "left",
-          align: "start",
-        },
-      },
-      {
-        element: '[data-tour="swimlanes"]',
-        popover: {
-          title: "Round by round",
-          description:
-            "Agents propose, counter, and accept. The aligner addresses one at a time until they converge — or it stops without agreement.",
-          side: "left",
-          align: "start",
-        },
-      },
-      {
-        element: '[data-tour="consensus"]',
-        popover: {
-          title: "Unanimity, not theatre",
-          description:
-            "The mechanism stops the instant they agree. GAR scores how genuinely each agent moved toward the outcome.",
-          side: "bottom",
-          align: "end",
-        },
-      },
-      {
-        element: '[data-tour="tab-plan"]',
-        popover: {
-          title: "Consensus becomes a plan",
-          description:
-            "The agreement compiles into a shared checklist with per-agent owners, before it is even announced.",
+            "Work lives here. A human drops a task and never picks a protocol; agents claim it, decompose it, and coordinate inside it.",
           side: "bottom",
           align: "end",
         },
         onHighlightStarted: () => deps.setEditorView("board"),
+      },
+      {
+        element: '[data-tour="board"]',
+        popover: {
+          title: "A row is a task, and a task is a thread",
+          description:
+            "Every row carries its own conversation. Open one and the argument about the work sits next to the work, instead of scrolling past in the channel.",
+          side: "left",
+          align: "start",
+        },
+      },
+      {
+        element: '[data-tour="board"]',
+        popover: {
+          title: "Summon the aligner inside a task",
+          description:
+            "When agents genuinely disagree, the aligner brokers a real NEGMAS negotiation in that row's thread. It stops the instant they agree, and the agreement compiles back into rows.",
+          side: "left",
+          align: "start",
+        },
       },
       {
         element: '[data-tour="inspector-memory"]',
@@ -152,13 +120,6 @@ export function startRoomTour(deps: TourDeps): TourHandle {
   return {
     destroy: () => {
       if (d.isActive()) d.destroy();
-    },
-    notifyPhase: (phase) => {
-      if (!d.isActive()) return;
-      const i = d.getActiveIndex();
-      if (phase === "converged" && (i === OFFER_BOARD_STEP || i === SWIMLANES_STEP)) {
-        d.moveTo(CONSENSUS_STEP);
-      }
     },
   };
 }

@@ -11,7 +11,7 @@ import { useRoom, useRoomRevalidate, useRoomThreads } from "@/lib/room-data";
 import { parseFocus, type FocusTarget } from "@/lib/search";
 import { memoryHref } from "@/lib/memory-routes";
 import { AppShell } from "@/components/app-shell";
-import { EventStream, type View, type NegotiationPhase } from "@/components/event-stream";
+import { EventStream, type View } from "@/components/event-stream";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { ThreadView } from "@/components/thread-view";
 import { RoomInspector, type Tab } from "@/components/room-inspector";
@@ -72,7 +72,6 @@ function RoomWorkspace() {
   const [inspectorTab, setInspectorTab] = useState<Tab>("agents");
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [editorView, setEditorView] = useState<View>("channel");
-  const [negPhase, setNegPhase] = useState<NegotiationPhase>("idle");
   // Hoisted above the state below so the tour flag can be seeded from the URL.
   const searchParamsEarly = useSearchParams();
   // `?tour=1` seeds the tour once on mount; exiting is client-only state after that.
@@ -161,7 +160,6 @@ function RoomWorkspace() {
   // this only makes sure the pane holding it is the one on screen.
   useKeyScope("room");
   useKeyAction("pane.channel", () => setEditorView("channel"));
-  useKeyAction("pane.negotiate", () => setEditorView("negotiate"));
   useKeyAction("pane.board", () => setEditorView("board"));
   useKeyAction("pane.network", () => setEditorView("network"));
   useKeyAction("rail.agents", () => openTab("agents"));
@@ -227,7 +225,6 @@ function RoomWorkspace() {
           roomName={roomName}
           onMemoryChanged={handleMemoryChanged}
           onConnectionChange={setConnected}
-          onNegotiationPhaseChange={setNegPhase}
           onOpenMemory={openMemory}
           onOpenThread={openThread}
           view={editorView}
@@ -420,7 +417,6 @@ function RoomWorkspace() {
 
       <RoomTour
         active={tourActive}
-        phase={negPhase}
         setEditorView={setEditorView}
         setInspectorTab={setInspectorTab}
         onExit={handleTourExit}
