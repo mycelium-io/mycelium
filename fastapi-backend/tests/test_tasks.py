@@ -97,46 +97,28 @@ class TestBoardFirstCreation:
         assert one.episode != two.episode
 
 
-class TestThreadable:
-    """What can be discussed: everything a person authored, and nothing else.
+class TestWorkedIsTheOnlyLineLeft:
+    """Everything is discussed; only the board namespaces are worked.
 
-    The gate is a denylist, so a namespace nobody has invented yet is
-    discussable without anyone remembering to widen it.
+    There is no threading gate to test any more (#907): the denylist that kept
+    ``agents/``, ``log/`` and ``context/synthesis`` off it is gone, so the rule
+    is uniform and :func:`tasks.is_board_row` is the one predicate left. What
+    the tests below assert is behaviour — that a memory of any namespace comes
+    out of a write carrying a thread — rather than a gate returning ``True``.
     """
 
-    @pytest.mark.parametrize(
-        "key",
-        [
-            "work/passkey-login",
-            "decisions/db",
-            "context/goal",
-            "procedures/deploy",
-            "skills/review",
-            "notebook",
-            "context/synthesis-notes",
-        ],
-    )
-    def test_a_memory_a_person_wrote_can_be_discussed(self, key):
-        assert tasks.is_threadable(key)
+    @pytest.mark.parametrize("key", ["work/passkey-login", "decisions/db", "status/ci"])
+    def test_a_board_namespace_is_worked(self, key):
+        assert tasks.is_board_row(key)
 
     @pytest.mark.parametrize(
         "key",
-        ["agents/sec", "log/transcript", "log/episodes/a1b2c3d4", "context/synthesis"],
+        ["context/goal", "skills/review", "agents/sec", "log/episodes/a1b2c3d4", "notebook"],
     )
-    def test_what_the_hub_writes_for_itself_cannot(self, key):
-        assert not tasks.is_threadable(key)
-
-    def test_the_synthesizer_s_own_key_is_the_one_it_is_declared_as(self):
-        # Declared rather than imported, so the task model does not depend on a
-        # service. This is the check that the declaration is still true.
-        from app.services.synthesizer import SYNTHESIS_KEY
-
-        assert SYNTHESIS_KEY in tasks.SYSTEM_KEYS
-
-    def test_a_board_row_is_the_narrower_word_and_stays_narrow(self):
-        # Everything can be discussed; only these four are worked.
-        assert tasks.is_board_row("work/x") and tasks.is_threadable("work/x")
-        assert tasks.is_threadable("context/x") and not tasks.is_board_row("context/x")
+    def test_everything_else_is_discussed_but_never_claimed(self, key):
+        # A threaded `skills/` doc must not turn up on the board as something to
+        # take: discussable is the wide word, worked is the narrow one.
+        assert not tasks.is_board_row(key)
 
 
 @pytest.mark.asyncio
@@ -171,14 +153,30 @@ class TestThreadOnEveryWrite:
         await _write(room, "skills/review", "How we review")
         assert _meta(room, "skills/review")[EPISODE_META]
 
-    async def test_what_the_hub_writes_for_itself_gets_no_thread(self):
-        # An agent manifest is the runtime's, and a log record is already the
-        # record of a conversation; neither is a thing to have one about.
+    async def test_what_the_hub_writes_for_itself_is_discussable_too(self):
+        # #907: an agent manifest opened with no Discussion and nothing saying
+        # why, which reads as a bug rather than a decision. "Why is this bridge
+        # flaky", "who owns this handle" are conversations worth having, and a
+        # meta-thread on the record of a negotiation is harmless.
         room = _room("u-write-system")
         await _write(room, "agents/sec", "A manifest")
         await _write(room, "log/episodes/a1b2c3d4", "A closed negotiation")
-        assert EPISODE_META not in _meta(room, "agents/sec")
-        assert EPISODE_META not in _meta(room, "log/episodes/a1b2c3d4")
+        await _write(room, "context/synthesis", "The briefing")
+        assert _meta(room, "agents/sec")[EPISODE_META]
+        assert _meta(room, "log/episodes/a1b2c3d4")[EPISODE_META]
+        assert _meta(room, "context/synthesis")[EPISODE_META]
+
+    async def test_the_synthesizer_rewriting_its_briefing_keeps_its_thread(self):
+        # The one key the hub rewrites on its own schedule. A thread attached to
+        # a moving target survives the move: the binding is write-once, so the
+        # conversation is not stranded on the URN the last version carried.
+        from app.services.synthesizer import SYNTHESIS_KEY
+
+        room = _room("u-write-synthesis")
+        await _write(room, SYNTHESIS_KEY, "First pass")
+        first = _meta(room, SYNTHESIS_KEY)[EPISODE_META]
+        await _write(room, SYNTHESIS_KEY, "Second pass, more of the room read")
+        assert _meta(room, SYNTHESIS_KEY)[EPISODE_META] == first
 
     async def test_a_later_write_never_moves_the_thread(self):
         room = _room("u-write-stable")
@@ -308,22 +306,27 @@ class TestMigration:
         assert tasks.backfill_room(room) == 0
         assert _meta(room, "work/legacy")[EPISODE_META] == bound
 
-    async def test_every_threadable_memory_is_bound_not_only_the_board(self):
-        # #872: a room written before this gets a thread on its context notes and
-        # procedures too, so "every memory can be discussed" is true of the ones
-        # that already exist. What the hub writes for itself is left alone.
+    async def test_every_memory_is_bound_not_only_the_board(self):
+        # A room written before this gets a thread on every file it holds, so
+        # "every memory can be discussed" is true of the ones that already exist
+        # rather than only the ones written next. Nothing is left out: the
+        # agents/ and log/ exclusions were the #907 gap, and an existing manifest
+        # would still open with no Discussion if the pass skipped it.
         room = _room("u-migrate-4")
-        _write_unbound(room, "decisions/db", "PostgreSQL")
-        _write_unbound(room, "failed/spoke", "Thin-spoke join")
-        _write_unbound(room, "context/goal", "Move off the legacy store")
-        _write_unbound(room, "procedures/deploy", "How we ship")
-        _write_unbound(room, "agents/sec", "A manifest")
-        _write_unbound(room, "log/episodes/a1b2c3d4", "A closed negotiation")
-        assert tasks.backfill_room(room) == 4
-        for key in ("decisions/db", "failed/spoke", "context/goal", "procedures/deploy"):
+        keys = (
+            "decisions/db",
+            "failed/spoke",
+            "context/goal",
+            "procedures/deploy",
+            "agents/sec",
+            "log/episodes/a1b2c3d4",
+            "context/synthesis",
+        )
+        for key in keys:
+            _write_unbound(room, key, f"body of {key}")
+        assert tasks.backfill_room(room) == len(keys)
+        for key in keys:
             assert _meta(room, key)[EPISODE_META], key
-        assert EPISODE_META not in _meta(room, "agents/sec")
-        assert EPISODE_META not in _meta(room, "log/episodes/a1b2c3d4")
 
     async def test_a_backfilled_memory_gets_a_thread_of_its_own(self):
         room = _room("u-migrate-5")

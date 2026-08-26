@@ -556,15 +556,20 @@ def _append_messages(lines: list[str], ep: EpisodeState) -> None:
 
 def _write_record(ep: EpisodeState, lines: list[str]) -> None:
     from app.services.filesystem import get_room_dir, write_memory_file
+    from app.services.tasks import carry_thread
 
     base = get_room_dir(ep.parent_room)
     base.mkdir(parents=True, exist_ok=True)
+    key = f"log/episodes/{ep.short_id}"
     write_memory_file(
         base,
-        f"log/episodes/{ep.short_id}",
+        key,
         "\n".join(lines),
         created_by=l9.SYSTEM_ACTOR_ID,
         updated_by=l9.SYSTEM_ACTOR_ID,
+        # This write skips the upsert that mints one, and a record of a
+        # conversation is still a thing to have a conversation about.
+        extra_meta=carry_thread(ep.parent_room, key),
     )
 
 
@@ -579,6 +584,7 @@ def write_rule_update(ep: EpisodeState, metrics: dict[str, Any]) -> None:
     on this topic can read its provenance-weighted prior back. Best-effort."""
     try:
         from app.services.filesystem import get_room_dir, read_memory_file, write_memory_file
+        from app.services.tasks import carry_thread
 
         base = get_room_dir(ep.parent_room)
         # Count how many times this topic has converged (for prior weighting).
@@ -612,7 +618,10 @@ def write_rule_update(ep: EpisodeState, metrics: dict[str, Any]) -> None:
             content,
             created_by=l9.SYSTEM_ACTOR_ID,
             updated_by=l9.SYSTEM_ACTOR_ID,
-            extra_meta={"l9": rule},
+            # Rewritten in place on every convergence, so its binding has to be
+            # carried rather than minted: a fresh URN each time would strand the
+            # conversation about the rule on the thread it used to have.
+            extra_meta={"l9": rule, **carry_thread(ep.parent_room, _RULE_UPDATE_KEY)},
         )
     except Exception:
         logger.exception("rule_update write failed for %s", ep.episode)

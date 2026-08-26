@@ -70,12 +70,14 @@ TASK_FIELDS = ["status", "assignment", "owner", "kind", "priority"]
 #: quietly went somewhere other than where it was addressed is worse than one
 #: that did not go.
 #:
-#: The memory refusal is not about namespace. Every memory a person authored
-#: carries a thread wherever it lives, so what is left unthreaded is what the
-#: hub wrote for itself — an ``agents/`` manifest, a ``log/`` record.
+#: The memory refusal is not about what the memory is. Every memory carries a
+#: thread, whatever its namespace and whoever wrote it, so an unthreaded memory
+#: is a gap rather than a category — one written before threading and not yet
+#: backfilled. The copy says so: a surface that refuses in terms of a rule
+#: nobody can see reads as a bug.
 THREAD_REFUSALS = {
     "agent": "presence is a lease the runtime renews, not a conversation to join",
-    "memory": "the hub writes this memory for itself; a thread belongs to something a person authored",
+    "memory": "this memory carries no thread yet — every memory gets one, so this is a gap rather than a rule",
 }
 
 

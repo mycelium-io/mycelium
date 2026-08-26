@@ -658,9 +658,9 @@ def _thread(room: str, row_id: str) -> tuple[str, str]:
 
     The resolution the chat verbs are: a reader types an id and means the
     conversation about that thing. The board is one way to name it and not the
-    only one — every memory a person authored carries a thread, so a
-    ``context/`` note or a ``skills/`` doc is addressable by its key even though
-    the board never projects it. **Everything can be discussed; only the board
+    only one — every memory carries a thread, so a ``context/`` note, a
+    ``skills/`` doc or an ``agents/`` manifest is addressable by its key even
+    though the board never projects it. **Everything can be discussed; only the board
     namespaces are worked.**
 
     Something with nothing to speak into is refused in its own terms rather than
@@ -863,10 +863,10 @@ def board_send(
     """Say something in a thread.
 
     Exactly ``mycelium room send``, scoped to one thing. That thing is usually a
-    task, but every memory a person authored carries a thread of its own, so a
-    ``context/`` design note or a ``skills/`` doc is addressable by its key —
-    the argument about a piece of room knowledge lives attached to it rather
-    than scrolling past in the room.
+    task, but every memory carries a thread of its own, so a ``context/`` design
+    note, a ``skills/`` doc or an ``agents/`` manifest is addressable by its
+    key — the argument about a piece of room knowledge lives attached to it
+    rather than scrolling past in the room.
 
     Everyone who may write in the room may write in its threads — a thread
     separates attention, not access — with one exception the hub enforces: a

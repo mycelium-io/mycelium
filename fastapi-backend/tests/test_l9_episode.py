@@ -348,6 +348,42 @@ def test_write_episode_record(tmp_path, monkeypatch):
     assert len(jsonl_lines) == 3
 
 
+def test_episode_record_carries_a_thread_of_its_own(tmp_path, monkeypatch):
+    # #907: this writer goes straight to the file rather than through the upsert
+    # that mints a thread, so without a binding of its own the record would open
+    # with no Discussion until the next startup backfill — the gap moved, not
+    # closed. A meta-thread about a recorded negotiation is fine.
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
+    l9_episode.write_episode_record(_open(), outcome="converged", metrics=None, tasks=None)
+
+    from app.services.tasks import episode_of
+
+    assert episode_of("sprint", "log/episodes/abc123")
+
+
+def test_rule_update_keeps_one_thread_across_its_rewrites(tmp_path, monkeypatch):
+    # The rule memory is rewritten in place on every convergence. Minting a URN
+    # per write would move the conversation about the rule to a new thread each
+    # time and strand what was already said in it.
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
+    ep = _open()
+    metrics = {"mpc": 0.6, "gar": 0.5, "scr": 0.2, "provenance_weight": 0.4, "participants": 2}
+    l9_episode.write_rule_update(ep, metrics)
+
+    from app.services.tasks import episode_of
+
+    first = episode_of("sprint", "l9/rule_update/topic")
+    assert first
+    l9_episode.write_rule_update(ep, metrics)
+    assert episode_of("sprint", "l9/rule_update/topic") == first
+
+
 def test_rule_update_writeback_and_local_team_prior(tmp_path, monkeypatch):
     monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
     from app.config import settings

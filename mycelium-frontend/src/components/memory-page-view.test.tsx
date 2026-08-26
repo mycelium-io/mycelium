@@ -92,6 +92,20 @@ describe("<MemoryPageView />", () => {
     expect(screen.getByTestId("task-conversation")).toBeInTheDocument();
   });
 
+  it("opens an agent manifest with a discussion like any other memory (#907)", async () => {
+    // The bug this closes: a manifest page showed no Discussion and said nothing
+    // about why, because the backend kept `agents/` off a threading denylist.
+    // The gate here never knew about namespaces — it reads the binding — so with
+    // the denylist gone the page needs no special case to make the section appear.
+    vi.mocked(fetchMemory).mockResolvedValue({
+      ...MEMORY,
+      key: "agents/market-data",
+      episode: "urn:ioc:mycelium:episode:demo:a4c6",
+    });
+    renderWithSWR(<MemoryPageView roomName="demo" memoryKey="agents/market-data" />);
+    expect(await screen.findByTestId("task-conversation")).toBeInTheDocument();
+  });
+
   it("shows no discussion for a row carrying the room's own live episode", async () => {
     // Reading that as a thread would empty the room's history into the page.
     vi.mocked(fetchMemory).mockResolvedValue({

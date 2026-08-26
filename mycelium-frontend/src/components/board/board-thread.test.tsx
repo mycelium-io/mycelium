@@ -124,7 +124,7 @@ describe("<RoomBoard /> thread affordance", () => {
     await userEvent.keyboard("t");
     expect(onOpenThread).not.toHaveBeenCalled();
     expect(
-      await screen.findByText(/the hub writes this memory for itself/),
+      await screen.findByText(/this memory carries no thread yet/),
     ).toBeInTheDocument();
   });
 
