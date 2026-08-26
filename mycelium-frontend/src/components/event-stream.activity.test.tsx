@@ -215,7 +215,7 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
       ...keys.map((k, i) => knowledge(1, "claude-web", (i + 1) * 100, `work/${k}`)),
     ]);
 
-    const rows = within(rail()).getAllByRole("button", { name: /^(task |flip)/ });
+    const rows = within(rail()).getAllByRole("button", { name: /^Open task / });
     expect(rows[0]).toHaveAccessibleName(new RegExp(TITLE));
   });
 
@@ -240,9 +240,67 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     expect(await screen.findByText("5 tasks")).toBeInTheDocument();
     // Three rows stand open and the rest are behind one control, so a busy hour
     // costs the same height as a quiet one.
-    expect(within(rail()).getAllByRole("button", { name: /^task / })).toHaveLength(3);
+    expect(within(rail()).getAllByRole("button", { name: /^Open task task / })).toHaveLength(3);
     await userEvent.click(screen.getByRole("button", { name: "Show all 5" }));
-    expect(within(rail()).getAllByRole("button", { name: /^task / })).toHaveLength(5);
+    expect(within(rail()).getAllByRole("button", { name: /^Open task task / })).toHaveLength(5);
+  });
+
+  it("opens the task's own details from its name", async () => {
+    // The row names a task; clicking it should reach that task, not just the
+    // argument about it. A rail whose only target was the thread left the
+    // details — body, status, who it is for — with no way in from here.
+    const onOpenMemory = vi.fn();
+    renderWithSWR(
+      <EventStream roomName={ROOM} onOpenThread={vi.fn()} onOpenMemory={onOpenMemory} />,
+    );
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+    await act(async () => {
+      es.open();
+      es.emit(knowledge(1, "claude-web"));
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: `Open task ${TITLE}` }));
+    expect(onOpenMemory).toHaveBeenCalledWith(TASK);
+  });
+
+  it("keeps the thread its own target beside the task", async () => {
+    // The details and the argument about them are two places, so the row should
+    // not make a reader guess which one the name goes to.
+    const onOpenThread = vi.fn();
+    renderWithSWR(
+      <EventStream roomName={ROOM} onOpenThread={onOpenThread} onOpenMemory={vi.fn()} />,
+    );
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+    await act(async () => {
+      es.open();
+      es.emit(knowledge(1, "claude-web"));
+    });
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: `Open thread for ${TITLE}` }),
+    );
+    expect(onOpenThread).toHaveBeenCalledWith(THREAD);
+  });
+
+  it("falls back to the thread when the room knows no row to open", async () => {
+    // A coordination phase opens its own episode and records no back-link, so
+    // there are no details to reach — the conversation is all there is.
+    const onOpenThread = vi.fn();
+    vi.mocked(fetchMemories).mockResolvedValue([]);
+    renderWithSWR(
+      <EventStream roomName={ROOM} onOpenThread={onOpenThread} onOpenMemory={vi.fn()} />,
+    );
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+    await act(async () => {
+      es.open();
+      es.emit(ping("growth", "m-1"));
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Open task t3aa11bb" }));
+    expect(onOpenThread).toHaveBeenCalledWith(THREAD);
   });
 
   it("orders the rail by what moved last", async () => {
@@ -251,7 +309,7 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
       knowledge(1, "claude-web", 500, OTHER_TASK),
     ]);
 
-    const rows = within(rail()).getAllByRole("button", { name: /flag|legacy store/ });
+    const rows = within(rail()).getAllByRole("button", { name: /^Open task / });
     expect(rows[0]).toHaveAccessibleName(new RegExp(OTHER_TITLE));
   });
 });

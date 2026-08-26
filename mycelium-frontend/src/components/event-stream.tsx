@@ -676,6 +676,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           subject,
           title,
           episode,
+          // A thread nobody's row is bound to has no details to open — the
+          // conversation is the whole of what the room knows about it.
+          memoryKey: subject.startsWith("urn:") ? null : subject,
           actors: actorsOf(members),
           time: latest.time,
           standing: standing ?? null,
@@ -852,7 +855,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
         </div>
       ) : (
       <div className="relative flex flex-1 min-h-0 flex-col">
-      {historyLoaded && <ActivityRail items={activity} onOpenThread={onOpenThread} />}
+      {historyLoaded && (
+        <ActivityRail items={activity} onOpenThread={onOpenThread} onOpenMemory={onOpenMemory} />
+      )}
       <ScrollArea className="flex-1 min-h-0" viewportRef={scrollRef}>
         {!historyLoaded ? (
           <ChannelSkeleton />

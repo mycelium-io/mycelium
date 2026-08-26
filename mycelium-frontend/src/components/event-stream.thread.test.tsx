@@ -142,8 +142,9 @@ describe("<EventStream /> and the threads inside the room", () => {
       es.emit(ping("risk", "m-1"));
     });
 
-    // The row's name opens the thread; its "N updates" control opens the row.
-    await userEvent.click(await screen.findByRole("button", { name: "t3aa11bb" }));
+    // No row is bound to this episode, so the name has no details to reach and
+    // falls back to the conversation, by URN rather than by the short id it shows.
+    await userEvent.click(await screen.findByRole("button", { name: "Open task t3aa11bb" }));
     expect(onOpenThread).toHaveBeenCalledWith(THREAD);
   });
 

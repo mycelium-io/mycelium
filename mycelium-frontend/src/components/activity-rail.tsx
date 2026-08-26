@@ -6,6 +6,8 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, MessageSquare } from "lucide-react";
 
+import { Tooltip } from "@/components/ui/tooltip";
+
 /** One thing the room raised about a task, as it reads once a row is opened. */
 export interface ActivityUpdate {
   id: string;
@@ -24,6 +26,9 @@ export interface ActivityItem {
   title: string;
   /** The thread to open, when there is one. */
   episode: string | null;
+  /** The row's own key, for opening its details. Null for a thread the room
+   *  knows no row for — there the conversation is all there is to open. */
+  memoryKey: string | null;
   /** Who moved it, in the order they first did. */
   actors: string[];
   /** The clock of the most recent update. */
@@ -69,9 +74,11 @@ const STANDING_TONE: Record<string, string> = {
 export function ActivityRail({
   items,
   onOpenThread,
+  onOpenMemory,
 }: {
   items: ActivityItem[];
   onOpenThread?: (episode: string) => void;
+  onOpenMemory?: (key: string) => void;
 }) {
   const [showAll, setShowAll] = useState(false);
   const [opened, setOpened] = useState<Set<string>>(() => new Set());
@@ -124,20 +131,44 @@ export function ActivityRail({
                       (item.standing && STANDING_TONE[item.standing]) ?? "var(--accent)",
                   }}
                 />
+                {/* The task itself. Drawn as the link it is — a row that opens
+                    something must look like it does, and the name is the thing
+                    a reader reaches for. */}
                 <button
                   type="button"
-                  onClick={() => item.episode && onOpenThread?.(item.episode)}
-                  disabled={!item.episode || !onOpenThread}
+                  onClick={() =>
+                    item.memoryKey && onOpenMemory
+                      ? onOpenMemory(item.memoryKey)
+                      : item.episode && onOpenThread?.(item.episode)
+                  }
+                  disabled={
+                    !(item.memoryKey && onOpenMemory) && !(item.episode && onOpenThread)
+                  }
                   title={item.subject}
-                  className="inline-flex min-w-0 flex-1 items-center gap-1 truncate rounded text-left text-text transition-colors enabled:hover:underline disabled:cursor-default"
+                  aria-label={`Open task ${item.title}`}
+                  className="inline-flex min-w-0 flex-1 items-center gap-1 truncate rounded px-1 text-left text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
                 >
-                  <MessageSquare className="size-3 flex-shrink-0 text-accent" strokeWidth={1.9} />
                   <span className="truncate">{item.title}</span>
                 </button>
                 <span className="hidden max-w-[12rem] flex-shrink-0 truncate lg:inline">
                   {item.actors.map((h) => `@${h}`).join(", ")}
                 </span>
                 <span className="tabular flex-shrink-0 text-faint">{item.time.slice(0, 5)}</span>
+                {/* Its conversation, kept as its own target: the details and the
+                    argument about them are two places, and the rail should not
+                    make a reader guess which one the name goes to. */}
+                {item.episode && onOpenThread && (
+                  <Tooltip content="Open the thread">
+                    <button
+                      type="button"
+                      onClick={() => onOpenThread(item.episode as string)}
+                      aria-label={`Open thread for ${item.title}`}
+                      className="inline-flex flex-shrink-0 items-center rounded p-0.5 text-faint transition-colors hover:bg-surface-2 hover:text-accent"
+                    >
+                      <MessageSquare className="size-3" strokeWidth={1.9} />
+                    </button>
+                  </Tooltip>
+                )}
                 <button
                   type="button"
                   onClick={() => toggle(item.subject)}
