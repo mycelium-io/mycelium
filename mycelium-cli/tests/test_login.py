@@ -421,7 +421,36 @@ def test_an_expired_token_with_no_refresh_token_sends_nothing() -> None:
 # ── the commands ─────────────────────────────────────────────────────────────
 
 
-def test_login_without_a_configured_issuer_says_what_to_do() -> None:
+def _health(monkeypatch: pytest.MonkeyPatch, payload: Any, *, boom: bool = False) -> list[str]:
+    """Stub the hub's ``/health`` — where login looks when it has no issuer.
+
+    ``_hub_issuers`` imports httpx inside the call, so the module object is what
+    has to be patched; it is the same one either way.
+    """
+    asked: list[str] = []
+
+    class _Resp:
+        def raise_for_status(self) -> None: ...
+
+        def json(self) -> Any:
+            return payload
+
+    def fake_get(url: str, timeout: float) -> _Resp:  # noqa: ARG001
+        asked.append(url)
+        if boom:
+            raise httpx.ConnectError("connection refused")
+        return _Resp()
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    return asked
+
+
+def test_login_without_a_configured_issuer_says_what_to_do(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unreachable hub falls back to the original tell-me-what-to-do error."""
+    _health(monkeypatch, None, boom=True)
+
     result = runner.invoke(app, ["login"])
 
     assert result.exit_code == 1
@@ -566,6 +595,161 @@ def test_whoami_is_unchanged_when_logged_out() -> None:
     assert payload["principal"] == "avery"
 
 
+def _auth(*issuers: str, enabled: bool = True) -> dict[str, Any]:
+    return {"auth": {"enabled": enabled, "issuers": list(issuers)}}
+
+
+def test_login_discovers_the_issuer_from_the_hub(
+    monkeypatch: pytest.MonkeyPatch, hub: _Hub
+) -> None:
+    """The hub advertises what it trusts, so the human never looks it up (#881)."""
+    from mycelium.commands import login as login_cmd
+
+    asked = _health(monkeypatch, _auth(_META.issuer))
+    seen: dict[str, str] = {}
+
+    def fake_discover(url: str) -> ProviderMetadata:
+        seen["issuer"] = url
+        return _META
+
+    monkeypatch.setattr(login_cmd, "_browser_available", lambda: True)
+    monkeypatch.setattr(login_cmd, "discover", fake_discover)
+    monkeypatch.setattr(
+        login_cmd,
+        "authorization_code_login",
+        lambda *_a, **_k: oidc.TokenResponse(access_token=_jwt({"sub": "avery"})),
+    )
+
+    result = runner.invoke(app, ["login"])
+
+    assert result.exit_code == 0, result.stdout
+    assert asked == [f"{MyceliumConfig.load().server.api_url.rstrip('/')}/health"]
+    assert seen["issuer"] == _META.issuer
+    assert "Issuer discovered from" in _flat(result.stdout)
+    # Remembered, so the next login costs no round trip.
+    assert MyceliumConfig.load().login.issuer == _META.issuer
+
+
+def test_json_login_stays_parseable_while_discovering_and_saving(
+    monkeypatch: pytest.MonkeyPatch, hub: _Hub
+) -> None:
+    """Discovery both prints and saves, and --json promises one JSON document."""
+    from mycelium.commands import login as login_cmd
+
+    _health(monkeypatch, _auth(_META.issuer))
+    monkeypatch.setattr(login_cmd, "_browser_available", lambda: True)
+    monkeypatch.setattr(login_cmd, "discover", lambda _issuer: _META)
+    monkeypatch.setattr(
+        login_cmd,
+        "authorization_code_login",
+        lambda *_a, **_k: oidc.TokenResponse(access_token=_jwt({"sub": "avery"})),
+    )
+
+    result = runner.invoke(app, ["--json", "login"])
+
+    assert result.exit_code == 0, result.stdout
+    assert json.loads(result.stdout)["handle"] == "avery"
+    # Saved anyway — quiet is not the same as skipped.
+    assert MyceliumConfig.load().login.issuer == _META.issuer
+
+
+def test_login_prefers_a_configured_issuer_over_asking_the_hub(
+    monkeypatch: pytest.MonkeyPatch, hub: _Hub
+) -> None:
+    asked = _health(monkeypatch, _auth("https://wrong.test/realms/other"))
+    config = MyceliumConfig.load()
+    config.login.issuer = _META.issuer
+    config.save()
+
+    from mycelium.commands import login as login_cmd
+
+    monkeypatch.setattr(login_cmd, "_browser_available", lambda: True)
+    monkeypatch.setattr(login_cmd, "discover", lambda _issuer: _META)
+    monkeypatch.setattr(
+        login_cmd,
+        "authorization_code_login",
+        lambda *_a, **_k: oidc.TokenResponse(access_token=_jwt({"sub": "avery"})),
+    )
+
+    result = runner.invoke(app, ["login"])
+
+    assert result.exit_code == 0, result.stdout
+    # Configured means configured: the hub is not consulted at all.
+    assert asked == []
+
+
+def test_login_refuses_to_guess_between_several_trusted_issuers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Which issuer you sign in against decides who the hub thinks you are."""
+    _health(monkeypatch, _auth("https://a.test/realms/x", "https://b.test/realms/y"))
+
+    result = runner.invoke(app, ["login"])
+
+    assert result.exit_code == 1
+    assert "more than one issuer" in _flat(result.stdout)
+    # Listed, so the lookup is still done for you even when the pick isn't.
+    assert "https://a.test/realms/x" in result.stdout
+    assert "https://b.test/realms/y" in result.stdout
+    assert load_token() is None
+
+
+def test_login_says_an_ungated_hub_needs_no_login(monkeypatch: pytest.MonkeyPatch) -> None:
+    _health(monkeypatch, _auth(enabled=False))
+
+    result = runner.invoke(app, ["login"])
+
+    assert result.exit_code == 1
+    assert "gate off" in _flat(result.stdout)
+    assert load_token() is None
+
+
+def test_login_says_when_a_gated_hub_advertises_no_issuer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _health(monkeypatch, _auth())
+
+    result = runner.invoke(app, ["login"])
+
+    assert result.exit_code == 1
+    assert "advertises no issuer" in _flat(result.stdout)
+
+
+def test_login_survives_a_health_endpoint_that_is_not_an_object(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A proxy or a wrong port can answer /health with anything at all."""
+    _health(monkeypatch, ["not", "an", "object"])
+
+    result = runner.invoke(app, ["login"])
+
+    assert result.exit_code == 1
+    assert "no OIDC issuer configured" in _flat(result.stdout)
+
+
+def test_a_discovered_issuer_is_not_remembered_when_the_login_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Caching a URL that never produced a session would poison the next login."""
+    _health(monkeypatch, _auth(_META.issuer))
+
+    from mycelium.commands import login as login_cmd
+
+    monkeypatch.setattr(login_cmd, "_browser_available", lambda: True)
+    monkeypatch.setattr(login_cmd, "discover", lambda _issuer: _META)
+
+    def boom(*_a: Any, **_k: Any) -> None:
+        raise OidcError("access_denied: user said no")
+
+    monkeypatch.setattr(login_cmd, "authorization_code_login", boom)
+
+    result = runner.invoke(app, ["login"])
+
+    assert result.exit_code == 1
+    assert MyceliumConfig.load().login.issuer is None
+    assert load_token() is None
+
+
 def test_iam_with_no_handle_reports_rather_than_asserting() -> None:
     save_token(_token(access_token=_jwt({"sub": "avery", "exp": time.time() + 3600})))
 
@@ -594,8 +778,6 @@ def _login(
         lambda *_a, **_k: oidc.TokenResponse(access_token=_jwt({"sub": sub})),
     )
     if json_output:
-        # Configured rather than passed: an explicit --issuer prints a
-        # "saved login settings" line that isn't part of the JSON document.
         config = MyceliumConfig.load()
         config.login.issuer = _META.issuer
         config.save()
