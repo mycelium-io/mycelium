@@ -360,7 +360,7 @@ def backfill_room(room: str) -> int:
     """
     base = get_room_dir(room)
     bound = 0
-    for key, meta, content in list_memory_files(base, limit=BACKFILL_SCAN_LIMIT):
+    for key, meta, _content in list_memory_files(base, limit=BACKFILL_SCAN_LIMIT):
         if system_meta(meta).get(EPISODE_META):
             continue
         # Re-read and re-check under an exclusive lock so two instances starting

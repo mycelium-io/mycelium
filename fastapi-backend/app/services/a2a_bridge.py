@@ -310,7 +310,11 @@ class A2aResponder:
         # handles may trigger a remote call (and spend its bearer token / quota).
         # The agent's owner is always permitted — a restrictive allowlist must
         # not lock the operator out of their own agent.
-        if ref.allow_from and sender_bare not in ref.allow_from and not (ref.owner and sender_bare == ref.owner):
+        if (
+            ref.allow_from
+            and sender_bare not in ref.allow_from
+            and not (ref.owner and sender_bare == ref.owner)
+        ):
             logger.debug(
                 "a2a responder: @%s not in allow_from for @%s — ignoring summon", sender, handle
             )
