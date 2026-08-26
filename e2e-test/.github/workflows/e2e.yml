@@ -240,16 +240,19 @@ jobs:
 
       - name: Start ownership watcher
         run: |
-          # Rooms are created continuously throughout the ~30min test run, each
-          # owned by the backend container's uid (1000) the moment it's
-          # created. The one-time chown in the previous step only covers dirs
-          # that exist before tests start, and mycelium-cli's write guard
-          # checks live ownership, not permission bits — so keep re-chowning
-          # in the background for the life of the test run.
-          ( while true; do
-              sudo chown -R "$USER" ~/.mycelium/rooms 2>/dev/null
-              sleep 3
-            done ) &
+          # Rooms are created continuously throughout the ~30min test run.
+          # `mycelium room create` creates the room dir server-side (backend
+          # container, uid 1000); the very next CLI call — `agent create` —
+          # writes agents/<handle>.md into that same dir directly from the
+          # host (mycelium-cli writes memory files locally, not over HTTP)
+          # and bails immediately if the dir's owner uid isn't the current
+          # uid (mycelium-cli commands/agent.py:_check_writable_or_bail).
+          # It doesn't retry, so a poll loop (previously: sleep 3) is too
+          # slow — the CLI writes within milliseconds of the room appearing.
+          # inotify reacts to the create event itself instead of polling.
+          sudo apt-get install -y inotify-tools >/dev/null 2>&1 || true
+          ( inotifywait -m -r -e create,moved_to --format '%w%f' ~/.mycelium/rooms 2>/dev/null \
+              | while read -r _; do sudo chown -R "$USER" ~/.mycelium/rooms 2>/dev/null; done ) &
           echo $! > /tmp/mycelium-chown-watcher.pid
 
       - name: Run E2E tests
