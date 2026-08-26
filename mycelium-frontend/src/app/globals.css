@@ -312,9 +312,6 @@ body {
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--accent);
-  /* A code token has no spaces to wrap at, so break it anywhere rather than let
-   * one long identifier push the whole message past the pane's right edge. */
-  overflow-wrap: anywhere;
 }
 .markdown-body pre {
   margin: 0.5em 0;
