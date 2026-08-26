@@ -142,7 +142,8 @@ describe("<EventStream /> and the threads inside the room", () => {
       es.emit(ping("risk", "m-1"));
     });
 
-    await userEvent.click(await screen.findByRole("button", { name: /t3aa11bb/ }));
+    // The row's name opens the thread; its "N updates" control opens the row.
+    await userEvent.click(await screen.findByRole("button", { name: "t3aa11bb" }));
     expect(onOpenThread).toHaveBeenCalledWith(THREAD);
   });
 
