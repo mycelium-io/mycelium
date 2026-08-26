@@ -414,10 +414,10 @@ class MemoryRead(BaseModel):
         description=(
             "The episode URN the conversation about this memory happens in — what "
             "makes a task a thread, and what makes every other memory "
-            "discussable. Store-owned: minted by the backend on create, so it is "
-            "absent from ``meta`` and cannot be set by a write. Null on what the "
-            "hub writes for itself (an ``agents/`` manifest, a ``log/`` record) "
-            "and on anything written before threading."
+            "discussable. Every memory carries one, whatever its namespace and "
+            "whoever wrote it. Store-owned: minted by the backend on create, so "
+            "it is absent from ``meta`` and cannot be set by a write. Null only "
+            "on a memory written before threading and not yet backfilled."
         ),
     )
     expandable: bool = Field(

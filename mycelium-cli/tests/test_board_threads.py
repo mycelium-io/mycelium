@@ -168,7 +168,7 @@ class TestResolution:
         result = runner.invoke(board_cmd.app, ["send", "decisions/db", "hello"])
         assert result.exit_code == 1
         assert "no thread" in result.output
-        assert "the hub writes this memory for itself" in result.output
+        assert "this memory carries no thread yet" in result.output
         assert sent == {}
 
 

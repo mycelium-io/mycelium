@@ -584,6 +584,7 @@ const atlas: RoomFixture = {
       created_by: "operator",
       version: 1,
       updated_at: iso(60 * 20),
+      episode: atlasEpisode("a2c4e6"),
     },
     {
       key: "agents/risk",
@@ -591,6 +592,7 @@ const atlas: RoomFixture = {
       created_by: "operator",
       version: 1,
       updated_at: iso(60 * 20),
+      episode: atlasEpisode("b3d5f7"),
     },
     {
       key: "agents/aligner",
@@ -598,6 +600,7 @@ const atlas: RoomFixture = {
       created_by: "operator",
       version: 1,
       updated_at: iso(60 * 20),
+      episode: atlasEpisode("c4e6a8"),
     },
     {
       key: "agents/synthesizer",
@@ -605,6 +608,7 @@ const atlas: RoomFixture = {
       created_by: "operator",
       version: 1,
       updated_at: iso(60 * 20),
+      episode: atlasEpisode("d5f7b9"),
     },
     {
       key: "decisions/cutover",
@@ -613,6 +617,7 @@ const atlas: RoomFixture = {
       created_by: "aligner",
       version: 3,
       updated_at: iso(41),
+      episode: atlasEpisode("e6a8c0"),
     },
     {
       key: "context/goal",
@@ -621,6 +626,7 @@ const atlas: RoomFixture = {
       created_by: "operator",
       version: 1,
       updated_at: iso(60 * 25),
+      episode: atlasEpisode("f7b9d1"),
     },
     {
       key: "status/sprint",
@@ -629,6 +635,7 @@ const atlas: RoomFixture = {
       created_by: "growth",
       version: 2,
       updated_at: iso(120),
+      episode: atlasEpisode("a8c0e2"),
     },
     {
       key: "context/synthesis",
@@ -644,6 +651,7 @@ const atlas: RoomFixture = {
       created_by: "synthesizer",
       version: 1,
       updated_at: iso(38),
+      episode: atlasEpisode("b9d1f3"),
     },
     ...atlasBoardRows,
   ],
@@ -789,7 +797,10 @@ atlas.links = buildMockGraph(atlas.memories, ATLAS_LINK_EDGES);
 
 // ── pricing-model: an in-progress negotiation, nothing compiled yet ───────────
 
-const PRICING_EPISODE = "urn:ioc:mycelium:episode:pricing-model:b2d0";
+const pricingEpisode = (shortId: string): string =>
+  `urn:ioc:mycelium:episode:pricing-model:${shortId}`;
+
+const PRICING_EPISODE = pricingEpisode("b2d0");
 
 const pricing: RoomFixture = {
   room: {
@@ -801,12 +812,12 @@ const pricing: RoomFixture = {
     mas_id: "mas_31ab77c0",
   },
   memories: [
-    { key: "agents/finance", value: agentManifest("Protects margin; models unit economics."), created_by: "operator", version: 1, updated_at: iso(160) },
-    { key: "agents/growth", value: agentManifest("Wants adoption; favors a low entry price."), created_by: "operator", version: 1, updated_at: iso(160) },
-    { key: "agents/aligner", value: agentManifest("First-party mediator (NEGMAS SAO).", "engine"), created_by: "operator", version: 1, updated_at: iso(160) },
-    { key: "agents/synthesizer", value: agentManifest("Distills room memory into a shared briefing.", "engine"), created_by: "operator", version: 1, updated_at: iso(160) },
-    { key: "agents/market-data", value: a2aManifest("External competitor pricing feed.", "https://market-data.example", ["quote", "benchmark"]), created_by: "operator", version: 1, updated_at: iso(30) },
-    { key: "context/goal", value: "Pick a launch price for the Pro tier.", content_text: "Pick a launch price for the Pro tier.", created_by: "operator", version: 1, updated_at: iso(175) },
+    { key: "agents/finance", value: agentManifest("Protects margin; models unit economics."), created_by: "operator", version: 1, updated_at: iso(160), episode: pricingEpisode("c0e2a4") },
+    { key: "agents/growth", value: agentManifest("Wants adoption; favors a low entry price."), created_by: "operator", version: 1, updated_at: iso(160), episode: pricingEpisode("d1f3b5") },
+    { key: "agents/aligner", value: agentManifest("First-party mediator (NEGMAS SAO).", "engine"), created_by: "operator", version: 1, updated_at: iso(160), episode: pricingEpisode("e2a4c6") },
+    { key: "agents/synthesizer", value: agentManifest("Distills room memory into a shared briefing.", "engine"), created_by: "operator", version: 1, updated_at: iso(160), episode: pricingEpisode("f3b5d7") },
+    { key: "agents/market-data", value: a2aManifest("External competitor pricing feed.", "https://market-data.example", ["quote", "benchmark"]), created_by: "operator", version: 1, updated_at: iso(30), episode: pricingEpisode("a4c6e8") },
+    { key: "context/goal", value: "Pick a launch price for the Pro tier.", content_text: "Pick a launch price for the Pro tier.", created_by: "operator", version: 1, updated_at: iso(175), episode: pricingEpisode("b5d7f9") },
     {
       key: "context/synthesis",
       value:
@@ -819,6 +830,7 @@ const pricing: RoomFixture = {
       created_by: "synthesizer",
       version: 1,
       updated_at: iso(6),
+      episode: pricingEpisode("c6e8a0"),
     },
   ],
   messages: [
@@ -826,6 +838,11 @@ const pricing: RoomFixture = {
     { id: "p2", sender_handle: "finance", message_type: "coordination_join", content: JSON.stringify({ handle: "finance", intent: "margin >= 60%", episode: PRICING_EPISODE }), created_at: iso(11), episode: PRICING_EPISODE },
     { id: "p3", sender_handle: "growth", message_type: "coordination_join", content: JSON.stringify({ handle: "growth", intent: "land and expand", episode: PRICING_EPISODE }), created_at: iso(11), episode: PRICING_EPISODE },
     { id: "p4", sender_handle: "finance", message_type: "broadcast", content: "$49/seat holds the margin.", created_at: iso(9) },
+    // The thread on an agent manifest. Every memory carries one, this one
+    // included, so "why is this bridge flaky" has somewhere to live that is
+    // attached to the bridge rather than scrolling past in the channel.
+    { id: "p5", sender_handle: "growth", message_type: "broadcast", content: "@market-data dropped the churn call — third time this week. Is the endpoint rate-limiting us?", created_at: iso(8), episode: pricingEpisode("a4c6e8") },
+    { id: "p6", sender_handle: "operator", message_type: "broadcast", content: "It answers `quote` fine and fails `benchmark`. Bridged over plain HTTPS, so a slow peer reads as a dead one here. Worth a timeout before we swap the feed.", created_at: iso(7), episode: pricingEpisode("a4c6e8") },
   ],
   episodes: [
     {
@@ -1009,6 +1026,7 @@ const generalMemories: MockMemory[] = [
     created_by: "claude-web",
     version: 1,
     updated_at: iso(75),
+    episode: generalEpisode("a860ff"),
   },
   {
     key: "agents/task-872",
@@ -1016,6 +1034,7 @@ const generalMemories: MockMemory[] = [
     created_by: "claude-web",
     version: 1,
     updated_at: iso(79),
+    episode: generalEpisode("a872ff"),
   },
   {
     key: "agents/task-886",
@@ -1023,6 +1042,7 @@ const generalMemories: MockMemory[] = [
     created_by: "claude-web",
     version: 1,
     updated_at: iso(86),
+    episode: generalEpisode("a886ff"),
   },
   {
     key: "agents/task-887",
@@ -1030,6 +1050,7 @@ const generalMemories: MockMemory[] = [
     created_by: "claude-web",
     version: 1,
     updated_at: iso(81),
+    episode: generalEpisode("a887ff"),
   },
   {
     key: "agents/task-888",
@@ -1037,6 +1058,7 @@ const generalMemories: MockMemory[] = [
     created_by: "claude-web",
     version: 1,
     updated_at: iso(80),
+    episode: generalEpisode("a888ff"),
   },
   {
     key: "agents/task-889",
@@ -1044,6 +1066,7 @@ const generalMemories: MockMemory[] = [
     created_by: "claude-web",
     version: 1,
     updated_at: iso(80),
+    episode: generalEpisode("a889ff"),
   },
 ];
 

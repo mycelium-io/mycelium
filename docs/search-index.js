@@ -353,7 +353,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#memory-every-memory-can-be-discussed",
     "t": "Every memory can be discussed",
     "s": "Concepts › Memory",
-    "x": "A memory is not only something to read. Every memory a person writes carries a thread of its own — the same threads the board uses, minted the moment the memory exists — so the argument about a design note lives attached to the note rather than scrolling past in the room: mycelium board send context/api-shape \"this predates the v2 routes — still true?\" mycelium board messages context/api-shape The verbs are the board",
+    "x": "A memory is not only something to read. Every memory carries a thread of its own — the same threads the board uses, minted the moment the memory exists — so the argument about a design note lives attached to the note rather than scrolling past in the room: mycelium board send context/api-shape \"this predates the v2 routes — still true?\" mycelium board messages context/api-shape The verbs are the board's because a thr",
     "p": "Guide"
   },
   {

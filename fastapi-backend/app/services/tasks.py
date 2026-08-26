@@ -25,11 +25,12 @@ the row's life.  Re-negotiating inside a task opens a *new* negotiation episode;
 it does not re-mint the task's own.
 
 A task is what this binding was built for, and not the only thing it holds:
-**every memory a person authored carries a thread**, so the conversation about a
-``context/`` design note or a ``skills/`` doc lives attached to it rather than
-scrolling past in the room.  :func:`is_threadable` is that wider gate and
-:func:`is_board_row` is the narrower one — everything can be *discussed*; only
-the board namespaces are *worked*.
+**every memory carries a thread**, whatever its namespace and whoever wrote it,
+so the conversation about a ``context/`` design note, a ``skills/`` doc or an
+``agents/`` manifest lives attached to it rather than scrolling past in the
+room.  There is no gate to widen — :func:`is_board_row` is the only line left,
+and it is the narrow one: everything can be *discussed*; only the board
+namespaces are *worked*.
 """
 
 from __future__ import annotations
@@ -68,44 +69,10 @@ WORK_NAMESPACE = "work"
 #: ``contracts/board-vocabulary.json`` under ``live_namespaces``.
 BOARD_NAMESPACES = frozenset({"decisions", "status", "work", "failed"})
 
-#: Namespaces the hub writes for itself.  A thread is a place for people to
-#: talk about something someone wrote; these are records the store keeps —
-#: ``agents/`` is a runtime's manifest, ``log/`` is the transcript and the
-#: episode records, and a ``log/episodes/*`` file is already the record *of* a
-#: conversation.  Auto-threading them is noise at best and circular at worst.
-SYSTEM_NAMESPACES = frozenset({"agents", "log"})
-
-#: Individual machine-written keys outside those namespaces.  ``context/`` is a
-#: room's own notes and thoroughly discussable; the synthesizer's briefing is
-#: the one file in it the hub rewrites on its own schedule, so a conversation
-#: attached to it would be attached to a moving target.  Asserted against
-#: :data:`~app.services.synthesizer.SYNTHESIS_KEY` rather than duplicating it by
-#: import, which would make a service the task model depends on.
-SYSTEM_KEYS = frozenset({"context/synthesis"})
-
 
 def is_board_row(key: str) -> bool:
     """Whether ``key`` names a board row — what the board projects and leases."""
     return key.split("/", 1)[0] in BOARD_NAMESPACES
-
-
-def is_threadable(key: str) -> bool:
-    """Whether ``key`` can carry a thread, which is nearly everything.
-
-    Every piece of room knowledge a person authored can be discussed, not only
-    the four namespaces the board works: a ``context/`` design note, a
-    ``procedures/`` runbook, a ``skills/`` doc and a bare user key all get a
-    thread the moment they exist, so the argument about one lives attached to it
-    rather than scrolling past in the room.
-
-    The gate widens; it does not disappear.  What it still refuses is the hub's
-    own writing (:data:`SYSTEM_NAMESPACES`, :data:`SYSTEM_KEYS`) — a denylist
-    rather than an allowlist, so a namespace someone invents next week is
-    discussable without anyone remembering to add it here.
-
-    Costs nothing until someone posts: the binding is one frontmatter key.
-    """
-    return key not in SYSTEM_KEYS and key.split("/", 1)[0] not in SYSTEM_NAMESPACES
 
 
 #: What a board row calls a task.  Written explicitly because the
@@ -173,6 +140,22 @@ def episode_of(room: str, key: str) -> str | None:
     if found is None:
         return None
     return system_meta(found[0]).get(EPISODE_META)
+
+
+def carry_thread(room: str, key: str) -> dict[str, str]:
+    """The episode binding for a memory written straight to a file.
+
+    Two hub records skip the upsert chokepoint that mints a thread — an episode
+    transcript and the converged-rule memory — because they are best-effort
+    writes off the consensus path.  Without this they would land as memories
+    with nowhere to discuss them until the next startup backfill, which is the
+    silent gap moved rather than closed.
+
+    Write-once, like the chokepoint's own mint: it hands back the binding the
+    memory already carries, so rewriting the rule memory keeps the conversation
+    attached to it instead of stranding it on the thread it used to have.
+    """
+    return {EPISODE_META: episode_of(room, key) or mint_episode_urn(room)}
 
 
 def bound_episodes(room: str) -> set[str]:
@@ -359,11 +342,11 @@ async def create_task(
 
 
 def backfill_room(room: str) -> int:
-    """Mint a thread for every threadable memory that carries none, in place.
+    """Mint a thread for every memory in the room that carries none, in place.
 
-    Covers everything :func:`is_threadable` allows, not only the board
-    namespaces: a room written before this gets a thread on each of its
-    ``context/`` notes and ``procedures/`` runbooks too, so "every memory can be
+    Every file, not only the board namespaces: a room written before this gets a
+    thread on each of its ``context/`` notes, ``procedures/`` runbooks,
+    ``agents/`` manifests and ``log/`` records too, so "every memory can be
     discussed" is true of the ones that already exist rather than only the ones
     written next.  A binding is write-once, so this runs to a fixed point.
 
@@ -375,12 +358,7 @@ def backfill_room(room: str) -> int:
     """
     base = get_room_dir(room)
     bound = 0
-    unbound = (
-        found
-        for found in list_memory_files(base, limit=BACKFILL_SCAN_LIMIT)
-        if is_threadable(found[0])
-    )
-    for key, meta, content in unbound:
+    for key, meta, content in list_memory_files(base, limit=BACKFILL_SCAN_LIMIT):
         if system_meta(meta).get(EPISODE_META):
             continue
         # Everything serialize_memory does not write from its own arguments,

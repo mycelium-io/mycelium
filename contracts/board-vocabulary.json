@@ -86,10 +86,10 @@
       "kind",
       "priority"
     ],
-    "_refusals_comment": "Why a row has no thread to speak into, keyed by the source that produced it. A chat verb refuses in these terms rather than falling back to the room: a message that quietly went somewhere other than where it was addressed is worse than one that did not go. Keyed by source kind, so an episode row is absent — an episode IS a thread, and speaking into a recorded negotiation is a write the hub judges (a frozen roster refuses an outsider), not one the surface guesses at. The memory refusal is no longer about namespace: EVERY memory a person authored carries a thread, board namespace or not (#872), so the only unthreaded memory left is one the hub wrote for itself — an agents/ manifest, a log/ record, context/synthesis.",
+    "_refusals_comment": "Why a row has no thread to speak into, keyed by the source that produced it. A chat verb refuses in these terms rather than falling back to the room: a message that quietly went somewhere other than where it was addressed is worse than one that did not go. Keyed by source kind, so an episode row is absent — an episode IS a thread, and speaking into a recorded negotiation is a write the hub judges (a frozen roster refuses an outsider), not one the surface guesses at. The memory refusal is not about what the memory is: EVERY memory carries a thread, whatever its namespace and whoever wrote it, so an unthreaded memory is a gap rather than a category — one written before threading and not yet backfilled. The copy says so, because a surface that refuses in terms of a rule nobody can see reads as a bug.",
     "refusals": {
       "agent": "presence is a lease the runtime renews, not a conversation to join",
-      "memory": "the hub writes this memory for itself; a thread belongs to something a person authored"
+      "memory": "this memory carries no thread yet — every memory gets one, so this is a gap rather than a rule"
     }
   },
   "log": {
