@@ -47,6 +47,7 @@ import {
   type Skill,
 } from "@/lib/api";
 import { latestPreview } from "@/lib/room-preview";
+import { memoryTitle } from "@/lib/memory-preview";
 import { useCurrentUser } from "@/components/current-user";
 
 /**
@@ -96,22 +97,8 @@ export interface ThreadOwner {
   title: string | null;
 }
 
-/** A row's own title where its frontmatter carries one, else its key.
- *
- * A task is a markdown row, so its title is the first line of its body; a
- * structured value keeps its `title` field. The key is the last resort, for a
- * row with no readable body at all. */
-function memoryTitle(memory: Memory): string {
-  const value = memory.value;
-  if (typeof value === "string" && value.trim()) {
-    return value.trim().split("\n")[0].replace(/^#+\s*/, "").trim() || memory.key;
-  }
-  const title =
-    value && typeof value === "object" && !Array.isArray(value)
-      ? (value as Record<string, unknown>).title
-      : null;
-  return typeof title === "string" && title.trim() ? title.trim() : memory.key;
-}
+// `memoryTitle` is shared with the board's projection (lib/memory-preview), so a
+// task named in the channel and named on the board can never disagree (#889).
 
 // Stable empties: a fresh `[]` per render would break every downstream memo.
 const NO_STATUS: RoomStatus = {

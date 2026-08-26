@@ -2,12 +2,17 @@
 // Copyright 2026 Mycelium Contributors
 
 import { describe, expect, it } from "vitest";
+import type { Memory } from "@/lib/api";
 import {
   flattenMarkdown,
   memoryPreview,
+  memoryTitle,
   memoryValueText,
   previewCardTop,
 } from "@/lib/memory-preview";
+
+const mem = (over: Partial<Memory>): Memory =>
+  ({ key: "work/a-row", value: "", ...over }) as Memory;
 
 describe("memoryValueText", () => {
   it("returns prose as written", () => {
@@ -101,5 +106,37 @@ describe("previewCardTop", () => {
 
   it("pins to the top margin when the card is taller than the viewport", () => {
     expect(previewCardTop(300, 22, 800, 400, 12)).toBe(12);
+  });
+});
+
+describe("memoryTitle", () => {
+  it("uses an explicit title on a structured value", () => {
+    expect(memoryTitle(mem({ value: { title: "Ship the board", status: "open" } }))).toBe(
+      "Ship the board",
+    );
+  });
+
+  it("takes the first line of a bare-string prose value", () => {
+    expect(memoryTitle(mem({ value: "# Trim the install panel\nmore body" }))).toBe(
+      "Trim the install panel",
+    );
+  });
+
+  it("reads a prose value the store hands over as {text} (the #889 bug)", () => {
+    // The API rebuilds prose into { text: … }; the title must be the first line,
+    // never the key it happens to be filed under.
+    const title = memoryTitle(mem({ key: "work/cutover", value: { text: "Cut over to Redis\nnotes" } }));
+    expect(title).toBe("Cut over to Redis");
+    expect(title).not.toBe("work/cutover");
+  });
+
+  it("falls back to content_text when the value carries no readable body", () => {
+    expect(memoryTitle(mem({ key: "work/x", value: {}, content_text: "Do the thing" }))).toBe(
+      "Do the thing",
+    );
+  });
+
+  it("falls back to the key when there is nothing to read", () => {
+    expect(memoryTitle(mem({ key: "work/empty", value: "" }))).toBe("work/empty");
   });
 });
