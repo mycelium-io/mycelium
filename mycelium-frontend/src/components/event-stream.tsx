@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchL9History,
   fetchMessages,
@@ -12,8 +12,8 @@ import {
   logFetchError,
   type PendingInvite,
 } from "@/lib/api";
-import { useRoomAgents, useRoomThreads } from "@/lib/room-data";
-import { NOTICE_TYPE, PING_TYPE, coalescePings, isLiveEpisode, noticeLabel, noticeOf, pingOf, threadShortId } from "@/lib/threads";
+import { useRoomAgents, useRoomRowNames, useRoomThreads, type RowNaming, type ThreadOwner } from "@/lib/room-data";
+import { NOTICE_TYPE, PING_TYPE, coalesceActivity, isLiveEpisode, noticeLabel, noticeOf, pingOf, threadShortId } from "@/lib/threads";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomBoard } from "@/components/board/room-board";
@@ -30,7 +30,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Monogram } from "@/components/ui/monogram";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { ArrowDown, Bot, MessageSquare, MessagesSquare } from "lucide-react";
+import { ArrowDown, Bot, ChevronDown, ChevronRight, MessageSquare, MessagesSquare } from "lucide-react";
 
 interface Event {
   /** Render key only — synthesized, so a message republished by a status
@@ -59,9 +59,11 @@ interface Event {
   /** The thread a **ping** is about — never the episode the ping itself rode,
    *  which is the room. Null on everything that is not a ping. */
   thread: string | null;
-  /** How many pings this row stands for, once a burst has been coalesced. */
-  pings: number;
-  /** Who wrote in the thread during that burst, in the order they first did. */
+  /** Every event this row stands for, oldest first, once a burst about one
+   *  subject has been folded into it. Empty on a row that is only itself. */
+  folded: Event[];
+  /** Who wrote in the thread, on a ping. The row's own sender is the system
+   *  that raised it, which is nobody, so the writer is read from the payload. */
   pingSenders: string[];
   raw: Record<string, unknown>;
 }
@@ -125,6 +127,7 @@ function SystemNotice({
   labelColor,
   strong,
   children,
+  trailing,
 }: {
   time: string;
   dot: string;
@@ -132,6 +135,8 @@ function SystemNotice({
   labelColor?: string;
   strong?: boolean;
   children: React.ReactNode;
+  /** Held out of the truncating run, so a control here survives a long title. */
+  trailing?: React.ReactNode;
 }) {
   return (
     <div className="group mt-3 flex items-center gap-2 px-5 py-1 text-micro text-muted-foreground first:mt-0">
@@ -142,6 +147,7 @@ function SystemNotice({
         </span>
       )}
       <span className="flex min-w-0 items-center gap-1.5 truncate">{children}</span>
+      {trailing}
       <span className="ml-auto flex-shrink-0 tabular text-faint opacity-0 transition-opacity group-hover:opacity-100">
         {time.slice(0, 5)}
       </span>
@@ -337,7 +343,7 @@ function parseEvent(msg: Record<string, unknown>, room: string): Event {
     amends,
     edited: typeof msg.edited_at === "string",
     thread,
-    pings: thread ? 1 : 0,
+    folded: [],
     pingSenders: pingSender ? [pingSender] : [],
     raw,
   };
@@ -353,6 +359,98 @@ function parseEvent(msg: Record<string, unknown>, room: string): Event {
  */
 function inAThread(event: Event, room: string): boolean {
   return CHAT_TYPES.has(event.type) && !isLiveEpisode(room, event.episode);
+}
+
+/**
+ * What a row is *about*, so the feed can group by it.
+ *
+ * The room's task key, wherever the room knows one — that is what makes a
+ * thread's ping, the board's notice about that task and the memory write behind
+ * it fold into one block instead of alternating three ways of saying the same
+ * task moved. A thread no single row is bound to is its own subject; naming it
+ * after one of several rows would be picking at random.
+ */
+function subjectOf(event: Event, threads: Map<string, ThreadOwner>): string | null {
+  if (event.type === PING_TYPE && event.thread) {
+    const owner = threads.get(event.thread);
+    return owner && owner.keys.length === 1 ? owner.keys[0] : event.thread;
+  }
+  if (event.type === NOTICE_TYPE) return (event.raw.taskKey as string) || null;
+  if (event.type === "l9_knowledge") return (event.raw.key as string) || null;
+  return null;
+}
+
+/**
+ * What to call a subject, and the thread that opens it.
+ *
+ * Read off the room's own rows, so a task reads in the feed as the name it
+ * carries on the board rather than as its `work/…` slug. A notice carries its
+ * own copy of both, which is what answers for a subject the room's memories do
+ * not have — one filed a moment ago, or one since removed.
+ */
+function nameActivity(
+  subject: string,
+  members: Event[],
+  threads: Map<string, ThreadOwner>,
+  rows: Map<string, RowNaming>,
+): { title: string; episode: string | null } {
+  const noticed = members.find((m) => m.type === NOTICE_TYPE)?.content;
+  if (subject.startsWith("urn:")) {
+    const owner = threads.get(subject);
+    return {
+      title: owner?.title ?? noticed ?? threadShortId(subject) ?? "thread",
+      episode: subject,
+    };
+  }
+  const row = rows.get(subject);
+  return {
+    title: row?.title ?? noticed ?? subject,
+    episode: row?.episode ?? members.find((m) => m.thread)?.thread ?? null,
+  };
+}
+
+/** Who moved a subject, in the order they first did. A ping's own sender is the
+ *  system that raised it, which is nobody, so its writers come off the payload. */
+function actorsOf(members: Event[]): string[] {
+  const who: string[] = [];
+  for (const ev of members) {
+    const from =
+      ev.type === PING_TYPE
+        ? ev.pingSenders
+        : ev.type === NOTICE_TYPE
+          ? [ev.raw.by as string | undefined]
+          : ev.type === "l9_knowledge"
+            ? [ev.raw.updated_by as string | undefined]
+            : [ev.sender];
+    for (const handle of from) if (handle && !who.includes(handle)) who.push(handle);
+  }
+  return who;
+}
+
+/** One folded event, as it reads once a block is opened up. */
+function activityLine(ev: Event): { label: string; detail: string } {
+  if (ev.type === PING_TYPE) {
+    const who = ev.pingSenders.filter(Boolean);
+    return { label: "Activity", detail: who.map((h) => `@${h}`).join(", ") || "a message landed" };
+  }
+  if (ev.type === NOTICE_TYPE) {
+    const by = ev.raw.by as string | undefined;
+    return {
+      label: noticeLabel((ev.raw.subkind as string) || "filed", ev.raw.kind as string | undefined),
+      detail: by ? `@${by}` : "",
+    };
+  }
+  if (ev.type === "l9_knowledge") {
+    const version = ev.raw.version;
+    const by = ev.raw.updated_by as string | undefined;
+    return {
+      label: "Knowledge",
+      detail: [typeof version === "number" ? `v${version}` : "", by ? `@${by}` : ""]
+        .filter(Boolean)
+        .join(" · "),
+    };
+  }
+  return { label: ev.type, detail: ev.sender };
 }
 
 /** A reader a couple of lines off the bottom still counts as reading the tail,
@@ -429,6 +527,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
   // six characters of URN. Off the room's shared memory read, so it costs
   // nothing; a thread no row is bound to simply has no name to give.
   const threads = useRoomThreads(roomName);
+  // And what each row is called, so a notice, a ping and a memory push about one
+  // task all print its name rather than three shapes of its key.
+  const rowNames = useRoomRowNames(roomName);
   const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle)), [agents]);
   const agentOwners = useMemo(
     () => new Map(agents.filter((a) => a.owner).map((a) => [a.handle, a.owner as string])),
@@ -512,22 +613,35 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
   });
 
   // What the room actually says. A thread's prose is dropped — it is not lost,
-  // it is placed, and the pane the ping opens is where it reads — and a burst of
-  // pings from one thread collapses to a single line, so the surface that exists
-  // to stay legible cannot be flooded by the mechanism meant to protect it.
+  // it is placed, and the pane the ping opens is where it reads — and everything
+  // the room raises *about* one task over a window condenses into a single
+  // evolving block, so the surface that exists to stay legible cannot be flooded
+  // by the mechanisms meant to protect it. The block keeps every event it stands
+  // for and opens to them, so this is where activity is tucked, never hidden.
   const visible = useMemo(
     () =>
-      coalescePings(
+      coalesceActivity(
         events.filter(e => CHANNEL_VIEW_TYPES.has(e.type) && !inAThread(e, roomName)),
-        e => e.pings,
-        (latest, pings, pingSenders) => ({ ...latest, pings, pingSenders }),
+        e => subjectOf(e, threads),
+        members => ({ ...members[0], folded: members }),
       ),
-    [events, roomName],
+    [events, roomName, threads],
   );
 
   // Arriving from search: mark the named message and scroll it into sight once
   // history has landed. The mark outlives the request that carried it — a
   // highlight cleared with the URL parameter would be gone before it was read.
+  // Which activity blocks the reader has opened. Keyed by the block's first
+  // event, which is the one row a growing block keeps — so a block does not
+  // close under someone the moment it absorbs another event.
+  const [openBlocks, setOpenBlocks] = useState<Set<string>>(() => new Set());
+  const toggleBlock = (id: string) =>
+    setOpenBlocks((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+
   const [highlight, setHighlight] = useState<string | null>(null);
   const highlightRow = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -698,6 +812,72 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
               // Coordination + plan lifecycle events render as slim, centered
               // system notices — quiet dividers woven into the conversation,
               // not loud rows. Chat messages group under one sender header.
+              // Everything the room raised about one task over a window, as one
+              // evolving line. Tucked away, not hidden: it opens to the events
+              // it stands for, and its subject still opens the thread.
+              if (ev.folded.length > 1) {
+                const subject = subjectOf(ev, threads);
+                const { title, episode } = subject
+                  ? nameActivity(subject, ev.folded, threads, rowNames)
+                  : { title: "activity", episode: null };
+                const who = actorsOf(ev.folded);
+                const open = openBlocks.has(ev.id);
+                return (
+                  <Fragment key={ev.id}>
+                    <SystemNotice
+                      time={ev.time}
+                      dot="var(--accent)"
+                      label="Activity"
+                      trailing={
+                        <button
+                          type="button"
+                          onClick={() => toggleBlock(ev.id)}
+                          aria-expanded={open}
+                          aria-label={`${open ? "Hide" : "Show"} ${ev.folded.length} updates`}
+                          className="inline-flex flex-shrink-0 items-center gap-0.5 rounded px-1 text-faint transition-colors hover:bg-surface-2 hover:text-muted-foreground"
+                        >
+                          {open ? (
+                            <ChevronDown className="size-3" strokeWidth={1.9} />
+                          ) : (
+                            <ChevronRight className="size-3" strokeWidth={1.9} />
+                          )}
+                          {open ? "hide" : "details"}
+                        </button>
+                      }
+                    >
+                      <span>in</span>
+                      <button
+                        type="button"
+                        onClick={() => episode && onOpenThread?.(episode)}
+                        disabled={!episode || !onOpenThread}
+                        title={episode ?? subject ?? undefined}
+                        className="inline-flex max-w-[18rem] items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
+                      >
+                        <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
+                        <span className="truncate">{title}</span>
+                      </button>
+                      <span>· {ev.folded.length} updates</span>
+                      {who.length > 0 && (
+                        <span className="truncate">· {who.map((h) => `@${h}`).join(", ")}</span>
+                      )}
+                    </SystemNotice>
+                    {open && (
+                      <ul className="mb-1 ml-[1.75rem] flex flex-col gap-1 border-l border-border py-1 pl-3 pr-5 text-micro text-muted-foreground">
+                        {ev.folded.map((member) => {
+                          const { label, detail } = activityLine(member);
+                          return (
+                            <li key={member.id} className="flex items-center gap-2">
+                              <span className="tabular flex-shrink-0 text-faint">{member.time.slice(0, 5)}</span>
+                              <span className="flex-shrink-0 font-medium">{label}</span>
+                              {detail && <span className="truncate">{detail}</span>}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </Fragment>
+                );
+              }
               if (ev.type === PING_TYPE && ev.thread) {
                 const thread = ev.thread;
                 const shortId = threadShortId(thread) ?? "thread";
@@ -717,7 +897,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                       <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
                       <span className="truncate">{owner?.title ?? shortId}</span>
                     </button>
-                    <span>· {ev.pings} new</span>
                     {who.length > 0 && (
                       <span className="truncate">· {who.map(h => `@${h}`).join(", ")}</span>
                     )}
@@ -768,11 +947,29 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
               if (ev.type === "l9_knowledge") {
                 const key = ev.raw.key as string | undefined;
                 const updatedBy = ev.raw.updated_by as string | undefined;
+                const version = ev.raw.version;
+                // The key printed once, as the name the room calls it — the
+                // content line already said it, in slug form, and said it again
+                // in the mono span beside it.
+                const named = key ? nameActivity(key, [ev], threads, rowNames) : null;
                 return (
                   <SystemNotice key={ev.id} time={ev.time} dot="var(--yellow)" label="Knowledge">
-                    <span>{ev.content}</span>
-                    {key && <span className="font-mono text-muted-foreground">{key}</span>}
-                    {updatedBy ? <span>by @{updatedBy}</span> : null}
+                    <span>updated</span>
+                    {named ? (
+                      <button
+                        type="button"
+                        onClick={() => named.episode && onOpenThread?.(named.episode)}
+                        disabled={!named.episode || !onOpenThread}
+                        title={key}
+                        className="inline-flex max-w-[18rem] items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
+                      >
+                        <span className="truncate">{named.title}</span>
+                      </button>
+                    ) : (
+                      <span className="truncate">{ev.content}</span>
+                    )}
+                    {typeof version === "number" && <span>· v{version}</span>}
+                    {updatedBy ? <span>· by @{updatedBy}</span> : null}
                   </SystemNotice>
                 );
               }

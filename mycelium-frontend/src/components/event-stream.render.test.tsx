@@ -178,8 +178,9 @@ describe("<EventStream /> live message rendering", () => {
       });
     });
 
-    expect(await screen.findByText("plan updated → plan/tasks.md")).toBeInTheDocument();
     expect(screen.getByText("Knowledge")).toBeInTheDocument();
+    // The row named once, not once in the content line and again beside it.
+    expect(await screen.findAllByText("plan/tasks.md")).toHaveLength(1);
     expect(screen.getByText("by @aligner", { exact: false })).toBeInTheDocument();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();

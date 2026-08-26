@@ -93,7 +93,7 @@ describe("<EventStream /> and the threads inside the room", () => {
     // pane read it. What the room gets is that the task moved.
     expect(screen.queryByText(/hold the flip/)).not.toBeInTheDocument();
     expect(await screen.findByText("Activity")).toBeInTheDocument();
-    expect(screen.getByText("· 1 new")).toBeInTheDocument();
+    expect(screen.getByText("· @risk")).toBeInTheDocument();
   });
 
   it("still shows what was said in the room itself", async () => {
@@ -125,7 +125,7 @@ describe("<EventStream /> and the threads inside the room", () => {
       es.emit(ping("risk", "m-3"));
     });
 
-    expect(await screen.findByText("· 3 new")).toBeInTheDocument();
+    expect(await screen.findByText("· 3 updates")).toBeInTheDocument();
     expect(screen.getAllByText("Activity")).toHaveLength(1);
     expect(screen.getByText("· @risk, @growth")).toBeInTheDocument();
   });
@@ -245,6 +245,9 @@ describe("<EventStream /> and the threads inside the room", () => {
     renderWithSWR(<EventStream roomName={ROOM} />);
     await act(async () => {});
 
-    expect(await screen.findAllByText("memory updated → work/flip")).toHaveLength(1);
+    // Once, and as its own line: a second copy would fold in beside the first
+    // and read as two updates to the row rather than as the duplicate it is.
+    expect(await screen.findAllByText("work/flip")).toHaveLength(1);
+    expect(screen.queryByText(/updates$/)).not.toBeInTheDocument();
   });
 });

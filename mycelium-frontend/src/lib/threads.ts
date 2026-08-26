@@ -182,64 +182,78 @@ export function noticeLabel(subkind: string, kind: string | null | undefined): s
   }
 }
 
-/** The minimum a feed row has to expose to be coalesced. */
-export interface Pingable {
-  type: string;
-  /** The thread this row is about, on a ping; null on everything else. */
-  thread: string | null;
-  /** Who wrote in the thread. A row's own sender is the system that raised the
-   *  ping, which is nobody, so the writers are read from the payload instead. */
-  pingSenders: string[];
+/**
+ * How long one subject's activity keeps condensing into the same block.
+ *
+ * Measured from the block's **first** event, not its last: a sliding gap would
+ * let a task written to every few minutes stay one block for hours, so activity
+ * that is genuinely new would only ever change a number further up the feed.
+ * A bounded span means a busy subject condenses *and* still says so again, at
+ * most one line per window.
+ */
+export const ACTIVITY_WINDOW_MS = 5 * 60 * 1000;
+
+/** The minimum a feed row has to expose to be grouped: when it landed. */
+export interface Activity {
+  at: string;
 }
 
 /**
- * Collapse a burst of pings into one line per thread.
+ * Condense a subject's activity into one evolving block per time window.
  *
- * A thread that is genuinely busy would otherwise write a line per message into
- * the channel it exists to keep quiet — the noise back, one indirection later.
- * So a **run** of consecutive pings (nothing else said in between) becomes at
- * most one row per thread, counting what landed and keeping the newest ping's
- * identity so opening it still reaches the latest.
+ * The room's own timeline is written by everything that moves: a thread pings,
+ * a board event notices, a memory write announces itself. Each is worth having
+ * and none is worth a line — a task compiled, claimed and written to six times
+ * is *one* thing happening, and printed as six near-identical lines it buries
+ * the conversation it is supposed to accompany.
  *
- * Coalescing stops at the first non-ping row: a ping after someone speaks is
- * new activity, not more of the same, and folding it backwards would move a
- * line that has already been read.
+ * So rows naming the same subject fold into one, **across interleaving**: a
+ * person speaking in the middle of a burst no longer splits it in two, which is
+ * the limitation that made the old ping-only coalesce give up the moment
+ * anything else was said. The block sits where its **first** event landed, so
+ * folding never moves a line that has already been read — it only ever grows
+ * one that is already there — and it stops absorbing at {@link ACTIVITY_WINDOW_MS},
+ * so a subject that stays busy keeps saying so.
+ *
+ * Nothing is dropped: `merge` receives every member, oldest first, and the
+ * caller is expected to keep them reachable behind the block it returns. A
+ * subject that moved once is passed through untouched rather than merged into a
+ * group of one.
  */
-export function coalescePings<T extends Pingable>(
+export function coalesceActivity<T extends Activity>(
   rows: T[],
-  count: (row: T) => number,
-  merge: (latest: T, total: number, senders: string[]) => T,
+  subjectOf: (row: T) => string | null,
+  merge: (members: T[]) => T,
+  windowMs: number = ACTIVITY_WINDOW_MS,
 ): T[] {
   const out: T[] = [];
-  let run: T[] = [];
-
-  const flush = () => {
-    if (!run.length) return;
-    const byThread = new Map<string, T[]>();
-    for (const row of run) {
-      const thread = row.thread as string;
-      const group = byThread.get(thread);
-      if (group) group.push(row);
-      else byThread.set(thread, [row]);
-    }
-    for (const group of byThread.values()) {
-      const latest = group[group.length - 1];
-      const total = group.reduce((sum, row) => sum + count(row), 0);
-      // Who has been in the thread since the last thing said in the room. In
-      // first-seen order, so the list reads as the conversation happened.
-      const senders = [...new Set(group.flatMap(row => row.pingSenders))];
-      out.push(total > count(latest) || senders.length > 1 ? merge(latest, total, senders) : latest);
-    }
-    run = [];
-  };
+  /** Every block opened over this feed, by the slot it holds in `out`. */
+  const blocks: { slot: number; members: T[] }[] = [];
+  /** The block currently absorbing each subject — the newest one opened for it. */
+  const open = new Map<string, { slot: number; members: T[]; from: number }>();
 
   for (const row of rows) {
-    if (row.type === PING_TYPE && row.thread) run.push(row);
-    else {
-      flush();
+    const subject = subjectOf(row);
+    if (!subject) {
       out.push(row);
+      continue;
     }
+    const at = Date.parse(row.at) || 0;
+    const block = open.get(subject);
+    if (block && at - block.from <= windowMs) {
+      block.members.push(row);
+      continue;
+    }
+    const fresh = { slot: out.length, members: [row], from: at };
+    open.set(subject, fresh);
+    blocks.push(fresh);
+    // Held until the feed is read out: a block is only a block once something
+    // else joins it, and until then this row is its own line.
+    out.push(row);
   }
-  flush();
+
+  for (const block of blocks) {
+    if (block.members.length > 1) out[block.slot] = merge(block.members);
+  }
   return out;
 }
