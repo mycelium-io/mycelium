@@ -169,15 +169,17 @@ jobs:
       - name: Start mycelium hub (SLIM node + backend)
         run: |
           mycelium init --api-url http://localhost:8000 2>/dev/null || true
-          # Pre-create the rooms dir and set a default ACL so every future
-          # subdirectory created by the Docker backend (UID 1000 = packer on GH
-          # runners) is automatically world-writable. Without this, `mycelium
-          # agent create` fails writing agent manifests because new room dirs
-          # are owned by packer, not the runner user.
+          # The backend container always creates room/agent dirs as uid 1000
+          # (baked into fastapi-backend/Dockerfile), but the GH-hosted runner
+          # user is uid 1001. mycelium-cli's write guard
+          # (_check_writable_or_bail in mycelium-cli commands/agent.py) rejects
+          # writes based on an exact owner-uid match — chmod/setfacl "other"
+          # bits don't satisfy that check, only matching ownership does. See
+          # the "Start ownership watcher" step below for the actual fix; this
+          # is just the initial directory so `mycelium up` has somewhere to
+          # write.
           mkdir -p ~/.mycelium/rooms
           chmod -R 777 ~/.mycelium
-          sudo setfacl -R -d -m o::rwx ~/.mycelium 2>/dev/null || \
-            echo "setfacl unavailable — using chmod loop fallback"
           if [ "$BUILD_FROM_SOURCE" = "true" ]; then
             mycelium up --build
           else
@@ -196,7 +198,7 @@ jobs:
             fi
             sleep 2
           done
-          # Fix any dirs the backend created before setfacl took effect
+          # Fix ownership of dirs the backend created during startup.
           sudo chown -R "$USER" ~/.mycelium 2>/dev/null || true
           chmod -R 777 ~/.mycelium || true
 
@@ -236,6 +238,20 @@ jobs:
       - name: Clean artifacts dir
         run: rm -rf artifacts
 
+      - name: Start ownership watcher
+        run: |
+          # Rooms are created continuously throughout the ~30min test run, each
+          # owned by the backend container's uid (1000) the moment it's
+          # created. The one-time chown in the previous step only covers dirs
+          # that exist before tests start, and mycelium-cli's write guard
+          # checks live ownership, not permission bits — so keep re-chowning
+          # in the background for the life of the test run.
+          ( while true; do
+              sudo chown -R "$USER" ~/.mycelium/rooms 2>/dev/null
+              sleep 3
+            done ) &
+          echo $! > /tmp/mycelium-chown-watcher.pid
+
       - name: Run E2E tests
         env:
           MYCELIUM_BACKEND_URL: http://localhost:8000
@@ -268,6 +284,10 @@ jobs:
             --runinfo-dir artifacts/pyats-runinfo \
             --archive-dir artifacts/pyats-archive \
             --no-archive-subdir
+
+      - name: Stop ownership watcher
+        if: always()
+        run: kill "$(cat /tmp/mycelium-chown-watcher.pid)" 2>/dev/null || true
 
       - name: Print results summary
         if: always()
