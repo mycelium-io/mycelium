@@ -4,11 +4,31 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import time
 from typing import Any
 
 log = logging.getLogger(__name__)
+
+# `agent create`/`engine create` write agents/<handle>.md locally (see the
+# module docstring in mycelium-cli's commands/agent.py: an agent is a memory
+# entry the CLI writes directly, not just an HTTP call). In our CI hub setup
+# the backend runs in a container under a fixed uid (1000 — "packer" on
+# GitHub-hosted runners) that differs from the runner user, so that manifest's
+# parent dir (created server-side as a side effect of the same command) is
+# owned by a different uid than the CLI process. mycelium-cli's write guard
+# (commands/agent.py:_check_writable_or_bail) rejects on exact uid mismatch by
+# design (see its test_agent_add_root_owned.py and `mycelium doctor`'s own
+# ownership check) — chmod/ACL bits don't satisfy it, only matching ownership
+# does, and there's no supported way to make the container use a different
+# uid without breaking its own internal logging (fastapi-backend/app/main.py
+# writes logs/app.log relative to uid 1000's home).
+#
+# So instead of chasing the container's uid after the fact, run just the
+# local-write commands as that same uid, set via MYCELIUM_LOCAL_WRITE_UID in
+# CI. Unset (the default, e.g. local dev use) this is a no-op.
+_LOCAL_WRITE_UID = os.environ.get("MYCELIUM_LOCAL_WRITE_UID", "")
 
 
 class CLIResult:
@@ -50,11 +70,30 @@ class MyceliumCLI:
         self.binary = binary
         self.default_timeout = default_timeout
 
-    def run(self, *args: str, timeout: int | None = None, json_mode: bool = False) -> CLIResult:
+    def run(
+        self,
+        *args: str,
+        timeout: int | None = None,
+        json_mode: bool = False,
+        local_write: bool = False,
+    ) -> CLIResult:
         cmd = [self.binary]
         if json_mode:
             cmd.append("--json")
         cmd.extend(args)
+
+        if local_write and _LOCAL_WRITE_UID:
+            # -u '#uid' addresses by numeric id, skipping any /etc/passwd
+            # lookup — no dependency on "packer" staying that exact name.
+            # HOME must stay pointed at the shared ~/.mycelium tree: sudo
+            # resets it to the target uid's own home by default, which would
+            # make the CLI look at (and create) an entirely different,
+            # unrelated .mycelium directory.
+            cmd = [
+                "sudo", "-u", f"#{_LOCAL_WRITE_UID}",
+                "env", f"HOME={os.path.expanduser('~')}",
+                *cmd,
+            ]
 
         t = timeout or self.default_timeout
         start = time.time()
@@ -148,13 +187,13 @@ class MyceliumCLI:
             args.extend(["--cwd", cwd])
         if description:
             args.extend(["--description", description])
-        return self.run(*args, timeout=60)
+        return self.run(*args, timeout=60, local_write=True)
 
     def agent_ls(self, room: str) -> CLIResult:
         return self.run("agent", "ls", "--room", room, json_mode=True)
 
     def agent_rm(self, handle: str, room: str) -> CLIResult:
-        return self.run("agent", "rm", handle, "--room", room, timeout=30)
+        return self.run("agent", "rm", handle, "--room", room, timeout=30, local_write=True)
 
     def agent_invoke(self, handle: str, room: str, message: str = "") -> CLIResult:
         args = ["agent", "invoke", handle, "--room", room]
@@ -163,7 +202,10 @@ class MyceliumCLI:
         return self.run(*args, timeout=60)
 
     def engine_create(self, handle: str, room: str, kind: str = "aligner") -> CLIResult:
-        return self.run("engine", "create", handle, "--room", room, "--kind", kind, timeout=60)
+        return self.run(
+            "engine", "create", handle, "--room", room, "--kind", kind,
+            timeout=60, local_write=True,
+        )
 
     def engine_invoke(self, handle: str, room: str, message: str = "") -> CLIResult:
         args = ["engine", "invoke", handle, "--room", room]
