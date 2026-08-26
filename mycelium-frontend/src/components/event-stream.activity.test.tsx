@@ -24,8 +24,6 @@ vi.mock("@/lib/api", () => ({
   fetchL9History: vi.fn().mockResolvedValue([]),
   fetchMemories: vi.fn().mockResolvedValue([]),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
-  fetchPendingInvites: vi.fn().mockResolvedValue([]),
-  respondToInvite: vi.fn(),
   logFetchError: () => () => undefined,
 }));
 

@@ -36,7 +36,6 @@ CHAT_TYPES = {"broadcast", "direct", "announce", "delegate"}
 SKIP_TYPES = {
     "memory_changed",
     "coordination_consensus",
-    "consent_request",
     "presence",
 }
 

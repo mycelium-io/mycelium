@@ -232,7 +232,6 @@ function RoomWorkspace() {
           onOpenThread={openThread}
           view={editorView}
           onViewChange={setEditorView}
-          suppressInvites={tourActive}
           focusMessageId={focus?.type === "message" ? focus.id : null}
           onFocusConsumed={clearFocus}
         />

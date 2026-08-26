@@ -141,7 +141,7 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
         notify_payload["episode"] = msg.episode
 
     # Human-in-the-room: backend publishes onto the channel as proxy for live SLIM
-    # rooms, parsing ``@`` recipients and raising consent for absent mentions. The
+    # rooms, parsing ``@`` recipients and inviting absent agents they name. The
     # persister records to the durable transcript (source of truth), so don't also
     # write in_memory_store/bus here (would duplicate). Non-SLIM paths use direct write.
     published = False

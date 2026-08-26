@@ -582,45 +582,6 @@ export async function sendRoomMessage(
   });
 }
 
-/**
- * A consent-gated invite. Raised when a human `@`-mentions an agent
- * that is not yet on the room's channel: the backend surfaces an accept/decline
- * prompt ("someone's agent wants to reach yours") instead of joining directly.
- */
-export interface PendingInvite {
-  id: string;
-  room: string;
-  agent: string;
-  requested_by: string;
-  trigger_text: string;
-  status: string;
-  created_at: string;
-}
-
-/** Open (pending or queued) consent requests for a room. */
-export async function fetchPendingInvites(roomName: string): Promise<PendingInvite[]> {
-  const data = await apiFetch<{ invites?: PendingInvite[] }>(`/api/rooms/${roomName}/invites`, {
-    cache: "no-store",
-    fallback: {},
-  });
-  return data.invites ?? [];
-}
-
-/** Accept or decline a consent prompt. Only `accept` invites (or queues) the
- *  agent. Fire-and-forget from the UI's perspective (the dialog has already
- *  closed by the time this resolves), so it degrades to `null` on failure
- *  rather than surfacing a rejected promise with nowhere to show it. */
-export async function respondToInvite(
-  roomName: string,
-  inviteId: string,
-  decision: "accept" | "decline",
-): Promise<PendingInvite | null> {
-  return apiFetch<PendingInvite | null>(`/api/rooms/${roomName}/invites/${inviteId}/${decision}`, {
-    method: "POST",
-    fallback: null,
-  });
-}
-
 export interface AgentSummary {
   handle: string;
   adapter: string;
@@ -918,13 +879,14 @@ export async function fetchEpisode(
 // ── Network diagnostics (the `/health` coordination + identity + auth blocks) ─
 
 /** Per-room channel telemetry: present members (SLIM + server-held `await`
- *  leases), open consent invites, episode state, and durable-inbox counters. */
+ *  leases), invites deferred by a live episode, episode state, and
+ *  durable-inbox counters. */
 export interface CoordinationRoom {
   room: string;
   provisioned: boolean;
   persister_alive: boolean;
   members: string[];
-  pending_invites: number;
+  deferred_invites: number;
   episode_active: boolean;
   reserves: number;
   reserve_failures: number;

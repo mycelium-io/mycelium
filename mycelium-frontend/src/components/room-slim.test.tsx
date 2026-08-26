@@ -29,7 +29,7 @@ function coordination() {
         provisioned: true,
         persister_alive: true,
         members: ["alice"],
-        pending_invites: 0,
+        deferred_invites: 0,
         episode_active: false,
         reserves: 0,
         reserve_failures: 0,

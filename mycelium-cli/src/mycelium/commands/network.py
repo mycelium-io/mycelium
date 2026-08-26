@@ -122,8 +122,9 @@ def network(
 
     Renders the backend's live coordination telemetry: the SLIM node endpoint,
     live-channel and provision counters, and (per room) who is present (SLIM
-    members plus server-held ``await`` participants), open consent invites, whether
-    an episode is active, and durable-inbox counters (re-serves, receive errors).
+    members plus server-held ``await`` participants), invites an active episode is
+    holding, whether an episode is active, and durable-inbox counters (re-serves,
+    receive errors).
 
     Rooms with an A2A bridge get a block of their own: the bridged agents with
     their endpoint and advertised skills, whether the room's own Agent Card is
@@ -184,7 +185,7 @@ def network(
         # the fixed columns before it.
         name_w = max(len("ROOM"), *(len(r.get("room", "")) for r in rooms))
         typer.secho(
-            f"  {'ROOM':<{name_w}}  PEND  EPISODE  RESRV  RECV-ERR  MEMBERS",
+            f"  {'ROOM':<{name_w}}  DEFER  EPISODE  RESRV  RECV-ERR  MEMBERS",
             fg=typer.colors.BRIGHT_BLACK,
         )
         for r in sorted(rooms, key=lambda x: x.get("room", "")):
@@ -192,7 +193,7 @@ def network(
             episode = "active" if r.get("episode_active") else "idle"
             typer.echo(
                 f"  {r.get('room', ''):<{name_w}}  "
-                f"{r.get('pending_invites', 0):>4}  "
+                f"{r.get('deferred_invites', 0):>5}  "
                 f"{episode:<7}  "
                 f"{r.get('reserves', 0):>5}  "
                 f"{r.get('receive_errors', 0):>8}  "

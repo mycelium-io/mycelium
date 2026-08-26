@@ -7,17 +7,13 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchL9History,
   fetchMessages,
-  fetchPendingInvites,
-  respondToInvite,
   logFetchError,
-  type PendingInvite,
 } from "@/lib/api";
 import { useRoomAgents, useRoomRowNames, useRoomThreads, type RowNaming, type ThreadOwner } from "@/lib/room-data";
 import { NOTICE_TYPE, PING_TYPE, coalesceActivity, isLiveEpisode, noticeLabel, noticeOf, pingOf, threadShortId } from "@/lib/threads";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomBoard } from "@/components/board/room-board";
-import { ConsentDialog } from "@/components/consent-dialog";
 import { ActivityRail, type ActivityItem } from "@/components/activity-rail";
 import { EpisodeTag } from "@/components/episode-tag";
 import { L9Inspector } from "@/components/l9-inspector";
@@ -534,15 +530,12 @@ interface Props {
   /** Optional controlled tab (e.g. driven by the onboarding tour). */
   view?: View;
   onViewChange?: (view: View) => void;
-  /** Hold back the consent-request modal (e.g. during the onboarding tour, so
-   *  its backdrop doesn't cover the coached highlights). */
-  suppressInvites?: boolean;
   /** A message to reveal in the channel, arrived at from search. */
   focusMessageId?: string | null;
   onFocusConsumed?: () => void;
 }
 
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, onOpenThread, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, onOpenThread, view: viewProp, onViewChange, focusMessageId = null, onFocusConsumed }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const connected = useRoomConnected(roomName);
@@ -554,7 +547,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
   const [viewInternal, setViewInternal] = useState<View>("channel");
   const view = viewProp ?? viewInternal;
   const setView = (v: View) => { if (viewProp === undefined) setViewInternal(v); onViewChange?.(v); };
-  const [invites, setInvites] = useState<PendingInvite[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Know which senders are registered agents (to badge their replies) and whom
@@ -611,32 +603,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
     };
   }, [roomName]);
 
-  // Load any consent prompts already open (an @-invite raised before this
-  // client connected). Live ones arrive over SSE below.
-  useEffect(() => {
-    fetchPendingInvites(roomName)
-      .then((open) => setInvites(open.filter((i) => i.status === "pending")))
-      .catch(logFetchError("fetchPendingInvites"));
-  }, [roomName]);
-
-  const respond = (invite: PendingInvite, decision: "accept" | "decline") => {
-    setInvites((prev) => prev.filter((i) => i.id !== invite.id));
-    respondToInvite(roomName, invite.id, decision).catch(logFetchError("respondToInvite"));
-  };
-
   // Live room messages, off the app's one multiplexed connection.
   useRoomStream(roomName, (data) => {
     const msg = data as Record<string, unknown>;
-    // Consent prompts drive the accept/decline dialog, not the feed.
-    if (msg.message_type === "consent_request") {
-      try {
-        const invite = JSON.parse(msg.content as string) as PendingInvite;
-        setInvites((prev) =>
-          prev.some((i) => i.id === invite.id) ? prev : [...prev, invite],
-        );
-      } catch {}
-      return;
-    }
     const event = parseEvent(msg, roomName);
     setEvents(prev => (event.amends ? foldAmendment(prev, event) : [...prev, event]));
     if (event.type === "memory_changed") onMemoryChanged?.();
@@ -809,11 +778,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
 
   return (
     <div className="flex flex-col h-full">
-      <ConsentDialog
-        invite={suppressInvites ? null : (invites[0] ?? null)}
-        onAccept={(invite) => respond(invite, "accept")}
-        onDecline={(invite) => respond(invite, "decline")}
-      />
       <div className="flex items-center gap-3 border-b border-border shrink-0 h-[48px] bg-paper px-4">
         {/* Connection state lives in the shell status bar. */}
         <div className="ml-auto flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
