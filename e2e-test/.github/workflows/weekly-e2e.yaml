@@ -92,6 +92,14 @@ jobs:
       - name: Start mycelium hub
         run: |
           mycelium init --api-url http://localhost:8000 2>/dev/null || true
+          # Write LLM config into .env BEFORE `mycelium up` — the backend
+          # reads env_file once at container start, so writing this after
+          # start (the previous ordering) never actually reached it.
+          {
+            [ -n "$LLM_API_KEY" ]  && echo "LLM_API_KEY=$LLM_API_KEY"
+            [ -n "$LLM_BASE_URL" ] && echo "LLM_BASE_URL=$LLM_BASE_URL"
+            [ -n "$LLM_MODEL" ]    && echo "LLM_MODEL=$LLM_MODEL"
+          } > ~/.mycelium/.env || true
           # See e2e.yml's "Start mycelium hub" step and the "Run canary
           # suite" env block below for the full story on the backend
           # container's fixed uid and why this is just generic insurance.
@@ -115,11 +123,7 @@ jobs:
       - name: Configure CLI
         run: |
           mycelium config set server.api_url http://localhost:8000 2>/dev/null || true
-          {
-            [ -n "$LLM_API_KEY" ]  && echo "LLM_API_KEY=$LLM_API_KEY"
-            [ -n "$LLM_BASE_URL" ] && echo "LLM_BASE_URL=$LLM_BASE_URL"
-            [ -n "$LLM_MODEL" ]    && echo "LLM_MODEL=$LLM_MODEL"
-          } > ~/.mycelium/.env || true
+          # LLM config (.env) is written earlier, before `mycelium up`.
           # `config set` rewrites config.toml with a restrictive mode —
           # see e2e.yml's "Configure mycelium CLI" step.
           chmod -R 777 ~/.mycelium || true

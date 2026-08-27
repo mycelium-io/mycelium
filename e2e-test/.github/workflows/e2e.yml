@@ -183,6 +183,19 @@ jobs:
       - name: Start mycelium hub (SLIM node + backend)
         run: |
           mycelium init --api-url http://localhost:8000 2>/dev/null || true
+          # Write LLM config into .env BEFORE `mycelium up` — the backend
+          # container reads `env_file` once at container start (Docker
+          # Compose semantics), so writing this after start (the previous
+          # ordering, in "Configure mycelium CLI" below) had no effect:
+          # secrets.LLM_BASE_URL reached the runner fine, but the backend
+          # never saw it and `mycelium doctor` always reported
+          # base_url=NOT SET regardless.
+          mkdir -p ~/.mycelium
+          {
+            [ -n "$LLM_API_KEY" ]  && echo "LLM_API_KEY=$LLM_API_KEY"
+            [ -n "$LLM_BASE_URL" ] && echo "LLM_BASE_URL=$LLM_BASE_URL"
+            [ -n "$LLM_MODEL" ]    && echo "LLM_MODEL=$LLM_MODEL"
+          } > ~/.mycelium/.env || true
           # The backend container always runs as a fixed uid (1000 — "packer"
           # on GitHub-hosted runners; see MYCELIUM_LOCAL_WRITE_UID below for
           # why that matters and why we don't try to change it). Set a
@@ -227,11 +240,9 @@ jobs:
       - name: Configure mycelium CLI
         run: |
           mycelium config set server.api_url http://localhost:8000 2>/dev/null || true
-          {
-            [ -n "$LLM_API_KEY" ]  && echo "LLM_API_KEY=$LLM_API_KEY"
-            [ -n "$LLM_BASE_URL" ] && echo "LLM_BASE_URL=$LLM_BASE_URL"
-            [ -n "$LLM_MODEL" ]    && echo "LLM_MODEL=$LLM_MODEL"
-          } > ~/.mycelium/.env || true
+          # LLM config (.env) is written earlier, before `mycelium up`, in
+          # "Start mycelium hub" — the backend needs it at container-start
+          # time, not now.
           # `config set` rewrites config.toml with a restrictive mode
           # (config.toml/.env come back owner-only), which the
           # MYCELIUM_LOCAL_WRITE_UID switch (uid 1000) then can't read —
