@@ -22,7 +22,7 @@ import {
 } from './dsp.mjs';
 import { glue, limit, lra, lufs, truePeakDb } from './master.mjs';
 
-export const DURATION = 76;
+export const DURATION = 72;
 
 // ~69.6 BPM. index.html's scene changes land on multiples of 6.9s (13.8,
 // 27.6, 41.4), so an eight-beat phrase lines up with the cut without the
@@ -44,19 +44,19 @@ const SECTIONS = [
     chord: ['D2', 'A2', 'D3', 'C4'], density: 0.12 },
 
   // The board: D minor, the third (F) present — the work surface.
-  { id: 'board', t0: 18.0, t1: 34.32, gain: 0.9, bright: 0.7,
+  { id: 'board', t0: 18.0, t1: 30.32, gain: 0.9, bright: 0.7,
     chord: ['D2', 'A2', 'F3', 'C4', 'D4'], density: 0.09 },
 
   // The open question: no third anywhere — the thread disagreement + the aligner.
-  { id: 'negotiate', t0: 34.32, t1: 60.26, gain: 0.80, bright: 0.6,
+  { id: 'negotiate', t0: 30.32, t1: 56.26, gain: 0.80, bright: 0.6,
     chord: ['D2', 'A2', 'D3', 'G3', 'E4'], density: 0.09 },
 
   // Consensus at 68.14: F# arrives, the piece turns major (converge + compile).
-  { id: 'consensus', t0: 60.26, t1: 69.75, gain: 1.0, bright: 0.86,
+  { id: 'consensus', t0: 56.26, t1: 65.75, gain: 1.0, bright: 0.86,
     chord: ['D2', 'A2', 'F#3', 'A3', 'E4'], density: 0.22 },
 
   // Outro: back to bare D and A, an octave wider.
-  { id: 'outro', t0: 69.75, t1: 76.12, gain: 0.95, bright: 0.7,
+  { id: 'outro', t0: 65.75, t1: 72.12, gain: 0.95, bright: 0.7,
     chord: ['D1', 'D2', 'A2', 'D3', 'A3', 'D4'], density: 0.07 },
 ];
 
@@ -85,29 +85,29 @@ const CUES = [
   // the board: the shell arrives, one soft fill, the task drops
   { t: 19.72, kind: 'lift', gain: 0.32 },
   { t: 22.31, kind: 'pluck', pitch: 'D4', gain: 0.16, decay: 1.8 },
-  { t: 32.66, kind: 'bloom', pitch: 'F5', gain: 0.18 },
+  { t: 28.66, kind: 'bloom', pitch: 'F5', gain: 0.18 },
 
   // dive into the task
-  { t: 35.52, kind: 'bloom', pitch: 'A5', gain: 0.13 },
+  { t: 31.52, kind: 'bloom', pitch: 'A5', gain: 0.13 },
 
   // the thread: the two positions, no third
-  { t: 40.12, kind: 'move', pitch: 'A4', gain: 0.20, actor: 'avery' }, // marcus · websocket
-  { t: 43.12, kind: 'move', pitch: 'D4', gain: 0.20, actor: 'rowan' }, // anand · poll
+  { t: 36.12, kind: 'move', pitch: 'A4', gain: 0.20, actor: 'avery' }, // marcus · websocket
+  { t: 39.12, kind: 'move', pitch: 'D4', gain: 0.20, actor: 'rowan' }, // anand · poll
 
   // the aligner: summon, one round marker, consensus
-  { t: 53.36, kind: 'voice', pitch: 'C5', gain: 0.38, decay: 3.0 },
-  { t: 56.72, kind: 'round', gain: 0.46 },
-  { t: 60.26, kind: 'consensus', gain: 1.05 },
+  { t: 49.36, kind: 'voice', pitch: 'C5', gain: 0.38, decay: 3.0 },
+  { t: 52.72, kind: 'round', gain: 0.46 },
+  { t: 56.26, kind: 'consensus', gain: 1.05 },
 
   // compile: the fix tasks land
-  { t: 64.57, kind: 'lift', gain: 0.30 },
-  { t: 65.72, kind: 'pluck', pitch: 'F#5', gain: 0.20, decay: 2.2 },
-  { t: 66.62, kind: 'pluck', pitch: 'A5', gain: 0.20, decay: 2.2 },
+  { t: 60.57, kind: 'lift', gain: 0.30 },
+  { t: 61.72, kind: 'pluck', pitch: 'F#5', gain: 0.20, decay: 2.2 },
+  { t: 62.62, kind: 'pluck', pitch: 'A5', gain: 0.20, decay: 2.2 },
 
   // outro: the bell returns an octave down and wide
-  { t: 70.12,  kind: 'spore', pitch: 'D4', gain: 0.22 },
-  { t: 70.14, kind: 'impact', gain: 0.30 },
-  { t: 71.32,  kind: 'spore', pitch: 'D5', gain: 0.08 },
+  { t: 66.12,  kind: 'spore', pitch: 'D4', gain: 0.22 },
+  { t: 66.14, kind: 'impact', gain: 0.30 },
+  { t: 67.32,  kind: 'spore', pitch: 'D5', gain: 0.08 },
 ];
 
 // ── Buses ──────────────────────────────────────────────────────────────
@@ -489,9 +489,9 @@ function renderHyphae(b) {
  * together on F#.
  */
 function renderCounterpoint(b) {
-  const CONSENSUS = 60.26;
-  const T0 = 40.12;
-  const T1 = 64.12;
+  const CONSENSUS = 56.26;
+  const T0 = 36.12;
+  const T1 = 60.12;
   const periodA = 3.1;
   // rowan starts slower and is in step with avery by the time they accept.
   const periodB = (t) => lerp(3.62, periodA, clamp((t - T0) / (CONSENSUS - T0), 0, 1));
@@ -518,10 +518,10 @@ function renderCounterpoint(b) {
  * the consensus beat. It is the only portamento in the piece.
  */
 function renderResolution(b) {
-  const t0 = 56.12;
-  const t1 = 68.12;
-  const glideStart = 60.02;
-  const glideEnd = 61.02;
+  const t0 = 52.12;
+  const t1 = 64.12;
+  const glideStart = 56.02;
+  const glideEnd = 57.02;
   const fFlat = hz('F4');
   const fSharp = hz('F#4');
   const i0 = idx(b, t0);
@@ -678,8 +678,8 @@ function renderConsensus(b, t, g) {
  * resolution is the F# underneath it.
  */
 function renderTension(b) {
-  const t0 = 51.62;
-  const t1 = 60.26;
+  const t0 = 47.62;
+  const t1 = 56.26;
   const i0 = idx(b, t0);
   const i1 = Math.min(b.n, idx(b, t1 + 0.45));
   const svf = new SVF(b.sr);

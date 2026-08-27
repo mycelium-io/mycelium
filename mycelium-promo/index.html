@@ -939,12 +939,12 @@
       id="root"
       data-composition-id="main"
       data-start="0"
-      data-duration="76"
+      data-duration="72"
       data-width="1920"
       data-height="1080"
     >
       <!-- Background canvas runs the entire duration -->
-      <div id="bg-wrap" class="clip" data-start="0" data-duration="76" data-track-index="0">
+      <div id="bg-wrap" class="clip" data-start="0" data-duration="72" data-track-index="0">
         <canvas id="mycelium-bg"></canvas>
       </div>
 
@@ -954,7 +954,7 @@
       <audio
         id="score"
         data-start="0"
-        data-duration="76"
+        data-duration="72"
         data-track-index="11"
         data-volume="1"
         src="./assets/mycelium-score.mp3"
@@ -1158,7 +1158,7 @@
       </div>
 
       <!-- ── Scene: Task thread — open a task, agents chat inside it ── -->
-      <div id="s5thread" class="clip scene" data-start="34.62" data-duration="17.1" data-track-index="5">
+      <div id="s5thread" class="clip scene" data-start="30.62" data-duration="17.1" data-track-index="5">
         <div id="hero-title">app shows offline for 30s after reboot</div>
         <div class="twrap">
           <div class="tcard">
@@ -1189,7 +1189,7 @@
       </div>
 
       <!-- ── Scene: Aligner drives the SAO negotiation, inside the task ── -->
-      <div id="s6align" class="clip scene" data-start="51.63" data-duration="12.94" data-track-index="6">
+      <div id="s6align" class="clip scene" data-start="47.63" data-duration="12.94" data-track-index="6">
         <div class="awrap">
           <div class="acard">
             <div class="ahead">
@@ -1231,7 +1231,7 @@
       </div>
 
       <!-- ── Scene: Consensus compiles into task rows the aligner authors ── -->
-      <div id="s7compile" class="clip scene bscene" data-start="62.84" data-duration="6.91" data-track-index="7">
+      <div id="s7compile" class="clip scene bscene" data-start="58.84" data-duration="6.91" data-track-index="7">
         <div class="stage">
       <div class="sidebar">
         <div class="brand">mycelium</div>
@@ -1320,7 +1320,7 @@
       </div>
 
       <!-- ── Scene 7: Outro ────────────────────────────── -->
-      <div id="outro" class="clip scene outro" data-start="69.75" data-duration="6" data-track-index="10">
+      <div id="outro" class="clip scene outro" data-start="65.75" data-duration="6" data-track-index="10">
         <div class="wordmark">mycelium</div>
         <div class="ready">negotiate · plan · work · together</div>
         <div class="url">mycelium-io.github.io/mycelium</div>
@@ -1410,80 +1410,80 @@
 
       // ── Scene 5: Drop a task (36.23–43.13s) ──
       // A human types a concern into the composer; on enter it lands as a row.
-      tl.to('#s4board .composer', { borderColor: 'var(--accent)', color: 'var(--text)', duration: 0.3 }, 30.07);
-      tl.set('#s4board .composer .ph', { display: 'none' }, 30.93);
-      tl.set('#s4board .composer .typed', { display: 'inline-block' }, 30.93);
-      tl.set('#s4board .composer .caret', { display: 'inline' }, 30.93);
-      tl.fromTo('#s4board .composer .typed', { maxWidth: 0 }, { maxWidth: 720, duration: 1.1, ease: 'steps(28)' }, 30.93);
+      tl.to('#s4board .composer', { borderColor: 'var(--accent)', color: 'var(--text)', duration: 0.3 }, 26.07);
+      tl.set('#s4board .composer .ph', { display: 'none' }, 26.93);
+      tl.set('#s4board .composer .typed', { display: 'inline-block' }, 26.93);
+      tl.set('#s4board .composer .caret', { display: 'inline' }, 26.93);
+      tl.fromTo('#s4board .composer .typed', { maxWidth: 0 }, { maxWidth: 720, duration: 1.1, ease: 'steps(28)' }, 26.93);
       // enter: the concern files as a row; the composer clears back to placeholder
-      tl.set('#s4board .composer .typed', { display: 'none' }, 32.66);
-      tl.set('#s4board .composer .caret', { display: 'none' }, 32.66);
-      tl.set('#s4board .composer .ph', { display: 'inline' }, 32.66);
-      tl.to('#s4board .composer', { borderColor: 'var(--border2)', color: 'var(--dim)', duration: 0.3 }, 32.66);
-      tl.set(['#drop-group', '#drop-row'], { display: 'flex' }, 32.66);
-      tl.from(['#drop-group', '#drop-row'], { opacity: 0, y: -14, duration: 0.5, ease: 'power2.out' }, 32.66);
+      tl.set('#s4board .composer .typed', { display: 'none' }, 28.66);
+      tl.set('#s4board .composer .caret', { display: 'none' }, 28.66);
+      tl.set('#s4board .composer .ph', { display: 'inline' }, 28.66);
+      tl.to('#s4board .composer', { borderColor: 'var(--border2)', color: 'var(--dim)', duration: 0.3 }, 28.66);
+      tl.set(['#drop-group', '#drop-row'], { display: 'flex' }, 28.66);
+      tl.from(['#drop-group', '#drop-row'], { opacity: 0, y: -14, duration: 0.5, ease: 'power2.out' }, 28.66);
 
 
       // ── Dive into the dropped bug task (42.2–43.9s) ──
       // Click the row, drop the board away; the row's own title flies up and
       // becomes the ticket title (a shared-element morph).
-      tl.to('#drop-row', { boxShadow: 'inset 0 0 0 1.5px var(--accent)', duration: 0.3 }, 34.32);
+      tl.to('#drop-row', { boxShadow: 'inset 0 0 0 1.5px var(--accent)', duration: 0.3 }, 30.32);
       tl.to('#s4board .sidebar, #s4board .rail, #s4board .header, #s4board .board-head, #s4board .composer',
         { opacity: 0, duration: 0.5, ease: 'power2.in' }, 42.6);
-      tl.to('#s4board .board > *:not(#drop-row)', { opacity: 0, duration: 0.45, ease: 'power2.in' }, 34.72);
+      tl.to('#s4board .board > *:not(#drop-row)', { opacity: 0, duration: 0.45, ease: 'power2.in' }, 30.72);
       tl.set('#s5thread .ttitle', { opacity: 0 }, 0);
-      tl.from('#s5thread .tcard', { opacity: 0, duration: 0.5, ease: 'power2.out' }, 35.37);
-      tl.set('#hero-title', { opacity: 1 }, 35.12);
-      tl.to('#drop-row', { opacity: 0, duration: 0.15 }, 35.17);
-      tl.to('#hero-title', { left: 265, top: 272, fontSize: 30, duration: 0.66, ease: 'power3.inOut' }, 35.27);
-      tl.set('#s5thread .ttitle', { opacity: 1 }, 36.02);
-      tl.set('#hero-title', { opacity: 0 }, 36.02);
+      tl.from('#s5thread .tcard', { opacity: 0, duration: 0.5, ease: 'power2.out' }, 31.37);
+      tl.set('#hero-title', { opacity: 1 }, 31.12);
+      tl.to('#drop-row', { opacity: 0, duration: 0.15 }, 31.17);
+      tl.to('#hero-title', { left: 265, top: 272, fontSize: 30, duration: 0.66, ease: 'power3.inOut' }, 31.27);
+      tl.set('#s5thread .ttitle', { opacity: 1 }, 32.02);
+      tl.set('#hero-title', { opacity: 0 }, 32.02);
 
       // ── Scene: Task thread (53.4–70.72s) ──
       // opencode claims it; the two agents surface the websocket-vs-poll
       // disagreement the aligner will broker.
-      tl.from('#s5thread .tmeta', { opacity: 0, duration: 0.4 }, 36.52);
-      tl.from('#t-body',  { opacity: 0, y: 12, duration: 0.5 }, 37.12);
-      tl.from('#t-claim', { opacity: 0, x: -16, duration: 0.45 }, 38.42);
-      tl.from('#t-r1',    { opacity: 0, y: 18, duration: 0.55, ease: 'power2.out' }, 40.12);
-      tl.from('#t-r2',    { opacity: 0, y: 18, duration: 0.55, ease: 'power2.out' }, 43.12);
+      tl.from('#s5thread .tmeta', { opacity: 0, duration: 0.4 }, 32.52);
+      tl.from('#t-body',  { opacity: 0, y: 12, duration: 0.5 }, 33.12);
+      tl.from('#t-claim', { opacity: 0, x: -16, duration: 0.45 }, 34.42);
+      tl.from('#t-r1',    { opacity: 0, y: 18, duration: 0.55, ease: 'power2.out' }, 36.12);
+      tl.from('#t-r2',    { opacity: 0, y: 18, duration: 0.55, ease: 'power2.out' }, 39.12);
 
       // hand off from the thread to the aligner (both sit on the network bg)
-      tl.to('#s5thread .tcard', { opacity: 0, duration: 0.5, ease: 'power2.in' }, 50.72);
+      tl.to('#s5thread .tcard', { opacity: 0, duration: 0.5, ease: 'power2.in' }, 46.72);
 
       // ── Scene: Aligner drives the SAO in prose (59.51–70.72s) ──
       // The aligner @-addresses one agent at a time; each replies in its own
       // words (claude / opencode / cursor), and the aligner reads each reply
       // into a move. It stops the instant all three accept.
-      tl.from('#s6align .acard', { y: 50, opacity: 0, duration: 0.6, ease: 'power3.out' }, 53.36);
-      tl.from('#m1', { opacity: 0, y: 14, duration: 0.5, ease: 'power2.out' }, 54.02);
-      tl.from('#m2', { opacity: 0, y: 14, duration: 0.5, ease: 'power2.out' }, 54.82);
-      tl.from('#mv2', { opacity: 0, scale: 0.8, duration: 0.3, ease: 'back.out(2)' }, 55.22);
-      tl.from('#m3', { opacity: 0, y: 14, duration: 0.5, ease: 'power2.out' }, 55.82);
-      tl.from('#m4', { opacity: 0, y: 14, duration: 0.5, ease: 'power2.out' }, 56.72);
-      tl.from('#mv4', { opacity: 0, scale: 0.8, duration: 0.3, ease: 'back.out(2)' }, 57.22);
-      tl.from('#m5', { opacity: 0, y: 14, duration: 0.5, ease: 'power2.out' }, 57.92);
-      tl.from('#m6', { opacity: 0, y: 14, duration: 0.5, ease: 'power2.out' }, 58.82);
-      tl.from('#mv6', { opacity: 0, scale: 0.8, duration: 0.3, ease: 'back.out(2)' }, 59.32);
-      tl.to('#a-neg', { opacity: 0, duration: 0.3 }, 60.26);
-      tl.to('#a-con', { opacity: 1, duration: 0.3 }, 60.26);
-      tl.fromTo('#a-conv', { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' }, 60.62);
+      tl.from('#s6align .acard', { y: 50, opacity: 0, duration: 0.6, ease: 'power3.out' }, 49.36);
+      tl.from('#m1', { opacity: 0, y: 14, duration: 0.5, ease: 'power2.out' }, 50.02);
+      tl.from('#m2', { opacity: 0, y: 14, duration: 0.5, ease: 'power2.out' }, 50.82);
+      tl.from('#mv2', { opacity: 0, scale: 0.8, duration: 0.3, ease: 'back.out(2)' }, 51.22);
+      tl.from('#m3', { opacity: 0, y: 14, duration: 0.5, ease: 'power2.out' }, 51.82);
+      tl.from('#m4', { opacity: 0, y: 14, duration: 0.5, ease: 'power2.out' }, 52.72);
+      tl.from('#mv4', { opacity: 0, scale: 0.8, duration: 0.3, ease: 'back.out(2)' }, 53.22);
+      tl.from('#m5', { opacity: 0, y: 14, duration: 0.5, ease: 'power2.out' }, 53.92);
+      tl.from('#m6', { opacity: 0, y: 14, duration: 0.5, ease: 'power2.out' }, 54.82);
+      tl.from('#mv6', { opacity: 0, scale: 0.8, duration: 0.3, ease: 'back.out(2)' }, 55.32);
+      tl.to('#a-neg', { opacity: 0, duration: 0.3 }, 56.26);
+      tl.to('#a-con', { opacity: 1, duration: 0.3 }, 56.26);
+      tl.fromTo('#a-conv', { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' }, 56.62);
 
       // ── Scene: Consensus compiles into rows (70.72–77.63s) ──
       // Back on the board; the two agreed tasks land, authored by the aligner.
-      tl.from('#s7compile .stage', { opacity: 0, y: 30, duration: 0.6, ease: 'power3.out' }, 64.57);
-      tl.from('#s7compile .board > .group-label:not(.fresh), #s7compile .board > .row:not(#cmp-parent):not(.child)', { opacity: 0, y: 12, duration: 0.4, stagger: 0.1 }, 64.82);
+      tl.from('#s7compile .stage', { opacity: 0, y: 30, duration: 0.6, ease: 'power3.out' }, 60.57);
+      tl.from('#s7compile .board > .group-label:not(.fresh), #s7compile .board > .row:not(#cmp-parent):not(.child)', { opacity: 0, y: 12, duration: 0.4, stagger: 0.1 }, 60.82);
       tl.set(['#cmp-group', '#cmp-parent', '#cmp-r1', '#cmp-r2', '#cmp-r3'], { opacity: 0 }, 0);
-      tl.to('#cmp-group', { opacity: 1, duration: 0.4 }, 64.82);
-      tl.fromTo('#cmp-parent', { opacity: 0, y: -16 }, { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' }, 65.07);
-      tl.fromTo('#cmp-r1', { opacity: 0, x: -22 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power2.out' }, 65.72);
-      tl.fromTo('#cmp-r2', { opacity: 0, x: -22 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power2.out' }, 66.62);
-      tl.fromTo('#cmp-r3', { opacity: 0, x: -22 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power2.out' }, 67.52);
+      tl.to('#cmp-group', { opacity: 1, duration: 0.4 }, 60.82);
+      tl.fromTo('#cmp-parent', { opacity: 0, y: -16 }, { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' }, 61.07);
+      tl.fromTo('#cmp-r1', { opacity: 0, x: -22 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power2.out' }, 61.72);
+      tl.fromTo('#cmp-r2', { opacity: 0, x: -22 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power2.out' }, 62.62);
+      tl.fromTo('#cmp-r3', { opacity: 0, x: -22 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power2.out' }, 63.52);
 
       // ── Scene 7: Outro (100.4–106.4s) ──
-      tl.from('#outro .wordmark', { y: 50, opacity: 0, duration: 1.0, ease: 'power3.out' }, 70.12);
-      tl.from('#outro .ready',    { y: 20, opacity: 0, duration: 0.7, ease: 'power2.out' }, 70.72);
-      tl.from('#outro .url',      { opacity: 0, duration: 0.6 }, 71.32);
+      tl.from('#outro .wordmark', { y: 50, opacity: 0, duration: 1.0, ease: 'power3.out' }, 66.12);
+      tl.from('#outro .ready',    { y: 20, opacity: 0, duration: 0.7, ease: 'power2.out' }, 66.72);
+      tl.from('#outro .url',      { opacity: 0, duration: 0.6 }, 67.32);
 
       window.__timelines['main'] = tl;
     </script>
