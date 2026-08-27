@@ -16,22 +16,72 @@ export const DOCS_URL = "https://mycelium-io.github.io/mycelium";
 /** Step 1: fetch the CLI, the same one-liner the README and docs site carry. */
 export const CLI_INSTALL_COMMAND = `curl -fsSL ${DOCS_URL}/install.sh | bash`;
 
-/** Alternative to Step 1 for a coding agent instead of a human at a terminal:
- *  the same one-liner the landing page's "prompt" tab hands over. The agent
- *  reads `agents.md` and does the setup itself, interactive branching (Step 2)
- *  included, so nothing else here needs a prompt-specific version. */
-export const PROMPT_COMMAND = `Use curl to read ${DOCS_URL}/agents.md and perform the setup to install Mycelium`;
-
-/** Step 2: point the CLI at the hub this page is served from, and pick it up. */
+/** Point the CLI at the hub this page is served from. */
 export function configSetCommand(hubUrl: string): string {
   return `mycelium config set server.api_url ${hubUrl} && mycelium config apply`;
 }
 
-/** Step 3: OIDC sign-in, only needed if this hub's auth gate is on. Most
- *  hubs don't have one, and the CLI errors plainly ("no OIDC issuer
- *  configured") rather than hanging, so the panel says to skip it on that
- *  error instead of gating the step behind a client-side guess. */
 export const LOGIN_COMMAND = "mycelium login";
+
+export interface HubSetupOptions {
+  hubUrl: string;
+  authRequired: boolean | null;
+  principal?: string;
+}
+
+/** A complete, copyable terminal setup. Login is only included when the hub
+ * reports its auth requirement; a browser-picked identity never overrides it. */
+export function hubSetupCommand({ hubUrl, authRequired, principal }: HubSetupOptions): string {
+  const lines = [CLI_INSTALL_COMMAND, configSetCommand(hubUrl)];
+  if (authRequired) {
+    lines.push(LOGIN_COMMAND, "mycelium whoami");
+  } else if (authRequired === false && principal) {
+    lines.push(`mycelium iam ${principal}`);
+  }
+  lines.push("mycelium room ls");
+  return lines.join("\n");
+}
+
+/** Give a coding agent the concrete hub it must join rather than asking it to
+ * discover a generic public guide. */
+export function hubSetupPrompt(options: HubSetupOptions): string {
+  const auth = options.authRequired
+    ? `This hub requires sign-in: run \`${LOGIN_COMMAND}\`, then confirm the signed-in identity with \`mycelium whoami\`.`
+    : options.authRequired === false && options.principal
+      ? `This open hub is currently acting as @${options.principal}; after configuring the CLI, run \`mycelium iam ${options.principal}\`.`
+      : options.authRequired === false
+        ? "This hub is open. Choose a local identity with `mycelium iam <your-handle>` if you need attribution."
+        : `If the hub asks you to authenticate, run \`${LOGIN_COMMAND}\` and use the identity it confirms.`;
+  return [
+    `Set up Mycelium to use the already-running hub at ${options.hubUrl}.`,
+    `Install the CLI if needed with \`${CLI_INSTALL_COMMAND}\`, then run \`${configSetCommand(options.hubUrl)}\`.`,
+    auth,
+    "Verify the connection with `mycelium room ls`, then return control to me.",
+  ].join("\n\n");
+}
+
+export interface AgentHandoffOptions extends HubSetupOptions {
+  roomName: string;
+}
+
+/** The handoff a human pastes into an agent that is already running locally.
+ * Mycelium configures and registers it; it never starts another agent process. */
+export function agentHandoffPrompt(options: AgentHandoffOptions): string {
+  const owner = options.authRequired === false && options.principal ? ` --owner ${options.principal}` : "";
+  const auth = options.authRequired
+    ? `Sign in with \`${LOGIN_COMMAND}\` first and use the identity it confirms; do not invent or override an identity.`
+    : options.authRequired === false && options.principal
+      ? `The room's human owner is @${options.principal}.`
+      : "If the hub asks you to sign in, use the identity it confirms. Otherwise ask the human for an owner if you need one.";
+  return [
+    `You are joining the Mycelium room \`${options.roomName}\` on the already-running hub at ${options.hubUrl} as a coding-agent collaborator.`,
+    `Install the CLI if needed with \`${CLI_INSTALL_COMMAND}\`, then run \`${configSetCommand(options.hubUrl)}\`.`,
+    auth,
+    `Choose a short handle and register yourself with \`mycelium agent create <handle> --room ${options.roomName}${owner}\`.`,
+    `Read \`mycelium room messages --room ${options.roomName} --limit 20\` and \`mycelium board --room ${options.roomName}\`. Claim a suitable task or ask me which task to take.`,
+    `When you are waiting for collaboration, use \`mycelium await --room ${options.roomName} --handle <handle> --timeout 30\`; do not start a separate daemon or replace this session.`,
+  ].join("\n\n");
+}
 
 export type Platform = "macos" | "linux" | "windows" | "unknown";
 
