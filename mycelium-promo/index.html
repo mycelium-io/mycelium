@@ -932,23 +932,6 @@
       #s6align .abub .m { color: var(--accent); }
       #s6align .amove { margin-top: 9px; display: inline-flex; align-items: center; gap: 9px; font-family: 'Geist Mono', monospace; font-size: 15px; color: var(--muted); border: 1px solid var(--border2); border-radius: 6px; padding: 5px 11px; }
       #s6align .conv { margin-top: 12px; }
-      /* ── Scene: synthesizer distills the room into a memory ──────────── */
-      #s8synth.scene { padding: 0; display: flex; align-items: center; justify-content: center; }
-      #s8synth .swrap { width: 100%; padding: 70px 120px; display: flex; flex-direction: column; align-items: center; gap: 30px; }
-      #s8synth .shead { display: flex; align-items: center; gap: 15px; font-family: 'Geist Mono', monospace; font-size: 20px; color: var(--muted); }
-      #s8synth .shead .sdot { width: 13px; height: 13px; background: var(--accent2); transform: rotate(45deg); flex-shrink: 0; }
-      #s8synth .shead b { color: var(--text); font-weight: 600; }
-      #s8synth .memcard { width: 100%; max-width: 1180px; background: var(--surface); border: 1px solid var(--border2); border-radius: 16px; box-shadow: 0 40px 100px rgba(0,0,0,0.6); overflow: hidden; }
-      #s8synth .memhead { display: flex; align-items: center; padding: 20px 32px; border-bottom: 1px solid var(--border); font-family: 'Geist Mono', monospace; }
-      #s8synth .memkey { font-size: 22px; color: var(--accent); font-weight: 500; }
-      #s8synth .memtag { margin-left: auto; font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
-      #s8synth .membody { padding: 30px 36px 34px; }
-      #s8synth .fm { font-family: 'Geist Mono', monospace; font-size: 17px; color: var(--dim); line-height: 1.7; margin-bottom: 20px; }
-      #s8synth .fm .k { color: var(--muted); }
-      #s8synth .mtext { font-size: 24px; line-height: 1.5; color: var(--text2); }
-      #s8synth .mtext b { color: var(--text); font-weight: 600; }
-      #s8synth .mtext .open { color: var(--yellow); }
-      #s8synth .sfoot { font-family: 'Geist Mono', monospace; font-size: 16px; color: var(--dim); }
     </style>
   </head>
   <body>
@@ -1336,23 +1319,8 @@
         </div>
       </div>
 
-      <!-- ── Scene: Synthesizer distills the room into a memory ── -->
-      <div id="s8synth" class="clip scene" data-start="77.63" data-duration="6.9" data-track-index="8">
-        <div class="swrap">
-          <div class="shead"><span class="sdot"></span><b>synthesizer</b> · distilling the room &rarr; context/synthesis</div>
-          <div class="memcard">
-            <div class="memhead"><span class="memkey">context/synthesis</span><span class="memtag">knowledge · v3</span></div>
-            <div class="membody">
-              <div class="fm">---<br><span class="k">type:</span> knowledge<br>---</div>
-              <div class="mtext"><b>last-seen transport → hybrid.</b> websocket while the app is foregrounded, poll /device/status every 10s in the background. agreed by marcus-cursor + anand-opencode; firmware (avery-claude) unaffected.<br><br><span class="open">still open:</span> OTA rollout — staged by cohort vs all at once.</div>
-            </div>
-          </div>
-          <div class="sfoot">distilled from 24 messages · thread + channel</div>
-        </div>
-      </div>
-
       <!-- ── Scene 7: Outro ────────────────────────────── -->
-      <div id="outro" class="clip scene outro" data-start="84.53" data-duration="6" data-track-index="10">
+      <div id="outro" class="clip scene outro" data-start="77.63" data-duration="6" data-track-index="10">
         <div class="wordmark">mycelium</div>
         <div class="ready">negotiate · plan · work · together</div>
         <div class="url">mycelium-io.github.io/mycelium</div>
@@ -1512,18 +1480,10 @@
       tl.fromTo('#cmp-r2', { opacity: 0, x: -22 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power2.out' }, 74.5);
       tl.fromTo('#cmp-r3', { opacity: 0, x: -22 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power2.out' }, 75.4);
 
-      // ── Scene: Synthesizer distills the room -> memory (77.63–84.53s) ──
-      tl.from('#s8synth .shead', { opacity: 0, y: 16, duration: 0.5 }, 79.35);
-      tl.from('#s8synth .memcard', { opacity: 0, y: 30, duration: 0.6, ease: 'power3.out' }, 80.21);
-      tl.from('#s8synth .memhead', { opacity: 0, duration: 0.4 }, 80.5);
-      tl.from('#s8synth .fm', { opacity: 0, duration: 0.4 }, 81.0);
-      tl.from('#s8synth .mtext', { opacity: 0, y: 10, duration: 0.6 }, 81.94);
-      tl.from('#s8synth .sfoot', { opacity: 0, duration: 0.4 }, 82.7);
-
       // ── Scene 7: Outro (100.4–106.4s) ──
-      tl.from('#outro .wordmark', { y: 50, opacity: 0, duration: 1.0, ease: 'power3.out' }, 84.9);
-      tl.from('#outro .ready',    { y: 20, opacity: 0, duration: 0.7, ease: 'power2.out' }, 85.5);
-      tl.from('#outro .url',      { opacity: 0, duration: 0.6 }, 86.1);
+      tl.from('#outro .wordmark', { y: 50, opacity: 0, duration: 1.0, ease: 'power3.out' }, 78.0);
+      tl.from('#outro .ready',    { y: 20, opacity: 0, duration: 0.7, ease: 'power2.out' }, 78.6);
+      tl.from('#outro .url',      { opacity: 0, duration: 0.6 }, 79.2);
 
       window.__timelines['main'] = tl;
     </script>

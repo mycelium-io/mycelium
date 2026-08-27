@@ -53,9 +53,6 @@ export const PLAN = [
   { id: 'compile', moments: [
     ['switch', 'back'], ['short', 'row1'], ['bigger', 'row2'], ['resolve', 'hold'],
   ]},
-  { id: 'synth', moments: [
-    ['switch', 'summon'], ['short', 'read'], ['bigger', 'memory'], ['resolve', 'hold'],
-  ]},
 ];
 
 // Roll the plan up into absolute times.
