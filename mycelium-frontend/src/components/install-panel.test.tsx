@@ -4,6 +4,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CurrentUserProvider } from "@/components/current-user";
 import { renderWithSWR } from "@/test/swr";
 import { InstallPanel } from "@/components/install-panel";
 
@@ -17,6 +18,14 @@ function stubHub(reachable: boolean) {
   );
 }
 
+function renderInstallPanel() {
+  return renderWithSWR(
+    <CurrentUserProvider>
+      <InstallPanel />
+    </CurrentUserProvider>,
+  );
+}
+
 describe("<InstallPanel />", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
@@ -25,7 +34,7 @@ describe("<InstallPanel />", () => {
   it("hands over one hub-aware terminal setup and says the hub is unreachable", async () => {
     const user = userEvent.setup();
     stubHub(false);
-    renderWithSWR(<InstallPanel />);
+    renderInstallPanel();
 
     await user.click(screen.getByRole("button", { name: "Terminal" }));
 
@@ -38,7 +47,7 @@ describe("<InstallPanel />", () => {
   it("drops the unreachable note once the hub answers, keeping only the commands", async () => {
     const user = userEvent.setup();
     stubHub(true);
-    renderWithSWR(<InstallPanel />);
+    renderInstallPanel();
 
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Hub reachable"));
     expect(screen.queryByText(/isn't answering right now/i)).not.toBeInTheDocument();
@@ -49,7 +58,7 @@ describe("<InstallPanel />", () => {
 
   it("shows a hub-aware coding-agent prompt by default", async () => {
     stubHub(false);
-    renderWithSWR(<InstallPanel />);
+    renderInstallPanel();
 
     expect(screen.getByRole("button", { name: "Copy setup" })).toBeInTheDocument();
     expect(screen.getByText(/already have open/i)).toBeInTheDocument();
@@ -58,7 +67,7 @@ describe("<InstallPanel />", () => {
   it("switches between the coding-agent and terminal handoffs", async () => {
     const user = userEvent.setup();
     stubHub(false);
-    renderWithSWR(<InstallPanel />);
+    renderInstallPanel();
 
     const codingAgent = screen.getByRole("button", { name: "Coding agent" });
     const terminal = screen.getByRole("button", { name: "Terminal" });
