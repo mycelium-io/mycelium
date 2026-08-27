@@ -1048,7 +1048,7 @@ class RoomChannelManager:
         managed = self._channels.get(room)
         if managed is None:
             return False
-        managed.lifecycle.open(episode, managed.members, negotiation=negotiation)
+        managed.lifecycle.open(episode, set(self.members(room)), negotiation=negotiation)
         return True
 
     async def close_episode(self, room: str) -> bool:
@@ -1066,7 +1066,7 @@ class RoomChannelManager:
 
     async def _enforce_membership_change(self, managed: ManagedRoomChannel) -> None:
         """Abort the active negotiation if membership changed under it."""
-        if not managed.lifecycle.on_membership_change(managed.members):
+        if not managed.lifecycle.on_membership_change(set(self.members(managed.room))):
             return
         episode = managed.lifecycle.episode
         managed.lifecycle.close()
