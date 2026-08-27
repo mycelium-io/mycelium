@@ -252,3 +252,19 @@ export const hollowTable = (n = 13) =>
     for (let k = 1; k <= n; k += 2) s += Math.sin(TAU * u * k) / (k * k);
     return s * 1.1;
   });
+
+/**
+ * Triangle: odd harmonics rolling off at 1/k² with alternating sign. Far softer
+ * than the FM bell — no bright inharmonic partials, so it reads as a mallet or
+ * a bloom rather than a plucked tine. Band-limited by construction (the sum
+ * stops at `n`), so it stays clean under the lowpass gate.
+ */
+export const triangleTable = (n = 15) =>
+  new Wavetable((u) => {
+    let s = 0;
+    for (let k = 1; k <= n; k += 2) {
+      const sign = ((k - 1) / 2) % 2 === 0 ? 1 : -1;
+      s += (sign * Math.sin(TAU * u * k)) / (k * k);
+    }
+    return s * (8 / (Math.PI * Math.PI));
+  });

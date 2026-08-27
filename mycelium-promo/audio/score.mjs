@@ -17,7 +17,7 @@
 
 import {
   FDNReverb, OnePole, PinkNoise, SVF, DCBlock, TAU,
-  adEnv, clamp, hz, lerp, lpgEnv, rng, sawTable, hollowTable,
+  adEnv, clamp, hz, lerp, lpgEnv, rng, sawTable, hollowTable, triangleTable,
   softClip, swellEnv,
 } from './dsp.mjs';
 import { glue, limit, lra, lufs, truePeakDb } from './master.mjs';
@@ -31,47 +31,40 @@ const BEAT = 0.8625;
 const STEP = BEAT / 2;
 
 // ── Harmony ────────────────────────────────────────────────────────────
-// t0/t1 are the video's own scene boundaries. `pool` is what the generative
-// hyphae voice may pick from; `density` is its probability per step.
+// t0/t1 are the video's own scene boundaries. `chord` is the harmony every
+// layer draws from: the drone bed voices it, and the generative hyphae picks
+// and snaps to its tones (voiced up an octave or two, see chordVoicing).
+// `density` is the hyphae's probability per step.
 const SECTIONS = [
   { id: 'emergence', t0: 0.0, t1: 13.8, gain: 0.70, bright: 0.45,
-    chord: ['D2', 'A2', 'D3'],
-    pool: ['D4', 'A4', 'D5'], density: 0.10 },
+    chord: ['D2', 'A2', 'D3'], density: 0.10 },
 
   { id: 'substrate', t0: 13.8, t1: 27.6, gain: 0.80, bright: 0.55,
-    chord: ['D2', 'A2', 'D3', 'C4'],
-    pool: ['D4', 'F4', 'A4', 'C5'], density: 0.20 },
+    chord: ['D2', 'A2', 'D3', 'C4'], density: 0.20 },
 
   { id: 'room', t0: 27.6, t1: 41.4, gain: 0.86, bright: 0.66,
-    chord: ['D2', 'A2', 'D3', 'G3', 'C4'],
-    pool: ['D4', 'G4', 'A4', 'C5', 'D5'], density: 0.28 },
+    chord: ['D2', 'A2', 'D3', 'G3', 'C4'], density: 0.28 },
 
   { id: 'agents', t0: 41.4, t1: 52.2, gain: 0.92, bright: 0.72,
-    chord: ['D2', 'A2', 'F3', 'C4', 'D4'],
-    pool: ['F4', 'A4', 'C5', 'D5', 'F5'], density: 0.26 },
+    chord: ['D2', 'A2', 'F3', 'C4', 'D4'], density: 0.26 },
 
   { id: 'mention', t0: 52.2, t1: 61.6, gain: 0.9, bright: 0.7,
-    chord: ['D2', 'A2', 'F3', 'C4', 'E4'],
-    pool: ['D4', 'E4', 'F4', 'A4', 'C5', 'E5'], density: 0.24 },
+    chord: ['D2', 'A2', 'F3', 'C4', 'E4'], density: 0.24 },
 
   // No third anywhere in the chord: the question the agents are arguing
   // about is exactly the note the harmony refuses to name.
   { id: 'negotiate', t0: 61.6, t1: 81.4, gain: 0.80, bright: 0.6,
-    chord: ['D2', 'A2', 'D3', 'G3', 'E4'],
-    pool: ['D4', 'G4', 'A4', 'C5', 'E5'], density: 0.15 },
+    chord: ['D2', 'A2', 'D3', 'G3', 'E4'], density: 0.15 },
 
   // Consensus. F# arrives and stays.
   { id: 'consensus', t0: 81.4, t1: 94.4, gain: 1.0, bright: 0.86,
-    chord: ['D2', 'A2', 'F#3', 'A3', 'E4'],
-    pool: ['D4', 'F#4', 'A4', 'B4', 'D5', 'F#5'], density: 0.40 },
+    chord: ['D2', 'A2', 'F#3', 'A3', 'E4'], density: 0.40 },
 
   { id: 'distill', t0: 94.4, t1: 100.4, gain: 0.78, bright: 0.8,
-    chord: ['D2', 'A2', 'E4', 'A4'],
-    pool: ['A4', 'D5', 'E5', 'A5'], density: 0.18 },
+    chord: ['D2', 'A2', 'E4', 'A4'], density: 0.18 },
 
   { id: 'outro', t0: 100.4, t1: 107.0, gain: 0.95, bright: 0.7,
-    chord: ['D1', 'D2', 'A2', 'D3', 'A3', 'D4'],
-    pool: ['D4', 'A4', 'D5'], density: 0.10 },
+    chord: ['D1', 'D2', 'A2', 'D3', 'A3', 'D4'], density: 0.10 },
 ];
 
 const sectionAt = (t) => SECTIONS.find((s) => t >= s.t0 && t < s.t1) ?? SECTIONS[SECTIONS.length - 1];
@@ -84,7 +77,6 @@ const line = (t, pitch, gain = 0.14) => ({ t, kind: 'tick', pitch, gain });
 const CUES = [
   // Scene 1 · hero (0–7). The spore: one bell, and a long way down.
   { t: 0.55, kind: 'spore', pitch: 'D5', gain: 0.15 },
-  { t: 0.6, kind: 'swell', dur: 3.0, gain: 0.34, up: true },
   { t: 1.05, kind: 'spore', pitch: 'A5', gain: 0.07 },
 
   // Scene 2 · install the CLI (6.6–14.6). Eight lines at 0.55s.
@@ -112,7 +104,6 @@ const CUES = [
   line(31.2, 'C5'),
   { t: 32.0, kind: 'pluck', pitch: 'D5', gain: 0.24, decay: 2.2 }, // memory written
   // The workspace slides up over the terminal — the one big move in the act.
-  { t: 33.9, kind: 'riser', dur: 1.1, gain: 0.3 },
   { t: 35.0, kind: 'impact', gain: 0.42 },
   { t: 36.3, kind: 'pluck', pitch: 'A4', gain: 0.13, decay: 1.4 },
   { t: 36.5, kind: 'pluck', pitch: 'C5', gain: 0.12, decay: 1.4 },
@@ -176,7 +167,6 @@ const CUES = [
 
   // Scene 7 · outro (100.4–106.4). The bell from 0.55s comes back an octave
   // down and twice as wide: the spore has fruited.
-  { t: 99.5, kind: 'riser', dur: 1.1, gain: 0.26 },
   { t: 100.6, kind: 'spore', pitch: 'D4', gain: 0.22 },
   { t: 100.62, kind: 'impact', gain: 0.34 },
   { t: 101.2, kind: 'spore', pitch: 'A4', gain: 0.1 },
@@ -346,7 +336,8 @@ function renderThrob(b) {
  * envelope, so a quiet note is also a dark one — the reason a Buchla-style
  * gate sounds struck rather than switched on. This is the piece's main voice.
  */
-function pluckLPG(b, { t, freq, gain = 0.2, decay = 1.8, pan = 0, tone = 1, sendHall = 0.42, sendPlate = 0.3 }) {
+const TRI = triangleTable();
+function pluckLPG(b, { t, freq, gain = 0.2, decay = 1.8, pan = 0, tone = 1, sendHall = 0.42, sendPlate = 0.3, wave = null }) {
   const i0 = idx(b, t);
   const len = Math.ceil(decay * 4.2 * b.sr);
   const svf = new SVF(b.sr);
@@ -358,9 +349,13 @@ function pluckLPG(b, { t, freq, gain = 0.2, decay = 1.8, pan = 0, tone = 1, send
     const u = k * dt;
     const env = lpgEnv(u, decay);
     if (env < 1e-5 && u > decay) break;
-    const s = Math.sin(TAU * ph)
-      + 0.34 * tone * Math.sin(TAU * ph * 2)
-      + 0.13 * tone * Math.sin(TAU * ph * 3.01);
+    // Default is a sine plus two partials; `wave` swaps in a wavetable (the
+    // triangle) for a rounder, mallet-like body under the same gate.
+    const s = wave
+      ? wave.read(ph)
+      : Math.sin(TAU * ph)
+        + 0.34 * tone * Math.sin(TAU * ph * 2)
+        + 0.13 * tone * Math.sin(TAU * ph * 3.01);
     const cutoff = freq * (1.4 + 7.5 * tone * env * env);
     const y = svf.lp(s * 0.5, clamp(cutoff, 60, 9000), 1.5);
     b.add(i, y * env * gain, pan, sendHall, sendPlate);
@@ -434,25 +429,6 @@ function pluckWood(b, { t, freq, gain = 0.2, decay = 1.6, pan = 0, bend = 0 }) {
   }
 }
 
-/** Filtered noise sweeping up (or down) into the beat that follows it. */
-function sweep(b, { t, dur = 1.0, gain = 0.3, up = true, from = 220, to = 4200 }) {
-  const i0 = idx(b, t);
-  const len = Math.ceil(dur * b.sr);
-  const r = rng(Math.round(t * 977) + 3);
-  const svf = new SVF(b.sr);
-  const dt = 1 / b.sr;
-  for (let k = 0; k < len; k++) {
-    const i = i0 + k;
-    if (i >= b.n) break;
-    const u = k / len;
-    const shaped = up ? u * u : 1 - u;
-    const f = lerp(from, to, shaped);
-    const env = Math.sin(u * Math.PI) ** 1.6 * (up ? 0.35 + 0.65 * u : 1);
-    const s = svf.bp((r() * 2 - 1) * 0.5, f, 2.8);
-    b.add(i, s * env * gain * 0.5, Math.sin(u * Math.PI * 2) * 0.5, 0.5, 0.2);
-  }
-}
-
 /** Sub-and-noise landing for a scene's big move. No drum, just weight. */
 function impact(b, { t, gain = 0.4 }) {
   const i0 = idx(b, t);
@@ -496,6 +472,21 @@ function snapToPool(freq, pool) {
 }
 
 /**
+ * The set the hyphae draws from and snaps to: the section's chord, reduced to
+ * pitch classes and voiced across the pluck octaves (4–5). The free `pool`
+ * carries adjacent scale tones (an E and an F, a C and a D) that clash the
+ * moment two long-decaying colony notes overlap; restricting the generative
+ * layer to chord tones means every simultaneous stack it grows is a chord,
+ * never a cluster. It also tightens the harmonic argument rather than fighting
+ * it — the negotiate chord names no third, so neither can the colony under it.
+ */
+const chordVoicing = (chord) => {
+  const pcs = [...new Set(chord.map((n) => n.match(/^([A-G]#?)/)[1]))];
+  return pcs.flatMap((pc) => [`${pc}4`, `${pc}5`]);
+};
+const HYPHAE_POOLS = new Map(SECTIONS.map((s) => [s.id, chordVoicing(s.chord)]));
+
+/**
  * The hyphae: the generative layer, and the one that carries the metaphor.
  * A note that fires may fork — a child a fifth or an octave away, a beat or
  * so later, which may fork again — so the texture spreads outward from each
@@ -509,7 +500,7 @@ function renderHyphae(b) {
 
   const fire = (t, freq, gain, depth) => {
     if (t > DURATION - 0.5 || gain < 0.02) return;
-    const pool = sectionAt(t).pool;
+    const pool = HYPHAE_POOLS.get(sectionAt(t).id);
     panWalk = clamp(panWalk + (r() - 0.5) * 0.55, -0.9, 0.9);
     const decay = 1.5 + r() * 2.4;
     pluckLPG(b, {
@@ -518,6 +509,7 @@ function renderHyphae(b) {
       tone: 0.55 + r() * 0.6,
       sendHall: 0.5,
       sendPlate: 0.26,
+      wave: TRI, // triangle bed: rounder colony notes, softer when they stack
     });
     if (depth >= 2) return;
     // Fork. A fifth or an octave up is the common case; a fourth down is the
@@ -538,7 +530,8 @@ function renderHyphae(b) {
   for (let t = 3.2; t < DURATION - 1; t += STEP) {
     const sec = sectionAt(t);
     if (r() < sec.density) {
-      const note = sec.pool[Math.floor(r() * sec.pool.length)];
+      const pool = HYPHAE_POOLS.get(sec.id);
+      const note = pool[Math.floor(r() * pool.length)];
       fire(t + (r() - 0.5) * 0.05, hz(note), (0.085 + r() * 0.07) * sec.gain, 0);
     }
     // Drain forks that have come due, which may themselves fork.
@@ -641,35 +634,31 @@ function renderCues(b) {
         pluckFM(b, { t: cue.t + 0.012, freq: f * 2, gain: g * 0.34, decay: 2.6, ratio: 2.005, index: 2.4, pan: 0.3 });
         break;
 
+      // The spore was an FM bell at a 3:1 ratio — bright inharmonic partials
+      // that read as a harpsichord tine. A triangle through the gate keeps the
+      // long bloom and the "long way down" tail without the sharpness.
       case 'spore':
-        pluckFM(b, { t: cue.t, freq: f, gain: g, decay: 4.6, ratio: 3.01, index: 3.4, pan: 0, sendHall: 1.35, sendPlate: 0.1 });
+        pluckLPG(b, { t: cue.t, freq: f, gain: g * 1.5, decay: 4.2, pan: 0, tone: 0.5, sendHall: 1.1, sendPlate: 0.12, wave: TRI });
         break;
 
       // A line of output that matters: root, fifth, octave, barely staggered.
       case 'bloom':
         [[0, 1, 1], [0.055, 1.5, 0.6], [0.11, 2, 0.4]].forEach(([dt, mult, amp]) =>
           pluckLPG(b, { t: cue.t + dt, freq: f * mult, gain: g * amp, decay: 3.2, pan: -0.5 + dt * 9, tone: 0.8 }));
-        sweep(b, { t: cue.t - 0.3, dur: 0.5, gain: g * 0.5, up: true, from: 500, to: 3000 });
         break;
 
-      // A scene change. Just enough air moving to feel the cut.
+      // A scene change: a low tonal accent to mark the cut.
       case 'lift':
-        sweep(b, { t: cue.t - 0.45, dur: 0.75, gain: g * 0.55, up: true, from: 340, to: 2600 });
         pluckLPG(b, { t: cue.t, freq: hz('D3'), gain: g * 0.32, decay: 2.6, pan: 0, tone: 0.4, sendHall: 0.7 });
-        break;
-
-      case 'riser':
-        sweep(b, { t: cue.t, dur: cue.dur ?? 1.0, gain: g, up: true, from: 260, to: 5200 });
         break;
 
       case 'impact':
         impact(b, { t: cue.t, gain: g });
         break;
 
-      // The camera pushes in: the sweep runs downward and a sub follows it,
-      // so the frame narrowing is something you feel in the low end.
+      // The camera pushes in: a sub landing under the move, so the frame
+      // narrowing is something you feel in the low end.
       case 'zoom':
-        sweep(b, { t: cue.t, dur: cue.dur ?? 0.9, gain: g * 0.8, up: false, from: 3600, to: 420 });
         impact(b, { t: cue.t + (cue.dur ?? 0.9) * 0.75, gain: g * 0.5 });
         break;
 
@@ -713,10 +702,6 @@ function renderCues(b) {
         renderConsensus(b, cue.t, g);
         break;
 
-      case 'swell':
-        sweep(b, { t: cue.t, dur: cue.dur ?? 2.0, gain: g, up: cue.up ?? true, from: 180, to: 2400 });
-        break;
-
       default:
         throw new Error(`unknown cue kind: ${cue.kind}`);
     }
@@ -726,11 +711,9 @@ function renderCues(b) {
 /**
  * 81.4s, the frame the offer table locks green. Everything that has been
  * held apart arrives at once: a D major chord struck across four octaves,
- * the sub landing under it, and a long reverse sweep leading in so the
- * moment is arrived at rather than cut to.
+ * with the sub landing under it.
  */
 function renderConsensus(b, t, g) {
-  sweep(b, { t: t - 1.5, dur: 1.5, gain: g * 0.34, up: true, from: 300, to: 5200 });
   impact(b, { t, gain: g * 0.5 });
 
   const chord = ['D3', 'A3', 'D4', 'F#4', 'A4', 'D5', 'F#5', 'A5'];
