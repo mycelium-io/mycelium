@@ -128,6 +128,20 @@ class MyceliumCommonSetup(aetest.CommonSetup):
 
         self._ensure_dotenv()
 
+        # `init`/`config_set` above can rewrite config.toml via an atomic
+        # tempfile-then-rename, which drops whatever permissive mode the CI
+        # workflow set earlier and leaves it owner-only. Later local-write
+        # CLI calls (agent create, engine create) may run as a different
+        # uid (MYCELIUM_LOCAL_WRITE_UID, to match the backend container's
+        # uid — see libs/mycelium_cli.py) and need to read this file too.
+        try:
+            (pathlib.Path.home() / ".mycelium").chmod(0o777)
+            for p in (pathlib.Path.home() / ".mycelium").glob("*"):
+                if p.is_file():
+                    p.chmod(0o666)
+        except OSError:
+            pass
+
         r = cli.doctor()
         if r.ok:
             log.info("CLI doctor: %s", r.stdout.strip()[:200])

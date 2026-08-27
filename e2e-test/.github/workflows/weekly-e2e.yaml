@@ -120,6 +120,9 @@ jobs:
             [ -n "$LLM_BASE_URL" ] && echo "LLM_BASE_URL=$LLM_BASE_URL"
             [ -n "$LLM_MODEL" ]    && echo "LLM_MODEL=$LLM_MODEL"
           } > ~/.mycelium/.env || true
+          # `config set` rewrites config.toml with a restrictive mode —
+          # see e2e.yml's "Configure mycelium CLI" step.
+          chmod -R 777 ~/.mycelium || true
 
       - name: Run canary suite (Tier C — informational only)
         env:
