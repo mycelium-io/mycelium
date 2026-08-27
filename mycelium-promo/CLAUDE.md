@@ -25,6 +25,7 @@
 
 ```bash
 npm run dev          # preview in browser (studio editor)
+npm run audio        # re-render the backing track to assets/mycelium-score.mp3
 npm run check        # lint + validate + inspect
 npm run render       # render to MP4
 npm run publish      # publish and get a shareable link
@@ -53,6 +54,10 @@ https://hyperframes.heygen.com/llms.txt
 
 - `index.html` — main composition (root timeline)
 - `compositions/` — sub-compositions referenced via `data-composition-src`
+- `audio/` — the synthetic backing track, generated from source. See
+  `audio/README.md`; `npm run audio` renders it to `assets/mycelium-score.mp3`.
+  Its cue times are read out of `index.html`'s GSAP calls, so **re-render after
+  moving any beat the score is cued to**.
 - `meta.json` — project metadata (id, name)
 - `transcript.json` — whisper word-level transcript (if generated)
 

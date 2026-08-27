@@ -754,6 +754,18 @@
         <canvas id="mycelium-bg"></canvas>
       </div>
 
+      <!-- Backing track. Synthesised from audio/score.mjs, which is written
+           against the GSAP times below — see audio/README.md. Regenerate with
+           `npm run audio` after moving any beat this score is cued to. -->
+      <audio
+        id="score"
+        data-start="0"
+        data-duration="107"
+        data-track-index="11"
+        data-volume="1"
+        src="./assets/mycelium-score.mp3"
+      ></audio>
+
       <!-- ── Scene 1: Hero ─────────────────────────────── -->
       <div id="hero" class="clip scene hero" data-start="0" data-duration="7" data-track-index="1">
         <img class="logo" src="./logo.png" alt="mycelium" crossorigin="anonymous" />

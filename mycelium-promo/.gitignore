@@ -15,3 +15,8 @@ skills/
 renders/
 
 renders/_*.mp4
+
+# Intermediate from `npm run audio` — the committed asset is the MP3
+assets/mycelium-score.wav
+
+node_modules/

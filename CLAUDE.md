@@ -44,7 +44,11 @@ mycelium-promo/     HyperFrames promo video, a code-defined HTML→MP4 walkthrou
                     distill the room to memory via the synthesizer). The app-screen
                     mockups mirror the frontend's workspace shell + dark design tokens.
                     Renders 1920x1080 H.264. `cd mycelium-promo && npm run dev` to
-                    preview, `npm run render` to export to renders/*.mp4.
+                    preview, `npm run render` to export to renders/*.mp4. Its
+                    backing track is synthesised from source too (`audio/`, see
+                    `mycelium-promo/audio/README.md`): the cues are keyed to the
+                    composition's own GSAP times, so `npm run audio` has to
+                    re-run after a beat moves.
                     The README + docs/index.html embed the rendered MP4 via a
                     `user-attachments/assets/...` URL; these only auto-render
                     inline when uploaded via GitHub's web drag-drop (gh CLI has
