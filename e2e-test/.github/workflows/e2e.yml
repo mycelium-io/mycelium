@@ -43,6 +43,13 @@ env:
   LLM_MODEL: ${{ secrets.LLM_MODEL || vars.LLM_MODEL || '' }}
   LLM_API_KEY: ${{ secrets.LLM_API_KEY || vars.LLM_API_KEY || '' }}
   LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || vars.LLM_BASE_URL || '' }}
+  # Non-interactive auth for the `agent`/`cursor-agent` CLI (installed on
+  # the hub below and in the spoke containers) — see libs/remote_stub.py's
+  # use_cursor option. Job-level env is inherited by every step's own
+  # process, so the hub-local "Run E2E tests" step sees these directly;
+  # libs/host_exec.py forwards them into spoke docker-exec calls too.
+  CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY || '' }}
+  CURSOR_MODEL: ${{ secrets.CURSOR_MODEL || vars.CURSOR_MODEL || '' }}
 
 jobs:
   e2e:
@@ -123,6 +130,13 @@ jobs:
 
       - name: Install e2e dependencies
         run: uv sync
+
+      - name: Install cursor CLI
+        if: env.CURSOR_API_KEY != ''
+        run: |
+          curl -fsS https://cursor.com/install | bash
+          echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
+          agent --version
 
       - name: Install mycelium CLI (release)
         if: env.BUILD_FROM_SOURCE != 'true'

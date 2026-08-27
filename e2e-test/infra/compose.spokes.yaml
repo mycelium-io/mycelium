@@ -1,8 +1,14 @@
 # Spoke containers for hub-and-spoke E2E tests.
 #
-# Each container has only the mycelium CLI installed (MYCELIUM_CLIENT_ONLY=1)
-# and points at the hub backend. No SLIM socket needed — await/respond are
-# pure HTTP calls to the backend API.
+# Each container has the mycelium CLI (MYCELIUM_CLIENT_ONLY=1) and the
+# cursor CLI (`agent`, https://cursor.com/install) installed, and points
+# at the hub backend. No SLIM socket needed — await/respond are pure HTTP
+# calls to the backend API. CURSOR_API_KEY/CURSOR_MODEL are NOT baked into
+# this container's own environment — libs/host_exec.py forwards them
+# per-`docker exec` call from whatever process (the pytest run) invokes
+# the CLI, so a stub opted into `use_cursor=True` (see libs/remote_stub.py)
+# can call `agent` here without the key ever being written into this
+# container's config.
 #
 # Usage (CI):
 #   docker compose -f infra/compose.spokes.yaml up -d
@@ -21,7 +27,8 @@ services:
       bash -c "
         apt-get update -qq && apt-get install -qq -y curl &&
         MYCELIUM_CLIENT_ONLY=1 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash &&
-        export PATH=\"$$HOME/.local/bin:$$PATH\" &&
+        curl -fsS https://cursor.com/install | bash &&
+        export PATH=\"$$HOME/.local/bin:$$HOME/.cursor/bin:$$PATH\" &&
         mycelium config set server.api_url http://host.docker.internal:8000 &&
         echo 'spoke1 ready' &&
         tail -f /dev/null
@@ -45,7 +52,8 @@ services:
       bash -c "
         apt-get update -qq && apt-get install -qq -y curl &&
         MYCELIUM_CLIENT_ONLY=1 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash &&
-        export PATH=\"$$HOME/.local/bin:$$PATH\" &&
+        curl -fsS https://cursor.com/install | bash &&
+        export PATH=\"$$HOME/.local/bin:$$HOME/.cursor/bin:$$PATH\" &&
         mycelium config set server.api_url http://host.docker.internal:8000 &&
         echo 'spoke2 ready' &&
         tail -f /dev/null

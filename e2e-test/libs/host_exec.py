@@ -68,7 +68,14 @@ SSH_DEFAULT_KEY = os.environ.get("SSH_KEY_PATH", "~/.ssh/ioc.pem")
 SSH_DEFAULT_USER = os.environ.get("SSH_USER", "ubuntu")
 SSH_DEFAULT_CONNECT_TIMEOUT = int(os.environ.get("SSH_CONNECT_TIMEOUT", "5"))
 
-DEFAULT_PATH_PREPEND = "$HOME/.local/bin:$HOME/.nvm/versions/node/current/bin"
+DEFAULT_PATH_PREPEND = "$HOME/.local/bin:$HOME/.cursor/bin:$HOME/.nvm/versions/node/current/bin"
+
+# Forwarded bare (``-e VAR``, no ``=value``) into every docker-transport exec:
+# docker reads the value from the calling process's own environment and never
+# places it in argv, so a secret like CURSOR_API_KEY never appears in `ps` or
+# `/proc/*/cmdline` on the host or in the container. Harmless to always
+# include — docker silently skips a var that isn't set in its own env.
+_DOCKER_PASSTHROUGH_ENV = ("CURSOR_API_KEY", "CURSOR_MODEL")
 
 
 class HostExecError(RuntimeError):
@@ -243,6 +250,8 @@ def execute(  # noqa: PLR0913 - keeps subprocess.run-style ergonomics
             full.extend(["-u", rt.exec_user])
         if rt.exec_home:
             full.extend(["-e", f"HOME={rt.exec_home}"])
+        for var in _DOCKER_PASSTHROUGH_ENV:
+            full.extend(["-e", var])
         full.extend([rt.container, "sh", "-c", wrapped])
         return subprocess.run(  # noqa: S603 - argv is a constructed list, not shell
             full,

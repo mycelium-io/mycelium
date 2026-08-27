@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -94,6 +95,8 @@ class RemoteStubAgent:
         prose: str = "",
         backend_url: str = "",
         action_fn: Callable[[int], Action] | None = None,
+        use_cursor: bool = False,
+        cursor_model: str = "",
     ):
         self.device = device
         self.device_desc = describe(device)
@@ -103,6 +106,16 @@ class RemoteStubAgent:
         self.prose = prose
         self.backend_url = backend_url
         self.action_fn = action_fn
+        # Opt-in: have a real `cursor-agent`/`agent` CLI generate this
+        # stub's replies instead of the scripted accept/reject/counter
+        # prose. Requires CURSOR_API_KEY set in the environment on
+        # ``device`` (host_exec forwards it to docker-transport spokes;
+        # local/hub inherits it directly) and the cursor CLI on PATH.
+        # Any failure (missing key, binary absent, empty output, timeout)
+        # falls back to the scripted prose so a flaky/unconfigured cursor
+        # setup never turns into a silent turn.
+        self.use_cursor = use_cursor
+        self.cursor_model = cursor_model or os.environ.get("CURSOR_MODEL", "")
 
     def _env_args(self) -> list[str]:
         """Build env var prefix for CLI commands if backend_url is set."""
@@ -118,6 +131,40 @@ class RemoteStubAgent:
     def _respond_text(self, action: Action) -> str:
         body = self.prose or _default_prose(action)
         return body  # plain prose — aligner interprets it, no markers needed
+
+    def _cursor_respond_text(self, turn_data: dict | None, action: Action, timeout: int = 45) -> str | None:
+        """Generate this turn's reply with a real `cursor-agent`/`agent` CLI call.
+
+        Returns the model's plain-text output, or None on any failure
+        (missing binary, no CURSOR_API_KEY, empty output, timeout) so the
+        caller can fall back to the scripted prose.
+        """
+        stance = self.prose or _default_prose(action)
+        prompt = (
+            "You are one participant in a multi-agent negotiation coordinated "
+            "by the mycelium CLI. Reply with ONE short paragraph of plain text "
+            "(no markdown, no preamble, no your-name prefix) stating your "
+            "position — accept, reject, or propose a compromise — based on the "
+            "context below.\n\n"
+            f"Your handle: {self.handle}\n"
+            f"Your stance: {stance}\n"
+            f"Latest room context (JSON, may be empty): {json.dumps(turn_data or {})}"
+        )
+        cmd = ["agent", "-p", prompt, "--output-format", "text"]
+        if self.cursor_model:
+            cmd.extend(["--model", self.cursor_model])
+        try:
+            result = execute(self.device, cmd, timeout=timeout)
+        except HostExecError as e:
+            log.warning("RemoteStub %s@%s cursor-agent exec error: %s",
+                       self.handle, self.device_desc, e)
+            return None
+        if result.returncode != 0:
+            log.warning("RemoteStub %s@%s cursor-agent rc=%d stderr=%s",
+                       self.handle, self.device_desc, result.returncode, result.stderr.strip()[:200])
+            return None
+        text = result.stdout.strip()
+        return text or None
 
     def await_turn(self, turn_timeout: int, stop_event: threading.Event) -> dict | None:
         """Call `mycelium await` on the device. Returns parsed JSON or None."""
@@ -179,7 +226,14 @@ class RemoteStubAgent:
                               detail="await returned no message")
 
         action = self._choose_action(round_num)
-        text = self._respond_text(action)
+        text = None
+        if self.use_cursor:
+            text = self._cursor_respond_text(turn_data, action)
+            if text is None:
+                log.warning("RemoteStub %s@%s cursor-agent produced no usable reply, "
+                           "falling back to scripted prose", self.handle, self.device_desc)
+        if text is None:
+            text = self._respond_text(action)
         ok = self.post_respond(text, turn_timeout)
         return TurnResult(
             self.handle, self.device_desc, round_num, action, ok=ok,
