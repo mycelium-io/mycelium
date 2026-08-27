@@ -22,7 +22,7 @@ import {
 } from './dsp.mjs';
 import { glue, limit, lra, lufs, truePeakDb } from './master.mjs';
 
-export const DURATION = 84;
+export const DURATION = 76;
 
 // ~69.6 BPM. index.html's scene changes land on multiples of 6.9s (13.8,
 // 27.6, 41.4), so an eight-beat phrase lines up with the cut without the
@@ -37,27 +37,27 @@ const STEP = BEAT / 2;
 // `density` is the hyphae's probability per step.
 const SECTIONS = [
   { id: 'emergence', t0: 0.0, t1: 6.04, gain: 0.70, bright: 0.45,
-    chord: ['D2', 'A2', 'D3'], density: 0.10 },
+    chord: ['D2', 'A2', 'D3'], density: 0.07 },
 
   // Install: the third arrives as C/F — D minor builds under the terminals.
-  { id: 'install', t0: 6.04, t1: 25.88, gain: 0.82, bright: 0.58,
-    chord: ['D2', 'A2', 'D3', 'C4'], density: 0.20 },
+  { id: 'install', t0: 6.04, t1: 18.0, gain: 0.82, bright: 0.58,
+    chord: ['D2', 'A2', 'D3', 'C4'], density: 0.12 },
 
   // The board: D minor, the third (F) present — the work surface.
-  { id: 'board', t0: 25.88, t1: 42.2, gain: 0.9, bright: 0.7,
-    chord: ['D2', 'A2', 'F3', 'C4', 'D4'], density: 0.26 },
+  { id: 'board', t0: 18.0, t1: 34.32, gain: 0.9, bright: 0.7,
+    chord: ['D2', 'A2', 'F3', 'C4', 'D4'], density: 0.09 },
 
   // The open question: no third anywhere — the thread disagreement + the aligner.
-  { id: 'negotiate', t0: 42.2, t1: 68.14, gain: 0.80, bright: 0.6,
-    chord: ['D2', 'A2', 'D3', 'G3', 'E4'], density: 0.15 },
+  { id: 'negotiate', t0: 34.32, t1: 60.26, gain: 0.80, bright: 0.6,
+    chord: ['D2', 'A2', 'D3', 'G3', 'E4'], density: 0.09 },
 
   // Consensus at 68.14: F# arrives, the piece turns major (converge + compile).
-  { id: 'consensus', t0: 68.14, t1: 77.63, gain: 1.0, bright: 0.86,
-    chord: ['D2', 'A2', 'F#3', 'A3', 'E4'], density: 0.38 },
+  { id: 'consensus', t0: 60.26, t1: 69.75, gain: 1.0, bright: 0.86,
+    chord: ['D2', 'A2', 'F#3', 'A3', 'E4'], density: 0.22 },
 
   // Outro: back to bare D and A, an octave wider.
-  { id: 'outro', t0: 77.63, t1: 84.0, gain: 0.95, bright: 0.7,
-    chord: ['D1', 'D2', 'A2', 'D3', 'A3', 'D4'], density: 0.10 },
+  { id: 'outro', t0: 69.75, t1: 76.12, gain: 0.95, bright: 0.7,
+    chord: ['D1', 'D2', 'A2', 'D3', 'A3', 'D4'], density: 0.07 },
 ];
 
 const sectionAt = (t) => SECTIONS.find((s) => t >= s.t0 && t < s.t1) ?? SECTIONS[SECTIONS.length - 1];
@@ -71,57 +71,43 @@ const CUES = [
   // hero (0–6): the spore bell, and a long way down
   { t: 0.9,  kind: 'spore', pitch: 'D5', gain: 0.15 },
   { t: 1.73, kind: 'spore', pitch: 'A5', gain: 0.08 },
-  { t: 3.45, kind: 'bloom', pitch: 'D5', gain: 0.10 },
 
-  // CLI install (6.04–15.53): terminal lines, then "installation complete"
-  { t: 7.76, kind: 'lift', gain: 0.30 },
-  ...['D5', 'A4', 'D5', 'F5', 'C5', 'D5', 'F5'].map((p, i) => line(8.63 + i * 0.55, p, 0.12)),
-  { t: 12.94, kind: 'bloom', pitch: 'D5', gain: 0.24 },
+  // CLI install: a couple of terminal ticks, then "installation complete"
+  { t: 6.6, kind: 'lift', gain: 0.28 },
+  line(7.2, 'D5', 0.11), line(7.9, 'F5', 0.10), line(8.5, 'C5', 0.10),
+  { t: 8.9, kind: 'bloom', pitch: 'D5', gain: 0.22 },
 
-  // app install (15.53–25.88): services report in, then "ready"
-  { t: 17.25, kind: 'lift', gain: 0.34 },
-  ...['D5', 'F5', 'C5', 'A4', 'A4', 'G4', 'C5', 'D4', 'F4', 'A4'].map((p, i) => line(18.11 + i * 0.5, p, 0.10)),
-  { t: 23.29, kind: 'bloom', pitch: 'D5', gain: 0.26 },
+  // app install: a couple of ticks, then "ready"
+  { t: 12.1, kind: 'lift', gain: 0.30 },
+  line(12.8, 'D5', 0.10), line(13.7, 'A4', 0.09), line(14.6, 'C5', 0.10),
+  { t: 15.4, kind: 'bloom', pitch: 'D5', gain: 0.24 },
 
-  // the board (25.88–42.2): the shell arrives, the board fills, a task drops
-  { t: 27.6, kind: 'lift', gain: 0.34 },
-  { t: 28.46, kind: 'pluck', pitch: 'D5', gain: 0.16, decay: 1.8 },
-  { t: 29.32, kind: 'pluck', pitch: 'A4', gain: 0.14, decay: 1.6 },
-  ...['D4', 'F4', 'A4', 'C5'].map((p, i) => ({ t: 30.19 + i * 0.5, kind: 'pluck', pitch: p, gain: 0.16, decay: 1.8 })),
-  { t: 37.95, kind: 'pluck', pitch: 'A4', gain: 0.10, decay: 1.2 }, // focus the composer
-  { t: 38.81, kind: 'tick',  pitch: 'D5', gain: 0.06 },            // typing
-  { t: 40.54, kind: 'bloom', pitch: 'F5', gain: 0.18 },            // the task lands
+  // the board: the shell arrives, one soft fill, the task drops
+  { t: 19.72, kind: 'lift', gain: 0.32 },
+  { t: 22.31, kind: 'pluck', pitch: 'D4', gain: 0.16, decay: 1.8 },
+  { t: 32.66, kind: 'bloom', pitch: 'F5', gain: 0.18 },
 
-  // dive into the task (42.2–43.9): the row's title becomes the ticket
-  { t: 42.2, kind: 'pluck', pitch: 'D5', gain: 0.20, decay: 2.0 }, // click
-  { t: 43.4, kind: 'bloom', pitch: 'A5', gain: 0.14 },            // ticket opens
+  // dive into the task
+  { t: 35.52, kind: 'bloom', pitch: 'A5', gain: 0.13 },
 
-  // the thread (44–51): the disagreement surfaces — the harmony drops its third
-  { t: 45.0, kind: 'pluck', pitch: 'D5', gain: 0.16, decay: 2.0 },
-  { t: 46.3, kind: 'tick',  pitch: 'G4', gain: 0.08 },            // claimed
-  { t: 48.0, kind: 'move',  pitch: 'A4', gain: 0.20, actor: 'avery' }, // marcus · websocket (right)
-  { t: 51.0, kind: 'move',  pitch: 'D4', gain: 0.20, actor: 'rowan' }, // anand · poll (left)
+  // the thread: the two positions, no third
+  { t: 40.12, kind: 'move', pitch: 'A4', gain: 0.20, actor: 'avery' }, // marcus · websocket
+  { t: 43.12, kind: 'move', pitch: 'D4', gain: 0.20, actor: 'rowan' }, // anand · poll
 
-  // the aligner drives the SAO (59.5–68.14): summon, rounds, moves, consensus
-  { t: 61.24, kind: 'voice', pitch: 'C5', gain: 0.40, decay: 3.0 }, // summon the aligner
-  ...[62.7, 64.6, 66.7].map((t, i) => ({ t, kind: 'round', gain: 0.42 + i * 0.05 })),
-  { t: 63.1, kind: 'accept', pitch: 'A4', gain: 0.18, actor: 'avery' }, // avery-claude accepts
-  { t: 64.6, kind: 'move',   pitch: 'D4', gain: 0.20, actor: 'rowan' }, // anand counters
-  { t: 67.2, kind: 'accept', pitch: 'A5', gain: 0.20, actor: 'avery' }, // marcus accepts hybrid
-  // consensus at 68.14 — the offer locks and the piece turns major
-  { t: 68.14, kind: 'consensus', gain: 1.05 },
-  { t: 69.0,  kind: 'bloom', pitch: 'F#5', gain: 0.30 },
+  // the aligner: summon, one round marker, consensus
+  { t: 53.36, kind: 'voice', pitch: 'C5', gain: 0.38, decay: 3.0 },
+  { t: 56.72, kind: 'round', gain: 0.46 },
+  { t: 60.26, kind: 'consensus', gain: 1.05 },
 
-  // compile (72.45–77.63): the fix tasks land as children of the bug
-  { t: 72.45, kind: 'lift', gain: 0.32 },
-  { t: 72.95, kind: 'pluck', pitch: 'D5', gain: 0.20, decay: 2.0 }, // the parent
-  ...['F#5', 'A5', 'D6'].map((p, i) => ({ t: 73.6 + i * 0.9, kind: 'pluck', pitch: p, gain: 0.20, decay: 2.2 })),
+  // compile: the fix tasks land
+  { t: 64.57, kind: 'lift', gain: 0.30 },
+  { t: 65.72, kind: 'pluck', pitch: 'F#5', gain: 0.20, decay: 2.2 },
+  { t: 66.62, kind: 'pluck', pitch: 'A5', gain: 0.20, decay: 2.2 },
 
-  // outro (77.63–84): the bell returns an octave down and twice as wide
-  { t: 78.0,  kind: 'spore', pitch: 'D4', gain: 0.22 },
-  { t: 78.02, kind: 'impact', gain: 0.34 },
-  { t: 78.6,  kind: 'spore', pitch: 'A4', gain: 0.10 },
-  { t: 79.2,  kind: 'spore', pitch: 'D5', gain: 0.08 },
+  // outro: the bell returns an octave down and wide
+  { t: 70.12,  kind: 'spore', pitch: 'D4', gain: 0.22 },
+  { t: 70.14, kind: 'impact', gain: 0.30 },
+  { t: 71.32,  kind: 'spore', pitch: 'D5', gain: 0.08 },
 ];
 
 // ── Buses ──────────────────────────────────────────────────────────────
@@ -503,9 +489,9 @@ function renderHyphae(b) {
  * together on F#.
  */
 function renderCounterpoint(b) {
-  const CONSENSUS = 68.14;
-  const T0 = 48.0;
-  const T1 = 72.0;
+  const CONSENSUS = 60.26;
+  const T0 = 40.12;
+  const T1 = 64.12;
   const periodA = 3.1;
   // rowan starts slower and is in step with avery by the time they accept.
   const periodB = (t) => lerp(3.62, periodA, clamp((t - T0) / (CONSENSUS - T0), 0, 1));
@@ -532,10 +518,10 @@ function renderCounterpoint(b) {
  * the consensus beat. It is the only portamento in the piece.
  */
 function renderResolution(b) {
-  const t0 = 64.0;
-  const t1 = 76.0;
-  const glideStart = 67.9;
-  const glideEnd = 68.9;
+  const t0 = 56.12;
+  const t1 = 68.12;
+  const glideStart = 60.02;
+  const glideEnd = 61.02;
   const fFlat = hz('F4');
   const fSharp = hz('F#4');
   const i0 = idx(b, t0);
@@ -692,8 +678,8 @@ function renderConsensus(b, t, g) {
  * resolution is the F# underneath it.
  */
 function renderTension(b) {
-  const t0 = 59.5;
-  const t1 = 68.14;
+  const t0 = 51.62;
+  const t1 = 60.26;
   const i0 = idx(b, t0);
   const i1 = Math.min(b.n, idx(b, t1 + 0.45));
   const svf = new SVF(b.sr);
