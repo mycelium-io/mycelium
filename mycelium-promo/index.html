@@ -881,6 +881,42 @@
       #s5thread #hero-title { position: absolute; margin: 0; left: 432px; top: 727px; font-size: 25px; font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; color: var(--text); white-space: nowrap; z-index: 8; opacity: 0; }
       #s4board .ghlink { color: var(--accent); }
       #s4board .chip.br { background: color-mix(in srgb, var(--surface) 65%, transparent); border: 1px solid var(--border2); color: var(--text2); }
+      /* ── Scene: aligner drives the SAO negotiation ───────────────────── */
+      #s6align.scene { padding: 0; display: flex; align-items: center; justify-content: center; }
+      #s6align .awrap { width: 100%; padding: 70px 120px; }
+      #s6align .acard { max-width: 1520px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border2); border-radius: 16px; box-shadow: 0 40px 100px rgba(0,0,0,0.6); overflow: hidden; }
+      #s6align .ahead { display: flex; align-items: center; gap: 16px; padding: 24px 34px; border-bottom: 1px solid var(--border); }
+      #s6align .adot { width: 13px; height: 13px; background: var(--accent); transform: rotate(45deg); flex-shrink: 0; }
+      #s6align .atitle { font-size: 26px; font-weight: 600; color: var(--text); }
+      #s6align .asub { font-family: 'Geist Mono', monospace; font-size: 16px; color: var(--muted); }
+      #s6align .aspace { flex: 1; }
+      #s6align .astatewrap { position: relative; width: 200px; height: 22px; }
+      #s6align .astate { position: absolute; right: 0; top: 0; font-family: 'Geist Mono', monospace; font-size: 16px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; }
+      #s6align .astate.neg { color: var(--accent); }
+      #s6align .astate.con { color: var(--green); }
+      #s6align .abody { padding: 38px 54px 44px; }
+      #s6align .issue-row { display: flex; align-items: center; gap: 16px; margin-bottom: 26px; font-family: 'Geist Mono', monospace; }
+      #s6align .issue-name { font-size: 15px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-right: 6px; }
+      #s6align .opt { padding: 6px 15px; border: 1px solid var(--border2); border-radius: 6px; font-size: 17px; color: var(--text2); }
+      #s6align .addressing { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; font-family: 'Geist Mono', monospace; font-size: 18px; color: var(--muted); }
+      #s6align .addressing .arrow { color: var(--accent); }
+      #s6align .addressing .who { color: var(--accent); font-weight: 600; }
+      #s6align .grid { border: 1px solid var(--border2); border-radius: 8px; overflow: hidden; }
+      #s6align .lane { display: grid; grid-template-columns: 320px repeat(3, 1fr); border-bottom: 1px solid var(--border); }
+      #s6align .lane:last-child { border-bottom: none; }
+      #s6align .lane.head { background: rgba(255,255,255,0.02); }
+      #s6align .lc { padding: 16px 20px; font-family: 'Geist Mono', monospace; font-size: 17px; color: var(--text); display: flex; align-items: center; gap: 12px; border-left: 1px solid var(--border); }
+      #s6align .lc.name { border-left: none; border-right: 1px solid var(--border2); }
+      #s6align .lc.head { font-size: 13px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+      #s6align .lc .val { color: var(--text2); font-size: 16px; }
+      #s6align .lc .aw { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+      #s6align .offer-line { display: flex; align-items: center; gap: 16px; margin-top: 26px; font-family: 'Geist Mono', monospace; }
+      #s6align .offer-line .lab { font-size: 13px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+      #s6align .offer-line .val { font-size: 22px; color: var(--accent); }
+      #s6align .conv { margin-top: 24px; border: 1px solid var(--green); background: rgba(79,194,150,0.08); border-radius: 12px; padding: 20px 26px; display: flex; align-items: center; gap: 16px; }
+      #s6align .conv .ck { width: 24px; height: 24px; color: var(--green); flex-shrink: 0; }
+      #s6align .conv .txt { font-size: 22px; color: var(--text); }
+      #s6align .conv .txt b { color: var(--green); }
     </style>
   </head>
   <body>
@@ -1158,6 +1194,59 @@
         </div>
       </div>
 
+      <!-- ── Scene: Aligner drives the SAO negotiation, inside the task ── -->
+      <div id="s6align" class="clip scene" data-start="59.51" data-duration="11.21" data-track-index="6">
+        <div class="awrap">
+          <div class="acard">
+            <div class="ahead">
+              <span class="adot"></span>
+              <span class="atitle">aligner</span>
+              <span class="asub">driving SAO · expose last-seen on /device/status</span>
+              <span class="aspace"></span>
+              <span class="astatewrap"><span id="a-neg" class="astate neg">negotiating</span><span id="a-con" class="astate con" style="opacity:0">converged</span></span>
+            </div>
+            <div class="abody">
+              <div class="issue-row" id="a-issue">
+                <span class="issue-name">issue · last-seen transport</span>
+                <span class="opt">poll_10s</span>
+                <span class="opt" id="opt-hybrid">hybrid</span>
+                <span class="opt">websocket</span>
+              </div>
+              <div class="addressing" id="a-address">
+                <span>addressing</span><span class="arrow">&rarr;</span>
+                <span class="who"><span id="ad-anand">@anand-opencode</span><span id="ad-marcus" style="display:none">@marcus-cursor</span></span>
+              </div>
+              <div class="grid">
+                <div class="lane head">
+                  <span class="lc name head">participant</span>
+                  <span class="lc head">round 1</span><span class="lc head">round 2</span><span class="lc head">round 3</span>
+                </div>
+                <div class="lane">
+                  <span class="lc name"><span class="aw"></span>marcus-cursor</span>
+                  <span class="lc" id="mc-r1"><span class="glyph glyph-diamond"></span><span class="val">counter · websocket</span></span>
+                  <span class="lc" id="mc-r2"><span class="glyph glyph-accept"></span><span class="val">accept · hybrid</span></span>
+                  <span class="lc" id="mc-r3"></span>
+                </div>
+                <div class="lane">
+                  <span class="lc name"><span class="aw" style="background:var(--yellow)"></span>anand-opencode</span>
+                  <span class="lc" id="ao-r1"><span class="glyph glyph-diamond"></span><span class="val">counter · poll_10s</span></span>
+                  <span class="lc" id="ao-r2"><span class="glyph glyph-diamond"></span><span class="val">counter · hybrid</span></span>
+                  <span class="lc" id="ao-r3"><span class="glyph glyph-accept"></span><span class="val">accept</span></span>
+                </div>
+              </div>
+              <div class="offer-line" id="a-offer">
+                <span class="lab">standing offer</span>
+                <span class="val"><span id="off-ws">last-seen = websocket</span><span id="off-hy" style="display:none">last-seen = hybrid</span></span>
+              </div>
+              <div class="conv" id="a-conv" style="opacity:0">
+                <svg class="ck" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0L2.72 8.03a.75.75 0 1 1 1.06-1.06L7 9.94l5.72-5.72a.75.75 0 0 1 1.06 0Z"/></svg>
+                <span class="txt"><b>converged</b> &mdash; stopped at unanimity, not the cap · compiling 2 tasks from last-seen = hybrid</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ── Scene 7: Outro ────────────────────────────── -->
       <div id="outro" class="clip scene outro" data-start="100.4" data-duration="6" data-track-index="10">
         <div class="wordmark">mycelium</div>
@@ -1295,6 +1384,37 @@
       tl.from('#t-claim', { opacity: 0, x: -16, duration: 0.45 }, 54.5);
       tl.from('#t-r1',    { opacity: 0, y: 18, duration: 0.55, ease: 'power2.out' }, 55.3);
       tl.from('#t-r2',    { opacity: 0, y: 18, duration: 0.55, ease: 'power2.out' }, 56.92);
+
+      // hand off from the thread to the aligner (both sit on the network bg)
+      tl.to('#s5thread .tcard', { opacity: 0, duration: 0.5, ease: 'power2.in' }, 60.8);
+
+      // ── Scene: Aligner drives the SAO (59.51–70.72s) ──
+      // The aligner addresses one agent at a time, reads each reply into a move
+      // (counter / accept), the standing offer evolves, and it stops the instant
+      // the two agree — not at the cap.
+      tl.from('#s6align .acard',  { y: 50, opacity: 0, duration: 0.6, ease: 'power3.out' }, 61.24);
+      tl.from('#a-issue', { opacity: 0, y: 12, duration: 0.5 }, 62.10);
+      tl.from('#s6align .lane.head, #s6align .lane .name', { opacity: 0, duration: 0.4, stagger: 0.05 }, 62.4);
+      tl.from('#a-address', { opacity: 0, duration: 0.4 }, 62.5);
+      // round 1 — both open apart
+      tl.from('#ao-r1', { opacity: 0, scale: 0.8, duration: 0.35, ease: 'back.out(2)' }, 62.7);
+      tl.set('#ad-anand', { display: 'none' }, 63.2); tl.set('#ad-marcus', { display: 'inline' }, 63.2);
+      tl.from('#mc-r1', { opacity: 0, scale: 0.8, duration: 0.35, ease: 'back.out(2)' }, 63.6);
+      tl.from('#a-offer', { opacity: 0, y: 8, duration: 0.4 }, 63.9);
+      // round 2 — the aligner brokers anand toward the middle; marcus accepts
+      tl.set('#ad-marcus', { display: 'none' }, 64.6); tl.set('#ad-anand', { display: 'inline' }, 64.6);
+      tl.from('#ao-r2', { opacity: 0, scale: 0.8, duration: 0.35, ease: 'back.out(2)' }, 65.55);
+      tl.set('#off-ws', { display: 'none' }, 65.7); tl.set('#off-hy', { display: 'inline' }, 65.7);
+      tl.set('#ad-anand', { display: 'none' }, 66.2); tl.set('#ad-marcus', { display: 'inline' }, 66.2);
+      tl.from('#mc-r2', { opacity: 0, scale: 0.8, duration: 0.35, ease: 'back.out(2)' }, 66.41);
+      // round 3 — anand accepts -> unanimity -> converged
+      tl.set('#ad-marcus', { display: 'none' }, 67.6); tl.set('#ad-anand', { display: 'inline' }, 67.6);
+      tl.from('#ao-r3', { opacity: 0, scale: 0.8, duration: 0.35, ease: 'back.out(2)' }, 68.14);
+      tl.to('#a-neg', { opacity: 0, duration: 0.3 }, 68.14);
+      tl.to('#a-con', { opacity: 1, duration: 0.3 }, 68.14);
+      tl.to('#a-address', { opacity: 0, duration: 0.3 }, 68.14);
+      tl.to('#opt-hybrid', { borderColor: 'var(--green)', color: 'var(--green)', backgroundColor: 'rgba(79,194,150,0.08)', duration: 0.4 }, 68.14);
+      tl.fromTo('#a-conv', { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' }, 68.6);
 
       // ── Scene 7: Outro (100.4–106.4s) ──
       tl.from('#outro .wordmark', { y: 50, opacity: 0, duration: 1.0, ease: 'power3.out' }, 100.6);
