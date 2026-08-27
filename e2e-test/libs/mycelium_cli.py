@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import subprocess
 import time
 from typing import Any
@@ -88,7 +89,13 @@ class MyceliumCLI:
             # HOME must stay pointed at the shared ~/.mycelium tree: sudo
             # resets it to the target uid's own home by default, which would
             # make the CLI look at (and create) an entirely different,
-            # unrelated .mycelium directory.
+            # unrelated .mycelium directory. sudo also resets PATH to its
+            # own secure_path regardless of what `env` is asked to set
+            # afterward — mycelium lives in ~/.local/bin, not on that
+            # default, so resolve the binary to an absolute path up front
+            # rather than relying on PATH surviving the uid switch.
+            binary = shutil.which(self.binary) or self.binary
+            cmd[0] = binary
             cmd = [
                 "sudo", "-u", f"#{_LOCAL_WRITE_UID}",
                 "env", f"HOME={os.path.expanduser('~')}",
