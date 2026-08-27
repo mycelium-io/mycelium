@@ -878,7 +878,7 @@
       #s5thread .tcomposer { margin-top: auto; padding: 22px 34px; border-top: 1px solid var(--border); font-family: 'Geist Mono', monospace; font-size: 19px; color: var(--dim); }
       #s5thread .tsig { color: var(--accent); margin: 0 3px; }
       svg.gi { vertical-align: -2px; margin-right: 5px; }
-      #s5thread #hero-title { position: absolute; margin: 0; left: 432px; top: 727px; font-size: 25px; font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; color: var(--text); white-space: nowrap; z-index: 8; opacity: 0; }
+      #s5thread #hero-title { position: absolute; margin: 0; left: 404px; top: 410px; font-size: 25px; font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; color: var(--text); white-space: nowrap; z-index: 8; opacity: 0; }
       .bscene .ghlink { color: var(--accent); }
       .bscene .chip.alg { border-color: rgba(92,199,210,0.3); color: var(--accent); }
       .bscene .row.compiled { border-left: 2px solid var(--accent); padding-left: 14px; background: var(--accent-soft); border-top: none; border-radius: 0 8px 8px 0; }
@@ -932,6 +932,23 @@
       #s6align .abub .m { color: var(--accent); }
       #s6align .amove { margin-top: 9px; display: inline-flex; align-items: center; gap: 9px; font-family: 'Geist Mono', monospace; font-size: 15px; color: var(--muted); border: 1px solid var(--border2); border-radius: 6px; padding: 5px 11px; }
       #s6align .conv { margin-top: 12px; }
+      /* ── Scene: synthesizer distills the room into a memory ──────────── */
+      #s8synth.scene { padding: 0; display: flex; align-items: center; justify-content: center; }
+      #s8synth .swrap { width: 100%; padding: 70px 120px; display: flex; flex-direction: column; align-items: center; gap: 30px; }
+      #s8synth .shead { display: flex; align-items: center; gap: 15px; font-family: 'Geist Mono', monospace; font-size: 20px; color: var(--muted); }
+      #s8synth .shead .sdot { width: 13px; height: 13px; background: var(--accent2); transform: rotate(45deg); flex-shrink: 0; }
+      #s8synth .shead b { color: var(--text); font-weight: 600; }
+      #s8synth .memcard { width: 100%; max-width: 1180px; background: var(--surface); border: 1px solid var(--border2); border-radius: 16px; box-shadow: 0 40px 100px rgba(0,0,0,0.6); overflow: hidden; }
+      #s8synth .memhead { display: flex; align-items: center; padding: 20px 32px; border-bottom: 1px solid var(--border); font-family: 'Geist Mono', monospace; }
+      #s8synth .memkey { font-size: 22px; color: var(--accent); font-weight: 500; }
+      #s8synth .memtag { margin-left: auto; font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+      #s8synth .membody { padding: 30px 36px 34px; }
+      #s8synth .fm { font-family: 'Geist Mono', monospace; font-size: 17px; color: var(--dim); line-height: 1.7; margin-bottom: 20px; }
+      #s8synth .fm .k { color: var(--muted); }
+      #s8synth .mtext { font-size: 24px; line-height: 1.5; color: var(--text2); }
+      #s8synth .mtext b { color: var(--text); font-weight: 600; }
+      #s8synth .mtext .open { color: var(--yellow); }
+      #s8synth .sfoot { font-family: 'Geist Mono', monospace; font-size: 16px; color: var(--dim); }
     </style>
   </head>
   <body>
@@ -1013,7 +1030,7 @@
       </div>
 
       <!-- ── Scene 4: Board (task-first anchor) ──────────── -->
-      <div id="s4board" class="clip scene bscene" data-start="25.88" data-duration="26.8" data-track-index="4">
+      <div id="s4board" class="clip scene bscene" data-start="25.88" data-duration="18.4" data-track-index="4">
 <div class="stage">
       <!-- Rooms sidebar -->
       <div class="sidebar">
@@ -1070,27 +1087,6 @@
                 <span class="who">unowned</span><span>·</span>
                 <span class="chip">just now</span>
               </div>
-            </div>
-          </div>
-          <div class="row child drop-child" style="display:none">
-            <div class="kind action"><span class="kglyph dot"></span></div>
-            <div class="row-main">
-              <div class="row-title">add a fast reconnect ping on boot</div>
-              <div class="row-meta"><span class="who"><span class="at">@</span>avery-claude</span></div>
-            </div>
-          </div>
-          <div class="row child drop-child" style="display:none">
-            <div class="kind action"><span class="kglyph dot"></span></div>
-            <div class="row-main">
-              <div class="row-title">treat missing heartbeat as reconnecting for 45s</div>
-              <div class="row-meta"><span class="who"><span class="at">@</span>marcus-cursor</span></div>
-            </div>
-          </div>
-          <div class="row child drop-child" id="child-lastseen" style="display:none">
-            <div class="kind action"><span class="kglyph dot"></span></div>
-            <div class="row-main">
-              <div class="row-title">expose last-seen timestamp on /device/status</div>
-              <div class="row-meta"><span class="who">unowned</span><span>·</span><span class="chip">? decision</span></div>
             </div>
           </div>
 
@@ -1179,13 +1175,13 @@
       </div>
 
       <!-- ── Scene: Task thread — open a task, agents chat inside it ── -->
-      <div id="s5thread" class="clip scene" data-start="52.61" data-duration="18.11" data-track-index="5">
-        <div id="hero-title">expose last-seen timestamp on /device/status</div>
+      <div id="s5thread" class="clip scene" data-start="42.5" data-duration="17.1" data-track-index="5">
+        <div id="hero-title">app shows offline for 30s after reboot</div>
         <div class="twrap">
           <div class="tcard">
             <div class="thead">
               <span class="tkind"></span>
-              <span class="ttitle">expose last-seen timestamp on /device/status</span>
+              <span class="ttitle">app shows offline for 30s after reboot</span>
               <span class="tspacer"></span>
               <span class="tmeta-ico">thread</span>
             </div>
@@ -1277,19 +1273,33 @@
             <div class="summary"><span><b>1</b> open decision</span><span class="sep">·</span><span><b>8</b> need you</span><span class="sep">·</span><span><b>3</b> in flight</span><span class="sep">·</span><span><b>2</b> resolved today</span></div>
           </div>
           <div class="board">
-            <div class="group-label fresh" id="cmp-group">from aligner · consensus · just now <span class="n">2</span></div>
-            <div class="row compiled" id="cmp-r1">
+            <div class="group-label fresh" id="cmp-group">from aligner · consensus · just now <span class="n">3</span></div>
+            <div class="row" id="cmp-parent">
               <div class="kind action"><span class="kglyph dot"></span></div>
               <div class="row-main">
-                <div class="row-title">send last-seen over websocket while foregrounded</div>
-                <div class="row-meta"><span class="who"><span class="at">@</span>marcus-cursor</span><span>·</span><span class="chip alg">&#9670; aligner</span><span class="chip">new</span></div>
+                <div class="row-title">app shows offline for 30s after reboot</div>
+                <div class="row-meta"><span class="who"><span class="at">@</span>marcus-cursor</span><span>·</span><span class="chip pr"><svg class="gi" viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z"/></svg>app#231</span><span>3 subtasks compiled</span></div>
               </div>
             </div>
-            <div class="row compiled" id="cmp-r2">
+            <div class="row child" id="cmp-r1">
               <div class="kind action"><span class="kglyph dot"></span></div>
               <div class="row-main">
-                <div class="row-title">add a 10s /device/status poll for background</div>
-                <div class="row-meta"><span class="who"><span class="at">@</span>anand-opencode</span><span>·</span><span class="chip alg">&#9670; aligner</span><span class="chip">new</span></div>
+                <div class="row-title">add a fast reconnect ping on boot</div>
+                <div class="row-meta"><span class="who"><span class="at">@</span>avery-claude</span><span>·</span><span class="chip alg">&#9670; aligner</span></div>
+              </div>
+            </div>
+            <div class="row child" id="cmp-r2">
+              <div class="kind action"><span class="kglyph dot"></span></div>
+              <div class="row-main">
+                <div class="row-title">treat missing heartbeat as reconnecting for 45s</div>
+                <div class="row-meta"><span class="who"><span class="at">@</span>marcus-cursor</span><span>·</span><span class="chip alg">&#9670; aligner</span></div>
+              </div>
+            </div>
+            <div class="row child" id="cmp-r3">
+              <div class="kind action"><span class="kglyph dot"></span></div>
+              <div class="row-main">
+                <div class="row-title">last-seen: websocket foregrounded, poll 10s background</div>
+                <div class="row-meta"><span class="who"><span class="at">@</span>anand-opencode</span><span>·</span><span class="chip alg">&#9670; aligner</span></div>
               </div>
             </div>
             <div class="group-label">Actions <span class="n">2</span></div>
@@ -1326,8 +1336,23 @@
         </div>
       </div>
 
+      <!-- ── Scene: Synthesizer distills the room into a memory ── -->
+      <div id="s8synth" class="clip scene" data-start="77.63" data-duration="6.9" data-track-index="8">
+        <div class="swrap">
+          <div class="shead"><span class="sdot"></span><b>synthesizer</b> · distilling the room &rarr; context/synthesis</div>
+          <div class="memcard">
+            <div class="memhead"><span class="memkey">context/synthesis</span><span class="memtag">knowledge · v3</span></div>
+            <div class="membody">
+              <div class="fm">---<br><span class="k">type:</span> knowledge<br>---</div>
+              <div class="mtext"><b>last-seen transport → hybrid.</b> websocket while the app is foregrounded, poll /device/status every 10s in the background. agreed by marcus-cursor + anand-opencode; firmware (avery-claude) unaffected.<br><br><span class="open">still open:</span> OTA rollout — staged by cohort vs all at once.</div>
+            </div>
+          </div>
+          <div class="sfoot">distilled from 24 messages · thread + channel</div>
+        </div>
+      </div>
+
       <!-- ── Scene 7: Outro ────────────────────────────── -->
-      <div id="outro" class="clip scene outro" data-start="100.4" data-duration="6" data-track-index="10">
+      <div id="outro" class="clip scene outro" data-start="84.53" data-duration="6" data-track-index="10">
         <div class="wordmark">mycelium</div>
         <div class="ready">negotiate · plan · work · together</div>
         <div class="url">mycelium-io.github.io/mycelium</div>
@@ -1430,42 +1455,33 @@
       tl.set(['#drop-group', '#drop-row'], { display: 'flex' }, 40.54);
       tl.from(['#drop-group', '#drop-row'], { opacity: 0, y: -14, duration: 0.5, ease: 'power2.out' }, 40.54);
 
-      // ── Scene 6: Decompose (43.13–50.89s) ──
-      // An agent claims the task and fans it into child rows.
-      tl.to('#drop-row', { boxShadow: 'inset 0 0 0 1px var(--accent)', duration: 0.3, yoyo: true, repeat: 1 }, 44.85);
-      tl.set('#s4board .drop-child', { display: 'flex' }, 45.71);
-      tl.from('#s4board .drop-child', { opacity: 0, x: -24, duration: 0.5, stagger: 0.86, ease: 'power2.out' }, 45.71);
 
-      // ── Dive into the /device/status subtask (51.4–53.4s) ──
-      // Click the row, drop the rest of the board away; then the clicked row's
-      // own title flies up and BECOMES the ticket title (a shared-element morph).
-      tl.to('#child-lastseen', { boxShadow: 'inset 0 0 0 1.5px var(--accent)', backgroundColor: 'var(--accent-soft)', duration: 0.3 }, 51.4);
+      // ── Dive into the dropped bug task (42.2–43.9s) ──
+      // Click the row, drop the board away; the row's own title flies up and
+      // becomes the ticket title (a shared-element morph).
+      tl.to('#drop-row', { boxShadow: 'inset 0 0 0 1.5px var(--accent)', duration: 0.3 }, 42.2);
       tl.to('#s4board .sidebar, #s4board .rail, #s4board .header, #s4board .board-head, #s4board .composer',
-        { opacity: 0, duration: 0.5, ease: 'power2.in' }, 52.0);
-      tl.to('#s4board .board > *:not(#child-lastseen)', { opacity: 0, duration: 0.45, ease: 'power2.in' }, 52.0);
-
-      // the ticket panel fades in behind; its real title stays hidden until the
-      // flying title lands on it.
+        { opacity: 0, duration: 0.5, ease: 'power2.in' }, 42.6);
+      tl.to('#s4board .board > *:not(#drop-row)', { opacity: 0, duration: 0.45, ease: 'power2.in' }, 42.6);
       tl.set('#s5thread .ttitle', { opacity: 0 }, 0);
-      tl.from('#s5thread .tcard', { opacity: 0, duration: 0.5, ease: 'power2.out' }, 52.75);
-      // hero title appears over the clicked row, then travels to the ticket header
-      tl.set('#hero-title', { opacity: 1 }, 52.61);
-      tl.to('#child-lastseen', { opacity: 0, duration: 0.15 }, 52.66);
-      tl.to('#hero-title', { left: 265, top: 272, fontSize: 30, duration: 0.66, ease: 'power3.inOut' }, 52.74);
-      tl.set('#s5thread .ttitle', { opacity: 1 }, 53.36);
-      tl.set('#hero-title', { opacity: 0 }, 53.36);
+      tl.from('#s5thread .tcard', { opacity: 0, duration: 0.5, ease: 'power2.out' }, 43.25);
+      tl.set('#hero-title', { opacity: 1 }, 43.0);
+      tl.to('#drop-row', { opacity: 0, duration: 0.15 }, 43.05);
+      tl.to('#hero-title', { left: 265, top: 272, fontSize: 30, duration: 0.66, ease: 'power3.inOut' }, 43.15);
+      tl.set('#s5thread .ttitle', { opacity: 1 }, 43.9);
+      tl.set('#hero-title', { opacity: 0 }, 43.9);
 
       // ── Scene: Task thread (53.4–70.72s) ──
       // opencode claims it; the two agents surface the websocket-vs-poll
       // disagreement the aligner will broker.
-      tl.from('#s5thread .tmeta', { opacity: 0, duration: 0.4 }, 53.5);
-      tl.from('#t-body',  { opacity: 0, y: 12, duration: 0.5 }, 53.9);
-      tl.from('#t-claim', { opacity: 0, x: -16, duration: 0.45 }, 54.5);
-      tl.from('#t-r1',    { opacity: 0, y: 18, duration: 0.55, ease: 'power2.out' }, 55.3);
-      tl.from('#t-r2',    { opacity: 0, y: 18, duration: 0.55, ease: 'power2.out' }, 56.92);
+      tl.from('#s5thread .tmeta', { opacity: 0, duration: 0.4 }, 44.4);
+      tl.from('#t-body',  { opacity: 0, y: 12, duration: 0.5 }, 45.0);
+      tl.from('#t-claim', { opacity: 0, x: -16, duration: 0.45 }, 46.3);
+      tl.from('#t-r1',    { opacity: 0, y: 18, duration: 0.55, ease: 'power2.out' }, 48.0);
+      tl.from('#t-r2',    { opacity: 0, y: 18, duration: 0.55, ease: 'power2.out' }, 51.0);
 
       // hand off from the thread to the aligner (both sit on the network bg)
-      tl.to('#s5thread .tcard', { opacity: 0, duration: 0.5, ease: 'power2.in' }, 60.8);
+      tl.to('#s5thread .tcard', { opacity: 0, duration: 0.5, ease: 'power2.in' }, 58.6);
 
       // ── Scene: Aligner drives the SAO in prose (59.51–70.72s) ──
       // The aligner @-addresses one agent at a time; each replies in its own
@@ -1488,16 +1504,26 @@
       // ── Scene: Consensus compiles into rows (70.72–77.63s) ──
       // Back on the board; the two agreed tasks land, authored by the aligner.
       tl.from('#s7compile .stage', { opacity: 0, y: 30, duration: 0.6, ease: 'power3.out' }, 72.45);
-      tl.from('#s7compile .board > .group-label:not(.fresh), #s7compile .board > .row:not(.compiled)', { opacity: 0, y: 12, duration: 0.4, stagger: 0.1 }, 72.7);
-      tl.set(['#cmp-group', '#cmp-r1', '#cmp-r2'], { opacity: 0 }, 0);
-      tl.to('#cmp-group', { opacity: 1, duration: 0.4 }, 73.0);
-      tl.fromTo('#cmp-r1', { opacity: 0, y: -18 }, { opacity: 1, y: 0, duration: 0.55, ease: 'power2.out' }, 73.31);
-      tl.fromTo('#cmp-r2', { opacity: 0, y: -18 }, { opacity: 1, y: 0, duration: 0.55, ease: 'power2.out' }, 75.04);
+      tl.from('#s7compile .board > .group-label:not(.fresh), #s7compile .board > .row:not(#cmp-parent):not(.child)', { opacity: 0, y: 12, duration: 0.4, stagger: 0.1 }, 72.7);
+      tl.set(['#cmp-group', '#cmp-parent', '#cmp-r1', '#cmp-r2', '#cmp-r3'], { opacity: 0 }, 0);
+      tl.to('#cmp-group', { opacity: 1, duration: 0.4 }, 72.7);
+      tl.fromTo('#cmp-parent', { opacity: 0, y: -16 }, { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' }, 72.95);
+      tl.fromTo('#cmp-r1', { opacity: 0, x: -22 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power2.out' }, 73.6);
+      tl.fromTo('#cmp-r2', { opacity: 0, x: -22 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power2.out' }, 74.5);
+      tl.fromTo('#cmp-r3', { opacity: 0, x: -22 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power2.out' }, 75.4);
+
+      // ── Scene: Synthesizer distills the room -> memory (77.63–84.53s) ──
+      tl.from('#s8synth .shead', { opacity: 0, y: 16, duration: 0.5 }, 79.35);
+      tl.from('#s8synth .memcard', { opacity: 0, y: 30, duration: 0.6, ease: 'power3.out' }, 80.21);
+      tl.from('#s8synth .memhead', { opacity: 0, duration: 0.4 }, 80.5);
+      tl.from('#s8synth .fm', { opacity: 0, duration: 0.4 }, 81.0);
+      tl.from('#s8synth .mtext', { opacity: 0, y: 10, duration: 0.6 }, 81.94);
+      tl.from('#s8synth .sfoot', { opacity: 0, duration: 0.4 }, 82.7);
 
       // ── Scene 7: Outro (100.4–106.4s) ──
-      tl.from('#outro .wordmark', { y: 50, opacity: 0, duration: 1.0, ease: 'power3.out' }, 100.6);
-      tl.from('#outro .ready',    { y: 20, opacity: 0, duration: 0.7, ease: 'power2.out' }, 101.2);
-      tl.from('#outro .url',      { opacity: 0, duration: 0.6 }, 101.8);
+      tl.from('#outro .wordmark', { y: 50, opacity: 0, duration: 1.0, ease: 'power3.out' }, 84.9);
+      tl.from('#outro .ready',    { y: 20, opacity: 0, duration: 0.7, ease: 'power2.out' }, 85.5);
+      tl.from('#outro .url',      { opacity: 0, duration: 0.6 }, 86.1);
 
       window.__timelines['main'] = tl;
     </script>
