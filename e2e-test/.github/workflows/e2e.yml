@@ -179,6 +179,15 @@ jobs:
           mkdir -p ~/.mycelium/rooms
           chmod -R 777 ~/.mycelium
           sudo setfacl -R -d -m o::rwx ~/.mycelium 2>/dev/null || true
+          # MYCELIUM_LOCAL_WRITE_UID (below, in the "Run E2E tests" env
+          # block) runs a few CLI commands as uid 1000 via sudo. $HOME is
+          # preserved across that switch, but home directories default to
+          # 750 (owner rwx, group r-x, other none) — uid 1000 can't even
+          # traverse into $HOME to reach ~/.local/bin/mycelium, regardless
+          # of the binary's own mode. Grant traversal only (o+rx, not
+          # world-writable) on just the path to the binary — this doesn't
+          # touch file contents anywhere else under $HOME.
+          chmod o+rx "$HOME" "$HOME/.local" "$HOME/.local/bin" 2>/dev/null || true
           if [ "$BUILD_FROM_SOURCE" = "true" ]; then
             mycelium up --build
           else

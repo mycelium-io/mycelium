@@ -97,6 +97,10 @@ jobs:
           # container's fixed uid and why this is just generic insurance.
           mkdir -p ~/.mycelium/rooms && chmod -R 777 ~/.mycelium
           sudo setfacl -R -d -m o::rwx ~/.mycelium 2>/dev/null || true
+          # uid 1000 can't traverse into $HOME (default 750) to reach
+          # ~/.local/bin/mycelium for the MYCELIUM_LOCAL_WRITE_UID switch
+          # below — grant traversal only (o+rx), not full access.
+          chmod o+rx "$HOME" "$HOME/.local" "$HOME/.local/bin" 2>/dev/null || true
           if [ -n "${{ github.event.inputs.mycelium_ref }}" ]; then
             mycelium up --build
           else
