@@ -236,7 +236,13 @@ async def await_message(
         while i < len(records):
             record = records[i]
             i += 1
-            if scoped and record_episode(record) != scoped:
+            ep = record_episode(record)
+            if scoped:
+                if ep != scoped:
+                    continue
+            elif ep and not l9.is_live_episode(room_name, ep):
+                # Thread records belong exclusively to thread-scoped calls; the
+                # room-wide inbox only holds live-episode messages.
                 continue
             if _addressed_to(record.content, handle):
                 _commit(i)

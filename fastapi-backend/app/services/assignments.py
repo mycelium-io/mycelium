@@ -189,19 +189,16 @@ async def _write(
     return _describe(key, fresh_meta, datetime.now(UTC))
 
 
-async def _raise_notice(
-    room: str, key: str, meta: dict, content: str, subkind: str, by: str
-) -> None:
+async def _raise_notice(room: str, key: str, subkind: str, by: str) -> None:
     """Tell the room the board moved: a task was claimed, handed back or resolved.
 
     A custody write is news the timeline should carry, so it raises a notice the
-    same way a thread write raises a ping — through the manager, waking nobody. The
-    episode is the row's own (stable across a custody write, so the pre-write meta
-    has it), and the title is the row's first line, so the notice can name the task
-    and open its thread.
+    same way a thread write raises a ping — through the manager, waking nobody. Reads
+    fresh state so the episode URN is present even when the write just minted it.
     """
     from app.services.room_channels import manager
 
+    meta, content = _load(room, key)
     episode = system_meta(meta).get(EPISODE_META)
     first = next((ln.strip() for ln in (content or "").splitlines() if ln.strip()), key)
     await manager.raise_notice(
@@ -244,7 +241,7 @@ async def claim(room: str, key: str, handle: str, ttl_minutes: int, now: datetim
         "assignment_note_by": None,
     }
     described = await _write(room, key, meta, content, patch, handle)
-    await _raise_notice(room, key, meta, content, "claimed", handle)
+    await _raise_notice(room, key, "claimed", handle)
     return described
 
 
@@ -265,7 +262,7 @@ async def release(room: str, key: str, handle: str, note: str | None, now: datet
         "assignment_note_by": handle.lstrip("@"),
     }
     described = await _write(room, key, meta, content, patch, handle)
-    await _raise_notice(room, key, meta, content, "released", handle)
+    await _raise_notice(room, key, "released", handle)
     return described
 
 
@@ -280,7 +277,7 @@ async def resolve(room: str, key: str, handle: str, now: datetime) -> dict:
         "assignment_note_by": handle.lstrip("@"),
     }
     described = await _write(room, key, meta, content, patch, handle)
-    await _raise_notice(room, key, meta, content, "resolved", handle)
+    await _raise_notice(room, key, "resolved", handle)
     return described
 
 

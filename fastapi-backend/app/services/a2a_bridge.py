@@ -310,7 +310,11 @@ class A2aResponder:
         # handles may trigger a remote call (and spend its bearer token / quota).
         # The agent's owner is always permitted — a restrictive allowlist must
         # not lock the operator out of their own agent.
-        if ref.allow_from and sender_bare not in ref.allow_from and sender_bare != ref.owner:
+        if (
+            ref.allow_from
+            and sender_bare not in ref.allow_from
+            and not (ref.owner and sender_bare == ref.owner)
+        ):
             logger.debug(
                 "a2a responder: @%s not in allow_from for @%s — ignoring summon", sender, handle
             )
@@ -418,9 +422,11 @@ class A2aResponder:
             return
         summoner = envelope_sender(in_reply_to)
         parent = envelope_message_id(in_reply_to)
+        msg = in_reply_to.header.message
+        episode = (msg.episode if msg and msg.episode else None) or l9.episode_urn(room, "live")
         env = l9.build_envelope(
             kind=l9.Kind.exchange,
-            episode=l9.episode_urn(room, "live"),
+            episode=episode,
             parents=[parent] if parent else None,
             sender=handle,
             sender_role="agent",

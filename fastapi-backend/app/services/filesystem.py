@@ -295,7 +295,7 @@ def delete_memory_file(base_dir: Path, key: str) -> bool:
 def list_memory_files(
     base_dir: Path,
     prefix: str | None = None,
-    limit: int = 1000,
+    limit: int | None = 1000,
 ) -> list[tuple[str, dict[str, Any], str]]:
     """List memory files, optionally filtered by key prefix.
 

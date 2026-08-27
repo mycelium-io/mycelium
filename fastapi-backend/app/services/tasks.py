@@ -35,6 +35,7 @@ namespaces are *worked*.
 
 from __future__ import annotations
 
+import fcntl
 import logging
 import re
 import uuid
@@ -47,6 +48,7 @@ from app.services.filesystem import (
     EPISODE_META,
     get_room_dir,
     list_memory_files,
+    parse_memory,
     read_memory_file,
     serialize_memory,
     system_meta,
@@ -106,7 +108,7 @@ _REWRITTEN_META = frozenset({"key", "created_by", "updated_by", "version", "tags
 
 def _norm(handle: str) -> str:
     """A handle as it compares: the roster and the caller may spell it differently."""
-    return handle.strip().lstrip("@").casefold()
+    return handle.strip().lstrip("@").lower()
 
 
 def slugify(title: str) -> str:
@@ -165,7 +167,7 @@ def bound_episodes(room: str) -> set[str]:
     to, which stays a row of its own rather than being hidden or deleted.
     """
     urns: set[str] = set()
-    for _key, meta, _content in list_memory_files(get_room_dir(room)):
+    for _key, meta, _content in list_memory_files(get_room_dir(room), limit=None):
         urn = system_meta(meta).get(EPISODE_META)
         if isinstance(urn, str) and urn:
             urns.add(urn)
@@ -358,25 +360,35 @@ def backfill_room(room: str) -> int:
     """
     base = get_room_dir(room)
     bound = 0
-    for key, meta, content in list_memory_files(base, limit=BACKFILL_SCAN_LIMIT):
+    for key, meta, _content in list_memory_files(base, limit=BACKFILL_SCAN_LIMIT):
         if system_meta(meta).get(EPISODE_META):
             continue
-        # Everything serialize_memory does not write from its own arguments,
-        # timestamps included, so the URN is the only thing that changes.
-        extra = {k: v for k, v in meta.items() if k not in _REWRITTEN_META}
-        extra[EPISODE_META] = mint_episode_urn(room)
-        (base / f"{key}.md").write_text(
-            serialize_memory(
-                content,
-                key=meta.get("key", key),
-                created_by=meta.get("created_by", l9.SYSTEM_ACTOR_ID),
-                updated_by=meta.get("updated_by"),
-                version=meta.get("version", 1),
-                tags=meta.get("tags"),
-                extra_meta=extra,
-            ),
-            encoding="utf-8",
-        )
+        # Re-read and re-check under an exclusive lock so two instances starting
+        # concurrently (rolling restart) cannot each mint a different URN for the
+        # same file: the second opener finds the URN the first already wrote and skips.
+        path = base / f"{key}.md"
+        try:
+            with path.open("r+", encoding="utf-8") as fh:
+                fcntl.flock(fh, fcntl.LOCK_EX)
+                locked_meta, locked_content = parse_memory(fh.read())
+                if system_meta(locked_meta).get(EPISODE_META):
+                    continue
+                extra = {k: v for k, v in locked_meta.items() if k not in _REWRITTEN_META}
+                extra[EPISODE_META] = mint_episode_urn(room)
+                new_text = serialize_memory(
+                    locked_content,
+                    key=locked_meta.get("key", key),
+                    created_by=locked_meta.get("created_by", l9.SYSTEM_ACTOR_ID),
+                    updated_by=locked_meta.get("updated_by"),
+                    version=locked_meta.get("version", 1),
+                    tags=locked_meta.get("tags"),
+                    extra_meta=extra,
+                )
+                fh.seek(0)
+                fh.write(new_text)
+                fh.truncate()
+        except FileNotFoundError:
+            continue
         bound += 1
     if bound:
         logger.info("bound %d pre-existing memories in %s to a thread", bound, room)
