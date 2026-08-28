@@ -90,13 +90,20 @@ const CUES = [
   // dive into the task
   { t: 31.52, kind: 'bloom', pitch: 'A5', gain: 0.13 },
 
-  // the thread: the two positions, no third
+  // the thread: body, claim, then the two positions (no third)
+  { t: 33.12, kind: 'tick', pitch: 'D5', gain: 0.07 }, // body
+  { t: 34.42, kind: 'tick', pitch: 'G4', gain: 0.06 }, // claimed
   { t: 36.12, kind: 'move', pitch: 'A4', gain: 0.20, actor: 'avery' }, // marcus · websocket
   { t: 39.12, kind: 'move', pitch: 'D4', gain: 0.20, actor: 'rowan' }, // anand · poll
 
-  // the aligner: summon, one round marker, consensus
-  { t: 49.36, kind: 'voice', pitch: 'C5', gain: 0.38, decay: 3.0 },
-  { t: 52.72, kind: 'round', gain: 0.46 },
+  // the aligner: summon, then a sound on each message — ask = tick, reply = pluck
+  { t: 49.36, kind: 'voice', pitch: 'C5', gain: 0.32, decay: 2.6 },              // summon
+  { t: 50.02, kind: 'tick',   pitch: 'A5', gain: 0.07 },                         // aligner → avery
+  { t: 50.82, kind: 'move',   pitch: 'F#4', gain: 0.16, actor: 'avery' },        // avery-claude accepts
+  { t: 51.82, kind: 'tick',   pitch: 'A5', gain: 0.07 },                         // aligner → anand
+  { t: 52.72, kind: 'move',   pitch: 'D4', gain: 0.18, actor: 'rowan' },         // anand-opencode counters
+  { t: 53.92, kind: 'tick',   pitch: 'A5', gain: 0.07 },                         // aligner → marcus
+  { t: 54.82, kind: 'accept', pitch: 'A5', gain: 0.18, actor: 'avery' },         // marcus accepts hybrid
   { t: 56.26, kind: 'consensus', gain: 1.05 },
 
   // compile: the fix tasks land
@@ -717,7 +724,6 @@ export function render(sr = 48000, { onProgress = () => {} } = {}) {
     ['pad', renderPad],
     ['throb', renderThrob],
     ['hyphae', renderHyphae],
-    ['counterpoint', renderCounterpoint],
     ['tension', renderTension],
     ['resolution', renderResolution],
     ['cues', renderCues],
