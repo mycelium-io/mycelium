@@ -14,6 +14,7 @@ Skills encode patterns like `window.__timelines` registration, `data-*` attribut
 
 ```bash
 npm run dev          # preview in browser (studio editor)
+npm run audio        # re-render the backing track to assets/mycelium-score.mp3
 npm run check        # lint + validate + inspect
 npm run render       # render to MP4
 npm run publish      # publish and get a shareable link
@@ -24,6 +25,8 @@ npx hyperframes docs <topic> # reference docs in terminal
 
 - `index.html` — main composition (root timeline)
 - `compositions/` — sub-compositions referenced via `data-composition-src`
+- `audio/` — the synthetic backing track, generated from source (`npm run audio`).
+  See `audio/README.md`; its cues are keyed to `index.html`'s GSAP times.
 - `assets/` — media files (video, audio, images)
 - `meta.json` — project metadata (id, name)
 - `transcript.json` — whisper word-level transcript (if generated)
