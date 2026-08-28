@@ -1406,7 +1406,7 @@
       // only the seed board fills during the hero reveal — the dropped task and
       // its children are held out and animated in later (scenes 5–6).
       tl.from('#s4board .board > .group-label:not(.fresh), #s4board .board > .row:not(.dropped):not(.child)',
-        { y: 16, opacity: 0, duration: 0.5, stagger: 0.26, ease: 'power2.out' }, 30.19);
+        { y: 16, opacity: 0, duration: 0.5, stagger: 0.26, ease: 'power2.out' }, 22.31);
 
       // ── Scene 5: Drop a task (36.23–43.13s) ──
       // A human types a concern into the composer; on enter it lands as a row.
@@ -1429,7 +1429,7 @@
       // becomes the ticket title (a shared-element morph).
       tl.to('#drop-row', { boxShadow: 'inset 0 0 0 1.5px var(--accent)', duration: 0.3 }, 30.32);
       tl.to('#s4board .sidebar, #s4board .rail, #s4board .header, #s4board .board-head, #s4board .composer',
-        { opacity: 0, duration: 0.5, ease: 'power2.in' }, 42.6);
+        { opacity: 0, duration: 0.5, ease: 'power2.in' }, 30.72);
       tl.to('#s4board .board > *:not(#drop-row)', { opacity: 0, duration: 0.45, ease: 'power2.in' }, 30.72);
       tl.set('#s5thread .ttitle', { opacity: 0 }, 0);
       tl.from('#s5thread .tcard', { opacity: 0, duration: 0.5, ease: 'power2.out' }, 31.37);
