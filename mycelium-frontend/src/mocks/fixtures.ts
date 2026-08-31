@@ -36,7 +36,7 @@ import type { RoomStatus } from "@/lib/board/upstream";
 // ages rows against the reader's real clock, so a stale anchor makes a lively
 // room look abandoned (drained TTL bars, "seen 10d ago") — pull this forward
 // when it drifts too far behind the present.
-const NOW = Date.parse("2026-08-22T17:30:00Z");
+const NOW = Date.parse("2026-08-28T17:30:00Z");
 const iso = (minsAgo: number): string => new Date(NOW - minsAgo * 60_000).toISOString();
 
 export interface MockRoom {
@@ -141,8 +141,8 @@ function buildMockGraph(
 
 // ── agent manifests (YAML strings — the UI parses description/adapter) ─────────
 
-const agentManifest = (description: string, adapter = "claude_code"): string =>
-  `adapter: ${adapter}\ndescription: "${description}"\n`;
+const agentManifest = (description: string, adapter = "claude_code", owner?: string): string =>
+  `adapter: ${adapter}\ndescription: "${description}"\n` + (owner ? `owner: ${owner}\n` : "");
 
 /** An external A2A agent's manifest: the card the hub resolved plus what it
  *  advertises, the fields the roster and the Network pane read. */
@@ -691,6 +691,31 @@ const atlas: RoomFixture = {
     // The backfill row's own thread: the reconciliation chased down.
     { id: "r1", sender_handle: "backfill", message_type: "broadcast", content: "reconciliation found 12 rows out of sync, all in the archived partition.", created_at: iso(16), episode: ATLAS_RETIRE_THREAD },
     { id: "r2", sender_handle: "backfill", message_type: "broadcast", content: "dual-write gap during the 09:14 deploy. patched the 12 by hand, counts match now.", created_at: iso(15), episode: ATLAS_RETIRE_THREAD },
+    // Two deliberately long, multi-paragraph messages — the wall-of-text case the
+    // channel has to handle without swallowing everything around it.
+    {
+      id: "long1",
+      sender_handle: "backfill",
+      message_type: "broadcast",
+      created_at: iso(13),
+      content:
+        "Full reconciliation write-up before we flip, so it's on the record and not just in my head.\n\n" +
+        "What I did: ran a row-by-row checksum of the catalog table between the old store and the new one, partitioned by month so I could parallelize it and so a mismatch would point at a date range rather than the whole 2M rows. Old store is the source of truth for anything written before dual-write went on (#499); the new store is authoritative only for the window since. The checksum is a SHA over the business columns (sku, price_cents, updated_at, status) — deliberately not the surrogate id, because the new store re-sequences those and I didn't want a billion false positives.\n\n" +
+        "What it found: 12 rows out of sync, every one of them in the archived partition (2019 and older). All 12 trace to the 09:14 deploy window, where dual-write dropped writes for about ninety seconds while the connection pool recycled. So this is not a copy bug — the historical copy is clean — it's a dual-write gap, which is exactly the failure mode we said we'd watch for.\n\n" +
+        "What I changed: patched the 12 by hand from the old store's values (they hadn't been touched since 2019, so the old store is unambiguously right), then re-ran the checksum for that partition only. Counts and checksums match now. I also added a standing job that re-checksums the archived partition every hour until cutover, so if the pool recycles again we hear about it in an hour instead of at the flip.\n\n" +
+        "What this means for Friday: I'm comfortable signing off on the read switch as far as data integrity goes. The one thing I'd still want before we flip is a clean run of the hourly checksum with zero new mismatches across a full 24h — that's the soak. If that's green Thursday night, flip Friday am as planned. If it's not, we hold and I dig into why the pool is still dropping writes.",
+    },
+    {
+      id: "long2",
+      sender_handle: "operator",
+      message_type: "broadcast",
+      created_at: iso(11),
+      content:
+        "Thanks, that's exactly the level of detail I wanted. Two follow-ups and then a decision.\n\n" +
+        "First: the ninety-second dual-write gap worries me more than the 12 rows do. The rows are fixed, but the gap is a class of bug — it'll happen again every time the pool recycles under load, and cutover day is the highest-load day we'll have. Can we pin the pool or bump the recycle timeout so it doesn't churn during the flip window? I'd rather spend an hour hardening that than discover a fresh gap at 09:00 Friday.\n\n" +
+        "Second: the hourly checksum job is great but it's checking the archived partition only. The rows most likely to move on cutover day are the hot ones, not the 2019 archive. Can we widen it to the last-30-days partition too, even if that's more expensive? I'll take the cost.\n\n" +
+        "Decision: we're go for Friday am pending a clean 24h soak, as backfill laid out. I'm adding one gate — the pool-recycle fix has to land and be verified before we flip, not after. If it's not in by Thursday evening we slip to Monday. I'd rather ship a day late than ship into a known write-dropping window. Filing both follow-ups as tasks now.",
+    },
   ],
   episodes: [atlasEpisodeSummary],
   episodeDetails: { e4f1a2: { ...atlasEpisodeSummary, messages: atlasL9Chain } },
@@ -956,7 +981,7 @@ const generalMemories: MockMemory[] = [
   {
     key: "work/860-retire-the-negotiate-pane-channel-board-netw",
     value: "860: retire the Negotiate pane — Channel · Board · Network",
-    meta: { kind: "action", status: "open", assignee: "@fix-860" },
+    meta: { kind: "action", status: "in_progress", owner: "@fix-860", assignment: "held", ttl_minutes: 1440 },
     created_by: "fix-860",
     version: 3,
     updated_at: iso(63),
@@ -965,7 +990,7 @@ const generalMemories: MockMemory[] = [
   {
     key: "work/872-every-memory-can-be-discussed-widen-thread-m",
     value: "872: every memory can be discussed",
-    meta: { kind: "action", status: "open", assignee: "@task-872" },
+    meta: { kind: "action", status: "in_progress", owner: "@task-872", assignment: "held", ttl_minutes: 1440 },
     created_by: "task-872",
     version: 3,
     updated_at: iso(62),
@@ -974,7 +999,7 @@ const generalMemories: MockMemory[] = [
   {
     key: "work/881-mycelium-login-auto-discovers-the-oidc-issue",
     value: "881: mycelium login auto-discovers the OIDC issuer from the hub",
-    meta: { kind: "action", status: "open", assignee: "@fix-881" },
+    meta: { kind: "action", status: "in_progress", owner: "@fix-881", assignment: "held", ttl_minutes: 1440 },
     created_by: "fix-881",
     version: 3,
     updated_at: iso(68),
@@ -983,7 +1008,7 @@ const generalMemories: MockMemory[] = [
   {
     key: "work/886-activity-feed-needs-real-coalescing-group-kn",
     value: "886: activity feed needs real coalescing — group Knowledge/pings/notices",
-    meta: { kind: "action", status: "open", assignee: "@task-886" },
+    meta: { kind: "action", status: "in_progress", owner: "@task-886", assignment: "held", ttl_minutes: 1440 },
     created_by: "task-886",
     version: 3,
     updated_at: iso(67),
@@ -992,7 +1017,7 @@ const generalMemories: MockMemory[] = [
   {
     key: "work/887-task-view-has-a-double-scroll-one-scroll-col",
     value: "887: task view has a double-scroll — one scroll, collapsible markdown over the chat",
-    meta: { kind: "action", status: "open", assignee: "@task-887" },
+    meta: { kind: "action", status: "in_progress", owner: "@task-887", assignment: "held", ttl_minutes: 1440 },
     created_by: "task-887",
     version: 3,
     updated_at: iso(60),
@@ -1001,7 +1026,7 @@ const generalMemories: MockMemory[] = [
   {
     key: "work/888-markdown-headings-are-uppercased-and-the-bod",
     value: "888: markdown headings are uppercased and the body styling looks poor",
-    meta: { kind: "action", status: "open", assignee: "@task-888" },
+    meta: { kind: "action", status: "in_progress", owner: "@task-888", assignment: "held", ttl_minutes: 1440 },
     created_by: "task-888",
     version: 3,
     updated_at: iso(6),
@@ -1010,7 +1035,7 @@ const generalMemories: MockMemory[] = [
   {
     key: "work/889-channel-ping-notice-rendering-slug-instead-o",
     value: "889: channel ping/notice rendering — slug instead of title, ragged type",
-    meta: { kind: "action", status: "open", assignee: "@task-889" },
+    meta: { kind: "action", status: "in_progress", owner: "@task-889", assignment: "held", ttl_minutes: 1440 },
     created_by: "task-889",
     version: 3,
     updated_at: iso(63),
@@ -1018,7 +1043,7 @@ const generalMemories: MockMemory[] = [
   },
   {
     key: "agents/fix-860",
-    value: agentManifest("Working 860."),
+    value: agentManifest("Working 860.", "claude_code", "operator@example.com"),
     created_by: "claude-web",
     version: 1,
     updated_at: iso(75),
@@ -1026,7 +1051,7 @@ const generalMemories: MockMemory[] = [
   },
   {
     key: "agents/task-872",
-    value: agentManifest("Working 872."),
+    value: agentManifest("Working 872.", "claude_code", "operator@example.com"),
     created_by: "claude-web",
     version: 1,
     updated_at: iso(79),
@@ -1034,7 +1059,7 @@ const generalMemories: MockMemory[] = [
   },
   {
     key: "agents/task-886",
-    value: agentManifest("Working 886."),
+    value: agentManifest("Working 886.", "claude_code", "operator@example.com"),
     created_by: "claude-web",
     version: 1,
     updated_at: iso(86),
@@ -1042,7 +1067,7 @@ const generalMemories: MockMemory[] = [
   },
   {
     key: "agents/task-887",
-    value: agentManifest("Working 887."),
+    value: agentManifest("Working 887.", "claude_code", "operator@example.com"),
     created_by: "claude-web",
     version: 1,
     updated_at: iso(81),
@@ -1050,7 +1075,7 @@ const generalMemories: MockMemory[] = [
   },
   {
     key: "agents/task-888",
-    value: agentManifest("Working 888."),
+    value: agentManifest("Working 888.", "claude_code", "operator@example.com"),
     created_by: "claude-web",
     version: 1,
     updated_at: iso(80),
@@ -1058,11 +1083,208 @@ const generalMemories: MockMemory[] = [
   },
   {
     key: "agents/task-889",
-    value: agentManifest("Working 889."),
+    value: agentManifest("Working 889.", "claude_code", "operator@example.com"),
     created_by: "claude-web",
     version: 1,
     updated_at: iso(80),
     episode: generalEpisode("a889ff"),
+  },
+];
+
+// The room at true scale: `mycelium-general` under load — a dozen people each
+// fielding a few one-shot task workers, plus the two engines and a bridged agent.
+// The Members rail has to stay legible at three dozen agents and a dozen owners,
+// and the Memory tree has to survive as many `agents/*` manifests plus the work
+// they file. That pressure is the design target, so the fixture carries it.
+
+// The humans fielding the swarm. Agents are handed out round-robin across them so
+// the People group fills the way a busy shared room's does — many owners, each
+// running a few workers — rather than the single-operator degenerate case.
+const GENERAL_PEOPLE = [
+  "operator@example.com",
+  "june@example.com",
+  "kesh@example.com",
+  "milo@example.com",
+  "priya@example.com",
+  "dre@example.com",
+  "sol@example.com",
+  "wen@example.com",
+  "tomas@example.com",
+  "ada@example.com",
+  "nour@example.com",
+  "bex@example.com",
+];
+
+interface GeneralAgent {
+  handle: string;
+  description: string;
+  adapter?: string;
+  minsAgo: number;
+}
+
+// The one-shot workers beyond the seven already wired into the L9 chain above.
+// Handles mirror the live hub: a `task-NNN`/`fix-NNN` per board item, plus a few
+// human-named one-offs. All owned by the one operator — the single-owner reality
+// the roster redesign has to handle.
+const generalExtraAgents: GeneralAgent[] = [
+  { handle: "fix-881", description: "Working 881: OIDC issuer auto-discovery.", minsAgo: 82 },
+  { handle: "promo-audio", description: "Compose a synthetic ambient backing track for the mycelium-promo video.", minsAgo: 300 },
+  { handle: "mobile-layout-fix", description: "Fixing mobile view layout issues in the frontend.", minsAgo: 620 },
+  { handle: "rm-integrity-banner", description: "Remove the memory-detail integrity banner from the GUI.", minsAgo: 410 },
+  { handle: "chat-search-minimap", description: "Ctrl+F in-chat search with an IDE-style match minimap on the scrollbar.", minsAgo: 355 },
+  { handle: "token-refresh-docs", description: "Document access-token lifetime and refresh cadence in the login guide.", minsAgo: 240 },
+  { handle: "fix-891", description: "Remove the consent / incoming-agent-request flow (#891).", minsAgo: 190 },
+  { handle: "fix-899", description: "Reverse-scroll pagination for the room channel (#899).", minsAgo: 175 },
+  { handle: "fix-907", description: "Thread every memory: drop the threading blocklist (#907).", minsAgo: 160 },
+  { handle: "task-902", description: "Board grouping: collapse resolved rows by default.", minsAgo: 145 },
+  { handle: "task-903", description: "Roster rail: group members and collapse idle agents.", minsAgo: 130 },
+  { handle: "task-905", description: "Memory tree: fold namespaces by default with per-folder counts.", minsAgo: 120 },
+  { handle: "task-908", description: "Search palette: rank agents above stale memories.", minsAgo: 110 },
+  { handle: "task-911", description: "Presence lease: stop expiring mid-turn on slow replies.", minsAgo: 95 },
+  { handle: "task-912", description: "Notice rendering: title over slug in the activity feed.", minsAgo: 88 },
+  { handle: "task-915", description: "Install panel: trim to the CLI-connect section.", minsAgo: 84 },
+  { handle: "task-918", description: "Command palette: jump to a room by fuzzy name.", minsAgo: 72 },
+  { handle: "task-921", description: "Streamline agent onboarding into one paste.", minsAgo: 66 },
+  { handle: "task-922", description: "Empty-state copy pass across the rails.", minsAgo: 58 },
+  { handle: "task-925", description: "Board promo: task-first, score cued to the board.", minsAgo: 44 },
+  { handle: "task-928", description: "Graph view: dim orphan memories, highlight roots.", minsAgo: 33 },
+  { handle: "task-931", description: "Thread pane: collapse the markdown body over the chat.", minsAgo: 21 },
+  { handle: "task-934", description: "Keycap sizing on the 24px status rail.", minsAgo: 14 },
+  { handle: "task-937", description: "A2A bridge: surface a slow peer as awaiting, not dead.", minsAgo: 9 },
+  { handle: "fix-940", description: "Reindex after import so search answers new rows.", minsAgo: 6 },
+  { handle: "fix-941", description: "Config apply picks up a hand-set model.", minsAgo: 4 },
+  { handle: "task-944", description: "Screenshot workflow renders the roster at scale.", minsAgo: 3 },
+  { handle: "task-947", description: "Docs: consumer-first ordering on the concepts pages.", minsAgo: 2 },
+  { handle: "aligner", description: "First-party mediator (NEGMAS SAO).", adapter: "engine", minsAgo: 500 },
+  { handle: "synthesizer", description: "Distills room memory into a shared briefing.", adapter: "engine", minsAgo: 500 },
+];
+
+const generalExtraAgentMemories: MockMemory[] = generalExtraAgents.map((a, i) => ({
+  key: `agents/${a.handle}`,
+  value: agentManifest(
+    a.description,
+    a.adapter ?? "claude_code",
+    a.adapter === "engine" ? undefined : GENERAL_PEOPLE[i % GENERAL_PEOPLE.length],
+  ),
+  created_by: a.adapter === "engine" ? "operator" : "claude-web",
+  version: 1,
+  updated_at: iso(a.minsAgo),
+  episode: generalEpisode(`x${a.handle}`),
+}));
+
+// A bridged external agent, so the roster's "Services" group is not just engines.
+generalExtraAgentMemories.push({
+  key: "agents/echo",
+  value: a2aManifest("Hello-world A2A agent, for smoke tests.", "https://echo.example", ["greet"]),
+  created_by: "operator",
+  version: 1,
+  updated_at: iso(700),
+  episode: generalEpisode("xecho"),
+});
+
+// The non-`agents/` memories the swarm produced — decisions, context, status,
+// a couple of promoted skills, and a parked failure — so the Memory tree has
+// every namespace the real room grew, not just `work/` and `agents/`.
+const generalExtraMemories: MockMemory[] = [
+  {
+    key: "context/goal",
+    value: "Keep the app legible while a swarm of agents works the board.",
+    content_text: "Keep the app legible while a swarm of agents works the board.",
+    created_by: "operator",
+    version: 1,
+    updated_at: iso(60 * 90),
+    episode: generalEpisode("cgoal"),
+  },
+  {
+    key: "context/conventions",
+    value: "No em dashes in user copy. Plain prose. No design docs in the repo.",
+    content_text: "No em dashes in user copy. Plain prose. No design docs in the repo.",
+    created_by: "operator",
+    version: 4,
+    updated_at: iso(60 * 40),
+    episode: generalEpisode("cconv"),
+  },
+  {
+    key: "context/synthesis",
+    value:
+      "# mycelium-general — room briefing\n\n" +
+      "**Theme.** UX at scale: the rails buckle when three dozen agents work at once.\n\n" +
+      "**In flight.** 886 (activity coalescing), 887 (task double-scroll), roster + memory-tree grouping.\n\n" +
+      "**Landed.** 881 issuer discovery, 889 notice rendering, onboarding streamlined.",
+    content_text:
+      "Room briefing: UX at scale. In flight — activity coalescing, task scroll, roster + memory grouping. Landed — issuer discovery, notice rendering, onboarding.",
+    created_by: "synthesizer",
+    version: 1,
+    updated_at: iso(40),
+    episode: generalEpisode("csynth"),
+  },
+  {
+    key: "decisions/roster-grouping",
+    value: "Group the Members rail by lifecycle (live / awaiting / idle), not owner — one operator owns nearly all of them.",
+    content_text: "Group the roster by lifecycle, not owner: a single owner makes owner-grouping useless.",
+    created_by: "operator",
+    version: 1,
+    updated_at: iso(128),
+    episode: generalEpisode("droster"),
+  },
+  {
+    key: "decisions/memory-tree-default",
+    value: "Memory tree folds namespaces by default, with a per-folder count. Search bypasses the tree.",
+    content_text: "Fold the memory tree by default with folder counts.",
+    created_by: "operator",
+    version: 1,
+    updated_at: iso(118),
+    episode: generalEpisode("dtree"),
+  },
+  {
+    key: "decisions/drop-contributor-pills",
+    value: "Drop the contributor pill wall in the Memory panel; keep the count. Per-memory attribution already lives in the drawer.",
+    content_text: "Drop the contributor pills; keep the count.",
+    created_by: "operator",
+    version: 1,
+    updated_at: iso(112),
+    episode: generalEpisode("dpills"),
+  },
+  {
+    key: "status/sprint",
+    value: "Swarm working the UX backlog. 886 gates readability; land it first.",
+    content_text: "Swarm on the UX backlog; 886 gates readability.",
+    created_by: "operator@example.com",
+    version: 6,
+    updated_at: iso(8),
+    episode: generalEpisode("ssprint"),
+  },
+  {
+    key: "skills/take-a-task",
+    value:
+      "---\ndescription: Take a task off the board, work it in its own thread, resolve it.\n---\n\n" +
+      "Claim an open `work/` row, coordinate in its thread, and resolve it when the PR lands.",
+    content_text: "Take a task off the board, work it in its thread, resolve it.",
+    created_by: "operator",
+    version: 2,
+    updated_at: iso(60 * 30),
+    episode: generalEpisode("sktask"),
+  },
+  {
+    key: "skills/screenshot",
+    value:
+      "---\ndescription: Capture the running app or CLI output with shotkit.\n---\n\n" +
+      "Use `node shotkit/bin/shot.mjs app <route> --mock` to shoot a panel at scale.",
+    content_text: "Capture the app or CLI output with shotkit.",
+    created_by: "operator",
+    version: 1,
+    updated_at: iso(60 * 28),
+    episode: generalEpisode("skshot"),
+  },
+  {
+    key: "failed/coalescing-spike",
+    value: "First activity-coalescing spike over-grouped and hid the human's lines. Parked; see 886.",
+    meta: { kind: "concern", status: "blocked", owner: "@task-886", blocked_by: ["#886"] },
+    content_text: "Coalescing spike over-grouped and buried human messages. Parked.",
+    created_by: "task-886",
+    version: 1,
+    updated_at: iso(70),
+    episode: generalEpisode("fcoal"),
   },
 ];
 
@@ -1107,9 +1329,9 @@ const generalL9: Record<string, unknown>[] = [
   generalPing("work/887-task-view-has-a-double-scroll-one-scroll-col", "task-887", "m67-0", 62),
   generalPing("work/872-every-memory-can-be-discussed-widen-thread-m", "task-872", "m69-0", 62),
   generalNotice("resolved", "work/872-every-memory-can-be-discussed-widen-thread-m", "872: every memory can be discussed", "task-872", 62),
-  generalPing("work/887-task-view-has-a-double-scroll-one-scroll-col", "juliarvalenti@gmail.com", "m73-0", 60),
-  generalPing("work/887-task-view-has-a-double-scroll-one-scroll-col", "juliarvalenti@gmail.com", "m73-1", 60),
-  generalPing("work/887-task-view-has-a-double-scroll-one-scroll-col", "juliarvalenti@gmail.com", "m73-2", 60),
+  generalPing("work/887-task-view-has-a-double-scroll-one-scroll-col", "operator@example.com", "m73-0", 60),
+  generalPing("work/887-task-view-has-a-double-scroll-one-scroll-col", "operator@example.com", "m73-1", 60),
+  generalPing("work/887-task-view-has-a-double-scroll-one-scroll-col", "operator@example.com", "m73-2", 60),
   generalNotice("claimed", "work/888-markdown-headings-are-uppercased-and-the-bod", "888: markdown headings are uppercased and the body styling looks poor", "task-888", 6),
 ];
 
@@ -1224,7 +1446,7 @@ function generalKnowledge(key: string, updatedBy: string, minutesAgo: number): M
 const generalSaid: MockMessage[] = [
   {
     id: "gs-1",
-    sender_handle: "juliarvalenti@gmail.com",
+    sender_handle: "operator@example.com",
     message_type: "broadcast",
     created_at: iso(70),
     episode: GENERAL_LIVE,
@@ -1232,7 +1454,7 @@ const generalSaid: MockMessage[] = [
   },
   {
     id: "gs-2",
-    sender_handle: "juliarvalenti@gmail.com",
+    sender_handle: "operator@example.com",
     message_type: "broadcast",
     created_at: iso(30),
     episode: GENERAL_LIVE,
@@ -1240,7 +1462,7 @@ const generalSaid: MockMessage[] = [
   },
   {
     id: "gs-3",
-    sender_handle: "juliarvalenti@gmail.com",
+    sender_handle: "operator@example.com",
     message_type: "broadcast",
     created_at: iso(8),
     episode: GENERAL_LIVE,
@@ -1261,13 +1483,17 @@ const generalBacklog: MockMessage[] = Array.from({ length: 260 }, (_, i) => {
   const said = [
     "Rebased onto main; the compose smoke build is green again.",
     "The presence lease expiring mid-turn is what dropped that reply, not SLIM.",
-    "Reindexed after the import — search is answering for the new rows now.",
+    "Reindexed after the import, search is answering for the new rows now.",
     "Anyone else seeing the aligner take two rounds to notice the agreement?",
-    "That was a stale .env — config apply and it picked the model up.",
+    "That was a stale .env, config apply and it picked the model up.",
   ];
+  // The backlog is attributed to handles that are actually in the room — the one
+  // operator and a handful of registered agents — so replaying it does not mint
+  // phantom "people" who only ever appear as a backlog sender.
+  const senders = ["operator@example.com", "task-872", "fix-860", "task-888", "task-889", "task-886"];
   return {
     id: `gb-${i}`,
-    sender_handle: i % 3 === 0 ? "juliarvalenti@gmail.com" : `task-${800 + (i % 40)}`,
+    sender_handle: senders[i % senders.length],
     message_type: "broadcast",
     created_at: iso(60 * 26 - i * 5),
     episode: GENERAL_LIVE,
@@ -1284,13 +1510,26 @@ const general: RoomFixture = {
     is_persistent: true,
     mas_id: "mas_9f3c02de",
   },
-  memories: generalMemories,
+  memories: [...generalMemories, ...generalExtraAgentMemories, ...generalExtraMemories],
   messages: [...generalBacklog, ...generalKnowledgePushes, ...generalSaid].sort(
     (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at),
   ),
   episodes: [],
   episodeDetails: {},
   l9: generalL9,
+  // A handful live or awaiting; the rest of the swarm reads as idle. This is what
+  // splits the roster into its lifecycle groups.
+  presence: [
+    { handle: "task-937", kind: "slim", last_seen: null },
+    { handle: "fix-940", kind: "slim", last_seen: null },
+    { handle: "fix-941", kind: "slim", last_seen: null },
+    { handle: "task-944", kind: "slim", last_seen: null },
+    { handle: "task-888", kind: "slim", last_seen: null },
+    { handle: "task-931", kind: "lease", last_seen: iso(2) },
+    { handle: "task-934", kind: "lease", last_seen: iso(4) },
+    { handle: "task-947", kind: "lease", last_seen: iso(1) },
+    { handle: "aligner", kind: "lease", last_seen: iso(5) },
+  ],
 };
 
 export const ROOM_FIXTURES: Record<string, RoomFixture> = {

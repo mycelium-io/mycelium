@@ -1056,7 +1056,7 @@ class RoomChannelManager:
         managed = self._channels.get(room)
         if managed is None:
             return False
-        managed.lifecycle.open(episode, self.members(room), negotiation=negotiation)
+        managed.lifecycle.open(episode, set(self.members(room)), negotiation=negotiation)
         return True
 
     async def close_episode(self, room: str) -> bool:
@@ -1082,7 +1082,7 @@ class RoomChannelManager:
         simply expires mid-negotiation, with no other join/leave happening
         after it, is not detected here.
         """
-        if not managed.lifecycle.on_membership_change(self.members(managed.room)):
+        if not managed.lifecycle.on_membership_change(set(self.members(managed.room))):
             return
         episode = managed.lifecycle.episode
         managed.lifecycle.close()

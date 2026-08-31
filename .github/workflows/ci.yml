@@ -196,7 +196,7 @@ jobs:
 
       - name: Set up Docker Buildx
         if: steps.changed.outputs.run == 'true'
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
       - name: Build mycelium-collector image (no push)
         if: steps.changed.outputs.run == 'true'
@@ -246,7 +246,7 @@ jobs:
 
       - name: Set up Docker Buildx
         if: steps.changed.outputs.run == 'true'
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
       - name: Build mycelium-backend image (no push)
         if: steps.changed.outputs.run == 'true'
@@ -336,7 +336,7 @@ jobs:
 
       - name: Set up Docker Buildx
         if: steps.changed.outputs.run == 'true'
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
       # The typecheck job above runs in the full checkout, where a file under
       # mycelium-frontend/ can reach sideways into a sibling directory and
