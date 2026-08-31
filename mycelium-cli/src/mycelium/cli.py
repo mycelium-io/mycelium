@@ -17,6 +17,7 @@ from mycelium.commands import (
     docs,
     doctor,
     engine,
+    herdr,
     hub,
     install,
     instance,
@@ -116,6 +117,7 @@ app.add_typer(ui.app, name="ui")
 app.add_typer(agent.app, name="agent")
 app.add_typer(user.app, name="user")
 app.add_typer(engine.app, name="engine")
+app.add_typer(herdr.app, name="herdr")
 app.add_typer(openshell.app, name="openshell")
 app.add_typer(demo.app, name="demo")
 app.add_typer(hub.app, name="hub")

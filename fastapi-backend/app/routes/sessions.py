@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, Field
 
 from app.bus import bus, room_channel
 from app.schemas import (
@@ -41,6 +42,32 @@ from app.services.filesystem import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rooms/{room_name}/sessions", tags=["sessions"])
+
+
+class HerdrAgentState(BaseModel):
+    """One agent's live herdr state in a sync push."""
+
+    status: str | None = Field(default=None, description="idle/working/blocked/done.")
+    title: str | None = Field(
+        default=None, description="herdr terminal title — the agent's current task."
+    )
+
+
+class HerdrPresenceBody(BaseModel):
+    """The host-side ``mycelium herdr sync`` push: handle → herdr agent state.
+
+    Each value may be a bare status string (simple form) or a
+    :class:`HerdrAgentState` object carrying the status + current task title.
+    """
+
+    statuses: dict[str, str | HerdrAgentState] = Field(
+        default_factory=dict,
+        description="Map of agent handle → herdr state (status + optional task title).",
+    )
+    ttl_s: float | None = Field(
+        default=None,
+        description="Seconds an entry stays live without a refresh (default 90).",
+    )
 
 
 def _ensure_room(room_name: str) -> None:
@@ -173,10 +200,52 @@ async def list_members(room_name: str):
                     if info.last_seen is not None
                     else None
                 ),
+                # herdr live agent state (idle/working/blocked/…) when the handle
+                # is mapped to a live herdr pane; None otherwise.
+                "status": info.status,
+                # True when a room mention is queued for this handle but held until
+                # it goes idle (the hold-until-idle doorbell).
+                "wake_pending": info.wake_pending,
+                # herdr terminal title — the agent's current task, when herdr-present.
+                "title": info.title,
             }
             for h, info in sorted(room_channels.manager.presence(room_name).items())
         ]
     }
+
+
+@router.post("/herdr-presence", status_code=204)
+async def push_herdr_presence(room_name: str, body: HerdrPresenceBody):
+    """Overlay herdr liveness for a room (the ``mycelium herdr sync`` bridge's push).
+
+    The backend runs containerized and can't see the host's herdr socket, so the
+    host-side bridge polls ``herdr agent list`` and pushes the current per-handle
+    state here. This is a presence/UI surface only — it never enters the mediator
+    roster. Entries lapse on their TTL, so a stopped bridge / closed pane clears
+    itself without an explicit delete.
+    """
+    if not room_exists(room_name):
+        raise HTTPException(status_code=404, detail="Room not found")
+    normalized: dict[str, str | dict] = {
+        h: ({"status": v.status, "title": v.title} if isinstance(v, HerdrAgentState) else v)
+        for h, v in body.statuses.items()
+    }
+    room_channels.manager.set_herdr_presence(
+        room_name, normalized, ttl_s=body.ttl_s if body.ttl_s else 90.0
+    )
+
+
+@router.get("/herdr-wakes")
+async def drain_herdr_wakes(room_name: str):
+    """Drain pending herdr wake requests for a room (the sync bridge polls this).
+
+    Returns and clears the queue the backend filled when a tag mentioned a
+    herdr-present-but-not-joined handle. The bridge — the only actor that can
+    reach the host's herdr socket — then runs the actual ``herdr agent prompt``.
+    """
+    if not room_exists(room_name):
+        raise HTTPException(status_code=404, detail="Room not found")
+    return {"wakes": room_channels.manager.drain_herdr_wakes(room_name)}
 
 
 @router.delete("/{session_id}", status_code=204)

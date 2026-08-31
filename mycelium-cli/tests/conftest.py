@@ -243,6 +243,7 @@ def stub_typed_client(
     """
     fake_config = SimpleNamespace(
         server=SimpleNamespace(api_url=api_url),
+        herdr=SimpleNamespace(autowake=False, wake_timeout_ms=120000),
         get_active_room=lambda: active_room,
     )
     if hasattr(module, "MyceliumConfig"):

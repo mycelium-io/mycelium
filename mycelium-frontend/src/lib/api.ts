@@ -684,14 +684,25 @@ export async function fetchA2aBridge(roomName: string): Promise<A2aBridgeState |
   });
 }
 
-export type PresenceKind = "slim" | "lease";
+export type PresenceKind = "slim" | "lease" | "herdr";
 
 export interface PresenceMember {
   handle: string;
-  /** "slim" = active SLIM socket; "lease" = server-held await/reply (no socket). */
+  /** "slim" = active SLIM socket; "lease" = server-held await/reply (no socket);
+   *  "herdr" = alive in a herdr-managed pane but not joined (pushed by the host
+   *  `mycelium herdr sync` bridge). */
   kind: PresenceKind;
   /** ISO wall-clock of a lease member's last poll; null for SLIM (always now). */
   last_seen: string | null;
+  /** herdr live agent state (idle/working/blocked/done) when the handle is mapped
+   *  to a live herdr pane; null otherwise. */
+  status?: string | null;
+  /** True when a room mention is queued for this handle but held until it goes
+   *  idle (the hold-until-idle doorbell), surfaced as a "wake queued" indicator. */
+  wake_pending?: boolean;
+  /** herdr's terminal title, the agent's current task ("Review PR comments").
+   *  Shown as the roster's activity line for herdr-hosted members. */
+  title?: string | null;
 }
 
 /** Live presence set for a room: SLIM-connected + server-held lease members. */

@@ -155,6 +155,7 @@
           <a href="#config-auth" class="nav-link sub">auth</a>
           <a href="#config-login" class="nav-link sub">login</a>
           <a href="#config-agent-auth" class="nav-link sub">agent_auth</a>
+          <a href="#config-herdr" class="nav-link sub">herdr</a>
           <a href="#config-metrics" class="nav-link sub">metrics</a>
           <a href="#config-a2a" class="nav-link sub">a2a</a>
         </div>
@@ -1182,6 +1183,15 @@
 
 <span class="comment"># Audience to request for agent tokens; should match the hub&#x27;s auth.audience.</span>
 <span class="arg">audience</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># Optional herdr persistent-runtime wake layer.</span>
+<span class="cmd" id="config-herdr">[herdr]</span>
+
+<span class="comment"># On a non-resident `agent invoke`, wake the handle&#x27;s mapped herdr pane.</span>
+<span class="arg">autowake</span> = <span class="flag">false</span>
+
+<span class="comment"># Wait budget (ms) for a herdr wake to settle.</span>
+<span class="arg">wake_timeout_ms</span> = 120000
 
 <span class="comment"># Configuration for the metrics collector + display.</span>
 <span class="cmd" id="config-metrics">[metrics]</span>
