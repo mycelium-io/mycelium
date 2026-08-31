@@ -1981,6 +1981,93 @@
         }
       }
     },
+    "/api/rooms/{room_name}/sessions/herdr-presence": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Push Herdr Presence",
+        "description": "Overlay herdr liveness for a room (the ``mycelium herdr sync`` bridge's push).\n\nThe backend runs containerized and can't see the host's herdr socket, so the\nhost-side bridge polls ``herdr agent list`` and pushes the current per-handle\nstate here. This is a presence/UI surface only \u2014 it never enters the mediator\nroster. Entries lapse on their TTL, so a stopped bridge / closed pane clears\nitself without an explicit delete.",
+        "operationId": "push_herdr_presence_api_rooms__room_name__sessions_herdr_presence_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HerdrPresenceBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/sessions/herdr-wakes": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Drain Herdr Wakes",
+        "description": "Drain pending herdr wake requests for a room (the sync bridge polls this).\n\nReturns and clears the queue the backend filled when a tag mentioned a\nherdr-present-but-not-joined handle. The bridge \u2014 the only actor that can\nreach the host's herdr socket \u2014 then runs the actual ``herdr agent prompt``.",
+        "operationId": "drain_herdr_wakes_api_rooms__room_name__sessions_herdr_wakes_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/sessions/{session_id}": {
       "delete": {
         "tags": [
@@ -4614,6 +4701,71 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HerdrAgentState": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status",
+            "description": "idle/working/blocked/done."
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "herdr terminal title \u2014 the agent's current task."
+          }
+        },
+        "type": "object",
+        "title": "HerdrAgentState",
+        "description": "One agent's live herdr state in a sync push."
+      },
+      "HerdrPresenceBody": {
+        "properties": {
+          "statuses": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/components/schemas/HerdrAgentState"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Statuses",
+            "description": "Map of agent handle \u2192 herdr state (status + optional task title)."
+          },
+          "ttl_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl S",
+            "description": "Seconds an entry stays live without a refresh (default 90)."
+          }
+        },
+        "type": "object",
+        "title": "HerdrPresenceBody",
+        "description": "The host-side ``mycelium herdr sync`` push: handle \u2192 herdr agent state.\n\nEach value may be a bare status string (simple form) or a\n:class:`HerdrAgentState` object carrying the status + current task title."
       },
       "L9ActorRead": {
         "properties": {
