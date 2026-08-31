@@ -239,9 +239,17 @@ async def await_message(
             ep = record_episode(record)
             if scoped and ep != scoped:
                 continue
+            is_thread = not scoped and ep and not l9.is_live_episode(room_name, ep)
+            if is_thread and persister.episode_position(handle, ep) >= i:
+                # Already served to this handle via a --task-scoped read of this
+                # same thread (that path never advances the room cursor, on
+                # purpose — see test_watching_a_thread_leaves_the_room_inbox_alone
+                # — so without this check a bare call re-scanning from an
+                # untouched room position would hand it out a second time).
+                continue
             if _addressed_to(record.content, handle):
                 _commit(i)
-                if not scoped and ep and not l9.is_live_episode(room_name, ep):
+                if is_thread:
                     # A bare (unscoped) call just delivered a thread record — fork
                     # that thread's own cursor past it too, so a caller that later
                     # scopes to this same episode (``--task``) doesn't see it again.

@@ -1077,8 +1077,10 @@ class RoomChannelManager:
 
         Compared against the same :meth:`members` union ``open_episode`` froze
         on — a lease-only participant refreshing/holding its lease is not a
-        membership change, only a real SLIM join/leave, or a lease actually
-        expiring, is.
+        membership change, only a real SLIM join/leave is. This runs only from
+        the invite (``_register_member``) and ``remove`` paths, so a lease that
+        simply expires mid-negotiation, with no other join/leave happening
+        after it, is not detected here.
         """
         if not managed.lifecycle.on_membership_change(self.members(managed.room)):
             return
@@ -1089,7 +1091,7 @@ class RoomChannelManager:
         logger.info("Membership change aborted episode %s on room %s", episode, managed.room)
         try:
             envelope = build_episode_abort_envelope(
-                episode, recipients=sorted(self.members(managed.room)), topic=l9.topic_urn(managed.room)
+                episode, recipients=self.members(managed.room), topic=l9.topic_urn(managed.room)
             )
             await managed.channel.send(envelope)
             # Record the abort locally so the transcript/UI see it — SLIM may not

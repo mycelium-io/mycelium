@@ -225,6 +225,24 @@ class TestBareAwaitSeesThreads:
         assert again_scoped["message"] is None
         assert fake.episode_position("api", THREAD) == 1
 
+    @pytest.mark.asyncio
+    async def test_a_thread_served_scoped_first_is_not_served_again_bare(self, wired):
+        """The reverse order of the test above: a ``--task``-scoped read never
+        advances the room cursor (on purpose, that's the whole point of the two
+        cursors being independent) — so a later bare call, scanning from that
+        same untouched room position, must not hand the same record out again."""
+        log = persister.DeliveryLog()
+        log.record(_record("t-1", to="api", episode=THREAD), delivered_to=set(), recipients=["api"])
+
+        wired(log)
+        scoped = await participate.await_message(
+            ROOM, _REQUEST, handle="api", timeout=0, episode=THREAD
+        )
+        assert scoped["message_id"] == "t-1"
+
+        bare = await participate.await_message(ROOM, _REQUEST, handle="api", timeout=1)
+        assert bare["message"] is None
+
 
 class TestThreadWriteAuthorization:
     """Naming a thread is not how one comes into being, and a frozen roster holds."""
