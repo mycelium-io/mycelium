@@ -260,6 +260,13 @@ async def test_reply_as_an_owned_agent_is_allowed(client: AsyncClient, as_princi
             # the call the reply route makes every time.
             return None
 
+        def enqueue_herdr_wakes_for_mentions(
+            self, room: str, text: str, *, exclude: str | None = None
+        ) -> None:
+            # herdr wake-on-mention hook the reply route fires; the fake only has
+            # to accept the call.
+            return None
+
     monkeypatch.setattr(room_channels, "manager", _Manager())
 
     await _make_room(client)
@@ -312,6 +319,13 @@ async def test_reply_stamps_the_token_handle_on_the_l9_actor(
         async def raise_ping(self, room: str, **_kw: Any) -> None:
             # A reply to the room itself pings nothing; the fake only has to answer
             # the call the reply route makes every time.
+            return None
+
+        def enqueue_herdr_wakes_for_mentions(
+            self, room: str, text: str, *, exclude: str | None = None
+        ) -> None:
+            # herdr wake-on-mention hook the reply route fires; the fake only has
+            # to accept the call.
             return None
 
     monkeypatch.setattr(room_channels, "manager", _Manager())
