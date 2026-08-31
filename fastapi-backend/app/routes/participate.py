@@ -237,15 +237,15 @@ async def await_message(
             record = records[i]
             i += 1
             ep = record_episode(record)
-            if scoped:
-                if ep != scoped:
-                    continue
-            elif ep and not l9.is_live_episode(room_name, ep):
-                # Thread records belong exclusively to thread-scoped calls; the
-                # room-wide inbox only holds live-episode messages.
+            if scoped and ep != scoped:
                 continue
             if _addressed_to(record.content, handle):
                 _commit(i)
+                if not scoped and ep and not l9.is_live_episode(room_name, ep):
+                    # A bare (unscoped) call just delivered a thread record — fork
+                    # that thread's own cursor past it too, so a caller that later
+                    # scopes to this same episode (``--task``) doesn't see it again.
+                    persister.advance_episode_cursor(handle, ep, i)
                 _last_tick[key] = record.content
                 room_channels.manager.refresh_lease(room_name, handle)
                 return _describe(room_name, handle, record)

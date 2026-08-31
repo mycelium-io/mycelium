@@ -184,6 +184,48 @@ class TestScopedAwait:
         assert fake.episode_position("api", THREAD) == 1  # already served, before the restart
 
 
+class TestBareAwaitSeesThreads:
+    """A bare (unscoped) ``await`` still wakes on a thread tick.
+
+    ``await``'s own contract (see its docstring) promises a wake on "anything
+    addressed to the handle anywhere in the room" when no ``episode`` is given.
+    A negotiation always runs inside its own freshly-minted thread — never the
+    room's live episode — so excluding thread records from the unscoped path
+    (as a prior fix briefly did) left every such tick permanently undeliverable
+    to a caller with no live SLIM socket (the plain HTTP long-poll participant
+    this endpoint exists for): it has no way to learn the thread's URN ahead of
+    time to scope to it.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_bare_await_delivers_a_thread_tick(self, wired):
+        log = persister.DeliveryLog()
+        log.record(_record("t-1", to="api", episode=THREAD), delivered_to=set(), recipients=["api"])
+
+        wired(log)
+        result = await participate.await_message(ROOM, _REQUEST, handle="api", timeout=0)
+        assert result["message_id"] == "t-1"
+        assert result["episode"] == THREAD
+
+    @pytest.mark.asyncio
+    async def test_a_bare_delivery_forks_the_thread_cursor_so_it_is_not_served_twice(self, wired):
+        """Once delivered room-wide, a later ``--task`` scope to the same thread
+        must not see it again — the bare call forks that thread's own cursor
+        past it, same as an explicitly scoped call would."""
+        log = persister.DeliveryLog()
+        log.record(_record("t-1", to="api", episode=THREAD), delivered_to=set(), recipients=["api"])
+
+        fake = wired(log)
+        bare = await participate.await_message(ROOM, _REQUEST, handle="api", timeout=0)
+        assert bare["message_id"] == "t-1"
+
+        again_scoped = await participate.await_message(
+            ROOM, _REQUEST, handle="api", timeout=1, episode=THREAD
+        )
+        assert again_scoped["message"] is None
+        assert fake.episode_position("api", THREAD) == 1
+
+
 class TestThreadWriteAuthorization:
     """Naming a thread is not how one comes into being, and a frozen roster holds."""
 
