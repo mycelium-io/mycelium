@@ -204,7 +204,13 @@ describe("<MemoryPanel /> preview hovercard", () => {
     vi.useRealTimers();
   });
 
+  // The tree opens folded to its namespaces, so reveal the folder before the leaf.
+  const expandDecisions = async () => {
+    fireEvent.click(await screen.findByText("decisions"));
+  };
+
   const hoverRow = async () => {
+    await expandDecisions();
     const row = (await screen.findByText("ship-it.md")).closest("div")!;
     fireEvent.mouseEnter(row);
     return row;

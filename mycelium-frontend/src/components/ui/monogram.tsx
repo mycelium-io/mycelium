@@ -21,6 +21,10 @@ interface Props {
   className?: string;
   /** Optional live-presence halo. */
   presence?: Presence;
+  /** Drop the presence dot's own tooltip. Set where the avatar sits inside a
+   *  larger hover target (a roster row's card, a facepile chip) that already
+   *  names the presence — otherwise the dot's bubble intercepts that hover. */
+  mutePresence?: boolean;
 }
 
 interface Halo {
@@ -45,7 +49,7 @@ function halo(presence: Presence): Halo {
  *  column of identical chips. Presence rides as a **halo** around it — colour
  *  for the tier, a breathing ring for a poll in flight — plus a corner dot that
  *  carries the tier on its own for anyone the ring's colour doesn't reach. */
-export function Monogram({ handle, color, className, presence }: Props) {
+export function Monogram({ handle, color, className, presence, mutePresence }: Props) {
   const tint = color ?? avatarTint(handle);
   const ring = presence ? halo(presence) : null;
   return (
@@ -72,7 +76,7 @@ export function Monogram({ handle, color, className, presence }: Props) {
       >
         {initials(handle)}
       </div>
-      {ring && <PresenceDot halo={ring} />}
+      {ring && <PresenceDot halo={ring} mute={mutePresence} />}
     </div>
   );
 }
@@ -80,15 +84,16 @@ export function Monogram({ handle, color, className, presence }: Props) {
 /** The corner dot. The halo is a colour, and colour alone shouldn't be the only
  *  carrier of a tier, so the dot names itself for screen readers rather than
  *  leaning on the tooltip a pointer reveals. */
-function PresenceDot({ halo: ring }: { halo: Halo }) {
-  return (
-    <Tooltip content={ring.label}>
-      <span
-        role="img"
-        aria-label={ring.label}
-        className="absolute -bottom-0.5 -right-0.5 block size-2.5 rounded-full ring-2 ring-paper"
-        style={{ background: ring.color }}
-      />
-    </Tooltip>
+function PresenceDot({ halo: ring, mute }: { halo: Halo; mute?: boolean }) {
+  const dot = (
+    <span
+      role="img"
+      aria-label={ring.label}
+      className="absolute -bottom-0.5 -right-0.5 block size-2.5 rounded-full ring-2 ring-paper"
+      style={{ background: ring.color }}
+    />
   );
+  // Muted: keep the dot and its accessible name, drop the hover bubble so it does
+  // not intercept an enclosing hover target.
+  return mute ? dot : <Tooltip content={ring.label}>{dot}</Tooltip>;
 }
