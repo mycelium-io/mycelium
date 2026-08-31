@@ -140,9 +140,11 @@ def _room_members(config: MyceliumConfig, room_name: str) -> dict[str, str] | No
     """
     import httpx
 
+    from mycelium.client import auth_headers
+
     try:
         url = f"{config.server.api_url}/api/rooms/{room_name}/sessions/members"
-        resp = httpx.get(url, timeout=5.0)
+        resp = httpx.get(url, timeout=5.0, headers=auth_headers(config))
         resp.raise_for_status()
         members = resp.json().get("members", [])
     except Exception:
@@ -546,9 +548,16 @@ def _push_presence(
     """POST one room's herdr liveness to the backend. Best-effort → ``bool`` ok."""
     import httpx
 
+    from mycelium.client import auth_headers
+
     try:
         url = f"{config.server.api_url}/api/rooms/{room}/sessions/herdr-presence"
-        resp = httpx.post(url, json={"statuses": statuses, "ttl_s": ttl_s}, timeout=5.0)
+        resp = httpx.post(
+            url,
+            json={"statuses": statuses, "ttl_s": ttl_s},
+            timeout=5.0,
+            headers=auth_headers(config),
+        )
         resp.raise_for_status()
     except Exception:
         return False
@@ -566,9 +575,11 @@ def _drain_wakes(config: MyceliumConfig, bridge: HerdrBridge, room: str) -> int:
     """
     import httpx
 
+    from mycelium.client import auth_headers
+
     try:
         url = f"{config.server.api_url}/api/rooms/{room}/sessions/herdr-wakes"
-        resp = httpx.get(url, timeout=5.0)
+        resp = httpx.get(url, timeout=5.0, headers=auth_headers(config))
         resp.raise_for_status()
         wakes = resp.json().get("wakes", [])
     except Exception:
@@ -594,7 +605,7 @@ def _drain_wakes(config: MyceliumConfig, bridge: HerdrBridge, room: str) -> int:
 
 
 @doc_ref(
-    usage="mycelium herdr sync [--workspace <id> --room <room>] [--watch] [--interval N]",
+    usage="mycelium herdr sync [--workspace <id> --room <room>] [--once] [--interval N]",
     desc="Bind a herdr workspace to a room and reconcile membership, liveness, and wakes.",
     group="agent",
 )
@@ -607,8 +618,12 @@ def herdr_sync(
     room: str | None = typer.Option(
         None, "--room", "-r", help="Room to bind/reconcile (scopes to bound workspaces)."
     ),
-    watch: bool = typer.Option(False, "--watch", help="Keep reconciling on an interval."),
-    interval: int = typer.Option(5, "--interval", help="Poll interval seconds (with --watch)."),
+    once: bool = typer.Option(
+        False,
+        "--once",
+        help="Reconcile a single pass and exit (default keeps watching on an interval).",
+    ),
+    interval: int = typer.Option(5, "--interval", help="Poll interval seconds while watching."),
     name_from: str = typer.Option(
         "tab", "--name-from", help="Handle source for new agents: 'tab' or 'pane'."
     ),
@@ -620,7 +635,8 @@ def herdr_sync(
     """The one bridge that makes a herdr workspace *be* a mycelium room.
 
     Pass ``--workspace w2 --room myroom`` once to **bind** them; from then on this
-    reconciles that binding every run (and ``--watch`` every ``interval``):
+    watches that binding, reconciling every ``interval`` (pass ``--once`` for a
+    single pass and exit):
 
     - **membership** — every live agent in the workspace is enrolled as a room
       member (manifest + handle↔pane, handle from the tab name); a member whose
@@ -632,9 +648,12 @@ def herdr_sync(
     - **wakes** — queued ``@``-mention doorbells are drained and delivered to the
       right pane.
 
-    Bindings persist, so a bare ``mycelium herdr sync --watch`` reconciles every
-    bound workspace. This only *drives* agents you started in herdr; it never
-    spawns panes. Ctrl-C clears the liveness overlay.
+    Bindings persist, so a bare ``mycelium herdr sync`` watches every bound
+    workspace. Watching is the default because the wake leg is a host-side loop:
+    the backend is containerized and can't reach the herdr socket, so nothing
+    delivers a queued ``@``-mention to its pane unless this keeps draining. This
+    only *drives* agents you started in herdr; it never spawns panes. Ctrl-C
+    clears the liveness overlay.
     """
     import time
 
@@ -701,9 +720,9 @@ def herdr_sync(
         console.print(
             f"[green]Synced[/green] {states} live state(s) across {len(targets)} binding(s) "
             f"[dim](+{enrolled} enrolled, -{retired} retired)[/dim]"
-            + ("" if watch else " [dim](one-shot; --watch to keep live)[/dim]")
+            + (" [dim](one-shot)[/dim]" if once else "")
         )
-        if not watch:
+        if once:
             return
 
         console.print(
