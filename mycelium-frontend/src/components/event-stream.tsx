@@ -12,7 +12,7 @@ import {
 import { useRoomAgents, useRoomRowNames, useRoomThreads, type RowNaming, type ThreadOwner } from "@/lib/room-data";
 import { NOTICE_TYPE, PING_TYPE, isLiveEpisode, noticeLabel, noticeOf, pingOf, threadShortId } from "@/lib/threads";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
-import { MarkdownContent } from "@/components/markdown-content";
+import { MessageBody } from "@/components/message-body";
 import { ChatFindBar } from "@/components/chat-find-bar";
 import { ChatMinimap, type MinimapTick } from "@/components/chat-minimap";
 import { HighlightText } from "@/components/ui/highlight-text";
@@ -1315,13 +1315,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                         )}
                       </div>
                     )}
-                    <MarkdownContent
-                      className="contrast text-body leading-relaxed"
-                      onLinkClick={onOpenMemory}
-                      highlight={hit}
-                    >
-                      {ev.content}
-                    </MarkdownContent>
+                    <MessageBody content={ev.content} hit={hit} onOpenMemory={onOpenMemory} />
                     {ev.edited && (
                       <span className="text-micro text-faint" title="revised by a later message">
                         (edited)

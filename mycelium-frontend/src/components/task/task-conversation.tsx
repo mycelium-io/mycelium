@@ -9,7 +9,7 @@ import type { RoomMessage } from "@/lib/api";
 import { useRoomAgents, useThreadMessages } from "@/lib/room-data";
 import { useRoomStream } from "@/lib/stream-hub";
 import { pingOf } from "@/lib/threads";
-import { MarkdownContent } from "@/components/markdown-content";
+import { MessageBody } from "@/components/message-body";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Monogram } from "@/components/ui/monogram";
@@ -193,12 +193,7 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
                   {!grouped && (
                     <span className="text-label font-semibold text-text">{sender}</span>
                   )}
-                  <MarkdownContent
-                    className="contrast text-body leading-relaxed"
-                    onLinkClick={onOpenMemory}
-                  >
-                    {text}
-                  </MarkdownContent>
+                  <MessageBody content={text} onOpenMemory={onOpenMemory} />
                 </div>
               </div>
             );
