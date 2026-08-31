@@ -239,21 +239,20 @@ async def await_message(
             ep = record_episode(record)
             if scoped and ep != scoped:
                 continue
-            is_thread = not scoped and ep and not l9.is_live_episode(room_name, ep)
-            if is_thread and persister.episode_position(handle, ep) >= i:
+            if not scoped and ep and not l9.is_live_episode(room_name, ep):
                 # Already served to this handle via a --task-scoped read of this
                 # same thread (that path never advances the room cursor, on
-                # purpose — see test_watching_a_thread_leaves_the_room_inbox_alone
-                # — so without this check a bare call re-scanning from an
-                # untouched room position would hand it out a second time).
-                continue
+                # purpose — see test_watching_a_thread_leaves_the_room_inbox_alone).
+                # No fork needed on *this* side: EpisodeCursors.position() already
+                # defaults an un-forked thread's position to the room-wide one
+                # (its own docstring — "the fork happens where it is standing"),
+                # and _commit(i) below is about to move that room-wide position to
+                # exactly here, so the next scoped reader's default lands right
+                # past this record with no extra write.
+                if persister.episode_position(handle, ep) >= i:
+                    continue
             if _addressed_to(record.content, handle):
                 _commit(i)
-                if is_thread:
-                    # A bare (unscoped) call just delivered a thread record — fork
-                    # that thread's own cursor past it too, so a caller that later
-                    # scopes to this same episode (``--task``) doesn't see it again.
-                    persister.advance_episode_cursor(handle, ep, i)
                 _last_tick[key] = record.content
                 room_channels.manager.refresh_lease(room_name, handle)
                 return _describe(room_name, handle, record)

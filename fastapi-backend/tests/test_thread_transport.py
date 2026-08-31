@@ -208,10 +208,13 @@ class TestBareAwaitSeesThreads:
         assert result["episode"] == THREAD
 
     @pytest.mark.asyncio
-    async def test_a_bare_delivery_forks_the_thread_cursor_so_it_is_not_served_twice(self, wired):
+    async def test_a_bare_delivery_is_not_served_again_scoped(self, wired):
         """Once delivered room-wide, a later ``--task`` scope to the same thread
-        must not see it again — the bare call forks that thread's own cursor
-        past it, same as an explicitly scoped call would."""
+        must not see it again. No explicit fork is needed to get this: the bare
+        delivery advances the room-wide cursor to right past the record, and an
+        un-forked thread's position defaults to that same room-wide one
+        (``EpisodeCursors.position``'s own contract), so the scoped read lands
+        past it for free."""
         log = persister.DeliveryLog()
         log.record(_record("t-1", to="api", episode=THREAD), delivered_to=set(), recipients=["api"])
 

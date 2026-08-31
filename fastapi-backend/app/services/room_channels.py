@@ -1082,7 +1082,8 @@ class RoomChannelManager:
         simply expires mid-negotiation, with no other join/leave happening
         after it, is not detected here.
         """
-        if not managed.lifecycle.on_membership_change(set(self.members(managed.room))):
+        current_members = self.members(managed.room)
+        if not managed.lifecycle.on_membership_change(set(current_members)):
             return
         episode = managed.lifecycle.episode
         managed.lifecycle.close()
@@ -1091,7 +1092,7 @@ class RoomChannelManager:
         logger.info("Membership change aborted episode %s on room %s", episode, managed.room)
         try:
             envelope = build_episode_abort_envelope(
-                episode, recipients=self.members(managed.room), topic=l9.topic_urn(managed.room)
+                episode, recipients=current_members, topic=l9.topic_urn(managed.room)
             )
             await managed.channel.send(envelope)
             # Record the abort locally so the transcript/UI see it — SLIM may not
