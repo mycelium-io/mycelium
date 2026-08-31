@@ -691,6 +691,31 @@ const atlas: RoomFixture = {
     // The backfill row's own thread: the reconciliation chased down.
     { id: "r1", sender_handle: "backfill", message_type: "broadcast", content: "reconciliation found 12 rows out of sync, all in the archived partition.", created_at: iso(16), episode: ATLAS_RETIRE_THREAD },
     { id: "r2", sender_handle: "backfill", message_type: "broadcast", content: "dual-write gap during the 09:14 deploy. patched the 12 by hand, counts match now.", created_at: iso(15), episode: ATLAS_RETIRE_THREAD },
+    // Two deliberately long, multi-paragraph messages — the wall-of-text case the
+    // channel has to handle without swallowing everything around it.
+    {
+      id: "long1",
+      sender_handle: "backfill",
+      message_type: "broadcast",
+      created_at: iso(13),
+      content:
+        "Full reconciliation write-up before we flip, so it's on the record and not just in my head.\n\n" +
+        "What I did: ran a row-by-row checksum of the catalog table between the old store and the new one, partitioned by month so I could parallelize it and so a mismatch would point at a date range rather than the whole 2M rows. Old store is the source of truth for anything written before dual-write went on (#499); the new store is authoritative only for the window since. The checksum is a SHA over the business columns (sku, price_cents, updated_at, status) — deliberately not the surrogate id, because the new store re-sequences those and I didn't want a billion false positives.\n\n" +
+        "What it found: 12 rows out of sync, every one of them in the archived partition (2019 and older). All 12 trace to the 09:14 deploy window, where dual-write dropped writes for about ninety seconds while the connection pool recycled. So this is not a copy bug — the historical copy is clean — it's a dual-write gap, which is exactly the failure mode we said we'd watch for.\n\n" +
+        "What I changed: patched the 12 by hand from the old store's values (they hadn't been touched since 2019, so the old store is unambiguously right), then re-ran the checksum for that partition only. Counts and checksums match now. I also added a standing job that re-checksums the archived partition every hour until cutover, so if the pool recycles again we hear about it in an hour instead of at the flip.\n\n" +
+        "What this means for Friday: I'm comfortable signing off on the read switch as far as data integrity goes. The one thing I'd still want before we flip is a clean run of the hourly checksum with zero new mismatches across a full 24h — that's the soak. If that's green Thursday night, flip Friday am as planned. If it's not, we hold and I dig into why the pool is still dropping writes.",
+    },
+    {
+      id: "long2",
+      sender_handle: "operator",
+      message_type: "broadcast",
+      created_at: iso(11),
+      content:
+        "Thanks, that's exactly the level of detail I wanted. Two follow-ups and then a decision.\n\n" +
+        "First: the ninety-second dual-write gap worries me more than the 12 rows do. The rows are fixed, but the gap is a class of bug — it'll happen again every time the pool recycles under load, and cutover day is the highest-load day we'll have. Can we pin the pool or bump the recycle timeout so it doesn't churn during the flip window? I'd rather spend an hour hardening that than discover a fresh gap at 09:00 Friday.\n\n" +
+        "Second: the hourly checksum job is great but it's checking the archived partition only. The rows most likely to move on cutover day are the hot ones, not the 2019 archive. Can we widen it to the last-30-days partition too, even if that's more expensive? I'll take the cost.\n\n" +
+        "Decision: we're go for Friday am pending a clean 24h soak, as backfill laid out. I'm adding one gate — the pool-recycle fix has to land and be verified before we flip, not after. If it's not in by Thursday evening we slip to Monday. I'd rather ship a day late than ship into a known write-dropping window. Filing both follow-ups as tasks now.",
+    },
   ],
   episodes: [atlasEpisodeSummary],
   episodeDetails: { e4f1a2: { ...atlasEpisodeSummary, messages: atlasL9Chain } },
