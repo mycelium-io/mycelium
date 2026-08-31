@@ -59,7 +59,7 @@ function DetailRow({
   if (value == null || value === "") return null;
   return (
     <div className="flex gap-2 text-micro leading-relaxed">
-      <span className="w-12 shrink-0 text-faint">{label}</span>
+      <span className="w-16 shrink-0 whitespace-nowrap text-faint">{label}</span>
       <span className="min-w-0 flex-1 break-words" style={color ? { color } : undefined}>
         {value}
       </span>
@@ -536,7 +536,7 @@ function PersonRow({
   return (
     <Tooltip
       side="left"
-      className="w-60 p-3"
+      className="w-72 max-w-72 p-3"
       content={
         <MemberTooltipCard handle={p.handle} color="var(--avatar-neutral)" presence={memberPresence}>
           <DetailRow label="role" value={p.owns ? "owner" : "posted here"} />
@@ -599,7 +599,7 @@ function AgentRow({
   return (
     <Tooltip
       side="left"
-      className="w-60 p-3"
+      className="w-72 max-w-72 p-3"
       content={
         <MemberTooltipCard handle={a.handle} presence={memberPresence}>
           <DetailRow label="owner" value={a.owner ? `@${a.owner}` : undefined} />
