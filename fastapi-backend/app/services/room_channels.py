@@ -1044,11 +1044,19 @@ class RoomChannelManager:
         ``negotiation=False`` opens a container — a task's thread — which
         a join or leave leaves running, because the task outlives what happens
         inside it.
+
+        Freezes on :meth:`members` — SLIM presence *plus* server-held leases —
+        not the bare ``managed.members`` SLIM set: a lease-only participant (a
+        headless HTTP ``await``/``respond`` caller with no SLIM socket, never
+        added to ``managed.members`` because it never goes through a SLIM
+        invite at all) is exactly who the mediator negotiates with (see
+        ``aligner.mediate``'s own ``participants``). Freezing on the narrower
+        set left every such participant frozen out of its own negotiation.
         """
         managed = self._channels.get(room)
         if managed is None:
             return False
-        managed.lifecycle.open(episode, managed.members, negotiation=negotiation)
+        managed.lifecycle.open(episode, self.members(room), negotiation=negotiation)
         return True
 
     async def close_episode(self, room: str) -> bool:
@@ -1065,8 +1073,14 @@ class RoomChannelManager:
         return True
 
     async def _enforce_membership_change(self, managed: ManagedRoomChannel) -> None:
-        """Abort the active negotiation if membership changed under it."""
-        if not managed.lifecycle.on_membership_change(managed.members):
+        """Abort the active negotiation if membership changed under it.
+
+        Compared against the same :meth:`members` union ``open_episode`` froze
+        on — a lease-only participant refreshing/holding its lease is not a
+        membership change, only a real SLIM join/leave, or a lease actually
+        expiring, is.
+        """
+        if not managed.lifecycle.on_membership_change(self.members(managed.room)):
             return
         episode = managed.lifecycle.episode
         managed.lifecycle.close()
@@ -1075,7 +1089,7 @@ class RoomChannelManager:
         logger.info("Membership change aborted episode %s on room %s", episode, managed.room)
         try:
             envelope = build_episode_abort_envelope(
-                episode, recipients=sorted(managed.members), topic=l9.topic_urn(managed.room)
+                episode, recipients=sorted(self.members(managed.room)), topic=l9.topic_urn(managed.room)
             )
             await managed.channel.send(envelope)
             # Record the abort locally so the transcript/UI see it — SLIM may not
