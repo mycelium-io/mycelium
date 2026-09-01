@@ -237,13 +237,20 @@ async def await_message(
             record = records[i]
             i += 1
             ep = record_episode(record)
-            if scoped:
-                if ep != scoped:
-                    continue
-            elif ep and not l9.is_live_episode(room_name, ep):
-                # Thread records belong exclusively to thread-scoped calls; the
-                # room-wide inbox only holds live-episode messages.
+            if scoped and ep != scoped:
                 continue
+            if not scoped and ep and not l9.is_live_episode(room_name, ep):
+                # Already served to this handle via a --task-scoped read of this
+                # same thread (that path never advances the room cursor, on
+                # purpose — see test_watching_a_thread_leaves_the_room_inbox_alone).
+                # No fork needed on *this* side: EpisodeCursors.position() already
+                # defaults an un-forked thread's position to the room-wide one
+                # (its own docstring — "the fork happens where it is standing"),
+                # and _commit(i) below is about to move that room-wide position to
+                # exactly here, so the next scoped reader's default lands right
+                # past this record with no extra write.
+                if persister.episode_position(handle, ep) >= i:
+                    continue
             if _addressed_to(record.content, handle):
                 _commit(i)
                 _last_tick[key] = record.content

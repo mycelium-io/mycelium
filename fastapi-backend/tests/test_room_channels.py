@@ -135,6 +135,42 @@ async def test_open_and_close_episode_lifecycle(
 
 
 @pytest.mark.asyncio
+async def test_open_episode_freezes_the_full_roster_not_just_slim(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    """A lease-only participant (headless HTTP await/respond, never SLIM-invited
+    because it never goes through a SLIM join at all) is exactly who a
+    negotiation runs with — ``members()``'s own union, which the mediator reads
+    to build its participant list. The freeze has to protect that same roster,
+    not the narrower SLIM-only set, or a lease-only agent is frozen out of its
+    own negotiation the instant it tries to respond.
+    """
+    managed = await manager.provision("room-a")
+    assert managed is not None
+    await manager.invite("room-a", "agent-slim")
+    manager.refresh_lease("room-a", "agent-http")
+
+    assert manager.open_episode("room-a", "urn:ioc:mycelium:episode:room-a:e1") is True
+    assert managed.lifecycle.members == frozenset({"agent-slim", "agent-http"})
+
+
+@pytest.mark.asyncio
+async def test_a_real_slim_join_still_aborts_a_frozen_negotiation(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    """Freezing on the union must not blunt the abort-on-change rule: a genuine
+    SLIM join mid-negotiation still changes the roster and still aborts it."""
+    managed = await manager.provision("room-a")
+    assert managed is not None
+    manager.refresh_lease("room-a", "agent-http")
+    assert manager.open_episode("room-a", "urn:ioc:mycelium:episode:room-a:e1") is True
+    assert managed.lifecycle.active
+
+    await manager.invite("room-a", "agent-slim")  # a real join mid-negotiation
+    assert not managed.lifecycle.active
+
+
+@pytest.mark.asyncio
 async def test_status_reports_per_room_snapshot(
     manager: room_channels.RoomChannelManager,
 ) -> None:
