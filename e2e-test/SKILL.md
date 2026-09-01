@@ -210,17 +210,11 @@ class test_23_new_feature(NewFeatureTest):
 # Full weekly (all tiers)
 pyats run job jobs/weekly_e2e_job.py --datafile data/weekly_datafile.yaml
 
-# Quick sanity
-pyats run job jobs/sanity_job.py
-
 # Specific tier
 pyats run job jobs/convergence_job.py
 
 # Specific tests
 TESTCASES="test_01_room_lifecycle" pyats run job jobs/core_job.py
-
-# Standalone (no easypy)
-python suites/sanity_suite.py --datafile data/local_datafile.yaml
 
 # View HTML report
 pyats run job jobs/weekly_e2e_job.py --html-logs && pyats logs view

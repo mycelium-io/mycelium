@@ -11,7 +11,6 @@ The suite follows pyATS conventions with a hub-and-spoke design:
 ```
 jobs/                           Easypy job files (orchestration)
   weekly_e2e_job.py             Full weekly long-running E2E
-  sanity_job.py                 Quick smoke test
   core_job.py                   Core tests only
   convergence_job.py            Multi-agent convergence
   distributed_job.py            Cross-device hub_and_spoke tests
@@ -19,7 +18,6 @@ jobs/                           Easypy job files (orchestration)
 
 suites/                         Thin AEtest scripts (class declarations)
   weekly_full_suite.py          All 42 tests
-  sanity_suite.py               ~7 fast tests
   core_suite.py                 Tests 01-14, 22
   convergence_suite.py          Tests 15-21
   distributed_suite.py          Tests 30-49
@@ -49,7 +47,6 @@ data/                           pyATS datafiles (YAML config)
   weekly_datafile.yaml          Full weekly suite UIDs (extends lab)
   core_datafile.yaml            Core suite UIDs (extends lab)
   distributed_datafile.yaml     Distributed suite UIDs (extends lab)
-  sanity_datafile.yaml          Sanity smoke UIDs (extends local)
 
 scripts/                        Operator utility scripts
 docs/                           Historical investigation docs
@@ -72,9 +69,6 @@ pip install -e ".[dev]"
 ### Run
 
 ```bash
-# Quick sanity check (local backend on localhost)
-pyats run job jobs/sanity_job.py
-
 # Core tests against lab (default datafile includes lab topology)
 pyats run job jobs/core_job.py
 
@@ -90,9 +84,6 @@ TESTCASES="test_01_room_lifecycle, test_02_multi_agent_memory" \
 
 # With HTML report
 pyats run job jobs/weekly_e2e_job.py --html-logs
-
-# Standalone script execution (no job)
-python suites/sanity_suite.py --datafile data/sanity_datafile.yaml
 
 # View logs from last run
 pyats logs view

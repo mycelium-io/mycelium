@@ -149,6 +149,24 @@ class TwoStubRejectionPath(aetest.Testcase):
                 f"within {_STUB_TOTAL_TIMEOUT}s — check aligner round budget"
             )
         assert run_result.terminal is not None, "Expected a terminal state"
+        assert not run_result.converged, (
+            f"Expected rejection (stub-reject never accepts), but converged. "
+            f"subkind={run_result.terminal.get('subkind')!r}"
+        )
+        # Scoped to stub-reject specifically, not both stubs: once the rejecter's
+        # own reject lands and the session terminates, stub-accept's in-flight
+        # await can legitimately come back SILENT on the losing side of that
+        # exact race (its poll timing out right around termination) without
+        # that meaning anything about *why* the session ended. Only a silent
+        # stub-reject would mean "rejected" was reached via silence rather than
+        # an actual reject response, which is the thing this test exists to rule
+        # out.
+        reject_turns = [t for t in run_result.turns if t.handle == "stub-reject"]
+        silent_reject_turns = [t for t in reject_turns if not t.ok]
+        assert reject_turns and not silent_reject_turns, (
+            f"Expected stub-reject to actually respond (not go silent) — "
+            f"turns={[(t.handle, t.ok, t.round_num) for t in run_result.turns]}"
+        )
         log.info(
             "Rejection path terminal: subkind=%s converged=%s",
             run_result.terminal.get("subkind"), run_result.converged,
