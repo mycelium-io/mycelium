@@ -20,6 +20,12 @@ env:
   LLM_MODEL: ${{ secrets.LLM_MODEL || vars.LLM_MODEL || '' }}
   LLM_API_KEY: ${{ secrets.LLM_API_KEY || vars.LLM_API_KEY || '' }}
   LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || vars.LLM_BASE_URL || '' }}
+  # tier_c_live_episode.py defaults to a real cursor-agent adapter
+  # (MYCELIUM_CANARY_ADAPTER, default "cursor") — this is what actually
+  # authenticates and drives it, unlike e2e.yml's nightly/pr suites, which
+  # only touch cursor via the opt-in MYCELIUM_E2E_USE_CURSOR_STUBS flag.
+  CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY || '' }}
+  CURSOR_MODEL: ${{ secrets.CURSOR_MODEL || vars.CURSOR_MODEL || '' }}
 
 jobs:
   canary:
@@ -49,6 +55,13 @@ jobs:
 
       - name: Install e2e dependencies
         run: uv sync
+
+      - name: Install cursor CLI
+        if: env.CURSOR_API_KEY != ''
+        run: |
+          curl -fsS https://cursor.com/install | bash
+          echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
+          agent --version
 
       - name: Install mycelium CLI (release)
         if: ${{ github.event.inputs.mycelium_ref == '' }}
