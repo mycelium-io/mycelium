@@ -18,6 +18,7 @@ from testcases.pr_memory import BriefingContract as _BriefingContract
 from testcases.pr_memory import MemorySearch as _MemorySearch
 from testcases.pr_memory import SkillsCRUD as _SkillsCRUD
 from testcases.pr_memory import MemoryLinksGraph as _MemoryLinksGraph
+from testcases.pr_memory import MemorySubscriptions as _MemorySubscriptions
 from testcases.pr_protocol import SessionAPIShape as _SessionAPIShape
 from testcases.pr_protocol import RespondWithoutAwait as _RespondWithoutAwait
 from testcases.pr_protocol import RoomDeleteIdempotent as _RoomDeleteIdempotent
@@ -62,6 +63,10 @@ class SkillsCRUD(_SkillsCRUD):
 
 
 class MemoryLinksGraph(_MemoryLinksGraph):
+    pass
+
+
+class MemorySubscriptions(_MemorySubscriptions):
     pass
 
 

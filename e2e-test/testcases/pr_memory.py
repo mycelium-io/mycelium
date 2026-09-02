@@ -326,6 +326,56 @@ class MemoryLinksGraph(aetest.Testcase):
         api.delete_room(self.room)
 
 
+class MemorySubscriptions(aetest.Testcase):
+    """Memory change subscriptions: subscribe / list / unsubscribe.
+
+    Delivery (does a change notify the subscriber?) needs a listener
+    fixture and is out of scope here — this covers the CRUD shape only.
+    """
+
+    @aetest.setup
+    def setup_room(self, api: MyceliumAPI, testscript):
+        self.room = f"qa-memory-sub-{uuid.uuid4().hex[:8]}"
+        testscript.parameters.setdefault("owned_rooms", set()).add(self.room)
+        status, _ = api.create_room(self.room)
+        assert status in (200, 201)
+        self.enc = _enc(self.room)
+
+    @aetest.test
+    def subscribe_list_unsubscribe(self, api: MyceliumAPI):
+        status, created = api.post_json(
+            f"/rooms/{self.enc}/memory/subscribe",
+            {"subscriber": _HANDLE, "key_pattern": "decisions/*"},
+        )
+        if status == 404:
+            self.skipped("memory subscriptions not present in this build")
+            return
+        assert status == 201, f"subscribe returned {status}: {created}"
+        assert created["subscriber"] == _HANDLE, created
+        assert created["key_pattern"] == "decisions/*", created
+        sub_id = created["id"]
+
+        status, listing = api.get_json(f"/rooms/{self.enc}/memory/subscriptions")
+        assert status == 200, f"list subscriptions returned {status}: {listing}"
+        assert any(s["id"] == sub_id for s in listing), listing
+
+        status, _ = api.delete(f"/rooms/{self.enc}/memory/subscribe/{sub_id}")
+        assert status == 204, f"unsubscribe returned {status}"
+
+        status, listing = api.get_json(f"/rooms/{self.enc}/memory/subscriptions")
+        assert status == 200, f"list subscriptions returned {status}: {listing}"
+        assert not any(s["id"] == sub_id for s in listing), (
+            f"Expected subscription {sub_id} gone after unsubscribe: {listing}"
+        )
+
+        status, _ = api.delete(f"/rooms/{self.enc}/memory/subscribe/{sub_id}")
+        assert status == 404, f"Expected 404 unsubscribing twice, got {status}"
+
+    @aetest.cleanup
+    def delete_room(self, api: MyceliumAPI):
+        api.delete_room(self.room)
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
