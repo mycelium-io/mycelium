@@ -128,6 +128,7 @@ uv run pytest tests/unit -q
 | `CURSOR_API_KEY` / `CURSOR_MODEL` | unset | cursor-agent CLI credentials (canary suite's default adapter; nightly's hub-and-spoke opt-in) |
 | `OCLW3_IP` / `OCLW4_IP` / `OCLW5_IP` | lab IPs | Lab testbed device addresses |
 | `SSH_USER` / `SSH_KEY_PATH` | `ubuntu` / `~/.ssh/ioc.pem` | Lab testbed SSH credentials |
+| `A2A_ALLOW_PRIVATE_HOSTS` | unset | **Backend-side**, not harness-side — set on the `mycelium` backend (its `.env`), not here. Nightly's `OutboundA2A*` tests register a second local room as a remote A2A agent; card resolution's SSRF guard rejects that (localhost is never public) unless the backend has this set to `1`. Both tests skip cleanly without it. |
 
 ## CI
 

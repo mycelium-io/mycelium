@@ -195,6 +195,11 @@ jobs:
             [ -n "$LLM_API_KEY" ]  && echo "LLM_API_KEY=$LLM_API_KEY"
             [ -n "$LLM_BASE_URL" ] && echo "LLM_BASE_URL=$LLM_BASE_URL"
             [ -n "$LLM_MODEL" ]    && echo "LLM_MODEL=$LLM_MODEL"
+            # nightly_a2a.py's OutboundA2A* tests register a second local room
+            # as a remote A2A agent — card resolution's SSRF guard rejects that
+            # (localhost is never public) without this. Safe here: a runner is
+            # exactly the "trusted internal deployment" the flag exists for.
+            echo "A2A_ALLOW_PRIVATE_HOSTS=1"
           } > ~/.mycelium/.env || true
           # The backend container always runs as a fixed uid (1000 — "packer"
           # on GitHub-hosted runners; see MYCELIUM_LOCAL_WRITE_UID below for
