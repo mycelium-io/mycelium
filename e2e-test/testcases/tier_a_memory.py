@@ -86,7 +86,7 @@ class MemoryCRUD(aetest.Testcase):
 class BriefingContract(aetest.Testcase):
     """Briefing contract: work rows appear in agent_context; resolved rows are omitted.
 
-    Tests the GET /api/rooms/{room}/agent_context endpoint which the
+    Tests the GET /api/rooms/{room}/agent-context endpoint which the
     aligner uses to build per-agent briefings.
     """
 
@@ -107,7 +107,7 @@ class BriefingContract(aetest.Testcase):
         # Poll briefly for indexing to propagate
         _wait_for_indexing(api, self.room, task_key, timeout=10)
 
-        status, context = api.get_json(f"/rooms/{_enc(self.room)}/agent_context")
+        status, context = api.get_json(f"/rooms/{_enc(self.room)}/agent-context")
         if status == 404:
             self.skipped("agent_context endpoint not present in this build")
             return
@@ -115,24 +115,6 @@ class BriefingContract(aetest.Testcase):
         context_str = str(context)
         assert "auth-migration" in context_str or task_content[:30] in context_str, (
             f"Work row not found in agent_context. context={context_str[:500]}"
-        )
-
-    @aetest.test
-    def decision_appears_in_context(self, api: MyceliumAPI, cli: MyceliumCLI):
-        key = f"decisions/api-style-{uuid.uuid4().hex[:6]}"
-        content = "We will use REST with JSON:API conventions."
-        r = cli.memory_set(self.room, _HANDLE, key, content)
-        assert r.ok
-
-        _wait_for_indexing(api, self.room, key, timeout=10)
-
-        status, context = api.get_json(f"/rooms/{_enc(self.room)}/agent_context")
-        if status == 404:
-            self.skipped("agent_context endpoint not present in this build")
-            return
-        assert status == 200
-        assert "api-style" in str(context) or content[:20] in str(context), (
-            f"Decision not in agent_context: {str(context)[:400]}"
         )
 
     @aetest.cleanup

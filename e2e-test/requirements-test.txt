@@ -1,3 +1,0 @@
-# Pytest harness for the Mycelium end-to-end / distributed test suite.
-# Runtime is otherwise pure stdlib (urllib, json, subprocess, etc.).
-pytest>=8.0

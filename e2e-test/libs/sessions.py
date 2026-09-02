@@ -474,7 +474,7 @@ def wait_for_no_active_sessions(
     api = MyceliumAPI(base_url=backend_url)
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
-        status, data = api.get_coordination_sessions(parent_room=parent_room, limit=50)
+        status, data = api.get_coordination_sessions(parent_room)
         if status != 200:
             log.debug(
                 "wait_for_no_active_sessions: GET coordination-sessions → %s",

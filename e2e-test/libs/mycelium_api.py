@@ -148,11 +148,11 @@ class MyceliumAPI:
     def list_sessions(self, room: str) -> tuple[int, Any]:
         return self.get_json(f"/rooms/{self._enc(room)}/sessions")
 
-    def get_coordination_sessions(self, parent_room: str | None = None, limit: int = 10) -> tuple[int, Any]:
-        params = f"?limit={limit}"
-        if parent_room:
-            params += f"&parent_room={urllib.parse.quote(parent_room, safe='')}"
-        return self.get_json(f"/coordination-sessions{params}")
+    def get_coordination_sessions(self, room: str) -> tuple[int, Any]:
+        """List coordination sessions for *room* — real route is room-scoped
+        (``GET /rooms/{room}/sessions/coordination``); there is no unscoped
+        ``/coordination-sessions`` endpoint, so this always needs a room."""
+        return self.get_json(f"/rooms/{self._enc(room)}/sessions/coordination")
 
     def get_coordination_session(self, session_id: str) -> tuple[int, Any]:
         return self.get_json(f"/coordination-sessions/{self._enc(session_id)}")
@@ -196,7 +196,7 @@ class MyceliumAPI:
     # ── Coordination helpers ──────────────────────────────────────────────
 
     def find_session_room(self, parent_namespace: str) -> Optional[str]:
-        status, data = self.get_coordination_sessions(parent_room=parent_namespace, limit=20)
+        status, data = self.get_coordination_sessions(parent_namespace)
         if status != 200 or not data:
             return None
         sessions = data if isinstance(data, list) else data.get("sessions", [])

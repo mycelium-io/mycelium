@@ -44,7 +44,7 @@ class SessionAPIShape(aetest.Testcase):
 
     @aetest.test
     def coordination_sessions_endpoint(self, api: MyceliumAPI):
-        status, data = api.get_coordination_sessions(parent_room=self.room, limit=5)
+        status, data = api.get_coordination_sessions(self.room)
         if status == 404:
             self.skipped("coordination-sessions endpoint not present in this build")
             return
@@ -112,7 +112,7 @@ class AgentContextEndpointShape(aetest.Testcase):
     def endpoint_returns_structured_response(self, api: MyceliumAPI):
         import urllib.parse
         enc = urllib.parse.quote(self.room, safe="")
-        status, data = api.get_json(f"/rooms/{enc}/agent_context")
+        status, data = api.get_json(f"/rooms/{enc}/agent-context")
         if status == 404:
             self.skipped("agent_context not in this build — skipping shape check")
             return
