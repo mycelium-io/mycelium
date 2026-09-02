@@ -181,12 +181,11 @@ Filter with `MYCELIUM_E2E_GROUPS` (comma-separated, OR'd — see `jobs/_common.p
 | `libs/mycelium_api.py` | `MyceliumAPI` | Backend REST client (rooms, memory, sessions, agent-context) |
 | `libs/mycelium_cli.py` | `MyceliumCLI` | CLI subprocess wrapper; handles the `MYCELIUM_LOCAL_WRITE_UID` switch |
 | `libs/environment.py` | `EnvironmentInfo`, `detect_environment` | Service probing and skip-flag detection |
-| `libs/coordination_flow.py` | `setup_coordination` | Create room + agents + opening positions, ready for stubs |
+| `libs/coordination_flow.py` | `setup_coordination`, `poll_for_terminal_state`, `wait_for_coordination_join` | Room + agents + opening positions; terminal-state/join polling |
 | `libs/stub_agent.py` | `StubAgent`, `run_stubs_until_terminal` | Mechanical single-process stub negotiation |
 | `libs/remote_stub.py` | `RemoteStubAgent`, `run_remote_stubs_until_terminal` | Same, driven over `docker exec` on spoke devices |
 | `libs/agent_pools.py` | — | Provisioner-backed agent pool for `hub_and_spoke_tests.py`-style scenarios |
 | `libs/provisioners/` | `Provisioner`, `get_provisioner` | Adapter-agnostic (openclaw/cursor/hermes) create/wake/cleanup protocol |
-| `libs/sessions.py` | `poll_for_terminal_state`, `wait_for_coordination_join` | Coordination-session polling |
 | `libs/host_exec.py` | `execute` | Local vs. `docker exec` command dispatch by device `custom.transport` |
 
 ## Design Decisions

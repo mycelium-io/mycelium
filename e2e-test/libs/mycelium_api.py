@@ -117,12 +117,6 @@ class MyceliumAPI:
             return status, []
         return status, data.get("messages", []) if isinstance(data, dict) else []
 
-    def synthesize(self, name: str) -> tuple[int, Any]:
-        return self.post_json(f"/rooms/{self._enc(name)}/synthesize", timeout=120)
-
-    def catchup(self, name: str) -> tuple[int, Any]:
-        return self.get_json(f"/rooms/{self._enc(name)}/catchup", timeout=30)
-
     def reindex(self, name: str) -> tuple[int, Any]:
         return self.post_json(f"/rooms/{self._enc(name)}/reindex", timeout=60)
 
@@ -136,9 +130,6 @@ class MyceliumAPI:
 
     def search_memory(self, room: str, query: str) -> tuple[int, Any]:
         return self.post_json(f"/rooms/{self._enc(room)}/memory/search", {"query": query})
-
-    def get_plan(self, room: str) -> tuple[int, Any]:
-        return self.get_json(f"/rooms/{self._enc(room)}/plan", timeout=15)
 
     # ── Sessions ──────────────────────────────────────────────────────────
 
@@ -154,44 +145,10 @@ class MyceliumAPI:
         ``/coordination-sessions`` endpoint, so this always needs a room."""
         return self.get_json(f"/rooms/{self._enc(room)}/sessions/coordination")
 
-    def get_coordination_session(self, session_id: str) -> tuple[int, Any]:
-        return self.get_json(f"/coordination-sessions/{self._enc(session_id)}")
-
-    def get_coordination_messages(self, session_id: str) -> tuple[int, Any]:
-        return self.get_json(f"/coordination-sessions/{self._enc(session_id)}/messages")
-
     # ── Observability ─────────────────────────────────────────────────────
 
     def observability(self) -> tuple[int, Any]:
         return self.get_json("/observability")
-
-    # ── Knowledge / CFN proxy ─────────────────────────────────────────────
-
-    def ingest_knowledge(self, data: dict, timeout: int = 180) -> tuple[int, Any]:
-        return self.post_json("/knowledge/ingest", data, timeout=timeout)
-
-    def query_knowledge(
-        self,
-        query: str,
-        mas_id: str | None = None,
-        timeout: int = 180,
-    ) -> tuple[int, Any]:
-        payload: dict[str, Any] = {"intent": query}
-        if mas_id:
-            payload["mas_id"] = mas_id
-        return self.post_json("/cfn/knowledge/query", payload, timeout=timeout)
-
-    def list_knowledge(self, mas_id: str | None = None) -> tuple[int, Any]:
-        qs = f"?mas_id={mas_id}" if mas_id else ""
-        return self.get_json(f"/cfn/knowledge/list{qs}")
-
-    # ── Round Traces ──────────────────────────────────────────────────────
-
-    def get_round_traces(self) -> tuple[int, Any]:
-        return self.get_json("/internal/coordination/round-traces")
-
-    def delete_round_traces(self) -> tuple[int, str]:
-        return self.delete("/internal/coordination/round-traces")
 
     # ── Coordination helpers ──────────────────────────────────────────────
 

@@ -33,14 +33,13 @@ libs/                            Shared libraries
   mycelium_api.py                Backend HTTP REST client
   mycelium_cli.py                CLI subprocess wrapper (handles the local-write uid switch)
   environment.py                 Service probing and skip-flag detection
-  coordination_flow.py           setup_coordination() — room + agents + opening positions
+  coordination_flow.py           setup_coordination() — room + agents + opening positions;
+                                  poll_for_terminal_state(), wait_for_coordination_join()
   stub_agent.py                  Mechanical StubAgent + run_stubs_until_terminal()
   remote_stub.py                 RemoteStubAgent — stub driven over docker exec (spokes)
   agent_pools.py                 Provisioner-backed agent pool for multi-device tests
   provisioners/                  Adapter-agnostic provisioner protocol (openclaw/cursor/hermes)
-  sessions.py                    Coordination-session polling helpers
   host_exec.py                   Local vs. docker-exec command dispatch
-  observability_helpers.py       Log/metrics assertions shared across suites
 
 data/                            pyATS datafiles (YAML config, `extends:` base)
   base_datafile.yaml             Shared parameters (topology, timeouts, room prefix)
