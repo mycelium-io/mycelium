@@ -166,6 +166,62 @@ class MemorySearch(aetest.Testcase):
         api.delete_room(self.room)
 
 
+class SkillsCRUD(aetest.Testcase):
+    """Skills endpoint: create/list/get/delete round-trip.
+
+    A skill is a promoted view over a ``skills/`` memory (name, description,
+    body, tags, version) — no LLM, no CLI wrapper exists yet, so this drives
+    the routes directly the way pr_protocol.py's un-wrapped endpoints do.
+    """
+
+    @aetest.setup
+    def setup_room(self, api: MyceliumAPI, testscript):
+        self.room = f"qa-memory-skill-{uuid.uuid4().hex[:8]}"
+        testscript.parameters.setdefault("owned_rooms", set()).add(self.room)
+        status, _ = api.create_room(self.room)
+        assert status in (200, 201)
+        self.name = f"qa-skill-{uuid.uuid4().hex[:6]}"
+
+    @aetest.test
+    def create_list_get_delete(self, api: MyceliumAPI):
+        status, created = api.post_json(
+            f"/rooms/{_enc(self.room)}/skills",
+            {
+                "name": self.name,
+                "description": "Summarize a PR diff in one paragraph.",
+                "body": "1. Read the diff.\n2. Summarize the change and why.",
+                "tags": ["qa"],
+                "created_by": _HANDLE,
+            },
+        )
+        if status == 404:
+            self.skipped("skills endpoint not present in this build")
+            return
+        assert status == 201, f"skill create returned {status}: {created}"
+        assert created["name"] == self.name, created
+        assert created["version"] == 1, created
+
+        status, listing = api.get_json(f"/rooms/{_enc(self.room)}/skills")
+        assert status == 200, f"skill list returned {status}: {listing}"
+        names = [s["name"] for s in listing.get("skills", [])]
+        assert self.name in names, f"{self.name!r} missing from skill list: {names}"
+
+        status, fetched = api.get_json(f"/rooms/{_enc(self.room)}/skills/{self.name}")
+        assert status == 200, f"skill get returned {status}: {fetched}"
+        assert fetched["description"] == "Summarize a PR diff in one paragraph.", fetched
+        assert fetched["tags"] == ["qa"], fetched
+
+        status, _ = api.delete(f"/rooms/{_enc(self.room)}/skills/{self.name}")
+        assert status == 204, f"skill delete returned {status}"
+
+        status, _ = api.get_json(f"/rooms/{_enc(self.room)}/skills/{self.name}")
+        assert status == 404, f"Expected 404 after delete, got {status}"
+
+    @aetest.cleanup
+    def delete_room(self, api: MyceliumAPI):
+        api.delete_room(self.room)
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
