@@ -21,6 +21,8 @@ from testcases.pr_protocol import SessionAPIShape as _SessionAPIShape
 from testcases.pr_protocol import RespondWithoutAwait as _RespondWithoutAwait
 from testcases.pr_protocol import RoomDeleteIdempotent as _RoomDeleteIdempotent
 from testcases.pr_protocol import HerdrPresenceOverlay as _HerdrPresenceOverlay
+from testcases.pr_protocol import MessageAmendment as _MessageAmendment
+from testcases.pr_protocol import EventStatusTransition as _EventStatusTransition
 from testcases.pr_protocol import AgentContextEndpointShape as _AgentContextEndpointShape
 
 
@@ -72,6 +74,14 @@ class RoomDeleteIdempotent(_RoomDeleteIdempotent):
 
 
 class HerdrPresenceOverlay(_HerdrPresenceOverlay):
+    pass
+
+
+class MessageAmendment(_MessageAmendment):
+    pass
+
+
+class EventStatusTransition(_EventStatusTransition):
     pass
 
 

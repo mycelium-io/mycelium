@@ -182,6 +182,96 @@ class HerdrPresenceOverlay(aetest.Testcase):
         api.delete_room(self.room)
 
 
+class MessageAmendment(aetest.Testcase):
+    """Amending a message is additive: the room folds to the newest text,
+    edited_at gets set, and only the original sender may amend."""
+
+    @aetest.setup
+    def setup_room(self, api: MyceliumAPI, testscript):
+        self.room = f"qa-coord-fresh-{uuid.uuid4().hex[:8]}"
+        testscript.parameters.setdefault("owned_rooms", set()).add(self.room)
+        status, _ = api.create_room(self.room)
+        assert status in (200, 201)
+        self.enc = urllib.parse.quote(self.room, safe="")
+
+    @aetest.test
+    def amend_folds_to_newest_text(self, api: MyceliumAPI):
+        status, created = api.post_json(
+            f"/rooms/{self.enc}/messages",
+            {
+                "sender_handle": "qa-human",
+                "message_type": "broadcast",
+                "content": "Ship on Friday.",
+            },
+        )
+        assert status == 201, f"message post returned {status}: {created}"
+        message_id = created["id"]
+
+        status, amended = api.post_json(
+            f"/rooms/{self.enc}/messages/{message_id}/amend",
+            {"content": "Ship on Monday instead.", "sender_handle": "qa-human"},
+        )
+        assert status == 201, f"amend returned {status}: {amended}"
+        assert amended["content"] == "Ship on Monday instead.", amended
+        assert amended["edited_at"] is not None, f"Expected edited_at to be set: {amended}"
+
+        status, other = api.post_json(
+            f"/rooms/{self.enc}/messages/{message_id}/amend",
+            {"content": "I get to change this too?", "sender_handle": "qa-impostor"},
+        )
+        assert status == 403, (
+            f"Expected 403 amending someone else's message, got {status}: {other}"
+        )
+
+    @aetest.cleanup
+    def delete_room(self, api: MyceliumAPI):
+        api.delete_room(self.room)
+
+
+class EventStatusTransition(aetest.Testcase):
+    """A stateful event (kind=action) opens "open" and transitions through
+    PATCH — in_progress, then resolved."""
+
+    @aetest.setup
+    def setup_room(self, api: MyceliumAPI, testscript):
+        self.room = f"qa-coord-fresh-{uuid.uuid4().hex[:8]}"
+        testscript.parameters.setdefault("owned_rooms", set()).add(self.room)
+        status, _ = api.create_room(self.room)
+        assert status in (200, 201)
+        self.enc = urllib.parse.quote(self.room, safe="")
+
+    @aetest.test
+    def stateful_event_transitions_through_patch(self, api: MyceliumAPI):
+        status, created = api.post_json(
+            f"/rooms/{self.enc}/messages",
+            {
+                "sender_handle": "qa-human",
+                "message_type": "event",
+                "content": "Follow up on the flaky test.",
+                "metadata": {"kind": "action"},
+            },
+        )
+        assert status == 201, f"event post returned {status}: {created}"
+        assert created["metadata"]["status"] == "open", created
+        message_id = created["id"]
+
+        status, updated = api.patch_json(
+            f"/rooms/{self.enc}/messages/{message_id}", {"status": "in_progress"}
+        )
+        assert status == 200, f"PATCH status returned {status}: {updated}"
+        assert updated["metadata"]["status"] == "in_progress", updated
+
+        status, resolved = api.patch_json(
+            f"/rooms/{self.enc}/messages/{message_id}", {"status": "resolved"}
+        )
+        assert status == 200, f"PATCH status returned {status}: {resolved}"
+        assert resolved["metadata"]["status"] == "resolved", resolved
+
+    @aetest.cleanup
+    def delete_room(self, api: MyceliumAPI):
+        api.delete_room(self.room)
+
+
 class AgentContextEndpointShape(aetest.Testcase):
     """agent_context endpoint returns expected structure (or 404 in older builds)."""
 

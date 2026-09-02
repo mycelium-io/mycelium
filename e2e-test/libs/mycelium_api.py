@@ -80,6 +80,18 @@ class MyceliumAPI:
         except json.JSONDecodeError:
             return status, body
 
+    def patch(self, path: str, data: dict | None = None, timeout: int = 10) -> tuple[int, str]:
+        return self._request("PATCH", f"{self.api_url}{path}", data=data, timeout=timeout)
+
+    def patch_json(self, path: str, data: dict | None = None, timeout: int = 10) -> tuple[int, Any]:
+        status, body = self.patch(path, data=data, timeout=timeout)
+        if status < 0:
+            return status, None
+        try:
+            return status, json.loads(body)
+        except json.JSONDecodeError:
+            return status, body
+
     # ── Health ────────────────────────────────────────────────────────────
 
     def health(self) -> tuple[int, dict]:
