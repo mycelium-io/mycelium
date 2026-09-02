@@ -27,6 +27,8 @@ from testcases.pr_protocol import MessageAmendment as _MessageAmendment
 from testcases.pr_protocol import EventStatusTransition as _EventStatusTransition
 from testcases.pr_protocol import AssignmentLifecycle as _AssignmentLifecycle
 from testcases.pr_protocol import AgentContextEndpointShape as _AgentContextEndpointShape
+from testcases.pr_a2a import InboundA2AAgentCard as _InboundA2AAgentCard
+from testcases.pr_a2a import InboundA2AMessageSend as _InboundA2AMessageSend
 
 
 class CommonSetup(MyceliumCommonSetup):
@@ -101,6 +103,15 @@ class AssignmentLifecycle(_AssignmentLifecycle):
 
 
 class AgentContextEndpointShape(_AgentContextEndpointShape):
+    pass
+
+
+# A2A (inbound)
+class InboundA2AAgentCard(_InboundA2AAgentCard):
+    pass
+
+
+class InboundA2AMessageSend(_InboundA2AMessageSend):
     pass
 
 
