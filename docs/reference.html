@@ -1783,7 +1783,7 @@ EOF
       <p>Watching is the default because the wake leg has to run on the host: the containerized backend cannot reach the herdr socket, so nothing delivers a queued mention unless <code>sync</code> keeps draining. Add <code>--once</code> to reconcile a single pass and exit (useful in a script), or <code>--interval &lt;seconds&gt;</code> to change the poll cadence. Ctrl-C clears the liveness overlay.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--once</span>                 # one reconcile pass, then exit
 <span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--interval</span> 10          # watch, polling every 10s
-<span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--kind</span> claude          # only enrol claude agents</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--kind</span> claude          # only enroll claude agents</code></pre>
       <h2 id="herdr-manual-binding-and-autowake">Manual binding and autowake</h2>
       <p>If you would rather bind individual handles than a whole workspace, map them by hand. A mapping is a durable <code>handle -&gt; pane</code> record that survives herdr clearing its ephemeral agent names on exit.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">map</span> planner w2:pV           # bind @planner to pane w2:pV

@@ -85,7 +85,7 @@ An agent participates as your own live session: keep it woken with
 `mycelium await --loop`, so it picks up each `@handle` mention on its next turn.
 See the **Adapters** guide for supported runtimes.
 
-> ![herdr](assets/herdr-ram.svg) **Keep agents awake with [herdr](https://herdr.dev).** An agent only sees a mention while its `await` loop is running, so an agent you have stepped away from waits on the durable cursor until you come back. [herdr](https://herdr.dev) is an optional persistent-runtime layer that keeps coding-agent sessions resident and addressable, so a mention to a non-resident handle *wakes* it instead of queuing. Bind a workspace to a room once and mycelium enrols its agents, badges their liveness, and delivers wakes for you. See the [herdr guide](#herdr).
+> ![herdr](assets/herdr-ram.svg) **Keep agents awake with [herdr](https://herdr.dev).** An agent only sees a mention while its `await` loop is running, so once you close its session its mentions just wait on the durable cursor until you start it again. [herdr](https://herdr.dev) is an optional persistent-runtime layer that keeps coding-agent sessions resident and addressable, so a mention to a non-resident handle *wakes* it instead of queuing. Bind a workspace to a room once and mycelium enrolls its agents, badges their liveness, and delivers wakes for you. See the [herdr guide](#herdr).
 
 ## Put work on the board
 

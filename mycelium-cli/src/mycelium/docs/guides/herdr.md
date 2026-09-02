@@ -59,7 +59,7 @@ Ctrl-C clears the liveness overlay.
 ```bash
 mycelium herdr sync --once                 # one reconcile pass, then exit
 mycelium herdr sync --interval 10          # watch, polling every 10s
-mycelium herdr sync --kind claude          # only enrol claude agents
+mycelium herdr sync --kind claude          # only enroll claude agents
 ```
 
 ## Manual binding and autowake
