@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { CopyAction } from "@/components/ui/copy-field";
 import { Input } from "@/components/ui/input";
 import { Monogram } from "@/components/ui/monogram";
+import { HerdrRam } from "@/components/ui/herdr-ram";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -67,19 +68,44 @@ function DetailRow({
   );
 }
 
+/** Per-herdr-state accent for the roster's activity line, so the palette isn't
+ *  uniformly cold: working reads warm, blocked hot, done green, idle muted. */
+const HERDR_STATE_COLOR: Record<string, string> = {
+  working: "var(--warning, #d19a45)",
+  blocked: "var(--destructive, #d1495b)",
+  done: "var(--success, #4c9a6a)",
+  idle: "var(--muted-foreground)",
+};
+
+/** Whether a presence member is hosted in a herdr pane (by kind, or by carrying a
+ *  known herdr state). */
+function isHerdr(member: PresenceMember): boolean {
+  return member.kind === "herdr" || (!!member.status && member.status in HERDR_STATE_COLOR);
+}
+
 /** How a member is hosted, in words — the honest expansion of the presence kind. */
 function hostingLabel(member: PresenceMember): string {
+  if (isHerdr(member)) return "herdr pane (not joined)";
   return member.kind === "slim" ? "SLIM socket" : "server-held await lease";
 }
 
-/** The presence half of a member card: how it's hosted and when it was last
- *  seen — the detail behind the compact row's halo. */
+/** The presence half of a member card: how it's hosted, its live state and
+ *  current task, any queued wake, and when it was last seen — the detail behind
+ *  the compact row's halo. */
 function presenceDetail(member?: PresenceMember): React.ReactNode {
   if (!member) return null;
   const age = member.last_seen ? relativeTime(member.last_seen) : null;
+  const stateColor = HERDR_STATE_COLOR[member.status ?? ""];
   return (
     <>
       <DetailRow label="hosting" value={hostingLabel(member)} />
+      <DetailRow label="state" value={member.status ?? undefined} color={stateColor} />
+      <DetailRow label="task" value={member.title?.trim() || undefined} />
+      <DetailRow
+        label="wake"
+        value={member.wake_pending ? "queued, held until idle" : undefined}
+        color="var(--accent)"
+      />
       <DetailRow
         label="last seen"
         value={member.kind === "slim" ? "now (live socket)" : (age ?? "awaiting")}
@@ -89,8 +115,7 @@ function presenceDetail(member?: PresenceMember): React.ReactNode {
 }
 
 /** The hover card shown for any roster row: a monogram header plus a detail list
- *  (identity rows the caller passes + the shared presence rows). Ported from the
- *  herdr roster spike (#540), adapted to the fields on main. */
+ *  (identity rows the caller passes + the shared presence rows). */
 function MemberTooltipCard({
   handle,
   color,
@@ -105,8 +130,19 @@ function MemberTooltipCard({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <Monogram handle={handle} color={color} className="size-6" presence={presence?.kind} mutePresence />
+        <Monogram
+          handle={handle}
+          color={color}
+          className="size-6"
+          presence={presence?.kind}
+          status={presence?.status}
+          wakePending={presence?.wake_pending}
+          mutePresence
+        />
         <span className="font-mono text-label font-semibold text-text">@{handle}</span>
+        {presence && isHerdr(presence) && (
+          <HerdrRam className="size-3 opacity-70" style={{ color: "var(--accent)" }} />
+        )}
       </div>
       <div className="flex flex-col gap-0.5">
         {children}
@@ -195,6 +231,13 @@ export function AgentsPanel({
     const t = setInterval(() => setNow((n) => n + 1), 60_000);
     return () => clearInterval(t);
   }, []);
+
+  // Poll the roster at the herdr sync bridge's cadence (~5s) so liveness halos
+  // and queued-wake badges track the room near-live instead of lagging behind.
+  useEffect(() => {
+    const t = setInterval(refresh, 5_000);
+    return () => clearInterval(t);
+  }, [refresh]);
 
   // Agents by where they are in their life, not who owns them (a room's swarm is
   // nearly all one owner): **Engines** are the backend capabilities (aligner,
@@ -506,6 +549,8 @@ function Facepile({
               color={p.you ? "var(--accent)" : "var(--avatar-neutral)"}
               className="size-6 text-[9px] ring-2 ring-paper"
               presence={presence.get(p.handle)?.kind}
+              status={presence.get(p.handle)?.status}
+              wakePending={presence.get(p.handle)?.wake_pending}
             />
           </div>
         </Tooltip>
@@ -532,7 +577,14 @@ function PersonRow({
   marked: boolean;
   rowRef?: React.Ref<HTMLDivElement>;
 }) {
-  const meta = memberPresence?.kind === "slim" ? "live" : memberPresence?.kind === "lease" ? "awaiting" : null;
+  const meta =
+    memberPresence && isHerdr(memberPresence)
+      ? (memberPresence.status ?? "alive")
+      : memberPresence?.kind === "slim"
+        ? "live"
+        : memberPresence?.kind === "lease"
+          ? "awaiting"
+          : null;
   return (
     <Tooltip
       side="left"
@@ -551,7 +603,7 @@ function PersonRow({
           marked ? "bg-accent/15" : ""
         }`}
       >
-        <Monogram handle={p.handle} color="var(--avatar-neutral)" className="size-5 text-[9px]" presence={memberPresence?.kind} mutePresence />
+        <Monogram handle={p.handle} color="var(--avatar-neutral)" className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence />
         <span className="truncate font-mono text-label text-text">@{p.handle}</span>
         {p.you && <span className="flex-shrink-0 text-micro font-medium text-accent">you</span>}
         {meta && <span className="ml-auto flex-shrink-0 text-micro text-faint">{meta}</span>}
@@ -566,6 +618,7 @@ function PersonRow({
 function rowMeta(a: AgentSummary, presence?: PresenceMember): string | null {
   if (a.adapter === "engine") return a.kind ?? "engine";
   if (a.adapter === "a2a") return null; // the a2a badge already labels it
+  if (presence && isHerdr(presence)) return presence.status ?? "alive";
   if (presence?.kind === "slim") return "live";
   if (presence?.kind === "lease") return "awaiting";
   return null;
@@ -619,7 +672,7 @@ function AgentRow({
           marked ? "bg-accent/15" : ""
         }`}
       >
-        <Monogram handle={a.handle} className="size-5 text-[9px]" presence={memberPresence?.kind} mutePresence />
+        <Monogram handle={a.handle} className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence />
         <span className="truncate font-mono text-label text-text">{a.handle}</span>
         {a.adapter === "a2a" && (
           <span className="inline-flex flex-shrink-0 items-center rounded border border-accent/30 bg-accent-soft/40 px-1 text-[9px] font-medium leading-tight text-accent">

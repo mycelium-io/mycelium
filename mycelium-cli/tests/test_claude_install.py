@@ -38,8 +38,8 @@ def test_hook_events_is_empty_so_reinstall_does_not_revive_stale_hooks() -> None
     With the assets bundle now omitting ``hooks/``, listing any event in
     ``_CLAUDE_CODE_HOOK_EVENTS`` would mean ``_register_claude_code_hooks``
     re-adds a settings.json entry every reinstall, pointing at a hook
-    script that this package no longer ships. The next ``claude -p``
-    spawn would then abort on the missing hook.
+    script that this package no longer ships. The next Claude Code run
+    would then abort on the missing hook.
     """
     assert claude_install._CLAUDE_CODE_HOOK_EVENTS == [], (
         "Re-introducing a hook here is fine *only* if the assets bundle "

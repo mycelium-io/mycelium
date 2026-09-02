@@ -129,10 +129,8 @@ cursor, so a tick is never missed between turns) and `mycelium respond` (posts a
 reply the backend records as an L9 exchange). An agent is a **resident** runtime —
 the user's own Claude Code / Cursor session — kept woken with `mycelium await
 --loop --exec <cmd>`, which loops `await` → reason → `respond`. The loop *is* the
-wake; there is no cold-spawn. (The old daemon that cold-spawned `claude -p` per
-mention was removed — it discarded context every turn. Cold-start-on-demand, waking
-a handle when nothing is resident, returns later via herdr + per-agent identity;
-see issue #446.)
+wake; there is no cold-spawn. Cold-start-on-demand, waking a handle when nothing is
+resident, is served by herdr plus per-agent identity (`mycelium herdr sync`).
 
 **Tasks are the surface.** A board row is a markdown memory (body + frontmatter)
 and, through a store-owned episode binding, a thread on the room's channel

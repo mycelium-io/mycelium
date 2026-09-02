@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
+import { Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { avatarTint, initials } from "@/lib/avatar-color";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -9,8 +10,9 @@ export { initials };
 
 /** Live-presence tier surfaced as a halo around the avatar. "slim" = active
  *  SLIM socket (steady accent ring); "lease" = server-held await/reply poll
- *  (breathing muted ring). Undefined = not present, no halo. */
-export type Presence = "slim" | "lease";
+ *  (breathing muted ring); "herdr" = alive in a herdr pane, its ring colour and
+ *  motion driven by `status`. Undefined = not present, no halo. */
+export type Presence = "slim" | "lease" | "herdr";
 
 interface Props {
   handle: string;
@@ -21,9 +23,15 @@ interface Props {
   className?: string;
   /** Optional live-presence halo. */
   presence?: Presence;
+  /** herdr live state (idle/working/blocked/done), which drives the halo colour
+   *  and motion for a herdr-hosted member. */
+  status?: string | null;
+  /** A room mention queued for this handle, held until it goes idle, overlaid as
+   *  a mail badge in the top-right corner. */
+  wakePending?: boolean;
   /** Drop the presence dot's own tooltip. Set where the avatar sits inside a
    *  larger hover target (a roster row's card, a facepile chip) that already
-   *  names the presence — otherwise the dot's bubble intercepts that hover. */
+   *  names the presence, otherwise the dot's bubble intercepts that hover. */
   mutePresence?: boolean;
 }
 
@@ -31,15 +39,34 @@ interface Halo {
   color: string;
   /** Breathe the ring — reserved for a poll that is genuinely mid-flight. */
   pulse: boolean;
+  /** Ring the avatar. Dropped for a resting state (idle), where the corner dot
+   *  carries presence on its own and a ring would only be noise. */
+  ring: boolean;
   label: string;
 }
 
-/** Presence → ring colour and motion. A held socket is a steady fact and holds
- *  a static ring; a lease is a poll in flight, so it breathes. */
-function halo(presence: Presence): Halo {
+const HERDR_STATES = new Set(["idle", "working", "blocked", "done"]);
+
+/** Presence → ring colour and motion. A herdr state colours the ring by activity
+ *  (working/blocked breathe, done is a steady green, idle drops the ring); a held
+ *  SLIM socket is a steady fact and holds a static ring; a lease is a poll in
+ *  flight, so it breathes. */
+function halo(presence: Presence, status?: string | null): Halo {
+  if (presence === "herdr" || (status && HERDR_STATES.has(status))) {
+    switch (status) {
+      case "working":
+        return { color: "var(--warning, #d19a45)", ring: true, pulse: true, label: "working" };
+      case "blocked":
+        return { color: "var(--destructive, #d1495b)", ring: true, pulse: true, label: "blocked, needs input" };
+      case "done":
+        return { color: "var(--success, #4c9a6a)", ring: true, pulse: false, label: "done" };
+      default: // idle — no ring, just the dot
+        return { color: "var(--muted-foreground)", ring: false, pulse: false, label: "idle, asleep" };
+    }
+  }
   return presence === "slim"
-    ? { color: "var(--accent)", pulse: false, label: "SLIM connected" }
-    : { color: "var(--muted-foreground)", pulse: true, label: "server-held lease (awaiting)" };
+    ? { color: "var(--accent)", ring: true, pulse: false, label: "SLIM connected" }
+    : { color: "var(--muted-foreground)", ring: true, pulse: true, label: "server-held lease (awaiting)" };
 }
 
 /** Circular monogram avatar; shared across roster, stream, and picker.
@@ -49,17 +76,17 @@ function halo(presence: Presence): Halo {
  *  column of identical chips. Presence rides as a **halo** around it — colour
  *  for the tier, a breathing ring for a poll in flight — plus a corner dot that
  *  carries the tier on its own for anyone the ring's colour doesn't reach. */
-export function Monogram({ handle, color, className, presence, mutePresence }: Props) {
+export function Monogram({ handle, color, className, presence, status, wakePending, mutePresence }: Props) {
   const tint = color ?? avatarTint(handle);
-  const ring = presence ? halo(presence) : null;
+  const ring = presence ? halo(presence, status) : null;
   return (
     <div className="relative flex-shrink-0">
       <div
         aria-hidden
         className={cn(
           "flex size-8 items-center justify-center rounded-full border font-mono text-micro font-semibold",
-          ring && "avatar-halo",
-          ring?.pulse && "pulse",
+          ring?.ring && "avatar-halo",
+          ring?.ring && ring.pulse && "pulse",
           className,
         )}
         // Solid, opaque fill: the pile in the command centre overlaps these, and
@@ -77,7 +104,23 @@ export function Monogram({ handle, color, className, presence, mutePresence }: P
         {initials(handle)}
       </div>
       {ring && <PresenceDot halo={ring} mute={mutePresence} />}
+      {wakePending && <MailBadge />}
     </div>
+  );
+}
+
+/** Top-right mail overlay: a mention queued for this handle, held until the agent
+ *  goes idle. Sits opposite the presence dot so "busy and tagged" reads as both. */
+function MailBadge() {
+  return (
+    <Tooltip content="wake queued, held until this agent is idle">
+      <span
+        className="absolute -top-0.5 -right-0.5 flex size-3.5 items-center justify-center rounded-full ring-2 ring-paper"
+        style={{ background: "var(--accent)" }}
+      >
+        <Mail className="size-2.5" strokeWidth={2.75} style={{ color: "var(--paper)" }} />
+      </span>
+    </Tooltip>
   );
 }
 

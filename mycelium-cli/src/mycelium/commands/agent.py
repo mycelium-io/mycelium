@@ -246,6 +246,24 @@ def _load_manifest_remote(client: Any, room_name: str, handle: str) -> AgentMani
     return _manifest_from_yaml(handle, body, key)
 
 
+def _delete_manifest(config: MyceliumConfig, room_name: str, manifest: AgentManifest) -> None:
+    """Delete a manifest from the backend and the local mirror (notes/logs kept).
+
+    The unregister half of ``agent rm``, factored out so other lifecycle owners
+    (e.g. the herdr sync bridge retiring a member whose pane closed) reuse the
+    exact same teardown instead of re-implementing the backend delete + unlink.
+    """
+    from mycelium_backend_client.api.memory import (
+        delete_memory_api_rooms_room_name_memory_key_delete as delete_api,
+    )
+
+    with _typed_client(config) as client:
+        delete_api.sync_detailed(room_name=room_name, key=manifest.memory_key, client=client)
+    local = get_room_dir(room_name) / f"{manifest.memory_key}.md"
+    if local.exists():
+        local.unlink()
+
+
 def _is_resident(config: MyceliumConfig, room_name: str, handle: str) -> bool:
     """True if a runtime is currently present in the room for ``handle``.
 
@@ -1155,18 +1173,28 @@ def agent_invoke(
         )
         console.print(f"  {prompt[:200]}")
         # Report residence honestly: durability (message recorded) is not liveness
-        # (message handled). Tell the user whether a runtime is actually awake for
-        # this handle right now, or whether the message waits on the cursor.
-        if _is_resident(config, room_name, manifest.handle):
+        # (message handled). For a herdr-mapped handle, herdr's live agent list is
+        # authoritative (it's the actual process); the backend lease only governs
+        # unmapped handles. See _resolve_presence.
+        state, detail = _resolve_presence(config, room_name, manifest.handle)
+        h = manifest.handle
+        if state == "resident":
+            console.print(f"\n[dim]@{h} is resident; {detail}.[/dim]")
+        elif state == "woke":
             console.print(
-                f"\n[dim]@{manifest.handle} is resident; it'll pick this up on its "
-                f"next await.[/dim]"
+                f"\n[dim]@{h} was not looping; {detail}. It'll drain this turn and "
+                f"respond through the room.[/dim]"
             )
-        else:
+        elif state == "stale":
             console.print(
-                f"\n[dim]@{manifest.handle} is not resident; queued on the transcript "
-                f"until a runtime awaits (start one with `mycelium await --loop "
-                f"--room {room_name} --handle {manifest.handle}`).[/dim]"
+                f"\n[yellow]@{h}[/yellow][dim]: {detail}. Queued on the cursor; fix the "
+                f"binding with `mycelium herdr map`/`unmap`.[/dim]"
+            )
+        else:  # queued
+            console.print(
+                f"\n[dim]@{h} is not resident; queued on the transcript until a runtime "
+                f"awaits (start one with `mycelium await --loop --room {room_name} "
+                f"--handle {h}`).[/dim]"
             )
     except typer.Exit:
         raise
@@ -1174,6 +1202,72 @@ def agent_invoke(
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
         raise typer.Exit(1) from None
+
+
+def _resolve_presence(
+    config: MyceliumConfig, room_name: str, handle: str
+) -> tuple[str, str | None]:
+    """Decide how an invoked message will be handled, grounding a herdr-mapped
+    handle's residence in herdr's *live agent list* rather than a backend lease.
+
+    The backend runs containerized and is herdr-blind, so its presence lease can
+    read "resident" for an agent that has since settled and is no longer looping
+    ``await`` (a stale-lease false positive). Here in the CLI, the one layer that
+    reaches both the backend ``/members`` API and the local ``herdr`` socket, we
+    reconcile: for a mapped handle herdr is authoritative; unmapped handles keep
+    the lease behavior.
+
+    Returns ``(state, detail)`` where ``state`` is one of:
+
+    - ``"resident"``: a runtime is looping / busy; it'll catch this on its await.
+    - ``"woke"``: we woke an idle herdr pane in place (the wake side effect ran).
+    - ``"stale"``: mapped but the herdr pane is dead / the wake failed; queued.
+    - ``"queued"``: not resident and not herdr-wakeable; waits on the cursor.
+    """
+    herdr = _herdr_presence(config, room_name, handle)
+    if herdr is not None:
+        return herdr
+    if _is_resident(config, room_name, handle):
+        return ("resident", "it'll pick this up on its next await")
+    return ("queued", None)
+
+
+def _herdr_presence(
+    config: MyceliumConfig, room_name: str, handle: str
+) -> tuple[str, str | None] | None:
+    """herdr-authoritative residence for a mapped handle, or ``None`` to defer.
+
+    ``None`` (defer to the lease) when herdr participation is off, the handle
+    isn't mapped, or herdr is unreachable. Otherwise herdr's live pane state
+    decides: a wakeable (idle) pane is woken in place; a ``working``/``blocked``
+    pane counts as resident; a dead pane is a stale mapping. Never raises: a herdr
+    hiccup falls back to the lease.
+    """
+    if not config.herdr.autowake:
+        return None
+    try:
+        from mycelium.integrations.herdr import HerdrBridge, build_wake_prompt
+
+        bridge = HerdrBridge()
+        mapping = bridge.registry.get(room_name, handle)
+        if mapping is None or not bridge.available():
+            return None
+        agent = bridge.get_agent(mapping.pane)
+        if agent is None:
+            return ("stale", f"herdr pane {mapping.pane} has no live agent (stale mapping)")
+        status = str(agent.get("agent_status") or "unknown")
+        if status in {"working", "blocked"}:
+            return ("resident", f"its herdr agent is '{status}'; it'll catch this on its await")
+        result = bridge.wake(
+            mapping,
+            build_wake_prompt(room_name, mapping.handle),
+            timeout_ms=config.herdr.wake_timeout_ms,
+        )
+        if result.ok:
+            return ("woke", "woke its herdr pane in place")
+        return ("stale", result.detail)
+    except Exception:  # noqa: BLE001 - herdr grounding is best-effort; defer to the lease
+        return None
 
 
 # ── rm ───────────────────────────────────────────────────────────────────────
@@ -1239,15 +1333,7 @@ def agent_rm(
         impl.destroy(manifest=manifest, config=config, room=room_name, full=full)
 
         # 2. Delete the manifest (backend + local mirror).
-        from mycelium_backend_client.api.memory import (
-            delete_memory_api_rooms_room_name_memory_key_delete as delete_api,
-        )
-
-        with _typed_client(config) as client:
-            delete_api.sync_detailed(room_name=room_name, key=manifest.memory_key, client=client)
-        local = get_room_dir(room_name) / f"{manifest.memory_key}.md"
-        if local.exists():
-            local.unlink()
+        _delete_manifest(config, room_name, manifest)
 
         # 3. Revoke the agent's per-agent channel credential for the active tier
         # (#590): signerjwt drops its JWK from the roster + deletes its local key;
@@ -1569,8 +1655,10 @@ def credential_slim_key(
 
 # Re-export for completeness; doctor and other commands reuse these.
 __all__ = [
+    "_delete_manifest",
     "_load_manifest",
     "_load_manifest_remote",
     "_room_manifests",
+    "_write_manifest",
     "app",
 ]
