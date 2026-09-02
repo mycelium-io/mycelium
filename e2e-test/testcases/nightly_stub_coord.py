@@ -22,6 +22,7 @@ Tests:
 from __future__ import annotations
 
 import logging
+import re
 import time
 import uuid
 
@@ -158,8 +159,27 @@ class TwoStubRejectionPath(aetest.Testcase):
             # only its own stated number (30) guarantees the two numbers
             # never meet, so the round budget — not mediator luck — is what
             # produces rejected.
+            #
+            # The mediator's prompt (mediator.py's _prompt_for) always opens
+            # with a static "Issue space: data_retention_window_days ∈ {30,
+            # ...}" preamble, and its LLM-generated "MEDIATOR: ..." framing
+            # note can freely mention either side's original ask — both are
+            # present on every single turn regardless of what's actually on
+            # the table that round. A bare "30" in prompt substring check
+            # matches either one even when the real current offer is 90 —
+            # confirmed live in CI: nightly_002 converged on
+            # {'data_retention_window_days': '90'} because this falsely
+            # accepted stub-reject's own number. Extract just the offer
+            # value itself ("Current standing offer: ..." when proposing,
+            # "The offer on the table is ..." when responding) and check
+            # only that — never the issue-space listing or the mediator's
+            # free-text commentary.
             prompt = (turn_json or {}).get("prompt") or ""
-            return "accept" if "30" in prompt else "reject"
+            match = re.search(
+                r"(?:Current standing offer|offer on the table is):?\s*(\(.*?\)|None)", prompt
+            )
+            offer_text = match.group(1) if match else ""
+            return "accept" if "30" in offer_text else "reject"
 
         stubs = [
             StubAgent(
