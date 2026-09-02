@@ -15,7 +15,7 @@ Tests:
   002 - Rejection path: one stub always rejects → rejected after round budget
   003 - Counter-offer chain: stub B counters N rounds then accepts → converged
   004 - Respond without active await is rejected by backend
-  005 - Cross-episode memory: session 1 writes decisions/ → session 2 agent_context contains them
+  005 - Cross-episode memory: session 1 writes a work/ row → session 2 agent_context contains it
   006 - Multi-session 100% response rate
 """
 
@@ -126,7 +126,20 @@ class TwoStubRejectionPath(aetest.Testcase):
             agent_handles=["stub-accept", "stub-reject"],
             opening_positions={
                 "stub-accept": _POS_A,
-                "stub-reject": "I will not accept any compromise on this matter.",
+                # Vague, dimensionless prose here ("I will not accept any
+                # compromise on this matter") occasionally left the aligner's
+                # LLM-driven issue-discovery step with nothing to structure a
+                # discussion around, so it rejected immediately with zero
+                # ticks sent to either stub — a legitimate "rejected" outcome,
+                # but one that never exercises the actual reject response this
+                # test is about. A concrete, issue-bearing (if absolute)
+                # position gives it real material every time, same as every
+                # other passing test's positions do.
+                "stub-reject": (
+                    "I think 90-day retention is required to meet our audit "
+                    "obligations, and I will not accept anything shorter under "
+                    "any circumstances."
+                ),
             },
         )
         if self.coord is None:
@@ -134,19 +147,64 @@ class TwoStubRejectionPath(aetest.Testcase):
 
     @aetest.test
     def session_terminates_on_rejection(self, api: MyceliumAPI, cli: MyceliumCLI):
+        def _accept_only_30(round_num: int, turn_json: dict) -> str:
+            # An unconditional accepter accepts whatever lands on the table —
+            # including stub-reject's own number — which converges every
+            # time regardless of stub-reject's mechanical position. That's
+            # genuinely correct negotiation behavior given an accepter with
+            # no position of its own, not a bug; it just means "one stub
+            # always rejects" can't reliably produce a *rejected* terminal
+            # unless the other side actually holds a position too. Accepting
+            # only its own stated number (30) guarantees the two numbers
+            # never meet, so the round budget — not mediator luck — is what
+            # produces rejected.
+            prompt = (turn_json or {}).get("prompt") or ""
+            return "accept" if "30" in prompt else "reject"
+
         stubs = [
-            StubAgent(self.room, "stub-accept", action="accept", cli=cli),
-            StubAgent(self.room, "stub-reject", action="reject", cli=cli),
+            StubAgent(
+                self.room, "stub-accept", action="reject", cli=cli,
+                action_fn=_accept_only_30,
+                prose=_POS_A,
+            ),
+            # A generic reject reply (the default "This does not meet my
+            # requirements.") carries no number, so the mediator's NLU can
+            # come back "unreadable" on it and fall back to a *wrong* held
+            # value instead of stub-reject's actual position. Restating the
+            # number every round (same pattern CounterOfferChain below
+            # already uses via prose=) keeps every reply machine-parseable
+            # as an actual reject-at-90, not a guess.
+            StubAgent(
+                self.room, "stub-reject", action="reject", cli=cli,
+                prose="I require 90-day retention and reject any shorter window.",
+            ),
         ]
+        # A genuine stalemate (neither side's number ever satisfies the
+        # other) has to run all the way to the aligner's own step cap
+        # (ALIGNER_MEDIATOR_MAX_STEPS=20) before it gives up and emits
+        # rejected — there's no other way to reach a real rejected terminal
+        # here, by design. The mediator's own round_n only advances once per
+        # SAO step, and each step costs a real LLM call (broker + interpret,
+        # a Pi-agent session) on top of the raw stub await/reply — measured
+        # ~4 raw stub turns per round_n step. 20 steps needs roughly 80 raw
+        # turns; at the observed ~7-9s per raw turn that is ~600s wall clock,
+        # and the stub threads themselves must stay alive that whole time
+        # (their own max_rounds — not just the total_timeout — bounds how
+        # long they keep answering). The shared module-level
+        # _MAX_ROUNDS=20 (40 raw turns) starves the mediator of replies well
+        # before its step cap, so this test needs its own larger budget on
+        # both axes, not just a longer timeout.
+        _REJECTION_MAX_ROUNDS = 45
+        _REJECTION_TOTAL_TIMEOUT = 660
         run_result = run_stubs_until_terminal(
             api, stubs, setup=self.coord,
-            max_rounds=_MAX_ROUNDS, turn_timeout=_TURN_TIMEOUT,
-            join_wait=_JOIN_WAIT, total_timeout=_STUB_TOTAL_TIMEOUT,
+            max_rounds=_REJECTION_MAX_ROUNDS, turn_timeout=_TURN_TIMEOUT,
+            join_wait=_JOIN_WAIT, total_timeout=_REJECTION_TOTAL_TIMEOUT,
         )
         if run_result.timed_out:
             self.failed(
                 f"TIMEOUT: permanent rejecter did not cause terminal state "
-                f"within {_STUB_TOTAL_TIMEOUT}s — check aligner round budget"
+                f"within {_REJECTION_TOTAL_TIMEOUT}s — check aligner round budget"
             )
         assert run_result.terminal is not None, "Expected a terminal state"
         assert not run_result.converged, (
@@ -157,14 +215,19 @@ class TwoStubRejectionPath(aetest.Testcase):
         # own reject lands and the session terminates, stub-accept's in-flight
         # await can legitimately come back SILENT on the losing side of that
         # exact race (its poll timing out right around termination) without
-        # that meaning anything about *why* the session ended. Only a silent
-        # stub-reject would mean "rejected" was reached via silence rather than
-        # an actual reject response, which is the thing this test exists to rule
-        # out.
+        # that meaning anything about *why* the session ended. A silent
+        # stub-reject on *every* turn would mean "rejected" was reached via
+        # silence rather than an actual reject response, which is the thing
+        # this test exists to rule out — but a real stalemate genuinely rides
+        # to the mediator's step cap (pattern: see _REJECTION_TOTAL_TIMEOUT
+        # above), and every round after the cap is hit and the episode closes
+        # is *expected* to come back silent (no more ticks are ever coming).
+        # So the check is "at least one real reject", not "zero silent ones".
         reject_turns = [t for t in run_result.turns if t.handle == "stub-reject"]
-        silent_reject_turns = [t for t in reject_turns if not t.ok]
-        assert reject_turns and not silent_reject_turns, (
-            f"Expected stub-reject to actually respond (not go silent) — "
+        real_reject_turns = [t for t in reject_turns if t.ok]
+        assert reject_turns and real_reject_turns, (
+            f"Expected stub-reject to have actually responded at least once "
+            f"(not gone silent every round) — "
             f"turns={[(t.handle, t.ok, t.round_num) for t in run_result.turns]}"
         )
         log.info(
@@ -247,7 +310,7 @@ class RespondWithoutTurnRejected(aetest.Testcase):
 
 
 class CrossEpisodeMemory(aetest.Testcase):
-    """005 — Session 1 writes decisions/ → session 2 agent_context contains them."""
+    """005 — Session 1 writes a work/ row → session 2 agent_context contains it."""
 
     uid = "tier_b_005"
 
@@ -274,7 +337,7 @@ class CrossEpisodeMemory(aetest.Testcase):
 
         import urllib.parse
         enc = urllib.parse.quote(self.room, safe="")
-        status, context = api.get_json(f"/rooms/{enc}/agent_context")
+        status, context = api.get_json(f"/rooms/{enc}/agent-context")
         if status == 404:
             status2, data = api.list_memory(self.room)
             assert status2 == 200
@@ -286,8 +349,13 @@ class CrossEpisodeMemory(aetest.Testcase):
 
         assert status == 200, f"agent_context returned {status}"
         context_str = str(context)
-        assert "api-design" in context_str or "REST" in context_str, (
-            f"Session 1 decision not in session 2 agent_context: {context_str[:500]}"
+        # agent_context is work/-only by design (fastapi-backend/app/services/
+        # briefing.py: "the room's title, and the work that is open in it") —
+        # decisions/ never appear there, only in full-text memory search. The
+        # cross-episode claim this test is actually proving is that session 2
+        # sees what session 1 wrote at all, via the work row both sessions share.
+        assert "auth-migration" in context_str or work_content[:20] in context_str, (
+            f"Session 1 work row not in session 2 agent_context: {context_str[:500]}"
         )
 
     @aetest.cleanup
