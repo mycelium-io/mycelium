@@ -65,10 +65,15 @@ def test_docker_transport_wraps_with_docker_exec_and_sh():
     assert full[:3] == ["docker", "exec", "-i"]
     assert full[3:5] == ["-u", "spoke"]
     assert full[5:7] == ["-e", "HOME=/home/spoke"]
-    assert full[7] == "e2e-mycelium-spoke1"
-    assert full[8] == "sh"
-    assert full[9] == "-c"
-    wrapped = full[10]
+    # One "-e VAR" pair per _DOCKER_PASSTHROUGH_ENV entry (CURSOR_API_KEY,
+    # CURSOR_MODEL) comes next, before the container name — host_exec passes
+    # the *names* through so docker inherits the values from its own
+    # environment, it doesn't bake values in here.
+    assert full[7:11] == ["-e", "CURSOR_API_KEY", "-e", "CURSOR_MODEL"]
+    assert full[11] == "e2e-mycelium-spoke1"
+    assert full[12] == "sh"
+    assert full[13] == "-c"
+    wrapped = full[14]
     assert "mycelium agent ls" in wrapped
     # PATH prelude is present so installed-via-uv binaries resolve
     assert "$HOME/.local/bin" in wrapped
