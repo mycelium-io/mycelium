@@ -19,6 +19,7 @@ from testcases.pr_memory import MemorySearch as _MemorySearch
 from testcases.pr_protocol import SessionAPIShape as _SessionAPIShape
 from testcases.pr_protocol import RespondWithoutAwait as _RespondWithoutAwait
 from testcases.pr_protocol import RoomDeleteIdempotent as _RoomDeleteIdempotent
+from testcases.pr_protocol import HerdrPresenceOverlay as _HerdrPresenceOverlay
 from testcases.pr_protocol import AgentContextEndpointShape as _AgentContextEndpointShape
 
 
@@ -62,6 +63,10 @@ class RespondWithoutAwait(_RespondWithoutAwait):
 
 
 class RoomDeleteIdempotent(_RoomDeleteIdempotent):
+    pass
+
+
+class HerdrPresenceOverlay(_HerdrPresenceOverlay):
     pass
 
 
