@@ -242,9 +242,11 @@ class EpisodeOne(aetest.Testcase):
 
 
 class EpisodeTwo(aetest.Testcase):
-    """E02 — Episode 2: same room, new session; agent_context contains Episode 1 artifacts.
+    """E02 — Episode 2: same room, new session; agent_context contains Episode 1 open work.
 
-    Gate: agent_context BEFORE session start contains Episode 1 decision keys (string match).
+    Gate: agent_context BEFORE session start contains Episode 1's still-open work
+    (string match). agent_context is a work/-only briefing by design — it never
+    surfaces decisions/ — so this cannot gate on the pre-seeded decision.
     NOT: agent negotiation quality.
     """
 
@@ -268,7 +270,7 @@ class EpisodeTwo(aetest.Testcase):
         room = testscript.parameters.get("canary_room", _DEFAULT_CANARY_ROOM)
         import urllib.parse
         enc = urllib.parse.quote(room, safe="")
-        status, context = api.get_json(f"/rooms/{enc}/agent_context")
+        status, context = api.get_json(f"/rooms/{enc}/agent-context")
 
         if status == 404:
             # Fallback: check memory list
@@ -284,10 +286,11 @@ class EpisodeTwo(aetest.Testcase):
         assert status == 200, f"agent_context returned {status}"
         context_str = str(context)
 
-        # Check for pre-seeded fixtures (written before Episode 1)
-        assert "api-versioning" in context_str or "versioning" in context_str.lower(), (
-            f"Pre-seeded api-versioning decision not in Episode 2 agent_context: {context_str[:600]}"
-        )
+        # agent_context is a work/-only briefing by design (the room's title +
+        # its open work) — decisions/ never appear here, so only the seeded
+        # work/auth-migration fixture is checkable through this endpoint. The
+        # seeded decisions/api-versioning fixture is still checked above, via
+        # list_memory, on the 404 fallback path.
         assert "auth-migration" in context_str or "auth" in context_str.lower(), (
             f"Pre-seeded auth-migration work not in Episode 2 agent_context: {context_str[:600]}"
         )
