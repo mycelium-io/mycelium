@@ -22,7 +22,6 @@ Tests:
 from __future__ import annotations
 
 import logging
-import re
 import time
 import uuid
 
@@ -163,22 +162,27 @@ class TwoStubRejectionPath(aetest.Testcase):
             # The mediator's prompt (mediator.py's _prompt_for) always opens
             # with a static "Issue space: data_retention_window_days ∈ {30,
             # ...}" preamble, and its LLM-generated "MEDIATOR: ..." framing
-            # note can freely mention either side's original ask — both are
-            # present on every single turn regardless of what's actually on
-            # the table that round. A bare "30" in prompt substring check
-            # matches either one even when the real current offer is 90 —
-            # confirmed live in CI: nightly_002 converged on
-            # {'data_retention_window_days': '90'} because this falsely
-            # accepted stub-reject's own number. Extract just the offer
-            # value itself ("Current standing offer: ..." when proposing,
-            # "The offer on the table is ..." when responding) and check
-            # only that — never the issue-space listing or the mediator's
-            # free-text commentary.
+            # note can freely mention either side's original ask (even a
+            # regex for "the offer on the table is ..." can be fooled — the
+            # note is free text and can narrate "earlier the offer on the
+            # table was 30 days" while describing history). Both are present
+            # on every turn regardless of what's actually on the table that
+            # round. A first-run fix (bare "30" in prompt) and a second
+            # (regex for the offer phrase anywhere in the prompt) both still
+            # let nightly_002 falsely converge on 90 in CI — confirmed live
+            # both times.
+            #
+            # _prompt_for's template is fixed and always exactly four
+            # "\n\n"-separated paragraphs: [0] the issue-space preamble,
+            # [1] "MEDIATOR: {note}" (LLM free text — never trust it),
+            # [2] "{role} (2 sentences max.)" — programmatically built by
+            # _prompt_for itself, never LLM-generated, and the *only* place
+            # the real current-round offer is guaranteed to live,
+            # [3] the constant _BATNA paragraph. Index into [2] directly
+            # instead of pattern-matching across the whole prompt.
             prompt = (turn_json or {}).get("prompt") or ""
-            match = re.search(
-                r"(?:Current standing offer|offer on the table is):?\s*(\(.*?\)|None)", prompt
-            )
-            offer_text = match.group(1) if match else ""
+            parts = prompt.split("\n\n")
+            offer_text = parts[2] if len(parts) > 2 else ""
             return "accept" if "30" in offer_text else "reject"
 
         stubs = [
