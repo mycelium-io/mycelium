@@ -78,7 +78,7 @@ async def test_summon_fires_only_for_the_reserved_handle():
 @pytest.mark.asyncio
 async def test_mediate_explains_when_too_few_participants():
     """Summoned with fewer than two participants, the aligner posts a
-    brain-authored explanation to the room instead of silently opening and
+    LLM-authored explanation to the room instead of silently opening and
     rejecting a throwaway episode."""
     channel = FakeChannel()
     persister = FakePersister()
@@ -86,7 +86,9 @@ async def test_mediate_explains_when_too_few_participants():
     manager = FakeManager(managed, ["solo"])  # one participant besides the aligner
     engine = _engine(
         manager,
-        brain_factory=lambda _ep: (lambda _prompt, **_kw: "Post positions first, then summon me."),
+        llm_session_factory=lambda _ep: (
+            lambda _prompt, **_kw: "Post positions first, then summon me."
+        ),
     )
 
     result = await engine.mediate(_ROOM)
@@ -105,7 +107,7 @@ async def test_mediate_explains_when_too_few_participants():
 
 @pytest.mark.asyncio
 async def test_mediate_stall_falls_back_when_brain_unavailable():
-    """If the brain errors, the aligner still leaves a static, actionable reply
+    """If the LLM session errors, the aligner still leaves a static, actionable reply
     rather than saying nothing."""
     channel = FakeChannel()
     persister = FakePersister()
@@ -117,7 +119,7 @@ async def test_mediate_stall_falls_back_when_brain_unavailable():
 
         return _raise
 
-    engine = _engine(FakeManager(managed, []), brain_factory=_boom)  # zero participants
+    engine = _engine(FakeManager(managed, []), llm_session_factory=_boom)  # zero participants
 
     await engine.mediate(_ROOM)
 

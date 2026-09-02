@@ -23,7 +23,7 @@ from app.services.status.auth import Bearer
 from app.services.status.context import HttpContext
 from app.services.status.providers.github import GitHubProvider
 from app.services.status.runtime import StatusRuntime
-from app.services.status.types import ROW_FIELD, Liveness, Ok, Outcome, Ref
+from app.services.status.types import ROW_FIELD, FetchOutcome, FetchSucceeded, Ref, UpstreamState
 
 NOW = datetime(2026, 8, 22, 12, 0, tzinfo=UTC)
 
@@ -48,10 +48,11 @@ class Recording:
             if word.strip(".").startswith("TOY-")
         ]
 
-    async def fetch(self, refs: list[Ref], ctx: object) -> list[Outcome]:
+    async def fetch(self, refs: list[Ref], ctx: object) -> list[FetchOutcome]:
         self.calls.append([r.id for r in refs])
         return [
-            Ok(ref=r, liveness=Liveness(state="ok", label="looks fine", url=None)) for r in refs
+            FetchSucceeded(ref=r, upstream=UpstreamState(state="ok", label="looks fine", url=None))
+            for r in refs
         ]
 
 
@@ -221,9 +222,9 @@ class TestRowFieldDoesNotCollide:
     def test_github_answers_are_shaped_for_that_field(self):
         provider = GitHubProvider()
         assert provider.name == "github"
-        # A Liveness is what lands under it: a closed state plus the tool's own
+        # An UpstreamState is what lands under it: a closed state plus the tool's own
         # words, never the row's lifecycle vocabulary.
-        assert Liveness(state="ok", label="approved").state == "ok"
+        assert UpstreamState(state="ok", label="approved").state == "ok"
 
 
 @pytest.mark.asyncio
@@ -235,7 +236,7 @@ async def test_a_background_refresh_is_kept_alive_to_completion(room: str):
     rt = StatusRuntime(providers={toy.name: toy}, credentials={})
     refs = [d.ref for d in discovery.discover(room, rt)]
 
-    assert status_route._kick(rt, refs, NOW) is True
+    assert status_route._schedule_background_refresh(rt, refs, NOW) is True
     assert status_route._refreshes, "the task must be strongly referenced while in flight"
     await asyncio.gather(*list(status_route._refreshes))
     # One batched call carrying both refs. The order within it is whatever the

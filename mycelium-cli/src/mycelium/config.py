@@ -452,6 +452,26 @@ class ScrapeTarget(BaseModel):
     )
 
 
+class A2aConfig(BaseModel):
+    """Configuration for the A2A bridge (outbound + inbound Agent2Agent gateway).
+
+    The default settings are safe for a public-facing deployment: the SSRF guard
+    refuses card URLs that resolve to private, loopback, or link-local addresses
+    so a misconfigured or attacker-supplied card URL can't probe the internal
+    network. Only set ``allow_private_hosts = true`` for a deployment where all
+    A2A agents are on the internal network and you trust every registrar.
+    """
+
+    allow_private_hosts: bool = Field(
+        default=False,
+        description=(
+            "Disable the SSRF guard that refuses A2A card URLs resolving to private, "
+            "loopback, or link-local addresses. Only set this for a trusted internal "
+            "deployment whose A2A agents live on the internal network."
+        ),
+    )
+
+
 class MetricsConfig(BaseModel):
     """Configuration for the metrics collector + display.
 
@@ -493,6 +513,7 @@ class MyceliumConfig(BaseModel):
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     rooms: RoomConfig = Field(default_factory=RoomConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
+    a2a: A2aConfig = Field(default_factory=A2aConfig)
     adapters: dict[str, Any] = Field(
         default_factory=dict,
         description="Registered agent framework adapters (claude-code, cursor, …)",
@@ -688,7 +709,7 @@ class MyceliumConfig(BaseModel):
         global_path = self._global_config_path or self.get_global_config_path()
         global_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Global sections: identity, server, llm, engine, runtime, metrics, adapters
+        # Global sections: identity, server, llm, engine, runtime, metrics, a2a, adapters
         _global_sections = (
             "identity",
             "server",
@@ -700,6 +721,7 @@ class MyceliumConfig(BaseModel):
             "agent_auth",
             "runtime",
             "metrics",
+            "a2a",
             "adapters",
         )
 
@@ -795,22 +817,15 @@ class MyceliumConfig(BaseModel):
         self.save()
 
     def get_current_identity(self) -> str:
-        import os
+        """This machine's acting identity, for a sender handle.
 
-        from mycelium.identity import get_current_handle
+        A thin wrapper over the one resolver (:func:`mycelium.identity.resolve_actor`)
+        so a sender and a write's author are found the same way: an explicit
+        override the caller passes, then ``MYCELIUM_AGENT_HANDLE``, then the hub's
+        own view of our token, then local ``iam`` config, then ``"unknown"``.
+        ``require=False`` because a sender read must not raise — the caller decides
+        what an unresolved sender means.
+        """
+        from mycelium.identity import resolve_actor
 
-        # Env var set by Mycelium plugin (or Docker Compose) takes highest priority
-        env_handle = os.environ.get("MYCELIUM_AGENT_HANDLE", "").strip()
-        if env_handle:
-            return env_handle
-
-        try:
-            handle = get_current_handle(self)
-            if handle:
-                return handle
-        except Exception:
-            pass
-
-        if self.identity.name:
-            return self.identity.name
-        return "unknown"
+        return resolve_actor(self, require=False, fallback="unknown")

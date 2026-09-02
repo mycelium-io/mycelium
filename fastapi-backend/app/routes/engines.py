@@ -15,13 +15,12 @@ the ``GET .../agents`` listing pick it up like any other room citizen.
 import logging
 import re
 
-import yaml
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.routes.memory import upsert_memories
-from app.schemas import HANDLE_PATTERN, AgentRead, MemoryBatchCreate, MemoryCreate
+from app.schemas import HANDLE_PATTERN, AgentRead
 from app.services import actor
+from app.services.agent_registry import norm_handle, write_agent_manifest
 from app.services.filesystem import get_room_dir, read_memory_file, room_exists
 
 logger = logging.getLogger(__name__)
@@ -51,13 +50,6 @@ class EngineCreate(BaseModel):
     )
 
 
-def _norm(handle: str | None) -> str | None:
-    if not handle:
-        return None
-    cleaned = handle.strip().lstrip("@").lower()
-    return cleaned or None
-
-
 @router.post("", response_model=AgentRead, status_code=201)
 async def create_engine(room_name: str, payload: EngineCreate, request: Request) -> AgentRead:
     """Register an engine manifest in the room and return its structured view."""
@@ -76,7 +68,7 @@ async def create_engine(room_name: str, payload: EngineCreate, request: Request)
             detail=f"Unknown engine kind {kind!r}; known: {sorted(ENGINE_KINDS)}",
         )
 
-    handle = _norm(payload.handle)
+    handle = norm_handle(payload.handle)
     if not handle or not _HANDLE_RE.match(handle):
         raise HTTPException(
             status_code=422,
@@ -94,26 +86,11 @@ async def create_engine(room_name: str, payload: EngineCreate, request: Request)
         "adapter": "engine",
         "kind": kind,
         "description": payload.description,
-        "allow_from": [h for h in (_norm(a) for a in payload.allow_from) if h],
-        "owner": _norm(payload.owner),
-        "team": _norm(payload.team),
+        "allow_from": [h for h in (norm_handle(a) for a in payload.allow_from) if h],
+        "owner": norm_handle(payload.owner),
+        "team": norm_handle(payload.team),
     }
-    yaml_body = yaml.safe_dump(body, sort_keys=False, default_flow_style=False).strip()
-
-    batch = MemoryBatchCreate(
-        items=[
-            MemoryCreate(
-                key=key,
-                value=yaml_body,
-                created_by=registrar or "web-ui",
-                # embed=False: a manifest is registry config, not room knowledge —
-                # embedding it pollutes memory search + synthesis with roster noise.
-                embed=False,
-                tags=["agent-manifest"],
-            )
-        ]
-    )
-    await upsert_memories(room_name, batch)
+    await write_agent_manifest(room_name, handle, body, created_by=registrar or "web-ui")
     logger.info("room %s: registered engine @%s (kind=%s)", room_name, handle, kind)
 
     return AgentRead(

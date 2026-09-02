@@ -10,7 +10,6 @@ vi.mock("@/lib/api", () => ({
   fetchRoomMembers: vi.fn(),
   fetchMessages: vi.fn(),
   fetchMemories: vi.fn(),
-  fetchMemoryIntegrity: vi.fn(),
   fetchSkills: vi.fn(),
   fetchPlan: vi.fn(),
   fetchEpisodes: vi.fn(),
@@ -22,7 +21,7 @@ vi.mock("@/lib/api", () => ({
 
 import { fetchMessages, fetchRoomAgents, fetchRoomMembers } from "@/lib/api";
 import { CurrentUserProvider } from "@/components/current-user";
-import { useRoomRevalidate, useRoomRoster } from "@/lib/room-data";
+import { useRoomMessages, useRoomRevalidate, useRoomRoster, useThreadMessages } from "@/lib/room-data";
 
 const agent = (handle: string, extra: Record<string, unknown> = {}) => ({
   handle,
@@ -144,5 +143,125 @@ describe("useRoomRoster", () => {
 
     await waitFor(() => expect(fetchRoomAgents).toHaveBeenCalledTimes(2));
     expect(vi.mocked(fetchRoomAgents).mock.calls.map(([room]) => room)).toEqual(["demo", "other"]);
+  });
+});
+
+/** Two readers of the same room's messages: the channel, and one thread's pane. */
+function Feeds({ room, episode }: { room: string; episode: string }) {
+  const { messages } = useRoomMessages(room, 200);
+  const thread = useThreadMessages(room, episode, 200);
+  return (
+    <>
+      <ul data-testid="room">{messages.map((m, i) => <li key={i}>{String(m.content)}</li>)}</ul>
+      <ul data-testid="thread">{thread.messages.map((m, i) => <li key={i}>{String(m.content)}</li>)}</ul>
+    </>
+  );
+}
+
+describe("useThreadMessages", () => {
+  const EPISODE = "urn:ioc:mycelium:episode:demo:t3aa11bb";
+
+  beforeEach(() => {
+    vi.mocked(fetchMessages).mockReset();
+    vi.mocked(fetchMessages).mockImplementation(async (_room, _limit, query) =>
+      query?.episode
+        ? { messages: [{ content: "inside the task" }] }
+        : { messages: [{ content: "in the room" }] },
+    );
+  });
+
+  it("keeps its own cache entry, so a thread never overwrites the room's feed", async () => {
+    // A shared key would have the pane's filtered slice served to the channel —
+    // the room emptied by the mechanism that exists to keep it readable.
+    renderWithSWR(<Feeds room="demo" episode={EPISODE} />);
+    await waitFor(() => expect(screen.getByTestId("thread")).toHaveTextContent("inside the task"));
+    expect(screen.getByTestId("room")).toHaveTextContent("in the room");
+    expect(screen.getByTestId("room")).not.toHaveTextContent("inside the task");
+  });
+
+  it("narrows on the server rather than filtering the room's page", async () => {
+    renderWithSWR(<Feeds room="demo" episode={EPISODE} />);
+    await waitFor(() => expect(fetchMessages).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(fetchMessages).mock.calls.map(([, , query]) => query?.episode)).toEqual([
+      undefined,
+      EPISODE,
+    ]);
+  });
+
+  it("is reached by the room's revalidation, so an SSE thread write refreshes both", async () => {
+    renderWithSWR(
+      <>
+        <Feeds room="demo" episode={EPISODE} />
+        <Revalidator room="demo" />
+      </>,
+    );
+    await waitFor(() => expect(fetchMessages).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      screen.getByRole("button", { name: "refresh" }).click();
+    });
+
+    await waitFor(() => expect(fetchMessages).toHaveBeenCalledTimes(4));
+  });
+
+  it("fetches nothing while no thread is open", async () => {
+    function Closed() {
+      const { messages } = useThreadMessages("demo", null);
+      return <span data-testid="closed">{messages.length}</span>;
+    }
+    renderWithSWR(<Closed />);
+    await waitFor(() => expect(screen.getByTestId("closed")).toHaveTextContent("0"));
+    expect(fetchMessages).not.toHaveBeenCalled();
+  });
+
+  /** A thread pane that shows how deep it has read and can ask for more. */
+  function Pane({ room, episode }: { room: string; episode: string }) {
+    const { messages, hasOlder, loadOlder } = useThreadMessages(room, episode, 2);
+    return (
+      <>
+        <ul data-testid="pane">{messages.map((m, i) => <li key={i}>{String(m.content)}</li>)}</ul>
+        {hasOlder && (
+          <button type="button" onClick={loadOlder}>
+            older
+          </button>
+        )}
+      </>
+    );
+  }
+
+  it("widens its window rather than paging behind a cursor", async () => {
+    // Newest-first, so the newest N always contains the newest M before it:
+    // widening is idempotent against the live stream in the way an offset is
+    // not, and it stays one cache entry — which is what keeps a pushed write
+    // reaching this pane through `useRoomRevalidate`.
+    const thread = ["third", "second", "first"];
+    vi.mocked(fetchMessages).mockImplementation(async (_room, limit) => ({
+      messages: thread.slice(0, limit).map((content) => ({ content })),
+      total: thread.length,
+    }));
+
+    renderWithSWR(<Pane room="demo" episode={EPISODE} />);
+    await waitFor(() => expect(screen.getByTestId("pane")).toHaveTextContent("second"));
+    expect(screen.getByTestId("pane")).not.toHaveTextContent("first");
+
+    await act(async () => {
+      screen.getByRole("button", { name: "older" }).click();
+    });
+
+    await waitFor(() => expect(screen.getByTestId("pane")).toHaveTextContent("first"));
+    expect(vi.mocked(fetchMessages).mock.calls.map(([, limit]) => limit)).toEqual([2, 4]);
+  });
+
+  it("offers more only while the room says there is more", async () => {
+    // `total` is what matched, not what was returned, so this is exact rather
+    // than a full page inferred to mean there is another behind it.
+    vi.mocked(fetchMessages).mockResolvedValue({
+      messages: [{ content: "third" }, { content: "second" }],
+      total: 2,
+    });
+
+    renderWithSWR(<Pane room="demo" episode={EPISODE} />);
+    await waitFor(() => expect(screen.getByTestId("pane")).toHaveTextContent("second"));
+    expect(screen.queryByRole("button", { name: "older" })).not.toBeInTheDocument();
   });
 });

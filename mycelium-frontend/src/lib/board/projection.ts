@@ -5,19 +5,54 @@
  * Project what the room already has into board rows.
  *
  * Nothing here is a new store: episodes, memories and presence are
- * read where they live and flattened into one row shape. The board is a lens on
+ * read where they live and flattened into one row shape. The board is one filter on
  * the room, so a row can't be stale relative to the thing it describes, and
  * deleting the board would lose nothing.
+ *
+ * **One row per task.** A row and the thread its coordination happens in
+ * are the same object, bound by the `episode` key the store puts on the row's
+ * memory, so a task and its episode fold into one row rather than sitting beside
+ * each other as two. The thread's state lands under `THREAD_FIELDS` and never on
+ * the row's own axes: closing a negotiation inside a task must not resolve the
+ * task or take it off whoever is holding it. An episode no row is bound to is an
+ * **orphan** — it keeps a row of its own, because a recorded negotiation nobody
+ * compiled into work is still something the room did.
  */
 
 import type { AgentSummary, EpisodeSummary, Memory } from "@/lib/api";
 import type { PresenceMember } from "@/lib/api";
-import { CUSTODY_FIELD, DEFAULT_TTL_MINUTES, LEASABLE_NAMESPACES, custodyOf } from "./custody";
+import { ASSIGNMENT_FIELD, DEFAULT_TTL_MINUTES, ASSIGNABLE_NAMESPACES, assignmentOf } from "./assignment";
 import type { LiveItem } from "./item";
 import { memoryHref } from "@/lib/memory-routes";
+import { memoryTitle } from "@/lib/memory-preview";
 
 /** Namespaces whose memories read as coordination state rather than prose. */
 const LIVE_NAMESPACES = ["decisions", "status", "work", "failed"];
+
+/**
+ * The store-owned frontmatter key binding a row to its thread. Minted by the
+ * backend and carried across writes, so a row's thread is stable for its life.
+ */
+export const EPISODE_FIELD = "episode";
+
+/**
+ * What a row says about the thread inside it. Deliberately its own names: a
+ * task's `status` and `assignment` are the task's, so a negotiation that converges
+ * inside a row must not resolve the row or take it off its holder.
+ */
+export const THREAD_FIELDS = ["episode", "thread", "thread_state", "participants", "rounds"];
+
+/**
+ * How the thread inside a task reads. `open` while it is still running; the rest
+ * are the commit subkinds a negotiation closes on.
+ */
+export const THREAD_STATES = ["open", "converged", "resolved", "rejected", "committed"];
+
+/**
+ * The row's own axes, which folding a thread onto it must never write. This is
+ * the container-outlives-the-negotiation rule as a list.
+ */
+export const TASK_FIELDS = ["status", "assignment", "owner", "kind", "priority"];
 
 /** Episode topics arrive as URNs; the board shows the part a person wrote. */
 function prettyTopic(topic: string): string {
@@ -41,6 +76,8 @@ function episodeItem(ep: EpisodeSummary, room: string): LiveItem {
       href: `/room/${encodeURIComponent(room)}?focus=episode:${encodeURIComponent(ep.short_id)}`,
     },
     fields: {
+      [EPISODE_FIELD]: ep.episode,
+      thread: ep.short_id,
       // A rejected negotiation is not a stage called "blocked" — nothing is
       // blocking it, it failed and wants a human. It reads open, and the kind
       // carries what happened.
@@ -71,12 +108,7 @@ function memoryItem(memory: Memory, room: string): LiveItem {
   delete custom.text;
   delete custom.content;
 
-  const title =
-    typeof custom.title === "string"
-      ? custom.title
-      : typeof value === "string"
-        ? firstLine(value)
-        : firstLine(memory.content_text ?? memory.key);
+  const title = memoryTitle(memory);
 
   const derivedStatus = namespace === "decisions" ? "resolved" : "open";
 
@@ -97,7 +129,7 @@ function memoryItem(memory: Memory, room: string): LiveItem {
     fields: {
       status: typeof custom.status === "string" ? custom.status : derivedStatus,
       kind: namespace === "decisions" ? "decision" : namespace === "failed" ? "blocked" : "concern",
-      // Who wrote it last is provenance, not custody. Reading `owner` off
+      // Who wrote it last is provenance, not assignment. Reading `owner` off
       // `updated_by` gave every memory in the room a holder, which is the
       // confident-lie failure this axis exists to stop: a holder is something a
       // claim writes, so an unclaimed row says nobody.
@@ -108,13 +140,33 @@ function memoryItem(memory: Memory, room: string): LiveItem {
       tags: memory.tags ?? [],
       updated: memory.updated_at,
       ttl_minutes: null,
-      // `work/` is the in-flight unit, so it is the namespace that carries a
+      // `work/` is the in-flight task, so it is the namespace that carries a
       // lease: frontmatter has somewhere to put a stamp, which is why leases
       // live here and not on plan tasks.
-      ...(LEASABLE_NAMESPACES.includes(namespace) ? { [CUSTODY_FIELD]: "unclaimed" } : {}),
+      ...(ASSIGNABLE_NAMESPACES.includes(namespace) ? { [ASSIGNMENT_FIELD]: "unclaimed" } : {}),
       ...custom,
       ...meta,
+      // The binding is store-owned, so it arrives as its own field rather than
+      // in the meta bag a caller can write.
+      ...(memory.episode
+        ? { [EPISODE_FIELD]: memory.episode, thread: memory.episode.split(":").pop() }
+        : {}),
     },
+  };
+}
+
+/**
+ * What a task's row says about the thread inside it.
+ *
+ * Never the row's own axes (`TASK_FIELDS`) — a converged negotiation is a fact
+ * about the conversation, not a claim that the work is done or that anyone is
+ * holding it.
+ */
+function threadFields(ep: EpisodeSummary): Record<string, unknown> {
+  return {
+    thread_state: ep.subkind ?? ep.outcome ?? "open",
+    participants: ep.participants,
+    rounds: ep.message_count,
   };
 }
 
@@ -142,16 +194,11 @@ function agentItem(agent: AgentSummary, presence: PresenceMember, now: string): 
       live: true,
       updated: lastSeen,
       // Presence is a lease: the row drains unless the runtime keeps renewing it.
-      [CUSTODY_FIELD]: "held",
+      [ASSIGNMENT_FIELD]: "held",
       claimed_at: lastSeen,
       ttl_minutes: DEFAULT_TTL_MINUTES,
     },
   };
-}
-
-function firstLine(text: string): string {
-  const line = text.split("\n").map(l => l.trim()).find(l => l && !l.startsWith("---"));
-  return (line ?? "").replace(/^#+\s*/, "").slice(0, 120);
 }
 
 export interface ProjectionInput {
@@ -161,8 +208,8 @@ export interface ProjectionInput {
   agents: AgentSummary[];
   presence: Map<string, PresenceMember>;
   now: string;
-  /** Rows an agent hasn't touched yet: local triage, keyed by item id. */
-  overlay?: Record<string, Record<string, unknown>>;
+  /** Field writes applied locally until the server's copy catches up, keyed by item id. */
+  optimisticEdits?: Record<string, Record<string, unknown>>;
   /** Rows captured in this session, before any backend write exists for them. */
   captured?: LiveItem[];
 }
@@ -170,11 +217,23 @@ export interface ProjectionInput {
 export function projectItems(input: ProjectionInput): LiveItem[] {
   const items: LiveItem[] = [];
 
-  for (const ep of input.episodes) items.push(episodeItem(ep, input.room));
-  for (const memory of input.memories) {
-    if (!LIVE_NAMESPACES.includes(memory.key.split("/")[0] ?? "")) continue;
-    items.push(memoryItem(memory, input.room));
+  const rows = input.memories
+    .filter(memory => LIVE_NAMESPACES.includes(memory.key.split("/")[0] ?? ""))
+    .map(memory => memoryItem(memory, input.room));
+  // A task folds in its thread; what nothing folded is an orphan episode, which
+  // keeps its own row rather than being hidden.
+  const byUrn = new Map(input.episodes.map(ep => [ep.episode, ep]));
+  const folded = new Set<string>();
+  for (const row of rows) {
+    const ep = byUrn.get(row.fields[EPISODE_FIELD] as string);
+    if (!ep) continue;
+    folded.add(ep.episode);
+    Object.assign(row.fields, threadFields(ep));
   }
+  for (const ep of input.episodes) {
+    if (!folded.has(ep.episode)) items.push(episodeItem(ep, input.room));
+  }
+  items.push(...rows);
   // Nor does an agent whose lease has drained — a session that went quiet an
   // hour ago is not residency, and a row saying it is would be the board's most
   // expensive lie.
@@ -183,12 +242,12 @@ export function projectItems(input: ProjectionInput): LiveItem[] {
     const presence = input.presence.get(agent.handle.toLowerCase());
     if (!presence) continue;
     const row = agentItem(agent, presence, input.now);
-    if (custodyOf(row, clock) === "held") items.push(row);
+    if (assignmentOf(row, clock) === "held") items.push(row);
   }
   items.push(...(input.captured ?? []));
 
-  const overlay = input.overlay ?? {};
+  const edits = input.optimisticEdits ?? {};
   return items.map(item =>
-    overlay[item.id] ? { ...item, fields: { ...item.fields, ...overlay[item.id] } } : item,
+    edits[item.id] ? { ...item, fields: { ...item.fields, ...edits[item.id] } } : item,
   );
 }

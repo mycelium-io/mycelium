@@ -4,7 +4,7 @@
 """The board's row primitive and the vocabulary it is written in.
 
 A row is a stable identity plus a bag of frontmatter ``fields``.  Every view —
-the steer-lens, the kanban, the typed table — is a projection over that bag, so
+the steer-attention_filter, the kanban, the typed table — is a projection over that bag, so
 a coordination surface and a typed view over a namespace are one mechanism.
 """
 
@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 # Frozen in contracts/board-vocabulary.json; the GUI carries the same lists.
-#: The stage a row is at, and only that. Who holds it is ``custody`` (a lease
+#: The stage a row is at, and only that. Who holds it is ``assignment`` (a lease
 #: that drains), and whether it is blocked is derived from ``blocked_by`` — both
 #: used to be spelled here, which is how one field ended up doing three jobs.
 STATUSES = [
@@ -26,13 +26,20 @@ STATUSES = [
 ]
 KINDS = ["decision", "blocked", "review", "action", "concern", "signal"]
 PRIORITIES = ["urgent", "high", "normal", "low"]
-LENSES = ["needs_you", "in_flight", "resolved"]
-VERBS = ["claim", "release", "resolve", "block", "unblock", "promote", "dismiss"]
+ATTENTION_FILTERS = ["needs_you", "in_flight", "resolved"]
+#: What a row action does to the row it names. A **mutation** action changes the
+#: row — its assignment through a lease, everything else as frontmatter. A
+#: **chat** verb changes nothing about the row and speaks in the thread the row
+#: *is*: the room's own chat verbs with a row id in front of them. Kept as two
+#: lists rather than one because a reader has to be able to tell, from the word
+#: alone, whether a typo just wrote a field or posted a message.
+ROW_ACTIONS = ["claim", "release", "resolve", "block", "unblock", "promote", "dismiss", "new"]
+CHAT_VERBS = ["send", "messages", "coordinate"]
 
-#: The lens is derived from status, never stored, so a row can't drift out of
+#: The attention filter is derived from status, never stored, so a row can't drift out of
 #: sync with the board it belongs on. This is the half for rows nobody holds;
-#: a row with a lease is lensed by its custody instead (``custody.lens_of_item``).
-LENS_OF_STATUS = {
+#: a row with a lease is lensed by its assignment instead (``assignment.attention_of_item``).
+ATTENTION_OF_STATUS = {
     "open": "needs_you",
     "in_review": "in_flight",
     "resolved": "resolved",
@@ -40,6 +47,38 @@ LENS_OF_STATUS = {
 }
 
 LIVE_NAMESPACES = ["decisions", "status", "work", "failed"]
+
+#: The store-owned frontmatter key binding a row to its thread. Minted by the
+#: backend and carried across writes, so a row's thread is stable for its life.
+EPISODE_FIELD = "episode"
+
+#: What a row says about the thread inside it. Deliberately its own names: a
+#: task's ``status`` and ``assignment`` are the task's, so a negotiation that
+#: converges inside a row must not resolve the row or take it off its holder.
+THREAD_FIELDS = ["episode", "thread", "thread_state", "participants", "rounds"]
+
+#: How the thread inside a task reads. ``open`` while it is still running;
+#: the rest are the commit subkinds a negotiation closes on.
+THREAD_STATES = ["open", "converged", "resolved", "rejected", "committed"]
+
+#: The row's own axes, which folding a thread onto it must never write. This is
+#: the container-outlives-the-negotiation rule as a list.
+TASK_FIELDS = ["status", "assignment", "owner", "kind", "priority"]
+
+#: Why a row has no thread to speak into, keyed by what produced it. A chat verb
+#: refuses in these terms rather than falling back to the room: a message that
+#: quietly went somewhere other than where it was addressed is worse than one
+#: that did not go.
+#:
+#: The memory refusal is not about what the memory is. Every memory carries a
+#: thread, whatever its namespace and whoever wrote it, so an unthreaded memory
+#: is a gap rather than a category — one written before threading and not yet
+#: backfilled. The copy says so: a surface that refuses in terms of a rule
+#: nobody can see reads as a bug.
+THREAD_REFUSALS = {
+    "agent": "presence is a lease the runtime renews, not a conversation to join",
+    "memory": "this memory carries no thread yet — every memory gets one, so this is a gap rather than a rule",
+}
 
 
 @dataclass(frozen=True)
@@ -104,8 +143,8 @@ class LiveItem:
         return max(0, int((now - stamp).total_seconds() // 60))
 
 
-def lens_of(status: str) -> str:
-    return LENS_OF_STATUS.get(status, "needs_you")
+def attention_of_status(status: str) -> str:
+    return ATTENTION_OF_STATUS.get(status, "needs_you")
 
 
 def priority_rank(item: LiveItem) -> int:

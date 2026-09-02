@@ -431,6 +431,10 @@ def _compose_up(compose_path: Path, env_path: Path) -> tuple[bool, bool]:
     print()
 
     result = subprocess.run(args, text=True)
+    if result.returncode == 0:
+        from mycelium.docker_utils import patch_build_mode
+
+        patch_build_mode(env_path, "")
     return result.returncode == 0, needs_build
 
 

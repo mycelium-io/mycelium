@@ -11,7 +11,7 @@ that consensus and compiles it — via one LLM call — into concrete tasks.
 **A task is a row, not a line in a document.** Each one becomes a ``work/``
 memory with its own frontmatter, so it can carry an owner, a status and a
 lease, be grouped and filtered like anything else in the room, and be moved by
-a board verb. A shared checklist could do none of that: a ``- [ ]`` line has
+a board action. A shared checklist could do none of that: a ``- [ ]`` line has
 nowhere to put a field.
 
 The LLM still writes checklist lines, because that is the shape it is good at
@@ -132,11 +132,11 @@ _TRIM = " -\u2013\u2014:"
 
 @dataclass(frozen=True)
 class CompiledTask:
-    """One unit of agreed work, before it becomes a row.
+    """One task of agreed work, before it becomes a row.
 
     ``assignee`` is who the task is *for*, lifted from an ``@handle`` in the
-    line. It is not custody: nobody has agreed to hold this yet, and a lease is
-    something an actor takes.
+    line. It is not an assignment: nobody has agreed to hold this yet, and an
+    assignment is something an actor takes.
     """
 
     title: str
@@ -209,11 +209,11 @@ def _pi_complete(prompt: str) -> str:
     file keeps it a true one-shot with no memory to carry. Isolated so tests can
     patch it without a live Pi.
     """
-    from app.services.pi_brain import PiBrain
+    from app.services.pi_session import PiSession
 
     session_dir = Path(tempfile.gettempdir()) / "mycelium-pi-sessions"
     session_dir.mkdir(parents=True, exist_ok=True)
-    brain = PiBrain(
+    llm_session = PiSession(
         session_path=session_dir / f"task-compile-{uuid.uuid4().hex}.jsonl",
         model=settings.LLM_MODEL,
         api_key=settings.LLM_API_KEY,
@@ -222,7 +222,7 @@ def _pi_complete(prompt: str) -> str:
         timeout_s=COMPILER_TIMEOUT_SECS,
         openshell=settings.ALIGNER_PI_OPENSHELL,
     )
-    return brain(prompt)
+    return llm_session(prompt)
 
 
 async def _compile_body(prompt: str, room_name: str) -> str:

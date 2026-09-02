@@ -25,6 +25,10 @@ mycelium memory get agents/$MYCELIUM_AGENT_HANDLE/notes
 - Do **NOT** prefix replies with `@handle:` or quote the original.
 - Keep replies tight. Long content belongs in memory (`decisions/...`,
   `work/...`), not the room chat surface.
+- Anything attached to a specific board row goes in **that row's thread**
+  (`mycelium board send <row-id> "…"`), not the room. The room then shows one
+  ping saying the task moved, so it stays readable while the detail stays
+  attached to the work.
 
 ## Update your notes
 
@@ -41,8 +45,9 @@ belong in the conversation; speculation belongs nowhere.
 
 ## More
 
-Detailed coordination patterns (room/memory/negotiate/board commands,
-@-mention rules, agent-mode behaviour) live in this workspace's Cursor
+Detailed coordination patterns (the board flow — `board new` / `send` /
+`messages` / `coordinate` and `await --task` — plus room and memory commands,
+@-mention rules, agent-mode behaviour) live in this Cursor
 rule: `.cursor/rules/mycelium.mdc`, loaded automatically on every Cursor
 session here. Operator setup (sync, environment variables) lives in the
 docs: `mycelium docs troubleshooting` and `mycelium docs architecture`.

@@ -12,7 +12,7 @@ what ``_read_messages`` returns.
 from datetime import UTC, datetime
 
 from app.routes.messages import _read_messages
-from app.services import l9, local_state, persister
+from app.services import in_memory_store, l9, persister
 from app.services.filesystem import get_room_dir
 from app.services.l9_models import Kind
 from app.services.l9_slim import serialize_content
@@ -32,10 +32,10 @@ def _record(message_id: str, *, sender: str, text: str):
 
 
 def test_read_serves_the_transcript_when_memory_is_empty(tmp_path, monkeypatch):
-    """A restart wipes ``local_state`` but not the transcript: the read path still
+    """A restart wipes ``in_memory_store`` but not the transcript: the read path still
     returns the room's history."""
     monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
-    local_state.clear_all()
+    in_memory_store.clear_all()
     room = "read-restart-room"
     get_room_dir(room)
     persister.append_transcript(room, _record("a-1", sender="growth", text="from before restart"))
@@ -48,7 +48,7 @@ def test_read_dedups_a_message_present_in_both_stores(tmp_path, monkeypatch):
     """A live message is in both the list store and the transcript; the read path
     shows it once (the list-store row wins, keeping its ledger fields and id)."""
     monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
-    local_state.clear_all()
+    in_memory_store.clear_all()
     room = "read-dedup-room"
     get_room_dir(room)
 
@@ -56,7 +56,7 @@ def test_read_dedups_a_message_present_in_both_stores(tmp_path, monkeypatch):
     persister.append_transcript(room, record)
     mem_row = persister.stored_message_from_record(room, record)
     assert mem_row is not None
-    local_state.add_message(room, mem_row)
+    in_memory_store.add_message(room, mem_row)
 
     served = _read_messages(room, None)
     assert len(served) == 1
@@ -67,14 +67,14 @@ def test_read_merges_event_ledger_rows_that_only_live_in_memory(tmp_path, monkey
     """An event row (ttl/status) never rides the transcript; it must still surface
     alongside the transcript-backed chat."""
     monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
-    local_state.clear_all()
+    in_memory_store.clear_all()
     room = "read-merge-room"
     get_room_dir(room)
 
     persister.append_transcript(room, _record("a-1", sender="growth", text="chat"))
-    local_state.add_message(
+    in_memory_store.add_message(
         room,
-        local_state.StoredMessage(
+        in_memory_store.StoredMessage(
             room_name=room,
             sender_handle="github-poller",
             message_type="event",
@@ -124,7 +124,7 @@ def test_a_record_with_no_stamp_holds_its_place_instead_of_dating_to_now(tmp_pat
     read time — always the newest value there is, so the row jumped to the end of
     the feed and reported a different time on every read."""
     monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
-    local_state.clear_all()
+    in_memory_store.clear_all()
     room = "unstamped-room"
     get_room_dir(room)
     for record in (
@@ -143,7 +143,7 @@ def test_a_record_with_no_stamp_holds_its_place_instead_of_dating_to_now(tmp_pat
 
 def test_an_unstamped_record_reports_the_same_time_on_every_read(tmp_path, monkeypatch):
     monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
-    local_state.clear_all()
+    in_memory_store.clear_all()
     room = "unstamped-stable-room"
     get_room_dir(room)
     persister.append_transcript(
@@ -160,7 +160,7 @@ def test_an_unstamped_record_reports_the_same_time_on_every_read(tmp_path, monke
 
 def test_a_leading_unstamped_record_inherits_the_first_stamp_that_follows(tmp_path, monkeypatch):
     monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
-    local_state.clear_all()
+    in_memory_store.clear_all()
     room = "leading-unstamped-room"
     get_room_dir(room)
     persister.append_transcript(room, _knowledge_record("k-1", key="agents/590", recorded_at=None))

@@ -11,9 +11,9 @@ import { resetStreamHub } from "@/lib/stream-hub";
 
 vi.mock("@/lib/api", () => ({
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
+  fetchL9History: vi.fn().mockResolvedValue([]),
+  fetchMemories: vi.fn().mockResolvedValue([]),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
-  fetchPendingInvites: vi.fn().mockResolvedValue([]),
-  respondToInvite: vi.fn(),
   logFetchError: () => () => undefined,
 }));
 
@@ -154,7 +154,7 @@ describe("<EventStream /> live message rendering", () => {
     warn.mockRestore();
   });
 
-  it("renders an l9_knowledge streamed over SSE as a knowledge notice, not the unhandled fallback", async () => {
+  it("lifts an l9_knowledge streamed over SSE into the rail, not the unhandled fallback", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     renderWithSWR(<EventStream roomName="sprint" />);
     await act(async () => {});
@@ -176,16 +176,18 @@ describe("<EventStream /> live message rendering", () => {
       });
     });
 
-    expect(await screen.findByText("plan updated → plan/tasks.md")).toBeInTheDocument();
-    expect(screen.getByText("Knowledge")).toBeInTheDocument();
-    expect(screen.getByText("by @aligner", { exact: false })).toBeInTheDocument();
+    // A memory push is the room's state, not its speech: it reaches the rail
+    // under the row's own name, once, and never the conversation.
+    expect(await screen.findByText("Recently updated")).toBeInTheDocument();
+    expect(screen.getAllByText("plan/tasks.md")).toHaveLength(1);
+    expect(screen.getByText("@aligner")).toBeInTheDocument();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
   });
 
-  it("opens the episode a coordination notice names when its tag is clicked", async () => {
-    const onOpenEpisode = vi.fn();
-    renderWithSWR(<EventStream roomName="sprint" onOpenEpisode={onOpenEpisode} />);
+  it("opens the episode's thread when a coordination notice's tag is clicked", async () => {
+    const onOpenThread = vi.fn();
+    renderWithSWR(<EventStream roomName="sprint" onOpenThread={onOpenThread} />);
     await act(async () => {});
     const es = FakeEventSource.latest();
 
@@ -211,7 +213,7 @@ describe("<EventStream /> live message rendering", () => {
 
     // The notice names the episode by its short id; the name is the way in.
     await userEvent.click(await screen.findByRole("button", { name: /Open episode e4f1a2/ }));
-    expect(onOpenEpisode).toHaveBeenCalledWith("e4f1a2");
+    expect(onOpenThread).toHaveBeenCalledWith("urn:ioc:mycelium:episode:sprint:e4f1a2");
   });
 
   it("leaves the episode tag inert when nothing is listening for it", async () => {

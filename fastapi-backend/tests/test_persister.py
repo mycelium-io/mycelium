@@ -456,7 +456,7 @@ def test_list_store_human_and_agent_each_appear_once_in_order():
     store exactly once, in order — the source partition (POST writes the human's,
     the persister writes SLIM arrivals) + id-dedup hold, so nothing double-writes.
     """
-    from app.services import local_state
+    from app.services import in_memory_store
 
     room = "h2-invariant-room"
     p = _persister_for(room, summoned=[], converged=[])
@@ -467,9 +467,9 @@ def test_list_store_human_and_agent_each_appear_once_in_order():
     human_env, human_content = _msg_content(
         "h-1", sender="avery", text="@smoke-agent hello", payload_type="message"
     )
-    local_state.add_message(
+    in_memory_store.add_message(
         room,
-        local_state.StoredMessage(
+        in_memory_store.StoredMessage(
             room_name=room,
             sender_handle="avery",
             message_type="broadcast",
@@ -488,7 +488,7 @@ def test_list_store_human_and_agent_each_appear_once_in_order():
     )
     p._ingest(agent_env, agent_content)
 
-    stored = local_state.list_messages(room)
+    stored = in_memory_store.list_messages(room)
     assert [(m.sender_handle, m.content) for m in stored] == [
         ("avery", "hello"),
         ("smoke-agent", "hi back"),
@@ -499,7 +499,7 @@ def test_list_store_message_carries_its_episode():
     """Rung 2: a message lands in the list store tagged with the L9 episode it rode,
     so the UI can group/fold a negotiation's turns by episode (and the messages
     route can filter by it)."""
-    from app.services import local_state
+    from app.services import in_memory_store
 
     room = "episode-tag-room"
     p = _persister_for(room, summoned=[], converged=[])
@@ -507,7 +507,7 @@ def test_list_store_message_carries_its_episode():
     env, content = _msg_content("a-1", sender="growth", text="my position", payload_type="reply")
     p._ingest(env, content)
 
-    stored = local_state.list_messages(room)
+    stored = in_memory_store.list_messages(room)
     assert len(stored) == 1
     assert stored[0].episode == "urn:ioc:mycelium:episode:r:s"
 
@@ -541,14 +541,14 @@ def test_conversational_messages_survive_a_wiped_in_memory_store():
     """The restart bug (issue #497 §3): the in-memory list store is empty after a
     restart, but the durable transcript still projects the full history — so the
     read path serves it regardless."""
-    from app.services import local_state
+    from app.services import in_memory_store
 
     room = "conv-restart-room"
     get_room_dir(room)
     env, content = _msg_content("a-1", sender="growth", text="my position", payload_type="reply")
     persister.append_transcript(room, persister.record_from(env, content))
 
-    local_state.clear_all()  # the restart: memory is gone, disk is not
+    in_memory_store.clear_all()  # the restart: memory is gone, disk is not
     projected = persister.conversational_messages(room)
     assert [m.content for m in projected] == ["my position"]
 
@@ -557,7 +557,7 @@ def test_conversational_projection_is_stable_and_dedups_against_the_list_store()
     """The same message projected from disk carries the same synthetic id on every
     read (so a UI keyed by id is stable), and shares its ``message_id`` with the
     list-store row the persister wrote — the key the read path dedups on."""
-    from app.services import local_state
+    from app.services import in_memory_store
 
     room = "conv-dedup-room"
     p = _persister_for(room, summoned=[], converged=[])
@@ -566,7 +566,7 @@ def test_conversational_projection_is_stable_and_dedups_against_the_list_store()
 
     disk = persister.conversational_messages(room)
     assert persister.conversational_messages(room)[0].id == disk[0].id  # stable across reads
-    mem = local_state.list_messages(room)
+    mem = in_memory_store.list_messages(room)
     assert len(disk) == 1 and len(mem) == 1
     assert disk[0].message_id == mem[0].message_id == "a-1"  # one correlation key, dedupable
 
@@ -684,7 +684,7 @@ async def test_participant_disconnect_is_membership_not_fatal():
 
 def test_list_store_skips_presence_and_non_conversational():
     """Presence/control payloads stay out of the chat list (transcript/bus only)."""
-    from app.services import local_state
+    from app.services import in_memory_store
 
     room = "h2-presence-room"
     p = _persister_for(room, summoned=[], converged=[])
@@ -694,7 +694,7 @@ def test_list_store_skips_presence_and_non_conversational():
     )
     p._ingest(pres_env, pres_content)
 
-    assert local_state.list_messages(room) == []
+    assert in_memory_store.list_messages(room) == []
 
 
 # ── knowledge apply: inbound memory-sync writes converge the local store ─────

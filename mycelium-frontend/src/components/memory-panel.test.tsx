@@ -26,11 +26,14 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("@/components/memory-detail", () => ({
-  MemoryDetail: (props: { integrity?: unknown; renderedBody?: string | null }) => (
+  MemoryDetail: (props: {
+    renderedBody?: string | null;
+    collapseBodyAt?: number | null;
+  }) => (
     <div
       data-testid="memory-detail"
-      data-has-integrity={props.integrity ? "yes" : "no"}
       data-rendered-body={props.renderedBody ?? ""}
+      data-collapse-body-at={props.collapseBodyAt ?? ""}
     />
   ),
 }));
@@ -49,11 +52,20 @@ vi.mock("@/components/current-user", () => ({
   useCurrentUser: () => ({ principal: "alice" }),
 }));
 
+// The drawer's Discussion, stubbed: this file is about what the panel hands its
+// children, and the conversation's own reads belong to its own tests.
+vi.mock("@/components/task/task-conversation", () => ({
+  TaskConversation: () => <div data-testid="task-conversation" />,
+}));
+
+vi.mock("@/components/room-chat-box", () => ({
+  RoomChatBox: () => <div data-testid="room-chat-box" />,
+}));
+
 vi.mock("@/lib/api", () => ({
   fetchMemories: vi.fn(),
   fetchMemory: vi.fn(),
   fetchMemoryExpanded: vi.fn(),
-  fetchMemoryIntegrity: vi.fn(),
   searchMemories: vi.fn(),
   fetchMemoryLinks: vi.fn(),
 }));
@@ -62,18 +74,9 @@ import {
   fetchMemories,
   fetchMemory,
   fetchMemoryExpanded,
-  fetchMemoryIntegrity,
   fetchMemoryLinks,
 } from "@/lib/api";
 
-const EMPTY_INTEGRITY = {
-  broken: [],
-  orphans: [],
-  roots: [],
-  leaves: [],
-  total_memories: 0,
-  total_links: 0,
-};
 const EMPTY_EXPAND = { key: "", rendered: "", expansions: [], found: false };
 
 const offTree = {
@@ -95,7 +98,6 @@ describe("<MemoryPanel /> peek navigation", () => {
       outbound: [],
       backlinks: [],
     });
-    vi.mocked(fetchMemoryIntegrity).mockResolvedValue(EMPTY_INTEGRITY);
     vi.mocked(fetchMemoryExpanded).mockResolvedValue(EMPTY_EXPAND);
   });
 
@@ -134,24 +136,8 @@ describe("<MemoryPanel /> peek navigation", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it("passes the room integrity report and expanded body into the drawer's MemoryDetail (#599)", async () => {
+  it("passes the expanded body into the drawer's MemoryDetail (#599)", async () => {
     vi.mocked(fetchMemory).mockResolvedValue(offTree);
-    vi.mocked(fetchMemoryIntegrity).mockResolvedValue({
-      broken: [
-        {
-          source: offTree.key,
-          target: "gone",
-          kind: "wikilink",
-          raw: "[[gone]]",
-          resolved: false,
-        },
-      ],
-      orphans: [],
-      roots: [],
-      leaves: [],
-      total_memories: 1,
-      total_links: 1,
-    });
     vi.mocked(fetchMemoryExpanded).mockResolvedValue({
       key: offTree.key,
       rendered: "expanded transclusion body",
@@ -168,8 +154,30 @@ describe("<MemoryPanel /> peek navigation", () => {
 
     const detail = await screen.findByTestId("memory-detail");
     await waitFor(() => expect(fetchMemoryExpanded).toHaveBeenCalledWith("demo", offTree.key));
-    await waitFor(() => expect(detail).toHaveAttribute("data-has-integrity", "yes"));
     expect(detail).toHaveAttribute("data-rendered-body", "expanded transclusion body");
+  });
+
+  it("clamps the body only where a discussion follows it (#887)", async () => {
+    // The drawer is one scroll from the metadata to the last reply, so a long
+    // body is clamped behind an Expand button rather than boxed off in a
+    // scrollbox of its own. A memory with no thread under it is all body, and
+    // hiding half of it would buy nothing.
+    vi.mocked(fetchMemory).mockResolvedValue(offTree);
+    const { unmount } = renderWithSWR(
+      <MemoryPanel roomName="demo" focusMemory={{ key: offTree.key, nonce: 1 }} />,
+    );
+    expect(await screen.findByTestId("memory-detail")).toHaveAttribute("data-collapse-body-at", "");
+    unmount();
+
+    const threaded = { ...offTree, episode: "urn:ioc:mycelium:episode:demo:t9f0" };
+    vi.mocked(fetchMemory).mockResolvedValue(threaded);
+    renderWithSWR(
+      <MemoryPanel roomName="demo" focusMemory={{ key: threaded.key, nonce: 2 }} />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("memory-detail")).not.toHaveAttribute("data-collapse-body-at", ""),
+    );
+    expect(screen.getByTestId("task-conversation")).toBeInTheDocument();
   });
 });
 
@@ -189,7 +197,6 @@ describe("<MemoryPanel /> preview hovercard", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.mocked(fetchMemories).mockResolvedValue([treeMemory]);
     vi.mocked(fetchMemory).mockReset();
-    vi.mocked(fetchMemoryIntegrity).mockResolvedValue(EMPTY_INTEGRITY);
     vi.mocked(fetchMemoryExpanded).mockResolvedValue(EMPTY_EXPAND);
   });
 
@@ -197,7 +204,13 @@ describe("<MemoryPanel /> preview hovercard", () => {
     vi.useRealTimers();
   });
 
+  // The tree opens folded to its namespaces, so reveal the folder before the leaf.
+  const expandDecisions = async () => {
+    fireEvent.click(await screen.findByText("decisions"));
+  };
+
   const hoverRow = async () => {
+    await expandDecisions();
     const row = (await screen.findByText("ship-it.md")).closest("div")!;
     fireEvent.mouseEnter(row);
     return row;

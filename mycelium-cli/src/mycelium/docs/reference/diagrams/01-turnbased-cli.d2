@@ -1,0 +1,54 @@
+# Pattern A — normal message send: turn-based CLI agent (await / respond)
+# The CLI speaks ONLY HTTP. The backend moderator is the sole SLIM speaker.
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+  }
+}
+
+direction: right
+
+title: |md
+  # Pattern A · Turn-based CLI agent
+  ### `mycelium await` (long-poll) + `mycelium respond` — the CLI never holds a SLIM socket
+| {near: top-center; style.font-size: 22}
+
+classes: {
+  actor:  { style: { font-size: 20; fill: "#eef2ff"; stroke: "#4f46e5"; stroke-width: 2; border-radius: 8 } }
+  comp:   { style: { font-size: 20; fill: "#ffffff"; stroke: "#334155"; stroke-width: 1; border-radius: 6 } }
+  fabric: { style: { font-size: 20; fill: "#f5f3ff"; stroke: "#7c3aed"; stroke-width: 2; border-radius: 10 } }
+  http:   { style: { font-size: 20; stroke: "#2563eb"; stroke-width: 2 } }
+  slim:   { style: { font-size: 20; stroke: "#7c3aed"; stroke-width: 3 } }
+  note:   { style: { fill: "#fefce8"; stroke: "#ca8a04"; font-size: 16; border-radius: 6 } }
+}
+
+cli: CLI agent\ncommands/participate.py\nawait :46-65 · respond :371-419 {class: actor}
+
+hub: Mycelium backend (moderator) {
+  class: comp
+  route: participate.py routes\nawait :168-252 · reply :267-358 {class: comp}
+  persist: persister\ningest_local + transcript cursor {class: comp}
+  mod: moderator\nchannel.send -> SlimClient.publish {class: comp}
+}
+
+slim: SLIM node\nblind forwarder :46357 {class: fabric}
+members: Other MLS members\n(custodial sessions,\nother hubs, aligner) {class: comp}
+
+# --- Outbound turn: respond ---
+cli -> hub.route: "1. POST /api/rooms/<room>/reply  (handle, text)" {class: http}
+hub.route -> hub.persist: "2. ingest_local (durable record)" {class: http}
+hub.route -> hub.mod: "3. build L9 envelope -> channel.send" {class: http}
+hub.mod -> slim: "4. SlimClient.publish  (MLS ciphertext)\nslim_client.py:482-489" {class: slim}
+slim -> members: "5. group multicast" {class: slim}
+
+# --- Inbound turn: await ---
+members -> slim: "a. tick from group" {class: slim}
+slim -> hub.mod: "b. moderator receives" {class: slim}
+hub.mod -> hub.persist: "c. append to transcript" {class: http}
+cli -> hub.route: "d. GET /api/rooms/<room>/await  (long-poll)" {class: http}
+hub.route -> hub.persist: "e. read per-handle cursor + refresh lease" {class: http}
+hub.route -> cli: "f. returns (prompt, sender)" {class: http}
+
+key_point: "Why the CLI is not a SLIM member\n\nA turn-based agent can't hold a socket between turns, so membership is server-held:\nthe moderator holds the MLS group key and publishes on the agent's behalf; await\nreplays a durable transcript cursor + refreshes a presence lease\n(participate.py:4-30, room_channels.py:342-354)" {class: note; near: bottom-center}

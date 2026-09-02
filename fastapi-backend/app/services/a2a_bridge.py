@@ -18,17 +18,21 @@ The send path carries the #712 spike findings: resolve the card (dual well-known
 path), then build a client with ``accepted_output_modes`` set — without it,
 older servers reject the send with a pydantic ``-32600``.
 
-**Honest scope boundary (keep it honest here + in the user-facing docs).** A
-bridged A2A agent is **not** a member of the room's MLS group channel — it never
-holds a group key. It is proxied by this backend seat, which reads the room's
-plaintext (as moderator/custodian) and calls the remote agent out-of-band. Today
-that hop is plain HTTPS; it *can* be moved onto SLIM (SLIMRPC, SLIM-identity
-authenticated + encrypted) via ``agntcy/slim-a2a-python`` — but even then it is
-point-to-point RPC to a distinct SLIM identity, **not** room-group membership
-(see #726). Either way the hub is the translation boundary and sees plaintext,
-so this is **NOT** E2E-from-the-hub. Auth to the remote is a bearer token whose
-value lives in the backend env (``a2a_auth_env`` names the var); the room
-manifest never stores the secret.
+**Transport decision (#726): HTTPS is the explicit default.** A bridged A2A
+agent is **not** a member of the room's MLS group channel — it never holds a
+group key. It is proxied by this backend seat, which reads the room's plaintext
+(as moderator/custodian) and calls the remote agent out-of-band over plain HTTPS.
+Moving the hop onto SLIM (SLIMRPC via ``agntcy/slim-a2a-python``) was evaluated
+and deferred: ``slima2a`` currently requires ``a2a-sdk[sqlite,telemetry]==1.1.0``
+exactly, while the project tracks ``1.1.2``, and adopting it would pull
+SQLAlchemy, aiosqlite, and OpenTelemetry into the backend image — none of which
+are present today. The purchase (a hardened point-to-point hop) would still not
+change the honest boundary (even SLIMRPC is point-to-point RPC, **not** MLS
+group membership), so the cost is not justified yet. Reopen #726 when slima2a
+relaxes its exact pin and a live SLIMRPC round-trip is proven over a running node.
+Either way the hub sees plaintext, so this is **NOT** E2E-from-the-hub. Auth to
+the remote is a bearer token whose value lives in the backend env
+(``a2a_auth_env`` names the var); the room manifest never stores the secret.
 """
 
 from __future__ import annotations
@@ -40,6 +44,7 @@ import time
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 import httpx
 import yaml
@@ -49,8 +54,22 @@ from a2a.types import Message, Part, Role, SendMessageRequest, StreamResponse
 
 from app.services import a2a_activity, l9
 from app.services.a2a_card import A2aCardError, resolve_raw_card
-from app.services.l9_slim import serialize_content
+from app.services.agent_registry import norm_handle
 from app.services.persister import envelope_message_id, envelope_sender
+
+
+def _bare_sender(value: str | None) -> str | None:
+    """Normalise an L9 sender to a bare slug, stripping any ``#session`` qualifier.
+
+    Stored slugs (allow_from, owner, agent handles) carry no session suffix;
+    L9 actor ids may carry one (``alice#a8f3``). Stripping before any comparison
+    against stored values ensures session-qualified senders are treated as their
+    underlying handle.
+    """
+    if not isinstance(value, str):
+        return None
+    return norm_handle(value.partition("#")[0])
+
 
 if TYPE_CHECKING:
     from app.services.l9_models import L9
@@ -59,10 +78,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _SEND_TIMEOUT_S = 120.0
-
-
-def _norm(handle: str | None) -> str:
-    return (handle or "").strip().lstrip("@").lower()
 
 
 def _elapsed_ms(started: float) -> int:
@@ -81,6 +96,13 @@ class A2aAgentRef:
     #: The RPC endpoint resolved from the card at registration, for telemetry —
     #: the send path still resolves the card itself.
     endpoint: str | None = None
+    #: Sender handles that may summon this agent (empty = anyone). Normalised to
+    #: lowercase without '@' so comparisons are consistent with the gate check.
+    allow_from: tuple[str, ...] = ()
+    #: The handle that registered the agent. Always allowed to summon it,
+    #: regardless of allow_from, so the owner is never locked out of their
+    #: own agent by a restrictive allowlist.
+    owner: str | None = None
 
 
 def resolve_a2a_agent(room: str, handle: str) -> A2aAgentRef | None:
@@ -107,10 +129,18 @@ def resolve_a2a_agent(room: str, handle: str) -> A2aAgentRef | None:
         return None
     env = data.get("a2a_auth_env")
     endpoint = data.get("a2a_endpoint")
+    raw_allow = data.get("allow_from") or []
+    # Use _bare_sender so any session qualifiers in stored values are stripped —
+    # handles are always compared as bare slugs in the summon gate.
+    allow_from: tuple[str, ...] = tuple(
+        h for raw in (raw_allow if isinstance(raw_allow, list) else []) if (h := _bare_sender(raw))
+    )
     return A2aAgentRef(
         card=card,
         auth_env=env if isinstance(env, str) and env else None,
         endpoint=endpoint if isinstance(endpoint, str) and endpoint else None,
+        allow_from=allow_from,
+        owner=_bare_sender(data.get("owner")),
     )
 
 
@@ -199,7 +229,7 @@ async def send_to_a2a(
         )
         client = ClientFactory(config).create(card)
         message = Message(
-            message_id="mycelium-seat",
+            message_id=uuid4().hex,
             role=Role.ROLE_USER,
             parts=[Part(text=text)],
         )
@@ -242,12 +272,12 @@ class A2aResponder:
         self._manager = manager
         self._timeout_s = timeout_s
         # (room, handle, message_id) currently in flight — a re-fire is ignored.
-        self._active: set[tuple[str, str, str]] = set()
+        self._active: set[tuple[str, str | None, str]] = set()
         self._tasks: set[asyncio.Task[Any]] = set()
         # (room, handle) -> A2A context id, so each mention continues the same
         # remote conversation instead of starting cold. In-memory: a restart
         # resets threads (the room transcript is still the durable record).
-        self._threads: dict[tuple[str, str], str] = {}
+        self._threads: dict[tuple[str | None, str | None, str | None], str] = {}
 
     # -- the summon seam (sync; called from the persister's on_summon) --
 
@@ -263,26 +293,68 @@ class A2aResponder:
         if ref is None:
             return  # not an a2a agent — let the engines / a teammate handle it
         sender = envelope_sender(envelope)
-        if _norm(sender) == _norm(handle):
+        # Strip any #session qualifier from the sender before all comparisons
+        # against stored slugs — manifests store bare handles, L9 actor ids may
+        # carry a qualifier (alice#a8f3).
+        sender_bare = _bare_sender(sender)
+        if sender_bare == norm_handle(handle):
             return  # never answer our own message (loop guard)
         # Runaway guard: an a2a agent's auto-reply must not summon another a2a
         # agent. Two agents that mention each other would otherwise ping-pong
         # forever, each hop a real remote call. Humans, the aligner, and resident
         # agents still trigger a reply; only registered-a2a -> registered-a2a is cut.
-        if sender and resolve_a2a_agent(room, sender) is not None:
+        if sender_bare and resolve_a2a_agent(room, sender_bare) is not None:
             logger.debug("a2a responder: skip @%s summoned by a2a agent @%s", handle, sender)
+            return
+        # Summon gate: if the manifest names an allow_from list, only those
+        # handles may trigger a remote call (and spend its bearer token / quota).
+        # The agent's owner is always permitted — a restrictive allowlist must
+        # not lock the operator out of their own agent.
+        if (
+            ref.allow_from
+            and sender_bare not in ref.allow_from
+            and not (ref.owner and sender_bare == ref.owner)
+        ):
+            logger.debug(
+                "a2a responder: @%s not in allow_from for @%s — ignoring summon", sender, handle
+            )
             return
         prompt = (message_text or "").strip()
         if not prompt:
             return
         mid = envelope_message_id(envelope) or ""
-        key = (room, _norm(handle), mid)
+        key = (room, norm_handle(handle), mid)
         if key in self._active:
             return
         self._active.add(key)
         # Resolve the bearer credential from the backend env (the manifest holds
-        # only the var name), so the secret never lives in room memory.
-        token = os.environ.get(ref.auth_env) if ref.auth_env else None
+        # only the var name), so the secret never lives in room memory. A declared
+        # but missing var is a misconfiguration — fail closed so it appears in the
+        # Network pane rather than silently calling the remote unauthenticated.
+        token: str | None = None
+        if ref.auth_env:
+            token = os.environ.get(ref.auth_env)
+            if not token:
+                logger.warning(
+                    "a2a responder: auth_env '%s' is set on @%s but the env var is missing "
+                    "or empty; refusing unauthenticated call",
+                    ref.auth_env,
+                    handle,
+                )
+                # Record the misconfiguration through the activity path so the
+                # Network pane shows it rather than leaving silence unexplained.
+                a2a_activity.record_outbound(
+                    room,
+                    handle,
+                    endpoint=ref.endpoint or ref.card,
+                    peer=sender,
+                    prompt=(message_text or "").strip(),
+                    status="error",
+                    detail=f"auth_env '{ref.auth_env}' declared but not set in the backend environment",
+                    duration_ms=0,
+                )
+                self._active.discard(key)
+                return
         task = asyncio.create_task(
             self._run_and_release(room, handle, ref, prompt, envelope, key, token)
         )
@@ -296,14 +368,18 @@ class A2aResponder:
         ref: A2aAgentRef,
         prompt: str,
         envelope: L9,
-        key: tuple[str, str, str],
+        key: tuple[str, str | None, str],
         auth_token: str | None = None,
     ) -> None:
-        thread_key = (room, _norm(handle))
         summoner = envelope_sender(envelope)
+        summoner_bare = _bare_sender(summoner)
+        # Thread context is per summoner: two members addressing the same remote
+        # agent must not share one remote contextId (context bleed). Use the bare
+        # handle so a reconnecting session continues the same remote conversation.
+        thread_key = (room, norm_handle(handle), summoner_bare)
         # Name the speaker so the remote agent can follow a multi-party room; the
         # threaded context id carries the rest of the history on the remote side.
-        addressed = f"@{_norm(summoner)}: {prompt}" if summoner else prompt
+        addressed = f"@{summoner_bare}: {prompt}" if summoner_bare else prompt
         # Telemetry for the Network views: the bridge hop leaves no trace on the
         # channel, so both outcomes are recorded here (#739).
         started = time.monotonic()
@@ -346,9 +422,11 @@ class A2aResponder:
             return
         summoner = envelope_sender(in_reply_to)
         parent = envelope_message_id(in_reply_to)
+        msg = in_reply_to.header.message
+        episode = (msg.episode if msg and msg.episode else None) or l9.episode_urn(room, "live")
         env = l9.build_envelope(
             kind=l9.Kind.exchange,
-            episode=l9.episode_urn(room, "live"),
+            episode=episode,
             parents=[parent] if parent else None,
             sender=handle,
             sender_role="agent",
@@ -356,13 +434,7 @@ class A2aResponder:
             topic=l9.topic_urn(room),
             payload_type="reply",
         )
-        content = serialize_content(env, extra={"content": text})
-        try:
-            await managed.channel.send(env, extra={"content": text})
-        except Exception:
-            logger.warning("a2a responder failed to broadcast @%s reply on %s", handle, room)
-        if managed.persister is not None:
-            managed.persister.ingest_local(env, content, list_write=True)
+        await managed.post(env, text, list_write=True)
         # Best-effort presence: a handle that just answered is live in the room.
         try:
             self._manager.refresh_lease(room, handle)

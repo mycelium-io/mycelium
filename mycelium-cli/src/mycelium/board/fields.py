@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Where a board verb's write may land.
+"""Where a board action's write may land.
 
-A verb that is not custody writes frontmatter, and only a memory has any.  The
+An action that is not an assignment writes frontmatter, and only a memory has any.  The
 rest of the board is projected out of state living elsewhere — a checklist
 line, an episode record, a presence lease — so there is nothing to write onto,
 and saying that beats accepting a change that goes nowhere.
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from mycelium.board.custody import COMPANION_FIELDS, FIELD
+from mycelium.board.assignment import COMPANION_FIELDS, FIELD
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -35,7 +35,7 @@ REFUSALS = {
     "github": "this value belongs to the tool it came from; change it there",
 }
 
-#: Custody's own keys, derived from the lease model rather than restated.  A
+#: Assignment's own keys, derived from the lease model rather than restated.  A
 #: lease owns who holds a row and until when, under rules a field write cannot
 #: check — a live claim is not stealable, and expiry is read off a clock.
 RESERVED_FIELDS = [FIELD, "owner", *COMPANION_FIELDS]
@@ -48,7 +48,7 @@ def memory_key_of(item: LiveItem) -> str | None:
     return item.id.split(":", 1)[1] if ":" in item.id else item.id
 
 
-def refusal_for(item: LiveItem) -> str | None:
+def field_write_refusal(item: LiveItem) -> str | None:
     """Why this row cannot take a field write, or ``None`` when it can."""
     kind = item.source.kind
     if kind in WRITABLE_SOURCE_KINDS:

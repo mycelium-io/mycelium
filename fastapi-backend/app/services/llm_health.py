@@ -339,7 +339,7 @@ def invalidate_cache() -> None:
 # real inference.
 #
 # probe_completion() runs a real one-shot ``pi`` turn — the same runtime the
-# aligner's brain and the plan compiler use — catching a missing/broken ``pi``
+# aligner's LLM session and the plan compiler use — catching a missing/broken ``pi``
 # binary, bad model strings, and auth errors at the true endpoint.
 
 
@@ -416,11 +416,11 @@ async def probe_completion() -> LLMHealthResult:
 
 def _pi_ping(model: str) -> str:
     """Run a blocking pi "ping" completion probe."""
-    from app.services.pi_brain import PiBrain
+    from app.services.pi_session import PiSession
 
     session_dir = Path(tempfile.gettempdir()) / "mycelium-pi-sessions"
     session_dir.mkdir(parents=True, exist_ok=True)
-    brain = PiBrain(
+    llm_session = PiSession(
         session_path=session_dir / "health-probe.jsonl",
         model=model,
         api_key=settings.LLM_API_KEY,
@@ -429,13 +429,13 @@ def _pi_ping(model: str) -> str:
         timeout_s=float(_PROBE_TIMEOUT),
         openshell=settings.ALIGNER_PI_OPENSHELL,
     )
-    return brain("ping")
+    return llm_session("ping")
 
 
 def _classify_pi_error(exc: Exception, provider: str, base: _ProbeBase) -> LLMHealthResult:
     """Map a ``pi`` probe failure to an LLMHealthResult status + remediation.
 
-    ``PiBrain`` raises ``PiBrainError`` with the process stderr embedded; we
+    ``PiSession`` raises ``PiSessionError`` with the process stderr embedded; we
     classify off that text since ``pi`` has no typed exception hierarchy to walk.
     """
     exc_msg = str(exc)

@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from mycelium.board import activity, custody, model
-from mycelium.board.model import ItemSource, LiveItem, lens_of
+from mycelium.board import activity, assignment, model
+from mycelium.board.model import ItemSource, LiveItem, attention_of_status
 from mycelium.board.projection import project_items
 from mycelium.board.schema import groupable_fields, infer_schema
 from mycelium.board.upstream import UPSTREAM_STATES, attach_upstream
@@ -37,16 +37,29 @@ class TestVocabularyContract:
         assert CONTRACT["statuses"] == model.STATUSES
         assert CONTRACT["kinds"] == model.KINDS
         assert CONTRACT["priorities"] == model.PRIORITIES
-        assert CONTRACT["lenses"] == model.LENSES
-        assert CONTRACT["verbs"] == model.VERBS
+        assert CONTRACT["attention_filters"] == model.ATTENTION_FILTERS
+        assert CONTRACT["row_actions"] == model.ROW_ACTIONS
 
-    def test_every_status_maps_to_the_contracted_lens(self):
-        assert CONTRACT["lens_of_status"] == model.LENS_OF_STATUS
-        for status, lens in CONTRACT["lens_of_status"].items():
-            assert lens_of(status) == lens
+    def test_every_status_maps_to_the_contracted_attention_filter(self):
+        assert CONTRACT["attention_of_status"] == model.ATTENTION_OF_STATUS
+        for status, attention_filter in CONTRACT["attention_of_status"].items():
+            assert attention_of_status(status) == attention_filter
 
     def test_live_namespaces_match_the_contract(self):
         assert CONTRACT["live_namespaces"] == model.LIVE_NAMESPACES
+
+    def test_folds_a_thread_under_exactly_the_contracted_field_names(self):
+        task_contract = CONTRACT["task"]
+        assert task_contract["binding_field"] == model.EPISODE_FIELD
+        assert task_contract["thread_fields"] == model.THREAD_FIELDS
+        assert task_contract["thread_states"] == model.THREAD_STATES
+        assert task_contract["task_fields"] == model.TASK_FIELDS
+
+    def test_a_thread_never_writes_one_of_the_unit_s_own_axes(self):
+        # The container-outlives-the-negotiation rule, asserted as a
+        # disjointness rather than promised in a comment.
+        task_contract = CONTRACT["task"]
+        assert not set(task_contract["thread_fields"]) & set(task_contract["task_fields"])
 
     def test_infers_the_type_the_contract_names_for_every_case(self):
         """The same table the GUI suite runs. These two classifiers drifted once,
@@ -148,7 +161,7 @@ class TestProjection:
         # An assignment is not a claim: the row stays unclaimed until somebody
         # takes it, so nothing asserts a holder who never agreed to hold it.
         assert rows[0].status == "open"
-        assert custody.custody_of(rows[0], NOW) == "unclaimed"
+        assert assignment.assignment_of(rows[0], NOW) == "unclaimed"
 
     def test_a_done_task_resolves(self):
         assert self.project()[1].status == "resolved"
@@ -199,7 +212,7 @@ class TestProjection:
         rows = self.project(agents=agents, members=[{"handle": "growth", "kind": "slim"}])
         agent_rows = [r for r in rows if r.id.startswith("agent:")]
         assert [r.id for r in agent_rows] == ["agent:growth"]
-        assert custody.lens_of_item(agent_rows[0], NOW) == "in_flight"
+        assert assignment.attention_of_item(agent_rows[0], NOW) == "in_flight"
 
     def test_a_live_episode_reads_as_a_decision_and_drops_the_urn(self):
         episodes = [
@@ -216,6 +229,93 @@ class TestProjection:
         row = next(r for r in self.project(episodes=episodes) if r.id.startswith("episode:"))
         assert row.kind == "decision"
         assert row.title.startswith("atlas migration: negotiating")
+
+
+URN = "urn:ioc:mycelium:episode:atlas:e4f1a2"
+
+EPISODE = {
+    "short_id": "e4f1a2",
+    "episode": URN,
+    "topic": "urn:concept:mycelium:atlas",
+    "outcome": "converged",
+    "subkind": "converged",
+    "participants": ["growth", "risk"],
+    "message_count": 7,
+    "updated_at": "2026-08-22T10:00:00Z",
+}
+
+
+def task(**extra) -> dict:
+    return {
+        "key": "work/cutover",
+        "value": "run the cutover",
+        "updated_at": "2026-08-22T10:00:00Z",
+        "updated_by": "aligner",
+        "episode": URN,
+        "meta": {"kind": "action", "status": "open", **extra},
+    }
+
+
+class TestUnitOfWork:
+    """A task is one row, and it is a thread.
+
+    The GUI runs the same six cases over its own projection; neither surface may
+    start drawing a task and its thread as two rows without the other.
+    """
+
+    def project(self, episodes: list[dict], memories: list[dict]) -> list[LiveItem]:
+        return project_items(episodes=episodes, memories=memories, agents=[], members=[], now=NOW)
+
+    def test_folds_a_bound_episode_into_the_row_instead_of_a_second_one(self):
+        rows = self.project([EPISODE], [task()])
+        assert [r.id for r in rows] == ["memory:work/cutover"]
+        assert rows[0].fields["episode"] == URN
+        assert rows[0].fields["thread"] == "e4f1a2"
+        assert rows[0].fields["thread_state"] == "converged"
+        assert rows[0].fields["participants"] == ["growth", "risk"]
+        assert rows[0].fields["rounds"] == 7
+
+    def test_a_closing_thread_leaves_the_unit_s_own_axes_alone(self):
+        # The container outlives the negotiation. A converged episode is a fact
+        # about the conversation, not a claim that the work is done or that
+        # anyone is holding it.
+        held = {
+            "assignment": "held",
+            "owner": "@growth",
+            "claimed_at": "2026-08-22T11:55:00Z",
+            "ttl_minutes": 30,
+        }
+        row = self.project([EPISODE], [task(**held)])[0]
+        assert row.status == "open"
+        assert row.owner == "growth"
+        assert assignment.assignment_of(row, NOW) == "held"
+
+    def test_an_orphaned_episode_keeps_a_row_of_its_own(self):
+        # A recorded negotiation nobody compiled into work is still something
+        # the room did, so it is surfaced rather than hidden or deleted.
+        rows = self.project([EPISODE], [])
+        assert [r.id for r in rows] == ["episode:e4f1a2"]
+        assert rows[0].fields["episode"] == URN
+
+    def test_every_row_compiled_out_of_one_negotiation_carries_it(self):
+        second = {**task(), "key": "work/soak"}
+        rows = self.project([EPISODE], [task(), second])
+        assert [r.id for r in rows] == ["memory:work/cutover", "memory:work/soak"]
+        assert all(r.fields["thread_state"] == "converged" for r in rows)
+
+    def test_a_unit_no_thread_has_run_in_says_nothing_it_does_not_know(self):
+        # The inversion: a task is created board-first and worked with no episode
+        # ever opened. It carries its binding and claims no thread state.
+        row = self.project([], [task()])[0]
+        assert row.fields["episode"] == URN
+        assert row.fields["thread"] == "e4f1a2"
+        assert "thread_state" not in row.fields
+        assert "rounds" not in row.fields
+
+    def test_a_row_with_no_binding_is_left_alone(self):
+        row = self.project([], [{**task(), "episode": None}])[0]
+        assert "episode" not in row.fields
+        assert "thread" not in row.fields
 
 
 class TestSchema:
@@ -357,7 +457,7 @@ class TestActivity:
                 }
             ]
         )
-        assert events[0].verb == "negotiated"
+        assert events[0].action == "negotiated"
         assert events[0].title == "round 4 · @risk accept"
         assert "{" not in events[0].title
 
@@ -391,7 +491,7 @@ class TestActivity:
             ],
         )
         assert len(events) == 1
-        assert (events[0].actor, events[0].verb) == ("growth", "revised")
+        assert (events[0].actor, events[0].action) == ("growth", "revised")
 
     def test_anything_unattributed_or_untimed_is_dropped(self):
         events = self.project(
@@ -453,13 +553,15 @@ class TestActivity:
             )
             for i, actor in enumerate(["julia", "julia", "growth"])
         ]
-        summary = activity.digest(activity.by_day(events, tz), date(2026, 8, 22), date(2026, 8, 22))
+        summary = activity.summarize_activity(
+            activity.by_day(events, tz), date(2026, 8, 22), date(2026, 8, 22)
+        )
         assert [(actor, len(rows)) for actor, _, rows in summary.by_actor] == [
             ("julia", 2),
             ("growth", 1),
         ]
         assert summary.active_days == 1
-        assert summary.by_verb == [("posted", 3)]
+        assert summary.by_action == [("posted", 3)]
 
 
 def status_payload(*entries, rows=None) -> dict:

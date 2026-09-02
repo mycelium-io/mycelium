@@ -18,14 +18,13 @@
  * module is only for what the hub owns.
  */
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { RoomStatus } from "@/lib/board/upstream";
 import useSWR, { useSWRConfig, type SWRConfiguration } from "swr";
 import {
   fetchA2aBridge,
   fetchEpisodes,
   fetchMemories,
-  fetchMemoryIntegrity,
   fetchMessages,
   fetchNetworkStatus,
   fetchRoom,
@@ -39,7 +38,6 @@ import {
   type AgentSummary,
   type EpisodeSummary,
   type Memory,
-  type MemoryLinksIntegrity,
   type NetworkStatus,
   type PresenceMember,
   type Room,
@@ -47,6 +45,7 @@ import {
   type Skill,
 } from "@/lib/api";
 import { latestPreview } from "@/lib/room-preview";
+import { memoryTitle } from "@/lib/memory-preview";
 import { useCurrentUser } from "@/components/current-user";
 
 /**
@@ -79,6 +78,27 @@ const POSTER_LIMIT = 200;
  *  scans a short window past any protocol ticks on top of it. */
 const LATEST_LIMIT = 20;
 
+/** A thread is one task's conversation, so its whole history is usually one
+ *  read. Where it is not, the window grows by another of these. */
+const THREAD_LIMIT = 200;
+
+/** What a thread belongs to, for anything that has to name it. */
+export interface ThreadOwner {
+  /** Every row bound to this thread, in the order the room lists them. */
+  keys: string[];
+  /**
+   * What to call it — the row's own title, but **only** where exactly one row
+   * is bound. A negotiation compiles several tasks and binds all of them to the
+   * episode it converged in, so naming one of those would be picking a row at
+   * random and asserting it. Null means the thread is named by its short id,
+   * which is what is actually true of it.
+   */
+  title: string | null;
+}
+
+// `memoryTitle` is shared with the board's projection (lib/memory-preview), so a
+// task named in the channel and named on the board can never disagree (#889).
+
 // Stable empties: a fresh `[]` per render would break every downstream memo.
 const NO_STATUS: RoomStatus = {
   room: "",
@@ -105,7 +125,6 @@ type RoomResource =
   | "memories"
   | "skills"
   | "episodes"
-  | "integrity"
   | "status"
   | "a2a";
 
@@ -222,6 +241,125 @@ export function useRoomMessages(room: string, limit = 200, opts: RoomQueryOption
   return { messages: data?.messages ?? NO_MESSAGES, loading: isLoading, refresh };
 }
 
+/**
+ * One thread's messages, and nothing else.
+ *
+ * Its own cache entry — `["room", <name>, "messages", "thread", <urn>]` — so a
+ * thread pane never overwrites the room's own feed with a filtered slice of it,
+ * which is what a shared key would do the moment both are open. Still under the
+ * `["room", <name>]` prefix, so `useRoomRevalidate` reaches it: an SSE write
+ * into a thread refreshes the thread and the room together.
+ *
+ * A null episode parks the hook, so a closed pane fetches nothing.
+ *
+ * **Older messages arrive by widening the window, not by paging behind a
+ * cursor.** The read is newest-first, so the newest N always contains the
+ * newest M before it: widening is idempotent against the live stream in the way
+ * an offset is not, and it stays one cache entry — which is what keeps a pushed
+ * write reaching every reader through `useRoomRevalidate`. The channel pages by
+ * cursor instead because it assembles its feed by hand from two reads plus the
+ * SSE tail, and re-reading the head each time would throw that away. Here the
+ * whole conversation is the read. `hasOlder` is exact: the room answers with
+ * how many messages matched, not just the page it returned.
+ */
+export function useThreadMessages(
+  room: string,
+  episode: string | null,
+  limit = THREAD_LIMIT,
+  opts: RoomQueryOptions = {},
+) {
+  const [depth, setDepth] = useState(limit);
+  // A different thread, or a caller changing its page size, starts the walk over.
+  const [scope, setScope] = useState(`${episode}:${limit}`);
+  if (scope !== `${episode}:${limit}`) {
+    setScope(`${episode}:${limit}`);
+    setDepth(limit);
+  }
+  const { data, isLoading, isValidating, mutate } = useSWR(
+    room && episode ? (["room", room, "messages", "thread", episode, depth] as const) : null,
+    () => fetchMessages(room, depth, { episode }),
+    {
+      refreshInterval: opts.refreshInterval ?? POLL.messages,
+      // Widening changes the key, and without this the conversation would blank
+      // out and re-enter on its own skeleton every time someone asked for more
+      // of it. The narrower window is a prefix of the wider one, so the messages
+      // already on screen are the right thing to keep showing.
+      keepPreviousData: true,
+    },
+  );
+  const refresh = useCallback(() => {
+    void mutate();
+  }, [mutate]);
+  const messages = data?.messages ?? NO_MESSAGES;
+  const hasOlder = (data?.total ?? 0) > messages.length;
+  const loadOlder = useCallback(() => setDepth((d) => d + limit), [limit]);
+  return {
+    messages,
+    loading: isLoading,
+    refresh,
+    hasOlder,
+    loadOlder,
+    // A widened window that the answer has not caught up with yet. A poll of a
+    // window already filled is not this, which is why the length is compared.
+    loadingOlder: isValidating && hasOlder && depth > messages.length,
+  };
+}
+
+/**
+ * Every thread the room's rows are bound to, keyed by URN.
+ *
+ * The binding is the task's (`Memory.episode`), so this is that same edge read
+ * the other way round — what a bare URN in a ping is a thread *of*. Derived off
+ * the shared memories cache, so naming a thread costs no request.
+ *
+ * Two ways a thread ends up without a name here, both honest rather than
+ * missing: an episode no row mentions (a coordination phase opens its own and
+ * records no back-link to the task that summoned it), and an episode several
+ * rows share (a converged negotiation binds every task it compiled to itself).
+ */
+export function useRoomThreads(room: string): Map<string, ThreadOwner> {
+  const { memories } = useRoomMemories(room);
+  return useMemo(() => {
+    const index = new Map<string, ThreadOwner>();
+    for (const memory of memories) {
+      if (!memory.episode) continue;
+      const known = index.get(memory.episode);
+      if (known) {
+        known.keys.push(memory.key);
+        known.title = null;
+      } else {
+        index.set(memory.episode, { keys: [memory.key], title: memoryTitle(memory) });
+      }
+    }
+    return index;
+  }, [memories]);
+}
+
+/** What a row is called, and the thread that opens it. */
+export interface RowNaming {
+  title: string;
+  episode: string | null;
+}
+
+/**
+ * Every row the room holds, keyed by its own key.
+ *
+ * The sibling of {@link useRoomThreads}, read the other way round: a notice and
+ * a memory push both name the *row* they are about, so a feed that wants to
+ * print a task's name rather than its `work/…` slug asks here. Off the same
+ * memories cache, so naming a row costs no request either.
+ */
+export function useRoomRowNames(room: string): Map<string, RowNaming> {
+  const { memories } = useRoomMemories(room);
+  return useMemo(() => {
+    const index = new Map<string, RowNaming>();
+    for (const memory of memories) {
+      index.set(memory.key, { title: memoryTitle(memory), episode: memory.episode ?? null });
+    }
+    return index;
+  }, [memories]);
+}
+
 /** The last readable line in a room, for an inbox-style row. Its own SWR key,
  *  so it never collides with the 200-message page `useRoomPosters` holds. */
 export function useRoomLatest(room: string, opts: RoomQueryOptions = {}) {
@@ -251,14 +389,6 @@ export function useRoomMemories(room: string, opts: RoomQueryOptions = {}) {
     room, "memories", fetchMemories, NO_MEMORIES, POLL.memories, opts,
   );
   return { memories: data, loading, refresh };
-}
-
-/** Not polled; memory writes revalidate the room. */
-export function useRoomMemoryIntegrity(room: string, opts: RoomQueryOptions = {}) {
-  const { data, loading, refresh } = useRoomQuery(
-    room, "integrity", fetchMemoryIntegrity, null as MemoryLinksIntegrity | null, 0, opts,
-  );
-  return { integrity: data, loading, refresh };
 }
 
 export function useRoomSkills(room: string, opts: RoomQueryOptions = {}) {

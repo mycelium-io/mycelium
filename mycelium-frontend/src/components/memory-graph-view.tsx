@@ -12,7 +12,6 @@ import {
   type Memory,
   type MemoryGraph as MemoryGraphData,
 } from "@/lib/api";
-import { useRoomMemoryIntegrity } from "@/lib/room-data";
 import { MemoryGraph } from "@/components/memory-graph";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { MemoryDetail } from "@/components/memory-detail";
@@ -32,7 +31,6 @@ export function MemoryGraphView({ roomName }: Props) {
   const [graph, setGraph] = useState<MemoryGraphData | null>(null);
   const [selected, setSelected] = useState<Memory | null>(null);
   const [renderedBody, setRenderedBody] = useState<string | null>(null);
-  const { integrity } = useRoomMemoryIntegrity(roomName);
 
   useEffect(() => {
     let live = true;
@@ -115,7 +113,6 @@ export function MemoryGraphView({ roomName }: Props) {
             roomName={roomName}
             onNavigate={openKey}
             renderedBody={renderedBody}
-            integrity={integrity}
           />
         )}
       </DetailDrawer>

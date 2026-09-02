@@ -17,6 +17,10 @@ import {
   Network,
   Pencil,
   Eye,
+  Filter,
+  X,
+  Search,
+  Loader2,
 } from "lucide-react";
 import {
   fetchMemory,
@@ -25,7 +29,7 @@ import {
   type Memory,
   type MemorySearchResult,
 } from "@/lib/api";
-import { useRoomMemories, useRoomMemoryIntegrity, useRoomRevalidate } from "@/lib/room-data";
+import { useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
 import { memoryGraphHref, memoryHref } from "@/lib/memory-routes";
 import { expandedPathsForKey, resolveMemoryPeekNavigation } from "@/lib/memory-panel-nav";
 import { MemoryPreviewCard, type PreviewAnchor } from "@/components/memory-preview-card";
@@ -36,6 +40,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 import { MemoryDetail } from "@/components/memory-detail";
 import { MemoryEditor } from "@/components/memory-editor";
+import { RoomChatBox } from "@/components/room-chat-box";
+import { TaskConversation } from "@/components/task/task-conversation";
+import { isLiveEpisode } from "@/lib/threads";
 import { useCurrentUser } from "@/components/current-user";
 import { useUnsavedGuard } from "@/components/unsaved-changes";
 
@@ -90,6 +97,29 @@ function buildTree(memories: Memory[]): TreeNode[] {
   return root.children;
 }
 
+// Every memory-bearing node below this one — the count a collapsed folder shows,
+// so its weight is legible without expanding it.
+function countMemories(node: TreeNode): number {
+  let n = 0;
+  for (const child of node.children) {
+    if (child.memory) n += 1;
+    n += countMemories(child);
+  }
+  return n;
+}
+
+// Every folder path in the tree — used to seed the collapsed set so the panel
+// opens folded to its top-level namespaces rather than fully expanded.
+function folderPaths(nodes: TreeNode[], into: Set<string> = new Set()): Set<string> {
+  for (const node of nodes) {
+    if (node.children.length > 0) {
+      into.add(node.path);
+      folderPaths(node.children, into);
+    }
+  }
+  return into;
+}
+
 // Filename for a memory leaf, with its extension. Keys usually omit it (they're
 // stored as markdown); a structured value with no `text` field is really JSON.
 // A key that already carries an extension is shown as-is.
@@ -103,6 +133,9 @@ function fileName(node: TreeNode): string {
 const ROW_H = 22; // px, matches vscode compact density
 const INDENT = 12; // px per depth level
 const PEEK_DELAY = 350; // ms of hover intent before the preview card opens
+/** How tall a memory body gets in the drawer before it clamps behind an Expand
+ *  button — the drawer is narrower than the page, so it clamps sooner. */
+const BODY_CLAMP_PX = 480;
 
 interface TreeRowsProps {
   nodes: TreeNode[];
@@ -113,6 +146,9 @@ interface TreeRowsProps {
   selected: Memory | null;
   onPeek: (mem: Memory, row: HTMLElement) => void;
   onPeekEnd: () => void;
+  /** Paths on the way to a find-file match. When set, anything not in it is
+   *  dimmed (the row stays put and clickable, just faded). Null = no filter. */
+  activePaths: Set<string> | null;
 }
 
 function TreeRows({
@@ -124,6 +160,7 @@ function TreeRows({
   selected,
   onPeek,
   onPeekEnd,
+  activePaths,
 }: TreeRowsProps) {
   return (
     <>
@@ -131,6 +168,7 @@ function TreeRows({
         const isFolder = node.children.length > 0;
         const isOpen = isFolder && !collapsed.has(node.path);
         const isSelected = selected?.key === node.path;
+        const dimmed = activePaths !== null && !activePaths.has(node.path);
         const paddingLeft = 8 + depth * INDENT;
 
         return (
@@ -141,7 +179,8 @@ function TreeRows({
               onMouseLeave={onPeekEnd}
               onFocus={e => node.memory && onPeek(node.memory, e.currentTarget)}
               onBlur={onPeekEnd}
-              className={`flex w-full items-center gap-1.5 pr-3 transition-colors
+              className={`flex w-full items-center gap-1.5 pr-3 transition-[color,background,opacity]
+                ${dimmed ? "opacity-35" : ""}
                 ${isSelected ? "bg-accent/15 text-text" : "hover:bg-muted text-muted-foreground hover:text-text"}`}
             >
               {/* chevron — separate click target so it only toggles */}
@@ -188,6 +227,12 @@ function TreeRows({
                 </span>
               )}
 
+              {isFolder && (
+                <span className="flex-shrink-0 font-mono text-[10px] tabular text-faint">
+                  {countMemories(node)}
+                </span>
+              )}
+
               {node.memory && !isFolder && (
                 <span className="flex-shrink-0 font-mono text-[10px] tabular text-faint">
                   v{node.memory.version}
@@ -205,6 +250,7 @@ function TreeRows({
                 selected={selected}
                 onPeek={onPeek}
                 onPeekEnd={onPeekEnd}
+                activePaths={activePaths}
               />
             )}
           </div>
@@ -217,6 +263,9 @@ function TreeRows({
 export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusMemory }: Props) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
+  // Find-file: a live, client-side filter on the key path — the plain "I know the
+  // name" complement to the semantic Search below it.
+  const [nameFilter, setNameFilter] = useState("");
   const [searchResults, setSearchResults] = useState<MemorySearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -229,6 +278,14 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
   const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { principal } = useCurrentUser();
   const revalidate = useRoomRevalidate(roomName);
+
+  // The drawer's discussion refreshes itself when a message is sent, the same
+  // way the full page and the thread pane do — the conversation hands back its
+  // reload, and the composer calls it on send.
+  const threadRefresh = useRef<(() => void) | null>(null);
+  const onThreadReady = useCallback((refresh: () => void) => {
+    threadRefresh.current = refresh;
+  }, []);
 
   // Hovering a row opens a preview card after a beat of hover intent. It is
   // anchored to the pane's left edge rather than the row, so it never covers
@@ -270,11 +327,9 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
     [endPeek, guard],
   );
 
-  // The tree, plus the room-wide integrity report the drawer reads to flag a
-  // broken or orphaned memory without a per-open round trip. Both revalidate
-  // when a memory write reaches the room, so neither needs a refresh prop.
+  // The tree revalidates when a memory write reaches the room, so it needs no
+  // refresh prop.
   const { memories, loading } = useRoomMemories(roomName);
-  const { integrity } = useRoomMemoryIntegrity(roomName);
   const memoriesRef = useRef(memories);
   useLayoutEffect(() => { memoriesRef.current = memories; }, [memories]);
 
@@ -365,11 +420,55 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
 
   const tree = useMemo(() => buildTree(memories), [memories]);
 
+  // Find-file, dim style: the tree stays whole and in place; matches keep their
+  // ink while everything else fades. `activePaths` is every path on the way to a
+  // match — the matched keys plus their ancestor folders — so a match is never
+  // dimmed and never hidden behind a folded parent. Null when no filter is set.
+  const trimmedFilter = nameFilter.trim().toLowerCase();
+  const activePaths = useMemo(() => {
+    if (!trimmedFilter) return null;
+    const paths = new Set<string>();
+    for (const m of memories) {
+      if (!m.key.toLowerCase().includes(trimmedFilter)) continue;
+      const parts = m.key.split("/");
+      for (let i = 0; i < parts.length; i++) paths.add(parts.slice(0, i + 1).join("/"));
+    }
+    return paths;
+  }, [memories, trimmedFilter]);
+  const matchCount = useMemo(
+    () => (trimmedFilter ? memories.filter(m => m.key.toLowerCase().includes(trimmedFilter)).length : 0),
+    [memories, trimmedFilter],
+  );
+
+  // While filtering, fold every folder that leads to no match and open every one
+  // that does, so matches are revealed without disturbing the reader's own
+  // expansion when they clear the filter.
+  const filterCollapsed = useMemo(() => {
+    if (!activePaths) return null;
+    const collapsedSet = new Set<string>();
+    for (const path of folderPaths(tree)) if (!activePaths.has(path)) collapsedSet.add(path);
+    return collapsedSet;
+  }, [activePaths, tree]);
+
+  // Open folded: seed every folder into the collapsed set the first time
+  // memories arrive, so the panel starts as a scannable list of namespaces
+  // rather than a fully-expanded wall. Seeded during render (not in an effect) so
+  // the expanded tree never paints for a frame before it folds. Only seeds once —
+  // later folder toggles and search reveals own the set from then on.
+  const [collapseSeeded, setCollapseSeeded] = useState(false);
+  if (!collapseSeeded && memories.length > 0) {
+    setCollapseSeeded(true);
+    setCollapsed(folderPaths(tree));
+  }
+
   // A chat `[[wikilink]]` (or any external focus request) selects that memory.
   // The nonce re-fires the same key on a repeat click.
   useEffect(() => {
     if (focusMemory?.key) void openMemoryByKey(focusMemory.key);
   }, [focusMemory, openMemoryByKey]);
+
+  const hasDiscussion =
+    Boolean(selected?.episode) && !isLiveEpisode(roomName, selected?.episode ?? "");
 
   const toggleNs = useCallback((path: string) =>
     setCollapsed(prev => {
@@ -391,45 +490,38 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
           <Tooltip content="Open the memory link graph">
             <Link
               href={memoryGraphHref(roomName)}
-              className="ml-auto inline-flex flex-shrink-0 items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+              className="ml-auto inline-flex flex-shrink-0 items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
             >
               <Network className="size-3.5" />
               Graph
             </Link>
           </Tooltip>
         </div>
-        {contributors.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-2.5">
-            {contributors.map(c => (
-              <span
-                key={c}
-                className="font-mono text-micro rounded-full px-2 py-0.5 text-muted-foreground bg-surface border border-border"
-              >
-                {c}
-              </span>
-            ))}
-          </div>
-        )}
       </div>
 
       <div className="flex-1 overflow-y-auto" onScroll={endPeek}>
-        {/* Search */}
+        {/* Semantic search — one quiet field, run on Enter. The leading glyph
+            turns to a spinner while it queries; a ↵ hint appears once there's
+            something to submit. */}
         <div className="px-4 py-3 border-b border-border bg-paper">
-          <div className="flex gap-2">
+          <div className="group flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 transition-colors focus-within:border-accent focus-within:bg-bg">
+            {searching ? (
+              <Loader2 className="size-4 flex-shrink-0 animate-spin text-accent" />
+            ) : (
+              <Search className="size-4 flex-shrink-0 text-faint transition-colors group-focus-within:text-accent" />
+            )}
             <input
-              className="min-w-0 flex-1 rounded-lg bg-surface border border-border px-3 py-2 text-label text-text placeholder:text-muted-foreground focus:border-accent focus:bg-bg focus:outline-none transition-colors"
-              placeholder="Search memory…"
+              className="min-w-0 flex-1 bg-transparent text-label text-text placeholder:text-muted-foreground focus:outline-none"
+              placeholder="Search by meaning…"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               onKeyDown={e => e.key === "Enter" && handleSearch()}
             />
-            <button
-              onClick={handleSearch}
-              disabled={searching}
-              className="flex-shrink-0 rounded-lg px-3.5 py-2 text-label font-medium bg-accent text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              {searching ? "…" : "Search"}
-            </button>
+            {searchQuery.trim() && !searching && (
+              <kbd className="flex-shrink-0 rounded border border-border bg-bg px-1 text-micro leading-tight text-faint">
+                ↵
+              </kbd>
+            )}
           </div>
           {searchError && (
             <p role="alert" className="mt-2 flex items-center gap-1.5 text-micro text-red">
@@ -473,6 +565,37 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
           </div>
         )}
 
+        {/* Find file — a live filter on the key path, distinct from the semantic
+            search above. Hidden while semantic results are showing (they replace
+            the tree) and while the room is empty. */}
+        {!searchResults && !loading && memories.length > 0 && (
+          <div className="flex items-center gap-2 border-b border-border px-4 py-1.5">
+            <Filter className="size-3.5 flex-shrink-0 text-faint" />
+            <input
+              id="memory-find-file"
+              className="min-w-0 flex-1 bg-transparent text-label text-text placeholder:text-muted-foreground focus:outline-none"
+              placeholder="Find a file by name…"
+              value={nameFilter}
+              onChange={e => setNameFilter(e.target.value)}
+              onKeyDown={e => e.key === "Escape" && setNameFilter("")}
+            />
+            {trimmedFilter && (
+              <>
+                <span className="flex-shrink-0 text-micro tabular text-faint">
+                  {matchCount} {matchCount === 1 ? "match" : "matches"}
+                </span>
+                <button
+                  onClick={() => setNameFilter("")}
+                  aria-label="Clear file filter"
+                  className="flex-shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
         {/* File tree */}
         {!searchResults && (
           <div className="py-1">
@@ -494,12 +617,13 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
               <TreeRows
                 nodes={tree}
                 depth={0}
-                collapsed={collapsed}
+                collapsed={filterCollapsed ?? collapsed}
                 onToggle={toggleNs}
                 onSelect={selectMemory}
                 selected={selected}
                 onPeek={startPeek}
                 onPeekEnd={endPeek}
+                activePaths={activePaths}
               />
             )}
           </div>
@@ -520,7 +644,7 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
                   onClick={() =>
                     isEditing ? guard(() => setIsEditing(false)) : setIsEditing(true)
                   }
-                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
                 >
                   {isEditing ? <Eye className="size-3.5" /> : <Pencil className="size-3.5" />}
                   {isEditing ? "View" : "Edit"}
@@ -529,7 +653,7 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
               <Tooltip content="Open full page">
                 <Link
                   href={memoryHref(roomName, selected.key)}
-                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
                 >
                   <ExternalLink className="size-3.5" />
                   Full page
@@ -556,13 +680,42 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
               onCancel={() => guard(() => setIsEditing(false))}
             />
           ) : (
-            <MemoryDetail
-              memory={selected}
-              roomName={roomName}
-              onNavigate={openMemoryByKey}
-              renderedBody={renderedBody}
-              integrity={integrity}
-            />
+            <>
+              <MemoryDetail
+                memory={selected}
+                roomName={roomName}
+                onNavigate={openMemoryByKey}
+                renderedBody={renderedBody}
+                    // Only where a discussion follows the body — see the full page.
+                collapseBodyAt={hasDiscussion ? BODY_CLAMP_PX : null}
+                bodyFade="elevated"
+              />
+              {/* The memory's discussion, below its body — the drawer equivalent
+                  of the full page's Discussion and the thread pane's conversation.
+                  Only a real thread has one: a memory on the room's own live
+                  episode (or none) is not a thread, and reading it as one would
+                  empty the room's history. */}
+              {hasDiscussion && selected.episode && (
+                <section className="mt-6 border-t border-border px-5 py-4">
+                  <h2 className="mb-2 text-micro uppercase tracking-wide text-faint">Discussion</h2>
+                  {/* The card frames the discussion; the drawer scrolls it, same
+                      as the full page. */}
+                  <div className="rounded-xl border border-border bg-surface">
+                    <TaskConversation
+                      roomName={roomName}
+                      episode={selected.episode}
+                      onOpenMemory={openMemoryByKey}
+                      onReady={onThreadReady}
+                    />
+                    <RoomChatBox
+                      roomName={roomName}
+                      episode={selected.episode}
+                      onSent={() => threadRefresh.current?.()}
+                    />
+                  </div>
+                </section>
+              )}
+            </>
           )
         )}
       </DetailDrawer>

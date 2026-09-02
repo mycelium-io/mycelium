@@ -5,7 +5,6 @@
 
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import {
-  Activity,
   Brain,
   PanelRightClose,
   PanelRightOpen,
@@ -13,7 +12,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { AgentsPanel } from "@/components/agents-panel";
-import { EpisodesRail } from "@/components/episodes-rail";
 import { KeyBadge } from "@/components/key-badge";
 import { Tooltip } from "@/components/ui/tooltip";
 import { MemoryPanel } from "@/components/memory-panel";
@@ -23,11 +21,10 @@ import type { FocusTarget } from "@/lib/search";
 
 // Skills aren't a rail: a skill is just a `skills/…` memory, so it shows up in
 // the Memory list like any other. No dedicated tab or panel.
-export type Tab = "agents" | "episodes" | "memory";
+export type Tab = "agents" | "memory";
 
 const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "agents", label: "Members", icon: Users },
-  { id: "episodes", label: "Episodes", icon: Activity },
   { id: "memory", label: "Memory", icon: Brain },
 ];
 
@@ -57,14 +54,11 @@ interface Props {
   onFocusConsumed?: () => void;
   /** Reveal a memory by key in the Memory tab (e.g. a clicked chat wikilink). */
   focusMemory?: { key: string; nonce: number } | null;
-  /** Reveal an episode by short id in the Episodes tab (e.g. a clicked chat
-   *  episode tag). */
-  focusEpisode?: { shortId: string; nonce: number } | null;
 }
 
 /**
  * How much of the tab strip fits. The rail is draggable down to a width that
- * can't hold three labelled tabs, so below `TAB_LABELS_MIN_WIDTH` they drop to
+ * can't hold the labelled tabs, so below `TAB_LABELS_MIN_WIDTH` they drop to
  * icons alone — the labels move into tooltips and accessible names rather than
  * clipping or wrapping the strip onto a second row.
  *
@@ -85,7 +79,7 @@ function useCompactTabs(ref: RefObject<HTMLElement | null>): boolean {
   return compact;
 }
 
-/** The room's context: agents, episodes, and memory behind one tabbed right rail. */
+/** The room's context: agents and memory behind one tabbed right rail. */
 export function RoomInspector({
   roomName,
   masId,
@@ -98,7 +92,6 @@ export function RoomInspector({
   focus = null,
   onFocusConsumed,
   focusMemory,
-  focusEpisode,
 }: Props) {
   const focused = (type: FocusTarget["type"]) => (focus?.type === type ? focus.id : null);
   const [tabInternal, setTabInternal] = useState<Tab>("agents");
@@ -111,7 +104,7 @@ export function RoomInspector({
   const railRef = useRef<HTMLElement>(null);
   const compact = useCompactTabs(railRef);
 
-  // Collapsed: a slim strip of the three tab icons; clicking one expands to it.
+  // Collapsed: a slim strip of the tab icons; clicking one expands to it.
   if (!open) {
     return (
       <aside className="flex w-full min-w-0 flex-col items-center gap-1 overflow-hidden bg-surface/40 pt-3">
@@ -188,14 +181,6 @@ export function RoomInspector({
             onEngineInviteShown={onEngineInviteShown}
             focusHandle={focused("agent")}
             onFocusConsumed={onFocusConsumed}
-          />
-        )}
-        {tab === "episodes" && (
-          <EpisodesRail
-            roomName={roomName}
-            focusShortId={focused("episode")}
-            onFocusConsumed={onFocusConsumed}
-            focusEpisode={focusEpisode}
           />
         )}
         {tab === "memory" && (

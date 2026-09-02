@@ -10,7 +10,8 @@
  * no migration and no config.
  */
 
-import { CUSTODY_STATES } from "./custody";
+import { ASSIGNMENT_STATES } from "./assignment";
+import { THREAD_FIELDS } from "./projection";
 import { STATUS_ORDER, type LiveItem } from "./item";
 import { UPSTREAM_STATES } from "./upstream";
 
@@ -40,10 +41,10 @@ export interface FieldSchema {
   total: number;
 }
 
-/** Fields the cockpit knows by name lead the table; the rest follow by fill rate. */
+/** Fields the triage knows by name lead the table; the rest follow by fill rate. */
 const PREFERRED_ORDER = [
   "status",
-  "custody",
+  "assignment",
   "kind",
   "owner",
   "priority",
@@ -70,7 +71,7 @@ const MAX_SELECT_CARDINALITY = 12;
  */
 const KNOWN_VOCABULARIES: Record<string, string[]> = {
   status: [...STATUS_ORDER],
-  custody: [...CUSTODY_STATES],
+  assignment: [...ASSIGNMENT_STATES],
   kind: ["decision", "blocked", "review", "action", "concern", "signal"],
   priority: ["urgent", "high", "normal", "low"],
   ci: ["green", "running", "red"],
@@ -185,10 +186,24 @@ export function inferSchema(items: LiveItem[]): FieldSchema[] {
   });
 }
 
-/** Fields a board can group into columns: a bounded vocabulary, ≥2 values. */
+/**
+ * Fields a board can group into columns: a bounded vocabulary, ≥2 values, and
+ * never one of the thread's.
+ *
+ * The thread fields are folded onto a row so they can be *read* — a column, a
+ * chip — and grouping is not reading: it makes the field the axis the board is
+ * organised by. Pivoting tasks by `thread_state` would sort them by how the
+ * negotiation inside them went, which is the container-outlives-the-negotiation
+ * rule inverted on the one surface where it is most visible. So the exclusion
+ * is the whole of `THREAD_FIELDS` rather than the one field that reaches here
+ * today: what makes them ineligible is whose fields they are, not their type.
+ */
 export function groupableFields(schema: FieldSchema[]): FieldSchema[] {
   return schema.filter(
-    f => (f.type === "select" || f.type === "handle" || f.type === "checkbox") && f.options.length >= 2,
+    f =>
+      !THREAD_FIELDS.includes(f.name) &&
+      (f.type === "select" || f.type === "handle" || f.type === "checkbox") &&
+      f.options.length >= 2,
   );
 }
 

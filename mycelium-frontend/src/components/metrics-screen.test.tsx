@@ -70,7 +70,7 @@ function network(): NetworkStatus {
           provisioned: true,
           persister_alive: true,
           members: ["planner", "avery"],
-          pending_invites: 0,
+          deferred_invites: 0,
           episode_active: true,
           reserves: 3,
           reserve_failures: 0,

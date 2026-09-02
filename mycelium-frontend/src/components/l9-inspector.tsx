@@ -323,7 +323,6 @@ function FrameRow({
         // No visual tooltip: the trigger is a full-width feed row, so a bubble
         // anchored to it would sit over its neighbours. The chevron and
         // aria-expanded already carry the affordance.
-        aria-description={expanded ? "Collapse envelope" : "Expand full envelope JSON"}
         // Fixed columns so kind / actor / summary line up down the feed, one text
         // size throughout; timestamp + metrics ride a right-aligned meta cluster.
         className="group grid w-full cursor-pointer grid-cols-[14px_16px_176px_120px_minmax(0,1fr)_auto] items-center gap-x-2.5 px-4 py-1.5 text-left text-label transition-colors hover:bg-hairline"

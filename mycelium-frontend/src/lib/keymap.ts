@@ -62,6 +62,17 @@ export const KEYMAP: Binding[] = [
     scope: "global",
   },
 
+  // The browser's own find is the one it hijacks, so it only fires where the
+  // app genuinely answers it: the dispatcher leaves an unclaimed binding alone,
+  // and nothing registers this outside a room's channel.
+  {
+    id: "chat.find",
+    keys: ["mod+f"],
+    label: "Find in the channel",
+    group: "Search",
+    scope: "room",
+  },
+
   {
     id: "rooms.digit",
     keys: ROOM_DIGIT_KEYS,
@@ -84,15 +95,11 @@ export const KEYMAP: Binding[] = [
   { id: "nav.home", keys: ["alt+h"], label: "Command center", group: "Navigate", scope: "global" },
 
   { id: "pane.channel", keys: ["alt+c"], label: "Channel", group: "Panes", scope: "room" },
-  { id: "pane.negotiate", keys: ["alt+n"], label: "Negotiate", group: "Panes", scope: "room" },
   { id: "pane.board", keys: ["alt+p"], label: "Board", group: "Panes", scope: "room" },
-  // Network = the merged SLIM diagnostics rail + L9 protocol feed. ⌥W (netWork);
-  // ⌥N is taken by Negotiate.
-  { id: "pane.network", keys: ["alt+w"], label: "Network", group: "Panes", scope: "room" },
+  // Network = the merged SLIM diagnostics rail + L9 protocol feed.
+  { id: "pane.network", keys: ["alt+n"], label: "Network", group: "Panes", scope: "room" },
 
   { id: "rail.agents", keys: ["alt+a"], label: "Members", group: "Inspector", scope: "room" },
-  // Not ⌥E: Alt+E opens the browser menu on Windows and Linux.
-  { id: "rail.episodes", keys: ["alt+i"], label: "Episodes", group: "Inspector", scope: "room" },
   { id: "rail.memory", keys: ["alt+m"], label: "Memory", group: "Inspector", scope: "room" },
   { id: "rail.toggle", keys: ["\\"], label: "Collapse / expand the rail", group: "Inspector", scope: "room" },
 

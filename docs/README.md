@@ -1,7 +1,10 @@
 # docs
 
-The published docs site, plus the design notes and runbooks that don't belong in
-it.
+The published docs site, plus the runbooks that don't belong in it.
+
+No design or planning documents live here — see the convention in the repo root
+`CLAUDE.md`. This directory describes what the code *does*, not what someone
+intended it to do.
 
 ## Generated vs. authored
 
@@ -27,8 +30,6 @@ it.
 - `agents.md`: the setup runbook written for an agent to follow, not a human to
   read. It's fetched over HTTP by whoever is installing, so its URL is part of
   the public contract.
-- `design/`: decision records. These are dated arguments, not current-state
-  docs: a design note describing a path not taken is still doing its job.
 - The remaining top-level markdown: demo script, evaluation results, and
   operational runbooks.
 

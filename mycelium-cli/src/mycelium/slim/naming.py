@@ -124,7 +124,7 @@ def node_reachable(endpoint: str, *, timeout: float = 1.0) -> bool:
     """True if a TCP connection to the node ``endpoint`` succeeds quickly.
 
     A cheap pre-flight so the daemon skips the full connect handshake (and the
-    unit suite stays fast) when no node is up. Mirrors the backend probe.
+    task suite stays fast) when no node is up. Mirrors the backend probe.
     """
     parsed = urlparse(endpoint)
     host = parsed.hostname or "127.0.0.1"

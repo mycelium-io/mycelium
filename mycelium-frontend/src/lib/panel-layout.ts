@@ -27,12 +27,16 @@ const FOLD_MARGIN = 60;
 /** Group ids. Also the localStorage keys the saved layouts live under. */
 export const SHELL_GROUP_ID = "mycelium:shell";
 export const ROOM_GROUP_ID = "mycelium:room";
+/** The split inside the main panel while a task's thread is open. */
+export const THREAD_GROUP_ID = "mycelium:thread";
 
 /** Panel ids within those groups. Stable — a saved layout is keyed by them. */
 export const PANEL_ROOMS = "rooms";
 export const PANEL_WORKSPACE = "workspace";
 export const PANEL_MAIN = "main";
 export const PANEL_INSPECTOR = "inspector";
+export const PANEL_ROOM_SURFACE = "room-surface";
+export const PANEL_THREAD = "thread";
 
 /**
  * The id lists `useDefaultLayout` takes, as constants rather than array
@@ -43,6 +47,7 @@ export const PANEL_INSPECTOR = "inspector";
  */
 export const SHELL_PANEL_IDS = [PANEL_ROOMS, PANEL_WORKSPACE];
 export const ROOM_PANEL_IDS = [PANEL_MAIN, PANEL_INSPECTOR];
+export const THREAD_PANEL_IDS = [PANEL_ROOM_SURFACE, PANEL_THREAD];
 
 /** The rooms rail: wide enough for a monogram plus a room name. Collapses to a
  *  strip of room monograms rather than to nothing, so every room stays one
@@ -66,6 +71,15 @@ export const MAIN_PANEL = {
   min: "360px",
 } as const;
 
+/** A task's thread, opened beside the room surface as a resizable split. Wide
+ *  enough by default for the task's body over its conversation; its own floor so
+ *  the room surface can't crush it, and vice versa. */
+export const THREAD_PANEL = {
+  default: "460px",
+  min: "340px",
+  max: "760px",
+} as const;
+
 /** The inspector rail: members / episodes / memory. Collapses to a strip of
  *  tab icons rather than to nothing, so the rail is always one click away. */
 export const INSPECTOR_PANEL = {
@@ -80,6 +94,12 @@ export const INSPECTOR_PANEL = {
 const SEAM = 1;
 
 const px = (value: string) => Number.parseInt(value, 10);
+
+/** PANEL_MAIN's floor while a thread is open: it now holds the room surface AND
+ *  the thread split, so it cannot shrink below both their minimums — the seam is
+ *  the handle between them. Without this the nested split has nowhere to fit and
+ *  the group refuses to move, as it does for any unsatisfiable constraint set. */
+export const MAIN_WITH_THREAD_MIN = `${px(MAIN_PANEL.min) + px(THREAD_PANEL.min) + SEAM}px`;
 
 /**
  * Viewport widths at which each rail folds itself away, and unfolds again.
@@ -105,6 +125,22 @@ export const INSPECTOR_FOLD_WIDTH =
 /** With the inspector already a strip by the time this matters. */
 export const ROOMS_FOLD_WIDTH =
   px(ROOMS_PANEL.default) + px(MAIN_PANEL.min) + px(INSPECTOR_PANEL.collapsed) + 2 * SEAM + FOLD_MARGIN;
+
+/**
+ * Below this the shell stops being a split at all.
+ *
+ * A phone has room for exactly one of the three columns, so the rails stop
+ * being panels in the group and become sheets drawn over the workspace. That
+ * isn't a smaller version of the desktop layout, it's a different one: a rail
+ * at its own minimum plus the workspace at its own minimum is already wider
+ * than the window, and `react-resizable-panels` answers a constraint set it
+ * can't satisfy by refusing to move — which is what made the rails unopenable
+ * here rather than merely cramped.
+ *
+ * Matches Tailwind's `md`, so the classes that hide chrome at this width and
+ * the layout switch always agree on where the boundary is.
+ */
+export const SHEET_LAYOUT_WIDTH = 768;
 
 /**
  * Below this the inspector's tab strip can't hold "Members / Episodes /

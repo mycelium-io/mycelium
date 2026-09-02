@@ -20,17 +20,17 @@ import asyncio
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
-from app.services.status.types import Freshness, Known, Liveness, Ref
+from app.services.status.types import CachedStatus, Freshness, Ref, UpstreamState
 
 
 @dataclass(slots=True)
-class Entry:
+class CacheEntry:
     ref: Ref
     #: When the *value* was obtained. A failed refresh never moves this: the age
     #: a caller is told is the age of the thing it is looking at, not the age of
     #: the most recent attempt to replace it.
     fetched_at: datetime
-    liveness: Liveness | None = None
+    upstream: UpstreamState | None = None
     error: str | None = None
     #: When the last attempt failed, kept apart from ``fetched_at`` because they
     #: answer different questions: how old is this value, and how recently did we
@@ -51,7 +51,7 @@ class StatusCache:
     """
 
     def __init__(self) -> None:
-        self._entries: dict[Ref, Entry] = {}
+        self._entries: dict[Ref, CacheEntry] = {}
         self._inflight: dict[Ref, asyncio.Future[None]] = {}
 
     # ── reads ────────────────────────────────────────────────────────────────
@@ -63,8 +63,8 @@ class StatusCache:
         age = now - entry.fetched_at
         window = (entry.ttl_override or ttl) + swr
         if entry.error is not None:
-            if entry.liveness is None:
-                # Nothing was ever known. The error is the whole answer, and it
+            if entry.upstream is None:
+                # Nothing was ever cached. The error is the whole answer, and it
                 # is worth remembering only as long as a value would have been,
                 # so a broken ref does not retry on every render.
                 since = now - (entry.errored_at or entry.fetched_at)
@@ -77,15 +77,15 @@ class StatusCache:
             return "fresh"
         return "stale" if age < window else "missing"
 
-    def known(self, ref: Ref, now: datetime, ttl: timedelta, swr: timedelta) -> Known:
+    def lookup(self, ref: Ref, now: datetime, ttl: timedelta, swr: timedelta) -> CachedStatus:
         freshness = self.classify(ref, now, ttl, swr)
         entry = self._entries.get(ref)
         if entry is None or freshness == "missing":
-            return Known(ref=ref, freshness="missing")
-        return Known(
+            return CachedStatus(ref=ref, freshness="missing")
+        return CachedStatus(
             ref=ref,
             freshness=freshness,
-            liveness=entry.liveness,
+            upstream=entry.upstream,
             fetched_at=entry.fetched_at,
             error=entry.error,
         )
@@ -93,18 +93,22 @@ class StatusCache:
     # ── writes ───────────────────────────────────────────────────────────────
 
     def put_ok(
-        self, ref: Ref, liveness: Liveness, now: datetime, ttl_override: timedelta | None = None
+        self,
+        ref: Ref,
+        upstream: UpstreamState,
+        now: datetime,
+        ttl_override: timedelta | None = None,
     ) -> None:
-        self._entries[ref] = Entry(
-            ref=ref, fetched_at=now, liveness=liveness, ttl_override=ttl_override
+        self._entries[ref] = CacheEntry(
+            ref=ref, fetched_at=now, upstream=upstream, ttl_override=ttl_override
         )
 
     def put_err(
         self, ref: Ref, reason: str, now: datetime, retry_after: timedelta | None = None
     ) -> None:
         previous = self._entries.get(ref)
-        keep = previous.liveness if previous else None
-        self._entries[ref] = Entry(
+        keep = previous.upstream if previous else None
+        self._entries[ref] = CacheEntry(
             ref=ref,
             # A failed refresh must not erase the last thing that worked, and
             # must not make it look younger either: the retained value keeps the
@@ -114,7 +118,7 @@ class StatusCache:
             # a five-minute freshness bound, which is the failure this whole
             # module exists to prevent.
             fetched_at=previous.fetched_at if previous and keep else now,
-            liveness=keep,
+            upstream=keep,
             error=reason,
             errored_at=now,
             ttl_override=previous.ttl_override if previous and keep else None,

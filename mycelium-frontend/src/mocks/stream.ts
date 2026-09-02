@@ -20,7 +20,7 @@ interface StreamStep {
 // The aligner brokers a real NEGMAS Stacked Alternating Offers round-robin over
 // three issues (price, seats, term); each natural-language reply is followed by
 // the aligner's interpreted move as a coordination_tick, so the Channel narrates
-// and the Negotiate tab's offer board + swim lanes fill in live.
+// and the Network pane's L9 feed fills in live.
 const PRICING_EPISODE = "urn:ioc:mycelium:episode:pricing-model:b2d0";
 const tick = (id: string, round: number, who: string, action: string, offer: Record<string, string>): StreamStep["message"] => ({
   id,

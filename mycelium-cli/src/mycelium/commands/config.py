@@ -236,22 +236,41 @@ def apply_config(
                 typer.secho("  ✗ Could not find compose.yml", fg=typer.colors.RED)
                 raise typer.Exit(1)
 
-            result = subprocess.run(
-                [
-                    "docker",
-                    "compose",
-                    "-p",
-                    "mycelium",
-                    "-f",
-                    str(compose_path),
-                    "--env-file",
-                    str(env_path),
-                    "up",
-                    "--force-recreate",
-                    "-d",
-                ],
-                text=True,
-            )
+            from mycelium.docker_utils import read_build_mode
+
+            cmd = [
+                "docker",
+                "compose",
+                "-p",
+                "mycelium",
+                "-f",
+                str(compose_path),
+            ]
+
+            # When the stack was started with `mycelium up --build`, inject
+            # compose-dev.yml so `pull_policy: never` stays in effect and the
+            # restart uses the locally-built images instead of pulling from GHCR.
+            restart_env: dict[str, str] | None = None
+            if read_build_mode(env_path) == "dev":
+                dev_compose = Path(__file__).parent.parent / "docker" / "compose-dev.yml"
+                if dev_compose.exists():
+                    cmd += ["-f", str(dev_compose)]
+                    # MYCELIUM_REPO_ROOT is referenced by compose-dev.yml build
+                    # contexts; it isn't used during a plain recreate (no --build),
+                    # but compose still needs it resolvable for var substitution.
+                    import os
+
+                    repo_root = dev_compose.parent.parent.parent.parent.parent
+                    restart_env = {**os.environ, "MYCELIUM_REPO_ROOT": str(repo_root)}
+
+            cmd += [
+                "--env-file",
+                str(env_path),
+                "up",
+                "--force-recreate",
+                "-d",
+            ]
+            result = subprocess.run(cmd, text=True, env=restart_env)
             if result.returncode == 0:
                 typer.secho("  ✓ Containers restarted", fg=typer.colors.GREEN)
             else:

@@ -23,7 +23,7 @@ const event = (at: string, actor: string, over: Partial<ActivityEvent> = {}): Ac
   at,
   actor,
   actorKind: "human",
-  verb: "posted",
+  action: "posted",
   title: "something",
   source: "test",
   ...over,
@@ -88,7 +88,7 @@ describe("projectActivity", () => {
         { id: "2", message_type: "broadcast", sender_handle: "julia", content: "nice", created_at: "2026-08-22T10:05:00Z" },
       ],
     });
-    expect(events.map(e => [e.actor, e.actorKind, e.verb])).toEqual([
+    expect(events.map(e => [e.actor, e.actorKind, e.action])).toEqual([
       ["julia", "human", "posted"],
       ["growth", "agent", "posted"],
     ]);
@@ -115,7 +115,7 @@ describe("projectActivity", () => {
         },
       ],
     });
-    expect(events[0]).toMatchObject({ verb: "negotiated", title: "round 4 · @risk accept" });
+    expect(events[0]).toMatchObject({ action: "negotiated", title: "round 4 · @risk accept" });
     expect(events[0].title).not.toContain("{");
   });
 
@@ -131,7 +131,7 @@ describe("projectActivity", () => {
       ],
     });
     expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ actor: "growth", verb: "revised", title: "decisions/cutover" });
+    expect(events[0]).toMatchObject({ actor: "growth", action: "revised", title: "decisions/cutover" });
   });
 
   it("drops anything it can't attribute or timestamp", () => {
@@ -186,7 +186,7 @@ describe("buckets", () => {
     expect(summary.events).toHaveLength(4);
     expect(summary.activeDays).toBe(3);
     expect(summary.actors[0].actor).toBe("julia");
-    expect(summary.byVerb).toEqual([{ verb: "posted", count: 4 }]);
+    expect(summary.byAction).toEqual([{ action: "posted", count: 4 }]);
   });
 
   it("steps heat in five", () => {

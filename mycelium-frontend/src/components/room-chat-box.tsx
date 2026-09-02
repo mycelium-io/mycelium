@@ -17,6 +17,14 @@ interface Props {
   /** Fired after a successful POST so the parent can refresh the event stream. */
   onSent?: () => void;
   className?: string;
+  /**
+   * The thread this composer writes into. Without one it writes to the room —
+   * the same composer either way, since a thread is a tag over the room's own
+   * channel and not a second place to type.
+   */
+  episode?: string | null;
+  /** What to call that thread in the placeholder, e.g. a task's title. */
+  threadLabel?: string | null;
 }
 
 // Three sigils, three vocabularies, one composer (#618, #619):
@@ -72,7 +80,7 @@ function memoryKey(m: Memory): string {
   return m.key;
 }
 
-export function RoomChatBox({ roomName, onSent, className }: Props) {
+export function RoomChatBox({ roomName, onSent, className, episode = null, threadLabel = null }: Props) {
   const [content, setContent] = useState("");
   // A human message is sent as the acting-as principal — the single source of
   // "who am I" (the ActingAsPicker), not a per-composer handle. Anonymous falls
@@ -192,7 +200,7 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
     setSending(true);
     setError(null);
     try {
-      await sendRoomMessage(roomName, { sender_handle: handle, content: body });
+      await sendRoomMessage(roomName, { sender_handle: handle, content: body, episode });
       setContent("");
       setTrigger(null);
       onSent?.();
@@ -204,7 +212,15 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
       // render, so refocus after that commit lands to keep the user typing.
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [content, onSent, roomName, principal, sending]);
+  }, [content, episode, onSent, roomName, principal, sending]);
+
+  // Where this lands is the one thing the composer must never be coy about: the
+  // same box writes to the room and into a thread, and the difference is whether
+  // an argument stays inside a task or becomes everyone's.
+  // The sigils live in the hint row below rather than in here: a placeholder is
+  // gone the moment anybody types, and on a narrow box it wrapped the field to
+  // two lines to say something the reader had already stopped reading.
+  const placeholder = episode ? `Reply in ${threadLabel || "this thread"}…` : "Message the room…";
 
   // The button carries no chrome at rest — the composer's own border is the
   // affordance and Enter is the primary path. It only colors up, and only
@@ -241,7 +257,7 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
   };
 
   return (
-    <div data-tour="composer" className={`border-t border-border bg-bg px-4 py-3 flex-shrink-0${className ? ` ${className}` : ""}`}>
+    <div data-tour="composer" className={`@container border-t border-border bg-bg px-4 py-3 flex-shrink-0${className ? ` ${className}` : ""}`}>
       <div className="relative">
         {trigger !== null && candidates.length > 0 && (
           <div className="absolute bottom-full left-0 mb-2 z-20 w-full max-w-md bg-elevated border border-border rounded-xl shadow-xl overflow-hidden p-1">
@@ -281,7 +297,7 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
             value={content}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder="Message the room…  @ mention · [[ memory · / skill"
+            placeholder={placeholder}
             minRows={1}
             maxRows={10}
             className="w-full resize-none bg-transparent px-4 pt-3 pb-1.5 text-body text-text leading-relaxed focus:outline-none placeholder:text-muted-foreground"
@@ -306,10 +322,19 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
             </button>
           </div>
         </div>
+        {/* What the composer answers to, in two halves. The sigils are typed,
+            so they hold at every width; the keycaps name keys a phone does not
+            have, and three of them wrapped the row onto three lines to say so.
+            Measured against the composer rather than the window: the box is
+            this narrow on a phone and again in a room with both rails open,
+            and the row has to fit the box either way. */}
         <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 px-1 text-micro text-muted-foreground">
-          <Kbd size="xs" tone="muted">Enter</Kbd> to send ·
-          <Kbd size="xs" tone="muted">Shift+Enter</Kbd> for newline ·
-          <Kbd size="xs" tone="muted">Esc</Kbd> for command mode
+          <span className="text-faint">@ mention · [[ memory · / skill</span>
+          <span className="hidden flex-wrap items-center gap-x-1.5 gap-y-1 @[34rem]:flex">
+            <Kbd size="xs" tone="muted">Enter</Kbd> to send ·
+            <Kbd size="xs" tone="muted">Shift+Enter</Kbd> for newline ·
+            <Kbd size="xs" tone="muted">Esc</Kbd> for command mode
+          </span>
         </div>
       </div>
     </div>

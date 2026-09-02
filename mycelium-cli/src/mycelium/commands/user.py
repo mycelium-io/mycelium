@@ -26,6 +26,7 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
+from mycelium import identity
 from mycelium.client import current_token
 from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
@@ -141,6 +142,42 @@ def _write_user(user: UserManifest, created_by: str) -> None:
         create_api.sync(client=client, body=body)
 
 
+def align_identity(
+    handle: str,
+    *,
+    config: MyceliumConfig,
+    display_name: str | None = None,
+    teams: list[str] | None = None,
+) -> tuple[UserManifest, bool]:
+    """Make *handle* this machine's identity and ensure its ``users/`` record exists.
+
+    Two halves with different homes: the identity is this machine's config, the
+    user record is the hub's. Registering can fail on its own, and the local half
+    still has to land — otherwise a hub outage leaves you unable to say who you
+    are here. The returned flag says whether the hub took the record.
+
+    Raises ``ValidationError`` when *handle* isn't a valid handle.
+    """
+    manifest = UserManifest(handle=handle, display_name=display_name or "", teams=teams or [])
+
+    registered = True
+    try:
+        # Preserve an existing display name / teams when the caller didn't pass them.
+        existing = load_user(manifest.handle)
+        if existing is not None:
+            if display_name is None:
+                manifest.display_name = existing.display_name
+            if not teams:
+                manifest.teams = existing.teams
+        _write_user(manifest, created_by=manifest.handle)
+    except (httpx.HTTPError, UnexpectedStatus):
+        registered = False
+
+    config.identity.name = manifest.handle
+    config.save()
+    return manifest, registered
+
+
 def _owned_lines(read: UserRead) -> list[tuple[str, str, str]]:
     """The hub's roll-up for a user as ``(handle, adapter, room)`` triples."""
     owns = _unset_to_none(getattr(read, "owns", None)) or []
@@ -165,8 +202,12 @@ def user_create(
     notify: str | None = typer.Option(
         None, "--notify", help="Where to route 'needs you' escalations (email/webhook)."
     ),
-    handle_flag: str = typer.Option(
-        "cli-user", "--as", "-H", help="Your own handle (recorded as created_by)."
+    handle_flag: str | None = typer.Option(
+        None,
+        "--as",
+        "--handle",
+        "-H",
+        help="Your own handle (recorded as created_by). Defaults to your hub identity.",
     ),
 ) -> None:
     """Create (or upsert) a user in the global store.
@@ -174,6 +215,7 @@ def user_create(
     Examples:
         mycelium user create avery --name "Avery Quinn" --team core
     """
+    handle_flag = identity.resolve_actor(MyceliumConfig.load(), override=handle_flag)
     try:
         try:
             user = UserManifest(
@@ -375,14 +417,23 @@ def whoami(ctx: typer.Context) -> None:
         console.print(f"[bold]acting as[/bold] [cyan]@{principal}[/cyan]  [dim]({identity})[/dim]")
         console.print(f"  [dim]hub: {config.server.api_url}[/dim]")
         if token is not None:
+            from mycelium.tokens import format_span
+
             remaining = token.expires_in()
-            expiry = f", expires in {int(remaining // 60)} min" if remaining is not None else ""
+            expiry = f", expires in {format_span(remaining)}" if remaining is not None else ""
             source = "signed in" if token_handle else "signed in, no handle claim"
             console.print(f"  [green]{source}[/green] [dim]({token.issuer}{expiry})[/dim]")
-            # No issuer-side expiry for the refresh token itself (it's opaque),
-            # so this reports whether one exists at all, not a countdown.
             if token.refresh_token:
-                console.print("  [dim]refreshes automatically on expiry[/dim]")
+                # The refresh token is opaque, so its own deadline is only known
+                # when the issuer volunteered one; without it, say that renewal
+                # happens rather than inventing how long it keeps working.
+                renewal_left = token.refresh_expires_in()
+                due = (
+                    f", re-login due in {format_span(renewal_left)}"
+                    if renewal_left is not None
+                    else ""
+                )
+                console.print(f"  [dim]renewed on the next command that needs it{due}[/dim]")
             else:
                 console.print("  [dim]no refresh token — re-login required after expiry[/dim]")
         if hub_down:
@@ -442,33 +493,14 @@ def iam(
         return
 
     try:
+        config = MyceliumConfig.load()
         try:
-            manifest = UserManifest(handle=handle, display_name=name or "", teams=team or [])
+            manifest, registered = align_identity(
+                handle, config=config, display_name=name, teams=team
+            )
         except ValidationError as exc:
             typer.secho(f"Invalid handle: {exc}", fg=typer.colors.RED)
             raise typer.Exit(1) from exc
-
-        config = MyceliumConfig.load()
-
-        # Two halves with different homes: the identity is this machine's config,
-        # the user record is the hub's. Registering can fail on its own, and the
-        # local half still has to land — otherwise a hub outage leaves you unable
-        # to say who you are here.
-        registered = True
-        try:
-            # Preserve an existing display name / teams when the caller didn't pass them.
-            existing = load_user(manifest.handle)
-            if existing is not None:
-                if name is None:
-                    manifest.display_name = existing.display_name
-                if not team:
-                    manifest.teams = existing.teams
-            _write_user(manifest, created_by=manifest.handle)
-        except (httpx.HTTPError, UnexpectedStatus):
-            registered = False
-
-        config.identity.name = manifest.handle
-        config.save()
 
         team_line = f" · teams: {', '.join(manifest.teams)}" if manifest.teams else ""
         console.print(

@@ -46,14 +46,14 @@ SCAN_LIMIT = 500
 
 
 @dataclass(frozen=True, slots=True)
-class Discovered:
+class DiscoveredRefs:
     """One external reference, and every row in the room that mentions it."""
 
     ref: Ref
     origins: tuple[str, ...] = field(default=())
 
 
-def discover(room_name: str, runtime: StatusRuntime) -> list[Discovered]:
+def discover(room_name: str, runtime: StatusRuntime) -> list[DiscoveredRefs]:
     """Every ref the room's text mentions, each with the row ids that mention it.
 
     Ordered by first appearance so a caller that truncates keeps the plan's own
@@ -79,4 +79,4 @@ def discover(room_name: str, runtime: StatusRuntime) -> list[Discovered]:
             # thing it is about in its own name as often as in its body.
             note(f"{key}\n{content}", f"memory:{key}")
 
-    return [Discovered(ref=ref, origins=tuple(found[ref])) for ref in order]
+    return [DiscoveredRefs(ref=ref, origins=tuple(found[ref])) for ref in order]

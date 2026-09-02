@@ -8,17 +8,17 @@ can't import the frontend — so the words the two surfaces must agree on are
 frozen in ``contracts/board-vocabulary.json`` and asserted from both sides.
 """
 
-from mycelium.board import custody
-from mycelium.board.custody import custody_of, lens_of_item
+from mycelium.board import assignment
+from mycelium.board.assignment import assignment_of, attention_of_item
 from mycelium.board.model import (
+    ATTENTION_FILTERS,
+    ATTENTION_OF_STATUS,
     KINDS,
-    LENS_OF_STATUS,
-    LENSES,
     PRIORITIES,
+    ROW_ACTIONS,
     STATUSES,
-    VERBS,
     LiveItem,
-    lens_of,
+    attention_of_status,
     priority_rank,
 )
 from mycelium.board.projection import project_items
@@ -27,20 +27,20 @@ from mycelium.board.upstream import UPSTREAM_STATES, attach_upstream
 
 __all__ = [
     "KINDS",
-    "LENSES",
-    "LENS_OF_STATUS",
+    "ATTENTION_FILTERS",
+    "ATTENTION_OF_STATUS",
     "PRIORITIES",
     "STATUSES",
     "UPSTREAM_STATES",
-    "VERBS",
+    "ROW_ACTIONS",
     "FieldSchema",
     "attach_upstream",
-    "custody",
-    "custody_of",
+    "assignment",
+    "assignment_of",
     "LiveItem",
     "infer_schema",
-    "lens_of",
-    "lens_of_item",
+    "attention_of_status",
+    "attention_of_item",
     "priority_rank",
     "project_items",
 ]

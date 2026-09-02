@@ -17,9 +17,9 @@ What stands in for what:
   (``app.services.persister``): a ``DeliveryLog`` plus ``ingest_local``.
 * :class:`FakeManaged` / :class:`FakeManager` — ``ManagedRoomChannel`` /
   ``RoomChannelManager`` (``app.services.room_channels``).
-* :func:`make_fake_llm` / :func:`fake_brain_factory` — the mediator's Pi brain
-  seam (``brain_factory`` on ``AlignerEngine``), a deterministic prompt-keyed stub.
-* :func:`patch_pi_run` — mock ``subprocess.run`` / ``shutil.which`` so ``PiBrain``
+* :func:`make_fake_llm` / :func:`fake_llm_session_factory` — the mediator's Pi LLM session
+  seam (``llm_session_factory`` on ``AlignerEngine``), a deterministic prompt-keyed stub.
+* :func:`patch_pi_run` — mock ``subprocess.run`` / ``shutil.which`` so ``PiSession``
   never spawns a real ``pi``.
 
 See ``tests/README.md`` for the "test a feature without a live stack" recipe.
@@ -67,7 +67,7 @@ def position_record(
 
     ``prose`` is the body the mediator reads — issue discovery and offer
     interpretation both work off what the agent said — so a test driving a real
-    brain supplies real sentences. It defaults to a stub.
+    LLM session supplies real sentences. It defaults to a stub.
     """
     data: dict[str, Any] = {"action": action}
     if confidence is not None:
@@ -145,6 +145,21 @@ class FakeManaged:
     workspace: str = "mycelium"
     channel: Any = None
     persister: Any = None
+
+    async def post(
+        self,
+        envelope: Any,
+        text: str,
+        *,
+        list_write: bool = False,
+        raise_on_send_failure: bool = False,
+    ) -> None:
+        """Mirror of ``ManagedRoomChannel.post`` for node-free tests."""
+        content = serialize_content(envelope, extra={"content": text})
+        if self.channel is not None:
+            await self.channel.send(envelope, extra={"content": text})
+        if self.persister is not None:
+            self.persister.ingest_local(envelope, content, list_write=list_write)
 
 
 class FakeManager:
@@ -288,11 +303,11 @@ class FakeSlimClient:
         return _Msg(payload)
 
 
-# ── the Pi brain / LLM seam ───────────────────────────────────────────────────
+# ── the Pi session / LLM seam ───────────────────────────────────────────────────
 
 
 def make_fake_llm() -> Any:
-    """A deterministic stand-in for the mediator's Pi brain, keyed on the prompt.
+    """A deterministic stand-in for the mediator's Pi llm_session, keyed on the prompt.
 
     * the term check → no mismatch (so no clarifying round);
     * discovery → one issue ``cap`` with three options;
@@ -300,7 +315,7 @@ def make_fake_llm() -> Any:
     * a respond interpretation → accept;
     * any broker framing → a short note.
 
-    This is the ``brain_factory`` payload that lets the SAO mediator run
+    This is the ``llm_session_factory`` payload that lets the SAO mediator run
     node-free and LLM-free (see ``test_mediator``).
     """
 
@@ -318,19 +333,19 @@ def make_fake_llm() -> Any:
     return _fake_llm
 
 
-def fake_brain_factory(_episode: str) -> Any:
-    """A ``brain_factory`` that yields :func:`make_fake_llm` for any episode."""
+def fake_llm_session_factory(_episode: str) -> Any:
+    """A ``llm_session_factory`` that yields :func:`make_fake_llm` for any episode."""
     return make_fake_llm()
 
 
 def patch_pi_run(
     monkeypatch: pytest.MonkeyPatch, *, stdout: str, returncode: int = 0
 ) -> list[list[str]]:
-    """Mock ``subprocess.run`` / ``shutil.which`` so ``PiBrain`` never spawns ``pi``.
+    """Mock ``subprocess.run`` / ``shutil.which`` so ``PiSession`` never spawns ``pi``.
 
-    Returns the list that captures each argv the brain would have executed.
+    Returns the list that captures each argv the LLM session would have executed.
     """
-    from app.services import pi_brain
+    from app.services import pi_session
 
     calls: list[list[str]] = []
 
@@ -338,6 +353,6 @@ def patch_pi_run(
         calls.append(cmd)
         return subprocess.CompletedProcess(cmd, returncode, stdout=stdout, stderr="boom")
 
-    monkeypatch.setattr(pi_brain.shutil, "which", lambda _b: "/usr/bin/pi")
-    monkeypatch.setattr(pi_brain.subprocess, "run", fake_run)
+    monkeypatch.setattr(pi_session.shutil, "which", lambda _b: "/usr/bin/pi")
+    monkeypatch.setattr(pi_session.subprocess, "run", fake_run)
     return calls

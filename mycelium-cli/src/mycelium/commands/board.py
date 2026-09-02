@@ -6,12 +6,12 @@ The coordination board: the room's live slice, in the terminal.
 
 ``mycelium board`` is the CLI half of the same surface the GUI draws — one
 projection over episodes, memory namespaces and presence, read
-through whichever lens you ask for.  The default lens is "needs you", because a
+through whichever attention filter you ask for.  The default is "needs you", because a
 board worth having is one you can ignore until it says your name.
 
-The verbs (claim / resolve / block / promote / dismiss) are the same words the
+The row actions (claim / resolve / block / promote / dismiss) are the same words the
 GUI uses and the same words an agent drives over the ledger, and each one
-writes.  Custody goes through a lease, because who holds a row moves under
+writes.  Assignment goes through a lease, because who holds a row moves under
 rules a plain write cannot check; everything else is frontmatter on the row's
 memory.  A row projected from somewhere other than a memory has nothing to
 write onto and says so.
@@ -33,20 +33,28 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
-from mycelium.board import LiveItem, attach_upstream, custody, infer_schema, project_items
+from mycelium import chat
+from mycelium.board import LiveItem, assignment, attach_upstream, infer_schema, project_items
 from mycelium.board import fields as board_fields
 from mycelium.board.activity import (
     DAILY_GOAL,
     by_day,
-    digest,
     heat_level,
     project_activity,
     streaks,
+    summarize_activity,
     week_start,
     zone,
 )
-from mycelium.board.custody import lens_of_item
-from mycelium.board.model import KINDS, PRIORITIES, STATUSES, format_age
+from mycelium.board.assignment import attention_of_item
+from mycelium.board.model import (
+    EPISODE_FIELD,
+    KINDS,
+    PRIORITIES,
+    STATUSES,
+    THREAD_REFUSALS,
+    format_age,
+)
 from mycelium.board.schema import groupable_fields
 from mycelium.client import hub_client
 from mycelium.commands.room import _resolve_room
@@ -59,7 +67,7 @@ app = typer.Typer(
 )
 console = Console()
 
-LENS_CHOICES = {
+ATTENTION_CHOICES = {
     "needs-you": "needs_you",
     "in-flight": "in_flight",
     "resolved": "resolved",
@@ -229,13 +237,13 @@ def _ttl_bar(fraction: float) -> Text:
     return bar
 
 
-def _custody_chip(item: LiveItem, now: datetime) -> Text:
+def _assignment_chip(item: LiveItem, now: datetime) -> Text:
     """Who holds this row, and how much longer their claim has to run.
 
-    A row with no custody axis gets a plain handle and no draining bar: nobody
+    A row with no assignment axis gets a plain handle and no draining bar: nobody
     has taken it for a window, so there is nothing to drain.
     """
-    state = custody.custody_of(item, now)
+    state = assignment.assignment_of(item, now)
     chip = Text()
     if state is None:
         chip.append(
@@ -245,42 +253,44 @@ def _custody_chip(item: LiveItem, now: datetime) -> Text:
 
     if state == "held":
         chip.append(f"held @{item.owner}", style="cyan")
-        fraction = custody.spent(custody.claimed_at(item), item.get("ttl_minutes"), now)
+        fraction = assignment.elapsed_fraction(
+            assignment.claimed_at(item), item.get("ttl_minutes"), now
+        )
         if fraction is not None:
             chip.append(" ")
             chip.append_text(_ttl_bar(fraction))
-            left = custody.remaining_minutes(item, now)
+            left = assignment.remaining_minutes(item, now)
             if left is not None:
                 chip.append(f" {left}m left", style="dim")
         return chip
 
     chip.append(state, style="red" if state == "expired" else "dim")
-    note = custody.note_of(item, now)
+    note = assignment.note_of(item, now)
     if note:
         text, author = note
         chip.append(f" — {text}", style="dim")
         # The note's author is what tells a deliberate handoff from an abandoned
         # one: they leave the same row behind, and only the byline differs.
-        if author != custody.RUNTIME_AUTHOR:
+        if author != assignment.RUNTIME_AUTHOR:
             chip.append(f" (by @{author})", style="dim")
     return chip
 
 
 def _row_lines(item: LiveItem, now: datetime) -> Text:
     glyph, colour = KIND_GLYPH.get(item.kind, ("●", "white"))
-    lens = lens_of_item(item, now)
+    attention_filter = attention_of_item(item, now)
     head = Text()
     head.append(f" {glyph} ", style=colour)
     head.append(f"{item.id.split(':', 1)[1][:12]:<13}", style="dim")
     title = item.title if len(item.title) <= TITLE_WIDTH else item.title[: TITLE_WIDTH - 1] + "…"
-    head.append(title, style="dim strike" if lens == "resolved" else "")
-    if item.priority == "urgent" and lens != "resolved":
+    head.append(title, style="dim strike" if attention_filter == "resolved" else "")
+    if item.priority == "urgent" and attention_filter != "resolved":
         head.append("  urgent", style="red")
 
     meta = Text("     ")
     meta.append(item.source.label, style="dim")
     meta.append("  ")
-    meta.append_text(_custody_chip(item, now))
+    meta.append_text(_assignment_chip(item, now))
     if branch := item.text("branch"):
         meta.append(f"  {branch}", style="dim")
     if ci := item.text("ci"):
@@ -336,18 +346,20 @@ def _render(
     room: str,
     items: list[LiveItem],
     *,
-    lens: str | None,
+    attention_filter: str | None,
     group_by: str,
     view: str,
 ) -> Group:
     now = datetime.now(UTC)
-    lenses = {i.id: lens_of_item(i, now) for i in items}
+    attention_filters = {i.id: attention_of_item(i, now) for i in items}
     counts = {
-        "needs_you": sum(1 for i in items if lenses[i.id] == "needs_you"),
-        "in_flight": sum(1 for i in items if lenses[i.id] == "in_flight"),
-        "resolved": sum(1 for i in items if lenses[i.id] == "resolved"),
+        "needs_you": sum(1 for i in items if attention_filters[i.id] == "needs_you"),
+        "in_flight": sum(1 for i in items if attention_filters[i.id] == "in_flight"),
+        "resolved": sum(1 for i in items if attention_filters[i.id] == "resolved"),
     }
-    shown = [i for i in items if lens is None or lenses[i.id] == lens]
+    shown = [
+        i for i in items if attention_filter is None or attention_filters[i.id] == attention_filter
+    ]
     shown.sort(key=lambda i: (PRIORITIES.index(i.priority), i.age_minutes(now) or 10**6))
 
     header = Text()
@@ -363,7 +375,7 @@ def _render(
     if view == "table":
         blocks.append(_table(shown, items))
     elif not shown:
-        blocks.append(Text("  Nothing here. Widen the lens with --lens all.", style="dim"))
+        blocks.append(Text("  Nothing here. Widen the filter with --filter all.", style="dim"))
     else:
         for key, rows in _grouped(shown, group_by):
             label = GROUP_LABEL.get(key, key.replace("_", " ").capitalize())
@@ -378,7 +390,7 @@ def _render(
     blocks.append(Text())
     legend = Text("  ")
     legend.append("claim  release  resolve  block  promote  dismiss", style="dim")
-    legend.append("     mycelium board <verb> <id>", style="dim")
+    legend.append("     mycelium board <action> <id>", style="dim")
     blocks.append(legend)
     return Group(*blocks)
 
@@ -429,7 +441,7 @@ def _table(shown: list[LiveItem], every: list[LiveItem]) -> Group:
 
 
 @doc_ref(
-    usage="mycelium board [--lens needs-you|in-flight|resolved|all] [--view list|table] [--watch]",
+    usage="mycelium board [--filter needs-you|in-flight|resolved|all] [--view list|table] [--watch]",
     desc="The room's live coordination slice: what needs you, what's in flight, what resolved.",
     group="board",
 )
@@ -437,8 +449,8 @@ def _table(shown: list[LiveItem], every: list[LiveItem]) -> Group:
 def board(
     ctx: typer.Context,
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-    lens: str = typer.Option(
-        "needs-you", "--lens", "-l", help="needs-you | in-flight | resolved | all"
+    attention_filter: str = typer.Option(
+        "needs-you", "--filter", "-f", help="needs-you | in-flight | resolved | all"
     ),
     group_by: str = typer.Option("kind", "--group", "-g", help="Field to group rows by"),
     view: str = typer.Option("list", "--view", help="list | table"),
@@ -450,15 +462,23 @@ def board(
     """Show the room's coordination board."""
     if ctx.invoked_subcommand is not None:
         return
-    if lens not in LENS_CHOICES:
-        console.print(f"[red]Unknown lens '{lens}'.[/red] Try: {', '.join(LENS_CHOICES)}")
+    if attention_filter not in ATTENTION_CHOICES:
+        console.print(
+            f"[red]Unknown filter '{attention_filter}'.[/red] Try: {', '.join(ATTENTION_CHOICES)}"
+        )
         raise typer.Exit(1)
 
     def read() -> Group:
         name, items, health = _fetch(room)
         if not health.reachable:
             return Group(Text(f"  {health.note}. No board to draw for {name}.", style="red"))
-        rendered = _render(name, items, lens=LENS_CHOICES[lens], group_by=group_by, view=view)
+        rendered = _render(
+            name,
+            items,
+            attention_filter=ATTENTION_CHOICES[attention_filter],
+            group_by=group_by,
+            view=view,
+        )
         if health.note:
             # A board missing a source is not a quiet board, and the difference
             # matters more than the tidiness of not saying so.
@@ -495,17 +515,19 @@ def board_resolve(
     name = _resolve_room(cfg, room)
 
     item = _row(name, row_id)
-    if item is not None and custody.refusal_for(item) is None:
-        _lease(cfg, name, "resolve", key=_lease_key(item), handle=cfg.get_current_identity())
+    if item is not None and assignment.assignment_refusal(item) is None:
+        _write_assignment(
+            cfg, name, "resolve", key=_assignment_key(item), handle=cfg.get_current_identity()
+        )
         return
     # Not leasable, but still a row with frontmatter: `status` is a stage, and a
-    # stage is a field write. Custody stays out of it — that is the lease's.
+    # stage is a field write. Assignment stays out of it — that is the lease's.
     _write_fields(cfg, name, row_id, {"status": "resolved"})
 
 
 @doc_ref(
     usage="mycelium board claim <id> [--to @handle] [--ttl 30]",
-    desc="Take custody of a work/ row: a lease with your handle on it, which drains unless renewed.",
+    desc="Take assignment of a work/ row: a lease with your handle on it, which drains unless renewed.",
     group="board",
 )
 @app.command(name="claim")
@@ -513,7 +535,7 @@ def board_claim(
     row_id: str = typer.Argument(..., help="Row id as shown on the board (e.g. work/auth-spike)"),
     to: str | None = typer.Option(None, "--to", help="Handle to claim it for (default: you)"),
     ttl: int = typer.Option(
-        custody.DEFAULT_TTL_MINUTES, "--ttl", help="Minutes the claim holds without a renewal"
+        assignment.DEFAULT_TTL_MINUTES, "--ttl", help="Minutes the claim holds without a renewal"
     ),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
 ) -> None:
@@ -524,14 +546,14 @@ def board_claim(
     if item is None:
         console.print(f"[dim]No row '{row_id}' on this board.[/dim]")
         raise typer.Exit(1)
-    if refusal := custody.refusal_for(item):
+    if refusal := assignment.assignment_refusal(item):
         # Refusing with the reason is the honest answer: there is nowhere on this
         # row to write a claim, and pretending otherwise is how a board fills up
         # with holders nobody can renew.
         console.print(f"[yellow]·[/yellow] {row_id} can't be claimed — {refusal}")
         raise typer.Exit(1)
     handle = (to or cfg.get_current_identity()).lstrip("@")
-    _lease(cfg, name, "claim", key=_lease_key(item), handle=handle, ttl_minutes=ttl)
+    _write_assignment(cfg, name, "claim", key=_assignment_key(item), handle=handle, ttl_minutes=ttl)
 
 
 @doc_ref(
@@ -552,14 +574,14 @@ def board_release(
     if item is None:
         console.print(f"[dim]No row '{row_id}' on this board.[/dim]")
         raise typer.Exit(1)
-    if refusal := custody.refusal_for(item):
+    if refusal := assignment.assignment_refusal(item):
         console.print(f"[yellow]·[/yellow] {row_id} holds no lease — {refusal}")
         raise typer.Exit(1)
-    _lease(
+    _write_assignment(
         cfg,
         name,
         "release",
-        key=_lease_key(item),
+        key=_assignment_key(item),
         handle=cfg.get_current_identity().lstrip("@"),
         note=note,
     )
@@ -584,36 +606,112 @@ def board_block(
         raise typer.Exit(1)
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
-    _write_fields(cfg, name, row_id, {custody.BLOCKED_FIELD: on})
+    _write_fields(cfg, name, row_id, {assignment.BLOCKED_FIELD: on})
 
 
-def _lease_key(item: LiveItem) -> str:
+def _assignment_key(item: LiveItem) -> str:
     """The memory key behind a row. Leases are written where the row lives."""
     return item.id.split(":", 1)[1]
 
 
 def _row(room: str, row_id: str) -> LiveItem | None:
-    """Find the row a verb names, however the reader typed its id.
+    """Find the row an action names, however the reader typed its id.
 
     The board elides ids to fit a column, and a reader retypes what they saw, so
     ``work/auth``, ``memory:work/auth`` and the truncated form all have to land on
     the same row.
+
+    A task is also nameable by the thread inside it (``t3``), because that is
+    what the room calls it once anything has been said in there: a ping names
+    the thread, not the memory key, and the reader who followed one types back
+    what they read.
     """
     _, items, _ = _fetch(room)
     wanted = row_id.strip()
     for item in items:
         tail = item.id.split(":", 1)[1] if ":" in item.id else item.id
-        if wanted in (item.id, tail, tail[:12]):
+        if wanted in (item.id, tail, tail[:12], item.text("thread")):
             return item
     return None
 
 
-def _lease(cfg: MyceliumConfig, room: str, action: str, **body: Any) -> None:
-    """Write a custody change through the hub, and say what it did."""
+def _memory_thread(room: str, key: str) -> tuple[bool, str | None]:
+    """The thread on a memory the board does not project, off the hub.
+
+    Two answers, because the caller says something different about each: whether
+    the room has this memory at all, and the thread on it if it does.
+    """
+    cfg = MyceliumConfig.load()
+    try:
+        with hub_client(cfg, timeout=30) as client:
+            resp = client.get(f"/api/rooms/{room}/memory/{key}")
+        if resp.status_code >= 400:
+            return False, None
+        episode = resp.json().get(EPISODE_FIELD)
+    except (httpx.HTTPError, ValueError):
+        return False, None
+    return True, episode or None
+
+
+def _thread(room: str, row_id: str) -> tuple[str, str]:
+    """Where a chat verb lands: what to call it, and the thread to write into.
+
+    The resolution the chat verbs are: a reader types an id and means the
+    conversation about that thing. The board is one way to name it and not the
+    only one — every memory carries a thread, so a ``context/`` note, a
+    ``skills/`` doc or an ``agents/`` manifest is addressable by its key even
+    though the board never projects it. **Everything can be discussed; only the board
+    namespaces are worked.**
+
+    Something with nothing to speak into is refused in its own terms rather than
+    posted to the room instead — a message that quietly went somewhere else is
+    worse than one that did not go.
+    """
+    item = _row(room, row_id)
+    if item is not None:
+        episode = item.text(EPISODE_FIELD)
+        if not episode:
+            why = THREAD_REFUSALS.get(item.source.kind, THREAD_REFUSALS["memory"])
+            console.print(f"[yellow]·[/yellow] {row_id} has no thread — {why}.")
+            raise typer.Exit(1)
+        return _thread_label(room, item.text("thread") or row_id), episode
+
+    exists, episode = _memory_thread(room, row_id)
+    if not exists:
+        console.print(f"[dim]No row '{row_id}' on this board, and no memory by that key.[/dim]")
+        raise typer.Exit(1)
+    if not episode:
+        console.print(f"[yellow]·[/yellow] {row_id} has no thread — {THREAD_REFUSALS['memory']}.")
+        raise typer.Exit(1)
+    return _thread_label(room, episode.rsplit(":", 1)[-1]), episode
+
+
+def _parent_key(room: str, row_id: str) -> str:
+    """The memory key a ``part-of`` edge on a child task points at."""
+    item = _row(room, row_id)
+    if item is None:
+        console.print(f"[dim]No row '{row_id}' on this board.[/dim]")
+        raise typer.Exit(1)
+    key = board_fields.memory_key_of(item)
+    if key is None:
+        console.print(
+            f"[yellow]·[/yellow] {row_id} can't be a parent — {board_fields.field_write_refusal(item)}."
+        )
+        raise typer.Exit(1)
+    return key
+
+
+def _thread_label(room: str, thread: str) -> str:
+    """What a chat verb calls where it landed: the room, then the thread in it."""
+    return f"{room}/{thread}"
+
+
+def _write_assignment(cfg: MyceliumConfig, room: str, action: str, **body: Any) -> None:
+    """Write an assignment change through the hub, and say what it did."""
     payload = {k: v for k, v in body.items() if v is not None}
     try:
         with hub_client(cfg, timeout=30) as client:
-            resp = client.post(f"/api/rooms/{room}/leases/{action}", json=payload)
+            resp = client.post(f"/api/rooms/{room}/assignments/{action}", json=payload)
     except httpx.HTTPError as e:
         console.print(f"[red]✗[/red] hub unreachable: {e}")
         raise typer.Exit(1) from e
@@ -638,16 +736,16 @@ def _lease(cfg: MyceliumConfig, room: str, action: str, **body: Any) -> None:
     elif action == "release":
         console.print(
             f"[green]✓[/green] released [bold]{data.get('key')}[/bold] "
-            f"[dim]— {data.get('custody_note')}[/dim]"
+            f"[dim]— {data.get('assignment_note')}[/dim]"
         )
     else:
         console.print(f"[green]✓[/green] {action}d [bold]{data.get('key')}[/bold]")
 
 
 def _write_fields(cfg: MyceliumConfig, room: str, row_id: str, patch: dict) -> None:
-    """Put a verb's frontmatter on the row, and say what landed.
+    """Put an action's frontmatter on the row, and say what landed.
 
-    The same upsert a ``memory set --meta`` goes through, so a verb typed here
+    The same upsert a ``memory set --meta`` goes through, so an action typed here
     and an agent writing frontmatter leave one kind of trace. A row with no
     frontmatter behind it, or a key a lease owns, is refused in its own terms
     rather than written somewhere it would not be read back.
@@ -656,7 +754,7 @@ def _write_fields(cfg: MyceliumConfig, room: str, row_id: str, patch: dict) -> N
     if item is None:
         console.print(f"[dim]No row '{row_id}' on this board.[/dim]")
         raise typer.Exit(1)
-    refusal = board_fields.refusal_for(item)
+    refusal = board_fields.field_write_refusal(item)
     if refusal:
         console.print(f"[yellow]·[/yellow] {row_id} can't take a field write — {refusal}")
         raise typer.Exit(1)
@@ -680,6 +778,223 @@ def _write_fields(cfg: MyceliumConfig, room: str, row_id: str, patch: dict) -> N
         raise typer.Exit(1)
     rendered = " ".join(f"{k}={v}" for k, v in patch.items())
     console.print(f"[green]✓[/green] wrote [bold]{key}[/bold] → {rendered}")
+
+
+# ── a row is a thread: the chat verbs, scoped to a task ──────────────────────
+#
+# These are the room's own verbs with a row id in front of them. A task
+# *is* a thread, so talking about one is talking in it — and the room stays
+# legible because a thread absorbs its own traffic and surfaces one ping. The
+# transport is shared with ``room send`` / ``room messages`` (``mycelium.chat``):
+# same wire call, one argument narrower.
+
+
+@doc_ref(
+    usage='mycelium board new "<title>" [--assign @handle] [--parent <id>]',
+    desc="Put a task on the board, with the thread its coordination happens in already minted.",
+    group="board",
+)
+@app.command(name="new")
+def board_new(
+    title: str = typer.Argument(..., help="What the task is"),
+    assign: str | None = typer.Option(
+        None, "--assign", help="Who it's for (an assignment, not a claim — holding it is a lease)"
+    ),
+    parent: str | None = typer.Option(
+        None, "--parent", help="Row this one decomposes, as a part-of relation"
+    ),
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+) -> None:
+    """Create a task.
+
+    Board-first: a task exists because someone put it on the board, not because a
+    negotiation converged into it. It comes with a thread and no argument in it
+    yet, which is the point — coordination inside a task is optional, and most
+    tasks never need any.
+    """
+    cfg = MyceliumConfig.load()
+    name = _resolve_room(cfg, room)
+    body: dict[str, Any] = {"title": title, "handle": cfg.get_current_identity()}
+    if assign:
+        body["assignee"] = assign.lstrip("@")
+    if parent:
+        # Resolved here so ``--parent t3`` works like every other row id, and so
+        # a typo is refused against the board the reader is looking at rather
+        # than by the hub against a key they never typed. A ``part-of`` edge
+        # points at a memory, so a row projected from anything else has nothing
+        # to be the parent *of*.
+        body["parent"] = _parent_key(name, parent)
+    try:
+        with hub_client(cfg, timeout=30) as client:
+            resp = client.post(f"/api/rooms/{name}/tasks", json=body)
+    except httpx.HTTPError as e:
+        console.print(f"[red]✗[/red] hub unreachable: {e}")
+        raise typer.Exit(1) from e
+    if resp.status_code >= 400:
+        console.print(f"[red]✗[/red] could not create the task: {resp.text}")
+        raise typer.Exit(1)
+    task = resp.json()
+    thread = str(task.get(EPISODE_FIELD) or "").rsplit(":", 1)[-1]
+    console.print(
+        f"[green]✓[/green] [bold]{task.get('key')}[/bold] — {title}"
+        + (f" [dim]· thread {thread}[/dim]" if thread else "")
+    )
+    console.print(
+        f'  [dim]talk about it in there: mycelium board send {thread or task.get("key")} "…"[/dim]'
+    )
+
+
+@doc_ref(
+    usage='mycelium board send <id> "<text>"',
+    desc="Post into the thread on a row or any memory. The room sees that it moved, not what was said.",
+    group="board",
+)
+@app.command(name="send")
+def board_send(
+    row_id: str = typer.Argument(
+        ..., help="Row id, thread id, or any memory key (e.g. t3, work/auth, context/api)"
+    ),
+    content: str = typer.Argument(..., help="What to say. @handle mentions address agents."),
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    handle: str | None = typer.Option(
+        None, "--as", "--handle", "-H", help="Your sender handle (defaults to identity config)"
+    ),
+) -> None:
+    """Say something in a thread.
+
+    Exactly ``mycelium room send``, scoped to one thing. That thing is usually a
+    task, but every memory carries a thread of its own, so a ``context/`` design
+    note, a ``skills/`` doc or an ``agents/`` manifest is addressable by its
+    key — the argument about a piece of room knowledge lives attached to it
+    rather than scrolling past in the room.
+
+    Everyone who may write in the room may write in its threads — a thread
+    separates attention, not access — with one exception the hub enforces: a
+    negotiation running inside a task has frozen its roster, and an outsider
+    dropping a position into that would be scoring an exchange they were not
+    part of.
+    """
+    cfg = MyceliumConfig.load()
+    name = _resolve_room(cfg, room)
+    where, episode = _thread(name, row_id)
+    chat.post(
+        cfg,
+        name,
+        sender_handle=handle or cfg.get_current_identity(),
+        content=content,
+        episode=episode,
+        destination=where,
+    )
+
+
+@doc_ref(
+    usage="mycelium board messages <id> [--limit N]",
+    desc="Read one thread: the conversation about that row or memory, and nothing else from the room.",
+    group="board",
+)
+@app.command(name="messages")
+def board_messages(
+    row_id: str = typer.Argument(
+        ..., help="Row id, thread id, or any memory key (e.g. t3, work/auth, context/api)"
+    ),
+    limit: int = typer.Option(20, "--limit", "-l", help="Max messages to show (newest first)"),
+    sender: str | None = typer.Option(
+        None, "--sender", "-s", help="Only messages from this handle"
+    ),
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+) -> None:
+    """Read a thread.
+
+    This is what a ping is for. The room said something moved; this is what
+    moved in it — a row's conversation, or a memory's.
+    """
+    cfg = MyceliumConfig.load()
+    name = _resolve_room(cfg, room)
+    where, episode = _thread(name, row_id)
+    chat.read(
+        cfg,
+        name,
+        limit=limit,
+        sender=sender,
+        episode=episode,
+        label=where,
+        empty_note="nothing said in this thread yet",
+    )
+
+
+@doc_ref(
+    usage='mycelium board coordinate <id> <engine> "<ask>"',
+    desc="Open a coordination phase inside a task: put an engine to work on that row's thread.",
+    group="board",
+)
+@app.command(name="coordinate")
+def board_coordinate(
+    row_id: str = typer.Argument(
+        ..., help="Row id, thread id, or any memory key (e.g. t3, work/auth, context/api)"
+    ),
+    engine: str = typer.Argument(..., help="Engine handle to run it (e.g. aligner)"),
+    ask: str = typer.Argument(
+        "please mediate us to an agreement.", help="What you're asking it to do"
+    ),
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    handle: str | None = typer.Option(
+        None, "--as", "--handle", "-H", help="Your sender handle (defaults to identity config)"
+    ),
+) -> None:
+    """Open a coordination phase on a row, run by an engine.
+
+    Heavier than ``board send``, and deliberately a different word for it:
+    putting ``@agent`` in a message invites someone into the conversation,
+    while this opens a bounded session that ends in a decision. The three verbs
+    read as what they do — send is talk, claim is take, coordinate is decide.
+
+    The phase happens *inside* a task and does not become the task: the ask
+    lands in the row's thread, and whatever the engine decides never resolves
+    the row or takes it off its holder. A task can be coordinated more than
+    once, or never.
+
+    The engine opens a **separate** negotiation episode to run in — a task's
+    thread is a container that outlives what happens inside it, so an exchange
+    with a frozen roster is not the same conversation as the row's. What comes
+    back to the row is the outcome: the work the agreement compiles into, and
+    the thread state the board folds onto it.
+    """
+    from mycelium.client import typed_client
+    from mycelium.commands.agent import _load_manifest_remote
+
+    cfg = MyceliumConfig.load()
+    name = _resolve_room(cfg, room)
+    where, episode = _thread(name, row_id)
+    target = engine.lstrip("@")
+
+    with typed_client(cfg) as client:
+        manifest = _load_manifest_remote(client, name, target)
+    if manifest is None:
+        console.print(
+            f"[red]Not found:[/red] no engine named '{target}' in room '{name}'.\n"
+            f"  Create one with: mycelium engine create {target} --kind aligner --room {name}"
+        )
+        raise typer.Exit(1)
+    if manifest.adapter != "engine":
+        console.print(
+            f"[red]'{target}' is a {manifest.adapter} agent, not an engine.[/red]\n"
+            f'  Use: mycelium board send {row_id} "@{target} …"'
+        )
+        raise typer.Exit(1)
+
+    chat.post(
+        cfg,
+        name,
+        sender_handle=handle or cfg.get_current_identity(),
+        content=f"@{manifest.handle} {ask}",
+        episode=episode,
+        destination=where,
+    )
+    console.print(
+        f"  [dim]the ask is in {where.split('/', 1)[-1]}'s thread; the "
+        f"{manifest.kind} engine opens its negotiation from there and addresses "
+        "agents one at a time[/dim]"
+    )
 
 
 # ── the log ──────────────────────────────────────────────────────────────────
@@ -748,7 +1063,7 @@ def board_log(
 
     days = by_day(events, tz)
     current, longest = streaks(days, today_local)
-    summary = digest(days, frm, to)
+    summary = summarize_activity(days, frm, to)
     logged_today = len(days.get(today_local, []))
 
     console.print()
@@ -796,7 +1111,7 @@ def board_log(
         for event in actor_events[:12]:
             line = Text("      ")
             line.append(event.at.astimezone(tz).strftime("%m-%d %H:%M  "), style="dim")
-            line.append(f"{event.verb} ", style="")
+            line.append(f"{event.action} ", style="")
             line.append(event.title, style="dim")
             console.print(line)
         if len(actor_events) > 12:
@@ -809,7 +1124,7 @@ def board_log(
 # A status provider keeps a board row's external pointer live (a pull request's
 # review state, a ticket's status). To reach the tool it needs a credential, and
 # the provider only *names* it: the hub resolves the name and renders it onto the
-# wire. These verbs write the value the hub resolves, into a 0600 file outside
+# wire. These row actions write the value the hub resolves, into a 0600 file outside
 # config.toml (which `config apply` would otherwise clobber). See
 # `mycelium.status_credentials` and `app/services/status/credentials.py`.
 #

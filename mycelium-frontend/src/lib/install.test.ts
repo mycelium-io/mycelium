@@ -3,12 +3,13 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  agentHandoffPrompt,
   CLI_INSTALL_COMMAND,
-  LOGIN_COMMAND,
   PLATFORMS,
-  PROMPT_COMMAND,
   configSetCommand,
   detectPlatform,
+  hubSetupCommand,
+  hubSetupPrompt,
 } from "@/lib/install";
 
 const UA = {
@@ -43,17 +44,45 @@ describe("install content", () => {
     );
   });
 
-  it("points the config command at whatever hub URL it's given, and never stands up a stack", () => {
+  it("points the config command at whatever hub URL it's given", () => {
     expect(configSetCommand("http://hub.example.com:8000")).toBe(
       "mycelium config set server.api_url http://hub.example.com:8000 && mycelium config apply",
     );
-    expect(LOGIN_COMMAND).toBe("mycelium login");
   });
 
-  it("carries the same prompt one-liner the landing page's prompt tab publishes", () => {
-    expect(PROMPT_COMMAND).toBe(
-      "Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium",
-    );
+  it("generates a hub-aware setup handoff instead of a generic documentation link", () => {
+    const prompt = hubSetupPrompt({
+      hubUrl: "https://hub.example.com",
+      authRequired: false,
+      principal: "avery",
+    });
+    expect(prompt).toContain("https://hub.example.com");
+    expect(prompt).toContain("mycelium iam avery");
+    expect(prompt).not.toContain("agents.md");
+  });
+
+  it("uses the signed-in identity rather than a browser-selected one on a gated hub", () => {
+    const setup = hubSetupCommand({
+      hubUrl: "https://hub.example.com",
+      authRequired: true,
+      principal: "avery",
+    });
+    expect(setup).toContain("mycelium login");
+    expect(setup).toContain("mycelium whoami");
+    expect(setup).not.toContain("mycelium iam avery");
+  });
+
+  it("hands an existing coding session the room, hub, and first collaboration step", () => {
+    const prompt = agentHandoffPrompt({
+      hubUrl: "https://hub.example.com",
+      authRequired: false,
+      principal: "avery",
+      roomName: "atlas",
+    });
+    expect(prompt).toContain("room `atlas`");
+    expect(prompt).toContain("--room atlas --owner avery");
+    expect(prompt).toContain("mycelium board --room atlas");
+    expect(prompt).toContain("--timeout 30");
   });
 
   it("notes the WSL constraint on Windows only", () => {

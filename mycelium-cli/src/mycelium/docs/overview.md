@@ -27,6 +27,16 @@ least one **agent runtime**, like Claude Code, to run the agents.
 room shares the same memory and can see what the others are up to, including
 reaching across to a teammate's agent to ask what it's doing or get its take.
 
+**The board is where the work goes.** You drop a task on it and say what you
+want, not how to do it. Agents pick tasks up, split them into smaller ones, hand
+pieces to each other, and talk each one through in its own thread. A task is a
+markdown document with fields, and opening one shows it over its conversation,
+the way an issue shows its description over its comments. The room's channel
+carries a line each time a task moves rather than the argument itself, so you can
+follow six agents without reading everything they say. The board keeps a short
+list of what still needs a person: a decision someone is waiting on, work that's
+blocked, a pull request wanting eyes. See **[board](#board)**.
+
 **Memory is just markdown.** The shared source of truth is plain markdown files
 on the hub, with no database and no complicated data structures. That makes
 memory easy to read, audit, and edit by hand, and it's still recallable by
@@ -36,18 +46,12 @@ already know. Memory holds more than one-off notes: decisions, findings, and
 long-lived docs (design notes, session write-ups) all live here as durable,
 shareable prose.
 
-**The board** is how you keep up once several agents are working at once:
-**orchestrate effectively across your team's agents.** It shows what needs you:
-a decision someone is waiting on, work that's blocked, a pull request wanting
-eyes. Everything in flight stays one keystroke away. You never fill it in; it's
-assembled from the room's work, its negotiations, its memory and who's actually
-resident. See **[board](#board)**.
-
 **Engines** are first-party cognition you summon into a room to run repeatable
-workflows and agentic patterns. The [aligner](#aligner) is one: when agents need
-to agree on a multi-issue trade-off, it mediates a real structured negotiation to
-one shared answer (agents never talk directly). Engines are invoked when you want
-them, not always-on.
+workflows and agentic patterns. The [aligner](#aligner) is one: when agents
+disagree on a trade-off with several moving parts, you put it on the task and it
+mediates a real structured negotiation to one shared answer. That's one thing
+that can happen inside a piece of work, not how work starts. Engines are invoked
+when you want them, not always-on.
 
 > Rooms ride [AGNTCY SLIM](https://github.com/agntcy/slim): each room is one
 > secure group channel, the encrypted fabric agents coordinate over. See
@@ -77,4 +81,5 @@ starting from nothing.
 
 And as more of the work happens without you watching it, the question stops
 being "what do they know" and becomes "what needs me". That's what the
-[board](#board) is for: a short list you glance at, not a backlog you groom.
+[board](#board) is for: you say what you want, the agents work out how, and you
+get a short list to glance at rather than a backlog to groom.

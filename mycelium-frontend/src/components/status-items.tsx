@@ -15,6 +15,8 @@ const CELL = "flex items-center gap-1.5 rounded px-1.5 py-0.5 -my-0.5 transition
 
 interface CellProps {
   tooltip?: string;
+  /** Extra classes on the cell — in practice, the width it drops out at. */
+  className?: string;
   /** Keymap action this cell duplicates. Its chord is drawn as a keycap beside
    *  the tooltip label, so the cheap way in teaches the fast one — the rail is
    *  the one place every screen shows, and a cell that a key already reaches
@@ -37,10 +39,10 @@ function cellTooltip(tooltip: string | undefined, action: string | undefined): R
 
 /** A status-bar cell that navigates somewhere on click (editor footer style).
  *  The bar sits at the bottom of the viewport, so its tooltips open upward. */
-export function StatusLink({ href, tooltip, action, children }: CellProps & { href: string }) {
+export function StatusLink({ href, tooltip, action, className, children }: CellProps & { href: string }) {
   return (
     <Tooltip content={cellTooltip(tooltip, action)} side="top">
-      <Link href={href} className={CELL}>
+      <Link href={href} className={className ? `${CELL} ${className}` : CELL}>
         {children}
       </Link>
     </Tooltip>
@@ -48,10 +50,10 @@ export function StatusLink({ href, tooltip, action, children }: CellProps & { hr
 }
 
 /** A status-bar cell that fires an action on click. */
-export function StatusButton({ onClick, tooltip, action, children }: CellProps & { onClick: () => void }) {
+export function StatusButton({ onClick, tooltip, action, className, children }: CellProps & { onClick: () => void }) {
   return (
     <Tooltip content={cellTooltip(tooltip, action)} side="top">
-      <button type="button" onClick={onClick} className={CELL}>
+      <button type="button" onClick={onClick} className={className ? `${CELL} ${className}` : CELL}>
         {children}
       </button>
     </Tooltip>
@@ -67,7 +69,7 @@ export function GlobalStatusItems() {
   return (
     <>
       {shortModel && (
-        <StatusLink href="/metrics" tooltip={model ?? undefined}>
+        <StatusLink href="/metrics" tooltip={model ?? undefined} className="hidden lg:flex">
           <span className="font-mono">{shortModel}</span>
         </StatusLink>
       )}
@@ -98,7 +100,7 @@ export function MetricsStatusLink() {
         className={`${CELL} ${active ? "text-text" : ""}`}
       >
         <BarChart3 className="size-3.5" />
-        metrics
+        <span className="hidden sm:inline">metrics</span>
       </Link>
     </Tooltip>
   );

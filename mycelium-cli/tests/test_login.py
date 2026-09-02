@@ -12,11 +12,13 @@ Four slices, matching the four things that can quietly go wrong:
   states RFC 8628 defines;
 * **the seam** — every client built by ``mycelium.client`` carries the bearer,
   and carries *nothing* when logged out, which is the off-by-default promise;
-* **the identity** — ``whoami`` / ``iam`` report the token's handle when there
-  is one and are untouched when there isn't.
+* **the identity** — ``login`` points this machine at the token's own handle,
+  ``whoami`` / ``iam`` report it when there is one and are untouched when there
+  isn't.
 
 No issuer and no backend run here: ``httpx`` is stubbed at the module the code
-under test calls into.
+under test calls into, and the hub's user store — which ``login`` now upserts
+through — is stubbed at the generated client.
 """
 
 from __future__ import annotations
@@ -33,6 +35,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from typer.testing import CliRunner
 
@@ -69,6 +72,42 @@ def _isolate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # The "session expired" notice fires once per process; reset the latch so
     # each test observes its own behavior.
     monkeypatch.setattr(client_mod, "_refresh_warned", False)
+
+
+USER_GET_SYNC = "mycelium_backend_client.api.users.get_user_api_users_handle_get.sync"
+USER_CREATE_SYNC = "mycelium_backend_client.api.users.create_user_api_users_post.sync"
+
+
+class _Hub:
+    """The hub's user store, stubbed — ``login`` upserts a record through it now.
+
+    Serves 404 for every read (nobody is registered under this temp home) and
+    records what gets written. Flip ``reachable`` to make the hub disappear.
+    """
+
+    def __init__(self) -> None:
+        self.created: list[str] = []
+        self.reachable = True
+
+    def get(self, **_kwargs: Any) -> None:
+        from mycelium_backend_client.errors import UnexpectedStatus
+
+        if not self.reachable:
+            raise httpx.ConnectError("connection refused")
+        raise UnexpectedStatus(404, b'{"detail":"User not found"}')
+
+    def create(self, **kwargs: Any) -> None:
+        if not self.reachable:
+            raise httpx.ConnectError("connection refused")
+        self.created.append(kwargs["body"].handle)
+
+
+@pytest.fixture(autouse=True)
+def hub(monkeypatch: pytest.MonkeyPatch) -> _Hub:
+    stub = _Hub()
+    monkeypatch.setattr(USER_GET_SYNC, stub.get)
+    monkeypatch.setattr(USER_CREATE_SYNC, stub.create)
+    return stub
 
 
 def _flat(text: str) -> str:
@@ -382,7 +421,36 @@ def test_an_expired_token_with_no_refresh_token_sends_nothing() -> None:
 # ── the commands ─────────────────────────────────────────────────────────────
 
 
-def test_login_without_a_configured_issuer_says_what_to_do() -> None:
+def _health(monkeypatch: pytest.MonkeyPatch, payload: Any, *, boom: bool = False) -> list[str]:
+    """Stub the hub's ``/health`` — where login looks when it has no issuer.
+
+    ``_hub_issuers`` imports httpx inside the call, so the module object is what
+    has to be patched; it is the same one either way.
+    """
+    asked: list[str] = []
+
+    class _Resp:
+        def raise_for_status(self) -> None: ...
+
+        def json(self) -> Any:
+            return payload
+
+    def fake_get(url: str, timeout: float) -> _Resp:  # noqa: ARG001
+        asked.append(url)
+        if boom:
+            raise httpx.ConnectError("connection refused")
+        return _Resp()
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    return asked
+
+
+def test_login_without_a_configured_issuer_says_what_to_do(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unreachable hub falls back to the original tell-me-what-to-do error."""
+    _health(monkeypatch, None, boom=True)
+
     result = runner.invoke(app, ["login"])
 
     assert result.exit_code == 1
@@ -527,6 +595,161 @@ def test_whoami_is_unchanged_when_logged_out() -> None:
     assert payload["principal"] == "avery"
 
 
+def _auth(*issuers: str, enabled: bool = True) -> dict[str, Any]:
+    return {"auth": {"enabled": enabled, "issuers": list(issuers)}}
+
+
+def test_login_discovers_the_issuer_from_the_hub(
+    monkeypatch: pytest.MonkeyPatch, hub: _Hub
+) -> None:
+    """The hub advertises what it trusts, so the human never looks it up (#881)."""
+    from mycelium.commands import login as login_cmd
+
+    asked = _health(monkeypatch, _auth(_META.issuer))
+    seen: dict[str, str] = {}
+
+    def fake_discover(url: str) -> ProviderMetadata:
+        seen["issuer"] = url
+        return _META
+
+    monkeypatch.setattr(login_cmd, "_browser_available", lambda: True)
+    monkeypatch.setattr(login_cmd, "discover", fake_discover)
+    monkeypatch.setattr(
+        login_cmd,
+        "authorization_code_login",
+        lambda *_a, **_k: oidc.TokenResponse(access_token=_jwt({"sub": "avery"})),
+    )
+
+    result = runner.invoke(app, ["login"])
+
+    assert result.exit_code == 0, result.stdout
+    assert asked == [f"{MyceliumConfig.load().server.api_url.rstrip('/')}/health"]
+    assert seen["issuer"] == _META.issuer
+    assert "Issuer discovered from" in _flat(result.stdout)
+    # Remembered, so the next login costs no round trip.
+    assert MyceliumConfig.load().login.issuer == _META.issuer
+
+
+def test_json_login_stays_parseable_while_discovering_and_saving(
+    monkeypatch: pytest.MonkeyPatch, hub: _Hub
+) -> None:
+    """Discovery both prints and saves, and --json promises one JSON document."""
+    from mycelium.commands import login as login_cmd
+
+    _health(monkeypatch, _auth(_META.issuer))
+    monkeypatch.setattr(login_cmd, "_browser_available", lambda: True)
+    monkeypatch.setattr(login_cmd, "discover", lambda _issuer: _META)
+    monkeypatch.setattr(
+        login_cmd,
+        "authorization_code_login",
+        lambda *_a, **_k: oidc.TokenResponse(access_token=_jwt({"sub": "avery"})),
+    )
+
+    result = runner.invoke(app, ["--json", "login"])
+
+    assert result.exit_code == 0, result.stdout
+    assert json.loads(result.stdout)["handle"] == "avery"
+    # Saved anyway — quiet is not the same as skipped.
+    assert MyceliumConfig.load().login.issuer == _META.issuer
+
+
+def test_login_prefers_a_configured_issuer_over_asking_the_hub(
+    monkeypatch: pytest.MonkeyPatch, hub: _Hub
+) -> None:
+    asked = _health(monkeypatch, _auth("https://wrong.test/realms/other"))
+    config = MyceliumConfig.load()
+    config.login.issuer = _META.issuer
+    config.save()
+
+    from mycelium.commands import login as login_cmd
+
+    monkeypatch.setattr(login_cmd, "_browser_available", lambda: True)
+    monkeypatch.setattr(login_cmd, "discover", lambda _issuer: _META)
+    monkeypatch.setattr(
+        login_cmd,
+        "authorization_code_login",
+        lambda *_a, **_k: oidc.TokenResponse(access_token=_jwt({"sub": "avery"})),
+    )
+
+    result = runner.invoke(app, ["login"])
+
+    assert result.exit_code == 0, result.stdout
+    # Configured means configured: the hub is not consulted at all.
+    assert asked == []
+
+
+def test_login_refuses_to_guess_between_several_trusted_issuers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Which issuer you sign in against decides who the hub thinks you are."""
+    _health(monkeypatch, _auth("https://a.test/realms/x", "https://b.test/realms/y"))
+
+    result = runner.invoke(app, ["login"])
+
+    assert result.exit_code == 1
+    assert "more than one issuer" in _flat(result.stdout)
+    # Listed, so the lookup is still done for you even when the pick isn't.
+    assert "https://a.test/realms/x" in result.stdout
+    assert "https://b.test/realms/y" in result.stdout
+    assert load_token() is None
+
+
+def test_login_says_an_ungated_hub_needs_no_login(monkeypatch: pytest.MonkeyPatch) -> None:
+    _health(monkeypatch, _auth(enabled=False))
+
+    result = runner.invoke(app, ["login"])
+
+    assert result.exit_code == 1
+    assert "gate off" in _flat(result.stdout)
+    assert load_token() is None
+
+
+def test_login_says_when_a_gated_hub_advertises_no_issuer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _health(monkeypatch, _auth())
+
+    result = runner.invoke(app, ["login"])
+
+    assert result.exit_code == 1
+    assert "advertises no issuer" in _flat(result.stdout)
+
+
+def test_login_survives_a_health_endpoint_that_is_not_an_object(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A proxy or a wrong port can answer /health with anything at all."""
+    _health(monkeypatch, ["not", "an", "object"])
+
+    result = runner.invoke(app, ["login"])
+
+    assert result.exit_code == 1
+    assert "no OIDC issuer configured" in _flat(result.stdout)
+
+
+def test_a_discovered_issuer_is_not_remembered_when_the_login_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Caching a URL that never produced a session would poison the next login."""
+    _health(monkeypatch, _auth(_META.issuer))
+
+    from mycelium.commands import login as login_cmd
+
+    monkeypatch.setattr(login_cmd, "_browser_available", lambda: True)
+    monkeypatch.setattr(login_cmd, "discover", lambda _issuer: _META)
+
+    def boom(*_a: Any, **_k: Any) -> None:
+        raise OidcError("access_denied: user said no")
+
+    monkeypatch.setattr(login_cmd, "authorization_code_login", boom)
+
+    result = runner.invoke(app, ["login"])
+
+    assert result.exit_code == 1
+    assert MyceliumConfig.load().login.issuer is None
+    assert load_token() is None
+
+
 def test_iam_with_no_handle_reports_rather_than_asserting() -> None:
     save_token(_token(access_token=_jwt({"sub": "avery", "exp": time.time() + 3600})))
 
@@ -538,6 +761,122 @@ def test_iam_with_no_handle_reports_rather_than_asserting() -> None:
     assert MyceliumConfig.load().identity.name is None
 
 
+def _login(
+    monkeypatch: pytest.MonkeyPatch,
+    sub: str = "avery",
+    *,
+    json_output: bool = False,
+) -> Any:
+    """Run a successful browser login whose token carries *sub* as its handle."""
+    from mycelium.commands import login as login_cmd
+
+    monkeypatch.setattr(login_cmd, "_browser_available", lambda: True)
+    monkeypatch.setattr(login_cmd, "discover", lambda _issuer: _META)
+    monkeypatch.setattr(
+        login_cmd,
+        "authorization_code_login",
+        lambda *_a, **_k: oidc.TokenResponse(access_token=_jwt({"sub": sub})),
+    )
+    if json_output:
+        config = MyceliumConfig.load()
+        config.login.issuer = _META.issuer
+        config.save()
+        return runner.invoke(app, ["--json", "login"])
+    return runner.invoke(app, ["login", "--issuer", "https://idp.test/realms/mycelium"])
+
+
+def test_login_aligns_this_machines_identity_to_the_token_handle(
+    monkeypatch: pytest.MonkeyPatch, hub: _Hub
+) -> None:
+    """The token is authoritative, so login settles the mismatch itself (#882)."""
+    config = MyceliumConfig.load()
+    config.identity.name = "bob"
+    config.save()
+
+    result = _login(monkeypatch)
+
+    assert result.exit_code == 0
+    assert MyceliumConfig.load().identity.name == "avery"
+    # The other half of ``iam``: the principal exists on the hub, not just here.
+    assert hub.created == ["avery"]
+    assert "now writes as @avery" in _flat(result.stdout)
+    # No second command to relay back by hand.
+    assert "Heads up" not in _flat(result.stdout)
+    assert "mycelium iam avery" not in _flat(result.stdout)
+
+
+def test_login_names_an_unset_identity_rather_than_leaving_it_unknown(
+    monkeypatch: pytest.MonkeyPatch, hub: _Hub
+) -> None:
+    """An unset identity resolves to "unknown", which a gated hub refuses too."""
+    assert MyceliumConfig.load().identity.name is None
+
+    result = _login(monkeypatch)
+
+    assert result.exit_code == 0
+    assert MyceliumConfig.load().identity.name == "avery"
+    assert hub.created == ["avery"]
+
+
+def test_login_leaves_an_already_matching_identity_untouched(
+    monkeypatch: pytest.MonkeyPatch, hub: _Hub
+) -> None:
+    config = MyceliumConfig.load()
+    config.identity.name = "@Avery"
+    config.save()
+
+    result = _login(monkeypatch)
+
+    assert result.exit_code == 0
+    # Nothing disagreed, so login writes nothing — not locally, not on the hub.
+    assert MyceliumConfig.load().identity.name == "@Avery"
+    assert hub.created == []
+    assert "now writes as" not in _flat(result.stdout)
+
+
+def test_login_aligns_locally_even_when_the_hub_is_unreachable(
+    monkeypatch: pytest.MonkeyPatch, hub: _Hub
+) -> None:
+    """The local half is what stops the 403; registration can catch up later."""
+    hub.reachable = False
+
+    result = _login(monkeypatch)
+
+    assert result.exit_code == 0
+    assert MyceliumConfig.load().identity.name == "avery"
+    assert "Not registered on the hub" in _flat(result.stdout)
+    assert "mycelium iam avery" in _flat(result.stdout)
+
+
+def test_login_falls_back_to_the_warning_when_the_handle_cannot_be_aligned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A handle the user store rejects must not turn a good login into a failure."""
+    config = MyceliumConfig.load()
+    config.identity.name = "bob"
+    config.save()
+
+    result = _login(monkeypatch, sub="Avery Quinn")
+
+    assert result.exit_code == 0
+    assert MyceliumConfig.load().identity.name == "bob"
+    assert "this machine writes as @bob" in _flat(result.stdout)
+    assert "mycelium iam" in _flat(result.stdout)
+
+
+def test_login_json_reports_the_identity_it_landed(
+    monkeypatch: pytest.MonkeyPatch, hub: _Hub
+) -> None:
+    """Aligning is behavior, not formatting: --json takes the same path."""
+    result = _login(monkeypatch, json_output=True)
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["handle"] == "avery"
+    assert payload["identity"] == "avery"
+    assert hub.created == ["avery"]
+
+
 def test_iam_flags_a_handle_the_token_will_not_back() -> None:
     save_token(_token(access_token=_jwt({"sub": "avery", "exp": time.time() + 3600})))
 
@@ -546,3 +885,188 @@ def test_iam_flags_a_handle_the_token_will_not_back() -> None:
     assert result.exit_code == 0
     assert "you're signed in as @avery" in _flat(result.stdout)
     assert "refuse writes claiming a different handle" in _flat(result.stdout)
+
+
+# ── what a session says about renewing itself ────────────────────────────────
+
+
+def _login_with(
+    monkeypatch: pytest.MonkeyPatch,
+    grant: oidc.TokenResponse,
+    *,
+    json_output: bool = False,
+) -> Any:
+    """Run a successful browser login that lands *grant* in the cache."""
+    from mycelium.commands import login as login_cmd
+
+    monkeypatch.setattr(login_cmd, "_browser_available", lambda: True)
+    monkeypatch.setattr(login_cmd, "discover", lambda _issuer: _META)
+    monkeypatch.setattr(login_cmd, "authorization_code_login", lambda *_a, **_k: grant)
+    if json_output:
+        config = MyceliumConfig.load()
+        config.login.issuer = _META.issuer
+        config.save()
+        return runner.invoke(app, ["--json", "login"])
+    return runner.invoke(app, ["login", "--issuer", "https://idp.test/realms/mycelium"])
+
+
+def test_a_token_response_carries_the_refresh_deadline_when_the_issuer_reports_one() -> None:
+    grant = oidc._as_token_response(
+        {
+            "access_token": "at-1",
+            "refresh_token": "rt-1",
+            "expires_in": 300,
+            "refresh_expires_in": 1800,
+        }
+    )
+
+    assert grant.refresh_expires_at is not None
+    assert 1700 < grant.refresh_expires_at - time.time() <= 1800
+
+
+def test_a_silent_issuer_leaves_the_refresh_deadline_unknown() -> None:
+    """Unknown, never guessed: most issuers say nothing, and 0 means 'no expiry'."""
+    quiet = oidc._as_token_response({"access_token": "at-1", "expires_in": 300})
+    offline = oidc._as_token_response({"access_token": "at-1", "refresh_expires_in": 0})
+
+    assert quiet.refresh_expires_at is None
+    assert offline.refresh_expires_at is None
+
+
+def test_the_refresh_deadline_round_trips_through_the_cache() -> None:
+    deadline = time.time() + 1800
+    save_token(_token(refresh_expires_at=deadline))
+
+    cached = load_token()
+    assert cached is not None
+    assert cached.refresh_expires_at == deadline
+    assert cached.refresh_expires_in() is not None
+
+
+def test_login_says_the_session_renews_itself_and_when_it_stops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The 4-minute number reads as a re-login countdown unless renewal is stated."""
+    result = _login_with(
+        monkeypatch,
+        oidc.TokenResponse(
+            access_token=_jwt({"sub": "avery"}),
+            refresh_token="rt-1",
+            expires_at=time.time() + 300,
+            refresh_expires_at=time.time() + 30 * 86400,
+        ),
+    )
+
+    assert result.exit_code == 0
+    out = _flat(result.stdout)
+    # 299.9s left, one instant after minting: the issuer's 5 minutes, not 4.
+    assert "Access token valid for 5 min" in out
+    assert "renews on demand" in out
+    assert "under 1 min is left" in out
+    assert "Nothing renews in the background" in out
+    assert "Signing in again is due in 30 days" in out
+
+
+def test_login_says_nothing_about_a_deadline_the_issuer_never_gave(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = _login_with(
+        monkeypatch,
+        oidc.TokenResponse(
+            access_token=_jwt({"sub": "avery"}),
+            refresh_token="rt-1",
+            expires_at=time.time() + 240,
+        ),
+    )
+
+    assert result.exit_code == 0
+    out = _flat(result.stdout)
+    assert "renews on demand" in out
+    assert "Signing in again is due" not in out
+
+
+def test_login_without_a_refresh_token_says_that_is_the_whole_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = _login_with(
+        monkeypatch,
+        oidc.TokenResponse(access_token=_jwt({"sub": "avery"}), expires_at=time.time() + 240),
+    )
+
+    assert result.exit_code == 0
+    out = _flat(result.stdout)
+    assert "the session ends when this access token does" in out
+    assert "offline_access" in out
+    assert "renews on demand" not in out
+
+
+def test_login_json_carries_the_renewal_facts(monkeypatch: pytest.MonkeyPatch, hub: _Hub) -> None:
+    deadline = time.time() + 1800
+    result = _login_with(
+        monkeypatch,
+        oidc.TokenResponse(
+            access_token=_jwt({"sub": "avery"}),
+            refresh_token="rt-1",
+            expires_at=time.time() + 240,
+            refresh_expires_at=deadline,
+        ),
+        json_output=True,
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["refreshable"] is True
+    assert payload["refresh_expires_at"] == pytest.approx(deadline)
+    assert payload["renewal_leeway_s"] == tokens.DEFAULT_LEEWAY_S
+
+
+def test_a_refresh_carries_the_deadline_of_whichever_token_survives(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rotated refresh token brings its own deadline; a kept one keeps its own."""
+    original = time.time() + 1800
+    save_token(
+        _token(access_token="at-stale", expires_at=time.time() - 10, refresh_expires_at=original)
+    )
+
+    def rotated(_url: str, **_kw: Any) -> _Resp:
+        return _Resp(
+            {
+                "access_token": "at-fresh",
+                "refresh_token": "rt-2",
+                "expires_in": 3600,
+                "refresh_expires_in": 7200,
+            }
+        )
+
+    monkeypatch.setattr(httpx, "post", rotated)
+    renewed = client_mod.current_token()
+    assert renewed is not None
+    assert renewed.refresh_expires_at is not None
+    assert renewed.refresh_expires_at > original
+
+    save_token(
+        _token(access_token="at-stale", expires_at=time.time() - 10, refresh_expires_at=original)
+    )
+    monkeypatch.setattr(
+        httpx, "post", lambda _url, **_kw: _Resp({"access_token": "at-fresh", "expires_in": 3600})
+    )
+    kept = client_mod.current_token()
+    assert kept is not None
+    assert kept.refresh_expires_at == original
+
+
+def test_whoami_says_renewal_happens_on_the_next_command() -> None:
+    save_token(
+        _token(
+            access_token=_jwt({"sub": "avery", "exp": time.time() + 3600}),
+            refresh_expires_at=time.time() + 30 * 86400,
+        )
+    )
+
+    result = runner.invoke(app, ["whoami"])
+
+    assert result.exit_code == 0
+    out = _flat(result.stdout)
+    assert "renewed on the next command that needs it" in out
+    assert "re-login due in 30 days" in out

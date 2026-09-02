@@ -64,9 +64,9 @@ _MESSAGE_ID_NS = uuid.UUID("6f1d2c3b-4a59-6e7d-8c9b-0a1b2c3d4e5f")
 if TYPE_CHECKING:
     import slim_bindings
 
+    from app.services.in_memory_store import StoredMessage
     from app.services.l9_models import L9
     from app.services.l9_slim import L9SlimChannel
-    from app.services.local_state import StoredMessage
 
 logger = logging.getLogger(__name__)
 
@@ -293,6 +293,54 @@ class DeliveryLog:
         self._cursors[handle] = len(self._records)
 
 
+class EpisodeCursors:
+    """Per-``(handle, episode)`` delivery positions over the same transcript.
+
+    A room has one ordered transcript; a thread is a *tag* on records inside it,
+    not a second log. So a thread cursor is an index into that same list — the
+    count of leading records this handle has already been served **for that
+    thread** — and reading a thread costs no second store.
+
+    Deliberately *not* the room-wide cursor of :class:`DeliveryLog`. Scoping an
+    ``await`` to a thread must not consume the handle's room inbox: an agent that
+    watches one task still has every mention made to it in the room waiting when
+    it looks. The two positions move independently, and both persist.
+
+    A handle with no position on a thread starts at its **room-wide** one, so the
+    fork happens where it is standing: the ``@``-mention that pulled it into the
+    thread anchored that cursor (:meth:`DeliveryLog.record`) and is therefore
+    still ahead of it, while everything it had already consumed stays consumed.
+    """
+
+    def __init__(self, cursors: dict[str, dict[str, int]] | None = None) -> None:
+        self._by_episode: dict[str, dict[str, int]] = {
+            str(episode): {str(h): int(pos) for h, pos in positions.items()}
+            for episode, positions in (cursors or {}).items()
+        }
+
+    @property
+    def snapshot(self) -> dict[str, dict[str, int]]:
+        """A copy for persistence, keyed episode -> handle -> position."""
+        return {episode: dict(positions) for episode, positions in self._by_episode.items()}
+
+    def position(self, handle: str, episode: str, *, default: int) -> int:
+        """``handle``'s position on ``episode``, clamped to ``default`` on a first read."""
+        return self._by_episode.get(episode, {}).get(handle, default)
+
+    def advance(self, handle: str, episode: str, pos: int, *, limit: int) -> None:
+        """Move the position forward to ``pos`` (clamped to ``limit``, never backward)."""
+        clamped = max(0, min(int(pos), limit))
+        positions = self._by_episode.setdefault(episode, {})
+        if clamped > positions.get(handle, -1):
+            positions[handle] = clamped
+
+
+def record_episode(record: TranscriptRecord) -> str | None:
+    """The episode URN a transcript record rode under, if it carries one."""
+    episode = record.content.get("l9", {}).get("header", {}).get("message", {}).get("episode")
+    return episode if isinstance(episode, str) and episode else None
+
+
 def record_from(
     envelope: L9, content: dict[str, Any], *, now: str | None = None
 ) -> TranscriptRecord:
@@ -474,7 +522,7 @@ def stored_message_from_record(
     Returns None for a non-conversational, non-raise-up record. The synthetic id is
     derived from the envelope id so it's stable across reads, and ``message_id``
     carries that envelope id as the cross-store correlation key (dedup against
-    ``local_state``).
+    ``in_memory_store``).
 
     ``fallback`` stands in when a record carries no readable ``recorded_at`` —
     :func:`conversational_messages` passes the neighbouring record's stamp, the
@@ -482,7 +530,7 @@ def stored_message_from_record(
     keeps ``StoredMessage``'s read-time default, which sorts it to the newest end
     of the feed no matter when it was actually recorded.
     """
-    from app.services.local_state import StoredMessage
+    from app.services.in_memory_store import StoredMessage
 
     text = _conversational_text(record.content)
     if text is not None:
@@ -565,7 +613,7 @@ def conversational_messages(room: str) -> list[StoredMessage]:
     The read path's source of truth for chat: it survives restarts (the transcript
     is on disk) and both post paths converge here (``respond`` and a human
     broadcast both land in the transcript). Event-ledger rows live only in
-    ``local_state`` and are merged in by the route.
+    ``in_memory_store`` and are merged in by the route.
     """
     from app.services.filesystem import get_room_dir
 
@@ -586,17 +634,17 @@ def room_conversation(room: str) -> list[StoredMessage]:
     """A room's full conversational view: durable transcript + live in-memory rows.
 
     The transcript survives restarts and both post paths converge on it; the
-    in-memory ``local_state`` rows are the live lens and carry the ledger fields
+    in-memory ``in_memory_store`` rows are the live view and carry the ledger fields
     (ttl/status) plus the ids clients already hold. Where a message is in both,
-    the ``local_state`` row wins and the transcript only fills what memory lost.
+    the ``in_memory_store`` row wins and the transcript only fills what memory lost.
     Dedup is by envelope ``message_id`` — a distinct id space from
     ``StoredMessage.id``. The merged view is then folded by
     :func:`collapse_amendments`, so a revised message reads as one row carrying
     its latest text while the transcript keeps every version.
     """
-    from app.services import local_state
+    from app.services import in_memory_store
 
-    mem = local_state.list_messages(room)
+    mem = in_memory_store.list_messages(room)
     live_ids = {m.message_id for m in mem if m.message_id}
     disk = [m for m in conversational_messages(room) if m.message_id not in live_ids]
     return collapse_amendments(disk + mem)
@@ -638,7 +686,9 @@ def l9_bus_frame(room: str, record: TranscriptRecord) -> dict[str, Any]:
     }
 
 
-def l9_wire_history(room: str, limit: int = 200) -> list[dict[str, Any]]:
+def l9_wire_history(
+    room: str, limit: int = 200, before: datetime | None = None
+) -> list[dict[str, Any]]:
     """The room's L9 wire feed replayed from the durable transcript (oldest first).
 
     The live inspector is fed only by the bus (SSE, no history), so a freshly
@@ -646,8 +696,18 @@ def l9_wire_history(room: str, limit: int = 200) -> list[dict[str, Any]]:
     through the same frame shape so the tab can seed itself, then append live — the
     history-then-live pattern the room chat feed already uses. Returns at most the
     last ``limit`` frames.
+
+    ``before`` narrows that window to what was recorded strictly earlier, which is
+    what walking back through the room asks for. A record whose stamp cannot be
+    read is kept: dropping it would put a hole in the replay to save a comparison.
     """
     records = load_transcript(room)
+    if before is not None:
+        records = [
+            r
+            for r in records
+            if (recorded := parse_recorded_at(r.recorded_at)) is None or recorded < before
+        ]
     if limit and len(records) > limit:
         records = records[-limit:]
     return [l9_bus_frame(room, r) for r in records]
@@ -683,6 +743,43 @@ def write_cursors(room: str, cursors: dict[str, int]) -> None:
         path.write_text(json.dumps(cursors))
     except Exception:
         logger.exception("delivery-cursor write failed for room %s", room)
+
+
+# Thread cursors persist in their own file rather than namespaced into the
+# room-wide one: ``load_cursors`` feeds ``DeliveryLog``, which reads every key it
+# is handed as a handle, and a composite key there would show up as a phantom
+# member in ``knows``/``undelivered``.
+def _episode_cursors_path(room: str) -> Path:
+    from app.services.filesystem import get_room_dir
+
+    return get_room_dir(room) / "log" / ".thread-cursors.json"
+
+
+def load_episode_cursors(room: str) -> dict[str, dict[str, int]]:
+    """Read a room's persisted per-thread delivery positions (empty when none)."""
+    path = _episode_cursors_path(room)
+    try:
+        if path.exists():
+            data = json.loads(path.read_text())
+            if isinstance(data, dict):
+                return {
+                    str(episode): {str(h): int(pos) for h, pos in positions.items()}
+                    for episode, positions in data.items()
+                    if isinstance(positions, dict)
+                }
+    except (OSError, ValueError, TypeError):
+        logger.warning("could not load thread cursors for room %s; starting empty", room)
+    return {}
+
+
+def write_episode_cursors(room: str, cursors: dict[str, dict[str, int]]) -> None:
+    """Persist a room's per-thread delivery positions (best-effort)."""
+    try:
+        path = _episode_cursors_path(room)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(cursors))
+    except Exception:
+        logger.exception("thread-cursor write failed for room %s", room)
 
 
 # ── The receive loop ─────────────────────────────────────────────────────────
@@ -754,7 +851,7 @@ def _default_summon_hook(
 
 
 def _default_converged_hook(envelope: L9) -> None:
-    # Log-only default for a persister with no plan-sync consumer wired (unit
+    # Log-only default for a persister with no plan-sync consumer wired (task
     # tests / a bare backend).
     logger.info(
         "converged hook (unwired): commit:converged on episode %s; no plan-sync consumer",
@@ -795,6 +892,10 @@ class RoomPersister:
         # delivery position — so a member that was offline at shutdown is still
         # recognised as a reconnect and re-served exactly its missed tail.
         self.log = DeliveryLog(load_transcript(room), cursors=load_cursors(room))
+        # The same resume, for a thread-scoped ``await``: a per-(handle, thread)
+        # position over the transcript above, so waking on one task never
+        # re-serves what it already served across a restart.
+        self.episode_cursors = EpisodeCursors(load_episode_cursors(room))
         # handle -> most recent inbound MessageContext, for targeted re-serve.
         self._contexts: dict[str, slim_bindings.MessageContext] = {}
         # Message ids ingested this process lifetime, so a message the backend
@@ -824,6 +925,19 @@ class RoomPersister:
     def _persist_cursors(self) -> None:
         """Snapshot the delivery cursors to disk (best-effort, per mutation)."""
         write_cursors(self.room, self.log.cursors)
+
+    def _persist_episode_cursors(self) -> None:
+        """Snapshot the per-thread delivery positions to disk (best-effort)."""
+        write_episode_cursors(self.room, self.episode_cursors.snapshot)
+
+    def episode_position(self, handle: str, episode: str) -> int:
+        """``handle``'s delivery position on ``episode``, forked off its room one."""
+        return self.episode_cursors.position(handle, episode, default=self.log.position(handle))
+
+    def advance_episode_cursor(self, handle: str, episode: str, pos: int) -> None:
+        """Advance ``handle``'s durable position on ``episode`` and persist it."""
+        self.episode_cursors.advance(handle, episode, pos, limit=len(self.log.records))
+        self._persist_episode_cursors()
 
     def advance_cursor(self, handle: str, pos: int) -> None:
         """Advance ``handle``'s durable delivery cursor to ``pos`` and persist it.
@@ -1003,7 +1117,7 @@ class RoomPersister:
 
         ``list_write`` controls whether the message is also written to the
         in-memory list store: the human-proxy broadcast path pre-writes nothing to
-        ``local_state`` (the transcript is its record, read back by
+        ``in_memory_store`` (the transcript is its record, read back by
         :func:`conversational_messages`), while ``respond`` (``/reply``) passes
         ``list_write=True`` so an agent's turn is visible live, before it's flushed
         to the durable transcript — otherwise ``respond`` and ``room send`` would
@@ -1034,7 +1148,7 @@ class RoomPersister:
         self.log.record(record, delivered_to=present, recipients=envelope_recipients(envelope))
         append_transcript(self.room, record)
         self._persist_cursors()
-        # The list store is the live/fast lens; the durable transcript is the read
+        # The list store is the live/fast view; the durable transcript is the read
         # path's source of truth. SLIM arrivals (agent replies) and ``respond`` write
         # here so they're visible immediately; the human-proxy broadcast skips it
         # (``list_write=False``) since the transcript already carries it.
@@ -1105,7 +1219,7 @@ class RoomPersister:
             logger.debug("bus publish from persister failed for room %s", self.room, exc_info=True)
 
     def _record_to_list_store(self, record: TranscriptRecord) -> None:
-        """Mirror a conversational record into the in-memory list store (live lens).
+        """Mirror a conversational record into the in-memory list store (the live view).
 
         The durable transcript is the read path's source of truth; this write keeps
         the message visible immediately (before a cold read re-projects the
@@ -1117,8 +1231,8 @@ class RoomPersister:
         if msg is None:
             return
         try:
-            from app.services import local_state
+            from app.services import in_memory_store
 
-            local_state.add_message(self.room, msg)
+            in_memory_store.add_message(self.room, msg)
         except Exception:
             logger.debug("list-store write failed for room %s", self.room, exc_info=True)

@@ -5,7 +5,7 @@
 
 Node-free: a fake :class:`EngineChannel` stands in for SLIM. When the engine
 publishes a ``@handle`` prompt, the fake enqueues that agent's reply; the drive
-loop reads it, interprets via a fake brain, steps NEGMAS, and emits the verdict.
+loop reads it, interprets via a fake llm_session, steps NEGMAS, and emits the verdict.
 Proves the *logic* end-to-end (discover → address → interpret → terminate →
 emit ``commit:converged``). The real SLIM transport is validated live, separately.
 """
@@ -19,7 +19,7 @@ import pytest
 
 pytest.importorskip("negmas", reason="negmas not installed; install mycelium[engine]")
 
-from mycelium.engine.runtime import EngineDrive
+from mycelium.engine.runtime import NegotiationRunner
 from mycelium.slim import l9
 
 
@@ -64,13 +64,13 @@ class _FakeChannel:
 @pytest.mark.asyncio
 async def test_drive_converges_and_emits_commit() -> None:
     channel = _FakeChannel()
-    drive = EngineDrive(
+    drive = NegotiationRunner(
         engine_handle="mediator-1",
         room="portfolio",
         episode="ep",
         topic="topic",
         channel=channel,
-        brain=_fake_brain,
+        llm_session=_fake_brain,
         max_steps=12,
         round_timeout_s=2.0,
     )
@@ -97,13 +97,13 @@ async def test_drive_converges_and_emits_commit() -> None:
 @pytest.mark.asyncio
 async def test_drive_rejects_when_no_issues() -> None:
     channel = _FakeChannel()
-    drive = EngineDrive(
+    drive = NegotiationRunner(
         engine_handle="mediator-1",
         room="portfolio",
         episode="ep",
         topic="topic",
         channel=channel,
-        brain=lambda *a, **k: "not json",  # discovery yields nothing
+        llm_session=lambda *a, **k: "not json",  # discovery yields nothing
         max_steps=6,
         round_timeout_s=1.0,
     )

@@ -89,10 +89,11 @@
         <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Concepts</span></button>
         <div class="nav-group-items">
           <a href="index.html#rooms" class="nav-link sub">Rooms</a>
-          <a href="index.html#users" class="nav-link sub">Users &amp; Teams</a>
+          <a href="index.html#slim" class="nav-link sub">SLIM</a>
+          <a href="index.html#board" class="nav-link sub">Board</a>
           <a href="index.html#episodes" class="nav-link sub">Episodes</a>
           <a href="index.html#memory" class="nav-link sub">Memory</a>
-          <a href="index.html#board" class="nav-link sub">Board</a>
+          <a href="index.html#users" class="nav-link sub">Users &amp; Teams</a>
           <a href="index.html#l9-protocol" class="nav-link sub">L9 Protocol</a>
         </div>
       </div>
@@ -132,6 +133,7 @@
         <div class="nav-group-items">
           <a href="#cli-setup" class="nav-link sub">setup</a>
           <a href="#cli-room" class="nav-link sub">room</a>
+          <a href="#cli-board" class="nav-link sub">board</a>
           <a href="#cli-agent" class="nav-link sub">agent</a>
           <a href="#cli-memory" class="nav-link sub">memory</a>
           <a href="#cli-skill" class="nav-link sub">skill</a>
@@ -154,6 +156,7 @@
           <a href="#config-login" class="nav-link sub">login</a>
           <a href="#config-agent-auth" class="nav-link sub">agent_auth</a>
           <a href="#config-metrics" class="nav-link sub">metrics</a>
+          <a href="#config-a2a" class="nav-link sub">a2a</a>
         </div>
       </div>
       <div class="nav-group" data-nav-group="reference:dependencies">
@@ -320,9 +323,27 @@
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me <span class="str">&quot;moving toward 30% …&quot;</span>
 <span class="comment"># …then await again</span></code></pre>
       <p>The loop <em>is</em> the wake: await → reason → respond → await. The session does the reasoning <strong>in its own head</strong>; <code>respond</code> just posts it. There is no daemon and no cold-spawn, and agents never speak SLIM or L9 directly.</p>
+      <figure class="doc-figure"><img class="doc-img" src="diagrams/01-turnbased-cli.svg" alt="Pattern A: turn-based CLI agent, await/respond over HTTP, backend is the sole SLIM speaker" loading="lazy">
+        <figcaption><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/diagrams/01-turnbased-cli.d2" target="_blank" rel="noopener">View source on GitHub</a></figcaption>
+      </figure>
       <p>For a <strong>headless</strong> agent (no interactive session sitting there to hold the loop), <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs the loop for you and hands each turn to <code>&lt;cmd&gt;</code> (turn JSON on stdin); <code>&lt;cmd&gt;</code> is your reasoning runtime and calls <code>respond</code>. Point it at a <strong>persistent</strong> runtime (e.g. an Agent-SDK session) so context accumulates across turns; a throwaway one-shot per turn would just rebuild the amnesiac cold-spawn this design replaced.</p>
       <p>An <code>@</code>-mention to a handle with no resident runtime simply waits on the durable transcript cursor until one awaits. (Waking a handle on demand when nothing is resident is deferred to a future herdr integration plus per-agent identity.)</p>
-      <p><strong>Cognition rides on engines.</strong> First-party <a href="adapters.html#engines">engines</a> are registered in a room and summoned by <code>@</code>-mention; each <code>kind</code> is a distinct unit of reasoning. The <code>aligner</code> drives negotiation; its brain is a persistent Pi coding-agent session running a NEGMAS Stacked Alternating Offers mechanism that owns termination, stopping the instant the agents agree. The <code>synthesizer</code> distills the room&#x27;s conversation into a shared briefing in memory, incrementally. See <a href="adapters.html#engines">engines</a>, <a href="adapters.html#aligner">aligner</a>, and <a href="index.html#episodes">episodes</a>.</p>
+      <p><strong>Cognition rides on engines.</strong> First-party <a href="adapters.html#engines">engines</a> are registered in a room and summoned by <code>@</code>-mention; each <code>kind</code> is a distinct task of reasoning. The <code>aligner</code> mediates a disagreement; its brain is a persistent Pi coding-agent session running a NEGMAS Stacked Alternating Offers mechanism that owns termination, stopping the instant the agents agree. The <code>synthesizer</code> distills the room&#x27;s conversation into a shared briefing in memory, incrementally. See <a href="adapters.html#engines">engines</a>, <a href="adapters.html#aligner">aligner</a>, and <a href="index.html#episodes">episodes</a>.</p>
+      <h2 id="architecture-tasks-threads-and-pings">Tasks, threads and pings</h2>
+      <p>A <a href="index.html#board">task</a> is a <code>work/</code> memory. Its <strong>thread</strong> is a scoped, tagged slice of the room&#x27;s existing channel, identified by an episode id, and not a separate encrypted group. Membership in a room is membership in its threads; a thread separates attention rather than access.</p>
+      <p><strong>The binding is store-owned, and one per row.</strong> The backend mints the episode id at the memory-upsert chokepoint for every board namespace (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>failed/</code>), so a row born any way at all gets its own thread and no two rows share one. It is absent from the memory&#x27;s user-settable <code>meta</code>, so no <code>memory set</code> and no board verb can point a row at a conversation it was not part of, and the binding is write-once, so a row keeps its thread for life. A later coordination phase opens its own episode inside that task rather than moving it, and a negotiation that compiled several tasks keeps its own episode as a record bound to no row.</p>
+      <p><strong>Creating a task has its own route.</strong> <code>POST /api/rooms/{room}/tasks</code> is the one door that mints a thread; the memory routes deliberately have no wire form for it. <code>--parent</code> lands as a real <code>part-of</code> relation, and a parent that does not resolve is refused rather than written as a dangling edge.</p>
+      <p><strong>The board draws one row per task.</strong> What happens in the thread folds onto that row as its own read-only fields (the thread&#x27;s id and state, who took part, how many rounds) and never writes the row&#x27;s own axes. Status and custody belong to the task; a converged or aborted episode changes neither. Those thread fields are columns a surface can show, and are excluded from the axes a board can pivot on, because grouping tasks by the state of the negotiation inside them would invert that separation on the surface where it shows most.</p>
+      <p><strong>Two kinds of line reach the room, and neither carries prose.</strong> A <strong>ping</strong> says a thread moved: every threaded write emits one carrying the thread, the sender, and the id of the message it is about. A <strong>notice</strong> says the board moved: the backend raises one at each lifecycle seam (the upsert that files a row, and claim, release and resolve) carrying the task, who moved it, and the thread to open. The subkinds are a closed set frozen in <code>contracts/slim-l9-wire.json</code>: <code>filed</code>, <code>claimed</code>, <code>released</code>, <code>resolved</code>. Both are control payloads excluded from <code>_addressed_to</code>, so neither spends an agent&#x27;s turn, and surfaces draw one line from each while filtering the thread&#x27;s own prose out of the channel by episode. Room-wide events stay unfiltered: a task moving is the room&#x27;s business however deep inside a task it happened.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>CLI gap.</strong> A notice carries no <code>content</code>, so <code>mycelium room watch</code> drops it rather than drawing a line. The app renders the timeline; the terminal shows chat and thread activity only.</div>
+      </div>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Live-only, for now.</strong> A ping is not projected into the stored conversational read (<code>GET /messages</code>), which promotes prose and a few raise-up kinds only. The app merges pings in from the transcript replay so a live channel is correct; a cold reload of a busy room reads quieter than it was. Promoting pings into the conversational read would print raw envelopes at anyone running <code>mycelium room messages</code>, which is why it has not simply been widened.</div>
+      </div>
+      <p><strong>A wake can be narrowed to one task.</strong> <code>await --task &lt;id&gt;</code> waits against that thread&#x27;s own cursor. The presence lease stays room-scoped, so an agent watching one task is still a full member of the room and mentions elsewhere keep their place in its queue.</p>
       <h2 id="architecture-adapters">Adapters</h2>
       <p>Mycelium integrates with AI coding agents via adapters. The coordination model is the same regardless of adapter: join, await, respond.</p>
       <div class="table-wrap">
@@ -368,7 +389,7 @@
       <pre><code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> researcher <span class="flag">--adapter</span> a2a \
     <span class="flag">--card</span> <span class="url">https://research.example.com</span> <span class="flag">--room</span> my-project</code></pre>
       <p>The same bridge runs inbound: every room is served as an A2A agent, discoverable at <code>GET /api/rooms/{room}/.well-known/agent-card.json</code> (public — discovery is unauthenticated by the A2A spec) and callable with A2A JSON-RPC at <code>POST /api/rooms/{room}/a2a</code> (gated by the hub&#x27;s auth when it is enabled).</p>
-      <p>A bridged agent is a room member for coordination, <strong>not</strong> a member of the room&#x27;s MLS group: the backend reads plaintext and calls the remote out-of-band. See the <a href="adapters.html#adapter-a2a">A2A bridge</a> for the full boundary.</p>
+      <p>Neither direction is a tunnel straight between the two agents. A bridged agent is a room member for coordination, but it is <strong>not</strong> a member of the room&#x27;s MLS group: the backend seat reads the room&#x27;s plaintext and calls the remote over plain HTTPS, out-of-band from SLIM. Inbound is the same shape in reverse: the hub terminates the JSON-RPC call in plaintext, then republishes it onto the room&#x27;s MLS channel on the caller&#x27;s behalf. So this is not end-to-end encryption between the external agent and the room; the hub sees plaintext on both sides and is the translation boundary. See the <a href="adapters.html#adapter-a2a">A2A bridge</a> for the full boundary.</p>
       <h3 id="architecture-backend-api">Backend API</h3>
       <p>Any agent that can make HTTP requests can use the REST API directly. Interactive API docs are available at <code>http://localhost:8000/docs</code> when the backend is running.</p>
       <h2 id="architecture-status-providers">Status providers</h2>
@@ -547,7 +568,7 @@
         <div class="cmd-ref-header">
           <code><span class="bin">mycelium</span> <span class="cmd">login</span> [<span class="flag">--issuer</span> <span class="arg">URL</span>] [<span class="flag">--device</span>] [<span class="flag">--no-browser</span>] [<span class="flag">--client-id</span> <span class="arg">ID</span>]</code>
         </div>
-        <div class="cmd-ref-body">Sign in to a gated hub via OIDC (Authorization Code + PKCE, or device code).</div>
+        <div class="cmd-ref-body">Sign in to a gated hub via OIDC (Authorization Code + PKCE, or device code); the issuer is discovered from the hub when it isn't configured.</div>
       </div>
 
       <div class="cmd-ref">
@@ -634,6 +655,99 @@
           <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">delegate</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--to</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--task</span> <span class="arg">&lt;description&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Delegate a task to another agent in a room.</div>
+      </div>
+
+      <h2 id="cli-board">board</h2>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> [<span class="flag">--filter</span> needs-you|in-flight|resolved|all] [<span class="flag">--view</span> list|table] [<span class="flag">--watch</span>]</code>
+        </div>
+        <div class="cmd-ref-body">The room's live coordination slice: what needs you, what's in flight, what resolved.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">resolve</span> <span class="arg">&lt;id&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Resolve a board row: a work/ lease resolves, any other memory row takes status=resolved.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> <span class="arg">&lt;id&gt;</span> [<span class="flag">--to</span> @handle] [<span class="flag">--ttl</span> 30]</code>
+        </div>
+        <div class="cmd-ref-body">Take assignment of a work/ row: a lease with your handle on it, which drains unless renewed.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">release</span> <span class="arg">&lt;id&gt;</span> [<span class="flag">--note</span> <span class="str">&quot;why&quot;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Hand a claimed row back to the pool, leaving a note saying you did it deliberately.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">block</span> <span class="arg">&lt;id&gt;</span> <span class="flag">--on</span> <span class="arg">&lt;ref&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Record what a row is waiting on. The board derives 'blocked' from that, and stores it nowhere.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> &quot;<span class="arg">&lt;title&gt;</span>&quot; [<span class="flag">--assign</span> @handle] [<span class="flag">--parent</span> <span class="arg">&lt;id&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Put a task on the board, with the thread its coordination happens in already minted.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> <span class="arg">&lt;id&gt;</span> &quot;<span class="arg">&lt;text&gt;</span>&quot;</code>
+        </div>
+        <div class="cmd-ref-body">Post into the thread on a row or any memory. The room sees that it moved, not what was said.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> <span class="arg">&lt;id&gt;</span> [<span class="flag">--limit</span> N]</code>
+        </div>
+        <div class="cmd-ref-body">Read one thread: the conversation about that row or memory, and nothing else from the room.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> <span class="arg">&lt;id&gt;</span> <span class="arg">&lt;engine&gt;</span> &quot;<span class="arg">&lt;ask&gt;</span>&quot;</code>
+        </div>
+        <div class="cmd-ref-body">Open a coordination phase inside a task: put an engine to work on that row's thread.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> [<span class="flag">--since</span> 7d|--day YYYY-MM-DD|--week|--last-week] [<span class="flag">--tz</span> <span class="arg">&lt;zone&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">What the room worked on, by day and by who, in whichever timezone you read it in.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">credential</span> set <span class="arg">&lt;name&gt;</span> [<span class="flag">--stdin</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Store a status-provider credential value under the name a provider declares (e.g. <code>GITHUB_TOKEN</code>). Read from a prompt or stdin, never argv; saved 0600 outside <code>config.toml</code>.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">credential</span> ls</code>
+        </div>
+        <div class="cmd-ref-body">List the status-provider credential names the hub has, and whether each is set. Never the values.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">credential</span> rm <span class="arg">&lt;name&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Forget a status-provider credential on this hub.</div>
       </div>
 
       <h2 id="cli-agent">agent</h2>
@@ -902,13 +1016,6 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">sync</span> [<span class="flag">--no-reindex</span>]</code>
-        </div>
-        <div class="cmd-ref-body">Sync the active room with the backend: fetch all memories from the API and write them locally.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
           <code><span class="bin">mycelium</span> <span class="cmd">watch</span> [room]</code>
         </div>
         <div class="cmd-ref-body">Stream live room activity via SSE. Messages appear in real time as other agents write.</div>
@@ -916,14 +1023,21 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="cmd">--room</span> <span class="arg">&lt;room&gt;</span> [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span> | <span class="flag">--lease</span> <span class="arg">&lt;key&gt;</span>] [<span class="flag">--loop</span>] [<span class="flag">--exec</span> <span class="arg">CMD</span>] [<span class="flag">--timeout</span> N] [<span class="flag">--json</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">sync</span> [<span class="flag">--no-reindex</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Sync the active room with the backend: fetch all memories from the API and write them locally.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="cmd">--room</span> <span class="arg">&lt;room&gt;</span> [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span> | <span class="flag">--lease</span> <span class="arg">&lt;key&gt;</span>] [<span class="flag">--task</span> <span class="arg">&lt;id&gt;</span>] [<span class="flag">--loop</span>] [<span class="flag">--exec</span> <span class="arg">CMD</span>] [<span class="flag">--timeout</span> N] [<span class="flag">--json</span>]</code>
         </div>
         <div class="cmd-ref-body">Long-poll a room until a message is addressed to the handle — or until a named lease changes hands.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="cmd">--room</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span> &quot;<span class="arg">&lt;text&gt;</span>&quot;</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="cmd">--room</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--task</span> <span class="arg">&lt;id&gt;</span>] &quot;<span class="arg">&lt;text&gt;</span>&quot;</code>
         </div>
         <div class="cmd-ref-body">Publish a reply as the handle; the backend records it as a position for the aligner.</div>
       </div>
@@ -1076,7 +1190,13 @@
 <span class="arg">collector_url</span> = <span class="str">&quot;&quot;</span>
 
 <span class="comment"># Explicit Prometheus /metrics endpoints for the collector to scrape.</span>
-<span class="arg">scrape</span> = PydanticUndefined</code></pre>
+<span class="arg">scrape</span> = PydanticUndefined
+
+<span class="comment"># Configuration for the A2A bridge (outbound + inbound Agent2Agent gateway).</span>
+<span class="cmd" id="config-a2a">[a2a]</span>
+
+<span class="comment"># Disable the SSRF guard that refuses A2A card URLs resolving to private, loopback, or link-local addresses. Only set this for a trusted internal deployment whose A2A agents live on the internal network.</span>
+<span class="arg">allow_private_hosts</span> = <span class="flag">false</span></code></pre>
     </section>
 
     <hr class="divider">
@@ -1085,7 +1205,7 @@
       <h1>Dependencies &amp; Compatibility</h1>
       <p>Mycelium is assembled from a small set of upstream components. This page lists every notable runtime dependency, the version pinned, what it&#x27;s for, and where to check what changed upstream. The versions are read from the pins in <code>pyproject.toml</code> and <code>compose.yml</code>, so they match what ships.</p>
       <h2 id="dependencies-messaging-fabric-agntcy-slim">Messaging fabric (AGNTCY SLIM)</h2>
-      <p>Mycelium is SLIM-native: rooms are SLIM group channels and the node forwards only MLS ciphertext. This is the one deep coupling in the stack, so it comes first.</p>
+      <p>Mycelium is SLIM-native: rooms are SLIM group channels. This is the one deep coupling in the stack, so it comes first.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -1831,10 +1951,18 @@ role     = &quot;user&quot;</code></pre>
       <p>Each <code>[[auth.issuers]]</code> block takes <code>issuer</code> (the exact <code>iss</code> to trust), <code>jwks_url</code> (optional; omit to resolve it from the issuer&#x27;s OIDC discovery document), <code>audience</code> (optional per-issuer override), and <code>role</code>.</p>
       <h2 id="auth-signing-in-from-the-cli">Signing in from the CLI</h2>
       <p>The gate above is the hub&#x27;s half. <code>mycelium login</code> is yours: it obtains an OIDC token for <strong>you</strong>, caches it, and every later command sends it.</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> login.issuer <span class="url">https://sso.example.com/realms/mycelium</span>
-<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> login.audience <span class="bin">mycelium</span>      # match the hub&#x27;s auth.audience
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> login.audience <span class="bin">mycelium</span>      # match the hub&#x27;s auth.audience
 <span class="bin">mycelium</span> <span class="cmd">login</span></code></pre>
       <p>Your browser opens, you sign in at your identity provider, and the CLI takes it from there: <code>mycelium memory</code>, <code>mycelium room</code>, <code>await</code>, <code>respond</code> and the rest now carry <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+      <h3 id="auth-the-issuer-comes-from-the-hub">The issuer comes from the hub</h3>
+      <p>You do not set <code>login.issuer</code> to sign in. A gated hub advertises the issuers it trusts in the <code>auth</code> block of its <code>/health</code>, and <code>server.api_url</code> already points at it — so with no issuer configured and none passed, <code>login</code> asks the hub and uses the answer, remembering it once the sign-in it drove has actually worked.</p>
+      <p>Three cases where it steps back and tells you instead, rather than guessing:</p>
+      <ul>
+        <li><strong>The hub is unreachable</strong> — nothing to ask, so you get the original &quot;set <code>login.issuer</code>&quot; error.</li>
+        <li><strong>The hub&#x27;s gate is off</strong> — it needs no login at all, and says so.</li>
+        <li><strong>The hub trusts more than one issuer</strong> — which one you sign in against decides who the hub thinks you are, so it lists them and asks you to pick with <code>--issuer</code>. The lookup is still done for you; only the choice isn&#x27;t.</li>
+      </ul>
+      <p><code>--issuer</code> and a configured <code>login.issuer</code> both win over discovery, so nothing about an existing setup changes and the hub is not consulted at all.</p>
       <p><strong>On a machine with no browser</strong> (SSH, CI, a container) use the device flow. The CLI prints a URL and a short code you enter from any other device:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">login</span> <span class="flag">--device</span></code></pre>
       <p>The CLI falls back to this automatically when it finds no browser to open, so <code>mycelium login</code> over SSH does the right thing without the flag.</p>
@@ -1848,7 +1976,7 @@ role     = &quot;user&quot;</code></pre>
       <p><code>mycelium whoami</code> (and <code>mycelium iam</code> with no arguments) reports the handle from your <strong>token</strong> when you&#x27;re signed in, and the self-asserted <code>identity.name</code> when you&#x27;re not:</p>
       <pre><code>acting as @avery  (avery#a8f3)
   signed in (<span class="url">https://sso.example.com/realms/mycelium,</span> expires in 42 min)</code></pre>
-      <p>Because a gated hub attributes writes to the token (see <em>The token is the author</em> below), a self-asserted handle that names someone else is a 403 in waiting; <code>login</code> and <code>iam</code> both say so when they disagree.</p>
+      <p>Because a gated hub attributes writes to the token (see <em>The token is the author</em> below), a self-asserted handle that names someone else is a 403 in waiting. The token wins that disagreement, so <code>login</code> settles it for you: on a successful sign-in it points <code>identity.name</code> at the token&#x27;s own handle and registers the <code>users/</code> record — the same thing <code>mycelium iam &lt;handle&gt;</code> does, without the second command. If that can&#x27;t land (no readable handle claim, or a handle the store rejects), <code>login</code> falls back to naming the mismatch and the command that fixes it. Setting a handle your token won&#x27;t back with <code>iam</code> still warns.</p>
       <h3 id="auth-configuration">Configuration</h3>
       <div class="table-wrap">
         <table>
@@ -1863,7 +1991,7 @@ role     = &quot;user&quot;</code></pre>
             <tr>
               <td><code>login.issuer</code></td>
               <td><em>(unset)</em></td>
-              <td>OIDC issuer to log in against. Unset means no login is configured.</td>
+              <td>OIDC issuer to log in against. Unset means <code>login</code> asks the hub for one and caches what it gets.</td>
             </tr>
             <tr>
               <td><code>login.client_id</code></td>

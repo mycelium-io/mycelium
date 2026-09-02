@@ -4,14 +4,15 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { ageMinutes, lensOf, type LiveItem } from "@/lib/board/item";
-import { AgeTag, KindGlyph, CustodyChip, SourceTag, UpstreamChip, WorkLinks, kindColor } from "./board-bits";
+import { ageMinutes, attentionFilterOf, type LiveItem } from "@/lib/board/item";
+import { AgeTag, KindIcon, AssignmentChip, openableThread, SourceTag, ThreadChip, UpstreamChip, WorkLinks, kindColor } from "./board-cells";
 
 interface Props {
   items: LiveItem[];
   now: number;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onOpenThread?: (episode: string) => void;
 }
 
 const BUCKETS: { label: string; within: number }[] = [
@@ -26,7 +27,7 @@ const BUCKETS: { label: string; within: number }[] = [
  * the view that answers "what happened while I was away" without anyone
  * maintaining an activity feed.
  */
-export function BoardTimeline({ items, now, selectedId, onSelect }: Props) {
+export function BoardTimeline({ items, now, selectedId, onSelect, onOpenThread }: Props) {
   const buckets = BUCKETS.map(bucket => ({
     ...bucket,
     items: items.filter(item => {
@@ -49,18 +50,22 @@ export function BoardTimeline({ items, now, selectedId, onSelect }: Props) {
             {bucket.items.map(item => (
               <button
                 key={item.id}
-                onClick={() => onSelect(item.id)}
+                onClick={() => {
+                  onSelect(item.id);
+                  const episode = openableThread(item);
+                  if (episode) onOpenThread?.(episode);
+                }}
                 className={cn(
                   "relative flex w-full items-start gap-2.5 rounded-lg px-2.5 py-1.5 text-left transition-colors",
                   item.id === selectedId ? "bg-elevated ring-1 ring-border" : "hover:bg-hairline",
-                  lensOf(item, now) === "resolved" && "opacity-65",
+                  attentionFilterOf(item, now) === "resolved" && "opacity-65",
                 )}
               >
                 <span
                   className="absolute -left-[13px] top-3 size-[7px] rounded-full ring-2 ring-bg"
                   style={{ background: kindColor(item) }}
                 />
-                <KindGlyph item={item} className="mt-[1px]" />
+                <KindIcon item={item} className="mt-[1px]" />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline gap-2">
                     <span className="min-w-0 flex-1 truncate text-label text-text">{item.title}</span>
@@ -68,7 +73,8 @@ export function BoardTimeline({ items, now, selectedId, onSelect }: Props) {
                   </span>
                   <span className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
                     <SourceTag item={item} />
-                    <CustodyChip item={item} now={now} />
+                    <AssignmentChip item={item} now={now} />
+                    <ThreadChip item={item} onOpen={onOpenThread} />
                     <WorkLinks item={item} />
           <UpstreamChip item={item} />
                   </span>

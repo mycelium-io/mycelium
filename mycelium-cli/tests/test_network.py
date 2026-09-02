@@ -40,7 +40,7 @@ def _room(name: str, members: list[str] | None = None, **over: object) -> dict:
         "room": name,
         "provisioned": True,
         "members": members or [],
-        "pending_invites": 0,
+        "deferred_invites": 0,
         "episode_active": False,
         "reserves": 0,
         "receive_errors": 0,

@@ -4,7 +4,7 @@
 /**
  * A view is a filter, a grouping and a sort over the projected rows.
  *
- * The cockpit's "needs you" lens and a kanban grouped by `status` differ only in
+ * The triage's "needs you" attentionFilter and a kanban grouped by `status` differ only in
  * this config, so the coordination surface is a saved view of the typed one
  * rather than a separate screen with its own rules.
  */
@@ -13,24 +13,24 @@ import {
   PRIORITY_ORDER,
   STATUS_ORDER,
   ageMinutes,
-  arr,
+  fieldAsList,
+  fieldAsNumber,
+  fieldAsString,
   kindOf,
-  lensOf,
-  num,
+  attentionFilterOf,
   priorityOf,
   statusOf,
-  str,
-  type Lens,
+  type AttentionFilter,
   type LiveItem,
 } from "./item";
 import { fieldByName, humanize, type FieldSchema } from "./schema";
 
-export type ViewMode = "cockpit" | "board" | "table" | "timeline" | "daily";
+export type ViewMode = "triage" | "board" | "table" | "timeline" | "daily";
 
 export interface ViewConfig {
   mode: ViewMode;
-  /** "all" is the firehose; the cockpit defaults to a single lens. */
-  lens: Lens | "all";
+  /** "all" is the firehose; the triage defaults to a single attentionFilter. */
+  attentionFilter: AttentionFilter | "all";
   groupBy: string | null;
   sort: { field: string; dir: "asc" | "desc" };
   /** field name → allowed values; empty array means "no constraint". */
@@ -47,8 +47,8 @@ export interface ItemGroup {
 }
 
 export const DEFAULT_VIEW: ViewConfig = {
-  mode: "cockpit",
-  lens: "needs_you",
+  mode: "triage",
+  attentionFilter: "needs_you",
   groupBy: "kind",
   sort: { field: "priority", dir: "asc" },
   filters: {},
@@ -72,32 +72,32 @@ export const SAVED_VIEWS: SavedView[] = [
   {
     slug: "needs-you",
     label: "Needs you",
-    hint: "the steer-lens: open decisions, blocks, reviews",
+    hint: "the steer filter: open decisions, blocks, reviews",
     config: { ...DEFAULT_VIEW },
   },
   {
     slug: "in-flight",
     label: "In flight",
     hint: "claimed work, grouped by who holds it",
-    config: { ...DEFAULT_VIEW, lens: "in_flight", groupBy: "owner", sort: { field: "updated", dir: "desc" } },
+    config: { ...DEFAULT_VIEW, attentionFilter: "in_flight", groupBy: "owner", sort: { field: "updated", dir: "desc" } },
   },
   {
     slug: "by-status",
     label: "Kanban",
     hint: "every row, grouped by status",
-    config: { ...DEFAULT_VIEW, mode: "board", lens: "all", groupBy: "status", showResolved: true },
+    config: { ...DEFAULT_VIEW, mode: "board", attentionFilter: "all", groupBy: "status", showResolved: true },
   },
   {
     slug: "table",
     label: "Table",
     hint: "the namespace as typed data, inline-editable",
-    config: { ...DEFAULT_VIEW, mode: "table", lens: "all", groupBy: null, showResolved: true },
+    config: { ...DEFAULT_VIEW, mode: "table", attentionFilter: "all", groupBy: null, showResolved: true },
   },
   {
     slug: "daily",
     label: "Daily log",
     hint: "what the room did, by day, in your own timezone",
-    config: { ...DEFAULT_VIEW, mode: "daily", lens: "all", groupBy: null, showResolved: true },
+    config: { ...DEFAULT_VIEW, mode: "daily", attentionFilter: "all", groupBy: null, showResolved: true },
   },
   {
     slug: "timeline",
@@ -106,7 +106,7 @@ export const SAVED_VIEWS: SavedView[] = [
     config: {
       ...DEFAULT_VIEW,
       mode: "timeline",
-      lens: "all",
+      attentionFilter: "all",
       groupBy: null,
       sort: { field: "updated", dir: "desc" },
       showResolved: true,
@@ -141,11 +141,11 @@ export function filterItems(
   now: number = Date.now(),
 ): LiveItem[] {
   return items.filter(item => {
-    // The lens is read against the board's own tick, so a lease that drained
-    // between two renders leaves the in-flight lens on the next one — with
+    // The attentionFilter is read against the board's own tick, so a lease that drained
+    // between two renders leaves the in-flight attentionFilter on the next one — with
     // nobody having touched the row.
-    if (config.lens !== "all" && lensOf(item, now) !== config.lens) return false;
-    if (!config.showResolved && config.lens === "all" && lensOf(item, now) === "resolved") {
+    if (config.attentionFilter !== "all" && attentionFilterOf(item, now) !== config.attentionFilter) return false;
+    if (!config.showResolved && config.attentionFilter === "all" && attentionFilterOf(item, now) === "resolved") {
       return false;
     }
     if (!matchesQuery(item, config.query)) return false;
@@ -164,9 +164,9 @@ function ordinal(item: LiveItem, field: string, now: number): number | string {
   if (field === "priority") return PRIORITY_ORDER.indexOf(priorityOf(item));
   if (field === "status") return STATUS_ORDER.indexOf(statusOf(item));
   if (field === "updated") return -(ageMinutes(item, now) ?? Number.MAX_SAFE_INTEGER);
-  const n = num(item, field);
+  const n = fieldAsNumber(item, field);
   if (n !== null) return n;
-  return (str(item, field) ?? "￿").toLowerCase();
+  return (fieldAsString(item, field) ?? "￿").toLowerCase();
 }
 
 export function sortItems(items: LiveItem[], config: ViewConfig, now: number): LiveItem[] {
@@ -271,22 +271,22 @@ export function applyView(
   return groupItems(sortItems(filterItems(items, config, now), config, now), config, schema);
 }
 
-/** Counts for the lens tabs — computed off the unfiltered set so a tab shows
+/** Counts for the attention-filter tabs — computed off the unfiltered set so a tab shows
  *  what switching to it would reveal. */
-export function lensCounts(items: LiveItem[], now: number = Date.now()): Record<Lens | "all", number> {
-  const counts: Record<Lens | "all", number> = {
+export function attentionFilterCounts(items: LiveItem[], now: number = Date.now()): Record<AttentionFilter | "all", number> {
+  const counts: Record<AttentionFilter | "all", number> = {
     needs_you: 0,
     in_flight: 0,
     resolved: 0,
     all: items.length,
   };
-  for (const item of items) counts[lensOf(item, now)] += 1;
+  for (const item of items) counts[attentionFilterOf(item, now)] += 1;
   return counts;
 }
 
-/** What the row is waiting on, phrased for the cockpit's second line. */
+/** What the row is waiting on, phrased for the triage's second line. */
 export function waitingOn(item: LiveItem): string | null {
-  const blockedBy = arr(item, "blocked_by");
+  const blockedBy = fieldAsList(item, "blocked_by");
   if (blockedBy.length) return `waiting on ${blockedBy.join(", ")}`;
   if (kindOf(item) === "decision" && statusOf(item) === "in_review") return "awaiting a call";
   return null;

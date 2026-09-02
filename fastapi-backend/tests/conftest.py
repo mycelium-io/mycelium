@@ -6,7 +6,7 @@ Shared test fixtures.
 
 No database: the store is markdown files + a local
 JSONL index under a temp ``MYCELIUM_DATA_DIR``, and messages/presence live in the
-in-process ``local_state`` shim which we reset per test.
+in-process ``in_memory_store`` which we reset per test.
 """
 
 import pytest
@@ -16,7 +16,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.config import PrincipalRole
 from app.main import app
-from app.services import a2a_activity, local_state
+from app.services import a2a_activity, in_memory_store
 from app.services.auth import Principal, auth_gate
 
 
@@ -27,11 +27,11 @@ def _set_data_dir(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _reset_local_state():
-    """Isolate the in-memory message/presence/subscription shim per test."""
-    local_state.clear_all()
+def _reset_in_memory_store():
+    """Isolate the in-memory message/presence/subscription store per test."""
+    in_memory_store.clear_all()
     yield
-    local_state.clear_all()
+    in_memory_store.clear_all()
 
 
 @pytest.fixture(autouse=True)

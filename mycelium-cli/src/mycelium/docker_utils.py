@@ -22,17 +22,35 @@ import json
 import secrets
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
 
 
+def _is_hub_config(config: MyceliumConfig) -> bool:
+    """Return True when this config targets a local backend (hub / all-in-one).
+
+    Spokes point ``server.api_url`` at a remote host and do not run a SLIM
+    node, so hub-only operations (PSK generation, container management) should
+    be skipped for them.
+    """
+    host = (urlparse(config.server.api_url).hostname or "").lower()
+    return host in ("localhost", "127.0.0.1", "::1", "0.0.0.0")
+
+
 # Operator-managed keys: not derivable from config.toml, but preserved across
 # ``mycelium config apply`` so that side-effecting commands like
-# ``mycelium pull --version`` don't get clobbered.  Add new entries here only
-# when the key has no natural home in MyceliumConfig (i.e., it's runtime/ops
-# state, not user-tunable configuration).
-_OPERATOR_MANAGED_KEYS: tuple[str, ...] = ("MYCELIUM_IMAGE_TAG",)
+# ``mycelium pull --version`` and ``mycelium up --build`` don't get clobbered.
+# Add new entries here only when the key has no natural home in MyceliumConfig
+# (i.e., it's runtime/ops state, not user-tunable configuration).
+_OPERATOR_MANAGED_KEYS: tuple[str, ...] = (
+    "MYCELIUM_IMAGE_TAG",
+    # Set to "dev" by ``mycelium up --build`` when compose-dev.yml is active so
+    # that ``mycelium config apply --restart`` re-injects compose-dev.yml and
+    # avoids pulling GHCR images over the locally-built ones.
+    "MYCELIUM_BUILD_MODE",
+)
 
 _MASTER_SECRET_ENV = "MYCELIUM_SLIM_MASTER_SECRET"
 
@@ -98,13 +116,22 @@ def _read_env_value(env_path: Path | None, key: str) -> str | None:
     return None
 
 
-def ensure_slim_master_secret(config: MyceliumConfig, *, env_path: Path | None = None) -> bool:
+def ensure_slim_master_secret(
+    config: MyceliumConfig,
+    *,
+    env_path: Path | None = None,
+    allow_generate: bool = True,
+) -> bool:
     """Ensure ``config.slim.master_secret`` is set before rendering ``.env``.
 
     Import order when unset:
 
-    1. Existing ``MYCELIUM_SLIM_MASTER_SECRET`` in ``env_path`` (migration)
-    2. Fresh ``secrets.token_hex(32)`` (first hub install / apply)
+    1. Existing ``MYCELIUM_SLIM_MASTER_SECRET`` in ``env_path`` (migration /
+       hub at a non-localhost address).
+    2. Fresh ``secrets.token_hex(32)`` — only when ``allow_generate`` is
+       ``True`` (hub install / apply).  Pass ``allow_generate=False`` on a
+       spoke so an existing secret in ``.env`` is promoted into ``config.toml``
+       but no new secret is minted.
 
     Returns ``True`` when a value was imported or generated (caller should
     ``config.save()``).
@@ -119,6 +146,9 @@ def ensure_slim_master_secret(config: MyceliumConfig, *, env_path: Path | None =
     if imported:
         config.slim.master_secret = imported
         return True
+
+    if not allow_generate:
+        return False
 
     config.slim.master_secret = secrets.token_hex(32)
     return True
@@ -158,6 +188,44 @@ def read_pinned_image_tag(env_path: Path | None) -> str | None:
     return _read_operator_managed_keys(env_path).get("MYCELIUM_IMAGE_TAG")
 
 
+def read_build_mode(env_path: Path | None) -> str | None:
+    """Return ``"dev"`` when the stack was started with ``mycelium up --build``.
+
+    ``None`` (or empty string) means the stack runs pulled GHCR images.
+    """
+    return _read_operator_managed_keys(env_path).get("MYCELIUM_BUILD_MODE") or None
+
+
+def patch_build_mode(env_path: Path, mode: str) -> None:
+    """Set or clear ``MYCELIUM_BUILD_MODE`` in ``env_path`` in-place.
+
+    Pass ``mode="dev"`` when compose-dev.yml was used (``mycelium up --build``
+    with a found overlay); pass ``mode=""`` to clear it so a subsequent pulled
+    or installed stack doesn't keep the stale flag.
+    """
+    if not env_path.exists():
+        if mode:
+            env_path.parent.mkdir(parents=True, exist_ok=True)
+            env_path.write_text(f"MYCELIUM_BUILD_MODE={mode}\n", encoding="utf-8")
+        return
+    lines = env_path.read_text(encoding="utf-8").splitlines()
+    found = False
+    new_lines = []
+    for line in lines:
+        if "=" in line and not line.lstrip().startswith("#"):
+            key = line.split("=", 1)[0].strip()
+            if key == "MYCELIUM_BUILD_MODE":
+                if mode:
+                    new_lines.append(f"MYCELIUM_BUILD_MODE={mode}")
+                # mode="" → drop the line (cleared)
+                found = True
+                continue
+        new_lines.append(line)
+    if not found and mode:
+        new_lines.append(f"MYCELIUM_BUILD_MODE={mode}")
+    env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+
 def _render_auth_issuers(config: MyceliumConfig) -> str:
     """Trust roots as a single-line JSON array for ``AUTH_ISSUERS``.
 
@@ -177,6 +245,7 @@ def generate_env_file(
     config: MyceliumConfig,
     *,
     image_tag: str | None = None,
+    build_mode: str | None = None,
 ) -> str:
     """Render a .env string from the current MyceliumConfig.
 
@@ -262,21 +331,28 @@ def generate_env_file(
         if config.runtime.trusted_proxies
         else "# FORWARDED_ALLOW_IPS not set; uvicorn trusts loopback forwarders only",
         "",
+        "# ── A2A bridge ────────────────────────────────────────────────────────────",
+        # SSRF guard: by default the bridge refuses card URLs that resolve to
+        # private/loopback/link-local addresses. Set allow_private_hosts = true in
+        # config.toml (mycelium config set a2a.allow_private_hosts true) to disable
+        # this guard for deployments where A2A agents live on an internal network.
+        f"A2A_ALLOW_PRIVATE_HOSTS={'1' if config.a2a.allow_private_hosts else ''}",
+        "",
     ]
 
     # ── Operator-managed pins (preserved across `mycelium config apply`) ─────
     # Anything in this block is NOT derived from config.toml; it's set as a
-    # side effect of a CLI command (currently only `mycelium pull --version`,
-    # which writes MYCELIUM_IMAGE_TAG via _patch_env_image_tag).  Emitted last
-    # so that compose variable substitution gets a stable, late-binding value.
-    if image_tag is not None:
-        lines.extend(
-            [
-                "# ── Operator-managed pins (managed by `mycelium pull --version`) ────────",
-                f"MYCELIUM_IMAGE_TAG={image_tag}",
-                "",
-            ]
-        )
+    # side effect of a CLI command (currently `mycelium pull --version` for
+    # MYCELIUM_IMAGE_TAG and `mycelium up --build` for MYCELIUM_BUILD_MODE).
+    # Emitted last so that compose variable substitution gets a stable,
+    # late-binding value.
+    if image_tag is not None or build_mode:
+        lines.append("# ── Operator-managed pins ─────────────────────────────────────────────────")
+        if image_tag is not None:
+            lines.append(f"MYCELIUM_IMAGE_TAG={image_tag}")
+        if build_mode:
+            lines.append(f"MYCELIUM_BUILD_MODE={build_mode}")
+        lines.append("")
 
     return "\n".join(lines) + "\n"
 
@@ -284,9 +360,15 @@ def generate_env_file(
 def write_env_file(config: MyceliumConfig, env_path: Path | None = None) -> tuple[Path, bool]:
     """Write (or overwrite) the .env file derived from config.toml.
 
-    Ensures ``[slim].master_secret`` is set (import or generate) and persists
-    it to ``config.toml`` when newly assigned. Preserves operator-managed pins
-    (currently ``MYCELIUM_IMAGE_TAG``) from the existing .env.
+    Always runs the import path for ``[slim].master_secret``: if the key
+    already exists in ``.env`` it is promoted into ``config.toml`` so the
+    rendered output stays correct for hubs at non-localhost addresses (LAN IP,
+    reverse proxy).  Generation of a *new* secret is only performed on hubs
+    (local ``server.api_url``) — spokes have no SLIM node and must not silently
+    mint a secret that would diverge from the hub's shared PSK.
+
+    Preserves operator-managed pins (``MYCELIUM_IMAGE_TAG``,
+    ``MYCELIUM_BUILD_MODE``) from the existing .env.
 
     Returns ``(path, secret_was_assigned)`` where ``secret_was_assigned`` is
     ``True`` when a master secret was imported or generated this call.
@@ -295,11 +377,19 @@ def write_env_file(config: MyceliumConfig, env_path: Path | None = None) -> tupl
         env_path = config.get_global_config_dir() / ".env"
     env_path.parent.mkdir(parents=True, exist_ok=True)
 
-    secret_assigned = ensure_slim_master_secret(config, env_path=env_path)
+    secret_assigned = ensure_slim_master_secret(
+        config,
+        env_path=env_path,
+        allow_generate=_is_hub_config(config),
+    )
     if secret_assigned:
         config.save()
 
     preserved = _read_operator_managed_keys(env_path)
-    rendered = generate_env_file(config, image_tag=preserved.get("MYCELIUM_IMAGE_TAG"))
+    rendered = generate_env_file(
+        config,
+        image_tag=preserved.get("MYCELIUM_IMAGE_TAG"),
+        build_mode=preserved.get("MYCELIUM_BUILD_MODE") or None,
+    )
     env_path.write_text(rendered, encoding="utf-8")
     return env_path, secret_assigned

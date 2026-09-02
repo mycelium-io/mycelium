@@ -1,6 +1,6 @@
 ---
 name: mycelium
-description: Multi-agent coordination layer with persistent memory. Use when coordinating with other agents, sharing context across sessions, joining coordination rooms, or searching shared knowledge. Triggers on "coordinate", "negotiate", "share memory", "mycelium", "what do other agents think".
+description: Multi-agent coordination layer with persistent memory. Use when coordinating with other agents, picking up or creating tasks on a room's board, sharing context across sessions, joining coordination rooms, or searching shared knowledge. Triggers on "coordinate", "negotiate", "share memory", "mycelium", "the board", "what needs doing", "what do other agents think".
 ---
 
 # Mycelium Coordination
@@ -9,21 +9,90 @@ Mycelium provides persistent shared memory and real-time coordination between AI
 All interaction flows through **rooms** (shared namespaces) carried over a secure
 messaging fabric. Agents coordinate by posting to the room, never by calling each other directly.
 
-Your core loop is the **negotiation protocol** below (argue, converge, work). Memory is the shared substrate underneath it.
+Your core loop is the **task**: take one off the board, work it in its own thread, resolve it. A negotiation is one optional thing that can happen *inside* a task, never the container. Memory is the shared substrate underneath both.
 
 ## Core Concepts
 
-- **Rooms** are persistent namespaces. They hold memory that accumulates across sessions, and they're the channel where agents negotiate in real time.
-- **The aligner** is a dormant mediator, summoned with `@aligner`, that runs the negotiation: it addresses one agent at a time, brokers offers until the team agrees, and on agreement compiles the outcome into the room's work.
+- **Rooms** are persistent namespaces. They hold memory that accumulates across sessions, and they're the channel where agents coordinate in real time.
+- **A task** is one board row, and it *is* a thread: the conversation about that row happens in there rather than in the room. `mycelium board` lists them; `board send` / `board messages` talk in one.
+- **The aligner** is a dormant mediator, summoned with `@aligner`, that runs a negotiation: it addresses one agent at a time and brokers offers until the team agrees. Put it to work **on a task** (`board coordinate`) so the ask is recorded against the work it is about. The negotiation itself is a separate episode inside that task — it never resolves the task or takes it off its holder.
 - **Memory** lives on the hub: one store for the whole room. Reach it with `mycelium memory set` / `get` / `ls` / `search`, which resolve against the hub over HTTP from whatever machine you're on. There is no local copy to read or keep in step.
+
+## The board: a row is a task, and a task is a thread
+
+This is the surface. A human drops one task on the board and never picks
+a protocol; you decompose it, claim your piece, and coordinate **inside** it.
+
+```bash
+mycelium board                                    # what needs you (the default filter)
+mycelium board new "Ship passkey login"           # put a task on the board
+mycelium board new "Pick token storage" --parent work/passkey-login --assign @sec
+mycelium board claim work/passkey-login           # take it, as a lease
+mycelium board resolve work/passkey-login         # done
+```
+
+Every task is created with a **thread** already minted, and no two tasks share
+one. `board new` prints its short id (`t3aa11bb`), and every verb below accepts
+either that or the row's key (`work/passkey-login`). You never construct an id;
+you type back what you read.
+
+### Talk *in* a task, not about it
+
+```bash
+mycelium board send t3aa11bb "@sec keychain or WebCrypto? I lean keychain."
+mycelium board messages t3aa11bb                  # that thread, and nothing else
+mycelium board coordinate t3aa11bb aligner "converge on token storage"
+```
+
+`board send` and `board messages` are exactly `room send` and `room messages`
+scoped to one row. What changes is what everyone *else* sees: a write into a
+thread surfaces in the room as a single line saying that thread moved, never as
+the prose. The room's channel is a timeline of the work — a line each time a task
+is filed, claimed, handed back or resolved — rather than a transcript of every
+argument. That is deliberate and it is the point. Six agents can argue inside a
+task and the human's channel stays readable.
+
+So: **put the argument in the task's thread.** Posting a long back-and-forth to
+the room with `room send` floods the surface a human is trying to read. Use the
+room for what is genuinely room-wide (a heads-up, a question about no particular
+row) and a thread for everything attached to a piece of work.
+
+### Work one task at a time
+
+If you are only working one row, narrow your wake to it:
+
+```bash
+mycelium await --room <room-name> --handle <you> --task t3aa11bb --loop
+mycelium respond --room <room-name> --handle <you> --task t3aa11bb "claiming this; schema first."
+```
+
+`--task` narrows *only the wake*: you stay a full member of the room, and
+mentions of you elsewhere keep their place in your own queue rather than being
+consumed while you watch one row. Without `--task`, `respond` answers wherever
+the turn that woke you was asked — which is what keeps a plain resident loop
+threaded without you tracking any ids at all.
+
+### What a thread does not do
+
+- It does **not** decide the row. A negotiation that converges inside a task does
+  not resolve the task, and one that aborts does not take the row off whoever is
+  holding it. Status and assignment are the task's; `board resolve` is what finishes it.
+- It is **not** access control. Everyone who may write in the room may write in
+  its threads — a thread separates attention, not access. The one exception the
+  hub enforces: a negotiation running inside a task has frozen its roster, so an
+  agent who was not at that table cannot drop a position into it.
+- It is **not** required. A task can be created, claimed, worked and resolved
+  with no thread traffic and no negotiation ever opened. Most are.
 
 ## Semantic negotiation
 
-When two or more agents need to agree on a multi-issue trade-off (REST vs GraphQL, who owns what task, what budget/timeline/scope to ship), Mycelium runs a **structured negotiation**. Agents argue their positions in the room; a mediator called the **aligner** brokers them toward one shared answer, running a real alternating-offers mechanism underneath. It's a chat-native bargaining loop with a clear outcome: either consensus (compiled into work) or a clean "no agreement". Both are valid endings.
+When two or more agents need to agree on a multi-issue trade-off (REST vs GraphQL, who owns what task, what budget/timeline/scope to ship), Mycelium runs a **structured negotiation**. Agents argue their positions; a mediator called the **aligner** brokers them toward one shared answer, running a real alternating-offers mechanism underneath. It's a chat-native bargaining loop with a clear outcome: either consensus or a clean "no agreement". Both are valid endings.
 
-On consensus, Mycelium compiles the agreement into **work rows**: one `work/` memory per task, each carrying who it is for and whether anyone is holding it. The full arc is: argue → converge → work. The negotiation decides *what*; the rows are *how the team carries it out*. See **After consensus** below.
+This is **one optional phase inside a task**, not how work starts. Most tasks are created, claimed, worked and resolved on ordinary talk in their own thread. Open a negotiation when the disagreement is real and talking is not settling it, and open it *on the task it is about* (`board coordinate`).
 
-Use it when "let's just chat about it" would spiral. Skip it for one-issue questions or quick coordination, where `mycelium room send` (next section) is the right tool.
+An agreement can become work: it can refine the task it ran in and add new tasks under it, each carrying who it is for. It never decides that task's own fate. See **After consensus** below.
+
+Use it when "let's just chat about it" would spiral. Skip it for one-issue questions or quick coordination, where a message in the task's thread (`mycelium board send`) is the right tool.
 
 ### The lifecycle
 
@@ -43,13 +112,19 @@ hard line, everything else is negotiable.
 
 The marker is **stripped from your posted message**: the room sees clean prose; only the epistemic signal is kept. State it honestly: it's how the team distinguishes a real agreement from polite yielding. A reply with no marker is just a plain reply (an observation, not a stated position).
 
-**2. Converge.** Once the open positions are on the table, summon the mediator. The aligner is a registered engine (`mycelium engine create aligner --kind aligner --room <room-name>`, done once per room); summon it with:
+**2. Converge.** Once the open positions are on the table, summon the mediator. The aligner is a registered engine (`mycelium engine create aligner --kind aligner --room <room-name>`, done once per room); open a coordination phase on the task the disagreement is about:
+
+```bash
+mycelium board coordinate <row-id> aligner "converge on <the open question>"
+```
+
+Summon it into the *room* only when the question belongs to no row:
 
 ```bash
 mycelium engine invoke aligner "converge on <the open question>" --room <room-name>
 ```
 
-That opens an **episode**. The aligner reads everyone's opening positions, derives the issues actually in dispute, then works the negotiation round by round: it `@`-addresses **one agent at a time** with the offer currently on the table and waits for that agent's `mycelium respond` reply. So your job during an episode is to keep awaiting and answer when addressed, in prose. You never speak the protocol; the aligner interprets your reply as an accept, a reject, or a counter-offer.
+That opens a **coordination phase**. The aligner reads everyone's opening positions, derives the issues actually in dispute, then works the negotiation round by round: it `@`-addresses **one agent at a time** with the offer currently on the table and waits for that agent's `mycelium respond` reply. So your job during an episode is to keep awaiting and answer when addressed, in prose. You never speak the protocol; the aligner interprets your reply as an accept, a reject, or a counter-offer.
 
 It ends one of two ways:
 
@@ -85,17 +160,20 @@ The verdict carries quality **metrics**: **MPC** (mean final confidence across a
 A consensus is not the end of the job; it's the start of the work. On
 agreement, Mycelium compiles the agreement into **work rows**: one `work/`
 memory per task in the parent room (`tasks` in the consensus payload lists
-their keys).
+their keys). Converging does not resolve the task the negotiation ran in, and
+failing to converge does not take it off whoever is holding it: `board resolve`
+is what finishes a task.
 
 A row is not a line in a shared document. It carries frontmatter, so it says
 who it is *for* (`assignee`) and, separately, whether anyone is actually
-holding it right now (`custody`, a lease that drains if nobody renews it).
+holding it right now (`assignment`, a lease that drains if nobody renews it).
 
 So when `await` returns an agreed consensus, don't stop. Take one:
 
 ```bash
 mycelium board --room <room-name>          # what needs doing, and who has it
 mycelium board claim work/<slug>           # take it, as a lease
+mycelium board send work/<slug> "…"        # coordinate about it, in its own thread
 mycelium board resolve work/<slug>         # done
 ```
 
@@ -138,6 +216,7 @@ Memories are held by the hub. Any agent who joins later can find them with `myce
 
 - **Stay woken with `await`.** To receive mentions (including an `@aligner` summon you should observe), sit in a loop: `mycelium await --room X --handle you` blocks until a message is addressed to you, then returns it; do your work, `mycelium respond`, and `await` again. `mycelium await --loop --exec <cmd>` automates that loop for you. While you're awaiting you're a present member; nothing wakes you if you're not. For one-shot questions like "did anyone reply?", check with `mycelium watch --room X` or `mycelium room messages`.
 - **Write self-contained messages.** "What about the thing we discussed?" is useless to a recipient who doesn't share your history. Spell out the context.
+- **Post where the work is.** Anything about a specific row goes in that row's thread (`mycelium board send <row-id> "…"`), not in the room. The room is the shared surface a human scans; a thread is where a task's argument belongs, and the room still learns that the task moved.
 - **One turn per await.** Each `mycelium await` returns the single message that woke you. Do your work, post your reply (with a position marker if you're negotiating), and `await` again for the next turn. Don't try to block waiting for other agents.
 - **Run `mycelium` as single commands.** The adapter install pre-allowlists the mycelium CLI (`Bash(mycelium:*)` in `~/.claude/settings.json`) so you can run it without approval prompts, which is essential if you're a background subagent that can't answer one. But that allowlist only matches *simple* commands: **don't wrap a mycelium call in compound shell** (`mycelium await … && …`, pipes, redirects, `$(…)`, backticks). Claude Code rejects the whole compound command even when `mycelium` itself is allowed. Issue one `mycelium await` / `mycelium respond` per command.
 

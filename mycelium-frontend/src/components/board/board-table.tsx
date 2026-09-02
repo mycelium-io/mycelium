@@ -6,9 +6,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { lensOf, type LiveItem } from "@/lib/board/item";
+import { attentionFilterOf, type LiveItem } from "@/lib/board/item";
 import type { FieldSchema } from "@/lib/board/schema";
-import { KindGlyph } from "./board-bits";
+import { KindIcon, openableThread } from "./board-cells";
 
 interface Props {
   items: LiveItem[];
@@ -22,13 +22,18 @@ interface Props {
   /** Sort is a view property, so a header click changes the view, not the data. */
   sort: { field: string; dir: "asc" | "desc" };
   onSort: (field: string) => void;
+  onOpenThread?: (episode: string) => void;
 }
 
 /** Columns are capped so a wide schema still reads; the rest stay filterable. */
 const MAX_COLUMNS = 7;
 
-export function BoardTable({ items, schema, now, selectedId, onSelect, onEdit, sort, onSort }: Props) {
-  const columns = schema.filter(f => f.name !== "choices").slice(0, MAX_COLUMNS);
+/** A thread's identity is not a column: the id is noise and the URN is worse.
+ *  The thread is opened by the row, not read as a cell. */
+const HIDDEN_COLUMNS = new Set(["choices", "episode", "thread"]);
+
+export function BoardTable({ items, schema, now, selectedId, onSelect, onEdit, sort, onSort, onOpenThread }: Props) {
+  const columns = schema.filter(f => !HIDDEN_COLUMNS.has(f.name)).slice(0, MAX_COLUMNS);
 
   return (
     <div className="min-w-0 overflow-auto px-5 py-4">
@@ -62,16 +67,20 @@ export function BoardTable({ items, schema, now, selectedId, onSelect, onEdit, s
           {items.map(item => (
             <tr
               key={item.id}
-              onClick={() => onSelect(item.id)}
+              onClick={() => {
+                onSelect(item.id);
+                const episode = openableThread(item);
+                if (episode) onOpenThread?.(episode);
+              }}
               className={cn(
-                "group",
+                "group cursor-pointer",
                 item.id === selectedId ? "bg-elevated" : "hover:bg-hairline",
-                lensOf(item, now) === "resolved" && "opacity-65",
+                attentionFilterOf(item, now) === "resolved" && "opacity-65",
               )}
             >
               <td className="max-w-[380px] border-b border-hairline px-2 py-1.5">
                 <span className="flex items-center gap-2">
-                  <KindGlyph item={item} />
+                  <KindIcon item={item} />
                   <span className="min-w-0 flex-1 truncate text-text">{item.title}</span>
                 </span>
               </td>

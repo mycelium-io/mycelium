@@ -3,8 +3,11 @@
 ## Project
 
 Mycelium: multi-agent coordination + persistent memory over a secure messaging
-fabric. Agents coordinate as members of end-to-end-encrypted rooms; a negotiation
-that reaches consensus compiles into work rows in the room's memory.
+fabric. Agents coordinate as members of end-to-end-encrypted rooms. The unit of
+work is a **task**: a row on the room's board and a thread on its channel. A
+human drops a task and never picks a protocol; agents claim it, decompose it, and
+coordinate inside it. A mediated negotiation is one optional phase inside a task,
+not the reason the task exists.
 
 ## Structure
 
@@ -41,7 +44,11 @@ mycelium-promo/     HyperFrames promo video, a code-defined HTML→MP4 walkthrou
                     distill the room to memory via the synthesizer). The app-screen
                     mockups mirror the frontend's workspace shell + dark design tokens.
                     Renders 1920x1080 H.264. `cd mycelium-promo && npm run dev` to
-                    preview, `npm run render` to export to renders/*.mp4.
+                    preview, `npm run render` to export to renders/*.mp4. Its
+                    backing track is synthesised from source too (`audio/`, see
+                    `mycelium-promo/audio/README.md`): the cues are keyed to the
+                    composition's own GSAP times, so `npm run audio` has to
+                    re-run after a beat moves.
                     The README + docs/index.html embed the rendered MP4 via a
                     `user-attachments/assets/...` URL; these only auto-render
                     inline when uploaded via GitHub's web drag-drop (gh CLI has
@@ -127,36 +134,78 @@ mention was removed — it discarded context every turn. Cold-start-on-demand, w
 a handle when nothing is resident, returns later via herdr + per-agent identity;
 see issue #446.)
 
+**Tasks are the surface.** A board row is a markdown memory (body + frontmatter)
+and, through a store-owned episode binding, a thread on the room's channel
+(`app/services/tasks.py`, `routes/tasks.py`). The binding is minted at the
+memory-upsert chokepoint for every board namespace (`work/`, `decisions/`,
+`status/`, `failed/`), so every row is threaded and no two rows share one.
+`board send`/`messages` are the room's chat verbs scoped to one row
+(`mycelium/chat.py`, one call, not a second implementation); `board coordinate`
+puts an engine to work inside a task. The channel is the room's **timeline**: a
+**ping** says a thread moved, a **notice** says the board did (`filed`, `claimed`,
+`released`, `resolved`), and thread prose is filtered out of it, so the channel
+stays legible while agents argue inside a row.
+
 **The aligner is the mediator.** Negotiation is driven by a first-party cognition
 engine, the **aligner** (`app/services/aligner.py`), summoned by `@`-mention. It
 runs a real **NEGMAS Stacked Alternating Offers** mechanism (`mediator.py`); its
-brain is a persistent **Pi** coding-agent session (`pi_brain.py`) so it keeps memory
+cognition runs on a persistent **Pi** session (`pi_session.py`) so it keeps memory
 across rounds. It checks the opening positions for a term the agents are using in
 different senses (one clarifying round if so, none otherwise), discovers issues from
 those positions, brokers each round, `@`-addresses one agent at a time over SLIM,
 interprets each reply into an SAO move (`offer_snap.py` snaps near-misses / nearest
 numeric grid point), and **NEGMAS owns termination**: it stops the instant the agents agree.
 
-**Episodes.** A summon opens an **episode**, a tagged, membership-scoped negotiation
-on the room's channel (a tag over the existing channel, not a separate one), 1:1 with
-an L9 episode record. Each convening is a distinct episode (unique id, its own
-transcript slice), recorded at `log/episodes/{id}.md`.
+**Episodes.** An episode is a tagged, membership-scoped slice of the room's channel
+(a tag over the existing channel, not a separate one). Two things are episodes: a
+task's own **thread**, minted with the task and bound to it for life, and a
+**coordination phase** inside one, opened by a summon and 1:1 with an L9 episode
+record (unique id, its own transcript slice, recorded at `log/episodes/{id}.md`).
+The container outlives what runs inside it: a coordination phase that converges or
+aborts writes neither the task's status nor its assignment.
 
 LLM: **Pi everywhere** (provider/model format, e.g. `anthropic/claude-sonnet-4-6`).
-The aligner's brain, the task compiler, and the `mycelium doctor` / `/health`
+The aligner's LLM session, the task compiler, and the `mycelium doctor` / `/health`
 completion probe all shell out to the `pi` binary the backend image ships; there
 is no litellm dependency.
 
 ## Key design decisions
 
-- **The aligner mediates.** Agents never talk to each other directly; all
-  coordination flows through the aligner. It's a first-party engine registered as a
-  room citizen (`mycelium engine create aligner --kind aligner`) and summoned
-  (`mycelium engine invoke aligner "…"`), not auto-run on a join window.
-- **The aligner's brain is Pi (only).** The SAO mediator runs on a persistent Pi
-  session; there is no litellm fallback brain. Pi ships in the backend image;
+- **A task is a board row and a thread, one to one.** The row and the conversation
+  about it are one object. The episode binding is store-owned: minted at the
+  memory-upsert chokepoint for every board namespace, carried across every write,
+  write-once, absent from `meta`, so no `memory set` and no board verb can point a
+  row at a conversation it was not part of, and a compiler cannot stamp two rows
+  with one negotiation's episode. That is why creation has its own route (`POST /rooms/{room}/tasks`) rather
+  than a wire form on the memory routes. Thread fields fold onto the row as
+  read-only columns and are excluded from the axes a board can pivot on: grouping
+  tasks by the state of the negotiation inside them inverts the containment on the
+  surface it shows most.
+- **The channel is the room's timeline, and carries no prose from a thread.** Two
+  control payloads reach `live` and neither wakes anyone (both are excluded from
+  `_addressed_to`): a **ping** carries the episode, sender and message id when a
+  thread moves; a **notice** carries the task, who moved it and the thread to open
+  when the board moves. `NOTICE_SUBKINDS` is a closed set (`filed`, `claimed`,
+  `released`, `resolved`, `blocked`, `unblocked`) frozen in
+  `contracts/slim-l9-wire.json` and asserted on both sides. Room-wide events stay
+  unfiltered: a task moving is the room's business however deep inside a task it
+  happened. Two honest gaps: a ping is live-only in the conversational read
+  (`stored_message_from_record` promotes prose and raise-up kinds only), so the app
+  merges pings in from the transcript replay, and widening the projection would
+  print raw envelopes at `mycelium room messages`; and a notice carries no
+  `content`, so `mycelium room watch` drops it and the terminal draws no timeline
+  line.
+- **The aligner mediates, inside a task.** Agents never talk to each other directly;
+  all coordination flows through the aligner. It's a first-party engine registered
+  as a room citizen (`mycelium engine create aligner --kind aligner`) and summoned
+  (`board coordinate <row> aligner "…"`, or `engine invoke` when the question
+  belongs to no row), not auto-run on a join window. A summon inside a task opens
+  its own episode; the task's thread is a container, and nothing records a link back
+  from the nested episode to the row it was summoned from.
+- **The aligner's LLM session is Pi (only).** The SAO mediator runs on a persistent
+  Pi session; there is no litellm fallback. Pi ships in the backend image;
   OpenShell sandboxing (`ALIGNER_PI_OPENSHELL`) is an optional command-prefix seam,
-  off by default. See `pi_brain.py`.
+  off by default. See `pi_session.py`.
 - **NEGMAS owns termination.** The mechanism stops at unanimity; the mediator never
   loops to the step cap (the anti-theatre property). A failed negotiation commits as
   `rejected`.
@@ -183,9 +232,12 @@ is no litellm dependency.
   `mycelium iam` is the one split command: the identity it sets is this machine's
   config, the user record is the hub's, and the local half lands either way.
 - **Rooms are always persistent.** Rooms are persistent namespaces for memory and
-  coordination; a negotiation within a room is an ephemeral, recorded episode.
-- **The CLI skill is a protocol.** Post a position → await → respond → consensus →
-  work. This is the value add; don't change it to an augmentation layer.
+  coordination; a task is work that resolves, and a negotiation inside a task is an
+  ephemeral, recorded episode.
+- **The CLI skill is a protocol.** Take a task off the board → work it in its own
+  thread → resolve it, with a mediated negotiation available inside a task when
+  agents genuinely disagree. This is the value add; don't change it to an
+  augmentation layer.
 - **memory set always upserts.** `memory set` overwrites existing keys automatically
   (version increments). Frontmatter the store doesn't manage is user data: it
   survives a rewrite rather than being dropped, `MemoryCreate.meta` (CLI:
@@ -246,15 +298,18 @@ is no litellm dependency.
   living in the written memory's own frontmatter so position and text land in
   one write (`--all` in the summon text re-reads everything); and it **excludes
   its own posts** by sender, since it speaks its briefing into the room it reads.
-- **Consensus compiles into rows.** On convergence the aligner hands the agreed
+- **Consensus compiles into rows, but rows do not need consensus.** Work is
+  created board-first (`board new`, `--parent` landing a real `part-of` relation,
+  refused rather than dangling when the parent is absent). A negotiation is one way
+  a row arrives, not the way. On convergence the aligner hands the agreed
   `{issue: value}` map to `task_compiler.py`, an LLM stage that turns it into
   tasks, and `task_sync.py` writes each one as a `work/` memory through the
   canonical upsert *before* the consensus is announced (so the work exists once
   `await` returns). The model still writes `- [ ] text @handle` lines because
   that is the shape it is good at; parsing them into rows is the compiler's job
   and the line format never leaves it. A task carries `assignee`, never `owner`
-  — an assignment is who it is *for*, custody is who is *holding* it, and a
-  stage that cannot take a lease must not write one. Fail-soft: a compiler
+  — `assignee` is who the task is *for*, the `assignment` field is who is
+  *holding* it, and a stage that cannot take one must not write one. Fail-soft: a compiler
   outage falls back to the raw `issue=value` agreement. The compiler is
   deliberately a distinct consumer stage across an explicit seam, not part of
   the negotiation engine. It runs a one-shot `pi` turn
@@ -368,13 +423,15 @@ is no litellm dependency.
   scoped), and `a2a_server.py` exposes a room *as* an A2A agent via the a2a-sdk
   server (card + JSON-RPC). **Honest boundary:** a bridged A2A agent is **not** a
   member of the room's MLS group — it's proxied by a backend seat that reads
-  plaintext and calls the remote out-of-band. The hop is plain HTTPS today; it
-  can ride SLIM (SLIMRPC) via `agntcy/slim-a2a-python`, but that's point-to-point
-  RPC to a SLIM identity, still not room-group membership, and slima2a pins
-  `a2a-sdk==1.1.0` (HTTP-vs-SLIM decision: #726). Either way the hub sees
-  plaintext, so it is **NOT** E2E-from-the-hub. Remote auth is a bearer token
-  named by `a2a_auth_env` and resolved from the backend env — the secret never
-  lands in room memory.
+  plaintext and calls the remote out-of-band. **The hop is plain HTTPS (decided
+  default, #726):** `slima2a` (SLIMRPC transport) pins `a2a-sdk==1.1.0` exactly
+  while the backend tracks `1.1.2`, so adopting it would pull SQLAlchemy,
+  aiosqlite, and OpenTelemetry into the image — cost not justified yet. Reopen
+  #726 when the pin relaxes and a live SLIMRPC round-trip is proven. Even
+  SLIMRPC would be point-to-point RPC to a SLIM identity, still not room-group
+  membership. Either way the hub sees plaintext, so it is **NOT** E2E-from-the-hub.
+  Remote auth is a bearer token named by `a2a_auth_env` and resolved from the
+  backend env — the secret never lands in room memory.
 - **CI is fast on purpose; timing is reported, never enforced.** A PR run's
   critical path is ~95s, and that is a property worth defending — it erodes
   twenty seconds at a time, invisibly. The `timing` job reads the run's own job
@@ -446,7 +503,7 @@ frontend comes up with the stack; add `--profile metrics` for the collector.
 ### LLM config
 
 All containers get their LLM settings from `~/.mycelium/.env`, generated from
-`config.toml`. Set these once (the aligner's Pi brain uses them):
+`config.toml`. Set these once (the aligner's Pi session uses them):
 
 ```bash
 mycelium config set llm.model "anthropic/claude-sonnet-4-6"
@@ -493,3 +550,15 @@ mycelium config apply
   node (`MYCELIUM_SLIM_ENDPOINT`) and skip without one
 - Live-LLM tests guarded by `MYCELIUM_LLM_TESTS=1` (costs tokens)
 - Commit messages: imperative, concise, body for context if needed
+- **No design or planning documents in git.** Plans, design briefs, RFCs,
+  proposals, implementation write-ups and per-issue notes do not belong in this
+  repo — not under `docs/`, not beside the code they describe. They are stale the
+  week after they are written, and a reader who finds one cannot tell whether it
+  describes the code, a path not taken, or a plan nobody executed. The code, its
+  tests, and the PR that changed it are the record; anything that needs to argue
+  for a decision belongs in the PR body or the issue, where it stays attached to
+  the change it justifies. Don't open a PR that adds one, and don't create one as
+  a step toward doing the work — do the work.
+
+  What *does* belong here: current-state documentation (`mycelium-cli/src/mycelium/docs/`,
+  the READMEs, this file), runbooks, and the contracts under `contracts/`.

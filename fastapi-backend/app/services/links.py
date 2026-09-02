@@ -18,7 +18,7 @@ navigation.
 
 **Transclusion is opt-in on the target.** A memory is embeddable only when its
 frontmatter carries ``expandable: true``; pointing ``![[…]]`` at anything else
-is an integrity error, not a silent inclusion. Expansion is depth 1 — text
+is an integrity error, not a silent inclusion. Transclusion is depth 1 — text
 pulled from an expandable page is inserted verbatim, so a ``![[…]]`` inside it
 stays literal. That makes cycles structurally impossible and bounds how large
 an expanded body can get.
@@ -121,7 +121,7 @@ class ResolvedLink:
 
 
 @dataclass
-class Expansion:
+class TransclusionResult:
     """The outcome of one ``![[…]]`` marker in a body."""
 
     target: str
@@ -575,7 +575,7 @@ def expand(room_name: str, key: str) -> dict[str, Any]:
 
     body = source[1]
     targets = {e.key: e for e in load_index(room_name)}
-    expansions: list[Expansion] = []
+    expansions: list[TransclusionResult] = []
     code_ranges = _code_span_ranges(body)
 
     def replace(match: re.Match[str]) -> str:
@@ -587,7 +587,7 @@ def expand(room_name: str, key: str) -> dict[str, Any]:
         resolved = _resolve(link, targets)
         if not resolved.resolved:
             expansions.append(
-                Expansion(
+                TransclusionResult(
                     target=link.target, anchor=link.anchor, raw=match.group(0), error=resolved.error
                 )
             )
@@ -596,7 +596,7 @@ def expand(room_name: str, key: str) -> dict[str, Any]:
         target_file = read_memory_file(room_dir, link.target)
         if target_file is None:
             expansions.append(
-                Expansion(
+                TransclusionResult(
                     target=link.target,
                     anchor=link.anchor,
                     raw=match.group(0),
@@ -607,7 +607,9 @@ def expand(room_name: str, key: str) -> dict[str, Any]:
 
         text = section_of(target_file[1], link.anchor)
         expansions.append(
-            Expansion(target=link.target, anchor=link.anchor, raw=match.group(0), expanded=True)
+            TransclusionResult(
+                target=link.target, anchor=link.anchor, raw=match.group(0), expanded=True
+            )
         )
         return text
 

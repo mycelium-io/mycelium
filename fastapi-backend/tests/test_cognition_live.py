@@ -3,7 +3,7 @@
 
 """Live-LLM slice for the product's cognition: negotiate, then compile the work.
 
-``test_smoke.py`` with the fakes taken out of the cognition path — the brain is
+``test_smoke.py`` with the fakes taken out of the cognition path — the LLM session is
 a real ``pi`` session and the compiler a real one-shot ``pi`` turn, so this
 covers what only a live model can: structuring prose into issues, reading an
 agreement as an agreement, and emitting an owned checklist.
@@ -60,7 +60,7 @@ _SCRIPTS: dict[str, list[str]] = {
 class ScriptedAgents(FakeChannel):
     """Participants that answer each `@`-mention with the next line of a script.
 
-    ``FakeChannel``'s ``reply_conf`` mode answers with a stub. A live brain reads
+    ``FakeChannel``'s ``reply_conf`` mode answers with a stub. A live LLM session reads
     the prose — discovering issues from it and interpreting each reply as an
     offer — so a reply has to be a sentence somebody could have written.
     """
@@ -109,7 +109,7 @@ async def test_negotiation_converges_and_compiles_work(monkeypatch: pytest.Monke
     managed = FakeManaged(_ROOM, "mycelium", channel, persister)
     manager = FakeManager(managed, [*_SCRIPTS, "aligner"])
 
-    # Opening positions, on the transcript before the summon: what the brain
+    # Opening positions, on the transcript before the summon: what the LLM session
     # reads to discover the issues.
     for handle, script in _SCRIPTS.items():
         persister.log.record(
@@ -117,7 +117,7 @@ async def test_negotiation_converges_and_compiles_work(monkeypatch: pytest.Monke
             delivered_to=set(),
         )
 
-    # No brain_factory, so the engine builds its real Pi session.
+    # No llm_session_factory, so the engine builds its real Pi session.
     engine = aligner.AlignerEngine(
         manager,  # type: ignore[arg-type]
         handle="aligner",

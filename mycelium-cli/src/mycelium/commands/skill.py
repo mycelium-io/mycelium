@@ -23,6 +23,7 @@ import httpx
 import typer
 from rich.console import Console
 
+from mycelium import identity
 from mycelium.client import hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
@@ -122,7 +123,13 @@ def skill_set(
     description: str = typer.Option(
         "", "--desc", "-d", help="One-line summary shown in listings and the composer"
     ),
-    handle: str = typer.Option("cli-user", "--handle", "-H", help="Author handle"),
+    handle: str | None = typer.Option(
+        None,
+        "--as",
+        "--handle",
+        "-H",
+        help="Author to attribute this to (created_by). Defaults to your hub identity.",
+    ),
     tags: str | None = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
 ) -> None:
     """Create or upsert a skill in a room's skills/ namespace. Always upserts; version bumps."""
@@ -133,6 +140,7 @@ def skill_set(
 
     body_text = _resolve_body(body, file)
     room_name = _get_active_room(room)
+    handle = identity.resolve_actor(MyceliumConfig.load(), override=handle)
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
 
     item = SkillCreate(

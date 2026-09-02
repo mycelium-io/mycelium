@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Unit tests for human-in-the-room: @-parse + consent-gated invites.
+"""Unit tests for human-in-the-room: @-parse + the invite it raises.
 
-Node-free. The ``@``-parse is pure; the invite/consent flow is exercised against
-a :class:`RoomChannelManager` with a faked managed channel injected directly into
+Node-free. The ``@``-parse is pure; the invite path is exercised against a
+:class:`RoomChannelManager` with a faked managed channel injected directly into
 its registry, so no SLIM node (and no real invite handshake) is needed. The live
 wake-over-a-node slice lives in the CLI's
 ``test_human_mention_wakes_connector.py`` (guarded).
@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services import invites, room_channels
+from app.services import room_channels
 from app.services.persister import parse_mentions
 from app.services.room_channels import ManagedRoomChannel, RoomChannelManager
 
@@ -61,12 +61,22 @@ def _manager_with_channel(
     return manager, managed
 
 
+def _registered(monkeypatch: pytest.MonkeyPatch, *handles: str) -> None:
+    """Treat exactly ``handles`` as agents with a manifest in the room."""
+    monkeypatch.setattr(
+        room_channels, "_is_own_registered_agent", lambda _room, handle: handle in handles
+    )
+
+
 # ── publish_human: recipients + wake vs invite ────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_publish_human_maps_recipients_wakes_present_invites_absent():
+async def test_publish_human_maps_recipients_wakes_present_invites_absent(monkeypatch):
     manager, managed = _manager_with_channel(members={"agent-x"})
+    _registered(monkeypatch, "agent-x", "agent-y")
+    bg = MagicMock()
+    manager.invite_in_background = bg  # type: ignore[method-assign]
 
     result = await manager.publish_human(_ROOM, sender="avery", text="@agent-x @agent-y ship it")
 
@@ -85,9 +95,8 @@ async def test_publish_human_maps_recipients_wakes_present_invites_absent():
     # Persister ingests the message locally exactly once (transcript + bus feed).
     cast(MagicMock, managed.persister).ingest_local.assert_called_once()
 
-    # agent-x is present (a wake, no invite); agent-y is absent (consent invite).
-    assert [inv.agent for inv in result.invites] == ["agent-y"]
-    assert result.invites[0].status == invites.PENDING
+    # agent-x is present (a wake, no invite); agent-y is absent (invited).
+    bg.assert_called_once_with(_ROOM, "agent-y")
 
 
 @pytest.mark.asyncio
@@ -97,18 +106,20 @@ async def test_publish_human_returns_none_without_a_live_channel():
 
 
 @pytest.mark.asyncio
-async def test_publish_human_treats_await_lease_holder_as_present():
+async def test_publish_human_treats_await_lease_holder_as_present(monkeypatch):
     """A bare-CLI agent long-polling ``await`` holds a presence lease but no SLIM
     membership. An @-mention of it must be a wake (delivered via the transcript its
-    poll reads), not a consent invite."""
+    poll reads), not an invite."""
     manager, _managed = _manager_with_channel(members=set())
+    _registered(monkeypatch, "workpc")
     manager.refresh_lease(_ROOM, "workpc")  # an active `await` long-poll
+    bg = MagicMock()
+    manager.invite_in_background = bg  # type: ignore[method-assign]
 
     result = await manager.publish_human(_ROOM, sender="avery", text="@workpc ping")
 
     assert result is not None
-    assert result.invites == []  # present via lease → wake, no consent prompt
-    assert manager.pending_invites(_ROOM) == []
+    bg.assert_not_called()  # present via lease → wake, nothing to admit
 
 
 def test_status_members_include_await_leases():
@@ -121,91 +132,88 @@ def test_status_members_include_await_leases():
     assert set(entry["members"]) == {"agent-x", "workpc"}
 
 
-# ── consent: accept joins, decline does not ───────────────────────────────────
+# ── the manifest gate: only a room's own agents are admitted by a mention ─────
 
 
 @pytest.mark.asyncio
-async def test_absent_invite_accept_joins():
+async def test_mention_of_a_handle_without_a_manifest_admits_nobody(monkeypatch):
+    """Mentioning a human — including yourself — is addressing, not admitting.
+
+    A human in the browser holds neither SLIM membership nor an ``await`` lease, so
+    they are never "present"; without the manifest check every message naming one
+    (an agent replying to you, you naming yourself) would try to admit them.
+    """
     manager, _managed = _manager_with_channel(members=set())
-    invite_mock = AsyncMock(return_value=True)
-    manager.invite = invite_mock  # type: ignore[method-assign]
+    _registered(monkeypatch)  # nobody has a manifest
+    bg = MagicMock()
+    manager.invite_in_background = bg  # type: ignore[method-assign]
 
-    result = await manager.publish_human(_ROOM, sender="avery", text="@bob take a look")
+    result = await manager.publish_human(_ROOM, sender="avery", text="@avery @dana @typo look")
+
     assert result is not None
-    invite = result.invites[0]
-    assert manager.pending_invites(_ROOM) == [invite]
-    invite_mock.assert_not_awaited()  # consent gates the join
-
-    accepted = await manager.accept_invite(invite.id)
-    assert accepted is not None and accepted.status == invites.ACCEPTED
-    await asyncio.gather(*manager._tasks)  # accept schedules the SLIM invite off the request path
-    invite_mock.assert_awaited_once_with(_ROOM, "bob")
-    assert manager.pending_invites(_ROOM) == []  # no longer open
+    assert result.recipients == ["avery", "dana", "typo"]  # still addressed ...
+    bg.assert_not_called()  # ... and none of them admitted
+    assert manager._deferred_invites == {}
 
 
 @pytest.mark.asyncio
-async def test_absent_invite_decline_does_not_join():
+async def test_own_agent_mention_outside_episode_invites_immediately(monkeypatch):
+    """No active episode: a registered agent joins directly, off the request path."""
     manager, _managed = _manager_with_channel(members=set())
-    invite_mock = AsyncMock(return_value=True)
-    manager.invite = invite_mock  # type: ignore[method-assign]
+    _registered(monkeypatch, "mine")
+    bg = MagicMock()
+    manager.invite_in_background = bg  # type: ignore[method-assign]
 
-    result = await manager.publish_human(_ROOM, sender="avery", text="@carol ?")
+    result = await manager.publish_human(_ROOM, sender="avery", text="@mine hi")
+
     assert result is not None
-    invite = result.invites[0]
-
-    declined = manager.decline_invite(invite.id)
-    assert declined is not None and declined.status == invites.DECLINED
-    invite_mock.assert_not_awaited()
-    assert manager.pending_invites(_ROOM) == []
+    bg.assert_called_once_with(_ROOM, "mine")
+    assert manager._deferred_invites == {}  # nothing deferred
 
 
-# ── mid-episode: invite queued until the episode closes ───────────────────────
+# ── mid-episode: the invite is deferred until the episode closes ──────────────
 
 
 @pytest.mark.asyncio
-async def test_mid_episode_invite_is_queued_then_flushed_on_close():
+async def test_mid_episode_invite_is_deferred_then_flushed_on_close(monkeypatch):
+    """A registered agent @-mentioned while an episode is active must NOT be
+    invited directly — that membership change would abort the episode. It is held
+    and applied once the episode closes."""
     manager, _managed = _manager_with_channel(members={"agent-a"})
+    _registered(monkeypatch, "dave")
     invite_mock = AsyncMock(return_value=True)
     manager.invite = invite_mock  # type: ignore[method-assign]
+    bg = MagicMock()
+    manager.invite_in_background = bg  # type: ignore[method-assign]
     manager.open_episode(_ROOM, "urn:ioc:mycelium:episode:step6-room:e1")
 
     result = await manager.publish_human(_ROOM, sender="avery", text="@dave join us")
     assert result is not None
-    invite = result.invites[0]
-
-    accepted = await manager.accept_invite(invite.id)
-    assert accepted is not None and accepted.status == invites.QUEUED
-    invite_mock.assert_not_awaited()  # deferred, not applied mid-episode
+    bg.assert_not_called()  # not invited directly mid-episode ...
+    invite_mock.assert_not_awaited()
+    assert manager._deferred_invites[_ROOM] == {"dave"}  # ... held instead
 
     # Closing the episode drains the queue → the deferred invite is applied.
     await manager.close_episode(_ROOM)
     invite_mock.assert_awaited_once_with(_ROOM, "dave")
-    assert manager.pending_invites(_ROOM) == []
+    assert manager._deferred_invites == {}
 
 
-# ── in-room mention already present: no invite raised ─────────────────────────
-
-
-def test_request_invite_returns_none_for_present_member():
-    manager, _managed = _manager_with_channel(members={"agent-x"})
-    assert manager.request_invite(_ROOM, "agent-x", requested_by="avery") is None
-    assert manager.request_invite(_ROOM, room_channels.BACKEND_AGENT, requested_by="avery") is None
-
-
-# ── cross-host consent: the invitee is addressed by identity, not by host ──────
+# ── the invitee is addressed by identity, not by host ─────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_accept_invites_remote_agent_by_identity_only(monkeypatch):
-    """Cross-host consent: accepting resolves the invitee purely by its
-    ``workspace/room/agent`` SLIM identity — never a host or endpoint — so the
-    moderator invites the same member whether its connector runs on this machine
-    or another one on the shared node. This is why the consent → invite → join
-    path needs no new cross-machine mechanism: membership is identity-addressed.
+async def test_mention_invites_remote_agent_by_identity_only(monkeypatch):
+    """The invite resolves the agent purely by its ``workspace/room/agent`` SLIM
+    identity — never a host or endpoint — so the moderator invites the same member
+    whether its connector runs on this machine or another one on the shared node.
+    This is why the mention → invite → join path needs no cross-machine mechanism:
+    membership is identity-addressed.
     """
     manager, managed = _manager_with_channel(members=set())
+    _registered(monkeypatch, "remote-bob")
 
-    # Bindings aren't installed in the unit env; record the identity the invite
+    # Bindings aren't installed in the task env; record the identity the invite
     # would resolve and hand back an opaque token in place of a SLIM Name.
     resolved: list[tuple[str, str, str]] = []
 
@@ -219,12 +227,7 @@ async def test_accept_invites_remote_agent_by_identity_only(monkeypatch):
 
     result = await manager.publish_human(_ROOM, sender="avery", text="@remote-bob join us")
     assert result is not None
-    invite = result.invites[0]
-    assert invite.agent == "remote-bob"
-
-    accepted = await manager.accept_invite(invite.id)
-    assert accepted is not None and accepted.status == invites.ACCEPTED
-    await asyncio.gather(*manager._tasks)  # the invite now runs off the request path
+    await asyncio.gather(*manager._tasks)  # the invite runs off the request path
 
     # Addressed by identity only (no host/endpoint) — host-independent membership.
     assert resolved == [("mycelium", _ROOM, "remote-bob")]
@@ -232,71 +235,24 @@ async def test_accept_invites_remote_agent_by_identity_only(monkeypatch):
     assert "remote-bob" in managed.members
 
 
-# ── own agent: mid-episode invite must queue, not abort the episode ────────────
+# ── episode abort: recorded locally + deferred invites flushed ─────────────────
 
 
 @pytest.mark.asyncio
-async def test_own_agent_mention_outside_episode_invites_immediately(monkeypatch):
-    """No active episode: a user's own registered agent joins directly (no prompt,
-    no queue) — the pre-authorized fast path."""
-    manager, _managed = _manager_with_channel(members=set())
-    monkeypatch.setattr(room_channels, "_is_own_registered_agent", lambda *_: True)
-    bg = MagicMock()
-    manager.invite_in_background = bg  # type: ignore[method-assign]
-
-    result = await manager.publish_human(_ROOM, sender="avery", text="@mine hi")
-
-    assert result is not None
-    assert result.invites == []  # own agent → no consent prompt
-    bg.assert_called_once_with(_ROOM, "mine")
-    assert manager.pending_invites(_ROOM) == []  # nothing deferred
-
-
-@pytest.mark.asyncio
-async def test_own_agent_mention_mid_episode_is_queued_not_invited(monkeypatch):
-    """A user's own agent, @-mentioned while an episode is active, must NOT be
-    invited directly (that membership change would abort the episode). It is queued
-    like a consent accept and applied once the episode closes."""
-    manager, _managed = _manager_with_channel(members={"agent-a"})
-    monkeypatch.setattr(room_channels, "_is_own_registered_agent", lambda *_: True)
-    invite_mock = AsyncMock(return_value=True)
-    manager.invite = invite_mock  # type: ignore[method-assign]
-    bg = MagicMock()
-    manager.invite_in_background = bg  # type: ignore[method-assign]
-    manager.open_episode(_ROOM, "urn:ioc:mycelium:episode:step6-room:e1")
-
-    result = await manager.publish_human(_ROOM, sender="avery", text="@mine come help")
-
-    assert result is not None
-    assert result.invites == []  # own agent → no consent prompt surfaced
-    bg.assert_not_called()  # not invited directly mid-episode ...
-    invite_mock.assert_not_awaited()
-    assert [inv.agent for inv in manager.pending_invites(_ROOM)] == ["mine"]  # ... queued
-
-    # Closing the episode drains the queue → the deferred own-agent invite lands.
-    await manager.close_episode(_ROOM)
-    invite_mock.assert_awaited_once_with(_ROOM, "mine")
-
-
-# ── episode abort: recorded locally + queued invites flushed ───────────────────
-
-
-@pytest.mark.asyncio
-async def test_episode_abort_ingests_locally_and_flushes_queue():
+async def test_episode_abort_ingests_locally_and_flushes_queue(monkeypatch):
     """A mid-episode membership change aborts the episode: the abort is broadcast
     AND ingested locally (so the transcript/UI see it, independent of SLIM
-    loopback), and invites queued during the episode are applied once it closes."""
+    loopback), and invites deferred during the episode are applied once it closes."""
     manager, managed = _manager_with_channel(members={"agent-a", "agent-b"})
+    _registered(monkeypatch, "dave")
     invite_mock = AsyncMock(return_value=True)
     manager.invite = invite_mock  # type: ignore[method-assign]
     manager.open_episode(_ROOM, "urn:ioc:mycelium:episode:step6-room:e1")
 
-    # A consent invite accepted mid-episode is deferred (queued).
+    # A mention mid-episode is deferred, not applied.
     result = await manager.publish_human(_ROOM, sender="avery", text="@dave join")
     assert result is not None
-    invite = result.invites[0]
-    await manager.accept_invite(invite.id)
-    assert invite.status == invites.QUEUED
+    assert manager._deferred_invites[_ROOM] == {"dave"}
 
     # A member drops → membership changed under the episode → abort.
     managed.members.discard("agent-b")
@@ -310,6 +266,6 @@ async def test_episode_abort_ingests_locally_and_flushes_queue():
     last_ingested = cast(MagicMock, managed.persister).ingest_local.call_args.args[0]
     assert last_ingested.header.kind.value == "commit"
     assert last_ingested.header.subkind == "rejected"
-    # The queued invite is applied now the episode is closed.
+    # The deferred invite is applied now the episode is closed.
     invite_mock.assert_awaited_once_with(_ROOM, "dave")
     assert not managed.lifecycle.active

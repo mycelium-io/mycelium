@@ -43,20 +43,42 @@ from mycelium.error_handler import print_error
 _TERMINAL_STATUSES = frozenset({401, 403})
 
 
-def _await_once(config: MyceliumConfig, room_name: str, handle: str, timeout: int) -> dict | None:
+def _await_once(
+    config: MyceliumConfig,
+    room_name: str,
+    handle: str,
+    timeout: int,
+    episode: str | None = None,
+) -> dict | None:
     """One long-poll. Returns the turn dict, or ``None`` on timeout."""
     path = f"/api/rooms/{room_name}/await"
     # The server blocks up to `timeout`; give the client a little more headroom
     # (or no cap when waiting indefinitely).
     client_timeout = float(timeout) + 15.0 if timeout > 0 else None
+    params: dict[str, str | int] = {"handle": handle, "timeout": timeout}
+    if episode:
+        params["episode"] = episode
     with hub_client(config, timeout=client_timeout, handle=handle) as client:
-        resp = client.get(path, params={"handle": handle, "timeout": timeout})
+        resp = client.get(path, params=params)
     resp.raise_for_status()
     data = resp.json()
     return data if "prompt" in data else None
 
 
-def _renew_leases(config: MyceliumConfig, room_name: str, handle: str) -> list[str]:
+def _task_episode(room_name: str, row_id: str) -> str:
+    """The thread inside a board row, resolved once.
+
+    Resolved here rather than per poll: a resident loop that re-read the board
+    every few seconds to answer a question whose answer cannot change (a task is
+    bound to one thread for its life) would spend six hub reads a minute to
+    learn the same URN.
+    """
+    from mycelium.commands.board import _thread
+
+    return _thread(room_name, row_id)[1]
+
+
+def _renew_assignments(config: MyceliumConfig, room_name: str, handle: str) -> list[str]:
     """Tell the hub this handle is still here, on behalf of every row it holds.
 
     This is what makes a claim a lease rather than a fact: the loop is the thing
@@ -66,7 +88,7 @@ def _renew_leases(config: MyceliumConfig, room_name: str, handle: str) -> list[s
     broadcast nothing.
     """
     with hub_client(config, timeout=15, handle=handle) as client:
-        resp = client.post(f"/api/rooms/{room_name}/leases/renew", json={"handle": handle})
+        resp = client.post(f"/api/rooms/{room_name}/assignments/renew", json={"handle": handle})
     resp.raise_for_status()
     return [row.get("key", "") for row in resp.json().get("renewed", [])]
 
@@ -80,15 +102,15 @@ def _await_lease(
     if since is not None:
         params["since"] = since
     with hub_client(config, timeout=client_timeout) as client:
-        resp = client.get(f"/api/rooms/{room_name}/leases/await", params=params)
+        resp = client.get(f"/api/rooms/{room_name}/assignments/await", params=params)
     resp.raise_for_status()
     return resp.json()
 
 
 def _print_lease(state: dict) -> None:
     holder = f"@{state['owner']}" if state.get("owner") else "nobody"
-    line = f"  ⟫  {state.get('key')}: {state.get('custody')} by {holder}"
-    if note := state.get("custody_note"):
+    line = f"  ⟫  {state.get('key')}: {state.get('assignment')} by {holder}"
+    if note := state.get("assignment_note"):
         line += f" — {note}"
     typer.secho(line, fg=typer.colors.CYAN)
 
@@ -154,18 +176,24 @@ def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:
 
 
 @doc_ref(
-    usage="mycelium await --room <room> [--handle <handle> | --lease <key>] [--loop] [--exec CMD] [--timeout N] [--json]",
+    usage="mycelium await --room <room> [--handle <handle> | --lease <key>] [--task <id>] [--loop] [--exec CMD] [--timeout N] [--json]",
     desc="Long-poll a room until a message is addressed to the handle — or until a named lease changes hands.",
     group="other",
 )
 def await_room(
     ctx: typer.Context,
     room: str | None = typer.Option(None, "--room", "-r", help="Room (default: active room)"),
-    handle: str = typer.Option("", "--handle", help="Handle to participate as"),
+    handle: str = typer.Option("", "--as", "--handle", "-H", help="Handle to participate as"),
     lease: str | None = typer.Option(
         None,
         "--lease",
         help="Wake on this lease's transitions instead of on messages (e.g. work/auth-spike)",
+    ),
+    task: str | None = typer.Option(
+        None,
+        "--task",
+        "-u",
+        help="Wake only on one board row's thread (e.g. t3, work/auth) instead of the whole room",
     ),
     timeout: int = typer.Option(
         0, "--timeout", "-t", help="Seconds to wait before giving up (0 = wait indefinitely)"
@@ -195,7 +223,13 @@ def await_room(
     This is the supported way to keep a turn-based agent (Claude Code, Cursor) woken
     without writing your own service.
 
-    With ``--lease`` it waits on one row's custody instead: claimed, lapsed,
+    With ``--task`` it narrows the wake to one board row's thread: the handle is
+    woken only when that task moves, and mentions of it elsewhere in the room
+    keep their place in its own queue rather than being consumed. Only the wake
+    narrows — the presence lease stays room-scoped, because a member of a thread
+    is a member of the room.
+
+    With ``--lease`` it waits on one row's assignment instead: claimed, lapsed,
     released, resolved. That is a different subscription on purpose — waking on
     channel traffic to follow a handoff means a dozen unrelated messages wake you
     for nothing, while a lease's transitions are exactly the events a handoff is
@@ -206,6 +240,7 @@ def await_room(
         mycelium await --room design --handle me
         mycelium await --room design --handle me --json --timeout 120
         mycelium await --room design --handle bot --loop --exec ./drive-agent.sh
+        mycelium await --room design --handle me --task t3 --loop
         mycelium await --room design --lease work/auth-spike --loop
     """
     try:
@@ -220,15 +255,20 @@ def await_room(
             typer.secho("  ⟫  await needs --handle (or --lease <key>)", fg=typer.colors.RED)
             raise typer.Exit(2)
 
+        # Resolved before the first poll, so a row id that names nothing is
+        # refused now rather than after an hour of waiting on a thread that
+        # was never going to speak.
+        episode = _task_episode(room_name, task) if task else None
+
         if loop:
-            _await_loop(config, room_name, handle, timeout, exec_cmd, json_output)
+            _await_loop(config, room_name, handle, timeout, exec_cmd, json_output, episode)
             return
 
         if exec_cmd:
             typer.secho("  ⟫  --exec requires --loop", fg=typer.colors.RED)
             raise typer.Exit(2)
 
-        data = _await_once(config, room_name, handle, timeout)
+        data = _await_once(config, room_name, handle, timeout, episode)
         if data is None:  # timed out; backend returned {"message": null}
             if json_output:
                 typer.echo(
@@ -259,6 +299,7 @@ def _await_loop(
     timeout: int,
     exec_cmd: str | None,
     json_output: bool,
+    episode: str | None = None,
 ) -> None:
     """Resident-runner loop: re-await forever, dispatching each turn.
 
@@ -272,7 +313,9 @@ def _await_loop(
 
     if not json_output:
         typer.secho(
-            f"  ⟫  @{handle} resident in {room_name}, awaiting"
+            f"  ⟫  @{handle} resident in {room_name}"
+            + (f" thread {episode.rsplit(':', 1)[-1]}" if episode else "")
+            + ", awaiting"
             + (f", driving `{exec_cmd}` per turn" if exec_cmd else "")
             + " (Ctrl-C to stop)",
             fg=typer.colors.CYAN,
@@ -281,14 +324,14 @@ def _await_loop(
         try:
             # Before waiting again, say we are still here. A resident agent's
             # claims are kept alive by the same loop that keeps it woken, so
-            # residency and custody stop being two things to remember.
-            renewed = _renew_leases(config, room_name, handle)
+            # residency and assignment stop being two things to remember.
+            renewed = _renew_assignments(config, room_name, handle)
             if renewed and not json_output:
                 typer.secho(f"  ⟫  renewed {', '.join(renewed)}", fg=typer.colors.BLUE)
         except Exception as e:  # noqa: BLE001 - a lease blip must not drop residency
             typer.secho(f"  ⟫  renew error: {e}; continuing", fg=typer.colors.YELLOW)
         try:
-            data = _await_once(config, room_name, handle, timeout)
+            data = _await_once(config, room_name, handle, timeout, episode)
         except KeyboardInterrupt:
             typer.echo("\n  [Stopped]")
             return
@@ -321,7 +364,7 @@ def _await_loop(
 
 
 @doc_ref(
-    usage='mycelium respond --room <room> --handle <handle> "<text>"',
+    usage='mycelium respond --room <room> --handle <handle> [--task <id>] "<text>"',
     desc="Publish a reply as the handle; the backend records it as a position for the aligner.",
     group="other",
 )
@@ -329,7 +372,15 @@ def respond(
     ctx: typer.Context,
     text: str = typer.Argument(..., help="The reply / position text to publish"),
     room: str | None = typer.Option(None, "--room", "-r", help="Room (default: active room)"),
-    handle: str = typer.Option(..., "--handle", help="Handle to publish the reply as"),
+    handle: str = typer.Option(
+        ..., "--as", "--handle", "-H", help="Handle to publish the reply as"
+    ),
+    task: str | None = typer.Option(
+        None,
+        "--task",
+        "-u",
+        help="Reply into one board row's thread (e.g. t3, work/auth) rather than where you were asked",
+    ),
     json_output: bool = typer.Option(False, "--json", help="Emit the result as JSON for agents"),
 ) -> None:
     """Publish the caller's reply; the backend threads it onto the last awaited turn.
@@ -338,22 +389,30 @@ def respond(
     `[[mycelium: confidence=0.85 stance=accept]]`); the backend lifts it onto the L9
     payload so the aligner can score it, and strips it from the posted prose.
 
+    Without ``--task`` a reply lands where the turn that woke you was asked, which
+    is what keeps a resident loop threaded without tracking URNs. Name a task to
+    answer somewhere else — and expect the causal edge back to that turn to be
+    dropped, because a reply redirected into another thread is not an answer to it.
+
     Examples:
         mycelium respond --room design --handle me "I can move to 30% if the timeline slips."
+        mycelium respond --room design --handle me --task t3 "claiming this; starting on the schema."
     """
     try:
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
+        body: dict[str, str] = {"handle": handle, "text": text}
+        if task:
+            body["episode"] = _task_episode(room_name, task)
         with hub_client(config, timeout=30.0, handle=handle) as client:
-            resp = client.post(
-                f"/api/rooms/{room_name}/reply", json={"handle": handle, "text": text}
-            )
+            resp = client.post(f"/api/rooms/{room_name}/reply", json=body)
         resp.raise_for_status()
         data = resp.json()
         if json_output:
             typer.echo(json_module.dumps(data))
         else:
-            typer.secho(f"  ⟫  @{handle} replied in {room_name}", fg=typer.colors.GREEN)
+            where = f"{room_name}/{task}" if task else room_name
+            typer.secho(f"  ⟫  @{handle} replied in {where}", fg=typer.colors.GREEN)
     except KeyboardInterrupt:
         typer.echo("\n  [Stopped]")
     except Exception as e:

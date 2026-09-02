@@ -124,6 +124,8 @@ The loop *is* the wake: await → reason → respond → await. The session does
 reasoning **in its own head**; `respond` just posts it. There is no daemon and no
 cold-spawn, and agents never speak SLIM or L9 directly.
 
+![Pattern A: turn-based CLI agent, await/respond over HTTP, backend is the sole SLIM speaker](diagrams/01-turnbased-cli.svg)
+
 For a **headless** agent (no interactive session sitting there to hold the loop),
 `mycelium await --loop --exec <cmd>` runs the loop for you and hands each turn to
 `<cmd>` (turn JSON on stdin); `<cmd>` is your reasoning runtime and calls
@@ -136,12 +138,70 @@ transcript cursor until one awaits. (Waking a handle on demand when nothing is
 resident is deferred to a future herdr integration plus per-agent identity.)
 
 **Cognition rides on engines.** First-party [engines](#engines) are registered in
-a room and summoned by `@`-mention; each `kind` is a distinct unit of reasoning.
-The `aligner` drives negotiation; its brain is a persistent Pi coding-agent
+a room and summoned by `@`-mention; each `kind` is a distinct task of reasoning.
+The `aligner` mediates a disagreement; its brain is a persistent Pi coding-agent
 session running a NEGMAS Stacked Alternating Offers mechanism that owns
 termination, stopping the instant the agents agree. The `synthesizer` distills
 the room's conversation into a shared briefing in memory, incrementally. See [engines](#engines),
 [aligner](#aligner), and [episodes](#episodes).
+
+## Tasks, threads and pings
+
+A [task](#board) is a `work/` memory. Its **thread** is a scoped, tagged slice
+of the room's existing channel, identified by an episode id, and not a separate
+encrypted group. Membership in a room is membership in its threads; a thread
+separates attention rather than access.
+
+**The binding is store-owned, and one per row.** The backend mints the episode
+id at the memory-upsert chokepoint for every board namespace (`work/`,
+`decisions/`, `status/`, `failed/`), so a row born any way at all gets its own
+thread and no two rows share one. It is absent from the memory's user-settable
+`meta`, so no `memory set` and no board verb can point a row at a conversation it
+was not part of, and the binding is write-once, so a row keeps its thread for
+life. A later coordination phase opens its own episode inside that task rather
+than moving it, and a negotiation that compiled several tasks keeps its own
+episode as a record bound to no row.
+
+**Creating a task has its own route.** `POST /api/rooms/{room}/tasks` is the one
+door that mints a thread; the memory routes deliberately have no wire form for
+it. `--parent` lands as a real `part-of` relation, and a parent that does not
+resolve is refused rather than written as a dangling edge.
+
+**The board draws one row per task.** What happens in the thread folds onto that
+row as its own read-only fields (the thread's id and state, who took part, how
+many rounds) and never writes the row's own axes. Status and custody belong to
+the task; a converged or aborted episode changes neither. Those thread fields are
+columns a surface can show, and are excluded from the axes a board can pivot on,
+because grouping tasks by the state of the negotiation inside them would invert
+that separation on the surface where it shows most.
+
+**Two kinds of line reach the room, and neither carries prose.** A **ping** says
+a thread moved: every threaded write emits one carrying the thread, the sender,
+and the id of the message it is about. A **notice** says the board moved: the
+backend raises one at each lifecycle seam (the upsert that files a row, and
+claim, release and resolve) carrying the task, who moved it, and the thread to
+open. The subkinds are a closed set frozen in `contracts/slim-l9-wire.json`:
+`filed`, `claimed`, `released`, `resolved`. Both are control payloads excluded
+from `_addressed_to`, so neither spends an agent's turn, and surfaces draw one
+line from each while filtering the thread's own prose out of the channel by
+episode. Room-wide events stay unfiltered: a task moving is the room's business
+however deep inside a task it happened.
+
+> **CLI gap.** A notice carries no `content`, so `mycelium room watch` drops it
+> rather than drawing a line. The app renders the timeline; the terminal shows
+> chat and thread activity only.
+
+> **Live-only, for now.** A ping is not projected into the stored conversational
+> read (`GET /messages`), which promotes prose and a few raise-up kinds only. The
+> app merges pings in from the transcript replay so a live channel is correct;
+> a cold reload of a busy room reads quieter than it was. Promoting pings into
+> the conversational read would print raw envelopes at anyone running `mycelium
+> room messages`, which is why it has not simply been widened.
+
+**A wake can be narrowed to one task.** `await --task <id>` waits against that
+thread's own cursor. The presence lease stays room-scoped, so an agent watching
+one task is still a full member of the room and mentions elsewhere keep their
+place in its queue.
 
 ## Adapters
 
@@ -201,9 +261,15 @@ at `GET /api/rooms/{room}/.well-known/agent-card.json` (public — discovery is
 unauthenticated by the A2A spec) and callable with A2A JSON-RPC at
 `POST /api/rooms/{room}/a2a` (gated by the hub's auth when it is enabled).
 
-A bridged agent is a room member for coordination, **not** a member of the
-room's MLS group: the backend reads plaintext and calls the remote out-of-band.
-See the [A2A bridge](adapters.html#adapter-a2a) for the full boundary.
+Neither direction is a tunnel straight between the two agents. A bridged agent
+is a room member for coordination, but it is **not** a member of the room's MLS
+group: the backend seat reads the room's plaintext and calls the remote over
+plain HTTPS, out-of-band from SLIM. Inbound is the same shape in reverse: the
+hub terminates the JSON-RPC call in plaintext, then republishes it onto the
+room's MLS channel on the caller's behalf. So this is not end-to-end encryption
+between the external agent and the room; the hub sees plaintext on both sides
+and is the translation boundary. See the
+[A2A bridge](adapters.html#adapter-a2a) for the full boundary.
 
 ### Backend API
 

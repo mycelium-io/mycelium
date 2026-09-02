@@ -90,6 +90,67 @@ def test_write_env_file_preserves_secret_on_reapply(isolated_home) -> None:
     assert second_secret == first_secret
 
 
+def test_spoke_write_env_file_preserves_existing_secret(isolated_home) -> None:
+    """write_env_file on a non-localhost hub must NOT blank MYCELIUM_SLIM_MASTER_SECRET.
+
+    Regression for the bug where _is_hub_config skipped ensure_slim_master_secret
+    entirely, so a secret in .env was never imported and generate_env_file rendered
+    MYCELIUM_SLIM_MASTER_SECRET= (empty). Hubs at LAN IPs / behind reverse proxies
+    hit this path.
+    """
+    myc = isolated_home / ".mycelium"
+    myc.mkdir(parents=True)
+    config_path = myc / "config.toml"
+    env_path = myc / ".env"
+
+    env_path.write_text("MYCELIUM_SLIM_MASTER_SECRET=existing-spoke-secret-value-0123456789ab\n")
+
+    cfg = MyceliumConfig()
+    cfg.server.api_url = "http://192.168.1.20:8000"
+    cfg.save(config_path)
+
+    _, assigned = write_env_file(cfg, env_path=env_path)
+    assert assigned is True  # secret imported from .env
+    rendered = _parse_env(env_path.read_text(encoding="utf-8"))
+    assert rendered["MYCELIUM_SLIM_MASTER_SECRET"] == "existing-spoke-secret-value-0123456789ab"
+    # config.toml also updated
+    assert (
+        MyceliumConfig.load(config_path).slim.master_secret
+        == "existing-spoke-secret-value-0123456789ab"
+    )
+
+
+def test_spoke_write_env_file_does_not_generate_new_secret(isolated_home) -> None:
+    """On a spoke with no prior secret, write_env_file must not generate one.
+
+    A spoke has no SLIM node; minting a secret that diverges from the hub's
+    shared PSK would silently break channel-key derivation on any hub that later
+    reads the same .env.
+    """
+    myc = isolated_home / ".mycelium"
+    myc.mkdir(parents=True)
+    config_path = myc / "config.toml"
+
+    cfg = MyceliumConfig()
+    cfg.server.api_url = "http://192.168.1.20:8000"
+    cfg.save(config_path)
+
+    _, assigned = write_env_file(cfg, env_path=myc / ".env")
+    assert assigned is False
+    rendered = _parse_env((myc / ".env").read_text(encoding="utf-8"))
+    # Line exists but must be empty — not a generated secret
+    assert rendered.get("MYCELIUM_SLIM_MASTER_SECRET", "") == ""
+
+
+def test_ensure_no_generate_when_allow_generate_false(isolated_home) -> None:
+    """allow_generate=False must not mint a new secret."""
+    cfg = MyceliumConfig()
+    assert cfg.slim.master_secret is None
+    result = ensure_slim_master_secret(cfg, allow_generate=False)
+    assert result is False
+    assert cfg.slim.master_secret is None
+
+
 def test_save_locks_secret_bearing_files_to_owner_only(isolated_home) -> None:
     """config.toml + config.json hold slim.master_secret / llm.api_key, so save()
     must write them 0600, not the default umask (often 0644)."""

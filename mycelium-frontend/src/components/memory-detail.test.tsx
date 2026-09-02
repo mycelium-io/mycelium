@@ -54,67 +54,18 @@ describe("MemoryDetail", () => {
     expect(related.getByRole("button", { name: "plan/title" })).toBeInTheDocument();
   });
 
-  it("shows integrity banner when this memory has broken outbound links", async () => {
-    render(
-      <MemoryDetail
-        memory={memory}
-        roomName="demo"
-        variant="page"
-        integrity={{
-          broken: [
-            {
-              source: memory.key,
-              target: "gone",
-              kind: "wikilink",
-              raw: "[[gone]]",
-              resolved: false,
-            },
-          ],
-          orphans: [],
-          roots: [],
-          leaves: [],
-          total_memories: 1,
-          total_links: 1,
-        }}
-      />,
-    );
-    expect(await screen.findByRole("status")).toHaveTextContent(/broken outbound link/i);
-  });
-
-  it("shows the integrity banner on the rail (default) variant too", async () => {
-    render(
-      <MemoryDetail
-        memory={memory}
-        roomName="demo"
-        integrity={{
-          broken: [],
-          orphans: [memory.key],
-          roots: [],
-          leaves: [],
-          total_memories: 1,
-          total_links: 0,
-        }}
-      />,
-    );
-    expect(await screen.findByRole("status")).toHaveTextContent(/orphan/i);
-  });
-
-  it("shows a leaf banner when nothing links out from this memory", async () => {
-    render(
-      <MemoryDetail
-        memory={memory}
-        roomName="demo"
-        integrity={{
-          broken: [],
-          orphans: [],
-          roots: [],
-          leaves: [memory.key],
-          total_memories: 2,
-          total_links: 1,
-        }}
-      />,
-    );
-    expect(await screen.findByRole("status")).toHaveTextContent(/leaf/i);
+  it("draws no warning banner over a memory nothing links to", async () => {
+    // An unlinked memory is the normal state of a note somebody just wrote, and
+    // a broken link is already marked on the link itself — in the body and in
+    // the Links list. Neither earns a warning banner over the body.
+    vi.mocked(fetchMemoryLinks).mockResolvedValue({
+      key: memory.key,
+      outbound: [],
+      backlinks: [],
+    });
+    render(<MemoryDetail memory={memory} roomName="demo" variant="page" />);
+    expect(await screen.findByText("Version")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("uses renderedBody in Rendered mode", async () => {

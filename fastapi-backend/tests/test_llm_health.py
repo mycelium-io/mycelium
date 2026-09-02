@@ -296,7 +296,7 @@ async def test_probe_completion_ok():
 
 
 async def test_probe_completion_missing_binary():
-    """A missing pi binary (PiBrainError) surfaces as error with an install hint."""
+    """A missing pi binary (PiSessionError) surfaces as error with an install hint."""
     with patch("app.services.llm_health.settings") as mock_settings:
         mock_settings.LLM_API_KEY = "sk-ant-test1234abcdef"
         mock_settings.LLM_BASE_URL = None

@@ -177,6 +177,12 @@ export interface Memory {
   expandable?: boolean;
   /** Frontmatter the store doesn't own — whatever the writer put there. */
   meta?: Record<string, unknown> | null;
+  /**
+   * The episode URN this row's coordination happens in — what makes a task of
+   * work a thread. Store-owned: minted by the backend, so it is absent from
+   * `meta` and cannot be set by a write.
+   */
+  episode?: string | null;
 }
 
 /** Shape sent to POST /api/rooms/{room}/memory to create or upsert a memory. */
@@ -208,34 +214,34 @@ export async function createMemories(
   });
 }
 
-// ── Custody leases ────────────────────────────────────────────────────────────
+// ── Assignments ──────────────────────────────────────────────────────────────────
 
-/** One row's custody, as `/rooms/{room}/leases/*` answers it. */
-export interface LeaseState {
+/** One row's assignment, as `/rooms/{room}/assignments/*` answers it. */
+export interface AssignmentState {
   key: string;
-  custody: string;
+  assignment: string;
   owner: string | null;
   claimed_at: string | null;
   ttl_minutes: number | null;
   freshness: string | null;
   version: number | null;
-  custody_note: string | null;
-  custody_note_by: string | null;
+  assignment_note: string | null;
+  assignment_note_by: string | null;
 }
 
 /**
- * Take, hand back, or close out custody of a `work/` row.
+ * Take, hand back, or close out assignment of a `work/` row.
  *
  * The write lands as frontmatter through the room's canonical memory upsert, so
  * a claim made from the browser is the same versioned, indexed change a claim
  * made from the CLI is — there is no second store for what the board knows.
  */
-export async function writeLease(
+export async function writeAssignment(
   roomName: string,
   action: "claim" | "release" | "resolve",
   body: { key: string; handle: string; ttl_minutes?: number; note?: string },
-): Promise<LeaseState> {
-  return apiFetch<LeaseState>(`/api/rooms/${roomName}/leases/${action}`, {
+): Promise<AssignmentState> {
+  return apiFetch<AssignmentState>(`/api/rooms/${roomName}/assignments/${action}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -249,7 +255,7 @@ export interface FieldState {
 }
 
 /**
- * Put fields on a row — the write behind every board verb that is not custody.
+ * Put fields on a row — the write behind every board action that is not assignment.
  *
  * The same upsert a `memory set --meta` goes through, so a status changed by
  * dragging a card is the same versioned, indexed, broadcast change an agent
@@ -356,39 +362,6 @@ export async function fetchMemoryLinks(roomName: string, key: string): Promise<M
   return { key, outbound: data.outbound ?? [], backlinks: data.backlinks ?? [] };
 }
 
-export interface BrokenLink extends MemoryLink {
-  source: string;
-}
-
-export interface MemoryLinksIntegrity {
-  broken: BrokenLink[];
-  /** Fully isolated: inbound === 0 AND outbound === 0. */
-  orphans: string[];
-  /** Entry points: inbound === 0 AND outbound > 0. Nothing links here yet. */
-  roots: string[];
-  /** Dead ends: inbound > 0 AND outbound === 0. Links arrive but go no further. */
-  leaves: string[];
-  total_memories: number;
-  total_links: number;
-}
-
-const EMPTY_INTEGRITY: MemoryLinksIntegrity = {
-  broken: [],
-  orphans: [],
-  roots: [],
-  leaves: [],
-  total_memories: 0,
-  total_links: 0,
-};
-
-/** Room-wide link integrity — broken edges, orphans, roots, and leaves. Degrades to empty. */
-export async function fetchMemoryIntegrity(roomName: string): Promise<MemoryLinksIntegrity> {
-  return apiFetch<MemoryLinksIntegrity>(`/api/rooms/${roomName}/links/integrity`, {
-    cache: "no-store",
-    fallback: EMPTY_INTEGRITY,
-  });
-}
-
 export interface MemoryExpanded {
   key: string;
   rendered: string;
@@ -411,10 +384,10 @@ export async function fetchMemoryExpanded(roomName: string, key: string): Promis
 // ── Memory graph ─────────────────────────────────────────────────────────────
 // The whole room as a graph — one node per memory, one edge per link — for the
 // full-page graph view (#599). A thin read over the same link index that backs
-// `fetchMemoryLinks`/integrity, so graph-role facts (orphan = `inbound===0 &&
+// `fetchMemoryLinks`, so graph-role facts (orphan = `inbound===0 &&
 // outbound===0`, root = `inbound===0 && outbound>0`, leaf = `inbound>0 &&
 // outbound===0`) and broken-link facts (`resolved === false`) are derived
-// client-side from this one payload instead of a second integrity fetch.
+// client-side from this one payload.
 
 export interface MemoryGraphNode {
   key: string;
@@ -519,15 +492,38 @@ export interface MessagesResponse {
 const isMessagesResponse = (d: unknown): d is MessagesResponse =>
   !!d && typeof d === "object" && Array.isArray((d as { messages?: unknown }).messages);
 
-export async function fetchMessages(roomName: string, limit?: number): Promise<MessagesResponse> {
-  const url = limit
-    ? `/api/rooms/${roomName}/messages?limit=${limit}`
-    : `/api/rooms/${roomName}/messages`;
-  return apiFetch<MessagesResponse>(url, {
-    cache: "no-store",
-    fallback: { messages: [] },
-    guard: isMessagesResponse,
-  });
+/** Narrow a read to one conversation. Without it the room answers with all of
+ *  them — its own and every thread inside it. */
+export interface MessageQuery {
+  /** An episode URN: a task's thread, or the room's own `live` URN. */
+  episode?: string | null;
+  /**
+   * The backward cursor: only messages created strictly before this stamp.
+   * A page defined relative to content rather than position, so walking back
+   * through a room does not shift under messages arriving live — which is
+   * exactly what an offset does.
+   */
+  before?: string | null;
+}
+
+export async function fetchMessages(
+  roomName: string,
+  limit?: number,
+  query: MessageQuery = {},
+): Promise<MessagesResponse> {
+  const params = new URLSearchParams();
+  if (limit) params.set("limit", String(limit));
+  if (query.episode) params.set("episode", query.episode);
+  if (query.before) params.set("before", query.before);
+  const qs = params.toString();
+  return apiFetch<MessagesResponse>(
+    `/api/rooms/${roomName}/messages${qs ? `?${qs}` : ""}`,
+    {
+      cache: "no-store",
+      fallback: { messages: [] },
+      guard: isMessagesResponse,
+    },
+  );
 }
 
 /** The room's L9 wire history (transcript replay), for backfilling the live
@@ -536,61 +532,34 @@ export async function fetchMessages(roomName: string, limit?: number): Promise<M
 export async function fetchL9History(
   roomName: string,
   limit = 200,
+  before?: string | null,
 ): Promise<Record<string, unknown>[]> {
-  return apiFetch<Record<string, unknown>[]>(`/api/rooms/${roomName}/messages/l9?limit=${limit}`, {
-    cache: "no-store",
-    fallback: [],
-    guard: isArray as (d: unknown) => d is Record<string, unknown>[],
-  });
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (before) params.set("before", before);
+  return apiFetch<Record<string, unknown>[]>(
+    `/api/rooms/${roomName}/messages/l9?${params.toString()}`,
+    {
+      cache: "no-store",
+      fallback: [],
+      guard: isArray as (d: unknown) => d is Record<string, unknown>[],
+    },
+  );
 }
 
 export async function sendRoomMessage(
   roomName: string,
-  data: { sender_handle: string; content: string; message_type?: string },
+  data: {
+    sender_handle: string;
+    content: string;
+    message_type?: string;
+    /** The thread this lands in. Omitted, it lands in the room itself. */
+    episode?: string | null;
+  },
 ): Promise<RoomMessage> {
   return apiFetch<RoomMessage>(`/api/rooms/${roomName}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message_type: "broadcast", ...data }),
-  });
-}
-
-/**
- * A consent-gated invite. Raised when a human `@`-mentions an agent
- * that is not yet on the room's channel: the backend surfaces an accept/decline
- * prompt ("someone's agent wants to reach yours") instead of joining directly.
- */
-export interface PendingInvite {
-  id: string;
-  room: string;
-  agent: string;
-  requested_by: string;
-  trigger_text: string;
-  status: string;
-  created_at: string;
-}
-
-/** Open (pending or queued) consent requests for a room. */
-export async function fetchPendingInvites(roomName: string): Promise<PendingInvite[]> {
-  const data = await apiFetch<{ invites?: PendingInvite[] }>(`/api/rooms/${roomName}/invites`, {
-    cache: "no-store",
-    fallback: {},
-  });
-  return data.invites ?? [];
-}
-
-/** Accept or decline a consent prompt. Only `accept` invites (or queues) the
- *  agent. Fire-and-forget from the UI's perspective (the dialog has already
- *  closed by the time this resolves), so it degrades to `null` on failure
- *  rather than surfacing a rejected promise with nowhere to show it. */
-export async function respondToInvite(
-  roomName: string,
-  inviteId: string,
-  decision: "accept" | "decline",
-): Promise<PendingInvite | null> {
-  return apiFetch<PendingInvite | null>(`/api/rooms/${roomName}/invites/${inviteId}/${decision}`, {
-    method: "POST",
-    fallback: null,
   });
 }
 
@@ -871,13 +840,14 @@ export async function fetchEpisode(
 // ── Network diagnostics (the `/health` coordination + identity + auth blocks) ─
 
 /** Per-room channel telemetry: present members (SLIM + server-held `await`
- *  leases), open consent invites, episode state, and durable-inbox counters. */
+ *  leases), invites deferred by a live episode, episode state, and
+ *  durable-inbox counters. */
 export interface CoordinationRoom {
   room: string;
   provisioned: boolean;
   persister_alive: boolean;
   members: string[];
-  pending_invites: number;
+  deferred_invites: number;
   episode_active: boolean;
   reserves: number;
   reserve_failures: number;

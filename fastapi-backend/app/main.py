@@ -26,19 +26,18 @@ from typing import Any
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.a2a_agents import router as a2a_agents_router
 from app.routes.a2a_server import router as a2a_server_router
 from app.routes.a2a_state import router as a2a_state_router
 from app.routes.agents import router as agents_router
+from app.routes.assignments import router as assignments_router
 from app.routes.briefing import router as briefing_router
 from app.routes.engines import router as engines_router
 from app.routes.episodes import router as episodes_router
 from app.routes.fields import router as fields_router
-from app.routes.invites import router as invites_router
-from app.routes.leases import router as leases_router
 from app.routes.links import router as links_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
@@ -49,6 +48,7 @@ from app.routes.sessions import router as sessions_router
 from app.routes.skills import router as skills_router
 from app.routes.status import router as status_router
 from app.routes.stream import router as stream_router
+from app.routes.tasks import router as tasks_router
 from app.routes.users import router as users_router
 from app.services.auth import auth_gate
 
@@ -87,6 +87,24 @@ async def lifespan(app: FastAPI):
             logger.warning("auth: %s", warning)
     else:
         logger.info("HTTP-API JWT gate disabled — requests are unauthenticated")
+    # A memory written before the binding carries no thread, so it reads as
+    # something there is nowhere to discuss. Minting one is a store annotation
+    # rather than an edit: the memory keeps its version, its stamps and its place
+    # on a time-ordered board. Runs before the index scan, so what it rewrites is
+    # indexed once rather than caught on the next restart — and walks the same
+    # files that scan is about to read anyway.
+    from app.services.filesystem import list_room_names
+    from app.services.tasks import backfill_room
+
+    bound_units = 0
+    for _room in list_room_names():
+        try:
+            bound_units += backfill_room(_room)
+        except Exception:
+            logger.exception("task backfill failed for room %s", _room)
+    if bound_units:
+        logger.info("bound %d pre-existing memories to a thread on startup", bound_units)
+
     # Incremental scan of filesystem → JSONL search index
     from app.services.reindex import start_watcher, startup_scan, stop_watcher
 
@@ -116,14 +134,14 @@ async def lifespan(app: FastAPI):
     # summon since a handle maps to a single runtime.
     from app.services.a2a_bridge import A2aResponder
     from app.services.aligner import AlignerEngine
-    from app.services.hello import HelloEngine
+    from app.services.probe_engine import ProbeEngine
     from app.services.room_channels import manager as room_channel_manager
     from app.services.synthesizer import SynthesizerEngine
     from app.services.task_sync import TaskSyncEngine
 
     app.state.aligner = AlignerEngine(room_channel_manager)
     app.state.synthesizer = SynthesizerEngine(room_channel_manager)
-    app.state.hello = HelloEngine(room_channel_manager)
+    app.state.hello = ProbeEngine(room_channel_manager)
     # The A2A responder shares the seam too: it answers @-mentions of a
     # registered a2a agent by calling the remote endpoint, gating on the manifest
     # like the engines gate on their kind, so only one handler ever acts.
@@ -150,7 +168,7 @@ async def lifespan(app: FastAPI):
 
     room_channel_manager.on_summon = _dispatch_summon
     logger.info(
-        "engines wired (aligner @%s, synthesizer @%s, hello @%s; brain=pi via %s)",
+        "engines wired (aligner @%s, synthesizer @%s, hello @%s; llm=pi via %s)",
         app.state.aligner.handle,
         app.state.synthesizer.handle,
         app.state.hello.handle,
@@ -169,8 +187,6 @@ async def lifespan(app: FastAPI):
     # existing room channel-less (a zombie) with no recovery path until it was
     # deleted + recreated. Runs after the aligner/plan-sync hooks are wired so
     # each restarted persister picks them up.
-    from app.services.filesystem import list_room_names
-
     reprovisioned = 0
     restored_custody = 0
     for _room in list_room_names():
@@ -256,9 +272,9 @@ app.include_router(a2a_state_router, prefix="/api")
 app.include_router(engines_router, prefix="/api")
 app.include_router(rooms_router, prefix="/api")
 app.include_router(messages_router, prefix="/api")
-app.include_router(invites_router, prefix="/api")
-app.include_router(leases_router, prefix="/api")
+app.include_router(assignments_router, prefix="/api")
 app.include_router(fields_router, prefix="/api")
+app.include_router(tasks_router, prefix="/api")
 app.include_router(episodes_router, prefix="/api")
 app.include_router(participate_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")
@@ -270,6 +286,33 @@ app.include_router(users_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
 app.include_router(status_router, prefix="/api")
+
+
+@app.get("/api/whoami", tags=["auth"])
+async def whoami(request: Request):
+    """Who the hub resolves this caller to, from the bearer token it verified.
+
+    The single source of truth for write attribution. A client defaults
+    ``created_by`` to the ``handle`` returned here, so the value it stamps is
+    exactly the one the gate enforces — both derive from the same
+    ``AUTH_HANDLE_CLAIM``, so a client never has to guess which claim a hub
+    trusts. ``gated`` is false when this hub runs no auth gate, where a caller
+    names itself and there is no principal to report; a client then falls back
+    to its local identity config.
+
+    A gated hub with no valid token never reaches here — ``auth_gate`` 401s
+    first — which a client reads as "the hub can't tell who I am" and also
+    falls back to local identity.
+    """
+    principal = getattr(request.state, "principal", None)
+    if principal is None:
+        return {"gated": settings.AUTH_ENABLED, "handle": None, "subject": None, "role": None}
+    return {
+        "gated": True,
+        "handle": principal.handle,
+        "subject": principal.subject,
+        "role": principal.role,
+    }
 
 
 @app.get("/", tags=["health"])

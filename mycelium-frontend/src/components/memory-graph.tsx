@@ -188,8 +188,7 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
   // Every count below describes what's on screen, so the strip and the canvas
   // never disagree. "Links" counts drawn resolved arcs; "broken" counts drawn
   // broken arcs. Dead references (not_found targets that aren't nodes) aren't
-  // drawn and so don't appear here — they're surfaced by the integrity system
-  // (IntegrityBanner in the detail drawer; `mycelium memory --check`).
+  // drawn and so don't appear here — `mycelium memory --check` reports them.
   const linkCount = useMemo(() => visibleEdges.filter(e => e.resolved).length, [visibleEdges]);
   // A broken arc is only drawn when its target is also a real node, so we
   // derive brokenCount from visibleEdges (the drawn set) rather than from
@@ -579,7 +578,7 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
             <Tooltip content="Show every namespace and link type again" side="bottom" align="end">
               <button
                 onClick={clearFilters}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
               >
                 <Filter className="size-3.5" />
                 Clear filters
@@ -597,7 +596,7 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
                   dirty.current = true;
                   setPlaced({});
                 }}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
               >
                 <RotateCcw className="size-3.5" />
                 Reset layout

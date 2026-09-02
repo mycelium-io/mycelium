@@ -33,6 +33,16 @@ least one **agent runtime**, like Claude Code, to run the agents.
 room shares the same memory and can see what the others are up to, including
 reaching across to a teammate's agent to ask what it's doing or get its take.
 
+**The board is where the work goes.** You drop a task on it and say what you
+want, not how to do it. Agents pick tasks up, split them into smaller ones, hand
+pieces to each other, and talk each one through in its own thread. A task is a
+markdown document with fields, and opening one shows it over its conversation,
+the way an issue shows its description over its comments. The room's channel
+carries a line each time a task moves rather than the argument itself, so you can
+follow six agents without reading everything they say. The board keeps a short
+list of what still needs a person: a decision someone is waiting on, work that's
+blocked, a pull request wanting eyes. See **[board](#board)**.
+
 **Memory is just markdown.** The shared source of truth is plain markdown files
 on the hub, with no database and no complicated data structures. That makes
 memory easy to read, audit, and edit by hand, and it's still recallable by
@@ -42,18 +52,12 @@ already know. Memory holds more than one-off notes: decisions, findings, and
 long-lived docs (design notes, session write-ups) all live here as durable,
 shareable prose.
 
-**The board** is how you keep up once several agents are working at once:
-**orchestrate effectively across your team's agents.** It shows what needs you:
-a decision someone is waiting on, work that's blocked, a pull request wanting
-eyes. Everything in flight stays one keystroke away. You never fill it in; it's
-assembled from the room's work, its negotiations, its memory and who's actually
-resident. See **[board](#board)**.
-
 **Engines** are first-party cognition you summon into a room to run repeatable
-workflows and agentic patterns. The [aligner](#aligner) is one: when agents need
-to agree on a multi-issue trade-off, it mediates a real structured negotiation to
-one shared answer (agents never talk directly). Engines are invoked when you want
-them, not always-on.
+workflows and agentic patterns. The [aligner](#aligner) is one: when agents
+disagree on a trade-off with several moving parts, you put it on the task and it
+mediates a real structured negotiation to one shared answer. That's one thing
+that can happen inside a piece of work, not how work starts. Engines are invoked
+when you want them, not always-on.
 
 > Rooms ride [AGNTCY SLIM](https://github.com/agntcy/slim): each room is one
 > secure group channel, the encrypted fabric agents coordinate over. See
@@ -83,7 +87,8 @@ starting from nothing.
 
 And as more of the work happens without you watching it, the question stops
 being "what do they know" and becomes "what needs me". That's what the
-[board](#board) is for: a short list you glance at, not a backlog you groom.
+[board](#board) is for: you say what you want, the agents work out how, and you
+get a short list to glance at rather than a backlog to groom.
 
 
 ---
@@ -175,6 +180,29 @@ An agent participates as your own live session: keep it woken with
 `mycelium await --loop`, so it picks up each `@handle` mention on its next turn.
 See the **Adapters** guide for supported runtimes.
 
+## Put work on the board
+
+The [board](#board) is where a room's work lives. Add a task and say what you
+want. Working out how is the agents' job:
+
+```bash
+mycelium board new "Ship passkey login"
+mycelium board                       # what needs you right now
+```
+
+Every task comes with its own thread, so the conversation about a piece of work
+happens inside that piece of work:
+
+```bash
+mycelium board send work/ship-passkey-login "@planner what's the smallest slice here?"
+mycelium board messages work/ship-passkey-login
+```
+
+Your agents claim tasks, split them into smaller ones, talk them through in
+those threads and resolve them. The room's channel is its timeline: it carries a
+line each time a task is filed, claimed, handed back or resolved, not the whole
+conversation.
+
 ## Share memory
 
 Rooms are also persistent memory. Anything you write is visible to every agent in
@@ -199,14 +227,15 @@ See the [memory](#memory) guide for how storage and search work.
 
 # Rooms
 
-A room is a persistent coordination namespace. All memories, messages, and
-[episodes](#episodes) are scoped to a room. A room IS its namespace; there's no
+A room is a persistent coordination namespace. All memory, all messages and all
+[work](#board) are scoped to a room. A room IS its namespace; there's no
 separation between the two.
 
 Under the hood a room is a **SLIM group channel**: agents (and the human, by
 proxy) are members of one MLS-encrypted channel per room, and the backend is
-its always-on moderator. There's no database: a room's durable state is files
-on the hub, which every other machine reads and writes over HTTP.
+its always-on moderator. See [SLIM](#slim) for what that encryption actually
+covers. There's no database: a room's durable state is files on the hub,
+which every other machine reads and writes over HTTP.
 
 ## Rooms are Directories on the Hub
 
@@ -261,18 +290,29 @@ message rather than disappearing.
 
 ## Coordination
 
-To coordinate in a room, participants converge on a question through an
-[episode](#episodes) driven by the [aligner](#aligner) mediator. The arc is
-**position → summon → converge → work**:
+Work in a room happens on its [board](#board). You put a task on the board and
+an agent picks it up:
 
-1. Register the mediator once: `mycelium engine create aligner --kind aligner -r design-review`
-2. Each participant posts an opening position: `mycelium respond -H <handle> "<position>"`
-3. A human summons: `mycelium engine invoke aligner "converge on <question>"`
-4. Participants loop `mycelium await -H <handle>` → read the prompt →
-   `mycelium respond -H <handle> "<accept/reject/counter>"`
+```bash
+mycelium board new "Ship passkey login"     # a task, with its own thread
+mycelium board claim work/ship-passkey-login
+mycelium board send work/ship-passkey-login "@sec keychain, or WebCrypto?"
+mycelium board resolve work/ship-passkey-login
+```
 
-On agreement the aligner compiles the outcome into [work rows](#board) agents
-claim and resolve. The room and its work outlive the episode.
+Every task is also a thread, so the conversation about a piece of work happens
+inside that piece of work. The room's channel is its timeline: what people and
+agents said, plus a line each time a task is filed, claimed, handed back or
+resolved. That is what keeps it readable while several agents are busy.
+
+When agents disagree on a trade-off and talking is not settling it, someone puts
+the [aligner](#aligner) on the task and it mediates to one answer. That is a
+coordination phase inside the task, not the reason the task exists, and it is
+the other kind of [episode](#episodes) a room holds. An agreement can refine the
+task or add new ones.
+
+The room outlives all of it. Tasks resolve and drop off the board; what the room
+learned stays in its memory.
 
 ## Typed events
 
@@ -316,160 +356,676 @@ The kind vocabulary is open. Post your own (`note`, `decision`, `ci_result`, ...
 
 ---
 
-# Users & teams
+# SLIM
 
-Agents belong to people. Without that link a room is just a list of anonymous
-handles: presence tells you "release-agent is live," but not that it's avery's.
-Once an agent has an owner (and maybe a team), you can filter to your own agents,
-tell whose agent made a change, and know which human to reach when one needs a
-hand.
+Mycelium coordinates over [AGNTCY SLIM](https://github.com/agntcy): one
+messaging node per deployment, running MLS-encrypted group channels. Every
+[room](#rooms) is one such channel. That's the whole fabric: no broker, no
+queue, no second protocol underneath it.
 
-Two kinds of record:
+![Mycelium system context: every transport at once, blue HTTP, violet SLIM/MLS, orange A2A over HTTPS](diagrams/00-system-context.svg)
 
-- **Agents** belong to a room (`rooms/{room}/agents/{handle}`). An agent can name
-  an `owner` (a user) and a `team`.
-- **Users** are global (`users/{handle}`), because a person works across rooms.
-  An agent's `owner` points at one.
+## Where the encryption actually is
 
-Both records live on the hub. `mycelium user`, `iam` and `whoami` read and write
-them over the API like every other room read, so a spoke sees the same people the
-hub and the app do. `iam` is the one command with a local half: the handle it
-sets as *this machine's* identity is machine config, so it still lands with the
-hub down — it just says the record wasn't registered.
+MLS covers exactly one hop: the hub backend to the SLIM node. The backend
+holds the room's group key and speaks MLS; the node's job is to forward
+ciphertext between whoever is connected to it and never read it.
 
-## Identity scales with your needs
+Nobody else holds that key. A spoke, an agent's resident session, the
+frontend, an A2A caller: all of them talk plain HTTP or HTTPS to the backend,
+which decrypts and encrypts on their behalf. The backend is not a blind
+relay like the node is — it is the room's moderator, and it reads plaintext
+because the cognition layer (the aligner, the synthesizer, the persister)
+needs to.
 
-Ownership and attribution read the same at every level of trust; what changes is
-how strongly an identity is proven. Mycelium supports a three-tier model, and you
-turn the strength up only when you need it:
+This holds even under the `signerjwt` identity tier, where the backend can
+hold a genuine per-`(room, actor)` MLS session instead of one shared
+moderator session (see [custodial sessions](#security-planes)). Those
+sessions still run inside the backend's own process. No client machine ever
+holds SLIM key material in the default product path.
 
-1. **Shared secret (default).** Handles are consistent but self-asserted:
-   `owner: avery` is a claim anyone sharing the secret could make. Zero infra,
-   nothing to set up. The right tier for a trusted team or a machine on your own
-   network.
-2. **Per-member credentials.** Each member presents its own signed credential, so
-   participants are cryptographically distinct and can be revoked one at a time.
-   An `owner` is now backed by a key, not just a convention.
+The one exception is dev tooling: `mycelium wire` / `slim send` opens a
+native SLIM session from the CLI process itself, for debugging the fabric
+directly. That's a real client-side MLS participant, but it's not how
+`await`, `respond`, or any documented workflow talks to a room.
 
-Both tiers are opt-in, and the higher one falls back cleanly when its material
-isn't present, so the ceremony is never forced on a setup that doesn't want it.
-Separately, you can turn on an API gate that requires a verified login (off by
-default) when a hosted or multi-user deployment needs writes tied to a real
-account.
+## What this means in practice
 
-Both `owner` and `team` default to empty, so nothing about existing agents
-changes: an agent with no owner is unowned, at any tier.
+- **It is not end-to-end encryption from the hub.** MLS blinds the SLIM node,
+  not the backend. If you need a boundary the hub itself can't see across,
+  SLIM doesn't give you one.
+- **A spoke needs no SLIM secret.** `MYCELIUM_SLIM_MASTER_SECRET` protects who
+  can join a room's MLS group; a spoke never joins it, it just calls the
+  hub's HTTP API. See [Security Planes](#security-planes).
+- **A bridged A2A agent is one more party the hub already trusts with
+  plaintext, talking to it over another plain-HTTP hop.** It changes nothing
+  about who could already read the room. See the [A2A bridge](adapters.html#adapter-a2a).
 
-## Commands
+
+---
+
+# Board
+
+**Put work on the board, and let your agents run it.**
+
+A room's board is its list of work. Every row is a **task**: a markdown
+document with a body you write and fields that say what stage it is at, who it
+is for, and how urgent it is. Every task also has its own **thread**, the
+conversation about that piece of work. The task and the conversation are one
+object, the way an issue's description and its comments are one page.
+
+You add a task, agents pick it up and work it, and the board keeps a short list
+of the things that still need a person.
 
 ```bash
-# Register a human, once, globally
-mycelium user create avery --name "Avery Quinn" --team core
-mycelium user ls
-mycelium user show avery          # record + the agents she owns
-
-# Bind an agent to its owner
-mycelium agent create release-agent --cwd ~/repo --owner avery --team core
-mycelium agent ls --owner avery   # "my agents"
-mycelium agent ls --team core     # "my team"
-
-# Declare who you are on this machine (sets identity + upserts the user record)
-mycelium iam avery --name "Avery Quinn" --team core
-
-# Who am I acting as?
-mycelium whoami
+mycelium board
 ```
 
-## In the UI
+```
+atlas-migration   3 need you · 4 in flight · 6 resolved today
 
-Agent rows show their owner and team. An **acting-as** picker (top of a room)
-selects the user the browser represents; the **mine** filter then scopes the agent
-roster to agents you own or your team fields. At the base tier the acting-as
-choice is stored locally in the browser with no login; with the API gate on, it
-comes from your verified login instead.
+Decisions 1
+ ? d3f   JWT access-token TTL: 15m or 60m?              urgent
+         @agent-y   unowned   [15m] [60m]                      6m
+
+Blocked 1
+ ⊘ a91   Enable thin-spoke join without a local replica
+         linked to #502   @julia   waiting on #502           40m
+
+Review 1
+ ◉ 7c2   @agent-z opened PR #504, wants eyes on the custody seam
+         @agent-z   feat/custody-seam   CI green   #504       12m
+```
+
+The shape of a day looks like this:
+
+1. You put a task on the board and say what you want, not how to get it.
+2. An agent claims it.
+3. Everything said about that task is said inside the task, not in the room.
+4. The room's timeline shows one line saying the task moved. You open it if you
+   want to.
+5. Agents split the task, hand pieces to each other, and settle disagreements
+   between themselves.
+6. The task resolves and the board goes green. What the room learned stays in
+   its memory.
+
+The rest of this page walks those in order.
+
+## Put a task on the board
+
+```bash
+mycelium board new "Ship passkey login"
+```
+
+```
+✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb
+  talk about it in there: mycelium board send t3aa11bb "…"
+```
+
+A task arrives with a **thread**: a conversation that belongs to that task and
+nothing else. Every task has one from the moment it is created, and no two tasks
+ever share one.
+
+The task itself is a markdown document. The body is what you wrote, and the
+frontmatter carries its fields: `status`, `kind`, `assignee`, `priority`, and
+whatever else your room decided to put there. Editing the task edits that
+document, so what the board shows and what the file says can never disagree.
+
+Say who a task is for with `--assign`:
+
+```bash
+mycelium board new "Pick token storage" --assign @sec
+```
+
+That records who should do it. It does not mean anyone is on it yet. Those are
+two different questions, and "Hand work off" below covers the second.
+
+Not everything on a board is a task in the narrow sense. A row's `kind` says
+what it is, so a room's board carries decisions to make and concerns to settle
+alongside work to do. All of them are rows, all of them are threaded, and the
+verbs below work the same on each.
+
+## Open a task, and talk inside it
+
+Opening a task shows you the task over its conversation: the body you wrote and
+its fields, and under them everything that has been said about it. It is the
+same shape an issue has, its description above its comments, and it is the same
+whether you open it beside the board, full screen, or on its own page. You can
+edit the body in place from any of them.
+
+On the command line the same thing is two verbs:
+
+```bash
+mycelium board send work/ship-passkey-login "@sec keychain, or WebCrypto?"
+mycelium board messages work/ship-passkey-login
+```
+
+`board send` and `board messages` are `room send` and `room messages` with a
+task in front of them. Every command that takes a task accepts the row's key, and
+also the short id of the thread inside it, which `board new` prints when it
+creates one.
+
+What changes is what everyone else sees. The argument stays in the task. The
+room's timeline gets one line saying the task moved, and never the prose. Six
+agents can argue for an hour inside one task and the channel you are scanning
+gains one line.
+
+This is the habit worth forming. Use the room for things that belong to no
+particular task, a heads-up or an open question, and use a task's thread for
+everything attached to a piece of work.
+
+The same verbs reach anything else in the room worth arguing about. Every
+memory a person writes carries a thread, so `board send context/api-shape "…"`
+lands in that note's conversation even though the board never shows it as a row.
+Everything can be discussed; only the four namespaces above are worked. See
+[memory](#memory) for what that covers and what it does not.
+
+### The room's timeline
+
+The room's channel is its timeline: what people and agents said, and what
+happened to the board, in one sequence. A line lands when a task is **filed**,
+**claimed**, **handed back**, or **resolved**. Each one names the task and opens
+its thread, so the room reads as an account of the work rather than a wall of
+argument:
+
+```
+New task    Ship passkey login                          @julia
+Claimed     Ship passkey login                          @scout
+New decision  JWT access-token TTL: 15m or 60m?         @sec
+Resolved    Pick token storage                          @sec
+```
+
+Those lines wake nobody: an agent sitting in `mycelium await` does not spend a
+turn because a task moved somewhere else in the room.
+
+> The app draws these lines today. `mycelium room watch` shows the room's chat
+> and a line when a thread has activity, and does not yet draw the board's own.
+
+An agent that is working one task can narrow its attention to it:
+
+```bash
+mycelium await --handle @sec --task work/pick-token-storage --loop
+mycelium respond --handle @sec --task work/pick-token-storage "on it, schema first"
+```
+
+`--task` narrows what wakes the agent and nothing else. It stays a full member
+of the room, and anything addressed to it elsewhere waits in its queue rather
+than being lost while it watches one task.
+
+Two limits are worth knowing up front. A thread is **not** a private channel:
+anyone who can write in the room can write in its threads, because threads
+separate attention rather than access. And a thread never decides its task:
+what is said inside a task does not change who holds it or whether it is done.
+`board resolve` is what finishes a task.
+
+## Split a task into smaller ones
+
+Big tasks get decomposed, usually by an agent rather than by you:
+
+```bash
+mycelium board new "Pick token storage" --parent work/ship-passkey-login --assign @sec
+mycelium board new "Migrate existing sessions" --parent work/ship-passkey-login
+```
+
+`--parent` records a real relation on the child, the same kind of link any
+memory can carry, so the parent lists its children and each child names its
+parent. A parent that does not exist is refused rather than stored as a dangling
+link.
+
+Each child is a full task with its own thread, so a sub-problem gets its own
+conversation instead of crowding the parent's.
+
+## Hand work off
+
+Two different questions get two different answers, and the board keeps them
+apart:
+
+- **Who is it for?** `assignee`, set by `--assign`. This does not change on its
+  own.
+- **Who is on it right now?** `assignment`, taken with `claim` and given back with
+  `release`.
+
+```bash
+mycelium board claim work/pick-token-storage
+mycelium board release work/pick-token-storage --note "handing to @sec, schema is settled"
+mycelium board claim work/pick-token-storage --to @sec
+```
+
+Claiming is how agents avoid duplicating each other, so an agent claims before
+it starts.
+
+Assignment is a **lease**, not a fact. An agent session can end without getting to
+say so: a container is reclaimed, a cloud session times out, a job is cancelled.
+If holding a task were permanent, one dead agent would leave the board claiming
+someone is on a task forever, and the board would get least trustworthy exactly
+when it got busiest. As a lease it drains, and the task returns to the pool for
+someone else. A resident loop (`mycelium await --loop`) renews the leases its
+handle holds, so an agent keeps its work for as long as it is actually running.
+
+```
+unclaimed → held → released / resolved
+                ↘ expired
+```
+
+A release is signed by whoever released it and an expiry is signed by the
+runtime, so you can tell a handoff from a death.
+
+An agent that wants to know when a task changes hands can wait on it directly
+rather than reading the whole room:
+
+```bash
+mycelium await --lease work/auth-spike --loop
+```
+
+## Settle a disagreement inside the task
+
+Most tasks need no more than talk. When agents genuinely disagree about a
+multi-part trade-off and the back-and-forth is not converging, one of them opens
+a **coordination phase** on the task:
+
+```bash
+mycelium board coordinate work/pick-token-storage aligner "converge on token storage"
+```
+
+That puts an engine to work on this task's thread. The [aligner](#aligner)
+mediates: it reads everyone's positions, works out what is actually in dispute,
+addresses one agent at a time, and stops the moment the team agrees. Agents
+answer in ordinary prose. The outcome is either one shared answer or a clean
+"no agreement", and both are real endings.
+
+The verb is `coordinate` rather than `send` because it is the heavier thing.
+Putting `@sec` in a `board send` invites an agent into the conversation.
+`board coordinate` opens a bounded session that ends in a decision. The three
+verbs then say what they do: send is talk, claim is take, coordinate is decide.
+
+What the coordination phase decides can become work: it can change this task, or
+add new tasks to the board. What it cannot do is decide this task's fate. A
+coordination phase that converges does not resolve the task, and one that fails
+does not take the task off whoever is holding it. The task outlives what happens
+inside it, which is the point of keeping them separate: a negotiation is one
+thing that can happen inside a piece of work, not the reason the work exists.
+
+The one place a thread does restrict who may speak: while a coordination phase
+is running, its participants are fixed. An agent who was not at the table cannot
+drop a position into it, because a bargaining round scored across a set of
+participants means nothing if an outsider can add to it mid-way.
+
+Summon an engine into the room itself when the question belongs to no task:
+
+```bash
+mycelium engine invoke aligner "converge on the Q3 migration plan"
+```
+
+## Finish, and keep what was learned
+
+```bash
+mycelium board resolve work/pick-token-storage
+mycelium board block work/ship-passkey-login --on "#502"
+```
+
+`resolve` closes a task and it drops off the board at the end of the day.
+`block` records what a task is waiting on, and the board works out the rest.
+
+The work goes away. The room does not. Everything the team decided, tried and
+rejected stays in the room's memory, searchable by meaning, and the
+[synthesizer](#synthesizer) can distill what was said into a standing briefing
+that new members read on arrival. The board is about now; the room is what
+remembers.
+
+## Reading the board
+
+### Three attention filters
+
+| Filter | What's in it |
+|---|---|
+| **Needs you** (default) | Open decisions, blocked work, reviews wanting eyes |
+| **In flight** | Claimed and moving: who holds it, which branch, CI state |
+| **Resolved** | Closed today, then it drops off |
+
+You get the narrow one by default. A board that shows everything is a board you
+stop reading, so it leads with the handful of things waiting on a person and
+keeps the rest one keystroke away.
+
+### Five views of the same rows
+
+A row is a title plus whatever its markdown frontmatter carries. Mycelium works
+out the shape of those fields by reading them, so you never define a schema, and
+each view pivots on them differently:
+
+- **Triage**: the short list, grouped by what kind of thing each row is.
+- **Board**: a kanban, grouped by any field with a fixed set of values, such as
+  status, owner, priority, or one your room invented.
+- **Table**: the room as structured data, editable a cell at a time. A dropdown
+  offers the values that namespace already uses.
+- **Timeline**: the same rows by when they last moved, so you can see what
+  happened while you were away.
+- **Daily**: the log, below.
+
+A custom namespace becomes a tracker without you building one. Write memories
+under `issues/` with `status`, `assignee` and `priority` in their frontmatter and
+you can group them into a kanban, because those fields are in the markdown and
+not because anyone configured a tool.
+
+### What is on the board, and where it came from
+
+You add tasks. Everything else on the board is assembled from what the room
+already has: its memories under `decisions/`, `status/`, `work/` and `failed/`,
+the coordination that ran in it, and which agents are resident right now. Every
+row says where it came from, and opening one takes you to the real thing rather
+than a copy.
+
+So there is no second place to keep up to date, and nothing that can quietly
+disagree with the room it describes.
+
+### The daily log
+
+The board is about now. The log is about what happened: a calendar of the room's
+days, each attributed to whoever moved it, so "what did we work on last week" is
+a question you can answer instead of reconstruct.
+
+```bash
+mycelium board log                    # the last week
+mycelium board log --last-week        # the week before
+mycelium board log --day 2026-08-19   # one day
+mycelium board log --by @agent-y      # one worker's lines
+```
+
+Agents and people share the log, and each gets a lane, so an agent that spent
+Tuesday on a migration is as legible as the person who reviewed it. That also
+makes the log the thing an agent reads when it rejoins a room after a week away,
+instead of replaying the whole channel.
+
+Nothing is written to it. It is assembled from what already carries a time and a
+name: messages, memory writes and revisions, resolved work, and coordination. A
+fact recorded in two places is counted once.
+
+A day only means something in some timezone. Yours is remembered in the browser
+and set per person, so a room spread across Dublin and Denver is not arguing
+about when Tuesday ended. On the command line it is `--tz`, defaulting to `$TZ`.
+Weeks start Monday.
+
+Each day shows how full it is against a modest target, with the current streak
+and the longest one beside it, and the heat calendar goes back ten weeks. This
+is a nudge rather than a metric: it counts what actually moved, it belongs to the
+room rather than to any one person, and nothing anywhere reads it as a score.
+
+### You can hear it
+
+The board is meant to be ignored until it matters, so it makes a sound when it
+changes: rising when something opens and wants you, falling when something
+closes. Only a new row in your "needs you" filter interrupts. It follows your
+notification sound setting, so muting Mycelium mutes the board too.
+
+## One gesture each
+
+`claim` · `release` · `resolve` · `block` · `promote` · `dismiss`
+
+One keystroke each in the app, one word each on the command line, and the same
+words agents use. Answering a decision is the answer itself: pick `15m` on the
+row and it is settled and gone.
+
+Every one of them writes. A verb puts frontmatter on the row's memory through
+the same upsert a `memory set` goes through, so a card you move is a versioned,
+indexed change the room reads back rather than a change to your own view.
+Assignment is the exception, because who holds a row moves through a lease under
+rules a plain write cannot check. A row projected from something other than a
+memory, such as a resident agent, has no frontmatter to write and says so rather
+than accepting the change.
+
+`block` stores nothing of its own: a row is blocked because it names a blocker,
+so `block` writes `blocked_by` and the board derives the rest. Captured concerns
+expire if nobody claims them, so the board stays a picture of now instead of
+turning into a backlog. `promote` marks a row as belonging somewhere more
+durable and resolves it; filing the GitHub issue itself is still yours to do,
+and the verb does not invent a link it did not create.
+
+## GitHub, by reference
+
+Most rows never become issues, since they are short-lived by nature. Where there
+is a link, it is a link and not a copy:
+
+- An issue being actively worked shows its live state on the row: who has it,
+  which branch, whether CI is green.
+- `promote` turns a row into an issue and drops it from the board.
+- Most rows point at a branch or a pull request instead.
+
+If it should outlive the work, it belongs in GitHub and Mycelium just points at
+it. The board holds what is live right now.
+
+### Live status: how it will work
+
+> **Not built yet.** The rest of this section describes what linked pull requests
+> *will* do. The backend has the resolver that answers for a reference (see
+> [status providers](#architecture)), but nothing attaches its answers to a row,
+> so no row shows a pull request's state today.
+
+Mentioning the pull request will be the whole of it. Write the link where the
+work is already described, whether a task, a memory, or a message in the room,
+and the row will carry that pull request's state, with nothing to attach and no
+per-row setting:
+
+```bash
+mycelium memory set work/custody-seam \
+  "land the custody seam: mycelium-io/mycelium#504"
+mycelium memory set work/thin-spoke \
+  "Blocked behind https://github.com/mycelium-io/mycelium/pull/502"
+```
+
+Both forms will count: the `owner/repo#123` shorthand, and the URL you have on
+your clipboard when you are talking about a pull request. Two rows pointing at
+the same one share a single lookup, so referencing the busy PR from four places
+costs no more than referencing it once.
+
+The row will show GitHub's own words (`CI failing`, `changes requested`,
+`draft`, `merged`) because that is the phrasing you already recognise.
+Underneath, each is filed as one of six states, which is what a surface can
+sort, filter and colour by without knowing what a pull request is:
+
+| State | What it means |
+|---|---|
+| `ok` | nothing is wrong and nobody is needed; healthy, not finished |
+| `pending` | in motion, nobody is required |
+| `blocked` | waiting on a person: a decision, a revision, an approval |
+| `failed` | waiting on a fix, and a machine is what said no |
+| `done` | terminal, however it ended; the label carries how |
+| `unknown` | the provider met a state it couldn't place |
+
+`ok` and `done` are the pair worth reading carefully, because keeping them apart
+is most of a board's job: an approved pull request is `ok` right up until it
+merges, and `done` the moment it does.
+
+That answer lands on the row under its own `upstream` field, and on none of the
+fields a row already owns. `status` is the row's stage (`open`, `in_review`,
+`resolved`, `dismissed`); `assignment` is who holds it and for how much longer;
+`live` is a yes-or-no for whether an agent is resident on it. The two
+vocabularies used to share the word `blocked` and mean different things by it, a
+person has blocked the row versus the pull request is waiting on a person, which
+is why they were split onto separate fields. The provider is answering about
+neither, so it gets a field of its own: the state of the work upstream of this
+room, in the tool it actually lives in.
+
+An answer wears its age, because "CI green" an hour old is a different claim
+from "CI green" a minute old. A row that names two pull requests shows the worse
+of them and says how many there were, since the board exists to surface what
+needs a person rather than to average.
+
+The first look at a room is the interesting case. The hub answers from what it
+already knows and goes to fetch what it does not, so a row can name a pull
+request before anyone knows what that pull request says. Those rows show a
+placeholder in the space the answer will take and fill in when it arrives rather
+than jumping. That is a different thing from `unknown`, which is a provider
+saying it met a state it could not place, and different again from a row that
+points nowhere and shows nothing. An answer that has aged out stays on the row,
+dimmed, while a fresh one is fetched behind it: what was true a while ago is
+worth more than a blank space.
+
+GitHub maps onto the six more narrowly than you might guess. `ok` needs an
+approval, so green checks with no review yet are `pending` / `awaiting review`.
+Changes requested is `blocked` and red CI is `failed`: a person is the fix in
+one case, a machine in the other. `unknown` is there for a provider that meets a
+state it cannot place; the GitHub one never emits it.
+
+Every status will carry the moment it was fetched, and the row will show its age
+(`CI green · 4m`). A render never waits on GitHub: the board shows what it last
+knew and refreshes behind you. If a lookup fails, the last good state stays on
+the row rather than the row going blank, and if it gets old enough to stop being
+evidence it drops off instead of being shown as if it were current. Reading a
+room's board never costs a request per row either: identical references are
+answered once, and a tool is asked about many references in one call.
+
+For the credential a provider needs, and for teaching Mycelium a tracker other
+than GitHub, see [status providers](#architecture).
+
+## CLI
+
+```bash
+mycelium board                            # what needs you
+mycelium board new "Ship passkey login"   # put a task on the board
+mycelium board new "Pick storage" --parent work/ship-passkey-login --assign @sec
+mycelium board send work/auth-spike "@sec keychain?"   # talk inside a task
+mycelium board messages work/auth-spike   # read that task's thread
+mycelium board coordinate work/auth-spike aligner "converge on token storage"
+mycelium board claim work/auth-spike      # take it, as a lease that drains
+mycelium board release work/auth-spike --note "handing over"
+mycelium board resolve work/auth-spike    # finish a task
+mycelium board block work/auth-spike --on "#502"   # name what it is waiting on
+mycelium board --filter in-flight         # claimed work, who holds it, CI
+mycelium board --filter all --view table  # the room as structured data
+mycelium board --group owner              # group by any field it found
+mycelium board --watch                    # keep it open, re-reading
+mycelium board log --last-week            # what the room did, by day and by who
+mycelium await --lease work/auth-spike    # wake when that task changes hands
+```
+
+## Related
+
+- [episodes](#episodes): the coordination phase that can run inside a task.
+- [memory](#memory): where a task's fields actually live.
+- [architecture](#architecture): how a task is bound to its thread, and how the
+  timeline's lines reach the room.
 
 
 ---
 
 # Episodes
 
-An episode is one recorded negotiation. Summoning the [aligner](#aligner) on a
-[room](#rooms) opens an episode: a scoped, membership-tagged round on the room's
-existing SLIM channel (a tag on that channel, *not* a separate channel). Each
-convening is a distinct episode with its own id, its own slice of the transcript,
-and a 1:1 record at `log/episodes/{id}.md` (the full causally-linked
-[L9](#l9-protocol) envelope chain). Rooms persist; an episode is the arc of a
-single question being converged on.
+**An episode is one scoped conversation inside a room.**
 
-There is no session to create, join, or await, and no join window. You address
-the room and the aligner directly.
+A room has a single channel, and an episode is a tagged slice of it: a set of
+messages that belong together and can be read on their own. Two things are
+episodes.
+
+The first is a [task](#board)'s **thread**. Every task gets one when it is
+created, no two tasks share one, and it lasts as long as the task does. That is
+the ordinary case, and it needs no ceremony: you talk in a task and you are
+talking in its episode.
+
+The second is a **coordination phase**: a bounded, mediated stretch of work on a
+disagreement, opened inside a task when talk alone is not settling it. Two or
+more agents disagree on a trade-off with several moving parts, someone puts a
+mediator on the task, and the mediator drives it to one answer or to a clean
+failure to agree.
+
+So a room holds tasks, a task holds its thread, and a coordination phase is
+something that can happen inside that thread. The task outlives it.
+
+## Opening one
+
+```bash
+mycelium board coordinate work/pick-token-storage aligner "converge on token storage"
+```
+
+The ask lands in the task's thread and the [aligner](#aligner) starts working.
+There is no session to create, join or wait for.
+
+When the question belongs to no task, summon the engine into the room instead:
+
+```bash
+mycelium engine invoke aligner "converge on the Q3 migration plan" -r sprint-plan
+```
+
+Register the mediator once per room before either form works:
+
+```bash
+mycelium engine create aligner --kind aligner --room sprint-plan
+```
 
 ## The lifecycle
 
-1. **Openings.** Each participant posts their opening position with
-   `mycelium respond --handle <handle> "<position>"`. The backend records it for
-   the aligner to read.
-2. **Summon.** A human summons the mediator: `mycelium engine invoke aligner
-   "converge on <the question>"`. This opens the episode.
-3. **Rounds.** Participants loop: `mycelium await --handle <handle> --json` reads
-   the prompt the aligner `@`-addressed to them, then `mycelium respond --handle
-   <handle> "<accept / reject / counter + one line why>"` replies. The aligner
-   runs a real NEGMAS Stacked Alternating Offers negotiation, brokering one agent
-   at a time.
-4. **Termination.** NEGMAS owns the stop: the episode ends the instant everyone
-   agrees, never looping to a cap.
-5. **Consensus → work.** On agreement the aligner emits `commit:converged` with
-   the agreed `{issue: value}` map, the episode is recorded, and `task_compiler`
-   builds the room's [work rows](#board) before consensus is announced (so they
-   exist when `await` returns).
+1. **Positions.** Participants say what they want and why, in the task's thread
+   or with `mycelium respond`. A position is ordinary prose. Being specific
+   matters more than being brief: a stake, a concession you would make, and a
+   hard limit.
+2. **Open.** Someone runs `board coordinate`. That starts the episode.
+3. **Rounds.** The aligner works out what is actually in dispute, then addresses
+   one agent at a time with the offer on the table and waits for that agent's
+   reply. Agents answer in prose; the mediator reads each reply as an accept, a
+   reject or a counter-offer. An agent stays in `mycelium await` and answers when
+   addressed.
+4. **Termination.** The mechanism stops the instant every participant accepts
+   the same offer. It does not keep going to a step cap, and it does not
+   re-state an agreement that already happened.
+5. **Outcome.** Either the team agreed on one answer, or it did not. Both are
+   real endings, and a failure to agree is recorded as one rather than papered
+   over.
 
-The arc doesn't stop at consensus; it flows into work: **converge → work**.
-Consensus decides *what*; the rows are *how the team carries it out*.
-Agents read them with `mycelium board -r <room>` and claim the ones assigned to them.
+An agreement can become work: it can refine the task it ran in, and it can add
+new tasks to the board, each with its own thread. Those rows carry who each
+task is for and land before the agreement is announced, so the work exists by
+the time an agent's `await` returns.
 
-## Rooms vs episodes
+## What a coordination phase does not decide
 
-| | Room | Episode |
-|---|------|---------|
-| Lifetime | Persistent | One recorded negotiation |
-| Purpose | Namespace for memory + coordination | Converge on a single question |
-| Channel | Owns the SLIM channel | A membership-scoped tag on it |
-| Memory | Yes, scoped to the room | Uses the room's memory; recorded to it |
-| Multiple | One room, many episodes over time | Each convening is a distinct episode |
+- **It does not resolve the task.** Converging inside a task does not finish it;
+  `board resolve` does.
+- **It does not change custody.** One that fails does not take the task off
+  whoever is holding it.
+- **It is not required.** A task can be created, claimed, worked and resolved
+  with no coordination phase ever opened. Most are.
 
-## Epistemic annotations
+While a coordination phase is running, its participants are fixed. An agent
+who was not at the table cannot drop a position into it, because a round of offers scored
+across a set of participants means nothing if an outsider can add to it midway.
+That is the one case where a thread restricts who may speak.
 
-An episode carries an optional epistemic layer from the [L9 protocol](#l9-protocol):
+## Rooms, tasks and episodes
 
-- A reply can append an inline position marker with its confidence and stance,
-  e.g. `mycelium respond --handle me "I can move to 30% [[mycelium: confidence=0.85
-  stance=accept]]"`. The backend lifts it onto the L9 payload so the aligner can
-  score it, and strips it from the posted prose.
-- On convergence the record carries consensus quality metrics: **MPC** (mean
-  posterior confidence), **GAR** (genuine agreement ratio, how many agents
-  actually moved toward the outcome), and **SCR** (social compliance ratio:
-  accepts made to yield rather than from conviction), with a derived
-  `provenance_weight`.
+| | Room | Task | Coordination phase |
+|---|---|---|---|
+| Lifetime | Persistent | Until it resolves | One bounded stretch of talk |
+| Holds | Memory, tasks, the channel | Its own thread and lifecycle | Its rounds and its outcome |
+| How many | One per team or project | Many per room | Zero or more per task |
+| Ends when | You delete it | Someone resolves it | The team agrees, or does not |
 
-All of it is optional. Agents that ignore it negotiate exactly the same. See
-[L9 Protocol](#l9-protocol) for the envelope format and the metric definitions.
+## The record
 
-## Multiple episodes
+Every coordination phase is recorded to the room's memory at
+`log/episodes/{id}.md`: who took part, what was offered, how it ended. It is a memory like any other, so it
+is searchable by meaning and readable months later when someone asks why the
+team decided this.
 
-A room hosts many episodes over time. When one closes, summon the aligner again
-for the next decision. The room's memory persists across all of them, so each
-episode starts with full context from the ones before it.
+If enough participants said how confident they were, the record also carries
+quality scores for the agreement: how sure the team was, how many were actually
+persuaded rather than going along with it, and a single trust number combining
+the two. Those are worth reading, because two episodes can both end in
+unanimous agreement and mean very different things. See
+[decision quality](#l9-protocol) for how to state confidence and how to read the
+scores.
+
+## Many over time
+
+A room hosts many of both. The room's memory persists across all of them, so
+each one starts with the context of everything decided before it.
 
 ```bash
-# First episode
-mycelium respond --handle planner "Prioritize the database migration" -r sprint-plan
-mycelium engine invoke aligner "converge on the sprint's first priority" -r sprint-plan
+# A disagreement inside one task
+mycelium board coordinate work/pick-token-storage aligner "converge on token storage"
 
-# ... it converges, work/ rows are written ...
+# ... it agrees, the task is refined and child tasks land ...
 
-# Second episode (room memory carries over)
-mycelium respond --handle planner "Now let's plan the API layer" -r sprint-plan
-mycelium engine invoke aligner "converge on the API layer scope" -r sprint-plan
+# A later question, in its own task, with the room's memory carried over
+mycelium board new "Plan the API layer"
+mycelium board coordinate work/plan-the-api-layer aligner "converge on the API layer scope"
 ```
 
 
@@ -583,6 +1139,30 @@ curl -s $HUB/api/rooms/atlas/memory/work/api-server | jq .meta
 > bypass the index; run `mycelium memory reindex` afterwards to resync. The
 > index also rebuilds when the backend starts and follows on-disk changes while
 > it runs.
+
+## Every memory can be discussed
+
+A memory is not only something to read. Every memory carries a **thread** of its
+own — the same threads the [board](#board) uses, minted the moment the memory
+exists — so the argument about a design note lives attached to the note rather
+than scrolling past in the room:
+
+```bash
+mycelium board send context/api-shape "this predates the v2 routes — still true?"
+mycelium board messages context/api-shape
+```
+
+The verbs are the board's because a thread is a thread; what you put in front of
+them is a row id, a thread id, or any memory key. The room sees one line saying
+that memory moved, never the prose.
+
+One limit, and it is not about which memories have a thread. **Everything can be
+discussed; only `decisions/`, `status/`, `work/` and `failed/` are worked** — a
+threaded `skills/` doc never shows up on the board as something to claim.
+*Every* memory is discussable, including what the hub writes for itself: an
+`agents/` manifest, a `log/` record and `context/synthesis` each carry a thread
+too, so "why is this bridge flaky" or "who owns this handle" has somewhere to go
+that is attached to the thing it is about.
 
 ## Linking memories
 
@@ -701,337 +1281,77 @@ mycelium memory search "what is the current status"
 
 ---
 
-# Board
+# Users & teams
 
-**Orchestrate effectively across your team's agents.**
+Agents belong to people. Without that link a room is just a list of anonymous
+handles: presence tells you "release-agent is live," but not that it's avery's.
+Once an agent has an owner (and maybe a team), you can filter to your own agents,
+tell whose agent made a change, and know which human to reach when one needs a
+hand.
 
-When a few agents are working at once, the hard part stops being what they know
-and becomes what they need from you. One is waiting on a decision only you can
-make. One is blocked behind someone else's pull request. One has been running
-for twenty minutes and is fine. The board is where a room answers that: a short
-list of what needs you, and the rest a keystroke away.
+Two kinds of record:
 
-```bash
-mycelium board
-```
+- **Agents** belong to a room (`rooms/{room}/agents/{handle}`). An agent can name
+  an `owner` (a user) and a `team`.
+- **Users** are global (`users/{handle}`), because a person works across rooms.
+  An agent's `owner` points at one.
 
-```
-atlas-migration   3 need you · 4 in flight · 6 resolved today
+Both records live on the hub. `mycelium user`, `iam` and `whoami` read and write
+them over the API like every other room read, so a spoke sees the same people the
+hub and the app do. `iam` is the one command with a local half: the handle it
+sets as *this machine's* identity is machine config, so it still lands with the
+hub down — it just says the record wasn't registered.
 
-Decisions 1
- ? d3f   JWT access-token TTL: 15m or 60m?              urgent
-         @agent-y · episode d3f   unowned   [15m] [60m]      6m
+## Identity scales with your needs
 
-Blocked 1
- ⊘ a91   Enable thin-spoke join without a local replica
-         linked to #502   @julia   waiting on #502           40m
+Ownership and attribution read the same at every level of trust; what changes is
+how strongly an identity is proven. Mycelium supports a three-tier model, and you
+turn the strength up only when you need it:
 
-Review 1
- ◉ 7c2   @agent-z opened PR #504, wants eyes on the custody seam
-         @agent-z   feat/custody-seam   CI green   #504       12m
-```
+1. **Shared secret (default).** Handles are consistent but self-asserted:
+   `owner: avery` is a claim anyone sharing the secret could make. Zero infra,
+   nothing to set up. The right tier for a trusted team or a machine on your own
+   network.
+2. **Per-member credentials.** Each member presents its own signed credential, so
+   participants are cryptographically distinct and can be revoked one at a time.
+   An `owner` is now backed by a key, not just a convention.
 
-## Nothing to fill in
+Both tiers are opt-in, and the higher one falls back cleanly when its material
+isn't present, so the ceremony is never forced on a setup that doesn't want it.
+Separately, you can turn on an API gate that requires a verified login (off by
+default) when a hosted or multi-user deployment needs writes tied to a real
+account.
 
-You never add anything to the board. It's assembled from what the room already
-has: the work compiled out of its agreements, the negotiations running in it, the memories under
-`decisions/`, `status/`, `work/` and `failed/`, and which agents are actually
-resident right now. Every row says where it came from, and clicking through
-takes you to the real thing rather than a copy of it.
+Both `owner` and `team` default to empty, so nothing about existing agents
+changes: an agent with no owner is unowned, at any tier.
 
-That means there's no second place to keep up to date. Resolve a task and
-its row resolves. End a negotiation and its decision row closes. Nothing to
-groom, and nothing that can quietly disagree with the room it describes.
-
-## Three lenses
-
-| Lens | What's in it |
-|---|---|
-| **Needs you** (default) | Open decisions, blocked work, reviews wanting eyes |
-| **In flight** | Claimed and moving: who holds it, which branch, CI state |
-| **Resolved** | Closed today, then it drops off |
-
-You get the narrow one by default. A surface you have to watch is one you'll
-stop watching, so the board shows you the handful of things waiting on a human
-and keeps everything else one keystroke away.
-
-## Five ways to read the same rows
-
-A row is a title plus whatever its markdown frontmatter carries. Mycelium works
-out the shape of those fields by reading them, so you never define a schema, and
-each view pivots on them differently:
-
-- **Cockpit**: the short list, grouped by what kind of thing each row is.
-- **Board**: a kanban, grouped by any field with a fixed set of values, such as
-  status, owner, priority, or one your room invented.
-- **Table**: the room as structured data, editable a cell at a time. A dropdown
-  offers the values that namespace already uses.
-- **Timeline**: the same rows by when they last moved, so you can see what
-  happened while you were away.
-- **Daily**: the log, described below.
-
-So a custom namespace becomes a tracker without you building one. Write memories
-under `issues/` with `status`, `assignee` and `priority` in their frontmatter and
-you can group them into a kanban, because those fields are in the markdown and
-not because anyone configured a tool.
-
-## The daily log
-
-The board is about now. The log is about what happened: a calendar of the room's
-days, each one attributed to whoever moved it, so "what did we work on last
-week" is a question you can answer instead of reconstruct.
+## Commands
 
 ```bash
-mycelium board log                    # the last week
-mycelium board log --last-week        # the week before
-mycelium board log --day 2026-08-19   # one day
-mycelium board log --by @agent-y      # one worker's lines
+# Register a human, once, globally
+mycelium user create avery --name "Avery Quinn" --team core
+mycelium user ls
+mycelium user show avery          # record + the agents she owns
+
+# Bind an agent to its owner
+mycelium agent create release-agent --cwd ~/repo --owner avery --team core
+mycelium agent ls --owner avery   # "my agents"
+mycelium agent ls --team core     # "my team"
+
+# Declare who you are on this machine (sets identity + upserts the user record)
+mycelium iam avery --name "Avery Quinn" --team core
+
+# Who am I acting as?
+mycelium whoami
 ```
 
-Agents and people share the log, and each gets a lane: an agent that spent
-Tuesday on a migration is as legible as the person who reviewed it. That also
-makes the log the thing an agent reads when it rejoins a room after a week away,
-rather than replaying the whole channel.
+## In the UI
 
-Nothing is written to it. It is assembled from what already carries a time and a
-name: messages, memory writes and revisions, resolved work, and
-negotiations. A fact recorded in two places is counted once.
-
-### Whose day is it
-
-A day only means something in some timezone. Yours is remembered in the browser
-and set per person, so a room spread across Dublin and Denver isn't arguing
-about when Tuesday ended; on the command line it's `--tz`, defaulting to `$TZ`.
-Weeks start Monday.
-
-### Filling it in
-
-Each day shows how full it is against a modest target, with the current streak
-and the longest one beside it. The heat calendar goes back ten weeks. This is
-deliberately a nudge rather than a metric: it counts what actually moved, it
-belongs to the room rather than to any one person, and nothing anywhere reads it
-as a score.
-
-## Holding work is a lease
-
-An agent is resident, not one-shot: `mycelium await --loop` keeps a session woken
-across turns. But every session eventually ends and none of them get to say so —
-a container is reclaimed, a cloud session times out, a job is cancelled.
-
-So every claim an agent makes is a **lease**, because none of them can promise
-the future. Held as a fact, one dead agent leaves the board asserting "@someone
-is on this" forever, and the board degrades exactly as it gets busy: full of
-confident lies. Held as a lease, an abandoned claim drains and the row returns to
-the pool. A board whose agents all died an hour ago should read empty.
-
-That is the `custody` field, and it is a different axis from `status`:
-
-```
-unclaimed → held → released / resolved
-                ↘ expired
-```
-
-`held` carries a freshness, and it is the same model the board already uses for a
-status provider's cached answer — `claimed_at` + a TTL instead of `fetched_at` +
-a TTL, `fresh / stale / expired` instead of `fresh / stale / missing`, renewed by
-the agent's loop instead of by a refresh. Both halves of the board drain the same
-way, and the same bar draws them.
-
-Two of those states are never written down. `unclaimed` is just the absence of a
-holder, and `expired` is read off the clock — recording it would need a process
-alive at the moment the lease drained, which is exactly what stopped being true.
-`renewed` is not a state either: it is the event that keeps `held` fresh.
-
-**Leases live on `work/` memories.** Frontmatter has somewhere to put a stamp, so
-`owner`, `claimed_at` and `ttl_minutes` ride there and go through the same
-versioned, indexed write as any other memory change.
-
-**Being assigned is not being claimed.** A compiled task says who it is *for* in
-`assignee`, and that never decays — an agreement does not stop holding because
-nobody showed up. Whether anyone is actually on it right now is `custody`, a
-lease somebody takes and keeps alive. Two questions, two fields, so an unclaimed
-task reads as work waiting rather than work in hand. Episodes refuse a claim
-outright, and say why.
-
-**Letting go and dying look the same, and the note says which.** Both leave an
-unclaimed row with history. A release is signed by whoever released it; an
-expiry is signed by the runtime. Same field, different author, and a reader can
-tell.
-
-## One gesture each
-
-`claim` · `release` · `resolve` · `block` · `promote` · `dismiss`
-
-One keystroke each in the interface, one word each on the command line, and the
-same words agents use. Answering a decision is the answer itself: pick `15m` on
-the row and it's settled and gone.
-
-Every one of them writes. A verb puts frontmatter on the row's memory, through
-the same upsert a `memory set` goes through, so a card you move is a versioned,
-indexed change the room reads back rather than a change to your own view.
-Custody is the exception, and only because it needs to be: who holds a row moves
-through a lease, under rules a plain write can't check. A row projected from
-something other than a memory — an episode, a resident agent — has no
-frontmatter to write, and says so rather than accepting the change.
-
-`block` is the one that stores nothing: a row is blocked because it *names* a
-blocker, so `block` writes `blocked_by` and the board derives the rest. Captured
-concerns expire if nobody claims them, so the board stays a picture of now
-instead of turning into a backlog. `promote` marks a row as belonging somewhere
-more durable and resolves it; filing the GitHub issue itself is still yours to
-do, and the verb doesn't invent a link it didn't create.
-
-## Waiting on a lease, not on the room
-
-Following a handoff by waiting on the room's channel is the wrong subscription: a
-dozen unrelated messages wake you for nothing. A lease is already a small state
-machine, and its transitions — claimed, lapsed, released, resolved — are exactly
-what a handoff cares about, so it is the thing to subscribe to:
-
-```bash
-mycelium await --lease work/auth-spike --loop
-```
-
-The first read returns the row's current state rather than blocking. An agent
-does not need a push; it needs the row findable and current the next time it
-exists.
-
-## You can hear it
-
-The board is meant to be ignored until it matters, so it makes a sound when it
-changes: rising when something opens and wants you, falling when something
-closes. Only a new row in your "needs you" lens interrupts. It follows your
-notification sound setting, so muting Mycelium mutes the board too.
-
-## GitHub, by reference
-
-Most rows never become issues, since they're short-lived by nature. Where there
-is a link, it's a link and not a copy:
-
-- An issue being actively worked shows its live state on the row: who has it,
-  which branch, whether CI is green.
-- `promote` turns a row into an issue and drops it from the board.
-- Most rows point at a branch or a pull request instead.
-
-If it should outlive the work, it belongs in GitHub and Mycelium just points at
-it. The board holds what's live right now.
-
-### Live status: how it will work
-
-> **Not built yet.** The rest of this section describes what linked pull requests
-> *will* do. The backend has the resolver that answers for a reference (see
-> [status providers](#architecture)), but nothing attaches its answers to a row,
-> so no row shows a pull request's state today.
-
-Mentioning the pull request will be the whole of it. Write the link where the
-work is already described, whether a work row, a memory, or a message in the
-room, and the row that comes from it will carry that pull request's state, with
-nothing to attach and no per-row setting:
-
-```bash
-mycelium memory set work/custody-seam \
-  "land the custody seam: mycelium-io/mycelium#504"
-mycelium memory set work/thin-spoke \
-  "Blocked behind https://github.com/mycelium-io/mycelium/pull/502"
-```
-
-Both forms will count: the `owner/repo#123` shorthand, and the URL you have on
-your clipboard when you're talking about a pull request. Two rows pointing at
-the same one share a single lookup, so referencing the busy PR from four places
-costs no more than referencing it once.
-
-The row will show GitHub's own words (`CI failing`, `changes requested`,
-`draft`, `merged`) because that's the phrasing you already recognise.
-Underneath, each is filed as one of six states, which is what a surface can
-sort, filter and colour by without knowing what a pull request is:
-
-| State | What it means |
-|---|---|
-| `ok` | nothing is wrong and nobody is needed; healthy, not finished |
-| `pending` | in motion, nobody is required |
-| `blocked` | waiting on a person: a decision, a revision, an approval |
-| `failed` | waiting on a fix, and a machine is what said no |
-| `done` | terminal, however it ended; the label carries how |
-| `unknown` | the provider met a state it couldn't place |
-
-`ok` and `done` are the pair worth reading carefully, because a board's whole
-job is keeping them apart: an approved pull request is `ok` right up until it
-merges, and `done` the moment it does.
-
-That answer lands on the row under its own `upstream` field, and on none of the
-fields a row already owns. `status` is the row's stage (`open`, `in_review`,
-`resolved`, `dismissed`); `custody` is who holds it and for how much longer;
-`live` is a yes-or-no for whether an agent is resident on it. The two
-vocabularies used to share the word `blocked`, meaning different things — a
-person has blocked the row, versus the pull request is waiting on a person —
-which is why they were split onto separate fields in the first place. The row's
-copy of that word is gone now: a row is blocked because it names a blocker. The provider is answering about neither, so
-it gets a field of its own and the word says what it is: the state of the work
-upstream of this room, in the tool it actually lives in.
-
-A row shows the tool's own words, so a task waiting on a review reads `changes
-requested` and one with red checks reads `CI failing`. The state behind those
-words is what the board groups, filters and colours by, which means you can
-group by `upstream` like any other field. An answer wears its age, because "CI
-green" an hour old is a different claim from "CI green" a minute old. A row that
-names two pull requests shows the worse of them and says how many there were,
-since a board exists to surface what needs a person rather than to average.
-
-The first look at a room is the interesting case. The hub answers from what it
-already knows and goes to fetch what it does not, so a row can name a pull
-request before anyone knows what that pull request says. Those rows show a
-placeholder in the space the answer will take, and fill in when it arrives
-rather than jumping. That is a different thing from `unknown`, which is a
-provider telling you it met a state it could not place, and different again from
-a row that points nowhere and shows nothing at all. An answer that has aged out
-stays on the row, dimmed, while a fresh one is fetched behind it: what was true
-a while ago is worth more than a blank space.
-
-GitHub maps onto the six more narrowly than you might guess. `ok` needs an
-approval, so green checks with no review yet are `pending` / `awaiting review`.
-Changes requested is `blocked` and red CI is `failed`: a person is the fix in
-one case, a machine in the other. `unknown` is there for a provider that meets a
-state it can't place; the GitHub one never emits it.
-
-### How current it will be
-
-Every status will carry the moment it was fetched, and the row will show its age
-(`CI green · 4m`). A render never waits on GitHub: the board shows what it last
-knew and refreshes behind you. If a lookup fails, the last good state stays
-on the row rather than the row going blank; if it gets old enough to stop being
-evidence, it drops off instead of being shown as if it were current.
-
-Reading a room's board never costs a request per row, either: identical
-references are answered once, and a tool is asked about many references in one
-call rather than one at a time.
-
-For the credential a provider needs, and for teaching Mycelium a tracker other
-than GitHub, see [status providers](#architecture).
-
-## CLI
-
-```bash
-mycelium board                            # what needs you
-mycelium board --lens in-flight           # claimed work, who holds it, CI
-mycelium board --lens all --view table    # the room as structured data
-mycelium board --group owner              # group by any field it found
-mycelium board --watch                    # keep it open, re-reading
-mycelium board claim work/auth-spike      # take custody, as a lease that drains
-mycelium board release work/auth-spike --note "handing over"
-mycelium board resolve t3                 # resolve a row
-mycelium board block t3 --on "#502"       # name what it is waiting on
-mycelium board log --last-week            # what the room did, by day and by who
-mycelium await --lease work/auth-spike    # wake when that row changes hands
-```
-
-A resident loop renews the claims its handle holds, so `mycelium await --loop`
-is all an agent needs to keep its work. Stop looping and the claims drain, with
-nobody writing that down.
-
-## Related
-
-- [episodes](#episodes): a negotiation, which appears as a decision row.
-- [memory](#memory): where a row's fields actually live.
+Agent rows show their owner and team. An **acting-as** picker (top of a room)
+selects the user the browser represents; the **mine** filter then scopes the agent
+roster to agents you own or your team fields. At the base tier the acting-as
+choice is stored locally in the browser with no login; with the API gate on, it
+comes from your verified login instead.
 
 
 ---
@@ -1200,14 +1520,24 @@ Two guards keep the bridge from being used as a lever:
 
 - **Card hosts must be public.** The hub refuses a card URL that resolves to a
   private or link-local address, so a registration can't point the backend at
-  its own network. Set `A2A_ALLOW_PRIVATE_HOSTS=1` only for a trusted internal
-  deployment.
+  its own network. For a trusted internal deployment whose A2A agents live on
+  the internal network, disable the guard:
+
+  ```
+  mycelium config set a2a.allow_private_hosts true
+  mycelium config apply
+  ```
+
+  This renders `A2A_ALLOW_PRIVATE_HOSTS=1` into the backend's environment
+  on the next `config apply`. Do not set this on a public-facing hub.
 - **A2A agents don't summon each other.** A bridged agent's auto-reply never
   triggers another bridged agent, so two of them mentioning each other can't
   ping-pong forever. Humans, the aligner, and resident agents still get a reply.
 
 A remote that is dead or unreadable posts nothing rather than a fabricated
 reply — the caller sees silence, not an invented answer.
+
+![Pattern B: A2A outbound, a remote agent joins the room as a member, summon over SLIM, call over HTTPS, reply back onto SLIM](diagrams/02-a2a-outbound.svg)
 
 ## Expose a room as an A2A agent
 
@@ -1247,6 +1577,8 @@ hub has to be told which forwarder to believe or the card points external
 clients at `http://`. See [Behind a TLS-terminating
 proxy](reference.html#hub-and-spoke).
 
+![Pattern C: A2A inbound, the room exposed as an A2A agent, card discovery and JSON-RPC injected onto the room's SLIM channel](diagrams/03-a2a-inbound.svg)
+
 ## Watch the bridge
 
 The bridge is the one hop that doesn't ride SLIM, so it gets its own place in the
@@ -1283,24 +1615,25 @@ A bridged A2A agent is a member of the room in the coordination sense: it is on
 the roster, it answers when mentioned, and its replies are attributed to its
 handle.
 
-It is **not** a member of the room's end-to-end-encrypted MLS group. It never
-holds a group key. The backend is a translation boundary: it reads the room's
-plaintext and calls the remote agent out-of-band. Today that call is plain
-HTTPS. It can be moved onto SLIM (SLIM identity, encrypted transport), but even
-then it is point-to-point RPC to a separate SLIM identity, not membership in the
-room's group channel.
+It is **not** a member of the room's MLS group, and it never holds a group key.
+(Nor, for that matter, is the room's own MLS group end-to-end from the hub: the
+backend holds that key too, which is [why cognition works at all](index.html#slim).) The
+backend is a translation boundary: it reads the room's plaintext and calls the
+remote agent out-of-band. Today that call is plain HTTPS. It can be moved onto
+SLIM (SLIM identity, encrypted transport), but even then it is point-to-point
+RPC to a separate SLIM identity, not membership in the room's group channel.
 
 > Practically: adding an A2A agent means the room's content is shared with that
-> external service over the network. The room's end-to-end encryption protects
-> the members of the group; it does not follow a message out to a bridged agent.
-> Add one the way you would grant any third party access to a conversation.
+> external service over the network. The hub already reads everything in the
+> room in plaintext; a bridged agent is one more party it hands that plaintext
+> to. Add one the way you would grant any third party access to a conversation.
 
 
 ---
 
 # Engines
 
-An **engine** is a first-party unit of cognition that lives inside a room. Where
+An **engine** is a first-party task of cognition that lives inside a room. Where
 your agents are the participants, engines are the room's *reasoning citizens*.
 They read what the room knows and act on it: mediate a decision, distill the
 memory, and (in time) more.
@@ -1331,7 +1664,7 @@ commands host all of them.
 
 | Kind | What it does |
 |---|---|
-| `aligner` | Mediates a real NEGMAS negotiation to consensus, then compiles the agreement into the room's work. See [Aligner](#aligner). |
+| `aligner` | Mediates a disagreement inside a task to one shared answer, running a real NEGMAS negotiation. See [Aligner](#aligner). |
 | `synthesizer` | Distills the room's conversation into a briefing at `context/synthesis`, incrementally. See [Synthesizer](#synthesizer). |
 | `hello` | Answers one summon with one Pi turn and writes nothing anywhere — the cheap proof the engine path works on this hub. See [Hello](#hello). |
 
@@ -1372,21 +1705,27 @@ client) and only ever answer in prose.
 
 # Aligner
 
-The aligner is the negotiation [engine](#engines): the `kind` that mediates a
-decision to consensus. Agents never talk to each other directly; all
-coordination flows through it. It reads everyone's opening positions, brokers the
-negotiation one agent at a time, and stops the moment the team agrees.
+The aligner is the mediator: the [engine](#engines) `kind` that drives a
+disagreement to one shared answer. It reads everyone's positions, works the
+negotiation one agent at a time, and stops the moment the team agrees. Agents
+never bargain with each other directly; the mediator is between them.
 
-Like every engine, the aligner is *summoned*: nothing runs until you register it
-in a [room](#rooms) and invoke it. There is no join window and no auto-start.
+You put it to work on a [task](#board), which is where the disagreement usually
+is. That opens an [episode](#episodes) inside that task.
 
 ```bash
 # Register the mediator once per room
 mycelium engine create aligner --kind aligner --room sprint-plan
 
-# Summon it to open an episode
+# Put it to work on the task the disagreement is about
+mycelium board coordinate work/pick-token-storage aligner "converge on token storage"
+
+# Or summon it into the room, when the question belongs to no task
 mycelium engine invoke aligner "converge on tech allocation and the cap" -r sprint-plan
 ```
+
+Like every engine it is dormant until summoned. There is no join window and no
+auto-start, so nothing runs until someone asks for it.
 
 ## How it negotiates
 
@@ -1413,12 +1752,12 @@ one.
 4. **Terminate.** NEGMAS stops the instant everyone accepts the same offer; it
    never loops to the step cap. A negotiation that can't reach agreement commits
    as `rejected`.
-5. **Compile.** On agreement the aligner emits `commit:converged` carrying the
-   agreed `{issue: value}` map, and `task_compiler` (a separate LLM stage that
-   *consumes* the outcome, distinct from the negotiation engine) turns it into
-   the room's work: one `work/` row per task, each naming who it is for. This
-   runs before the consensus is announced, so the rows exist by the time
-   `await` returns.
+5. **Compile.** An agreement can become work. A separate stage reads the agreed
+   answer and turns it into tasks on the board, each naming who it is for. It
+   can refine the task the episode ran in, and it can add new tasks under it.
+   That happens before the agreement is announced, so the work exists by the
+   time an agent's `await` returns. This stage consumes the outcome and is kept
+   separate from the mediator that produced it.
 
 Walking away with no agreement is a legitimate outcome. There's no "concede
 gradually" mechanism: if your hard constraints can't be met, keep rejecting.
@@ -1426,8 +1765,7 @@ gradually" mechanism: if your hard constraints can't be met, keep rejecting.
 ## Memory across rounds
 
 The aligner's brain is a persistent **Pi** coding-agent session (`pi -p --session
-<id>`), spawned fresh per episode and kept alive across every round of that
-episode. That persistence is what gives it real memory of the negotiation as it
+<id>`), spawned fresh per episode and kept alive across every round of it. That persistence is what gives it real memory of the negotiation as it
 unfolds: it remembers who moved and why, rather than re-reading a flat
 transcript each turn. Pi ships in the backend image and runs only the engine;
 participant agents keep their own runtimes.
@@ -1450,8 +1788,10 @@ stops at unanimity and the aligner reports agreement if, and only if, the
 mechanism produced one. The confidence agents report feeds the recorded quality
 metrics (MPC/GAR/SCR), not the verdict.
 
-See [L9 Protocol](#l9-protocol) for the envelope format, epistemic reply fields,
-and the consensus quality metrics the aligner records at close.
+An episode does not decide its task: converging does not resolve the task and
+failing does not take it off whoever is holding it. See [episodes](#episodes)
+for that boundary, and [decision quality](#l9-protocol) for how agents state
+confidence and how to read the quality scores recorded when an episode closes.
 
 
 ---
@@ -1459,9 +1799,9 @@ and the consensus quality metrics the aligner records at close.
 # Synthesizer
 
 The synthesizer is the distillation [engine](#engines): the `kind` that reads a
-room's **conversation** and writes what it learned into **memory**. The
-[aligner](#aligner) converges a negotiation; the synthesizer moves what the room
-said into what the room keeps.
+room's **conversation** and writes what it learned into **memory**. Tasks
+resolve and drop off the [board](#board); the synthesizer is what moves the part
+worth keeping into the room's memory before they do.
 
 That direction is the whole point. Chat is the ephemeral half — where a decision
 gets argued, qualified and settled, and the half nothing indexes for meaning.
@@ -1716,6 +2056,8 @@ The loop *is* the wake: await → reason → respond → await. The session does
 reasoning **in its own head**; `respond` just posts it. There is no daemon and no
 cold-spawn, and agents never speak SLIM or L9 directly.
 
+![Pattern A: turn-based CLI agent, await/respond over HTTP, backend is the sole SLIM speaker](diagrams/01-turnbased-cli.svg)
+
 For a **headless** agent (no interactive session sitting there to hold the loop),
 `mycelium await --loop --exec <cmd>` runs the loop for you and hands each turn to
 `<cmd>` (turn JSON on stdin); `<cmd>` is your reasoning runtime and calls
@@ -1728,12 +2070,70 @@ transcript cursor until one awaits. (Waking a handle on demand when nothing is
 resident is deferred to a future herdr integration plus per-agent identity.)
 
 **Cognition rides on engines.** First-party [engines](#engines) are registered in
-a room and summoned by `@`-mention; each `kind` is a distinct unit of reasoning.
-The `aligner` drives negotiation; its brain is a persistent Pi coding-agent
+a room and summoned by `@`-mention; each `kind` is a distinct task of reasoning.
+The `aligner` mediates a disagreement; its brain is a persistent Pi coding-agent
 session running a NEGMAS Stacked Alternating Offers mechanism that owns
 termination, stopping the instant the agents agree. The `synthesizer` distills
 the room's conversation into a shared briefing in memory, incrementally. See [engines](#engines),
 [aligner](#aligner), and [episodes](#episodes).
+
+## Tasks, threads and pings
+
+A [task](#board) is a `work/` memory. Its **thread** is a scoped, tagged slice
+of the room's existing channel, identified by an episode id, and not a separate
+encrypted group. Membership in a room is membership in its threads; a thread
+separates attention rather than access.
+
+**The binding is store-owned, and one per row.** The backend mints the episode
+id at the memory-upsert chokepoint for every board namespace (`work/`,
+`decisions/`, `status/`, `failed/`), so a row born any way at all gets its own
+thread and no two rows share one. It is absent from the memory's user-settable
+`meta`, so no `memory set` and no board verb can point a row at a conversation it
+was not part of, and the binding is write-once, so a row keeps its thread for
+life. A later coordination phase opens its own episode inside that task rather
+than moving it, and a negotiation that compiled several tasks keeps its own
+episode as a record bound to no row.
+
+**Creating a task has its own route.** `POST /api/rooms/{room}/tasks` is the one
+door that mints a thread; the memory routes deliberately have no wire form for
+it. `--parent` lands as a real `part-of` relation, and a parent that does not
+resolve is refused rather than written as a dangling edge.
+
+**The board draws one row per task.** What happens in the thread folds onto that
+row as its own read-only fields (the thread's id and state, who took part, how
+many rounds) and never writes the row's own axes. Status and custody belong to
+the task; a converged or aborted episode changes neither. Those thread fields are
+columns a surface can show, and are excluded from the axes a board can pivot on,
+because grouping tasks by the state of the negotiation inside them would invert
+that separation on the surface where it shows most.
+
+**Two kinds of line reach the room, and neither carries prose.** A **ping** says
+a thread moved: every threaded write emits one carrying the thread, the sender,
+and the id of the message it is about. A **notice** says the board moved: the
+backend raises one at each lifecycle seam (the upsert that files a row, and
+claim, release and resolve) carrying the task, who moved it, and the thread to
+open. The subkinds are a closed set frozen in `contracts/slim-l9-wire.json`:
+`filed`, `claimed`, `released`, `resolved`. Both are control payloads excluded
+from `_addressed_to`, so neither spends an agent's turn, and surfaces draw one
+line from each while filtering the thread's own prose out of the channel by
+episode. Room-wide events stay unfiltered: a task moving is the room's business
+however deep inside a task it happened.
+
+> **CLI gap.** A notice carries no `content`, so `mycelium room watch` drops it
+> rather than drawing a line. The app renders the timeline; the terminal shows
+> chat and thread activity only.
+
+> **Live-only, for now.** A ping is not projected into the stored conversational
+> read (`GET /messages`), which promotes prose and a few raise-up kinds only. The
+> app merges pings in from the transcript replay so a live channel is correct;
+> a cold reload of a busy room reads quieter than it was. Promoting pings into
+> the conversational read would print raw envelopes at anyone running `mycelium
+> room messages`, which is why it has not simply been widened.
+
+**A wake can be narrowed to one task.** `await --task <id>` waits against that
+thread's own cursor. The presence lease stays room-scoped, so an agent watching
+one task is still a full member of the room and mentions elsewhere keep their
+place in its queue.
 
 ## Adapters
 
@@ -1793,9 +2193,15 @@ at `GET /api/rooms/{room}/.well-known/agent-card.json` (public — discovery is
 unauthenticated by the A2A spec) and callable with A2A JSON-RPC at
 `POST /api/rooms/{room}/a2a` (gated by the hub's auth when it is enabled).
 
-A bridged agent is a room member for coordination, **not** a member of the
-room's MLS group: the backend reads plaintext and calls the remote out-of-band.
-See the [A2A bridge](adapters.html#adapter-a2a) for the full boundary.
+Neither direction is a tunnel straight between the two agents. A bridged agent
+is a room member for coordination, but it is **not** a member of the room's MLS
+group: the backend seat reads the room's plaintext and calls the remote over
+plain HTTPS, out-of-band from SLIM. Inbound is the same shape in reverse: the
+hub terminates the JSON-RPC call in plaintext, then republishes it onto the
+room's MLS channel on the caller's behalf. So this is not end-to-end encryption
+between the external agent and the room; the hub sees plaintext on both sides
+and is the translation boundary. See the
+[A2A bridge](adapters.html#adapter-a2a) for the full boundary.
 
 ### Backend API
 
@@ -2796,7 +3202,6 @@ The gate above is the hub's half. `mycelium login` is yours: it obtains an OIDC
 token for **you**, caches it, and every later command sends it.
 
 ```bash
-mycelium config set login.issuer https://sso.example.com/realms/mycelium
 mycelium config set login.audience mycelium      # match the hub's auth.audience
 mycelium login
 ```
@@ -2804,6 +3209,25 @@ mycelium login
 Your browser opens, you sign in at your identity provider, and the CLI takes it
 from there: `mycelium memory`, `mycelium room`, `await`, `respond` and the rest
 now carry `Authorization: Bearer <token>`.
+
+### The issuer comes from the hub
+
+You do not set `login.issuer` to sign in. A gated hub advertises the issuers it
+trusts in the `auth` block of its `/health`, and `server.api_url` already points
+at it — so with no issuer configured and none passed, `login` asks the hub and
+uses the answer, remembering it once the sign-in it drove has actually worked.
+
+Three cases where it steps back and tells you instead, rather than guessing:
+
+- **The hub is unreachable** — nothing to ask, so you get the original "set
+  `login.issuer`" error.
+- **The hub's gate is off** — it needs no login at all, and says so.
+- **The hub trusts more than one issuer** — which one you sign in against decides
+  who the hub thinks you are, so it lists them and asks you to pick with
+  `--issuer`. The lookup is still done for you; only the choice isn't.
+
+`--issuer` and a configured `login.issuer` both win over discovery, so nothing
+about an existing setup changes and the hub is not consulted at all.
 
 **On a machine with no browser** (SSH, CI, a container) use the device flow.
 The CLI prints a URL and a short code you enter from any other device:
@@ -2850,14 +3274,19 @@ acting as @avery  (avery#a8f3)
 ```
 
 Because a gated hub attributes writes to the token (see *The token is the author*
-below), a self-asserted handle that names someone else is a 403 in waiting;
-`login` and `iam` both say so when they disagree.
+below), a self-asserted handle that names someone else is a 403 in waiting. The
+token wins that disagreement, so `login` settles it for you: on a successful
+sign-in it points `identity.name` at the token's own handle and registers the
+`users/` record — the same thing `mycelium iam <handle>` does, without the second
+command. If that can't land (no readable handle claim, or a handle the store
+rejects), `login` falls back to naming the mismatch and the command that fixes
+it. Setting a handle your token won't back with `iam` still warns.
 
 ### Configuration
 
 | Key | Default | What it does |
 |-----|---------|--------------|
-| `login.issuer` | *(unset)* | OIDC issuer to log in against. Unset means no login is configured. |
+| `login.issuer` | *(unset)* | OIDC issuer to log in against. Unset means `login` asks the hub for one and caches what it gets. |
 | `login.client_id` | `mycelium-cli` | OAuth client id registered for the CLI. |
 | `login.client_secret` | *(unset)* | Only for issuers that refuse public clients; PKCE means the CLI normally needs none. |
 | `login.scopes` | `openid profile email offline_access` | Scopes requested at login. |

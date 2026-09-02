@@ -345,9 +345,9 @@ function FabricPanel({
                     </td>
                     <td
                       className="px-4 py-2 tabular text-muted-foreground"
-                      style={{ color: r.pending_invites > 0 ? "var(--yellow)" : undefined }}
+                      style={{ color: r.deferred_invites > 0 ? "var(--yellow)" : undefined }}
                     >
-                      {r.pending_invites}
+                      {r.deferred_invites}
                     </td>
                     <td className="px-4 py-2 tabular text-muted-foreground">
                       {r.reserves} held{r.reserve_skipped > 0 ? ` · ${r.reserve_skipped} skipped` : ""}

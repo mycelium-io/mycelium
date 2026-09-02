@@ -14,7 +14,7 @@ can actually pick up.
 ``work/`` memory through the canonical upsert. That makes a task the same kind
 of thing as everything else in the room: it carries frontmatter, so it has an
 owner, a status and a lease; it is indexed and link-parsed; and the board
-projects it as a row a verb can move. Fail-soft: a compiler outage falls back to
+projects it as a row an action can move. Fail-soft: a compiler outage falls back to
 the raw ``assignments`` so the verdict is never sunk.
 
 Each write announces itself the way every memory write does, so there is no
@@ -31,11 +31,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from typing import TYPE_CHECKING, Any
 
 from app.services import l9, task_compiler
 from app.services.filesystem import get_room_dir, list_memory_files, read_memory_file
+from app.services.tasks import ASSIGNEE_FIELD, TASK_KIND, WORK_NAMESPACE, slugify
 
 if TYPE_CHECKING:
     from app.services.l9_models import L9
@@ -43,37 +43,6 @@ if TYPE_CHECKING:
     from app.services.task_compiler import CompiledTask
 
 logger = logging.getLogger(__name__)
-
-#: Compiled work lands here, which is the namespace a lease can be taken on.
-WORK_NAMESPACE = "work"
-
-#: What a board row calls a unit of agreed work. Written explicitly because the
-#: projection's default for this namespace is "concern" — a task is an action.
-TASK_KIND = "action"
-
-#: Who a task is *meant for*, which is not who holds it.
-#:
-#: Deliberately not ``owner``: that is the lease's, and a lease is something an
-#: actor takes under rules this stage cannot satisfy — it has no claim window,
-#: no renewal, and nobody on the other end who has agreed to hold anything. An
-#: assignment written as custody would be a claim on behalf of an agent that
-#: never made one, and it would drain to "expired" the moment its TTL passed.
-ASSIGNEE_FIELD = "assignee"
-
-_SLUG_STRIP = re.compile(r"[^a-z0-9]+")
-
-#: Longest slug taken from a task's title, before any de-duplicating suffix.
-SLUG_MAX = 48
-
-
-def slugify(title: str) -> str:
-    """A stable, readable key fragment for a task title.
-
-    Deterministic, so re-compiling an unchanged task lands on the row it
-    already has rather than opening a second one beside it.
-    """
-    slug = _SLUG_STRIP.sub("-", title.casefold()).strip("-")[:SLUG_MAX].strip("-")
-    return slug or "task"
 
 
 def _assignments_from(envelope: L9) -> dict[str, str]:
@@ -181,12 +150,18 @@ class TaskSyncEngine:
             return task_compiler.fallback_tasks(assignments)
 
     async def _write_task(self, room: str, task: CompiledTask) -> str:
-        """Put one task in the room as a ``work/`` row.
+        """Put one task in the room as a ``work/`` row, with its own thread.
 
         An unchanged task re-compiles to the same key, so this is an upsert onto
         the row it already has. Its ``status`` is deliberately left alone on a
         rewrite: a re-negotiation that restates a task nobody has touched must
         not re-open one somebody already moved.
+
+        A task's thread is **its own**, minted on creation like any board row,
+        not the negotiation's — two tasks compiled from one verdict are two
+        tasks with two threads, not two rows sharing the conversation that
+        produced them. The upsert mints it on the first write; the binding is
+        write-once, so a later verdict never moves the row off its thread.
         """
         from app.routes.memory import upsert_memories
         from app.schemas import MemoryBatchCreate, MemoryCreate

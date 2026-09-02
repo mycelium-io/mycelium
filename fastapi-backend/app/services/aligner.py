@@ -34,7 +34,7 @@ still rides along via :mod:`l9_episode`, computed over the mediator's readings.
 
 **Runtime note.** This runs **in-process in the backend** — the ``commit``
 envelope is emitted onto the channel the backend moderates, and the mediator's own
-brain is a Pi agent (:mod:`app.services.pi_brain`, always Pi). Participants answer
+LLM session is a Pi agent (:mod:`app.services.pi_session`, always Pi). Participants answer
 over the channel however they run (a daemon cold-spawn, or a server-held CLI
 ``await``/``respond`` caller) — the engine only ``@``-addresses them; it never
 spawns a judge of its own.
@@ -51,13 +51,12 @@ from typing import TYPE_CHECKING, Any
 
 from app.config import settings
 from app.services import l9, l9_episode
-from app.services.l9_slim import serialize_content
 from app.services.room_channels import BACKEND_AGENT
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from app.services.l9_episode import EpisodeState
+    from app.services.l9_episode import NegotiationState
     from app.services.l9_models import L9
     from app.services.persister import RoomPersister, TranscriptRecord
     from app.services.room_channels import ManagedRoomChannel, RoomChannelManager
@@ -159,7 +158,7 @@ class AlignerEngine:
         round_timeout_s: float | None = None,
         poll_interval_s: float | None = None,
         max_steps: int | None = None,
-        brain_factory: Callable[[str], Callable[..., str]] | None = None,
+        llm_session_factory: Callable[[str], Callable[..., str]] | None = None,
     ) -> None:
         self._manager = manager
         self._handle = handle if handle is not None else settings.ALIGNER_HANDLE
@@ -174,11 +173,11 @@ class AlignerEngine:
         self._max_steps = (
             max_steps if max_steps is not None else settings.ALIGNER_MEDIATOR_MAX_STEPS
         )
-        # Builds the mediator's brain (an *internal* Pi agent) per episode. Default
-        # (None) → a fresh per-episode :class:`~app.services.pi_brain.PiBrain`; tests
-        # inject a fake. Only the engine's own brain — user participant agents are
-        # unaffected. See ``_make_brain``.
-        self._brain_factory = brain_factory
+        # Builds the mediator's llm_session (an *internal* Pi agent) per episode. Default
+        # (None) → a fresh per-episode :class:`~app.services.pi_session.PiSession`; tests
+        # inject a fake. Only the engine's own LLM session — user participant agents are
+        # unaffected. See ``_open_llm_session``.
+        self._llm_session_factory = llm_session_factory
         # Rooms with a run in flight — a re-summon while active is ignored.
         self._active: set[str] = set()
         # Strong refs to scheduled runs so they aren't GC'd mid-flight.
@@ -292,7 +291,7 @@ class AlignerEngine:
         NEGMAS is synchronous, so ``mech.run()`` executes on a worker thread; each
         negotiator bridges back to this loop for its SLIM turn (see
         :mod:`app.services.mediator`). Always closes the episode in ``finally`` so
-        queued invites drain even on a mid-run failure.
+        deferred invites drain even on a mid-run failure.
         """
         from app.services import mediator
 
@@ -311,7 +310,7 @@ class AlignerEngine:
         # Nothing to broker: a negotiation needs at least two participants that are
         # present with opening positions. Rather than open a throwaway episode and
         # reject it in silence — leaving whoever summoned the aligner with no
-        # feedback at all — let the brain explain, in its own words, why it can't
+        # feedback at all — let the LLM session explain, in its own words, why it can't
         # align and what to do next.
         if len(participants) < 2:
             logger.info(
@@ -339,15 +338,15 @@ class AlignerEngine:
             opening_positions=positions,
         )
         try:
-            brain = self._make_brain(episode)
+            llm_session = self._open_llm_session(episode)
             positions = await self._clarify_terms(
-                managed, persister, ep, me, episode, topic, positions, brain
+                managed, persister, ep, me, episode, topic, positions, llm_session
             )
             issues = await asyncio.to_thread(
                 mediator.discover_issues,
                 "Converge on the room's open question — agree one value per issue.",
                 positions,
-                llm=brain,
+                llm=llm_session,
             )
             if not issues:
                 logger.info("aligner (mediator) room %s: no issues discovered; rejecting", room)
@@ -370,7 +369,7 @@ class AlignerEngine:
                     managed, persister, me, handle, episode, topic, prompt, round_n
                 ),
                 turn_timeout_s=self._round_timeout_s,
-                llm=brain,
+                llm=llm_session,
                 on_reading=lambda handle, reading, proposing: self._fold_reading(
                     ep, handle, reading, proposing
                 ),
@@ -411,28 +410,28 @@ class AlignerEngine:
         finally:
             await self._manager.close_episode(room)
 
-    def _make_brain(self, episode: str) -> Callable[..., str]:
-        """Build the mediator's brain for this negotiation — always a Pi agent.
+    def _open_llm_session(self, episode: str) -> Callable[..., str]:
+        """Build the mediator's LLM session for this negotiation — always a Pi agent.
 
-        Default: a fresh :class:`~app.services.pi_brain.PiBrain` bound to a
+        Default: a fresh :class:`~app.services.pi_session.PiSession` bound to a
         per-episode ``--session`` file so the *internal* agent keeps real memory
         across SAO rounds (the anti-theatre property — the mediator remembers the
         whole haggle, not a stateless call per turn). A test injects a fake via
-        ``brain_factory``. Only the engine's own brain; user participant agents are
+        ``llm_session_factory``. Only the engine's own LLM session; user participant agents are
         untouched (they answer over SLIM/HTTP as before).
         """
-        if self._brain_factory is not None:
-            return self._brain_factory(episode)
+        if self._llm_session_factory is not None:
+            return self._llm_session_factory(episode)
 
         import tempfile
         from pathlib import Path
 
-        from app.services.pi_brain import PiBrain
+        from app.services.pi_session import PiSession
 
         slug = re.sub(r"[^A-Za-z0-9._-]+", "-", episode).strip("-") or "align"
         session_dir = Path(tempfile.gettempdir()) / "mycelium-pi-sessions"
         session_dir.mkdir(parents=True, exist_ok=True)
-        return PiBrain(
+        return PiSession(
             session_path=session_dir / f"{slug}.jsonl",
             model=settings.LLM_MODEL,
             api_key=settings.LLM_API_KEY,
@@ -468,18 +467,18 @@ class AlignerEngine:
         self,
         managed: ManagedRoomChannel,
         persister: RoomPersister,
-        ep: EpisodeState,
+        ep: NegotiationState,
         sender: str,
         episode: str,
         topic: str,
         positions: dict[str, str],
-        brain: Callable[..., str],
+        llm_session: Callable[..., str],
     ) -> dict[str, str]:
         """Stage 0 — one clarifying round when agents share a term but not its meaning.
 
         Agents can converge on words they read differently ("priority", "done",
         "blocked"), and an agreement built on those words settles nothing. So
-        before any offer exists, the brain reads the opening prose for terms two
+        before any offer exists, the LLM session reads the opening prose for terms two
         participants are using in different senses; when it finds any, each
         participant is ``@``-addressed once — the same one-agent-at-a-time seam the
         SAO rounds use — and its answer is folded into the prose that issue
@@ -500,7 +499,7 @@ class AlignerEngine:
             return positions
         try:
             mismatches = await asyncio.to_thread(
-                mediator.detect_term_mismatch, positions, llm=brain
+                mediator.detect_term_mismatch, positions, llm=llm_session
             )
         except Exception:
             logger.warning("aligner term check failed on room %s", managed.room, exc_info=True)
@@ -567,18 +566,16 @@ class AlignerEngine:
         # agents) doesn't spuriously wake them — only the L9 ``recipients=[handle]``
         # above should wake, one agent per turn.
         safe_prompt = _AT_MENTION.sub("", prompt)
-        content = serialize_content(env, extra={"content": safe_prompt})
-        try:
-            await managed.channel.send(env, extra={"content": safe_prompt})
-        except Exception:
-            logger.warning("mediator failed to prompt @%s (step %d)", handle, round_n)
-            return ""
         # Record the mediator's turn-prompt into the room transcript + UI bus, the
         # same way ``publish_human`` records a human's message. Without this the
         # negotiation is invisible in the room (the prompt only rides SLIM), so
         # humans can't follow along and debugging falls back to backend logs. The
         # persister de-dupes by id, so a SLIM loop-back to the sender is harmless.
-        persister.ingest_local(env, content)
+        try:
+            await managed.post(env, safe_prompt, raise_on_send_failure=True)
+        except Exception:
+            logger.warning("mediator failed to prompt @%s (step %d)", handle, round_n)
+            return ""
 
         pending = _norm(handle)
         loop = asyncio.get_running_loop()
@@ -596,8 +593,8 @@ class AlignerEngine:
     ) -> None:
         """Post the aligner's own account of why it can't align yet.
 
-        The brain writes the message so it reads naturally and in context (not a
-        canned string); a static line is the fail-soft fallback when the brain is
+        The LLM session writes the message so it reads naturally and in context (not a
+        canned string); a static line is the fail-soft fallback when the LLM session is
         unavailable. Either way the room gets a plain, actionable reply instead of
         silence.
         """
@@ -613,10 +610,12 @@ class AlignerEngine:
         )
         text = ""
         try:
-            brain = self._make_brain(l9.episode_urn(room, _new_episode_id()))
-            text = (await asyncio.to_thread(brain, prompt) or "").strip()
+            llm_session = self._open_llm_session(l9.episode_urn(room, _new_episode_id()))
+            text = (await asyncio.to_thread(llm_session, prompt) or "").strip()
         except Exception:
-            logger.warning("aligner brain unavailable to explain stall in %s", room, exc_info=True)
+            logger.warning(
+                "aligner LLM session unavailable to explain stall in %s", room, exc_info=True
+            )
         if not text:
             text = (
                 "I can't align the room yet — a negotiation needs at least two agents "
@@ -636,16 +635,10 @@ class AlignerEngine:
             topic=l9.topic_urn(room),
             payload_type="message",
         )
-        content = serialize_content(env, extra={"content": safe})
-        try:
-            await managed.channel.send(env, extra={"content": safe})
-        except Exception:
-            logger.warning("aligner failed to broadcast message on room %s", room)
-        if managed.persister is not None:
-            managed.persister.ingest_local(env, content)
+        await managed.post(env, safe)
 
     def _fold_reading(
-        self, ep: EpisodeState, handle: str, reading: dict[str, Any], proposing: bool
+        self, ep: NegotiationState, handle: str, reading: dict[str, Any], proposing: bool
     ) -> None:
         """Fold one interpreted SAO move into the episode so metrics stay live.
 
@@ -706,7 +699,7 @@ class AlignerEngine:
             *(_norm(h) for h in _NON_PARTICIPANTS),
         }
 
-    def _verdict(self, ep: EpisodeState) -> tuple[bool, dict[str, Any] | None]:
+    def _verdict(self, ep: NegotiationState) -> tuple[bool, dict[str, Any] | None]:
         """(converged, metrics). Converged ⇔ metrics exist and MPC ≥ threshold."""
         metrics = l9_episode.compute_metrics(ep)
         converged = metrics is not None and metrics["mpc"] >= self._threshold
@@ -717,7 +710,7 @@ class AlignerEngine:
     async def _emit_verdict(
         self,
         managed: ManagedRoomChannel,
-        ep: EpisodeState,
+        ep: NegotiationState,
         assignments: dict[str, Any],
         converged: bool,
         metrics: dict[str, Any] | None,
@@ -743,16 +736,10 @@ class AlignerEngine:
         envelope = l9.parse_envelope(wire_dict)
         if text is None:
             text = self._verdict_text(converged, metrics)
-        content = serialize_content(envelope, extra={"content": text})
-        try:
-            await managed.channel.send(envelope, extra={"content": text})
-        except Exception:
-            logger.warning("aligner failed to broadcast verdict on room %s", managed.room)
         # Record + trigger locally (deduped by message id), so the transcript,
         # UI bus, and on_converged seam fire even if SLIM never loops our own
         # broadcast back to the moderator (mirrors the human-proxy publish).
-        if managed.persister is not None:
-            managed.persister.ingest_local(envelope, content)
+        await managed.post(envelope, text)
         l9_episode.write_episode_record(
             ep,
             outcome="converged" if converged else "rejected",

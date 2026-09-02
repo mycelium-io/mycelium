@@ -99,8 +99,8 @@ describe("<MemoryGraph />", () => {
     const canvas = screen.getByRole("group", { name: /memory link graph/i });
     expect(canvas.querySelectorAll("line")).toHaveLength(1);
     // Dead references (no target node) don't appear in the broken-link count —
-    // the strip only reflects what's drawn. The integrity system (IntegrityBanner,
-    // `mycelium memory --check`) is where dead refs surface.
+    // the strip only reflects what's drawn. `mycelium memory --check` is where
+    // dead refs surface.
     expect(screen.queryByText(wholeText("1 broken link"))).not.toBeInTheDocument();
     expect(screen.getByText(wholeText("1 link"))).toBeInTheDocument();
   });

@@ -23,6 +23,7 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
+from mycelium import identity
 from mycelium.commands.agent import (
     _load_manifest_remote,
     _persist_and_describe,
@@ -59,8 +60,12 @@ def engine_create(
         "--allow-from",
         help="Comma-separated sender handles allowed to summon (e.g. '@avery').",
     ),
-    handle_flag: str = typer.Option(
-        "cli-user", "--as", "-H", help="Your own handle (recorded as created_by)."
+    handle_flag: str | None = typer.Option(
+        None,
+        "--as",
+        "--handle",
+        "-H",
+        help="Your own handle (recorded as created_by). Defaults to your hub identity.",
     ),
 ) -> None:
     """Create a first-party cognition engine in a room.
@@ -70,6 +75,7 @@ def engine_create(
     """
     try:
         config = MyceliumConfig.load()
+        handle_flag = identity.resolve_actor(config, override=handle_flag)
         if kind not in ENGINE_KINDS:
             known = ", ".join(sorted(ENGINE_KINDS))
             typer.secho(f"Unknown engine kind '{kind}'. Known: {known}.", fg=typer.colors.RED)
@@ -96,7 +102,7 @@ def engine_create(
             config=config,
             room_name=room_name,
             handle_flag=handle_flag,
-            verb="created",
+            action="created",
         )
     except typer.Exit:
         raise
@@ -159,7 +165,7 @@ def engine_invoke(
         None, "--room", "-r", help="Room to summon in (defaults to active room)."
     ),
     handle_flag: str | None = typer.Option(
-        None, "--as", "-H", help="Your sender handle (defaults to identity config)."
+        None, "--as", "--handle", "-H", help="Your sender handle (defaults to identity config)."
     ),
 ) -> None:
     """Summon a registered cognition engine by posting an ``@handle`` message.

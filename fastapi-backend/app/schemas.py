@@ -169,6 +169,13 @@ class MessageCreate(BaseModel):
     metadata: EventMetadata | None = Field(
         None, description='Structured event metadata; required when message_type="event"'
     )
+    episode: str | None = Field(
+        None,
+        description=(
+            "Thread to post into (an episode URN — a task's, or a negotiation "
+            "inside one). Omit to post to the room itself."
+        ),
+    )
 
     @model_validator(mode="after")
     def _metadata_matches_type(self) -> "MessageCreate":
@@ -400,6 +407,17 @@ class MemoryRead(BaseModel):
             "The memory's unmanaged frontmatter — every key the store doesn't own "
             "(so not key, authorship, version, timestamps, tags or value). This is "
             "what ``MemoryCreate.meta`` wrote, read back."
+        ),
+    )
+    episode: str | None = Field(
+        None,
+        description=(
+            "The episode URN the conversation about this memory happens in — what "
+            "makes a task a thread, and what makes every other memory "
+            "discussable. Every memory carries one, whatever its namespace and "
+            "whoever wrote it. Store-owned: minted by the backend on create, so "
+            "it is absent from ``meta`` and cannot be set by a write. Null only "
+            "on a memory written before threading and not yet backfilled."
         ),
     )
     expandable: bool = Field(

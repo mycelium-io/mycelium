@@ -124,4 +124,53 @@ describe("<MarkdownContent /> memory links", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
     expect(screen.getByText(/!\[\[key\]\]/)).toBeInTheDocument();
   });
+
+  it("renders a single newline as a line break, not a collapsed space", () => {
+    // Agents post terminal-style prose with single newlines. Without remark-breaks
+    // CommonMark folds these into one paragraph and the message walls up; with it
+    // each line breaks. One <p> that carries a <br> between the two lines.
+    const { container } = render(<MarkdownContent>{"Line one.\nLine two."}</MarkdownContent>);
+
+    const paragraphs = container.querySelectorAll("p");
+    expect(paragraphs).toHaveLength(1);
+    expect(paragraphs[0].querySelector("br")).toBeInTheDocument();
+  });
+});
+
+describe("<MarkdownContent /> headings", () => {
+  it("renders every heading level as a heading element", () => {
+    // h5/h6 have no entry in the component map unless one is declared, and
+    // Tailwind's preflight resets headings to body size and weight — so a level
+    // that falls out of the map renders as prose with a heading role and no
+    // visible difference from the paragraph above it.
+    render(
+      <MarkdownContent>
+        {"# One\n\n## Two\n\n### Three\n\n#### Four\n\n##### Five\n\n###### Six"}
+      </MarkdownContent>,
+    );
+
+    for (const [level, text] of [
+      [1, "One"],
+      [2, "Two"],
+      [3, "Three"],
+      [4, "Four"],
+      [5, "Five"],
+      [6, "Six"],
+    ] as const) {
+      expect(screen.getByRole("heading", { level, name: text })).toBeInTheDocument();
+    }
+  });
+
+  it("processes mentions and memory links inside a heading", () => {
+    const onLinkClick = vi.fn();
+    render(
+      <MarkdownContent onLinkClick={onLinkClick}>
+        {"###### @alice on [[work/api]]"}
+      </MarkdownContent>,
+    );
+
+    const heading = screen.getByRole("heading", { level: 6 });
+    expect(heading).toContainElement(screen.getByText("@alice"));
+    expect(heading).toContainElement(screen.getByRole("button", { name: /work\/api/ }));
+  });
 });

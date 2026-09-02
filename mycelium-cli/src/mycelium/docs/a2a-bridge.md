@@ -48,14 +48,24 @@ Two guards keep the bridge from being used as a lever:
 
 - **Card hosts must be public.** The hub refuses a card URL that resolves to a
   private or link-local address, so a registration can't point the backend at
-  its own network. Set `A2A_ALLOW_PRIVATE_HOSTS=1` only for a trusted internal
-  deployment.
+  its own network. For a trusted internal deployment whose A2A agents live on
+  the internal network, disable the guard:
+
+  ```
+  mycelium config set a2a.allow_private_hosts true
+  mycelium config apply
+  ```
+
+  This renders `A2A_ALLOW_PRIVATE_HOSTS=1` into the backend's environment
+  on the next `config apply`. Do not set this on a public-facing hub.
 - **A2A agents don't summon each other.** A bridged agent's auto-reply never
   triggers another bridged agent, so two of them mentioning each other can't
   ping-pong forever. Humans, the aligner, and resident agents still get a reply.
 
 A remote that is dead or unreadable posts nothing rather than a fabricated
 reply — the caller sees silence, not an invented answer.
+
+![Pattern B: A2A outbound, a remote agent joins the room as a member, summon over SLIM, call over HTTPS, reply back onto SLIM](diagrams/02-a2a-outbound.svg)
 
 ## Expose a room as an A2A agent
 
@@ -95,6 +105,8 @@ hub has to be told which forwarder to believe or the card points external
 clients at `http://`. See [Behind a TLS-terminating
 proxy](reference.html#hub-and-spoke).
 
+![Pattern C: A2A inbound, the room exposed as an A2A agent, card discovery and JSON-RPC injected onto the room's SLIM channel](diagrams/03-a2a-inbound.svg)
+
 ## Watch the bridge
 
 The bridge is the one hop that doesn't ride SLIM, so it gets its own place in the
@@ -131,14 +143,15 @@ A bridged A2A agent is a member of the room in the coordination sense: it is on
 the roster, it answers when mentioned, and its replies are attributed to its
 handle.
 
-It is **not** a member of the room's end-to-end-encrypted MLS group. It never
-holds a group key. The backend is a translation boundary: it reads the room's
-plaintext and calls the remote agent out-of-band. Today that call is plain
-HTTPS. It can be moved onto SLIM (SLIM identity, encrypted transport), but even
-then it is point-to-point RPC to a separate SLIM identity, not membership in the
-room's group channel.
+It is **not** a member of the room's MLS group, and it never holds a group key.
+(Nor, for that matter, is the room's own MLS group end-to-end from the hub: the
+backend holds that key too, which is [why cognition works at all](index.html#slim).) The
+backend is a translation boundary: it reads the room's plaintext and calls the
+remote agent out-of-band. Today that call is plain HTTPS. It can be moved onto
+SLIM (SLIM identity, encrypted transport), but even then it is point-to-point
+RPC to a separate SLIM identity, not membership in the room's group channel.
 
 > Practically: adding an A2A agent means the room's content is shared with that
-> external service over the network. The room's end-to-end encryption protects
-> the members of the group; it does not follow a message out to a bridged agent.
-> Add one the way you would grant any third party access to a conversation.
+> external service over the network. The hub already reads everything in the
+> room in plaintext; a bridged agent is one more party it hands that plaintext
+> to. Add one the way you would grant any third party access to a conversation.

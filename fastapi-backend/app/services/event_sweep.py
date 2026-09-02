@@ -16,7 +16,7 @@ import asyncio
 import logging
 from datetime import UTC, datetime
 
-from app.services import local_state
+from app.services import in_memory_store
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ _sweep_task: asyncio.Task | None = None
 
 async def sweep_expired_events() -> int:
     """Delete expired event messages. Returns the number removed."""
-    removed = local_state.sweep_expired_messages(datetime.now(UTC))
+    removed = in_memory_store.sweep_expired_messages(datetime.now(UTC))
     if removed:
         logger.info("event sweep removed %d expired event(s)", removed)
     return removed

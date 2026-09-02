@@ -24,7 +24,7 @@ import pytest
 from app.services.status import credentials
 from app.services.status.auth import Basic, Bearer
 from app.services.status.runtime import ProviderConformanceError, StatusRuntime
-from app.services.status.types import Liveness, Ok, Ref, StatusProvider
+from app.services.status.types import FetchSucceeded, Ref, StatusProvider, UpstreamState
 
 NOW = datetime(2026, 8, 22, 12, 0, tzinfo=UTC)
 
@@ -183,7 +183,7 @@ class _Guarded:
 
     async def fetch(self, refs, ctx):
         self.calls.append(list(refs))
-        return [Ok(ref=r, liveness=Liveness(state="ok", label="ok")) for r in refs]
+        return [FetchSucceeded(ref=r, upstream=UpstreamState(state="ok", label="ok")) for r in refs]
 
 
 def _fake_factory(provider, auth):

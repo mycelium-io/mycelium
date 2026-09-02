@@ -26,7 +26,7 @@ def manager(monkeypatch: pytest.MonkeyPatch) -> room_channels.RoomChannelManager
     monkeypatch.setattr(settings, "SLIM_ENABLED", True)
     monkeypatch.setattr(room_channels, "node_reachable", lambda _endpoint: True)
     monkeypatch.setattr(room_channels, "SlimClient", FakeSlimClient)
-    # The durable-inbox persister owns a background loop we don't want in a unit
+    # The durable-inbox persister owns a background loop we don't want in a task
     # test — provisioning/membership is the surface under test here.
     monkeypatch.setattr(room_channels.RoomChannelManager, "_start_persister", lambda self, m: None)
     return room_channels.RoomChannelManager(endpoint="http://node", default_workspace="ws")
@@ -146,3 +146,43 @@ async def test_status_reports_per_room_snapshot(
     room = next(r for r in status["rooms"] if r["room"] == "room-a")
     assert room["provisioned"] is True
     assert room["members"] == ["agent-a"]
+
+
+@pytest.mark.asyncio
+async def test_persister_members_provider_excludes_lease_only_handles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The persister's ``delivered_to`` source must be real SLIM members only.
+
+    A server-held ``await`` lease is polling, not pushed-to: DeliveryLog.record
+    marks anyone in ``delivered_to`` as caught up to the message just recorded,
+    so if a lease-only handle were counted, a mention addressed to it would be
+    marked delivered before its own poll ever read it — silently un-deliverable.
+    ``manager.members(room)`` unions SLIM members with lease holders (correct for
+    the roster/mention gate uses), so the persister must be wired to the
+    channel's own live SLIM set instead, not that union.
+    """
+    monkeypatch.setattr(settings, "SLIM_ENABLED", True)
+    monkeypatch.setattr(room_channels, "node_reachable", lambda _endpoint: True)
+    monkeypatch.setattr(room_channels, "SlimClient", FakeSlimClient)
+
+    class _FakeRoomPersister:
+        def __init__(self, room, channel, *, members_provider, **_kw):
+            self.members_provider = members_provider
+
+        async def run(self):
+            return None
+
+    monkeypatch.setattr(room_channels, "RoomPersister", _FakeRoomPersister)
+
+    manager = room_channels.RoomChannelManager(endpoint="http://node", default_workspace="ws")
+    managed = await manager.provision("room-a")
+    assert managed is not None
+    managed.members.add("slim-agent")
+    manager.refresh_lease("room-a", "lease-only-agent")
+
+    # The union (roster/mention gate use) legitimately includes both.
+    assert set(manager.members("room-a")) == {"slim-agent", "lease-only-agent"}
+    # The persister's delivery source must not.
+    fake_persister = cast(_FakeRoomPersister, managed.persister)
+    assert fake_persister.members_provider() == {"slim-agent"}

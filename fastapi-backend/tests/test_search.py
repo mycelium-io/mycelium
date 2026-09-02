@@ -20,7 +20,7 @@ def _stub_embeddings(monkeypatch):
     monkeypatch.setattr("app.services.embedding._STUB", True)
 
 
-# ── brute-force cosine over a seeded index (unit) ─────────────────────────────
+# ── brute-force cosine over a seeded index (task) ─────────────────────────────
 
 
 def _seed(room: str, rows: list[tuple[str, list[float]]]) -> None:

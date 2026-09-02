@@ -136,7 +136,7 @@ def test_agent_ls_lists_what_the_hub_serves_with_no_local_files(
 
 
 def test_agent_ls_skips_notes_and_log_children(monkeypatch: pytest.MonkeyPatch) -> None:
-    """``agents/<handle>/…`` entries are the agent's brain, not more agents."""
+    """``agents/<handle>/…`` entries are the agent's llm_session, not more agents."""
     _stub(
         monkeypatch,
         MEMORY_LIST_SYNC,
