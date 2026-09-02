@@ -18,6 +18,8 @@ from testcases.nightly_stub_coord import CrossEpisodeMemory as _CrossEpisodeMemo
 from testcases.nightly_stub_coord import MultiSessionResponseRate as _MultiSessionResponseRate
 from testcases.nightly_hub_spoke import TwoNodeHubSpoke as _TwoNodeHubSpoke
 from testcases.nightly_hub_spoke import ThreeNodeHubSpoke as _ThreeNodeHubSpoke
+from testcases.nightly_a2a import OutboundA2ARegistration as _OutboundA2ARegistration
+from testcases.nightly_a2a import OutboundA2AMentionRoundTrip as _OutboundA2AMentionRoundTrip
 
 
 class CommonSetup(MyceliumCommonSetup):
@@ -54,6 +56,15 @@ class TwoNodeHubSpoke(_TwoNodeHubSpoke):
 
 
 class ThreeNodeHubSpoke(_ThreeNodeHubSpoke):
+    pass
+
+
+# A2A (outbound) — needs A2A_ALLOW_PRIVATE_HOSTS=1; skips cleanly otherwise
+class OutboundA2ARegistration(_OutboundA2ARegistration):
+    pass
+
+
+class OutboundA2AMentionRoundTrip(_OutboundA2AMentionRoundTrip):
     pass
 
 
