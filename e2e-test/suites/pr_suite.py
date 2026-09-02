@@ -25,6 +25,7 @@ from testcases.pr_protocol import RoomDeleteIdempotent as _RoomDeleteIdempotent
 from testcases.pr_protocol import HerdrPresenceOverlay as _HerdrPresenceOverlay
 from testcases.pr_protocol import MessageAmendment as _MessageAmendment
 from testcases.pr_protocol import EventStatusTransition as _EventStatusTransition
+from testcases.pr_protocol import AssignmentLifecycle as _AssignmentLifecycle
 from testcases.pr_protocol import AgentContextEndpointShape as _AgentContextEndpointShape
 
 
@@ -92,6 +93,10 @@ class MessageAmendment(_MessageAmendment):
 
 
 class EventStatusTransition(_EventStatusTransition):
+    pass
+
+
+class AssignmentLifecycle(_AssignmentLifecycle):
     pass
 
 

@@ -272,6 +272,98 @@ class EventStatusTransition(aetest.Testcase):
         api.delete_room(self.room)
 
 
+class AssignmentLifecycle(aetest.Testcase):
+    """work/ row custody: claim -> (conflict) -> release -> re-claim -> resolve.
+
+    claim/release/resolve/renew and the read/await shapes had zero coverage.
+    No CLI wrapper exists yet, so this is straight HTTP.
+    """
+
+    @aetest.setup
+    def setup_room(self, api: MyceliumAPI, testscript):
+        self.room = f"qa-coord-fresh-{uuid.uuid4().hex[:8]}"
+        testscript.parameters.setdefault("owned_rooms", set()).add(self.room)
+        status, _ = api.create_room(self.room)
+        assert status in (200, 201)
+        self.enc = urllib.parse.quote(self.room, safe="")
+        self.key = f"work/ship-feature-{uuid.uuid4().hex[:6]}"
+
+        status, _ = api.post_json(
+            f"/rooms/{self.enc}/memory",
+            {
+                "items": [
+                    {
+                        "key": self.key,
+                        "value": {"text": "Ship the new export feature."},
+                        "created_by": "qa-tester",
+                    }
+                ]
+            },
+        )
+        assert status == 201, f"work row create returned {status}"
+
+    @aetest.test
+    def claim_conflict_release_reclaim_resolve(self, api: MyceliumAPI):
+        status, unclaimed = api.get_json(f"/rooms/{self.enc}/assignments/{self.key}")
+        if status == 404:
+            self.skipped("assignments endpoint not present in this build")
+            return
+        assert status == 200, f"assignment read returned {status}: {unclaimed}"
+        assert unclaimed["assignment"] == "unclaimed", unclaimed
+
+        status, held = api.post_json(
+            f"/rooms/{self.enc}/assignments/claim",
+            {"key": self.key, "handle": "qa-alice", "ttl_minutes": 30},
+        )
+        assert status == 200, f"claim returned {status}: {held}"
+        assert held["assignment"] == "held", held
+        assert held["owner"] == "qa-alice", held
+
+        status, conflict = api.post_json(
+            f"/rooms/{self.enc}/assignments/claim",
+            {"key": self.key, "handle": "qa-bob"},
+        )
+        assert status == 409, f"Expected 409 claiming an already-held row, got {status}: {conflict}"
+
+        status, released = api.post_json(
+            f"/rooms/{self.enc}/assignments/release",
+            {"key": self.key, "handle": "qa-alice", "note": "handing off"},
+        )
+        assert status == 200, f"release returned {status}: {released}"
+        assert released["assignment"] == "released", released
+        assert released["owner"] is None, released
+
+        status, reclaimed = api.post_json(
+            f"/rooms/{self.enc}/assignments/claim",
+            {"key": self.key, "handle": "qa-bob"},
+        )
+        assert status == 200, f"re-claim after release returned {status}: {reclaimed}"
+        assert reclaimed["owner"] == "qa-bob", reclaimed
+
+        status, resolved = api.post_json(
+            f"/rooms/{self.enc}/assignments/resolve",
+            {"key": self.key, "handle": "qa-bob"},
+        )
+        assert status == 200, f"resolve returned {status}: {resolved}"
+        assert resolved["assignment"] == "resolved", resolved
+
+        status, renewal = api.post_json(
+            f"/rooms/{self.enc}/assignments/renew", {"handle": "qa-bob"}
+        )
+        assert status == 200, f"renew returned {status}: {renewal}"
+        assert "renewed" in renewal, renewal
+
+        status, oriented = api.get_json(
+            f"/rooms/{self.enc}/assignments/await?key={urllib.parse.quote(self.key, safe='')}"
+        )
+        assert status == 200, f"await (orientation) returned {status}: {oriented}"
+        assert oriented["assignment"] == "resolved", oriented
+
+    @aetest.cleanup
+    def delete_room(self, api: MyceliumAPI):
+        api.delete_room(self.room)
+
+
 class AgentContextEndpointShape(aetest.Testcase):
     """agent_context endpoint returns expected structure (or 404 in older builds)."""
 
