@@ -1,92 +1,115 @@
 # mycelium-e2e-test
 
-pyATS-based end-to-end test suite for [Mycelium](https://github.com/mycelium-io/mycelium), a multi-agent coordination platform.
+pyATS-based end-to-end test suite for [Mycelium](https://github.com/mycelium-io/mycelium), a SLIM-native multi-agent coordination platform.
 
-This repository is an **operator-side** harness: tests drive a running Mycelium backend (and, for hub_and_spoke tests, OpenClaw agents on multiple machines) over its public HTTP and CLI surfaces.
+This is an **operator-side** harness: tests drive a running Mycelium backend over its public HTTP and CLI surfaces. Nothing here modifies Mycelium's own source — it's a black-box consumer of the backend API, the `mycelium` CLI, and (for Tier C) real LLM-backed cursor agents.
 
 ## Architecture
 
-The suite follows pyATS conventions with a hub-and-spoke design:
-
 ```
-jobs/                           Easypy job files (orchestration)
-  weekly_e2e_job.py             Full weekly long-running E2E
-  core_job.py                   Core tests only
-  convergence_job.py            Multi-agent convergence
-  distributed_job.py            Cross-device hub_and_spoke tests
-  _common.py                    Shared job utilities
+jobs/                            Easypy job files (orchestration)
+  pr_job.py                      Tier A only — runs on every PR (~10 min)
+  nightly_job.py                 Tier A + Tier B — nightly + pre-release (~30 min)
+  canary_job.py                  Tier C — live agent, manual/weekly (informational)
+  _common.py                     Shared job utilities (datafile/testbed/env resolution)
 
-suites/                         Thin AEtest scripts (class declarations)
-  weekly_full_suite.py          All 42 tests
-  core_suite.py                 Tests 01-14, 22
-  convergence_suite.py          Tests 15-21
-  distributed_suite.py          Tests 30-49
+suites/                          Thin AEtest scripts (class declarations only)
+  pr_suite.py                    Tier A: stack health, memory, protocol
+  nightly_suite.py               Tier B: stub coordination + hub-and-spoke
+  canary_suite.py                Tier C: live multi-episode canary
+  minimal_test.py                Smoke test for the pyATS subprocess itself
 
-testcases/                      Reusable AEtest testcase classes
-  common_setup_cleanup.py       CommonSetup/Cleanup (env detection, hygiene)
-  core_tests.py                 Rooms, memory, CLI, sessions, search
-  cfn_tests.py                  IOC/CFN integration
-  matrix_tests.py               Matrix communication
-  convergence_tests.py          Simulated multi-agent convergence
-  distributed_tests.py          Real agent cross-device tests
-  openclaw_tests.py             Skill verification
-  cross_channel_tests.py        Cross-channel memory isolation
+testcases/                       Reusable AEtest testcase classes
+  common_setup_cleanup.py        CommonSetup/Cleanup (client init, room hygiene)
+  tier_a_stack.py                Backend health, room lifecycle, CLI basics
+  tier_a_memory.py                Memory CRUD, briefing contract, search
+  tier_a_protocol.py             Session API shape, await/respond, agent-context
+  tier_b_stub_coord.py           Mechanical two-stub negotiation scenarios
+  tier_b_hub_spoke.py            Cross-container (hub + spoke) stub coordination
+  tier_c_live_episode.py         Real cursor-agent multi-episode canary
+  hub_and_spoke_tests.py         Not currently wired into any suite — see note below
 
-libs/                           Shared libraries
-  mycelium_api.py               Backend HTTP REST client
-  mycelium_cli.py               CLI subprocess wrapper
-  cfn_api.py                    CFN management + node-svc client
-  matrix_client.py              Matrix Synapse async client
-  openclaw.py                   OpenClaw gateway helpers
-  environment.py                Environment detection & health probes
+libs/                            Shared libraries
+  mycelium_api.py                Backend HTTP REST client
+  mycelium_cli.py                CLI subprocess wrapper (handles the local-write uid switch)
+  environment.py                 Service probing and skip-flag detection
+  coordination_flow.py           setup_coordination() — room + agents + opening positions
+  stub_agent.py                  Mechanical StubAgent + run_stubs_until_terminal()
+  remote_stub.py                 RemoteStubAgent — stub driven over docker exec (spokes)
+  agent_pools.py                 Provisioner-backed agent pool for multi-device tests
+  provisioners/                  Adapter-agnostic provisioner protocol (openclaw/cursor/hermes)
+  sessions.py                    Coordination-session polling helpers
+  host_exec.py                   Local vs. docker-exec command dispatch
+  observability_helpers.py       Log/metrics assertions shared across tiers
 
-data/                           pyATS datafiles (YAML config)
-  base_datafile.yaml            Shared parameters (topology, timeouts)
-  lab_datafile.yaml             Lab topology overlay (oclw3/4/5)
-  local_datafile.yaml           Localhost topology overlay
-  weekly_datafile.yaml          Full weekly suite UIDs (extends lab)
-  core_datafile.yaml            Core suite UIDs (extends lab)
-  distributed_datafile.yaml     Distributed suite UIDs (extends lab)
+data/                            pyATS datafiles (YAML config, `extends:` base)
+  base_datafile.yaml             Shared parameters (topology, timeouts, room prefix)
+  pr_datafile.yaml                Tier A overlay
+  nightly_datafile.yaml          Tier B overlay
+  canary_datafile.yaml           Tier C overlay (room rotation, episode cap)
 
-scripts/                        Operator utility scripts
-docs/                           Historical investigation docs
+testbeds/                        pyATS testbed YAML (device topology)
+  local.yaml                     Single host — CLI and backend on the same machine
+  compose.yaml                   Hub (local) + spoke1/spoke2 via `docker exec` (CI)
+  lab.yaml                       Hub + spoke1/spoke2 via SSH (oclw4/oclw3/oclw5)
+
+scripts/                         Operator utility scripts
+  cleanup-sessions.sh            Clean stale negotiating sessions / remote agent processes
+  cursor_exec.sh                 Exec driver for `mycelium await --loop --exec` (Tier C)
+
+infra/
+  compose.spokes.yaml            Docker Compose for the two spoke containers (Tier B nightly)
+
+tests/unit/                      Offline unit tests for libs/ and jobs/_common.py (pytest)
+docs/                            Historical investigation writeups (not living docs)
 ```
+
+**Note on `testcases/hub_and_spoke_tests.py`:** this file holds real local/distributed negotiation scenarios (two/three-agent, architecture decisions, resource allocation, cross-device) written against `libs/provisioners`. It is not currently imported by any suite — the suite that used to wire it in (`hub_and_spoke_suite.py`) imported a module name that no longer exists and was removed. The scenarios themselves may be worth reviving as Tier C episodes or a new suite; treat this file as reference material, not as something CI exercises today.
+
+## Test Tiers
+
+| Tier | Suite | UIDs | Real LLM? | Blocks release? |
+|------|-------|------|-----------|------------------|
+| **A** | `pr_suite.py` | `BackendHealth`, `RoomLifecycle`, `CLIBasics`, `MemoryCRUD`, `BriefingContract`, `MemorySearch`, `SessionAPIShape`, `RespondWithoutAwait`, `RoomDeleteIdempotent`, `AgentContextEndpointShape` | No | Yes — every PR |
+| **B** | `nightly_suite.py` | `tier_b_001`–`006` (`TwoStubHappyPath`, `TwoStubRejectionPath`, `CounterOfferChain`, `RespondWithoutTurnRejected`, `CrossEpisodeMemory`, `MultiSessionResponseRate`), `tier_b_HUB01`/`HUB02` | No — mechanical stubs (opt-in real cursor via `MYCELIUM_E2E_USE_CURSOR_STUBS=1`) | Yes — nightly + pre-release |
+| **C** | `canary_suite.py` | `tier_c_E01`, `tier_c_E02` | Yes — real cursor agent by default | No — informational only |
+
+Tier A and B need no LLM credentials at all; Tier C needs `LLM_API_KEY`/`LLM_BASE_URL`/`LLM_MODEL` and, for the cursor adapter, `CURSOR_API_KEY`.
+
+`tier_b_HUB01`/`HUB02` (in `tier_b_hub_spoke.py`) require `spoke1`/`spoke2` devices — they skip automatically on `testbeds/local.yaml` and only run for real on `testbeds/compose.yaml` (CI) or `testbeds/lab.yaml`.
 
 ## Quick Start
 
 ### Install
 
 ```bash
-# Create venv and install dependencies
-uv venv && source .venv/bin/activate
-uv pip install -e ".[dev]"
-
-# Or with pip
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+uv sync
+# or: python -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"
 ```
 
 ### Run
 
+There is no wrapper script — pick the job and testbed explicitly:
+
 ```bash
-# Core tests against lab (default datafile includes lab topology)
-pyats run job jobs/core_job.py
+# Tier A — fast, no LLM, single host
+pyats run job jobs/pr_job.py --testbed-file testbeds/local.yaml
 
-# Full weekly E2E (long-running, all tiers)
-pyats run job jobs/weekly_e2e_job.py
+# Tier A + B — nightly, no LLM (mechanical stubs), hub + spokes via docker exec
+pyats run job jobs/nightly_job.py --testbed-file testbeds/compose.yaml
 
-# Distributed tests only
-pyats run job jobs/distributed_job.py
+# Tier C — live agent canary, needs LLM credentials, informational only
+pyats run job jobs/canary_job.py --testbed-file testbeds/local.yaml
 
-# Specific tests via TESTCASES filter
-TESTCASES="test_01_room_lifecycle, test_02_multi_agent_memory" \
-    pyats run job jobs/weekly_e2e_job.py
+# Against the lab (oclw4) instead of localhost
+MYCELIUM_BACKEND_URL=http://10.0.50.125:8000 \
+    pyats run job jobs/nightly_job.py --testbed-file testbeds/lab.yaml
 
-# With HTML report
-pyats run job jobs/weekly_e2e_job.py --html-logs
+# Override the datafile explicitly rather than relying on the job's default
+pyats run job jobs/pr_job.py --testbed-file testbeds/local.yaml --datafile data/pr_datafile.yaml
 
-# View logs from last run
-pyats logs view
+# Unit tests (offline, no backend needed)
+uv run pytest tests/unit -q
 ```
 
 ### Environment Variables
@@ -94,36 +117,32 @@ pyats logs view
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `MYCELIUM_BACKEND_URL` | `http://localhost:8000` | Backend base URL |
-| `CFN_MGMT_URL` | `http://localhost:9000` | CFN management plane |
-| `CFN_SVC_URL` | `http://localhost:9002` | CFN node service |
-| `MATRIX_URL` | `http://localhost:8008` | Matrix Synapse |
-| `OCLW3_IP` | `10.0.50.171` | Remote host (claire-agent) |
-| `OCLW4_IP` | `10.0.50.125` | Hub host (backend + local agents) |
-| `OCLW5_IP` | `10.0.50.142` | Remote host (oclw5-agent) |
-| `MATRIX_TOKEN_AGENT_ALPHA` | — | Matrix access tokens per agent |
-| `MATRIX_SHARED_SECRET` | — | Synapse admin registration secret |
-| `E2E_MYCELIUM_ROOM` | `mycelium_room` | Shared Mycelium room name |
 | `MYCELIUM_DATAFILE` | `base_datafile.yaml` | Override datafile from env |
-| `TESTCASES` | — | Comma-separated test filter |
+| `MYCELIUM_E2E_RUNTIME` | auto-detected | `local` or `lab` — selects the default testbed when none is passed |
+| `MYCELIUM_E2E_NO_CLEANUP` | unset | Skip all room teardown (setup + cleanup) |
+| `MYCELIUM_E2E_KEEP_ROOMS` | unset | Skip only cleanup's room deletion |
+| `MYCELIUM_E2E_USE_CURSOR_STUBS` | unset | Tier B hub-and-spoke: swap mechanical stub replies for real cursor-agent ones |
+| `MYCELIUM_CANARY_ROOM` | `api-design-review` | Tier C room name |
+| `MYCELIUM_CANARY_ADAPTER` | `cursor` | Tier C agent adapter |
+| `MYCELIUM_LOCAL_WRITE_UID` | unset | Run local-write CLI commands (`agent create`, `engine create`) as this uid, to match the backend container's fixed uid — see `libs/mycelium_cli.py` |
+| `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | unset | Live LLM credentials — Tier C skips without them |
+| `CURSOR_API_KEY` / `CURSOR_MODEL` | unset | cursor-agent CLI credentials (Tier C default adapter; Tier B opt-in) |
+| `OCLW3_IP` / `OCLW4_IP` / `OCLW5_IP` | lab IPs | Lab testbed device addresses |
+| `SSH_USER` / `SSH_KEY_PATH` | `ubuntu` / `~/.ssh/ioc.pem` | Lab testbed SSH credentials |
 
-## Test Tiers
+## CI
 
-| Tier | Tests | Groups | Requirements |
-|------|-------|--------|-------------|
-| **Sanity** | 01-04, 06c, 11, 22 | `core`, `sanity` | Backend only |
-| **Core** | 01-14, 22 | `core` | Backend + CFN + LLM (some) |
-| **CFN** | 08-10 | `cfn` | CFN stack |
-| **Matrix** | 07 | `matrix` | Synapse |
-| **Convergence** | 15-21 | `convergence` | Backend + CFN + LLM |
-| **Local-Real** | 30-32 | `local_e2e` | OpenClaw + Matrix + local agents |
-| **Distributed** | 40-49 | `hub_and_spoke` | Remote agents on oclw3/oclw5 |
-| **OpenClaw** | 50-51 | `openclaw` | OpenClaw with mycelium adapter |
-| **Cross-Channel** | 60 | `cross_channel` | LLM + Matrix |
+Two workflows:
+
+- **`.github/workflows/e2e.yml`** — Tier A on every push/PR to a non-main branch; Tier A+B nightly at 05:00 UTC; also triggerable via `workflow_dispatch` or cross-repo `repository_dispatch` from the Mycelium repo (`mycelium-pr-test`/`mycelium-nightly`). Can build Mycelium from source (pass a `mycelium_ref`) instead of installing the latest release.
+- **`.github/workflows/weekly-e2e.yaml`** — Tier C canary, manual `workflow_dispatch` only (the weekly cron is currently commented out). Never blocks — `continue-on-error: true`.
+
+Both workflows start a real `mycelium` backend (Docker) on the runner before running any suite.
 
 ## pyATS Concepts
 
-- **Job file**: Orchestrates which suites run and with what parameters
-- **Suite file**: Thin AEtest script with CommonSetup + Testcases + CommonCleanup
-- **Testcase class**: Reusable test logic with `@aetest.setup/test/cleanup`
-- **Datafile**: YAML-driven parameters injected into tests at runtime
-- **Steps**: Fine-grained sub-results within each test for debuggability
+- **Job file** (`jobs/*.py`): orchestrates which suite(s) run and with what datafile/testbed
+- **Suite file** (`suites/*.py`): thin `CommonSetup + Testcases + CommonCleanup` declaration, no test logic
+- **Testcase class** (`testcases/*.py`): the actual test logic, `@aetest.setup/test/cleanup`
+- **Datafile** (`data/*.yaml`): YAML parameters injected into `testscript.parameters`, inherited via `extends:`
+- **Testbed** (`testbeds/*.yaml`): device topology (hub/spoke1/spoke2) — governs which tests apply
