@@ -134,8 +134,10 @@ context accumulates across turns; a throwaway one-shot per turn would just rebui
 the amnesiac cold-spawn this design replaced.
 
 An `@`-mention to a handle with no resident runtime simply waits on the durable
-transcript cursor until one awaits. (Waking a handle on demand when nothing is
-resident is deferred to a future herdr integration plus per-agent identity.)
+transcript cursor until one awaits. Waking a handle on demand when nothing is
+resident is the job of the optional [herdr](#herdr) persistent-runtime layer,
+which keeps coding-agent sessions alive so a mention can wake one instead of
+queuing.
 
 **Cognition rides on engines.** First-party [engines](#engines) are registered in
 a room and summoned by `@`-mention; each `kind` is a distinct task of reasoning.

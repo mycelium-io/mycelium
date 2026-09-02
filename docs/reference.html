@@ -175,6 +175,7 @@
           <a href="#structured-memory" class="nav-link sub">Structured Memory</a>
           <a href="#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
           <a href="#ephemeral-agents" class="nav-link sub">Ephemeral Agents</a>
+          <a href="#herdr" class="nav-link sub">Persistent Agents (herdr)</a>
           <a href="#security-planes" class="nav-link sub">Security Planes</a>
           <a href="#auth" class="nav-link sub">Authentication</a>
           <a href="#keycloak-oidc" class="nav-link sub">Keycloak / OIDC Setup</a>
@@ -328,7 +329,7 @@
         <figcaption><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/diagrams/01-turnbased-cli.d2" target="_blank" rel="noopener">View source on GitHub</a></figcaption>
       </figure>
       <p>For a <strong>headless</strong> agent (no interactive session sitting there to hold the loop), <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs the loop for you and hands each turn to <code>&lt;cmd&gt;</code> (turn JSON on stdin); <code>&lt;cmd&gt;</code> is your reasoning runtime and calls <code>respond</code>. Point it at a <strong>persistent</strong> runtime (e.g. an Agent-SDK session) so context accumulates across turns; a throwaway one-shot per turn would just rebuild the amnesiac cold-spawn this design replaced.</p>
-      <p>An <code>@</code>-mention to a handle with no resident runtime simply waits on the durable transcript cursor until one awaits. (Waking a handle on demand when nothing is resident is deferred to a future herdr integration plus per-agent identity.)</p>
+      <p>An <code>@</code>-mention to a handle with no resident runtime simply waits on the durable transcript cursor until one awaits. Waking a handle on demand when nothing is resident is the job of the optional <a href="#herdr">herdr</a> persistent-runtime layer, which keeps coding-agent sessions alive so a mention can wake one instead of queuing.</p>
       <p><strong>Cognition rides on engines.</strong> First-party <a href="adapters.html#engines">engines</a> are registered in a room and summoned by <code>@</code>-mention; each <code>kind</code> is a distinct task of reasoning. The <code>aligner</code> mediates a disagreement; its brain is a persistent Pi coding-agent session running a NEGMAS Stacked Alternating Offers mechanism that owns termination, stopping the instant the agents agree. The <code>synthesizer</code> distills the room&#x27;s conversation into a shared briefing in memory, incrementally. See <a href="adapters.html#engines">engines</a>, <a href="adapters.html#aligner">aligner</a>, and <a href="index.html#episodes">episodes</a>.</p>
       <h2 id="architecture-tasks-threads-and-pings">Tasks, threads and pings</h2>
       <p>A <a href="index.html#board">task</a> is a <code>work/</code> memory. Its <strong>thread</strong> is a scoped, tagged slice of the room&#x27;s existing channel, identified by an episode id, and not a separate encrypted group. Membership in a room is membership in its threads; a thread separates attention rather than access.</p>
@@ -1748,6 +1749,80 @@ EOF
       </div>
       <p><code>mycelium doctor</code> runs from a client install too. It detects spoke mode from <code>MYCELIUM_API_URL</code> and reports on the hub rather than on a local stack.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/ephemeral-agents.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="herdr">
+      <h1>Persistent Agents (herdr)</h1>
+      <div class="callout callout-note callout--logo">
+        <div class="callout-bar"></div>
+        <span class="callout-logo"><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="herdr" viewBox="0 0 512 512" fill="currentColor"><g transform="translate(0 512) scale(.1 -.1)" stroke="none"><path d="M2794 3710 c-129 -33 -299 -135 -359 -214 -21 -28 -26 -42 -21 -63 9 -38 154 -178 199 -192 32 -11 41 -9 104 23 171 86 354 70 475 -43 150 -138 150 -379 0 -511 -107 -95 -278 -94 -386 2 l-46 40 -11 -29 c-16 -40 -14 -122 4 -164 60 -144 264 -222 452 -174 360 92 559 494 430 868 -36 103 -81 173 -175 267 -71 72 -100 93 -180 132 -52 26 -127 54 -167 62 -96 21 -230 20 -319 -4z M2183 3695 c-116 -32 -221 -108 -273 -199 -17 -28 -30 -54 -30 -58 0 -4 20 1 45 12 66 28 220 68 294 76 64 7 65 7 137 83 40 41 71 77 69 79 -2 2 -21 8 -42 13 -55 12 -140 10 -200 -6z M2212 3388 c-159 -22 -390 -122 -559 -241 -299 -210 -585 -600 -609 -828 -12 -118 40 -251 125 -318 96 -76 178 -98 426 -116 110 -8 224 -21 254 -29 125 -34 230 -115 272 -211 11 -24 24 -81 30 -127 20 -170 65 -271 166 -374 34 -35 63 -65 63 -67 0 -1 -10 -27 -22 -57 -29 -76 -37 -259 -14 -350 42 -170 158 -318 311 -397 44 -23 98 -46 120 -52 22 -6 45 -14 51 -18 5 -5 15 -48 22 -96 6 -48 14 -92 17 -97 4 -6 415 -10 1131 -10 l1124 0 0 1584 0 1585 -55 -19 c-84 -29 -143 -68 -232 -154 l-83 -78 -54 49 c-111 102 -233 151 -391 160 -113 6 -199 -10 -298 -54 l-60 -27 -26 34 c-37 51 -120 134 -127 128 -3 -4 0 -34 7 -67 17 -89 7 -268 -21 -356 -103 -328 -377 -545 -688 -545 -161 0 -273 41 -373 137 -37 35 -66 75 -85 116 -79 173 -8 407 124 407 44 0 68 -14 117 -66 74 -78 167 -82 238 -9 60 62 72 147 33 231 -42 90 -120 130 -238 122 -50 -4 -85 -14 -131 -37 -89 -45 -122 -52 -176 -40 -92 20 -262 163 -302 253 -11 25 -21 45 -22 45 -1 -1 -30 -6 -65 -11z m-256 -505 c115 -88 129 -102 132 -131 2 -18 -2 -40 -9 -49 -7 -8 -69 -55 -138 -105 -103 -73 -130 -88 -151 -83 -35 8 -51 34 -48 74 3 31 12 42 83 92 44 31 80 61 82 66 1 4 -30 31 -69 58 -39 28 -77 56 -85 63 -18 19 -16 72 4 94 32 35 63 23 199 -79z m528 -88 c23 -24 28 -52 14 -82 l-13 -28 -141 -3 c-130 -2 -142 -1 -158 17 -23 26 -24 66 -1 91 16 18 32 20 151 20 105 0 136 -3 148 -15z"/></g></svg></span>
+        <div class="callout-body"><a href="https://herdr.dev">herdr</a> is an optional persistent-runtime layer that keeps coding-agent sessions alive and addressable across detach. Mycelium coordinates agents through rooms; herdr gives those agents a place to <em>live</em>, so a mention to a handle that has stepped away can wake it instead of waiting.</div>
+      </div>
+      <h2 id="herdr-why-you-might-want-it">Why you might want it</h2>
+      <p>A mycelium agent participates as your own live session. It picks up an <code>@handle</code> mention only while its <code>await</code> loop is running (see <a href="index.html#quickstart-bring-your-agents-in">Bring your agents in</a>). Close the terminal and the handle is still a member of the room, but nothing is home: a mention just waits on the durable transcript cursor until you start the loop again.</p>
+      <p>herdr closes that gap. It holds coding-agent sessions (Claude, Pi, and others) open in named panes across a workspace, and mycelium binds those panes to room handles. Now a mention to a non-resident handle rings a doorbell that wakes the pane, and the agent answers on its next turn without anyone re-attaching.</p>
+      <p>Everything here is <strong>optional and fail-soft</strong>. If herdr is not installed or its server is down, every <code>mycelium herdr</code> command says so and exits cleanly, and a mention falls back to waiting on the cursor exactly as it does without herdr.</p>
+      <h2 id="herdr-prerequisites">Prerequisites</h2>
+      <ul>
+        <li>herdr installed and its local server running. See <a href="https://herdr.dev">herdr.dev</a>.</li>
+        <li>One or more agents already started in a herdr workspace (mycelium drives panes you started; it never spawns them).</li>
+        <li>A mycelium room to bind them to (<code>mycelium room create …</code>).</li>
+      </ul>
+      <h2 id="herdr-the-one-command-sync">The one command: <code>sync</code></h2>
+      <p>The simplest path is a single binding. Point a herdr workspace at a room once, and mycelium keeps the two reconciled:</p>
+      <pre><code><span class="comment"># Bind herdr workspace w2 to the room `my-project`, then keep watching.</span>
+<span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--workspace</span> w2 <span class="flag">--room</span> my-project</code></pre>
+      <p>That first call <strong>binds</strong> the workspace to the room. From then on a bare <code>mycelium herdr sync</code> watches every bound workspace and reconciles three things on each pass:</p>
+      <ul>
+        <li><strong>Membership.</strong> Every live agent in the workspace is enrolled as a room member, with its handle taken from the herdr tab name. When a pane closes, that member leaves the room. No manual <code>map</code> step.</li>
+        <li><strong>Liveness.</strong> Each agent&#x27;s herdr state (<code>idle</code> / <code>working</code> / <code>blocked</code>) is pushed to the hub so the UI can badge it. The backend runs in a container and cannot see the herdr socket, so this host-side loop is the only thing that can report it.</li>
+        <li><strong>Wakes.</strong> Queued <code>@</code>-mention doorbells are drained and delivered to the right pane.</li>
+      </ul>
+      <p>Watching is the default because the wake leg has to run on the host: the containerized backend cannot reach the herdr socket, so nothing delivers a queued mention unless <code>sync</code> keeps draining. Add <code>--once</code> to reconcile a single pass and exit (useful in a script), or <code>--interval &lt;seconds&gt;</code> to change the poll cadence. Ctrl-C clears the liveness overlay.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--once</span>                 # one reconcile pass, then exit
+<span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--interval</span> 10          # watch, polling every 10s
+<span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--kind</span> claude          # only enrol claude agents</code></pre>
+      <h2 id="herdr-manual-binding-and-autowake">Manual binding and autowake</h2>
+      <p>If you would rather bind individual handles than a whole workspace, map them by hand. A mapping is a durable <code>handle -&gt; pane</code> record that survives herdr clearing its ephemeral agent names on exit.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">map</span> planner w2:pV           # bind @planner to pane w2:pV
+<span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">ls</span>                          # show the registry
+<span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">unmap</span> planner               # drop the binding</code></pre>
+      <p>With handles mapped, turn on <strong>autowake</strong> so a non-resident <code>agent invoke</code> wakes the mapped pane instead of only queuing on the cursor:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> herdr.autowake true
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
+      <p>Autowake is off by default and always fail-soft: a missing or unreachable herdr, or an unmapped or busy agent, falls straight back to the normal <code>agent invoke</code> behavior. Tune how long a wake may take to settle with <code>herdr.wake_timeout_ms</code> (default <code>120000</code>).</p>
+      <p>You can also wake a handle explicitly, without an invoke:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">wake</span> planner                # ring the doorbell now
+<span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">status</span>                      # is herdr reachable, what is bound</code></pre>
+      <h2 id="herdr-configuration">Configuration</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Default</th>
+              <th>What it does</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>herdr.autowake</code></td>
+              <td><code>false</code></td>
+              <td>On a non-resident <code>agent invoke</code>, wake the handle&#x27;s mapped herdr pane.</td>
+            </tr>
+            <tr>
+              <td><code>herdr.wake_timeout_ms</code></td>
+              <td><code>120000</code></td>
+              <td>Wait budget (ms) for a herdr wake to settle.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <h2 id="herdr-honest-scope">Honest scope</h2>
+      <p>herdr is a convenience layer over the coordination model, not a part of it. Rooms, memory, the board, and the negotiation flow all work with no herdr at all; turn-based agents kept awake with <code>mycelium await --loop</code> never miss a tick, because the hub holds their membership between turns (see <a href="#architecture">Architecture</a>). What herdr adds is waking a handle when nothing is resident, so you do not have to be at the terminal for an agent to answer.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/herdr.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">

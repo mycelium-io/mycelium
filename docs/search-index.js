@@ -1829,6 +1829,55 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Reference"
   },
   {
+    "u": "reference.html#herdr",
+    "t": "Persistent Agents (herdr)",
+    "s": "Guides",
+    "x": "herdr is an optional persistent-runtime layer that keeps coding-agent sessions alive and addressable across detach. Mycelium coordinates agents through rooms; herdr gives those agents a place to live, so a mention to a handle that has stepped away can wake it instead of waiting.",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#herdr-why-you-might-want-it",
+    "t": "Why you might want it",
+    "s": "Guides › Persistent Agents (herdr)",
+    "x": "A mycelium agent participates as your own live session. It picks up an @handle mention only while its await loop is running (see Bring your agents in). Close the terminal and the handle is still a member of the room, but nothing is home: a mention just waits on the durable transcript cursor until you start the loop again. herdr closes that gap. It holds coding-agent sessions (Claude, Pi, and others) open in named pan",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#herdr-prerequisites",
+    "t": "Prerequisites",
+    "s": "Guides › Persistent Agents (herdr)",
+    "x": "herdr installed and its local server running. See herdr.dev. One or more agents already started in a herdr workspace (mycelium drives panes you started; it never spawns them). A mycelium room to bind them to (mycelium room create …).",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#herdr-the-one-command-sync",
+    "t": "The one command: sync",
+    "s": "Guides › Persistent Agents (herdr)",
+    "x": "The simplest path is a single binding. Point a herdr workspace at a room once, and mycelium keeps the two reconciled: # Bind herdr workspace w2 to the room `my-project`, then keep watching. mycelium herdr sync --workspace w2 --room my-project That first call binds the workspace to the room. From then on a bare mycelium herdr sync watches every bound workspace and reconciles three things on each pass: Membership. Ever",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#herdr-manual-binding-and-autowake",
+    "t": "Manual binding and autowake",
+    "s": "Guides › Persistent Agents (herdr)",
+    "x": "If you would rather bind individual handles than a whole workspace, map them by hand. A mapping is a durable handle -> pane record that survives herdr clearing its ephemeral agent names on exit. mycelium herdr map planner w2:pV # bind @planner to pane w2:pV mycelium herdr ls # show the registry mycelium herdr unmap planner # drop the binding With handles mapped, turn on autowake so a non-resident agent invoke wakes t",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#herdr-configuration",
+    "t": "Configuration",
+    "s": "Guides › Persistent Agents (herdr)",
+    "x": "Key Default What it does herdr.autowake false On a non-resident agent invoke, wake the handle's mapped herdr pane. herdr.wake_timeout_ms 120000 Wait budget (ms) for a herdr wake to settle.",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#herdr-honest-scope",
+    "t": "Honest scope",
+    "s": "Guides › Persistent Agents (herdr)",
+    "x": "herdr is a convenience layer over the coordination model, not a part of it. Rooms, memory, the board, and the negotiation flow all work with no herdr at all; turn-based agents kept awake with mycelium await --loop never miss a tick, because the hub holds their membership between turns (see Architecture). What herdr adds is waking a handle when nothing is resident, so you do not have to be at the terminal for an agent",
+    "p": "Reference"
+  },
+  {
     "u": "reference.html#security-planes",
     "t": "Security Planes",
     "s": "Guides",
