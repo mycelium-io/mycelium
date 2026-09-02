@@ -313,6 +313,7 @@ class PiSession:
         binary: str = "pi",
         timeout_s: float = 120.0,
         openshell: bool = False,
+        operation: str = "aligner",
     ) -> None:
         self._session_path = session_path
         self._model = model
@@ -321,6 +322,7 @@ class PiSession:
         self._binary = binary
         self._timeout_s = timeout_s
         self._openshell = openshell
+        self._operation = operation
         # A LLM_BASE_URL is not a pi command-line flag — it becomes a models.json
         # provider entry we generate. Endpoint mode:
         #   "direct"  — no base URL; --model/--api-key straight through.
@@ -395,6 +397,8 @@ class PiSession:
             )
         self._ensure_provider()
         cmd = self._build_command(prompt, system)
+        _t0 = __import__("time").monotonic()
+        _error = False
         try:
             completed = subprocess.run(
                 cmd,
@@ -411,7 +415,21 @@ class PiSession:
                 stdin=subprocess.DEVNULL,
             )
         except subprocess.TimeoutExpired as exc:
+            _error = True
             raise PiSessionError(f"pi turn exceeded {self._timeout_s:.0f}s and was killed") from exc
+        finally:
+            _duration_ms = (__import__("time").monotonic() - _t0) * 1000.0
+            try:
+                from app.services.metrics import record_llm_call
+
+                record_llm_call(
+                    operation=self._operation,
+                    model=self._model,
+                    duration_ms=_duration_ms,
+                    error=_error,
+                )
+            except Exception:  # metrics must never break cognition
+                pass
         if completed.returncode != 0:
             stderr = (completed.stderr or "").strip()
             raise PiSessionError(f"pi exited {completed.returncode}: {stderr[:400]}")

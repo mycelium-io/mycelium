@@ -257,14 +257,36 @@ class AlignerEngine:
     ) -> None:
         # A summon always drives a live NEGMAS SAO, running *as* the summoned
         # engine handle. There is one path — mediate — no mode to choose.
+        import time
+
+        from app.services import metrics as _metrics
+
+        _t0 = time.monotonic()
+        _outcome = "error"
         try:
-            await self.mediate(
+            result = await self.mediate(
                 room, engine_handle=engine_handle, scoped_participants=scoped_participants
             )
+            # Derive outcome from the verdict committed to the channel.
+            # ``mediate`` returns the L9 envelope dict from ``_emit_verdict``;
+            # convergence is encoded as ``header.subkind`` ("converged" /
+            # "rejected"), not a top-level "converged" key.
+            if result is None:
+                _outcome = "stalled"
+            else:
+                _outcome = (
+                    result.get("header", {}).get("subkind", "rejected")
+                    if isinstance(result, dict)
+                    else "rejected"
+                )
         except Exception:
             logger.exception("aligner run failed on room %s", room)
+        else:
+            pass
         finally:
             self._active.discard(room)
+            _ms = (time.monotonic() - _t0) * 1000.0
+            _metrics.record_aligner_run(room=room, duration_ms=_ms, outcome=_outcome)
 
     # -- mediator mode (drive a real NEGMAS SAO over SLIM) --
 
@@ -375,9 +397,24 @@ class AlignerEngine:
                 ),
             )
             mech = mediator.build_mechanism(issues, participants, negotiation, cap=self._max_steps)
+            _mech_t0 = __import__("time").monotonic()
             await asyncio.to_thread(mech.run)
+            _mech_ms = (__import__("time").monotonic() - _mech_t0) * 1000.0
 
             assignments = mediator.agreement_assignments(mech, negotiation.names)
+            converged = assignments is not None
+            _, metrics = self._verdict(ep)
+            # Record per-round timing into the in-process store.  Round count from
+            # NEGMAS; average ms per round so the histogram reflects typical turn cost.
+            _rounds_run = max(mech.current_step, 1)
+            from app.services import metrics as _metrics
+
+            for _r in range(_rounds_run):
+                _metrics.record_aligner_round(
+                    room=room,
+                    round_num=_r + 1,
+                    duration_ms=_mech_ms / _rounds_run,
+                )
             converged = assignments is not None
             _, metrics = self._verdict(ep)
             # Post-hoc satisfaction: how close the agreed outcome sits to
@@ -439,6 +476,7 @@ class AlignerEngine:
             binary=settings.ALIGNER_PI_BINARY,
             timeout_s=settings.ALIGNER_PI_TIMEOUT_S,
             openshell=settings.ALIGNER_PI_OPENSHELL,
+            operation="aligner",
         )
 
     def _opening_positions(

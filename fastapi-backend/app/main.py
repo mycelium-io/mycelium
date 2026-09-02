@@ -87,6 +87,11 @@ async def lifespan(app: FastAPI):
             logger.warning("auth: %s", warning)
     else:
         logger.info("HTTP-API JWT gate disabled — requests are unauthenticated")
+
+    # OTel SDK — runs only when TELEMETRY_ENABLED=true; zero cost otherwise.
+    from app.services import telemetry as telemetry_service
+
+    telemetry_service.setup()  # providers only — FastAPIInstrumentor wired at app-creation time
     # A memory written before the binding carries no thread, so it reads as
     # something there is nowhere to discuss. Minting one is a store annotation
     # rather than an edit: the memory keeps its version, its stamps and its place
@@ -208,6 +213,11 @@ async def lifespan(app: FastAPI):
     stop_watcher()
     stop_event_sweep()
 
+    # Flush and shut down the OTel SDK so spans are not lost on a clean restart.
+    from app.services import telemetry as telemetry_service
+
+    telemetry_service.shutdown()
+
     # Close the status providers' transports. They hold sockets and the
     # credentials bound into them, so they are the runtime's to release.
     from app.services.status import registry as status_registry
@@ -253,6 +263,13 @@ app = FastAPI(
     # inert unless AUTH_ENABLED is on, and exempts health/docs itself.
     dependencies=[Depends(auth_gate)],
 )
+
+# FastAPI HTTP instrumentation — must be applied at app-creation time, before
+# Starlette freezes the middleware stack, so spans are created for every request.
+# instrument_app() is a no-op when the OTel SDK is disabled.
+from app.services.telemetry import instrument_app as _instrument_app  # noqa: E402
+
+_instrument_app(app)
 
 # CORS — starlette types CORSMiddleware as a class but typeshed expects a factory.
 app.add_middleware(
@@ -377,6 +394,30 @@ async def root(
     # A live channel whose persister has died is a zombie room — surface it.
     if any(r["provisioned"] and not r["persister_alive"] for r in coordination["rooms"]):
         overall_issues.append("coordination")
+
+    # Latency degradation thresholds (#453).  p95 above the configured limit
+    # adds a "latency" issue so operators can see a degraded signal before
+    # timeouts propagate to callers.
+    from app.services.metrics import p95
+
+    _latency_checks = [
+        ("llm", "llm.latency_ms", settings.HEALTH_LLM_P95_THRESHOLD_MS),
+        ("await", "participate.await_delivered_ms", settings.HEALTH_AWAIT_P95_THRESHOLD_MS),
+        ("search", "memory.search_latency_ms", settings.HEALTH_SEARCH_P95_THRESHOLD_MS),
+    ]
+    latency_degraded: list[str] = []
+    for label, hist_name, threshold in _latency_checks:
+        if threshold <= 0:
+            continue
+        p95_val = p95(hist_name)
+        if p95_val is not None and p95_val > threshold:
+            latency_degraded.append(f"{label}(p95={p95_val:.0f}ms>{threshold:.0f}ms)")
+    if latency_degraded:
+        overall_issues.append("latency")
+        result["latency"] = {"status": "degraded", "signals": latency_degraded}
+    else:
+        result["latency"] = {"status": "ok"}
+
     if overall_issues:
         result["status"] = "degraded"
         result["issues"] = overall_issues

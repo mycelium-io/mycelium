@@ -658,11 +658,16 @@ class RoomChannelManager:
                         _prebuild_signerjwt_roster(room)
                     else:
                         slim_identity.ensure_agent_keypair(BACKEND_AGENT)
+                _prov_t0 = __import__("time").monotonic()
                 client = await SlimClient(identity).connect(self._endpoint)
                 session = await client.create_group(to_channel_name(ws, room))
+                _prov_ms = (__import__("time").monotonic() - _prov_t0) * 1000.0
             except Exception as exc:
                 logger.warning("SLIM channel provisioning failed for room %s: %s", room, exc)
                 self._metrics.provisions_failed += 1
+                from app.services import metrics as _app_metrics
+
+                _app_metrics.record_slim_provision(room=room, duration_ms=0.0, error=True)
                 return None
             managed = ManagedRoomChannel(
                 room=room, workspace=ws, client=client, channel=L9SlimChannel(client, session)
@@ -670,6 +675,9 @@ class RoomChannelManager:
             self._channels[room] = managed
             self._start_persister(managed)
             self._metrics.provisions_ok += 1
+            from app.services import metrics as _app_metrics
+
+            _app_metrics.record_slim_provision(room=room, duration_ms=_prov_ms)
             logger.info("Provisioned SLIM channel for room %s (workspace=%s)", room, ws)
             return managed
 
