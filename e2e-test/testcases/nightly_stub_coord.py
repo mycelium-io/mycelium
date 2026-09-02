@@ -186,10 +186,26 @@ class TwoStubRejectionPath(aetest.Testcase):
             return "accept" if "30" in offer_text else "reject"
 
         stubs = [
+            # No prose= override here, unlike stub-reject below: stub-accept's
+            # action varies round to round (_accept_only_30 can say accept or
+            # reject), so its reply text must vary with it. A fixed prose
+            # restating _POS_A ("I believe a 30-day retention window...")
+            # regardless of the actual per-round decision — only the bracket
+            # marker changing — is exactly the ambiguity that let the
+            # mediator's LLM interpreter misread a genuine reject as an
+            # accept: confirmed live in CI, converging on stub-reject's own
+            # 90-day number three separate times with three different fixes
+            # to the "30" substring-matching logic, none of which addressed
+            # the real problem (the substring check was never wrong; the
+            # STUB'S OWN REPLY TEXT was ambiguous to the interpreter that
+            # reads it). Leaving prose unset here falls through to
+            # StubAgent._default_prose(action) — "Agreed, I can accept this
+            # proposal." / "This does not meet my requirements." — text that
+            # unambiguously matches the actual decision every round instead
+            # of restating a static, decision-independent position.
             StubAgent(
                 self.room, "stub-accept", action="reject", cli=cli,
                 action_fn=_accept_only_30,
-                prose=_POS_A,
             ),
             # A generic reject reply (the default "This does not meet my
             # requirements.") carries no number, so the mediator's NLU can
