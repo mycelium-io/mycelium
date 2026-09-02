@@ -79,6 +79,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("guides/structured-memory.md",   "structured-memory",  "reference", "Guides",       "Structured Memory"),
     ("guides/hub-and-spoke.md",       "hub-and-spoke",      "reference", "Guides",       "Hub & Spoke"),
     ("guides/ephemeral-agents.md",    "ephemeral-agents",   "reference", "Guides",       "Ephemeral Agents"),
+    ("guides/herdr.md",               "herdr",              "reference", "Guides",       "Persistent Agents (herdr)"),
     ("guides/security-planes.md",     "security-planes",    "reference", "Guides",       "Security Planes"),
     ("guides/auth.md",                "auth",               "reference", "Guides",       "Authentication"),
     ("guides/keycloak-oidc.md",       "keycloak-oidc",      "reference", "Guides",       "Keycloak / OIDC Setup"),
@@ -272,8 +273,21 @@ def _md_to_html(md: str, section_id: str) -> str:
                 quote_lines.append(content)
                 i += 1
             quote_text = " ".join(ln.strip() for ln in quote_lines if ln.strip())
-            out.append('      <div class="callout callout-note">')
+            # A callout may lead with a small logo: `![alt](assets/name.svg)`. The
+            # SVG is inlined (not an <img>) so it inherits `currentColor` and reads
+            # on both themes; anything else stays part of the prose.
+            logo_svg = ""
+            logo_m = re.match(r"^!\[([^\]]*)\]\(assets/([\w-]+)\.svg\)\s*", quote_text)
+            if logo_m:
+                asset = DOCS_DIR / "assets" / f"{logo_m.group(2)}.svg"
+                if asset.is_file():
+                    logo_svg = asset.read_text(encoding="utf-8").strip()
+                    quote_text = quote_text[logo_m.end():]
+            cls = "callout callout-note" + (" callout--logo" if logo_svg else "")
+            out.append(f'      <div class="{cls}">')
             out.append('        <div class="callout-bar"></div>')
+            if logo_svg:
+                out.append(f'        <span class="callout-logo">{logo_svg}</span>')
             out.append(f'        <div class="callout-body">{_inline(quote_text)}</div>')
             out.append("      </div>")
             continue
