@@ -222,6 +222,110 @@ class SkillsCRUD(aetest.Testcase):
         api.delete_room(self.room)
 
 
+class MemoryLinksGraph(aetest.Testcase):
+    """The link graph over memory markdown: [[wikilinks]], backlinks, the whole
+    graph, integrity (broken links), and ![[transclusion]] expansion.
+
+    No CLI wrapper for links exists — this is straight HTTP, like skills.
+    """
+
+    @aetest.setup
+    def setup_room(self, api: MyceliumAPI, testscript):
+        self.room = f"qa-memory-links-{uuid.uuid4().hex[:8]}"
+        testscript.parameters.setdefault("owned_rooms", set()).add(self.room)
+        status, _ = api.create_room(self.room)
+        assert status in (200, 201)
+        self.enc = _enc(self.room)
+        self.target_key = f"glossary/vector-store-{uuid.uuid4().hex[:6]}"
+        self.source_key = f"decisions/db-choice-{uuid.uuid4().hex[:6]}"
+        self.broken_key = f"notes/broken-ref-{uuid.uuid4().hex[:6]}"
+        self.target_body = "A vector store indexes embeddings for nearest-neighbor search."
+
+        # Target must be explicitly expandable — transcluding a non-expandable
+        # memory is an integrity error, not a silent include.
+        status, _ = api.post_json(
+            f"/rooms/{self.enc}/memory",
+            {
+                "items": [
+                    {
+                        "key": self.target_key,
+                        "value": {"text": self.target_body},
+                        "created_by": _HANDLE,
+                        "meta": {"expandable": True},
+                    }
+                ]
+            },
+        )
+        assert status == 201, f"target memory create returned {status}"
+
+        status, _ = api.post_json(
+            f"/rooms/{self.enc}/memory",
+            {
+                "items": [
+                    {
+                        "key": self.source_key,
+                        "value": {
+                            "text": (
+                                f"We chose based on [[{self.target_key}]] characteristics.\n\n"
+                                f"See also: ![[{self.target_key}]]"
+                            )
+                        },
+                        "created_by": _HANDLE,
+                    },
+                    {
+                        "key": self.broken_key,
+                        "value": {"text": "Related: [[nonexistent/does-not-exist]]"},
+                        "created_by": _HANDLE,
+                    },
+                ]
+            },
+        )
+        assert status == 201, f"source memory create returned {status}"
+
+    @aetest.test
+    def outbound_and_backlinks(self, api: MyceliumAPI):
+        status, data = api.get_json(f"/rooms/{self.enc}/links?key={_enc(self.source_key)}")
+        if status == 404:
+            self.skipped("links endpoint not present in this build")
+            return
+        assert status == 200, f"links (outbound) returned {status}: {data}"
+        outbound_targets = [link["target"] for link in data["outbound"]]
+        assert self.target_key in outbound_targets, data
+
+        status, data = api.get_json(f"/rooms/{self.enc}/links?key={_enc(self.target_key)}")
+        assert status == 200, f"links (backlinks) returned {status}: {data}"
+        backlink_sources = [link["source"] for link in data["backlinks"]]
+        assert self.source_key in backlink_sources, data
+
+    @aetest.test
+    def graph_has_the_resolved_edge(self, api: MyceliumAPI):
+        status, data = api.get_json(f"/rooms/{self.enc}/links/graph")
+        assert status == 200, f"links/graph returned {status}: {data}"
+        edges = [
+            e for e in data["edges"]
+            if e["source"] == self.source_key and e["target"] == self.target_key
+        ]
+        assert edges and edges[0]["resolved"] is True, data
+
+    @aetest.test
+    def integrity_reports_the_broken_link(self, api: MyceliumAPI):
+        status, data = api.get_json(f"/rooms/{self.enc}/links/integrity")
+        assert status == 200, f"links/integrity returned {status}: {data}"
+        broken_targets = [b["target"] for b in data["broken"]]
+        assert "nonexistent/does-not-exist" in broken_targets, data
+
+    @aetest.test
+    def expand_inlines_the_transcluded_body(self, api: MyceliumAPI):
+        status, data = api.get_json(f"/rooms/{self.enc}/links/expand?key={_enc(self.source_key)}")
+        assert status == 200, f"links/expand returned {status}: {data}"
+        assert data["found"] is True, data
+        assert self.target_body in data["rendered"], data
+
+    @aetest.cleanup
+    def delete_room(self, api: MyceliumAPI):
+        api.delete_room(self.room)
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
