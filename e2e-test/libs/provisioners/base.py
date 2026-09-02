@@ -1,11 +1,10 @@
 """Adapter-agnostic provisioner protocol.
 
-Every scenario in :mod:`testcases.scenarios` is parameterised by an
-``agents`` list whose entries declare ``adapter`` ("openclaw" | "cursor" |
-"hermes") and ``host`` (a logical device name in the active testbed).
-For each entry the scenario looks up a :class:`Provisioner` via
-:func:`libs.provisioners.get_provisioner` and uses it to create, wake and
-clean up the underlying agent.
+An agent pool entry declares ``adapter`` ("openclaw" | "cursor" | "hermes")
+and ``host`` (a logical device name in the active testbed).
+:mod:`libs.agent_pools` looks up a :class:`Provisioner` via
+:func:`libs.provisioners.get_provisioner` for each entry and uses it to
+create, wake and clean up the underlying agent.
 
 The protocol intentionally takes a pyATS ``Device`` directly (rather than
 a bespoke ``HostRef``): the device's ``custom.transport`` already tells

@@ -342,12 +342,9 @@ def ensure_tier_env(default: str = "all") -> str:
     """Ensure ``MYCELIUM_E2E_TIERS`` is set; return the effective value.
 
     Job files use this to *set* the tier when one isn't provided by
-    the workflow (``pr_job.py`` defaults to ``"pr"``,
-    ``nightly_e2e_job.py`` defaults to ``"pr,nightly"``) — the env var
-    is the source of truth used by
-    :func:`testcases.scenarios.active_tiers` so the import-time class
-    generation in :mod:`suites.scenarios_suite` picks up the right
-    rows.
+    the workflow (``pr_job.py`` defaults to ``"pr"``, ``nightly_job.py``
+    defaults to ``"pr,nightly"``) — the env var is the source of truth
+    read wherever a suite needs to know the effective tier.
 
     Setting via env (rather than passing through ``run()``) keeps the
     contract symmetrical between job-driven and ad-hoc runs (``pyats
@@ -537,29 +534,6 @@ def simple_job_main(
     if testbed is not None:
         kwargs["testbed"] = testbed
     run(**kwargs)
-
-
-def get_agent_idle_wait(datafile_path: str | None = None) -> int:
-    """Seconds to wait for OpenClaw agents to finish in-flight turns before reset.
-
-    Resolution order: ``MYCELIUM_E2E_AGENT_IDLE_WAIT`` env var, then
-    ``parameters.timeouts.agent_idle_wait`` from the datafile chain, else 20.
-    """
-    env_val = os.environ.get("MYCELIUM_E2E_AGENT_IDLE_WAIT", "").strip()
-    if env_val:
-        try:
-            return max(0, int(env_val))
-        except ValueError:
-            pass
-
-    path = datafile_path
-    if path is None:
-        path = get_datafile(env_var="MYCELIUM_DATAFILE", default="scenarios_datafile.yaml")
-    timeouts = _read_datafile_param(path, "timeouts") or {}
-    try:
-        return max(0, int(timeouts.get("agent_idle_wait", 20)))
-    except (TypeError, ValueError):
-        return 20
 
 
 def get_max_failures(datafile_path: str | None = None) -> int | None:

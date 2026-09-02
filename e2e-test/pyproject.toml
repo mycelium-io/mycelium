@@ -33,5 +33,3 @@ ignore = ["E501"]
 [tool.ruff.lint.per-file-ignores]
 # Suite scripts adjust sys.path before importing testcases.
 "suites/**/*.py" = ["E402"]
-"scripts/provision_hermes_lab.py" = ["E402"]
-"testcases/hermes_tests.py" = ["E402"]
