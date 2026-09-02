@@ -157,6 +157,7 @@
           <a href="#config-agent-auth" class="nav-link sub">agent_auth</a>
           <a href="#config-herdr" class="nav-link sub">herdr</a>
           <a href="#config-metrics" class="nav-link sub">metrics</a>
+          <a href="#config-telemetry" class="nav-link sub">telemetry</a>
           <a href="#config-a2a" class="nav-link sub">a2a</a>
         </div>
       </div>
@@ -1202,6 +1203,24 @@
 
 <span class="comment"># Explicit Prometheus /metrics endpoints for the collector to scrape.</span>
 <span class="arg">scrape</span> = PydanticUndefined
+
+<span class="comment"># Telemetry configuration — OTel SDK and optional product analytics.</span>
+<span class="cmd" id="config-telemetry">[telemetry]</span>
+
+<span class="comment"># Enable the OTel SDK in the backend (traces + metrics exported to the OTLP collector). Off by default.</span>
+<span class="arg">enabled</span> = <span class="flag">false</span>
+
+<span class="comment"># OTLP HTTP endpoint the backend pushes spans and metrics to. When unset and telemetry.enabled is true, defaults to http://mycelium-collector:4318 (the collector&#x27;s in-container address).</span>
+<span class="arg">otlp_endpoint</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># Send anonymous adoption-metric events (install, first session, repeat session) to the configured analytics destination. Off by default. Non-interactive installs stay off unconditionally.</span>
+<span class="arg">send_product_analytics</span> = <span class="flag">false</span>
+
+<span class="comment"># Destination URL for anonymous product analytics events. Set once the go/no-go destination decision is made (#937).</span>
+<span class="arg">analytics_destination</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># Random UUID identifying this installation, generated on first interactive `mycelium install`. Used only for product analytics events when send_product_analytics is enabled. Never sent anywhere unless opt-in is active.</span>
+<span class="arg">install_id</span> = <span class="str">&quot;&quot;</span>
 
 <span class="comment"># Configuration for the A2A bridge (outbound + inbound Agent2Agent gateway).</span>
 <span class="cmd" id="config-a2a">[a2a]</span>

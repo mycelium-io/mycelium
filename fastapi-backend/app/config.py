@@ -149,12 +149,36 @@ class Settings(BaseSettings):
     ALIGNER_PI_OPENSHELL: bool = False
     # Per-turn wall-clock bound (seconds) on one pi LLM session call before it is killed.
     ALIGNER_PI_TIMEOUT_S: float = 120.0
-    # A2A bridge SSRF guard: registering/summoning an a2a agent makes the backend
-    # dial the card's host, so by default a host that resolves to a private,
-    # loopback, or link-local address (e.g. the cloud metadata endpoint) is
-    # refused. Flip to True only for a trusted deployment whose a2a agents live on
-    # the internal network.
+    # ── A2A bridge SSRF guard ────────────────────────────────────────────────
     A2A_ALLOW_PRIVATE_HOSTS: bool = False
+
+    # ── Telemetry (OTel SDK + optional product analytics) ─────────────────
+    # Off by default; ``mycelium config set telemetry.enabled true`` +
+    # ``mycelium config apply`` opts the backend into the OTel SDK (traces +
+    # metrics exported to the collector). Off by default — zero OTel code runs
+    # when TELEMETRY_ENABLED is false, which is the out-of-the-box state.
+    TELEMETRY_ENABLED: bool = False
+    # OTLP HTTP endpoint the backend pushes spans and metrics to. Empty string
+    # means "use the collector's in-container address": http://mycelium-collector:4318.
+    TELEMETRY_OTLP_ENDPOINT: str = ""
+    # Product analytics — the backend propagates this flag when emitting its
+    # own install/session signals; the decision to send is the CLI's.
+    TELEMETRY_SEND_PRODUCT_ANALYTICS: bool = False
+    # Destination URL for product analytics events (resolved in #937).
+    TELEMETRY_ANALYTICS_DESTINATION: str = ""
+
+    # ── Health degradation thresholds (#453) ───────────────────────────────
+    # p95 latency above these values flips /health to ``status: degraded`` for
+    # the corresponding subsystem.  0 = disabled for that threshold.
+    # Defaults are conservative: flag at 30 s LLM p95 (Pi timeout is 120 s;
+    # 30 s is the median of a bad call), 60 s *delivered*-await p95 (timed-out
+    # long-polls are expected and excluded — only polls that returned a message
+    # are measured, so 60 s on a delivered await signals a genuinely slow
+    # channel), 500 ms search p95 (local ONNX search well under 100 ms
+    # typically; 500 ms = degraded).
+    HEALTH_LLM_P95_THRESHOLD_MS: float = 30000.0
+    HEALTH_AWAIT_P95_THRESHOLD_MS: float = 60000.0
+    HEALTH_SEARCH_P95_THRESHOLD_MS: float = 500.0
     # Synthesizer engine (kind ``synthesizer``) — distills a room's transcript
     # into a ``knowledge`` memory. Dormant by default like the aligner: nothing
     # runs until a registered synthesizer engine is @-summoned. Reuses the shared

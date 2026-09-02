@@ -435,11 +435,22 @@ class SynthesizerEngine:
             read = len(messages)
 
         try:
+            _synth_t0 = __import__("time").monotonic()
             raw = await asyncio.wait_for(
                 asyncio.to_thread(_pi_complete, prompt, self._timeout_s),
                 timeout=self._timeout_s + 5.0,
             )
+            _synth_ms = (__import__("time").monotonic() - _synth_t0) * 1000.0
+            from app.services import metrics as _metrics
+
+            _metrics.record_llm_call(
+                operation="synthesizer",
+                duration_ms=_synth_ms,
+            )
         except Exception:
+            from app.services import metrics as _metrics
+
+            _metrics.record_llm_call(operation="synthesizer", error=True)
             logger.exception("synthesizer: Pi turn failed for room %s", room)
             await self._say_if_live(managed, room, me, "Pi turn timed out or errored — try again.")
             return None

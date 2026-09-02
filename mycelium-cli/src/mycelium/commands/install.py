@@ -591,6 +591,158 @@ def _report_llm_probe_result(
 # ── Config write ─────────────────────────────────────────────────────────────
 
 
+def _recreate_backend(compose_path: Path, env_path: Path) -> bool:
+    """Recreate the backend container so it picks up a regenerated .env."""
+    args = [
+        "docker",
+        "compose",
+        "-p",
+        "mycelium",
+        "-f",
+        str(compose_path),
+        "--env-file",
+        str(env_path),
+        "up",
+        "-d",
+        "--force-recreate",
+        "--no-build",
+        "mycelium-backend",
+    ]
+    result = subprocess.run(args, text=True)
+    return result.returncode == 0
+
+
+def _run_telemetry_disclosure(api_url: str, *, compose_path: Path) -> None:  # noqa: ARG001
+    """Interactive opt-in disclosure for product analytics.
+
+    Shows what would be collected (event categories, destination, retention) and
+    asks for consent before enabling. Defaults to *No*.
+
+    Non-interactive installs never reach this path; they stay off unconditionally
+    as required by #938.
+    """
+    import uuid
+
+    from mycelium.config import MyceliumConfig, TelemetryConfig
+
+    print()
+    typer.secho("  ── Optional: product analytics ─────────────────────────", bold=True)
+    print()
+    typer.echo("  Help improve Mycelium by sending anonymous adoption metrics.")
+    typer.echo("")
+    typer.echo("  What would be sent:")
+    typer.echo("    • Install event (OS kind, release version)")
+    typer.echo("    • Session outcome (coordinated vs not, aggregate result)")
+    typer.echo("")
+    typer.echo("  What is never sent:")
+    typer.echo("    • Room names, task content, prompts, replies, handles")
+    typer.echo("    • IP addresses, hostnames, or any identifying information")
+    typer.echo("")
+    typer.echo("  Each install is identified by a random UUID stored in config.toml.")
+    typer.echo("  Destination: not yet configured (pending #937 go/no-go decision).")
+    typer.echo("")
+    typer.echo("  Disable at any time:")
+    typer.echo("    mycelium config set telemetry.send_product_analytics false")
+    print()
+
+    try:
+        consent = typer.confirm(
+            "  Enable anonymous product analytics?",
+            default=False,
+        )
+    except (EOFError, KeyboardInterrupt):
+        consent = False
+
+    config_path = MyceliumConfig.get_global_config_path()
+    try:
+        config = MyceliumConfig.load(config_path) if config_path.exists() else MyceliumConfig()
+    except Exception:
+        config = MyceliumConfig()
+
+    if config.telemetry is None:
+        config.telemetry = TelemetryConfig()
+
+    # Generate install_id regardless of consent so it's ready when the user
+    # opts in later via `mycelium config set telemetry.send_product_analytics true`.
+    if not config.telemetry.install_id:
+        config.telemetry.install_id = str(uuid.uuid4())
+
+    config.telemetry.send_product_analytics = consent
+    config.save()
+
+    # Phase 5 already wrote .env with send_product_analytics=false; regenerate
+    # so the running backend picks up the user's opt-in.
+    from mycelium.docker_utils import write_env_file
+
+    env_path, _ = write_env_file(config)
+    typer.echo(f"  ✓ Regenerated {env_path} from config.toml")
+
+    if consent:
+        if _recreate_backend(compose_path, env_path):
+            typer.echo("  ✓ Backend recreated with updated telemetry settings")
+        else:
+            typer.secho(
+                "  ⚠ Could not recreate backend — run "
+                "`mycelium config apply && mycelium up` to pick up telemetry settings",
+                fg=typer.colors.YELLOW,
+            )
+        typer.secho("  ✓ Analytics enabled — thank you!", fg=typer.colors.GREEN)
+        # Fire the install event. The destination is not yet set (#937) so this
+        # is a no-op until the destination URL is configured, but the opt-in is
+        # persisted for when it is.
+        try:
+            import platform
+
+            from mycelium.config import MyceliumConfig as _MC
+
+            def _release() -> str:
+                try:
+                    from importlib.metadata import version
+
+                    return version("mycelium")
+                except Exception:
+                    return "unknown"
+
+            # Inline analytics emit (avoids importing the backend analytics module
+            # from the CLI).  Mirrors analytics.install_event logic.
+            _config = _MC.load() if _MC.get_global_config_path().exists() else _MC()
+            _dest = (
+                _config.telemetry.analytics_destination
+                if _config.telemetry.analytics_destination
+                else ""
+            )
+            if _dest and _dest.startswith("https://"):
+                import json
+                import urllib.request
+
+                payload = json.dumps(
+                    {
+                        "event": "mycelium.install",
+                        "install_id": config.telemetry.install_id,
+                        "release": _release(),
+                        "ts": __import__("datetime")
+                        .datetime.now(__import__("datetime").timezone.utc)
+                        .isoformat(),
+                        "platform": platform.system() or "unknown",
+                    }
+                ).encode()
+                req = urllib.request.Request(
+                    _dest,
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=5) as _r:  # noqa: S310
+                        pass
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    else:
+        typer.echo("  Analytics disabled (default).")
+
+
 def _write_mycelium_config(
     api_url: str,
     llm_config: dict[str, str] | None = None,
@@ -1011,6 +1163,11 @@ def install(
             custom_ports=custom_ports,
         )
         typer.secho("  ✓ Config written to ~/.mycelium/config.toml", fg=typer.colors.GREEN)
+
+        # ── Phase 6: Telemetry disclosure ─────────────────────────────────
+        # Non-interactive installs (handled in the early branch above) stay off
+        # unconditionally. This phase runs only on the interactive path.
+        _run_telemetry_disclosure(api_url, compose_path=compose_path)
 
         # ── Phase 7: LLM connectivity probe ─────────────────────────────────
         # Real one-shot pi turn inside the backend. Catches a missing/broken pi
