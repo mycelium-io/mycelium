@@ -1,947 +1,746 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
-//
-// Metrics dashboard.
-//
-// Hierarchy: header band → 3 KPI plates → 3 latency strips → agent activity →
-// 5 diagnostic tiles → secondary token strip → by-model table.
-//
-// Single accent. Errors are signalled with eyebrow text + italic helper rather
-// than a second color. The page is built from these pieces:
-//
-//   <MetricsScreen />
-//     ├─ <HeaderBand />          refresh control, pause, tick, collector chip
-//     ├─ <KpiPlate />            big numeral + sub + sparkline (or disabled CTA)
-//     ├─ <LatencyStrip />        n / avg / min / max for each backend histogram
-//     ├─ <AgentActivityTable />  collector-only
-//     ├─ <DiagTile />            quiet k/v rows with optional footer
-//     ├─ <CfnStatusTile />       diag tile with dynamic HTTP-status rows
-//     ├─ <ByModelTable />        collector-only spend breakdown
-//     ├─ <CollectorOffPlate />   disabled mode (folded corner, exact CLI)
-//     └─ <BackendDownPlate />    backend unreachable
 
 "use client";
 
-import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
-import { Play } from "lucide-react";
+/**
+ * Metrics — what this hub has actually done since it came up.
+ *
+ * Every number on this page is read from something the running stack produces:
+ * the backend's in-process counters (`/api/observability`), the coordination
+ * fabric and posture blocks of `/health`, and the episode records the aligner
+ * writes per convening. Nothing is derived from a service the stack no longer
+ * ships, and nothing is shown as `0` that is merely unmeasured — an untouched
+ * counter reads `-`, and a panel with no data says what would put data in it.
+ *
+ *   <MetricsScreen />
+ *     ├─ <HeaderBand />       uptime, cadence, pause
+ *     ├─ <Kpi /> × 3          memory · fabric · cognition
+ *     ├─ <FabricPanel />      SLIM node, posture, one row per live channel
+ *     ├─ <EpisodesPanel />    negotiations across every room, and how they ended
+ *     ├─ <MemoryPanel />      writes, retrieval hit rate, search latency
+ *     ├─ <EmbeddingPanel />   the local model, and the spend it avoids
+ *     ├─ <IndexerPanel />     filesystem → JSONL runs
+ *     └─ <CognitionPanel />   Pi calls by operation and model
+ */
+
+import { useMemo, useState, type ReactNode } from "react";
+import { Pause, Play } from "lucide-react";
+import type { AuthStatus, CoordinationStatus, IdentityStatus } from "@/lib/api";
+import { useNetworkStatus, useRooms } from "@/lib/room-data";
 import {
-  fmtNum, fmtUsd, fmtMs, fmtAgo, fmtDur,
-  statusKind, errorRate, histAvg,
+  episodeState,
+  rollupEpisodes,
+  useBackendMetrics,
+  useFleetEpisodes,
+  type BackendMetrics,
+  type EpisodeRollup,
+  type FleetEpisode,
+} from "@/lib/metrics-data";
+import {
+  fmtAgo,
+  fmtDur,
+  fmtMs,
+  fmtNum,
+  fmtPct,
+  fmtUsd,
+  histAvg,
+  subCounters,
   type BackendHistogram,
 } from "@/lib/metrics-format";
-import { fetchBackendMetrics, fetchCollectorMetrics, fetchHosts, type HostInfo } from "@/lib/api";
 
-// ── Types (loose; backend payload is dynamic) ─────────────────────────────
+/** Cadences offered in the header. 5s is for watching something happen; 60s is
+ *  for leaving the page open. */
+const CADENCES = [5, 10, 30, 60] as const;
 
-interface BackendCounters {
-  embeddings?: Record<string, number>;
-  memory?: Record<string, number>;
-  indexer?: Record<string, number>;
-  coordination?: Record<string, number>;
-  cfn?: Record<string, number>;
-  cfn_llm?: Record<string, number>;
-  llm?: Record<string, number>;
-  knowledge?: Record<string, number>;
-  synthesis?: Record<string, number>;
-}
+/** How many of the newest episodes the negotiations panel lists. */
+const RECENT_EPISODES = 6;
 
-interface BackendMetrics {
-  started_at?: string;
-  updated_at?: string;
-  counters?: BackendCounters;
-  histograms?: Record<string, BackendHistogram>;
-}
-
-interface ByAgent {
-  agent: string;
-  tokens: number;
-  cost: number;
-  sessions: number;
-  last: string;
-}
-
-interface ByModel {
-  model: string;
-  tokens_in: number;
-  tokens_out: number;
-  calls: number;
-  cost_usd: number;
-}
-
-interface AgentTokens { input: number; output: number; cache_read: number; cache_write: number; total: number }
-type ModelTokens = AgentTokens;
-
-interface CollectorMetrics {
-  counters?: {
-    cost_usd?: { total?: number; by_agent?: Record<string, number>; by_model?: Record<string, number> };
-    tokens?: {
-      total?: AgentTokens;
-      by_agent?: Record<string, AgentTokens>;
-      by_model?: Record<string, ModelTokens>;
-    };
-    messages?: { processed?: number; queued?: number };
-    sessions_stuck?: number;
-  };
-  histograms?: {
-    by_agent?: Record<string, { calls: number; last?: string }>;
-    [k: string]: unknown;
-  };
-  sessions?: unknown[];
-  spend_5m?: number[];
-  err_5m?: number[];
-}
-
-function deriveAgents(c: CollectorMetrics): ByAgent[] {
-  const tokensByAgent = c.counters?.tokens?.by_agent || {};
-  const costByAgent = c.counters?.cost_usd?.by_agent || {};
-  const histByAgent = (c.histograms?.by_agent as Record<string, { calls?: number; last?: string }>) || {};
-  const names = new Set([
-    ...Object.keys(tokensByAgent),
-    ...Object.keys(costByAgent),
-  ]);
-  return [...names].map(agent => ({
-    agent,
-    tokens: tokensByAgent[agent]?.total ?? 0,
-    cost: costByAgent[agent] ?? 0,
-    sessions: histByAgent[agent]?.calls ?? 0,
-    last: histByAgent[agent]?.last ?? "-",
-  })).sort((a, b) => b.tokens - a.tokens);
-}
-
-function deriveModels(c: CollectorMetrics): ByModel[] {
-  const tokensByModel = c.counters?.tokens?.by_model || {};
-  const costByModel = c.counters?.cost_usd?.by_model || {};
-  const names = new Set([
-    ...Object.keys(tokensByModel),
-    ...Object.keys(costByModel),
-  ]);
-  return [...names].map(model => ({
-    model,
-    tokens_in: tokensByModel[model]?.input ?? 0,
-    tokens_out: tokensByModel[model]?.output ?? 0,
-    calls: 0,
-    cost_usd: costByModel[model] ?? 0,
-  })).sort((a, b) => b.cost_usd - a.cost_usd);
-}
-
-// ── Atoms ─────────────────────────────────────────────────────────────────
+// ── Atoms ────────────────────────────────────────────────────────────────────
 
 function Caps({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`text-micro font-medium uppercase tracking-wide text-muted-foreground ${className}`}>{children}</div>;
-}
-
-function Sparkline({ values, width = 110, height = 30, dim = false }: {
-  values?: number[]; width?: number; height?: number; dim?: boolean;
-}) {
-  if (!values || values.length < 2) return null;
-  const max = Math.max(...values, 0.0001);
-  const stride = width / (values.length - 1);
-  const points = values.map((v, i) => `${i * stride},${height - (v / max) * height}`).join(" ");
-  const areaPoints = `0,${height} ${points} ${width},${height}`;
-  const stroke = dim ? "var(--muted-foreground)" : "var(--accent)";
   return (
-    <svg width={width} height={height} className="block flex-shrink-0">
-      <polygon points={areaPoints} fill={stroke} opacity="0.10" />
-      <polyline points={points} fill="none" stroke={stroke} strokeWidth="1.2" />
-      <circle
-        cx={(values.length - 1) * stride}
-        cy={height - (values[values.length - 1] / max) * height}
-        r="2"
-        fill={stroke}
-      />
-    </svg>
+    <div className={`text-micro font-medium uppercase tracking-wide text-muted-foreground ${className}`}>
+      {children}
+    </div>
   );
 }
 
-// ── Header band ────────────────────────────────────────────────────────────
+function Dot({ color }: { color: string }) {
+  return <span className="inline-block size-1.5 shrink-0 rounded-full" style={{ background: color }} />;
+}
 
-function HeaderBand({
-  backend, collectorOn, paused, setPaused, intervalSec, setIntervalSec,
+/** A titled card. Every section of the page is one of these, so a panel that has
+ *  nothing to show still occupies its place and explains itself. */
+function Panel({
+  title,
+  meta,
+  children,
+  className = "",
 }: {
-  backend: BackendMetrics | null;
-  collectorOn: boolean;
-  paused: boolean;
-  setPaused: (b: boolean) => void;
-  intervalSec: number;
-  setIntervalSec: (s: number) => void;
+  title: string;
+  meta?: ReactNode;
+  children: ReactNode;
+  className?: string;
 }) {
-  // One line, always — the same rule as the status bar below it. The controls
-  // are the row's point, so they scroll rather than wrap.
   return (
-    <div className="flex h-[44px] flex-shrink-0 items-center gap-4 overflow-x-auto border-b border-border bg-paper px-3 whitespace-nowrap sm:px-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      <div className="hidden font-mono text-micro text-muted-foreground sm:block">
-        {backend ? (
-          <>
-            up <span className="text-text">{fmtDur(backend.started_at)}</span>
-            <span className="mx-1.5 text-faint">·</span>
-            updated <span className="text-text">{fmtAgo(backend.updated_at)}</span>
-          </>
-        ) : (
-          <span className="text-yellow">backend unreachable</span>
-        )}
-      </div>
-
-      <div className="ml-auto flex flex-shrink-0 items-center gap-3">
-        <div className="flex flex-shrink-0 items-center gap-2">
-          <span className="text-micro text-faint">Every</span>
-          <div className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
-            {[5, 10, 30, 60].map(s => {
-              const on = intervalSec === s;
-              return (
-                <button
-                  key={s}
-                  onClick={() => setIntervalSec(s)}
-                  className={`rounded-md px-2 py-0.5 text-micro font-medium tabular transition-colors ${
-                    on ? "bg-elevated text-text shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-text"
-                  }`}
-                >
-                  {s}s
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="flex flex-shrink-0 items-stretch overflow-hidden rounded-lg border border-border">
-          <button
-            onClick={() => setPaused(!paused)}
-            className={`flex items-center gap-1.5 border-r border-border px-2.5 text-micro font-medium transition-colors ${
-              paused ? "text-muted-foreground hover:text-text" : "text-text"
-            }`}
-          >
-            {paused ? (
-              <>
-                <Play className="size-3" />
-                Paused
-              </>
-            ) : (
-              <>
-                <span className="inline-block size-1.5 rounded-full bg-accent" />
-                Live
-              </>
-            )}
-          </button>
-          <CollectorChip on={collectorOn} />
-        </div>
-      </div>
-    </div>
+    <section className={`min-w-0 overflow-hidden rounded-xl border border-border bg-surface/40 ${className}`}>
+      <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5">
+        <Caps>{title}</Caps>
+        {meta && <div className="flex items-center gap-1.5 text-micro text-muted-foreground">{meta}</div>}
+      </header>
+      {children}
+    </section>
   );
 }
 
-function CollectorChip({ on }: { on: boolean }) {
-  return (
-    <div className="group relative flex items-center gap-1.5 px-2.5">
-      <span className="inline-block size-1.5 rounded-full" style={{ background: on ? "var(--accent)" : "var(--faint)" }} />
-      <span className="text-micro font-medium text-muted-foreground">
-        Collector {on ? "on" : "off"}
-      </span>
-      {!on && (
-        <div className="pointer-events-none absolute right-0 top-full z-10 mt-1.5 w-[280px] origin-top-right rounded-xl border border-border bg-elevated px-3.5 py-3 opacity-0 shadow-xl transition-opacity group-hover:opacity-100">
-          <div className="text-micro font-medium uppercase tracking-wide text-muted-foreground">Collector off</div>
-          <p className="mt-1.5 text-micro leading-relaxed text-muted-foreground">
-            Cost, agent activity, and per-model breakdowns are not collected. Start the
-            collector in another terminal to populate this section within 30s.
-          </p>
-          <div className="mt-2 rounded-lg border border-border bg-surface px-2.5 py-1.5 font-mono text-micro text-accent">
-            mycelium metrics collect
-          </div>
-        </div>
-      )}
-    </div>
-  );
+/** The line a panel shows instead of a grid of dashes: what is missing, and the
+ *  thing that would fill it. */
+function Nothing({ children }: { children: ReactNode }) {
+  return <p className="px-4 py-3 text-label leading-relaxed text-muted-foreground">{children}</p>;
 }
 
-// ── KPI plate ──────────────────────────────────────────────────────────────
-
-function KpiPlate({
-  label, value, sub, sparkline, disabled = false, alert = false, errorRatePct, cta,
+/** One labelled figure inside a panel's grid. */
+function Figure({
+  label,
+  value,
+  color,
+  hint,
 }: {
   label: string;
   value: ReactNode;
-  sub: ReactNode;
-  sparkline?: number[];
-  disabled?: boolean;
-  alert?: boolean;
-  errorRatePct?: number;
-  cta?: string;
-}) {
-  const valueColor = (() => {
-    if (disabled) return "var(--faint)";
-    if (errorRatePct != null && errorRatePct > 0) {
-      // lerp from --text (#eaeaea) to red (#f87171) clamped at 20%
-      const t = Math.min(errorRatePct / 20, 1);
-      const r = Math.round(0xea + t * (0xf8 - 0xea));
-      const g = Math.round(0xea + t * (0x71 - 0xea));
-      const b = Math.round(0xea + t * (0x71 - 0xea));
-      return `rgb(${r},${g},${b})`;
-    }
-    return "var(--text)";
-  })();
-  return (
-    <div className="flex min-w-0 items-center gap-5 border-b border-border2 px-4 py-4 sm:px-6 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <Caps>{label}</Caps>
-        <div
-          className={`tabular ${alert ? "italic" : ""}`}
-          style={{
-            fontSize: "2rem",
-            fontWeight: 700,
-            lineHeight: 1.05,
-            letterSpacing: "-0.01em",
-            color: valueColor,
-          }}
-        >
-          {value}
-        </div>
-        <div className="text-micro leading-snug text-muted-foreground tabular">{sub}</div>
-        {disabled && cta && (
-          <div className="font-mono text-micro text-accent">{cta}</div>
-        )}
-      </div>
-      {!disabled && sparkline && (
-        <div className="flex flex-shrink-0 items-end self-end pb-1">
-          <Sparkline values={sparkline} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Latency strip (one per histogram) ─────────────────────────────────────
-
-function LatencyStrip({ name, h }: { name: string; h?: BackendHistogram }) {
-  if (!h || !h.count) {
-    return (
-      <div className="border-r border-border px-5 py-3 last:border-r-0">
-        <Caps>{name}</Caps>
-        <div className="mt-1.5 text-micro italic text-faint">no samples</div>
-      </div>
-    );
-  }
-  const avg = histAvg(h);
-  return (
-    <div className="border-r border-border px-5 py-3 last:border-r-0">
-      <div className="flex items-baseline justify-between">
-        <Caps>{name}</Caps>
-        <span className="font-mono text-micro text-faint">n={h.count}</span>
-      </div>
-      <div className="mt-2 grid grid-cols-3 gap-3 tabular">
-        <Cell k="avg" v={fmtMs(avg)} />
-        <Cell k="min" v={fmtMs(h.min)} />
-        <Cell k="max" v={fmtMs(h.max)} />
-      </div>
-    </div>
-  );
-}
-
-function Cell({ k, v }: { k: string; v: string }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="font-mono text-micro text-faint">{k}</span>
-      <span className="font-mono text-label font-semibold text-text">{v}</span>
-    </div>
-  );
-}
-
-// ── Diagnostic tile ────────────────────────────────────────────────────────
-
-type DiagRow = [string, ReactNode, { dim?: boolean; alert?: boolean }?];
-
-function DiagTile({ title, rows, footer, alert = false }: {
-  title: string;
-  rows: DiagRow[];
-  footer?: ReactNode;
-  alert?: boolean;
+  color?: string;
+  hint?: string;
 }) {
   return (
-    <div className="flex flex-col border border-border2 bg-paper">
-      <div className="flex items-baseline justify-between border-b border-border px-3.5 py-2">
-        <Caps className={alert ? "text-accent" : ""}>{title}</Caps>
-        {alert && <span className="font-mono text-micro italic text-accent">!</span>}
-      </div>
-      <div className="flex-1 px-3.5 py-2">
-        {rows.map(([k, v, opts], i) => {
-          const dim = opts?.dim;
-          const a = opts?.alert;
-          return (
-            <div key={i} className="flex items-baseline justify-between gap-3 py-0.5">
-              <span className="text-micro lowercase text-muted-foreground">{k}</span>
-              <span className={`font-mono text-label font-semibold tabular ${
-                a ? "italic text-accent" : dim ? "text-faint" : "text-text"
-              }`}>
-                {v}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-      {footer && (
-        <div className="border-t border-border px-3.5 py-1.5 text-micro italic text-faint">{footer}</div>
-      )}
-    </div>
-  );
-}
-
-// ── CFN status tile ───────────────────────────────────────────────────────
-
-function CfnStatusTile({ cfn }: { cfn?: Record<string, number> }) {
-  const codes = Object.entries(cfn || {})
-    .filter(([k]) => k.startsWith("status."))
-    .map(([k, v]) => ({ code: k.replace("status.", ""), count: v }))
-    .sort((a, b) => a.code.localeCompare(b.code));
-  const hasErr = codes.some(c => statusKind(c.code) !== "ok");
-  return (
-    <div className="flex flex-col border border-border2 bg-paper">
-      <div className="flex items-baseline justify-between border-b border-border px-3.5 py-2">
-        <Caps className={hasErr ? "text-accent" : ""}>CFN HTTP</Caps>
-        <span className="font-mono text-micro text-faint">{fmtNum(cfn?.calls)}</span>
-      </div>
-      <div className="flex-1 px-3.5 py-2">
-        <Row k="mgmt" v={fmtNum(cfn?.["calls.mgmt"])} />
-        <Row k="node" v={fmtNum(cfn?.["calls.node"])} />
-        <div className="my-1.5 h-px bg-border" />
-        {codes.length === 0 ? (
-          <div className="py-0.5 text-micro italic text-faint">no calls</div>
-        ) : codes.map(({ code, count }) => {
-          const k = statusKind(code);
-          const label = code === "0" ? "transport err" : `HTTP ${code}`;
-          return (
-            <Row
-              key={code}
-              k={label}
-              v={fmtNum(count)}
-              alert={k !== "ok"}
-            />
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function Row({ k, v, alert = false, dim = false }: {
-  k: string; v: ReactNode; alert?: boolean; dim?: boolean;
-}) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 py-0.5">
-      <span className={`text-micro lowercase ${alert ? "text-accent" : "text-muted-foreground"}`}>{k}</span>
-      <span className={`font-mono text-label font-semibold tabular ${
-        alert ? "italic text-accent" : dim ? "text-faint" : "text-text"
-      }`}>
-        {v}
+    <div className="flex min-w-0 flex-col gap-1 px-4 py-3" title={hint}>
+      <Caps>{label}</Caps>
+      <span className="font-mono text-ui font-semibold tabular" style={color ? { color } : undefined}>
+        {value}
       </span>
     </div>
   );
 }
 
-// ── Agent activity table (collector) ──────────────────────────────────────
-
-const AGENT_COLS = "1.4fr 0.9fr 0.9fr 0.7fr 1.2fr 0.6fr";
-
-function AgentActivityTable({ collector }: { collector: CollectorMetrics }) {
-  const agents = deriveAgents(collector);
-  const total = Math.max(0.0001, agents.reduce((s, a) => s + a.tokens, 0));
+/** A responsive row of figures, hairlined into cells. */
+function Figures({ children, cols = 4 }: { children: ReactNode; cols?: 3 | 4 | 5 }) {
+  const wide = { 3: "sm:grid-cols-3", 4: "sm:grid-cols-4", 5: "sm:grid-cols-5" }[cols];
   return (
-    <div className="border-b border-border2 px-3 py-5 sm:px-6">
-      <div className="mb-3.5 flex items-baseline justify-between">
-        <Caps className="text-muted-foreground">AGENT ACTIVITY</Caps>
-        <span className="font-mono text-micro italic text-faint">
-          collector · {(collector.sessions || []).length} sessions · {agents.length} agents
+    <div className={`grid grid-cols-2 divide-x divide-y divide-border ${wide} sm:divide-y-0`}>
+      {children}
+    </div>
+  );
+}
+
+/** count / avg / min / max for one backend histogram. */
+function Latency({ label, h }: { label: string; h?: BackendHistogram }) {
+  if (!h?.count) {
+    return (
+      <div className="flex items-baseline justify-between gap-3 border-t border-border px-4 py-2.5">
+        <Caps>{label}</Caps>
+        <span className="text-micro text-muted-foreground">no samples yet</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-t border-border px-4 py-2.5">
+      <Caps>{label}</Caps>
+      <div className="flex items-baseline gap-4 font-mono text-micro tabular">
+        <span className="text-muted-foreground">
+          n <span className="text-text">{fmtNum(h.count)}</span>
+        </span>
+        <span className="text-muted-foreground">
+          avg <span className="text-text">{fmtMs(histAvg(h))}</span>
+        </span>
+        <span className="text-muted-foreground">
+          min <span className="text-text">{fmtMs(h.min)}</span>
+        </span>
+        <span className="text-muted-foreground">
+          max <span className="text-text">{fmtMs(h.max)}</span>
         </span>
       </div>
-      {agents.length === 0 ? (
-        <div className="border border-dashed border-border2 bg-paper px-5 py-4">
-          <Caps>WAITING ON OTLP</Caps>
-          <p className="mt-1.5 max-w-[640px] text-micro leading-relaxed text-muted-foreground">
-            The collector is online but no agents are exporting traces. Point a runtime&apos;s OTLP
-            exporter at the collector and coordinate in a room. Per-agent rows appear here as soon as the first trace arrives.
-          </p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto border border-border2 bg-paper [scrollbar-width:thin]">
-          <div className="grid min-w-[38rem] items-center gap-3.5 border-b border-border2 px-4 py-2"
-               style={{ gridTemplateColumns: AGENT_COLS }}>
-            <Caps>AGENT</Caps>
-            <Caps>TOKENS</Caps>
-            <Caps>COST</Caps>
-            <Caps>SESSIONS</Caps>
-            <Caps>TOKEN SHARE</Caps>
-            <Caps className="text-right">LAST</Caps>
-          </div>
-          {agents.map((a, i) => (
-            <div key={a.agent}
-                 className={`grid min-w-[38rem] items-center gap-3.5 px-4 py-2.5 ${
-                   i < agents.length - 1 ? "border-b border-border" : ""
-                 }`}
-                 style={{ gridTemplateColumns: AGENT_COLS }}>
-              <span className="text-label font-semibold text-text">{a.agent}</span>
-              <span className="font-mono text-label tabular text-text">{fmtNum(a.tokens)}</span>
-              <span className="font-mono text-label tabular text-text">{fmtUsd(a.cost)}</span>
-              <span className="font-mono text-label tabular text-muted-foreground">{a.sessions}</span>
-              <div className="flex items-center gap-2">
-                <div className="relative h-1 w-[120px] flex-shrink-0 bg-border">
-                  <div className="absolute inset-y-0 left-0 bg-accent/85"
-                       style={{ width: `${(a.tokens / total) * 100}%` }} />
-                </div>
-                <span className="font-mono text-micro tabular text-muted-foreground">
-                  {Math.round((a.tokens / total) * 100)}%
-                </span>
-              </div>
-              <span className="font-mono text-micro text-muted-foreground text-right">{a.last}</span>
-            </div>
+    </div>
+  );
+}
+
+/** A footnote under a panel — the caveat that keeps a figure honest. */
+function Note({ children }: { children: ReactNode }) {
+  return (
+    <p className="border-t border-border px-4 py-2 text-micro leading-relaxed text-muted-foreground">
+      {children}
+    </p>
+  );
+}
+
+// ── Header band ──────────────────────────────────────────────────────────────
+
+function HeaderBand({
+  metrics,
+  paused,
+  setPaused,
+  cadence,
+  setCadence,
+}: {
+  metrics: BackendMetrics | null;
+  paused: boolean;
+  setPaused: (b: boolean) => void;
+  cadence: number;
+  setCadence: (s: number) => void;
+}) {
+  return (
+    <div className="flex min-h-11 shrink-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-border bg-paper px-5 py-1.5">
+      <div className="flex items-center gap-2 font-mono text-micro text-muted-foreground">
+        <Dot color={paused ? "var(--faint)" : "var(--green)"} />
+        {metrics ? (
+          <span>
+            up <span className="text-text">{fmtDur(metrics.started_at)}</span>
+            <span className="mx-1.5 text-faint">·</span>
+            updated <span className="text-text">{fmtAgo(metrics.updated_at)}</span>
+          </span>
+        ) : (
+          <span>connecting…</span>
+        )}
+      </div>
+
+      <div className="ml-auto flex items-center gap-2">
+        <div className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
+          {CADENCES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              aria-pressed={cadence === s}
+              onClick={() => setCadence(s)}
+              className={`rounded-md px-2 py-0.5 text-micro font-medium tabular transition-colors ${
+                cadence === s
+                  ? "bg-elevated text-text ring-1 ring-border"
+                  : "text-muted-foreground hover:text-text"
+              }`}
+            >
+              {s}s
+            </button>
           ))}
         </div>
+        <button
+          type="button"
+          onClick={() => setPaused(!paused)}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-micro font-medium text-muted-foreground transition-colors hover:text-text"
+        >
+          {paused ? <Play className="size-3" /> : <Pause className="size-3" />}
+          {paused ? "Paused" : "Live"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── KPI band ─────────────────────────────────────────────────────────────────
+
+function Kpi({ label, value, sub }: { label: string; value: ReactNode; sub: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5 rounded-xl border border-border bg-surface/40 px-5 py-4">
+      <Caps>{label}</Caps>
+      <div className="font-mono text-[28px] font-semibold leading-none tabular text-text">{value}</div>
+      <div className="text-micro leading-snug text-muted-foreground">{sub}</div>
+    </div>
+  );
+}
+
+// ── Coordination fabric ──────────────────────────────────────────────────────
+
+function identityColor(identity: IdentityStatus | null): string {
+  if (!identity) return "var(--faint)";
+  if (identity.status === "error") return "var(--red)";
+  if (identity.status === "degraded") return "var(--yellow)";
+  return "var(--green)";
+}
+
+function FabricPanel({
+  coordination,
+  identity,
+  auth,
+  loaded,
+}: {
+  coordination: CoordinationStatus | null;
+  identity: IdentityStatus | null;
+  auth: AuthStatus | null;
+  loaded: boolean;
+}) {
+  const enabled = coordination?.slim_enabled ?? false;
+  const rooms = coordination?.rooms ?? [];
+  return (
+    <Panel
+      title="Coordination fabric"
+      meta={
+        <>
+          <Dot color={coordination ? (enabled ? "var(--green)" : "var(--red)") : "var(--faint)"} />
+          <span className="font-mono">{coordination?.endpoint ?? "…"}</span>
+        </>
+      }
+    >
+      <Figures cols={5}>
+        <Figure label="Channels live" value={coordination?.channels_live ?? "-"} />
+        <Figure
+          label="Provisions"
+          value={coordination ? `${coordination.provisions_ok}✓ ${coordination.provisions_failed}✗` : "-"}
+          color={(coordination?.provisions_failed ?? 0) > 0 ? "var(--red)" : undefined}
+        />
+        <Figure
+          label="Invite failures"
+          value={coordination?.invite_failures ?? "-"}
+          color={(coordination?.invite_failures ?? 0) > 0 ? "var(--yellow)" : undefined}
+        />
+        <Figure
+          label="Identity"
+          value={identity?.mode ?? "-"}
+          color={identityColor(identity)}
+          hint={identity?.message}
+        />
+        <Figure
+          label="API gate"
+          value={auth ? (auth.enabled ? "on" : "off") : "-"}
+          hint={auth?.issuers.length ? `issuers: ${auth.issuers.join(", ")}` : undefined}
+        />
+      </Figures>
+
+      {rooms.length === 0 ? (
+        <Nothing>
+          {loaded
+            ? "No room channel is provisioned. A channel comes up the first time a room is joined or posted to."
+            : "Reading the fabric…"}
+        </Nothing>
+      ) : (
+        <div className="overflow-x-auto border-t border-border">
+          <table className="w-full min-w-[560px] border-collapse text-micro">
+            <thead>
+              <tr className="border-b border-border text-left text-muted-foreground">
+                <th className="px-4 py-2 font-medium uppercase tracking-wide">Room</th>
+                <th className="px-4 py-2 font-medium uppercase tracking-wide">Channel</th>
+                <th className="px-4 py-2 font-medium uppercase tracking-wide">Members</th>
+                <th className="px-4 py-2 font-medium uppercase tracking-wide">Episode</th>
+                <th className="px-4 py-2 font-medium uppercase tracking-wide">Invites</th>
+                <th className="px-4 py-2 font-medium uppercase tracking-wide">Inbox</th>
+                <th className="px-4 py-2 text-right font-medium uppercase tracking-wide">Errors</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rooms.map((r) => {
+                const errors = r.receive_errors + r.transient_errors + r.reserve_failures;
+                const healthy = r.provisioned && r.persister_alive;
+                return (
+                  <tr key={r.room} className="border-b border-border/50 last:border-b-0">
+                    <td className="px-4 py-2 font-medium text-text">{r.room}</td>
+                    <td className="px-4 py-2">
+                      <span className="flex items-center gap-1.5 text-muted-foreground">
+                        <Dot color={healthy ? "var(--green)" : "var(--yellow)"} />
+                        {r.provisioned ? (r.persister_alive ? "live" : "no persister") : "pending"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-muted-foreground">
+                      {r.members.length > 0 ? r.members.join(", ") : "—"}
+                    </td>
+                    <td className="px-4 py-2" style={{ color: r.episode_active ? "var(--accent)" : undefined }}>
+                      <span className={r.episode_active ? "" : "text-muted-foreground"}>
+                        {r.episode_active ? "active" : "idle"}
+                      </span>
+                    </td>
+                    <td
+                      className="px-4 py-2 tabular text-muted-foreground"
+                      style={{ color: r.deferred_invites > 0 ? "var(--yellow)" : undefined }}
+                    >
+                      {r.deferred_invites}
+                    </td>
+                    <td className="px-4 py-2 tabular text-muted-foreground">
+                      {r.reserves} held{r.reserve_skipped > 0 ? ` · ${r.reserve_skipped} skipped` : ""}
+                    </td>
+                    <td
+                      className="px-4 py-2 text-right tabular"
+                      style={{ color: errors > 0 ? "var(--red)" : "var(--muted-foreground)" }}
+                    >
+                      {errors}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
-    </div>
+    </Panel>
   );
 }
 
-// ── By-model table (collector) ────────────────────────────────────────────
+// ── Negotiations ─────────────────────────────────────────────────────────────
 
-const MODEL_COLS = "1.6fr 0.9fr 0.9fr 0.6fr 1.2fr 0.7fr";
+function stateColor(state: string): string {
+  if (state === "converged" || state === "resolved") return "var(--green)";
+  if (state === "rejected") return "var(--yellow)";
+  return "var(--accent)";
+}
 
-function ByModelTable({ models }: { models: ByModel[] }) {
-  const total = models.reduce((s, m) => s + m.cost_usd, 0) || 0.0001;
-  if (models.length === 0) {
-    return (
-      <div className="border border-border2 bg-paper px-5 py-4 text-micro italic text-faint">
-        no model usage yet
-      </div>
-    );
-  }
+function fmtRatio(n: number | null): string {
+  return n == null ? "-" : n.toFixed(2);
+}
+
+function EpisodesPanel({ rollup, rooms }: { rollup: EpisodeRollup; rooms: number }) {
+  const recent = rollup.recent.slice(0, RECENT_EPISODES);
   return (
-    <div className="overflow-x-auto border border-border2 bg-paper [scrollbar-width:thin]">
-      <div className="grid min-w-[38rem] items-center gap-3.5 border-b border-border2 px-4 py-2"
-           style={{ gridTemplateColumns: MODEL_COLS }}>
-        <Caps>MODEL</Caps>
-        <Caps>IN</Caps>
-        <Caps>OUT</Caps>
-        <Caps>CALLS</Caps>
-        <Caps>SHARE OF SPEND</Caps>
-        <Caps className="text-right">COST</Caps>
-      </div>
-      {models.map((m, i) => (
-        <div key={m.model}
-             className={`grid min-w-[38rem] items-center gap-3.5 px-4 py-2.5 ${
-               i < models.length - 1 ? "border-b border-border" : ""
-             }`}
-             style={{ gridTemplateColumns: MODEL_COLS }}>
-          <span className="font-mono text-label font-semibold text-text">{m.model}</span>
-          <span className="font-mono text-label tabular text-text">{fmtNum(m.tokens_in)}</span>
-          <span className="font-mono text-label tabular text-text">{fmtNum(m.tokens_out)}</span>
-          <span className="font-mono text-label tabular text-muted-foreground">{m.calls}</span>
-          <div className="flex items-center gap-2">
-            <div className="relative h-1 w-[120px] flex-shrink-0 bg-border">
-              <div className="absolute inset-y-0 left-0 bg-accent"
-                   style={{ width: `${(m.cost_usd / total) * 100}%` }} />
-            </div>
-            <span className="font-mono text-micro tabular text-muted-foreground">
-              {Math.round((m.cost_usd / total) * 100)}%
-            </span>
-          </div>
-          <span className="font-mono text-label font-semibold tabular text-text text-right">{fmtUsd(m.cost_usd)}</span>
-        </div>
-      ))}
-    </div>
+    <Panel
+      title="Negotiations"
+      meta={<span>{rooms === 1 ? "1 room" : `${rooms} rooms`}</span>}
+    >
+      {rollup.total === 0 ? (
+        <Nothing>
+          No episode recorded yet. Each convening of the aligner —{" "}
+          <span className="font-mono text-text">mycelium engine invoke aligner …</span> — is one
+          episode, and lands here with how it ended.
+        </Nothing>
+      ) : (
+        <>
+          <Figures cols={5}>
+            <Figure label="Episodes" value={fmtNum(rollup.total)} />
+            <Figure label="Converged" value={fmtNum(rollup.converged)} color="var(--green)" />
+            <Figure
+              label="Rejected"
+              value={fmtNum(rollup.rejected)}
+              color={rollup.rejected > 0 ? "var(--yellow)" : undefined}
+            />
+            <Figure label="Open" value={fmtNum(rollup.open)} color={rollup.open > 0 ? "var(--accent)" : undefined} />
+            <Figure label="Work rows" value={fmtNum(rollup.tasks)} />
+          </Figures>
+
+          <Figures cols={5}>
+            <Figure
+              label="Avg agents"
+              value={rollup.avgParticipants == null ? "-" : rollup.avgParticipants.toFixed(1)}
+            />
+            <Figure label="MPC" value={fmtRatio(rollup.mpc)} hint="Mean posterior confidence" />
+            <Figure label="GAR" value={fmtRatio(rollup.gar)} hint="Genuine agreement ratio" />
+            <Figure label="SCR" value={fmtRatio(rollup.scr)} hint="Sycophantic collapse risk" />
+            <Figure
+              label="Provenance"
+              value={fmtRatio(rollup.provenance)}
+              hint="(1 - SCR) x GAR — agreement discounted by how much of it was deference"
+            />
+          </Figures>
+
+          <ul className="border-t border-border">
+            {recent.map((ep) => (
+              <RecentEpisode key={`${ep.room}/${ep.short_id}`} episode={ep} />
+            ))}
+          </ul>
+
+          <Note>
+            Quality ratios are averaged over the {rollup.scored}{" "}
+            {rollup.scored === 1 ? "episode" : "episodes"} that committed with L9 metrics; an
+            episode still in progress contributes to the counts above but not to the ratios.
+          </Note>
+        </>
+      )}
+    </Panel>
   );
 }
 
-// ── Plates ────────────────────────────────────────────────────────────────
-
-function CollectorOffPlate() {
+function RecentEpisode({ episode }: { episode: FleetEpisode }) {
+  const state = episodeState(episode);
   return (
-    <div className="relative grid items-center gap-8 overflow-hidden border border-dashed border-border2 bg-paper px-7 py-8"
-         style={{ gridTemplateColumns: "1fr auto" }}>
-      {/* folded corner */}
-      <div className="absolute top-0 right-0"
-           style={{
-             width: 0, height: 0,
-             borderTop: "28px solid var(--surface)",
-             borderLeft: "28px solid transparent",
-           }} />
-      <div>
-        <Caps>DISABLED MODE</Caps>
-        <div className="mt-1.5 text-ui font-semibold leading-snug text-text">
-          Cost, agent activity, and per-model breakdowns are{" "}
-          <span className="text-accent">not collected</span> on this host.
-        </div>
-        <div className="mt-2 max-w-[620px] text-micro leading-relaxed text-muted-foreground">
-          The backend dashboard above is fully populated; the collector adds OTLP traces exported
-          by agent runtimes. Start it in another terminal and this section will
-          populate within 30 seconds.
-        </div>
-      </div>
-      <div className="flex flex-col items-end gap-2">
-        <Caps>Run</Caps>
-        <div className="rounded-lg border border-border bg-surface px-3.5 py-2.5 font-mono text-label font-semibold text-accent">
-          mycelium metrics collect
-        </div>
-        <span className="font-mono text-micro text-faint">polls every 30s</span>
-      </div>
-    </div>
+    <li className="flex items-baseline gap-3 border-b border-border/50 px-4 py-2 text-micro last:border-b-0">
+      <Dot color={stateColor(state)} />
+      <span className="shrink-0 font-mono text-muted-foreground">{episode.room}</span>
+      <span className="min-w-0 flex-1 truncate text-text">{episode.topic || episode.short_id}</span>
+      <span className="shrink-0 text-muted-foreground">{state}</span>
+      <span className="shrink-0 tabular text-faint">{fmtAgo(episode.updated_at)}</span>
+    </li>
   );
 }
 
-function BackendDownPlate() {
+// ── Backend counter panels ───────────────────────────────────────────────────
+
+function MemoryPanel({
+  memory,
+  search,
+}: {
+  memory: Record<string, number> | undefined;
+  search?: BackendHistogram;
+}) {
+  const searches = memory?.searches ?? 0;
+  const writes = memory?.writes;
+  return (
+    <Panel title="Memory & retrieval">
+      {writes == null && searches === 0 ? (
+        <Nothing>
+          Nothing written or searched since the hub came up. Counters start at the first{" "}
+          <span className="font-mono text-text">memory set</span>.
+        </Nothing>
+      ) : (
+        <Figures cols={4}>
+          <Figure label="Writes" value={fmtNum(writes)} />
+          <Figure label="Embedded" value={fmtNum(memory?.writes_embedded)} />
+          <Figure label="Searches" value={fmtNum(memory?.searches)} />
+          <Figure label="Hit rate" value={fmtPct(memory?.search_hits, searches)} hint="Searches that returned at least one result" />
+        </Figures>
+      )}
+      <Latency label="Search latency" h={search} />
+    </Panel>
+  );
+}
+
+function EmbeddingPanel({
+  embeddings,
+  latency,
+}: {
+  embeddings: Record<string, number> | undefined;
+  latency?: BackendHistogram;
+}) {
+  const computed = embeddings?.computed;
+  return (
+    <Panel title="Embeddings">
+      {computed == null ? (
+        <Nothing>
+          The local model has not been asked for a vector yet. Writing or searching a memory is what
+          asks it.
+        </Nothing>
+      ) : (
+        <Figures cols={3}>
+          <Figure label="Computed" value={fmtNum(computed)} />
+          <Figure label="Est. tokens" value={fmtNum(embeddings?.estimated_tokens)} />
+          <Figure
+            label="Spend avoided"
+            value={fmtUsd(embeddings?.estimated_cost_avoided_usd)}
+            color="var(--green)"
+            hint="What these embeddings would have cost against a hosted embedding API"
+          />
+        </Figures>
+      )}
+      <Latency label="Embedding latency" h={latency} />
+      <Note>
+        Vectors are computed in-process by <span className="font-mono">BAAI/bge-small-en-v1.5</span>,
+        so nothing here leaves the hub and the avoided spend is an estimate against a hosted API&apos;s
+        list price.
+      </Note>
+    </Panel>
+  );
+}
+
+function IndexerPanel({
+  indexer,
+  duration,
+}: {
+  indexer: Record<string, number> | undefined;
+  duration?: BackendHistogram;
+}) {
+  const runs = indexer?.runs;
+  const errors = indexer?.errors ?? 0;
+  return (
+    <Panel title="Indexer">
+      {runs == null ? (
+        <Nothing>No indexing run yet — the index is rebuilt as memories are written.</Nothing>
+      ) : (
+        <Figures cols={4}>
+          <Figure label="Runs" value={fmtNum(runs)} />
+          <Figure label="Indexed" value={fmtNum(indexer?.files_indexed)} />
+          <Figure label="Pruned" value={fmtNum(indexer?.files_pruned)} />
+          <Figure
+            label="Errors"
+            value={fmtNum(errors)}
+            color={errors > 0 ? "var(--red)" : undefined}
+            hint={errors > 0 ? "mycelium logs --grep indexer" : undefined}
+          />
+        </Figures>
+      )}
+      <Latency label="Run duration" h={duration} />
+    </Panel>
+  );
+}
+
+function CognitionPanel({
+  llm,
+  histograms,
+}: {
+  llm: Record<string, number> | undefined;
+  histograms: Record<string, BackendHistogram>;
+}) {
+  const calls = llm?.calls;
+  const errors = llm?.errors ?? 0;
+  const operations = subCounters(llm, "by_operation");
+  const models = subCounters(llm, "by_model", true);
+  return (
+    <Panel title="Cognition">
+      {calls == null ? (
+        <Nothing>
+          No Pi turn has run yet. The aligner&apos;s brain, the task compiler and the health probe all
+          land here.
+        </Nothing>
+      ) : (
+        <>
+          <Figures cols={4}>
+            <Figure label="Calls" value={fmtNum(calls)} />
+            <Figure
+              label="Errors"
+              value={fmtNum(errors)}
+              color={errors > 0 ? "var(--red)" : undefined}
+            />
+            <Figure label="Failure rate" value={fmtPct(errors, calls)} />
+            <Figure label="Models" value={models.length || "-"} hint={models.map(([m]) => m).join(", ")} />
+          </Figures>
+
+          {operations.length > 0 && (
+            <ul className="border-t border-border">
+              {operations.map(([op, n]) => (
+                <li
+                  key={op}
+                  className="flex items-baseline justify-between gap-3 border-b border-border/50 px-4 py-2 text-micro last:border-b-0"
+                >
+                  <span className="font-mono text-text">{op}</span>
+                  <span className="flex items-baseline gap-4 font-mono tabular text-muted-foreground">
+                    <span>
+                      {fmtNum(n)} {n === 1 ? "call" : "calls"}
+                    </span>
+                    <span>{fmtMs(histAvg(histograms[`llm.latency_ms.${op}`]))} avg</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+      <Latency label="Call latency" h={histograms["llm.latency_ms"]} />
+      <Note>
+        Cognition runs through the <span className="font-mono">pi</span> binary, which does not
+        report per-turn token usage — so calls, failures and latency are counted here and spend is
+        not claimed.
+      </Note>
+    </Panel>
+  );
+}
+
+// ── Backend unreachable ──────────────────────────────────────────────────────
+
+function BackendDown() {
   return (
     <div className="flex flex-1 items-center justify-center p-10">
-      <div className="relative max-w-[560px] overflow-hidden rounded-xl border border-border bg-paper px-9 py-8">
-        <div className="absolute inset-y-0 left-0 w-[3px] bg-yellow" />
+      <div className="max-w-lg rounded-xl border border-border bg-surface/40 px-7 py-6">
         <Caps className="text-yellow">Backend unreachable</Caps>
-        <div className="mt-1.5 text-ui font-semibold leading-snug text-text">
-          Could not reach <span className="font-mono text-accent">GET /api/observability</span>
-        </div>
-        <div className="mt-2.5 text-micro leading-relaxed text-muted-foreground">
-          The frontend is running but the backend isn&apos;t responding. Start it with{" "}
-          <span className="font-mono text-accent">mycelium up</span>, or run{" "}
-          <span className="font-mono text-accent">mycelium doctor</span> to diagnose the stack.
-        </div>
+        <p className="mt-2 text-label leading-relaxed text-muted-foreground">
+          Nothing answered <span className="font-mono text-text">GET /api/observability</span>. Bring
+          the stack up with <span className="font-mono text-text">mycelium up</span>, or run{" "}
+          <span className="font-mono text-text">mycelium doctor</span> to find out what is holding it
+          down.
+        </p>
       </div>
     </div>
   );
 }
 
-// ── Spoke Sites ───────────────────────────────────────────────────────────
-
-function SpokeSitesTable({
-  hosts, activeHost, onHostClick,
-}: {
-  hosts: HostInfo[];
-  activeHost: string | null;
-  onHostClick: (host: string | null) => void;
-}) {
-  if (hosts.length === 0) return null;
-  return (
-    <div className="border-b border-border2 px-3 py-5 sm:px-6">
-      <div className="mb-3.5 flex items-baseline justify-between">
-        <Caps className="text-muted-foreground">SPOKE SITES</Caps>
-        <span className="font-mono text-micro italic text-faint">hosts reporting OTLP data</span>
-      </div>
-      {activeHost && (
-        <div className="mb-3 flex items-center gap-2">
-          <span className="text-micro text-muted-foreground">Filtered to</span>
-          <span className="rounded-full border border-accent/30 bg-accent-soft px-2 py-0.5 font-mono text-micro font-semibold text-accent">
-            {activeHost}
-          </span>
-          <button
-            onClick={() => onHostClick(null)}
-            className="text-micro text-faint hover:text-text transition-colors"
-          >
-            clear
-          </button>
-        </div>
-      )}
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse font-mono text-micro">
-          <thead>
-            <tr className="border-b border-border text-left text-faint">
-              <th className="py-1.5 pr-4 font-normal">HOST</th>
-              <th className="py-1.5 pr-4 font-normal">AGENTS</th>
-              <th className="py-1.5 pr-4 font-normal text-right">SPANS</th>
-              <th className="py-1.5 pr-4 font-normal text-right">TRACES</th>
-              <th className="py-1.5 pr-4 font-normal text-right">ERRORS</th>
-              <th className="py-1.5 font-normal">LAST SEEN</th>
-            </tr>
-          </thead>
-          <tbody>
-            {hosts.map(h => {
-              const isActive = activeHost === h.host;
-              return (
-                <tr
-                  key={h.host}
-                  onClick={() => onHostClick(isActive ? null : h.host)}
-                  className={`border-b border-border/50 cursor-pointer transition-colors ${
-                    isActive ? "bg-accent-soft" : "hover:bg-hairline"
-                  }`}
-                >
-                  <td className="py-1.5 pr-4 font-semibold text-text">{h.host}</td>
-                  <td className="py-1.5 pr-4 text-muted-foreground">{h.agents.join(", ") || "-"}</td>
-                  <td className="py-1.5 pr-4 text-right tabular text-muted-foreground">{h.span_count.toLocaleString()}</td>
-                  <td className="py-1.5 pr-4 text-right tabular text-muted-foreground">{h.trace_count.toLocaleString()}</td>
-                  <td className={`py-1.5 pr-4 text-right tabular ${h.error_count > 0 ? "text-red-400 font-semibold" : "text-faint"}`}>
-                    {h.error_count}
-                  </td>
-                  <td className="py-1.5 text-faint">{fmtAgo(h.last_seen)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-// ── Main screen ───────────────────────────────────────────────────────────
+// ── Screen ───────────────────────────────────────────────────────────────────
 
 export function MetricsScreen() {
-  const [backend, setBackend] = useState<BackendMetrics | null>(null);
-  const [collector, setCollector] = useState<CollectorMetrics | null>(null);
-  const [hosts, setHosts] = useState<HostInfo[]>([]);
-  const [hostFilter, setHostFilter] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
-  const [intervalSec, setIntervalSec] = useState(10);
-  const [backendUnreachable, setBackendUnreachable] = useState(false);
+  const [cadence, setCadence] = useState<number>(10);
+  // SWR reads 0 as "do not poll", so pausing is the same control as the cadence.
+  const refreshInterval = paused ? 0 : cadence * 1000;
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      const b = await fetchBackendMetrics<BackendMetrics>();
-      if (cancelled) return;
-      setBackend(b);
-      setBackendUnreachable(b == null);
-      const c = await fetchCollectorMetrics<CollectorMetrics>();
-      if (cancelled) return;
-      setCollector(c);
-      const h = await fetchHosts();
-      if (cancelled) return;
-      setHosts(h?.hosts ?? []);
-    };
-    load();
-    if (paused) return () => { cancelled = true; };
-    const id = window.setInterval(load, intervalSec * 1000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [paused, intervalSec]);
+  const { metrics, loading } = useBackendMetrics(refreshInterval);
+  const { network, loading: networkLoading } = useNetworkStatus({ refreshInterval });
+  const { rooms } = useRooms({ refreshInterval });
+  const roomNames = useMemo(() => rooms.map((r) => r.name), [rooms]);
+  const { episodes } = useFleetEpisodes(roomNames, refreshInterval);
+  const rollup = useMemo(() => rollupEpisodes(episodes), [episodes]);
 
-  if (backendUnreachable && !backend) {
+  const counters = metrics?.counters ?? {};
+  const histograms = metrics?.histograms ?? {};
+  const coordination = network?.coordination ?? null;
+
+  const membersPresent = useMemo(
+    () => new Set((coordination?.rooms ?? []).flatMap((r) => r.members)).size,
+    [coordination],
+  );
+  const episodesActive = (coordination?.rooms ?? []).filter((r) => r.episode_active).length;
+
+  if (!metrics && !loading) {
     return (
-      <div className="flex flex-1 flex-col">
+      <div className="flex flex-1 flex-col overflow-hidden">
         <HeaderBand
-          backend={null} collectorOn={false}
-          paused={paused} setPaused={setPaused}
-          intervalSec={intervalSec} setIntervalSec={setIntervalSec}
+          metrics={null}
+          paused={paused}
+          setPaused={setPaused}
+          cadence={cadence}
+          setCadence={setCadence}
         />
-        <BackendDownPlate />
+        <BackendDown />
       </div>
     );
   }
 
-  const bc = backend?.counters || {};
-  const bh = backend?.histograms || {};
-  const cc = collector?.counters || {};
-  const collectorOn = !!collector;
-
-  // KPIs
-  const tokensTotal = cc.tokens?.total?.total;
-  const spendValue = collectorOn ? fmtUsd(cc.cost_usd?.total) : "-";
-
-  const errStats = errorRate(bc.cfn);
-  const errIsZero = errStats.total === 0;
-  const errPct = errStats.total > 0 ? errStats.rate * 100 : 0;
-  const errValue = errIsZero ? "-" : (errPct < 1 ? errPct.toFixed(2) + "%" : errPct.toFixed(1) + "%");
-  const errAlert = errPct > 1;
-
-  const llmCalls = (bc.llm?.calls || 0) + (bc.cfn?.calls || 0);
-  const throughputValue = collectorOn
-    ? `${fmtNum(cc.messages?.processed)} msg`
-    : `${fmtNum(llmCalls)} calls`;
-
-  // zero-data: backend up but nothing has happened yet
-  const zeroData =
-    (bc.embeddings?.computed || 0) === 0 &&
-    (bc.memory?.writes || 0) === 0 &&
-    (bc.coordination?.sessions_started || 0) === 0;
+  const memory = counters.memory;
+  const llmCalls = counters.llm?.calls;
+  const searches = memory?.searches ?? 0;
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <HeaderBand
-        backend={backend} collectorOn={collectorOn}
-        paused={paused} setPaused={setPaused}
-        intervalSec={intervalSec} setIntervalSec={setIntervalSec}
+        metrics={metrics}
+        paused={paused}
+        setPaused={setPaused}
+        cadence={cadence}
+        setCadence={setCadence}
       />
 
       <div className="flex-1 overflow-y-auto">
-        {/* ── KPI band ─────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 border-b border-border2 sm:[grid-template-columns:1.1fr_1fr_1fr]">
-          <KpiPlate
-            label="SPEND"
-            value={spendValue}
-            sub={collectorOn ? (
-              <>
-                <span className="text-muted-foreground">{Object.keys(collector?.counters?.tokens?.by_model || {}).length}</span>{" "}
-                models <span className="mx-1 text-faint">·</span>{" "}
-                <span className="text-muted-foreground">{fmtNum(tokensTotal)}</span> tokens
-                <span className="mx-1 text-faint">·</span>{" "}
-                since <span className="text-muted-foreground">{fmtDur(backend?.started_at)}</span>
-              </>
-            ) : "requires collector"}
-            sparkline={collector?.spend_5m}
-            disabled={!collectorOn}
-            cta={!collectorOn ? "mycelium metrics collect" : undefined}
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 p-5">
+          <div className="grid gap-4 md:grid-cols-3">
+            <Kpi
+              label="Memory"
+              value={fmtNum(memory?.writes)}
+              sub={
+                <>
+                  written <span className="text-faint">·</span> {fmtNum(searches)} searches{" "}
+                  <span className="text-faint">·</span> {fmtPct(memory?.search_hits, searches)} hit
+                  rate
+                </>
+              }
+            />
+            <Kpi
+              label="Fabric"
+              value={coordination?.channels_live ?? "-"}
+              sub={
+                <>
+                  channels live <span className="text-faint">·</span> {membersPresent} present{" "}
+                  <span className="text-faint">·</span> {episodesActive} negotiating
+                </>
+              }
+            />
+            <Kpi
+              label="Cognition"
+              value={fmtNum(llmCalls)}
+              sub={
+                <>
+                  Pi calls <span className="text-faint">·</span> {fmtNum(counters.llm?.errors ?? 0)}{" "}
+                  failed <span className="text-faint">·</span>{" "}
+                  {fmtMs(histAvg(histograms["llm.latency_ms"]))} avg
+                </>
+              }
+            />
+          </div>
+
+          <FabricPanel
+            coordination={coordination}
+            identity={network?.identity ?? null}
+            auth={network?.auth ?? null}
+            loaded={!networkLoading}
           />
-          <KpiPlate
-            label="ERROR RATE"
-            value={errValue}
-            alert={errAlert}
-            errorRatePct={errPct}
-            sub={errIsZero ? "no CFN calls yet" : (
-              <>
-                <span className={errAlert ? "italic text-accent" : "text-muted-foreground"}>{errStats.errors}</span>
-                {" of "}
-                <span className="text-muted-foreground">{errStats.total}</span> CFN calls failed
-              </>
-            )}
-            sparkline={collector?.err_5m}
-          />
-          <KpiPlate
-            label="ACTIVITY"
-            value={throughputValue}
-            sub={collectorOn ? (
-              <>
-                <span className="text-muted-foreground">{cc.messages?.queued ?? 0}</span> queued
-                <span className="mx-1 text-faint">·</span>
-                <span className="text-muted-foreground">{cc.sessions_stuck ?? 0}</span> stuck
-                <span className="mx-1 text-faint">·</span>{" "}
-                since <span className="text-muted-foreground">{fmtDur(backend?.started_at)}</span>
-              </>
-            ) : (
-              <>
-                <span className="text-muted-foreground">{bc.coordination?.sessions_started ?? 0}</span>{" "}
-                sessions <span className="mx-1 text-faint">·</span>{" "}
-                <span className="text-muted-foreground">{bc.coordination?.rounds ?? 0}</span> rounds
-                <span className="mx-1 text-faint">·</span>{" "}
-                since <span className="text-muted-foreground">{fmtDur(backend?.started_at)}</span>
-              </>
-            )}
-          />
-        </div>
 
-        {/* ── Zero-data nudge / agent activity ─────────────────────────── */}
-        {zeroData ? (
-          <div className="border-b border-border2 px-7 py-8">
-            <Caps>NO TRAFFIC YET</Caps>
-            <div className="mt-1.5 max-w-[720px] text-ui leading-relaxed text-muted-foreground">
-              The system is up and the backend is reporting in, but no agents have written memory,
-              run a search, or started a session yet. Numbers below will fill in as soon as
-              anything moves.
-            </div>
-          </div>
-        ) : collectorOn && collector ? (
-          <AgentActivityTable collector={collector} />
-        ) : (
-          <div className="border-b border-border2 px-3 py-5 sm:px-6">
-            <CollectorOffPlate />
-          </div>
-        )}
+          <EpisodesPanel rollup={rollup} rooms={roomNames.length} />
 
-        {/* ── Spoke sites ──────────────────────────────────────────────── */}
-        {hosts.length > 0 && (
-          <SpokeSitesTable hosts={hosts} activeHost={hostFilter} onHostClick={setHostFilter} />
-        )}
-
-        {/* ── Diagnostic grid ──────────────────────────────────────────── */}
-        <div className="px-3 py-5 sm:px-6">
-          <div className="mb-3.5 flex items-baseline justify-between">
-            <Caps className="text-muted-foreground">DIAGNOSTICS · BACKEND COUNTERS</Caps>
-            <span className="font-mono text-micro italic text-faint">always available · GET /api/observability</span>
-          </div>
-
-          <div className="mb-4 grid border border-border2 bg-paper" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
-            <LatencyStrip name="EMBEDDINGS · LATENCY" h={bh["embeddings.latency_ms"]} />
-            <LatencyStrip name="CFN · LATENCY" h={bh["cfn.latency_ms"]} />
-            <LatencyStrip name="MEMORY SEARCH · LATENCY" h={bh["memory.search_latency_ms"]} />
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            <DiagTile
-              title="MEMORY & SEARCH"
-              rows={[
-                ["writes",     fmtNum(bc.memory?.writes)],
-                ["embedded",   fmtNum(bc.memory?.writes_embedded)],
-                ["searches",   fmtNum(bc.memory?.searches)],
-                ["hits",       fmtNum(bc.memory?.search_hits)],
-                ["hit rate",
-                  (bc.memory?.searches || 0) > 0
-                    ? Math.round(100 * (bc.memory?.search_hits || 0) / (bc.memory!.searches!)) + "%"
-                    : "-",
-                  { dim: !(bc.memory?.searches) }],
-                ["embeddings", fmtNum(bc.embeddings?.computed)],
-              ]}
-              footer={`saved ${fmtUsd(bc.embeddings?.["estimated_cost_avoided_usd"])} via local model`}
+          <div className="grid items-start gap-4 lg:grid-cols-2">
+            <MemoryPanel memory={memory} search={histograms["memory.search_latency_ms"]} />
+            <EmbeddingPanel
+              embeddings={counters.embeddings}
+              latency={histograms["embeddings.latency_ms"]}
             />
-            <DiagTile
-              title="COORDINATION"
-              alert={(bc.coordination?.["outcome.failure"] || 0) > 0}
-              rows={[
-                ["sessions",   fmtNum(bc.coordination?.sessions_started)],
-                ["rounds",     fmtNum(bc.coordination?.rounds)],
-                ["consensus",  fmtNum(bc.coordination?.consensus_reached)],
-                ["success",    fmtNum(bc.coordination?.["outcome.success"])],
-                ["failure",    fmtNum(bc.coordination?.["outcome.failure"]),
-                  {
-                    alert: (bc.coordination?.["outcome.failure"] || 0) > 0,
-                    dim: !(bc.coordination?.["outcome.failure"]),
-                  }],
-              ]}
-            />
-            <DiagTile
-              title="INDEXER"
-              alert={(bc.indexer?.errors || 0) > 0}
-              rows={[
-                ["runs",          fmtNum(bc.indexer?.runs)],
-                ["files indexed", fmtNum(bc.indexer?.files_indexed)],
-                ["files pruned",  fmtNum(bc.indexer?.files_pruned), { dim: !(bc.indexer?.files_pruned) }],
-                ["errors",        fmtNum(bc.indexer?.errors),
-                  { alert: (bc.indexer?.errors || 0) > 0, dim: !(bc.indexer?.errors) }],
-              ]}
-              footer={(bc.indexer?.errors || 0) > 0 ? "tail logs: mycelium logs --grep indexer" : undefined}
-            />
-            <DiagTile
-              title="KNOWLEDGE GRAPH"
-              rows={[
-                ["ingestions", fmtNum(bc.knowledge?.ingestions)],
-                ["concepts",   fmtNum(bc.knowledge?.concepts_extracted)],
-                ["relations",  fmtNum(bc.knowledge?.relations_extracted)],
-                ["synth runs", fmtNum(bc.synthesis?.runs)],
-                ["briefings",  fmtNum(bc.synthesis?.briefings)],
-              ]}
-            />
-            <CfnStatusTile cfn={bc.cfn} />
-          </div>
-
-          {/* Token / LLM strip: quiet, secondary */}
-          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-            <DiagTile
-              title="MYCELIUM LLM (BACKEND)"
-              rows={[
-                ["calls",         fmtNum(bc.llm?.calls)],
-                ["input tokens",  fmtNum(bc.llm?.input_tokens)],
-                ["output tokens", fmtNum(bc.llm?.output_tokens)],
-                ["cached",        fmtNum(bc.llm?.cached_tokens), { dim: !(bc.llm?.cached_tokens) }],
-                ["cache rate",
-                  (bc.llm?.input_tokens || 0) > 0
-                    ? Math.round(100 * (bc.llm?.cached_tokens || 0) / ((bc.llm?.input_tokens || 0) + (bc.llm?.cached_tokens || 0))) + "%"
-                    : "-",
-                  { dim: !(bc.llm?.cached_tokens) }],
-              ]}
-            />
-            <DiagTile
-              title="CFN LLM"
-              rows={[
-                ["calls",         fmtNum(bc.cfn_llm?.calls)],
-                ["input tokens",  fmtNum(bc.cfn_llm?.input_tokens)],
-                ["output tokens", fmtNum(bc.cfn_llm?.output_tokens)],
-                ["cached",        fmtNum(bc.cfn_llm?.cached_tokens), { dim: !(bc.cfn_llm?.cached_tokens) }],
-              ]}
-            />
+            <IndexerPanel indexer={counters.indexer} duration={histograms["indexer.duration_ms"]} />
+            <CognitionPanel llm={counters.llm} histograms={histograms} />
           </div>
         </div>
-
-        {/* ── By-model spend (collector only) ──────────────────────────── */}
-        {collectorOn && collector && (() => {
-          const models = deriveModels(collector);
-          if (models.length === 0) return null;
-          return (
-            <div className="px-6 pb-6">
-              <div className="my-3.5 flex items-baseline justify-between">
-                <Caps className="text-muted-foreground">SPEND · BY MODEL</Caps>
-                <span className="font-mono text-micro italic text-faint">OTLP</span>
-              </div>
-              <ByModelTable models={models} />
-            </div>
-          );
-        })()}
       </div>
     </div>
   );

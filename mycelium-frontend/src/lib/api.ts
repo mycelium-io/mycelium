@@ -756,32 +756,12 @@ export async function createUser(payload: {
 
 // ── Metrics ──────────────────────────────────────────────────────────────────
 
-// The backend/collector metrics payloads are large, loosely-structured, and
-// shaped differently by each consumer (the metrics screen wants the full
-// dashboard shape; the status bar wants just a couple of counters), so these
-// stay generic rather than forcing one shared interface — callers supply the
-// slice of the shape they actually read.
+// The counter payload is loosely structured by design — the backend flattens a
+// counter's dimensions into its key — so this stays generic rather than forcing
+// one shared interface, and the caller supplies the slice it reads.
+// Fail-soft: `null` means the hub did not answer.
 export async function fetchBackendMetrics<T = Record<string, unknown>>(): Promise<T | null> {
   return apiFetch<T | null>(`/api/observability`, { cache: "no-store", fallback: null });
-}
-
-export async function fetchCollectorMetrics<T = Record<string, unknown>>(): Promise<T | null> {
-  return apiFetch<T | null>(`/api/observability/collector`, { cache: "no-store", fallback: null });
-}
-
-// ── Traces & Logs ────────────────────────────────────────────────────────────
-
-export interface HostInfo {
-  host: string;
-  span_count: number;
-  trace_count: number;
-  last_seen: string;
-  agents: string[];
-  error_count: number;
-}
-
-export async function fetchHosts(): Promise<{ hosts: HostInfo[] } | null> {
-  return apiFetch<{ hosts: HostInfo[] } | null>(`/api/observability/hosts`, { cache: "no-store", fallback: null });
 }
 
 // ── L9 protocol / episodes ─────────────────────────────────────────────────────

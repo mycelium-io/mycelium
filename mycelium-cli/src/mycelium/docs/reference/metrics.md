@@ -6,10 +6,12 @@ deliberately minimal; it will grow as the agent-telemetry side lands.
 
 ## What you get today
 
-**Mycelium's own metrics.** The backend records what it does as it runs:
-embeddings computed, LLM calls (by operation, model, and room), index runs,
-memory reads and writes, and coordination activity. It exposes them as JSON at
-`GET /api/observability` (counters plus latency histograms).
+**Mycelium's own metrics.** The backend records what it does as it runs: memory
+writes and searches, embeddings computed by the local model, index runs, and Pi
+cognition calls (by operation and model). It exposes them as JSON at
+`GET /api/observability` (counters plus latency histograms). Cognition runs
+through the `pi` binary, which reports no per-turn token usage, so calls,
+failures and latency are counted and spend is not.
 
 **The coordination health surface.** `GET /health` reports whether the fabric is
 actually working: channels provisioned and failed, invite failures, and per-room
@@ -28,6 +30,10 @@ mycelium metrics reset      # clear locally collected metrics
 
 `mycelium metrics show` renders Mycelium's backend metrics, and any agent
 telemetry the collector has received (see below).
+
+The app draws the same two surfaces — the backend counters and the `/health`
+fabric block, alongside every room's episode records — on its **Metrics** page,
+reachable from the status bar.
 
 ## Agent telemetry over OTLP (optional, minimal in v1)
 

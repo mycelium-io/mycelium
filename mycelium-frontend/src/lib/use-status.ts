@@ -4,17 +4,8 @@
 "use client";
 
 import useSWR from "swr";
-import { fetchCollectorMetrics, type EpisodeSummary } from "@/lib/api";
+import { type EpisodeSummary } from "@/lib/api";
 import { useRoomAgents, useRoomEpisodes, useRoomMemories } from "@/lib/room-data";
-
-/** The slice of the collector's metrics payload the status bar reads: total
- *  spend and per-model token totals (to find the primary model). */
-interface CollectorSpendShape {
-  counters?: {
-    cost_usd?: { total?: number };
-    tokens?: { by_model?: Record<string, { total?: number }> };
-  };
-}
 
 /** A `work/` row nobody has closed. The board's own definition of outstanding. */
 function isOpenWork(memory: { key: string; meta?: Record<string, unknown> | null }): boolean {
@@ -49,58 +40,50 @@ export function useRoomStatus(roomName: string): RoomStatus {
 
 export interface GlobalStatus {
   model: string | null;
-  spend: number | null;
   healthy: boolean | null;
 }
 
-/** Primary model = the one that burned the most tokens. */
-function primaryModel(col: CollectorSpendShape | null): string | null {
-  const byModel: Record<string, { total?: number }> = col?.counters?.tokens?.by_model ?? {};
-  let top: string | null = null;
-  let max = -1;
-  for (const [m, v] of Object.entries(byModel)) {
-    const total = v?.total ?? 0;
-    if (total > max) { max = total; top = m; }
-  }
-  return top;
+/** The slice of `/health` the status bar reads: the hub answered at all, and
+ *  which model its cognition is configured against. */
+interface HubHealth {
+  llm?: { model?: string | null } | null;
 }
 
-async function probeHealth(): Promise<boolean> {
+/** One `/health` read, shared by every caller. Resolves to `null` when the hub
+ *  does not answer, which is what "backend unreachable" means on the bar. */
+async function readHealth(): Promise<HubHealth | null> {
   try {
     const res = await fetch("/api/health", { cache: "no-store" });
-    return res.ok;
+    if (!res.ok) return null;
+    return (await res.json()) as HubHealth;
   } catch {
-    return false;
+    return null;
   }
 }
 
 /** How often the status bar re-checks the hub. */
 const HEALTH_POLL = 20_000;
 
+function useHubHealth(refreshInterval: number) {
+  return useSWR<HubHealth | null>("health", readHealth, { refreshInterval });
+}
+
 /** Is the hub answering? One shared cache entry (`health`) for every caller, so
  *  the status bar and the install panel agree and cost one request between
  *  them — the install panel just watches it faster while it waits for the hub
  *  to come up. `null` until the first probe lands. */
 export function useBackendHealth(refreshInterval: number = HEALTH_POLL): boolean | null {
-  const { data } = useSWR("health", probeHealth, { refreshInterval });
-  return data ?? null;
+  const { data } = useHubHealth(refreshInterval);
+  return data === undefined ? null : data !== null;
 }
 
-/** Global workspace status for the status bar: primary LLM model, spend, and
- *  backend health (polled slowly, fail-soft). The status bar renders on every
- *  page, so both reads are shared cache entries like the room ones. */
+/** Global workspace status for the status bar: the configured cognition model
+ *  and whether the hub is answering. Both come off the one shared `/health`
+ *  entry, so the bar renders on every page for one request. */
 export function useGlobalStatus(): GlobalStatus {
-  const { data: collector } = useSWR<CollectorSpendShape | null>(
-    "collector-metrics",
-    () => fetchCollectorMetrics<CollectorSpendShape>(),
-    { refreshInterval: 20_000 },
-  );
-  const healthy = useBackendHealth();
-
-  const cost = collector?.counters?.cost_usd;
+  const { data } = useHubHealth(HEALTH_POLL);
   return {
-    model: primaryModel(collector ?? null),
-    spend: typeof cost?.total === "number" ? cost.total : null,
-    healthy,
+    model: data?.llm?.model ?? null,
+    healthy: data === undefined ? null : data !== null,
   };
 }

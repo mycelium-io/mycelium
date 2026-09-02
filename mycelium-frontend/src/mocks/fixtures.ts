@@ -22,7 +22,6 @@ import type {
   A2aBridgeState,
   EpisodeDetail,
   EpisodeSummary,
-  HostInfo,
   L9Envelope,
   MemoryGraph,
   MemoryGraphEdge,
@@ -1547,50 +1546,56 @@ export function getRoomFixture(name: string): RoomFixture | undefined {
 
 // ── observability / metrics ───────────────────────────────────────────────────
 
+// The shape `/api/observability` actually returns: the four counter namespaces
+// `app/services/metrics.py` files under, with dimensions flattened into the key,
+// and one histogram per measured latency. Token and cost counters stay zero
+// because cognition runs through `pi`, which reports no per-turn usage.
 export const BACKEND_METRICS = {
+  started_at: iso(214),
+  updated_at: iso(0),
   counters: {
-    llm: { calls: 128 },
-    cfn: { calls: 42, "calls.mgmt": 12, "calls.node": 30 },
-    embeddings: { computed: 356 },
-    memory: { writes: 61, reads: 240 },
-    coordination: { sessions_started: 7, sessions_converged: 5 },
-  },
-  histograms: {},
-};
-
-export const COLLECTOR_METRICS = {
-  counters: {
-    tokens: {
-      total: { input: 184_300, output: 52_100, cache_read: 90_400, cache_write: 12_800, total: 339_600 },
-      by_agent: {
-        growth: { input: 82_000, output: 21_000, cache_read: 40_000, cache_write: 5_000, total: 148_000 },
-        risk: { input: 61_000, output: 18_000, cache_read: 30_000, cache_write: 4_000, total: 113_000 },
-        aligner: { input: 41_300, output: 13_100, cache_read: 20_400, cache_write: 3_800, total: 78_600 },
-        synthesizer: { input: 12_600, output: 3_400, cache_read: 6_000, cache_write: 900, total: 22_900 },
-      },
-      by_model: {
-        "anthropic/claude-sonnet-4-6": { input: 143_000, output: 39_000, cache_read: 70_000, cache_write: 9_000, total: 261_000 },
-        "anthropic/claude-haiku-4-5": { input: 41_300, output: 13_100, cache_read: 20_400, cache_write: 3_800, total: 78_600 },
-      },
+    memory: {
+      writes: 148,
+      "writes.namespace": 148,
+      writes_embedded: 148,
+      searches: 96,
+      search_hits: 88,
+      search_misses: 8,
+      results_returned: 402,
     },
-    cost_usd: {
-      total: 4.82,
-      by_agent: { growth: 2.1, risk: 1.6, aligner: 1.12, synthesizer: 0.28 },
-      by_model: { "anthropic/claude-sonnet-4-6": 3.9, "anthropic/claude-haiku-4-5": 0.92 },
+    embeddings: {
+      computed: 512,
+      "by_source.local": 512,
+      estimated_tokens: 31_400,
+      estimated_cost_avoided_usd: 0.000628,
     },
-    messages: { processed: 214 },
+    indexer: {
+      runs: 34,
+      files_indexed: 148,
+      files_skipped: 12,
+      files_pruned: 3,
+      errors: 0,
+      "by_target.room": 152,
+      "by_target.watcher": 8,
+    },
+    llm: {
+      calls: 41,
+      "by_operation.task_compile": 12,
+      "by_operation.health_probe": 29,
+      "by_model.anthropic/claude-sonnet-4-6": 41,
+      input_tokens: 0,
+      output_tokens: 0,
+      cost_usd: 0,
+      errors: 1,
+      "by_operation.health_probe.errors": 1,
+    },
   },
   histograms: {
-    by_agent: {
-      growth: { calls: 46, last: iso(28) },
-      risk: { calls: 38, last: iso(31) },
-      aligner: { calls: 22, last: iso(42) },
-      synthesizer: { calls: 6, last: iso(38) },
-    },
+    "memory.search_latency_ms": { count: 96, sum: 1832.4, min: 8.2, max: 61.3 },
+    "embeddings.latency_ms": { count: 512, sum: 6144, min: 6.1, max: 48.7 },
+    "indexer.duration_ms": { count: 34, sum: 4216, min: 41, max: 610.5 },
+    "llm.latency_ms": { count: 41, sum: 128_400, min: 810, max: 9240 },
+    "llm.latency_ms.task_compile": { count: 12, sum: 74_400, min: 3100, max: 9240 },
+    "llm.latency_ms.health_probe": { count: 29, sum: 54_000, min: 810, max: 3020 },
   },
 };
-
-export const HOSTS: HostInfo[] = [
-  { host: "hub-a.lan", span_count: 1820, trace_count: 143, last_seen: iso(2), agents: ["growth", "aligner"], error_count: 1 },
-  { host: "worker-b.lan", span_count: 940, trace_count: 77, last_seen: iso(6), agents: ["risk"], error_count: 0 },
-];

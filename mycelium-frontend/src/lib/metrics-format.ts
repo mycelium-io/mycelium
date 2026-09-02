@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
+/**
+ * Formatting for the metrics screen: compact numbers, durations, and the
+ * shape the backend reports a histogram in.
+ *
+ * Everything here is presentation only — nothing invents a value. A counter the
+ * backend has never touched reads as `-`, not `0`, so "not measured" and
+ * "measured, zero" stay distinguishable on the page.
+ */
+
 export function fmtNum(n: number | null | undefined): string {
   if (n == null) return "-";
   if (n === 0) return "0";
@@ -34,7 +43,8 @@ export function fmtAgo(iso: string | null | undefined): string {
   const m = Math.floor(sec / 60);
   if (m < 60) return m + "m ago";
   const h = Math.floor(m / 60);
-  return h + "h " + (m % 60) + "m ago";
+  if (h < 24) return h + "h " + (m % 60) + "m ago";
+  return Math.floor(h / 24) + "d ago";
 }
 
 export function fmtDur(iso: string | null | undefined): string {
@@ -46,44 +56,51 @@ export function fmtDur(iso: string | null | undefined): string {
   const m = Math.floor(sec / 60);
   if (m < 60) return m + "m " + (sec % 60) + "s";
   const h = Math.floor(m / 60);
-  return h + "h " + (m % 60) + "m";
+  if (h < 24) return h + "h " + (m % 60) + "m";
+  return Math.floor(h / 24) + "d " + (h % 24) + "h";
 }
 
-export function statusKind(code: string): "ok" | "warn" | "err" {
-  const c = parseInt(code, 10);
-  if (c === 0) return "err";
-  if (c >= 500) return "err";
-  if (c >= 400) return "warn";
-  return "ok";
+/** A whole-number percentage, or `-` when the denominator is zero — a rate over
+ *  nothing is undefined, not 0%. */
+export function fmtPct(part: number | null | undefined, whole: number | null | undefined): string {
+  if (!whole) return "-";
+  return Math.round(100 * ((part ?? 0) / whole)) + "%";
 }
 
-export interface ErrorRateStats {
-  rate: number;
-  total: number;
-  errors: number;
-}
-
-export function errorRate(cfn: Record<string, number> | undefined): ErrorRateStats {
-  if (!cfn) return { rate: 0, total: 0, errors: 0 };
-  let total = 0;
-  let errors = 0;
-  for (const [k, v] of Object.entries(cfn)) {
-    if (!k.startsWith("status.")) continue;
-    total += v;
-    const kind = statusKind(k.replace("status.", ""));
-    if (kind !== "ok") errors += v;
-  }
-  return { rate: total > 0 ? errors / total : 0, total, errors };
-}
-
+/** The backend's histogram shape (`app/services/metrics.py`). `min`/`max` are
+ *  null until the first sample lands. */
 export interface BackendHistogram {
   count: number;
   sum: number;
-  min: number;
-  max: number;
+  min: number | null;
+  max: number | null;
 }
 
 export function histAvg(h: BackendHistogram | undefined): number {
   if (!h || !h.count) return 0;
   return h.sum / h.count;
+}
+
+/**
+ * Counters filed under a dotted prefix, biggest first.
+ *
+ * The backend flattens dimensions into the key (`by_operation.task_compile`),
+ * and files that dimension's own totals one level deeper
+ * (`by_operation.task_compile.input_tokens`). Those deeper keys belong to the
+ * same entry rather than being entries of their own, so they are dropped unless
+ * `deep` is set — which callers use for a dimension whose values may legitimately
+ * contain a dot (a model id like `openai/gpt-4.1`).
+ */
+export function subCounters(
+  counters: Record<string, number> | undefined,
+  prefix: string,
+  deep = false,
+): [string, number][] {
+  if (!counters) return [];
+  const head = prefix.endsWith(".") ? prefix : prefix + ".";
+  return Object.entries(counters)
+    .filter(([k]) => k.startsWith(head))
+    .map(([k, v]) => [k.slice(head.length), v] as [string, number])
+    .filter(([name]) => deep || !name.includes("."))
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 }
