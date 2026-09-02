@@ -1,4 +1,4 @@
-"""Tier A — Stack health tests.
+"""PR checks — stack health tests.
 
 Gates: every PR. No LLM required. No agents.
 

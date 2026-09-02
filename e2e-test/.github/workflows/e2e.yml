@@ -1,12 +1,12 @@
 name: E2E Tests
 
 # Trigger paths:
-# 1. Push to any non-main branch + PRs → Tier A (pr suite, ~10 min)
-# 2. Nightly cron 05:00 UTC → Tier A + B (nightly suite, ~30 min)
+# 1. Push to any non-main branch + PRs → pr suite (~10 min)
+# 2. Nightly cron 05:00 UTC → pr + nightly suite (~30 min)
 # 3. Cross-repo dispatch from mycelium repo → pr or nightly
 # 4. workflow_dispatch → manual with suite choice
 #
-# Tier C (canary) is NOT triggered here — it runs from canary_job.py manually
+# The canary suite is NOT triggered here — it runs from canary_job.py manually
 # or via a separate weekly workflow. It never blocks release.
 
 on:
@@ -17,7 +17,7 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    # Nightly 05:00 UTC — Tier A + B
+    # Nightly 05:00 UTC — pr + nightly suite
     - cron: '0 5 * * *'
   repository_dispatch:
     types:
@@ -30,8 +30,8 @@ on:
         type: choice
         default: 'pr'
         options:
-          - pr        # Tier A only (~10 min)
-          - nightly   # Tier A + B (~30 min)
+          - pr        # pr suite only (~10 min)
+          - nightly   # pr + nightly suite (~30 min)
       mycelium_ref:
         description: 'Mycelium repo ref (branch/tag/SHA). Empty = use release install.'
         default: ''

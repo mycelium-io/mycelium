@@ -301,7 +301,6 @@ def log_job_context(
     runtime: str,
     default_testbed: str | None = None,
     active_testbed: Any = None,
-    tiers: str | None = None,
     suite: str | None = None,
     datafile: str | None = None,
     max_failures: int | None = None,
@@ -315,8 +314,6 @@ def log_job_context(
     if active_testbed is not None:
         tb_name = getattr(active_testbed, "name", active_testbed)
         logger.info("Testbed active:  %s (%s)", tb_name, runtime_for_testbed_object(active_testbed))
-    if tiers is not None:
-        logger.info("Active tiers:    %s", tiers)
     if suite is not None:
         logger.info("Suite:           %s", suite)
     if datafile is not None:
@@ -336,25 +333,6 @@ def log_job_context(
             )
     if max_failures is not None:
         logger.info("Max failures:    %s", max_failures or "unlimited")
-
-
-def ensure_tier_env(default: str = "all") -> str:
-    """Ensure ``MYCELIUM_E2E_TIERS`` is set; return the effective value.
-
-    Job files use this to *set* the tier when one isn't provided by
-    the workflow (``pr_job.py`` defaults to ``"pr"``, ``nightly_job.py``
-    defaults to ``"pr,nightly"``) — the env var is the source of truth
-    read wherever a suite needs to know the effective tier.
-
-    Setting via env (rather than passing through ``run()``) keeps the
-    contract symmetrical between job-driven and ad-hoc runs (``pyats
-    run job …`` and ``MYCELIUM_E2E_TIERS=pr pyats run job …``).
-    """
-    existing = os.environ.get("MYCELIUM_E2E_TIERS")
-    if existing:
-        return existing
-    os.environ["MYCELIUM_E2E_TIERS"] = default
-    return default
 
 
 def groups_filter_from_env() -> Or | None:
@@ -503,7 +481,7 @@ def simple_job_main(
 
     Covers the pattern used by most jobs: resolve testbed, log context,
     load datafile, install SIGINT cleanup, and call run(). Jobs that need
-    unusual control flow (tiers filter, multi-suite, uids) should expand
+    unusual control flow (multi-suite, uids) should expand
     main() manually.
     """
     from pyats.easypy import run

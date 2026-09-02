@@ -1,4 +1,4 @@
-"""PR job — Tier A (stack health + memory + protocol).
+"""PR job — stack health + memory + protocol.
 
 Runs on every PR. No LLM required. Fast (~5 min).
 Blocks release on any failure.
@@ -22,7 +22,7 @@ def main(runtime):
     datafile = get_datafile(default="pr_datafile.yaml")
     install_job_sigint_cleanup(resolve_backend_url(datafile))
 
-    log.info("=== PR Job — Tier A (stack health, memory, protocol) ===")
+    log.info("=== PR Job — stack health, memory, protocol ===")
     log.info("Datafile: %s", datafile)
 
     for suite_name in ("pr_suite.py",):

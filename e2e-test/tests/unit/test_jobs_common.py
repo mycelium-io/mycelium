@@ -5,7 +5,6 @@ refactor:
 
 * :func:`get_testbed_file` — env / bare-filename / absolute-path
   resolution
-* :func:`ensure_tier_env` — idempotent ``MYCELIUM_E2E_TIERS`` defaulting
 
 The existing helpers (``get_datafile``, ``get_max_failures``,
 ``_read_datafile_param``) already had implicit coverage via the legacy
@@ -25,7 +24,6 @@ from jobs import _common as common
 
 _TRACKED_ENV = (
     "MYCELIUM_TESTBED_FILE",
-    "MYCELIUM_E2E_TIERS",
     "MYCELIUM_E2E_GROUPS",
     "MYCELIUM_E2E_RUNTIME",
     "GITHUB_ACTIONS",
@@ -35,12 +33,7 @@ _TRACKED_ENV = (
 @pytest.fixture
 def clean_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Strip the env vars this module touches so tests start from a
-    deterministic baseline regardless of the developer's shell or CI.
-
-    ``ensure_tier_env`` mutates ``os.environ`` directly (not via
-    monkeypatch), so we add explicit post-yield cleanup to keep leaks
-    from contaminating sibling test modules (e.g. ``test_scenarios.py``
-    has ``active_tiers(None)`` cases that read the live env)."""
+    deterministic baseline regardless of the developer's shell or CI."""
     for key in _TRACKED_ENV:
         monkeypatch.delenv(key, raising=False)
     yield
@@ -234,45 +227,6 @@ class TestValidateJobRuntime:
                 testbed=compose,
                 strict=True,
             )
-
-
-# ── ensure_tier_env ───────────────────────────────────────────────────
-
-
-class TestEnsureTierEnv:
-    def test_sets_default_when_unset(self, clean_env: None) -> None:
-        result = common.ensure_tier_env("pr")
-        assert result == "pr"
-        assert os.environ["MYCELIUM_E2E_TIERS"] == "pr"
-
-    def test_preserves_existing_value(
-        self,
-        clean_env: None,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.setenv("MYCELIUM_E2E_TIERS", "weekly")
-        result = common.ensure_tier_env("pr")
-        assert result == "weekly"
-        assert os.environ["MYCELIUM_E2E_TIERS"] == "weekly"
-
-    def test_empty_existing_value_treated_as_unset(
-        self,
-        clean_env: None,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        # The implementation treats an empty string as "unset" (falsy
-        # check on os.environ.get(...)); pin this contract so callers
-        # can rely on `MYCELIUM_E2E_TIERS=""` not silently disabling
-        # all tests.
-        monkeypatch.setenv("MYCELIUM_E2E_TIERS", "")
-        result = common.ensure_tier_env("pr,nightly")
-        assert result == "pr,nightly"
-        assert os.environ["MYCELIUM_E2E_TIERS"] == "pr,nightly"
-
-    def test_default_default_is_all(self, clean_env: None) -> None:
-        result = common.ensure_tier_env()
-        assert result == "all"
-        assert os.environ["MYCELIUM_E2E_TIERS"] == "all"
 
 
 # ── groups_logic_from_env ─────────────────────────────────────────────

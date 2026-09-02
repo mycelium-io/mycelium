@@ -1,4 +1,4 @@
-"""Nightly suite — Tier B: stub agent coordination tests. No LLM."""
+"""Nightly suite — stub agent coordination tests. No LLM."""
 
 import os
 import sys
@@ -10,14 +10,14 @@ if _ROOT not in sys.path:
 from pyats import aetest
 
 from testcases.common_setup_cleanup import MyceliumCommonSetup, MyceliumCommonCleanup
-from testcases.tier_b_stub_coord import TwoStubHappyPath as _TwoStubHappyPath
-from testcases.tier_b_stub_coord import TwoStubRejectionPath as _TwoStubRejectionPath
-from testcases.tier_b_stub_coord import CounterOfferChain as _CounterOfferChain
-from testcases.tier_b_stub_coord import RespondWithoutTurnRejected as _RespondWithoutTurnRejected
-from testcases.tier_b_stub_coord import CrossEpisodeMemory as _CrossEpisodeMemory
-from testcases.tier_b_stub_coord import MultiSessionResponseRate as _MultiSessionResponseRate
-from testcases.tier_b_hub_spoke import TwoNodeHubSpoke as _TwoNodeHubSpoke
-from testcases.tier_b_hub_spoke import ThreeNodeHubSpoke as _ThreeNodeHubSpoke
+from testcases.nightly_stub_coord import TwoStubHappyPath as _TwoStubHappyPath
+from testcases.nightly_stub_coord import TwoStubRejectionPath as _TwoStubRejectionPath
+from testcases.nightly_stub_coord import CounterOfferChain as _CounterOfferChain
+from testcases.nightly_stub_coord import RespondWithoutTurnRejected as _RespondWithoutTurnRejected
+from testcases.nightly_stub_coord import CrossEpisodeMemory as _CrossEpisodeMemory
+from testcases.nightly_stub_coord import MultiSessionResponseRate as _MultiSessionResponseRate
+from testcases.nightly_hub_spoke import TwoNodeHubSpoke as _TwoNodeHubSpoke
+from testcases.nightly_hub_spoke import ThreeNodeHubSpoke as _ThreeNodeHubSpoke
 
 
 class CommonSetup(MyceliumCommonSetup):

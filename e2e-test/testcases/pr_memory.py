@@ -1,4 +1,4 @@
-"""Tier A — Memory and briefing contract tests.
+"""PR checks — memory and briefing contract tests.
 
 Gates: every PR. No LLM required. No agents.
 

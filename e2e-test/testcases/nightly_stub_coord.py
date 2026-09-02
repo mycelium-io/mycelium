@@ -1,4 +1,4 @@
-"""Tier B — Stub agent coordination tests.
+"""Nightly checks — stub agent coordination tests.
 
 Gates: nightly / pre-release. No real LLM — stubs respond mechanically.
 
@@ -59,13 +59,13 @@ _POS_COUNTER = "I propose 60-day retention as a compromise between cost and comp
 class TwoStubHappyPath(aetest.Testcase):
     """001 — Two stubs accept every turn → session converges."""
 
-    uid = "tier_b_001"
+    uid = "nightly_001"
 
     @aetest.setup
     def setup(self, api: MyceliumAPI, cli: MyceliumCLI, testscript):
         self.room = _fresh_room()
         testscript.parameters.setdefault("owned_rooms", set()).add(self.room)
-        api.create_room(self.room, description="Tier B stub happy path")
+        api.create_room(self.room, description="Nightly stub happy path")
         self.coord = setup_coordination(
             api, cli, self.room,
             agent_handles=["stub-a", "stub-b"],
@@ -114,13 +114,13 @@ class TwoStubHappyPath(aetest.Testcase):
 class TwoStubRejectionPath(aetest.Testcase):
     """002 — One stub always rejects → session reaches rejected terminal."""
 
-    uid = "tier_b_002"
+    uid = "nightly_002"
 
     @aetest.setup
     def setup(self, api: MyceliumAPI, cli: MyceliumCLI, testscript):
         self.room = _fresh_room()
         testscript.parameters.setdefault("owned_rooms", set()).add(self.room)
-        api.create_room(self.room, description="Tier B stub rejection")
+        api.create_room(self.room, description="Nightly stub rejection")
         self.coord = setup_coordination(
             api, cli, self.room,
             agent_handles=["stub-accept", "stub-reject"],
@@ -243,13 +243,13 @@ class TwoStubRejectionPath(aetest.Testcase):
 class CounterOfferChain(aetest.Testcase):
     """003 — Stub B counters first N rounds then accepts → eventual convergence."""
 
-    uid = "tier_b_003"
+    uid = "nightly_003"
 
     @aetest.setup
     def setup(self, api: MyceliumAPI, cli: MyceliumCLI, testscript):
         self.room = _fresh_room()
         testscript.parameters.setdefault("owned_rooms", set()).add(self.room)
-        api.create_room(self.room, description="Tier B counter-offer chain")
+        api.create_room(self.room, description="Nightly counter-offer chain")
         self.coord = setup_coordination(
             api, cli, self.room,
             agent_handles=["stub-proposer", "stub-counter"],
@@ -292,7 +292,7 @@ class CounterOfferChain(aetest.Testcase):
 class RespondWithoutTurnRejected(aetest.Testcase):
     """004 — Respond without being an awaiting participant is rejected."""
 
-    uid = "tier_b_004"
+    uid = "nightly_004"
 
     @aetest.test
     def out_of_turn_respond_fails(self, api: MyceliumAPI, cli: MyceliumCLI, testscript):
@@ -312,13 +312,13 @@ class RespondWithoutTurnRejected(aetest.Testcase):
 class CrossEpisodeMemory(aetest.Testcase):
     """005 — Session 1 writes a work/ row → session 2 agent_context contains it."""
 
-    uid = "tier_b_005"
+    uid = "nightly_005"
 
     @aetest.setup
     def setup(self, api: MyceliumAPI, testscript):
         self.room = f"qa-cross-episode-stub-{uuid.uuid4().hex[:8]}"
         testscript.parameters.setdefault("owned_rooms", set()).add(self.room)
-        api.create_room(self.room, description="Tier B cross-episode memory")
+        api.create_room(self.room, description="Nightly cross-episode memory")
 
     @aetest.test
     def seed_and_verify_in_context(self, api: MyceliumAPI, cli: MyceliumCLI):
@@ -366,14 +366,14 @@ class CrossEpisodeMemory(aetest.Testcase):
 class MultiSessionResponseRate(aetest.Testcase):
     """006 — 3 sequential stub sessions; gate on 100% stub response rate."""
 
-    uid = "tier_b_006"
+    uid = "nightly_006"
     _N_SESSIONS = 3
 
     @aetest.setup
     def setup(self, api: MyceliumAPI, testscript):
         self.room = f"qa-coord-fresh-multi-{uuid.uuid4().hex[:8]}"
         testscript.parameters.setdefault("owned_rooms", set()).add(self.room)
-        api.create_room(self.room, description="Tier B multi-session response rate")
+        api.create_room(self.room, description="Nightly multi-session response rate")
 
     @aetest.test
     def all_sessions_100pct_response(self, api: MyceliumAPI, cli: MyceliumCLI):

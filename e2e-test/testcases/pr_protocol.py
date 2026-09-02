@@ -1,4 +1,4 @@
-"""Tier A — Protocol boundary tests.
+"""PR checks — protocol boundary tests.
 
 Gates: every PR. No LLM required. No agents.
 

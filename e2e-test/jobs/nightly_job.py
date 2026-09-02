@@ -1,4 +1,4 @@
-"""Nightly job — Tier A + Tier B (stack + stub coordination).
+"""Nightly job — PR checks + stub coordination.
 
 Runs nightly and before release cuts. No LLM required (stubs only).
 Blocks release on any failure.
@@ -22,7 +22,7 @@ def main(runtime):
     datafile = get_datafile(default="nightly_datafile.yaml")
     install_job_sigint_cleanup(resolve_backend_url(datafile))
 
-    log.info("=== Nightly Job — Tier A + Tier B (stack + stub coordination) ===")
+    log.info("=== Nightly Job — PR checks + stub coordination ===")
     log.info("Datafile: %s", datafile)
 
     for suite_name in ("pr_suite.py", "nightly_suite.py"):

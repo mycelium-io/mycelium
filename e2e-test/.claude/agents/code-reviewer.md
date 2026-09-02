@@ -152,13 +152,6 @@ applies to `coordination_consensus` payload and `formatConsensusSummary()`.
 stateless (no per-device mutable instance attributes). Flag any new provisioner
 that caches per-device state without scoping the cache per device.
 
-### Scenario row `tier` field — missing = never runs
-
-Rows in `data/scenarios.yaml` without a `tier` field are silently excluded by
-`filter_by_tier()`. Every new row must have `tier: pr`, `tier: nightly`, or
-`tier: weekly`. A row without a tier will never run in CI and will not produce
-a test error — it just silently doesn't execute.
-
 ## Review output format
 
 List findings ranked most-severe first. For each:

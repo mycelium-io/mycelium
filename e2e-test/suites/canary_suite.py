@@ -1,4 +1,4 @@
-"""Canary suite — Tier C: live agent multi-episode. Informational only."""
+"""Canary suite — live agent multi-episode. Informational only."""
 
 import os
 import sys
@@ -10,8 +10,8 @@ if _ROOT not in sys.path:
 from pyats import aetest
 
 from testcases.common_setup_cleanup import MyceliumCommonSetup, MyceliumCommonCleanup
-from testcases.tier_c_live_episode import EpisodeOne as _EpisodeOne
-from testcases.tier_c_live_episode import EpisodeTwo as _EpisodeTwo
+from testcases.canary_live_episode import EpisodeOne as _EpisodeOne
+from testcases.canary_live_episode import EpisodeTwo as _EpisodeTwo
 
 
 class CommonSetup(MyceliumCommonSetup):

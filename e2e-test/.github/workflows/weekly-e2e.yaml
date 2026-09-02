@@ -1,6 +1,6 @@
-name: Weekly Canary (Tier C)
+name: Weekly Canary
 
-# Tier C — live agent multi-episode canary.
+# Canary — live agent multi-episode.
 # Runs once a week. Informational only — NEVER blocks release.
 # Requires live LLM credentials to be set in GitHub secrets.
 
@@ -20,7 +20,7 @@ env:
   LLM_MODEL: ${{ secrets.LLM_MODEL || vars.LLM_MODEL || '' }}
   LLM_API_KEY: ${{ secrets.LLM_API_KEY || vars.LLM_API_KEY || '' }}
   LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || vars.LLM_BASE_URL || '' }}
-  # tier_c_live_episode.py defaults to a real cursor-agent adapter
+  # canary_live_episode.py defaults to a real cursor-agent adapter
   # (MYCELIUM_CANARY_ADAPTER, default "cursor") — this is what actually
   # authenticates and drives it, unlike e2e.yml's nightly/pr suites, which
   # only touch cursor via the opt-in MYCELIUM_E2E_USE_CURSOR_STUBS flag.
@@ -29,7 +29,7 @@ env:
 
 jobs:
   canary:
-    name: Tier C Canary (informational)
+    name: Canary (informational)
     runs-on: ubuntu-latest
     timeout-minutes: 120
     continue-on-error: true  # Never block anything
@@ -141,7 +141,7 @@ jobs:
           # see e2e.yml's "Configure mycelium CLI" step.
           chmod -R 777 ~/.mycelium || true
 
-      - name: Run canary suite (Tier C — informational only)
+      - name: Run canary suite (informational only)
         env:
           MYCELIUM_BACKEND_URL: http://localhost:8000
           MYCELIUM_CANARY_ROOM: ${{ github.event.inputs.canary_room || 'api-design-review' }}
@@ -169,13 +169,13 @@ jobs:
             --html-logs artifacts \
             --runinfo-dir artifacts/pyats-runinfo \
             --archive-dir artifacts/pyats-archive \
-            --no-archive-subdir || echo "Canary run finished (non-zero exit is OK for Tier C)"
+            --no-archive-subdir || echo "Canary run finished (non-zero exit is OK for the canary suite)"
 
       - name: Write job summary
         if: always()
         run: |
           RUNINFO=$(ls -td artifacts/pyats-runinfo/*/ 2>/dev/null | head -1)
-          echo "## Tier C Canary Results (informational)" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Canary Results (informational)" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "> Results are **never a release gate**. Failures indicate compatibility observations." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"

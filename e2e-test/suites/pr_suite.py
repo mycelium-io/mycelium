@@ -1,4 +1,4 @@
-"""PR suite — Tier A: stack health, memory, protocol. No LLM."""
+"""PR suite — stack health, memory, protocol. No LLM."""
 
 import os
 import sys
@@ -10,23 +10,23 @@ if _ROOT not in sys.path:
 from pyats import aetest
 
 from testcases.common_setup_cleanup import MyceliumCommonSetup, MyceliumCommonCleanup
-from testcases.tier_a_stack import BackendHealth as _BackendHealth
-from testcases.tier_a_stack import RoomLifecycle as _RoomLifecycle
-from testcases.tier_a_stack import CLIBasics as _CLIBasics
-from testcases.tier_a_memory import MemoryCRUD as _MemoryCRUD
-from testcases.tier_a_memory import BriefingContract as _BriefingContract
-from testcases.tier_a_memory import MemorySearch as _MemorySearch
-from testcases.tier_a_protocol import SessionAPIShape as _SessionAPIShape
-from testcases.tier_a_protocol import RespondWithoutAwait as _RespondWithoutAwait
-from testcases.tier_a_protocol import RoomDeleteIdempotent as _RoomDeleteIdempotent
-from testcases.tier_a_protocol import AgentContextEndpointShape as _AgentContextEndpointShape
+from testcases.pr_stack import BackendHealth as _BackendHealth
+from testcases.pr_stack import RoomLifecycle as _RoomLifecycle
+from testcases.pr_stack import CLIBasics as _CLIBasics
+from testcases.pr_memory import MemoryCRUD as _MemoryCRUD
+from testcases.pr_memory import BriefingContract as _BriefingContract
+from testcases.pr_memory import MemorySearch as _MemorySearch
+from testcases.pr_protocol import SessionAPIShape as _SessionAPIShape
+from testcases.pr_protocol import RespondWithoutAwait as _RespondWithoutAwait
+from testcases.pr_protocol import RoomDeleteIdempotent as _RoomDeleteIdempotent
+from testcases.pr_protocol import AgentContextEndpointShape as _AgentContextEndpointShape
 
 
 class CommonSetup(MyceliumCommonSetup):
     pass
 
 
-# Tier A — Stack health
+# Stack health
 class BackendHealth(_BackendHealth):
     pass
 
@@ -39,7 +39,7 @@ class CLIBasics(_CLIBasics):
     pass
 
 
-# Tier A — Memory
+# Memory
 class MemoryCRUD(_MemoryCRUD):
     pass
 
@@ -52,7 +52,7 @@ class MemorySearch(_MemorySearch):
     pass
 
 
-# Tier A — Protocol
+# Protocol
 class SessionAPIShape(_SessionAPIShape):
     pass
 

@@ -1,4 +1,4 @@
-"""Tier B — Hub-and-spoke coordination tests.
+"""Nightly checks — hub-and-spoke coordination tests.
 
 Gates: nightly. Requires spoke devices in testbed (skips on local.yaml).
 Stubs respond mechanically via host_exec on each device by default — no
@@ -67,7 +67,7 @@ def _use_cursor() -> bool:
 class TwoNodeHubSpoke(aetest.Testcase):
     """HUB01 — Hub stub + spoke1 stub → converged."""
 
-    uid = "tier_b_HUB01"
+    uid = "nightly_HUB01"
 
     @aetest.setup
     def setup(self, api: MyceliumAPI, cli: MyceliumCLI, testscript):
@@ -144,7 +144,7 @@ class TwoNodeHubSpoke(aetest.Testcase):
 class ThreeNodeHubSpoke(aetest.Testcase):
     """HUB02 — Hub stub + spoke1 stub + spoke2 stub → terminal state."""
 
-    uid = "tier_b_HUB02"
+    uid = "nightly_HUB02"
 
     @aetest.setup
     def setup(self, api: MyceliumAPI, cli: MyceliumCLI, testscript):

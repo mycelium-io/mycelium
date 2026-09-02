@@ -5,7 +5,7 @@ This skill documents the patterns and conventions used in this repo's pyATS test
 ## When to Use
 
 Use this skill when:
-- Adding a new test to Tier A, B, or C
+- Adding a new test to the PR, nightly, or canary suite
 - Understanding the pyATS structure (jobs → suites → testcases → datafiles)
 - Debugging a test failure in the pyATS execution model
 - Writing a new mechanical stub or live-agent scenario
@@ -29,7 +29,7 @@ Use this skill when:
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Three tiers, one suite each: **A** (`pr_suite.py`, stack/memory/protocol, no LLM), **B** (`nightly_suite.py`, mechanical stub negotiation + hub-and-spoke, no LLM), **C** (`canary_suite.py`, real cursor-agent multi-episode, informational only — never blocks release). See the repo [README](README.md) for the full tier table.
+Three suites: **PR** (`pr_suite.py`, stack/memory/protocol, no LLM), **nightly** (`nightly_suite.py`, mechanical stub negotiation + hub-and-spoke, no LLM), **canary** (`canary_suite.py`, real cursor-agent multi-episode, informational only — never blocks release). See the repo [README](README.md) for the full suite table.
 
 ## Key Patterns
 
@@ -39,7 +39,7 @@ Suite files (`suites/*.py`) contain only class declarations that inherit from te
 
 ```python
 from testcases.common_setup_cleanup import MyceliumCommonSetup, MyceliumCommonCleanup
-from testcases.tier_a_stack import BackendHealth as _BackendHealth
+from testcases.pr_stack import BackendHealth as _BackendHealth
 
 class CommonSetup(MyceliumCommonSetup):
     pass
@@ -51,7 +51,7 @@ class CommonCleanup(MyceliumCommonCleanup):
     pass
 ```
 
-Testcase classes are imported under a `_Prefixed` alias and re-declared without one — this is what lets pyATS report the plain class name while still reusing logic across suites (e.g. `TwoNodeHubSpoke` is declared once in `tier_b_hub_spoke.py` and appears, unmodified, in `nightly_suite.py`).
+Testcase classes are imported under a `_Prefixed` alias and re-declared without one — this is what lets pyATS report the plain class name while still reusing logic across suites (e.g. `TwoNodeHubSpoke` is declared once in `nightly_hub_spoke.py` and appears, unmodified, in `nightly_suite.py`).
 
 ### 2. Testcase Classes with `uid`
 
@@ -60,7 +60,7 @@ Test logic lives in `testcases/*.py`. Give it a stable `uid` (independent of the
 ```python
 class TwoStubRejectionPath(aetest.Testcase):
     """002 — One stub always rejects → session reaches rejected terminal."""
-    uid = "tier_b_002"
+    uid = "nightly_002"
 
     @aetest.setup
     def setup(self, api: MyceliumAPI, cli: MyceliumCLI, testscript):
@@ -106,7 +106,7 @@ def check_topology(self, testscript):
     require_devices(self, testscript, "spoke1", "spoke2")
 ```
 
-### 6. Mechanical Stub Coordination (Tier B)
+### 6. Mechanical Stub Coordination (nightly suite)
 
 `libs/stub_agent.py`'s `StubAgent` + `run_stubs_until_terminal()` drive a negotiation without any LLM: each stub calls `await`, applies a scripted or `action_fn`-computed accept/reject, and `respond`s. Cross-container variants (`libs/remote_stub.py`'s `RemoteStubAgent`) do the same over `docker exec` for spoke devices.
 
@@ -140,7 +140,7 @@ parameters:
   max_failures: 5
 ```
 
-`base_datafile.yaml` holds every shared parameter (topology, timeouts, room prefix); tier-specific files only override what differs.
+`base_datafile.yaml` holds every shared parameter (topology, timeouts, room prefix); each suite's datafile only overrides what differs.
 
 ### 9. Job File Orchestration
 
@@ -155,7 +155,7 @@ def main(runtime):
         run(testscript=os.path.join(root, "suites", suite_name), datafile=datafile)
 ```
 
-`nightly_job.py` runs both `pr_suite.py` and `nightly_suite.py` in sequence (Tier A gates Tier B). `install_job_sigint_cleanup` registers a SIGINT handler that still deletes owned rooms on Ctrl-C.
+`nightly_job.py` runs both `pr_suite.py` and `nightly_suite.py` in sequence (the PR suite gates the nightly suite). `install_job_sigint_cleanup` registers a SIGINT handler that still deletes owned rooms on Ctrl-C.
 
 ### 10. Groups for Selective Execution
 
@@ -168,11 +168,11 @@ Filter with `MYCELIUM_E2E_GROUPS` (comma-separated, OR'd — see `jobs/_common.p
 
 ## Adding a New Test
 
-1. Add the testcase class to the right `testcases/tier_*.py` file, with a `uid`.
-2. Add a thin re-declaration in the suite file(s) it belongs in (`pr_suite.py` for Tier A, `nightly_suite.py` for Tier B, `canary_suite.py` for Tier C).
+1. Add the testcase class to the right `testcases/{pr,nightly,canary}_*.py` file, with a `uid`.
+2. Add a thin re-declaration in the suite file(s) it belongs in (`pr_suite.py`, `nightly_suite.py`, or `canary_suite.py`).
 3. If it needs its own timeout/round budget, size it against real step/turn cost (pattern 7) — don't silently reuse a module-level constant sized for a different scenario.
 4. Set `groups` if it should be selectively filterable.
-5. Run it directly first: `pyats run job jobs/<tier>_job.py --testbed-file testbeds/local.yaml`.
+5. Run it directly first: `pyats run job jobs/<suite>_job.py --testbed-file testbeds/local.yaml`.
 
 ## Library Reference
 
@@ -193,7 +193,7 @@ Filter with `MYCELIUM_E2E_GROUPS` (comma-separated, OR'd — see `jobs/_common.p
 
 1. **No traditional pyATS testbed for single-host runs** — `testbeds/local.yaml` exists only to satisfy the pyATS schema; topology-dependent tests key off `testscript.parameters["testbed_devices"]`, not a real device connection, and skip cleanly when it's empty.
 2. **Stdlib-only sync HTTP** — `libs/mycelium_api.py` uses `urllib`, zero extra dependency.
-3. **`uid` over class name for identity** — testcase `uid`s (`tier_a_*`, `tier_b_*`, `tier_c_*`) are what CI logs and datafiles reference; class names can be re-aliased per suite without breaking that.
+3. **`uid` over class name for identity** — testcase `uid`s (unprefixed for the PR suite, `nightly_*`/`canary_*` for the others) are what CI logs and datafiles reference; class names can be re-aliased per suite without breaking that.
 4. **Owned-room tracking** — `testscript.parameters["owned_rooms"]` is the only thing `MyceliumCommonCleanup` trusts; a testcase that creates a room outside of it leaks state across runs.
-5. **Tier C never blocks** — `canary_job.py`/`weekly-e2e.yaml` treat every failure as informational (`max_failures: 0`, `continue-on-error: true`). It exists to catch live-LLM compatibility drift, not to gate merges.
-6. **Timeouts sized against the mediator's real cost** — see pattern 7 above. This was the root cause the last time a Tier B stalemate test looked like a SLIM bug and wasn't.
+5. **The canary suite never blocks** — `canary_job.py`/`weekly-e2e.yaml` treat every failure as informational (`max_failures: 0`, `continue-on-error: true`). It exists to catch live-LLM compatibility drift, not to gate merges.
+6. **Timeouts sized against the mediator's real cost** — see pattern 7 above. This was the root cause the last time a nightly-suite stalemate test looked like a SLIM bug and wasn't.

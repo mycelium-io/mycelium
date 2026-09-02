@@ -1,4 +1,4 @@
-"""Stub agent driver for Tier B coordination tests.
+"""Stub agent driver for nightly coordination tests.
 
 Correct SLIM-native stub flow:
   1. ``setup_coordination`` creates agents and posts opening positions.

@@ -1,4 +1,4 @@
-"""Tier C — Live agent multi-episode test.
+"""Canary — live agent multi-episode test.
 
 Gates: NEVER blocks release. Informational / canary only.
 Trigger: manual or weekly cron (canary_job.py).
@@ -89,13 +89,13 @@ _SEED_MEMORIES = [
 class EpisodeOne(aetest.Testcase):
     """E01 — Episode 1: real agents negotiate; gate on 100% response rate + terminal state."""
 
-    uid = "tier_c_E01"
+    uid = "canary_E01"
 
     @aetest.setup
     def setup(self, env: EnvironmentInfo, api: MyceliumAPI, cli: MyceliumCLI, testscript):
         # Prerequisites
         if env.skip_llm_tests:
-            self.skipped("LLM not available — Tier C requires live LLM access")
+            self.skipped("LLM not available — live LLM access is required")
 
         # Room
         self.room = os.environ.get(_CANARY_ROOM_ENV, _DEFAULT_CANARY_ROOM)
@@ -192,7 +192,7 @@ class EpisodeOne(aetest.Testcase):
         )
 
         if result is None:
-            # Timeout — log as TIMEOUT, not a failure (Tier C never blocks release)
+            # Timeout — log as TIMEOUT, not a failure (canary never blocks release)
             debug = collect_debug_info(api, self.room, [_HANDLE_A, _HANDLE_B])
             log.error("TIMEOUT: Episode 1 did not reach terminal state. debug=%s", debug)
             self.skipped(
@@ -210,7 +210,7 @@ class EpisodeOne(aetest.Testcase):
             return
 
         # Gate: 100% response rate (every tick got a reply)
-        # We assert this as a warning rather than hard fail — Tier C is informational
+        # We assert this as a warning rather than hard fail — canary is informational
         missing = {h: c for h, c in snap.responses.items() if c == 0}
         if missing:
             log.warning(
@@ -250,12 +250,12 @@ class EpisodeTwo(aetest.Testcase):
     NOT: agent negotiation quality.
     """
 
-    uid = "tier_c_E02"
+    uid = "canary_E02"
 
     @aetest.setup
     def setup(self, env: EnvironmentInfo, testscript):
         if env.skip_llm_tests:
-            self.skipped("LLM not available — Tier C requires live LLM access")
+            self.skipped("LLM not available — live LLM access is required")
         e01_state = testscript.parameters.get("e01_terminal_state")
         if e01_state is None:
             self.skipped("Episode 1 did not run or timed out — skipping Episode 2")

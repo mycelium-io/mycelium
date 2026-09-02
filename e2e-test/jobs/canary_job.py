@@ -1,4 +1,4 @@
-"""Canary job — Tier C (live agent multi-episode).
+"""Canary job — live agent multi-episode.
 
 Manual trigger or weekly cron. Requires live LLM.
 NEVER blocks release — informational / compatibility telemetry only.
@@ -30,10 +30,10 @@ def main(runtime):
     datafile = get_datafile(default="canary_datafile.yaml")
     install_job_sigint_cleanup(resolve_backend_url(datafile))
 
-    log.info("=== Canary Job — Tier C (live agent, multi-episode) ===")
+    log.info("=== Canary Job — live agent, multi-episode ===")
     log.info("Datafile: %s", datafile)
     log.info(
-        "NOTE: Tier C results are INFORMATIONAL ONLY. Failures do not block release."
+        "NOTE: canary results are INFORMATIONAL ONLY. Failures do not block release."
     )
 
     suite_path = os.path.join(root, "suites", "canary_suite.py")
