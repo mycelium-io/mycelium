@@ -659,6 +659,48 @@ class TestReplyTargeting:
         assert (await self._reply(client)).status_code == 200
         assert self._replied(replying).header.message.episode == thread
 
+    @pytest.mark.asyncio
+    async def test_a_reply_off_the_floor_is_told_to_wait(self, client, replying):
+        """A held floor answers the same way a frozen roster does — before
+        anything is recorded — but with a 409 that names whose turn it is, so
+        a resident loop reads it as "not yet" rather than "not you"."""
+        thread = await _unit_thread(ROOM, "pick a token store")
+        room_channels.manager.hold_floor(ROOM, thread, holder="conductor", speakers=["sec"])
+        self._woke(thread, sender="conductor")
+
+        resp = await self._reply(client)
+        assert resp.status_code == 409
+        assert "@conductor holds the floor; @sec may speak" in resp.json()["detail"]
+        assert [e for e, _c, _lw in replying.persister.ingested if e.payload.type == "reply"] == []
+        assert replying.persister.pings == []
+
+    @pytest.mark.asyncio
+    async def test_the_handle_given_the_floor_replies(self, client, replying):
+        thread = await _unit_thread(ROOM, "pick a token store")
+        room_channels.manager.hold_floor(ROOM, thread, holder="conductor", speakers=["api"])
+        self._woke(thread, sender="conductor")
+
+        assert (await self._reply(client)).status_code == 200
+        assert self._replied(replying).header.message.episode == thread
+
+    @pytest.mark.asyncio
+    async def test_a_released_floor_takes_anyone_again(self, client, replying):
+        thread = await _unit_thread(ROOM, "pick a token store")
+        room_channels.manager.hold_floor(ROOM, thread, holder="conductor", speakers=["sec"])
+        room_channels.manager.release_floor(ROOM, thread)
+        self._woke(thread, sender="conductor")
+
+        assert (await self._reply(client)).status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_the_room_is_open_however_many_floors_are_held(self, client, replying):
+        """A floor narrows one thread; the room itself takes every write."""
+        thread = await _unit_thread(ROOM, "pick a token store")
+        room_channels.manager.hold_floor(ROOM, thread, holder="conductor", speakers=["sec"])
+        self._woke(l9.live_episode_urn(ROOM))
+
+        assert (await self._reply(client)).status_code == 200
+
 
 class TestWriteRoutes:
     """The two write surfaces take a thread target, and refuse the same way."""
@@ -683,6 +725,29 @@ class TestWriteRoutes:
         )
         assert resp.status_code == 404
         assert "t3" in resp.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_posting_off_the_floor_is_refused_the_same_way(self, client, room, monkeypatch):
+        """The human write route passes the one gate ``/reply`` does, so a
+        ``board send`` into a held thread waits its turn too — which is how a
+        human-in-the-loop step works: the runner gives the person the floor."""
+        monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
+        manager, _managed = _live_room()
+        monkeypatch.setattr(room_channels, "manager", manager)
+        thread = await _unit_thread(room, "pick a token store")
+        manager.hold_floor(room, thread, holder="conductor", speakers=["julia"])
+
+        body = {"message_type": "broadcast", "content": "hi", "episode": thread}
+        refused = await client.post(
+            f"/api/rooms/{room}/messages", json={**body, "sender_handle": "api"}
+        )
+        assert refused.status_code == 409
+        assert "@conductor holds the floor; @julia may speak" in refused.json()["detail"]
+
+        admitted = await client.post(
+            f"/api/rooms/{room}/messages", json={**body, "sender_handle": "julia"}
+        )
+        assert admitted.status_code == 201
 
     @pytest.mark.asyncio
     async def test_a_refused_post_stores_nothing(self, client, room):

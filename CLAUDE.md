@@ -193,6 +193,16 @@ is no litellm dependency.
   print raw envelopes at `mycelium room messages`; and a notice carries no
   `content`, so `mycelium room watch` drops it and the terminal draws no timeline
   line.
+- **A thread's floor is held by code, never chosen by a writer.** Two things
+  narrow who may write into a thread, and both are enforced at the one gate
+  `/messages` and `/reply` share (`tasks.thread_write_refusal`): a frozen
+  negotiation admits only the roster it froze on (403), and a **floor**
+  (`app/services/floor.py`, held per episode on the managed channel via
+  `manager.hold_floor`/`release_floor`) admits only the handles its holder gave
+  it to (409, naming whose turn it is). A refused write never reaches the
+  transcript, so it wakes nobody and `await` needs no change. The room itself
+  (`live`) never holds a floor. `app/services/turns.py` is the one-agent turn
+  the aligner brokers with, lifted out so a protocol step asks the same way.
 - **The aligner mediates, inside a task.** Agents never talk to each other directly;
   all coordination flows through the aligner. It's a first-party engine registered
   as a room citizen (`mycelium engine create aligner --kind aligner`) and summoned
