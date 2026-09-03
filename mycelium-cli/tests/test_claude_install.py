@@ -10,7 +10,7 @@ registered. Two invariants:
 
 1. If ``_CLAUDE_CODE_HOOK_EVENTS`` ever drifts back to listing a hook,
    ``_register_claude_code_hooks`` would re-add a settings.json entry
-   pointing at a hook script that the package no longer ships. Claude
+   pointing at a hook script the package does not ship. Claude
    Code then aborts every spawn with ``SessionEnd hook ... not found``,
    which breaks autonomous coordination for ``claude_code`` agents.
 
@@ -35,10 +35,10 @@ from mycelium.integrations.claude_code import install as claude_install
 def test_hook_events_is_empty_so_reinstall_does_not_revive_stale_hooks() -> None:
     """The live hook list must be empty.
 
-    With the assets bundle now omitting ``hooks/``, listing any event in
+    The assets bundle omits ``hooks/``: listing any event in
     ``_CLAUDE_CODE_HOOK_EVENTS`` would mean ``_register_claude_code_hooks``
     re-adds a settings.json entry every reinstall, pointing at a hook
-    script that this package no longer ships. The next Claude Code run
+    script this package does not ship. The next Claude Code run
     would then abort on the missing hook.
     """
     assert claude_install._CLAUDE_CODE_HOOK_EVENTS == [], (
@@ -67,7 +67,7 @@ def test_stale_hooks_covers_every_known_retired_event() -> None:
     would leave upgraders pinned to a broken state).
     """
     stale = {(name, event) for name, event in claude_install._CLAUDE_CODE_STALE_HOOKS}
-    # The five hooks earlier releases registered. If you're retiring a
+    # The five hooks prior versions registered. If you're retiring a
     # *new* hook, append to ``_CLAUDE_CODE_STALE_HOOKS`` and add it here.
     expected = {
         ("mycelium-session-start.sh", "SessionStart"),

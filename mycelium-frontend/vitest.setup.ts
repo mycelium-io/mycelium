@@ -7,7 +7,6 @@ import "@testing-library/jest-dom/vitest";
 // (no `clear`, `getItem`, etc.) that shadows jsdom's working Storage because
 // jsdom skips re-installing globals that already exist.  Detect the broken
 // stub and replace it with an in-memory Storage before any test code runs.
-// See https://github.com/vitest-dev/vitest/issues/8757
 if (typeof window !== "undefined") {
   const candidate = (globalThis as { localStorage?: Storage }).localStorage;
   const isBroken = !candidate || typeof candidate.getItem !== "function";

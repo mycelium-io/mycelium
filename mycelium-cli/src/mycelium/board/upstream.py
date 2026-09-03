@@ -8,23 +8,21 @@ keyed by the board row ids that mention them, so this does no parsing: it looks
 up a row's id and lands the answer under ``upstream``.
 
 **The state is the field; the rest are companions.** ``upstream`` carries the
-state alone (a closed vocabulary the board can group, filter and colour by, the
-same way it treats ``status`` and ``ci``) rather than an object, which inference
-would type as free text and no view could group. The provider's own wording, its
-link and the answer's age ride alongside in their own fields, which is how a row
-already carries ``pr``, ``ci`` and ``branch``.
+state alone — a closed vocabulary the board can group, filter and colour by,
+the same way it treats ``status`` and ``ci``. The provider's own wording, its
+link and the answer's age ride alongside in their own fields, the same way a
+row already carries ``pr``, ``ci`` and ``branch``.
 
-**A row that names two things shows the worse one.** Rows are how a board says
-what needs you, so a task blocked on one pull request and green on another reads
-as blocked; ``upstream_count`` says there was more than one, so the summary never
-quietly stands in for the whole.
+**A row that names two things shows the worse one.** A task blocked on one
+pull request and green on another reads as blocked; ``upstream_count`` says
+there was more than one.
 
-**Not knowing yet is not a state.** The hub answers a read from cache and
-refreshes behind it, so the first read of a room has references but no answers
-for them. That is ``upstream_pending``, and deliberately not ``unknown``, which
-is a real thing a provider says when it meets a state it cannot place. A pending
-row carries no ``upstream`` at all, so a board grouping by the field never
-collects a bucket of rows that were merely early.
+**Not knowing yet is ``upstream_pending``, not ``unknown``.** The hub answers a
+read from cache and refreshes behind it, so the first read of a room has
+references but no answers yet; ``unknown`` is reserved for a state a provider
+reports when it meets something it cannot place. A pending row carries no
+``upstream`` at all, so grouping by the field never collects a bucket of rows
+that were merely early.
 """
 
 from __future__ import annotations
@@ -34,9 +32,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from mycelium.board.model import LiveItem
 
-#: Worst first. A row with several references takes the first state in this order
-#: that any of them is in, because a board exists to surface the thing that needs
-#: a person, not to average.
+#: Worst-first ranking: a row with several references takes the first state in
+#: this order that any of them is in.
 UPSTREAM_STATES = ["failed", "blocked", "pending", "ok", "done", "unknown"]
 
 FIELD = "upstream"

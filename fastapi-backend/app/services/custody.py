@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Server-side custodial SLIM/MLS sessions (#666).
+"""Server-side custodial SLIM/MLS sessions.
 
 Under the PSK default the backend is a single MLS member per room and acts for every
 actor: attribution ("@alice said this") is added application-side and is forgeable,
-and access control is application logic. This module is the alternative proven in the
-#662/#665 spike: the backend holds one genuine MLS-member session per ``(room,
-actor)``, keeping that actor's own SignerJwt key and MLS state on its behalf.
+and access control is application logic. This module is the alternative: the
+backend holds one genuine MLS-member session per ``(room, actor)``, keeping
+that actor's own SignerJwt key and MLS state on its behalf.
 ``respond(@alice, ...)`` sends through @alice's session, so the wire sender is
 @alice's own MLS identity, and room access is enforced by MLS group membership rather
 than application logic.
@@ -16,7 +16,7 @@ than application logic.
 actor's behalf (server-side). A native client holding its own session would be the
 non-custodial case, which is out of scope here.
 
-Off by default (#567): custodial sessions engage only when ``slim.identity`` is
+Off by default: custodial sessions engage only when ``slim.identity`` is
 ``signerjwt``, never under the PSK default, where the try-it path is unchanged. This is structural, not just policy: ``create_app_with_persistence_async``
 requires the identity provider/verifier pair, so a custodial session cannot run on
 the PSK tier.

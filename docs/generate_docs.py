@@ -167,8 +167,7 @@ def _md_to_html(md: str, section_id: str) -> str:
                 f'      <figure class="doc-figure"><img class="doc-img" '
                 f'src="{html.escape(src)}" alt="{html.escape(alt)}" loading="lazy">'
             )
-            # A diagrams/*.svg is rendered from a same-named .d2 source; link
-            # out to it on GitHub so a reader can see (or fix) the source.
+            # Link diagrams/*.svg to its same-named .d2 source on GitHub.
             diagram_m = re.match(r"^diagrams/([\w-]+)\.svg$", src)
             if diagram_m:
                 d2_url = f"{EDIT_BASE_URL}reference/diagrams/{diagram_m.group(1)}.d2"
@@ -249,9 +248,8 @@ def _md_to_html(md: str, section_id: str) -> str:
             i += 1
             continue
 
-        # H4–H6 collapse to <h4> so deeper hierarchies don't fall through to
-        # the paragraph collector (which would spin since lines beginning with
-        # '#' are excluded from paragraph collection).
+        # H4-H6 collapse to <h4>; the paragraph collector excludes lines
+        # starting with '#', so deeper headers would otherwise be dropped.
         m = re.match(r"^(#{4,6})\s+(.*)$", line)
         if m:
             text = m.group(2).strip()

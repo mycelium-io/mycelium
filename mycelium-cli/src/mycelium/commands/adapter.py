@@ -47,11 +47,11 @@ def adapter_main(ctx: typer.Context) -> None:
 
 
 def _resolve_integration(adapter_type: str) -> Integration | None:
-    """Resolve a known adapter type to its integration, or None if planned.
+    """Resolve a known adapter type to its integration, or None if unimplemented.
 
-    ``ADAPTER_TYPES`` is the user-facing catalogue (incl. the planned
-    ``cursor``); the integration registry only holds families that are
-    actually implemented. ``get_integration`` normalises the hyphen spelling.
+    ``ADAPTER_TYPES`` is the user-facing catalogue; the integration registry
+    only holds families that are actually implemented. ``get_integration``
+    normalises the hyphen spelling.
     """
     try:
         return get_integration(adapter_type)
@@ -74,7 +74,7 @@ def add(
     step: list[str] | None = typer.Option(
         None,
         "--step",
-        help="Follow-up step (repeatable). No adapters define follow-up steps today.",
+        help="Follow-up step (repeatable); reserved for future adapters.",
     ),
     remove_step: bool = typer.Option(
         False,

@@ -5,10 +5,8 @@
 Shared presentation helpers for ``mycelium status`` and ``mycelium doctor``.
 
 Both commands render a list of named checks with a status icon, a short
-message, and optional detail lines. They historically diverged in format
-(status used colored labels with multi-line detail sprawl; doctor used
-flat icon-prefixed lines). This module is the single source of truth so
-they stay visually aligned.
+message, and optional detail lines. This module is the single source of
+truth for that rendering so the two stay visually aligned.
 """
 
 from collections.abc import Callable

@@ -7,9 +7,8 @@
 ``room messages`` and ``board messages`` are the same read.  What differs is one
 argument: a **thread** — the episode URN of a task — narrows both to that
 task's conversation instead of the room's.  A thread is a tag over the room's own
-channel rather than a second transport, so a second implementation here would be
-two code paths for one wire call, drifting on exactly the details (owner
-attribution, edit marks, multi-line indentation) a reader notices.
+channel, not a second transport, so one implementation handles both scoped and
+room-wide reads/writes.
 
 So the surface is chosen by the caller and the transport lives here.  The board's
 verbs are the room's verbs, scoped to a row.

@@ -4,10 +4,8 @@
 // What the room's own bookkeeping does to the conversation.
 //
 // A task being worked writes memory, pings its thread and moves on the board,
-// and none of that is something anybody said. Taken from a live capture of the
-// hub's own room: ninety minutes, seven agents, 76 system lines and not one
-// sentence of speech. These cases pin the split that makes that legible — the
-// churn goes to the rail, the transitions worth narrating stay in the feed, and
+// and none of that is something anybody said. These cases verify the split:
+// churn goes to the rail, transitions worth narrating stay in the feed, and
 // the roster's own writes appear in neither.
 
 import { act } from "react";

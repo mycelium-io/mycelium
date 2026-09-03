@@ -52,8 +52,7 @@ if TYPE_CHECKING:
 CREDENTIAL_STORE_ENV = "MYCELIUM_AGENT_CREDENTIALS_FILE"
 
 #: The handle a resident runtime is running as, when the caller doesn't name one.
-#: Already the attribution signal for a resident session, and the credential
-#: follows the identity rather than being a second, separately-set thing.
+#: The credential follows this identity rather than being separately set.
 AGENT_HANDLE_ENV = "MYCELIUM_AGENT_HANDLE"
 
 STATIC_TOKEN_ENV = "MYCELIUM_AGENT_AUTH_TOKEN"
@@ -142,13 +141,12 @@ def _write_store(agents: dict[str, dict[str, Any]]) -> Path:
     """Write store with 0600 permissions (holds secrets)."""
     path = store_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    # os.open with 0600 rather than write_text + chmod: the file must never exist,
-    # even momentarily, with the default mode.
+    # os.open with 0600 creates the file with the right permissions atomically.
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         json.dump({"agents": agents}, fh, indent=2, sort_keys=True)
         fh.write("\n")
-    # An older store may predate this mode; re-assert it on every write.
+    # Re-assert the mode on every write to cover stores from earlier versions.
     os.chmod(path, 0o600)
     return path
 

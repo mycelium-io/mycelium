@@ -49,7 +49,7 @@ def test_connect_persists_endpoint(tmp_path, monkeypatch: pytest.MonkeyPatch) ->
     assert reloaded.slim.node_endpoint == "http://hub:46357"
 
 
-# ── identity tier: two rungs, and the retired one migrates (#668) ─────────────
+# ── identity tier: signerjwt and psk (retired spire degrades to psk) ──────────
 @pytest.mark.parametrize(("given", "expected"), [("psk", "psk"), ("SignerJWT", "signerjwt")])
 def test_identity_tiers(given: str, expected: str) -> None:
     assert SlimConfig(identity=given).identity == expected
@@ -61,6 +61,6 @@ def test_identity_rejects_unknown_tier() -> None:
 
 
 def test_retired_spire_tier_degrades_to_psk() -> None:
-    """A config.toml written before the removal still loads, on psk (#668)."""
+    """A config.toml naming the retired spire tier degrades to psk."""
     with pytest.warns(UserWarning, match="retired"):
         assert SlimConfig(identity="spire").identity == "psk"

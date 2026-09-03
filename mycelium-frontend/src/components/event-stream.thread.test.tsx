@@ -3,9 +3,8 @@
 
 // What the room hears while its threads are busy.
 //
-// The whole claim of the task model is that a task absorbs its own
-// argument and the channel stays readable — so these cases are about what does
-// *not* appear as much as what does.
+// These cases verify that task threads stay out of the channel, so the
+// room's prose and the task's argument remain separate.
 
 import { act } from "react";
 import { screen } from "@testing-library/react";

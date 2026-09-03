@@ -22,7 +22,7 @@ describe("result links", () => {
     expect(resultHref(hit({ type: "room", id: "atlas", room: "atlas" }))).toBe("/room/atlas");
   });
 
-  it("opens memory hits on the full-page route (#614)", () => {
+  it("opens memory hits on the full-page route", () => {
     const href = resultHref(hit());
     expect(href).toBe("/room/atlas%20migration/memory/decisions/db%20choice");
   });

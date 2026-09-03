@@ -308,8 +308,8 @@ function RoomWorkspace() {
         {connected ? "Live" : "Reconnecting…"}
       </span>
       {episodeLabel && (
-        // A plain, ambient signal that a negotiation is live in the room. Its
-        // old destination (the Episodes rail) is gone, so it no longer clicks.
+        // A plain, ambient signal that a negotiation is live in the room —
+        // shown without interaction.
         <span className="flex-shrink-0 px-1.5 py-0.5 text-micro font-medium" style={{ color: episodeLabel.color }}>
           {episodeLabel.text}
         </span>

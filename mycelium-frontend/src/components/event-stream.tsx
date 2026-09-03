@@ -107,11 +107,9 @@ const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...L9_RAISE_UP_TYPES, PING_TY
 // decide message grouping: a chat message only groups under the sender above it
 // when no system notice interrupts the run.
 /**
- * A ping is a system notice too, but deliberately not on the shared raise-up
- * list: that list names message types both surfaces promote out of the L9
- * inspector, and a ping is an `l9_exchange` already on the chat path that is
- * *renamed* here — the same branch the CLI takes inside `chat_line`. Adding it
- * to the contract would claim a drift that isn't one.
+ * A ping is a system notice too, but is not on the shared raise-up list: it
+ * is an `l9_exchange` already on the chat path, renamed here — the same
+ * branch the CLI takes inside `chat_line`.
  */
 const SYSTEM_TYPES = new Set([...L9_RAISE_UP_TYPES, PING_TYPE, NOTICE_TYPE]);
 

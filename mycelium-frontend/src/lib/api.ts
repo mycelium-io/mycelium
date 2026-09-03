@@ -135,8 +135,7 @@ export interface Room {
   title?: string | null;
 }
 
-/** Rename a room. Throws `ApiError` so a caller can surface the reason rather
- *  than silently discarding the edit. */
+/** Rename a room. Throws `ApiError` on failure. */
 export async function setRoomTitle(roomName: string, title: string): Promise<Room> {
   return apiFetch<Room>(`/api/rooms/${roomName}`, {
     method: "PATCH",
@@ -288,9 +287,7 @@ export async function fetchMemories(roomName: string, prefix?: string): Promise<
   });
 }
 
-/** One memory by key. Returns null when it isn't there (or the read failed), so
- *  a caller jumping to a since-deleted key lands on the room rather than an
- *  error. */
+/** One memory by key. Returns null when it isn't there (or the read failed). */
 export async function fetchMemory(roomName: string, key: string): Promise<Memory | null> {
   const path = encodeMemoryKeyPath(key);
   return apiFetch<Memory | null>(`/api/rooms/${roomName}/memory/${path}`, {
@@ -304,9 +301,8 @@ export interface MemorySearchResult {
   similarity: number;
 }
 
-/** Semantic search, triggered by a user action — throws (rather than falling
- *  back to empty) so the search UI can distinguish "no results" from "the
- *  request failed" and show the latter instead of silently showing nothing. */
+/** Semantic search. Throws on failure so the UI can distinguish "no results"
+ *  from "the request failed". */
 export async function searchMemories(roomName: string, query: string): Promise<MemorySearchResult[]> {
   const data = await apiFetch<{ results?: MemorySearchResult[] }>(`/api/rooms/${roomName}/memory/search`, {
     method: "POST",
@@ -351,8 +347,8 @@ export interface MemoryLinks {
 
 const EMPTY_LINKS = { outbound: [], backlinks: [] };
 
-/** A memory's links in both directions. Degrades to empty — a room with no
- *  link index yet is the normal unlinked case, not an error worth surfacing. */
+/** A memory's links in both directions. Degrades to empty when the room has
+ *  no link index yet. */
 export async function fetchMemoryLinks(roomName: string, key: string): Promise<MemoryLinks> {
   const params = new URLSearchParams({ key });
   const data = await apiFetch<Omit<MemoryLinks, "key">>(
@@ -412,8 +408,8 @@ export interface MemoryGraph {
 
 const EMPTY_GRAPH: MemoryGraph = { nodes: [], edges: [] };
 
-/** The room's whole link graph. Degrades to empty — a room with no link index
- *  yet (or an unreachable hub) is the normal unlinked case, not a hard error. */
+/** The room's whole link graph. Degrades to empty when the room has no link
+ *  index yet, or the hub is unreachable. */
 export async function fetchMemoryGraph(roomName: string): Promise<MemoryGraph> {
   const data = await apiFetch<Partial<MemoryGraph>>(`/api/rooms/${roomName}/links/graph`, {
     cache: "no-store",
@@ -634,8 +630,8 @@ export interface A2aBridgedAgent {
   calls_ok: number;
   calls_failed: number;
   last_call_at: string | null;
-  /** Always true, and stated rather than implied: proxied by the hub, so it
-   *  holds no group key and is not a member of the room's MLS group. */
+  /** Always true. A bridged A2A agent is proxied by the hub, holds no group
+   *  key, and is not a member of the room's MLS group. */
   proxied: boolean;
 }
 
@@ -675,8 +671,8 @@ export interface A2aBridgeState {
   outbound_failed: number;
 }
 
-/** Read a room's A2A bridge state. Fail-soft: null when the hub is unreachable
- *  or too old to serve the route, which the pane renders as "no bridge". */
+/** Read a room's A2A bridge state. Returns null when the hub is unreachable
+ *  or too old to serve the route. */
 export async function fetchA2aBridge(roomName: string): Promise<A2aBridgeState | null> {
   return apiFetch<A2aBridgeState | null>(`/api/rooms/${roomName}/a2a/state`, {
     cache: "no-store",
@@ -767,10 +763,9 @@ export async function createUser(payload: {
 
 // ── Metrics ──────────────────────────────────────────────────────────────────
 
-// The counter payload is loosely structured by design — the backend flattens a
-// counter's dimensions into its key — so this stays generic rather than forcing
-// one shared interface, and the caller supplies the slice it reads.
-// Fail-soft: `null` means the hub did not answer.
+// Counter payload is loosely structured: the backend flattens a counter's
+// dimensions into its key, so callers supply the slice they read.
+// `null` means the hub did not answer.
 export async function fetchBackendMetrics<T = Record<string, unknown>>(): Promise<T | null> {
   return apiFetch<T | null>(`/api/observability`, { cache: "no-store", fallback: null });
 }
@@ -778,8 +773,8 @@ export async function fetchBackendMetrics<T = Record<string, unknown>>(): Promis
 // ── L9 protocol / episodes ─────────────────────────────────────────────────────
 // Episodes are the persisted, causally-linked L9 record of a coordination
 // session (one markdown file per session under `log/episodes/`). The protocol
-// inspector reads them for the rich causal chain + consensus metrics; the wire
-// envelopes deliberately carry empty `message.parents`, so the chain lives here.
+// inspector reads them for the rich causal chain + consensus metrics; wire
+// envelopes carry empty `message.parents` — the chain lives here instead.
 
 export interface L9Actor {
   id: string;

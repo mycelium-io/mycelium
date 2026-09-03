@@ -300,8 +300,8 @@ def test_herdr_presence_defers_when_unmapped(
 def test_herdr_presence_wakes_idle_over_stale_lease(
     monkeypatch: pytest.MonkeyPatch, isolated_home: Path
 ) -> None:
-    """The Finding-2 fix: a mapped, idle herdr pane is woken even when the backend
-    lease would (falsely) report the handle as resident."""
+    """A mapped, idle herdr pane is woken even when the backend lease would
+    (falsely) report the handle as resident."""
     from mycelium.commands import agent as agent_cmd
     from mycelium.config import MyceliumConfig
     from mycelium.integrations.herdr import HerdrBridge, HerdrPaneMapping
@@ -362,7 +362,7 @@ def test_resolve_presence_reports_stale_mapping(
 
 
 def test_reconcile_note_stale_lease() -> None:
-    """Backend holds a lease but the herdr pane is dead → the Finding-2 flag."""
+    """Backend holds a lease but the herdr pane is dead → a stale-lease flag."""
     from mycelium.commands.herdr import _reconcile_note
 
     text, colour = _reconcile_note("lease", None)

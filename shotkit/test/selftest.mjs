@@ -362,9 +362,9 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 await (async () => {
   await atest("a dead ffmpeg is reported, not waited on forever", async () => {
-    // `finish()` used to register its exit listener when called. A process that
-    // died on its arguments emits `close` once, long before that, and the take
-    // hung on an event that had already happened.
+    // The exit listener is registered immediately on spawn: a process that
+    // dies on its arguments emits `close` once before `finish()` would be
+    // called, so a listener set inside `finish()` would miss it.
     const enc = startEncoder({ format: "webm", fps: 30, width: 64, height: 64, out: "/tmp/shotkit-dead.webm", ffmpeg: "/bin/false" });
     await wait(200);
     for (let i = 0; i < 3; i++) enc.write(FRAME);

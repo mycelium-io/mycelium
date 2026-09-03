@@ -10,7 +10,7 @@ async function mockGet(path: string): Promise<{ status: number; body: unknown }>
   return { status: res.status, body: await res.json() };
 }
 
-describe("mock links handlers (#599)", () => {
+describe("mock links handlers", () => {
   it("serves the atlas-migration room's whole link graph", async () => {
     const { status, body } = await mockGet("/api/rooms/atlas-migration/links/graph");
     expect(status).toBe(200);
@@ -104,7 +104,7 @@ describe("mock links handlers (#599)", () => {
   });
 });
 
-describe("mock skills handler (#755)", () => {
+describe("mock skills handler", () => {
   it("projects the room's skills/ memories into the skills list shape", async () => {
     // `useRoomSkills` runs on every room page; without this route the request
     // fell through to a real backend and 502'd under `pnpm dev:mock`.

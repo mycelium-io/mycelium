@@ -4,33 +4,26 @@
 /**
  * Assignment: who holds a row, and for how much longer.
  *
- * An agent is resident rather than one-shot, but no session gets to announce
- * that it ended — a container is reclaimed, a cloud session times out, a job is
- * cancelled. So every assertion an ephemeral actor makes about the future is a
- * lease, because none of them can promise the future.
+ * An agent is resident rather than one-shot, and a session can end without
+ * announcing it — a container is reclaimed, a cloud session times out, a job
+ * is cancelled. Assignment is a lease rather than a stored fact: an abandoned
+ * claim drains and the row returns to the pool.
  *
- * Held as a fact, one dead agent leaves the board asserting "@someone is on
- * this" forever, and the board degrades exactly as it gets busy: full of
- * confident lies. Held as a lease, an abandoned claim drains and the row returns
- * to the pool.
- *
- * **Assignment is not a stage.** `status` is a stage vocabulary, borrowed from
- * tools built for workers who do not die silently. `in_review` says nothing
- * about whether anyone is alive; `held, renewed 30s ago` says everything.
+ * **Assignment is not a stage.** `status` is a stage vocabulary. `in_review`
+ * says nothing about whether anyone is alive; `held, renewed 30s ago` says
+ * everything.
  *
  * **It is the freshness model the upstream half already ships.** A cached
  * provider answer is fresh / stale / missing against `fetched_at` + a TTL; a
- * claim is fresh / stale / expired against `claimed_at` + a TTL. One mechanism
- * for both halves of the board, which is also why both want the same dimmed,
- * draining treatment — `TtlBar` was already drawing it.
+ * claim is fresh / stale / expired against `claimed_at` + a TTL. `TtlBar`
+ * draws both with the same dimmed, draining treatment.
  *
  * **Two states are derived and never stored.** `unclaimed` is the absence of a
- * holder; `expired` is a lease nobody renewed, and writing it down would need a
- * process alive at the moment it drained — the exact thing that just stopped
- * being true.
+ * holder; `expired` is a lease nobody renewed. Both are read off the clock at
+ * query time, never written to disk.
  *
- * `renewed` is not a state: it is the event that keeps `held` fresh, which is
- * why it is not in the enum.
+ * `renewed` is not a state: it is the event that keeps `held` fresh, and does
+ * not appear in the enum.
  *
  * Frozen in `contracts/board-vocabulary.json` under `assignment`; the CLI and the
  * backend carry their own copies, and a test on each side asserts against that

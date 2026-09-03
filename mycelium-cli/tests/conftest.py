@@ -4,10 +4,9 @@
 """Shared fixtures + in-process fakes for the CLI test suite.
 
 One import gets you a fake backend/transport stack — no SLIM node, no running
-backend server, no live HTTP. Before this module every file re-declared its own
-``_FakeResp`` / ``_FakeClient`` (six near-identical copies across the connector
-and daemon tests) and the membership tests each ported ``_FakeSlimClient`` by
-hand. This is the single home for them.
+backend server, no live HTTP. Single home for ``_FakeResp``/``_FakeClient``
+and ``_FakeSlimClient``, shared across the connector, daemon, and membership
+tests.
 
 What stands in for what:
 

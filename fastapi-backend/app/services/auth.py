@@ -12,7 +12,7 @@ someone and trying the app.
 It is deliberately **issuer-agnostic**: trust is a list of ``TrustedIssuer``
 entries matched by exact ``iss``, each with its own keys. Nothing here knows or
 cares whether the root is Keycloak, Dex, the dev mock issuer, or a workload-identity
-trust domain, so adding the agent trust root later (#564/#476) is a config entry.
+trust domain, so a new trust root is just a config entry.
 
 Scope is authentication only. Resolving a validated token into the *authoritative*
 actor for a write — replacing body-supplied ``created_by`` / ``sender_handle`` —

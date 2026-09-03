@@ -4,9 +4,8 @@
 """One handle normalizer, everywhere a handle is compared.
 
 ``agent_registry.norm_handle`` is the canonical spelling of "the same handle":
-strip, drop a leading ``@``, lowercase. Every module that used to carry its own
-private copy now routes through it, so the rules cannot drift per caller — the
-aligner's copy had quietly stopped stripping ``@`` (#738).
+strip, drop a leading ``@``, lowercase. Every module routes through it, so the
+rules cannot drift per caller.
 """
 
 from __future__ import annotations

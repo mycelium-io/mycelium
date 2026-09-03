@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Integration-contract conformance — the CI enforcement for #173.
+"""Integration-contract conformance.
 
-#173's acceptance criterion: "CI fails when a new capability is added to one
-adapter without either an implementation or a documented opt-out in the
-other." Because every runtime family is now one ``Integration`` subclass, an
+CI fails when a new capability is added to one adapter without either an
+implementation or a documented opt-out in the other. Because every runtime
+family is one ``Integration`` subclass, an
 unimplemented contract method makes the class abstract and the
 ``get_integration`` instantiation below raises ``TypeError`` — so this test
 fails the moment the contract and an implementation drift apart.
@@ -87,7 +87,7 @@ def test_no_if_family_branching_left_in_command_layer() -> None:
     """The command layer must dispatch via the registry, not branch on family.
 
     A literal ``adapter_type ==`` / ``name ==`` comparison creeping back into
-    ``commands/adapter.py`` is the exact #173 regression — fail loudly on it.
+    ``commands/adapter.py`` is a family-branching regression — fail loudly on it.
     """
     import pathlib
 
@@ -124,8 +124,8 @@ def test_unknown_family_raises() -> None:
 
 
 def test_no_legacy_adapter_packages() -> None:
-    """The collision is gone: neither ``agent_adapters`` nor a top-level
-    ``mycelium.adapters`` package exists — one ``integrations`` concept only."""
+    """Neither ``agent_adapters`` nor a top-level ``mycelium.adapters`` package
+    exists — one ``integrations`` concept only."""
     import importlib
 
     for legacy in ("mycelium.agent_adapters", "mycelium.adapters"):

@@ -62,8 +62,7 @@ describe("the assignment contract", () => {
   });
 
   it("keeps the stored and derived halves disjoint and exhaustive", () => {
-    // A state that is both stored and derived would let a writer freeze a row in
-    // the one state the clock is supposed to own.
+    // The stored and derived halves must not overlap.
     const overlap = STORED_ASSIGNMENT_STATES.filter(s => DERIVED_ASSIGNMENT_STATES.includes(s));
     expect(overlap).toEqual([]);
     expect([...STORED_ASSIGNMENT_STATES, ...DERIVED_ASSIGNMENT_STATES].sort()).toEqual(
@@ -244,8 +243,7 @@ describe("the projection, once assignment is the axis", () => {
   });
 
   it("starts a work/ memory unclaimed rather than owned by whoever wrote it", () => {
-    // Reading `owner` off `updated_by` gave every memory in the room a holder —
-    // the confident lie this axis exists to stop.
+    // `owner` is written only by a claim, never inferred from `updated_by`.
     const [item] = project({ memories: [memory("work/auth-spike")] });
     expect(item.fields.assignment).toBe("unclaimed");
     expect(item.fields.owner).toBeNull();
@@ -283,7 +281,7 @@ describe("the projection, once assignment is the axis", () => {
   });
 
   it("reads empty when every agent died an hour ago", () => {
-    // The test the whole model exists to pass.
+    // A holder's expired lease clears the board automatically.
     const items = project({
       agents: [agent("growth"), agent("risk")],
       presence: new Map([

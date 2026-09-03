@@ -33,8 +33,8 @@ export function RoomAvatar({ name, className, children }: Props) {
         "font-mono text-micro font-semibold",
         className,
       )}
-      // Solid, opaque fill so the tile keeps its colour over a hover or
-      // selection highlight rather than tinting with whatever is behind it.
+      // Opaque fill keeps the tile's colour stable over a hover or selection
+      // highlight.
       style={{
         background: tint,
         borderColor: `color-mix(in srgb, ${tint} 70%, #000)`,
