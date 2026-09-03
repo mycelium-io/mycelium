@@ -170,7 +170,7 @@ Repo layout:
 ```
 .mycelium/            Memory storage (rooms are folders, memories are markdown files)
 mycelium-cli/         CLI + adapters
-fastapi-backend/      FastAPI moderator + engines (aligner, synthesizer, hello, conductor)
+fastapi-backend/      FastAPI moderator + engines (aligner, synthesizer, hello, persona, conductor)
 mycelium-client/      Generated typed OpenAPI client
 mycelium-frontend/    Next.js UI
 contracts/            Frozen JSON contracts shared across components

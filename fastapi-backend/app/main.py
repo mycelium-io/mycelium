@@ -134,13 +134,14 @@ async def lifespan(app: FastAPI):
     # channel is provisioned, so all persisters pick it up. Dormant until an
     # @-summon of its reserved handle arrives — zero idle cost.
     # Several handlers share the one summon seam: the engine kinds (aligner,
-    # synthesizer, hello, conductor) plus the A2A responder. Each self-selects by the summoned
+    # synthesizer, hello, conductor, persona) plus the A2A responder. Each self-selects by the summoned
     # handle's manifest (kind for engines, adapter=a2a for the responder), so a
     # fan-out dispatcher is enough — no central table. Only one ever acts per
     # summon since a handle maps to a single runtime.
     from app.services.a2a_bridge import A2aResponder
     from app.services.aligner import AlignerEngine
     from app.services.conductor import ConductorEngine
+    from app.services.persona_engine import PersonaEngine
     from app.services.probe_engine import ProbeEngine
     from app.services.room_channels import manager as room_channel_manager
     from app.services.synthesizer import SynthesizerEngine
@@ -150,6 +151,7 @@ async def lifespan(app: FastAPI):
     app.state.synthesizer = SynthesizerEngine(room_channel_manager)
     app.state.hello = ProbeEngine(room_channel_manager)
     app.state.conductor = ConductorEngine(room_channel_manager)
+    app.state.persona = PersonaEngine(room_channel_manager)
     # The A2A responder shares the seam too: it answers @-mentions of a
     # registered a2a agent by calling the remote endpoint, gating on the manifest
     # like the engines gate on their kind, so only one handler ever acts.
@@ -159,6 +161,7 @@ async def lifespan(app: FastAPI):
         app.state.synthesizer.handle_summon,
         app.state.hello.handle_summon,
         app.state.conductor.handle_summon,
+        app.state.persona.handle_summon,
         app.state.a2a_responder.handle_summon,
     )
 
@@ -176,12 +179,18 @@ async def lifespan(app: FastAPI):
                 logger.exception("engine summon handler failed for @%s in %s", handle, room)
 
     room_channel_manager.on_summon = _dispatch_summon
+    # A persona also answers when it is the L9 recipient of a turn whose text
+    # names nobody — the way the aligner and the conductor address one member.
+    # The other engines act only on a mention, so this seam is the persona's.
+    room_channel_manager.on_addressed = app.state.persona.handle_addressed
     logger.info(
-        "engines wired (aligner @%s, synthesizer @%s, hello @%s, conductor @%s; llm=pi via %s)",
+        "engines wired (aligner @%s, synthesizer @%s, hello @%s, conductor @%s, "
+        "persona @%s; llm=pi via %s)",
         app.state.aligner.handle,
         app.state.synthesizer.handle,
         app.state.hello.handle,
         app.state.conductor.handle,
+        app.state.persona.handle,
         settings.ALIGNER_PI_BINARY,
     )
 

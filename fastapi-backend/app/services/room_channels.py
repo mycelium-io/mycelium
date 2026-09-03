@@ -49,6 +49,7 @@ from app.services.l9_slim import (
     serialize_content,
 )
 from app.services.persister import (
+    AddressedHook,
     ConvergedHook,
     RoomPersister,
     SummonHook,
@@ -80,6 +81,9 @@ RoomSummonHook = Callable[[str, str, "L9", list[str], str], None]
 # it (the plan-sync consumer) needs the room to compile that room's plan + sync its
 # memory. ``_converged_adapter`` binds the room down to the persister signature.
 RoomConvergedHook = Callable[[str, "L9"], None]
+# The room-aware addressed hook: ``(room, handle, envelope, message_text)`` for
+# each L9 recipient of a turn that named nobody in its text.
+RoomAddressedHook = Callable[[str, str, "L9", str], None]
 
 logger = logging.getLogger(__name__)
 
@@ -278,6 +282,7 @@ class RoomChannelManager:
         # ``handle_converged``. Unset → the persister's log-only defaults.
         self.on_summon: RoomSummonHook | None = None
         self.on_converged: RoomConvergedHook | None = None
+        self.on_addressed: RoomAddressedHook | None = None
         self._metrics = ChannelMetrics()
         # Server-held presence: a handle that participates over HTTP (the CLI
         # ``await``/``respond`` long-poll) never holds a client SLIM connection,
@@ -727,6 +732,7 @@ class RoomChannelManager:
             members_provider=lambda: set(managed.members),
             on_summon=self._summon_adapter(room),
             on_converged=self._converged_adapter(room),
+            on_addressed=self._addressed_adapter(room),
             on_member_left=lambda handle, _room=room: self._drop_member(_room, handle),
         )
         managed.persister_task = asyncio.create_task(managed.persister.run())
@@ -823,6 +829,18 @@ class RoomChannelManager:
             _room: str = room,
         ) -> None:
             hook(_room, handle, envelope, co_summons, message_text)
+
+        return adapter
+
+    def _addressed_adapter(self, room: str) -> AddressedHook | None:
+        """Bind ``room`` onto the room-aware ``on_addressed`` hook, like
+        :meth:`_summon_adapter`; ``None`` keeps the persister silent."""
+        hook = self.on_addressed
+        if hook is None:
+            return None
+
+        def adapter(handle: str, envelope: L9, message_text: str = "", _room: str = room) -> None:
+            hook(_room, handle, envelope, message_text)
 
         return adapter
 

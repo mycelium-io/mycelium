@@ -24,6 +24,7 @@ def test_engine_is_a_registered_family() -> None:
     assert "synthesizer" in ENGINE_KINDS
     assert "hello" in ENGINE_KINDS
     assert "conductor" in ENGINE_KINDS
+    assert "persona" in ENGINE_KINDS
 
 
 def test_manifest_accepts_synthesizer() -> None:

@@ -730,6 +730,34 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Adapters"
   },
   {
+    "u": "adapters.html#persona",
+    "t": "Persona",
+    "s": "Engines",
+    "x": "A persona is an engine that plays a room member in character. Give it a character, and it answers as that character whenever it is addressed, on a Pi session kept for it alone, so it remembers what it said the last time it was asked. A room can register as many as a demonstration needs: a cautious security reviewer, a proposer with a deadline, a supplier with limited stock. None of them needs a resident session behin",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#persona-how-it-is-addressed",
+    "t": "How it is addressed",
+    "s": "Engines › Persona",
+    "x": "A persona answers on two seams, and that is what makes it useful beyond chat. A text mention (@sec) summons it like any engine. An addressed turn, a message naming it as recipient with nobody mentioned in the text, also reaches it, and that is how the conductor puts a step to one member and how the aligner addresses a participant. So a persona can hold a role in a protocol: mycelium engine create api --kind persona -",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#persona-what-it-says",
+    "t": "What it says",
+    "s": "Engines › Persona",
+    "x": "It answers where it was asked: in the thread the turn rode, or in the room. A reply that ends in a stance marker ([[mycelium: stance=accept]] or reject) has the stance lifted onto the message the way an agent's mycelium respond does, so a conductor step or an aligner round reads it the same as a resident agent's. Every @ in what it says is removed before posting, so a persona can never summon anything, and two person",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#persona-honest-boundaries",
+    "t": "Honest boundaries",
+    "s": "Engines › Persona",
+    "x": "A persona is an engine, not a member with a presence lease: it is not in the room's roster, so the aligner only negotiates with it when the summon names it (@aligner @api @sec), and a bare @aligner over the whole room does not find it. Its memory is its Pi session file, which lives with the backend process and does not survive a rebuild of the container. And it holds no keys: like every engine, it speaks through the ",
+    "p": "Adapters"
+  },
+  {
     "u": "adapters.html#conductor",
     "t": "Conductor",
     "s": "Engines",

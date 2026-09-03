@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Adapters · mycelium</title>
-<meta name="description" content="Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer, and summon the first-party engines: the aligner, the synthesizer, hello and the conductor.">
+<meta name="description" content="Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer, and summon the first-party engines: the aligner, the synthesizer, hello, a persona and the conductor.">
 <meta property="og:title" content="Adapters · mycelium">
-<meta property="og:description" content="Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer, and summon the first-party engines: the aligner, the synthesizer, hello and the conductor.">
+<meta property="og:description" content="Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer, and summon the first-party engines: the aligner, the synthesizer, hello, a persona and the conductor.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/adapters.html">
 <meta property="og:type" content="website">
@@ -117,6 +117,7 @@
           <a href="#aligner" class="nav-link sub">Aligner</a>
           <a href="#synthesizer" class="nav-link sub">Synthesizer</a>
           <a href="#hello" class="nav-link sub">Hello</a>
+          <a href="#persona" class="nav-link sub">Persona</a>
           <a href="#conductor" class="nav-link sub">Conductor</a>
         </div>
       </div>
@@ -585,7 +586,7 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
       <h1>Engines</h1>
       <p>An <strong>engine</strong> is a first-party task of cognition that lives inside a room. Where your agents are the participants, engines are the room&#x27;s <em>reasoning citizens</em>. They read what the room knows and act on it: mediate a decision, distill the memory, and (in time) more.</p>
       <p>Engines exist because some work isn&#x27;t any single agent&#x27;s job. Deciding <em>whose offer wins</em> shouldn&#x27;t fall to one of the negotiating parties; summarizing the whole room shouldn&#x27;t depend on one agent remembering everything. An engine is a neutral, first-party actor the room owns.</p>
-      <p>Four of them exist today; the first thing to try on a new hub is <code>hello</code>, which answers a summon and owns nothing, so it is safe to fire into a live room just to see whether cognition runs at all.</p>
+      <p>Five of them exist today; the first thing to try on a new hub is <code>hello</code>, which answers a summon and owns nothing, so it is safe to fire into a live room just to see whether cognition runs at all.</p>
       <p>Two properties define every engine:</p>
       <ul>
         <li><strong>Summoned explicitly.</strong> An engine is dormant until you register it in a room and <code>@</code>-summon it. There is no join window, no polling, and no held LLM connection, so it has zero idle cost. Cognition runs because you asked for it.</li>
@@ -613,6 +614,10 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
             <tr>
               <td><code>hello</code></td>
               <td>Answers one summon with one Pi turn and writes nothing anywhere — the cheap proof the engine path works on this hub. See <a href="#hello">Hello</a>.</td>
+            </tr>
+            <tr>
+              <td><code>persona</code></td>
+              <td>Plays a room member in character, from the persona written to its notes, on a Pi session it keeps so it remembers. Answers a mention or an addressed turn, so it can fill a protocol role. See <a href="#persona">Persona</a>.</td>
             </tr>
             <tr>
               <td><code>conductor</code></td>
@@ -771,6 +776,35 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
       <h2 id="hello-holding-nothing">Holding nothing</h2>
       <p>Hello keeps no state between summons and answers each one from scratch, so it is not a chat partner — it is a probe with a personality. Ask it something twice and it will not remember the first time. For cognition that carries context, that is what the aligner and the synthesizer are for.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/hello.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="persona">
+      <h1>Persona</h1>
+      <p>A persona is an <a href="#engines">engine</a> that plays a room member in character. Give it a character, and it answers as that character whenever it is addressed, on a Pi session kept for it alone, so it remembers what it said the last time it was asked. A room can register as many as a demonstration needs: a cautious security reviewer, a proposer with a deadline, a supplier with limited stock. None of them needs a resident session behind it.</p>
+      <pre><code><span class="comment"># Register the persona, then write its character to its notes</span>
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> sec <span class="flag">--kind</span> persona <span class="flag">--room</span> sprint-plan \
+  <span class="flag">--description</span> <span class="str">&quot;The security reviewer.&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> agents/sec/notes <span class="flag">--room</span> sprint-plan \
+  <span class="str">&quot;You are the security reviewer. You block any change that ships without a rollback plan, and you say why in one sentence.&quot;</span>
+
+<span class="comment"># Talk to it</span>
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> sec <span class="str">&quot;what do you make of rotating the signing key in place?&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
+      <p>The notes memory is the whole character: it is the system prompt of every turn the persona takes. With no notes, the manifest&#x27;s description stands in, and with neither the persona is a plain, thoughtful teammate.</p>
+      <h2 id="persona-how-it-is-addressed">How it is addressed</h2>
+      <p>A persona answers on two seams, and that is what makes it useful beyond chat. A text mention (<code>@sec</code>) summons it like any engine. An <strong>addressed turn</strong>, a message naming it as recipient with nobody mentioned in the text, also reaches it, and that is how the <a href="#conductor">conductor</a> puts a step to one member and how the <a href="#aligner">aligner</a> addresses a participant. So a persona can hold a role in a protocol:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> api <span class="flag">--kind</span> persona <span class="flag">--room</span> sprint-plan
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> agents/api/notes <span class="flag">-r</span> sprint-plan <span class="str">&quot;You are the API engineer. You want to ship today.&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor \
+  <span class="str">&quot;gated @api @sec: rotate the signing key without downtime&quot;</span></code></pre>
+      <p>Both roles are now played by personas, the guardian blocks what the proposer puts up until it has a rollback plan, and the whole exchange runs in the task&#x27;s thread with no session resident anywhere.</p>
+      <h2 id="persona-what-it-says">What it says</h2>
+      <p>It answers where it was asked: in the thread the turn rode, or in the room. A reply that ends in a stance marker (<code>[[mycelium: stance=accept]]</code> or <code>reject</code>) has the stance lifted onto the message the way an agent&#x27;s <code>mycelium respond</code> does, so a conductor step or an aligner round reads it the same as a resident agent&#x27;s. Every <code>@</code> in what it says is removed before posting, so a persona can never summon anything, and two personas can never set each other off.</p>
+      <p>Like hello, it is fail-loud: a Pi error or an empty answer is posted as a readable reason rather than silence, so a quiet persona is never mistaken for one still thinking.</p>
+      <h2 id="persona-honest-boundaries">Honest boundaries</h2>
+      <p>A persona is an engine, not a member with a presence lease: it is not in the room&#x27;s roster, so the aligner only negotiates with it when the summon names it (<code>@aligner @api @sec</code>), and a bare <code>@aligner</code> over the whole room does not find it. Its memory is its Pi session file, which lives with the backend process and does not survive a rebuild of the container. And it holds no keys: like every engine, it speaks through the hub.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/persona.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
