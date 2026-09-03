@@ -303,7 +303,7 @@ AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "engine", "
 #: memory → structured summary) and ``hello`` (one Pi turn, no side effects — the
 #: cheap proof the engine path works) today; ``bargainer`` (SAB), ``team_former``
 #: (TFP), a drift evaluator, etc. later; no new adapter per CE.
-ENGINE_KINDS: frozenset[str] = frozenset({"aligner", "hello", "synthesizer"})
+ENGINE_KINDS: frozenset[str] = frozenset({"aligner", "conductor", "hello", "synthesizer"})
 
 
 class AgentManifest(BaseModel):

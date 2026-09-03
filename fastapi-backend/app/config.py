@@ -185,6 +185,17 @@ class Settings(BaseSettings):
     # Per-turn wall-clock bound (seconds) on the hello engine's one-shot pi call.
     HELLO_PI_TIMEOUT_S: float = 60.0
 
+    # Conductor engine (kind ``conductor``) — runs a protocol's steps over a
+    # thread in code, holding the floor for whoever each step addresses. No
+    # model of its own, so no Pi settings: only its handle default, how long
+    # one step waits on a member (generous, since a step may be a person's),
+    # how often it polls, and a hard cap on steps per run that a protocol's
+    # own cap can only lower.
+    CONDUCTOR_HANDLE: str = "conductor"
+    CONDUCTOR_STEP_TIMEOUT_S: float = 300.0
+    CONDUCTOR_POLL_INTERVAL_S: float = 0.2
+    CONDUCTOR_MAX_STEPS: int = 24
+
     # Where a registered `engine` (kind aligner) runs its NEGMAS drive — selects
     # the engine runtime. "backend" (default):
     # this backend owns the run via its summon seam. "host": the host daemon owns

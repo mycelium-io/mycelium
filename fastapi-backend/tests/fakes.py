@@ -191,6 +191,8 @@ class FakeManager:
         self._members = list(members) if members is not None else ["a", "b"]
         self.opened: list[str] = []
         self.closed: list[str] = []
+        self.floors: dict[str, Any] = {}
+        self.floor_log: list[Any] = []
 
     def get(self, room: str) -> FakeManaged | None:
         return self._managed
@@ -201,6 +203,22 @@ class FakeManager:
     def open_episode(self, room: str, episode: str) -> bool:
         self.opened.append(episode)
         return True
+
+    # The floor, as ``RoomChannelManager`` holds it: one per thread, and a log
+    # of every hold so a test can read back whose turn each step gave.
+    def hold_floor(self, room: str, episode: str, *, holder: str, speakers=()) -> Any:
+        from app.services.floor import Floor
+
+        floor = Floor(episode=episode, holder=holder, speakers=frozenset(speakers))
+        self.floors[episode] = floor
+        self.floor_log.append(floor)
+        return floor
+
+    def release_floor(self, room: str, episode: str) -> bool:
+        return self.floors.pop(episode, None) is not None
+
+    def floor(self, room: str, episode: str | None) -> Any:
+        return self.floors.get(episode) if episode else None
 
     async def close_episode(self, room: str) -> bool:
         self.closed.append(room)

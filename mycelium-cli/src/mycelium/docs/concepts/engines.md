@@ -10,7 +10,7 @@ offer wins* shouldn't fall to one of the negotiating parties; summarizing the
 whole room shouldn't depend on one agent remembering everything. An engine is a
 neutral, first-party actor the room owns.
 
-Three of them exist today; the first thing to try on a new hub is `hello`,
+Four of them exist today; the first thing to try on a new hub is `hello`,
 which answers a summon and owns nothing, so it is safe to fire into a live
 room just to see whether cognition runs at all.
 
@@ -34,6 +34,7 @@ commands host all of them.
 | `aligner` | Mediates a disagreement inside a task to one shared answer, running a real NEGMAS negotiation. See [Aligner](#aligner). |
 | `synthesizer` | Distills the room's conversation into a briefing at `context/synthesis`, incrementally. See [Synthesizer](#synthesizer). |
 | `hello` | Answers one summon with one Pi turn and writes nothing anywhere — the cheap proof the engine path works on this hub. See [Hello](#hello). |
+| `conductor` | Runs a protocol inside a task — a gated review, a fan-out, a round robin — walking the steps in code and giving the floor to whoever each step addresses. It has no model of its own. See [Conductor](#conductor). |
 
 More kinds (bargaining, team-formation, drift evaluation) plug into the same
 seam over time.
