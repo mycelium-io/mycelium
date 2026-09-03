@@ -162,6 +162,22 @@ def carry_thread(room: str, key: str) -> dict[str, str]:
     return {EPISODE_META: episode_of(room, key) or mint_episode_urn(room)}
 
 
+def row_of_episode(room: str, episode: str) -> tuple[str, str] | None:
+    """The ``(key, title)`` of the memory bound to ``episode``, or ``None``.
+
+    A thread is a task's when a row carries its URN; this is the reverse
+    lookup, so a notice or a badge about a thread can say the task's name
+    rather than the thread's id. One scan of the room's files, for events that
+    happen a few times per protocol step rather than per message.
+    """
+    for key, meta, content in list_memory_files(get_room_dir(room), limit=None):
+        if system_meta(meta).get(EPISODE_META) != episode:
+            continue
+        first = next((ln.strip() for ln in (content or "").splitlines() if ln.strip()), key)
+        return key, first.lstrip("# ").strip()
+    return None
+
+
 def bound_episodes(room: str) -> set[str]:
     """Every episode URN some row in the room already carries.
 

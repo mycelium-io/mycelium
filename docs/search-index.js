@@ -276,7 +276,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#episodes",
     "t": "Episodes",
     "s": "Concepts",
-    "x": "An episode is one scoped conversation inside a room. A room has a single channel, and an episode is a tagged slice of it: a set of messages that belong together and can be read on their own. Two things are episodes. The first is a task's thread. Every task gets one when it is created, no two tasks share one, and it lasts as long as the task does. That is the ordinary case, and it needs no ceremony: you talk in a task",
+    "x": "An episode is one scoped conversation inside a room. A room has a single channel, and an episode is a tagged slice of it: a set of messages that belong together and can be read on their own. Three things are episodes. The first is a task's thread. Every task gets one when it is created, no two tasks share one, and it lasts as long as the task does. That is the ordinary case, and it needs no ceremony: you talk in a ta",
     "p": "Guide"
   },
   {
@@ -768,35 +768,49 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "adapters.html#conductor",
     "t": "Conductor",
     "s": "Engines",
-    "x": "The conductor is the engine that runs a protocol inside a task: a fixed shape of who speaks to whom, in what order, and what happens on each answer. Where the aligner brokers a negotiation, the conductor walks a graph. It is the engine to reach for when a piece of work has a shape you already know: a proposal that a reviewer must approve, a lead asking every worker at once, a round where each member speaks in turn. I",
+    "x": "The conductor is the engine that runs an episode with a flow: a fixed shape of who speaks to whom, in what order, and what happens on each answer. Where the aligner brokers a negotiation, the conductor walks a graph. It is the engine to reach for when an interaction has a shape you already know: a proposal a reviewer must approve, a lead asking every worker at once, members speaking in turn. It is the one engine with",
     "p": "Adapters"
   },
   {
-    "u": "adapters.html#conductor-the-built-in-protocols",
-    "t": "The built-in protocols",
+    "u": "adapters.html#conductor-the-episode-is-the-run",
+    "t": "The episode is the run",
     "s": "Engines › Conductor",
-    "x": "Protocol Roles Shape gated proposer, guardian The proposer states what it intends to do. The guardian approves or blocks, ending its reply with [[mycelium: stance=accept]] or [[mycelium: stance=reject]]. A block sends the proposal back with the objection attached, until an approval or the step cap. fan-out lead Every other member is asked at once. The lead then gets all the answers and combines them into one plan. ro",
+    "x": "Every run opens an episode of its own, and the episode carries its flow. The graph the conductor walks, who was bound to each role, and the trace of every step taken are written onto the episode's record as it goes, so an open run shows where it stands and a finished one shows the shape of the interaction, not only its messages. Open the episode in the app and the graph is drawn at the top of its thread: the current ",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#conductor-the-built-in-flows",
+    "t": "The built-in flows",
+    "s": "Engines › Conductor",
+    "x": "Flow Roles Shape gated proposer, guardian The proposer states what it intends to do. The guardian approves or blocks, ending its reply with [[mycelium: stance=accept]] or [[mycelium: stance=reject]]. A block sends the proposal back with the objection attached, until an approval or the step cap. fan-out lead Every other member is asked at once. The lead then gets all the answers and combines them into one plan. round-",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#conductor-reading-a-run",
+    "t": "Reading a run",
+    "s": "Engines › Conductor",
+    "x": "A run is meant to be read from the outside. The conductor opens by saying who plays what and the graph it is about to walk: Running gated with api as proposer, sec as guardian. **gated**: A proposer proposes, a guardian approves or blocks; a block sends it back. roles: proposer, guardian (bound in that order) - propose: asks proposer, then review - review: asks guardian, then by stance (accept: approved, reject: prop",
     "p": "Adapters"
   },
   {
     "u": "adapters.html#conductor-whose-turn-it-is",
     "t": "Whose turn it is",
     "s": "Engines › Conductor",
-    "x": "While a run is open, the thread has a floor. The conductor holds it, and gives it to whoever the current step addresses: one member for a role step, everyone at once for a fan-out. A write from anyone else is refused with a 409 that says who holds the floor and who may speak, so an agent that tried early keeps awaiting rather than giving up. A refused write never reaches the transcript, which means it wakes nobody. T",
+    "x": "While a run is open, its episode has a floor. The conductor holds it from the instant the summon lands, and gives it to whoever the current step addresses: one member for a role step, everyone at once for a fan-out. A write from anyone else is refused with a 409 that says who holds the floor and who may speak, so an agent that tried early keeps awaiting rather than giving up. A refused write never reaches the transcr",
     "p": "Adapters"
   },
   {
     "u": "adapters.html#conductor-how-a-run-ends",
     "t": "How a run ends",
     "s": "Engines › Conductor",
-    "x": "A run ends at one of the protocol's end steps, resolved or rejected, or at the step cap, which counts as rejected. The outcome is committed onto the thread and recorded at log/episodes/{id}.md like any coordination phase: who took part, each step's prompt and reply, and how it ended. A resolved run does not resolve the task it ran in, and does not compile anything into new rows. It is a phase inside the task, and boa",
+    "x": "A run ends at one of its flow's end steps, resolved or rejected, or at the step cap, which counts as rejected. The outcome is committed onto the episode and its record is final: the flow, the whole trace, and every envelope. A resolved run resolves no task and compiles nothing into rows.",
     "p": "Adapters"
   },
   {
-    "u": "adapters.html#conductor-writing-your-own",
-    "t": "Writing your own",
+    "u": "adapters.html#conductor-writing-your-own-flow",
+    "t": "Writing your own flow",
     "s": "Engines › Conductor",
-    "x": "A protocol is a memory under protocols/, promoted the way a skill is. A room that writes protocols/gated reshapes the built-in under that name; a new name adds a protocol. The body is YAML: description: A reviewer signs off before the author ships. roles: [author, reviewer] max_steps: 6 steps: - id: draft to: author prompt: \"{ask}\\n\\nSay what you will ship.\\n\\n{reply}\" next: review - id: review to: reviewer prompt: \"",
+    "x": "A flow is a memory under protocols/. A room that writes protocols/gated reshapes the built-in under that name; a new name adds a flow. The body is YAML: description: A reviewer signs off before the author ships. roles: [author, reviewer] max_steps: 6 steps: - id: draft to: author prompt: \"{ask}\\n\\nSay what you will ship.\\n\\n{reply}\" next: review - id: review to: reviewer prompt: \"On the table:\\n\\n{reply}\\n\\nApprove o",
     "p": "Adapters"
   },
   {

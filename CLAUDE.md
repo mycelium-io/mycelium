@@ -218,19 +218,36 @@ is no litellm dependency.
   the addressed seam; the other engines act on mentions alone. A stance marker
   in its answer is lifted onto the payload like `/reply` does, and every `@` in
   what it says is neutralized, so personas cannot summon anything or each
-  other. Not a roster member: the aligner negotiates with one only when the
+  other, and it never posts into a thread whose floor was not given to it.
+  Not a roster member: the aligner negotiates with one only when the
   summon names it.
-- **The conductor runs a protocol inside a task, in code.** A fourth engine
-  kind (`app/services/conductor.py`) with no model of its own: summoned as
-  `board coordinate <row> conductor "gated @a @b: …"`, it walks a
-  `protocols.Protocol` (three built in: `gated`, `fan-out`, `round-robin`; a
-  room's `protocols/<name>` memory overrides or adds one) in the thread it was
-  summoned in, holding the floor for whoever each step addresses, asking
-  through `turns.addressed_turn`, and following the edge the reply's stance
-  takes (`markers.stance_of`, read off the payload or a marker left in prose so
-  a person's `board send` counts). It opens no negotiation and never commits
-  `converged`, so nothing it does compiles into rows. A model in the nodes,
-  code on the edges: the judgment is the members', the routing is the hub's.
+- **A floor notice and the members' floors name the task, not the thread.**
+  `tasks.row_of_episode` is the reverse lookup from a thread to the row that
+  carries it; the `floor` notice and `/sessions/members` `floors` carry that
+  row's `key` and `title`, and the GUI shows the title, falling back to the
+  thread id only for a thread no row carries.
+- **The conductor runs an episode with a flow, in code.** A fourth engine
+  kind (`app/services/conductor.py`) with no model of its own. Summoned as
+  `engine invoke conductor "gated @a @b: …"` (or `board coordinate <row>
+  conductor "…"` to nest the run in a task), it opens an **episode of its
+  own** and walks a `protocols.Protocol` in it (three built in: `gated`,
+  `fan-out`, `round-robin`; a room's `protocols/<name>` memory overrides or
+  adds one), holding the episode's floor for whoever each step addresses,
+  asking through `turns.addressed_turn`, and following the edge the reply's
+  stance takes (`markers.stance_of`). **The episode is the run and carries
+  its flow:** `EpisodeState.flow` (the graph plus who was bound to each role)
+  and `EpisodeState.trace` (one entry per step taken) are written onto
+  `log/episodes/{id}.md` at the opening and after every step, `within` names
+  the task thread it was opened from, and `episode_records` parses them back
+  (`flow`, `trace`, `within`, `current_step` on the episode read). The app
+  draws the graph at the top of the run's thread (`flow-panel.tsx`,
+  `flow-graph.tsx`, laid out by `lib/flow-graph.ts`), with the current step,
+  the edges taken and the member holding the floor. The floor is taken
+  synchronously in `handle_summon`; the members named beside the conductor
+  are role bindings, so a persona there does not answer the summon and a
+  resident agent that replies early is refused. A run opens no negotiation
+  and never commits `converged`, so nothing it does compiles into rows. A
+  model in the nodes, code on the edges.
 - **The aligner mediates, inside a task.** Agents never talk to each other directly;
   all coordination flows through the aligner. It's a first-party engine registered
   as a room citizen (`mycelium engine create aligner --kind aligner`) and summoned

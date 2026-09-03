@@ -8,6 +8,8 @@ import type { RoomFloor } from "@/lib/api";
 const floor = (over: Partial<RoomFloor> = {}): RoomFloor => ({
   thread: "t3aa11bb",
   episode: "urn:ioc:mycelium:episode:atlas:t3aa11bb",
+  key: null,
+  title: null,
   holder: "conductor",
   speakers: ["api"],
   ...over,
@@ -32,6 +34,12 @@ describe("the floor, read for the roster", () => {
     const f = floor();
     expect(floorLabel("api", f)).toBe("has the floor · t3aa11bb");
     expect(floorLabel("Conductor", f)).toBe("holds the floor · t3aa11bb");
+  });
+
+  it("names the thread by its task when a row carries it", () => {
+    const f = floor({ key: "work/rotate-the-signing-key", title: "Rotate the signing key" });
+    expect(floorLabel("api", f)).toBe("has the floor · Rotate the signing key");
+    expect(floorLabel("conductor", f)).toBe("holds the floor · Rotate the signing key");
   });
 
   it("reads nothing when no floor is held", () => {

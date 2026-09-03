@@ -281,17 +281,19 @@ function activityLine(ev: Event): { label: string; detail: string } {
     const by = ev.raw.by as string | undefined;
     const label = noticeLabel((ev.raw.subkind as string) || "filed", ev.raw.kind as string | undefined);
     if (ev.raw.subkind === "floor") {
-      // Whose turn it is in a thread: the handles it was given to, the holder
-      // alone, or the floor opening back up.
+      // Whose turn it is in a thread: the task the thread belongs to (its id
+      // only when no row carries it), then the handles it was given to, the
+      // holder alone, or the floor opening back up.
       const speakers = (ev.raw.speakers as string[] | undefined) ?? [];
-      const detail = ev.raw.released
+      const where = (ev.raw.title as string | undefined) || (ev.raw.key as string | undefined) || "";
+      const turn = ev.raw.released
         ? "released"
         : speakers.length
           ? speakers.map((h) => `@${h}`).join(", ")
           : by
             ? `held by @${by}`
             : "";
-      return { label, detail };
+      return { label, detail: [where, turn].filter(Boolean).join(" · ") };
     }
     return { label, detail: by ? `@${by}` : "" };
   }

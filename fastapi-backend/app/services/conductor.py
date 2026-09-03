@@ -1,28 +1,32 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""The conductor — the engine that runs a protocol inside a thread.
+"""The conductor — the engine that runs an episode's interaction flow.
 
 A fourth engine ``kind`` beside the aligner, the synthesizer and hello, and
-the first with no model of its own. Summoned into a thread with the name of a
-:mod:`~app.services.protocols` and the members to run it over, it walks that
-protocol's steps in code: it holds the thread's floor for whoever the step
-addresses, puts the step's prompt to them through the same one-agent turn the
-aligner brokers with, reads the stance their reply took, and follows the edge.
-Every judgment in a run — what to propose, whether to block it — is made by
-the members it addresses. The conductor only decides who speaks next, and
-that is the point: a model in the nodes, code on the edges.
+the first with no model of its own. Summoned with the name of a flow
+(:mod:`~app.services.protocols`) and the members to run it over, it opens an
+**episode** of its own and walks the flow's steps in it: it holds the
+episode's floor for whoever the step addresses, puts the step's prompt to
+them through the same one-agent turn the aligner brokers with, reads the
+stance their reply took, and follows the edge. Every judgment in a run — what
+to propose, whether to block it — is made by the members it addresses. The
+conductor only decides who speaks next: a model in the nodes, code on the
+edges.
+
+**The episode is the run, and it carries its flow.** The graph the conductor
+walks and the trace of the steps it has taken are written onto the episode's
+own record (``log/episodes/{id}.md``) as it goes, so an open run shows where
+it stands and a finished one shows the shape of the interaction, not only
+its messages. A summon from a task's thread nests the episode in that task
+(the record says ``within``), and the thread gets one line when the run opens
+and one when it ends; a summon from the room nests it in nothing. Tasks are
+context or output, never the container the flow lives in.
 
 What it shares with the other engines: dormant until a registered engine of
-its kind is summoned, runs as that handle, and leaves a record at
-``log/episodes/{id}.md``. What it does not share: it opens no negotiation,
-so joining the room mid-run aborts nothing, and it never calls Pi.
-
-Where it runs: in the thread it was summoned in. A summon from a task's
-thread (``board coordinate <row> conductor "gated @a @b: …"``) runs there, so
-the row's conversation carries the whole run and a person can answer a step
-with ``board send``. A summon from the room itself opens a fresh thread,
-since the room never holds a floor.
+its kind is summoned, runs as that handle. What it does not share: it opens
+no negotiation, so joining the room mid-run aborts nothing, and it never
+calls Pi.
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
@@ -52,6 +57,9 @@ logger = logging.getLogger(__name__)
 #: The engine kind this class owns.
 ENGINE_KIND = "conductor"
 
+#: Summon words that ask for the catalogue rather than a run.
+LIST_DIRECTIVES = frozenset({"list", "protocols", "flows", "help"})
+
 #: Payloads that are never a member's answer to a step.
 _NOT_A_REPLY = frozenset(
     {"presence", "keepalive", "tick", l9.PING_PAYLOAD_TYPE, l9.NOTICE_PAYLOAD_TYPE}
@@ -66,9 +74,9 @@ def _norm(handle: str) -> str:
 
 
 def split_directive(text: str) -> tuple[str, str]:
-    """``(protocol name, the ask)`` from a summon's text.
+    """``(flow name, the ask)`` from a summon's text.
 
-    The first word that is not a mention names the protocol; everything after
+    The first word that is not a mention names the flow; everything after
     it, mentions removed, is the ask the prompts carry as ``{ask}``.
     """
     words = _MENTION.sub(" ", text).split()
@@ -88,7 +96,7 @@ class _Fields(dict[str, str]):
 
 @dataclass
 class Run:
-    """One protocol run: what it is over, and what has been said in it."""
+    """One run: what it is over, and what has been said in it."""
 
     protocol: Protocol
     ask: str
@@ -121,6 +129,17 @@ class Run:
             rounds=str(rounds),
         )
 
+    def flow(self) -> dict[str, Any]:
+        """The flow as the episode record carries it: the graph plus the cast."""
+        spec = protocols.spec_of(self.protocol)
+        return {
+            "name": self.protocol.name,
+            **spec,
+            "bound": dict(self.bound),
+            "cast": list(self.handles),
+            "ask": self.ask,
+        }
+
 
 def bind_roles(protocol: Protocol, handles: list[str]) -> dict[str, str] | None:
     """Roles bound to ``handles`` in order, or ``None`` when there are too few."""
@@ -149,7 +168,7 @@ def stance_of_step(replies: list[tuple[str, str | None]]) -> str | None:
 
 
 class ConductorEngine:
-    """Walk a protocol's steps over a thread, holding its floor as it goes."""
+    """Open an episode, walk its flow, hold its floor as it goes."""
 
     def __init__(
         self,
@@ -169,8 +188,9 @@ class ConductorEngine:
             poll_interval_s if poll_interval_s is not None else settings.CONDUCTOR_POLL_INTERVAL_S
         )
         self._max_steps = max_steps if max_steps is not None else settings.CONDUCTOR_MAX_STEPS
-        # Threads with a run in flight: a re-summon into one is ignored while a
-        # second thread in the same room runs its own.
+        # Threads a run was summoned from, with one in flight: a second summon
+        # from the same thread is ignored until it ends, while another thread
+        # (or the room) can start its own.
         self._active: set[tuple[str, str]] = set()
         self._tasks: set[asyncio.Task[Any]] = set()
 
@@ -188,7 +208,7 @@ class ConductorEngine:
         co_summons: list[str] | None = None,
         message_text: str = "",
     ) -> None:
-        """Run a protocol when a registered engine of kind ``conductor`` is
+        """Open a run when a registered engine of kind ``conductor`` is
         summoned; else ignore."""
         if _registered_engine_kind(room, handle) != ENGINE_KIND:
             return
@@ -201,20 +221,25 @@ class ConductorEngine:
         if sender is not None and _norm(sender) in {_norm(self._handle), _norm(handle)}:
             return
         summoned_in = (envelope.header.message.episode if envelope.header.message else None) or ""
-        in_thread = bool(summoned_in) and not l9.is_live_episode(room, summoned_in)
-        episode = summoned_in if in_thread else l9.episode_urn(room, mint_episode_id())
-        key = (room, episode)
+        origin = summoned_in or l9.live_episode_urn(room)
+        key = (room, origin)
         if key in self._active:
-            logger.debug("conductor already running in %s; ignoring re-summon", episode)
+            logger.debug("conductor already running from %s; ignoring re-summon", origin)
             return
         drop = {_norm(handle), _norm(self._handle), *(_norm(h) for h in _NON_PARTICIPANTS)}
         named = [h for h in (co_summons or []) if _norm(h) not in drop]
         directive = _MENTION.sub(
             lambda m: "" if _norm(m.group(0)) == _norm(handle) else m.group(0), message_text
         )
+        # The run's episode exists from this instant, floor held, before
+        # anything else on the loop runs: a member the summon woke cannot slip
+        # a reply in ahead of the first step, and a persona mentioned as a role
+        # is not asked a question.
+        episode = l9.episode_urn(room, mint_episode_id())
+        self._manager.hold_floor(room, episode, holder=handle)
         self._active.add(key)
         task = asyncio.create_task(
-            self._run_and_release(room, handle, episode, summoned_in, directive, named, key)
+            self._run_and_release(room, handle, episode, origin, directive, named, key)
         )
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
@@ -241,6 +266,8 @@ class ConductorEngine:
         except Exception:
             logger.exception("conductor @%s failed in %s", engine_handle, episode)
         finally:
+            # A run that never started still took the floor at the summon.
+            self._manager.release_floor(room, episode)
             self._active.discard(key)
 
     # -- the run --
@@ -249,35 +276,40 @@ class ConductorEngine:
         self,
         room: str,
         *,
-        episode: str,
         directive: str,
         engine_handle: str | None = None,
+        episode: str | None = None,
         summoned_in: str = "",
         named: list[str] | None = None,
     ) -> str | None:
-        """Run the protocol ``directive`` names over ``episode``; return the outcome.
+        """Open an episode, run the flow ``directive`` names in it, return the outcome.
 
-        ``named`` are the handles the summon mentioned, bound to the protocol's
+        ``named`` are the handles the summon mentioned, bound to the flow's
         roles in order; with none named, every other member of the room takes
-        part. ``None`` when the run could not start — the reason is posted
-        where the summon was made.
+        part. ``summoned_in`` is where the ask was made — a task's thread, or
+        the room — and is where a refusal is answered and where the run's
+        opening and closing lines land. ``None`` when the run could not start.
         """
         managed = self._manager.get(room)
         if managed is None or managed.persister is None:
             logger.info("conductor summoned for %s but no live channel", room)
             return None
         me = engine_handle or self._handle
-        where = summoned_in or episode
+        origin = summoned_in or l9.live_episode_urn(room)
+        in_task = not l9.is_live_episode(room, origin)
 
         name, ask = split_directive(directive)
+        if name in LIST_DIRECTIVES:
+            await self._say(managed, origin, me, self._catalogue(room))
+            return None
         protocol = protocols.load_protocol(room, name) if name else None
         if protocol is None:
             known = ", ".join(protocols.builtin_names())
             await self._say(
                 managed,
-                where,
+                origin,
                 me,
-                "I need a protocol to run: name it first, then who takes part, for "
+                "I need a flow to run: name it first, then who takes part, for "
                 "example `gated proposer-handle guardian-handle: the question`. "
                 f"Built in: {known}; a room adds its own under protocols/.",
             )
@@ -291,23 +323,26 @@ class ConductorEngine:
             roles = ", ".join(protocol.roles) or "its steps"
             await self._say(
                 managed,
-                where,
+                origin,
                 me,
                 f"`{protocol.name}` needs {max(len(protocol.roles), 1)} member(s) for {roles} "
                 f"and {len(handles)} were named. Summon me again with the handles in that order.",
             )
             return None
 
+        episode = episode or l9.episode_urn(room, mint_episode_id())
         run = Run(protocol=protocol, ask=ask, handles=handles, bound=bound, episode=episode)
         ep = l9_episode.EpisodeState(
             episode=episode,
             topic=l9.topic_urn(room),
             parent_room=room,
-            short_id=mint_episode_id(),
+            short_id=episode.rsplit(":", 1)[-1],
             workspace_id=managed.workspace,
             mas_id="",
             agents=list(handles),
             engine_handle=me,
+            flow=run.flow(),
+            within=origin if in_task else None,
         )
         intent = l9.build_envelope(
             kind=Kind.intent,
@@ -321,16 +356,56 @@ class ConductorEngine:
         )
         ep.intent_id = intent.header.message.id if intent.header.message else ""
         ep.messages.append(l9.envelope_to_dict(intent))
-        logger.info("conductor @%s runs %s in %s over %s", me, protocol.name, episode, handles)
-        # The floor is the run's from the first instant, so a member the summon
-        # woke cannot slip a reply in ahead of the first step.
+        logger.info("conductor @%s runs %s as %s over %s", me, protocol.name, episode, handles)
+        # The floor is the run's from the first instant. (The summon seam
+        # already held it; a direct call takes it here.)
         self._manager.hold_floor(room, episode, holder=me)
         try:
+            # The record exists from the opening, so the run is an episode the
+            # room can open while it is still walking.
+            l9_episode.write_episode_record(ep, outcome="open", metrics=None, tasks=None)
+            await self._say(managed, episode, me, self._opening(run))
+            if in_task:
+                await self._say(
+                    managed,
+                    origin,
+                    me,
+                    f"Running {protocol.name} as episode {ep.short_id} with {self._cast(run)}.",
+                )
             outcome, why = await self._walk(managed, run, ep, me)
         finally:
             self._manager.release_floor(room, episode)
-        await self._close(managed, run, ep, me, outcome, why)
+        await self._close(managed, run, ep, me, outcome, why, origin if in_task else None)
         return outcome
+
+    def _catalogue(self, room: str) -> str:
+        """Every flow this room can run, each with its steps."""
+        blocks = []
+        own = set(protocols.room_protocol_names(room))
+        for name in sorted(own | set(protocols.builtin_names())):
+            spec = protocols.load_protocol(room, name)
+            if spec is None:
+                continue
+            origin = "this room's" if name in own else "built in"
+            blocks.append(f"{protocols.describe(spec)}\n({origin})")
+        return (
+            "Flows I can run. Summon me with the name, the members in role order, "
+            "then the question: `gated api-handle sec-handle: rotate the key`.\n\n"
+            + "\n\n".join(blocks)
+        )
+
+    @staticmethod
+    def _cast(run: Run) -> str:
+        cast = ", ".join(f"{h} as {role}" for role, h in run.bound.items())
+        others = [h for h in run.handles if h not in run.bound.values()]
+        if others:
+            cast = ", ".join(x for x in (cast, f"{', '.join(others)} as members") if x)
+        return cast or ", ".join(run.handles)
+
+    @classmethod
+    def _opening(cls, run: Run) -> str:
+        """The first line of a run: who plays what, and the graph about to be walked."""
+        return f"Running {run.protocol.name} with {cls._cast(run)}.\n\n{protocols.describe(run.protocol)}"
 
     async def _walk(
         self, managed: ManagedRoomChannel, run: Run, ep: l9_episode.EpisodeState, me: str
@@ -345,8 +420,29 @@ class ConductorEngine:
             if run.steps_taken >= cap:
                 return "rejected", f"hit the step cap ({cap}) at `{step.id}`"
             run.steps_taken += 1
-            stances = await self._take(managed, run, ep, me, step)
-            step = protocol.step(step.edge(stance_of_step(stances)))
+            stances = await self._take(managed, run, ep, me, step, cap)
+            stance = stance_of_step(stances)
+            nxt = step.edge(stance)
+            ep.trace.append(
+                {
+                    "step": step.id,
+                    "turn": run.steps_taken,
+                    "asked": [h for h, _s in stances] or run.targets(step),
+                    "stances": {h: s for h, s in stances},
+                    "stance": stance,
+                    "next": nxt,
+                    "at": datetime.now(UTC).isoformat(),
+                }
+            )
+            # The record moves with the run, so an open episode shows where it is.
+            l9_episode.write_episode_record(ep, outcome="open", metrics=None, tasks=None)
+            who = ", ".join(h for h, _s in stances) or (step.to or "")
+            line = protocols.edge_line(step, stance, who)
+            if line is not None:
+                # A branch taken is the one thing a reader cannot infer from the
+                # replies alone, so it is said in the episode.
+                await self._say(managed, run.episode, me, line)
+            step = protocol.step(nxt)
 
     async def _take(
         self,
@@ -355,24 +451,34 @@ class ConductorEngine:
         ep: l9_episode.EpisodeState,
         me: str,
         step: Step,
+        cap: int,
     ) -> list[tuple[str, str | None]]:
         """Put one step to its targets; return each target's stance."""
         room = managed.room
         targets = run.targets(step)
         stances: list[tuple[str, str | None]] = []
+
+        def render(handle: str, round_n: int) -> str:
+            # Every turn says which step of which flow it is, so the episode
+            # reads as a run and not as a conversation that happened to occur.
+            head = f"{run.protocol.name} · {step.id} · turn {run.steps_taken} of {cap} · {handle}"
+            body = step.prompt.format_map(run.fields(round_n=round_n, rounds=step.rounds))
+            return f"{head}\n\n{body}"
+
         for round_n in range(1, step.rounds + 1):
             if step.wait == "none":
                 self._manager.hold_floor(room, run.episode, holder=me)
-                prompt = step.prompt.format_map(run.fields(round_n=round_n, rounds=step.rounds))
                 for handle in targets:
-                    await self._tell(managed, ep, me, run, step, handle, prompt)
+                    await self._tell(managed, ep, me, run, step, handle, render(handle, round_n))
                 return []
             if step.to in ("all", "workers"):
-                prompt = step.prompt.format_map(run.fields(round_n=round_n, rounds=step.rounds))
                 self._manager.hold_floor(room, run.episode, holder=me, speakers=targets)
                 stances = list(
                     await asyncio.gather(
-                        *(self._turn(managed, ep, me, run, step, h, prompt) for h in targets)
+                        *(
+                            self._turn(managed, ep, me, run, step, h, render(h, round_n))
+                            for h in targets
+                        )
                     )
                 )
                 continue
@@ -380,9 +486,10 @@ class ConductorEngine:
             # what the ones before it said.
             stances = []
             for handle in targets:
-                prompt = step.prompt.format_map(run.fields(round_n=round_n, rounds=step.rounds))
                 self._manager.hold_floor(room, run.episode, holder=me, speakers=[handle])
-                stances.append(await self._turn(managed, ep, me, run, step, handle, prompt))
+                stances.append(
+                    await self._turn(managed, ep, me, run, step, handle, render(handle, round_n))
+                )
         return stances
 
     async def _turn(
@@ -470,8 +577,9 @@ class ConductorEngine:
         me: str,
         outcome: str,
         why: str,
+        within: str | None,
     ) -> None:
-        """Commit the outcome onto the thread and write the record."""
+        """Commit the outcome onto the episode, write its record, tell the task."""
         commit = l9.build_envelope(
             kind=Kind.commit,
             subkind=outcome,
@@ -495,6 +603,8 @@ class ConductorEngine:
         except Exception:
             logger.warning("conductor failed to post the outcome for %s", run.episode)
         l9_episode.write_episode_record(ep, outcome=outcome, metrics=None, tasks=None)
+        if within:
+            await self._say(managed, within, me, f"{text[:-1]} (episode {ep.short_id}).")
 
     async def _say(self, managed: ManagedRoomChannel, episode: str, sender: str, text: str) -> None:
         """Post a plain message from the engine into ``episode``."""

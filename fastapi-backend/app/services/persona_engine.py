@@ -161,7 +161,19 @@ class PersonaEngine:
         co_summons: list[str] | None = None,
         message_text: str = "",
     ) -> None:
-        """A text mention of a registered persona: answer it."""
+        """A text mention of a registered persona: answer it.
+
+        Unless the same text summons a conductor: the handles named beside one
+        are bound to its roles, not asked a question, and the conductor will
+        address each in its turn. Answering the summon would talk over the
+        floor it just took, and leave the persona busy when its real turn came.
+        """
+        for other in co_summons or ():
+            if (
+                _norm(other) != _norm(handle)
+                and _registered_engine_kind(room, other) == "conductor"
+            ):
+                return
         self._fire(room, handle, envelope, message_text)
 
     def handle_addressed(self, room: str, handle: str, envelope: L9, message_text: str) -> None:
@@ -265,9 +277,18 @@ class PersonaEngine:
         *,
         payload: dict[str, Any] | None = None,
     ) -> None:
-        """Post ``text`` as the persona into ``episode``, a stance on the payload."""
+        """Post ``text`` as the persona into ``episode``, a stance on the payload.
+
+        A persona is a member, and a member off the floor does not speak: a
+        reply into a thread whose floor was not given to it is dropped, the
+        same refusal the write routes answer with a 409.
+        """
         if managed is None:
             logger.warning("persona @%s: no channel for room; dropping reply", sender)
+            return
+        floor = self._manager.floor(managed.room, episode)
+        if floor is not None and not floor.admits(sender):
+            logger.info("persona @%s is off the floor in %s; not posting", sender, episode)
             return
         env = l9.build_envelope(
             kind=Kind.exchange,

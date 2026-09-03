@@ -799,8 +799,9 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor \
   <span class="str">&quot;gated @api @sec: rotate the signing key without downtime&quot;</span></code></pre>
       <p>Both roles are now played by personas, the guardian blocks what the proposer puts up until it has a rollback plan, and the whole exchange runs in the task&#x27;s thread with no session resident anywhere.</p>
+      <p>A mention beside a conductor is different: <code>@conductor gated @api @sec: …</code> binds <code>api</code> and <code>sec</code> to the protocol&#x27;s roles. Neither answers the summon; each waits to be addressed by its step.</p>
       <h2 id="persona-what-it-says">What it says</h2>
-      <p>It answers where it was asked: in the thread the turn rode, or in the room. A reply that ends in a stance marker (<code>[[mycelium: stance=accept]]</code> or <code>reject</code>) has the stance lifted onto the message the way an agent&#x27;s <code>mycelium respond</code> does, so a conductor step or an aligner round reads it the same as a resident agent&#x27;s. Every <code>@</code> in what it says is removed before posting, so a persona can never summon anything, and two personas can never set each other off.</p>
+      <p>It answers where it was asked: in the thread the turn rode, or in the room. A reply that ends in a stance marker (<code>[[mycelium: stance=accept]]</code> or <code>reject</code>) has the stance lifted onto the message the way an agent&#x27;s <code>mycelium respond</code> does, so a conductor step or an aligner round reads it the same as a resident agent&#x27;s. Every <code>@</code> in what it says is removed before posting, so a persona can never summon anything, and two personas can never set each other off. And a persona is a member: a reply into a thread whose floor was not given to it is dropped, the same refusal an agent&#x27;s write gets.</p>
       <p>Like hello, it is fail-loud: a Pi error or an empty answer is posted as a readable reason rather than silence, so a quiet persona is never mistaken for one still thinking.</p>
       <h2 id="persona-honest-boundaries">Honest boundaries</h2>
       <p>A persona is an engine, not a member with a presence lease: it is not in the room&#x27;s roster, so the aligner only negotiates with it when the summon names it (<code>@aligner @api @sec</code>), and a bare <code>@aligner</code> over the whole room does not find it. Its memory is its Pi session file, which lives with the backend process and does not survive a rebuild of the container. And it holds no keys: like every engine, it speaks through the hub.</p>
@@ -811,21 +812,27 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
 
     <section class="doc-section" id="conductor">
       <h1>Conductor</h1>
-      <p>The conductor is the <a href="#engines">engine</a> that runs a <strong>protocol</strong> inside a task: a fixed shape of who speaks to whom, in what order, and what happens on each answer. Where the <a href="#aligner">aligner</a> brokers a negotiation, the conductor walks a graph. It is the engine to reach for when a piece of work has a shape you already know: a proposal that a reviewer must approve, a lead asking every worker at once, a round where each member speaks in turn.</p>
-      <p>It is the one engine with no model of its own. Every judgment in a run, what to propose and whether to block it, is made by the members it addresses. The conductor only decides whose turn it is, and it enforces that in code: while a step is open, only the member it addressed can write into the thread. That is the split the whole design rests on. A model sits in each node, and code sits on the edges.</p>
+      <p>The conductor is the <a href="#engines">engine</a> that runs an <strong>episode with a flow</strong>: a fixed shape of who speaks to whom, in what order, and what happens on each answer. Where the <a href="#aligner">aligner</a> brokers a negotiation, the conductor walks a graph. It is the engine to reach for when an interaction has a shape you already know: a proposal a reviewer must approve, a lead asking every worker at once, members speaking in turn.</p>
+      <p>It is the one engine with no model of its own. Every judgment in a run, what to propose and whether to block it, is made by the members it addresses. The conductor only decides whose turn it is, and it enforces that in code: while a step is open, only the member it addressed can write into the episode. That is the split the whole design rests on. A model sits in each node, and code sits on the edges.</p>
       <pre><code><span class="comment"># Register it once per room</span>
 <span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> conductor <span class="flag">--kind</span> conductor <span class="flag">--room</span> sprint-plan
 
-<span class="comment"># Run the gated protocol inside a task: @api proposes, @sec approves or blocks</span>
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor \
+<span class="comment"># Open a gated run: @api proposes, @sec approves or blocks</span>
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> conductor \
+  <span class="str">&quot;gated @api @sec: rotate the signing key without downtime&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
+      <p>The summon names the flow first, then the members in the order the flow&#x27;s roles expect, then the question.</p>
+      <h2 id="conductor-the-episode-is-the-run">The episode is the run</h2>
+      <p>Every run opens an <a href="index.html#episodes">episode</a> of its own, and the episode carries its flow. The graph the conductor walks, who was bound to each role, and the trace of every step taken are written onto the episode&#x27;s record as it goes, so an open run shows where it stands and a finished one shows the shape of the interaction, not only its messages. Open the episode in the app and the graph is drawn at the top of its thread: the current step lit, the edges taken solid, the member who has the floor marked, and the steps taken listed under it.</p>
+      <p>A run can be opened from a task, which makes it a phase inside that task the way a negotiation is:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor \
   <span class="str">&quot;gated @api @sec: rotate the signing key without downtime&quot;</span></code></pre>
-      <p>The summon names the protocol first, then the members in the order the protocol&#x27;s roles expect, then the question. The run happens in the thread the summon was made in, so the row&#x27;s conversation carries the whole thing and <code>board messages</code> reads it back. A summon from the room itself (<code>engine invoke</code>) opens a thread of its own, because the room is never narrowed to one speaker.</p>
-      <h2 id="conductor-the-built-in-protocols">The built-in protocols</h2>
+      <p>The run still gets its own episode. The task&#x27;s thread gets one line when the run opens (naming the episode and the cast) and one when it ends, and the episode&#x27;s record says which task it ran inside. A run opened from the room is nested in nothing. Either way the task is context or an output, never the container the flow lives in.</p>
+      <h2 id="conductor-the-built-in-flows">The built-in flows</h2>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Protocol</th>
+              <th>Flow</th>
               <th>Roles</th>
               <th>Shape</th>
             </tr>
@@ -849,15 +856,26 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
           </tbody>
         </table>
       </div>
-      <p>Any member can fill a role: a registered agent kept awake with <code>mycelium await --loop</code>, an engine such as <a href="#hello">hello</a>, or a person. A person answers a step the way they answer anything in a thread, with <code>board send</code>, and a stance marker left in the text is read the same as one an agent&#x27;s reply carried. That is how a human-in-the-loop step works: the conductor gives the person the floor and waits.</p>
+      <p>Any member can fill a role: a registered agent kept awake with <code>mycelium await --loop</code>, a <a href="#persona">persona</a>, or a person. A person answers a step the way they answer anything in a thread, and a stance marker left in the text is read the same as one an agent&#x27;s reply carried. That is how a human-in-the-loop step works: the conductor gives the person the floor and waits. Ask the conductor what it can run with <code>mycelium engine invoke conductor &quot;list&quot;</code>.</p>
+      <h2 id="conductor-reading-a-run">Reading a run</h2>
+      <p>A run is meant to be read from the outside. The conductor opens by saying who plays what and the graph it is about to walk:</p>
+      <pre><code>Running gated with api as proposer, sec as guardian.
+
+**gated**: A proposer proposes, a guardian approves or blocks; a block sends it back.
+roles: proposer, guardian (bound in that order)
+- propose: asks proposer, then review
+- review: asks guardian, then by stance (accept: approved, reject: propose, default: propose)
+- approved: ends resolved
+up to 6 steps</code></pre>
+      <p>Every turn it puts to a member starts with a line saying which step of which flow it is (<code>gated · review · turn 2 of 6 · sec</code>), so a block reads as the guardian&#x27;s stance at the review step, not as the conductor blocking anyone. When a step branches, the conductor says which way it went (<code>review: sec blocked, on to propose</code>).</p>
+      <p>The members named in the summon are bound to roles, not asked a question: a persona mentioned there waits for its turn rather than answering the summon, and a resident agent that replies before its turn is refused.</p>
       <h2 id="conductor-whose-turn-it-is">Whose turn it is</h2>
-      <p>While a run is open, the thread has a <strong>floor</strong>. The conductor holds it, and gives it to whoever the current step addresses: one member for a role step, everyone at once for a fan-out. A write from anyone else is refused with a <code>409</code> that says who holds the floor and who may speak, so an agent that tried early keeps awaiting rather than giving up. A refused write never reaches the transcript, which means it wakes nobody.</p>
-      <p>The room can see whose turn it is. The members rail marks who has the floor and in which thread, and the room&#x27;s timeline gets one line each time the floor moves, so a person watching a run knows who everyone is waiting on.</p>
-      <p>Nothing else narrows. The room stays open throughout, other threads are untouched, and a member joining the room mid-run aborts nothing, because a protocol run is not a negotiation and freezes no roster. When the run ends, the floor is released and the thread takes anyone again.</p>
+      <p>While a run is open, its episode has a <strong>floor</strong>. The conductor holds it from the instant the summon lands, and gives it to whoever the current step addresses: one member for a role step, everyone at once for a fan-out. A write from anyone else is refused with a <code>409</code> that says who holds the floor and who may speak, so an agent that tried early keeps awaiting rather than giving up. A refused write never reaches the transcript, which means it wakes nobody. The room&#x27;s timeline gets a line each time the floor moves, and the members rail marks who has it.</p>
+      <p>Nothing else narrows. The room stays open, other threads are untouched, and a member joining the room mid-run aborts nothing, because a run is not a negotiation and freezes no roster. When the run ends, the floor is released.</p>
       <h2 id="conductor-how-a-run-ends">How a run ends</h2>
-      <p>A run ends at one of the protocol&#x27;s end steps, <code>resolved</code> or <code>rejected</code>, or at the step cap, which counts as <code>rejected</code>. The outcome is committed onto the thread and recorded at <code>log/episodes/{id}.md</code> like any coordination phase: who took part, each step&#x27;s prompt and reply, and how it ended. A resolved run does not resolve the task it ran in, and does not compile anything into new rows. It is a phase inside the task, and <code>board resolve</code> still finishes the task.</p>
-      <h2 id="conductor-writing-your-own">Writing your own</h2>
-      <p>A protocol is a memory under <code>protocols/</code>, promoted the way a skill is. A room that writes <code>protocols/gated</code> reshapes the built-in under that name; a new name adds a protocol. The body is YAML:</p>
+      <p>A run ends at one of its flow&#x27;s end steps, <code>resolved</code> or <code>rejected</code>, or at the step cap, which counts as <code>rejected</code>. The outcome is committed onto the episode and its record is final: the flow, the whole trace, and every envelope. A resolved run resolves no task and compiles nothing into rows.</p>
+      <h2 id="conductor-writing-your-own-flow">Writing your own flow</h2>
+      <p>A flow is a memory under <code>protocols/</code>. A room that writes <code>protocols/gated</code> reshapes the built-in under that name; a new name adds a flow. The body is YAML:</p>
       <pre><code>description: A reviewer signs off before the author ships.
 roles: [author, reviewer]
 max_steps: 6
@@ -872,7 +890,7 @@ steps:
     next: {accept: done, reject: draft, default: draft}
   - id: done
     end: resolved</code></pre>
-      <p>A step addresses a role, or <code>each</code> (every member, one at a time), <code>all</code> (every member, at once) or <code>workers</code> (every member not bound to a role). <code>wait: none</code> makes a step fire and forget. <code>rounds</code> repeats an <code>each</code> or <code>all</code> step. <code>next</code> is one step id, or a map from <code>accept</code>, <code>reject</code>, <code>silent</code> and <code>default</code> to step ids. Prompts can carry <code>{ask}</code>, <code>{reply}</code> (the most recent answer), <code>{replies}</code> (everyone&#x27;s latest, one per line), <code>{handles}</code>, <code>{round}</code> and <code>{rounds}</code>. Every step must lead somewhere, and every protocol needs an end step; a spec that does not hold together is refused rather than run half-read.</p>
+      <p>A step addresses a role, or <code>each</code> (every member, one at a time), <code>all</code> (every member, at once) or <code>workers</code> (every member not bound to a role). <code>wait: none</code> makes a step fire and forget. <code>rounds</code> repeats an <code>each</code> or <code>all</code> step. <code>next</code> is one step id, or a map from <code>accept</code>, <code>reject</code>, <code>silent</code> and <code>default</code> to step ids. Prompts can carry <code>{ask}</code>, <code>{reply}</code> (the most recent answer), <code>{replies}</code> (everyone&#x27;s latest, one per line), <code>{handles}</code>, <code>{round}</code> and <code>{rounds}</code>. Every step must lead somewhere, and every flow needs an end step; a spec that does not hold together is refused rather than run half-read. Each run copies the flow onto its own episode, so editing the memory changes the next run and never a record.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/conductor.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
   </div>

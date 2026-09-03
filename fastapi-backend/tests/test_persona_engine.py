@@ -276,3 +276,58 @@ async def test_host_runtime_leaves_it_to_the_host(monkeypatch: pytest.MonkeyPatc
     await asyncio.sleep(0.02)
 
     assert calls == []
+
+
+# ── a role is not a question, and nobody speaks off the floor ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_mention_beside_a_conductor_binds_a_role_and_asks_nothing():
+    """`@conductor gated @api @sec: …` names the personas that fill the roles.
+    The conductor will address each in turn; answering the summon would talk
+    over the floor it just took and leave the persona busy for its real turn."""
+    _register("sec", "persona")
+    _register("maestro", "conductor")
+    engine, _managed = _engine()
+    calls = _capture(engine)
+
+    summons = ["maestro", "api", "sec"]
+    engine.handle_summon(
+        _ROOM, "sec", _env("julia", episode=_THREAD), summons, "@maestro gated @api @sec: go"
+    )
+    await asyncio.sleep(0.02)
+    assert calls == []
+
+    # The same persona, mentioned on its own, still answers.
+    engine.handle_summon(_ROOM, "sec", _env("julia"), ["sec"], "@sec thoughts?")
+    await asyncio.sleep(0.02)
+    assert [c["engine_handle"] for c in calls] == ["sec"]
+
+
+@pytest.mark.asyncio
+async def test_it_does_not_post_into_a_thread_whose_floor_it_was_not_given(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    _register("sec", "persona")
+    _patch_pi(monkeypatch, "Blocked. [[mycelium: stance=reject]]")
+    engine, managed = _engine()
+    engine._manager.hold_floor(_ROOM, _THREAD, holder="conductor", speakers=["api"])
+
+    reply = await engine.answer(
+        _ROOM, engine_handle="sec", episode=_THREAD, sender="julia", text="go"
+    )
+
+    assert reply == "Blocked."
+    assert _posted(managed) == [], "the reply was dropped, not posted out of turn"
+
+
+@pytest.mark.asyncio
+async def test_it_posts_when_the_floor_is_its_own(monkeypatch: pytest.MonkeyPatch):
+    _register("sec", "persona")
+    _patch_pi(monkeypatch, "Blocked. [[mycelium: stance=reject]]")
+    engine, managed = _engine()
+    engine._manager.hold_floor(_ROOM, _THREAD, holder="conductor", speakers=["sec"])
+
+    await engine.answer(_ROOM, engine_handle="sec", episode=_THREAD, sender="conductor", text="go")
+
+    assert [t for _e, t in _posted(managed)] == ["Blocked."]

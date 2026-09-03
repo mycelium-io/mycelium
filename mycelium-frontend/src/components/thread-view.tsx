@@ -7,8 +7,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Eye, Maximize2, MessageSquare, Pencil, X } from "lucide-react";
 import { memoryHref } from "@/lib/memory-routes";
-import { useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
+import { useRoomEpisodes, useRoomMembers, useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
 import { threadShortId } from "@/lib/threads";
+import { FlowPanel } from "@/components/flow-panel";
 import { MemoryDetail } from "@/components/memory-detail";
 import { MemoryEditor } from "@/components/memory-editor";
 import { RoomChatBox } from "@/components/room-chat-box";
@@ -66,6 +67,13 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
   // comments. Absent for a negotiation thread bound to no row.
   const { memories } = useRoomMemories(roomName);
   const task = memories.find(m => m.episode === target.episode) ?? null;
+  // A thread that is a run carries its flow on its episode record; the floor
+  // held on it is a live fact off the roster. Absent for a task's own thread
+  // and for a negotiation, so the pane draws nothing extra there.
+  const { episodes } = useRoomEpisodes(roomName);
+  const run = episodes.find(e => e.episode === target.episode && e.flow) ?? null;
+  const { floors } = useRoomMembers(roomName);
+  const floor = floors.find(f => f.episode === target.episode) ?? null;
   const { principal } = useCurrentUser();
   const revalidate = useRoomRevalidate(roomName);
   const shortId = threadShortId(target.episode) ?? "thread";
@@ -105,7 +113,7 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
       <header className="flex h-[48px] shrink-0 items-center gap-2 border-b border-border bg-paper px-4">
         <MessageSquare className="size-3.5 shrink-0 text-accent" strokeWidth={1.9} />
         <span className="min-w-0 truncate text-label font-semibold text-text">
-          {target.title || `Thread ${shortId}`}
+          {target.title || (run ? `${run.flow?.name} run ${shortId}` : `Thread ${shortId}`)}
         </span>
         {/* The short id only where a task's name is what the header says —
             otherwise the header is already the id, and this would repeat it. */}
@@ -186,6 +194,11 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
         // everywhere in the pane. A negotiation thread bound to no row is all
         // conversation.
         <ScrollArea className="min-h-0 flex-1">
+          {run && (
+            <div className="border-b border-border">
+              <FlowPanel episode={run} floor={floor} />
+            </div>
+          )}
           {task && (
             <div className="border-b border-border">
               <MemoryDetail

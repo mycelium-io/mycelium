@@ -42,6 +42,10 @@ Both roles are now played by personas, the guardian blocks what the
 proposer puts up until it has a rollback plan, and the whole exchange runs in
 the task's thread with no session resident anywhere.
 
+A mention beside a conductor is different: `@conductor gated @api @sec: …`
+binds `api` and `sec` to the protocol's roles. Neither answers the summon;
+each waits to be addressed by its step.
+
 ## What it says
 
 It answers where it was asked: in the thread the turn rode, or in the room.
@@ -50,7 +54,8 @@ A reply that ends in a stance marker (`[[mycelium: stance=accept]]` or
 `mycelium respond` does, so a conductor step or an aligner round reads it
 the same as a resident agent's. Every `@` in what it says is removed before
 posting, so a persona can never summon anything, and two personas can never
-set each other off.
+set each other off. And a persona is a member: a reply into a thread whose
+floor was not given to it is dropped, the same refusal an agent's write gets.
 
 Like hello, it is fail-loud: a Pi error or an empty answer is posted as a
 readable reason rather than silence, so a quiet persona is never mistaken

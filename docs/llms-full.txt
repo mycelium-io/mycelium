@@ -960,7 +960,7 @@ mycelium await --lease work/auth-spike    # wake when that task changes hands
 **An episode is one scoped conversation inside a room.**
 
 A room has a single channel, and an episode is a tagged slice of it: a set of
-messages that belong together and can be read on their own. Two things are
+messages that belong together and can be read on their own. Three things are
 episodes.
 
 The first is a [task](#board)'s **thread**. Every task gets one when it is
@@ -974,8 +974,15 @@ more agents disagree on a trade-off with several moving parts, someone puts a
 mediator on the task, and the mediator drives it to one answer or to a clean
 failure to agree.
 
-So a room holds tasks, a task holds its thread, and a coordination phase is
-something that can happen inside that thread. The task outlives it.
+The third is a **run with a flow**: an episode the [conductor](#conductor)
+opens to walk a fixed interaction shape, a proposer and a guardian, a lead
+and its workers, members speaking in turn. The flow is written onto the
+episode itself, along with every step taken, so the episode shows the shape
+of the interaction and where it stands, not only its messages. A run can be
+opened from a task, which nests it there, or from the room.
+
+So a room holds tasks, a task holds its thread, and a coordination phase or a
+run is something that can happen inside that thread. The task outlives it.
 
 ## Opening one
 
@@ -2024,6 +2031,10 @@ Both roles are now played by personas, the guardian blocks what the
 proposer puts up until it has a rollback plan, and the whole exchange runs in
 the task's thread with no session resident anywhere.
 
+A mention beside a conductor is different: `@conductor gated @api @sec: …`
+binds `api` and `sec` to the protocol's roles. Neither answers the summon;
+each waits to be addressed by its step.
+
 ## What it says
 
 It answers where it was asked: in the thread the turn rode, or in the room.
@@ -2032,7 +2043,8 @@ A reply that ends in a stance marker (`[[mycelium: stance=accept]]` or
 `mycelium respond` does, so a conductor step or an aligner round reads it
 the same as a resident agent's. Every `@` in what it says is removed before
 posting, so a persona can never summon anything, and two personas can never
-set each other off.
+set each other off. And a persona is a member: a reply into a thread whose
+floor was not given to it is dropped, the same refusal an agent's write gets.
 
 Like hello, it is fail-loud: a Pi error or an empty answer is posted as a
 readable reason rather than silence, so a quiet persona is never mistaken
@@ -2052,84 +2064,126 @@ keys: like every engine, it speaks through the hub.
 
 # Conductor
 
-The conductor is the [engine](#engines) that runs a **protocol** inside a
-task: a fixed shape of who speaks to whom, in what order, and what happens on
-each answer. Where the [aligner](#aligner) brokers a negotiation, the
-conductor walks a graph. It is the engine to reach for when a piece of work
-has a shape you already know: a proposal that a reviewer must approve, a lead
-asking every worker at once, a round where each member speaks in turn.
+The conductor is the [engine](#engines) that runs an **episode with a
+flow**: a fixed shape of who speaks to whom, in what order, and what happens
+on each answer. Where the [aligner](#aligner) brokers a negotiation, the
+conductor walks a graph. It is the engine to reach for when an interaction
+has a shape you already know: a proposal a reviewer must approve, a lead
+asking every worker at once, members speaking in turn.
 
 It is the one engine with no model of its own. Every judgment in a run, what
 to propose and whether to block it, is made by the members it addresses. The
-conductor only decides whose turn it is, and it enforces that in code: while a
-step is open, only the member it addressed can write into the thread. That is
-the split the whole design rests on. A model sits in each node, and code sits
-on the edges.
+conductor only decides whose turn it is, and it enforces that in code: while
+a step is open, only the member it addressed can write into the episode.
+That is the split the whole design rests on. A model sits in each node, and
+code sits on the edges.
 
 ```bash
 # Register it once per room
 mycelium engine create conductor --kind conductor --room sprint-plan
 
-# Run the gated protocol inside a task: @api proposes, @sec approves or blocks
+# Open a gated run: @api proposes, @sec approves or blocks
+mycelium engine invoke conductor \
+  "gated @api @sec: rotate the signing key without downtime" -r sprint-plan
+```
+
+The summon names the flow first, then the members in the order the flow's
+roles expect, then the question.
+
+## The episode is the run
+
+Every run opens an [episode](#episodes) of its own, and the episode carries
+its flow. The graph the conductor walks, who was bound to each role, and the
+trace of every step taken are written onto the episode's record as it goes,
+so an open run shows where it stands and a finished one shows the shape of
+the interaction, not only its messages. Open the episode in the app and the
+graph is drawn at the top of its thread: the current step lit, the edges
+taken solid, the member who has the floor marked, and the steps taken listed
+under it.
+
+A run can be opened from a task, which makes it a phase inside that task the
+way a negotiation is:
+
+```bash
 mycelium board coordinate work/rotate-signing-key conductor \
   "gated @api @sec: rotate the signing key without downtime"
 ```
 
-The summon names the protocol first, then the members in the order the
-protocol's roles expect, then the question. The run happens in the thread the
-summon was made in, so the row's conversation carries the whole thing and
-`board messages` reads it back. A summon from the room itself
-(`engine invoke`) opens a thread of its own, because the room is never
-narrowed to one speaker.
+The run still gets its own episode. The task's thread gets one line when the
+run opens (naming the episode and the cast) and one when it ends, and the
+episode's record says which task it ran inside. A run opened from the room
+is nested in nothing. Either way the task is context or an output, never the
+container the flow lives in.
 
-## The built-in protocols
+## The built-in flows
 
-| Protocol | Roles | Shape |
+| Flow | Roles | Shape |
 |---|---|---|
 | `gated` | proposer, guardian | The proposer states what it intends to do. The guardian approves or blocks, ending its reply with `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`. A block sends the proposal back with the objection attached, until an approval or the step cap. |
 | `fan-out` | lead | Every other member is asked at once. The lead then gets all the answers and combines them into one plan. |
 | `round-robin` | none | Each member speaks in turn, seeing what the others said, for two rounds. |
 
 Any member can fill a role: a registered agent kept awake with
-`mycelium await --loop`, an engine such as [hello](#hello), or a person. A
-person answers a step the way they answer anything in a thread, with
-`board send`, and a stance marker left in the text is read the same as one an
-agent's reply carried. That is how a human-in-the-loop step works: the
-conductor gives the person the floor and waits.
+`mycelium await --loop`, a [persona](#persona), or a person. A person
+answers a step the way they answer anything in a thread, and a stance marker
+left in the text is read the same as one an agent's reply carried. That is
+how a human-in-the-loop step works: the conductor gives the person the floor
+and waits. Ask the conductor what it can run with
+`mycelium engine invoke conductor "list"`.
+
+## Reading a run
+
+A run is meant to be read from the outside. The conductor opens by saying
+who plays what and the graph it is about to walk:
+
+```
+Running gated with api as proposer, sec as guardian.
+
+**gated**: A proposer proposes, a guardian approves or blocks; a block sends it back.
+roles: proposer, guardian (bound in that order)
+- propose: asks proposer, then review
+- review: asks guardian, then by stance (accept: approved, reject: propose, default: propose)
+- approved: ends resolved
+up to 6 steps
+```
+
+Every turn it puts to a member starts with a line saying which step of
+which flow it is (`gated · review · turn 2 of 6 · sec`), so a block reads as
+the guardian's stance at the review step, not as the conductor blocking
+anyone. When a step branches, the conductor says which way it went
+(`review: sec blocked, on to propose`).
+
+The members named in the summon are bound to roles, not asked a question: a
+persona mentioned there waits for its turn rather than answering the summon,
+and a resident agent that replies before its turn is refused.
 
 ## Whose turn it is
 
-While a run is open, the thread has a **floor**. The conductor holds it, and
-gives it to whoever the current step addresses: one member for a role step,
-everyone at once for a fan-out. A write from anyone else is refused with a
-`409` that says who holds the floor and who may speak, so an agent that tried
-early keeps awaiting rather than giving up. A refused write never reaches the
-transcript, which means it wakes nobody.
+While a run is open, its episode has a **floor**. The conductor holds it
+from the instant the summon lands, and gives it to whoever the current step
+addresses: one member for a role step, everyone at once for a fan-out. A
+write from anyone else is refused with a `409` that says who holds the floor
+and who may speak, so an agent that tried early keeps awaiting rather than
+giving up. A refused write never reaches the transcript, which means it wakes
+nobody. The room's timeline gets a line each time the floor moves, and the
+members rail marks who has it.
 
-The room can see whose turn it is. The members rail marks who has the floor
-and in which thread, and the room's timeline gets one line each time the
-floor moves, so a person watching a run knows who everyone is waiting on.
-
-Nothing else narrows. The room stays open throughout, other threads are
-untouched, and a member joining the room mid-run aborts nothing, because a
-protocol run is not a negotiation and freezes no roster. When the run ends,
-the floor is released and the thread takes anyone again.
+Nothing else narrows. The room stays open, other threads are untouched, and a
+member joining the room mid-run aborts nothing, because a run is not a
+negotiation and freezes no roster. When the run ends, the floor is released.
 
 ## How a run ends
 
-A run ends at one of the protocol's end steps, `resolved` or `rejected`, or at
+A run ends at one of its flow's end steps, `resolved` or `rejected`, or at
 the step cap, which counts as `rejected`. The outcome is committed onto the
-thread and recorded at `log/episodes/{id}.md` like any coordination phase:
-who took part, each step's prompt and reply, and how it ended. A resolved run
-does not resolve the task it ran in, and does not compile anything into new
-rows. It is a phase inside the task, and `board resolve` still finishes the
-task.
+episode and its record is final: the flow, the whole trace, and every
+envelope. A resolved run resolves no task and compiles nothing into rows.
 
-## Writing your own
+## Writing your own flow
 
-A protocol is a memory under `protocols/`, promoted the way a skill is. A room
-that writes `protocols/gated` reshapes the built-in under that name; a new
-name adds a protocol. The body is YAML:
+A flow is a memory under `protocols/`. A room that writes `protocols/gated`
+reshapes the built-in under that name; a new name adds a flow. The body is
+YAML:
 
 ```yaml
 description: A reviewer signs off before the author ships.
@@ -2154,9 +2208,10 @@ A step addresses a role, or `each` (every member, one at a time), `all`
 step. `next` is one step id, or a map from `accept`, `reject`, `silent` and
 `default` to step ids. Prompts can carry `{ask}`, `{reply}` (the most recent
 answer), `{replies}` (everyone's latest, one per line), `{handles}`, `{round}`
-and `{rounds}`. Every step must lead somewhere, and every protocol needs an
-end step; a spec that does not hold together is refused rather than run
-half-read.
+and `{rounds}`. Every step must lead somewhere, and every flow needs an end
+step; a spec that does not hold together is refused rather than run
+half-read. Each run copies the flow onto its own episode, so editing the
+memory changes the next run and never a record.
 
 
 ---
