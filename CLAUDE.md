@@ -203,6 +203,17 @@ is no litellm dependency.
   transcript, so it wakes nobody and `await` needs no change. The room itself
   (`live`) never holds a floor. `app/services/turns.py` is the one-agent turn
   the aligner brokers with, lifted out so a protocol step asks the same way.
+- **The conductor runs a protocol inside a task, in code.** A fourth engine
+  kind (`app/services/conductor.py`) with no model of its own: summoned as
+  `board coordinate <row> conductor "gated @a @b: …"`, it walks a
+  `protocols.Protocol` (three built in: `gated`, `fan-out`, `round-robin`; a
+  room's `protocols/<name>` memory overrides or adds one) in the thread it was
+  summoned in, holding the floor for whoever each step addresses, asking
+  through `turns.addressed_turn`, and following the edge the reply's stance
+  takes (`markers.stance_of`, read off the payload or a marker left in prose so
+  a person's `board send` counts). It opens no negotiation and never commits
+  `converged`, so nothing it does compiles into rows. A model in the nodes,
+  code on the edges: the judgment is the members', the routing is the hub's.
 - **The aligner mediates, inside a task.** Agents never talk to each other directly;
   all coordination flows through the aligner. It's a first-party engine registered
   as a room citizen (`mycelium engine create aligner --kind aligner`) and summoned

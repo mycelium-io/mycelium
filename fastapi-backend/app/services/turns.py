@@ -29,6 +29,7 @@ from app.services.l9_models import Kind
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from app.services.l9_models import L9
     from app.services.persister import TranscriptRecord
 
 logger = logging.getLogger(__name__)
@@ -59,13 +60,17 @@ async def addressed_turn(
     poll_interval_s: float,
     payload_type: str = "tick",
     payload_data: dict[str, Any] | None = None,
+    on_tick: Callable[[L9], None] | None = None,
+    on_reply: Callable[[TranscriptRecord], None] | None = None,
 ) -> str:
     """Post ``prompt`` to ``handle`` alone, wait for its reply, return the prose.
 
     The prompt is recorded into the transcript like any message, so the room can
     follow along; the reply is the first record past it from ``handle`` that
     ``is_reply`` accepts. ``""`` when the send fails or ``timeout_s`` passes
-    with no such record.
+    with no such record. ``on_tick`` sees the envelope once it is posted and
+    ``on_reply`` the record that answered it, for a caller keeping its own
+    episode record.
     """
     before = len(persister.log.records)
     env = l9.build_envelope(
@@ -82,6 +87,8 @@ async def addressed_turn(
     except Exception:
         logger.warning("failed to put a turn to @%s in %s", handle, episode)
         return ""
+    if on_tick is not None:
+        on_tick(env)
 
     pending = norm_handle(handle) or ""
     loop = asyncio.get_running_loop()
@@ -89,6 +96,8 @@ async def addressed_turn(
     while True:
         for record in persister.log.records[before:]:
             if (norm_handle(record.sender) or "") == pending and is_reply(record):
+                if on_reply is not None:
+                    on_reply(record)
                 return record.content.get("content") or ""
         if loop.time() >= deadline:
             return ""

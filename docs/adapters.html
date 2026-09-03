@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Adapters · mycelium</title>
-<meta name="description" content="Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer, and summon the first-party engines: the aligner, the synthesizer and hello.">
+<meta name="description" content="Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer, and summon the first-party engines: the aligner, the synthesizer, hello and the conductor.">
 <meta property="og:title" content="Adapters · mycelium">
-<meta property="og:description" content="Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer, and summon the first-party engines: the aligner, the synthesizer and hello.">
+<meta property="og:description" content="Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer, and summon the first-party engines: the aligner, the synthesizer, hello and the conductor.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/adapters.html">
 <meta property="og:type" content="website">
@@ -117,6 +117,7 @@
           <a href="#aligner" class="nav-link sub">Aligner</a>
           <a href="#synthesizer" class="nav-link sub">Synthesizer</a>
           <a href="#hello" class="nav-link sub">Hello</a>
+          <a href="#conductor" class="nav-link sub">Conductor</a>
         </div>
       </div>
     </div>
@@ -584,7 +585,7 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
       <h1>Engines</h1>
       <p>An <strong>engine</strong> is a first-party task of cognition that lives inside a room. Where your agents are the participants, engines are the room&#x27;s <em>reasoning citizens</em>. They read what the room knows and act on it: mediate a decision, distill the memory, and (in time) more.</p>
       <p>Engines exist because some work isn&#x27;t any single agent&#x27;s job. Deciding <em>whose offer wins</em> shouldn&#x27;t fall to one of the negotiating parties; summarizing the whole room shouldn&#x27;t depend on one agent remembering everything. An engine is a neutral, first-party actor the room owns.</p>
-      <p>Three of them exist today; the first thing to try on a new hub is <code>hello</code>, which answers a summon and owns nothing, so it is safe to fire into a live room just to see whether cognition runs at all.</p>
+      <p>Four of them exist today; the first thing to try on a new hub is <code>hello</code>, which answers a summon and owns nothing, so it is safe to fire into a live room just to see whether cognition runs at all.</p>
       <p>Two properties define every engine:</p>
       <ul>
         <li><strong>Summoned explicitly.</strong> An engine is dormant until you register it in a room and <code>@</code>-summon it. There is no join window, no polling, and no held LLM connection, so it has zero idle cost. Cognition runs because you asked for it.</li>
@@ -612,6 +613,10 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
             <tr>
               <td><code>hello</code></td>
               <td>Answers one summon with one Pi turn and writes nothing anywhere — the cheap proof the engine path works on this hub. See <a href="#hello">Hello</a>.</td>
+            </tr>
+            <tr>
+              <td><code>conductor</code></td>
+              <td>Runs a protocol inside a task — a gated review, a fan-out, a round robin — walking the steps in code and giving the floor to whoever each step addresses. It has no model of its own. See <a href="#conductor">Conductor</a>.</td>
             </tr>
           </tbody>
         </table>
@@ -766,6 +771,74 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
       <h2 id="hello-holding-nothing">Holding nothing</h2>
       <p>Hello keeps no state between summons and answers each one from scratch, so it is not a chat partner — it is a probe with a personality. Ask it something twice and it will not remember the first time. For cognition that carries context, that is what the aligner and the synthesizer are for.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/hello.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="conductor">
+      <h1>Conductor</h1>
+      <p>The conductor is the <a href="#engines">engine</a> that runs a <strong>protocol</strong> inside a task: a fixed shape of who speaks to whom, in what order, and what happens on each answer. Where the <a href="#aligner">aligner</a> brokers a negotiation, the conductor walks a graph. It is the engine to reach for when a piece of work has a shape you already know: a proposal that a reviewer must approve, a lead asking every worker at once, a round where each member speaks in turn.</p>
+      <p>It is the one engine with no model of its own. Every judgment in a run, what to propose and whether to block it, is made by the members it addresses. The conductor only decides whose turn it is, and it enforces that in code: while a step is open, only the member it addressed can write into the thread. That is the split the whole design rests on. A model sits in each node, and code sits on the edges.</p>
+      <pre><code><span class="comment"># Register it once per room</span>
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> conductor <span class="flag">--kind</span> conductor <span class="flag">--room</span> sprint-plan
+
+<span class="comment"># Run the gated protocol inside a task: @api proposes, @sec approves or blocks</span>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor \
+  <span class="str">&quot;gated @api @sec: rotate the signing key without downtime&quot;</span></code></pre>
+      <p>The summon names the protocol first, then the members in the order the protocol&#x27;s roles expect, then the question. The run happens in the thread the summon was made in, so the row&#x27;s conversation carries the whole thing and <code>board messages</code> reads it back. A summon from the room itself (<code>engine invoke</code>) opens a thread of its own, because the room is never narrowed to one speaker.</p>
+      <h2 id="conductor-the-built-in-protocols">The built-in protocols</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Protocol</th>
+              <th>Roles</th>
+              <th>Shape</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>gated</code></td>
+              <td>proposer, guardian</td>
+              <td>The proposer states what it intends to do. The guardian approves or blocks, ending its reply with <code>[[mycelium: stance=accept]]</code> or <code>[[mycelium: stance=reject]]</code>. A block sends the proposal back with the objection attached, until an approval or the step cap.</td>
+            </tr>
+            <tr>
+              <td><code>fan-out</code></td>
+              <td>lead</td>
+              <td>Every other member is asked at once. The lead then gets all the answers and combines them into one plan.</td>
+            </tr>
+            <tr>
+              <td><code>round-robin</code></td>
+              <td>none</td>
+              <td>Each member speaks in turn, seeing what the others said, for two rounds.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Any member can fill a role: a registered agent kept awake with <code>mycelium await --loop</code>, an engine such as <a href="#hello">hello</a>, or a person. A person answers a step the way they answer anything in a thread, with <code>board send</code>, and a stance marker left in the text is read the same as one an agent&#x27;s reply carried. That is how a human-in-the-loop step works: the conductor gives the person the floor and waits.</p>
+      <h2 id="conductor-whose-turn-it-is">Whose turn it is</h2>
+      <p>While a run is open, the thread has a <strong>floor</strong>. The conductor holds it, and gives it to whoever the current step addresses: one member for a role step, everyone at once for a fan-out. A write from anyone else is refused with a <code>409</code> that says who holds the floor and who may speak, so an agent that tried early keeps awaiting rather than giving up. A refused write never reaches the transcript, which means it wakes nobody.</p>
+      <p>Nothing else narrows. The room stays open throughout, other threads are untouched, and a member joining the room mid-run aborts nothing, because a protocol run is not a negotiation and freezes no roster. When the run ends, the floor is released and the thread takes anyone again.</p>
+      <h2 id="conductor-how-a-run-ends">How a run ends</h2>
+      <p>A run ends at one of the protocol&#x27;s end steps, <code>resolved</code> or <code>rejected</code>, or at the step cap, which counts as <code>rejected</code>. The outcome is committed onto the thread and recorded at <code>log/episodes/{id}.md</code> like any coordination phase: who took part, each step&#x27;s prompt and reply, and how it ended. A resolved run does not resolve the task it ran in, and does not compile anything into new rows. It is a phase inside the task, and <code>board resolve</code> still finishes the task.</p>
+      <h2 id="conductor-writing-your-own">Writing your own</h2>
+      <p>A protocol is a memory under <code>protocols/</code>, promoted the way a skill is. A room that writes <code>protocols/gated</code> reshapes the built-in under that name; a new name adds a protocol. The body is YAML:</p>
+      <pre><code>description: A reviewer signs off before the author ships.
+roles: [author, reviewer]
+max_steps: 6
+steps:
+  - id: draft
+    to: author
+    prompt: &quot;{ask}\n\nSay what you will ship.\n\n{reply}&quot;
+    next: review
+  - id: review
+    to: reviewer
+    prompt: &quot;On the table:\n\n{reply}\n\nApprove or block, ending with a stance marker.&quot;
+    next: {accept: done, reject: draft, default: draft}
+  - id: done
+    end: resolved</code></pre>
+      <p>A step addresses a role, or <code>each</code> (every member, one at a time), <code>all</code> (every member, at once) or <code>workers</code> (every member not bound to a role). <code>wait: none</code> makes a step fire and forget. <code>rounds</code> repeats an <code>each</code> or <code>all</code> step. <code>next</code> is one step id, or a map from <code>accept</code>, <code>reject</code>, <code>silent</code> and <code>default</code> to step ids. Prompts can carry <code>{ask}</code>, <code>{reply}</code> (the most recent answer), <code>{replies}</code> (everyone&#x27;s latest, one per line), <code>{handles}</code>, <code>{round}</code> and <code>{rounds}</code>. Every step must lead somewhere, and every protocol needs an end step; a spec that does not hold together is refused rather than run half-read.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/conductor.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
   </div>
   </main>
