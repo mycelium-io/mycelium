@@ -150,22 +150,51 @@ class TwoStubRejectionPath(aetest.Testcase):
         def _accept_only_30(round_num: int, turn_json: dict) -> str:
             # An unconditional accepter accepts whatever lands on the table —
             # including stub-reject's own number — which converges every
-            # time regardless of stub-reject's mechanical position. That's
-            # genuinely correct negotiation behavior given an accepter with
-            # no position of its own, not a bug; it just means "one stub
-            # always rejects" can't reliably produce a *rejected* terminal
-            # unless the other side actually holds a position too. Accepting
+            # time regardless of stub-reject's mechanical position. Accepting
             # only its own stated number (30) guarantees the two numbers
             # never meet, so the round budget — not mediator luck — is what
-            # produces rejected.
+            # produces rejected. This decides the RESPOND-turn action; see
+            # the prose= comment below for why the PROPOSE-turn text matters
+            # just as much.
+            #
+            # _prompt_for's template is fixed and always exactly four
+            # "\n\n"-separated paragraphs: [0] the issue-space preamble,
+            # [1] "MEDIATOR: {note}" (LLM free text — never trust it),
+            # [2] "{role} (2 sentences max.)" — programmatically built by
+            # _prompt_for itself, never LLM-generated, and the *only* place
+            # the real current-round offer is guaranteed to live,
+            # [3] the constant _BATNA paragraph. Index into [2] directly
+            # instead of pattern-matching across the whole prompt.
             prompt = (turn_json or {}).get("prompt") or ""
-            return "accept" if "30" in prompt else "reject"
+            parts = prompt.split("\n\n")
+            offer_text = parts[2] if len(parts) > 2 else ""
+            return "accept" if "30" in offer_text else "reject"
 
         stubs = [
+            # prose= gives interpret() (mediator.py) a stable number to
+            # anchor on for BOTH turn kinds — not just an unambiguous
+            # reject/accept signal for RESPOND turns, which is all earlier
+            # attempts here addressed and which still left this falsely
+            # converging in CI. Root-caused via a temporary debug patch to
+            # mediator.py logging every interpret() call's prose -> reading:
+            # on a PROPOSE turn, interpret() is asked for a *counter offer*,
+            # and a numberless reject-flavored text ("This does not meet my
+            # requirements.", the StubAgent default) gives it nothing to
+            # extract — so it HALLUCINATES one, and not just any value: it
+            # escalated round over round (30 -> 45 -> 60 -> 75 -> 90),
+            # confirmed live in the debug trace. Once that fabricated offer
+            # coincidentally hit stub-reject's real number (90), interpret()
+            # re-read stub-reject's own *unchanged*, explicitly [<reject>]-
+            # marked text as {'action': 'accept'} on that round alone —
+            # purely because the numbers now matched, not because anything
+            # stub-reject said changed. Anchoring stub-accept's text to its
+            # real number (30) on every turn removes the empty slot the
+            # interpreter was filling in by invention, so PROPOSE turns stay
+            # pinned at 30 and never drift toward 90 by coincidence.
             StubAgent(
                 self.room, "stub-accept", action="reject", cli=cli,
                 action_fn=_accept_only_30,
-                prose=_POS_A,
+                prose="I can only agree to 30 days; anything longer does not meet my requirements.",
             ),
             # A generic reject reply (the default "This does not meet my
             # requirements.") carries no number, so the mediator's NLU can
