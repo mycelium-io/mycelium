@@ -163,7 +163,7 @@ class TestProhibitedFields:
             release="1.0.0",
             adapter_class="cursor",
             outcome="converged",
-            first=True,
+            session_count=1,
         )
         payload = ev.to_dict()
         leaks = set(payload) & PROHIBITED_FIELDS
@@ -200,7 +200,7 @@ class TestEventShape:
                     "release": "1.0",
                     "adapter_class": "cursor",
                     "outcome": "converged",
-                    "first": True,
+                    "session_count": 1,
                 },
             ),
             (
@@ -210,7 +210,7 @@ class TestEventShape:
                     "release": "1.0",
                     "adapter_class": "cursor",
                     "outcome": "rejected",
-                    "first": False,
+                    "session_count": 5,
                 },
             ),
         ],
@@ -226,18 +226,24 @@ class TestEventShape:
             == "mycelium.install"
         )
 
-    def test_first_session_event_name(self):
+    def test_session_event_name(self):
         assert (
             session_event(
-                install_id="x", release="1.0", adapter_class="c", outcome="converged", first=True
+                install_id="x",
+                release="1.0",
+                adapter_class="c",
+                outcome="converged",
+                session_count=1,
             ).event
-            == "mycelium.session.first"
+            == "mycelium.session"
         )
 
-    def test_repeat_session_event_name(self):
-        assert (
-            session_event(
-                install_id="x", release="1.0", adapter_class="c", outcome="converged", first=False
-            ).event
-            == "mycelium.session.repeat"
-        )
+    def test_session_count_in_payload(self):
+        payload = session_event(
+            install_id="x",
+            release="1.0",
+            adapter_class="cursor",
+            outcome="converged",
+            session_count=3,
+        ).to_dict()
+        assert payload["session_count"] == "3"
