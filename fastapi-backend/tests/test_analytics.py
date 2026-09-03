@@ -15,7 +15,7 @@ No network, no backend process, no SLIM node required.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -28,8 +28,8 @@ from app.services.analytics import (
     session_event,
 )
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _event(name: EventName = "mycelium.install") -> AnalyticsEvent:
     return AnalyticsEvent(event=name, install_id="test-id", release="0.1.0")
@@ -37,13 +37,16 @@ def _event(name: EventName = "mycelium.install") -> AnalyticsEvent:
 
 # ── Invariant 1: no emit before opt-in ────────────────────────────────────────
 
+
 class TestNoEmitBeforeOptIn:
     """emit() must not make any HTTP call unless the user has opted in."""
 
     def test_no_http_when_analytics_disabled(self):
         """Consent off → _post is never called regardless of destination."""
-        with patch("app.services.analytics._post") as mock_post, \
-             patch("app.config.settings") as mock_settings:
+        with (
+            patch("app.services.analytics._post") as mock_post,
+            patch("app.config.settings") as mock_settings,
+        ):
             mock_settings.TELEMETRY_SEND_PRODUCT_ANALYTICS = False
             mock_settings.TELEMETRY_ANALYTICS_DESTINATION = "https://analytics.example.com"
             emit(_event())
@@ -51,8 +54,10 @@ class TestNoEmitBeforeOptIn:
 
     def test_no_http_when_destination_empty(self):
         """Consent on but no destination configured → _post is never called."""
-        with patch("app.services.analytics._post") as mock_post, \
-             patch("app.config.settings") as mock_settings:
+        with (
+            patch("app.services.analytics._post") as mock_post,
+            patch("app.config.settings") as mock_settings,
+        ):
             mock_settings.TELEMETRY_SEND_PRODUCT_ANALYTICS = True
             mock_settings.TELEMETRY_ANALYTICS_DESTINATION = ""
             emit(_event())
@@ -60,26 +65,56 @@ class TestNoEmitBeforeOptIn:
 
     def test_no_http_when_destination_whitespace_only(self):
         """Whitespace-only destination is treated as empty."""
-        with patch("app.services.analytics._post") as mock_post, \
-             patch("app.config.settings") as mock_settings:
+        with (
+            patch("app.services.analytics._post") as mock_post,
+            patch("app.config.settings") as mock_settings,
+        ):
             mock_settings.TELEMETRY_SEND_PRODUCT_ANALYTICS = True
             mock_settings.TELEMETRY_ANALYTICS_DESTINATION = "   "
             emit(_event())
         mock_post.assert_not_called()
 
     def test_no_http_when_destination_not_https(self):
-        """Plain HTTP destination is refused even when consent is on."""
-        with patch("app.services.analytics._post") as mock_post, \
-             patch("app.config.settings") as mock_settings:
+        """Plain HTTP to a non-local destination is refused even when consent is on."""
+        with (
+            patch("app.services.analytics._post") as mock_post,
+            patch("app.config.settings") as mock_settings,
+        ):
             mock_settings.TELEMETRY_SEND_PRODUCT_ANALYTICS = True
             mock_settings.TELEMETRY_ANALYTICS_DESTINATION = "http://analytics.example.com"
             emit(_event())
         mock_post.assert_not_called()
 
+    def test_http_allowed_for_localhost(self):
+        """Plain HTTP is allowed for localhost (local-dev exception, Option A)."""
+        with (
+            patch("app.services.analytics._post") as mock_post,
+            patch("app.config.settings") as mock_settings,
+        ):
+            mock_settings.TELEMETRY_SEND_PRODUCT_ANALYTICS = True
+            mock_settings.TELEMETRY_ANALYTICS_DESTINATION = "http://localhost:3100/loki/api/v1/push"
+            emit(_event())
+        mock_post.assert_called_once()
+
+    def test_http_allowed_for_host_docker_internal(self):
+        """Plain HTTP is allowed for host.docker.internal (local-dev exception, Option A)."""
+        with (
+            patch("app.services.analytics._post") as mock_post,
+            patch("app.config.settings") as mock_settings,
+        ):
+            mock_settings.TELEMETRY_SEND_PRODUCT_ANALYTICS = True
+            mock_settings.TELEMETRY_ANALYTICS_DESTINATION = (
+                "http://host.docker.internal:3100/loki/api/v1/push"
+            )
+            emit(_event())
+        mock_post.assert_called_once()
+
     def test_http_fires_when_opted_in_and_destination_set(self):
         """Consent on + HTTPS destination → _post IS called exactly once."""
-        with patch("app.services.analytics._post") as mock_post, \
-             patch("app.config.settings") as mock_settings:
+        with (
+            patch("app.services.analytics._post") as mock_post,
+            patch("app.config.settings") as mock_settings,
+        ):
             mock_settings.TELEMETRY_SEND_PRODUCT_ANALYTICS = True
             mock_settings.TELEMETRY_ANALYTICS_DESTINATION = "https://analytics.example.com"
             emit(_event())
@@ -92,6 +127,7 @@ class TestNoEmitBeforeOptIn:
 
 
 # ── Invariant 2: prohibited fields never reach the wire ───────────────────────
+
 
 class TestProhibitedFields:
     """No key from PROHIBITED_FIELDS may appear in to_dict() output."""
@@ -149,31 +185,59 @@ class TestProhibitedFields:
 
 # ── Event shape sanity ────────────────────────────────────────────────────────
 
+
 class TestEventShape:
     """The mandatory envelope fields are always present."""
 
-    @pytest.mark.parametrize("factory,kwargs", [
-        (install_event, {"install_id": "i", "release": "1.0", "platform": "Linux"}),
-        (session_event, {"install_id": "i", "release": "1.0", "adapter_class": "cursor",
-                         "outcome": "converged", "first": True}),
-        (session_event, {"install_id": "i", "release": "1.0", "adapter_class": "cursor",
-                         "outcome": "rejected", "first": False}),
-    ])
+    @pytest.mark.parametrize(
+        "factory,kwargs",
+        [
+            (install_event, {"install_id": "i", "release": "1.0", "platform": "Linux"}),
+            (
+                session_event,
+                {
+                    "install_id": "i",
+                    "release": "1.0",
+                    "adapter_class": "cursor",
+                    "outcome": "converged",
+                    "first": True,
+                },
+            ),
+            (
+                session_event,
+                {
+                    "install_id": "i",
+                    "release": "1.0",
+                    "adapter_class": "cursor",
+                    "outcome": "rejected",
+                    "first": False,
+                },
+            ),
+        ],
+    )
     def test_mandatory_envelope_fields_present(self, factory, kwargs):
         payload = factory(**kwargs).to_dict()
         for required in ("event", "install_id", "release", "ts"):
             assert required in payload, f"Missing required envelope field: {required!r}"
 
     def test_install_event_name(self):
-        assert install_event(install_id="x", release="1.0", platform="Darwin").event \
+        assert (
+            install_event(install_id="x", release="1.0", platform="Darwin").event
             == "mycelium.install"
+        )
 
     def test_first_session_event_name(self):
-        assert session_event(install_id="x", release="1.0", adapter_class="c",
-                             outcome="converged", first=True).event \
+        assert (
+            session_event(
+                install_id="x", release="1.0", adapter_class="c", outcome="converged", first=True
+            ).event
             == "mycelium.session.first"
+        )
 
     def test_repeat_session_event_name(self):
-        assert session_event(install_id="x", release="1.0", adapter_class="c",
-                             outcome="converged", first=False).event \
+        assert (
+            session_event(
+                install_id="x", release="1.0", adapter_class="c", outcome="converged", first=False
+            ).event
             == "mycelium.session.repeat"
+        )

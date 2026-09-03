@@ -202,22 +202,67 @@ def _emit_inner(event: AnalyticsEvent) -> None:
         return
 
     if not destination.startswith("https://"):
-        _log.warning(
-            "analytics: destination %r is not HTTPS; refusing to send event %s",
-            destination,
-            event.event,
-        )
-        return
+        # Security note: plain HTTP is refused for remote destinations because
+        # an event POST over plain HTTP could expose the install_id (a UUID,
+        # not a secret, but still a persistent identifier) to a network observer
+        # or be silently redirected to a different host.
+        #
+        # Local-address exception (Option A, documented): localhost,
+        # 127.0.0.1, and host.docker.internal are only reachable from the
+        # current machine, so the interception risk does not apply.  This lets
+        # developers point the destination at a local Loki/Grafana instance
+        # (e.g. http://host.docker.internal:3100/loki/api/v1/push) without
+        # needing a TLS terminator.  Production deployments MUST use HTTPS.
+        _LOCAL_HOSTS = ("localhost", "127.0.0.1", "host.docker.internal")
+        is_local = any(h in destination for h in _LOCAL_HOSTS)
+        if not (destination.startswith("http://") and is_local):
+            _log.warning(
+                "analytics: destination %r is not HTTPS (and not a local address); "
+                "refusing to send event %s",
+                destination,
+                event.event,
+            )
+            return
 
     payload = event.to_dict()
     _post(destination, payload)
 
 
 def _post(url: str, payload: dict) -> None:
-    """HTTP POST the event payload as JSON.  Uses the stdlib so no extra deps."""
+    """HTTP POST the event payload as JSON.  Uses the stdlib so no extra deps.
+
+    When the URL path contains ``/loki/`` (e.g. a local Grafana LGTM Loki push
+    endpoint), the payload is wrapped in the Loki push stream format so events
+    appear in Grafana Explore as structured log entries labelled by
+    ``{service="mycelium-analytics", event="<event_name>"}``.
+
+    All other destinations receive a plain ``application/json`` POST.
+    """
+    import time
     import urllib.request
 
-    data = json.dumps(payload).encode()
+    if "/loki/" in url:
+        # Loki push format: stream labels + a single log line (the JSON payload).
+        loki_body = {
+            "streams": [
+                {
+                    "stream": {
+                        "service": "mycelium-analytics",
+                        "event": payload.get("event", "unknown"),
+                    },
+                    "values": [
+                        [
+                            str(int(time.time() * 1e9)),  # nanosecond Unix timestamp
+                            json.dumps(payload),
+                        ]
+                    ],
+                }
+            ]
+        }
+        data = json.dumps(loki_body).encode()
+    else:
+        data = json.dumps(payload).encode()
+
     req = urllib.request.Request(
         url,
         data=data,

@@ -314,14 +314,16 @@ def record_aligner_round(
     room: str = "",
     round_num: int = 0,
     duration_ms: float = 0.0,
+    duration_excl_llm_ms: float = 0.0,
     outcome: str = "",
 ) -> None:
     """Record one NEGMAS SAO round inside a mediated negotiation.
 
-    Called once per mediator-driven round (one agent turn). Histograms feed the
-    ``aligner.round_ms`` series exposed at ``/api/observability`` and the OTel
-    SDK when enabled. ``outcome`` is the terminal verdict for the last round
-    (``converged``, ``rejected``, or empty for in-progress rounds).
+    ``duration_ms`` is the total round wall-clock time (SLIM wait + Pi call +
+    SAO logic). ``duration_excl_llm_ms`` is that total minus the Pi subprocess
+    time accumulated in ``PiSession.total_pi_ms`` — it isolates the agent
+    response latency and pure NEGMAS mechanism overhead from the LLM cost.
+    Both histograms feed ``/api/observability`` and the OTel SDK when enabled.
     """
     _inc("aligner", "rounds")
     if room:
@@ -337,6 +339,14 @@ def record_aligner_round(
             duration_ms,
             attrs={"mycelium.room": room or "", "mycelium.aligner.outcome": outcome or ""},
             description="Duration of one NEGMAS SAO round",
+        )
+    if duration_excl_llm_ms > 0:
+        _record_histogram("aligner.round_excl_llm_ms", duration_excl_llm_ms)
+        _otel_record(
+            "mycelium.aligner.round.duration_excl_llm",
+            duration_excl_llm_ms,
+            attrs={"mycelium.room": room or ""},
+            description="Aligner round duration excluding Pi LLM call time (SLIM wait + SAO logic)",
         )
 
 
