@@ -269,9 +269,16 @@ def _import_grafana_dashboard(grafana_port: str) -> None:
         )
         return
 
-    payload = json.dumps({"dashboard": dashboard_json, "overwrite": True, "folderId": 0}).encode()
+    # The bundled file is a Grafana v2 Dashboard resource (apiVersion:
+    # dashboard.grafana.app/v2, kind: Dashboard, spec.elements: ...).
+    # The legacy /api/dashboards/import endpoint expects the old schemaVersion
+    # body, not the v2 wrapper. Use /api/dashboards/db which accepts the raw
+    # spec.elements content via the dashboard field.
+    # Unwrap: send spec (the inner dashboard) directly.
+    db_body = dashboard_json.get("spec") or dashboard_json
+    payload = json.dumps({"dashboard": db_body, "overwrite": True, "folderId": 0}).encode()
     req = urllib.request.Request(
-        f"{grafana_url}/api/dashboards/import",
+        f"{grafana_url}/api/dashboards/db",
         data=payload,
         headers=headers,
         method="POST",

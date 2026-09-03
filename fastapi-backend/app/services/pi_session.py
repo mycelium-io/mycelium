@@ -313,7 +313,7 @@ class PiSession:
         binary: str = "pi",
         timeout_s: float = 120.0,
         openshell: bool = False,
-        operation: str = "aligner",
+        operation: str = "",
     ) -> None:
         self._session_path = session_path
         self._model = model
@@ -404,6 +404,7 @@ class PiSession:
         cmd = self._build_command(prompt, system)
         _t0 = __import__("time").monotonic()
         _error = False
+        completed = None
         try:
             completed = subprocess.run(
                 cmd,
@@ -419,6 +420,9 @@ class PiSession:
                 # prompt arg.
                 stdin=subprocess.DEVNULL,
             )
+            # Flag non-zero exit before finally fires so record_llm_call sees it.
+            if completed.returncode != 0:
+                _error = True
         except subprocess.TimeoutExpired as exc:
             _error = True
             raise PiSessionError(f"pi turn exceeded {self._timeout_s:.0f}s and was killed") from exc
@@ -436,7 +440,7 @@ class PiSession:
                 )
             except Exception:  # metrics must never break cognition
                 pass
-        if completed.returncode != 0:
+        if completed is not None and completed.returncode != 0:
             stderr = (completed.stderr or "").strip()
             raise PiSessionError(f"pi exited {completed.returncode}: {stderr[:400]}")
         return parse_pi_json_output(completed.stdout)
