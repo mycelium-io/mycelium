@@ -4114,6 +4114,12 @@
             "title": "Ttl Minutes",
             "description": "Minutes the claim holds without a renewal before it drains",
             "default": 30
+          },
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "description": "Take the row even while it waits on an unresolved dependency (only refused when the room's dependency gate is on)",
+            "default": false
           }
         },
         "type": "object",

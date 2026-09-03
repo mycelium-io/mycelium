@@ -57,6 +57,14 @@ EPISODE_FIELD = "episode"
 #: converges inside a row must not resolve the row or take it off its holder.
 THREAD_FIELDS = ["episode", "thread", "thread_state", "participants", "rounds"]
 
+#: The relation a row waits on, and the derived field that says what it still
+#: waits on. A ``work/`` row whose ``depends-on`` names a live row that is not
+#: settled is waiting; the projection reads that off the other rows on the
+#: board and stores nothing, the way a lease's expiry is read off the clock.
+DEPENDENCY_RELATION = "depends-on"
+WAITING_FIELD = "waiting_on"
+SETTLED_STATUSES = ["resolved", "dismissed"]
+
 #: How the thread inside a task reads. ``open`` while it is still running;
 #: the rest are the commit subkinds a negotiation closes on.
 THREAD_STATES = ["open", "converged", "resolved", "rejected", "committed"]

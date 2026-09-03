@@ -185,6 +185,14 @@ class Settings(BaseSettings):
     # Per-turn wall-clock bound (seconds) on the hello engine's one-shot pi call.
     HELLO_PI_TIMEOUT_S: float = 60.0
 
+    # The board's dependency gate. A ``work/`` row whose ``depends-on`` names a
+    # board row that is not yet resolved reads as waiting on it — always derived,
+    # always shown. Whether a claim on such a row is *refused* is this switch,
+    # off by default: a room that has been writing ``depends-on`` descriptively
+    # must not find its rows unclaimable one morning. ``force`` on the claim
+    # overrides it for the caller who knows better.
+    BOARD_DEPENDENCY_GATE: bool = False
+
     # Persona engine (kind ``persona``) — answers in character, from the
     # persona written to its ``agents/<handle>/notes`` memory, on a Pi session
     # kept per handle so it remembers across turns. Dormant like the others.

@@ -595,6 +595,34 @@ link.
 Each child is a full task with its own thread, so a sub-problem gets its own
 conversation instead of crowding the parent's.
 
+### Order the pieces
+
+When one piece cannot start before another is done, say so with the same kind
+of relation:
+
+```bash
+mycelium board new "Write the migration" --parent work/ship-passkey-login
+mycelium memory set work/run-the-migration "Run the migration" \
+  --meta depends-on=work/write-the-migration
+```
+
+The board reads what a row still waits on off the rows it names, and shows
+it (`after work/write-the-migration`). Nothing stores that: when the
+dependency resolves, its dependents stop waiting with nobody writing a byte,
+the room's timeline says the row was unblocked, and an agent sitting in
+`mycelium await --lease` on it wakes because the row it watches just became
+claimable. A dependency that is not a task on this board, a note or a key
+nobody filed, is a reference rather than a prerequisite and is not waited on.
+
+By default a waiting row can still be claimed: showing the order is the
+board's job, enforcing it is a choice. A hub with `BOARD_DEPENDENCY_GATE`
+on refuses the claim and names what the row waits on; `board claim --force`
+takes it anyway.
+
+This is how a supervisor shape runs on a board: file the pieces with their
+order, and each agent takes the next piece the moment the one before it
+resolves.
+
 ## Hand work off
 
 Two different questions get two different answers, and the board keeps them

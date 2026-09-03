@@ -346,6 +346,16 @@ is no litellm dependency.
   the negotiation engine. It runs a one-shot `pi` turn
   (a throwaway session, off the event loop via `asyncio.to_thread`), like every
   other mycelium cognition call.
+- **A row waits on its dependencies, derived and never stored.** A `work/`
+  row whose `depends-on` names a live board row that is not settled reads as
+  waiting on it: `assignments.waiting_on` on the hub (in every assignment read
+  and in the lease watcher's signature, so `await --lease` wakes when a row
+  becomes claimable), and a `waiting_on` fold in both board projections, frozen
+  in `contracts/board-vocabulary.json` under `task`. Resolving a row raises an
+  `unblocked` notice for each dependent that now waits on nothing. Refusing a
+  claim on a waiting row is `BOARD_DEPENDENCY_GATE`, off by default; `force`
+  on the claim overrides it. A target outside the live namespaces or that
+  names no memory is a reference, not a prerequisite.
 - **Server-held membership.** A turn-based agent (Claude, a subagent, a shell) can't
   hold a SLIM socket between turns, so the backend holds membership: `await`
   long-polls off a durable transcript cursor and refreshes a presence lease;
