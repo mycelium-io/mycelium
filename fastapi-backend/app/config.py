@@ -185,6 +185,14 @@ class Settings(BaseSettings):
     # Per-turn wall-clock bound (seconds) on the hello engine's one-shot pi call.
     HELLO_PI_TIMEOUT_S: float = 60.0
 
+    # Persona engine (kind ``persona``) — answers in character, from the
+    # persona written to its ``agents/<handle>/notes`` memory, on a Pi session
+    # kept per handle so it remembers across turns. Dormant like the others.
+    # Reuses the shared LLM_* + ALIGNER_PI_* runtime settings; only its handle
+    # default and per-turn timeout live here.
+    PERSONA_HANDLE: str = "persona"
+    PERSONA_PI_TIMEOUT_S: float = 120.0
+
     # Conductor engine (kind ``conductor``) — runs a protocol's steps over a
     # thread in code, holding the floor for whoever each step addresses. No
     # model of its own, so no Pi settings: only its handle default, how long

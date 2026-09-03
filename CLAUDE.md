@@ -203,6 +203,18 @@ is no litellm dependency.
   transcript, so it wakes nobody and `await` needs no change. The room itself
   (`live`) never holds a floor. `app/services/turns.py` is the one-agent turn
   the aligner brokers with, lifted out so a protocol step asks the same way.
+- **A persona is a member played by a model, in character.** Engine kind
+  `persona` (`app/services/persona_engine.py`): the `agents/<handle>/notes`
+  memory is its system prompt, its Pi session is kept per (room, handle) so it
+  remembers, and it answers on two seams — a text mention (the summon hook)
+  and an **addressed turn** (`persister.on_addressed`, fired once per L9
+  recipient of an exchange that mentioned nobody in its text, which is how the
+  aligner and the conductor address one member). Only the persona is wired to
+  the addressed seam; the other engines act on mentions alone. A stance marker
+  in its answer is lifted onto the payload like `/reply` does, and every `@` in
+  what it says is neutralized, so personas cannot summon anything or each
+  other. Not a roster member: the aligner negotiates with one only when the
+  summon names it.
 - **The conductor runs a protocol inside a task, in code.** A fourth engine
   kind (`app/services/conductor.py`) with no model of its own: summoned as
   `board coordinate <row> conductor "gated @a @b: …"`, it walks a
