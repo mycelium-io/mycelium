@@ -628,6 +628,37 @@ class TestReplyTargeting:
         assert [e for e, _c, _lw in replying.persister.ingested if e.payload.type == "reply"] == []
         assert replying.persister.pings == []
 
+    @pytest.mark.asyncio
+    async def test_a_reply_the_roster_refuses_reaches_nobody(self, client, replying):
+        """The whole write gate in one property: a reply that may not land in a
+        thread is refused *before* it is recorded, so it wakes no one — the
+        transcript is the only delivery path, and a refused write never enters it.
+        Today the one roster a thread enforces is a frozen negotiation's; whatever
+        else comes to hold a thread's floor has to keep this exact shape."""
+        thread = await _unit_thread(ROOM, "pick a token store")
+        replying.lifecycle.open(thread, {"aligner", "sec"}, negotiation=True)
+        self._woke(l9.live_episode_urn(ROOM))
+
+        resp = await self._reply(client, episode=thread)
+        assert resp.status_code == 403
+        assert "api" in resp.json()["detail"]
+        assert [e for e, _c, _lw in replying.persister.ingested if e.payload.type == "reply"] == []
+        assert replying.persister.pings == []
+        # Nothing went out on the wire either, so no SLIM-connected member saw it.
+        sent = [c.args[0] for c in replying.channel.send.call_args_list]
+        assert [e for e in sent if e.payload.type == "reply"] == []
+
+    @pytest.mark.asyncio
+    async def test_a_member_of_the_roster_replies_as_before(self, client, replying):
+        """The gate is a roster, not a lock: the same frozen thread takes a reply
+        from a handle that is at the table."""
+        thread = await _unit_thread(ROOM, "pick a token store")
+        replying.lifecycle.open(thread, {"aligner", "api"}, negotiation=True)
+        self._woke(thread)
+
+        assert (await self._reply(client)).status_code == 200
+        assert self._replied(replying).header.message.episode == thread
+
 
 class TestWriteRoutes:
     """The two write surfaces take a thread target, and refuse the same way."""
