@@ -44,6 +44,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from app.services import l9
+from app.services.agent_registry import norm_handle
 from app.services.filesystem import (
     EPISODE_META,
     get_room_dir,
@@ -108,7 +109,7 @@ _REWRITTEN_META = frozenset({"key", "created_by", "updated_by", "version", "tags
 
 def _norm(handle: str) -> str:
     """A handle as it compares: the roster and the caller may spell it differently."""
-    return handle.strip().lstrip("@").lower()
+    return norm_handle(handle) or ""
 
 
 def slugify(title: str) -> str:

@@ -19,6 +19,7 @@ from typing import Any
 
 import yaml
 
+from app.services.agent_registry import norm_handle as _norm
 from app.services.filesystem import (
     get_room_dir,
     get_users_dir,
@@ -35,13 +36,6 @@ logger = logging.getLogger(__name__)
 #: Manifest adapter marking a first-party cognition engine (aligner, synthesizer).
 #: Engines speak only through their own runtime, never an external participation call.
 ENGINE_ADAPTER = "engine"
-
-
-def _norm(handle: str | None) -> str | None:
-    if not handle:
-        return None
-    cleaned = handle.strip().lstrip("@").lower()
-    return cleaned or None
 
 
 def _read_agent_manifest(room: str, handle: str) -> dict[str, Any] | None:

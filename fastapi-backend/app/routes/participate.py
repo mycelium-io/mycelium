@@ -40,6 +40,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.services import activity, actor, l9, principals, room_channels, tasks
+from app.services.agent_registry import norm_handle
 from app.services.filesystem import room_exists
 from app.services.l9_models import Kind
 from app.services.l9_slim import serialize_content, serialize_envelope
@@ -83,7 +84,7 @@ _STANCE_TO_ACTION = {
 
 
 def _norm(handle: str) -> str:
-    return handle.strip().lstrip("@").lower()
+    return norm_handle(handle) or ""
 
 
 def _parse_marker(text: str) -> tuple[dict[str, Any], str]:

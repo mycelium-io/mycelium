@@ -52,6 +52,7 @@ from typing import TYPE_CHECKING, Any
 
 from app.config import settings
 from app.services import activity, l9, l9_episode
+from app.services.agent_registry import norm_handle
 from app.services.room_channels import BACKEND_AGENT
 
 if TYPE_CHECKING:
@@ -113,7 +114,7 @@ def _registered_engine_kind(room: str, handle: str) -> str | None:
 
 
 def _norm(handle: str) -> str:
-    return handle.strip().lower()
+    return norm_handle(handle) or ""
 
 
 def _new_episode_id() -> str:

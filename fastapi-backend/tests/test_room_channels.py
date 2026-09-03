@@ -11,6 +11,7 @@ logic. The live-node slices stay in ``test_slim_roundtrip.py`` (guarded on a nod
 
 from __future__ import annotations
 
+import asyncio
 from typing import cast
 
 import pytest
@@ -319,6 +320,71 @@ async def test_a_real_slim_join_still_aborts_a_frozen_negotiation(
 
     await manager.invite("room-a", "agent-slim")  # a real join mid-negotiation
     assert not managed.lifecycle.active
+
+
+async def _settle(manager: room_channels.RoomChannelManager) -> None:
+    """Let the fire-and-forget roster check a lease join schedules run to completion."""
+    if manager._tasks:
+        await asyncio.gather(*manager._tasks)
+
+
+@pytest.mark.asyncio
+async def test_a_lease_only_join_mid_negotiation_aborts_it(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    """The roster is frozen on the SLIM-plus-lease union, so a change on the lease
+    half is a change too: a brand-new headless ``await`` caller appearing
+    mid-negotiation aborts it, exactly as a SLIM join does (#932)."""
+    managed = await manager.provision("room-a")
+    assert managed is not None
+    manager.refresh_lease("room-a", "agent-http")
+    assert manager.open_episode("room-a", "urn:ioc:mycelium:episode:room-a:e1") is True
+    assert managed.lifecycle.active
+
+    manager.refresh_lease("room-a", "agent-new")  # a lease-only join mid-negotiation
+    await _settle(manager)
+
+    assert not managed.lifecycle.active
+
+
+@pytest.mark.asyncio
+async def test_a_frozen_participant_refreshing_its_lease_is_not_a_join(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    """Every ``await`` poll refreshes the lease; only the not-present → present
+    edge is a join. A participant holding its lease through the negotiation must
+    not abort it."""
+    managed = await manager.provision("room-a")
+    assert managed is not None
+    manager.refresh_lease("room-a", "agent-http")
+    assert manager.open_episode("room-a", "urn:ioc:mycelium:episode:room-a:e1") is True
+
+    manager.refresh_lease("room-a", "agent-http")
+    manager.refresh_lease("room-a", "agent-http")
+    await _settle(manager)
+
+    assert managed.lifecycle.active
+    assert not manager._tasks  # nothing was even scheduled
+
+
+@pytest.mark.asyncio
+async def test_a_lease_only_join_leaves_a_task_thread_running(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    """A task's thread is a container, not a negotiation: someone arriving must
+    not end it, from the lease side any more than from the SLIM side."""
+    managed = await manager.provision("room-a")
+    assert managed is not None
+    manager.refresh_lease("room-a", "agent-http")
+    assert (
+        manager.open_episode("room-a", "urn:ioc:mycelium:episode:room-a:t1", negotiation=False)
+        is True
+    )
+
+    manager.refresh_lease("room-a", "agent-new")
+    await _settle(manager)
+
+    assert managed.lifecycle.active
 
 
 @pytest.mark.asyncio
