@@ -101,7 +101,8 @@ def test_ui_container_is_the_frontend_service() -> None:
 
 
 def test_collector_is_the_only_profile_gated_service() -> None:
-    # `mycelium up --metrics` enables exactly one profile; a second gated service
-    # would silently never start.
+    # `mycelium up --metrics` and `--grafana` each enable exactly one profile.
+    # Any additional gated services would silently never start without a
+    # corresponding CLI flag.
     gated = {name for name, spec in _services().items() if spec.get("profiles")}
-    assert gated == {"mycelium-collector"}
+    assert gated == {"mycelium-collector", "mycelium-grafana"}

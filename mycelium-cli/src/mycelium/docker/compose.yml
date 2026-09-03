@@ -162,3 +162,50 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+
+  # ── Grafana LGTM (profile: grafana) ────────────────────────────────────────
+  #
+  # Full OpenTelemetry backend in a single image: OTel Collector + Prometheus
+  # (metrics) + Tempo (traces) + Loki (logs/analytics events) + Grafana UI.
+  # Opt-in via `mycelium up --grafana`.
+  #
+  # Exposes the Mycelium performance dashboard and the product analytics event
+  # stream. Use this instead of --metrics when you want a browser-accessible
+  # view of what the telemetry opt-in would look like in production.
+  #
+  # Port mapping:
+  #   MYCELIUM_GRAFANA_PORT (default 3001) → Grafana UI  (admin / admin)
+  #   MYCELIUM_GRAFANA_LOKI_PORT (default 3100) → Loki push endpoint
+  #   4317 → OTLP gRPC
+  #   4318 → OTLP HTTP  ← same port as mycelium-collector; use one or the other
+  #
+  # The container uses the alias mycelium-collector on the Docker network so
+  # the backend's default TELEMETRY_OTLP_ENDPOINT (http://mycelium-collector:4318)
+  # routes here without any config change. Do not run --metrics and --grafana
+  # simultaneously — they both bind port 4318.
+
+  mycelium-grafana:
+    image: grafana/otel-lgtm:latest
+    container_name: mycelium-grafana
+    restart: unless-stopped
+    profiles: [grafana]
+    networks:
+      default:
+        # Alias lets the backend reach this container at http://mycelium-collector:4318
+        # without changing TELEMETRY_OTLP_ENDPOINT from its default value.
+        aliases:
+          - mycelium-collector
+    depends_on:
+      mycelium-backend:
+        condition: service_healthy
+    ports:
+      - "${MYCELIUM_GRAFANA_PORT:-3001}:3000"
+      - "${MYCELIUM_GRAFANA_LOKI_PORT:-3100}:3100"
+      - "4317:4317"
+      - "4318:4318"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
