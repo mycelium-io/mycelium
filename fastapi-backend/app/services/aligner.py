@@ -321,7 +321,7 @@ class AlignerEngine:
                         release=_read_release(),
                         adapter_class="",  # aligner is adapter-agnostic
                         outcome=_outcome,
-                        first=_count == 1,
+                        session_count=_count,
                     )
                     _emit(_ev)
                 except Exception:

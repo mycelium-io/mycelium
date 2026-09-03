@@ -47,15 +47,14 @@ All events share a common envelope:
     Fired once at the end of the first successful interactive install.
     Fields: release, platform (os.uname sysname, no hostname).
 
-``mycelium.session.first``
-    Fired when the first coordinated session (aligner episode with a final
-    commit) completes on this install.  The "first" flag is derived locally:
-    the CLI sets it once when install_id has no prior session recorded.
-    Fields: release, adapter_class, outcome.
-
-``mycelium.session.repeat``
-    Fired for every subsequent coordinated session after the first.
-    Fields: release, adapter_class, outcome.
+``mycelium.session``
+    Fired when a coordinated session (aligner episode with a terminal outcome
+    of ``converged`` or ``rejected``) completes.
+    Fields: release, adapter_class, outcome, session_count.
+    ``session_count`` is the cumulative number of sessions on this
+    installation — 1 means first session, 2+ means repeat. This lets callers
+    compute time-to-first (count=1), repeat rate (count>1), and retention
+    curves without separate event types per retention bucket.
 
 Destination (go/no-go: #937)
 -----------------------------
@@ -127,8 +126,7 @@ def increment_session_count() -> int:
 
 EventName = Literal[
     "mycelium.install",
-    "mycelium.session.first",
-    "mycelium.session.repeat",
+    "mycelium.session",
 ]
 
 # Fields that are NEVER allowed in any analytics event.
@@ -205,15 +203,26 @@ def session_event(
     release: str,
     adapter_class: str,
     outcome: str,
-    first: bool,
+    session_count: int,
 ) -> AnalyticsEvent:
-    """``mycelium.session.first`` or ``mycelium.session.repeat``."""
-    event_name: EventName = "mycelium.session.first" if first else "mycelium.session.repeat"
+    """``mycelium.session`` — fired when an aligner run reaches a terminal outcome.
+
+    ``session_count`` is the cumulative number of coordinated sessions on this
+    installation (1 = first, 2+ = repeat). Keeping it as a field rather than
+    splitting into ``session.first`` / ``session.repeat`` event types lets
+    callers compute time-to-first (count=1), repeat rate (count>1), and any
+    deeper retention curve from the same event stream without a separate event
+    name per retention bucket.
+    """
     return AnalyticsEvent(
-        event=event_name,
+        event="mycelium.session",
         install_id=install_id,
         release=release,
-        extra={"adapter_class": adapter_class, "outcome": outcome},
+        extra={
+            "adapter_class": adapter_class,
+            "outcome": outcome,
+            "session_count": str(session_count),
+        },
     )
 
 
