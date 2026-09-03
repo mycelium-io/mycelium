@@ -45,6 +45,37 @@ person answers a step the way they answer anything in a thread, with
 agent's reply carried. That is how a human-in-the-loop step works: the
 conductor gives the person the floor and waits.
 
+## Watching a run
+
+A run is meant to be read from the outside, in the thread it runs in. The
+conductor opens by saying who plays what and the graph it is about to walk:
+
+```
+Running gated with api as proposer, sec as guardian.
+
+**gated**: A proposer proposes, a guardian approves or blocks; a block sends it back.
+roles: proposer, guardian (bound in that order)
+- propose: asks proposer, then review
+- review: asks guardian, then by stance (accept: approved, reject: propose, default: propose)
+- approved: ends resolved
+up to 6 steps
+```
+
+Every turn it puts to a member starts with a line saying which step of
+which protocol it is (`gated · review · turn 2 of 6 · sec`), so a block
+reads as the guardian's stance at the review step, not as the conductor
+blocking anyone. When a step branches, the conductor says which way it went
+(`review: sec blocked, on to propose`). A plain edge says nothing.
+
+The first time a room runs a built-in protocol, the conductor writes it to
+the room as `protocols/<name>`, so the graph is a memory a person can open,
+read and edit; the room's copy is what runs next. Ask the conductor what it
+can run with `mycelium engine invoke conductor "list"`.
+
+The members named in the summon are bound to roles, not asked a question:
+a persona mentioned there waits for its turn rather than answering the
+summon, and a resident agent that replies before its turn is refused.
+
 ## Whose turn it is
 
 While a run is open, the thread has a **floor**. The conductor holds it, and

@@ -454,7 +454,8 @@ async def test_a_rooms_own_protocol_runs_under_its_name():
     )
 
     assert outcome == "resolved"
-    assert channel.ticks() == [("ask", "api", "look at #12")]
+    assert [(s, to) for s, to, _p in channel.ticks()] == [("ask", "api")]
+    assert channel.ticks()[0][2].endswith("\n\nlook at #12")
     # Fire-and-forget gives nobody the floor and waits on nothing.
     assert [sorted(f.speakers) for f in manager.floor_log] == [[], []]
 
@@ -532,3 +533,121 @@ async def test_a_re_summon_into_a_running_thread_is_ignored():
     await asyncio.sleep(0.5)
 
     assert len([e for e, _x in channel.sent if e.header.kind == Kind.commit]) == 1
+
+
+# ── legible from the outside ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_run_opens_by_saying_who_plays_what_and_the_graph():
+    engine, _manager, channel = _engine(
+        {"api": [("do the thing", None)], "sec": [("approved", "accept")]}
+    )
+
+    await engine.run(ROOM, episode=THREAD, directive="gated: rotate", named=["api", "sec"])
+
+    opening = channel.said()[0]
+    assert opening.startswith("Running gated with api as proposer, sec as guardian.")
+    assert "propose: asks proposer, then review" in opening
+    assert "review: asks guardian, then by stance (accept: approved, reject: propose" in opening
+    assert "approved: ends resolved" in opening
+    assert "up to 6 steps" in opening
+
+
+@pytest.mark.asyncio
+async def test_every_turn_says_which_step_of_which_protocol_it_is():
+    engine, _manager, channel = _engine(
+        {"api": [("v1", None), ("v2", None)], "sec": [("no", "reject"), ("yes", "accept")]}
+    )
+
+    await engine.run(ROOM, episode=THREAD, directive="gated: go", named=["api", "sec"])
+
+    heads = [p.split("\n", 1)[0] for _s, _to, p in channel.ticks()]
+    assert heads == [
+        "gated · propose · turn 1 of 6 · api",
+        "gated · review · turn 2 of 6 · sec",
+        "gated · propose · turn 3 of 6 · api",
+        "gated · review · turn 4 of 6 · sec",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_branch_taken_is_said_in_the_thread_and_a_plain_edge_is_not():
+    engine, _manager, channel = _engine(
+        {"api": [("v1", None), ("v2", None)], "sec": [("no", "reject"), ("yes", "accept")]}
+    )
+
+    await engine.run(ROOM, episode=THREAD, directive="gated: go", named=["api", "sec"])
+
+    lines = [t for t in channel.said() if t.startswith("review:")]
+    assert lines == ["review: sec blocked, on to propose", "review: sec accepted, on to approved"]
+    assert not any(t.startswith("propose:") for t in channel.said())
+
+
+@pytest.mark.asyncio
+async def test_a_built_in_the_room_ran_becomes_the_rooms_own_memory(monkeypatch):
+    monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
+    engine, _manager, _channel = _engine(
+        {"api": [("do the thing", None)], "sec": [("approved", "accept")]}
+    )
+    assert read_memory_file(get_room_dir(ROOM), "protocols/gated") is None
+
+    await engine.run(ROOM, episode=THREAD, directive="gated: go", named=["api", "sec"])
+
+    found = read_memory_file(get_room_dir(ROOM), "protocols/gated")
+    assert found is not None
+    written = protocols.parse_protocol("gated", found[1])
+    assert written.roles == ["proposer", "guardian"]
+    assert [s.id for s in written.steps] == ["propose", "review", "approved"]
+    # The room's copy is what runs next, so editing it reshapes the protocol.
+    assert protocols.room_protocol_names(ROOM) == ["gated"]
+
+
+@pytest.mark.asyncio
+async def test_list_says_what_it_can_run():
+    engine, manager, channel = _engine({})
+
+    outcome = await engine.run(ROOM, episode=THREAD, summoned_in=LIVE, directive="list")
+
+    assert outcome is None
+    assert manager.floor_log == []
+    said = channel.said()[0]
+    for name in protocols.builtin_names():
+        assert f"**{name}**" in said
+    assert "(built in)" in said
+    assert channel.sent[0][0].header.message.episode == LIVE
+
+
+@pytest.mark.asyncio
+async def test_the_floor_is_held_the_instant_the_summon_lands():
+    """Before anything else on the loop runs — so a member the summon woke,
+    or a persona mentioned as a role, cannot slip a reply in first."""
+    _register("conductor", "conductor")
+    engine, manager, channel = _engine(
+        {"api": [("do the thing", None)], "sec": [("approved", "accept")]}
+    )
+    env, summons, text = _summon("@conductor gated @api @sec: rotate the key", episode=THREAD)
+
+    engine.handle_summon(ROOM, "conductor", env, summons, text)
+
+    held = manager.floor(ROOM, THREAD)
+    assert held is not None
+    assert held.holder == "conductor"
+    assert not held.admits("api") and not held.admits("sec")
+    await asyncio.sleep(0.1)
+    assert manager.floor(ROOM, THREAD) is None, "released once the run ends"
+    assert channel.commit().header.subkind == "resolved"
+
+
+@pytest.mark.asyncio
+async def test_a_summon_that_cannot_start_lets_the_floor_go():
+    _register("conductor", "conductor")
+    engine, manager, channel = _engine({})
+    env, summons, text = _summon("@conductor waltz @api @sec: go", episode=THREAD)
+
+    engine.handle_summon(ROOM, "conductor", env, summons, text)
+    assert manager.floor(ROOM, THREAD) is not None
+    await asyncio.sleep(0.05)
+
+    assert manager.floor(ROOM, THREAD) is None
+    assert "Built in:" in channel.said()[0]

@@ -712,6 +712,10 @@ export interface RoomFloor {
   /** The thread's short id, as the board prints it. */
   thread: string;
   episode: string;
+  /** The task the thread belongs to, when a row carries it; null for a thread
+   *  no row does. A badge names the task, and falls back to the thread id. */
+  key: string | null;
+  title: string | null;
   holder: string;
   speakers: string[];
 }

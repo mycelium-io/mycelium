@@ -143,3 +143,71 @@ def test_a_spec_that_does_not_parse_is_absent_not_half_read():
         get_room_dir(ROOM), "protocols/loose", yaml.safe_dump({"steps": []}), created_by="julia"
     )
     assert protocols.load_protocol(ROOM, "loose") is None
+
+
+def test_describe_reads_as_a_person_would():
+    gated = protocols.builtin("gated")
+    assert gated is not None
+    text = protocols.describe(gated)
+    assert text.splitlines()[0].startswith("**gated**: A proposer proposes")
+    assert "roles: proposer, guardian (bound in that order)" in text
+    assert "- propose: asks proposer, then review" in text
+    assert (
+        "- review: asks guardian, then by stance (accept: approved, reject: propose, default: propose)"
+        in text
+    )
+    assert "- approved: ends resolved" in text
+    assert text.splitlines()[-1] == "up to 6 steps"
+
+
+def test_describe_says_rounds_and_tells():
+    spec = protocols.Protocol.model_validate(
+        {
+            "name": "x",
+            "steps": [
+                {"id": "r", "to": "each", "rounds": 2, "next": "n"},
+                {"id": "n", "to": "all", "wait": "none", "next": "d"},
+                {"id": "d", "end": "resolved"},
+            ],
+        }
+    )
+    text = protocols.describe(spec)
+    assert "- r: asks each, 2 rounds, then n" in text
+    assert "- n: tells all, then d" in text
+
+
+def test_edge_line_names_the_branch_taken_and_nothing_for_a_plain_edge():
+    gated = protocols.builtin("gated")
+    assert gated is not None
+    review = gated.step("review")
+    assert protocols.edge_line(review, "reject", "sec") == "review: sec blocked, on to propose"
+    assert protocols.edge_line(review, "accept", "sec") == "review: sec accepted, on to approved"
+    assert (
+        protocols.edge_line(review, "silent", "sec") == "review: sec did not answer, on to propose"
+    )
+    assert protocols.edge_line(review, None, "sec") == "review: sec stated no stance, on to propose"
+    assert protocols.edge_line(gated.step("propose"), None, "api") is None
+
+
+def test_spec_of_round_trips_through_the_memory_body():
+    for name in protocols.builtin_names():
+        spec = protocols.builtin(name)
+        assert spec is not None
+        body = yaml.safe_dump(protocols.spec_of(spec), sort_keys=False)
+        again = protocols.parse_protocol(name, body)
+        assert again == spec
+
+
+@pytest.mark.asyncio
+async def test_materialize_writes_a_built_in_once(monkeypatch):
+    monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
+    get_room_dir(ROOM)
+    gated = protocols.builtin("gated")
+    assert gated is not None
+
+    assert await protocols.materialize(ROOM, gated, created_by="conductor") is True
+    assert protocols.room_protocol_names(ROOM) == ["gated"]
+    found = protocols.load_protocol(ROOM, "gated")
+    assert found == gated
+    # Already the room's: left alone, so an edit survives the next run.
+    assert await protocols.materialize(ROOM, gated, created_by="conductor") is False

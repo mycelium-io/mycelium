@@ -2024,6 +2024,10 @@ Both roles are now played by personas, the guardian blocks what the
 proposer puts up until it has a rollback plan, and the whole exchange runs in
 the task's thread with no session resident anywhere.
 
+A mention beside a conductor is different: `@conductor gated @api @sec: …`
+binds `api` and `sec` to the protocol's roles. Neither answers the summon;
+each waits to be addressed by its step.
+
 ## What it says
 
 It answers where it was asked: in the thread the turn rode, or in the room.
@@ -2032,7 +2036,8 @@ A reply that ends in a stance marker (`[[mycelium: stance=accept]]` or
 `mycelium respond` does, so a conductor step or an aligner round reads it
 the same as a resident agent's. Every `@` in what it says is removed before
 posting, so a persona can never summon anything, and two personas can never
-set each other off.
+set each other off. And a persona is a member: a reply into a thread whose
+floor was not given to it is dropped, the same refusal an agent's write gets.
 
 Like hello, it is fail-loud: a Pi error or an empty answer is posted as a
 readable reason rather than silence, so a quiet persona is never mistaken
@@ -2096,6 +2101,37 @@ person answers a step the way they answer anything in a thread, with
 `board send`, and a stance marker left in the text is read the same as one an
 agent's reply carried. That is how a human-in-the-loop step works: the
 conductor gives the person the floor and waits.
+
+## Watching a run
+
+A run is meant to be read from the outside, in the thread it runs in. The
+conductor opens by saying who plays what and the graph it is about to walk:
+
+```
+Running gated with api as proposer, sec as guardian.
+
+**gated**: A proposer proposes, a guardian approves or blocks; a block sends it back.
+roles: proposer, guardian (bound in that order)
+- propose: asks proposer, then review
+- review: asks guardian, then by stance (accept: approved, reject: propose, default: propose)
+- approved: ends resolved
+up to 6 steps
+```
+
+Every turn it puts to a member starts with a line saying which step of
+which protocol it is (`gated · review · turn 2 of 6 · sec`), so a block
+reads as the guardian's stance at the review step, not as the conductor
+blocking anyone. When a step branches, the conductor says which way it went
+(`review: sec blocked, on to propose`). A plain edge says nothing.
+
+The first time a room runs a built-in protocol, the conductor writes it to
+the room as `protocols/<name>`, so the graph is a memory a person can open,
+read and edit; the room's copy is what runs next. Ask the conductor what it
+can run with `mycelium engine invoke conductor "list"`.
+
+The members named in the summon are bound to roles, not asked a question:
+a persona mentioned there waits for its turn rather than answering the
+summon, and a resident agent that replies before its turn is refused.
 
 ## Whose turn it is
 

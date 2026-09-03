@@ -207,6 +207,29 @@ class TestTheRoomHears:
         assert notices[1]["speakers"] == "api"
         assert notices[2]["released"] == "1"
 
+    @pytest.mark.asyncio
+    async def test_a_notice_names_the_task_the_thread_belongs_to(self, notices, monkeypatch):
+        """A task and its thread are one object, so the timeline says the
+        task's name; only a thread no row carries is named by its id."""
+        from app.services import tasks
+        from app.services.filesystem import get_room_dir
+
+        monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
+        get_room_dir(ROOM)
+        manager, _managed = _manager()
+        task = await tasks.create_task(ROOM, "Rotate the signing key", created_by="julia")
+        assert task.episode
+
+        manager.hold_floor(ROOM, task.episode, holder="conductor")
+        manager.hold_floor(ROOM, THREAD, holder="conductor")
+        await asyncio.sleep(0)
+
+        by_episode = {n["episode"]: n for n in notices}
+        assert by_episode[task.episode]["key"] == task.key
+        assert by_episode[task.episode]["title"] == "Rotate the signing key"
+        assert by_episode[THREAD]["key"] == "t3"
+        assert by_episode[THREAD]["title"] is None
+
     def test_a_floor_held_with_no_loop_running_raises_nothing_and_still_holds(self, notices):
         manager, _managed = _manager()
         assert manager.hold_floor(ROOM, THREAD, holder="conductor", speakers=["api"]) is not None
@@ -229,10 +252,19 @@ class TestTheRoomHears:
             {
                 "thread": "t3",
                 "episode": THREAD,
+                "key": None,
+                "title": None,
                 "holder": "conductor",
                 "speakers": ["api", "julia"],
             },
-            {"thread": "t9", "episode": OTHER, "holder": "reviewer", "speakers": ["sec"]},
+            {
+                "thread": "t9",
+                "episode": OTHER,
+                "key": None,
+                "title": None,
+                "holder": "reviewer",
+                "speakers": ["sec"],
+            },
         ]
         manager.release_floor(ROOM, THREAD)
         manager.release_floor(ROOM, OTHER)

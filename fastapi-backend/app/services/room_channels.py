@@ -1314,12 +1314,27 @@ class RoomChannelManager:
             self._notice_in_background(
                 room,
                 subkind="floor",
-                key=episode.rsplit(":", 1)[-1],
-                episode=episode,
+                **self._floor_names(room, episode),
                 by=floor.holder,
                 speakers=",".join(sorted(floor.speakers)),
             )
         return floor
+
+    @staticmethod
+    def _floor_names(room: str, episode: str) -> dict[str, str | None]:
+        """How a floor notice names its thread: by the task it belongs to.
+
+        A task and its thread are one object, so a line about the thread says
+        the task's key and title; only a thread no row carries falls back to
+        the id. The lookup is the store's, done lazily so this module does not
+        import the task model at load.
+        """
+        from app.services.tasks import row_of_episode
+
+        row = row_of_episode(room, episode)
+        if row is None:
+            return {"key": episode.rsplit(":", 1)[-1], "episode": episode, "title": None}
+        return {"key": row[0], "episode": episode, "title": row[1]}
 
     def release_floor(self, room: str, episode: str) -> bool:
         """Open ``episode`` back up; True when a floor was actually held."""
@@ -1332,8 +1347,7 @@ class RoomChannelManager:
         self._notice_in_background(
             room,
             subkind="floor",
-            key=episode.rsplit(":", 1)[-1],
-            episode=episode,
+            **self._floor_names(room, episode),
             by=floor.holder,
             released="1",
         )

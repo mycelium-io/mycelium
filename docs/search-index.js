@@ -779,6 +779,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Adapters"
   },
   {
+    "u": "adapters.html#conductor-watching-a-run",
+    "t": "Watching a run",
+    "s": "Engines › Conductor",
+    "x": "A run is meant to be read from the outside, in the thread it runs in. The conductor opens by saying who plays what and the graph it is about to walk: Running gated with api as proposer, sec as guardian. **gated**: A proposer proposes, a guardian approves or blocks; a block sends it back. roles: proposer, guardian (bound in that order) - propose: asks proposer, then review - review: asks guardian, then by stance (acce",
+    "p": "Adapters"
+  },
+  {
     "u": "adapters.html#conductor-whose-turn-it-is",
     "t": "Whose turn it is",
     "s": "Engines › Conductor",

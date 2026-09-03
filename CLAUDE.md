@@ -218,8 +218,14 @@ is no litellm dependency.
   the addressed seam; the other engines act on mentions alone. A stance marker
   in its answer is lifted onto the payload like `/reply` does, and every `@` in
   what it says is neutralized, so personas cannot summon anything or each
-  other. Not a roster member: the aligner negotiates with one only when the
+  other, and it never posts into a thread whose floor was not given to it.
+  Not a roster member: the aligner negotiates with one only when the
   summon names it.
+- **A floor notice and the members' floors name the task, not the thread.**
+  `tasks.row_of_episode` is the reverse lookup from a thread to the row that
+  carries it; the `floor` notice and `/sessions/members` `floors` carry that
+  row's `key` and `title`, and the GUI shows the title, falling back to the
+  thread id only for a thread no row carries.
 - **The conductor runs a protocol inside a task, in code.** A fourth engine
   kind (`app/services/conductor.py`) with no model of its own: summoned as
   `board coordinate <row> conductor "gated @a @b: …"`, it walks a
@@ -231,6 +237,14 @@ is no litellm dependency.
   a person's `board send` counts). It opens no negotiation and never commits
   `converged`, so nothing it does compiles into rows. A model in the nodes,
   code on the edges: the judgment is the members', the routing is the hub's.
+  The run is legible in its thread: an opening line names the cast and the
+  graph (`protocols.describe`), every tick starts with `name · step · turn
+  n of cap · handle`, a branch taken is said (`protocols.edge_line`), and a
+  built-in the room ran is written to `protocols/<name>` so it can be opened
+  and edited. The floor is taken synchronously in `handle_summon`, before the
+  run task is scheduled: the members named beside the conductor are role
+  bindings, so a persona there does not answer the summon and a resident
+  agent that replies early is refused.
 - **The aligner mediates, inside a task.** Agents never talk to each other directly;
   all coordination flows through the aligner. It's a first-party engine registered
   as a room citizen (`mycelium engine create aligner --kind aligner`) and summoned

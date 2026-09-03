@@ -244,6 +244,104 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
 }
 
 
+def describe(protocol: Protocol) -> str:
+    """A protocol as a person reads it: its roles, then each step and its edges.
+
+    One line per step, in the protocol's own words (``propose asks proposer,
+    then review``), so a room can see the graph a run is walking without
+    opening the spec.
+    """
+    lines = [f"**{protocol.name}**: {protocol.description}".rstrip(": ")]
+    if protocol.roles:
+        lines.append(f"roles: {', '.join(protocol.roles)} (bound in that order)")
+    for step in protocol.steps:
+        if step.end is not None:
+            lines.append(f"- {step.id}: ends {step.end}")
+            continue
+        who = step.to or ""
+        turns = f", {step.rounds} rounds" if step.rounds > 1 else ""
+        asks = "tells" if step.wait == "none" else "asks"
+        if isinstance(step.next, str):
+            lines.append(f"- {step.id}: {asks} {who}{turns}, then {step.next}")
+        else:
+            edges = ", ".join(f"{k}: {v}" for k, v in (step.next or {}).items())
+            lines.append(f"- {step.id}: {asks} {who}{turns}, then by stance ({edges})")
+    lines.append(f"up to {protocol.max_steps} steps")
+    return "\n".join(lines)
+
+
+def edge_line(step: Step, stance: str | None, who: str) -> str | None:
+    """One line saying which way a branching step went, or ``None`` for a plain edge."""
+    if not isinstance(step.next, dict):
+        return None
+    target = step.edge(stance)
+    said = {
+        "accept": f"{who} accepted",
+        "reject": f"{who} blocked",
+        "silent": f"{who} did not answer",
+    }.get(stance or "", f"{who} stated no stance")
+    return f"{step.id}: {said}, on to {target}"
+
+
+def spec_of(protocol: Protocol) -> dict[str, Any]:
+    """The protocol as the YAML body of a ``protocols/<name>`` memory carries it."""
+    data = protocol.model_dump(mode="json", exclude_none=True)
+    data.pop("name", None)
+    for step in data.get("steps", []):
+        if step.get("wait") == "reply":
+            step.pop("wait", None)
+        if step.get("rounds") == 1:
+            step.pop("rounds", None)
+        if step.get("prompt") == "":
+            step.pop("prompt", None)
+    return data
+
+
+def room_protocol_names(room: str) -> list[str]:
+    """The names of the protocols a room has written under ``protocols/``."""
+    from app.services.filesystem import get_room_dir, list_memory_files, room_exists
+
+    if not room_exists(room):
+        return []
+    return sorted(
+        key.removeprefix(PROTOCOLS_PREFIX)
+        for key, _meta, _content in list_memory_files(get_room_dir(room), prefix=PROTOCOLS_PREFIX)
+    )
+
+
+async def materialize(room: str, protocol: Protocol, *, created_by: str) -> bool:
+    """Write a built-in as the room's own ``protocols/<name>`` memory, once.
+
+    A built-in the room has run is then a memory a person can open, read and
+    edit like any other, and the next run reads the room's copy. Nothing is
+    written when the room already has one. Returns whether it wrote.
+    """
+    from app.routes.memory import upsert_memories  # lazy — routes import services
+    from app.schemas import MemoryBatchCreate, MemoryCreate
+    from app.services.filesystem import get_room_dir, read_memory_file
+
+    key = f"{PROTOCOLS_PREFIX}{protocol.name}"
+    if read_memory_file(get_room_dir(room), key) is not None:
+        return False
+    body = yaml.safe_dump(spec_of(protocol), sort_keys=False, default_flow_style=False).strip()
+    await upsert_memories(
+        room,
+        MemoryBatchCreate(
+            items=[
+                MemoryCreate(
+                    key=key,
+                    value=body,
+                    created_by=created_by,
+                    embed=False,
+                    tags=["protocol"],
+                    meta={"description": protocol.description} if protocol.description else None,
+                )
+            ]
+        ),
+    )
+    return True
+
+
 def builtin(name: str) -> Protocol | None:
     spec = BUILTIN_PROTOCOLS.get(name)
     return Protocol.model_validate(spec) if spec else None

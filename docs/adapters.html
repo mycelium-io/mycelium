@@ -799,8 +799,9 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor \
   <span class="str">&quot;gated @api @sec: rotate the signing key without downtime&quot;</span></code></pre>
       <p>Both roles are now played by personas, the guardian blocks what the proposer puts up until it has a rollback plan, and the whole exchange runs in the task&#x27;s thread with no session resident anywhere.</p>
+      <p>A mention beside a conductor is different: <code>@conductor gated @api @sec: …</code> binds <code>api</code> and <code>sec</code> to the protocol&#x27;s roles. Neither answers the summon; each waits to be addressed by its step.</p>
       <h2 id="persona-what-it-says">What it says</h2>
-      <p>It answers where it was asked: in the thread the turn rode, or in the room. A reply that ends in a stance marker (<code>[[mycelium: stance=accept]]</code> or <code>reject</code>) has the stance lifted onto the message the way an agent&#x27;s <code>mycelium respond</code> does, so a conductor step or an aligner round reads it the same as a resident agent&#x27;s. Every <code>@</code> in what it says is removed before posting, so a persona can never summon anything, and two personas can never set each other off.</p>
+      <p>It answers where it was asked: in the thread the turn rode, or in the room. A reply that ends in a stance marker (<code>[[mycelium: stance=accept]]</code> or <code>reject</code>) has the stance lifted onto the message the way an agent&#x27;s <code>mycelium respond</code> does, so a conductor step or an aligner round reads it the same as a resident agent&#x27;s. Every <code>@</code> in what it says is removed before posting, so a persona can never summon anything, and two personas can never set each other off. And a persona is a member: a reply into a thread whose floor was not given to it is dropped, the same refusal an agent&#x27;s write gets.</p>
       <p>Like hello, it is fail-loud: a Pi error or an empty answer is posted as a readable reason rather than silence, so a quiet persona is never mistaken for one still thinking.</p>
       <h2 id="persona-honest-boundaries">Honest boundaries</h2>
       <p>A persona is an engine, not a member with a presence lease: it is not in the room&#x27;s roster, so the aligner only negotiates with it when the summon names it (<code>@aligner @api @sec</code>), and a bare <code>@aligner</code> over the whole room does not find it. Its memory is its Pi session file, which lives with the backend process and does not survive a rebuild of the container. And it holds no keys: like every engine, it speaks through the hub.</p>
@@ -850,6 +851,19 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
         </table>
       </div>
       <p>Any member can fill a role: a registered agent kept awake with <code>mycelium await --loop</code>, an engine such as <a href="#hello">hello</a>, or a person. A person answers a step the way they answer anything in a thread, with <code>board send</code>, and a stance marker left in the text is read the same as one an agent&#x27;s reply carried. That is how a human-in-the-loop step works: the conductor gives the person the floor and waits.</p>
+      <h2 id="conductor-watching-a-run">Watching a run</h2>
+      <p>A run is meant to be read from the outside, in the thread it runs in. The conductor opens by saying who plays what and the graph it is about to walk:</p>
+      <pre><code>Running gated with api as proposer, sec as guardian.
+
+**gated**: A proposer proposes, a guardian approves or blocks; a block sends it back.
+roles: proposer, guardian (bound in that order)
+- propose: asks proposer, then review
+- review: asks guardian, then by stance (accept: approved, reject: propose, default: propose)
+- approved: ends resolved
+up to 6 steps</code></pre>
+      <p>Every turn it puts to a member starts with a line saying which step of which protocol it is (<code>gated · review · turn 2 of 6 · sec</code>), so a block reads as the guardian&#x27;s stance at the review step, not as the conductor blocking anyone. When a step branches, the conductor says which way it went (<code>review: sec blocked, on to propose</code>). A plain edge says nothing.</p>
+      <p>The first time a room runs a built-in protocol, the conductor writes it to the room as <code>protocols/&lt;name&gt;</code>, so the graph is a memory a person can open, read and edit; the room&#x27;s copy is what runs next. Ask the conductor what it can run with <code>mycelium engine invoke conductor &quot;list&quot;</code>.</p>
+      <p>The members named in the summon are bound to roles, not asked a question: a persona mentioned there waits for its turn rather than answering the summon, and a resident agent that replies before its turn is refused.</p>
       <h2 id="conductor-whose-turn-it-is">Whose turn it is</h2>
       <p>While a run is open, the thread has a <strong>floor</strong>. The conductor holds it, and gives it to whoever the current step addresses: one member for a role step, everyone at once for a fan-out. A write from anyone else is refused with a <code>409</code> that says who holds the floor and who may speak, so an agent that tried early keeps awaiting rather than giving up. A refused write never reaches the transcript, which means it wakes nobody.</p>
       <p>The room can see whose turn it is. The members rail marks who has the floor and in which thread, and the room&#x27;s timeline gets one line each time the floor moves, so a person watching a run knows who everyone is waiting on.</p>

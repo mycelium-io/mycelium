@@ -31,13 +31,14 @@ from app.schemas import (
     ParticipantListResponse,
     ParticipantRead,
 )
-from app.services import actor, in_memory_store, l9, room_channels
+from app.services import actor, in_memory_store, l9, room_channels, tasks
 from app.services.filesystem import (
     ensure_room_structure,
     get_room_dir,
     read_room_meta,
     room_exists,
 )
+from app.services.floor import Floor
 
 logger = logging.getLogger(__name__)
 
@@ -216,14 +217,25 @@ async def list_members(room_name: str):
         # so a member the floor was given to shows it whether or not it is
         # present — a persona engine is never in ``members`` and still speaks.
         "floors": [
-            {
-                "thread": floor.episode.rsplit(":", 1)[-1],
-                "episode": floor.episode,
-                "holder": floor.holder,
-                "speakers": sorted(floor.speakers),
-            }
-            for floor in room_channels.manager.floors_of(room_name)
+            _floor_entry(room_name, floor) for floor in room_channels.manager.floors_of(room_name)
         ],
+    }
+
+
+def _floor_entry(room_name: str, floor: Floor) -> dict[str, object]:
+    """One held floor, named by the task its thread belongs to.
+
+    A badge says the task's name rather than the thread's id; ``key`` and
+    ``title`` are both ``None`` for a thread no row carries.
+    """
+    row = tasks.row_of_episode(room_name, floor.episode)
+    return {
+        "thread": floor.episode.rsplit(":", 1)[-1],
+        "episode": floor.episode,
+        "key": row[0] if row else None,
+        "title": row[1] if row else None,
+        "holder": floor.holder,
+        "speakers": sorted(floor.speakers),
     }
 
 

@@ -52,6 +52,9 @@ logger = logging.getLogger(__name__)
 #: The engine kind this class owns.
 ENGINE_KIND = "conductor"
 
+#: Summon words that ask for the catalogue rather than a run.
+LIST_DIRECTIVES = frozenset({"list", "protocols", "help"})
+
 #: Payloads that are never a member's answer to a step.
 _NOT_A_REPLY = frozenset(
     {"presence", "keepalive", "tick", l9.PING_PAYLOAD_TYPE, l9.NOTICE_PAYLOAD_TYPE}
@@ -213,6 +216,10 @@ class ConductorEngine:
             lambda m: "" if _norm(m.group(0)) == _norm(handle) else m.group(0), message_text
         )
         self._active.add(key)
+        # The floor is the run's from this instant, before anything else on the
+        # loop runs: a member the summon woke cannot slip a reply in ahead of the
+        # first step, and a persona mentioned as a role is not asked a question.
+        self._manager.hold_floor(room, episode, holder=handle)
         task = asyncio.create_task(
             self._run_and_release(room, handle, episode, summoned_in, directive, named, key)
         )
@@ -241,6 +248,8 @@ class ConductorEngine:
         except Exception:
             logger.exception("conductor @%s failed in %s", engine_handle, episode)
         finally:
+            # A run that never started still took the floor at the summon.
+            self._manager.release_floor(room, episode)
             self._active.discard(key)
 
     # -- the run --
@@ -270,6 +279,9 @@ class ConductorEngine:
         where = summoned_in or episode
 
         name, ask = split_directive(directive)
+        if name in LIST_DIRECTIVES:
+            await self._say(managed, where, me, self._catalogue(room))
+            return None
         protocol = protocols.load_protocol(room, name) if name else None
         if protocol is None:
             known = ", ".join(protocols.builtin_names())
@@ -323,14 +335,46 @@ class ConductorEngine:
         ep.messages.append(l9.envelope_to_dict(intent))
         logger.info("conductor @%s runs %s in %s over %s", me, protocol.name, episode, handles)
         # The floor is the run's from the first instant, so a member the summon
-        # woke cannot slip a reply in ahead of the first step.
+        # woke cannot slip a reply in ahead of the first step. (The summon seam
+        # already held it; a direct call takes it here.)
         self._manager.hold_floor(room, episode, holder=me)
         try:
+            # A built-in the room has run becomes the room's own memory, so a
+            # person can open the graph the conductor walked and reshape it.
+            if name not in protocols.room_protocol_names(room):
+                await protocols.materialize(room, protocol, created_by=me)
+            await self._say(managed, episode, me, self._opening(run))
             outcome, why = await self._walk(managed, run, ep, me)
         finally:
             self._manager.release_floor(room, episode)
         await self._close(managed, run, ep, me, outcome, why)
         return outcome
+
+    def _catalogue(self, room: str) -> str:
+        """Every protocol this room can run, each with its steps."""
+        blocks = []
+        own = set(protocols.room_protocol_names(room))
+        for name in sorted(own | set(protocols.builtin_names())):
+            spec = protocols.load_protocol(room, name)
+            if spec is None:
+                continue
+            origin = "this room's" if name in own else "built in"
+            blocks.append(f"{protocols.describe(spec)}\n({origin})")
+        return (
+            "Protocols I can run. Summon me with the name, the members in role order, "
+            "then the question: `gated api-handle sec-handle: rotate the key`.\n\n"
+            + "\n\n".join(blocks)
+        )
+
+    @staticmethod
+    def _opening(run: Run) -> str:
+        """The first line of a run: who plays what, and the graph about to be walked."""
+        cast = ", ".join(f"{h} as {role}" for role, h in run.bound.items())
+        others = [h for h in run.handles if h not in run.bound.values()]
+        if others:
+            cast = ", ".join(x for x in (cast, f"{', '.join(others)} as members") if x)
+        head = f"Running {run.protocol.name} with {cast or ', '.join(run.handles)}."
+        return f"{head}\n\n{protocols.describe(run.protocol)}"
 
     async def _walk(
         self, managed: ManagedRoomChannel, run: Run, ep: l9_episode.EpisodeState, me: str
@@ -345,8 +389,15 @@ class ConductorEngine:
             if run.steps_taken >= cap:
                 return "rejected", f"hit the step cap ({cap}) at `{step.id}`"
             run.steps_taken += 1
-            stances = await self._take(managed, run, ep, me, step)
-            step = protocol.step(step.edge(stance_of_step(stances)))
+            stances = await self._take(managed, run, ep, me, step, cap)
+            stance = stance_of_step(stances)
+            who = ", ".join(h for h, _s in stances) or (step.to or "")
+            line = protocols.edge_line(step, stance, who)
+            if line is not None:
+                # A branch taken is the one thing a reader cannot infer from the
+                # replies alone, so it is said in the thread.
+                await self._say(managed, run.episode, me, line)
+            step = protocol.step(step.edge(stance))
 
     async def _take(
         self,
@@ -355,24 +406,34 @@ class ConductorEngine:
         ep: l9_episode.EpisodeState,
         me: str,
         step: Step,
+        cap: int,
     ) -> list[tuple[str, str | None]]:
         """Put one step to its targets; return each target's stance."""
         room = managed.room
         targets = run.targets(step)
         stances: list[tuple[str, str | None]] = []
+
+        def render(handle: str, round_n: int) -> str:
+            # Every turn says which step of which protocol it is, so the thread
+            # reads as a run and not as a conversation that happened to occur.
+            head = f"{run.protocol.name} · {step.id} · turn {run.steps_taken} of {cap} · {handle}"
+            body = step.prompt.format_map(run.fields(round_n=round_n, rounds=step.rounds))
+            return f"{head}\n\n{body}"
+
         for round_n in range(1, step.rounds + 1):
             if step.wait == "none":
                 self._manager.hold_floor(room, run.episode, holder=me)
-                prompt = step.prompt.format_map(run.fields(round_n=round_n, rounds=step.rounds))
                 for handle in targets:
-                    await self._tell(managed, ep, me, run, step, handle, prompt)
+                    await self._tell(managed, ep, me, run, step, handle, render(handle, round_n))
                 return []
             if step.to in ("all", "workers"):
-                prompt = step.prompt.format_map(run.fields(round_n=round_n, rounds=step.rounds))
                 self._manager.hold_floor(room, run.episode, holder=me, speakers=targets)
                 stances = list(
                     await asyncio.gather(
-                        *(self._turn(managed, ep, me, run, step, h, prompt) for h in targets)
+                        *(
+                            self._turn(managed, ep, me, run, step, h, render(h, round_n))
+                            for h in targets
+                        )
                     )
                 )
                 continue
@@ -380,9 +441,10 @@ class ConductorEngine:
             # what the ones before it said.
             stances = []
             for handle in targets:
-                prompt = step.prompt.format_map(run.fields(round_n=round_n, rounds=step.rounds))
                 self._manager.hold_floor(room, run.episode, holder=me, speakers=[handle])
-                stances.append(await self._turn(managed, ep, me, run, step, handle, prompt))
+                stances.append(
+                    await self._turn(managed, ep, me, run, step, handle, render(handle, round_n))
+                )
         return stances
 
     async def _turn(

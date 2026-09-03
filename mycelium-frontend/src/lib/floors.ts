@@ -21,9 +21,16 @@ export function floorsByHandle(floors: RoomFloor[]): Map<string, RoomFloor> {
   return out;
 }
 
+/** What a floor's thread is called: the task it belongs to, else the thread id.
+ *  A task and its thread are one object, so the id shows only for a thread no
+ *  row carries. */
+export function floorThreadName(floor: RoomFloor): string {
+  return floor.title || floor.thread;
+}
+
 /** What the row says: the holder holds the floor, a speaker has it. */
 export function floorLabel(handle: string, floor: RoomFloor): string {
   const who = handle.toLowerCase();
   const verb = floor.speakers.some((h) => h.toLowerCase() === who) ? "has the floor" : "holds the floor";
-  return `${verb} · ${floor.thread}`;
+  return `${verb} · ${floorThreadName(floor)}`;
 }

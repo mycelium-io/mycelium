@@ -384,7 +384,7 @@ const atlasBoardRows: MockMemory[] = [
       "Point reads at the new store\n\n" +
       "Behind `catalog.reads.newstore`, default off. Don't flip until the copy is " +
       "reconciled and backfill signs off. Waiting on the copy (#502).",
-    meta: { kind: "action", status: "open", assignee: "@reads", priority: "high", issue: "#502" },
+    meta: { "depends-on": ["work/reconcile-review", "work/backfill-metrics"],  kind: "action", status: "open", assignee: "@reads", priority: "high", issue: "#502" },
     content_text: "Point reads at the new store, behind a flag. Waiting on the copy.",
     created_by: "aligner",
     updated_by: "aligner",
@@ -395,7 +395,7 @@ const atlasBoardRows: MockMemory[] = [
   {
     key: "work/decommission-old-store",
     value: "Decommission the old store after the soak",
-    meta: { kind: "action", status: "open", assignee: "@reads", issue: "#499" },
+    meta: { "depends-on": ["work/read-switch"],  kind: "action", status: "open", assignee: "@reads", issue: "#499" },
     content_text: "Decommission the old store once the soak is clean.",
     created_by: "aligner",
     updated_by: "aligner",
@@ -443,7 +443,7 @@ const atlasBoardRows: MockMemory[] = [
   {
     key: "work/reconcile-review",
     value: "Review the reconciliation script (PR #504)",
-    meta: {
+    meta: { "depends-on": ["work/backfill-catalog"], 
       status: "in_review",
       kind: "review",
       owner: "@reads",
@@ -463,7 +463,7 @@ const atlasBoardRows: MockMemory[] = [
   {
     key: "work/backfill-catalog",
     value: "Backfill the catalog into the new store",
-    meta: {
+    meta: { "depends-on": ["work/dual-write-setup"], 
       status: "in_progress",
       kind: "action",
       owner: "@backfill",
@@ -483,7 +483,7 @@ const atlasBoardRows: MockMemory[] = [
   {
     key: "work/backfill-metrics",
     value: "Watch backfill throughput during the run",
-    meta: {
+    meta: { "depends-on": ["work/dual-write-setup"], 
       status: "in_progress",
       kind: "action",
       owner: "@operator",
@@ -806,6 +806,15 @@ const atlas: RoomFixture = {
 // referrers yet (#599's graph and #611's rail integrity banner agree on this by
 // construction, since both read the same edge list).
 const ATLAS_LINK_EDGES: MemoryGraphEdge[] = [
+  // The migration's order of work: each row waits on the ones before it, so
+  // the board reads "after …" on the rows still blocked and the graph draws
+  // the pipeline dual-write → backfill → reconcile → read switch → decommission.
+  { source: "work/backfill-catalog", target: "work/dual-write-setup", kind: "relation", relation: "depends-on", resolved: true },
+  { source: "work/backfill-metrics", target: "work/dual-write-setup", kind: "relation", relation: "depends-on", resolved: true },
+  { source: "work/reconcile-review", target: "work/backfill-catalog", kind: "relation", relation: "depends-on", resolved: true },
+  { source: "work/read-switch", target: "work/reconcile-review", kind: "relation", relation: "depends-on", resolved: true },
+  { source: "work/read-switch", target: "work/backfill-metrics", kind: "relation", relation: "depends-on", resolved: true },
+  { source: "work/decommission-old-store", target: "work/read-switch", kind: "relation", relation: "depends-on", resolved: true },
   { source: "context/synthesis", target: "decisions/cutover", kind: "wikilink", resolved: true },
   { source: "context/synthesis", target: "status/sprint", kind: "wikilink", resolved: true },
   { source: "context/synthesis", target: "context/goal", kind: "transclusion", resolved: true },
