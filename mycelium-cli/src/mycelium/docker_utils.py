@@ -95,6 +95,8 @@ LOCAL_ONLY_FIELDS: dict[str, str] = {
 ENVIRONMENT_SUPPLIED_VARS: dict[str, str] = {
     "SLIM_IMAGE_TAG": "node image pin, overridable for a lockstep bindings bump",
     "MYCELIUM_SLIM_PORT": "published node port; the compose default is the norm",
+    "MYCELIUM_GRAFANA_PORT": "Grafana UI port for mycelium-grafana (--grafana profile); default 3001",
+    "MYCELIUM_GRAFANA_LOKI_PORT": "Loki push port for mycelium-grafana; default 3100",
     "MYCELIUM_OIDC_ISSUER": "browser OIDC login, exported per the Keycloak guide",
     "MYCELIUM_OIDC_INTERNAL_ISSUER": "browser OIDC login",
     "MYCELIUM_OIDC_CLIENT_ID": "browser OIDC login",

@@ -50,6 +50,7 @@ _MANAGED_CONTAINERS = [
     "mycelium-backend",
     "mycelium-frontend",
     "mycelium-collector",
+    "mycelium-grafana",
     "ioc-cfn-mgmt-plane-svc",
     "ioc-cfn-svc",
 ]
@@ -195,6 +196,103 @@ def _patch_env_build_mode(env_path: Path, mode: str) -> None:
     from mycelium.docker_utils import patch_build_mode
 
     patch_build_mode(env_path, mode)
+
+
+def _import_grafana_dashboard(grafana_port: str) -> None:
+    """Import the Mycelium performance dashboard into a running Grafana instance.
+
+    Polls until Grafana is ready, then POSTs the bundled dashboard JSON via the
+    Grafana HTTP API. Safe to call repeatedly — ``overwrite=true`` is set so a
+    re-run of ``mycelium up --grafana`` refreshes the dashboard rather than
+    creating a duplicate. Errors are logged as warnings and never raise so they
+    can't block the ``up`` flow.
+    """
+    import base64
+    import json
+    import time
+    import urllib.error
+    import urllib.request
+    from pathlib import Path as _P
+
+    grafana_url = f"http://localhost:{grafana_port}"
+    # Basic-auth header for the default admin/admin credentials.
+    creds = base64.b64encode(b"admin:admin").decode()
+    headers = {"Content-Type": "application/json", "Authorization": f"Basic {creds}"}
+
+    # Try to find the dashboard JSON:
+    #   1. Relative to this file (editable install / repo checkout)
+    #   2. Bundled with the package (installed wheel)
+    dashboard_json: dict | None = None
+    candidates = [
+        # repo: mycelium-cli/src/mycelium/commands/ → up 5 → docs/
+        _P(__file__).resolve().parent.parent.parent.parent.parent.parent
+        / "docs"
+        / "grafana-mycelium-performance.json",
+    ]
+    for path in candidates:
+        if path.exists():
+            try:
+                dashboard_json = json.loads(path.read_text())
+            except Exception:
+                pass
+            break
+
+    if dashboard_json is None:
+        typer.secho(
+            "  ⚠  Grafana dashboard JSON not found — import it manually from "
+            "docs/grafana-mycelium-performance.json via Dashboards → New → Import.",
+            fg=typer.colors.YELLOW,
+        )
+        return
+
+    # Wait up to 30s for Grafana to be ready.
+    deadline = time.time() + 30
+    ready = False
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(f"{grafana_url}/api/health", timeout=3) as r:
+                if r.status == 200:
+                    ready = True
+                    break
+        except Exception:
+            pass
+        time.sleep(2)
+
+    if not ready:
+        typer.secho(
+            f"  ⚠  Grafana not yet ready at {grafana_url} — import the dashboard manually "
+            "via Dashboards → New → Import.",
+            fg=typer.colors.YELLOW,
+        )
+        return
+
+    payload = json.dumps({"dashboard": dashboard_json, "overwrite": True, "folderId": 0}).encode()
+    req = urllib.request.Request(
+        f"{grafana_url}/api/dashboards/import",
+        data=payload,
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read().decode())
+            slug = result.get("slug") or result.get("uid") or "mycelium-performance"
+            typer.secho(
+                f"  ✓ Dashboard imported → {grafana_url}/d/{slug}",
+                fg=typer.colors.GREEN,
+            )
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()[:200] if e.fp else ""
+        typer.secho(
+            f"  ⚠  Dashboard import returned HTTP {e.code}: {body} — "
+            "import manually via Dashboards → New → Import.",
+            fg=typer.colors.YELLOW,
+        )
+    except Exception as exc:
+        typer.secho(
+            f"  ⚠  Dashboard import failed ({exc}) — import manually via Dashboards → New → Import.",
+            fg=typer.colors.YELLOW,
+        )
 
 
 def _announce_image_tag() -> None:
@@ -400,7 +498,7 @@ def init(
 
 
 @doc_ref(
-    usage="mycelium up [--build] [--metrics]",
+    usage="mycelium up [--build] [--metrics] [--grafana]",
     desc="Start the Mycelium stack via <code>docker compose up</code>.",
     group="setup",
 )
@@ -410,18 +508,28 @@ def start(
     metrics: bool = typer.Option(
         False, "--metrics", help="Also start the OTLP collector (mycelium-collector)"
     ),
+    grafana: bool = typer.Option(
+        False,
+        "--grafana",
+        help=(
+            "Start Grafana LGTM (full OTel backend with browser UI). "
+            "Shows telemetry data and product analytics events. "
+            "Cannot be combined with --metrics (both bind port 4318)."
+        ),
+    ),
 ) -> None:
     """
     Start Mycelium services.
 
     Runs docker compose up -d using the bundled compose file and
     ~/.mycelium/.env for configuration. The SLIM node, the backend and the
-    frontend all start; the OTLP collector is opt-in.
+    frontend all start; the OTLP collector and Grafana are opt-in.
 
     Examples:
         mycelium up              # start all services
         mycelium up --build      # rebuild images first
         mycelium up --metrics    # also start the OTLP collector on :4318
+        mycelium up --grafana    # start Grafana LGTM (OTel backend + browser UI)
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
@@ -430,6 +538,13 @@ def start(
         if not compose_path.exists():
             typer.secho(f"Compose file not found at {compose_path}", fg=typer.colors.RED)
             typer.echo("Run 'mycelium install' first.")
+            raise typer.Exit(1)
+
+        if metrics and grafana:
+            typer.secho(
+                "  ✗ --metrics and --grafana both bind port 4318. Use one or the other.",
+                fg=typer.colors.RED,
+            )
             raise typer.Exit(1)
 
         # `up` is flag-driven: the metrics profile is controlled by --metrics
@@ -445,6 +560,8 @@ def start(
             from mycelium.collector import _ensure_shared_dir
 
             _ensure_shared_dir(Path.home() / ".mycelium" / "metrics")
+        if grafana:
+            base = base + ["--profile", "grafana"]
         up_args = ["up", "-d", "--remove-orphans"]
         build_env: dict[str, str] | None = None
         if build:
@@ -537,6 +654,12 @@ def start(
         typer.echo(f"  mycelium-frontend   → http://localhost:{ui_port}")
         if metrics:
             typer.echo(f"  mycelium-collector  → http://localhost:{metrics_port}")
+        if grafana:
+            grafana_port = "3001"
+            if env_path and env_path.exists():
+                grafana_port = vals.get("MYCELIUM_GRAFANA_PORT") or grafana_port
+            typer.echo(f"  mycelium-grafana    → http://localhost:{grafana_port}  (admin / admin)")
+            _import_grafana_dashboard(grafana_port)
 
     except typer.Exit:
         raise
