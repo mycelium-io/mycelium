@@ -428,6 +428,7 @@ def _pi_ping(model: str) -> str:
         binary=settings.ALIGNER_PI_BINARY,
         timeout_s=float(_PROBE_TIMEOUT),
         openshell=settings.ALIGNER_PI_OPENSHELL,
+        operation="health_probe",
     )
     return llm_session("ping")
 
