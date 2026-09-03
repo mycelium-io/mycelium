@@ -279,10 +279,21 @@ function activityLine(ev: Event): { label: string; detail: string } {
   }
   if (ev.type === NOTICE_TYPE) {
     const by = ev.raw.by as string | undefined;
-    return {
-      label: noticeLabel((ev.raw.subkind as string) || "filed", ev.raw.kind as string | undefined),
-      detail: by ? `@${by}` : "",
-    };
+    const label = noticeLabel((ev.raw.subkind as string) || "filed", ev.raw.kind as string | undefined);
+    if (ev.raw.subkind === "floor") {
+      // Whose turn it is in a thread: the handles it was given to, the holder
+      // alone, or the floor opening back up.
+      const speakers = (ev.raw.speakers as string[] | undefined) ?? [];
+      const detail = ev.raw.released
+        ? "released"
+        : speakers.length
+          ? speakers.map((h) => `@${h}`).join(", ")
+          : by
+            ? `held by @${by}`
+            : "";
+      return { label, detail };
+    }
+    return { label, detail: by ? `@${by}` : "" };
   }
   if (ev.type === "l9_knowledge") {
     const version = ev.raw.version;

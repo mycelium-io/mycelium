@@ -11,6 +11,7 @@ here answers exactly as it did before the floor existed.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -174,3 +175,65 @@ class TestTheLiveGate:
     def test_releasing_opens_the_thread(self, held):
         held.release_floor(ROOM, THREAD)
         assert tasks.thread_write_refusal(ROOM, "sec", THREAD) is None
+
+
+class TestTheRoomHears:
+    """Whose turn it is is a line in the timeline and a fact on the members read."""
+
+    @pytest.fixture
+    def notices(self, monkeypatch):
+        raised: list[dict] = []
+
+        async def _raise(self, room, **kw):
+            raised.append({"room": room, **kw})
+
+        monkeypatch.setattr(RoomChannelManager, "raise_notice", _raise)
+        return raised
+
+    @pytest.mark.asyncio
+    async def test_a_floor_that_moves_is_a_notice_and_one_that_does_not_is_silent(self, notices):
+        manager, _managed = _manager()
+        manager.hold_floor(ROOM, THREAD, holder="conductor")
+        manager.hold_floor(ROOM, THREAD, holder="conductor", speakers=["api"])
+        manager.hold_floor(ROOM, THREAD, holder="conductor", speakers=["api"])
+        manager.release_floor(ROOM, THREAD)
+        manager.release_floor(ROOM, THREAD)
+        await asyncio.sleep(0)
+
+        assert [n["subkind"] for n in notices] == ["floor", "floor", "floor"]
+        assert all(n["key"] == "t3" and n["episode"] == THREAD for n in notices)
+        assert notices[0]["by"] == "conductor"
+        assert notices[0]["speakers"] == ""
+        assert notices[1]["speakers"] == "api"
+        assert notices[2]["released"] == "1"
+
+    def test_a_floor_held_with_no_loop_running_raises_nothing_and_still_holds(self, notices):
+        manager, _managed = _manager()
+        assert manager.hold_floor(ROOM, THREAD, holder="conductor", speakers=["api"]) is not None
+        assert manager.floor(ROOM, THREAD) is not None
+        assert notices == []
+
+    @pytest.mark.asyncio
+    async def test_the_members_read_lists_every_floor_held(self, client, monkeypatch):
+        from app.services import room_channels
+
+        assert (await client.post("/api/rooms", json={"name": ROOM})).status_code in (200, 201)
+        manager, _managed = _manager()
+        monkeypatch.setattr(room_channels, "manager", manager)
+        manager.hold_floor(ROOM, OTHER, holder="reviewer", speakers=["sec"])
+        manager.hold_floor(ROOM, THREAD, holder="conductor", speakers=["api", "julia"])
+
+        resp = await client.get(f"/api/rooms/{ROOM}/sessions/members")
+        assert resp.status_code == 200
+        assert resp.json()["floors"] == [
+            {
+                "thread": "t3",
+                "episode": THREAD,
+                "holder": "conductor",
+                "speakers": ["api", "julia"],
+            },
+            {"thread": "t9", "episode": OTHER, "holder": "reviewer", "speakers": ["sec"]},
+        ]
+        manager.release_floor(ROOM, THREAD)
+        manager.release_floor(ROOM, OTHER)
+        assert (await client.get(f"/api/rooms/{ROOM}/sessions/members")).json()["floors"] == []

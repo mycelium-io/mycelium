@@ -184,8 +184,10 @@ is no litellm dependency.
   `_addressed_to`): a **ping** carries the episode, sender and message id when a
   thread moves; a **notice** carries the task, who moved it and the thread to open
   when the board moves. `NOTICE_SUBKINDS` is a closed set (`filed`, `claimed`,
-  `released`, `resolved`, `blocked`, `unblocked`, `expired`) frozen in
-  `contracts/slim-l9-wire.json` and asserted on both sides. Room-wide events stay
+  `released`, `resolved`, `blocked`, `unblocked`, `expired`, `floor`) frozen in
+  `contracts/slim-l9-wire.json` and asserted on both sides; `floor` is the one
+  notice about a thread rather than a task, raised when whose turn it is
+  changes. Room-wide events stay
   unfiltered: a task moving is the room's business however deep inside a task it
   happened. Two honest gaps: a ping is live-only in the conversational read
   (`stored_message_from_record` promotes prose and raise-up kinds only), so the app
@@ -201,8 +203,11 @@ is no litellm dependency.
   `manager.hold_floor`/`release_floor`) admits only the handles its holder gave
   it to (409, naming whose turn it is). A refused write never reaches the
   transcript, so it wakes nobody and `await` needs no change. The room itself
-  (`live`) never holds a floor. `app/services/turns.py` is the one-agent turn
-  the aligner brokers with, lifted out so a protocol step asks the same way.
+  (`live`) never holds a floor. A floor that moves raises a `floor` notice
+  and the members read (`/sessions/members`) lists every floor held, so the
+  rail marks whose turn it is (`lib/floors.ts`) whether or not that member
+  is present. `app/services/turns.py` is the one-agent turn the aligner
+  brokers with, lifted out so a protocol step asks the same way.
 - **A persona is a member played by a model, in character.** Engine kind
   `persona` (`app/services/persona_engine.py`): the `agents/<handle>/notes`
   memory is its system prompt, its Pi session is kept per (room, handle) so it

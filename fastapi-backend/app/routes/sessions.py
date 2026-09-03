@@ -210,7 +210,20 @@ async def list_members(room_name: str):
                 "title": info.title,
             }
             for h, info in sorted(room_channels.manager.presence(room_name).items())
-        ]
+        ],
+        # Threads whose floor a run of backend code holds right now: who holds
+        # it and who it was given to. A thread fact rather than a presence one,
+        # so a member the floor was given to shows it whether or not it is
+        # present — a persona engine is never in ``members`` and still speaks.
+        "floors": [
+            {
+                "thread": floor.episode.rsplit(":", 1)[-1],
+                "episode": floor.episode,
+                "holder": floor.holder,
+                "speakers": sorted(floor.speakers),
+            }
+            for floor in room_channels.manager.floors_of(room_name)
+        ],
     }
 
 

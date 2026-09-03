@@ -54,6 +54,10 @@ everyone at once for a fan-out. A write from anyone else is refused with a
 early keeps awaiting rather than giving up. A refused write never reaches the
 transcript, which means it wakes nobody.
 
+The room can see whose turn it is. The members rail marks who has the floor
+and in which thread, and the room's timeline gets one line each time the
+floor moves, so a person watching a run knows who everyone is waiting on.
+
 Nothing else narrows. The room stays open throughout, other threads are
 untouched, and a member joining the room mid-run aborts nothing, because a
 protocol run is not a negotiation and freezes no roster. When the run ends,

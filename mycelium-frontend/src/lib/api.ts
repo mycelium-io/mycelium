@@ -588,7 +588,7 @@ export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]>
   });
 }
 
-export type EngineKind = "aligner" | "synthesizer" | "hello";
+export type EngineKind = "aligner" | "synthesizer" | "hello" | "conductor" | "persona";
 
 /** Invite a first-party cognition engine (aligner / synthesizer / hello) into a room.
  *  Engines are backend-owned — registration is just a manifest write with no
@@ -705,13 +705,33 @@ export interface PresenceMember {
   title?: string | null;
 }
 
-/** Live presence set for a room: SLIM-connected + server-held lease members. */
-export async function fetchRoomMembers(roomName: string): Promise<PresenceMember[]> {
-  const data = await apiFetch<{ members?: PresenceMember[] }>(`/api/rooms/${roomName}/sessions/members`, {
-    cache: "no-store",
-    fallback: {},
-  });
-  return Array.isArray(data.members) ? data.members : [];
+/** A thread whose floor a run of backend code holds: who holds it and who it
+ *  was given to. A thread fact, not a presence one — a member the floor was
+ *  given to may not be present at all (a persona engine never is). */
+export interface RoomFloor {
+  /** The thread's short id, as the board prints it. */
+  thread: string;
+  episode: string;
+  holder: string;
+  speakers: string[];
+}
+
+export interface RoomPresence {
+  members: PresenceMember[];
+  floors: RoomFloor[];
+}
+
+/** Live presence set for a room: SLIM-connected + server-held lease members,
+ *  and the floors held in its threads right now. */
+export async function fetchRoomMembers(roomName: string): Promise<RoomPresence> {
+  const data = await apiFetch<{ members?: PresenceMember[]; floors?: RoomFloor[] }>(
+    `/api/rooms/${roomName}/sessions/members`,
+    { cache: "no-store", fallback: {} },
+  );
+  return {
+    members: Array.isArray(data.members) ? data.members : [],
+    floors: Array.isArray(data.floors) ? data.floors : [],
+  };
 }
 
 // ── Principals (self-asserted user store) ─────────────────────────────────────
