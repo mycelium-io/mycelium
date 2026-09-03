@@ -3,9 +3,17 @@
 
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MessageSquare } from "lucide-react";
 import type { RoomMessage } from "@/lib/api";
+import {
+  applyActivity,
+  expireActivity,
+  isActivityFrame,
+  respondingLabel,
+  settleActivity,
+  type Responding,
+} from "@/lib/activity";
 import { useRoomAgents, useThreadMessages } from "@/lib/room-data";
 import { useRoomStream } from "@/lib/stream-hub";
 import { pingOf } from "@/lib/threads";
@@ -90,9 +98,23 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
   // reason to re-read; nothing else here is, so a busy room does not refetch a
   // quiet thread. The refresh is a revalidation, not an append: the region stays
   // a read of one episode rather than a second feed assembled by hand.
+  // Who is mid-turn in this thread. The same signal the channel folds, scoped
+  // to this episode: a turn going elsewhere is not this conversation's news.
+  const [responding, setResponding] = useState<Responding[]>([]);
+  useEffect(() => {
+    if (responding.length === 0) return;
+    const tick = setInterval(() => setResponding(prev => expireActivity(prev, Date.now())), 1_000);
+    return () => clearInterval(tick);
+  }, [responding.length]);
+
   useRoomStream(roomName, frame => {
     const message = frame as Record<string, unknown>;
+    if (isActivityFrame(message)) {
+      if (message.episode === episode) setResponding(prev => applyActivity(prev, message, Date.now()));
+      return;
+    }
     if (message.episode === episode) {
+      setResponding(prev => settleActivity(prev, message.sender_handle as string | undefined));
       refresh();
       return;
     }
@@ -198,6 +220,21 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
               </div>
             );
           })}
+        </div>
+      )}
+      {responding.length > 0 && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="responding-line"
+          className="mt-2 flex items-center gap-2 px-5 py-1 text-micro text-muted-foreground"
+        >
+          <span
+            aria-hidden
+            className="inline-block size-1.5 flex-shrink-0 rounded-full motion-safe:animate-pulse"
+            style={{ background: "var(--accent)" }}
+          />
+          <span className="truncate">{respondingLabel(responding)}</span>
         </div>
       )}
       <div ref={endRef} />
