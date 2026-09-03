@@ -226,7 +226,7 @@ def test_a_flow_record_reads_back_its_graph_trace_and_parent(tmp_path, monkeypat
     assert summary["current_step"] == "review", "the step the last trace entry led to"
 
 
-def test_an_open_flow_with_no_steps_yet_stands_at_its_first(tmp_path, monkeypatch):
+def test_an_open_flow_with_no_steps_yet_stands_at_its_first(tmp_path, monkeypatch, caplog):
     from app.services.episode_records import episode_summary
     from app.services.filesystem import get_room_dir, read_memory_file
 
@@ -235,9 +235,16 @@ def test_an_open_flow_with_no_steps_yet_stands_at_its_first(tmp_path, monkeypatc
     key = _flow_record("open", [])
     found = read_memory_file(get_room_dir("r"), key)
     assert found is not None
-    summary = episode_summary(key, *found)
+    with caplog.at_level("WARNING"):
+        summary = episode_summary(key, *found)
     assert summary["current_step"] == "propose"
     assert summary["within"] is None
+    # An empty Trace fence is an empty trace: it must not run on into the
+    # Messages block, which would log a malformed line per envelope there and
+    # hide the one message the record does carry.
+    assert summary["trace"] == []
+    assert summary["participants"] == ["conductor"]
+    assert "malformed" not in caplog.text
 
 
 def test_a_finished_flow_stands_nowhere_and_a_negotiation_has_no_flow(tmp_path, monkeypatch):

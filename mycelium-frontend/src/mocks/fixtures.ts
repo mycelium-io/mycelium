@@ -371,10 +371,12 @@ const atlasEpisodeSummary: EpisodeSummary = {
 // A flow the conductor is walking right now: the gated review of the key
 // rotation, opened from the read-switch task. Two steps taken (a proposal, a
 // block), standing at the proposer's second turn with the floor given to it.
-const ATLAS_FLOW_EPISODE = atlasEpisode("f10a2c");
+// A run the conductor walked inside the read-switch task's thread. Its record
+// is an episode of its own, nested in the thread (``within``) and reading the
+// same slice (``episode``): the task stays one row and one thread.
 const atlasFlowEpisode: EpisodeSummary = {
   short_id: "f10a2c",
-  episode: ATLAS_FLOW_EPISODE,
+  episode: ATLAS_FLIP_THREAD,
   topic: "urn:concept:mycelium:atlas-migration",
   outcome: "open",
   subkind: null,
@@ -411,10 +413,9 @@ const atlasFlowEpisode: EpisodeSummary = {
 // The other two built-in flows, and one a room wrote for itself, so the pane
 // has every shape a flow can take: a fan-out in progress, a round-robin that
 // finished, and a long branching one deep in its loops.
-const ATLAS_FANOUT_EPISODE = atlasEpisode("a2b3c4");
 const atlasFanOutEpisode: EpisodeSummary = {
   short_id: "a2b3c4",
-  episode: ATLAS_FANOUT_EPISODE,
+  episode: ATLAS_RETIRE_THREAD,
   topic: "urn:concept:mycelium:atlas-migration",
   outcome: "open",
   subkind: null,
@@ -446,10 +447,11 @@ const atlasFanOutEpisode: EpisodeSummary = {
   ],
 };
 
-const ATLAS_ROBIN_EPISODE = atlasEpisode("c7d8e9");
+// An earlier run in the read-switch thread, finished: the pane shows the
+// latest run and reaches this one from its record.
 const atlasRoundRobinEpisode: EpisodeSummary = {
   short_id: "c7d8e9",
-  episode: ATLAS_ROBIN_EPISODE,
+  episode: ATLAS_FLIP_THREAD,
   topic: "urn:concept:mycelium:atlas-migration",
   outcome: "resolved",
   subkind: null,
@@ -460,7 +462,7 @@ const atlasRoundRobinEpisode: EpisodeSummary = {
   message_count: 8,
   updated_at: iso(40),
   updated_by: "conductor",
-  within: null,
+  within: ATLAS_FLIP_THREAD,
   current_step: null,
   flow: {
     name: "round-robin",
@@ -481,10 +483,10 @@ const atlasRoundRobinEpisode: EpisodeSummary = {
   ],
 };
 
-const ATLAS_TRAIN_EPISODE = atlasEpisode("d4e5f6");
+const ATLAS_CATALOG_THREAD = atlasEpisode("d6f8b0");
 const atlasReleaseTrainEpisode: EpisodeSummary = {
   short_id: "d4e5f6",
-  episode: ATLAS_TRAIN_EPISODE,
+  episode: ATLAS_CATALOG_THREAD,
   topic: "urn:concept:mycelium:atlas-migration",
   outcome: "open",
   subkind: null,
@@ -495,7 +497,7 @@ const atlasReleaseTrainEpisode: EpisodeSummary = {
   message_count: 14,
   updated_at: iso(1),
   updated_by: "conductor",
-  within: null,
+  within: ATLAS_CATALOG_THREAD,
   current_step: "security",
   flow: {
     name: "release-train",
@@ -892,19 +894,12 @@ const atlas: RoomFixture = {
     c7d8e9: { ...atlasRoundRobinEpisode, messages: [] },
     d4e5f6: { ...atlasReleaseTrainEpisode, messages: [] },
   },
-  // The floor the running flow holds: the conductor's, given to reads for its
-  // second proposal.
+  // The floors the running flows hold on their tasks' threads: each names the
+  // task, and the member each run is waiting on.
   floors: [
-    {
-      thread: "f10a2c",
-      episode: ATLAS_FLOW_EPISODE,
-      key: null,
-      title: null,
-      holder: "conductor",
-      speakers: ["reads"],
-    },
-    { thread: "a2b3c4", episode: ATLAS_FANOUT_EPISODE, key: null, title: null, holder: "conductor", speakers: ["operator"] },
-    { thread: "d4e5f6", episode: ATLAS_TRAIN_EPISODE, key: null, title: null, holder: "conductor", speakers: ["reads"] },
+    { thread: "f1a5c7", episode: ATLAS_FLIP_THREAD, key: "work/read-switch", title: "Point reads at the new store", holder: "conductor", speakers: ["reads"] },
+    { thread: "d2b8e0", episode: ATLAS_RETIRE_THREAD, key: "work/decommission-old-store", title: "Decommission the old store after the soak", holder: "conductor", speakers: ["operator"] },
+    { thread: "d6f8b0", episode: ATLAS_CATALOG_THREAD, key: "work/backfill-catalog", title: "Backfill the catalog into the new store", holder: "conductor", speakers: ["reads"] },
   ],
   // backfill holds an open SLIM socket; reads is present on a server-held await
   // lease. Both are agents in the roster, so the board projects a resident row

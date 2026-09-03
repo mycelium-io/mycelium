@@ -38,10 +38,13 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+import yaml
+
 from app.config import settings
 from app.services import l9, l9_episode, markers, protocols, turns
 from app.services.agent_registry import norm_handle
 from app.services.aligner import _NON_PARTICIPANTS, _registered_engine_kind
+from app.services.episode_records import EPISODES_PREFIX
 from app.services.l9_models import Kind
 from app.services.persister import record_episode
 from app.services.tasks import mint_episode_id
@@ -59,6 +62,9 @@ ENGINE_KIND = "conductor"
 
 #: Summon words that ask for the catalogue rather than a run.
 LIST_DIRECTIVES = frozenset({"list", "protocols", "flows", "help"})
+#: ``show <flow>`` says one flow's spec, as YAML a room can save under
+#: ``protocols/<flow>`` and edit. A built-in is never written there by itself.
+SHOW_DIRECTIVES = frozenset({"show", "spec"})
 
 #: Payloads that are never a member's answer to a step.
 _NOT_A_REPLY = frozenset(
@@ -221,25 +227,25 @@ class ConductorEngine:
         if sender is not None and _norm(sender) in {_norm(self._handle), _norm(handle)}:
             return
         summoned_in = (envelope.header.message.episode if envelope.header.message else None) or ""
-        origin = summoned_in or l9.live_episode_urn(room)
-        key = (room, origin)
+        thread = summoned_in or l9.live_episode_urn(room)
+        key = (room, thread)
         if key in self._active:
-            logger.debug("conductor already running from %s; ignoring re-summon", origin)
+            logger.debug("conductor already running in %s; ignoring re-summon", thread)
             return
         drop = {_norm(handle), _norm(self._handle), *(_norm(h) for h in _NON_PARTICIPANTS)}
         named = [h for h in (co_summons or []) if _norm(h) not in drop]
         directive = _MENTION.sub(
             lambda m: "" if _norm(m.group(0)) == _norm(handle) else m.group(0), message_text
         )
-        # The run's episode exists from this instant, floor held, before
-        # anything else on the loop runs: a member the summon woke cannot slip
-        # a reply in ahead of the first step, and a persona mentioned as a role
-        # is not asked a question.
-        episode = l9.episode_urn(room, mint_episode_id())
-        self._manager.hold_floor(room, episode, holder=handle)
+        # The thread's floor is the run's from this instant, before anything
+        # else on the loop runs: a member the summon woke cannot slip a reply
+        # in ahead of the first step, and a persona mentioned as a role is not
+        # asked a question. The room itself never holds a floor.
+        if not l9.is_live_episode(room, thread):
+            self._manager.hold_floor(room, thread, holder=handle)
         self._active.add(key)
         task = asyncio.create_task(
-            self._run_and_release(room, handle, episode, origin, directive, named, key)
+            self._run_and_release(room, handle, thread, directive, named, key)
         )
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
@@ -248,8 +254,7 @@ class ConductorEngine:
         self,
         room: str,
         engine_handle: str,
-        episode: str,
-        summoned_in: str,
+        thread: str,
         directive: str,
         named: list[str],
         key: tuple[str, str],
@@ -258,16 +263,16 @@ class ConductorEngine:
             await self.run(
                 room,
                 engine_handle=engine_handle,
-                episode=episode,
-                summoned_in=summoned_in,
+                episode=thread,
                 directive=directive,
                 named=named,
             )
         except Exception:
-            logger.exception("conductor @%s failed in %s", engine_handle, episode)
+            logger.exception("conductor @%s failed in %s", engine_handle, thread)
         finally:
             # A run that never started still took the floor at the summon.
-            self._manager.release_floor(room, episode)
+            if not l9.is_live_episode(room, thread):
+                self._manager.release_floor(room, thread)
             self._active.discard(key)
 
     # -- the run --
@@ -279,39 +284,51 @@ class ConductorEngine:
         directive: str,
         engine_handle: str | None = None,
         episode: str | None = None,
-        summoned_in: str = "",
         named: list[str] | None = None,
     ) -> str | None:
-        """Open an episode, run the flow ``directive`` names in it, return the outcome.
+        """Run the flow ``directive`` names inside ``episode``; return the outcome.
 
-        ``named`` are the handles the summon mentioned, bound to the flow's
-        roles in order; with none named, every other member of the room takes
-        part. ``summoned_in`` is where the ask was made — a task's thread, or
-        the room — and is where a refusal is answered and where the run's
-        opening and closing lines land. ``None`` when the run could not start.
+        ``episode`` is the thread the ask was made in — a task's thread, where
+        the run walks, or the room, where only ``list`` and ``show`` are
+        answered: a run needs a task, so it has a thread to hold the floor of
+        and a row to belong to. ``named`` are the handles the summon mentioned,
+        bound to the flow's roles in order; with none named, every other member
+        of the room takes part. ``None`` when the run could not start.
         """
         managed = self._manager.get(room)
         if managed is None or managed.persister is None:
             logger.info("conductor summoned for %s but no live channel", room)
             return None
         me = engine_handle or self._handle
-        origin = summoned_in or l9.live_episode_urn(room)
-        in_task = not l9.is_live_episode(room, origin)
+        thread = episode or l9.live_episode_urn(room)
+        in_task = not l9.is_live_episode(room, thread)
 
         name, ask = split_directive(directive)
         if name in LIST_DIRECTIVES:
-            await self._say(managed, origin, me, self._catalogue(room))
+            await self._say(managed, thread, me, self._catalogue(room))
+            return None
+        if name in SHOW_DIRECTIVES:
+            await self._say(managed, thread, me, self._spec(room, ask.split()[0] if ask else ""))
             return None
         protocol = protocols.load_protocol(room, name) if name else None
         if protocol is None:
             known = ", ".join(protocols.builtin_names())
             await self._say(
                 managed,
-                origin,
+                thread,
                 me,
                 "I need a flow to run: name it first, then who takes part, for "
                 "example `gated proposer-handle guardian-handle: the question`. "
                 f"Built in: {known}; a room adds its own under protocols/.",
+            )
+            return None
+        if not in_task:
+            await self._say(
+                managed,
+                thread,
+                me,
+                f"A run needs a task: summon me inside one, `board coordinate <row> conductor "
+                f'"{protocol.name} …"`, so it has a thread to walk and a row it belongs to.',
             )
             return None
         drop = {_norm(me), *(_norm(h) for h in _NON_PARTICIPANTS)}
@@ -323,31 +340,33 @@ class ConductorEngine:
             roles = ", ".join(protocol.roles) or "its steps"
             await self._say(
                 managed,
-                origin,
+                thread,
                 me,
                 f"`{protocol.name}` needs {max(len(protocol.roles), 1)} member(s) for {roles} "
                 f"and {len(handles)} were named. Summon me again with the handles in that order.",
             )
             return None
 
-        episode = episode or l9.episode_urn(room, mint_episode_id())
-        run = Run(protocol=protocol, ask=ask, handles=handles, bound=bound, episode=episode)
+        # The run walks in the task's own thread; its record is a nested
+        # episode of its own — the same slice, with the flow and the trace on
+        # it — so the task stays one row and one thread.
+        run = Run(protocol=protocol, ask=ask, handles=handles, bound=bound, episode=thread)
         ep = l9_episode.EpisodeState(
-            episode=episode,
+            episode=thread,
             topic=l9.topic_urn(room),
             parent_room=room,
-            short_id=episode.rsplit(":", 1)[-1],
+            short_id=mint_episode_id(),
             workspace_id=managed.workspace,
             mas_id="",
             agents=list(handles),
             engine_handle=me,
             flow=run.flow(),
-            within=origin if in_task else None,
+            within=thread,
         )
         intent = l9.build_envelope(
             kind=Kind.intent,
             subkind="mission",
-            episode=episode,
+            episode=thread,
             sender=me,
             recipients=handles,
             topic=ep.topic,
@@ -356,27 +375,39 @@ class ConductorEngine:
         )
         ep.intent_id = intent.header.message.id if intent.header.message else ""
         ep.messages.append(l9.envelope_to_dict(intent))
-        logger.info("conductor @%s runs %s as %s over %s", me, protocol.name, episode, handles)
+        logger.info("conductor @%s runs %s in %s over %s", me, protocol.name, thread, handles)
         # The floor is the run's from the first instant. (The summon seam
         # already held it; a direct call takes it here.)
-        self._manager.hold_floor(room, episode, holder=me)
+        self._manager.hold_floor(room, thread, holder=me)
         try:
-            # The record exists from the opening, so the run is an episode the
-            # room can open while it is still walking.
+            # The record exists from the opening, so the run can be read while
+            # it is still walking.
             l9_episode.write_episode_record(ep, outcome="open", metrics=None, tasks=None)
-            await self._say(managed, episode, me, self._opening(run))
-            if in_task:
-                await self._say(
-                    managed,
-                    origin,
-                    me,
-                    f"Running {protocol.name} as episode {ep.short_id} with {self._cast(run)}.",
-                )
+            await self._say(managed, thread, me, self._opening(run))
             outcome, why = await self._walk(managed, run, ep, me)
         finally:
-            self._manager.release_floor(room, episode)
-        await self._close(managed, run, ep, me, outcome, why, origin if in_task else None)
+            self._manager.release_floor(room, thread)
+        await self._close(managed, run, ep, me, outcome, why)
         return outcome
+
+    def _spec(self, room: str, name: str) -> str:
+        """One flow as the YAML a ``protocols/<name>`` memory carries."""
+        protocol = protocols.load_protocol(room, name.lower()) if name else None
+        if protocol is None:
+            known = ", ".join(
+                sorted(set(protocols.builtin_names()) | set(protocols.room_protocol_names(room)))
+            )
+            return f"I know no flow called `{name}`. I can show: {known}."
+        body = yaml.safe_dump(
+            protocols.spec_of(protocol), sort_keys=False, default_flow_style=False
+        ).strip()
+        origin = (
+            "this room's" if name.lower() in protocols.room_protocol_names(room) else "built in"
+        )
+        return (
+            f"`{protocol.name}` ({origin}). Save this as `protocols/{protocol.name}` to edit it:\n\n"
+            f"```yaml\n{body}\n```"
+        )
 
     def _catalogue(self, room: str) -> str:
         """Every flow this room can run, each with its steps."""
@@ -530,6 +561,9 @@ class ConductorEngine:
             episode=episode,
             topic=ep.topic,
             prompt=prompt,
+            # Posted as a message, not a tick: a turn is prose the room should
+            # read in the thread, the way the aligner's questions are.
+            payload_type="message",
             payload_data={"step": step.id, "protocol": run.protocol.name},
             is_reply=is_reply,
             timeout_s=self._step_timeout_s,
@@ -560,7 +594,7 @@ class ConductorEngine:
             sender=me,
             recipients=[handle],
             topic=ep.topic,
-            payload_type="tick",
+            payload_type="message",
             payload_data={"step": step.id, "protocol": run.protocol.name},
         )
         ep.messages.append(l9.envelope_to_dict(env))
@@ -577,9 +611,8 @@ class ConductorEngine:
         me: str,
         outcome: str,
         why: str,
-        within: str | None,
     ) -> None:
-        """Commit the outcome onto the episode, write its record, tell the task."""
+        """Commit the outcome onto the thread and write the run's record."""
         commit = l9.build_envelope(
             kind=Kind.commit,
             subkind=outcome,
@@ -593,18 +626,20 @@ class ConductorEngine:
                 "steps": run.steps_taken,
                 "reason": why,
                 "roles": run.bound,
+                "record": f"{EPISODES_PREFIX}{ep.short_id}",
             },
         )
         ep.messages.append(l9.envelope_to_dict(commit))
         mark = "✓" if outcome == "resolved" else "✗"
-        text = f"{mark} {run.protocol.name}: {outcome} after {run.steps_taken} step(s), {why}."
+        text = (
+            f"{mark} {run.protocol.name}: {outcome} after {run.steps_taken} step(s), {why}. "
+            f"Record: {EPISODES_PREFIX}{ep.short_id}."
+        )
         try:
             await managed.post(commit, text, list_write=True)
         except Exception:
             logger.warning("conductor failed to post the outcome for %s", run.episode)
         l9_episode.write_episode_record(ep, outcome=outcome, metrics=None, tasks=None)
-        if within:
-            await self._say(managed, within, me, f"{text[:-1]} (episode {ep.short_id}).")
 
     async def _say(self, managed: ManagedRoomChannel, episode: str, sender: str, text: str) -> None:
         """Post a plain message from the engine into ``episode``."""

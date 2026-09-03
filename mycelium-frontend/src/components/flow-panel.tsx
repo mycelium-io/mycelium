@@ -39,7 +39,47 @@ function TraceRow({ entry }: { entry: FlowTraceEntry }) {
   );
 }
 
-export function FlowPanel({ episode, floor }: { episode: EpisodeSummary; floor: RoomFloor | null }) {
+/** The memory key a run's record is filed under. */
+function recordKey(episode: EpisodeSummary): string {
+  return `log/episodes/${episode.short_id}`;
+}
+
+function RecordLink({
+  episode,
+  onOpenMemory,
+  label,
+}: {
+  episode: EpisodeSummary;
+  onOpenMemory?: (key: string) => void;
+  label: string;
+}) {
+  const key = recordKey(episode);
+  const text = (
+    <>
+      {label} <span className="font-mono text-text">{episode.short_id}</span>
+    </>
+  );
+  if (!onOpenMemory) return <span>{text}</span>;
+  return (
+    <button type="button" onClick={() => onOpenMemory(key)} className="rounded hover:text-text hover:underline" title={key}>
+      {text}
+    </button>
+  );
+}
+
+export function FlowPanel({
+  episode,
+  floor,
+  earlier = [],
+  onOpenMemory,
+}: {
+  episode: EpisodeSummary;
+  floor: RoomFloor | null;
+  /** Runs this thread held before the one shown, newest first. */
+  earlier?: EpisodeSummary[];
+  /** Opens a run's record, the `log/episodes/<id>` memory. */
+  onOpenMemory?: (key: string) => void;
+}) {
   const flow = episode.flow;
   if (!flow) return null;
   const trace = episode.trace ?? [];
@@ -77,11 +117,19 @@ export function FlowPanel({ episode, floor }: { episode: EpisodeSummary; floor: 
           {trace.map((entry, i) => <TraceRow key={i} entry={entry} />)}
         </div>
       )}
-      {episode.within && (
-        <div className="mt-2 text-micro text-muted-foreground">
-          opened inside thread <span className="font-mono text-text">{episode.within.split(":").pop()}</span>
-        </div>
-      )}
+      {/* The record is the run: where the flow and the trace are filed, and
+          the way back to a run this thread held before this one. */}
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-micro text-muted-foreground">
+        <RecordLink episode={episode} onOpenMemory={onOpenMemory} label="record" />
+        {earlier.length > 0 && (
+          <span className="flex flex-wrap items-baseline gap-x-2">
+            <span>earlier {earlier.length === 1 ? "run" : "runs"}</span>
+            {earlier.map((run) => (
+              <RecordLink key={run.short_id} episode={run} onOpenMemory={onOpenMemory} label={`${run.flow?.name ?? "run"} · ${run.outcome}`} />
+            ))}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,8 +1,8 @@
 # Conductor
 
-The conductor is the [engine](#engines) that runs an **episode with a
-flow**: a fixed shape of who speaks to whom, in what order, and what happens
-on each answer. Where the [aligner](#aligner) brokers a negotiation, the
+The conductor is the [engine](#engines) that runs a **flow inside a task**:
+a fixed shape of who speaks to whom, in what order, and what happens on each
+answer. Where the [aligner](#aligner) brokers a negotiation, the
 conductor walks a graph. It is the engine to reach for when an interaction
 has a shape you already know: a proposal a reviewer must approve, a lead
 asking every worker at once, members speaking in turn.
@@ -26,30 +26,34 @@ mycelium engine invoke conductor \
 The summon names the flow first, then the members in the order the flow's
 roles expect, then the question.
 
-## The episode is the run
+## The run lives in the task's thread
 
-Every run opens an [episode](#episodes) of its own, and the episode carries
-its flow. The graph the conductor walks, who was bound to each role, and the
-trace of every step taken are written onto the episode's record as it goes,
-so an open run shows where it stands and a finished one shows the shape of
-the interaction, not only its messages. Open the episode in the app and the
-graph is drawn at the top of its thread: the current step lit, the edges
-taken solid, the member who has the floor marked, and the steps taken listed
-under it.
-
-A run can be opened from a task, which makes it a phase inside that task the
-way a negotiation is:
+A task is one row on the board and one thread on the channel, and a run
+keeps that: the conductor walks the flow **in the thread it was summoned
+in**. Summon it on a task:
 
 ```bash
 mycelium board coordinate work/rotate-signing-key conductor \
   "gated @api @sec: rotate the signing key without downtime"
 ```
 
-The run still gets its own episode. The task's thread gets one line when the
-run opens (naming the episode and the cast) and one when it ends, and the
-episode's record says which task it ran inside. A run opened from the room
-is nested in nothing. Either way the task is context or an output, never the
-container the flow lives in.
+Every turn, every reply and the outcome land in that task's thread, where
+`board messages` reads them back. What the run adds is a **record**: an
+[episode](#episodes) of its own under `log/episodes/`, nested in the thread,
+carrying the graph the conductor walked, who was bound to each role, and the
+trace of every step taken. It is written when the run opens and after every
+step, so an open run shows where it stands and a finished one shows the
+shape of the interaction, not only its messages. The closing line names it.
+
+Open the task in the app and the latest run's graph is drawn at the top of
+its thread: the current step lit, the edges taken solid, the member who has
+the floor marked, and the steps taken listed under it. Once the run ends the
+panel shows its outcome and the full trace, and a task that was coordinated
+more than once reaches its earlier runs from the record.
+
+A summon from the room itself is refused, with the `board coordinate` line
+to use instead: the room never holds a floor, and a run belongs to a row.
+`list` and `show` answer anywhere.
 
 ## The built-in flows
 
@@ -95,8 +99,8 @@ and a resident agent that replies before its turn is refused.
 
 ## Whose turn it is
 
-While a run is open, its episode has a **floor**. The conductor holds it
-from the instant the summon lands, and gives it to whoever the current step
+While a run is open, the task's thread has a **floor**. The conductor holds
+it from the instant the summon lands, and gives it to whoever the current step
 addresses: one member for a role step, everyone at once for a fan-out. A
 write from anyone else is refused with a `409` that says who holds the floor
 and who may speak, so an agent that tried early keeps awaiting rather than
@@ -111,15 +115,22 @@ negotiation and freezes no roster. When the run ends, the floor is released.
 ## How a run ends
 
 A run ends at one of its flow's end steps, `resolved` or `rejected`, or at
-the step cap, which counts as `rejected`. The outcome is committed onto the
-episode and its record is final: the flow, the whole trace, and every
+the step cap, which counts as `rejected`. The outcome is committed into the
+thread and the record is final: the flow, the whole trace, and every
 envelope. A resolved run resolves no task and compiles nothing into rows.
 
 ## Writing your own flow
 
 A flow is a memory under `protocols/`. A room that writes `protocols/gated`
-reshapes the built-in under that name; a new name adds a flow. The body is
-YAML:
+reshapes the built-in under that name; a new name adds a flow. Nothing writes
+a built-in there by itself; to start from one, ask the conductor for it and
+save what it says:
+
+```bash
+mycelium engine invoke conductor "show gated"
+```
+
+The body is YAML:
 
 ```yaml
 description: A reviewer signs off before the author ships.

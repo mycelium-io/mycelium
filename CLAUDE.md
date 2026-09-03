@@ -226,28 +226,34 @@ is no litellm dependency.
   carries it; the `floor` notice and `/sessions/members` `floors` carry that
   row's `key` and `title`, and the GUI shows the title, falling back to the
   thread id only for a thread no row carries.
-- **The conductor runs an episode with a flow, in code.** A fourth engine
-  kind (`app/services/conductor.py`) with no model of its own. Summoned as
-  `engine invoke conductor "gated @a @b: …"` (or `board coordinate <row>
-  conductor "…"` to nest the run in a task), it opens an **episode of its
-  own** and walks a `protocols.Protocol` in it (three built in: `gated`,
-  `fan-out`, `round-robin`; a room's `protocols/<name>` memory overrides or
-  adds one), holding the episode's floor for whoever each step addresses,
-  asking through `turns.addressed_turn`, and following the edge the reply's
-  stance takes (`markers.stance_of`). **The episode is the run and carries
-  its flow:** `EpisodeState.flow` (the graph plus who was bound to each role)
-  and `EpisodeState.trace` (one entry per step taken) are written onto
-  `log/episodes/{id}.md` at the opening and after every step, `within` names
-  the task thread it was opened from, and `episode_records` parses them back
-  (`flow`, `trace`, `within`, `current_step` on the episode read). The app
-  draws the graph at the top of the run's thread (`flow-panel.tsx`,
-  `flow-graph.tsx`, laid out by `lib/flow-graph.ts`), with the current step,
-  the edges taken and the member holding the floor. The floor is taken
+- **The conductor walks a flow inside a task's thread, in code.** A fourth
+  engine kind (`app/services/conductor.py`) with no model of its own.
+  Summoned as `board coordinate <row> conductor "gated @a @b: …"`, it walks
+  a `protocols.Protocol` (three built in: `gated`, `fan-out`, `round-robin`;
+  a room's `protocols/<name>` memory overrides or adds one; `show <name>`
+  prints one as YAML to save there) **in the thread it was summoned in**,
+  holding that thread's floor for whoever each step addresses, asking through
+  `turns.addressed_turn` as a `message` the thread shows, and following the
+  edge the reply's stance takes (`markers.stance_of`). A task is one row and
+  one thread, so a run never opens a thread of its own; a summon from the
+  room is refused and told to use a task (`list`/`show` answer anywhere).
+  **The run's record is a nested episode carrying its flow:** it reads the
+  task thread's slice (`episode`), names it as `within`, and carries
+  `EpisodeState.flow` (the graph plus who was bound to each role) and
+  `EpisodeState.trace` (one entry per step taken), written onto
+  `log/episodes/{id}.md` at the opening and after every step;
+  `episode_records` parses them back (`flow`, `trace`, `within`,
+  `current_step` on the episode read), tolerating an empty fence. The app
+  draws the latest run's graph at the top of the task's thread
+  (`flow-panel.tsx`, `flow-graph.tsx`, laid out by `lib/flow-graph.ts`),
+  with the current step, the edges taken and the member holding the floor,
+  and reaches earlier runs from their records. The floor is taken
   synchronously in `handle_summon`; the members named beside the conductor
   are role bindings, so a persona there does not answer the summon and a
-  resident agent that replies early is refused. A run opens no negotiation
-  and never commits `converged`, so nothing it does compiles into rows. A
-  model in the nodes, code on the edges.
+  resident agent that replies early is refused. An `@`-mention of any engine
+  is a summon, never a SLIM invite. A run opens no negotiation and never
+  commits `converged`, so nothing it does compiles into rows. A model in the
+  nodes, code on the edges.
 - **The aligner mediates, inside a task.** Agents never talk to each other directly;
   all coordination flows through the aligner. It's a first-party engine registered
   as a room citizen (`mycelium engine create aligner --kind aligner`) and summoned

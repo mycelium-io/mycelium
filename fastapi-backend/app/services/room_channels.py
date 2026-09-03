@@ -110,6 +110,13 @@ def _is_own_registered_agent(room: str, handle: str) -> bool:
     return (get_room_dir(room) / "agents" / f"{handle}.md").exists()
 
 
+def _is_engine(room: str, handle: str) -> bool:
+    """True if ``handle``'s manifest in ``room`` names an engine kind."""
+    from app.services.aligner import _registered_engine_kind
+
+    return _registered_engine_kind(room, handle) is not None
+
+
 def _registered_agent_handles(room: str) -> list[str]:
     """Every agent handle with a manifest in ``room`` (``agents/*.md`` stems)."""
     from app.services.filesystem import get_room_dir
@@ -1104,6 +1111,10 @@ class RoomChannelManager:
                 continue
             if not _is_own_registered_agent(room, handle):
                 unrecognized.append(handle)
+                continue
+            if _is_engine(room, handle):
+                # An engine is a seat the backend plays, not a SLIM member: the
+                # summon seam answers the mention, and an invite would only fail.
                 continue
             if managed.lifecycle.frozen:
                 # Adding a member mid-negotiation would abort it (L9's
