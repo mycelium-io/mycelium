@@ -12,6 +12,14 @@ import {
 import { useRoomAgents, useRoomRowNames, useRoomThreads, type RowNaming, type ThreadOwner } from "@/lib/room-data";
 import { NOTICE_TYPE, PING_TYPE, isLiveEpisode, noticeLabel, threadShortId } from "@/lib/threads";
 import { CHAT_TYPES, parseEvent, type Event } from "@/lib/room-events";
+import {
+  applyActivity,
+  expireActivity,
+  isActivityFrame,
+  respondingLabel,
+  settleActivity,
+  type Responding,
+} from "@/lib/activity";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { MessageBody } from "@/components/message-body";
 import { ChatFindBar } from "@/components/chat-find-bar";
@@ -80,6 +88,27 @@ const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...L9_RAISE_UP_TYPES, PING_TY
  * to the contract would claim a drift that isn't one.
  */
 const SYSTEM_TYPES = new Set([...L9_RAISE_UP_TYPES, PING_TYPE, NOTICE_TYPE]);
+
+/** "@aligner is responding…" — the breathing monograms of whoever is mid-turn,
+ *  drawn under the last message and gone the moment their reply lands. Uses the
+ *  lease halo (a poll in flight) rather than a new motion. */
+function RespondingLine({ entries }: { entries: Responding[] }) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      data-testid="responding-line"
+      className="flex items-center gap-2.5 px-5 py-2 text-caption text-muted-foreground motion-safe:animate-in motion-safe:fade-in-0"
+    >
+      <div className="flex w-7 flex-shrink-0 -space-x-1.5">
+        {entries.slice(0, 3).map((r) => (
+          <Monogram key={r.handle} handle={r.handle} className="size-5 text-[9px]" presence="lease" mutePresence />
+        ))}
+      </div>
+      <span className="truncate">{respondingLabel(entries)}</span>
+    </div>
+  );
+}
 
 /** Skeleton loader for chat rows. */
 function ChannelSkeleton() {
@@ -487,10 +516,26 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
       });
   }, [readPage]);
 
+  // Who is mid-turn right now: a presence-style signal off the same stream,
+  // never a message (#513). A frame starts or ends a handle's entry; the
+  // handle's next message ends it too, whether or not the ending frame arrived;
+  // and an entry nobody has heard from within its TTL expires on the tick below.
+  const [responding, setResponding] = useState<Responding[]>([]);
+  useEffect(() => {
+    if (responding.length === 0) return;
+    const tick = setInterval(() => setResponding((prev) => expireActivity(prev, Date.now())), 1_000);
+    return () => clearInterval(tick);
+  }, [responding.length]);
+
   // Live room messages, off the app's one multiplexed connection.
   useRoomStream(roomName, (data) => {
     const msg = data as Record<string, unknown>;
+    if (isActivityFrame(msg)) {
+      setResponding((prev) => applyActivity(prev, msg, Date.now()));
+      return;
+    }
     const event = parseEvent(msg);
+    setResponding((prev) => settleActivity(prev, event.sender));
     setEvents(prev => (event.amends ? foldAmendment(prev, event) : [...prev, event]));
     if (event.type === "memory_changed") onMemoryChanged?.();
     // A consensus compiles the negotiation into work rows, so nudge the
@@ -1102,6 +1147,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                 </div>
               );
             })}
+          {responding.length > 0 && <RespondingLine entries={responding} />}
         </div>
         )}
       </ScrollArea>

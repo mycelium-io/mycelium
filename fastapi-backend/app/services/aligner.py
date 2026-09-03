@@ -44,13 +44,14 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import functools
 import logging
 import re
 import uuid
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
-from app.services import l9, l9_episode
+from app.services import activity, l9, l9_episode
 from app.services.agent_registry import norm_handle
 from app.services.room_channels import BACKEND_AGENT
 
@@ -339,7 +340,7 @@ class AlignerEngine:
             opening_positions=positions,
         )
         try:
-            llm_session = self._open_llm_session(episode)
+            llm_session = self._signalling(self._open_llm_session(episode), room, episode)
             positions = await self._clarify_terms(
                 managed, persister, ep, me, episode, topic, positions, llm_session
             )
@@ -419,11 +420,42 @@ class AlignerEngine:
         across SAO rounds (the anti-theater property — the mediator remembers the
         whole haggle, not a stateless call per turn). A test injects a fake via
         ``llm_session_factory``. Only the engine's own LLM session; user participant agents are
-        untouched (they answer over SLIM/HTTP as before).
+        untouched (they answer over SLIM/HTTP as before). Callers wrap the result
+        in :meth:`_signalling` before the mediator sees it.
         """
         if self._llm_session_factory is not None:
             return self._llm_session_factory(episode)
+        return self._pi_session(episode)
 
+    def _signalling(
+        self, session: Callable[..., str], room: str, episode: str
+    ) -> Callable[..., str]:
+        """Bracket every call through ``session`` with the activity signal.
+
+        The room sees "@aligner is responding…" for exactly the seconds Pi is
+        generating and nothing else — not the whole negotiation, most of which
+        is waiting on the agents (:mod:`app.services.activity`). The mediator
+        calls the session from a worker thread (``asyncio.to_thread``,
+        ``mech.run``), so the signal is handed back to the loop rather than
+        published from the thread.
+        """
+        loop = asyncio.get_running_loop()
+        me = self._handle
+
+        def call(*args: Any, **kwargs: Any) -> str:
+            loop.call_soon_threadsafe(
+                functools.partial(activity.signal, room, me, "responding", episode=episode)
+            )
+            try:
+                return session(*args, **kwargs)
+            finally:
+                loop.call_soon_threadsafe(
+                    functools.partial(activity.signal, room, me, "done", episode=episode)
+                )
+
+        return call
+
+    def _pi_session(self, episode: str) -> Callable[..., str]:
         import tempfile
         from pathlib import Path
 
@@ -611,7 +643,8 @@ class AlignerEngine:
         )
         text = ""
         try:
-            llm_session = self._open_llm_session(l9.episode_urn(room, _new_episode_id()))
+            one_shot = l9.episode_urn(room, _new_episode_id())
+            llm_session = self._signalling(self._open_llm_session(one_shot), room, one_shot)
             text = (await asyncio.to_thread(llm_session, prompt) or "").strip()
         except Exception:
             logger.warning(
