@@ -185,8 +185,10 @@ enables it at interactive install (or via `mycelium config set`).
 | Event | When | Fields |
 |---|---|---|
 | `mycelium.install` | First interactive install | `install_id`, `release`, `platform` |
-| `mycelium.session.first` | First coordinated session | `install_id`, `release`, `adapter_class`, `outcome` |
-| `mycelium.session.repeat` | Subsequent sessions | same as first |
+| `mycelium.session` | Each coordinated session that reaches a terminal outcome | `install_id`, `release`, `adapter_class`, `outcome`, `session_count` |
+
+`session_count` is the cumulative number of completed sessions on this installation (1 = first,
+2+ = repeat). Use it to compute time-to-first-session and retention curves without separate event types.
 
 ### Privacy contract
 

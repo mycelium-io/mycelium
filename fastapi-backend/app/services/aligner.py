@@ -323,7 +323,11 @@ class AlignerEngine:
                         outcome=_outcome,
                         session_count=_count,
                     )
-                    _emit(_ev)
+                    # emit() calls urlopen (blocking I/O) — fire-and-forget in a
+                    # thread pool so the async finally block doesn't stall the
+                    # event loop.  Not awaited intentionally: analytics failures
+                    # must never block the coordination path.
+                    asyncio.get_running_loop().run_in_executor(None, _emit, _ev)
                 except Exception:
                     logger.debug("analytics session emit failed (non-fatal)", exc_info=True)
 
@@ -457,8 +461,6 @@ class AlignerEngine:
                     duration_ms=_mech_ms / _rounds_run,
                     duration_excl_llm_ms=_mechanism_ms / _rounds_run,
                 )
-            converged = assignments is not None
-            _, metrics = self._verdict(ep)
             # Post-hoc satisfaction: how close the agreed outcome sits to
             # each agent's opening ask, and the room minimum — the least-happy
             # agent. Independent of MPC/GAR/SCR (which need stated confidence the

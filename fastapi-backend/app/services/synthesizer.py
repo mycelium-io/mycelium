@@ -300,6 +300,7 @@ def _pi_complete(prompt: str, timeout_s: float) -> str:
         binary=settings.ALIGNER_PI_BINARY,
         timeout_s=timeout_s,
         openshell=settings.ALIGNER_PI_OPENSHELL,
+        operation="synthesizer",
     )
     return llm_session(prompt)
 
@@ -441,16 +442,7 @@ class SynthesizerEngine:
                 timeout=self._timeout_s + 5.0,
             )
             _synth_ms = (__import__("time").monotonic() - _synth_t0) * 1000.0
-            from app.services import metrics as _metrics
-
-            _metrics.record_llm_call(
-                operation="synthesizer",
-                duration_ms=_synth_ms,
-            )
         except Exception:
-            from app.services import metrics as _metrics
-
-            _metrics.record_llm_call(operation="synthesizer", error=True)
             logger.exception("synthesizer: Pi turn failed for room %s", room)
             await self._say_if_live(managed, room, me, "Pi turn timed out or errored — try again.")
             return None

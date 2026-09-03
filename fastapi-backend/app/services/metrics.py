@@ -481,17 +481,25 @@ def record_http_request(
             _record_histogram(f"http.request_ms.{route}", duration_ms)
 
 
+def _p95_unlocked(sl: list[float]) -> float | None:
+    """Compute the p95 of *sl* without acquiring ``_lock`` (caller holds it).
+
+    Returns ``None`` when fewer than 5 samples are present.  Extracted so
+    ``snapshot()`` and ``p95()`` share one implementation and ``snapshot()``
+    never tries to re-acquire the non-reentrant ``_lock`` it already holds.
+    """
+    if len(sl) < 5:
+        return None
+    sorted_sl = sorted(sl)
+    idx = max(0, int(len(sorted_sl) * 0.95) - 1)
+    return sorted_sl[idx]
+
+
 def snapshot() -> dict:
     """Return a JSON-serializable snapshot of all metrics."""
     with _lock:
         hists = {k: dict(v) for k, v in _histograms.items()}
-        # Attach p95 to each histogram that has enough samples.
-        pct = {}
-        for name, sl in _samples.items():
-            if len(sl) >= 5:
-                sorted_sl = sorted(sl)
-                idx = max(0, int(len(sorted_sl) * 0.95) - 1)
-                pct[name] = sorted_sl[idx]
+        pct = {name: v for name, sl in _samples.items() if (v := _p95_unlocked(sl)) is not None}
         return {
             "started_at": _started_at,
             "updated_at": datetime.now(UTC).isoformat(),
@@ -505,8 +513,6 @@ def p95(histogram_name: str) -> float | None:
     """Return the p95 latency for ``histogram_name``, or ``None`` if insufficient data."""
     with _lock:
         sl = _samples.get(histogram_name)
-        if not sl or len(sl) < 5:
+        if not sl:
             return None
-        sorted_sl = sorted(sl)
-        idx = max(0, int(len(sorted_sl) * 0.95) - 1)
-        return sorted_sl[idx]
+        return _p95_unlocked(sl)

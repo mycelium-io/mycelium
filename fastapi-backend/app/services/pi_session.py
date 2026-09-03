@@ -429,17 +429,23 @@ class PiSession:
         finally:
             _duration_ms = (__import__("time").monotonic() - _t0) * 1000.0
             self.total_pi_ms += _duration_ms
-            try:
-                from app.services.metrics import record_llm_call
+            # Only record when operation is explicitly set.  Callers that manage
+            # their own record_llm_call wrapper (synthesizer, task_compiler,
+            # llm_health) leave operation="" to avoid double-counting the same
+            # Pi call.  Callers that rely solely on PiSession (aligner, probe)
+            # pass an explicit operation= string.
+            if self._operation:
+                try:
+                    from app.services.metrics import record_llm_call
 
-                record_llm_call(
-                    operation=self._operation,
-                    model=self._model,
-                    duration_ms=_duration_ms,
-                    error=_error,
-                )
-            except Exception:  # metrics must never break cognition
-                pass
+                    record_llm_call(
+                        operation=self._operation,
+                        model=self._model,
+                        duration_ms=_duration_ms,
+                        error=_error,
+                    )
+                except Exception:  # metrics must never break cognition
+                    pass
         if completed is not None and completed.returncode != 0:
             stderr = (completed.stderr or "").strip()
             raise PiSessionError(f"pi exited {completed.returncode}: {stderr[:400]}")
