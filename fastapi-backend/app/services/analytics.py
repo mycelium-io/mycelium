@@ -105,22 +105,49 @@ def increment_session_count() -> int:
     session (``first=True``), 2+ means repeat (``first=False``).
     Writes through to a flat file in MYCELIUM_DATA_DIR for persistence across
     restarts. Falls back to an in-memory counter if the file is unavailable.
+
+    Thread-safety: the in-process ``_session_lock`` prevents races between
+    concurrent async worker threads within a single process. On Unix, ``fcntl``
+    advisory locking prevents races across multiple worker processes (e.g.
+    gunicorn multi-worker). On Windows (unsupported for production), the
+    cross-process guard is omitted and only the in-process lock applies.
     """
+    import sys
+
     with _session_lock:
         path = _session_count_path()
         count = 0
-        if path is not None:
-            try:
-                if path.exists():
-                    count = int(path.read_text().strip() or "0")
-            except Exception:
-                pass
-        count += 1
-        if path is not None:
-            try:
-                path.write_text(str(count))
-            except Exception:
-                pass
+        lock_fd = None
+        try:
+            if path is not None:
+                # Open (creating if needed) and acquire an exclusive advisory lock
+                # so concurrent processes don't interleave read-modify-write.
+                lock_fd = open(path, "a+")
+                if sys.platform != "win32":
+                    import fcntl
+
+                    fcntl.lockf(lock_fd, fcntl.LOCK_EX)
+                lock_fd.seek(0)
+                raw = lock_fd.read().strip()
+                count = int(raw) if raw.isdigit() else 0
+            count += 1
+            if path is not None and lock_fd is not None:
+                lock_fd.seek(0)
+                lock_fd.truncate()
+                lock_fd.write(str(count))
+                lock_fd.flush()
+        except Exception:
+            count = max(count, 0) + 1
+        finally:
+            if lock_fd is not None:
+                try:
+                    if sys.platform != "win32":
+                        import fcntl
+
+                        fcntl.lockf(lock_fd, fcntl.LOCK_UN)
+                    lock_fd.close()
+                except Exception:
+                    pass
         return count
 
 
@@ -271,8 +298,17 @@ def _emit_inner(event: AnalyticsEvent) -> None:
         # developers point the destination at a local Loki/Grafana instance
         # (e.g. http://host.docker.internal:3100/loki/api/v1/push) without
         # needing a TLS terminator.  Production deployments MUST use HTTPS.
-        _LOCAL_HOSTS = ("localhost", "127.0.0.1", "host.docker.internal")
-        is_local = any(h in destination for h in _LOCAL_HOSTS)
+        #
+        # Note: we validate the *hostname* (not a substring of the full URL)
+        # to prevent bypass via e.g. http://evil.com/localhost.
+        _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "host.docker.internal"})
+        try:
+            from urllib.parse import urlparse as _urlparse
+
+            _host = _urlparse(destination).hostname or ""
+        except Exception:
+            _host = ""
+        is_local = _host in _LOCAL_HOSTS
         if not (destination.startswith("http://") and is_local):
             _log.warning(
                 "analytics: destination %r is not HTTPS (and not a local address); "

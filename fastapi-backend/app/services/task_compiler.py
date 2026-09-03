@@ -35,7 +35,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.config import settings
-from app.services.metrics import record_llm_call
 
 logger = logging.getLogger(__name__)
 
@@ -221,6 +220,7 @@ def _pi_complete(prompt: str) -> str:
         binary=settings.ALIGNER_PI_BINARY,
         timeout_s=COMPILER_TIMEOUT_SECS,
         openshell=settings.ALIGNER_PI_OPENSHELL,
+        operation="task_compile",
     )
     return llm_session(prompt)
 
@@ -236,23 +236,8 @@ async def _compile_body(prompt: str, room_name: str) -> str:
             asyncio.to_thread(_pi_complete, prompt), timeout=COMPILER_TIMEOUT_SECS + 5.0
         )
     except Exception:
-        record_llm_call(
-            operation="task_compile",
-            model=settings.LLM_MODEL,
-            room=room_name,
-            error=True,
-        )
         raise
-    elapsed_ms = (time.monotonic() - t0) * 1000
-
-    # Pi does not report per-turn token usage or cost on its JSON stream, so only
-    # the call count + latency are recorded (tokens/cost stay zero).
-    record_llm_call(
-        operation="task_compile",
-        model=settings.LLM_MODEL,
-        room=room_name,
-        duration_ms=elapsed_ms,
-    )
+    elapsed_ms = (time.monotonic() - t0) * 1000  # noqa: F841 — kept for future token tracking
 
     if not content or not content.strip():
         raise RuntimeError("task compiler: Pi returned empty content")
