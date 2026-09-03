@@ -647,9 +647,9 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">messages</span> [<span class="arg">&lt;room&gt;</span>] [<span class="flag">--limit</span> N] [<span class="flag">--sender</span> <span class="arg">&lt;handle&gt;</span>] [<span class="flag">--type</span> <span class="arg">&lt;type&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">messages</span> [<span class="arg">&lt;room&gt;</span>] [<span class="flag">--limit</span> N] [<span class="flag">--sender</span> <span class="arg">&lt;handle&gt;</span>] [<span class="flag">--type</span> <span class="arg">&lt;type&gt;</span>] [<span class="flag">--before</span> &lt;stamp|age&gt;] [<span class="flag">--since</span> &lt;stamp|age&gt;]</code>
         </div>
-        <div class="cmd-ref-body">Read recent messages in a room (point-in-time, newest first). Filter with <code>--sender</code> / <code>--type</code>.</div>
+        <div class="cmd-ref-body">Read recent messages in a room (point-in-time, newest first). Filter with <code>--sender</code> / <code>--type</code>; walk back through history with <code>--before</code>.</div>
       </div>
 
       <div class="cmd-ref">
@@ -712,7 +712,7 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> <span class="arg">&lt;id&gt;</span> [<span class="flag">--limit</span> N]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> <span class="arg">&lt;id&gt;</span> [<span class="flag">--limit</span> N] [<span class="flag">--before</span> &lt;stamp|age&gt;]</code>
         </div>
         <div class="cmd-ref-body">Read one thread: the conversation about that row or memory, and nothing else from the room.</div>
       </div>

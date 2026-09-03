@@ -184,7 +184,7 @@ is no litellm dependency.
   `_addressed_to`): a **ping** carries the episode, sender and message id when a
   thread moves; a **notice** carries the task, who moved it and the thread to open
   when the board moves. `NOTICE_SUBKINDS` is a closed set (`filed`, `claimed`,
-  `released`, `resolved`, `blocked`, `unblocked`) frozen in
+  `released`, `resolved`, `blocked`, `unblocked`, `expired`) frozen in
   `contracts/slim-l9-wire.json` and asserted on both sides. Room-wide events stay
   unfiltered: a task moving is the room's business however deep inside a task it
   happened. Two honest gaps: a ping is live-only in the conversational read

@@ -84,6 +84,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
+    "u": "index.html#rooms-reading-history",
+    "t": "Reading History",
+    "s": "Concepts › Rooms",
+    "x": "mycelium room messages is a point-in-time read, newest first. History is paged by content rather than position: when older messages exist, the footer names the --before cursor that reads the next page back, so a walk through a busy room does not shift under messages arriving live. A stamp is ISO 8601 as printed, or an age like 2h, 30m, 1d. mycelium room messages design-review --limit 50 # the latest page … mycelium r",
+    "p": "Guide"
+  },
+  {
     "u": "index.html#rooms-editing-a-message",
     "t": "Editing a Message",
     "s": "Concepts › Rooms",
@@ -1033,9 +1040,9 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-room",
-    "t": "mycelium room messages [<room>] [--limit N] [--sender <handle>] [--type <type>]",
+    "t": "mycelium room messages [<room>] [--limit N] [--sender <handle>] [--type <type>] [--before <stamp|age>] [--since <stamp|age>]",
     "s": "CLI Reference",
-    "x": "Read recent messages in a room (point-in-time, newest first). Filter with --sender / --type.",
+    "x": "Read recent messages in a room (point-in-time, newest first). Filter with --sender / --type; walk back through history with --before.",
     "k": "cmd",
     "p": "Reference"
   },
@@ -1112,7 +1119,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-board",
-    "t": "mycelium board messages <id> [--limit N]",
+    "t": "mycelium board messages <id> [--limit N] [--before <stamp|age>]",
     "s": "CLI Reference",
     "x": "Read one thread: the conversation about that row or memory, and nothing else from the room.",
     "k": "cmd",

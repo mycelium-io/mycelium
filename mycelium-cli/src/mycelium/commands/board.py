@@ -888,7 +888,7 @@ def board_send(
 
 
 @doc_ref(
-    usage="mycelium board messages <id> [--limit N]",
+    usage="mycelium board messages <id> [--limit N] [--before <stamp|age>]",
     desc="Read one thread: the conversation about that row or memory, and nothing else from the room.",
     group="board",
 )
@@ -901,24 +901,41 @@ def board_messages(
     sender: str | None = typer.Option(
         None, "--sender", "-s", help="Only messages from this handle"
     ),
+    before: str | None = typer.Option(
+        None,
+        "--before",
+        "-b",
+        help="Only messages before this ISO stamp or age (2h, 30m, 1d): the cursor to walk back",
+    ),
+    since: str | None = typer.Option(
+        None, "--since", help="Only messages at/after this ISO stamp or age (2h, 30m, 1d)"
+    ),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
 ) -> None:
     """Read a thread.
 
     This is what a ping is for. The room said something moved; this is what
-    moved in it — a row's conversation, or a memory's.
+    moved in it — a row's conversation, or a memory's. A long thread pages the
+    way the room does: the footer names the `--before` cursor for the next
+    page back.
     """
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
     where, episode = _thread(name, row_id)
+    stem = f"mycelium board messages {row_id} --room {name} --limit {limit}"
+    if sender:
+        stem += f" --sender {sender}"
     chat.read(
         cfg,
         name,
         limit=limit,
         sender=sender,
         episode=episode,
+        since=chat.parse_stamp(since) if since else None,
+        before=chat.parse_stamp(before) if before else None,
         label=where,
         empty_note="nothing said in this thread yet",
+        older_with=stem,
     )
 
 

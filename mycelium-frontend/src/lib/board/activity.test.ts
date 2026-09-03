@@ -115,7 +115,9 @@ describe("projectActivity", () => {
         },
       ],
     });
-    expect(events[0]).toMatchObject({ action: "negotiated", title: "round 4 · @risk accept" });
+    // The line is the shared summarizer's (lib/room-events.ts): the log adopts
+    // what the channel would print rather than deriving its own.
+    expect(events[0]).toMatchObject({ action: "negotiated", title: "Round 4: risk → accept" });
     expect(events[0].title).not.toContain("{");
   });
 
