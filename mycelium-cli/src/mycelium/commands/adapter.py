@@ -4,7 +4,7 @@
 """
 Adapter commands: connect agent frameworks to Mycelium.
 
-Thin typer layer. All per-family install/uninstall/step/status behaviour
+Thin typer layer. All per-family install/uninstall/step/status behavior
 lives behind the single ``Integration`` contract
 (``mycelium.integrations``); this module just parses arguments and dispatches
 via ``get_integration(...)``; there is no ``if adapter_type ==`` branching
@@ -49,9 +49,9 @@ def adapter_main(ctx: typer.Context) -> None:
 def _resolve_integration(adapter_type: str) -> Integration | None:
     """Resolve a known adapter type to its integration, or None if planned.
 
-    ``ADAPTER_TYPES`` is the user-facing catalogue (incl. the planned
+    ``ADAPTER_TYPES`` is the user-facing catalog (incl. the planned
     ``cursor``); the integration registry only holds families that are
-    actually implemented. ``get_integration`` normalises the hyphen spelling.
+    actually implemented. ``get_integration`` normalizes the hyphen spelling.
     """
     try:
         return get_integration(adapter_type)
@@ -238,7 +238,7 @@ def remove(
         if not force:
             confirm = typer.confirm(f"Remove adapter '{adapter_type}'?")
             if not confirm:
-                typer.echo("Cancelled.")
+                typer.echo("Canceled.")
                 raise typer.Exit(0)
 
         integ = _resolve_integration(adapter_type)

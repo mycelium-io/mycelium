@@ -366,7 +366,7 @@ def _resolve_agent_to_room() -> dict[str, str]:
     file directly. In hub-and-spoke deployments, spoke agents won't appear
     in the hub's config; covering them properly would require collecting
     each spoke's mapping (future work; for now the local mapping is enough
-    to colour-code single-host deployments correctly and to label the
+    to color-code single-host deployments correctly and to label the
     co-located agents on a hub).
     """
     global _AGENT_ROOM_CACHE
@@ -1620,7 +1620,7 @@ def _fmt_cost(n: float | None) -> str:
 def _parent_room(label: str) -> str:
     """Strip ``:session:<uuid>`` suffix so per-session counters roll up to the
     user-visible parent room. Centralizes bucketing logic so each renderer
-    strips consistently (before keying, not just while labelling).
+    strips consistently (before keying, not just while labeling).
     """
     return label.split(":session:", 1)[0] if ":session:" in label else label
 
@@ -2280,7 +2280,7 @@ def _render_cache_efficiency_table(
     *,
     include_background: bool = False,
 ) -> None:
-    """Diagnostic panel for OpenClaw's prompt cache behaviour.
+    """Diagnostic panel for OpenClaw's prompt cache behavior.
 
     Intentionally does NOT show dollar "savings". The cache is operated by the
     LLM provider (e.g. Anthropic), not by Mycelium, so attributing the saving
@@ -2686,7 +2686,7 @@ def _render_cost_estimates(
         # configured room (from the local openclaw.json mycelium-room
         # channel block).  We can't compute per-room cost reliably without
         # provider-reported cost per session, so we estimate from the
-        # configured LLM model, labelled accordingly.  Sessions whose
+        # configured LLM model, labeled accordingly.  Sessions whose
         # agent isn't in the local channel config are bucketed under
         # ``other``.
         sessions = (otel or {}).get("sessions", []) if otel else []
@@ -2865,7 +2865,7 @@ def _render_spoke_sites_table(otel: dict | None) -> None:
     for host_key in sorted(by_host, key=lambda h: by_host[h].get("last_seen", ""), reverse=True):
         data = by_host[host_key]
         # Match liberally; hostname may be "oclw4" while OTLP host could be
-        # "oclw4.local", "oclw-4", FQDN, etc. Compare normalised forms.
+        # "oclw4.local", "oclw-4", FQDN, etc. Compare normalized forms.
         norm_local = local_host.lower().split(".")[0].replace("-", "")
         norm_key = host_key.lower().split(".")[0].replace("-", "")
         role = "hub" if norm_local == norm_key else "spoke"

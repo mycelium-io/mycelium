@@ -12,7 +12,7 @@ hop is real.
 
 The public echo agent returns "Hello World" for any input — enough to prove the
 whole outbound chat path end to end. Point it at a model-backed a2a-samples agent
-for a behavioural run.
+for a behavioral run.
 """
 
 import asyncio

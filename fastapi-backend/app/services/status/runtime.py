@@ -293,7 +293,7 @@ class StatusRuntime:
     # ── parsing ──────────────────────────────────────────────────────────────
 
     def claims(self, text: str) -> list[Ref]:
-        """Every ref any registered provider recognises in a piece of text.
+        """Every ref any registered provider recognizes in a piece of text.
 
         This is the whole of the app's knowledge of external syntax: none. A
         pasted link becomes tracked work because a provider claimed it.

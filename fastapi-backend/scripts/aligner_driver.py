@@ -17,7 +17,7 @@ Protocol (all under --workdir, default /tmp/aligner-lab):
   * You read ``turn.json``, then write the agent's reply prose to ``reply.txt``.
   * The driver injects it as that agent's transcript reply and the engine continues.
   * On termination the real episode record is copied to ``episode.md`` and a
-    ``result.json`` summarises the verdict.
+    ``result.json`` summarizes the verdict.
 
 Positions seed from ``positions.json`` in the workdir ({handle: prose}); if absent,
 a default two-agent budget scenario is used. LLM config is read from
@@ -216,7 +216,7 @@ async def _drive(args: argparse.Namespace) -> None:
     print("[driver] running the real AlignerEngine.mediate() ...", flush=True)
     verdict = await engine.mediate(_ROOM, engine_handle="aligner")
 
-    # The real episode record the engine just wrote — copy it out and summarise.
+    # The real episode record the engine just wrote — copy it out and summarize.
     episodes = sorted((_DATA_DIR / "rooms" / _ROOM / "log" / "episodes").glob("*.md"))
     record = episodes[-1].read_text() if episodes else "(no episode record written)"
     (work / "episode.md").write_text(record)
@@ -240,7 +240,7 @@ def main() -> None:
     args = ap.parse_args()
     # The data dir is fixed at import time (settings reads it once), so a --workdir
     # that disagrees would run the turn bridge in one place and read the episode
-    # record from another. Point people at the env var rather than half-honour it.
+    # record from another. Point people at the env var rather than half-honor it.
     if Path(args.workdir).resolve() != _WORKDIR.resolve():
         raise SystemExit(
             f"--workdir {args.workdir} disagrees with the data dir under {_WORKDIR}; "

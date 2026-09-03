@@ -145,7 +145,7 @@ def _ranked(score: float, result_type: str) -> float:
 
 
 def _snippet(text: str, terms: list[str]) -> str:
-    """A one-line window of ``text``, centred on the first term that appears in it."""
+    """A one-line window of ``text``, centered on the first term that appears in it."""
     flat = " ".join(text.split())
     if len(flat) <= _SNIPPET_CHARS:
         return flat

@@ -103,7 +103,7 @@ class TestWorkedIsTheOnlyLineLeft:
     There is no threading gate to test any more (#907): the denylist that kept
     ``agents/``, ``log/`` and ``context/synthesis`` off it is gone, so the rule
     is uniform and :func:`tasks.is_board_row` is the one predicate left. What
-    the tests below assert is behaviour — that a memory of any namespace comes
+    the tests below assert is behavior — that a memory of any namespace comes
     out of a write carrying a thread — rather than a gate returning ``True``.
     """
 

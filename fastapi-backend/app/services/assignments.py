@@ -5,7 +5,7 @@
 
 An agent is resident rather than one-shot, but no session gets to announce that
 it ended — a container is reclaimed, a cloud session times out, a job is
-cancelled.  So an assignment is a lease, not a fact: it has a window, the holder
+canceled.  So an assignment is a lease, not a fact: it has a window, the holder
 keeps it alive by saying so, and it returns to the pool when nobody does.
 
 The word is *assignment*, on both sides of the seam and in the frontmatter.

@@ -1044,7 +1044,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                 !SYSTEM_TYPES.has(prev.type) &&
                 prev.sender === ev.sender;
               const isAgent = agentHandles.has(ev.sender);
-              // Match the members panel so one sender isn't two colours in two
+              // Match the members panel so one sender isn't two colors in two
               // places: an agent wears its own stable tint (Monogram's default),
               // a human the neutral seat.
               const color = isAgent ? undefined : "var(--avatar-neutral)";

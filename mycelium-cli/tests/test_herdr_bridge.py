@@ -365,9 +365,9 @@ def test_reconcile_note_stale_lease() -> None:
     """Backend holds a lease but the herdr pane is dead → the Finding-2 flag."""
     from mycelium.commands.herdr import _reconcile_note
 
-    text, colour = _reconcile_note("lease", None)
+    text, color = _reconcile_note("lease", None)
     assert "stale" in text.lower()
-    assert colour == "red"
+    assert color == "red"
 
 
 def test_reconcile_note_in_sync() -> None:
@@ -381,9 +381,9 @@ def test_reconcile_note_herdr_only() -> None:
     """A live herdr agent the backend never joined."""
     from mycelium.commands.herdr import _reconcile_note
 
-    text, colour = _reconcile_note(None, "working")
+    text, color = _reconcile_note(None, "working")
     assert "herdr-only" in text.lower()
-    assert colour == "yellow"
+    assert color == "yellow"
 
 
 def test_reconcile_note_both_absent() -> None:

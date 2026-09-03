@@ -344,14 +344,14 @@ describe("<MemoryGraph />", () => {
     it("stops dimming the canvas once the hovered memory is filtered away", async () => {
       // Hiding a namespace unmounts its nodes without firing mouseleave, so the
       // hovered key can outlive the node. Left uncorrected, every remaining node
-      // stays dimmed against a neighbour that isn't on screen to explain it.
+      // stays dimmed against a neighbor that isn't on screen to explain it.
       render(<MemoryGraph graph={mixed} />);
       await openLegend();
       const opacityOf = (key: string) =>
         screen.getByRole("button", { name: `Open ${key}` }).getAttribute("opacity");
 
       await userEvent.hover(screen.getByRole("button", { name: "Open context/c" }));
-      expect(opacityOf("decisions/b")).not.toBe("1"); // dimmed, as a non-neighbour
+      expect(opacityOf("decisions/b")).not.toBe("1"); // dimmed, as a non-neighbor
 
       await userEvent.click(screen.getByRole("button", { name: /hide context/i }));
 
@@ -771,7 +771,7 @@ describe("<MemoryGraph />", () => {
       expect(positionOf(node("decisions/a")).x).toBeCloseTo(whenReleased.x);
     });
 
-    it("abandons a cancelled press rather than treating it as a click", () => {
+    it("abandons a canceled press rather than treating it as a click", () => {
       const onNavigate = vi.fn();
       const { canvas } = renderGraph({ onNavigate });
       const opts = { ...PRESS, clientX: 100, clientY: 100 };

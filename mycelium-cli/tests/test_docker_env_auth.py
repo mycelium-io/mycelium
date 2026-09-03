@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""``[auth]`` → ``.env`` materialisation for the HTTP-API JWT gate (#561).
+"""``[auth]`` → ``.env`` materialization for the HTTP-API JWT gate (#561).
 
 ``~/.mycelium/.env`` is the only transport config.toml has into the backend
 container, so a setting that doesn't survive this rendering is a setting the
@@ -40,7 +40,7 @@ def test_default_config_ships_the_gate_disabled() -> None:
     assert env["AUTH_AUDIENCE"] == ""
 
 
-def test_enabled_gate_materialises_every_setting() -> None:
+def test_enabled_gate_materializes_every_setting() -> None:
     cfg = MyceliumConfig()
     cfg.auth.enabled = True
     cfg.auth.audience = "mycelium"
@@ -93,7 +93,7 @@ def test_issuer_role_must_be_user_or_agent() -> None:
         TrustedIssuer(issuer="https://sso.example.com/realms/people", role="superuser")
 
 
-def test_issuer_urls_are_trailing_slash_normalised() -> None:
+def test_issuer_urls_are_trailing_slash_normalized() -> None:
     """``iss`` is matched by exact string, so a stray trailing slash in config
     would silently reject every token from that issuer."""
     entry = TrustedIssuer(issuer="https://sso.example.com/realms/people/")

@@ -285,7 +285,7 @@ await (async () => {
   });
 
   await acount("a label wins over the same word as a tag name", async () => {
-    // A button labelled "table" and a <table> both on the page: the label is
+    // A button labeled "table" and a <table> both on the page: the label is
     // what the caller typed and what they meant.
     const r = await locate(fakePage(["label:table", "css:table"]), "table");
     assert.equal(r.kind, "label");

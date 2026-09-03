@@ -444,7 +444,7 @@ class TestFailedRefreshDoesNotRejuvenateAValue:
 
 class TestAClaimIsAlwaysReleased:
     @pytest.mark.asyncio
-    async def test_a_cancelled_refresh_does_not_strand_its_refs(self):
+    async def test_a_canceled_refresh_does_not_strand_its_refs(self):
         """A client that disconnects mid-fetch must not freeze the ref forever.
 
         `finish` used to be skipped on cancellation, leaving the ref claimed for

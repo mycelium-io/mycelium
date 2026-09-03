@@ -14,7 +14,7 @@ a live negotiation) cascades into timeouts and misreported agreements.
 This snaps such near-misses to the nearest canonical value before rejecting,
 mirroring the good part of the sibling `ioc-scale-cf-cognition-engines`
 `offer_validation.py`. Uses **stdlib-only** (`difflib`): option lists are tiny
-(a handful per issue) and snapping runs once per agent turn. Order: exact → case-insensitive → normalised → `difflib` ratio.
+(a handful per issue) and snapping runs once per agent turn. Order: exact → case-insensitive → normalized → `difflib` ratio.
 
 Snapping requires a near-match: if the agents agree 30% but the grid only has
 {25, 35}, that is an issue-*discovery* problem (the grid must contain the
@@ -33,7 +33,7 @@ from difflib import SequenceMatcher
 _SNAP_THRESHOLD = 80.0
 
 
-def _normalise(text: str) -> str:
+def _normalize(text: str) -> str:
     """Lowercase; collapse whitespace, underscores, hyphens to a single space."""
     return re.sub(r"[\s_\-]+", " ", str(text).strip().lower())
 
@@ -45,7 +45,7 @@ def _ratio(a: str, b: str) -> float:
 def snap(raw: str, valid: list[str], *, threshold: float = _SNAP_THRESHOLD) -> str | None:
     """Return the canonical member of *valid* matching *raw*, or ``None``.
 
-    Tiers, first match wins: exact, case-insensitive, normalised, then a
+    Tiers, first match wins: exact, case-insensitive, normalized, then a
     ``difflib`` ratio at/above *threshold* (best match). ``None`` means *raw* is
     too far from every option to snap; the caller should treat that as a real
     mismatch, not force it.
@@ -56,21 +56,21 @@ def snap(raw: str, valid: list[str], *, threshold: float = _SNAP_THRESHOLD) -> s
     for v in valid:
         if s.lower() == v.lower():
             return v
-    s_norm = _normalise(s)
+    s_norm = _normalize(s)
     for v in valid:
-        if s_norm == _normalise(v):
+        if s_norm == _normalize(v):
             return v
     # Token containment: "express delivery" ~ "express" (the CE's token_set_ratio
-    # intent, done with plain sets so difflib's whole-string ratio doesn't penalise
+    # intent, done with plain sets so difflib's whole-string ratio doesn't penalize
     # the extra word). Single-token numerics never trigger this (distinct tokens).
     raw_tokens = set(s_norm.split())
     for v in valid:
-        v_tokens = set(_normalise(v).split())
+        v_tokens = set(_normalize(v).split())
         if v_tokens and (v_tokens <= raw_tokens or raw_tokens <= v_tokens):
             return v
     best_score, best_match = 0.0, None
     for v in valid:
-        score = _ratio(s_norm, _normalise(v))
+        score = _ratio(s_norm, _normalize(v))
         if score > best_score:
             best_score, best_match = score, v
     return best_match if best_score >= threshold else None

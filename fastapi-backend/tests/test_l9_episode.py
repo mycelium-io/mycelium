@@ -115,12 +115,12 @@ def test_broken_consensus_commits_as_rejected():
     assert consensus["header"]["message"]["parents"] == [ep.intent_id]
 
 
-def test_synthesised_reply_marked():
+def test_synthesized_reply_marked():
     ep = _open()
     l9_episode.record_reply(
-        ep, handle="a1", reply={"action": "reject"}, round_n=1, synthesised=True
+        ep, handle="a1", reply={"action": "reject"}, round_n=1, synthesized=True
     )
-    assert ep.messages[-1]["payload"]["data"]["synthesised"] is True
+    assert ep.messages[-1]["payload"]["data"]["synthesized"] is True
 
 
 # ── epistemic tracking + metrics ──────────────────────────────────────────────
@@ -310,7 +310,7 @@ def test_gar_guard_at_mpc_half():
     assert m["gar"] == 0.0
 
 
-# ── epistemic field sanitisation ──────────────────────────────────────────────
+# ── epistemic field sanitization ──────────────────────────────────────────────
 
 
 def test_sanitize_rejects_bool_confidence():

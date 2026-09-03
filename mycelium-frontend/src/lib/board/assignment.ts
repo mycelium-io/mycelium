@@ -6,7 +6,7 @@
  *
  * An agent is resident rather than one-shot, but no session gets to announce
  * that it ended — a container is reclaimed, a cloud session times out, a job is
- * cancelled. So every assertion an ephemeral actor makes about the future is a
+ * canceled. So every assertion an ephemeral actor makes about the future is a
  * lease, because none of them can promise the future.
  *
  * Held as a fact, one dead agent leaves the board asserting "@someone is on

@@ -27,7 +27,7 @@ called.
 membership), discovers the negotiable issues from the participants' opening prose,
 and drives a live **NEGMAS SAO** to termination — ``@``-addressing one participant
 per turn over the room channel, interpreting the real reply, and stopping the
-*instant* the mechanism reaches unanimity (the anti-theatre property). It hands
+*instant* the mechanism reaches unanimity (the anti-theater property). It hands
 the agreed ``issue = value`` map to the ``commit:converged`` seam ``task_sync``
 consumes (a failed run commits ``rejected``). Deterministic scoring (MPC/GAR/SCR)
 still rides along via :mod:`l9_episode`, computed over the mediator's readings.
@@ -73,9 +73,9 @@ _NON_PARTICIPANTS = frozenset({BACKEND_AGENT, l9.SYSTEM_ACTOR_ID})
 # field. Its prompt *text*, though, embeds the broker's summary which names the
 # other participants — and the connector's ``should_wake`` also wakes on a raw
 # ``@handle`` token in the human-facing text. Left as-is, every turn would
-# spuriously wake *every* named agent, doubling cold-spawns and serialising the
+# spuriously wake *every* named agent, doubling cold-spawns and serializing the
 # connectors until the addressed agent's real reply misses the round window (the
-# turn then falls back to a reject). Neutralising the ``@`` means only the
+# turn then falls back to a reject). Neutralizing the ``@`` means only the
 # L9-addressed agent wakes; the names stay readable.
 _AT_MENTION = re.compile(r"@(?=\w)")
 
@@ -286,7 +286,7 @@ class AlignerEngine:
         from the agents' opening prose, then let NEGMAS drive the rounds —
         ``@``-addressing one agent at a time over the channel, interpreting the
         real reply, and stopping the *instant* the mechanism reaches unanimity
-        (the anti-theatre property). Hands the agreed ``issue = value`` map to the
+        (the anti-theater property). Hands the agreed ``issue = value`` map to the
         same ``commit:converged`` seam ``task_sync`` already consumes.
 
         NEGMAS is synchronous, so ``mech.run()`` executes on a worker thread; each
@@ -416,7 +416,7 @@ class AlignerEngine:
 
         Default: a fresh :class:`~app.services.pi_session.PiSession` bound to a
         per-episode ``--session`` file so the *internal* agent keeps real memory
-        across SAO rounds (the anti-theatre property — the mediator remembers the
+        across SAO rounds (the anti-theater property — the mediator remembers the
         whole haggle, not a stateless call per turn). A test injects a fake via
         ``llm_session_factory``. Only the engine's own LLM session; user participant agents are
         untouched (they answer over SLIM/HTTP as before).
@@ -563,7 +563,7 @@ class AlignerEngine:
             payload_type="tick",
             payload_data={"round": round_n, "action": action},
         )
-        # Neutralise ``@`` tokens so the broker's summary (which names the other
+        # Neutralize ``@`` tokens so the broker's summary (which names the other
         # agents) doesn't spuriously wake them — only the L9 ``recipients=[handle]``
         # above should wake, one agent per turn.
         safe_prompt = _AT_MENTION.sub("", prompt)

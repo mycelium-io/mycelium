@@ -13,7 +13,7 @@ drift evaluator later): the extensibility axis, no new adapter per CE.
 An engine is a first-class registered *room citizen*, a manifest at
 ``agents/<handle>`` (``adapter="engine"``, ``kind=<ce>``), listed by
 ``engine ls`` / ``agent ls``, invokable, posting as itself. Its run is owned
-by the **backend's summon seam** (which recognises registered engines instead of
+by the **backend's summon seam** (which recognizes registered engines instead of
 the old reserved ``ALIGNER_HANDLE``), so ``lifecycle="backend_engine"``. There are
 no host-side assets; hence the no-op install/register facets.
 """

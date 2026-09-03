@@ -192,7 +192,7 @@ export function inferSchema(items: LiveItem[]): FieldSchema[] {
  *
  * The thread fields are folded onto a row so they can be *read* — a column, a
  * chip — and grouping is not reading: it makes the field the axis the board is
- * organised by. Pivoting tasks by `thread_state` would sort them by how the
+ * organized by. Pivoting tasks by `thread_state` would sort them by how the
  * negotiation inside them went, which is the container-outlives-the-negotiation
  * rule inverted on the one surface where it is most visible. So the exclusion
  * is the whole of `THREAD_FIELDS` rather than the one field that reaches here

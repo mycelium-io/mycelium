@@ -64,7 +64,7 @@ const TIMELINES: Record<string, StreamStep[]> = {
 export function mockStream(roomName: string): Response {
   const encoder = new TextEncoder();
   const timeline = TIMELINES[roomName] ?? [];
-  let cancelled = false;
+  let canceled = false;
   const timers: ReturnType<typeof setTimeout>[] = [];
 
   const stream = new ReadableStream<Uint8Array>({
@@ -77,7 +77,7 @@ export function mockStream(roomName: string): Response {
         elapsed += step.delayMs;
         timers.push(
           setTimeout(() => {
-            if (cancelled) return;
+            if (canceled) return;
             const frame = { created_at: new Date().toISOString(), ...step.message };
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`));
           }, elapsed),
@@ -86,13 +86,13 @@ export function mockStream(roomName: string): Response {
 
       // Heartbeat so the badge stays LIVE after the timeline drains.
       const beat = setInterval(() => {
-        if (cancelled) return;
+        if (canceled) return;
         controller.enqueue(encoder.encode(": heartbeat\n\n"));
       }, 15_000);
       timers.push(beat as unknown as ReturnType<typeof setTimeout>);
     },
     cancel() {
-      cancelled = true;
+      canceled = true;
       for (const t of timers) clearTimeout(t);
     },
   });

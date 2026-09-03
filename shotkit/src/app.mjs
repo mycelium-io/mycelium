@@ -112,7 +112,7 @@ export async function ensureMockServer({ log = () => {} } = {}) {
     cwd: FRONTEND_DIR,
     env: { ...process.env, MYCELIUM_UI_MOCK: "1", PORT: String(port) },
     stdio: ["ignore", "pipe", "pipe"],
-    // Its own process group: `pnpm` is a wrapper, and signalling only the
+    // Its own process group: `pnpm` is a wrapper, and signaling only the
     // wrapper orphans the next-server child, which then holds the directory
     // against every later boot.
     detached: true,

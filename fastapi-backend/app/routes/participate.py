@@ -64,7 +64,7 @@ _MAX_WAIT_S = 3600.0
 # ``[[mycelium: confidence=0.85 stance=accept]]``; those fields are lifted onto the
 # L9 payload so the aligner can score convergence, and stripped from the prose.
 _MARKER_RE = re.compile(r"\[\[\s*mycelium\s*:(.*?)\]\]", re.IGNORECASE | re.DOTALL)
-# Payloads that are never an addressed turn however they are actor-labelled:
+# Payloads that are never an addressed turn however they are actor-labeled:
 # presence/keepalive are liveness, a ``ping`` is the signal that a *thread* moved,
 # and a ``notice`` is the signal that the *board* moved (a task filed, claimed,
 # resolved) — all nudges to look, not turns to take. Excluded structurally here so

@@ -90,7 +90,7 @@ describe("inferSchema", () => {
 
   it("reads a thread's state as a column but never as an axis to pivot on", () => {
     // Folding a thread onto a row is so it can be read. Grouping is not reading:
-    // it makes the field what the board is organised by, and pivoting tasks by
+    // it makes the field what the board is organized by, and pivoting tasks by
     // how the negotiation inside them went is the container-outlives-the-
     // negotiation rule inverted where it shows most.
     const schema = inferSchema([

@@ -13,7 +13,7 @@ advance, conceding toward each other and ending in plain acceptance. Simulating
 them with a second model would test that model's agreeableness, not this one's
 mediation.
 
-The assertion that matters is the anti-theatre property — agreement from the
+The assertion that matters is the anti-theater property — agreement from the
 mechanism terminating at unanimity, not from exhausting the cap.
 
 Guarded by ``MYCELIUM_LLM_TESTS=1`` (costs tokens) and needs ``pi`` on PATH.

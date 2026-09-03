@@ -331,7 +331,7 @@ _META_KEYS = frozenset({
 })
 
 
-def _normalise(s: str) -> str:
+def _normalize(s: str) -> str:
     s = s.lower()
     s = re.sub(r"[^\w\s]", " ", s)
     return re.sub(r"\s+", " ", s).strip()
@@ -614,9 +614,9 @@ def extract_issues_from_before_transcript(content: str, gold_issues: list[str]) 
     words appear in the transcript.
     """
     found = []
-    content_norm = _normalise(content)
+    content_norm = _normalize(content)
     for issue in gold_issues:
-        words = [w for w in _normalise(issue).split() if len(w) > 3]
+        words = [w for w in _normalize(issue).split() if len(w) > 3]
         if not words:
             continue
         hit_ratio = sum(1 for w in words if w in content_norm) / len(words)
@@ -630,10 +630,10 @@ def extract_options_from_before_transcript(
 ) -> dict[str, set[str]]:
     """Find gold option strings in the before transcript via keyword overlap."""
     options: dict[str, set[str]] = {}
-    content_norm = _normalise(content)
+    content_norm = _normalize(content)
     for issue, opt_list in gold_options.items():
         for opt in opt_list:
-            words = [w for w in _normalise(opt).split() if len(w) > 4]
+            words = [w for w in _normalize(opt).split() if len(w) > 4]
             if len(words) >= 3 and sum(1 for w in words if w in content_norm) / len(words) >= 0.6:
                 options.setdefault(issue, set()).add(opt)
     return options
@@ -739,8 +739,8 @@ _embed_matcher = _EmbedMatcher()
 # ---------------------------------------------------------------------------
 
 def _jaccard(a: str, b: str) -> float:
-    aw = set(_normalise(a).split())
-    bw = set(_normalise(b).split())
+    aw = set(_normalize(a).split())
+    bw = set(_normalize(b).split())
     if not aw or not bw:
         return 0.0
     return len(aw & bw) / len(aw | bw)
@@ -748,8 +748,8 @@ def _jaccard(a: str, b: str) -> float:
 
 def _contains_match(candidate: str, gold: str) -> bool:
     """True if all significant words of the shorter string appear in the longer."""
-    cw = set(_normalise(candidate).split())
-    gw = set(_normalise(gold).split())
+    cw = set(_normalize(candidate).split())
+    gw = set(_normalize(gold).split())
     sig = {w for w in gw if len(w) > 3}
     if not sig:
         return False

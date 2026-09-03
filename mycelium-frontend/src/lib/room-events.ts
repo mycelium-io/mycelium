@@ -141,7 +141,7 @@ export function parseEvent(msg: Record<string, unknown>): Event {
     }
     case "l9_exchange": {
       // A ping rides the exchange kind like everything else, so it has to be
-      // recognised before the prose unwrap below — which would otherwise turn
+      // recognized before the prose unwrap below — which would otherwise turn
       // it into an empty chat row from `system`, the one shape a thread exists
       // to keep out of the room.
       const ping = pingOf(raw);
@@ -165,7 +165,7 @@ export function parseEvent(msg: Record<string, unknown>): Event {
       }
       // The live SSE stream wraps human/agent messages as an L9 exchange
       // envelope, while the REST snapshot (loaded on mount/refresh) delivers the
-      // same message as a plain "broadcast". Unwrap the prose and normalise to
+      // same message as a plain "broadcast". Unwrap the prose and normalize to
       // the chat shape so the live feed matches a refresh instead of silently
       // dropping the message.
       content = (raw.content as string) || "";
