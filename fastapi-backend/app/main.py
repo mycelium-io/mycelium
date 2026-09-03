@@ -116,6 +116,12 @@ async def lifespan(app: FastAPI):
 
     start_event_sweep()
 
+    # Lease-expiry sweep: raises the `expired` timeline notice, which nothing
+    # writes (a lease drains by the clock, so there is no seam to raise it from).
+    from app.services.lease_sweep import start_lease_sweep, stop_lease_sweep
+
+    start_lease_sweep()
+
     # Pre-load embedding model so first request isn't slow
     from app.services.embedding import warmup as warmup_embeddings
 
@@ -207,6 +213,7 @@ async def lifespan(app: FastAPI):
     yield
     stop_watcher()
     stop_event_sweep()
+    stop_lease_sweep()
 
     # Close the status providers' transports. They hold sockets and the
     # credentials bound into them, so they are the runtime's to release.

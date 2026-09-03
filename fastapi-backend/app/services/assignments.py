@@ -189,8 +189,8 @@ async def _write(
     return _describe(key, fresh_meta, datetime.now(UTC))
 
 
-async def _raise_notice(room: str, key: str, subkind: str, by: str) -> None:
-    """Tell the room the board moved: a task was claimed, handed back or resolved.
+async def raise_notice(room: str, key: str, subkind: str, by: str) -> None:
+    """Tell the room the board moved: a task was claimed, handed back, resolved or drained.
 
     A custody write is news the timeline should carry, so it raises a notice the
     same way a thread write raises a ping — through the manager, waking nobody. Reads
@@ -241,7 +241,7 @@ async def claim(room: str, key: str, handle: str, ttl_minutes: int, now: datetim
         "assignment_note_by": None,
     }
     described = await _write(room, key, meta, content, patch, handle)
-    await _raise_notice(room, key, "claimed", handle)
+    await raise_notice(room, key, "claimed", handle)
     return described
 
 
@@ -262,7 +262,7 @@ async def release(room: str, key: str, handle: str, note: str | None, now: datet
         "assignment_note_by": handle.lstrip("@"),
     }
     described = await _write(room, key, meta, content, patch, handle)
-    await _raise_notice(room, key, "released", handle)
+    await raise_notice(room, key, "released", handle)
     return described
 
 
@@ -277,7 +277,7 @@ async def resolve(room: str, key: str, handle: str, now: datetime) -> dict:
         "assignment_note_by": handle.lstrip("@"),
     }
     described = await _write(room, key, meta, content, patch, handle)
-    await _raise_notice(room, key, "resolved", handle)
+    await raise_notice(room, key, "resolved", handle)
     return described
 
 
