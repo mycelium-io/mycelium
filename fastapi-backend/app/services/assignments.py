@@ -44,6 +44,7 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
+from app.config import settings
 from app.services.filesystem import (
     EPISODE_META,
     get_room_dir,
@@ -64,6 +65,18 @@ DEFAULT_TTL_MINUTES = 30
 
 RUNTIME_AUTHOR = "runtime"
 ASSIGNABLE_NAMESPACES = ("work",)
+
+#: The relation a row waits on: the typed ``depends-on`` link any memory can
+#: carry (:data:`app.services.links.RELATION_KEYS`), read here as "cannot start
+#: before these rows are done". Only a target that is a board row counts — a
+#: ``context/`` note is never resolved, so waiting on one would wait forever.
+DEPENDENCY_RELATION = "depends-on"
+#: The derived field: the dependencies still open. Never stored, like expiry —
+#: it is read off the targets' own state each time, so it needs no process to
+#: be alive when a dependency resolves.
+WAITING_FIELD = "waiting_on"
+#: Statuses a row's dependents read as done with.
+SETTLED_STATUSES = frozenset({"resolved", "dismissed"})
 
 #: How often a lease watch re-reads the row it is watching.
 POLL_INTERVAL_S = 1.0
@@ -137,6 +150,50 @@ def assignable(key: str) -> bool:
     return key.split("/")[0] in ASSIGNABLE_NAMESPACES
 
 
+def dependencies(meta: dict) -> list[str]:
+    """The row keys ``meta`` says this row waits on, as written."""
+    raw = meta.get(DEPENDENCY_RELATION)
+    values = raw if isinstance(raw, list) else [raw]
+    return [v.strip() for v in values if isinstance(v, str) and v.strip()]
+
+
+def settled(meta: dict, now: datetime) -> bool:
+    """Whether a row is done as far as anything waiting on it is concerned."""
+    return meta.get("status") in SETTLED_STATUSES or state_of(meta, now) == "resolved"
+
+
+def waiting_on(room: str, meta: dict, now: datetime) -> list[str]:
+    """The board rows ``meta``'s dependencies name that are not yet settled.
+
+    A dependency that names no memory, or names one outside the board
+    namespaces, is not waited on: the link index already reports the first as
+    broken, and the second is a reference rather than a prerequisite.
+    """
+    from app.services.tasks import is_board_row
+
+    room_dir = get_room_dir(room)
+    open_rows: list[str] = []
+    for key in dependencies(meta):
+        if not is_board_row(key):
+            continue
+        found = read_memory_file(room_dir, key)
+        if found is None or settled(found[0], now):
+            continue
+        open_rows.append(key)
+    return open_rows
+
+
+def dependents_of(room: str, key: str) -> list[tuple[str, dict]]:
+    """Every assignable row that names ``key`` as a dependency, with its frontmatter."""
+    room_dir = get_room_dir(room)
+    found: list[tuple[str, dict]] = []
+    for namespace in ASSIGNABLE_NAMESPACES:
+        for row_key, meta, _content in list_memory_files(room_dir, prefix=f"{namespace}/"):
+            if key in dependencies(meta):
+                found.append((row_key, meta))
+    return found
+
+
 def _load(room: str, key: str) -> tuple[dict, str]:
     if not assignable(key):
         raise AssignmentError(
@@ -150,13 +207,14 @@ def _load(room: str, key: str) -> tuple[dict, str]:
     return found
 
 
-def _describe(key: str, meta: dict, now: datetime) -> dict:
+def _describe(room: str, key: str, meta: dict, now: datetime) -> dict:
     """The row's assignment, as the wire says it."""
     state = state_of(meta, now)
     owner = meta.get("owner")
     body = {
         "key": key,
         "assignment": state,
+        WAITING_FIELD: waiting_on(room, meta, now),
         "owner": str(owner).lstrip("@") if owner else None,
         "claimed_at": meta.get("claimed_at"),
         "ttl_minutes": meta.get("ttl_minutes"),
@@ -186,7 +244,7 @@ async def _write(
     from app.services.fields import upsert_patch
 
     fresh_meta = await upsert_patch(room, key, meta, content, patch, handle, notify=notify)
-    return _describe(key, fresh_meta, datetime.now(UTC))
+    return _describe(room, key, fresh_meta, datetime.now(UTC))
 
 
 async def raise_notice(room: str, key: str, subkind: str, by: str) -> None:
@@ -211,13 +269,20 @@ async def raise_notice(room: str, key: str, subkind: str, by: str) -> None:
     )
 
 
-async def claim(room: str, key: str, handle: str, ttl_minutes: int, now: datetime) -> dict:
+async def claim(
+    room: str, key: str, handle: str, ttl_minutes: int, now: datetime, *, force: bool = False
+) -> dict:
     """Take assignment of a row, for as long as the lease runs.
 
     A live claim is not stealable — that is the point of holding one — but an
     expired one is: the row is back in the pool, and refusing the next taker
     because a dead session's handle is still in the file would be the original
     failure with extra steps.
+
+    A row still waiting on a dependency is refused too, when the room's
+    dependency gate is on (:attr:`~app.config.Settings.BOARD_DEPENDENCY_GATE`,
+    off by default): the refusal names what it waits on, and ``force`` takes
+    the row anyway for the caller who knows better.
     """
     meta, content = _load(room, key)
     current = state_of(meta, now)
@@ -231,6 +296,15 @@ async def claim(room: str, key: str, handle: str, ttl_minutes: int, now: datetim
             claimed_at=meta.get("claimed_at"),
             ttl_minutes=meta.get("ttl_minutes"),
         )
+    if settings.BOARD_DEPENDENCY_GATE and not force:
+        open_rows = waiting_on(room, meta, now)
+        if open_rows:
+            raise AssignmentError(
+                f"'{key}' waits on {', '.join(open_rows)}",
+                status=409,
+                key=key,
+                **{WAITING_FIELD: open_rows},
+            )
     patch = {
         FIELD: "held",
         "owner": f"@{handle.lstrip('@')}",
@@ -278,7 +352,21 @@ async def resolve(room: str, key: str, handle: str, now: datetime) -> dict:
     }
     described = await _write(room, key, meta, content, patch, handle)
     await raise_notice(room, key, "resolved", handle)
+    await _release_dependents(room, key, handle, now)
     return described
+
+
+async def _release_dependents(room: str, key: str, handle: str, now: datetime) -> None:
+    """Tell the room which rows ``key`` resolving just unblocked.
+
+    Derived state is never written, so the only trace a dependency's resolve
+    leaves on its dependents is this notice — raised for each one that now
+    waits on nothing and is not itself done.
+    """
+    for row_key, meta in dependents_of(room, key):
+        if settled(meta, now) or waiting_on(room, meta, now):
+            continue
+        await raise_notice(room, row_key, "unblocked", handle)
 
 
 async def renew(room: str, handle: str, now: datetime) -> list[dict]:
@@ -312,7 +400,7 @@ async def renew(room: str, handle: str, now: datetime) -> list[dict]:
 def read(room: str, key: str, now: datetime) -> dict:
     """The row's assignment right now, without changing anything."""
     meta, _ = _load(room, key)
-    return _describe(key, meta, now)
+    return _describe(room, key, meta, now)
 
 
 def signature(body: dict) -> str:
@@ -322,9 +410,11 @@ def signature(body: dict) -> str:
     without anyone writing a byte, and a watcher that keyed on the version would
     sleep through the one transition nobody sends.
     """
-    return "|".join(
-        str(body.get(part) or "") for part in ("assignment", "owner", "claimed_at", "version")
-    )
+    parts = [str(body.get(part) or "") for part in ("assignment", "owner", "claimed_at", "version")]
+    # A dependency resolving is a transition of this lease too: the row just
+    # became claimable, which is exactly what a watcher on a waiting row wants.
+    parts.append(",".join(body.get(WAITING_FIELD) or []))
+    return "|".join(parts)
 
 
 async def watch(room: str, key: str, since: str | None, timeout: int, now_fn=None) -> dict:

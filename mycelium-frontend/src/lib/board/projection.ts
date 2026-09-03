@@ -21,7 +21,16 @@
 
 import type { AgentSummary, EpisodeSummary, Memory } from "@/lib/api";
 import type { PresenceMember } from "@/lib/api";
-import { ASSIGNMENT_FIELD, DEFAULT_TTL_MINUTES, ASSIGNABLE_NAMESPACES, assignmentOf } from "./assignment";
+import {
+  ASSIGNMENT_FIELD,
+  DEFAULT_TTL_MINUTES,
+  ASSIGNABLE_NAMESPACES,
+  DEPENDENCY_RELATION,
+  WAITING_FIELD,
+  assignmentOf,
+  isSettled,
+} from "./assignment";
+import { fieldAsList, memoryKeyOf } from "./fields";
 import type { LiveItem } from "./item";
 import { memoryHref } from "@/lib/memory-routes";
 import { memoryTitle } from "@/lib/memory-preview";
@@ -214,6 +223,29 @@ export interface ProjectionInput {
   captured?: LiveItem[];
 }
 
+/**
+ * Write onto each row what it still waits on, read off the other rows.
+ *
+ * Only a dependency that is itself a row here counts: a note or a key the board
+ * does not carry is a reference, not a prerequisite. A row with no dependencies
+ * gets no field, so the column exists only where it says something.
+ */
+export function foldWaiting(rows: LiveItem[]): void {
+  const byKey = new Map<string, LiveItem>();
+  for (const row of rows) {
+    const key = memoryKeyOf(row);
+    if (key) byKey.set(key, row);
+  }
+  for (const row of rows) {
+    const named = fieldAsList(row, DEPENDENCY_RELATION);
+    if (!named.length) continue;
+    row.fields[WAITING_FIELD] = named.filter(key => {
+      const dep = byKey.get(key);
+      return dep !== undefined && !isSettled(dep);
+    });
+  }
+}
+
 export function projectItems(input: ProjectionInput): LiveItem[] {
   const items: LiveItem[] = [];
 
@@ -230,6 +262,7 @@ export function projectItems(input: ProjectionInput): LiveItem[] {
     folded.add(ep.episode);
     Object.assign(row.fields, threadFields(ep));
   }
+  foldWaiting(rows);
   for (const ep of input.episodes) {
     if (!folded.has(ep.episode)) items.push(episodeItem(ep, input.room));
   }

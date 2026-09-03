@@ -168,6 +168,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
+    "u": "index.html#board-order-the-pieces",
+    "t": "Order the pieces",
+    "s": "Concepts › Board",
+    "x": "When one piece cannot start before another is done, say so with the same kind of relation: mycelium board new \"Write the migration\" --parent work/ship-passkey-login mycelium memory set work/run-the-migration \"Run the migration\" \\ --meta depends-on=work/write-the-migration The board reads what a row still waits on off the rows it names, and shows it (after work/write-the-migration). Nothing stores that: when the depen",
+    "p": "Guide"
+  },
+  {
     "u": "index.html#board-hand-work-off",
     "t": "Hand work off",
     "s": "Concepts › Board",

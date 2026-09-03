@@ -24,7 +24,16 @@ from datetime import datetime
 from typing import Any
 
 from mycelium.board import assignment
-from mycelium.board.model import EPISODE_FIELD, LIVE_NAMESPACES, ItemSource, LiveItem
+from mycelium.board import fields as board_fields
+from mycelium.board.model import (
+    DEPENDENCY_RELATION,
+    EPISODE_FIELD,
+    LIVE_NAMESPACES,
+    SETTLED_STATUSES,
+    WAITING_FIELD,
+    ItemSource,
+    LiveItem,
+)
 
 
 def _pretty_topic(topic: str) -> str:
@@ -174,6 +183,30 @@ def _thread_fields(episode: dict) -> dict[str, Any]:
     }
 
 
+def _settled(row: LiveItem) -> bool:
+    """Done, as far as a row waiting on this one is concerned."""
+    return row.status in SETTLED_STATUSES or row.text(assignment.FIELD) == "resolved"
+
+
+def fold_waiting(rows: list[LiveItem]) -> None:
+    """Write onto each row what it still waits on, read off the other rows.
+
+    Only a dependency that is itself a row here counts: a note or a key the
+    board does not carry is a reference, not a prerequisite. A row with no
+    dependencies gets no field, so the column exists only where it says
+    something.
+    """
+    by_key = {board_fields.memory_key_of(row): row for row in rows}
+    by_key.pop(None, None)
+    for row in rows:
+        named = row.strings(DEPENDENCY_RELATION)
+        if not named:
+            continue
+        row.fields[WAITING_FIELD] = [
+            key for key in named if (dep := by_key.get(key)) is not None and not _settled(dep)
+        ]
+
+
 def project_items(
     *,
     episodes: list[dict],
@@ -200,6 +233,8 @@ def project_items(
             continue
         folded.add(str(episode.get("episode")))
         row.fields.update(_thread_fields(episode))
+
+    fold_waiting(rows)
 
     items += [_episode_item(e) for e in episodes if str(e.get("episode")) not in folded]
     items += rows
