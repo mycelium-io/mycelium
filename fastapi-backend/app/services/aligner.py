@@ -409,11 +409,14 @@ class AlignerEngine:
             _rounds_run = max(mech.current_step, 1)
             from app.services import metrics as _metrics
 
+            _pi_ms = getattr(llm_session, "total_pi_ms", 0.0)
+            _mechanism_ms = max(_mech_ms - _pi_ms, 0.0)
             for _r in range(_rounds_run):
                 _metrics.record_aligner_round(
                     room=room,
                     round_num=_r + 1,
                     duration_ms=_mech_ms / _rounds_run,
+                    duration_excl_llm_ms=_mechanism_ms / _rounds_run,
                 )
             converged = assignments is not None
             _, metrics = self._verdict(ep)

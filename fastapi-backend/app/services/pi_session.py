@@ -323,6 +323,11 @@ class PiSession:
         self._timeout_s = timeout_s
         self._openshell = openshell
         self._operation = operation
+        # Accumulated wall-clock time spent in Pi subprocess calls this session.
+        # The aligner reads this after mech.run() to derive mechanism overhead
+        # (round duration excluding LLM time). Thread-safe only within the
+        # serial-by-construction constraint documented in the class docstring.
+        self.total_pi_ms: float = 0.0
         # A LLM_BASE_URL is not a pi command-line flag — it becomes a models.json
         # provider entry we generate. Endpoint mode:
         #   "direct"  — no base URL; --model/--api-key straight through.
@@ -419,6 +424,7 @@ class PiSession:
             raise PiSessionError(f"pi turn exceeded {self._timeout_s:.0f}s and was killed") from exc
         finally:
             _duration_ms = (__import__("time").monotonic() - _t0) * 1000.0
+            self.total_pi_ms += _duration_ms
             try:
                 from app.services.metrics import record_llm_call
 
