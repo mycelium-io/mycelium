@@ -48,12 +48,7 @@ def test_contract_file_present():
 
 
 def test_ping_payload_matches_contract():
-    """The CLI reads the ping the backend raises, off one shared literal.
-
-    ``room watch``'s activity line is the only thing that says a task moved
-    while a thread absorbs the argument inside it; a type that drifted here
-    would leave the tail silent rather than wrong, which is worse.
-    """
+    """The CLI reads the ping payload type off the shared contract literal."""
     g = _contract()["ping"]
     assert g["payload_type"] == l9.PING_PAYLOAD_TYPE
 
@@ -97,7 +92,7 @@ def test_signerjwt_identity_constants_match_contract():
 
 
 def test_retired_spire_tier_is_absent_from_contract():
-    """The SPIRE tier is retired: neither copy may reintroduce it (#668)."""
+    """The SPIRE tier is retired: neither copy may reintroduce it."""
     identity = _contract()["identity"]
     assert "spire" not in identity
     assert "spire" not in identity["modes"]

@@ -2,9 +2,9 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-SSE stream endpoints (DEPRECATED, fed by the in-process bus).
+SSE stream endpoints — legacy API, fed by the in-process bus.
 
-Minimal endpoints the UI still uses. Kept minimal on purpose — do not invest here.
+Minimal, and intentionally not expanded.
 
 GET /rooms/{room}/messages/stream — room event stream
 GET /agents/{handle}/stream       — per-agent event stream

@@ -50,10 +50,9 @@ async def _write(room: str, key: str, value: str, **meta) -> None:
 
 
 def _write_unbound(room: str, key: str, value: str, **meta) -> None:
-    """A row as it looked before threading: straight to disk, with no episode.
+    """Write a row straight to disk, with no episode, bypassing thread minting.
 
-    The normal write path now mints a thread on create, so this is the only way
-    to reach the pre-migration state that :func:`tasks.backfill_room` heals.
+    Used to reach the unbound state that :func:`tasks.backfill_room` heals.
     """
     write_memory_file(get_room_dir(room), key, value, created_by="tester", extra_meta=meta or None)
 
@@ -100,11 +99,9 @@ class TestBoardFirstCreation:
 class TestWorkedIsTheOnlyLineLeft:
     """Everything is discussed; only the board namespaces are worked.
 
-    There is no threading gate to test any more (#907): the denylist that kept
-    ``agents/``, ``log/`` and ``context/synthesis`` off it is gone, so the rule
-    is uniform and :func:`tasks.is_board_row` is the one predicate left. What
-    the tests below assert is behavior — that a memory of any namespace comes
-    out of a write carrying a thread — rather than a gate returning ``True``.
+    :func:`tasks.is_board_row` is the one predicate: every namespace is
+    threaded uniformly. What the tests below assert is behavior — that a
+    memory of any namespace comes out of a write carrying a thread.
     """
 
     @pytest.mark.parametrize("key", ["work/passkey-login", "decisions/db", "status/ci"])
@@ -142,8 +139,7 @@ class TestThreadOnEveryWrite:
         assert _meta(room, "work/one")[EPISODE_META] != _meta(room, "decisions/two")[EPISODE_META]
 
     async def test_a_context_note_can_be_discussed_too(self):
-        # #872: the conversation about a design note lives attached to it rather
-        # than scrolling past in the room.
+        # A context note gets its own thread for discussion.
         room = _room("u-write-context")
         await _write(room, "context/goal", "Move off the legacy store")
         assert _meta(room, "context/goal")[EPISODE_META]
@@ -154,10 +150,8 @@ class TestThreadOnEveryWrite:
         assert _meta(room, "skills/review")[EPISODE_META]
 
     async def test_what_the_hub_writes_for_itself_is_discussable_too(self):
-        # #907: an agent manifest opened with no Discussion and nothing saying
-        # why, which reads as a bug rather than a decision. "Why is this bridge
-        # flaky", "who owns this handle" are conversations worth having, and a
-        # meta-thread on the record of a negotiation is harmless.
+        # System-written records (agent manifests, episode logs) are
+        # discussable like any other memory.
         room = _room("u-write-system")
         await _write(room, "agents/sec", "A manifest")
         await _write(room, "log/episodes/a1b2c3d4", "A closed negotiation")
@@ -167,9 +161,8 @@ class TestThreadOnEveryWrite:
         assert _meta(room, "context/synthesis")[EPISODE_META]
 
     async def test_the_synthesizer_rewriting_its_briefing_keeps_its_thread(self):
-        # The one key the hub rewrites on its own schedule. A thread attached to
-        # a moving target survives the move: the binding is write-once, so the
-        # conversation is not stranded on the URN the last version carried.
+        # Synthesis rewrites this key on its own schedule; the thread binding
+        # is write-once and survives each rewrite.
         from app.services.synthesizer import SYNTHESIS_KEY
 
         room = _room("u-write-synthesis")
@@ -307,11 +300,8 @@ class TestMigration:
         assert _meta(room, "work/legacy")[EPISODE_META] == bound
 
     async def test_every_memory_is_bound_not_only_the_board(self):
-        # A room written before this gets a thread on every file it holds, so
-        # "every memory can be discussed" is true of the ones that already exist
-        # rather than only the ones written next. Nothing is left out: the
-        # agents/ and log/ exclusions were the #907 gap, and an existing manifest
-        # would still open with no Discussion if the pass skipped it.
+        # A backfill binds a thread to every existing file in the room,
+        # including agents/ and log/, not only memories written afterward.
         room = _room("u-migrate-4")
         keys = (
             "decisions/db",

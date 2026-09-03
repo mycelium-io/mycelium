@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Board-first creation over HTTP (#838): ``POST /rooms/{room}/tasks``.
+"""Board-first creation over HTTP: ``POST /rooms/{room}/tasks``.
 
 Creating a task is the one write that mints a thread, and minting is a
 capability of this route rather than a field a caller supplies — the binding has

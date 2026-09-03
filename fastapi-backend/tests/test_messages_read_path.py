@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""The transcript-backed read path (issue #497 §3).
+"""The transcript-backed read path.
 
 ``GET /messages`` merges the durable transcript with the in-memory list store so
 the room view survives a restart and both post paths converge. These exercise the
@@ -120,9 +120,8 @@ def _stamped(message_id: str, *, text: str, recorded_at: str):
 
 
 def test_a_record_with_no_stamp_holds_its_place_instead_of_dating_to_now(tmp_path, monkeypatch):
-    """A transcript line the read path can't get a time out of used to fall back to
-    read time — always the newest value there is, so the row jumped to the end of
-    the feed and reported a different time on every read."""
+    """A transcript line with no timestamp holds its place rather than sorting
+    to the end of the feed."""
     monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
     in_memory_store.clear_all()
     room = "unstamped-room"

@@ -41,7 +41,7 @@ describe("<Tooltip />", () => {
     expect(trigger).toHaveAttribute("aria-describedby", popup.id);
   });
 
-  it("opens on keyboard focus, so the hint is not pointer-only", async () => {
+  it("opens on keyboard focus", async () => {
     const user = userEvent.setup();
     renderTooltip("Dismiss this notification");
 

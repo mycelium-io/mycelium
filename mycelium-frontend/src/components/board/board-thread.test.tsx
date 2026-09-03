@@ -64,8 +64,8 @@ describe("<ThreadChip />", () => {
   });
 
   it("offers nothing on a row with no episode at all", () => {
-    // Every board row is minted a thread on create, so this is a legacy row from
-    // before threading — until the backfill reaches it, the chip stays absent.
+    // A row created before threading has no episode yet; the chip is absent
+    // until backfill binds one.
     const { container } = render(<ThreadChip item={row({ status: "open" })} onOpen={vi.fn()} />);
     expect(container).toBeEmptyDOMElement();
   });
@@ -111,10 +111,9 @@ describe("<RoomBoard /> thread affordance", () => {
   });
 
   it("says why a row has no thread rather than opening some other conversation", async () => {
-    // A task is minted a thread on create, so a row without one is a legacy gap
-    // the backfill has not reached — the surface refuses in the terms `board
-    // messages` refuses in rather than falling back to the room, which would show
-    // a different conversation than the one asked for.
+    // A row without an episode (not yet backfilled) refuses in the same terms
+    // `board messages` refuses in, rather than falling back to the room,
+    // which would show a different conversation than the one asked for.
     fetchMemories.mockResolvedValue([unbound]);
     const onOpenThread = vi.fn();
     renderWithSWR(<RoomBoard roomName="atlas" onOpenThread={onOpenThread} />);

@@ -175,9 +175,9 @@ async def test_mediate_terminates_at_agreement() -> None:
     assert verdict["header"]["subkind"] == "converged"
     # The agreed issue=value map rides the envelope for plan_sync to compile.
     assert verdict["payload"]["data"]["assignments"] == {"cap": "30"}
-    # Episode lifecycle: frozen membership opened, drained on close. Each convening
-    # gets a unique episode id (no longer the hardcoded "align"), so assert the
-    # shape — one room-scoped episode opened — not a fixed suffix.
+    # Episode lifecycle: frozen membership opened, drained on close. Each
+    # convening gets a unique episode id, so assert the shape — one
+    # room-scoped episode opened — not a fixed suffix.
     assert len(manager.opened) == 1
     assert manager.opened[0].startswith(l9.episode_urn(_ROOM, ""))
     assert manager.closed == [_ROOM]
@@ -271,7 +271,7 @@ async def test_mediate_rejects_when_no_issues_discovered(
     assert manager.closed == [_ROOM]
 
 
-# ── stage 0: the pre-negotiation term check (#680) ────────────────────────────
+# ── stage 0: the pre-negotiation term check ───────────────────────────────────
 
 
 def _mismatch_llm(*, term: str = "done") -> Any:
@@ -487,7 +487,7 @@ async def test_mediate_survives_a_failing_term_check(monkeypatch: pytest.MonkeyP
     assert verdict["header"]["subkind"] == "converged"
 
 
-# ── #683: address the least-satisfied agent next (turn order) ─────────────────
+# ── address the least-satisfied agent next (turn order) ───────────────────────
 
 _ISSUES_683 = [{"name": "cap", "options": ["30", "40", "50", "60"]}]
 _OPTIONS_683 = {"cap": ["30", "40", "50", "60"]}

@@ -17,8 +17,8 @@ Four slices, matching the four things that can quietly go wrong:
   isn't.
 
 No issuer and no backend run here: ``httpx`` is stubbed at the module the code
-under test calls into, and the hub's user store — which ``login`` now upserts
-through — is stubbed at the generated client.
+under test calls into, and the hub's user store, which ``login`` upserts
+through, is stubbed at the generated client.
 """
 
 from __future__ import annotations
@@ -79,7 +79,7 @@ USER_CREATE_SYNC = "mycelium_backend_client.api.users.create_user_api_users_post
 
 
 class _Hub:
-    """The hub's user store, stubbed — ``login`` upserts a record through it now.
+    """The hub's user store, stubbed — ``login`` upserts a record through it.
 
     Serves 404 for every read (nobody is registered under this temp home) and
     records what gets written. Flip ``reachable`` to make the hub disappear.
@@ -602,7 +602,7 @@ def _auth(*issuers: str, enabled: bool = True) -> dict[str, Any]:
 def test_login_discovers_the_issuer_from_the_hub(
     monkeypatch: pytest.MonkeyPatch, hub: _Hub
 ) -> None:
-    """The hub advertises what it trusts, so the human never looks it up (#881)."""
+    """The hub advertises its trusted issuers, so discovery is automatic."""
     from mycelium.commands import login as login_cmd
 
     asked = _health(monkeypatch, _auth(_META.issuer))
@@ -788,7 +788,7 @@ def _login(
 def test_login_aligns_this_machines_identity_to_the_token_handle(
     monkeypatch: pytest.MonkeyPatch, hub: _Hub
 ) -> None:
-    """The token is authoritative, so login settles the mismatch itself (#882)."""
+    """The token handle is authoritative; login aligns local identity to it."""
     config = MyceliumConfig.load()
     config.identity.name = "bob"
     config.save()

@@ -3,11 +3,9 @@
 
 """A memory's timestamps are recovered from what's stored, never from read time.
 
-Substituting ``now`` for a stamp the store can't find is the worst available
-guess: "now" is by definition the newest value there is, so the memory reports a
-different time on every read and pins itself to whichever end of a time-ordered
-view "newest" lands on — the whole set drifts to one end of the room's memory
-list and of the chat feed's knowledge notices.
+Substituting the read time for a missing stamp would make the memory report a
+different time on every read, sorting it to a different position in every
+time-ordered view.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -104,8 +102,7 @@ class TestMemoryListOrdering:
 
         keys = [key for key, _, _ in list_memory_files(room_dir)]
 
-        # The unstamped memory was written just now, so it belongs first — the
-        # empty-string sort key used to drop it below everything with a stamp.
+        # An unstamped memory sorts first in the listing.
         assert keys == ["agents/590", "decisions/old"]
 
     def test_a_bare_yaml_timestamp_does_not_break_the_listing(self):

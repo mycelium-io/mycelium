@@ -4,11 +4,9 @@
 import type { NextConfig } from "next";
 
 // `/api/*` is proxied to the backend by a runtime route handler
-// (src/app/api/[...path]/route.ts), NOT a next.config rewrite. Rewrites are
-// resolved at *build* time and frozen into the image, so a rewrite destination
-// ignored the runtime MYCELIUM_INTERNAL_API_URL and always pointed at the
-// build-time default (localhost:8000) — which broke the Dockerized UI. The
-// route handler resolves the backend per-request instead. See src/lib/backend.ts.
+// (src/app/api/[...path]/route.ts), which resolves MYCELIUM_INTERNAL_API_URL
+// per-request. A next.config rewrite resolves at build time instead and
+// would freeze in the build-time default. See src/lib/backend.ts.
 
 // `next dev` blocks cross-origin requests by default; opt-in via env when
 // running dev mode behind a public IP. The Docker production path doesn't
@@ -18,15 +16,15 @@ const allowedDevOrigins =
     .map((s) => s.trim())
     .filter(Boolean) ?? [];
 
-// `agentRules` is a Next 16.3+ config key; our `next` range (`^16.2.6`) also
-// resolves to 16.2.x builds whose `NextConfig` type predates it, so type it
-// locally rather than rely on the property existing. Setting an unknown key on
-// an older runtime is a harmless no-op.
+// `agentRules` is a Next 16.3+ config key; typed locally for compatibility
+// with the 16.2.x builds our `^16.2.6` range also resolves to, whose
+// `NextConfig` type lacks it. Setting an unknown key on an older runtime is a
+// harmless no-op.
 const nextConfig: NextConfig & { agentRules?: boolean } = {
   // `next dev` sniffs the environment for an AI coding agent (CLAUDECODE,
   // CURSOR_TRACE_ID, …) and, on a match, writes a managed AGENTS.md + CLAUDE.md
-  // into the project root unprompted. We don't want the dev server mutating the
-  // working tree, so opt out.
+  // into the project root unprompted. Opt out to keep the dev server from
+  // mutating the working tree.
   agentRules: false,
   // Standalone output → minimal Docker image (no full node_modules in runtime layer)
   output: "standalone",

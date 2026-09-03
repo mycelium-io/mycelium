@@ -136,8 +136,7 @@ class TestClaim:
         assert "Spike the auth rewrite" in resp.json()["content_text"]
 
     async def test_a_metadata_only_write_keeps_the_memory_searchable(self, client):
-        """The index record is replaced whole, so a claim that dropped the vector
-        would quietly take the memory out of semantic search."""
+        """The index record is replaced whole; verify the embedding survives a claim."""
         from app.services import search_index
 
         await make_room(client, "lease-index")
@@ -306,8 +305,7 @@ class TestRenew:
         assert renewed[0]["freshness"] == "fresh"
 
     async def test_a_lease_still_in_its_first_half_is_left_alone(self, client):
-        """A resident loop polls every few seconds. If every poll rewrote the
-        room's files, residency would cost more than the work."""
+        """A lease renewal within the first half of its TTL is a no-op."""
         await make_room(client, "lease-quiet")
         await make_work(
             client,
@@ -326,8 +324,7 @@ class TestRenew:
         assert frontmatter("lease-quiet", "work/auth-spike")["version"] == before
 
     async def test_a_renewal_does_not_announce_itself(self, client):
-        """A heartbeat is not news: a room whose transcript filled with 'still
-        here' would be worse than one that forgot."""
+        """Renewal does not post a message to the room."""
         from app.services import in_memory_store
 
         await make_room(client, "lease-silent")
@@ -366,8 +363,7 @@ class TestRenew:
         assert resp.json()["renewed"] == []
 
     async def test_a_lease_that_already_drained_is_not_resurrected(self, client):
-        """Renewal keeps a live claim alive; it does not take an abandoned row
-        back off the pool without going through a claim."""
+        """An expired lease is not renewed; it stays expired until reclaimed."""
         await make_room(client, "lease-drained")
         await make_work(
             client,
@@ -387,8 +383,7 @@ class TestRenew:
 @pytest.mark.asyncio
 class TestAwaitOnALease:
     async def test_the_first_call_is_orientation_not_a_wait(self, client):
-        """An agent does not need a push, it needs the row current the next time
-        it exists."""
+        """The first await call returns the current row state immediately."""
         await make_room(client, "lease-await")
         await make_work(client, "lease-await", "work/auth-spike")
         resp = await client.get(
@@ -424,8 +419,7 @@ class TestAwaitOnALease:
         assert body["owner"] == "growth"
 
     async def test_unrelated_room_traffic_does_not_wake_it(self, client):
-        """Waking on channel traffic to watch a handoff is the wrong
-        subscription: a dozen unrelated messages wake you for nothing."""
+        """Unrelated room traffic does not wake an assignment watcher."""
         await make_room(client, "lease-quiet-watch")
         await make_work(client, "lease-quiet-watch", "work/auth-spike")
         first = await client.get(
@@ -449,9 +443,7 @@ class TestAwaitOnALease:
         assert body["assignment"] == "unclaimed"
 
     async def test_a_lapsing_lease_is_a_transition_nobody_sent(self, client):
-        """The one wake that has no writer: the holder went quiet, so the state
-        moved on its own. A watcher keyed on the memory's version would sleep
-        through exactly this."""
+        """A lapsing lease wakes a watcher even though nothing wrote to the row."""
         room = "lease-lapse"
         await make_room(client, room)
         await make_work(

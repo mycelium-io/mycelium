@@ -27,8 +27,8 @@ interface MockMemoryWrite {
 
 const EMPTY_GRAPH: MemoryGraph = { nodes: [], edges: [] };
 
-/** A memory's text for search/parse: its prose value, or its `content_text`
- *  when the value is a frontmatter object (the board's typed rows). */
+/** A memory's text for search: its prose value, or `content_text` when the
+ *  value is an object. */
 const memText = (m: MockMemory): string =>
   m.content_text ?? (typeof m.value === "string" ? m.value : "");
 

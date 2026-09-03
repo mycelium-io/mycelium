@@ -21,7 +21,7 @@ function MemoryPageBody() {
   return <MemoryPageView roomName={roomName} memoryKey={memoryKey} />;
 }
 
-/** Dedicated full-page memory route: `/room/{room}/memory/{key}` (#614). */
+/** Dedicated full-page memory route: `/room/{room}/memory/{key}`. */
 export default function MemoryPage() {
   const params = useParams();
   const roomName = params.name as string;

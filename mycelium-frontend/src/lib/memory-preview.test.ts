@@ -122,7 +122,7 @@ describe("memoryTitle", () => {
     );
   });
 
-  it("reads a prose value the store hands over as {text} (the #889 bug)", () => {
+  it("reads a prose value the store hands over as {text}", () => {
     // The API rebuilds prose into { text: … }; the title must be the first line,
     // never the key it happens to be filed under.
     const title = memoryTitle(mem({ key: "work/cutover", value: { text: "Cut over to Redis\nnotes" } }));

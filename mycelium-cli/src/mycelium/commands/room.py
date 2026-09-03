@@ -755,11 +755,10 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
 
     try:
         with hub_client(config, timeout=10) as client:
-            # Deliberately unfiltered: ``?episode=<live>`` reads as "the room
-            # without its threads" only for rows written since threading, and
-            # would drop every message from before it — history the reader would
-            # never know was missing. ``render`` applies the same rule to the
-            # replay as to the live stream, where an untagged row is the room's.
+            # Unfiltered: filtering by ``?episode=<live>`` would drop messages
+            # from before threading was added, hiding history silently.
+            # ``render`` applies the same rule to the replay as to the live
+            # stream, where an untagged row is the room's.
             hist_resp = client.get(f"/api/rooms/{room_name}/messages", params={"limit": 50})
         if hist_resp.status_code == 200:
             body = hist_resp.json()

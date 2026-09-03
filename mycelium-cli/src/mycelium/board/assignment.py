@@ -3,34 +3,23 @@
 
 """Assignment: who holds a row, and for how much longer.
 
-An agent is resident rather than one-shot, but every session eventually ends and
-none of them get to announce it — a container is reclaimed, a cloud session times
-out, a job is canceled.  So every assertion an ephemeral actor makes about the
-future is a lease, because none of them can promise the future.
+An agent is resident rather than one-shot, and a session can end without
+announcing it — a container is reclaimed, a cloud session times out, a job is
+canceled. Assignment is a lease rather than a stored fact: a live claim reads
+fresh/stale/expired against ``claimed_at`` + a TTL, the same freshness model
+the upstream half uses against ``fetched_at``. An abandoned claim drains and
+the row returns to the pool.
 
-Held as a fact, one dead agent leaves the board asserting "@someone is on this"
-forever, and the board degrades exactly as it gets busy: full of confident lies.
-Held as a lease, an abandoned claim drains and the row returns to the pool.
+**Assignment is not a stage.** ``status`` is a stage vocabulary. Assignment is
+the axis that says whether anyone is actually on this: ``in_review`` says
+nothing about whether a holder is alive, ``held, renewed 30s ago`` does.
 
-**Assignment is not a stage.** ``status`` is a stage vocabulary, borrowed from tools
-built for workers who do not die silently.  Assignment is the axis that says whether
-anyone is actually on this, and it is the one a board of ephemeral actors needs:
-``in_review`` says nothing about whether a holder is alive, ``held, renewed 30s
-ago`` says everything.
+**Two states are derived and never stored.** ``unclaimed`` is the absence of a
+holder; ``expired`` is a lease nobody renewed. Neither is written to disk —
+both are read off the clock at query time.
 
-**It is the freshness model the upstream half already ships, pointed at claims.**
-A cached provider answer is fresh / stale / missing against ``fetched_at`` + a
-TTL; a claim is fresh / stale / expired against ``claimed_at`` + a TTL.  One
-mechanism serving both halves of the board rather than two enums that disagree.
-
-**Two states are derived and never stored.**  ``unclaimed`` is the absence of a
-holder, and ``expired`` is a lease nobody renewed — writing it down would need
-someone to be running at the moment it drained, which is exactly the thing that
-just stopped being true.  Deriving it means a claim goes stale with nobody
-touching it, which is the whole point.
-
-``renewed`` is not a state: it is the event that keeps ``held`` fresh, which is
-why it does not appear in the enum.
+``renewed`` is not a state: it is the event that keeps ``held`` fresh, and does
+not appear in the enum.
 """
 
 from __future__ import annotations
@@ -49,8 +38,8 @@ STATES = ["unclaimed", "held", "released", "expired", "resolved"]
 STORED_STATES = ["held", "released", "resolved"]
 DERIVED_STATES = ["unclaimed", "expired"]
 
-#: The same three words the upstream model uses, minus "missing" — a claim that
-#: ran out has not gone missing, it has expired.
+#: The same three words the upstream model uses, minus "missing": a claim that
+#: ran out is "expired", not "missing".
 FRESHNESS = ["fresh", "stale", "expired"]
 
 #: Fraction of a lease that may be spent before it reads stale. A holder renews
@@ -125,9 +114,8 @@ def freshness(stamped_at: str | None, ttl_minutes: Any, now: datetime) -> str | 
 def claimed_at(item: LiveItem) -> str | None:
     """When the holder last said it was still on this.
 
-    A lease with no stamp of its own falls back to when the row last moved: a
-    hand-written ``owner:`` is still a claim, and dating it from the file is
-    closer to the truth than treating it as claimed now.
+    Falls back to when the row last moved: a hand-written ``owner:`` is still
+    a claim, dated from the file's own update time.
     """
     return item.text("claimed_at") or item.text("updated")
 

@@ -520,12 +520,10 @@ describe("shared vocabulary contract", () => {
     expect(TASK_FIELDS).toEqual(task.task_fields);
   });
 
-  it("keeps every thread field off the pivot axes, not just the one that reaches them today", () => {
-    // What makes a thread field ineligible is whose field it is, not its type.
-    // Only `thread_state` classifies as a select off real rows, so inferring the
-    // schema would leave the other four excluded by type and prove nothing about
-    // them — the fields are handed in already type-eligible, which is the state a
-    // room could put any of them in tomorrow.
+  it("keeps every thread field off the pivot axes, not just the one that is schema-eligible", () => {
+    // Thread fields are excluded from grouping by ownership, not by type:
+    // handed in already type-eligible so the exclusion can't be mistaken for
+    // a type-inference gap.
     const task = (contract as unknown as { task: { thread_fields: string[] } }).task;
     const bounded = (name: string) => ({
       name,

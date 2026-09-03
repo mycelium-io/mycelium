@@ -89,11 +89,10 @@ export function Monogram({ handle, color, className, presence, status, wakePendi
           ring?.ring && ring.pulse && "pulse",
           className,
         )}
-        // Solid, opaque fill: the pile in the command center overlaps these, and
-        // translucent discs stacked on each other turn to mud. Opaque also holds
-        // the color over a hover highlight instead of shifting with it. The
-        // border is the same tint darkened; the glyph is white so it reads
-        // crisply against a deep disc rather than blending into the tint.
+        // Opaque fill: the command center stacks these, and translucent discs
+        // overlapping would blend into each other. Opaque also holds the
+        // color steady over a hover highlight. Border is the same tint
+        // darkened; glyph is white for contrast against the deep disc.
         style={{
           background: tint,
           borderColor: `color-mix(in srgb, ${tint} 70%, #000)`,

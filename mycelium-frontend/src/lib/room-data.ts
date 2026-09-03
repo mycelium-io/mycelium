@@ -97,7 +97,7 @@ export interface ThreadOwner {
 }
 
 // `memoryTitle` is shared with the board's projection (lib/memory-preview), so a
-// task named in the channel and named on the board can never disagree (#889).
+// task named in the channel and named on the board can never disagree.
 
 // Stable empties: a fresh `[]` per render would break every downstream memo.
 const NO_STATUS: RoomStatus = {

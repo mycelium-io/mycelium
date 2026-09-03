@@ -78,9 +78,8 @@ function episodeItem(ep: EpisodeSummary, room: string): LiveItem {
     fields: {
       [EPISODE_FIELD]: ep.episode,
       thread: ep.short_id,
-      // A rejected negotiation is not a stage called "blocked" — nothing is
-      // blocking it, it failed and wants a human. It reads open, and the kind
-      // carries what happened.
+      // A rejected negotiation reads open with kind=blocked, not a
+      // "blocked" stage: it failed and wants a human.
       status: settled ? (subkind === "rejected" ? "open" : "resolved") : "in_review",
       kind: subkind === "rejected" ? "blocked" : "decision",
       owner: assignees.length === 1 ? `@${assignees[0]}` : null,
@@ -129,10 +128,8 @@ function memoryItem(memory: Memory, room: string): LiveItem {
     fields: {
       status: typeof custom.status === "string" ? custom.status : derivedStatus,
       kind: namespace === "decisions" ? "decision" : namespace === "failed" ? "blocked" : "concern",
-      // Who wrote it last is provenance, not assignment. Reading `owner` off
-      // `updated_by` gave every memory in the room a holder, which is the
-      // confident-lie failure this axis exists to stop: a holder is something a
-      // claim writes, so an unclaimed row says nobody.
+      // Who wrote it last is provenance (`updated_by`), not assignment.
+      // `owner` is written only by a claim; an unclaimed row says nobody.
       owner: null,
       writer: memory.updated_by ? `@${memory.updated_by}` : `@${memory.created_by}`,
       priority: "normal",

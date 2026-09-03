@@ -36,8 +36,7 @@ function trimSlash(s: string): string {
 export function oidcConfig(): OidcConfig | null {
   const issuer = process.env.MYCELIUM_OIDC_ISSUER?.trim();
   const sessionSecret = process.env.AUTH_SESSION_SECRET?.trim();
-  // Both are required to engage OIDC. A gate-on backend with these unset is a
-  // real (if awkward) state — the sign-in screen says so rather than looping.
+  // Both issuer and session secret are required to engage OIDC.
   if (!issuer || !sessionSecret) return null;
   const internal = process.env.MYCELIUM_OIDC_INTERNAL_ISSUER?.trim();
   return {

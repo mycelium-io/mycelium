@@ -3,7 +3,7 @@
 
 """Tests for the L9 ``knowledge`` memory-sync write path.
 
-Fast unit tests (the merge gate — no node): the ``knowledge`` envelope shape, the
+Fast unit tests (no node): the ``knowledge`` envelope shape, the
 apply-to-local-store write + reindex, and the last-write-wins conflict policy
 (idempotent same-version loopback; stale-base rejection with details, no merge).
 """

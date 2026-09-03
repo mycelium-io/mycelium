@@ -43,7 +43,7 @@ def test_override_wins_over_everything(config, monkeypatch):
 
 def test_legacy_sentinel_override_is_treated_as_unset(config, monkeypatch):
     _whoami(monkeypatch, {"gated": True, "handle": "principal@x"})
-    # An old script passing the retired default resolves to the real caller.
+    # A legacy override value resolves to the real caller, not itself.
     assert identity.resolve_actor(config, override="cli-user") == "principal@x"
 
 

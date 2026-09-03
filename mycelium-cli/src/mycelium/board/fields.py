@@ -35,9 +35,8 @@ REFUSALS = {
     "github": "this value belongs to the tool it came from; change it there",
 }
 
-#: Assignment's own keys, derived from the lease model rather than restated.  A
-#: lease owns who holds a row and until when, under rules a field write cannot
-#: check — a live claim is not stealable, and expiry is read off a clock.
+#: Assignment's own keys, derived from the lease model. A field write cannot
+#: enforce lease rules (a live claim is not stealable, expiry reads off a clock).
 RESERVED_FIELDS = [FIELD, "owner", *COMPANION_FIELDS]
 
 

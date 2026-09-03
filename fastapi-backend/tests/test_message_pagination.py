@@ -1,13 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""The backward cursor both channel reads page by (issue #899).
+"""The backward cursor both channel reads page by.
 
-``GET /messages`` and ``GET /messages/l9`` answer newest-first inside a window.
-Without a way to ask for the window before, a room was whatever its newest page
-held and nothing older could be reached. ``before=`` is that ask, defined
-relative to content rather than position: an offset shifts under every message
-the live stream lands while a reader is walking back, and a stamp does not.
+``GET /messages`` and ``GET /messages/l9`` answer newest-first inside a window,
+paged backward by ``before=``, a timestamp rather than an offset — an offset
+would shift under every message the live stream lands while a reader is
+walking back.
 """
 
 from datetime import UTC, datetime, timedelta

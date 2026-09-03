@@ -94,9 +94,8 @@ GROUP_LABEL = {
 
 CI_COLOR = {"green": "green", "running": "yellow", "red": "red"}
 
-#: How a provider's answer reads on a row. `done` is deliberately dim: a merged
-#: pull request is finished, and a board that shouts about finished work buries
-#: the work that isn't.
+#: How a provider's answer reads on a row. `done` renders dim, unlike the
+#: other states, so finished work does not draw attention over open work.
 UPSTREAM_COLOR = {
     "failed": "red",
     "blocked": "red",
@@ -119,13 +118,11 @@ TTL_CELLS = 5
 
 @dataclass
 class HubHealth:
-    """How the read went, in enough detail to say something true about it.
+    """How the read went: which sources answered, which failed, and why.
 
-    Reachability used to be inferred from whether one source came back, which
-    reported an authenticated hub refusing a request, or a room that does not
-    exist, as "hub unreachable" and sent the reader to check their network. It
-    also let a board draw with two of its sources missing and look merely
-    quiet. Both are worse than an error, because the reader believes them.
+    Distinguishes a genuinely unreachable hub from an authenticated hub
+    refusing a request or a room that does not exist, so a partial or failed
+    read is reported as an error rather than drawn as a quiet, empty board.
     """
 
     #: Sources that answered with data, by name.

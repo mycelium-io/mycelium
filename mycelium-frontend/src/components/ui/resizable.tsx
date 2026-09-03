@@ -17,10 +17,9 @@ function ResizablePanelGroup({ className, ...props }: ResizablePrimitive.GroupPr
   );
 }
 
-/** A panel. The library styles the inner content div `overflow: auto` inline,
- *  which a utility class can't beat — every panel in this app scrolls inside
- *  its own body instead, so the default is overridden here rather than at each
- *  call site. Pass `style` to opt back in. */
+/** A panel with `overflow: hidden`, centrally overriding the library's inline
+ *  `overflow: auto` (which a utility class cannot beat) — every panel in this
+ *  app scrolls inside its own body. Pass `style` to opt back in. */
 function ResizablePanel({ style, ...props }: ResizablePrimitive.PanelProps) {
   return (
     <ResizablePrimitive.Panel

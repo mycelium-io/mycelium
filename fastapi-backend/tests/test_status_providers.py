@@ -346,10 +346,8 @@ class TestFieldNameCollision:
     """A provider's answer must not shadow the board row's own `status`.
 
     The row owns `status` for its lifecycle; a provider answers about the
-    external thing the row points at. The two vocabularies used to share
-    `blocked`, meaning different things, which is why the answer lands under its
-    own field (`ROW_FIELD`) and is named `upstream` in the contract, never
-    `status`.
+    external thing the row points at. The answer lands under its own field
+    (`ROW_FIELD`) and is named `upstream` in the contract, never `status`.
     """
 
     def test_the_provider_answer_lands_under_its_own_row_field_not_status(self):
@@ -374,10 +372,8 @@ class TestFieldNameCollision:
         )
         live = set(typing.get_args(LiveState))
         row = set(board["statuses"])
-        # They used to share `blocked`, which is what forced them onto separate
-        # fields. The row's copy is gone — a row is blocked because it names a
-        # blocker, and nothing stores the word — so the overlap is now empty, and
-        # putting one back is the drift this guards against.
+        # Board and upstream state vocabularies stay distinct: a row is
+        # blocked because it names a blocker, not because it stores the word.
         assert live & row == set()
 
     def test_the_contract_type_is_named_for_the_upstream_not_the_row(self):
@@ -392,10 +388,9 @@ class TestFieldNameCollision:
 class TestFailedRefreshDoesNotRejuvenateAValue:
     """A failed refresh must not make the value it kept look younger.
 
-    Keeping the last good answer is deliberate: a blank row reads as "this pull
-    request has no CI". Stamping it with the failure's time is not, because the
-    age is the whole basis on which a caller decides whether to trust it, and an
-    agent's `max_age` is enforced against exactly that number.
+    A blank row reads as "this pull request has no CI", so a failed refresh
+    keeps the last good answer's timestamp rather than the failure's; an
+    agent's `max_age` is enforced against that number.
     """
 
     TTL = timedelta(minutes=1)

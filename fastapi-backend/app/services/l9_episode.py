@@ -567,8 +567,8 @@ def _write_record(ep: EpisodeState, lines: list[str]) -> None:
         "\n".join(lines),
         created_by=l9.SYSTEM_ACTOR_ID,
         updated_by=l9.SYSTEM_ACTOR_ID,
-        # This write skips the upsert that mints one, and a record of a
-        # conversation is still a thing to have a conversation about.
+        # This write skips the upsert that mints an episode binding; the
+        # episode record is part of the conversation thread.
         extra_meta=carry_thread(ep.parent_room, key),
     )
 

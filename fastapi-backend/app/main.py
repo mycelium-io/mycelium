@@ -87,12 +87,9 @@ async def lifespan(app: FastAPI):
             logger.warning("auth: %s", warning)
     else:
         logger.info("HTTP-API JWT gate disabled — requests are unauthenticated")
-    # A memory written before the binding carries no thread, so it reads as
-    # something there is nowhere to discuss. Minting one is a store annotation
-    # rather than an edit: the memory keeps its version, its stamps and its place
-    # on a time-ordered board. Runs before the index scan, so what it rewrites is
-    # indexed once rather than caught on the next restart — and walks the same
-    # files that scan is about to read anyway.
+    # Bind every pre-existing memory to a thread as a store annotation
+    # (version, stamps, and board position are untouched). Runs before the
+    # index scan so a rewrite is indexed once, not twice.
     from app.services.filesystem import list_room_names
     from app.services.tasks import backfill_room
 

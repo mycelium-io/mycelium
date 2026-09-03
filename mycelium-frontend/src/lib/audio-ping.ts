@@ -48,7 +48,7 @@ export function motif(notes: Note[], volume = 0.5): void {
       tone(c, note.freq, now + note.at, note.dur, volume * (note.gain ?? 1));
     }
   } catch {
-    // Best-effort: a sound is never worth failing the caller over.
+    // Best-effort: playback failures are swallowed.
   }
 }
 

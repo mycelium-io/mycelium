@@ -16,8 +16,8 @@ from typing import Any
 
 # Frozen in contracts/board-vocabulary.json; the GUI carries the same lists.
 #: The stage a row is at, and only that. Who holds it is ``assignment`` (a lease
-#: that drains), and whether it is blocked is derived from ``blocked_by`` — both
-#: used to be spelled here, which is how one field ended up doing three jobs.
+#: that drains); whether it is blocked is derived from ``blocked_by``. Separate
+#: axes, so one field cannot end up doing three jobs.
 STATUSES = [
     "open",
     "in_review",
@@ -36,8 +36,8 @@ ATTENTION_FILTERS = ["needs_you", "in_flight", "resolved"]
 ROW_ACTIONS = ["claim", "release", "resolve", "block", "unblock", "promote", "dismiss", "new"]
 CHAT_VERBS = ["send", "messages", "coordinate"]
 
-#: The attention filter is derived from status, never stored, so a row can't drift out of
-#: sync with the board it belongs on. This is the half for rows nobody holds;
+#: The attention filter is derived from status, never stored. This is the half
+#: for rows nobody holds;
 #: a row with a lease is lensed by its assignment instead (``assignment.attention_of_item``).
 ATTENTION_OF_STATUS = {
     "open": "needs_you",
@@ -52,9 +52,9 @@ LIVE_NAMESPACES = ["decisions", "status", "work", "failed"]
 #: backend and carried across writes, so a row's thread is stable for its life.
 EPISODE_FIELD = "episode"
 
-#: What a row says about the thread inside it. Deliberately its own names: a
-#: task's ``status`` and ``assignment`` are the task's, so a negotiation that
-#: converges inside a row must not resolve the row or take it off its holder.
+#: What a row says about the thread inside it, in its own names — separate from
+#: the task's ``status`` and ``assignment``, so a negotiation that converges
+#: inside a row does not resolve the row or take it off its holder.
 THREAD_FIELDS = ["episode", "thread", "thread_state", "participants", "rounds"]
 
 #: How the thread inside a task reads. ``open`` while it is still running;
@@ -66,15 +66,11 @@ THREAD_STATES = ["open", "converged", "resolved", "rejected", "committed"]
 TASK_FIELDS = ["status", "assignment", "owner", "kind", "priority"]
 
 #: Why a row has no thread to speak into, keyed by what produced it. A chat verb
-#: refuses in these terms rather than falling back to the room: a message that
-#: quietly went somewhere other than where it was addressed is worse than one
-#: that did not go.
+#: refuses in these terms rather than silently falling back to the room.
 #:
-#: The memory refusal is not about what the memory is. Every memory carries a
-#: thread, whatever its namespace and whoever wrote it, so an unthreaded memory
-#: is a gap rather than a category — one written before threading and not yet
-#: backfilled. The copy says so: a surface that refuses in terms of a rule
-#: nobody can see reads as a bug.
+#: Every memory carries a thread, whatever its namespace and whoever wrote it;
+#: an unthreaded memory is a backfill gap, not a structural exception, and the
+#: refusal text says so.
 THREAD_REFUSALS = {
     "agent": "presence is a lease the runtime renews, not a conversation to join",
     "memory": "this memory carries no thread yet — every memory gets one, so this is a gap rather than a rule",

@@ -29,7 +29,7 @@ def test_mode_unknown_value_falls_back_to_psk(monkeypatch):
 
 
 def test_retired_spire_tier_is_not_selectable(monkeypatch):
-    """The retired SPIRE tier reads as any other unknown value: psk (#668)."""
+    """The retired SPIRE tier reads as any other unknown value: psk."""
     monkeypatch.setenv("MYCELIUM_SLIM_IDENTITY", "spire")
     assert "spire" not in slim_identity.VALID_MODES
     assert slim_identity.resolve_identity_mode() == slim_identity.MODE_PSK
@@ -58,8 +58,8 @@ def test_generate_es256_keypair_is_pkcs8_and_loadable():
     from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
     private_pem, public_pem = slim_identity.generate_es256_keypair()
-    # PKCS#8 header, not SEC1 (`-----BEGIN EC PRIVATE KEY-----`) which the provider
-    # rejects with InvalidKeyFormat (#587).
+    # PKCS#8 header, not SEC1 (`-----BEGIN EC PRIVATE KEY-----`), which the
+    # provider rejects with InvalidKeyFormat.
     assert "BEGIN PRIVATE KEY" in private_pem
     assert "BEGIN EC PRIVATE KEY" not in private_pem
     key = load_pem_private_key(private_pem.encode(), password=None)

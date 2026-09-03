@@ -178,9 +178,9 @@ describe("<ThreadView />", () => {
   });
 
   it("is one scroll region — the task's body and its conversation share it", async () => {
-    // Two scroll areas a few pixels apart is the bug (#887): the wheel does
-    // different things depending on where the pointer happens to be. The task
-    // reads as one column, the way an issue body runs into its comments.
+    // Two nested scroll areas cause inconsistent wheel behavior depending on
+    // pointer position; the task reads as one column instead, the way an
+    // issue body runs into its comments.
     fetchMemories.mockResolvedValue([TASK]);
     renderWithSWR(
       <ThreadView roomName="atlas" target={{ episode: THREAD, title: "flip reads" }} onClose={vi.fn()} />,
