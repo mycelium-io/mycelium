@@ -166,6 +166,10 @@ class Settings(BaseSettings):
     TELEMETRY_SEND_PRODUCT_ANALYTICS: bool = False
     # Destination URL for product analytics events (resolved in #937).
     TELEMETRY_ANALYTICS_DESTINATION: str = ""
+    # Installation identity rendered from config.toml telemetry.install_id.
+    # Used by the backend when emitting session analytics events so they carry
+    # the same install_id as CLI-side events (mycelium.install, etc.).
+    TELEMETRY_INSTALL_ID: str = ""
 
     # ── Health degradation thresholds (#453) ───────────────────────────────
     # p95 latency above these values flips /health to ``status: degraded`` for

@@ -64,6 +64,18 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _read_release() -> str:
+    """Best-effort release version from pyproject.toml."""
+    try:
+        import tomllib
+        from pathlib import Path
+
+        _p = Path(__file__).resolve().parent.parent.parent / "pyproject.toml"
+        return tomllib.loads(_p.read_text())["project"]["version"]
+    except Exception:
+        return "unknown"
+
+
 # Handles that are never a participant position: the engine itself, the backend
 # moderator, and the system actor the backend signs its own envelopes with.
 _NON_PARTICIPANTS = frozenset({BACKEND_AGENT, l9.SYSTEM_ACTOR_ID})
@@ -287,6 +299,33 @@ class AlignerEngine:
             self._active.discard(room)
             _ms = (time.monotonic() - _t0) * 1000.0
             _metrics.record_aligner_run(room=room, duration_ms=_ms, outcome=_outcome)
+            # Emit a product analytics session event for terminal outcomes.
+            # Stalled (no participants) and error outcomes are excluded — they
+            # don't represent a coordinated session that reached any conclusion.
+            if _outcome in ("converged", "rejected"):
+                try:
+                    from app.config import settings as _settings
+                    from app.services.analytics import (
+                        emit as _emit,
+                    )
+                    from app.services.analytics import (
+                        increment_session_count,
+                    )
+                    from app.services.analytics import (
+                        session_event as _session_event,
+                    )
+
+                    _count = increment_session_count()
+                    _ev = _session_event(
+                        install_id=_settings.TELEMETRY_INSTALL_ID or "unknown",
+                        release=_read_release(),
+                        adapter_class="",  # aligner is adapter-agnostic
+                        outcome=_outcome,
+                        first=_count == 1,
+                    )
+                    _emit(_ev)
+                except Exception:
+                    logger.debug("analytics session emit failed (non-fatal)", exc_info=True)
 
     # -- mediator mode (drive a real NEGMAS SAO over SLIM) --
 

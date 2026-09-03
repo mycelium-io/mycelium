@@ -70,11 +70,60 @@ from __future__ import annotations
 
 import json
 import logging
+import threading as _threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal
 
 _log = logging.getLogger(__name__)
+
+# ── Session counter ───────────────────────────────────────────────────────────
+# Tracks how many coordinated sessions (aligner runs with a terminal outcome)
+# have completed in this backend process. Used to distinguish the first session
+# event from repeat ones. Persisted across backend restarts via a flat file in
+# MYCELIUM_DATA_DIR so the first/repeat distinction survives a container recreate.
+# Protected by a threading.Lock because _run_and_release runs in an asyncio
+# worker thread, not the event loop.
+
+_session_lock = _threading.Lock()
+
+
+def _session_count_path():
+    """Return the path to the session count file, or None if DATA_DIR is unset."""
+    import os
+    from pathlib import Path
+
+    data_dir = os.environ.get("MYCELIUM_DATA_DIR", "")
+    if not data_dir:
+        return None
+    return Path(data_dir) / ".analytics_sessions"
+
+
+def increment_session_count() -> int:
+    """Atomically increment and return the new session count.
+
+    Returns the count *after* this session, so 1 means this was the first
+    session (``first=True``), 2+ means repeat (``first=False``).
+    Writes through to a flat file in MYCELIUM_DATA_DIR for persistence across
+    restarts. Falls back to an in-memory counter if the file is unavailable.
+    """
+    with _session_lock:
+        path = _session_count_path()
+        count = 0
+        if path is not None:
+            try:
+                if path.exists():
+                    count = int(path.read_text().strip() or "0")
+            except Exception:
+                pass
+        count += 1
+        if path is not None:
+            try:
+                path.write_text(str(count))
+            except Exception:
+                pass
+        return count
+
 
 EventName = Literal[
     "mycelium.install",
