@@ -866,7 +866,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-setup",
-    "t": "mycelium up [--build] [--metrics]",
+    "t": "mycelium up [--build] [--metrics] [--grafana]",
     "s": "CLI Reference",
     "x": "Start the Mycelium stack via docker compose up.",
     "k": "cmd",

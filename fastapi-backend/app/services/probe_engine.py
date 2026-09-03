@@ -97,6 +97,7 @@ def _pi_complete(prompt: str, timeout_s: float) -> str:
         binary=settings.ALIGNER_PI_BINARY,
         timeout_s=timeout_s,
         openshell=settings.ALIGNER_PI_OPENSHELL,
+        operation="probe",
     )
     return llm_session(prompt)
 
