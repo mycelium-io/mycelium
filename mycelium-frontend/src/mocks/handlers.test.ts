@@ -104,6 +104,36 @@ describe("mock links handlers (#599)", () => {
   });
 });
 
+describe("mock skills handler (#755)", () => {
+  it("projects the room's skills/ memories into the skills list shape", async () => {
+    // `useRoomSkills` runs on every room page; without this route the request
+    // fell through to a real backend and 502'd under `pnpm dev:mock`.
+    const { status, body } = await mockGet("/api/rooms/mycelium-general/skills");
+    expect(status).toBe(200);
+    const { skills, total } = body as {
+      skills: { name: string; description: string; body: string; created_by: string; version: number }[];
+      total: number;
+    };
+    expect(total).toBe(skills.length);
+    expect(skills.length).toBeGreaterThan(0);
+    const take = skills.find((s) => s.name === "take-a-task");
+    expect(take).toBeDefined();
+    // The description is the frontmatter line, the body is the prose after it,
+    // and neither carries the `---` fence into the composer's popover.
+    expect(take?.description).toBe("Take a task off the board, work it in its own thread, resolve it.");
+    expect(take?.body.startsWith("Claim an open")).toBe(true);
+    expect(take?.body).not.toContain("---");
+    expect(take?.created_by).toBe("operator");
+    expect(take?.version).toBe(2);
+  });
+
+  it("answers an empty list for a room with no skills rather than proxying", async () => {
+    const { status, body } = await mockGet("/api/rooms/scratch/skills");
+    expect(status).toBe(200);
+    expect(body).toEqual({ skills: [], total: 0 });
+  });
+});
+
 describe("mock memory write handler", () => {
   async function post(room: string, items: unknown[]) {
     const res = await handleMock(new Request(`http://localhost/api/rooms/${room}/memory`, {

@@ -34,6 +34,7 @@ import jwt
 from fastapi import HTTPException, Request
 
 from app.config import PrincipalRole, TrustedIssuer, settings
+from app.services.agent_registry import norm_handle
 
 logger = logging.getLogger(__name__)
 
@@ -272,10 +273,8 @@ def _resolve_role(claims: dict[str, Any], entry: TrustedIssuer) -> PrincipalRole
 
 
 def normalize_handle(raw: object) -> str | None:
-    """Match ``principals._norm`` so token and stored handles compare equal."""
-    if not isinstance(raw, str):
-        return None
-    return raw.strip().lstrip("@").lower() or None
+    """The canonical handle normalizer, so token and stored handles compare equal."""
+    return norm_handle(raw)
 
 
 async def verify_token(token: str) -> Principal:

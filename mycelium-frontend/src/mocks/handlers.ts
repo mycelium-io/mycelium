@@ -418,6 +418,36 @@ export async function handleMock(req: Request): Promise<Response | null> {
       return json(agents);
     }
 
+    case "skills": {
+      // GET /skills — the composer's `/` autocomplete. A skill is a `skills/…`
+      // memory promoted, so this is the same projection the backend's skills
+      // route makes: the name is the key past the prefix, the one-line
+      // description is frontmatter, the body is what follows it. Served here
+      // so a mock room never falls through to a real backend (#755).
+      if (sub.length !== 1 || method !== "GET") return null;
+      const skills = fx.memories
+        .filter((m) => m.key.startsWith("skills/"))
+        .map((m) => {
+          const text = manifestText(m);
+          const fm = /^---\n([\s\S]*?)\n---\n?/.exec(text);
+          const description = fm ? /^description:\s*"?(.*?)"?\s*$/m.exec(fm[1])?.[1] ?? "" : "";
+          const body = fm ? text.slice(fm[0].length).replace(/^\n+/, "") : text;
+          const updated = m.updated_at ?? MOCK_EPOCH;
+          return {
+            name: m.key.slice("skills/".length),
+            description,
+            body,
+            tags: m.tags ?? null,
+            created_by: m.created_by,
+            updated_by: m.updated_by ?? null,
+            version: m.version,
+            created_at: updated,
+            updated_at: updated,
+          };
+        });
+      return json({ skills, total: skills.length });
+    }
+
     case "a2a": {
       // GET /a2a/state — the Network pane's bridge strip. A room with no
       // bridge answers with an empty one, exactly like the backend does.
