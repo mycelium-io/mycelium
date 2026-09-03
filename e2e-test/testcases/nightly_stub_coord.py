@@ -150,27 +150,12 @@ class TwoStubRejectionPath(aetest.Testcase):
         def _accept_only_30(round_num: int, turn_json: dict) -> str:
             # An unconditional accepter accepts whatever lands on the table —
             # including stub-reject's own number — which converges every
-            # time regardless of stub-reject's mechanical position. That's
-            # genuinely correct negotiation behavior given an accepter with
-            # no position of its own, not a bug; it just means "one stub
-            # always rejects" can't reliably produce a *rejected* terminal
-            # unless the other side actually holds a position too. Accepting
+            # time regardless of stub-reject's mechanical position. Accepting
             # only its own stated number (30) guarantees the two numbers
             # never meet, so the round budget — not mediator luck — is what
-            # produces rejected.
-            #
-            # The mediator's prompt (mediator.py's _prompt_for) always opens
-            # with a static "Issue space: data_retention_window_days ∈ {30,
-            # ...}" preamble, and its LLM-generated "MEDIATOR: ..." framing
-            # note can freely mention either side's original ask (even a
-            # regex for "the offer on the table is ..." can be fooled — the
-            # note is free text and can narrate "earlier the offer on the
-            # table was 30 days" while describing history). Both are present
-            # on every turn regardless of what's actually on the table that
-            # round. A first-run fix (bare "30" in prompt) and a second
-            # (regex for the offer phrase anywhere in the prompt) both still
-            # let nightly_002 falsely converge on 90 in CI — confirmed live
-            # both times.
+            # produces rejected. This decides the RESPOND-turn action; see
+            # the prose= comment below for why the PROPOSE-turn text matters
+            # just as much.
             #
             # _prompt_for's template is fixed and always exactly four
             # "\n\n"-separated paragraphs: [0] the issue-space preamble,
@@ -186,26 +171,30 @@ class TwoStubRejectionPath(aetest.Testcase):
             return "accept" if "30" in offer_text else "reject"
 
         stubs = [
-            # No prose= override here, unlike stub-reject below: stub-accept's
-            # action varies round to round (_accept_only_30 can say accept or
-            # reject), so its reply text must vary with it. A fixed prose
-            # restating _POS_A ("I believe a 30-day retention window...")
-            # regardless of the actual per-round decision — only the bracket
-            # marker changing — is exactly the ambiguity that let the
-            # mediator's LLM interpreter misread a genuine reject as an
-            # accept: confirmed live in CI, converging on stub-reject's own
-            # 90-day number three separate times with three different fixes
-            # to the "30" substring-matching logic, none of which addressed
-            # the real problem (the substring check was never wrong; the
-            # STUB'S OWN REPLY TEXT was ambiguous to the interpreter that
-            # reads it). Leaving prose unset here falls through to
-            # StubAgent._default_prose(action) — "Agreed, I can accept this
-            # proposal." / "This does not meet my requirements." — text that
-            # unambiguously matches the actual decision every round instead
-            # of restating a static, decision-independent position.
+            # prose= gives interpret() (mediator.py) a stable number to
+            # anchor on for BOTH turn kinds — not just an unambiguous
+            # reject/accept signal for RESPOND turns, which is all earlier
+            # attempts here addressed and which still left this falsely
+            # converging in CI. Root-caused via a temporary debug patch to
+            # mediator.py logging every interpret() call's prose -> reading:
+            # on a PROPOSE turn, interpret() is asked for a *counter offer*,
+            # and a numberless reject-flavored text ("This does not meet my
+            # requirements.", the StubAgent default) gives it nothing to
+            # extract — so it HALLUCINATES one, and not just any value: it
+            # escalated round over round (30 -> 45 -> 60 -> 75 -> 90),
+            # confirmed live in the debug trace. Once that fabricated offer
+            # coincidentally hit stub-reject's real number (90), interpret()
+            # re-read stub-reject's own *unchanged*, explicitly [<reject>]-
+            # marked text as {'action': 'accept'} on that round alone —
+            # purely because the numbers now matched, not because anything
+            # stub-reject said changed. Anchoring stub-accept's text to its
+            # real number (30) on every turn removes the empty slot the
+            # interpreter was filling in by invention, so PROPOSE turns stay
+            # pinned at 30 and never drift toward 90 by coincidence.
             StubAgent(
                 self.room, "stub-accept", action="reject", cli=cli,
                 action_fn=_accept_only_30,
+                prose="I can only agree to 30 days; anything longer does not meet my requirements.",
             ),
             # A generic reject reply (the default "This does not meet my
             # requirements.") carries no number, so the mediator's NLU can
