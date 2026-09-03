@@ -35,7 +35,7 @@ uv run --no-project --with ty ty check --python-version 3.12 scripts
 
 `--no-project` is deliberate. A script here declares no dependencies — it is
 standalone, run by hand from whatever environment has what it needs — so
-checking it inside a neighbouring project's venv makes the answer depend on
+checking it inside a neighboring project's venv makes the answer depend on
 which optional extras that project happens to pull in, and it stops matching
 between CI and a laptop. Stdlib-only is the environment these scripts document,
 so it is the one they are checked in.

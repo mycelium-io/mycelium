@@ -129,7 +129,7 @@ function MemoryLinkChip({ link, broken, onClick }: LinkProps) {
   const action = link.transclusion ? `Embeds ${link.target}` : `Open ${link.target}`;
   return (
     <Tooltip content={action}>
-      {/* aria-description is ARIA 1.3 — jsx-a11y doesn't recognise it yet */}
+      {/* aria-description is ARIA 1.3 — jsx-a11y doesn't recognize it yet */}
       {/* eslint-disable-next-line jsx-a11y/role-supports-aria-props */}
       <button
         type="button"
@@ -228,10 +228,10 @@ export function MarkdownContent({ children, className, onLinkClick, brokenLinks,
       if (href?.startsWith("myc://")) {
         const link = parseLink(href);
         if (link) {
-          const labelled = { ...link, label: link.label ?? (nodeText(children) || link.target) };
+          const labeled = { ...link, label: link.label ?? (nodeText(children) || link.target) };
           return (
             <MemoryLinkChip
-              link={labelled}
+              link={labeled}
               broken={brokenLinks?.has(link.target) ?? false}
               onClick={onLinkClick}
             />

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Unit tests for ``generate_env_file`` service-port materialisation.
+"""Unit tests for ``generate_env_file`` service-port materialization.
 
 ``~/.mycelium/.env`` is a derived artifact written by ``mycelium install`` /
 ``mycelium config apply``.  These tests guard the contract that .env carries
@@ -28,10 +28,10 @@ def _parse_env(blob: str) -> dict[str, str]:
     return out
 
 
-# ── service-port materialisation ─────────────────────────────────────────────
+# ── service-port materialization ─────────────────────────────────────────────
 
 
-def test_env_materialises_all_service_ports() -> None:
+def test_env_materializes_all_service_ports() -> None:
     """Backend / UI / metrics ports flow from RuntimeConfig into .env.
 
     compose.yml port-publishes each service via ``${MYCELIUM_*_PORT:-default}``
@@ -57,18 +57,18 @@ def test_env_metrics_port_defaults_to_4318() -> None:
     assert env["MYCELIUM_METRICS_PORT"] == "4318"
 
 
-# ── engine runtime materialisation ───────────────────────────────────────────
+# ── engine runtime materialization ───────────────────────────────────────────
 
 
-def test_env_materialises_engine_runtime_default() -> None:
+def test_env_materializes_engine_runtime_default() -> None:
     """Default config writes ENGINE_RUNTIME=backend (the only runtime now)."""
     env = _parse_env(generate_env_file(MyceliumConfig()))
     assert env["ENGINE_RUNTIME"] == "backend"
 
 
-def test_env_materialises_engine_runtime_legacy_host_coerced() -> None:
+def test_env_materializes_engine_runtime_legacy_host_coerced() -> None:
     """A legacy ``host`` setting coerces to backend (host runtime was removed with
-    the daemon) and still materialises so the backend reads a valid value."""
+    the daemon) and still materializes so the backend reads a valid value."""
     from mycelium.config import EngineConfig
 
     cfg = MyceliumConfig(engine=EngineConfig(runtime="host"))  # ty: ignore[invalid-argument-type]

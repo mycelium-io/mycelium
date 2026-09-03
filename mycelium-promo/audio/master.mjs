@@ -3,7 +3,7 @@
 // The score's dynamic range is wider than a video bed wants — the drone at 4s
 // and the consensus chord at 82s are twenty decibels apart. The range is
 // closed here rather than by flattening the writing, and the result is
-// normalised to a stated loudness target instead of to a peak, so how loud
+// normalized to a stated loudness target instead of to a peak, so how loud
 // the track is is a number in the build output rather than a guess.
 
 import { clamp } from './dsp.mjs';

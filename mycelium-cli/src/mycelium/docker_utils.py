@@ -164,7 +164,7 @@ def _read_operator_managed_keys(env_path: Path | None) -> dict[str, str]:
     ``mycelium up`` to surface the effective tag at startup.
 
     Parsing is intentionally permissive (matches ``_patch_env_image_tag``'s
-    behaviour): blank/commented lines are skipped, ``KEY=value`` is split on
+    behavior): blank/commented lines are skipped, ``KEY=value`` is split on
     the first ``=``, and surrounding whitespace is stripped.
     """
     if env_path is None or not env_path.exists():
@@ -323,7 +323,7 @@ def generate_env_file(
         f"MYCELIUM_ALLOWED_DEV_ORIGINS={config.runtime.allowed_dev_origins}",
         "",
         "# ── Reverse proxy in front of the backend ───────────────────────────────",
-        # uvicorn honours X-Forwarded-Proto/-For only from a forwarder it trusts,
+        # uvicorn honors X-Forwarded-Proto/-For only from a forwarder it trusts,
         # and trusts loopback alone unless told otherwise. Behind a TLS-terminating
         # proxy the hop arrives from the bridge, so without this every absolute URL
         # the backend builds keeps the http:// scheme it sees (#799). Emitted only

@@ -26,7 +26,7 @@ export const DURATION = 72;
 
 // ~69.6 BPM. index.html's scene changes land on multiples of 6.9s (13.8,
 // 27.6, 41.4), so an eight-beat phrase lines up with the cut without the
-// generative layers ever having to be quantised to it.
+// generative layers ever having to be quantized to it.
 const BEAT = 0.8625;
 const STEP = BEAT / 2;
 
@@ -759,8 +759,8 @@ export function render(sr = 48000, { onProgress = () => {} } = {}) {
   onProgress('master');
   const comp = glue(L, R, sr);
 
-  // Normalise to the loudness target before limiting, so the limiter is
-  // catching the few peaks that remain rather than doing the levelling.
+  // Normalize to the loudness target before limiting, so the limiter is
+  // catching the few peaks that remain rather than doing the leveling.
   const preLufs = lufs(L, R, sr);
   const gain = Math.pow(10, (TARGET_LUFS - preLufs) / 20);
   for (let i = 0; i < n; i++) { L[i] *= gain; R[i] *= gain; }

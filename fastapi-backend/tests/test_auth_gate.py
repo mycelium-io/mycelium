@@ -201,7 +201,7 @@ async def test_unsupported_role_claim_is_rejected(auth_on, signing_key):
 
 
 @pytest.mark.asyncio
-async def test_configured_handle_claim_is_honoured(monkeypatch, auth_on, signing_key):
+async def test_configured_handle_claim_is_honored(monkeypatch, auth_on, signing_key):
     monkeypatch.setattr("app.config.settings.AUTH_HANDLE_CLAIM", "preferred_username")
     principal = await auth_service.verify_token(_sign(signing_key, preferred_username="avery"))
     assert principal.handle == "avery"

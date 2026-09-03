@@ -282,7 +282,7 @@ def backend(monkeypatch: pytest.MonkeyPatch) -> Callable[..., None]:
 
 #: Agent-credential and agent-identity vars, from ``agent_credentials.py`` and the
 #: ``[agent_auth]`` env overrides in ``config.py``. A machine configured to talk to
-#: a hosted hub as an agent exports these, and the CLI's auth seam honours them:
+#: a hosted hub as an agent exports these, and the CLI's auth seam honors them:
 #: ``agent_credentials.resolve()`` would mint a real bearer mid-suite, so a test
 #: asserting an unauthenticated request would fail on that machine and pass on a
 #: bare one. The suite owns its environment, so every test starts without them.

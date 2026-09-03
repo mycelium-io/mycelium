@@ -5,7 +5,7 @@
 
 An agent is resident rather than one-shot, and a session can end without
 announcing it — a container is reclaimed, a cloud session times out, a job is
-cancelled. Assignment is a lease rather than a stored fact: a live claim reads
+canceled. Assignment is a lease rather than a stored fact: a live claim reads
 fresh/stale/expired against ``claimed_at`` + a TTL, the same freshness model
 the upstream half uses against ``fetched_at``. An abandoned claim drains and
 the row returns to the pool.

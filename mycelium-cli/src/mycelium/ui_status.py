@@ -17,7 +17,7 @@ import typer
 # ── Status → icon / color ────────────────────────────────────────────────────
 #
 # "ok" / "warning" / "error" are the canonical three; everything else is an
-# alias that maps to one of them for colour purposes. Keeps callers from
+# alias that maps to one of them for color purposes. Keeps callers from
 # having to pre-normalize backend-specific statuses (``auth_error``,
 # ``not_configured``, etc.) before calling print_check.
 

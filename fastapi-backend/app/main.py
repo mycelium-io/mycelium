@@ -113,6 +113,12 @@ async def lifespan(app: FastAPI):
 
     start_event_sweep()
 
+    # Lease-expiry sweep: raises the `expired` timeline notice, which nothing
+    # writes (a lease drains by the clock, so there is no seam to raise it from).
+    from app.services.lease_sweep import start_lease_sweep, stop_lease_sweep
+
+    start_lease_sweep()
+
     # Pre-load embedding model so first request isn't slow
     from app.services.embedding import warmup as warmup_embeddings
 
@@ -204,6 +210,7 @@ async def lifespan(app: FastAPI):
     yield
     stop_watcher()
     stop_event_sweep()
+    stop_lease_sweep()
 
     # Close the status providers' transports. They hold sockets and the
     # credentials bound into them, so they are the runtime's to release.
@@ -435,7 +442,7 @@ async def get_hosts():
 async def _proxy_collector(path: str):
     """Forward a GET request to the collector and return the raw JSON response.
 
-    Defence-in-depth: sanitise any non-standard JSON tokens (``Infinity``,
+    Defense-in-depth: sanitize any non-standard JSON tokens (``Infinity``,
     ``NaN``) that might slip through from upstream before forwarding to the
     browser.
     """
@@ -445,14 +452,14 @@ async def _proxy_collector(path: str):
     import httpx
     from fastapi.responses import JSONResponse, Response
 
-    def _sanitise(obj: object) -> object:
+    def _sanitize(obj: object) -> object:
         """Replace float inf/nan with None for JSON compliance."""
         if isinstance(obj, float) and (math.isinf(obj) or math.isnan(obj)):
             return None
         if isinstance(obj, dict):
-            return {k: _sanitise(v) for k, v in obj.items()}
+            return {k: _sanitize(v) for k, v in obj.items()}
         if isinstance(obj, list | tuple):
-            return [_sanitise(v) for v in obj]
+            return [_sanitize(v) for v in obj]
         return obj
 
     def _parse_constant(c: str) -> None:
@@ -471,7 +478,7 @@ async def _proxy_collector(path: str):
                     status_code=502,
                     content={"detail": "Invalid JSON from collector"},
                 )
-            data = _sanitise(data)
+            data = _sanitize(data)
             return Response(
                 content=json.dumps(data, default=str),
                 media_type="application/json",

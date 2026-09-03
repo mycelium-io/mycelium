@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
-/** The surface the region sits on, so the fade lands on the right colour. */
+/** The surface the region sits on, so the fade lands on the right color. */
 const FADE = {
   bg: "var(--bg)",
   paper: "var(--paper)",

@@ -493,7 +493,7 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
     [onNavigate, visibleKeys],
   );
 
-  // A cancelled pointer is an abandoned gesture, not a completed one: the system
+  // A canceled pointer is an abandoned gesture, not a completed one: the system
   // took the pointer away (touch handed to a browser gesture, device removed),
   // so routing it through `endDrag` would open a memory the reader never
   // released on.
@@ -820,7 +820,7 @@ function GraphNodeDot({
       onMouseEnter={() => onHover(node.key)}
       onMouseLeave={() => onHover(null)}
       // Focus highlights too, so tabbing through the graph reveals each memory's
-      // neighbours the way hovering does rather than only moving a focus ring.
+      // neighbors the way hovering does rather than only moving a focus ring.
       onFocus={() => onHover(node.key)}
       onBlur={() => onHover(null)}
       onPointerDown={handlePointerDown}

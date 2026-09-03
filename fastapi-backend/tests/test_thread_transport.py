@@ -319,7 +319,7 @@ class _RecordingPersister:
 
     def __init__(self) -> None:
         self.ingested: list[tuple[Any, dict, bool]] = []
-        # The write guard reads the transcript to recognise a thread already
+        # The write guard reads the transcript to recognize a thread already
         # spoken in; empty here, so every test resolves its thread off the row
         # it is bound to — the first-write path, which is the one that matters.
         self.log = persister.DeliveryLog()

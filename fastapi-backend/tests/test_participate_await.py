@@ -137,3 +137,52 @@ async def test_await_ignores_turns_addressed_to_others(wired):
     wired(log)
     result = await participate.await_message("r", _REQUEST, handle="claude-code-agent", timeout=1)
     assert result["message"] is None
+
+
+@pytest.mark.asyncio
+async def test_a_served_turn_says_the_handle_is_responding(wired):
+    """From the moment ``await`` hands a turn over until the reply lands, the
+    room is waiting on that handle; the stream says so (#513). Bus-only: the
+    transcript gains nothing."""
+    from app.bus import bus, room_channel
+    from app.services import activity
+
+    log = persister.DeliveryLog()
+    log.record(
+        _addressed_record("m1", to="claude-code-agent"),
+        delivered_to=set(),
+        recipients=["claude-code-agent"],
+    )
+    wired(log)
+    queue = bus.subscribe(room_channel("r"))
+    try:
+        result = await participate.await_message(
+            "r", _REQUEST, handle="claude-code-agent", timeout=0
+        )
+        assert result["message_id"] == "m1"
+        frame = queue.get_nowait()
+    finally:
+        bus.unsubscribe(room_channel("r"), queue)
+
+    assert frame["type"] == activity.ACTIVITY_TYPE
+    assert frame["handle"] == "claude-code-agent"
+    assert frame["state"] == "responding"
+    assert frame["episode"] == l9.episode_urn("r", "live")
+    assert len(log.records) == 1  # nothing was written to the transcript
+
+
+@pytest.mark.asyncio
+async def test_an_empty_poll_says_nothing(wired):
+    """No turn, no signal: a handle polling an idle room is not responding."""
+    from app.bus import bus, room_channel
+
+    wired(persister.DeliveryLog())
+    queue = bus.subscribe(room_channel("r"))
+    try:
+        result = await participate.await_message(
+            "r", _REQUEST, handle="claude-code-agent", timeout=1
+        )
+        assert result["message"] is None
+        assert queue.empty()
+    finally:
+        bus.unsubscribe(room_channel("r"), queue)

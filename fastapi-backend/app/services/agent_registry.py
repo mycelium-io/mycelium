@@ -9,7 +9,7 @@ manifest. This module:
 - Projects those files into the typed :class:`AgentRead` the agents route
   serves and cross-entity search matches against, so both read the manifests
   through one parser.
-- Provides :func:`norm_handle`, the canonical handle normaliser used by every
+- Provides :func:`norm_handle`, the canonical handle normalizer used by every
   route or service that touches agent handles, so the rule lives in one place.
 - Provides :func:`write_agent_manifest`, the single path that turns a manifest
   dict into the tagged, non-embedded memory used as the agent contract. Both
@@ -31,10 +31,10 @@ AGENTS_PREFIX = "agents/"
 
 
 def norm_handle(value: object) -> str | None:
-    """Normalise an agent handle to a lowercase slug, or ``None`` if blank.
+    """Normalize an agent handle to a lowercase slug, or ``None`` if blank.
 
     Strips whitespace, removes a leading ``@``, lowercases, and returns
-    ``None`` when the result is empty. This is the canonical normaliser for
+    ``None`` when the result is empty. This is the canonical normalizer for
     every place in the stack that reads or writes agent handle fields.
     """
     if not isinstance(value, str):
@@ -53,7 +53,7 @@ async def write_agent_manifest(room_name: str, handle: str, body: dict, *, creat
     The memory is stored as ``agents/<handle>`` with ``embed=False`` and
     ``tags=["agent-manifest"]`` — the single canonical shape every read path
     expects. Routes that build different manifests (engine vs. A2A) call this
-    with their respective ``body`` dict so the YAML serialisation, tag constant,
+    with their respective ``body`` dict so the YAML serialization, tag constant,
     and embed flag are not duplicated.
 
     Uses a lazy import of :func:`app.routes.memory.upsert_memories` to avoid

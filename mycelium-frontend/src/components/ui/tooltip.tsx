@@ -84,7 +84,7 @@ export function Tooltip({
 
 /** Shared open/close delay for every tooltip in the tree: the first tooltip
  *  waits out the open delay, then moving along a toolbar shows its
- *  neighbours immediately. */
+ *  neighbors immediately. */
 export function TooltipProvider({ children }: { children: ReactNode }) {
   return (
     <TooltipPrimitive.Provider delay={400} closeDelay={80}>

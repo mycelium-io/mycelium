@@ -250,7 +250,7 @@ def record_reply(
     handle: str,
     reply: dict[str, Any],
     round_n: int | None,
-    synthesised: bool = False,
+    synthesized: bool = False,
 ) -> None:
     """Record an agent's parsed reply as a synthesized ``exchange`` envelope.
 
@@ -267,8 +267,8 @@ def record_reply(
     move = reply.get("move")
     subkind = move if move in l9.EXCHANGE_MOVE_SUBKINDS else None
     payload_data: dict[str, Any] = {"round": round_n, "action": action}
-    if synthesised:
-        payload_data["synthesised"] = True
+    if synthesized:
+        payload_data["synthesized"] = True
     if isinstance(reply.get("offer"), dict):
         payload_data["offer"] = reply["offer"]
     for k in (

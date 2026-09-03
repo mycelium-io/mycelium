@@ -42,7 +42,7 @@ const byLabel = (page, spec) =>
  * Resolve one element argument.
  *
  * The interesting case is the bare word. `--do click:Save` means the button
- * labelled Save, but "Save" is also a syntactically valid CSS type selector, so
+ * labeled Save, but "Save" is also a syntactically valid CSS type selector, so
  * handing it to `locator()` looks for a `<save>` element and times out. Labels
  * win: a word is matched by accessible name, then by visible text.
  *
@@ -254,5 +254,5 @@ export const ACTION_HELP = `
   Selectors take any Playwright engine: text=Save, role=button[name="Save"],
   #id, .class, //xpath. Anything without CSS punctuation is matched by
   accessible name, then visible text — click:Save changes means the button
-  labelled "Save changes". For a selector that is only tag names and spaces,
+  labeled "Save changes". For a selector that is only tag names and spaces,
   say so: css=nav button.`;

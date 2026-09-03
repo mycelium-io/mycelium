@@ -501,7 +501,7 @@ class SatisfactionOrderedSAO(SAOMechanism):
     we override it to sort by satisfaction with the current standing offer, so the
     aligner spends turns on the agent who actually needs to move rather than on one
     already content with the offer. Termination is untouched — NEGMAS still stops at
-    unanimity regardless of who is asked in what order (the anti-theatre property).
+    unanimity regardless of who is asked in what order (the anti-theater property).
     """
 
     def __init__(self, *args: Any, negotiation: MediatedNegotiation, **kwargs: Any) -> None:

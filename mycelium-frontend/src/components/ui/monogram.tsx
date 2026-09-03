@@ -10,20 +10,20 @@ export { initials };
 
 /** Live-presence tier surfaced as a halo around the avatar. "slim" = active
  *  SLIM socket (steady accent ring); "lease" = server-held await/reply poll
- *  (breathing muted ring); "herdr" = alive in a herdr pane, its ring colour and
+ *  (breathing muted ring); "herdr" = alive in a herdr pane, its ring color and
  *  motion driven by `status`. Undefined = not present, no halo. */
 export type Presence = "slim" | "lease" | "herdr";
 
 interface Props {
   handle: string;
-  /** Glyph + tint. Defaults to the handle's own stable colour; pass
+  /** Glyph + tint. Defaults to the handle's own stable color; pass
    *  `var(--muted-foreground)` for a human, who stays neutral by convention. */
   color?: string;
   /** Override the default size-8 circle (e.g. "size-5" for a compact chip). */
   className?: string;
   /** Optional live-presence halo. */
   presence?: Presence;
-  /** herdr live state (idle/working/blocked/done), which drives the halo colour
+  /** herdr live state (idle/working/blocked/done), which drives the halo color
    *  and motion for a herdr-hosted member. */
   status?: string | null;
   /** A room mention queued for this handle, held until it goes idle, overlaid as
@@ -47,7 +47,7 @@ interface Halo {
 
 const HERDR_STATES = new Set(["idle", "working", "blocked", "done"]);
 
-/** Presence → ring colour and motion. A herdr state colours the ring by activity
+/** Presence → ring color and motion. A herdr state colors the ring by activity
  *  (working/blocked breathe, done is a steady green, idle drops the ring); a held
  *  SLIM socket is a steady fact and holds a static ring; a lease is a poll in
  *  flight, so it breathes. */
@@ -71,11 +71,11 @@ function halo(presence: Presence, status?: string | null): Halo {
 
 /** Circular monogram avatar; shared across roster, stream, and picker.
  *
- *  The disc is a solid fill in the handle's own colour with near-white
+ *  The disc is a solid fill in the handle's own color with near-white
  *  initials, so a roster reads as distinct people at a glance instead of a
- *  column of identical chips. Presence rides as a **halo** around it — colour
+ *  column of identical chips. Presence rides as a **halo** around it — color
  *  for the tier, a breathing ring for a poll in flight — plus a corner dot that
- *  carries the tier on its own for anyone the ring's colour doesn't reach. */
+ *  carries the tier on its own for anyone the ring's color doesn't reach. */
 export function Monogram({ handle, color, className, presence, status, wakePending, mutePresence }: Props) {
   const tint = color ?? avatarTint(handle);
   const ring = presence ? halo(presence, status) : null;
@@ -89,9 +89,9 @@ export function Monogram({ handle, color, className, presence, status, wakePendi
           ring?.ring && ring.pulse && "pulse",
           className,
         )}
-        // Opaque fill: the command centre stacks these, and translucent discs
+        // Opaque fill: the command center stacks these, and translucent discs
         // overlapping would blend into each other. Opaque also holds the
-        // colour steady over a hover highlight. Border is the same tint
+        // color steady over a hover highlight. Border is the same tint
         // darkened; glyph is white for contrast against the deep disc.
         style={{
           background: tint,
@@ -123,7 +123,7 @@ function MailBadge() {
   );
 }
 
-/** The corner dot. The halo is a colour, and colour alone shouldn't be the only
+/** The corner dot. The halo is a color, and color alone shouldn't be the only
  *  carrier of a tier, so the dot names itself for screen readers rather than
  *  leaning on the tooltip a pointer reveals. */
 function PresenceDot({ halo: ring, mute }: { halo: Halo; mute?: boolean }) {

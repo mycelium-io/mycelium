@@ -6,7 +6,7 @@
  *
  * An agent is resident rather than one-shot, and a session can end without
  * announcing it — a container is reclaimed, a cloud session times out, a job
- * is cancelled. Assignment is a lease rather than a stored fact: an abandoned
+ * is canceled. Assignment is a lease rather than a stored fact: an abandoned
  * claim drains and the row returns to the pool.
  *
  * **Assignment is not a stage.** `status` is a stage vocabulary. `in_review`

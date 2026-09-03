@@ -35,26 +35,43 @@ const say = (id: string, who: string, text: string): StreamStep["message"] => ({
   message_type: "broadcast",
   content: text,
 });
+// The "is responding…" signal the backend raises when a participant starts
+// generating: a presence-style frame, never a message (see `lib/activity.ts`).
+// Each agent line below is preceded by one, and the line itself settles it.
+const responding = (who: string): StreamStep["message"] => ({
+  type: "agent_activity",
+  message_type: "agent_activity",
+  handle: who,
+  sender_handle: who,
+  state: "responding",
+  episode: null,
+  ttl_s: 90,
+});
 const pricingTimeline: StreamStep[] = [
   // Round 1
   { delayMs: 1500, message: say("s1", "growth", "Opening ask: $29, 50 seats, annual term — land-and-expand. @finance") },
   { delayMs: 1600, message: tick("s2", 1, "growth", "propose", { price: "29", seats: "50", term: "annual" }) },
-  { delayMs: 2200, message: say("s3", "finance", "$29 kills our margin. Counter: $49, same seats.") },
+  { delayMs: 600, message: responding("finance") },
+  { delayMs: 1600, message: say("s3", "finance", "$29 kills our margin. Counter: $49, same seats.") },
   { delayMs: 1600, message: tick("s4", 1, "finance", "counter", { price: "49", seats: "50", term: "annual" }) },
   // Round 2
-  { delayMs: 2200, message: say("s5", "growth", "Meet me at $35 — but I need 75 seats to justify it.") },
+  { delayMs: 600, message: responding("growth") },
+  { delayMs: 1600, message: say("s5", "growth", "Meet me at $35 — but I need 75 seats to justify it.") },
   { delayMs: 1600, message: tick("s6", 2, "growth", "counter", { price: "35", seats: "75", term: "annual" }) },
-  { delayMs: 2200, message: say("s7", "finance", "$39 and we hold margin above 60%. 75 seats is fine.") },
+  { delayMs: 600, message: responding("finance") },
+  { delayMs: 1600, message: say("s7", "finance", "$39 and we hold margin above 60%. 75 seats is fine.") },
   { delayMs: 1600, message: tick("s8", 2, "finance", "counter", { price: "39", seats: "75", term: "annual" }) },
   // Round 3 — convergence
-  { delayMs: 2200, message: say("s9", "growth", "Deal. $39, 75 seats, annual. ✅") },
+  { delayMs: 600, message: responding("growth") },
+  { delayMs: 1600, message: say("s9", "growth", "Deal. $39, 75 seats, annual. ✅") },
   { delayMs: 1500, message: tick("s10", 3, "growth", "accept", { price: "39", seats: "75", term: "annual" }) },
   { delayMs: 1400, message: tick("s11", 3, "finance", "accept", { price: "39", seats: "75", term: "annual" }) },
   { delayMs: 1800, message: { id: "s12", sender_handle: "backend", message_type: "coordination_consensus", content: JSON.stringify({ plan: "pricing agreed", assignments: { price: "39", seats: "75", term: "annual" }, plan_file: "plan/tasks.md", episode: PRICING_EPISODE, metrics: { gar: 0.86 } }), episode: PRICING_EPISODE } },
   // After the plan lands, summon the synthesizer: it distills the room's memory
   // (goal, the new decision, the plan) into a shared briefing at context/synthesis.
   { delayMs: 2000, message: say("s13", "operator", "@synthesizer brief the room on where we landed.") },
-  { delayMs: 1800, message: say("s14", "synthesizer", "Distilled the outcome → context/synthesis: Pro launches at $39/seat, 75 seats, annual — margin held above 60%.") },
+  { delayMs: 500, message: responding("synthesizer") },
+  { delayMs: 2400, message: say("s14", "synthesizer", "Distilled the outcome → context/synthesis: Pro launches at $39/seat, 75 seats, annual — margin held above 60%.") },
 ];
 
 const TIMELINES: Record<string, StreamStep[]> = {
@@ -64,7 +81,7 @@ const TIMELINES: Record<string, StreamStep[]> = {
 export function mockStream(roomName: string): Response {
   const encoder = new TextEncoder();
   const timeline = TIMELINES[roomName] ?? [];
-  let cancelled = false;
+  let canceled = false;
   const timers: ReturnType<typeof setTimeout>[] = [];
 
   const stream = new ReadableStream<Uint8Array>({
@@ -77,7 +94,7 @@ export function mockStream(roomName: string): Response {
         elapsed += step.delayMs;
         timers.push(
           setTimeout(() => {
-            if (cancelled) return;
+            if (canceled) return;
             const frame = { created_at: new Date().toISOString(), ...step.message };
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`));
           }, elapsed),
@@ -86,13 +103,13 @@ export function mockStream(roomName: string): Response {
 
       // Heartbeat so the badge stays LIVE after the timeline drains.
       const beat = setInterval(() => {
-        if (cancelled) return;
+        if (canceled) return;
         controller.enqueue(encoder.encode(": heartbeat\n\n"));
       }, 15_000);
       timers.push(beat as unknown as ReturnType<typeof setTimeout>);
     },
     cancel() {
-      cancelled = true;
+      canceled = true;
       for (const t of timers) clearTimeout(t);
     },
   });

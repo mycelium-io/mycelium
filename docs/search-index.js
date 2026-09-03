@@ -84,6 +84,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
+    "u": "index.html#rooms-reading-history",
+    "t": "Reading History",
+    "s": "Concepts › Rooms",
+    "x": "mycelium room messages is a point-in-time read, newest first. History is paged by content rather than position: when older messages exist, the footer names the --before cursor that reads the next page back, so a walk through a busy room does not shift under messages arriving live. A stamp is ISO 8601 as printed, or an age like 2h, 30m, 1d. mycelium room messages design-review --limit 50 # the latest page … mycelium r",
+    "p": "Guide"
+  },
+  {
     "u": "index.html#rooms-editing-a-message",
     "t": "Editing a Message",
     "s": "Concepts › Rooms",
@@ -656,7 +663,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "adapters.html#aligner-tunables",
     "t": "Tunables",
     "s": "Engines › Aligner",
-    "x": "The aligner is dormant by default and configured through ~/.mycelium/.env (backend settings). The common knobs: Env var Default Purpose ALIGNER_HANDLE aligner Reserved handle that a summon is recognised by ALIGNER_TERM_CHECK true Run the pre-negotiation term check, and one clarifying round when it finds a mismatch ALIGNER_ROUND_TIMEOUT_S 30.0 How long one addressed agent has to reply before the mediator moves on ALIG",
+    "x": "The aligner is dormant by default and configured through ~/.mycelium/.env (backend settings). The common knobs: Env var Default Purpose ALIGNER_HANDLE aligner Reserved handle that a summon is recognized by ALIGNER_TERM_CHECK true Run the pre-negotiation term check, and one clarifying round when it finds a mismatch ALIGNER_ROUND_TIMEOUT_S 30.0 How long one addressed agent has to reply before the mediator moves on ALIG",
     "p": "Adapters"
   },
   {
@@ -817,7 +824,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#architecture-asking-what-the-tools-say",
     "t": "Asking what the tools say",
     "s": "Architecture",
-    "x": "GET /api/rooms/{room}/status You never tell Mycelium which pull requests to watch. Write a work row that says land the custody seam: mycelium-io/mycelium#504 and the reference is already there; the hub reads the room's own decisions/, status/, work/ and failed/ memories, and asks each provider what it recognises. Nothing in the hub matches #504: a provider is the only thing that knows its own shapes, so teaching Myce",
+    "x": "GET /api/rooms/{room}/status You never tell Mycelium which pull requests to watch. Write a work row that says land the custody seam: mycelium-io/mycelium#504 and the reference is already there; the hub reads the room's own decisions/, status/, work/ and failed/ memories, and asks each provider what it recognizes. Nothing in the hub matches #504: a provider is the only thing that knows its own shapes, so teaching Myce",
     "p": "Reference"
   },
   {
@@ -1033,9 +1040,9 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-room",
-    "t": "mycelium room messages [<room>] [--limit N] [--sender <handle>] [--type <type>]",
+    "t": "mycelium room messages [<room>] [--limit N] [--sender <handle>] [--type <type>] [--before <stamp|age>] [--since <stamp|age>]",
     "s": "CLI Reference",
-    "x": "Read recent messages in a room (point-in-time, newest first). Filter with --sender / --type.",
+    "x": "Read recent messages in a room (point-in-time, newest first). Filter with --sender / --type; walk back through history with --before.",
     "k": "cmd",
     "p": "Reference"
   },
@@ -1112,7 +1119,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-board",
-    "t": "mycelium board messages <id> [--limit N]",
+    "t": "mycelium board messages <id> [--limit N] [--before <stamp|age>]",
     "s": "CLI Reference",
     "x": "Read one thread: the conversation about that row or memory, and nothing else from the room.",
     "k": "cmd",
@@ -2077,7 +2084,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#auth-the-localhost-bypass",
     "t": "The localhost bypass",
     "s": "Guides › Authentication",
-    "x": "With auth.localhost_bypass on (the default), requests whose peer address is real loopback (127.0.0.0/8, ::1) skip the gate, so turning auth on can't lock you out of the machine the hub runs on. Two things worth knowing: X-Forwarded-For is deliberately ignored. It is caller-supplied, so honouring it would let any remote request claim to be local. It does not fire for a backend running in Docker. Traffic through a publ",
+    "x": "With auth.localhost_bypass on (the default), requests whose peer address is real loopback (127.0.0.0/8, ::1) skip the gate, so turning auth on can't lock you out of the machine the hub runs on. Two things worth knowing: X-Forwarded-For is deliberately ignored. It is caller-supplied, so honoring it would let any remote request claim to be local. It does not fire for a backend running in Docker. Traffic through a publi",
     "p": "Reference"
   },
   {

@@ -51,7 +51,7 @@ from app.services.persister import envelope_message_id, envelope_sender
 
 
 def _bare_sender(value: str | None) -> str | None:
-    """Normalise an L9 sender to a bare slug, stripping any ``#session`` qualifier.
+    """Normalize an L9 sender to a bare slug, stripping any ``#session`` qualifier.
 
     Stored slugs (allow_from, owner, agent handles) carry no session suffix;
     L9 actor ids may carry one (``alice#a8f3``). Stripping before any comparison
@@ -88,7 +88,7 @@ class A2aAgentRef:
     #: The RPC endpoint resolved from the card at registration, for telemetry —
     #: the send path still resolves the card itself.
     endpoint: str | None = None
-    #: Sender handles that may summon this agent (empty = anyone). Normalised to
+    #: Sender handles that may summon this agent (empty = anyone). Normalized to
     #: lowercase without '@' so comparisons are consistent with the gate check.
     allow_from: tuple[str, ...] = ()
     #: The handle that registered the agent. Always allowed to summon it,

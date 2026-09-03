@@ -126,7 +126,7 @@ def test_cursors_round_trip_and_missing_file_is_empty():
 
 
 def test_cursors_survive_a_restart_so_an_offline_tail_is_still_reserved():
-    """The D5 fix: an agent offline at shutdown must still be recognised as a
+    """The D5 fix: an agent offline at shutdown must still be recognized as a
     reconnect and re-served exactly its missed tail after a backend restart.
 
     Cursors persist alongside the transcript, so a reconnecting agent re-serves

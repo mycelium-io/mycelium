@@ -58,7 +58,7 @@ if (!("ResizeObserver" in globalThis)) {
 // `--localstorage-file` (it says so: "`--localstorage-file` was provided without
 // a valid path"). That bare global then shadows the implementation jsdom would
 // have installed, so anything calling `localStorage.getItem` fails on the
-// environment rather than on its own behaviour.
+// environment rather than on its own behavior.
 //
 // Installed only when the global isn't usable, so a runtime whose Web Storage
 // works keeps it. In-memory rather than file-backed on purpose: tests must not

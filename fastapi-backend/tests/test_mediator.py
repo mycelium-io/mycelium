@@ -6,10 +6,10 @@
 Node-free and LLM-free: the mediator's LLM session is injected as a deterministic
 prompt-keyed stub (via the aligner's ``llm_session_factory``) and the agents are
 simulated by the same fake channel the aligner tests use. This exercises the
-anti-theatre property that matters —
+anti-theater property that matters —
 **NEGMAS owns termination**: once the agents accept a standing offer the
 mechanism *stops*, and the aligner emits a ``commit:converged`` carrying the
-agreed ``issue = value`` map (the anti-theatre guarantee), never looping to the
+agreed ``issue = value`` map (the anti-theater guarantee), never looping to the
 step cap.
 """
 
@@ -181,7 +181,7 @@ async def test_mediate_terminates_at_agreement() -> None:
     assert len(manager.opened) == 1
     assert manager.opened[0].startswith(l9.episode_urn(_ROOM, ""))
     assert manager.closed == [_ROOM]
-    # Anti-theatre: it stopped the moment agreement was reached — the number of
+    # Anti-theater: it stopped the moment agreement was reached — the number of
     # agent turns (exchange prompts) is far below the step cap, not a full run.
     from app.services.l9_models import Kind
 
@@ -583,7 +583,7 @@ def test_mechanism_defaults_to_round_robin_before_first_offer() -> None:
 @pytest.mark.asyncio
 async def test_least_satisfied_order_preserves_termination() -> None:
     """Reordering who is asked must not break termination: a converging run still
-    stops at agreement, not the step cap (the anti-theatre invariant)."""
+    stops at agreement, not the step cap (the anti-theater invariant)."""
     persister = FakePersister()
     channel = FakeChannel(persister, reply_conf=0.9)
     managed = FakeManaged(_ROOM, "mycelium", channel, persister)

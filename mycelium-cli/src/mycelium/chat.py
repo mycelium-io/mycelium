@@ -17,6 +17,8 @@ verbs are the room's verbs, scoped to a row.
 from __future__ import annotations
 
 import json as json_module
+import re
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import typer
@@ -66,6 +68,33 @@ def post(
     typer.echo(f"  ↑  {sender_handle} → {destination or room_name}: {preview}")
 
 
+_RELATIVE = re.compile(r"^(\d+)\s*([smhd])$")
+_UNITS = {"s": "seconds", "m": "minutes", "h": "hours", "d": "days"}
+
+
+def parse_stamp(text: str, *, now: datetime | None = None) -> datetime:
+    """A point in time as a reader types one: an ISO 8601 stamp, or an age.
+
+    ``2026-09-03T16:40:00Z`` is the shape every message line's cursor comes back
+    in, so a stamp copied off one page pastes straight into the next. ``2h``,
+    ``30m``, ``1d`` mean that long ago, for the common "what happened before
+    lunch" read where nobody has a stamp yet. Naive stamps are taken as UTC,
+    which is how the hub records them.
+    """
+    raw = text.strip()
+    match = _RELATIVE.match(raw)
+    if match:
+        amount, unit = int(match.group(1)), match.group(2)
+        return (now or datetime.now(UTC)) - timedelta(**{_UNITS[unit]: amount})
+    try:
+        stamp = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise typer.BadParameter(
+            f"{text!r} is neither an ISO 8601 stamp nor an age like 2h, 30m or 1d"
+        ) from exc
+    return stamp.replace(tzinfo=UTC) if stamp.tzinfo is None else stamp
+
+
 def read(
     config: MyceliumConfig,
     room_name: str,
@@ -74,8 +103,11 @@ def read(
     sender: str | None = None,
     message_type: str | None = None,
     episode: str | None = None,
+    since: datetime | None = None,
+    before: datetime | None = None,
     label: str | None = None,
     empty_note: str | None = None,
+    older_with: str | None = None,
     json_output: bool = False,
 ) -> None:
     """Print a channel's recent messages, newest first.
@@ -83,6 +115,13 @@ def read(
     With ``episode`` this is one thread's transcript and nothing else — the point
     of a thread being that the room stays legible while the argument happens
     somewhere a reader can still open.
+
+    ``before`` is the backward cursor: a page defined by content rather than
+    position, so walking back does not shift under messages arriving live.
+    ``since`` bounds the other end. When the page is full and older messages
+    exist, the footer names the command that reads the next page back
+    (``older_with`` is that command's stem; the cursor is appended), and the
+    JSON shape carries the same cursor as ``older_before``.
     """
     from mycelium.commands.room import _agent_owner_map
     from mycelium_backend_client.api.messages import (
@@ -99,9 +138,15 @@ def read(
             sender=sender or UNSET,
             message_type=message_type or UNSET,
             episode=episode or UNSET,
+            since=since or UNSET,
+            before=before or UNSET,
         )
 
     msgs = [] if not result or isinstance(result, HTTPValidationError) else result.messages
+    # Newest first, so the last line is the oldest shown; ``total`` counts every
+    # message the filters matched, so a total past the page means older ones exist.
+    total = getattr(result, "total", len(msgs)) if msgs else 0
+    older_before = msgs[-1].created_at.isoformat() if msgs and total > len(msgs) else None
 
     if json_output:
         payload: dict[str, Any] = (
@@ -109,6 +154,7 @@ def read(
             if result and not isinstance(result, HTTPValidationError)
             else {"messages": [], "total": 0}
         )
+        payload["older_before"] = older_before
         typer.echo(json_module.dumps(payload, indent=2, default=str))
         return
 
@@ -136,4 +182,10 @@ def read(
         )
         for line in rest:
             typer.echo(f"              {line}")
+    if older_before and older_with:
+        remaining = total - len(msgs)
+        typer.secho(
+            f"\n  {remaining} older · {older_with} --before {older_before}",
+            fg=typer.colors.BRIGHT_BLACK,
+        )
     typer.echo()

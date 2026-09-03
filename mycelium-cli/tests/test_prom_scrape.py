@@ -56,7 +56,7 @@ http_requests_total 42
 def test_parse_text_label_extraction_with_escapes() -> None:
     """Labels with quotes/backslashes must be unescaped per the Prometheus spec.
 
-    The two escape sequences we have to honour are ``\\"`` and ``\\\\``;
+    The two escape sequences we have to honor are ``\\"`` and ``\\\\``;
     everything else (``\\n`` etc.) does not appear in any series we scrape
     and we deliberately don't unescape it (see the parser comment).
     """

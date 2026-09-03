@@ -17,16 +17,16 @@ import { GET } from "@/app/api/stream/route";
 function upstream(status = 200) {
   let controller: ReadableStreamDefaultController<Uint8Array>;
   const encoder = new TextEncoder();
-  const cancelled = vi.fn();
+  const canceled = vi.fn();
   const body = new ReadableStream<Uint8Array>({
     start(c) {
       controller = c;
     },
-    cancel: cancelled,
+    cancel: canceled,
   });
   return {
     response: new Response(body, { status }),
-    cancelled,
+    canceled,
     push: (payload: unknown) =>
       controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`)),
     ping: () => controller.enqueue(encoder.encode("event: ping\ndata: {}\n\n")),
@@ -89,11 +89,11 @@ describe("GET /api/stream", () => {
     // The global feeds must not ride the room's lifecycle: opening another room
     // re-dials only the room request, so notifications are never interrupted.
     it("serves only the global feeds when no room is asked for", async () => {
-      const dialled: string[] = [];
+      const dialed: string[] = [];
       vi.stubGlobal(
         "fetch",
         vi.fn(async (url: string) => {
-          dialled.push(url);
+          dialed.push(url);
           return upstream().response;
         }),
       );
@@ -101,18 +101,18 @@ describe("GET /api/stream", () => {
       const res = await GET(new Request("http://ui/api/stream"));
       await collect(res, 2);
 
-      expect(dialled).toEqual([
+      expect(dialed).toEqual([
         "http://backend:8000/api/events/stream",
         "http://backend:8000/api/notifications/stream",
       ]);
     });
 
     it("serves only the room feeds when rooms are asked for", async () => {
-      const dialled: string[] = [];
+      const dialed: string[] = [];
       vi.stubGlobal(
         "fetch",
         vi.fn(async (url: string) => {
-          dialled.push(url);
+          dialed.push(url);
           return upstream().response;
         }),
       );
@@ -120,7 +120,7 @@ describe("GET /api/stream", () => {
       const res = await GET(new Request("http://ui/api/stream?room=sprint&room=atlas"));
       await collect(res, 2);
 
-      expect(dialled).toEqual([
+      expect(dialed).toEqual([
         "http://backend:8000/api/rooms/sprint/messages/stream",
         "http://backend:8000/api/rooms/atlas/messages/stream",
       ]);
@@ -231,8 +231,8 @@ describe("GET /api/stream", () => {
     it("reports a feed down when its upstream drops, then up on redial", async () => {
       const first = upstream();
       const second = upstream();
-      let dialled = 0;
-      serve({ room: () => (++dialled === 1 ? first : second).response });
+      let dialed = 0;
+      serve({ room: () => (++dialed === 1 ? first : second).response });
 
       const res = await GET(new Request("http://ui/api/stream?room=sprint"));
       const frames = collect(res, 4);
@@ -256,8 +256,8 @@ describe("GET /api/stream", () => {
     // cannot write one, so it must reuse what the request scope resolved.
     it("resolves the upstream auth headers once, not per redial", async () => {
       const first = upstream();
-      let dialled = 0;
-      serve({ room: () => (++dialled === 1 ? first.response : upstream().response) });
+      let dialed = 0;
+      serve({ room: () => (++dialed === 1 ? first.response : upstream().response) });
 
       const res = await GET(new Request("http://ui/api/stream?room=sprint"));
       const frames = collect(res, 3);
@@ -266,7 +266,7 @@ describe("GET /api/stream", () => {
       await vi.advanceTimersByTimeAsync(5000);
       await frames;
 
-      expect(dialled).toBeGreaterThan(1);
+      expect(dialed).toBeGreaterThan(1);
       expect(upstreamSseHeaders).toHaveBeenCalledOnce();
     });
 
@@ -297,13 +297,13 @@ describe("GET /api/stream", () => {
         const { done } = await reader.read();
         if (done) break;
       }
-      expect(unauthorized.cancelled).toHaveBeenCalled();
+      expect(unauthorized.canceled).toHaveBeenCalled();
     });
 
     it("releases the body of an upstream it will not read", async () => {
       const notFound = upstream(404);
-      let dialled = 0;
-      serve({ room: () => (++dialled === 1 ? notFound.response : upstream().response) });
+      let dialed = 0;
+      serve({ room: () => (++dialed === 1 ? notFound.response : upstream().response) });
 
       const res = await GET(new Request("http://ui/api/stream?room=sprint"));
       const frames = collect(res, 1);
@@ -311,10 +311,10 @@ describe("GET /api/stream", () => {
       await frames;
 
       // Otherwise one body leaks per redial for as long as the tab is open.
-      expect(notFound.cancelled).toHaveBeenCalled();
+      expect(notFound.canceled).toHaveBeenCalled();
     });
 
-    // Reading holds a lock, and cancelling the stream itself throws on a locked
+    // Reading holds a lock, and canceling the stream itself throws on a locked
     // stream — so cancellation has to go through the reader to reach the source.
     it("cancels an in-flight upstream read when the client goes away", async () => {
       const room = upstream();
@@ -327,7 +327,7 @@ describe("GET /api/stream", () => {
       await reader.cancel();
       await vi.advanceTimersByTimeAsync(0);
 
-      expect(room.cancelled).toHaveBeenCalled();
+      expect(room.canceled).toHaveBeenCalled();
     });
 
     it("leaves no timers running once the client goes away", async () => {

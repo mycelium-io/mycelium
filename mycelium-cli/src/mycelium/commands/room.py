@@ -293,7 +293,7 @@ def delete(
                 names_list = ", ".join(f"'{n}'" for n in room_names)
                 prompt = f"Delete {len(room_names)} rooms ({names_list})? This cannot be undone."
             if not typer.confirm(prompt):
-                typer.echo("Cancelled.")
+                typer.echo("Canceled.")
                 raise typer.Exit(0)
 
         from mycelium_backend_client.api.rooms import (
@@ -971,8 +971,8 @@ def amend(
 
 
 @doc_ref(
-    usage="mycelium room messages [<room>] [--limit N] [--sender <handle>] [--type <type>]",
-    desc="Read recent messages in a room (point-in-time, newest first). Filter with <code>--sender</code> / <code>--type</code>.",
+    usage="mycelium room messages [<room>] [--limit N] [--sender <handle>] [--type <type>] [--before <stamp|age>] [--since <stamp|age>]",
+    desc="Read recent messages in a room (point-in-time, newest first). Filter with <code>--sender</code> / <code>--type</code>; walk back through history with <code>--before</code>.",
     group="room",
 )
 @app.command("messages")
@@ -986,6 +986,15 @@ def messages(
     message_type: str | None = typer.Option(
         None, "--type", "-t", help="Only this message type (e.g. direct, broadcast, announce)"
     ),
+    before: str | None = typer.Option(
+        None,
+        "--before",
+        "-b",
+        help="Only messages before this ISO stamp or age (2h, 30m, 1d): the cursor to walk back",
+    ),
+    since: str | None = typer.Option(
+        None, "--since", help="Only messages at/after this ISO stamp or age (2h, 30m, 1d)"
+    ),
 ) -> None:
     """
     Read recent messages in a room: a point-in-time snapshot, newest first.
@@ -994,11 +1003,17 @@ def messages(
     with the most recent messages and exits. Handy for scripts and for checking
     whether an agent's reply has landed.
 
+    History is paged by content, not position: when older messages exist the
+    footer names the `--before` cursor that reads the next page back, so a
+    walk through a busy room does not shift under messages arriving live.
+
     Examples:
         mycelium room messages
         mycelium room messages design-review --limit 5
         mycelium room messages cc-e2e --sender cc-x
         mycelium room messages my-room --type broadcast
+        mycelium room messages my-room --before 2h
+        mycelium room messages my-room --since 2026-09-03T09:00:00Z --before 2026-09-03T12:00:00Z
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
@@ -1006,12 +1021,20 @@ def messages(
 
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
+        stem = f"mycelium room messages {room_name} --limit {limit}"
+        if sender:
+            stem += f" --sender {sender}"
+        if message_type:
+            stem += f" --type {message_type}"
         chat.read(
             config,
             room_name,
             limit=limit,
             sender=sender,
             message_type=message_type,
+            since=chat.parse_stamp(since) if since else None,
+            before=chat.parse_stamp(before) if before else None,
+            older_with=stem,
             json_output=json_output,
         )
 

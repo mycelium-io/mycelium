@@ -70,7 +70,7 @@ def test_announce_treats_explicit_latest_as_unpinned(
 ) -> None:
     """``mycelium pull --version=latest`` records ``MYCELIUM_IMAGE_TAG=latest``
     as an explicit unpin — the user gets the same UX as if the line were
-    absent (warning + hint), since the effective behaviour is identical.
+    absent (warning + hint), since the effective behavior is identical.
     """
     env_path.write_text("MYCELIUM_IMAGE_TAG=latest\n", encoding="utf-8")
     instance._announce_image_tag()

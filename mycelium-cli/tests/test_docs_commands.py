@@ -3,7 +3,7 @@
 
 """Unit tests for ``mycelium docs``.
 
-The markdown tree is organised into subdirectories (``concepts/``, ``guides/``,
+The markdown tree is organized into subdirectories (``concepts/``, ``guides/``,
 ``reference/``) so it reads well browsed on GitHub, while a topic stays the bare
 stem on the command line. These pin that seam: every section ``--list`` and
 ``--full`` advertise must resolve, and ``mycelium docs <topic>`` must find a file

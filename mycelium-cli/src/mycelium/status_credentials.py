@@ -34,7 +34,7 @@ import os
 from pathlib import Path
 
 #: Overrides the store location (tests, a runner with a shared home). The same
-#: contract the backend resolver honours, so a test can point both at one file.
+#: contract the backend resolver honors, so a test can point both at one file.
 STORE_ENV = "MYCELIUM_STATUS_CREDENTIALS_FILE"
 
 #: The store's single top-level key: a flat ``{name: value}`` map.

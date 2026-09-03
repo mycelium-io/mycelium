@@ -995,7 +995,7 @@ re-run this skill.
 
 ## Strategy Reference
 
-The strategy file in each profile's `persona_parts` controls negotiation behaviour:
+The strategy file in each profile's `persona_parts` controls negotiation behavior:
 
 | Strategy | Time pressure | Convergence | Derailment | Best for |
 |----------|--------------|-------------|------------|---------|

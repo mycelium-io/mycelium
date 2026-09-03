@@ -262,3 +262,72 @@ def test_fold_reading_stamps_move_subkind() -> None:
     ep = _fold_episode()
     engine._fold_reading(ep, "a1", {"offer": {"budget": "low"}}, proposing=True)
     assert _last_subkind(ep) == "counter"
+
+
+# ── activity signal ───────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_every_pi_call_is_bracketed_by_the_activity_signal():
+    """The room sees "@aligner is responding…" for exactly the span of a Pi
+    call — raised from the loop even though the mediator calls the session off
+    a worker thread — and never as a message (#513)."""
+    from app.bus import bus, room_channel
+    from app.services import activity
+
+    channel = FakeChannel()
+    persister = FakePersister()
+    managed = FakeManaged(_ROOM, "mycelium", channel, persister)
+    manager = FakeManager(managed, ["solo"])  # the too-few-participants path: one Pi call
+    engine = _engine(
+        manager,
+        llm_session_factory=lambda _ep: (lambda _prompt, **_kw: "Post positions first."),
+    )
+
+    queue = bus.subscribe(room_channel(_ROOM))
+    try:
+        await engine.mediate(_ROOM)
+        await asyncio.sleep(0)  # let the thread-safe callbacks land on the loop
+        frames = []
+        while not queue.empty():
+            frames.append(queue.get_nowait())
+    finally:
+        bus.unsubscribe(room_channel(_ROOM), queue)
+
+    signals = [f for f in frames if f.get("type") == activity.ACTIVITY_TYPE]
+    assert [f["state"] for f in signals] == ["responding", "done"]
+    assert all(f["handle"] == "aligner" for f in signals)
+    assert all(f["room_name"] == _ROOM for f in signals)
+    # The signal is not a line in the room: the one broadcast is the explanation.
+    assert len(channel.sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_failing_pi_call_still_ends_its_signal():
+    """A Pi turn that raises must not leave "@aligner is responding…" standing."""
+    from app.bus import bus, room_channel
+    from app.services import activity
+
+    channel = FakeChannel()
+    managed = FakeManaged(_ROOM, "mycelium", channel, FakePersister())
+
+    def _boom(_ep: str) -> Any:
+        def _raise(_prompt: str, **_kw: Any) -> str:
+            raise RuntimeError("no pi")
+
+        return _raise
+
+    engine = _engine(FakeManager(managed, []), llm_session_factory=_boom)
+    queue = bus.subscribe(room_channel(_ROOM))
+    try:
+        await engine.mediate(_ROOM)
+        await asyncio.sleep(0)
+        states = []
+        while not queue.empty():
+            frame = queue.get_nowait()
+            if frame.get("type") == activity.ACTIVITY_TYPE:
+                states.append(frame["state"])
+    finally:
+        bus.unsubscribe(room_channel(_ROOM), queue)
+
+    assert states == ["responding", "done"]

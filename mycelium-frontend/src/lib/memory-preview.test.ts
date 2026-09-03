@@ -23,7 +23,7 @@ describe("memoryValueText", () => {
     expect(memoryValueText({ text: "body", category: "decisions" })).toBe("body");
   });
 
-  it("serialises a value with no text field", () => {
+  it("serializes a value with no text field", () => {
     expect(memoryValueText({ a: 1 })).toBe('{"a":1}');
   });
 });
@@ -92,7 +92,7 @@ describe("memoryPreview", () => {
 });
 
 describe("previewCardTop", () => {
-  it("centres the card on its row when there is room", () => {
+  it("centers the card on its row when there is room", () => {
     expect(previewCardTop(300, 22, 200, 900)).toBe(211);
   });
 

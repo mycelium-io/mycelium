@@ -145,7 +145,7 @@ def _reverse_dns(host: str) -> str | None:
 def _user_host_aliases() -> dict[str, str]:
     """Read overrides from ~/.mycelium/config.toml.
 
-    Honours either ``[metrics.traces.host_aliases]`` or
+    Honors either ``[metrics.traces.host_aliases]`` or
     ``[traces.host_aliases]`` for robustness across config layouts.
     """
     cfg_path = _data_dir() / "config.toml"

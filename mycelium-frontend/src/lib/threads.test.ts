@@ -115,5 +115,8 @@ describe("reading a notice", () => {
     expect(noticeLabel("claimed", null)).toBe("Claimed");
     expect(noticeLabel("released", null)).toBe("Released");
     expect(noticeLabel("resolved", null)).toBe("Resolved");
+    expect(noticeLabel("blocked", null)).toBe("Blocked");
+    expect(noticeLabel("unblocked", null)).toBe("Unblocked");
+    expect(noticeLabel("expired", null)).toBe("Expired");
   });
 });

@@ -186,7 +186,7 @@ def _memory_body(record: Any) -> str | None:
     """The stored text of a memory record, whatever shape it arrived in.
 
     The text lands in one of three places depending on how the backend
-    serialised the memory, and the record is a typed ``MemoryRead`` from the get
+    serialized the memory, and the record is a typed ``MemoryRead`` from the get
     endpoint or a raw JSON dict from the list endpoint (untyped in the generated
     client): prefer the already-flattened ``content_text``, then a plain-string
     ``value``, then the ``text`` inside a structured ``value``.

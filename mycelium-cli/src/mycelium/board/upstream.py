@@ -8,7 +8,7 @@ keyed by the board row ids that mention them, so this does no parsing: it looks
 up a row's id and lands the answer under ``upstream``.
 
 **The state is the field; the rest are companions.** ``upstream`` carries the
-state alone — a closed vocabulary the board can group, filter and colour by,
+state alone — a closed vocabulary the board can group, filter and color by,
 the same way it treats ``status`` and ``ci``. The provider's own wording, its
 link and the answer's age ride alongside in their own fields, the same way a
 row already carries ``pr``, ``ci`` and ``branch``.

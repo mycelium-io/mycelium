@@ -100,7 +100,7 @@ class TestWorkedIsTheOnlyLineLeft:
     """Everything is discussed; only the board namespaces are worked.
 
     :func:`tasks.is_board_row` is the one predicate: every namespace is
-    threaded uniformly. What the tests below assert is behaviour — that a
+    threaded uniformly. What the tests below assert is behavior — that a
     memory of any namespace comes out of a write carrying a thread.
     """
 
