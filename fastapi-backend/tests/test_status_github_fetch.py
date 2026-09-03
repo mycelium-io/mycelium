@@ -204,7 +204,7 @@ async def test_a_secondary_rate_limit_sets_retry_after_from_the_reset_header():
     outcomes = await GitHubProvider().fetch(refs, ctx)
     await ctx.aclose()
 
-    # Honoured from the reset header (~17m), distinctly not the 5m fallback guess.
+    # Honored from the reset header (~17m), distinctly not the 5m fallback guess.
     for outcome in outcomes:
         assert isinstance(outcome, FetchFailed)
         assert outcome.reason == "rate limited"

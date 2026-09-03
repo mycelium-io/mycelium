@@ -83,7 +83,7 @@ export function Tooltip({
 }
 
 /** Shared open/close delay for every tooltip in the tree. Grouping means the
- *  first tooltip waits, then moving along a toolbar shows its neighbours
+ *  first tooltip waits, then moving along a toolbar shows its neighbors
  *  immediately instead of re-waiting per control. */
 export function TooltipProvider({ children }: { children: ReactNode }) {
   return (

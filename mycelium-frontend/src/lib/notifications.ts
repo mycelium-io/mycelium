@@ -214,7 +214,7 @@ export function saveSettings(settings: NotificationSettings): void {
 // connection to the same backend, so each tab independently classifies and
 // stores a new notification — no need to also forward it over the channel.
 // Cross-tab sync exists for the *state that isn't independently derivable*:
-// read/dismiss/clear acknowledgements and settings changes.
+// read/dismiss/clear acknowledgments and settings changes.
 export type CrossTabMessage =
   | { type: "read"; id: string }
   | { type: "read-all" }

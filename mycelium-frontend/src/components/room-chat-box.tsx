@@ -116,7 +116,7 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
     if (found) setHighlight(0);
   };
 
-  // Agents first, then people — the roster's order, labelled for the popover.
+  // Agents first, then people — the roster's order, labeled for the popover.
   const mentionRoster = useMemo(
     () => [
       ...agents.map((a) => ({

@@ -14,7 +14,7 @@ on:
 permissions:
   contents: read
 
-# A branch only needs its newest commit checked. Superseded runs are cancelled
+# A branch only needs its newest commit checked. Superseded runs are canceled
 # rather than left to finish, which keeps queue time (and therefore the wall
 # clock a human waits on) from backing up behind a push that no longer matters.
 # Never on main: those runs are the record of what landed.
@@ -466,7 +466,7 @@ jobs:
     # gate, and a warning that can block a merge stops being read.
     name: CI timing
     runs-on: ubuntu-latest
-    # Not `always()`: a run cancelled by the concurrency group above has nothing
+    # Not `always()`: a run canceled by the concurrency group above has nothing
     # worth timing, and shouldn't spend a runner saying so.
     if: ${{ !cancelled() }}
     needs:

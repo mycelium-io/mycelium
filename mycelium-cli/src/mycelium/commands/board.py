@@ -277,10 +277,10 @@ def _assignment_chip(item: LiveItem, now: datetime) -> Text:
 
 
 def _row_lines(item: LiveItem, now: datetime) -> Text:
-    glyph, colour = KIND_GLYPH.get(item.kind, ("●", "white"))
+    glyph, color = KIND_GLYPH.get(item.kind, ("●", "white"))
     attention_filter = attention_of_item(item, now)
     head = Text()
-    head.append(f" {glyph} ", style=colour)
+    head.append(f" {glyph} ", style=color)
     head.append(f"{item.id.split(':', 1)[1][:12]:<13}", style="dim")
     title = item.title if len(item.title) <= TITLE_WIDTH else item.title[: TITLE_WIDTH - 1] + "…"
     head.append(title, style="dim strike" if attention_filter == "resolved" else "")
@@ -302,7 +302,7 @@ def _row_lines(item: LiveItem, now: datetime) -> Text:
         meta.append("  checking…", style="dim")
     if upstream := item.text("upstream"):
         # The provider's own wording, not ours: "changes requested" is what the
-        # reader recognises, and the state behind it is what the board sorts by.
+        # reader recognizes, and the state behind it is what the board sorts by.
         label = item.text("upstream_label") or upstream
         meta.append(f"  {label}", style=UPSTREAM_COLOR.get(upstream, "dim"))
         if (count := item.get("upstream_count")) and isinstance(count, int):

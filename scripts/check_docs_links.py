@@ -141,8 +141,8 @@ def problems_in(path: Path, cache: dict[Path, set[str]]) -> list[str]:
         page = unquote(parsed.path)
 
         if page:
-            # A source link may name its neighbour in the source tree or the
-            # page that neighbour becomes; either resolving is enough.
+            # A source link may name its neighbor in the source tree or the
+            # page that neighbor becomes; either resolving is enough.
             candidates = [(base / page).resolve()]
             if published:
                 candidates.append((path.parent / page).resolve())

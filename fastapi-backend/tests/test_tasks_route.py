@@ -57,7 +57,7 @@ async def test_the_thread_is_the_room_s_own_and_the_store_knows_it(client):
     await _room(client)
     task = (await _new(client, "Rotate the signing key")).json()
     # What tells a task's thread from an orphaned episode, and what the write
-    # guard in leg 2 recognises a nameable thread by.
+    # guard in leg 2 recognizes a nameable thread by.
     assert task["episode"] in tasks.bound_episodes(ROOM)
     assert tasks.episode_of(ROOM, task["key"]) == task["episode"]
 

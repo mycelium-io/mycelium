@@ -163,7 +163,7 @@ def test_token_cache_round_trips_and_is_owner_only() -> None:
     assert load_token() == token
 
 
-def test_token_cache_honours_the_path_override(
+def test_token_cache_honors_the_path_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     target = tmp_path / "elsewhere" / "session.json"

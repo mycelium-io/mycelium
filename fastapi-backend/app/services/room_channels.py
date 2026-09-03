@@ -701,7 +701,7 @@ class RoomChannelManager:
         """Attach and start the durable-inbox persister for a channel.
 
         The consumer loop is long-lived; the task ref is held on the managed
-        channel so it isn't GC'd, and cancelled in :meth:`close`.
+        channel so it isn't GC'd, and canceled in :meth:`close`.
         """
         room = managed.room
         managed.persister = RoomPersister(

@@ -58,7 +58,7 @@ interface Props {
 
 /**
  * How much of the tab strip fits. The rail is draggable down to a width that
- * can't hold the labelled tabs, so below `TAB_LABELS_MIN_WIDTH` they drop to
+ * can't hold the labeled tabs, so below `TAB_LABELS_MIN_WIDTH` they drop to
  * icons alone — the labels move into tooltips and accessible names rather than
  * clipping or wrapping the strip onto a second row.
  *

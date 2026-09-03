@@ -31,7 +31,7 @@ Agent reply shapes (agent → server, plain JSON in room message content):
     serialize with ``model_dump(exclude_none=True)``).
 
 Inbound tick shape (server → agent, coordination_tick message content):
-The content field is a JSON-serialised SSTPNegotiateMessage envelope whose
+The content field is a JSON-serialized SSTPNegotiateMessage envelope whose
 ``payload`` carries the negotiation action details (see NegotiatePayload).
 
 Memory protocol shapes (agent → memory API, structured key conventions):

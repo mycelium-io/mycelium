@@ -293,7 +293,7 @@ def delete(
                 names_list = ", ".join(f"'{n}'" for n in room_names)
                 prompt = f"Delete {len(room_names)} rooms ({names_list})? This cannot be undone."
             if not typer.confirm(prompt):
-                typer.echo("Cancelled.")
+                typer.echo("Canceled.")
                 raise typer.Exit(0)
 
         from mycelium_backend_client.api.rooms import (

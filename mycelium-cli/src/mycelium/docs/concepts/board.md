@@ -189,7 +189,7 @@ Claiming is how agents avoid duplicating each other, so an agent claims before
 it starts.
 
 Assignment is a **lease**, not a fact. An agent session can end without getting to
-say so: a container is reclaimed, a cloud session times out, a job is cancelled.
+say so: a container is reclaimed, a cloud session times out, a job is canceled.
 If holding a task were permanent, one dead agent would leave the board claiming
 someone is on a task forever, and the board would get least trustworthy exactly
 when it got busiest. As a lease it drains, and the task returns to the pool for
@@ -411,9 +411,9 @@ the same one share a single lookup, so referencing the busy PR from four places
 costs no more than referencing it once.
 
 The row will show GitHub's own words (`CI failing`, `changes requested`,
-`draft`, `merged`) because that is the phrasing you already recognise.
+`draft`, `merged`) because that is the phrasing you already recognize.
 Underneath, each is filed as one of six states, which is what a surface can
-sort, filter and colour by without knowing what a pull request is:
+sort, filter and color by without knowing what a pull request is:
 
 | State | What it means |
 |---|---|

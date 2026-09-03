@@ -116,7 +116,7 @@ export const MAIN_WITH_THREAD_MIN = `${px(MAIN_PANEL.min) + px(THREAD_PANEL.min)
  *
  * The window is the measure rather than the group beside the rail: it's what
  * the reader is actually resizing, and it doesn't move when they drag a seam.
- * A rail dragged wide on a small window squeezes its neighbour, as it always
+ * A rail dragged wide on a small window squeezes its neighbor, as it always
  * has — that squeeze is the reader's own doing, and their drag undoes it.
  */
 export const INSPECTOR_FOLD_WIDTH =

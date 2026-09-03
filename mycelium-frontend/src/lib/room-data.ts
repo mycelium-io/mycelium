@@ -74,7 +74,7 @@ const POLL = {
 /** Messages are read here only to find who has posted; one page is plenty. */
 const POSTER_LIMIT = 200;
 
-/** The command centre wants only the last thing said, and `latestPreview`
+/** The command center wants only the last thing said, and `latestPreview`
  *  scans a short window past any protocol ticks on top of it. */
 const LATEST_LIMIT = 20;
 

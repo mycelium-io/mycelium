@@ -551,7 +551,7 @@ def _report_llm_probe_result(
         )
         return True
 
-    # All other statuses are failures: print a coloured header + the backend's
+    # All other statuses are failures: print a colored header + the backend's
     # own message and remediation hint, then let the caller decide what to do.
     headers = {
         "missing_extras": ("✗", "LLM provider SDK missing in backend", typer.colors.RED),
@@ -1027,7 +1027,7 @@ def install(
             )
             if not keep_going:
                 typer.secho(
-                    "  Install cancelled. Re-run after fixing the LLM config.",
+                    "  Install canceled. Re-run after fixing the LLM config.",
                     fg=typer.colors.YELLOW,
                 )
                 raise typer.Exit(1) from None
@@ -1049,7 +1049,7 @@ def install(
     except KeyboardInterrupt:
         sys.stdout.write("\x1b[0m\x1b[?25h\n")
         sys.stdout.flush()
-        typer.secho("  Cancelled.", fg=typer.colors.YELLOW)
+        typer.secho("  Canceled.", fg=typer.colors.YELLOW)
         raise typer.Exit(0) from None
     except typer.Exit:
         raise

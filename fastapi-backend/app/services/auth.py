@@ -103,7 +103,7 @@ class JwksCache:
 
     * **Cached** for ``AUTH_JWKS_TTL_S`` so validation isn't an HTTP round trip.
     * **Refreshed on an unseen ``kid``** (rate-limited) so a rotated signing key
-      is honoured without restarting the backend.
+      is honored without restarting the backend.
     * **Stale-on-error**: if the issuer is briefly unreachable, previously fetched
       keys keep serving. Availability wins here — the keys are still the issuer's,
       only their freshness is in doubt, and failing closed would take the hub down
@@ -266,8 +266,8 @@ def _resolve_role(claims: dict[str, Any], entry: TrustedIssuer) -> PrincipalRole
         return entry.role
     value = str(raw).strip().lower()
     if value not in ("user", "agent"):
-        # Coercing an unrecognised role to a default would silently mislabel the
-        # principal; a token that asserts something we can't honour is malformed.
+        # Coercing an unrecognized role to a default would silently mislabel the
+        # principal; a token that asserts something we can't honor is malformed.
         raise AuthError(f"unsupported {settings.AUTH_ROLE_CLAIM!r} claim: {raw!r}")
     return "user" if value == "user" else "agent"
 
@@ -333,7 +333,7 @@ def is_loopback_client(request: Request) -> bool:
     """Whether the request came from the machine the backend runs on.
 
     Decided from the peer address only. ``X-Forwarded-For`` is deliberately
-    ignored: it is caller-supplied, so honouring it would let any remote request
+    ignored: it is caller-supplied, so honoring it would let any remote request
     claim to be local. Note that this is also why the bypass does *not* fire for
     a backend in Docker — traffic through a published port arrives from the
     bridge gateway and is indistinguishable from LAN traffic, so the containerized

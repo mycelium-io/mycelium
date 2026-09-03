@@ -72,7 +72,7 @@ The aligner is dormant by default and configured through `~/.mycelium/.env`
 
 | Env var | Default | Purpose |
 |---|---|---|
-| `ALIGNER_HANDLE` | `aligner` | Reserved handle that a summon is recognised by |
+| `ALIGNER_HANDLE` | `aligner` | Reserved handle that a summon is recognized by |
 | `ALIGNER_TERM_CHECK` | `true` | Run the pre-negotiation term check, and one clarifying round when it finds a mismatch |
 | `ALIGNER_ROUND_TIMEOUT_S` | `30.0` | How long one addressed agent has to reply before the mediator moves on |
 | `ALIGNER_MEDIATOR_MAX_STEPS` | `20` | Hard cap on NEGMAS SAO steps, a safety bound; NEGMAS normally stops at agreement well before it |

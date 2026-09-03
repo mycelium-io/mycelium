@@ -626,7 +626,7 @@ def run_animation_with_output(
     # Auto-fit: derive projection scales from the HEIGHT so the hex never clips.
     # max_ooz is the worst-case perspective factor (nearest point to camera).
     max_ooz = 1.0 / (CAMERA_DIST - HEX_RADIUS)
-    # Hex centre sits at 42% from the top (see _project_and_shade), so the
+    # Hex center sits at 42% from the top (see _project_and_shade), so the
     # tightest vertical budget is min(0.42, 0.58) * screen_h ≈ 0.38 * screen_h.
     ky = (screen_h * 0.35) / (HEX_RADIUS * max_ooz)
     # 2x for terminal character aspect ratio (~2:1 height:width)

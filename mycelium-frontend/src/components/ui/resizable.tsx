@@ -34,7 +34,7 @@ function ResizablePanel({ style, ...props }: ResizablePrimitive.PanelProps) {
 /** The draggable seam. It doubles as the border between two panes, so it draws
  *  the hairline the panels no longer draw themselves. The hit target is wider
  *  than the line (the `after:` overlay) so a 1px rule is still grabbable, and
- *  double-clicking it resets the neighbouring panel to its default size. */
+ *  double-clicking it resets the neighboring panel to its default size. */
 function ResizableHandle({
   withHandle,
   className,

@@ -402,7 +402,7 @@
           <thead>
             <tr>
               <th>Provider</th>
-              <th>Recognises</th>
+              <th>Recognizes</th>
               <th>Reports</th>
             </tr>
           </thead>
@@ -418,7 +418,7 @@
       <p>Providers run on the hub only. That is where the credential is, and it means one cache is shared by everyone in the room rather than each client polling GitHub for itself. A spoke never holds a service token.</p>
       <h3 id="architecture-asking-what-the-tools-say">Asking what the tools say</h3>
       <pre><code>GET /api/rooms/{room}/status</code></pre>
-      <p>You never tell Mycelium which pull requests to watch. Write a work row that says <code>land the custody seam: mycelium-io/mycelium#504</code> and the reference is already there; the hub reads the room&#x27;s own <code>decisions/</code>, <code>status/</code>, <code>work/</code> and <code>failed/</code> memories, and asks each provider what it recognises. Nothing in the hub matches <code>#504</code>: a provider is the only thing that knows its own shapes, so teaching Mycelium about Jira ticket keys is adding a provider, not editing a parser.</p>
+      <p>You never tell Mycelium which pull requests to watch. Write a work row that says <code>land the custody seam: mycelium-io/mycelium#504</code> and the reference is already there; the hub reads the room&#x27;s own <code>decisions/</code>, <code>status/</code>, <code>work/</code> and <code>failed/</code> memories, and asks each provider what it recognizes. Nothing in the hub matches <code>#504</code>: a provider is the only thing that knows its own shapes, so teaching Mycelium about Jira ticket keys is adding a provider, not editing a parser.</p>
       <p>The response carries one entry per reference, each with the state, the provider&#x27;s own label, and the board row ids whose text mentioned it, so a surface attaches an answer to a row by matching an id it already has.</p>
       <p><strong>Reading does not fetch.</strong> Opening a board must not become a burst of calls to GitHub, so a read answers from cache, says how fresh each answer is, and starts a refresh in the background for whatever is due. The next read sees it. Two query parameters are the exceptions worth knowing:</p>
       <div class="table-wrap">
@@ -476,7 +476,7 @@
         <li><strong>Bulk only.</strong> There is no single-reference fetch to call in a loop. A hundred rows resolve in two calls at <code>max_batch = 50</code>. A tool that can only answer one at a time is still fine: declare <code>max_batch = 1</code> and it gets paced.</li>
         <li><strong>Failure is per reference.</strong> A batch where three links 404 still answers for the other forty-seven. A link your token can&#x27;t see is marked unreachable, not reported as green.</li>
       </ul>
-      <p>Map your tool&#x27;s vocabulary onto the six states in the <a href="index.html#board">board&#x27;s table</a>, being <code>ok</code>, <code>pending</code>, <code>blocked</code>, <code>failed</code>, <code>done</code> and <code>unknown</code>, and keep your own wording as the label. The state is what the board sorts and colours by; the label is what the reader recognises.</p>
+      <p>Map your tool&#x27;s vocabulary onto the six states in the <a href="index.html#board">board&#x27;s table</a>, being <code>ok</code>, <code>pending</code>, <code>blocked</code>, <code>failed</code>, <code>done</code> and <code>unknown</code>, and keep your own wording as the label. The state is what the board sorts and colors by; the label is what the reader recognizes.</p>
       <p>Your answer lands on a row under an <code>upstream</code> field, and on neither field a row already owns. Not <code>status</code>, the row&#x27;s own lifecycle, whose vocabulary shares the word <code>blocked</code> with yours and means something else by it. Not <code>live</code> either, which is a yes-or-no for whether an agent is resident on the row. In the backend the answer is a <code>Liveness</code>, kept apart from both for the same reason.</p>
       <p>The host bound is enforced, not merely declared: <code>ctx.http</code> refuses any request to a host other than your <code>base_url</code>, so a redirect or a hand-written absolute URL cannot carry your credential somewhere it was never meant to go.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/architecture.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
@@ -2200,7 +2200,7 @@ role   = &quot;agent&quot;</code></pre>
       <p>With <code>auth.localhost_bypass</code> on (the default), requests whose <strong>peer address</strong> is real loopback (<code>127.0.0.0/8</code>, <code>::1</code>) skip the gate, so turning auth on can&#x27;t lock you out of the machine the hub runs on.</p>
       <p>Two things worth knowing:</p>
       <ul>
-        <li><code>X-Forwarded-For</code> is deliberately ignored. It is caller-supplied, so honouring it would let any remote request claim to be local.</li>
+        <li><code>X-Forwarded-For</code> is deliberately ignored. It is caller-supplied, so honoring it would let any remote request claim to be local.</li>
         <li><strong>It does not fire for a backend running in Docker.</strong> Traffic through a published port arrives from the bridge gateway, not loopback, and is indistinguishable from LAN traffic; treating that as local would silently open the hub to your whole network. For the containerized local tier, leave <code>auth.enabled</code> off; that is the honest switch for it.</li>
       </ul>
       <h2 id="auth-what-stays-open">What stays open</h2>
@@ -2555,7 +2555,7 @@ grep api_url ~/.mycelium/config.toml  # what the spoke targets</code></pre>
             </tr>
             <tr>
               <td><code>FORWARDED_ALLOW_IPS</code></td>
-              <td>Forwarders whose <code>X-Forwarded-*</code> headers the backend honours (<code>runtime.trusted_proxies</code>)</td>
+              <td>Forwarders whose <code>X-Forwarded-*</code> headers the backend honors (<code>runtime.trusted_proxies</code>)</td>
               <td>(unset: loopback only)</td>
             </tr>
           </tbody>

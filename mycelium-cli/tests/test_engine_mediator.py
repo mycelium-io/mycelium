@@ -4,7 +4,7 @@
 """Verify the NEGMAS mediation core (mycelium.engine.mediator) runs.
 
 Node-free / LLM-free: a deterministic prompt-keyed fake LLM session and a fake
-``fetch_prose`` drive the whole NEGMAS SAO loop. Asserts the anti-theatre
+``fetch_prose`` drive the whole NEGMAS SAO loop. Asserts the anti-theater
 property — the mechanism terminates at agreement below the step cap (it does
 not spin to the cap), and the agreed ``issue = value`` map is recoverable.
 """
@@ -87,5 +87,5 @@ async def test_core_terminates_at_agreement() -> None:
 
     assignments = mediator.agreement_assignments(mech, neg.names)
     assert assignments == {"cap": "30"}  # agreed value recovered
-    # Anti-theatre: it stopped at agreement — far fewer turns than the step cap.
+    # Anti-theater: it stopped at agreement — far fewer turns than the step cap.
     assert 0 < len(prompts_sent) < cap

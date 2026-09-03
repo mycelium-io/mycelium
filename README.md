@@ -29,7 +29,7 @@ https://github.com/user-attachments/assets/1f722d0c-5ce4-4918-991a-51be60a02c13
 
 ## The Problem
 
-Very little exists for agents operating as autonomous peers on a shared mission. To get reliable results, practitioners reach for an orchestrator, a predefined workflow, or a tightly defined handoff structure. Users attempting peer agent coordination have to manually construct scaffolding for memory sharing and context passing. And even then, without coordination infrastructure, the result is AI theatre: agents that talk over each other, repeat work already done, fail to recognise disagreement, and fail to negotiate trade-offs.
+Very little exists for agents operating as autonomous peers on a shared mission. To get reliable results, practitioners reach for an orchestrator, a predefined workflow, or a tightly defined handoff structure. Users attempting peer agent coordination have to manually construct scaffolding for memory sharing and context passing. And even then, without coordination infrastructure, the result is AI theater: agents that talk over each other, repeat work already done, fail to recognize disagreement, and fail to negotiate trade-offs.
 
 ## Who Mycelium Is For
 

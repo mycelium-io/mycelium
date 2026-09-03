@@ -84,7 +84,7 @@ node shotkit/bin/shot.mjs close --session r
 Anything without CSS punctuation is matched by accessible name, then visible
 text — `click:Negotiate`, and phrases too: `click:Install CLI` is a button, not a
 descendant selector. Words that are also tag names are no exception, so
-`click:table` finds a button labelled "table" before it considers a `<table>`.
+`click:table` finds a button labeled "table" before it considers a `<table>`.
 For a selector use `#id`, `.class`, `role=button[name="Save"]`, `text=Save`, or
 `css=` when it is only tag names and spaces. `shot help shoot` lists every verb.
 

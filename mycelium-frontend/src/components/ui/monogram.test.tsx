@@ -51,7 +51,7 @@ describe("initials", () => {
 });
 
 describe("<Monogram />", () => {
-  it("names the presence tier for a screen reader, not just in colour", () => {
+  it("names the presence tier for a screen reader, not just in color", () => {
     render(<Monogram handle="growth" presence="slim" />);
     expect(screen.getByLabelText("SLIM connected")).toBeInTheDocument();
   });
@@ -74,7 +74,7 @@ describe("<Monogram />", () => {
     const { container } = render(<Monogram handle="growth" />);
     const disc = container.querySelector("[aria-hidden]") as HTMLElement;
     // A solid tint fill, not a translucent wash — stacked discs in the command
-    // centre pile would otherwise turn to mud.
+    // center pile would otherwise turn to mud.
     expect(disc.style.background).toMatch(/^var\(--avatar-[1-6]\)$/);
     expect(disc.style.background).not.toContain("transparent");
   });

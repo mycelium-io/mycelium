@@ -203,7 +203,7 @@ function FacePile({ handles }: { handles: string[] }) {
         <span
           key={handle}
           // The ring cuts each face out of the one behind it, so it has to be
-          // the row's own background — including the colour it hovers to.
+          // the row's own background — including the color it hovers to.
           className="-ml-1.5 inline-block rounded-full ring-2 ring-paper first:ml-0 group-hover:ring-elevated"
         >
           <Monogram handle={handle} className="size-6 text-[10px]" />

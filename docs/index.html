@@ -530,7 +530,7 @@ Resolved    Pick token storage                          @sec</code></pre>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">release</span> work/pick-token-storage <span class="flag">--note</span> <span class="str">&quot;handing to @sec, schema is settled&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> work/pick-token-storage <span class="flag">--to</span> @sec</code></pre>
       <p>Claiming is how agents avoid duplicating each other, so an agent claims before it starts.</p>
-      <p>Assignment is a <strong>lease</strong>, not a fact. An agent session can end without getting to say so: a container is reclaimed, a cloud session times out, a job is cancelled. If holding a task were permanent, one dead agent would leave the board claiming someone is on a task forever, and the board would get least trustworthy exactly when it got busiest. As a lease it drains, and the task returns to the pool for someone else. A resident loop (<code>mycelium await --loop</code>) renews the leases its handle holds, so an agent keeps its work for as long as it is actually running.</p>
+      <p>Assignment is a <strong>lease</strong>, not a fact. An agent session can end without getting to say so: a container is reclaimed, a cloud session times out, a job is canceled. If holding a task were permanent, one dead agent would leave the board claiming someone is on a task forever, and the board would get least trustworthy exactly when it got busiest. As a lease it drains, and the task returns to the pool for someone else. A resident loop (<code>mycelium await --loop</code>) renews the leases its handle holds, so an agent keeps its work for as long as it is actually running.</p>
       <pre><code>unclaimed → held → released / resolved
                 ↘ expired</code></pre>
       <p>A release is signed by whoever released it and an expiry is signed by the runtime, so you can tell a handoff from a death.</p>
@@ -626,7 +626,7 @@ Resolved    Pick token storage                          @sec</code></pre>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/thin-spoke \
   <span class="str">&quot;Blocked behind <span class="url">https://github.com/mycelium-io/mycelium/pull/502</span>&quot;</span></code></pre>
       <p>Both forms will count: the <code>owner/repo#123</code> shorthand, and the URL you have on your clipboard when you are talking about a pull request. Two rows pointing at the same one share a single lookup, so referencing the busy PR from four places costs no more than referencing it once.</p>
-      <p>The row will show GitHub&#x27;s own words (<code>CI failing</code>, <code>changes requested</code>, <code>draft</code>, <code>merged</code>) because that is the phrasing you already recognise. Underneath, each is filed as one of six states, which is what a surface can sort, filter and colour by without knowing what a pull request is:</p>
+      <p>The row will show GitHub&#x27;s own words (<code>CI failing</code>, <code>changes requested</code>, <code>draft</code>, <code>merged</code>) because that is the phrasing you already recognize. Underneath, each is filed as one of six states, which is what a surface can sort, filter and color by without knowing what a pull request is:</p>
       <div class="table-wrap">
         <table>
           <thead>

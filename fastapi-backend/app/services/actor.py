@@ -31,7 +31,7 @@ Two rules, and the first one is the load-bearing one:
   a bug or is probing, and both deserve an answer rather than re-attributed writes.
 
 A body handle may carry a session qualifier (``alpha#a8f3``). That names the same
-principal, so it is honoured — the qualifier rides along on the token's handle,
+principal, so it is honored — the qualifier rides along on the token's handle,
 which keeps per-session attribution without letting the suffix smuggle in a
 different actor.
 
