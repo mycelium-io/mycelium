@@ -7,6 +7,8 @@
 // Framework-agnostic on purpose — `notifications-provider.tsx` is the only
 // React-aware consumer, so this stays unit-testable without rendering.
 
+import { unwrapContent } from "@/lib/room-events";
+
 export type NotificationKind = "mention" | "direct" | "consensus" | "knowledge" | "join" | "message";
 
 export interface ClassifiedNotification {
@@ -105,13 +107,7 @@ export function classify(raw: Record<string, unknown>, principal: string): Class
   const id = (raw.id as string) || `${room}:${mtype}:${time}:${sender}`;
   const handle = principal.trim().replace(/^@/, "").toLowerCase();
 
-  let content: Record<string, unknown> = {};
-  try {
-    if (typeof raw.content === "string") content = JSON.parse(raw.content);
-    else if (raw.content && typeof raw.content === "object") content = raw.content as Record<string, unknown>;
-  } catch {
-    content = {};
-  }
+  const content = unwrapContent(raw);
 
   switch (mtype) {
     case "l9_exchange": {
