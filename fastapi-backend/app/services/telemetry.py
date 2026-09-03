@@ -66,6 +66,10 @@ def setup() -> None:
     Safe to call when disabled — returns immediately without importing any
     OTel package so there is truly zero cost at the default off state.
     """
+    if _sdk_active:
+        # Eager init at module import already ran; lifespan call is a no-op.
+        return
+
     from app.config import settings
 
     if not settings.TELEMETRY_ENABLED:
@@ -96,6 +100,8 @@ def instrument_app(app: FastAPI) -> None:
 def _init_sdk() -> None:  # pragma: no cover — only runs when OTel is enabled
     """Set up TracerProvider + MeterProvider. FastAPIInstrumentor wired separately."""
     global _tracer_provider, _meter_provider, _sdk_active
+    if _sdk_active:
+        return  # idempotency guard: eager module-level init + lifespan setup() both call here
 
     from app.config import settings
 
