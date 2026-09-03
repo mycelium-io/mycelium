@@ -387,6 +387,7 @@ async def test_the_episode_is_the_run_and_its_record_carries_the_flow_and_the_tr
     flow = summary["flow"]
     assert flow["name"] == "gated"
     assert flow["bound"] == {"proposer": "api", "guardian": "sec"}
+    assert flow["cast"] == ["api", "sec"]
     assert flow["ask"] == "rotate"
     assert [st["id"] for st in flow["steps"]] == ["propose", "review", "approved"]
     assert [(t["step"], t["turn"], t["stance"], t["next"]) for t in summary["trace"]] == [

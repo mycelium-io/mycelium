@@ -393,6 +393,7 @@ const atlasFlowEpisode: EpisodeSummary = {
     roles: ["proposer", "guardian"],
     max_steps: 6,
     bound: { proposer: "reads", guardian: "operator" },
+    cast: ["reads", "operator"],
     ask: "flip reads to the new store without a soak window",
     steps: [
       { id: "propose", to: "proposer", next: "review", prompt: "{ask}\n\nState exactly what you intend to do." },
@@ -403,6 +404,132 @@ const atlasFlowEpisode: EpisodeSummary = {
   trace: [
     { step: "propose", turn: 1, asked: ["reads"], stances: { reads: null }, stance: null, next: "review", at: iso(6) },
     { step: "review", turn: 2, asked: ["operator"], stances: { operator: "reject" }, stance: "reject", next: "propose", at: iso(3) },
+  ],
+};
+
+
+// The other two built-in flows, and one a room wrote for itself, so the pane
+// has every shape a flow can take: a fan-out in progress, a round-robin that
+// finished, and a long branching one deep in its loops.
+const ATLAS_FANOUT_EPISODE = atlasEpisode("a2b3c4");
+const atlasFanOutEpisode: EpisodeSummary = {
+  short_id: "a2b3c4",
+  episode: ATLAS_FANOUT_EPISODE,
+  topic: "urn:concept:mycelium:atlas-migration",
+  outcome: "open",
+  subkind: null,
+  participants: ["operator", "backfill", "reads", "conductor"],
+  metrics: null,
+  assignments: null,
+  tasks: [],
+  message_count: 4,
+  updated_at: iso(4),
+  updated_by: "conductor",
+  within: ATLAS_RETIRE_THREAD,
+  current_step: "combine",
+  flow: {
+    name: "fan-out",
+    description: "A lead asks every worker at once, then combines what came back.",
+    roles: ["lead"],
+    max_steps: 6,
+    bound: { lead: "operator" },
+    cast: ["operator", "backfill", "reads"],
+    ask: "carve up the reconciliation day: who checks what, in what order",
+    steps: [
+      { id: "gather", to: "workers", next: "combine", prompt: "{ask}\n\nAnswer with what you can contribute, what you would need, and any blocker you see." },
+      { id: "combine", to: "lead", next: "done", prompt: "You asked the team: {ask}\n\nThey answered:\n{replies}\n\nCombine those into one plan." },
+      { id: "done", end: "resolved" },
+    ],
+  },
+  trace: [
+    { step: "gather", turn: 1, asked: ["backfill", "reads"], stances: { backfill: null, reads: null }, stance: null, next: "combine", at: iso(5) },
+  ],
+};
+
+const ATLAS_ROBIN_EPISODE = atlasEpisode("c7d8e9");
+const atlasRoundRobinEpisode: EpisodeSummary = {
+  short_id: "c7d8e9",
+  episode: ATLAS_ROBIN_EPISODE,
+  topic: "urn:concept:mycelium:atlas-migration",
+  outcome: "resolved",
+  subkind: null,
+  participants: ["backfill", "reads", "operator", "conductor"],
+  metrics: null,
+  assignments: null,
+  tasks: [],
+  message_count: 8,
+  updated_at: iso(40),
+  updated_by: "conductor",
+  within: null,
+  current_step: null,
+  flow: {
+    name: "round-robin",
+    description: "Every member speaks in turn, for a fixed number of rounds.",
+    roles: [],
+    max_steps: 12,
+    bound: {},
+    cast: ["backfill", "reads", "operator"],
+    ask: "should the old store stay readable after cutover, and for how long",
+    steps: [
+      { id: "round", to: "each", rounds: 2, next: "done", prompt: "Round {round} of {rounds}.\n\nThe question: {ask}" },
+      { id: "done", end: "resolved" },
+    ],
+  },
+  trace: [
+    { step: "round", turn: 1, asked: ["backfill", "reads", "operator"], stances: { backfill: null, reads: null, operator: null }, stance: null, next: "round", at: iso(44) },
+    { step: "round", turn: 2, asked: ["backfill", "reads", "operator"], stances: { backfill: "accept", reads: "accept", operator: "accept" }, stance: "accept", next: "done", at: iso(41) },
+  ],
+};
+
+const ATLAS_TRAIN_EPISODE = atlasEpisode("d4e5f6");
+const atlasReleaseTrainEpisode: EpisodeSummary = {
+  short_id: "d4e5f6",
+  episode: ATLAS_TRAIN_EPISODE,
+  topic: "urn:concept:mycelium:atlas-migration",
+  outcome: "open",
+  subkind: null,
+  participants: ["backfill", "reads", "operator", "conductor"],
+  metrics: null,
+  assignments: null,
+  tasks: [],
+  message_count: 14,
+  updated_at: iso(1),
+  updated_by: "conductor",
+  within: null,
+  current_step: "security",
+  flow: {
+    name: "release-train",
+    description: "Plan with the team, clear security, canary it, get sign-off; any block sends it back.",
+    roles: ["lead", "guardian", "human", "operator"],
+    max_steps: 24,
+    bound: { lead: "backfill", guardian: "reads", human: "operator", operator: "backfill" },
+    cast: ["backfill", "reads", "operator"],
+    ask: "ship the cutover as one release train",
+    steps: [
+      { id: "triage", to: "lead", next: "plan", prompt: "{ask}\n\nSay what has to be true before this ships." },
+      { id: "plan", to: "each", next: "combine", prompt: "{ask}\n\nWhat is your part, and what do you need?" },
+      { id: "combine", to: "lead", next: "security", prompt: "The team said:\n{replies}\n\nCombine into one plan." },
+      { id: "security", to: "guardian", next: { accept: "canary", reject: "revise", silent: "escalate", default: "revise" }, prompt: "Review the plan:\n{reply}" },
+      { id: "revise", to: "lead", next: "security", prompt: "Security objected:\n{reply}\n\nRevise the plan." },
+      { id: "escalate", to: "human", next: { accept: "canary", reject: "abandoned", default: "escalate" }, prompt: "Security did not answer. Proceed?" },
+      { id: "canary", to: "operator", next: { accept: "signoff", reject: "rollback" }, prompt: "Run the canary and report." },
+      { id: "signoff", to: "guardian", next: { accept: "shipped", reject: "rollback" }, prompt: "Canary is green. Sign off?" },
+      { id: "rollback", to: "operator", next: "revise", prompt: "Roll back and say what you saw." },
+      { id: "shipped", end: "resolved" },
+      { id: "abandoned", end: "rejected" },
+    ],
+  },
+  trace: [
+    { step: "triage", turn: 1, asked: ["backfill"], stances: { backfill: null }, stance: null, next: "plan", at: iso(30) },
+    { step: "plan", turn: 2, asked: ["backfill", "reads", "operator"], stances: { backfill: null, reads: null, operator: null }, stance: null, next: "combine", at: iso(27) },
+    { step: "combine", turn: 3, asked: ["backfill"], stances: { backfill: null }, stance: null, next: "security", at: iso(24) },
+    { step: "security", turn: 4, asked: ["reads"], stances: { reads: "reject" }, stance: "reject", next: "revise", at: iso(21) },
+    { step: "revise", turn: 5, asked: ["backfill"], stances: { backfill: null }, stance: null, next: "security", at: iso(18) },
+    { step: "security", turn: 6, asked: ["reads"], stances: { reads: null }, stance: "silent", next: "escalate", at: iso(15) },
+    { step: "escalate", turn: 7, asked: ["operator"], stances: { operator: "accept" }, stance: "accept", next: "canary", at: iso(12) },
+    { step: "canary", turn: 8, asked: ["backfill"], stances: { backfill: "reject" }, stance: "reject", next: "rollback", at: iso(9) },
+    { step: "rollback", turn: 9, asked: ["backfill"], stances: { backfill: null }, stance: null, next: "revise", at: iso(6) },
+    { step: "revise", turn: 10, asked: ["backfill"], stances: { backfill: null }, stance: null, next: "security", at: iso(3) },
   ],
 };
 
@@ -757,10 +884,13 @@ const atlas: RoomFixture = {
         "Decision: we're go for Friday am pending a clean 24h soak, as backfill laid out. I'm adding one gate — the pool-recycle fix has to land and be verified before we flip, not after. If it's not in by Thursday evening we slip to Monday. I'd rather ship a day late than ship into a known write-dropping window. Filing both follow-ups as tasks now.",
     },
   ],
-  episodes: [atlasFlowEpisode, atlasEpisodeSummary],
+  episodes: [atlasReleaseTrainEpisode, atlasFlowEpisode, atlasFanOutEpisode, atlasEpisodeSummary, atlasRoundRobinEpisode],
   episodeDetails: {
     e4f1a2: { ...atlasEpisodeSummary, messages: atlasL9Chain },
     f10a2c: { ...atlasFlowEpisode, messages: [] },
+    a2b3c4: { ...atlasFanOutEpisode, messages: [] },
+    c7d8e9: { ...atlasRoundRobinEpisode, messages: [] },
+    d4e5f6: { ...atlasReleaseTrainEpisode, messages: [] },
   },
   // The floor the running flow holds: the conductor's, given to reads for its
   // second proposal.
@@ -773,6 +903,8 @@ const atlas: RoomFixture = {
       holder: "conductor",
       speakers: ["reads"],
     },
+    { thread: "a2b3c4", episode: ATLAS_FANOUT_EPISODE, key: null, title: null, holder: "conductor", speakers: ["operator"] },
+    { thread: "d4e5f6", episode: ATLAS_TRAIN_EPISODE, key: null, title: null, holder: "conductor", speakers: ["reads"] },
   ],
   // backfill holds an open SLIM socket; reads is present on a server-held await
   // lease. Both are agents in the roster, so the board projects a resident row

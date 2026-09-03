@@ -132,7 +132,13 @@ class Run:
     def flow(self) -> dict[str, Any]:
         """The flow as the episode record carries it: the graph plus the cast."""
         spec = protocols.spec_of(self.protocol)
-        return {"name": self.protocol.name, **spec, "bound": dict(self.bound), "ask": self.ask}
+        return {
+            "name": self.protocol.name,
+            **spec,
+            "bound": dict(self.bound),
+            "cast": list(self.handles),
+            "ask": self.ask,
+        }
 
 
 def bind_roles(protocol: Protocol, handles: list[str]) -> dict[str, str] | None:

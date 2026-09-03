@@ -878,6 +878,8 @@ export interface EpisodeFlow {
   steps: FlowStep[];
   max_steps?: number;
   bound?: Record<string, string>;
+  /** Everyone the run was summoned with, in order: the pool a group step asks. */
+  cast?: string[];
   ask?: string;
 }
 
