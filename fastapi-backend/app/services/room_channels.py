@@ -32,13 +32,15 @@ import contextlib
 import json
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from app.config import settings
 from app.services import custody, l9, slim_identity
+from app.services.agent_registry import norm_handle
+from app.services.floor import Floor
 from app.services.l9_models import Kind
 from app.services.l9_slim import (
     EpisodeLifecycle,
@@ -142,6 +144,11 @@ class ManagedRoomChannel:
     channel: L9SlimChannel
     members: set[str] = field(default_factory=set)
     lifecycle: EpisodeLifecycle = field(default_factory=EpisodeLifecycle)
+    # Threads whose floor a run of backend code holds, keyed by episode URN
+    # (:mod:`app.services.floor`). Independent of ``lifecycle``: a negotiation
+    # freezes a roster, a floor names whose turn it is, and a room may hold
+    # several floors at once — one per thread a protocol is running in.
+    floors: dict[str, Floor] = field(default_factory=dict)
     persister: RoomPersister | None = None
     persister_task: asyncio.Task[None] | None = None
     # Per-actor custodial MLS sessions this backend holds for the room (#666), keyed by
@@ -1260,6 +1267,43 @@ class RoomChannelManager:
             return False
         managed.lifecycle.open(episode, set(self.members(room)), negotiation=negotiation)
         return True
+
+    # -- the floor --
+
+    def hold_floor(
+        self, room: str, episode: str, *, holder: str, speakers: Iterable[str] = ()
+    ) -> Floor | None:
+        """Give ``speakers`` the floor in ``episode``, held by ``holder``.
+
+        Replaces whatever floor the thread held, so a runner moving from one
+        step to the next calls this once per step. ``None`` when the room has
+        no live channel, or when ``episode`` is the room itself — the room never
+        holds a floor, so a protocol cannot close the room around itself.
+        """
+        managed = self._channels.get(room)
+        if managed is None or l9.is_live_episode(room, episode):
+            return None
+        floor = Floor(
+            episode=episode,
+            holder=norm_handle(holder) or holder,
+            speakers=frozenset(h for h in (norm_handle(s) for s in speakers) if h),
+        )
+        managed.floors[episode] = floor
+        return floor
+
+    def release_floor(self, room: str, episode: str) -> bool:
+        """Open ``episode`` back up; True when a floor was actually held."""
+        managed = self._channels.get(room)
+        if managed is None:
+            return False
+        return managed.floors.pop(episode, None) is not None
+
+    def floor(self, room: str, episode: str | None) -> Floor | None:
+        """The floor ``episode`` holds, or ``None`` when anyone may write."""
+        managed = self._channels.get(room)
+        if managed is None or episode is None:
+            return None
+        return managed.floors.get(episode)
 
     async def close_episode(self, room: str) -> bool:
         """Close the room's active episode normally and flush deferred invites.
