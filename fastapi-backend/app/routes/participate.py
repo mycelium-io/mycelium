@@ -39,7 +39,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from app.services import actor, l9, principals, room_channels, tasks
+from app.services import activity, actor, l9, principals, room_channels, tasks
 from app.services.filesystem import room_exists
 from app.services.l9_models import Kind
 from app.services.l9_slim import serialize_content, serialize_envelope
@@ -255,6 +255,9 @@ async def await_message(
                 _commit(i)
                 _last_tick[key] = record.content
                 room_channels.manager.refresh_lease(room_name, handle)
+                # The turn is handed over: from here until this handle's reply
+                # lands, the room is waiting on it. Transient, bus-only (#513).
+                activity.signal(room_name, handle, "responding", episode=ep)
                 return _describe(room_name, handle, record)
         # Nothing addressed in the scanned range: consume it (advance past the
         # observer/broadcast turns this handle doesn't await) and keep polling.
@@ -364,6 +367,8 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
         sender=handle,
         message_id=envelope.header.message.id if envelope.header.message else None,
     )
+    # The reply is the turn ending; say so, in case the reader missed the message.
+    activity.signal(room_name, handle, "done", episode=episode)
     # herdr wake-on-mention, agent→agent leg: a reply that tags another handle
     # should wake it the same as a human's tag does. Shares the one hook the
     # human POST /messages path uses; ``exclude`` skips a self-mention so a reply
