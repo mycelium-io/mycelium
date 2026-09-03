@@ -5,7 +5,8 @@
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Check, ChevronDown, ChevronRight, Users } from "lucide-react";
-import { createEngine, registerA2aAgent, type EngineKind, type PresenceMember } from "@/lib/api";
+import { createEngine, registerA2aAgent, type EngineKind, type PresenceMember, type RoomFloor } from "@/lib/api";
+import { floorLabel } from "@/lib/floors";
 import { useNetworkStatus, useRoomRoster } from "@/lib/room-data";
 import { agentHandoffPrompt } from "@/lib/install";
 import { Button } from "@/components/ui/button";
@@ -189,7 +190,7 @@ export function AgentsPanel({
   // Who's here, shared with the composer's `@` popover: agents from the room's
   // manifests, people from agent owners ∪ posters ∪ live presence ∪ you, and a
   // presence entry for whoever holds a SLIM socket or an `await` lease.
-  const { agents, people, presence, loading, refresh } = useRoomRoster(roomName);
+  const { agents, people, presence, floors, loading, refresh } = useRoomRoster(roomName);
 
   useEffect(() => {
     if (!engineInvite) return;
@@ -414,6 +415,7 @@ export function AgentsPanel({
                       key={`person-${p.handle}`}
                       person={p}
                       memberPresence={presence.get(p.handle)}
+                      floor={floors.get(p.handle)}
                       marked={marked}
                       rowRef={marked ? highlightRow : undefined}
                     />
@@ -450,6 +452,7 @@ export function AgentsPanel({
                       agent={a}
                       groupOwner={groupOwner}
                       memberPresence={presence.get(a.handle.toLowerCase())}
+                      floor={floors.get(a.handle.toLowerCase())}
                       marked={marked}
                       rowRef={marked ? highlightRow : undefined}
                     />
@@ -569,16 +572,21 @@ function Facepile({
 function PersonRow({
   person: p,
   memberPresence,
+  floor,
   marked,
   rowRef,
 }: {
   person: RosterPerson;
   memberPresence?: PresenceMember;
+  floor?: RoomFloor;
   marked: boolean;
   rowRef?: React.Ref<HTMLDivElement>;
 }) {
-  const meta =
-    memberPresence && isHerdr(memberPresence)
+  // Whose turn it is beats how they are hosted: a person the floor was given to
+  // is being waited on, which is the one thing the room needs to know.
+  const meta = floor
+    ? floorLabel(p.handle, floor)
+    : memberPresence && isHerdr(memberPresence)
       ? (memberPresence.status ?? "alive")
       : memberPresence?.kind === "slim"
         ? "live"
@@ -591,6 +599,7 @@ function PersonRow({
       className="w-72 max-w-72 p-3"
       content={
         <MemberTooltipCard handle={p.handle} color="var(--avatar-neutral)" presence={memberPresence}>
+          <DetailRow label="floor" value={floor ? floorLabel(p.handle, floor) : undefined} color="var(--accent)" />
           <DetailRow label="role" value={p.owns ? "owner" : "posted here"} />
           <DetailRow label="teams" value={p.teams.length > 0 ? p.teams.join(", ") : undefined} />
           {p.you && <DetailRow label="you" value="acting as this handle" color="var(--accent)" />}
@@ -615,7 +624,10 @@ function PersonRow({
 /** The one terse thing to show at the end of a compact row: what an engine is,
  *  or how present a worker is. The avatar halo already carries live/awaiting, so
  *  this stays short — the full story is in the row's hover tooltip. */
-function rowMeta(a: AgentSummary, presence?: PresenceMember): string | null {
+function rowMeta(a: AgentSummary, presence?: PresenceMember, floor?: RoomFloor): string | null {
+  // Whose turn it is beats what the row is: a member the floor was given to is
+  // being waited on, and that reads the same for a persona as for a session.
+  if (floor) return floorLabel(a.handle, floor);
   if (a.adapter === "engine") return a.kind ?? "engine";
   if (a.adapter === "a2a") return null; // the a2a badge already labels it
   if (presence && isHerdr(presence)) return presence.status ?? "alive";
@@ -636,6 +648,7 @@ function AgentRow({
   agent: a,
   groupOwner,
   memberPresence,
+  floor,
   marked,
   rowRef,
 }: {
@@ -643,10 +656,11 @@ function AgentRow({
   /** The owner shared by the row's group, if any — omitted from the row itself. */
   groupOwner: string | null;
   memberPresence?: PresenceMember;
+  floor?: RoomFloor;
   marked: boolean;
   rowRef?: React.Ref<HTMLDivElement>;
 }) {
-  const meta = rowMeta(a, memberPresence);
+  const meta = rowMeta(a, memberPresence, floor);
   const oddOwner = a.owner && a.owner !== groupOwner ? a.owner : null;
   const adapter = a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter;
   return (
@@ -655,6 +669,7 @@ function AgentRow({
       className="w-72 max-w-72 p-3"
       content={
         <MemberTooltipCard handle={a.handle} presence={memberPresence}>
+          <DetailRow label="floor" value={floor ? floorLabel(a.handle, floor) : undefined} color="var(--accent)" />
           <DetailRow label="owner" value={a.owner ? `@${a.owner}` : undefined} />
           <DetailRow label="team" value={a.team ?? undefined} />
           <DetailRow label="adapter" value={adapter} />
@@ -692,6 +707,8 @@ const ENGINE_KINDS: { kind: EngineKind; blurb: string }[] = [
   { kind: "aligner", blurb: "Mediates negotiation to consensus." },
   { kind: "synthesizer", blurb: "Distills the room to memory." },
   { kind: "hello", blurb: "Answers once, writes nothing, and proves the path." },
+  { kind: "persona", blurb: "Plays a member in character, from its notes, and remembers." },
+  { kind: "conductor", blurb: "Runs a protocol inside a task, in code, giving the floor per step." },
 ];
 
 /** Invite a first-party cognition engine into the room — a native manifest

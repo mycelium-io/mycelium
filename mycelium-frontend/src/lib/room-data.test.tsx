@@ -73,10 +73,13 @@ describe("useRoomRoster", () => {
       agent("aligner", { adapter: "engine", kind: "aligner" }),
       agent("bob-code", { owner: "Bob", team: "platform" }),
     ]);
-    vi.mocked(fetchRoomMembers).mockReset().mockResolvedValue([
-      { handle: "aligner", kind: "slim", last_seen: null },
-      { handle: "watcher", kind: "lease", last_seen: "2026-08-20T00:00:00Z" },
-    ]);
+    vi.mocked(fetchRoomMembers).mockReset().mockResolvedValue({
+      members: [
+        { handle: "aligner", kind: "slim", last_seen: null },
+        { handle: "watcher", kind: "lease", last_seen: "2026-08-20T00:00:00Z" },
+      ],
+      floors: [],
+    });
     vi.mocked(fetchMessages).mockReset().mockResolvedValue({
       messages: [
         { message_type: "broadcast", sender_handle: "sam" },

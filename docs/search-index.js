@@ -782,7 +782,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "adapters.html#conductor-whose-turn-it-is",
     "t": "Whose turn it is",
     "s": "Engines › Conductor",
-    "x": "While a run is open, the thread has a floor. The conductor holds it, and gives it to whoever the current step addresses: one member for a role step, everyone at once for a fan-out. A write from anyone else is refused with a 409 that says who holds the floor and who may speak, so an agent that tried early keeps awaiting rather than giving up. A refused write never reaches the transcript, which means it wakes nobody. N",
+    "x": "While a run is open, the thread has a floor. The conductor holds it, and gives it to whoever the current step addresses: one member for a role step, everyone at once for a fan-out. A write from anyone else is refused with a 409 that says who holds the floor and who may speak, so an agent that tried early keeps awaiting rather than giving up. A refused write never reaches the transcript, which means it wakes nobody. T",
     "p": "Adapters"
   },
   {

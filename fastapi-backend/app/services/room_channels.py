@@ -1306,7 +1306,19 @@ class RoomChannelManager:
             holder=norm_handle(holder) or holder,
             speakers=frozenset(h for h in (norm_handle(s) for s in speakers) if h),
         )
+        previous = managed.floors.get(episode)
         managed.floors[episode] = floor
+        if previous != floor:
+            # Whose turn it is changed: one line in the room's timeline, and the
+            # roster re-reads. Nothing when a step re-holds the same floor.
+            self._notice_in_background(
+                room,
+                subkind="floor",
+                key=episode.rsplit(":", 1)[-1],
+                episode=episode,
+                by=floor.holder,
+                speakers=",".join(sorted(floor.speakers)),
+            )
         return floor
 
     def release_floor(self, room: str, episode: str) -> bool:
@@ -1314,7 +1326,35 @@ class RoomChannelManager:
         managed = self._channels.get(room)
         if managed is None:
             return False
-        return managed.floors.pop(episode, None) is not None
+        floor = managed.floors.pop(episode, None)
+        if floor is None:
+            return False
+        self._notice_in_background(
+            room,
+            subkind="floor",
+            key=episode.rsplit(":", 1)[-1],
+            episode=episode,
+            by=floor.holder,
+            released="1",
+        )
+        return True
+
+    def floors_of(self, room: str) -> list[Floor]:
+        """Every floor held in ``room`` right now, in thread order."""
+        managed = self._channels.get(room)
+        if managed is None:
+            return []
+        return [managed.floors[key] for key in sorted(managed.floors)]
+
+    def _notice_in_background(self, room: str, **notice: str | None) -> None:
+        """Raise a notice from a sync caller, on the running loop if there is one."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        task = loop.create_task(self.raise_notice(room, **notice))  # type: ignore[arg-type]
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     def floor(self, room: str, episode: str | None) -> Floor | None:
         """The floor ``episode`` holds, or ``None`` when anyone may write."""
