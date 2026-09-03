@@ -613,9 +613,11 @@ function PersonRow({
         }`}
       >
         <Monogram handle={p.handle} color="var(--avatar-neutral)" className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence />
-        <span className="truncate font-mono text-label text-text">@{p.handle}</span>
+        <span className="shrink-0 font-mono text-label text-text">@{p.handle}</span>
         {p.you && <span className="flex-shrink-0 text-micro font-medium text-accent">you</span>}
-        {meta && <span className="ml-auto flex-shrink-0 text-micro text-faint">{meta}</span>}
+        {/* The floor's label names a task, which can be long: it is what gives
+            way, never the handle it is about (the tooltip carries it whole). */}
+        {meta && <span className="ml-auto min-w-0 truncate text-micro text-faint">{meta}</span>}
       </div>
     </Tooltip>
   );
@@ -688,7 +690,7 @@ function AgentRow({
         }`}
       >
         <Monogram handle={a.handle} className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence />
-        <span className="truncate font-mono text-label text-text">{a.handle}</span>
+        <span className="shrink-0 font-mono text-label text-text">{a.handle}</span>
         {a.adapter === "a2a" && (
           <span className="inline-flex flex-shrink-0 items-center rounded border border-accent/30 bg-accent-soft/40 px-1 text-[9px] font-medium leading-tight text-accent">
             a2a
@@ -697,7 +699,7 @@ function AgentRow({
         {oddOwner && (
           <span className="truncate font-mono text-micro text-faint">@{oddOwner}</span>
         )}
-        {meta && <span className="ml-auto flex-shrink-0 text-micro text-faint">{meta}</span>}
+        {meta && <span className="ml-auto min-w-0 truncate text-micro text-faint">{meta}</span>}
       </div>
     </Tooltip>
   );

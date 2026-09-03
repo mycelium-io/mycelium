@@ -67,11 +67,15 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
   // comments. Absent for a negotiation thread bound to no row.
   const { memories } = useRoomMemories(roomName);
   const task = memories.find(m => m.episode === target.episode) ?? null;
-  // A thread that is a run carries its flow on its episode record; the floor
-  // held on it is a live fact off the roster. Absent for a task's own thread
-  // and for a negotiation, so the pane draws nothing extra there.
+  // A run the conductor walked in this thread left a record carrying its
+  // flow: the latest one is drawn at the top of the pane, the earlier ones are
+  // reachable from it. The floor held on the thread is a live fact off the
+  // roster. Nothing extra is drawn for a thread nobody has coordinated in.
   const { episodes } = useRoomEpisodes(roomName);
-  const run = episodes.find(e => e.episode === target.episode && e.flow) ?? null;
+  const runs = episodes
+    .filter(e => e.flow && (e.within === target.episode || e.episode === target.episode))
+    .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""));
+  const run = runs[0] ?? null;
   const { floors } = useRoomMembers(roomName);
   const floor = floors.find(f => f.episode === target.episode) ?? null;
   const { principal } = useCurrentUser();
@@ -113,7 +117,7 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
       <header className="flex h-[48px] shrink-0 items-center gap-2 border-b border-border bg-paper px-4">
         <MessageSquare className="size-3.5 shrink-0 text-accent" strokeWidth={1.9} />
         <span className="min-w-0 truncate text-label font-semibold text-text">
-          {target.title || (run ? `${run.flow?.name} run ${shortId}` : `Thread ${shortId}`)}
+          {target.title || `Thread ${shortId}`}
         </span>
         {/* The short id only where a task's name is what the header says —
             otherwise the header is already the id, and this would repeat it. */}
@@ -196,7 +200,7 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
         <ScrollArea className="min-h-0 flex-1">
           {run && (
             <div className="border-b border-border">
-              <FlowPanel episode={run} floor={floor} />
+              <FlowPanel episode={run} floor={floor} earlier={runs.slice(1)} onOpenMemory={onOpenMemory} />
             </div>
           )}
           {task && (

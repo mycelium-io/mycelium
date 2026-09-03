@@ -33,9 +33,12 @@ EPISODES_PREFIX = "log/episodes/"
 
 # Anchored on their headings: a record with a flow carries two jsonl blocks
 # (the trace, then the messages), so "the first fence" is no longer enough.
-_JSONL_RE = re.compile(r"## Messages\n.*?```jsonl\n(.*?)\n```", re.DOTALL)
-_TRACE_RE = re.compile(r"## Trace\n.*?```jsonl\n(.*?)\n```", re.DOTALL)
-_FLOW_RE = re.compile(r"## Flow\n.*?```yaml\n(.*?)\n```", re.DOTALL)
+# The body ends at the closing fence itself, so an empty block (a run that
+# has taken no step yet) captures nothing rather than running on into the
+# next section.
+_JSONL_RE = re.compile(r"## Messages\n.*?```jsonl\n(.*?)```", re.DOTALL)
+_TRACE_RE = re.compile(r"## Trace\n.*?```jsonl\n(.*?)```", re.DOTALL)
+_FLOW_RE = re.compile(r"## Flow\n.*?```yaml\n(.*?)```", re.DOTALL)
 _TASKS_RE = re.compile(r"^- work: (.+)$", re.MULTILINE)
 _WITHIN_RE = re.compile(r"^- within: `([^`]+)`$", re.MULTILINE)
 
