@@ -1128,13 +1128,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                 const by = ev.raw.by as string | undefined;
                 const subkind = (ev.raw.subkind as string) || "filed";
                 // Green when work lands, closes or clears; red when it stalls on a
-                // blocker; yellow when it comes back up for grabs; accent in hand.
+                // blocker; yellow when it comes back up for grabs, handed back or
+                // drained; accent in hand.
                 const dot =
                   subkind === "resolved" || subkind === "filed" || subkind === "unblocked"
                     ? "var(--green)"
                     : subkind === "blocked"
                       ? "var(--red)"
-                      : subkind === "released"
+                      : subkind === "released" || subkind === "expired"
                         ? "var(--yellow)"
                         : "var(--accent)";
                 return (
@@ -1154,11 +1155,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                       <span className="truncate">{ev.content}</span>
                     </button>
                     {/* A filed task reads by who it is for; a lease event by who
-                        moved it. Fall back to the filer when a task is for no one. */}
+                        moved it; an expired one by who let it drain. Fall back to
+                        the filer when a task is for no one. */}
                     {subkind === "filed" && ev.raw.for ? (
                       <span>· for @{String(ev.raw.for).replace(/^@/, "")}</span>
                     ) : by ? (
-                      <span>· {subkind === "filed" ? "by " : ""}@{by}</span>
+                      <span>
+                        · {subkind === "filed" ? "by " : subkind === "expired" ? "held by " : ""}@{by}
+                      </span>
                     ) : null}
                   </SystemNotice>
                 );
