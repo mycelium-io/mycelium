@@ -200,7 +200,7 @@ def _strip_fences(text: str) -> str:
     return "\n".join(lines).strip()
 
 
-def _pi_complete(prompt: str) -> str:
+def _pi_complete(prompt: str, room_name: str = "") -> str:
     """One blocking Pi turn producing the raw plan markdown.
 
     The compiler's single LLM consumer, now Pi like every other mycelium
@@ -221,6 +221,7 @@ def _pi_complete(prompt: str) -> str:
         timeout_s=COMPILER_TIMEOUT_SECS,
         openshell=settings.ALIGNER_PI_OPENSHELL,
         operation="task_compile",
+        room=room_name,
     )
     return llm_session(prompt)
 
@@ -233,7 +234,7 @@ async def _compile_body(prompt: str, room_name: str) -> str:
     t0 = time.monotonic()
     try:
         content = await asyncio.wait_for(
-            asyncio.to_thread(_pi_complete, prompt), timeout=COMPILER_TIMEOUT_SECS + 5.0
+            asyncio.to_thread(_pi_complete, prompt, room_name), timeout=COMPILER_TIMEOUT_SECS + 5.0
         )
     except Exception:
         raise

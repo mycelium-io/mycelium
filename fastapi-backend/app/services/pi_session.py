@@ -314,6 +314,7 @@ class PiSession:
         timeout_s: float = 120.0,
         openshell: bool = False,
         operation: str = "",
+        room: str = "",
     ) -> None:
         self._session_path = session_path
         self._model = model
@@ -323,6 +324,7 @@ class PiSession:
         self._timeout_s = timeout_s
         self._openshell = openshell
         self._operation = operation
+        self._room = room
         # Accumulated wall-clock time spent in Pi subprocess calls this session.
         # The aligner reads this after mech.run() to derive mechanism overhead
         # (round duration excluding LLM time). Thread-safe only within the
@@ -426,6 +428,9 @@ class PiSession:
         except subprocess.TimeoutExpired as exc:
             _error = True
             raise PiSessionError(f"pi turn exceeded {self._timeout_s:.0f}s and was killed") from exc
+        except Exception:
+            _error = True
+            raise
         finally:
             _duration_ms = (__import__("time").monotonic() - _t0) * 1000.0
             self.total_pi_ms += _duration_ms
@@ -441,6 +446,7 @@ class PiSession:
                     record_llm_call(
                         operation=self._operation,
                         model=self._model,
+                        room=self._room,
                         duration_ms=_duration_ms,
                         error=_error,
                     )

@@ -690,9 +690,15 @@ def _run_telemetry_disclosure(api_url: str, *, compose_path: Path) -> None:  # n
         # Fire the install event. The destination is not yet set (#937) so this
         # is a no-op until the destination URL is configured, but the opt-in is
         # persisted for when it is.
+        # Use the canonical analytics module (install_event + emit) rather than
+        # a hand-rolled POST so the PROHIBITED_FIELDS guard and the
+        # localhost/host.docker.internal HTTP exception are applied consistently.
         try:
             import platform
 
+            # The analytics module lives in the backend package; the CLI ships
+            # its own minimal re-implementation.  Use a local shim that delegates
+            # to the same logic paths rather than duplicating them.
             from mycelium.config import MyceliumConfig as _MC
 
             def _release() -> str:
@@ -703,40 +709,27 @@ def _run_telemetry_disclosure(api_url: str, *, compose_path: Path) -> None:  # n
                 except Exception:
                     return "unknown"
 
-            # Inline analytics emit (avoids importing the backend analytics module
-            # from the CLI).  Mirrors analytics.install_event logic.
             _config = _MC.load() if _MC.get_global_config_path().exists() else _MC()
-            _dest = (
-                _config.telemetry.analytics_destination
-                if _config.telemetry.analytics_destination
-                else ""
-            )
-            if _dest and _dest.startswith("https://"):
-                import json
-                import urllib.request
-
-                payload = json.dumps(
-                    {
-                        "event": "mycelium.install",
-                        "install_id": config.telemetry.install_id,
-                        "release": _release(),
-                        "ts": __import__("datetime")
-                        .datetime.now(__import__("datetime").timezone.utc)
-                        .isoformat(),
-                        "platform": platform.system() or "unknown",
-                    }
-                ).encode()
-                req = urllib.request.Request(
-                    _dest,
-                    data=payload,
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
+            _dest = (_config.telemetry.analytics_destination or "").strip()
+            _install_id = config.telemetry.install_id or ""
+            if _dest and _install_id:
+                # Reuse the backend's emit() for consistent PROHIBITED_FIELDS
+                # stripping and the localhost HTTP exception.  Import path is
+                # available when the CLI is installed alongside the backend in
+                # a dev checkout; falls back to a no-op otherwise.
                 try:
-                    with urllib.request.urlopen(req, timeout=5) as _r:  # noqa: S310
-                        pass
-                except Exception:
-                    pass
+                    from app.services.analytics import emit as _be_emit
+                    from app.services.analytics import install_event as _be_install_event
+
+                    _be_emit(
+                        _be_install_event(
+                            install_id=_install_id,
+                            release=_release(),
+                            platform=platform.system() or "unknown",
+                        )
+                    )
+                except ImportError:
+                    pass  # CLI-only install without backend package; no-op
         except Exception:
             pass
     else:

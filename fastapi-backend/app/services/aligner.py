@@ -315,19 +315,25 @@ class AlignerEngine:
                         session_event as _session_event,
                     )
 
-                    _count = increment_session_count()
-                    _ev = _session_event(
-                        install_id=_settings.TELEMETRY_INSTALL_ID or "unknown",
-                        release=_read_release(),
-                        adapter_class="",  # aligner is adapter-agnostic
-                        outcome=_outcome,
-                        session_count=_count,
-                    )
-                    # emit() calls urlopen (blocking I/O) — fire-and-forget in a
-                    # thread pool so the async finally block doesn't stall the
-                    # event loop.  Not awaited intentionally: analytics failures
-                    # must never block the coordination path.
-                    asyncio.get_running_loop().run_in_executor(None, _emit, _ev)
+                    _install_id = _settings.TELEMETRY_INSTALL_ID or "unknown"
+                    _release = _read_release()
+
+                    def _emit_session_event() -> None:
+                        """Blocking: file I/O (increment_session_count) + urlopen (emit).
+                        Must run in a thread pool, not on the event loop."""
+                        _count = increment_session_count()
+                        _ev = _session_event(
+                            install_id=_install_id,
+                            release=_release,
+                            adapter_class="",  # aligner is adapter-agnostic
+                            outcome=_outcome,
+                            session_count=_count,
+                        )
+                        _emit(_ev)
+
+                    # Fire-and-forget in the thread pool: both increment_session_count
+                    # (fcntl file lock) and emit (urlopen) are blocking I/O.
+                    asyncio.get_running_loop().run_in_executor(None, _emit_session_event)
                 except Exception:
                     logger.debug("analytics session emit failed (non-fatal)", exc_info=True)
 
@@ -441,26 +447,29 @@ class AlignerEngine:
             )
             mech = mediator.build_mechanism(issues, participants, negotiation, cap=self._max_steps)
             _mech_t0 = __import__("time").monotonic()
+            # Snapshot Pi time before mech.run() so we only subtract Pi calls
+            # that happen *inside* the NEGMAS loop, not _clarify_terms/discover_issues.
+            _pi_ms_before = getattr(llm_session, "total_pi_ms", 0.0)
             await asyncio.to_thread(mech.run)
             _mech_ms = (__import__("time").monotonic() - _mech_t0) * 1000.0
 
             assignments = mediator.agreement_assignments(mech, negotiation.names)
             converged = assignments is not None
             _, metrics = self._verdict(ep)
-            # Record per-round timing into the in-process store.  Round count from
-            # NEGMAS; average ms per round so the histogram reflects typical turn cost.
+            # Record round timing. NEGMAS gives us total elapsed, not per-round
+            # wall-clock, so we record one sample (the average) rather than N
+            # identical synthetic copies.
             _rounds_run = max(mech.current_step, 1)
             from app.services import metrics as _metrics
 
-            _pi_ms = getattr(llm_session, "total_pi_ms", 0.0)
+            _pi_ms = getattr(llm_session, "total_pi_ms", 0.0) - _pi_ms_before
             _mechanism_ms = max(_mech_ms - _pi_ms, 0.0)
-            for _r in range(_rounds_run):
-                _metrics.record_aligner_round(
-                    room=room,
-                    round_num=_r + 1,
-                    duration_ms=_mech_ms / _rounds_run,
-                    duration_excl_llm_ms=_mechanism_ms / _rounds_run,
-                )
+            _metrics.record_aligner_round(
+                room=room,
+                round_num=_rounds_run,
+                duration_ms=_mech_ms / _rounds_run,
+                duration_excl_llm_ms=_mechanism_ms / _rounds_run,
+            )
             # Post-hoc satisfaction: how close the agreed outcome sits to
             # each agent's opening ask, and the room minimum — the least-happy
             # agent. Independent of MPC/GAR/SCR (which need stated confidence the
