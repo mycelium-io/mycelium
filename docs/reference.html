@@ -158,6 +158,7 @@
           <a href="#config-herdr" class="nav-link sub">herdr</a>
           <a href="#config-metrics" class="nav-link sub">metrics</a>
           <a href="#config-telemetry" class="nav-link sub">telemetry</a>
+          <a href="#config-health" class="nav-link sub">health</a>
           <a href="#config-a2a" class="nav-link sub">a2a</a>
         </div>
       </div>
@@ -506,7 +507,7 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">up</span> [<span class="flag">--build</span>] [<span class="flag">--metrics</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">up</span> [<span class="flag">--build</span>] [<span class="flag">--metrics</span>] [<span class="flag">--grafana</span>]</code>
         </div>
         <div class="cmd-ref-body">Start the Mycelium stack via <code>docker compose up</code>.</div>
       </div>
@@ -1221,6 +1222,18 @@
 
 <span class="comment"># Random UUID identifying this installation, generated on first interactive `mycelium install`. Used only for product analytics events when send_product_analytics is enabled. Never sent anywhere unless opt-in is active.</span>
 <span class="arg">install_id</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># Health degradation thresholds for ``GET /health`` (#453).</span>
+<span class="cmd" id="config-health">[health]</span>
+
+<span class="comment"># LLM call p95 above this value degrades /health (0 = disabled).</span>
+<span class="arg">llm_p95_threshold_ms</span> = 30000.0
+
+<span class="comment"># Delivered-await p95 above this value degrades /health (0 = disabled). Timed-out long-polls are excluded.</span>
+<span class="arg">await_p95_threshold_ms</span> = 60000.0
+
+<span class="comment"># Memory search p95 above this value degrades /health (0 = disabled).</span>
+<span class="arg">search_p95_threshold_ms</span> = 500.0
 
 <span class="comment"># Configuration for the A2A bridge (outbound + inbound Agent2Agent gateway).</span>
 <span class="cmd" id="config-a2a">[a2a]</span>

@@ -212,7 +212,6 @@ def _import_grafana_dashboard(grafana_port: str) -> None:
     import time
     import urllib.error
     import urllib.request
-    from pathlib import Path as _P
 
     grafana_url = f"http://localhost:{grafana_port}"
     # Basic-auth header for the default admin/admin credentials.
@@ -220,22 +219,26 @@ def _import_grafana_dashboard(grafana_port: str) -> None:
     headers = {"Content-Type": "application/json", "Authorization": f"Basic {creds}"}
 
     # Try to find the dashboard JSON:
-    #   1. Relative to this file (editable install / repo checkout)
-    #   2. Bundled with the package (installed wheel)
+    #   1. Via importlib.resources (works in both editable and packaged installs)
+    #   2. Relative path fallback for unusual editable layouts
     dashboard_json: dict | None = None
-    candidates = [
-        # repo: mycelium-cli/src/mycelium/commands/ → up 5 → docs/
-        _P(__file__).resolve().parent.parent.parent.parent.parent.parent
-        / "docs"
-        / "grafana-mycelium-performance.json",
-    ]
-    for path in candidates:
-        if path.exists():
+    try:
+        from importlib.resources import files as _files
+
+        _data = _files("mycelium.data").joinpath("grafana-mycelium-performance.json")
+        dashboard_json = json.loads(_data.read_text(encoding="utf-8"))
+    except Exception:
+        # Fallback: repo layout (dev without package install)
+        from pathlib import Path as _P
+
+        fallback = (
+            _P(__file__).resolve().parent.parent / "data" / "grafana-mycelium-performance.json"
+        )
+        if fallback.exists():
             try:
-                dashboard_json = json.loads(path.read_text())
+                dashboard_json = json.loads(fallback.read_text())
             except Exception:
                 pass
-            break
 
     if dashboard_json is None:
         typer.secho(

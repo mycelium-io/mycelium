@@ -99,6 +99,39 @@ mycelium up --metrics          # bring up the collector if not already running
 When `enabled = false` (the default), **no OTel code runs** — not even an
 import.  The in-process store is always-on regardless.
 
+### Grafana LGTM — full OTel backend with browser UI
+
+`mycelium up --grafana` starts `grafana/otel-lgtm` — a single container
+with OTel Collector, Prometheus, Tempo, Loki, and Grafana UI.  This is the
+recommended way to browse telemetry data locally and to see exactly what the
+telemetry opt-in exposes before choosing a production destination.
+
+```bash
+mycelium config set telemetry.enabled true
+mycelium config set telemetry.send_product_analytics true
+mycelium config set telemetry.analytics_destination \
+  http://host.docker.internal:3100/loki/api/v1/push
+mycelium config apply
+mycelium up --grafana          # starts Grafana + imports the dashboard
+```
+
+Grafana opens at `http://localhost:3001` (admin / admin).  The Mycelium
+performance dashboard is imported automatically on first start.
+
+| Signal | Where it lands |
+|---|---|
+| OTel traces | Tempo → Explore |
+| OTel metrics | Prometheus → Explore + dashboard panels |
+| Product analytics events | Loki → "Product analytics events" panel |
+
+`--grafana` and `--metrics` cannot run simultaneously — both bind port 4318.
+Use `--grafana` when you want the browser UI; use `--metrics` for the
+lightweight JSON + traces.db collector without the UI overhead.
+
+The bundled dashboard JSON is at
+`mycelium-cli/src/mycelium/data/grafana-mycelium-performance.json` and is
+packaged with the CLI, so it is available on any install.
+
 ### What the SDK adds
 
 - **Per-route HTTP spans** (`FastAPIInstrumentor` — stable OTel HTTP conventions)
