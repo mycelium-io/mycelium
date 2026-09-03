@@ -259,8 +259,9 @@ class RoomChannelManager:
         self._default_workspace = default_workspace
         self._channels: dict[str, ManagedRoomChannel] = {}
         self._lock = asyncio.Lock()
-        # Strong refs to in-flight background invites (see invite_in_background).
-        self._tasks: set[asyncio.Task[bool]] = set()
+        # Strong refs to in-flight background work: invites (invite_in_background) and
+        # the frozen-roster checks a lease-side join schedules.
+        self._tasks: set[asyncio.Task[object]] = set()
         # Handles an @-mention would have invited while an episode held the
         # membership frozen, applied once it closes (see flush_deferred_invites).
         self._deferred_invites: dict[str, set[str]] = {}
@@ -568,13 +569,36 @@ class RoomChannelManager:
         Called on every ``await``/``reply`` so an actively-participating agent stays
         in the roster; a generous TTL keeps it present through its own think time
         (and avoids a mid-episode membership flap) while a truly-gone agent lapses.
-        Emits a coordination_join notice on the not-present → present edge.
+        The not-present → present edge is a join: it emits a coordination_join
+        notice and, like a SLIM join, is checked against a frozen negotiation's
+        roster (:meth:`_enforce_membership_change`, scheduled off the poll).
         """
         was_present = handle in self._live_leases(room)
         self._leases.setdefault(room, {})[handle] = time.monotonic() + ttl_s
         self._last_seen.setdefault(room, {})[handle] = time.time()
         if not was_present:
             self.announce_join(room, handle)
+            self._enforce_membership_change_in_background(room)
+
+    def _enforce_membership_change_in_background(self, room: str) -> None:
+        """Schedule the frozen-roster check for a lease-side join.
+
+        :meth:`refresh_lease` is sync and runs on every poll, so the check is a
+        fire-and-forget task (the ``invite_in_background`` shape) fired only on
+        the join edge, and only when there is something to check: a live channel
+        whose lifecycle is frozen. Without a running loop (a sync caller outside
+        the server) there is nothing to schedule on, and no negotiation to guard.
+        """
+        managed = self._channels.get(room)
+        if managed is None or not managed.lifecycle.frozen:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        task = loop.create_task(self._enforce_membership_change(managed))
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     def announce_join(self, room: str, handle: str, intent: str = "") -> bool:
         """Emit a coordination_join notice on the first not-present → present transition.
@@ -1255,10 +1279,13 @@ class RoomChannelManager:
 
         Compared against the same :meth:`members` union ``open_episode`` froze
         on — a lease-only participant refreshing/holding its lease is not a
-        membership change, only a real SLIM join/leave is. This runs only from
-        the invite (``_register_member``) and ``remove`` paths, so a lease that
-        simply expires mid-negotiation, with no other join/leave happening
-        after it, is not detected here.
+        membership change; a join or leave on either half of the union is. This
+        runs from the SLIM invite (``_register_member``) and ``remove`` paths and
+        from a lease-side join (``refresh_lease``'s not-present → present edge).
+        A lease that simply expires mid-negotiation, with no join/leave after
+        it, is still not detected here: expiry is derived by the clock, never
+        written, and the mediator's round timeout is what covers a participant
+        that has gone silent.
         """
         current_members = self.members(managed.room)
         if not managed.lifecycle.on_membership_change(set(current_members)):
