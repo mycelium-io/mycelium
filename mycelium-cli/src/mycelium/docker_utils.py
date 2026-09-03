@@ -83,10 +83,10 @@ LOCAL_ONLY_FIELDS: dict[str, str] = {
     "agent_auth.issuer": "workload half of auth: where agents mint their tokens",
     "agent_auth.scopes": "workload half of auth",
     "agent_auth.audience": "workload half of auth",
-    "telemetry.install_id": (
-        "anonymous per-install UUID; stays on this machine unless "
-        "telemetry.send_product_analytics is enabled"
-    ),
+    # telemetry.install_id is NOT local-only: it is rendered to TELEMETRY_INSTALL_ID
+    # in .env so the backend can emit session analytics events using the same
+    # installation identity as the CLI. The value is still only ever *sent* to an
+    # analytics destination when TELEMETRY_SEND_PRODUCT_ANALYTICS is true.
 }
 
 # Compose variables with no config.toml source. Compose substitutes from the
@@ -355,6 +355,11 @@ def generate_env_file(
         f"TELEMETRY_OTLP_ENDPOINT={config.telemetry.otlp_endpoint or ''}",
         f"TELEMETRY_SEND_PRODUCT_ANALYTICS={'true' if config.telemetry.send_product_analytics else 'false'}",
         f"TELEMETRY_ANALYTICS_DESTINATION={config.telemetry.analytics_destination or ''}",
+        # install_id is rendered here (not LOCAL_ONLY) so the backend can emit
+        # session events tied to the same installation identity as the CLI.
+        # The value is only ever sent to an analytics destination when
+        # TELEMETRY_SEND_PRODUCT_ANALYTICS is true.
+        f"TELEMETRY_INSTALL_ID={config.telemetry.install_id or ''}",
         "",
         "# ── Health degradation thresholds (#453) ────────────────────────────────",
         # p95 latency above these values flips /health to status: degraded for the
