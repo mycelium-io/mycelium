@@ -27,6 +27,7 @@ import type {
   MemoryGraphEdge,
   MemoryGraphNode,
   PresenceMember,
+  RoomFloor,
 } from "@/lib/api";
 import type { RoomStatus } from "@/lib/board/upstream";
 
@@ -95,6 +96,8 @@ export interface RoomFixture {
    *  (one whose handle appears here) projects a board row; without a SLIM node
    *  there is otherwise no presence, so the board's resident rows come from here. */
   presence?: PresenceMember[];
+  /** Floors held in the room's threads right now, served beside presence. */
+  floors?: RoomFloor[];
   /** The room's link graph (#599/#611) — undefined means "no link index yet",
    *  the same degrade-to-empty case the real backend serves for an unlinked room. */
   links?: MemoryGraph;
@@ -363,6 +366,44 @@ const atlasEpisodeSummary: EpisodeSummary = {
   message_count: 3,
   updated_at: iso(42),
   updated_by: "aligner",
+};
+
+// A flow the conductor is walking right now: the gated review of the key
+// rotation, opened from the read-switch task. Two steps taken (a proposal, a
+// block), standing at the proposer's second turn with the floor given to it.
+const ATLAS_FLOW_EPISODE = atlasEpisode("f10a2c");
+const atlasFlowEpisode: EpisodeSummary = {
+  short_id: "f10a2c",
+  episode: ATLAS_FLOW_EPISODE,
+  topic: "urn:concept:mycelium:atlas-migration",
+  outcome: "open",
+  subkind: null,
+  participants: ["reads", "operator", "conductor"],
+  metrics: null,
+  assignments: null,
+  tasks: [],
+  message_count: 5,
+  updated_at: iso(2),
+  updated_by: "conductor",
+  within: ATLAS_FLIP_THREAD,
+  current_step: "propose",
+  flow: {
+    name: "gated",
+    description: "A proposer proposes, a guardian approves or blocks; a block sends it back.",
+    roles: ["proposer", "guardian"],
+    max_steps: 6,
+    bound: { proposer: "reads", guardian: "operator" },
+    ask: "flip reads to the new store without a soak window",
+    steps: [
+      { id: "propose", to: "proposer", next: "review", prompt: "{ask}\n\nState exactly what you intend to do." },
+      { id: "review", to: "guardian", next: { accept: "approved", reject: "propose", default: "propose" }, prompt: "A proposal is on the table:\n\n{reply}\n\nApprove it or block it." },
+      { id: "approved", end: "resolved" },
+    ],
+  },
+  trace: [
+    { step: "propose", turn: 1, asked: ["reads"], stances: { reads: null }, stance: null, next: "review", at: iso(6) },
+    { step: "review", turn: 2, asked: ["operator"], stances: { operator: "reject" }, stance: "reject", next: "propose", at: iso(3) },
+  ],
 };
 
 // Coordination-state memories the board projects into rows. Every one is what
@@ -716,8 +757,23 @@ const atlas: RoomFixture = {
         "Decision: we're go for Friday am pending a clean 24h soak, as backfill laid out. I'm adding one gate — the pool-recycle fix has to land and be verified before we flip, not after. If it's not in by Thursday evening we slip to Monday. I'd rather ship a day late than ship into a known write-dropping window. Filing both follow-ups as tasks now.",
     },
   ],
-  episodes: [atlasEpisodeSummary],
-  episodeDetails: { e4f1a2: { ...atlasEpisodeSummary, messages: atlasL9Chain } },
+  episodes: [atlasFlowEpisode, atlasEpisodeSummary],
+  episodeDetails: {
+    e4f1a2: { ...atlasEpisodeSummary, messages: atlasL9Chain },
+    f10a2c: { ...atlasFlowEpisode, messages: [] },
+  },
+  // The floor the running flow holds: the conductor's, given to reads for its
+  // second proposal.
+  floors: [
+    {
+      thread: "f10a2c",
+      episode: ATLAS_FLOW_EPISODE,
+      key: null,
+      title: null,
+      holder: "conductor",
+      speakers: ["reads"],
+    },
+  ],
   // backfill holds an open SLIM socket; reads is present on a server-held await
   // lease. Both are agents in the roster, so the board projects a resident row
   // for each — the presence signal that a live SLIM node would otherwise supply.

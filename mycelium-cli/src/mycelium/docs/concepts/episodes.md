@@ -3,7 +3,7 @@
 **An episode is one scoped conversation inside a room.**
 
 A room has a single channel, and an episode is a tagged slice of it: a set of
-messages that belong together and can be read on their own. Two things are
+messages that belong together and can be read on their own. Three things are
 episodes.
 
 The first is a [task](#board)'s **thread**. Every task gets one when it is
@@ -17,8 +17,15 @@ more agents disagree on a trade-off with several moving parts, someone puts a
 mediator on the task, and the mediator drives it to one answer or to a clean
 failure to agree.
 
-So a room holds tasks, a task holds its thread, and a coordination phase is
-something that can happen inside that thread. The task outlives it.
+The third is a **run with a flow**: an episode the [conductor](#conductor)
+opens to walk a fixed interaction shape, a proposer and a guardian, a lead
+and its workers, members speaking in turn. The flow is written onto the
+episode itself, along with every step taken, so the episode shows the shape
+of the interaction and where it stands, not only its messages. A run can be
+opened from a task, which nests it there, or from the room.
+
+So a room holds tasks, a task holds its thread, and a coordination phase or a
+run is something that can happen inside that thread. The task outlives it.
 
 ## Opening one
 

@@ -22,6 +22,8 @@ import logging
 import re
 from typing import Any
 
+import yaml
+
 from app.services.filesystem import get_room_dir, list_memory_files
 from app.services.l9 import SYSTEM_ACTOR_ID
 
@@ -29,24 +31,66 @@ logger = logging.getLogger(__name__)
 
 EPISODES_PREFIX = "log/episodes/"
 
-_JSONL_RE = re.compile(r"```jsonl\n(.*?)\n```", re.DOTALL)
+# Anchored on their headings: a record with a flow carries two jsonl blocks
+# (the trace, then the messages), so "the first fence" is no longer enough.
+_JSONL_RE = re.compile(r"## Messages\n.*?```jsonl\n(.*?)\n```", re.DOTALL)
+_TRACE_RE = re.compile(r"## Trace\n.*?```jsonl\n(.*?)\n```", re.DOTALL)
+_FLOW_RE = re.compile(r"## Flow\n.*?```yaml\n(.*?)\n```", re.DOTALL)
 _TASKS_RE = re.compile(r"^- work: (.+)$", re.MULTILINE)
+_WITHIN_RE = re.compile(r"^- within: `([^`]+)`$", re.MULTILINE)
 
 
-def parse_envelopes(content: str) -> list[dict[str, Any]]:
-    match = _JSONL_RE.search(content)
+def _parse_jsonl(match: re.Match[str] | None, what: str) -> list[dict[str, Any]]:
     if not match:
         return []
-    envelopes: list[dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
     for line in match.group(1).splitlines():
         line = line.strip()
         if not line:
             continue
         try:
-            envelopes.append(json.loads(line))
+            rows.append(json.loads(line))
         except json.JSONDecodeError:
-            logger.warning("skipping malformed episode envelope line")
-    return envelopes
+            logger.warning("skipping malformed episode %s line", what)
+    return rows
+
+
+def parse_envelopes(content: str) -> list[dict[str, Any]]:
+    return _parse_jsonl(_JSONL_RE.search(content), "envelope")
+
+
+def parse_trace(content: str) -> list[dict[str, Any]]:
+    """The steps a flow episode has taken, as the record wrote them."""
+    return _parse_jsonl(_TRACE_RE.search(content), "trace")
+
+
+def parse_flow(content: str) -> dict[str, Any] | None:
+    """The interaction flow an episode runs, or ``None`` for an episode without one."""
+    match = _FLOW_RE.search(content)
+    if not match:
+        return None
+    try:
+        data = yaml.safe_load(match.group(1))
+    except yaml.YAMLError:
+        logger.warning("skipping a flow block that does not parse")
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def current_step(
+    flow: dict[str, Any] | None, trace: list[dict[str, Any]], outcome: str
+) -> str | None:
+    """Where an open run stands: the step its last trace entry led to, else its first."""
+    if flow is None or outcome != "open":
+        return None
+    if trace:
+        nxt = trace[-1].get("next")
+        return str(nxt) if nxt else None
+    steps = flow.get("steps")
+    if isinstance(steps, list) and steps and isinstance(steps[0], dict):
+        first = steps[0].get("id")
+        return str(first) if first else None
+    return None
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -95,6 +139,9 @@ def episode_summary(key: str, meta: dict[str, Any], content: str) -> dict[str, A
         if tasks_match
         else []
     )
+    within_match = _WITHIN_RE.search(content)
+    flow = parse_flow(content)
+    trace = parse_trace(content)
 
     return {
         "short_id": short_id,
@@ -109,6 +156,10 @@ def episode_summary(key: str, meta: dict[str, Any], content: str) -> dict[str, A
         "message_count": len(envelopes),
         "updated_at": meta.get("updated_at", ""),
         "updated_by": meta.get("updated_by", ""),
+        "within": within_match.group(1) if within_match else None,
+        "flow": flow,
+        "trace": trace,
+        "current_step": current_step(flow, trace, outcome),
     }
 
 
@@ -148,6 +199,10 @@ def live_episode_summary(room_name: str) -> dict[str, Any] | None:
         "message_count": message_count,
         "updated_at": "",
         "updated_by": "",
+        "within": None,
+        "flow": None,
+        "trace": [],
+        "current_step": None,
     }
 
 

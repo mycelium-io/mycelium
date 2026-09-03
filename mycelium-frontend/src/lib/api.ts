@@ -846,6 +846,50 @@ export interface EpisodeSummary {
   message_count: number;
   updated_at: string;
   updated_by: string;
+  /** The thread this episode was opened from, when it runs inside a task. */
+  within?: string | null;
+  /** The interaction flow this episode runs; null for a negotiation or a thread. */
+  flow?: EpisodeFlow | null;
+  /** The steps taken so far, in order. */
+  trace?: FlowTraceEntry[];
+  /** Where an open run stands, read off the trace. */
+  current_step?: string | null;
+}
+
+/** One step of an episode's interaction flow, as the record carries it. */
+export interface FlowStep {
+  id: string;
+  /** A role, or each / all / workers. Absent on an end step. */
+  to?: string | null;
+  prompt?: string;
+  wait?: "reply" | "none";
+  rounds?: number;
+  /** One step id, or a branch by stance (accept / reject / silent / default). */
+  next?: string | Record<string, string> | null;
+  end?: "resolved" | "rejected" | null;
+}
+
+/** The interaction flow an episode runs: the graph the conductor walks, plus
+ *  who was bound to each role and what was asked. */
+export interface EpisodeFlow {
+  name: string;
+  description?: string;
+  roles?: string[];
+  steps: FlowStep[];
+  max_steps?: number;
+  bound?: Record<string, string>;
+  ask?: string;
+}
+
+/** One step taken in a flow episode. */
+export interface FlowTraceEntry {
+  step: string;
+  turn: number;
+  asked?: string[];
+  stances?: Record<string, string | null>;
+  stance?: string | null;
+  next: string;
+  at?: string;
 }
 
 export interface EpisodeDetail extends EpisodeSummary {

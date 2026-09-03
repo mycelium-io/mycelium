@@ -196,18 +196,3 @@ def test_spec_of_round_trips_through_the_memory_body():
         body = yaml.safe_dump(protocols.spec_of(spec), sort_keys=False)
         again = protocols.parse_protocol(name, body)
         assert again == spec
-
-
-@pytest.mark.asyncio
-async def test_materialize_writes_a_built_in_once(monkeypatch):
-    monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
-    get_room_dir(ROOM)
-    gated = protocols.builtin("gated")
-    assert gated is not None
-
-    assert await protocols.materialize(ROOM, gated, created_by="conductor") is True
-    assert protocols.room_protocol_names(ROOM) == ["gated"]
-    found = protocols.load_protocol(ROOM, "gated")
-    assert found == gated
-    # Already the room's: left alone, so an edit survives the next run.
-    assert await protocols.materialize(ROOM, gated, created_by="conductor") is False

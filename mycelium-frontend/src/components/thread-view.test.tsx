@@ -19,6 +19,7 @@ vi.mock("@/lib/api", () => ({
   sendRoomMessage: (...args: unknown[]) => sendRoomMessage(...args),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
   fetchRoomMembers: vi.fn().mockResolvedValue({ members: [], floors: [] }),
+  fetchEpisodes: vi.fn().mockResolvedValue([]),
   fetchMemories: (...args: unknown[]) => fetchMemories(...args),
   fetchMemoryLinks: vi.fn().mockResolvedValue({ outbound: [], backlinks: [] }),
   fetchSkills: vi.fn().mockResolvedValue([]),

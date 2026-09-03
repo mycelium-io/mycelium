@@ -309,39 +309,6 @@ def room_protocol_names(room: str) -> list[str]:
     )
 
 
-async def materialize(room: str, protocol: Protocol, *, created_by: str) -> bool:
-    """Write a built-in as the room's own ``protocols/<name>`` memory, once.
-
-    A built-in the room has run is then a memory a person can open, read and
-    edit like any other, and the next run reads the room's copy. Nothing is
-    written when the room already has one. Returns whether it wrote.
-    """
-    from app.routes.memory import upsert_memories  # lazy — routes import services
-    from app.schemas import MemoryBatchCreate, MemoryCreate
-    from app.services.filesystem import get_room_dir, read_memory_file
-
-    key = f"{PROTOCOLS_PREFIX}{protocol.name}"
-    if read_memory_file(get_room_dir(room), key) is not None:
-        return False
-    body = yaml.safe_dump(spec_of(protocol), sort_keys=False, default_flow_style=False).strip()
-    await upsert_memories(
-        room,
-        MemoryBatchCreate(
-            items=[
-                MemoryCreate(
-                    key=key,
-                    value=body,
-                    created_by=created_by,
-                    embed=False,
-                    tags=["protocol"],
-                    meta={"description": protocol.description} if protocol.description else None,
-                )
-            ]
-        ),
-    )
-    return True
-
-
 def builtin(name: str) -> Protocol | None:
     spec = BUILTIN_PROTOCOLS.get(name)
     return Protocol.model_validate(spec) if spec else None

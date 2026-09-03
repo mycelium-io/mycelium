@@ -363,28 +363,65 @@ async def test_with_nobody_named_the_room_takes_part():
 
 
 @pytest.mark.asyncio
-async def test_the_run_leaves_an_episode_record_on_the_thread():
+async def test_the_episode_is_the_run_and_its_record_carries_the_flow_and_the_trace():
     from app.services.episode_records import episode_summary, parse_envelopes
 
     engine, _manager, _channel = _engine(
-        {"api": [("do the thing", None)], "sec": [("approved", "accept")]}
+        {"api": [("v1", None), ("v2", None)], "sec": [("no", "reject"), ("yes", "accept")]}
     )
     before = set(_records())
 
-    await engine.run(ROOM, episode=THREAD, directive="gated: go", named=["api", "sec"])
+    outcome = await engine.run(ROOM, directive="gated: rotate", named=["api", "sec"])
 
+    assert outcome == "resolved"
     new = set(_records()) - before
-    assert len(new) == 1
+    assert len(new) == 1, "one record for the run, rewritten as it walked"
     key = new.pop()
     found = read_memory_file(get_room_dir(ROOM), key)
     assert found is not None
     meta, content = found
     summary = episode_summary(key, meta, content)
-    assert summary["episode"] == THREAD, "the record is the thread's, not a new episode's"
     assert summary["outcome"] == "resolved"
+    assert summary["within"] is None, "summoned from the room, nested in nothing"
+    assert summary["current_step"] is None, "a finished run stands nowhere"
+    flow = summary["flow"]
+    assert flow["name"] == "gated"
+    assert flow["bound"] == {"proposer": "api", "guardian": "sec"}
+    assert flow["ask"] == "rotate"
+    assert [st["id"] for st in flow["steps"]] == ["propose", "review", "approved"]
+    assert [(t["step"], t["turn"], t["stance"], t["next"]) for t in summary["trace"]] == [
+        ("propose", 1, None, "review"),
+        ("review", 2, "reject", "propose"),
+        ("propose", 3, None, "review"),
+        ("review", 4, "accept", "approved"),
+    ]
+    assert summary["trace"][1]["stances"] == {"sec": "reject"}
     assert {"api", "sec"} <= set(summary["participants"])
-    # Intent, two ticks, two replies, the commit.
-    assert len(parse_envelopes(content)) == 6
+    # Intent, four ticks, four replies, the commit.
+    assert len(parse_envelopes(content)) == 10
+
+
+@pytest.mark.asyncio
+async def test_an_open_run_records_where_it_stands():
+    """The record is written at the opening and after every step, so the
+    episode can be opened while it is still walking."""
+    from app.services.episode_records import episode_summary
+
+    seen: list[tuple[str, str | None, int]] = []
+    engine, _manager, _channel = _engine({"api": [("v1", None)], "sec": [("yes", "accept")]})
+    original = engine._turn
+
+    async def spy(managed, ep, me, run, step, handle, prompt):
+        found = read_memory_file(get_room_dir(ROOM), f"log/episodes/{ep.short_id}")
+        assert found is not None
+        summary = episode_summary(f"log/episodes/{ep.short_id}", *found)
+        seen.append((summary["outcome"], summary["current_step"], len(summary["trace"])))
+        return await original(managed, ep, me, run, step, handle, prompt)
+
+    engine._turn = spy
+    await engine.run(ROOM, directive="gated: go", named=["api", "sec"])
+
+    assert seen == [("open", "propose", 0), ("open", "review", 1)]
 
 
 @pytest.mark.asyncio
@@ -478,7 +515,12 @@ def _summon(text: str, *, episode: str, sender: str = "julia") -> Any:
 
 
 @pytest.mark.asyncio
-async def test_a_summon_runs_in_the_thread_it_was_made_in():
+async def test_a_summon_from_a_task_opens_an_episode_nested_in_it():
+    """The task is context, not the container: the run gets its own episode,
+    the record says which task it ran inside, and the task's thread gets one
+    line when it opens and one when it ends."""
+    from app.services.episode_records import episode_summary
+
     _register("conductor", "conductor")
     engine, _manager, channel = _engine(
         {"api": [("do the thing", None)], "sec": [("approved", "accept")]}
@@ -488,12 +530,28 @@ async def test_a_summon_runs_in_the_thread_it_was_made_in():
     engine.handle_summon(ROOM, "conductor", env, summons, text)
     await asyncio.sleep(0.1)
 
-    assert channel.commit().header.message.episode == THREAD
-    assert channel.commit().payload.data["roles"] == {"proposer": "api", "guardian": "sec"}
+    commit = channel.commit()
+    run_episode = commit.header.message.episode
+    assert run_episode != THREAD
+    assert commit.payload.data["roles"] == {"proposer": "api", "guardian": "sec"}
+    short = run_episode.rsplit(":", 1)[-1]
+    found = read_memory_file(get_room_dir(ROOM), f"log/episodes/{short}")
+    assert found is not None
+    assert episode_summary(f"log/episodes/{short}", *found)["within"] == THREAD
+    in_task = [
+        (extra or {})["content"]
+        for e, extra in channel.sent
+        if e.header.message.episode == THREAD and e.payload.type == "message"
+    ]
+    assert in_task[0] == f"Running gated as episode {short} with api as proposer, sec as guardian."
+    assert in_task[-1].startswith("✓ gated: resolved after 2 step(s)")
+    assert in_task[-1].endswith(f"(episode {short}).")
 
 
 @pytest.mark.asyncio
-async def test_a_summon_from_the_room_opens_a_thread_of_its_own():
+async def test_a_summon_from_the_room_nests_in_nothing():
+    from app.services.episode_records import episode_summary
+
     _register("conductor", "conductor")
     engine, _manager, channel = _engine(
         {"api": [("do the thing", None)], "sec": [("approved", "accept")]}
@@ -505,7 +563,12 @@ async def test_a_summon_from_the_room_opens_a_thread_of_its_own():
 
     ran_in = channel.commit().header.message.episode
     assert ran_in != LIVE
-    assert ran_in.startswith(l9.episode_urn(ROOM, ""))
+    short = ran_in.rsplit(":", 1)[-1]
+    found = read_memory_file(get_room_dir(ROOM), f"log/episodes/{short}")
+    assert found is not None
+    assert episode_summary(f"log/episodes/{short}", *found)["within"] is None
+    # Nothing is said to the room about the run beyond the room's own timeline.
+    assert [e for e, _x in channel.sent if e.header.message.episode == LIVE] == []
 
 
 @pytest.mark.asyncio
@@ -585,25 +648,6 @@ async def test_a_branch_taken_is_said_in_the_thread_and_a_plain_edge_is_not():
 
 
 @pytest.mark.asyncio
-async def test_a_built_in_the_room_ran_becomes_the_rooms_own_memory(monkeypatch):
-    monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
-    engine, _manager, _channel = _engine(
-        {"api": [("do the thing", None)], "sec": [("approved", "accept")]}
-    )
-    assert read_memory_file(get_room_dir(ROOM), "protocols/gated") is None
-
-    await engine.run(ROOM, episode=THREAD, directive="gated: go", named=["api", "sec"])
-
-    found = read_memory_file(get_room_dir(ROOM), "protocols/gated")
-    assert found is not None
-    written = protocols.parse_protocol("gated", found[1])
-    assert written.roles == ["proposer", "guardian"]
-    assert [s.id for s in written.steps] == ["propose", "review", "approved"]
-    # The room's copy is what runs next, so editing it reshapes the protocol.
-    assert protocols.room_protocol_names(ROOM) == ["gated"]
-
-
-@pytest.mark.asyncio
 async def test_list_says_what_it_can_run():
     engine, manager, channel = _engine({})
 
@@ -630,13 +674,14 @@ async def test_the_floor_is_held_the_instant_the_summon_lands():
 
     engine.handle_summon(ROOM, "conductor", env, summons, text)
 
-    held = manager.floor(ROOM, THREAD)
-    assert held is not None
+    assert len(manager.floors) == 1
+    ((run_episode, held),) = manager.floors.items()
+    assert run_episode != THREAD
     assert held.holder == "conductor"
     assert not held.admits("api") and not held.admits("sec")
     await asyncio.sleep(0.1)
-    assert manager.floor(ROOM, THREAD) is None, "released once the run ends"
-    assert channel.commit().header.subkind == "resolved"
+    assert manager.floors == {}, "released once the run ends"
+    assert channel.commit().header.message.episode == run_episode
 
 
 @pytest.mark.asyncio
@@ -646,8 +691,9 @@ async def test_a_summon_that_cannot_start_lets_the_floor_go():
     env, summons, text = _summon("@conductor waltz @api @sec: go", episode=THREAD)
 
     engine.handle_summon(ROOM, "conductor", env, summons, text)
-    assert manager.floor(ROOM, THREAD) is not None
+    assert len(manager.floors) == 1
     await asyncio.sleep(0.05)
 
-    assert manager.floor(ROOM, THREAD) is None
+    assert manager.floors == {}
     assert "Built in:" in channel.said()[0]
+    assert channel.sent[0][0].header.message.episode == THREAD, "answered where it was asked"
