@@ -54,9 +54,9 @@ def get_current_handle(config: "MyceliumConfig") -> str | None:
     return generate_handle(config.identity.name, session_id)
 
 
-#: The old hardcoded default author. Kept only so a script that still passes it
-#: explicitly is treated as "unset" and resolves to the real caller, rather than
-#: a placeholder a gated hub rejects. Every write command used to default to it.
+#: The old hardcoded default author. Kept so a script that still passes it
+#: explicitly is treated as "unset" and resolves to the real caller, rather
+#: than a placeholder a gated hub rejects.
 LEGACY_ACTOR_SENTINEL = "cli-user"
 
 

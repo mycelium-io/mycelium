@@ -78,10 +78,8 @@ def signing_key() -> dict[str, Any]:
 
 @pytest.fixture
 def jwks_server(monkeypatch, signing_key):
-    """Serve a JWKS from an in-process stub, and count how often it is fetched.
-
-    Returns a handle whose ``keys`` list can be swapped mid-test to simulate
-    rotation at the issuer.
+    """Serve a JWKS from an in-process stub with a swappable ``keys`` list, for
+    simulating key rotation at the issuer.
     """
 
     class _Server:
@@ -545,10 +543,8 @@ async def test_a_real_token_becomes_the_author_of_a_write(
 
 @pytest.mark.asyncio
 async def test_a2a_agent_card_is_public_when_gate_on(client: AsyncClient, auth_on):
-    """The Agent Card is discovery metadata — served unauthenticated by A2A spec.
-
-    A missing room returns 404 (the route ran), not 401 (the gate blocked it),
-    which is what proves the exemption fired.
+    """The Agent Card is discovery metadata, exempt from the auth gate: a
+    missing room returns 404 (the route ran), not 401 (the gate blocked it).
     """
     resp = await client.get("/api/rooms/ghost/.well-known/agent-card.json")
     assert resp.status_code == 404

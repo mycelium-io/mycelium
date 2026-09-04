@@ -27,7 +27,7 @@ interface Props {
   threadLabel?: string | null;
 }
 
-// Three sigils, three vocabularies, one composer (#618, #619):
+// Three sigils, three vocabularies, one composer:
 //   @   → agents        → inserts `@handle`
 //   [[  → memories      → inserts `[[key]]` (resolves to myc://, clickable in chat)
 //   /   → skills        → inserts `/name`
@@ -222,9 +222,8 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
   // two lines to say something the reader had already stopped reading.
   const placeholder = episode ? `Reply in ${threadLabel || "this thread"}…` : "Message the room…";
 
-  // The button carries no chrome at rest — the composer's own border is the
-  // affordance and Enter is the primary path. It only colors up, and only
-  // grows a hover surface, once there is something to send.
+  // The button renders without chrome at rest; it colors up and grows a
+  // hover surface once there is something to send.
   const armed = content.trim().length > 0 && !sending;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

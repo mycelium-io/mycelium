@@ -78,10 +78,8 @@ function episodeState(ep: EpisodeSummary): { label: string; color: string; live:
 /** The landing view: every room as a conversation.
  *
  *  A room *is* a conversation — with agents rather than people, but the shape
- *  is the same — so this reads like an inbox: who is in it, what was last said,
- *  how long ago. It was a grid of stat cards, which answered "how many
- *  memories does this room have" (a question nobody opens a laptop with) and
- *  not "what happened while I was away". */
+ *  is the same — so this reads like an inbox: who is in it, what was last
+ *  said, how long ago. */
 export function HomeDashboard() {
   const [showCreate, setShowCreate] = useState(false);
   const { rooms, loading, refresh } = useRooms();

@@ -43,7 +43,7 @@ def norm_handle(value: object) -> str | None:
     return cleaned or None
 
 
-# Back-compat alias for the private name used internally before the refactor.
+# Alias for internal use.
 _norm = norm_handle
 
 

@@ -4,12 +4,10 @@
 """
 Minimal Prometheus text-format parser + scraper.
 
-We deliberately do *not* depend on ``prometheus_client`` here. The CLI ships
-to leaf nodes that already pull in OTLP/protobuf for telemetry; we
-don't want a second metrics SDK on disk just to parse a text stream.
-The Prometheus exposition format is small and stable enough that ~120 lines
-of stdlib code cover every case we hit in practice (counters, gauges,
-histograms with ``_bucket``/``_sum``/``_count``, labeled or not).
+Parses with stdlib only, avoiding a second metrics SDK alongside the
+OTLP/protobuf dependency the CLI already ships for telemetry. ~120 lines of
+stdlib code cover every case hit in practice: counters, gauges, histograms
+with ``_bucket``/``_sum``/``_count``, labeled or not.
 
 Output shape mirrors the OTLP-aggregated dicts already in ``MetricsStore`` so
 ``mycelium metrics show`` panels can render scraped CFN data with the same

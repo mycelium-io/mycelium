@@ -9,7 +9,9 @@ import {
   expireActivity,
   isActivityFrame,
   respondingLabel,
+  respondingNames,
   settleActivity,
+  splitActivity,
   type Responding,
 } from "@/lib/activity";
 
@@ -91,5 +93,35 @@ describe("the line", () => {
     expect(respondingLabel(at("growth", "finance"))).toBe("@growth and @finance are responding…");
     expect(respondingLabel(at("a", "b", "c"))).toBe("@a, @b and 1 other are responding…");
     expect(respondingLabel(at("a", "b", "c", "d"))).toBe("@a, @b and 2 others are responding…");
+    expect(respondingNames(at("a", "b"))).toBe("@a and @b");
+  });
+
+  it("stops short of the thread's name when the turn is going elsewhere", () => {
+    expect(respondingLabel(at("aligner"), "elsewhere")).toBe("@aligner is responding in");
+    expect(respondingLabel(at("a", "b"), "elsewhere")).toBe("@a and @b are responding in");
+  });
+});
+
+describe("splitting by where the turn lands", () => {
+  const entry = (handle: string, episode: string | null): Responding => ({ handle, episode, since: T0, until: T0 + 1 });
+  const live = "urn:ioc:mycelium:episode:atlas:live";
+
+  it("keeps room-level turns here and groups thread turns by their thread", () => {
+    const { here, elsewhere } = splitActivity(
+      [entry("growth", null), entry("aligner", "urn:e1"), entry("finance", live), entry("risk", "urn:e1"), entry("ops", "urn:e2")],
+      (episode) => !episode || episode === live,
+    );
+    expect(here.map((r) => r.handle)).toEqual(["growth", "finance"]);
+    expect([...elsewhere.keys()]).toEqual(["urn:e1", "urn:e2"]);
+    expect(elsewhere.get("urn:e1")?.map((r) => r.handle)).toEqual(["aligner", "risk"]);
+  });
+
+  it("inside a thread, only that thread's turns are here", () => {
+    const { here, elsewhere } = splitActivity(
+      [entry("growth", null), entry("aligner", "urn:e1")],
+      (episode) => episode === "urn:e1",
+    );
+    expect(here.map((r) => r.handle)).toEqual(["aligner"]);
+    expect(elsewhere.get("")?.map((r) => r.handle)).toEqual(["growth"]);
   });
 });

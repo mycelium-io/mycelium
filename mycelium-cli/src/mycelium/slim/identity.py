@@ -81,7 +81,7 @@ def _truthy(value: str | None) -> bool:
 def resolve_identity_mode() -> str:
     """The SLIM channel identity mode: ``psk`` (default) or ``signerjwt``.
 
-    An unset or unrecognized value is ``psk`` (the off-by-default posture, #567).
+    An unset or unrecognized value is ``psk`` (the off-by-default posture).
     """
     raw = os.getenv(_MODE_ENV, "").strip().lower()
     return raw if raw in VALID_MODES else MODE_PSK

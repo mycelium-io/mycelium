@@ -78,8 +78,8 @@ describe("useCollapsibleRail", () => {
     expect(rail()).toBe("closed");
   });
 
-  // Deliberately one-way. Which rails are open is the reader's call, and a
-  // window that grew is not them asking for one back — the strip is one click.
+  // Folding only happens on narrowing, never on widening: which rails are
+  // open stays the reader's own choice.
   it("leaves the rail folded when the window grows again", async () => {
     render(<Rail />);
     await windowAt(FOLD_WIDTH - 1);

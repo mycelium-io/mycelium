@@ -91,9 +91,8 @@ describe("<MemoryGraphView />", () => {
   });
 
   it("resolves a node by key rather than a preloaded list", async () => {
-    // The graph payload carries only keys, so every node has to be openable via
-    // a fetch — this is why the rail's "find it in `memories`" lookup, which
-    // silently no-ops for anything past the first page, isn't reused here.
+    // The graph payload carries only keys; every node is opened via a fetch,
+    // not via the rail's paginated `memories` lookup.
     mockGraph.mockResolvedValue(POPULATED);
     mockMemory.mockResolvedValue(memory("context/goal"));
     render(<MemoryGraphView roomName="atlas migration" />);

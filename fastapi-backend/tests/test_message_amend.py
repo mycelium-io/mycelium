@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Additive message edit (issue #814).
+"""Additive message edit.
 
 An amendment is an ``exchange:amend`` message parented on the one it revises;
 nothing in the transcript is rewritten. These cover the two halves: the read-path

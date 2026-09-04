@@ -8,10 +8,10 @@ import { splitOnMatches } from "@/lib/chat-search";
 
 /** The one mark the app draws for a find hit.
  *
- *  Yellow because that is what a marked hit looks like everywhere else a person
- *  reads text, and the accent is already spoken for by links and mentions. The
- *  occurrence the reader is standing on is the same mark, filled: same hue, so
- *  a jump between matches reads as a move rather than as two different things. */
+ *  Yellow, matching how a marked hit reads everywhere else in the app; the
+ *  accent color is reserved for links and mentions. The active occurrence
+ *  uses the same hue, filled, so a jump between matches reads as one mark
+ *  moving rather than two different marks. */
 const MARK = "rounded-[2px] px-px text-text";
 const REST = `${MARK} bg-yellow/25`;
 const ACTIVE = `${MARK} bg-yellow/60 ring-1 ring-yellow/70`;

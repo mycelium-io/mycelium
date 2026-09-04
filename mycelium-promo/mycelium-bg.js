@@ -1,6 +1,6 @@
 // Deterministic mycelium background animation.
-// Adapted from docs/site.js. All Math.random() calls replaced with a seeded
-// mulberry32 PRNG so HyperFrames captures produce identical output every render.
+// Uses a seeded mulberry32 PRNG (no Math.random()) so HyperFrames captures
+// produce identical output every render.
 
 (function () {
   const canvas = document.getElementById('mycelium-bg');

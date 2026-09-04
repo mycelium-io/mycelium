@@ -43,10 +43,10 @@ export function RoomSlimView({
       );
     }
     const notes = railNotes(identity, auth);
-    // Three groups, each on its own line behind a fixed label column: the node
-    // this room rides, the hub's posture, and this room's own channel. The
-    // stats used to run together as one wrapping strip, which put the label
-    // column nowhere and let a group break across lines mid-thought.
+    // Three groups, each on its own line behind a fixed label column: the
+    // node this room rides, the hub's posture, and this room's own channel.
+    // A fixed label column keeps every group's stats aligned and prevents a
+    // group from breaking across lines mid-thought.
     return (
       <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1.5 px-4 py-2.5 text-micro">
         <RailGroup label="Node">

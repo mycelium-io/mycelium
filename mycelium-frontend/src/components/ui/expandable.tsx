@@ -31,11 +31,9 @@ interface Props {
 /**
  * A region that clamps itself when it is long, and only then.
  *
- * The alternative — a fixed-height inner scrollbox — is what a pane reaches for
- * first and is worse in the one way that matters: it puts a second scrollbar
- * inside the first, so the wheel does different things a few pixels apart. This
- * keeps one scroll for the whole column and makes length a thing you opt into
- * reading, the way an issue body works.
+ * Keeps one scroll boundary for the whole column, the way an issue body
+ * works: a fixed-height inner scrollbox would put a second scrollbar inside
+ * the first, so the wheel does different things a few pixels apart.
  *
  * Content shorter than {@link Props.collapsedHeight} renders untouched, with no
  * button and no fade: nothing here appears until there is something to hide.
@@ -45,9 +43,9 @@ export function Expandable({ collapsedHeight, fade = "bg", label, children }: Pr
   const [overflows, setOverflows] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
-  // Measured rather than estimated from the text: the body renders markdown, so
-  // its height is a function of the rendering, not of how many characters came
-  // back. The observer keeps that true as images load and the pane resizes.
+  // Height is measured, not estimated from character count: the body renders
+  // markdown, so height depends on rendering. Re-measures as images load and
+  // the pane resizes.
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;

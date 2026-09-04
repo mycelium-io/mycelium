@@ -4,10 +4,9 @@
 """
 In-process room state: messages, presence, and memory subscriptions.
 
-A deliberately thin, in-memory store. These three
-concerns lived in Postgres tables (``messages``, ``participants``,
-``memory_subscriptions``); with the database gone they move to process memory to
-keep the endpoints answering. They are NOT durable and NOT rich.
+A deliberately thin, in-memory store for messages, presence, and memory
+subscriptions. There is no database, so these live in process memory to keep
+the endpoints answering. They are NOT durable and NOT rich.
 
 Presence liveness rides SLIM channel membership: ``room_channels``
 is authoritative for *who is present*, while the participant rows here remain the

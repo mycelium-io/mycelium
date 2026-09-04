@@ -31,7 +31,7 @@ def test_custody_enabled_under_signerjwt(monkeypatch):
 
 
 def test_custody_stays_off_for_the_retired_spire_tier(monkeypatch):
-    """``spire`` resolves to psk now, so it cannot switch custody on (#668)."""
+    """The retired SPIRE tier does not enable custody."""
     monkeypatch.setenv("MYCELIUM_SLIM_IDENTITY", "spire")
     monkeypatch.delenv("MYCELIUM_CUSTODY_DISABLE", raising=False)
     assert custody.custody_enabled() is False
@@ -127,8 +127,7 @@ def test_delete_store_removes_the_session_dir(tmp_path):
 
 
 def test_safe_names_roundtrip_for_valid_handles():
-    # Store dir names are the filesystem-safe forms; a handle that is a valid SLIM
-    # Name segment (alphanumeric/._-) survives unchanged, so startup restore maps
-    # the dir name straight back to the handle.
+    # A valid SLIM Name segment (alphanumeric/._-) is a valid store dir name
+    # unchanged, so startup restore maps the dir name straight back to it.
     for handle in ("alice", "planner-1", "a.b_c"):
         assert slim_identity._safe(handle) == handle

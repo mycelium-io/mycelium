@@ -83,11 +83,8 @@ describe("<MemoryPageView />", () => {
     expect(screen.getByTestId("task-conversation")).toBeInTheDocument();
   });
 
-  it("opens an agent manifest with a discussion like any other memory (#907)", async () => {
-    // The bug this closes: a manifest page showed no Discussion and said nothing
-    // about why, because the backend kept `agents/` off a threading denylist.
-    // The gate here never knew about namespaces — it reads the binding — so with
-    // the denylist gone the page needs no special case to make the section appear.
+  it("opens an agent manifest with a discussion like any other memory", async () => {
+    // A memory with an episode binding shows Discussion, regardless of namespace.
     vi.mocked(fetchMemory).mockResolvedValue({
       ...MEMORY,
       key: "agents/market-data",

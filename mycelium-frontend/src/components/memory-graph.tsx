@@ -71,23 +71,17 @@ function namespaceOf(key: string): string {
 
 /** Namespace → color, by position in the room's own sorted namespace list.
  *
- *  Not by hashing the name, which was the previous scheme and is wrong for the
- *  job: `context` and `decisions` hash to the same slot, so the two most common
- *  namespaces in any room rendered as the *same* color, indistinguishable and
- *  unfixable by repainting the palette. Assigning by position instead makes a
- *  collision impossible below 9 namespaces, and since the palette is ordered
- *  farthest-apart-first, the handful a real room has land far apart in hue.
+ *  Assigning by position (not by hashing the name) makes a collision
+ *  impossible below 9 namespaces; the palette is ordered farthest-apart-first,
+ *  so the handful a real room has land far apart in hue. Colors aren't stable
+ *  across rooms, and adding a namespace can restripe the ones sorting after
+ *  it — the legend states the mapping on screen, so a color only has to be
+ *  unambiguous within one room's view.
  *
- *  The cost is that colors aren't stable across rooms, and adding a namespace
- *  can restripe the ones sorting after it. That's the right trade: the legend
- *  states the mapping on screen, so a color only has to be unambiguous *here*,
- *  and being memorable across rooms was never something the view promised.
- *
- *  Past 8 namespaces the palette wraps and two of them do share a color. The
- *  legend still names every namespace, so the ambiguity is recoverable by
- *  reading rather than silent; a 9th distinct hue would have to come out of the
- *  arc reserved for `--red`/`--yellow` (broken links, orphan nodes), and colliding
- *  with a state color reads as a worse lie than colliding with a sibling. */
+ *  Past 8 namespaces the palette wraps and two do share a color; the legend
+ *  still names every namespace, so the ambiguity is recoverable by reading.
+ *  A 9th distinct hue would have to come from the arc reserved for
+ *  `--red`/`--yellow` (broken links, orphan nodes). */
 function colorMapFor(namespaces: readonly string[]): Map<string, string> {
   return new Map(namespaces.map((ns, i) => [ns, NAMESPACE_COLORS[i % NAMESPACE_COLORS.length]]));
 }
@@ -374,10 +368,9 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
     };
   }, []);
 
-  // Wheel-zoom is wired natively rather than through `onWheel`: React registers
-  // wheel listeners as passive, so a `preventDefault()` inside a React handler
-  // is a no-op that only earns a console warning — and the browser would keep
-  // its own ctrl+wheel page zoom while you tried to zoom the graph.
+  // Wheel-zoom uses a native, non-passive listener: React registers wheel
+  // listeners as passive, so `preventDefault()` inside a React handler is a
+  // no-op and the browser's own ctrl+wheel page zoom would fire instead.
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;

@@ -110,9 +110,8 @@ def _open_db() -> sqlite3.Connection:
 # The same physical host can show up under multiple labels in the spans
 # table:
 #
-#   - ``oclw-3``  (legacy diagnostics-otel resource attrs from before
-#                  the adapter started normalizing host.name)
-#   - ``oclw3``   (post-reinstall diagnostics-otel, desired)
+#   - ``oclw-3``  (alternate host label from an older diagnostics-otel version)
+#   - ``oclw3``   (current diagnostics-otel resource attribute format)
 #   - ``10.0.50.171`` (spans where host.name wasn't set in
 #                      OTEL_RESOURCE_ATTRIBUTES, so the OTLP collector
 #                      fell back to the source IP)

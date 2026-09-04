@@ -4,10 +4,9 @@
 """Tests for the post-``mycelium up`` image-tag announcement.
 
 Compose silently falls back to ``:latest`` when ``MYCELIUM_IMAGE_TAG`` is
-absent — a UX trap that bit us when running v1.0.13 while believing we were
-on rc3.  ``_announce_image_tag`` surfaces the effective tag (and warns when
-unpinned) so the next person debugging an image mismatch sees it
-immediately instead of digging through ``.env``.
+absent. ``_announce_image_tag`` surfaces the effective tag (and warns when
+unpinned) so a debugging session sees it immediately instead of digging
+through ``.env``.
 """
 
 from __future__ import annotations

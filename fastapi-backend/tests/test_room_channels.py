@@ -232,9 +232,9 @@ def test_pending_herdr_wakes_peeks_without_draining(
 def test_enqueue_wakes_for_mentions_is_the_shared_hook(
     manager: room_channels.RoomChannelManager,
 ) -> None:
-    # The one hook every write path shares: an agent reply that tags @docs enqueues
-    # a wake exactly as a human message would — the agent→agent leg that used to be
-    # missing. A working target is held (surfaces as pending).
+    # The one hook every write path shares: an agent reply that tags @docs
+    # enqueues a wake exactly as a human message would. A working target is
+    # held (surfaces as pending).
     manager.set_herdr_presence("room-a", {"docs": "working", "reviewer": "idle"})
     enq = manager.enqueue_herdr_wakes_for_mentions(
         "room-a", "hey @docs take a look", exclude="reviewer"

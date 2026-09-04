@@ -38,19 +38,22 @@ const say = (id: string, who: string, text: string): StreamStep["message"] => ({
 // The "is responding…" signal the backend raises when a participant starts
 // generating: a presence-style frame, never a message (see `lib/activity.ts`).
 // Each agent line below is preceded by one, and the line itself settles it.
-const responding = (who: string): StreamStep["message"] => ({
+const responding = (who: string, episode: string | null = null): StreamStep["message"] => ({
   type: "agent_activity",
   message_type: "agent_activity",
   handle: who,
   sender_handle: who,
   state: "responding",
-  episode: null,
+  episode,
   ttl_s: 90,
 });
 const pricingTimeline: StreamStep[] = [
   // Round 1
   { delayMs: 1500, message: say("s1", "growth", "Opening ask: $29, 50 seats, annual term — land-and-expand. @finance") },
-  { delayMs: 1600, message: tick("s2", 1, "growth", "propose", { price: "29", seats: "50", term: "annual" }) },
+  // The aligner's turn lands in the negotiation's thread, not the channel, so
+  // the channel names where it is going; the tick that follows settles it.
+  { delayMs: 400, message: responding("aligner", PRICING_EPISODE) },
+  { delayMs: 1200, message: tick("s2", 1, "growth", "propose", { price: "29", seats: "50", term: "annual" }) },
   { delayMs: 600, message: responding("finance") },
   { delayMs: 1600, message: say("s3", "finance", "$29 kills our margin. Counter: $49, same seats.") },
   { delayMs: 1600, message: tick("s4", 1, "finance", "counter", { price: "49", seats: "50", term: "annual" }) },

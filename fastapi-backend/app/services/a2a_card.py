@@ -3,12 +3,12 @@
 
 """Resolve and validate an external agent's A2A Agent Card.
 
-The client leg of the A2A bridge (epic #719). Given a base URL, fetch the
-remote agent's Agent Card and project the handful of fields the room needs to
-register it as a member: display name, advertised skills, and the endpoint the
-seat driver (#714) will call.
+The client leg of the A2A bridge. Given a base URL, fetch the remote agent's
+Agent Card and project the handful of fields the room needs to register it as
+a member: display name, advertised skills, and the endpoint the seat driver
+will call.
 
-Two drift facts, proven by the #712 spike against a live agent, are baked in:
+Two compatibility facts are baked in:
 
 - **Dual-path probe.** The current spec serves the card at
   ``/.well-known/agent-card.json``; deployed agents still serve the older

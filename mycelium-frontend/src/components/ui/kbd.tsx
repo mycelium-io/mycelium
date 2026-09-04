@@ -12,13 +12,12 @@ import { cn } from "@/lib/utils";
 
 /** One keycap language for the whole app. Every surface that names a key —
  *  the cheatsheet, the palettes' shortcut column and their footers, the
- *  composer hint, the status rail — draws it through this, so a key reads the
- *  same wherever it appears and no surface can quietly go back to plain text.
+ *  composer hint, the status rail — draws it through this, so a key reads
+ *  the same wherever it appears.
  *
- *  Mono, because a key is a glyph you press rather than a word you read. The
- *  cap is sized by where it sits, not by emphasis: `xs` is the one that fits
- *  the 24px status rail, `sm` is the default for palettes and hint rows, `md`
- *  for the cheatsheet's own two-column list. */
+ *  Monospace rendering, sized by context: `xs` fits the 24px status rail,
+ *  `sm` is the default for palettes and hint rows, `md` is for the
+ *  cheatsheet's own two-column list. */
 const kbdVariants = cva(
   "inline-flex flex-shrink-0 select-none items-center justify-center rounded border font-mono font-medium leading-none",
   {
