@@ -237,6 +237,14 @@ async def _compile_body(prompt: str, room_name: str) -> str:
             asyncio.to_thread(_pi_complete, prompt, room_name), timeout=COMPILER_TIMEOUT_SECS + 5.0
         )
     except Exception:
+        # Record failures that occurred before PiSession was even invoked (e.g.
+        # session_dir.mkdir() raising), since PiSession's own finally-block
+        # recording never runs in that case.
+        from app.services.metrics import record_llm_call as _record_llm_call
+
+        _record_llm_call(
+            operation="task_compile", model=settings.LLM_MODEL, room=room_name, error=True
+        )
         raise
     elapsed_ms = (time.monotonic() - t0) * 1000  # noqa: F841 — kept for future token tracking
 

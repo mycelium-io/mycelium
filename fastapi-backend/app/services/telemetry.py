@@ -127,16 +127,10 @@ def _init_sdk() -> None:  # pragma: no cover — only runs when OTel is enabled
         )
         return
 
-    import tomllib
-    from pathlib import Path
+    # Best-effort version read via the shared version helper (cached).
+    from app.services.version import read_release as _read_release
 
-    # Best-effort version read from pyproject.toml.
-    _version = "0.0.0"
-    try:
-        _pyproject = Path(__file__).resolve().parent.parent.parent / "pyproject.toml"
-        _version = tomllib.loads(_pyproject.read_text())["project"]["version"]
-    except Exception:
-        pass
+    _version = _read_release()
 
     resource = Resource.create(
         {

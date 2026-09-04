@@ -65,15 +65,10 @@ logger = logging.getLogger(__name__)
 
 
 def _read_release() -> str:
-    """Best-effort release version from pyproject.toml."""
-    try:
-        import tomllib
-        from pathlib import Path
+    """Best-effort release version — delegates to the shared version helper."""
+    from app.services.version import read_release
 
-        _p = Path(__file__).resolve().parent.parent.parent / "pyproject.toml"
-        return tomllib.loads(_p.read_text())["project"]["version"]
-    except Exception:
-        return "unknown"
+    return read_release()
 
 
 # Handles that are never a participant position: the engine itself, the backend
@@ -275,9 +270,13 @@ class AlignerEngine:
 
         _t0 = time.monotonic()
         _outcome = "error"
+        _rounds = [0]  # mutable so mediate() can write rounds back to this scope
         try:
             result = await self.mediate(
-                room, engine_handle=engine_handle, scoped_participants=scoped_participants
+                room,
+                engine_handle=engine_handle,
+                scoped_participants=scoped_participants,
+                _rounds_out=_rounds,
             )
             # Derive outcome from the verdict committed to the channel.
             # ``mediate`` returns the L9 envelope dict from ``_emit_verdict``;
@@ -298,42 +297,44 @@ class AlignerEngine:
         finally:
             self._active.discard(room)
             _ms = (time.monotonic() - _t0) * 1000.0
-            _metrics.record_aligner_run(room=room, duration_ms=_ms, outcome=_outcome)
+            _metrics.record_aligner_run(
+                room=room, rounds=_rounds[0], duration_ms=_ms, outcome=_outcome
+            )
             # Emit a product analytics session event for terminal outcomes.
             # Stalled (no participants) and error outcomes are excluded — they
             # don't represent a coordinated session that reached any conclusion.
             if _outcome in ("converged", "rejected"):
                 try:
                     from app.config import settings as _settings
-                    from app.services.analytics import (
-                        emit as _emit,
-                    )
-                    from app.services.analytics import (
-                        increment_session_count,
-                    )
-                    from app.services.analytics import (
-                        session_event as _session_event,
-                    )
 
-                    _install_id = _settings.TELEMETRY_INSTALL_ID or "unknown"
-                    _release = _read_release()
-
-                    def _emit_session_event() -> None:
-                        """Blocking: file I/O (increment_session_count) + urlopen (emit).
-                        Must run in a thread pool, not on the event loop."""
-                        _count = increment_session_count()
-                        _ev = _session_event(
-                            install_id=_install_id,
-                            release=_release,
-                            adapter_class="",  # aligner is adapter-agnostic
-                            outcome=_outcome,
-                            session_count=_count,
+                    if _settings.TELEMETRY_SEND_PRODUCT_ANALYTICS:
+                        from app.services.analytics import (
+                            emit as _emit,
                         )
-                        _emit(_ev)
+                        from app.services.analytics import (
+                            increment_session_count,
+                        )
+                        from app.services.analytics import (
+                            session_event as _session_event,
+                        )
 
-                    # Fire-and-forget in the thread pool: both increment_session_count
-                    # (fcntl file lock) and emit (urlopen) are blocking I/O.
-                    asyncio.get_running_loop().run_in_executor(None, _emit_session_event)
+                        _install_id = _settings.TELEMETRY_INSTALL_ID or "unknown"
+                        _rel = _read_release()
+                        _oc = _outcome
+
+                        def _emit_session_event() -> None:
+                            """Blocking I/O — runs in the thread pool."""
+                            _count = increment_session_count()
+                            _ev = _session_event(
+                                install_id=_install_id,
+                                release=_rel,
+                                adapter_class="",
+                                outcome=_oc,
+                                session_count=_count,
+                            )
+                            _emit(_ev)
+
+                        asyncio.get_running_loop().run_in_executor(None, _emit_session_event)
                 except Exception:
                     logger.debug("analytics session emit failed (non-fatal)", exc_info=True)
 
@@ -344,6 +345,7 @@ class AlignerEngine:
         room: str,
         engine_handle: str | None = None,
         scoped_participants: list[str] | None = None,
+        _rounds_out: list[int] | None = None,
     ) -> dict[str, Any] | None:
         """Run a NEGMAS SAO negotiation live over SLIM, terminating at agreement.
 
@@ -409,7 +411,7 @@ class AlignerEngine:
             opening_positions=positions,
         )
         try:
-            llm_session = self._open_llm_session(episode)
+            llm_session = self._open_llm_session(episode, room=room)
             positions = await self._clarify_terms(
                 managed, persister, ep, me, episode, topic, positions, llm_session
             )
@@ -460,15 +462,19 @@ class AlignerEngine:
             # wall-clock, so we record one sample (the average) rather than N
             # identical synthetic copies.
             _rounds_run = max(mech.current_step, 1)
+            if _rounds_out is not None:
+                _rounds_out[0] = _rounds_run
             from app.services import metrics as _metrics
 
             _pi_ms = getattr(llm_session, "total_pi_ms", 0.0) - _pi_ms_before
             _mechanism_ms = max(_mech_ms - _pi_ms, 0.0)
+            _run_outcome = "converged" if converged else "rejected"
             _metrics.record_aligner_round(
                 room=room,
                 round_num=_rounds_run,
                 duration_ms=_mech_ms / _rounds_run,
                 duration_excl_llm_ms=_mechanism_ms / _rounds_run,
+                outcome=_run_outcome,
             )
             # Post-hoc satisfaction: how close the agreed outcome sits to
             # each agent's opening ask, and the room minimum — the least-happy
@@ -500,7 +506,7 @@ class AlignerEngine:
         finally:
             await self._manager.close_episode(room)
 
-    def _open_llm_session(self, episode: str) -> Callable[..., str]:
+    def _open_llm_session(self, episode: str, room: str = "") -> Callable[..., str]:
         """Build the mediator's LLM session for this negotiation — always a Pi agent.
 
         Default: a fresh :class:`~app.services.pi_session.PiSession` bound to a
@@ -530,6 +536,7 @@ class AlignerEngine:
             timeout_s=settings.ALIGNER_PI_TIMEOUT_S,
             openshell=settings.ALIGNER_PI_OPENSHELL,
             operation="aligner",
+            room=room,
         )
 
     def _opening_positions(
@@ -701,7 +708,7 @@ class AlignerEngine:
         )
         text = ""
         try:
-            llm_session = self._open_llm_session(l9.episode_urn(room, _new_episode_id()))
+            llm_session = self._open_llm_session(l9.episode_urn(room, _new_episode_id()), room=room)
             text = (await asyncio.to_thread(llm_session, prompt) or "").strip()
         except Exception:
             logger.warning(

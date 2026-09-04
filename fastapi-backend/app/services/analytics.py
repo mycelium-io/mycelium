@@ -85,6 +85,7 @@ _log = logging.getLogger(__name__)
 # worker thread, not the event loop.
 
 _session_lock = _threading.Lock()
+_in_memory_session_count: int = 0  # fallback when MYCELIUM_DATA_DIR is unset
 
 
 def _session_count_path():
@@ -116,6 +117,11 @@ def increment_session_count() -> int:
 
     with _session_lock:
         path = _session_count_path()
+        if path is None:
+            # No DATA_DIR — use the module-level in-memory counter.
+            global _in_memory_session_count
+            _in_memory_session_count += 1
+            return _in_memory_session_count
         count = 0
         lock_fd = None
         try:
