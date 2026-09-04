@@ -18,6 +18,7 @@ import {
   isActivityFrame,
   respondingLabel,
   settleActivity,
+  splitActivity,
   type Responding,
 } from "@/lib/activity";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
@@ -87,23 +88,65 @@ const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...L9_RAISE_UP_TYPES, PING_TY
  */
 const SYSTEM_TYPES = new Set([...L9_RAISE_UP_TYPES, PING_TYPE, NOTICE_TYPE]);
 
-/** "@aligner is responding…" — the breathing monograms of whoever is mid-turn,
- *  drawn under the last message and gone the moment their reply lands. Uses the
- *  lease halo (a poll in flight) rather than a new motion. */
-function RespondingLine({ entries }: { entries: Responding[] }) {
+/** One line of "who is responding": the system-notice scale the channel already
+ *  speaks in, with the dot breathing for a turn in flight. */
+function RespondingRow({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 py-0.5 text-micro text-muted-foreground">
+      <span
+        aria-hidden
+        className="inline-block size-1.5 flex-shrink-0 rounded-full motion-safe:animate-pulse"
+        style={{ background: "var(--accent)" }}
+      />
+      <span className="flex min-w-0 items-center gap-1.5 truncate">{children}</span>
+    </div>
+  );
+}
+
+/** "@aligner is responding…" under the last message, gone the moment the reply
+ *  lands. A turn going into a task's thread does not land here — the channel
+ *  never shows a thread's prose — so that line says where instead, and opens
+ *  it, the way the ping for the reply will: "@aligner is responding in <task>". */
+function RespondingLine({
+  entries,
+  room,
+  threads,
+  onOpenThread,
+}: {
+  entries: Responding[];
+  room: string;
+  threads: Map<string, ThreadOwner>;
+  onOpenThread?: (episode: string) => void;
+}) {
+  const { here, elsewhere } = splitActivity(entries, (episode) => !episode || isLiveEpisode(room, episode));
   return (
     <div
       role="status"
       aria-live="polite"
       data-testid="responding-line"
-      className="flex items-center gap-2.5 px-5 py-2 text-caption text-muted-foreground motion-safe:animate-in motion-safe:fade-in-0"
+      className="mt-3 flex flex-col px-5 py-1 motion-safe:animate-in motion-safe:fade-in-0"
     >
-      <div className="flex w-7 flex-shrink-0 -space-x-1.5">
-        {entries.slice(0, 3).map((r) => (
-          <Monogram key={r.handle} handle={r.handle} className="size-5 text-[9px]" presence="lease" mutePresence />
-        ))}
-      </div>
-      <span className="truncate">{respondingLabel(entries)}</span>
+      {here.length > 0 && <RespondingRow>{respondingLabel(here)}</RespondingRow>}
+      {[...elsewhere.entries()].map(([thread, group]) => {
+        const shortId = threadShortId(thread) ?? "thread";
+        const title = threads.get(thread)?.title ?? shortId;
+        return (
+          <RespondingRow key={thread}>
+            <span className="truncate">{respondingLabel(group, "elsewhere")}</span>
+            <button
+              type="button"
+              onClick={() => onOpenThread?.(thread)}
+              disabled={!onOpenThread}
+              title={thread}
+              aria-label={`Open thread ${shortId}`}
+              className="inline-flex max-w-[18rem] items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default"
+            >
+              <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
+              <span className="truncate">{title}</span>
+            </button>
+          </RespondingRow>
+        );
+      })}
     </div>
   );
 }
@@ -1145,7 +1188,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                 </div>
               );
             })}
-          {responding.length > 0 && <RespondingLine entries={responding} />}
+          {responding.length > 0 && (
+            <RespondingLine entries={responding} room={roomName} threads={threads} onOpenThread={onOpenThread} />
+          )}
         </div>
         )}
       </ScrollArea>
