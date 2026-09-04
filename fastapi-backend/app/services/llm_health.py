@@ -382,9 +382,6 @@ async def probe_completion() -> LLMHealthResult:
         "key_required": config_result.key_required,
     }
 
-    from app.services.metrics import record_llm_call
-
-    t0 = time.monotonic()
     probe_error = False
     try:
         await asyncio.wait_for(asyncio.to_thread(_pi_ping, model), timeout=_PROBE_TIMEOUT + 5)
@@ -398,16 +395,13 @@ async def probe_completion() -> LLMHealthResult:
             remediation="Check network connectivity from the backend container",
         )
     except Exception as exc:  # a probe classifies every failure, never propagates
-        probe_error = True
+        probe_error = True  # noqa: F841
         result = _classify_pi_error(exc, provider, base)
     finally:
-        elapsed_ms = (time.monotonic() - t0) * 1000
-        record_llm_call(
-            operation="health_probe",
-            model=model,
-            duration_ms=elapsed_ms,
-            error=probe_error,
-        )
+        # PiSession inside _pi_ping already records via record_llm_call(operation="health_probe").
+        # This outer timing wrapper only adds elapsed wall-clock to the call that was already
+        # recorded, causing a double-count. Remove it — PiSession is the single source.
+        pass
 
     _cached_completion = result
     _cached_completion_at = now

@@ -690,15 +690,14 @@ def _run_telemetry_disclosure(api_url: str, *, compose_path: Path) -> None:  # n
         # Fire the install event. The destination is not yet set (#937) so this
         # is a no-op until the destination URL is configured, but the opt-in is
         # persisted for when it is.
-        # Use the canonical analytics module (install_event + emit) rather than
-        # a hand-rolled POST so the PROHIBITED_FIELDS guard and the
-        # localhost/host.docker.internal HTTP exception are applied consistently.
         try:
+            import json as _json
             import platform
+            import urllib.request as _urllib
+            from datetime import UTC as _UTC
+            from datetime import datetime as _dt
+            from urllib.parse import urlparse as _urlparse
 
-            # The analytics module lives in the backend package; the CLI ships
-            # its own minimal re-implementation.  Use a local shim that delegates
-            # to the same logic paths rather than duplicating them.
             from mycelium.config import MyceliumConfig as _MC
 
             def _release() -> str:
@@ -712,24 +711,73 @@ def _run_telemetry_disclosure(api_url: str, *, compose_path: Path) -> None:  # n
             _config = _MC.load() if _MC.get_global_config_path().exists() else _MC()
             _dest = (_config.telemetry.analytics_destination or "").strip()
             _install_id = config.telemetry.install_id or ""
-            if _dest and _install_id:
-                # Reuse the backend's emit() for consistent PROHIBITED_FIELDS
-                # stripping and the localhost HTTP exception.  Import path is
-                # available when the CLI is installed alongside the backend in
-                # a dev checkout; falls back to a no-op otherwise.
-                try:
-                    from app.services.analytics import emit as _be_emit
-                    from app.services.analytics import install_event as _be_install_event
 
-                    _be_emit(
-                        _be_install_event(
-                            install_id=_install_id,
-                            release=_release(),
-                            platform=platform.system() or "unknown",
-                        )
+            if _dest and _install_id:
+                # Validate destination: must be HTTPS or a known-local address.
+                try:
+                    _host = _urlparse(_dest).hostname or ""
+                except Exception:
+                    _host = ""
+                _local = {"localhost", "127.0.0.1", "host.docker.internal"}
+                _is_https = _dest.startswith("https://")
+                _is_local = _dest.startswith("http://") and _host in _local
+                if _is_https or _is_local:
+                    # Prohibited fields — mirrors app/services/analytics.py PROHIBITED_FIELDS.
+                    _prohibited = frozenset(
+                        {
+                            "name",
+                            "handle",
+                            "email",
+                            "username",
+                            "room",
+                            "room_name",
+                            "task",
+                            "task_body",
+                            "prompt",
+                            "reply",
+                            "content",
+                            "ip",
+                            "ip_address",
+                            "hostname",
+                            "machine_id",
+                        }
                     )
-                except ImportError:
-                    pass  # CLI-only install without backend package; no-op
+                    _payload = {
+                        "event": "mycelium.install",
+                        "install_id": _install_id,
+                        "release": _release(),
+                        "ts": _dt.now(_UTC).isoformat(),
+                        "platform": platform.system() or "unknown",
+                    }
+                    _payload = {k: v for k, v in _payload.items() if k not in _prohibited}
+                    if "/loki/" in _dest:
+                        import time as _time
+
+                        _body = _json.dumps(
+                            {
+                                "streams": [
+                                    {
+                                        "stream": {
+                                            "service": "mycelium-analytics",
+                                            "event": "mycelium.install",
+                                        },
+                                        "values": [
+                                            [str(int(_time.time() * 1e9)), _json.dumps(_payload)]
+                                        ],
+                                    }
+                                ]
+                            }
+                        ).encode()
+                    else:
+                        _body = _json.dumps(_payload).encode()
+                    _req = _urllib.Request(
+                        _dest,
+                        data=_body,
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with _urllib.urlopen(_req, timeout=5) as _r:  # noqa: S310 — dest validated above
+                        pass
         except Exception:
             pass
     else:

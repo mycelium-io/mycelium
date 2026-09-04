@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import threading
+from collections import deque
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -30,7 +31,10 @@ _log = logging.getLogger(__name__)
 # OTel SDK is active (TELEMETRY_ENABLED=true); returns a no-op stub otherwise.
 # Kept here so every record_* function can write to OTel and the in-process
 # store in one call without importing telemetry.py at module load time.
+# Guarded by _otel_lock (separate from _lock so metric writes and OTel
+# instrument creation don't compete for the same lock).
 _otel_instruments: dict[str, object] = {}
+_otel_lock = threading.Lock()
 
 
 def _otel_histogram(name: str, unit: str = "ms", description: str = ""):
@@ -38,18 +42,19 @@ def _otel_histogram(name: str, unit: str = "ms", description: str = ""):
 
     Returns None when the SDK is off so callers can guard cheaply.
     """
-    if name in _otel_instruments:
-        return _otel_instruments[name]
-    try:
-        from app.services.telemetry import get_meter
+    with _otel_lock:
+        if name in _otel_instruments:
+            return _otel_instruments[name]
+        try:
+            from app.services.telemetry import get_meter
 
-        meter = get_meter("mycelium.metrics")
-        inst = meter.create_histogram(name, unit=unit, description=description)
-        _otel_instruments[name] = inst
-        return inst
-    except Exception:
-        _otel_instruments[name] = None  # cache the miss, don't retry
-        return None
+            meter = get_meter("mycelium.metrics")
+            inst = meter.create_histogram(name, unit=unit, description=description)
+            _otel_instruments[name] = inst
+            return inst
+        except Exception:
+            _otel_instruments[name] = None  # cache the miss, don't retry
+            return None
 
 
 def _otel_record(
@@ -101,11 +106,11 @@ _counters: dict[str, dict[str, int | float]] = {}
 _histograms: dict[str, dict] = {}
 _started_at: str = datetime.now(UTC).isoformat()
 
-# Bounded sample lists for percentile computation (p95 for /health degradation
-# thresholds and /api/observability).  Capped at 1000 values per histogram so
-# memory is bounded regardless of uptime.
+# Bounded sample deques for percentile computation (p95 for /health degradation
+# thresholds and /api/observability).  Using deque(maxlen=1000) so append+evict
+# is O(1) rather than the O(n) list.pop(0) it replaced.
 _SAMPLE_CAP = 1000
-_samples: dict[str, list[float]] = {}
+_samples: dict[str, deque] = {}
 
 
 def _zero_histogram() -> dict:
@@ -127,14 +132,9 @@ def _record_histogram(name: str, value: float) -> None:
             h["min"] = value
         if h["max"] is None or value > h["max"]:
             h["max"] = value
-        # Bounded sample list for percentile computation.
-        sl = _samples.setdefault(name, [])
-        if len(sl) < _SAMPLE_CAP:
-            sl.append(value)
-        else:
-            # Evict the oldest value in a ring-buffer style (simple and cheap).
-            sl.pop(0)
-            sl.append(value)
+        # Bounded sample deque for percentile computation — append is O(1).
+        dq = _samples.setdefault(name, deque(maxlen=_SAMPLE_CAP))
+        dq.append(value)
 
 
 # ── Public API ───────────────────────────────────────────────────────────
@@ -481,17 +481,21 @@ def record_http_request(
             _record_histogram(f"http.request_ms.{route}", duration_ms)
 
 
-def _p95_unlocked(sl: list[float]) -> float | None:
+def _p95_unlocked(sl) -> float | None:
     """Compute the p95 of *sl* without acquiring ``_lock`` (caller holds it).
 
     Returns ``None`` when fewer than 5 samples are present.  Extracted so
     ``snapshot()`` and ``p95()`` share one implementation and ``snapshot()``
     never tries to re-acquire the non-reentrant ``_lock`` it already holds.
+
+    Uses the nearest-rank definition: index = ceil(n * 0.95) - 1 (0-based).
     """
+    import math
+
     if len(sl) < 5:
         return None
     sorted_sl = sorted(sl)
-    idx = max(0, int(len(sorted_sl) * 0.95) - 1)
+    idx = min(len(sorted_sl) - 1, math.ceil(len(sorted_sl) * 0.95) - 1)
     return sorted_sl[idx]
 
 
