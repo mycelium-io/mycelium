@@ -559,3 +559,85 @@ def test_collect_presence_maps_live_panes_per_room(
     assert _collect_presence(bridge, room_filter="ops") == {
         "ops": {"ci": {"status": "blocked", "title": "Fix CI"}}
     }
+
+
+# ── workspace resolution ─────────────────────────────────────────────────────
+#
+# `--workspace` is the one selector a person types from memory, and the id (w4)
+# is a counter they have never seen. These pin the label as the primary key and,
+# more importantly, pin that a miss RAISES: the old behavior bound the bad
+# selector, matched zero agents, and reported a successful sync of nobody.
+
+_WORKSPACES = [
+    {"workspace_id": "w1", "label": "TOME / Platform Engineering"},
+    {"workspace_id": "w4", "label": "Mycelium"},
+    {"workspace_id": "w5", "label": "kona"},
+]
+
+
+def _ws_bridge(workspaces: list[dict] | None = None) -> HerdrBridge:
+    listing = _WORKSPACES if workspaces is None else workspaces
+    return HerdrBridge(
+        runner=ScriptedRunner({"workspace list": _proc(_ok({"workspaces": listing}))})
+    )
+
+
+def test_resolve_workspace_by_label() -> None:
+    assert _ws_bridge().resolve_workspace("Mycelium") == "w4"
+
+
+def test_resolve_workspace_label_is_case_insensitive() -> None:
+    assert _ws_bridge().resolve_workspace("mycelium") == "w4"
+    assert _ws_bridge().resolve_workspace("KONA") == "w5"
+
+
+def test_resolve_workspace_still_accepts_an_id() -> None:
+    assert _ws_bridge().resolve_workspace("w4") == "w4"
+
+
+def test_resolve_workspace_does_not_match_a_substring() -> None:
+    """Binding enrolls every agent in the workspace, so a short selector must
+    not quietly reach a bigger workspace than the caller pictured."""
+    bridge = _ws_bridge(
+        [
+            {"workspace_id": "w1", "label": "demo"},
+            {"workspace_id": "w2", "label": "demo overflow"},
+        ]
+    )
+    assert bridge.resolve_workspace("demo") == "w1"
+    with pytest.raises(HerdrError, match="no herdr workspace matches"):
+        bridge.resolve_workspace("over")
+
+
+def test_resolve_workspace_rejects_two_workspaces_sharing_a_label() -> None:
+    """Now that the match is exact, this is the only way a label is ambiguous."""
+    bridge = _ws_bridge(
+        [
+            {"workspace_id": "w1", "label": "demo"},
+            {"workspace_id": "w2", "label": "demo"},
+        ]
+    )
+    with pytest.raises(HerdrError, match="more than one"):
+        bridge.resolve_workspace("demo")
+
+
+def test_resolve_workspace_raises_on_a_miss_and_names_the_options() -> None:
+    with pytest.raises(HerdrError, match="Mycelium") as excinfo:
+        _ws_bridge().resolve_workspace("myclium")  # typo
+    assert "no herdr workspace matches" in str(excinfo.value)
+
+
+def test_resolve_workspace_raises_when_nothing_is_open() -> None:
+    with pytest.raises(HerdrError, match="no open workspaces"):
+        _ws_bridge([]).resolve_workspace("Mycelium")
+
+
+def test_registry_unbind_removes_only_the_named_workspace(isolated_home: Path) -> None:
+    """`sync` can create a binding, so something has to be able to remove one."""
+    registry = HerdrRegistry()
+    registry.bind("w4", "demo-agents")
+    registry.bind("w1", "platform")
+
+    assert registry.unbind("w4") is True
+    assert registry.bindings() == {"w1": "platform"}
+    assert registry.unbind("w4") is False

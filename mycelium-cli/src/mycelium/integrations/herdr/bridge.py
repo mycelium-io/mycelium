@@ -333,6 +333,51 @@ class HerdrBridge:
             if isinstance(t, dict) and t.get("tab_id")
         }
 
+    # ── workspace surface ────────────────────────────────────────────────────
+
+    def list_workspaces(self) -> list[dict]:
+        """Live workspaces as dicts (``workspace_id``, ``label``, ``tab_count``, …)."""
+        result = self._run_json(["workspace", "list"]).get("result", {})
+        workspaces = result.get("workspaces", [])
+        return workspaces if isinstance(workspaces, list) else []
+
+    def resolve_workspace(self, selector: str) -> str:
+        """Return the ``workspace_id`` that ``selector`` names.
+
+        The label is what a person actually knows — they typed it when they named
+        the workspace ("Mycelium") — while the id (``w4``) is a counter they have
+        no reason to have seen. So the label matches first, and an id is still
+        accepted for a script that already carries one.
+
+        The match on a label is exact (bar case) rather than a substring: binding
+        enrolls every live agent in the workspace, so a short selector quietly
+        reaching a bigger workspace than the caller pictured is worse than being
+        made to type the name out.
+
+        Raising on a miss is the point. An unresolvable selector used to bind
+        cleanly and then match zero live agents, so the run reported success and
+        enrolled nobody, which reads as herdr being broken rather than as a typo.
+        """
+        workspaces = self.list_workspaces()
+        if not workspaces:
+            raise HerdrError("herdr reports no open workspaces")
+
+        wanted = selector.strip()
+        folded = wanted.casefold()
+
+        exact = [w for w in workspaces if _ws_label(w).casefold() == folded]
+        if len(exact) == 1:
+            return _ws_id(exact[0])
+        if exact:
+            raise HerdrError(_ambiguous_workspace(wanted, exact))
+
+        for w in workspaces:
+            if _ws_id(w) == wanted:
+                return _ws_id(w)
+
+        known = ", ".join(f"{_ws_label(w)!r} ({_ws_id(w)})" for w in workspaces)
+        raise HerdrError(f"no herdr workspace matches {wanted!r}. Open workspaces: {known}")
+
     def get_agent(self, target: str) -> dict | None:
         """One agent's live state, or ``None`` if no agent occupies ``target``."""
         try:
@@ -406,6 +451,19 @@ class HerdrBridge:
             detail=f"woke agent at {mapping.pane}" + (f" (settled: {settled})" if settled else ""),
             raw=result,
         )
+
+
+def _ws_id(workspace: dict) -> str:
+    return str(workspace.get("workspace_id") or "")
+
+
+def _ws_label(workspace: dict) -> str:
+    return str(workspace.get("label") or "")
+
+
+def _ambiguous_workspace(selector: str, matches: list[dict]) -> str:
+    names = ", ".join(f"{_ws_label(w)!r} ({_ws_id(w)})" for w in matches)
+    return f"{selector!r} matches more than one herdr workspace: {names}. Use the id."
 
 
 def _extract_error(stderr: str | None) -> str | None:
