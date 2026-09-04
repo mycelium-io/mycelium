@@ -331,3 +331,61 @@ async def test_a_failing_pi_call_still_ends_its_signal():
         bus.unsubscribe(room_channel(_ROOM), queue)
 
     assert states == ["responding", "done"]
+
+
+# ── the roster the mediator brokers between ──────────────────────────────────
+
+
+def _register(room: str, handle: str, **manifest: object) -> None:
+    """Write an ``agents/<handle>`` manifest, the way `agent create` does."""
+    import yaml
+
+    from app.services.filesystem import get_room_dir, write_memory_file
+
+    body = yaml.safe_dump({"adapter": "claude_code", **manifest})
+    write_memory_file(get_room_dir(room), f"agents/{handle}", body, created_by="test")
+
+
+def test_roster_is_the_registered_agents_not_who_is_connected(tmp_path, monkeypatch) -> None:
+    """The regression this exists for: agents parked in herdr panes (or simply
+    between turns) hold no SLIM socket and no lease, so ``manager.members()``
+    reports an empty room while ``agent ls`` shows a full one. Brokering is not
+    delivery, so the roster must come from the registry, not from connectivity —
+    otherwise a summon in a herdr-only room could never reach two participants.
+    """
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    room = "roster-room"
+    _register(room, "reviewer")
+    _register(room, "pm")
+
+    managed = FakeManaged(room, "mycelium", FakeChannel(), FakePersister())
+    engine = _engine(FakeManager(managed, []))  # nobody connected at all
+
+    assert engine._roster(room, "aligner") == ["pm", "reviewer"]
+
+
+def test_roster_keeps_a_connected_agent_that_was_never_registered(tmp_path, monkeypatch) -> None:
+    """`await`/`respond` join a room without `agent create`, so the registry is
+    not the whole story either — the roster is the union of both."""
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    room = "union-room"
+    _register(room, "reviewer")
+
+    managed = FakeManaged(room, "mycelium", FakeChannel(), FakePersister())
+    engine = _engine(FakeManager(managed, ["ad-hoc", "reviewer"]))  # one has no manifest
+
+    assert engine._roster(room, "aligner") == ["ad-hoc", "reviewer"]
+
+
+def test_roster_excludes_engines_and_the_summoned_handle(tmp_path, monkeypatch) -> None:
+    """An engine is never a party to the deal it brokers."""
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    room = "engine-room"
+    _register(room, "reviewer")
+    _register(room, "aligner", adapter="engine", kind="aligner")
+    _register(room, "synthesizer", adapter="engine", kind="synthesizer")
+
+    managed = FakeManaged(room, "mycelium", FakeChannel(), FakePersister())
+    engine = _engine(FakeManager(managed, []))
+
+    assert engine._roster(room, "aligner") == ["reviewer"]
