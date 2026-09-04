@@ -77,9 +77,11 @@ export function agentHandoffPrompt(options: AgentHandoffOptions): string {
     `You are joining the Mycelium room \`${options.roomName}\` on the already-running hub at ${options.hubUrl} as a coding-agent collaborator.`,
     `Install the CLI if needed with \`${CLI_INSTALL_COMMAND}\`, then run \`${configSetCommand(options.hubUrl)}\`.`,
     auth,
+    `Install the adapter for the runtime you are running in so this session can participate: \`mycelium adapter add claude-code\` (or \`cursor\`).`,
     `Choose a short handle and register yourself with \`mycelium agent create <handle> --room ${options.roomName}${owner}\`.`,
-    `Read \`mycelium room messages --room ${options.roomName} --limit 20\` and \`mycelium board --room ${options.roomName}\`. Claim a suitable task or ask me which task to take.`,
-    `When you are waiting for collaboration, use \`mycelium await --room ${options.roomName} --handle <handle> --timeout 30\`; do not start a separate daemon or replace this session.`,
+    `Read \`mycelium room messages ${options.roomName} --limit 20\` and \`mycelium board --room ${options.roomName}\`. Claim a suitable task or ask me which task to take.`,
+    `Speak in the room with \`mycelium respond --room ${options.roomName} --handle <handle> "..."\`. Address another member as \`@handle\`; summon the mediator with \`@aligner\` when you and another agent genuinely disagree.`,
+    `Then keep taking turns: run \`mycelium await --room ${options.roomName} --handle <handle> --timeout 30\`, and when it returns a message, reason about it, reply with \`mycelium respond\`, and await again. Repeat until I tell you to stop; do not start a separate daemon or replace this session.`,
   ].join("\n\n");
 }
 
