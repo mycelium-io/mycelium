@@ -30,7 +30,7 @@
  * file so no copy can drift alone.
  */
 
-import { fieldAsNumber, fieldAsString, ownerOf } from "./fields";
+import { fieldAsList, fieldAsNumber, fieldAsString, ownerOf } from "./fields";
 import type { LiveItem } from "./item";
 
 export const ASSIGNMENT_FIELD = "assignment";
@@ -96,6 +96,30 @@ export function reservedIn(names: string[]): string[] {
 
 /** A row is blocked because it names a blocker. Nothing stores the word. */
 export const BLOCKED_FIELD = "blocked_by";
+
+/**
+ * The relation a row waits on, and the derived field that says what it still
+ * waits on. A `work/` row whose `depends-on` names a live row that is not
+ * settled is waiting; the projection reads that off the other rows on the
+ * board and stores nothing, the way a lease's expiry is read off the clock.
+ */
+export const DEPENDENCY_RELATION = "depends-on";
+export const WAITING_FIELD = "waiting_on";
+export const SETTLED_STATUSES = ["resolved", "dismissed"] as const;
+
+/** Done, as far as a row waiting on this one is concerned. */
+export function isSettled(item: LiveItem): boolean {
+  const status = fieldAsString(item, "status") ?? "";
+  return (
+    (SETTLED_STATUSES as readonly string[]).includes(status) ||
+    fieldAsString(item, ASSIGNMENT_FIELD) === "resolved"
+  );
+}
+
+/** The rows this one still waits on, as the projection wrote them. */
+export function waitingOnRows(item: LiveItem): string[] {
+  return fieldAsList(item, WAITING_FIELD);
+}
 
 /**
  * When the holder last said it was still on this. A lease with no stamp of its

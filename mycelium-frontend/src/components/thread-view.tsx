@@ -7,8 +7,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Eye, Maximize2, MessageSquare, Pencil, X } from "lucide-react";
 import { memoryHref } from "@/lib/memory-routes";
-import { useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
+import { useRoomEpisodes, useRoomMembers, useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
 import { threadShortId } from "@/lib/threads";
+import { FlowPanel } from "@/components/flow-panel";
 import { MemoryDetail } from "@/components/memory-detail";
 import { MemoryEditor } from "@/components/memory-editor";
 import { RoomChatBox } from "@/components/room-chat-box";
@@ -66,6 +67,17 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
   // comments. Absent for a negotiation thread bound to no row.
   const { memories } = useRoomMemories(roomName);
   const task = memories.find(m => m.episode === target.episode) ?? null;
+  // A run the conductor walked in this thread left a record carrying its
+  // flow: the latest one is drawn at the top of the pane, the earlier ones are
+  // reachable from it. The floor held on the thread is a live fact off the
+  // roster. Nothing extra is drawn for a thread nobody has coordinated in.
+  const { episodes } = useRoomEpisodes(roomName);
+  const runs = episodes
+    .filter(e => e.flow && (e.within === target.episode || e.episode === target.episode))
+    .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""));
+  const run = runs[0] ?? null;
+  const { floors } = useRoomMembers(roomName);
+  const floor = floors.find(f => f.episode === target.episode) ?? null;
   const { principal } = useCurrentUser();
   const revalidate = useRoomRevalidate(roomName);
   const shortId = threadShortId(target.episode) ?? "thread";
@@ -186,6 +198,11 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
         // everywhere in the pane. A negotiation thread bound to no row is all
         // conversation.
         <ScrollArea className="min-h-0 flex-1">
+          {run && (
+            <div className="border-b border-border">
+              <FlowPanel episode={run} floor={floor} earlier={runs.slice(1)} onOpenMemory={onOpenMemory} />
+            </div>
+          )}
           {task && (
             <div className="border-b border-border">
               <MemoryDetail

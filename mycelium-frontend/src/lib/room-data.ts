@@ -41,9 +41,12 @@ import {
   type NetworkStatus,
   type PresenceMember,
   type Room,
+  type RoomFloor,
+  type RoomPresence,
   type RoomMessage,
   type Skill,
 } from "@/lib/api";
+import { floorsByHandle } from "@/lib/floors";
 import { latestPreview } from "@/lib/room-preview";
 import { memoryTitle } from "@/lib/memory-preview";
 import { useCurrentUser } from "@/components/current-user";
@@ -110,7 +113,7 @@ const NO_STATUS: RoomStatus = {
 };
 const NO_ROOMS: Room[] = [];
 const NO_AGENTS: AgentSummary[] = [];
-const NO_MEMBERS: PresenceMember[] = [];
+const NO_PRESENCE: RoomPresence = { members: [], floors: [] };
 const NO_MESSAGES: RoomMessage[] = [];
 const NO_POSTERS: string[] = [];
 const NO_MEMORIES: Memory[] = [];
@@ -199,12 +202,13 @@ export function useRoomAgents(room: string, opts: RoomQueryOptions = {}) {
   return { agents: data, loading, refresh };
 }
 
-/** Live presence: SLIM-connected members plus server-held `await` leases. */
+/** Live presence: SLIM-connected members plus server-held `await` leases, and
+ *  the floors held in the room's threads right now. */
 export function useRoomMembers(room: string, opts: RoomQueryOptions = {}) {
   const { data, loading, refresh } = useRoomQuery(
-    room, "members", fetchRoomMembers, NO_MEMBERS, POLL.members, opts,
+    room, "members", fetchRoomMembers, NO_PRESENCE, POLL.members, opts,
   );
-  return { members: data, loading, refresh };
+  return { members: data.members, floors: data.floors, loading, refresh };
 }
 
 /** Handles that have broadcast — reachable by `@` even when not present. */
@@ -453,6 +457,8 @@ export interface RoomRoster {
   people: RosterPerson[];
   /** handle (lowercased) → presence, for badging a row live or awaiting. */
   presence: Map<string, PresenceMember>;
+  /** handle (lowercased) → the floor it holds or was given, for badging whose turn it is. */
+  floors: Map<string, RoomFloor>;
   loading: boolean;
   refresh: () => void;
 }
@@ -464,7 +470,7 @@ export interface RoomRoster {
  */
 export function useRoomRoster(room: string, opts: RoomQueryOptions = {}): RoomRoster {
   const { agents, loading, refresh: refreshAgents } = useRoomAgents(room, opts);
-  const { members, refresh: refreshMembers } = useRoomMembers(room, opts);
+  const { members, floors: floorList, refresh: refreshMembers } = useRoomMembers(room, opts);
   const { posters, refresh: refreshPosters } = useRoomPosters(room, opts);
   const { principal } = useCurrentUser();
   const me = principal.trim().toLowerCase();
@@ -473,6 +479,7 @@ export function useRoomRoster(room: string, opts: RoomQueryOptions = {}): RoomRo
     () => new Map(members.map((m) => [m.handle.toLowerCase(), m])),
     [members],
   );
+  const floors = useMemo(() => floorsByHandle(floorList), [floorList]);
 
   const people = useMemo(() => {
     const agentHandles = new Set(agents.map((a) => a.handle.toLowerCase()));
@@ -516,5 +523,5 @@ export function useRoomRoster(room: string, opts: RoomQueryOptions = {}): RoomRo
     refreshPosters();
   }, [refreshAgents, refreshMembers, refreshPosters]);
 
-  return { agents, people, presence, loading, refresh };
+  return { agents, people, presence, floors, loading, refresh };
 }

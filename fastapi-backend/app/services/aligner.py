@@ -51,7 +51,7 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
-from app.services import activity, l9, l9_episode
+from app.services import activity, l9, l9_episode, turns
 from app.services.agent_registry import norm_handle
 from app.services.room_channels import BACKEND_AGENT
 
@@ -70,15 +70,11 @@ logger = logging.getLogger(__name__)
 # moderator, and the system actor the backend signs its own envelopes with.
 _NON_PARTICIPANTS = frozenset({BACKEND_AGENT, l9.SYSTEM_ACTOR_ID})
 
-# The mediator addresses exactly ONE agent per turn via the L9 ``recipients``
-# field. Its prompt *text*, though, embeds the broker's summary which names the
-# other participants — and the connector's ``should_wake`` also wakes on a raw
-# ``@handle`` token in the human-facing text. Left as-is, every turn would
-# spuriously wake *every* named agent, doubling cold-spawns and serializing the
-# connectors until the addressed agent's real reply misses the round window (the
-# turn then falls back to a reject). Neutralizing the ``@`` means only the
-# L9-addressed agent wakes; the names stay readable.
-_AT_MENTION = re.compile(r"@(?=\w)")
+# The mediator addresses exactly ONE agent per turn; the sigil-stripping that
+# keeps the other names in its prose from waking anyone lives with the turn
+# primitive (:mod:`app.services.turns`). Kept under this name for the engines
+# that strip a summon's ``@`` the same way.
+_AT_MENTION = turns.MENTION_SIGIL
 
 # Round number stamped on the pre-negotiation clarifying tick. SAO steps are
 # NEGMAS's own, counted from 1, so round 0 marks the turn that ran before the
@@ -585,41 +581,19 @@ class AlignerEngine:
         what the tick asks for: an SAO ``position``, or a ``clarify`` definition on
         the pre-negotiation round.
         """
-        before = len(persister.log.records)
-        env = l9.build_envelope(
-            kind=l9.Kind.exchange,
-            episode=episode,
+        return await turns.addressed_turn(
+            managed,
+            persister,
             sender=sender,
-            recipients=[handle],
+            handle=handle,
+            episode=episode,
             topic=topic,
-            payload_type="tick",
+            prompt=prompt,
             payload_data={"round": round_n, "action": action},
+            is_reply=self._is_position,
+            timeout_s=self._round_timeout_s,
+            poll_interval_s=self._poll_interval_s,
         )
-        # Neutralize ``@`` tokens so the broker's summary (which names the other
-        # agents) doesn't spuriously wake them — only the L9 ``recipients=[handle]``
-        # above should wake, one agent per turn.
-        safe_prompt = _AT_MENTION.sub("", prompt)
-        # Record the mediator's turn-prompt into the room transcript + UI bus, the
-        # same way ``publish_human`` records a human's message. Without this the
-        # negotiation is invisible in the room (the prompt only rides SLIM), so
-        # humans can't follow along and debugging falls back to backend logs. The
-        # persister de-dupes by id, so a SLIM loop-back to the sender is harmless.
-        try:
-            await managed.post(env, safe_prompt, raise_on_send_failure=True)
-        except Exception:
-            logger.warning("mediator failed to prompt @%s (step %d)", handle, round_n)
-            return ""
-
-        pending = _norm(handle)
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + self._round_timeout_s
-        while True:
-            for record in persister.log.records[before:]:
-                if self._is_position(record) and _norm(record.sender) == pending:
-                    return record.content.get("content") or ""
-            if loop.time() >= deadline:
-                return ""
-            await asyncio.sleep(self._poll_interval_s)
 
     async def _explain_stall(
         self, managed: ManagedRoomChannel, room: str, sender: str, participants: list[str]

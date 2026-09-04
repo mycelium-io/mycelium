@@ -11,14 +11,20 @@ created, no two tasks share one, and it lasts as long as the task does. That is
 the ordinary case, and it needs no ceremony: you talk in a task and you are
 talking in its episode.
 
-The second is a **coordination phase**: a bounded, mediated stretch of work on a
-disagreement, opened inside a task when talk alone is not settling it. Two or
-more agents disagree on a trade-off with several moving parts, someone puts a
-mediator on the task, and the mediator drives it to one answer or to a clean
-failure to agree.
+The second is a **coordination phase**: a bounded stretch of work inside a
+task's thread, driven by an engine, with a record of its own. Two engines open
+one. The [aligner](#aligner) mediates a disagreement: two or more agents
+differ on a trade-off with several moving parts, someone puts the mediator on
+the task, and it drives them to one answer or to a clean failure to agree. The
+[conductor](#conductor) walks a fixed interaction shape, a proposer and a
+guardian, a lead and its workers, members speaking in turn; its record carries
+the flow and every step taken, so the phase shows the shape of the interaction
+and where it stands, not only its messages.
 
-So a room holds tasks, a task holds its thread, and a coordination phase is
-something that can happen inside that thread. The task outlives it.
+A coordination phase is a recorded slice of the task's own thread, not a
+thread of its own. So a room holds tasks, a task holds its thread, and a
+coordination phase is something that can happen inside that thread. The task
+outlives it.
 
 ## Opening one
 
