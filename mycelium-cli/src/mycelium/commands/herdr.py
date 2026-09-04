@@ -132,6 +132,54 @@ def herdr_unmap(
         raise typer.Exit(1) from None
 
 
+@doc_ref(
+    usage="mycelium herdr unbind <workspace>",
+    desc="Remove a workspace → room binding so sync stops reconciling it.",
+    group="agent",
+)
+@app.command("unbind")
+def herdr_unbind(
+    ctx: typer.Context,
+    workspace: str = typer.Argument(..., help="herdr workspace, by label or id."),
+) -> None:
+    """Forget a ``workspace -> room`` binding.
+
+    The counterpart to ``sync --workspace … --room …``. Binding a workspace
+    enrolls every live agent in it, so the way back out has to be a command
+    rather than a hand-edit of the registry file.
+    """
+    try:
+        bridge = _bridge()
+        bindings = bridge.registry.bindings()
+        target = workspace
+        if target not in bindings:
+            # Accept the label here too, but never require herdr to be up to
+            # undo something: a closed workspace can still be unbound by id.
+            try:
+                target = bridge.resolve_workspace(workspace)
+            except HerdrError:
+                target = workspace
+        room_name = bindings.get(target)
+        if bridge.registry.unbind(target):
+            shown = f"{workspace} ({target})" if workspace != target else target
+            console.print(
+                f"[green]Unbound[/green] workspace [cyan]{shown}[/cyan]"
+                f"{f' [dim]from {room_name}[/dim]' if room_name else ''}."
+            )
+            console.print(
+                "[dim]Members it enrolled stay in the room; remove them with[/dim] "
+                "[cyan]mycelium agent rm <handle> --room <room>[/cyan]"
+            )
+        else:
+            console.print(f"[yellow]No binding[/yellow] for workspace {workspace!r}")
+            raise typer.Exit(1)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        print_error(e, verbose=bool(ctx.obj and ctx.obj.get("verbose")))
+        raise typer.Exit(1) from None
+
+
 def _room_members(config: MyceliumConfig, room_name: str) -> dict[str, str] | None:
     """The backend's live presence for a room: ``{handle: kind}`` (``slim``/``lease``).
 
@@ -605,7 +653,7 @@ def _drain_wakes(config: MyceliumConfig, bridge: HerdrBridge, room: str) -> int:
 
 
 @doc_ref(
-    usage="mycelium herdr sync [--workspace <id> --room <room>] [--once] [--interval N]",
+    usage="mycelium herdr sync [--workspace <label> --room <room>] [--once] [--interval N]",
     desc="Bind a herdr workspace to a room and reconcile membership, liveness, and wakes.",
     group="agent",
 )
@@ -613,7 +661,10 @@ def _drain_wakes(config: MyceliumConfig, bridge: HerdrBridge, room: str) -> int:
 def herdr_sync(
     ctx: typer.Context,
     workspace: str | None = typer.Option(
-        None, "--workspace", "-w", help="herdr workspace id to bind to --room (e.g. w2)."
+        None,
+        "--workspace",
+        "-w",
+        help="herdr workspace to bind to --room, by label or id (e.g. 'Mycelium' or w2).",
     ),
     room: str | None = typer.Option(
         None, "--room", "-r", help="Room to bind/reconcile (scopes to bound workspaces)."
@@ -665,10 +716,20 @@ def herdr_sync(
             raise typer.Exit(1)
 
         room_name = _resolve_room(config, room) if room else None
+        selector = workspace
+        if workspace:
+            try:
+                workspace = bridge.resolve_workspace(workspace)
+            except HerdrError:
+                # A workspace that has since closed can still be named to scope
+                # a reconcile, so accept the literal when it is already bound.
+                if workspace not in bridge.registry.bindings():
+                    raise
         if workspace and room_name:
             bridge.registry.bind(workspace, room_name)
+            shown = f"{selector} ({workspace})" if selector != workspace else workspace
             console.print(
-                f"[green]Bound[/green] workspace [cyan]{workspace}[/cyan] → "
+                f"[green]Bound[/green] workspace [cyan]{shown}[/cyan] → "
                 f"room [cyan]{room_name}[/cyan]."
             )
         elif workspace or room_name:
@@ -687,7 +748,7 @@ def herdr_sync(
         if not targets:
             console.print(
                 "[dim]No workspace bindings. Bind one:[/dim] "
-                "[cyan]mycelium herdr sync --workspace <id> --room <room>[/cyan]"
+                "[cyan]mycelium herdr sync --workspace <label> --room <room>[/cyan]"
             )
             raise typer.Exit(1)
 
