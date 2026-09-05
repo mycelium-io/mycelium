@@ -29,6 +29,8 @@ class DemoAgent:
     handle: str
     name: str
     role: str
+    #: One line for the room roster: what this person wants and what they'd trade.
+    wants: str
     #: What they want, what they'd give, and their hard line, in the second person.
     brief: str
 
@@ -78,6 +80,7 @@ SCENARIOS: dict[str, Scenario] = {
                 handle="maya",
                 name="Maya",
                 role="release manager",
+                wants="Ships 2.0 in two weeks; would slip one week to buy a billing regression pass.",
                 brief=(
                     "You want 2.0 out the door in two weeks. Sales has promised it to three "
                     "customers and every week of delay costs a renewal conversation. Dark "
@@ -92,6 +95,7 @@ SCENARIOS: dict[str, Scenario] = {
                 handle="theo",
                 name="Theo",
                 role="QA lead",
+                wants="Wants a full regression pass before 2.0; would take three weeks if billing is covered.",
                 brief=(
                     "You want a full regression pass before 2.0 ships. That takes two weeks "
                     "on its own, so you're asking for four weeks. The billing changes worry "
@@ -123,6 +127,7 @@ SCENARIOS: dict[str, Scenario] = {
                 handle="priya",
                 name="Priya",
                 role="platform engineer",
+                wants="Wants Postgres, which the team already runs; would add a JSON column for vendor data.",
                 brief=(
                     "You want Postgres. The team already runs it in production, backups and "
                     "monitoring exist, and one more database engine is one more thing to get "
@@ -136,6 +141,7 @@ SCENARIOS: dict[str, Scenario] = {
                 handle="sam",
                 name="Sam",
                 role="orders team lead",
+                wants="Wants MongoDB for varying vendor orders; would take Postgres if migrations aren't his team's blocker.",
                 brief=(
                     "You want MongoDB. Orders look different for every vendor and you don't "
                     "want to write a migration each time a vendor adds a field. Your team "
@@ -167,6 +173,7 @@ SCENARIOS: dict[str, Scenario] = {
                 handle="jordan",
                 name="Jordan",
                 role="finance ops lead",
+                wants="Needs 30% off the cloud bill this quarter; would keep one staging environment running.",
                 brief=(
                     "You need 30% off the cloud bill by the end of the quarter, six weeks "
                     "from now. The biggest line items are the three staging environments "
@@ -181,6 +188,7 @@ SCENARIOS: dict[str, Scenario] = {
                 handle="alex",
                 name="Alex",
                 role="SRE",
+                wants="Won't drop below two staging environments in release weeks; would reserve the databases.",
                 brief=(
                     "You'll take cost cuts, but not by removing the staging environments the "
                     "release process depends on: two is the minimum for testing a release "

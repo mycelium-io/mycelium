@@ -476,7 +476,7 @@ def _set_up_room(config: MyceliumConfig, scenario: Scenario, room: str, me: str)
                 "--room",
                 room,
                 "--description",
-                f"{agent.label}. {agent.brief.splitlines()[0]}",
+                f"{agent.label}. {agent.wants}",
                 "--cwd",
                 str(_agent_workdir(room, agent.handle)),
             ],  # fmt: skip
@@ -984,7 +984,11 @@ def _welcome() -> None:
 
 
 def _done(
-    config: MyceliumConfig, scenario: Scenario, room: str, key: str, verdict: dict[str, Any] | None
+    config: MyceliumConfig,
+    scenario: Scenario,
+    room: str,
+    thread: str,
+    verdict: dict[str, Any] | None,
 ) -> None:
     console.print()
     console.print(Rule("[bold]That's the tour[/bold]"))
@@ -1001,14 +1005,19 @@ def _done(
     console.print(f"[bold]Open it in the browser:[/bold] {ui_url(config, room)}")
     console.print()
     console.print("[bold]Keep going from here:[/bold]")
-    for cmd, note in (
+    # The thread's short id rather than the row key: it is what a ping names and
+    # what the reader has been typing all tour, and it keeps these lines short
+    # enough that the notes line up in a normal terminal.
+    rows = (
         (f"mycelium board --room {room}", "the board"),
-        (f"mycelium board messages {key} --room {room}", "the task's thread"),
+        (f"mycelium board messages {thread.rsplit(':', 1)[-1]} --room {room}", "the task's thread"),
         (f"mycelium watch {room}", "the room's timeline, live"),
         (f"mycelium memory ls --room {room}", "what the room remembers"),
         (f'mycelium board new "…" --room {room}', "put your own task on it"),
-    ):
-        console.print(f"  {cmd:<62} [dim]{note}[/dim]")
+    )
+    width = max(len(cmd) for cmd, _ in rows)
+    for cmd, note in rows:
+        console.print(f"  {cmd:<{width}}   [dim]{note}[/dim]")
     console.print()
     console.print(f"[dim]The agents' briefings are under {_state_path(room).parent}.[/dim]")
     console.print(
@@ -1127,7 +1136,7 @@ def onboard(
         _step(7)
         _work_the_board(config, chosen, room_name, key, yes)
 
-        _done(config, chosen, room_name, key, verdict)
+        _done(config, chosen, room_name, thread, verdict)
     except KeyboardInterrupt:
         console.print(
             "\n[dim]Stopped. The room keeps whatever was set up; re-run mycelium onboard any time.[/dim]"
