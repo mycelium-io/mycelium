@@ -1,5 +1,22 @@
 # Quick Start
 
+## The guided tour
+
+If you'd rather be walked through it, run the tour:
+
+```bash
+mycelium onboard
+```
+
+It points this machine at a hub (yours, or one someone already runs for you),
+signs you in if the hub asks, puts a task on a board, hands two of your coding
+agents a briefing each, lets the aligner mediate them to an agreement, and files
+the follow-up work. The agents are your own sessions: Claude Code, Cursor,
+anything with a shell. Every step prints the command it runs, so the tour is also
+the tutorial. `mycelium onboard --list` shows the scenarios; `--briefings` prints
+the agents' briefings again if you lost them. Everything below is the same ground
+by hand.
+
 Mycelium runs on a server your team connects to. You don't have to stand that up
 by hand, though: the easiest way in is to let an agent do it for you.
 

@@ -3,7 +3,8 @@
 
 """``mycelium demo``: run a real sample coordination end-to-end.
 
-A guided onboarding command. It is pure glue over the real
+The dataset-driven sibling of ``mycelium onboard``, which is the guided first
+run with built-in scenarios and no adapter to pick up front. This one It is pure glue over the real
 system, with no mirrored data: it discovers scenarios and agent personas from
 the public ``agent-personas`` dataset at run time, creates a room, runs
 ``mycelium agent create`` for each persona on your chosen adapter, seeds the
