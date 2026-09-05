@@ -24,6 +24,7 @@ from mycelium.commands import (
     memory,
     metrics,
     network,
+    onboard,
     openshell,
     participate,
     room,
@@ -89,6 +90,7 @@ app.command(name="network")(network.network)
 app.command(name="logs")(instance.logs)
 
 # Top-level shortcuts
+app.command(name="onboard")(onboard.onboard)
 app.command(name="login")(login_cmd.login)
 app.command(name="logout")(login_cmd.logout)
 app.command(name="whoami")(user.whoami)
