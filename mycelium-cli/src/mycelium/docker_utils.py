@@ -97,6 +97,8 @@ ENVIRONMENT_SUPPLIED_VARS: dict[str, str] = {
     "MYCELIUM_SLIM_PORT": "published node port; the compose default is the norm",
     "MYCELIUM_GRAFANA_PORT": "Grafana UI port for mycelium-grafana (--grafana profile); default 3001",
     "MYCELIUM_GRAFANA_LOKI_PORT": "Loki push port for mycelium-grafana; default 3100",
+    "MYCELIUM_GRAFANA_OTLP_PORT": "OTLP HTTP host port for mycelium-grafana; default 4319 (avoids 4318 collision with collector)",
+    "MYCELIUM_GRAFANA_OTLP_GRPC_PORT": "OTLP gRPC host port for mycelium-grafana; default 4320",
     "MYCELIUM_OIDC_ISSUER": "browser OIDC login, exported per the Keycloak guide",
     "MYCELIUM_OIDC_INTERNAL_ISSUER": "browser OIDC login",
     "MYCELIUM_OIDC_CLIENT_ID": "browser OIDC login",

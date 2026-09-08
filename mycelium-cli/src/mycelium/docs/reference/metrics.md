@@ -124,9 +124,11 @@ performance dashboard is imported automatically on first start.
 | OTel metrics | Prometheus → Explore + dashboard panels |
 | Product analytics events | Loki → "Product analytics events" panel |
 
-`--grafana` and `--metrics` cannot run simultaneously — both bind port 4318.
-Use `--grafana` when you want the browser UI; use `--metrics` for the
-lightweight JSON + traces.db collector without the UI overhead.
+`--grafana` and `--metrics` can run simultaneously — Grafana LGTM uses ports
+4319 (OTLP HTTP) and 4320 (gRPC) on the host to avoid colliding with the
+collector's 4318. To route backend telemetry to Grafana set
+`telemetry.otlp_endpoint = "http://mycelium-grafana:4318"` in `config.toml`
+(the in-container port is always 4318 regardless of the host mapping).
 
 The bundled dashboard JSON is at
 `mycelium-cli/src/mycelium/data/grafana-mycelium-performance.json` and is

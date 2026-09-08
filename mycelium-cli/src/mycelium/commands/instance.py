@@ -552,10 +552,12 @@ def start(
 
         if metrics and grafana:
             typer.secho(
-                "  ✗ --metrics and --grafana both bind port 4318. Use one or the other.",
-                fg=typer.colors.RED,
+                "  ⚠  Running both --metrics and --grafana: the collector writes "
+                "metrics.json, Grafana LGTM provides the browser UI. "
+                "To route telemetry to Grafana set "
+                "telemetry.otlp_endpoint=http://mycelium-grafana:4318 in config.toml.",
+                fg=typer.colors.YELLOW,
             )
-            raise typer.Exit(1)
 
         # `up` is flag-driven: the metrics profile is controlled by --metrics
         # here, not by what happens to be running, so disable the auto-detection
