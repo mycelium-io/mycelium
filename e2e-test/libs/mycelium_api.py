@@ -10,6 +10,8 @@ import urllib.parse
 import urllib.request
 from typing import Any, Optional
 
+from libs import log_fmt
+
 log = logging.getLogger(__name__)
 
 
@@ -34,6 +36,9 @@ class MyceliumAPI:
         timeout: int = 10,
     ) -> tuple[int, str]:
         start = time.time()
+        log.info("HTTP dispatch: %s %s", method, url)
+        if data is not None:
+            log.debug("HTTP request body [%s %s]:\n%s", method, url, log_fmt.pretty(data))
         try:
             body_bytes = json.dumps(data).encode() if data else None
             headers = {"Content-Type": "application/json"} if data else {}
@@ -41,12 +46,16 @@ class MyceliumAPI:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 resp_body = resp.read().decode()
                 elapsed = int((time.time() - start) * 1000)
-                log.debug("HTTP %s %s -> %s (%dms)", method, url, resp.status, elapsed)
+                log.info("HTTP %s %s -> %s (%dms)", method, url, resp.status, elapsed)
+                if resp_body.strip():
+                    log.debug("HTTP response body [%s %s]:\n%s", method, url, log_fmt.pretty(resp_body))
                 return resp.status, resp_body
         except urllib.error.HTTPError as e:
             resp_body = e.read().decode() if e.fp else ""
             elapsed = int((time.time() - start) * 1000)
-            log.debug("HTTP %s %s -> %s (%dms)", method, url, e.code, elapsed)
+            log.info("HTTP %s %s -> %s (%dms)", method, url, e.code, elapsed)
+            if resp_body.strip():
+                log.debug("HTTP error response body [%s %s]:\n%s", method, url, log_fmt.pretty(resp_body))
             return e.code, resp_body
         except Exception as e:
             elapsed = int((time.time() - start) * 1000)

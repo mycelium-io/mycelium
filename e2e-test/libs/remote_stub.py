@@ -30,12 +30,13 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Literal
 
+from libs import log_fmt
 from libs.coordination_flow import (
     CoordinationSetup,
     poll_for_terminal_state,
     wait_for_coordination_join,
 )
-from libs.host_exec import execute, HostExecError, describe
+from libs.host_exec import HostExecError, describe, execute
 from libs.mycelium_api import MyceliumAPI
 
 log = logging.getLogger(__name__)
@@ -153,6 +154,7 @@ class RemoteStubAgent:
         cmd = ["agent", "-p", prompt, "--output-format", "text"]
         if self.cursor_model:
             cmd.extend(["--model", self.cursor_model])
+        log.info("RemoteStub %s@%s cursor-agent dispatch: %s", self.handle, self.device_desc, " ".join(cmd))
         try:
             result = execute(self.device, cmd, timeout=timeout)
         except HostExecError as e:
@@ -163,6 +165,10 @@ class RemoteStubAgent:
             log.warning("RemoteStub %s@%s cursor-agent rc=%d stderr=%s",
                        self.handle, self.device_desc, result.returncode, result.stderr.strip()[:200])
             return None
+        log.info("RemoteStub %s@%s cursor-agent result: rc=0 (%d chars)",
+                 self.handle, self.device_desc, len(result.stdout))
+        log.debug("RemoteStub %s@%s cursor-agent stdout:\n%s",
+                  self.handle, self.device_desc, log_fmt.pretty(result.stdout))
         text = result.stdout.strip()
         return text or None
 
@@ -176,6 +182,7 @@ class RemoteStubAgent:
             "--timeout", str(turn_timeout),
             "--json",
         ]
+        log.info("RemoteStub %s@%s await dispatch: %s", self.handle, self.device_desc, " ".join(cmd))
         try:
             result = execute(self.device, cmd, timeout=turn_timeout + 10)
         except HostExecError as e:
@@ -185,12 +192,22 @@ class RemoteStubAgent:
             return None
 
         if result.returncode != 0 or not result.stdout.strip():
+            log.debug("RemoteStub %s@%s await result: rc=%d stdout=%r stderr=%r",
+                      self.handle, self.device_desc, result.returncode,
+                      result.stdout.strip()[:200], result.stderr.strip()[:200])
             return None
 
         try:
-            return json.loads(result.stdout)
+            turn_data = json.loads(result.stdout)
         except json.JSONDecodeError:
+            log.debug("RemoteStub %s@%s await: non-JSON stdout: %s",
+                      self.handle, self.device_desc, result.stdout.strip()[:200])
             return None
+
+        log.info("RemoteStub %s@%s await result: rc=0 turn received", self.handle, self.device_desc)
+        log.debug("RemoteStub %s@%s await turn_data:\n%s",
+                  self.handle, self.device_desc, log_fmt.pretty(turn_data))
+        return turn_data
 
     def post_respond(self, text: str, turn_timeout: int) -> bool:
         """Call `mycelium respond` on the device. Returns True on success."""
@@ -201,8 +218,14 @@ class RemoteStubAgent:
             "--handle", self.handle,
             text,
         ]
+        log.info("RemoteStub %s@%s respond dispatch: %s", self.handle, self.device_desc, " ".join(cmd))
         try:
             result = execute(self.device, cmd, timeout=turn_timeout)
+            log.info("RemoteStub %s@%s respond result: rc=%d", self.handle, self.device_desc, result.returncode)
+            if result.stdout.strip() or result.stderr.strip():
+                log.debug("RemoteStub %s@%s respond stdout=%s stderr=%s",
+                         self.handle, self.device_desc,
+                         log_fmt.pretty(result.stdout), log_fmt.pretty(result.stderr))
             return result.returncode == 0
         except HostExecError as e:
             log.warning("RemoteStub %s@%s respond exec error: %s",

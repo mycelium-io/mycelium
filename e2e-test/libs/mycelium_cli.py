@@ -10,6 +10,8 @@ import subprocess
 import time
 from typing import Any
 
+from libs import log_fmt
+
 log = logging.getLogger(__name__)
 
 # `agent create`/`engine create` write agents/<handle>.md locally (see the
@@ -103,11 +105,17 @@ class MyceliumCLI:
             ]
 
         t = timeout or self.default_timeout
+        cmd_str = " ".join(cmd)
+        log.info("CLI dispatch (timeout=%ss): %s", t, cmd_str)
         start = time.time()
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=t)
             elapsed = int((time.time() - start) * 1000)
-            log.debug("CLI %s -> rc=%d (%dms)", " ".join(cmd), result.returncode, elapsed)
+            log.info("CLI result: %s -> rc=%d (%dms)", cmd_str, result.returncode, elapsed)
+            if result.stdout.strip():
+                log.debug("CLI stdout [%s]:\n%s", cmd_str, log_fmt.pretty(result.stdout))
+            if result.stderr.strip():
+                log.debug("CLI stderr [%s]:\n%s", cmd_str, log_fmt.pretty(result.stderr))
             return CLIResult(result.returncode, result.stdout, result.stderr, elapsed, cmd)
         except subprocess.TimeoutExpired:
             elapsed = int((time.time() - start) * 1000)

@@ -38,6 +38,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from libs import log_fmt
+
 log = logging.getLogger(__name__)
 
 
@@ -178,6 +180,53 @@ def _argv_to_shell(argv: Sequence[str]) -> str:
     return " ".join(shlex.quote(str(a)) for a in argv)
 
 
+def _describe_rt(rt: _ResolvedTransport) -> str:
+    if rt.transport == "docker":
+        return f"docker:{rt.container}"
+    if rt.transport == "ssh":
+        return f"ssh:{rt.ssh_user}@{rt.ssh_ip}"
+    return "local"
+
+
+def _run_and_log(
+    full: list[str] | str,
+    desc: str,
+    *,
+    shell: bool,
+    timeout: float,
+    input: str | None,  # noqa: A002 - mirrors subprocess.run
+    check: bool,
+) -> subprocess.CompletedProcess[str]:
+    """subprocess.run wrapper that logs the outcome before returning/raising."""
+    try:
+        result = subprocess.run(  # noqa: S603 - argv/shell validated by caller
+            full,
+            shell=shell,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            input=input,
+            check=check,
+        )
+    except subprocess.CalledProcessError as exc:
+        log.info("host_exec result [%s]: rc=%d (check=True failed)", desc, exc.returncode)
+        if exc.stdout:
+            log.debug("host_exec stdout [%s]:\n%s", desc, log_fmt.pretty(exc.stdout))
+        if exc.stderr:
+            log.debug("host_exec stderr [%s]:\n%s", desc, log_fmt.pretty(exc.stderr))
+        raise
+
+    log.info(
+        "host_exec result [%s]: rc=%d stdout=%d bytes stderr=%d bytes",
+        desc, result.returncode, len(result.stdout), len(result.stderr),
+    )
+    if result.stdout.strip():
+        log.debug("host_exec stdout [%s]:\n%s", desc, log_fmt.pretty(result.stdout))
+    if result.stderr.strip():
+        log.debug("host_exec stderr [%s]:\n%s", desc, log_fmt.pretty(result.stderr))
+    return result
+
+
 def execute(  # noqa: PLR0913 - keeps subprocess.run-style ergonomics
     device: Any,
     argv: Sequence[str] | str,
@@ -211,6 +260,7 @@ def execute(  # noqa: PLR0913 - keeps subprocess.run-style ergonomics
         subprocess.CalledProcessError: When ``check=True`` and exit != 0.
     """
     rt = _resolve(device)
+    desc = _describe_rt(rt)
 
     if shell:
         if not isinstance(argv, str):
@@ -221,24 +271,22 @@ def execute(  # noqa: PLR0913 - keeps subprocess.run-style ergonomics
             raise HostExecError("shell=False requires argv to be a list of strings")
         cmd_str = _argv_to_shell(argv)
 
+    log.info("host_exec dispatch [%s] (timeout=%ss): %s", desc, timeout, cmd_str)
+
     if rt.transport == "local":
         full = cmd_str if shell else list(argv)  # type: ignore[arg-type]
         try:
-            return subprocess.run(  # noqa: S603 - explicit shell flag, args validated above
-                full,
-                shell=shell,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                input=input,
-                check=check,
+            result = _run_and_log(
+                full, desc, shell=shell, timeout=timeout, input=input, check=check,
             )
         except FileNotFoundError as exc:
             # Executable not found on the local host — surface as HostExecError
             # so callers with `except HostExecError` handle it gracefully.
             # Common cause: container-only scripts (e.g. /openclaw/*.sh) being
             # invoked via transport=local on a bare host.
+            log.info("host_exec dispatch [%s] failed: command not found: %r", desc, exc.filename)
             raise HostExecError(f"command not found: {exc.filename!r}") from exc
+        return result
 
     if rt.transport == "docker":
         # docker exec runs argv directly when given; for shell mode we
@@ -253,14 +301,7 @@ def execute(  # noqa: PLR0913 - keeps subprocess.run-style ergonomics
         for var in _DOCKER_PASSTHROUGH_ENV:
             full.extend(["-e", var])
         full.extend([rt.container, "sh", "-c", wrapped])
-        return subprocess.run(  # noqa: S603 - argv is a constructed list, not shell
-            full,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            input=input,
-            check=check,
-        )
+        return _run_and_log(full, desc, shell=False, timeout=timeout, input=input, check=check)
 
     # ssh
     key_path = os.path.expanduser(rt.ssh_key)
@@ -279,14 +320,7 @@ def execute(  # noqa: PLR0913 - keeps subprocess.run-style ergonomics
         f"{rt.ssh_user}@{rt.ssh_ip}",
         wrapped,
     ]
-    return subprocess.run(  # noqa: S603 - argv is a constructed list, not shell
-        full,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        input=input,
-        check=check,
-    )
+    return _run_and_log(full, desc, shell=False, timeout=timeout, input=input, check=check)
 
 
 def describe(device: Any) -> str:
@@ -298,8 +332,4 @@ def describe(device: Any) -> str:
         rt = _resolve(device)
     except HostExecError as exc:
         return f"<unresolved transport: {exc}>"
-    if rt.transport == "local":
-        return "local"
-    if rt.transport == "docker":
-        return f"docker:{rt.container}"
-    return f"ssh:{rt.ssh_user}@{rt.ssh_ip}"
+    return _describe_rt(rt)

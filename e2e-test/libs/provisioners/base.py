@@ -18,7 +18,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Protocol, runtime_checkable
 
-from libs import host_exec
+from libs import host_exec, log_fmt
 from libs.host_exec import HostExecError
 
 log = logging.getLogger(__name__)
@@ -267,6 +267,7 @@ class ABCProvisioner:
         Provisioners call this before ``agent create``. The backend returns
         404 if the room does not exist yet.
         """
+        log.info("%s.ensure_bootstrap_room: creating room %s", self.name, room)
         try:
             result = host_exec.execute(
                 device,
@@ -278,12 +279,15 @@ class ABCProvisioner:
             return
         if result.returncode != 0 and "already exists" not in (result.stderr.lower() + result.stdout.lower()):
             log.debug(
-                "%s.ensure_bootstrap_room: %s exit=%d stderr=%s",
+                "%s.ensure_bootstrap_room: %s exit=%d stdout=%s stderr=%s",
                 self.name,
                 room,
                 result.returncode,
-                result.stderr.strip()[:120],
+                log_fmt.pretty(result.stdout),
+                log_fmt.pretty(result.stderr),
             )
+        else:
+            log.debug("%s.ensure_bootstrap_room: %s -> rc=%d", self.name, room, result.returncode)
 
         try:
             host_exec.execute(
