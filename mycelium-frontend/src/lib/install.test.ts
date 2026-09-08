@@ -83,6 +83,15 @@ describe("install content", () => {
     expect(prompt).toContain("--room atlas --owner avery");
     expect(prompt).toContain("mycelium board --room atlas");
     expect(prompt).toContain("--timeout 30");
+    // `room messages` takes the room positionally; `--room` is not an option
+    // there, so a pasted prompt carrying it fails on the agent's first read.
+    expect(prompt).toContain("mycelium room messages atlas --limit 20");
+    expect(prompt).not.toContain("room messages --room");
+    // A reader that is never told how to speak, or how to take a second turn,
+    // joins the room and then goes quiet.
+    expect(prompt).toContain("mycelium adapter add claude-code");
+    expect(prompt).toContain("mycelium respond --room atlas --handle");
+    expect(prompt).toContain("await again");
   });
 
   it("notes the WSL constraint on Windows only", () => {

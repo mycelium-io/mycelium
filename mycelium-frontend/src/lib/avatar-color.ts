@@ -33,8 +33,8 @@ function hash(value: string): number {
  *  they are tuned for a single graph where nothing else is competing.)
  *
  *  Derived from the name rather than stored, so the same handle is the same
- *  colour on every machine and across a re-render — the point is that you learn
- *  a teammate's colour and then spot them without reading. */
+ *  color on every machine and across a re-render — the point is that you learn
+ *  a teammate's color and then spot them without reading. */
 export function avatarTint(name: string): string {
   return `var(--avatar-${(hash(name.toLowerCase()) % SLOTS) + 1})`;
 }

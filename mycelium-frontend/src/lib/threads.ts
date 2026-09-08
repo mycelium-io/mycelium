@@ -106,6 +106,7 @@ export const NOTICE_SUBKINDS = [
   "resolved",
   "blocked",
   "unblocked",
+  "expired",
 ] as const;
 
 export type NoticeSubkind = (typeof NOTICE_SUBKINDS)[number];
@@ -177,6 +178,8 @@ export function noticeLabel(subkind: string, kind: string | null | undefined): s
       return "Blocked";
     case "unblocked":
       return "Unblocked";
+    case "expired":
+      return "Expired";
     default:
       return subkind;
   }

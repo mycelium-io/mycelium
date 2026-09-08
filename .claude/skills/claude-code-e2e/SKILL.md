@@ -188,8 +188,8 @@ mycelium await --room $ROOM --handle shipper --loop \
 LOOP_PID=$!
 
 # The counterparty's opening position (operator-driven, or a second loop).
-mycelium respond --room $ROOM --handle polisher "Optimise for design polish"
-mycelium respond --room $ROOM --handle shipper  "Optimise for ship date"
+mycelium respond --room $ROOM --handle polisher "Optimize for design polish"
+mycelium respond --room $ROOM --handle shipper  "Optimize for ship date"
 
 # Summon the aligner. It addresses shipper by @mention; the resident loop
 # answers each round. NEGMAS stops the instant they agree.

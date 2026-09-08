@@ -19,8 +19,8 @@ def test_snap_exact_and_case_insensitive() -> None:
     assert snap("EXPRESS", ["express", "standard"]) == "express"
 
 
-def test_snap_normalised_key_form() -> None:
-    # underscores / hyphens / spacing collapse to the same normalised form
+def test_snap_normalized_key_form() -> None:
+    # underscores / hyphens / spacing collapse to the same normalized form
     assert snap("tech-allocation", ["tech_allocation", "cap"]) == "tech_allocation"
     assert snap("Tech Allocation", ["tech_allocation", "cap"]) == "tech_allocation"
 

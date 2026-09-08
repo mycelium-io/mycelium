@@ -12,7 +12,7 @@ someone and trying the app.
 It is deliberately **issuer-agnostic**: trust is a list of ``TrustedIssuer``
 entries matched by exact ``iss``, each with its own keys. Nothing here knows or
 cares whether the root is Keycloak, Dex, the dev mock issuer, or a workload-identity
-trust domain, so adding the agent trust root later (#564/#476) is a config entry.
+trust domain, so a new trust root is just a config entry.
 
 Scope is authentication only. Resolving a validated token into the *authoritative*
 actor for a write — replacing body-supplied ``created_by`` / ``sender_handle`` —
@@ -34,6 +34,7 @@ import jwt
 from fastapi import HTTPException, Request
 
 from app.config import PrincipalRole, TrustedIssuer, settings
+from app.services.agent_registry import norm_handle
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +103,7 @@ class JwksCache:
 
     * **Cached** for ``AUTH_JWKS_TTL_S`` so validation isn't an HTTP round trip.
     * **Refreshed on an unseen ``kid``** (rate-limited) so a rotated signing key
-      is honoured without restarting the backend.
+      is honored without restarting the backend.
     * **Stale-on-error**: if the issuer is briefly unreachable, previously fetched
       keys keep serving. Availability wins here — the keys are still the issuer's,
       only their freshness is in doubt, and failing closed would take the hub down
@@ -265,17 +266,15 @@ def _resolve_role(claims: dict[str, Any], entry: TrustedIssuer) -> PrincipalRole
         return entry.role
     value = str(raw).strip().lower()
     if value not in ("user", "agent"):
-        # Coercing an unrecognised role to a default would silently mislabel the
-        # principal; a token that asserts something we can't honour is malformed.
+        # Coercing an unrecognized role to a default would silently mislabel the
+        # principal; a token that asserts something we can't honor is malformed.
         raise AuthError(f"unsupported {settings.AUTH_ROLE_CLAIM!r} claim: {raw!r}")
     return "user" if value == "user" else "agent"
 
 
 def normalize_handle(raw: object) -> str | None:
-    """Match ``principals._norm`` so token and stored handles compare equal."""
-    if not isinstance(raw, str):
-        return None
-    return raw.strip().lstrip("@").lower() or None
+    """The canonical handle normalizer, so token and stored handles compare equal."""
+    return norm_handle(raw)
 
 
 async def verify_token(token: str) -> Principal:
@@ -334,7 +333,7 @@ def is_loopback_client(request: Request) -> bool:
     """Whether the request came from the machine the backend runs on.
 
     Decided from the peer address only. ``X-Forwarded-For`` is deliberately
-    ignored: it is caller-supplied, so honouring it would let any remote request
+    ignored: it is caller-supplied, so honoring it would let any remote request
     claim to be local. Note that this is also why the bypass does *not* fire for
     a backend in Docker — traffic through a published port arrives from the
     bridge gateway and is indistinguishable from LAN traffic, so the containerized

@@ -16,7 +16,7 @@
  * backend does not replay — are not interrupted by navigation.
  *
  * Each upstream feed is supervised independently: one that fails or ends is
- * redialled on a delay while the others keep flowing, and its health is
+ * redialed on a delay while the others keep flowing, and its health is
  * reported to the client as a `status` frame rather than inferred from whether
  * the connection is up.
  */

@@ -190,13 +190,11 @@ export function inferSchema(items: LiveItem[]): FieldSchema[] {
  * Fields a board can group into columns: a bounded vocabulary, ≥2 values, and
  * never one of the thread's.
  *
- * The thread fields are folded onto a row so they can be *read* — a column, a
- * chip — and grouping is not reading: it makes the field the axis the board is
- * organised by. Pivoting tasks by `thread_state` would sort them by how the
- * negotiation inside them went, which is the container-outlives-the-negotiation
- * rule inverted on the one surface where it is most visible. So the exclusion
- * is the whole of `THREAD_FIELDS` rather than the one field that reaches here
- * today: what makes them ineligible is whose fields they are, not their type.
+ * Thread fields are folded onto a row so they can be *read* — a column, a
+ * chip — but grouping pivots the board by a field, and thread fields are
+ * excluded from pivoting because of who owns them (the container-outlives-
+ * the-negotiation rule), not their type. The whole of `THREAD_FIELDS` is
+ * excluded, not just the one field that is schema-eligible today.
  */
 export function groupableFields(schema: FieldSchema[]): FieldSchema[] {
   return schema.filter(

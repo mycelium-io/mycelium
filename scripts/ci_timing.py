@@ -77,7 +77,7 @@ def main() -> int:
     try:
         jobs = [job for job in fetch_jobs() if job["name"] != SELF]
     except (urllib.error.URLError, KeyError, TimeoutError) as err:
-        # The report is a courtesy; losing it must not colour the run.
+        # The report is a courtesy; losing it must not color the run.
         print(f"::notice::CI timing report unavailable: {err}")
         return 0
 

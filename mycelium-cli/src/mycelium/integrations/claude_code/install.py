@@ -91,11 +91,10 @@ def _install_claude_code(verbose: bool = False) -> None:
             typer.echo(f"  skill: {dest}")
 
     # Hooks
-    # When the live hook list is empty (the current state; earlier
-    # ``settings.json`` hook wiring was pulled out for privacy/clarity),
-    # the bundled ``assets/hooks/`` directory is intentionally absent. Bail
-    # out *before* calling :func:`_resolve_asset`, which would otherwise
-    # crash on the missing-resource branch when the package is editable.
+    # The live hook list is empty, and the bundled ``assets/hooks/``
+    # directory is intentionally absent. Bail out *before* calling
+    # :func:`_resolve_asset`, which would otherwise crash on the
+    # missing-resource branch when the package is editable.
     # The cleanup loop further down still removes any pre-existing hook
     # files left over from older installs.
     if _CLAUDE_CODE_HOOKS:
@@ -268,13 +267,10 @@ def _backup_claude_settings(claude_dir: Path) -> Path | None:
 def _cleanup_stale_claude_code_assets(claude_dir: Path, verbose: bool = False) -> None:
     """Remove hook files, scripts, and settings.json entries from earlier adapter versions.
 
-    Earlier versions of the claude-code adapter wired up session-start /
-    post-tool-use / pre-compact hooks plus a shell-script batch-flush
-    pipeline. Those are no longer installed. If we don't actively clean
-    them up, upgraders end up with stale hook files on disk and stale
-    settings.json entries pointing at scripts that still exist but no
-    longer match the current design: at best confusing, at worst they
-    keep running old behavior the user doesn't want.
+    Left uncleaned, an upgrade leaves stale hook files on disk and stale
+    settings.json entries pointing at scripts that no longer match the
+    current design — confusing at best, silently running old behavior at
+    worst.
 
     Safe to run repeatedly; missing files / entries are ignored.
     """

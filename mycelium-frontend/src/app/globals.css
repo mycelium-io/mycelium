@@ -25,7 +25,7 @@
  * Two legible text levels + one decoration level. There is deliberately no
  * "quiet but still readable text" tier to misuse — if it holds words, it is
  * text or muted-foreground, both audited legible on every surface, both themes.
- * Design intent: cool neutral greys, one accent doing one job, desaturated
+ * Design intent: cool neutral grays, one accent doing one job, desaturated
  * semantics reserved for true state — not general emphasis.
  * ──────────────────────────────────────────────────────────────────────── */
 :root {
@@ -81,7 +81,7 @@
    * spread across every avatar in the app. Six tints held to the cool arc
    * (teal -> cyan -> blue -> indigo -> violet -> plum) so the roster stays in
    * the same family as the cyan accent and no chip fights it. `neutral` is the
-   * human seat: a plain slate disc that carries no identity colour. */
+   * human seat: a plain slate disc that carries no identity color. */
   --avatar-1: #1f6f66; /* teal   */
   --avatar-2: #216078; /* cyan   */
   --avatar-3: #2f4f8c; /* blue   */

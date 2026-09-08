@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Skills API — a promoted view over the ``skills/`` memory namespace (#617).
+Skills API — a promoted view over the ``skills/`` memory namespace.
 
 A skill is a memory under ``skills/`` (see ``app/services/skills.py``); these
 routes are a thin, skill-shaped surface over the memory store — writes go through

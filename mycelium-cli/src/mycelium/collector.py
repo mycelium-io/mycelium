@@ -51,7 +51,7 @@ _SHARED_FILE_MODE = 0o664
 def _ensure_shared_dir(path: Path) -> None:
     """Create *path* (and parents) and make it group-writable + setgid.
 
-    Also normalises permissions on any regular files already inside *path*
+    Also normalizes permissions on any regular files already inside *path*
     to ``0o664``. This unblocks legacy installs where a previous root-mode
     collector created files (notably ``traces.db``) that the current
     non-root collector user can't write.
@@ -971,21 +971,21 @@ def _merge_histogram(dst: dict, src: dict) -> None:
         dst["max"] = src_max if dst.get("max") is None else max(dst["max"], src_max)
 
 
-def _sanitise_for_json(obj: object) -> object:
+def _sanitize_for_json(obj: object) -> object:
     """Recursively replace float inf/nan with None so output is valid JSON."""
     import math
 
     if isinstance(obj, float):
         return None if (math.isinf(obj) or math.isnan(obj)) else obj
     if isinstance(obj, dict):
-        return {k: _sanitise_for_json(v) for k, v in obj.items()}
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
-        return [_sanitise_for_json(v) for v in obj]
+        return [_sanitize_for_json(v) for v in obj]
     return obj
 
 
 def _json_default(obj: object) -> object:
-    """json.dumps default handler: coerce non-serialisable types to str."""
+    """json.dumps default handler: coerce non-serializable types to str."""
     return str(obj)
 
 
@@ -1032,7 +1032,7 @@ def _fetch_backend_metrics(
 
             if output_path is not None:
                 try:
-                    full_data = _sanitise_for_json(store.to_dict())
+                    full_data = _sanitize_for_json(store.to_dict())
                     tmp = output_path.with_suffix(".tmp")
                     tmp.write_text(json.dumps(full_data, indent=2, default=_json_default))
                     tmp.replace(output_path)
@@ -1084,7 +1084,7 @@ def _fetch_scrape_targets(
 
     if output_path is not None:
         try:
-            full_data = _sanitise_for_json(store.to_dict())
+            full_data = _sanitize_for_json(store.to_dict())
             tmp = output_path.with_suffix(".tmp")
             tmp.write_text(json.dumps(full_data, indent=2, default=_json_default))
             tmp.replace(output_path)
@@ -1173,7 +1173,7 @@ class OTLPHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _json_response(self, data: dict, status: int = 200) -> None:
-        body = json.dumps(_sanitise_for_json(data), default=_json_default).encode()
+        body = json.dumps(_sanitize_for_json(data), default=_json_default).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -1285,7 +1285,7 @@ class OTLPHandler(BaseHTTPRequestHandler):
     def _flush(self) -> None:
         try:
             _ensure_shared_dir(self.output_path.parent)
-            data = _sanitise_for_json(self.store.to_dict())
+            data = _sanitize_for_json(self.store.to_dict())
             tmp = self.output_path.with_suffix(".tmp")
             tmp.write_text(json.dumps(data, indent=2, default=_json_default))
             tmp.replace(self.output_path)
@@ -1299,7 +1299,7 @@ class OTLPHandler(BaseHTTPRequestHandler):
 def _is_local_url(url: str) -> bool:
     """Return True if the URL points to a local/hub address.
 
-    Recognises localhost variants and the Docker Compose service name
+    Recognizes localhost variants and the Docker Compose service name
     used when the collector runs alongside the backend in the same stack.
     """
     from urllib.parse import urlparse
@@ -1461,7 +1461,7 @@ def run(
         server.server_close()
         if is_hub:
             _fetch_backend_metrics(store, backend_api_url, output_path)
-        data = _sanitise_for_json(store.to_dict())
+        data = _sanitize_for_json(store.to_dict())
         tmp = output_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, indent=2, default=_json_default))
         tmp.replace(output_path)

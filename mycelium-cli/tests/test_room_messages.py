@@ -174,3 +174,142 @@ def test_room_messages_indents_multiline_content(monkeypatch: pytest.MonkeyPatch
     assert result.exit_code == 0, result.output
     assert "first line" in result.output
     assert "second line" in result.output
+
+
+def test_room_messages_passes_the_cursors_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mycelium_backend_client.models import MessageListResponse
+
+    captured: dict = {}
+
+    def fake_sync(**kwargs):
+        captured.update(kwargs)
+        return MessageListResponse(messages=[], total=0)
+
+    _patch_common(monkeypatch, fake_sync)
+
+    result = CliRunner().invoke(
+        room_cmd.app,
+        [
+            "messages",
+            "msgtest",
+            "--since",
+            "2026-09-03T09:00:00Z",
+            "--before",
+            "2026-09-03T12:00:00+00:00",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["since"] == datetime.datetime(2026, 9, 3, 9, 0, tzinfo=datetime.UTC)
+    assert captured["before"] == datetime.datetime(2026, 9, 3, 12, 0, tzinfo=datetime.UTC)
+
+
+def test_room_messages_takes_an_age_as_a_cursor(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mycelium_backend_client.models import MessageListResponse
+
+    captured: dict = {}
+
+    def fake_sync(**kwargs):
+        captured.update(kwargs)
+        return MessageListResponse(messages=[], total=0)
+
+    _patch_common(monkeypatch, fake_sync)
+
+    started = datetime.datetime.now(datetime.UTC)
+    result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest", "--before", "2h"])
+
+    assert result.exit_code == 0, result.output
+    before = captured["before"]
+    assert before.tzinfo is not None
+    # "2h" means two hours before the command ran, give or take the run itself.
+    assert abs((started - before) - datetime.timedelta(hours=2)) < datetime.timedelta(seconds=5)
+
+
+def test_room_messages_rejects_a_stamp_it_cannot_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mycelium_backend_client.models import MessageListResponse
+
+    _patch_common(monkeypatch, lambda **_kw: MessageListResponse(messages=[], total=0))
+
+    result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest", "--before", "yesterday"])
+
+    assert result.exit_code != 0
+    assert "neither an ISO 8601 stamp nor an age" in result.output
+
+
+def test_room_messages_names_the_cursor_for_the_page_before(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mycelium_backend_client.models import MessageListResponse
+
+    msgs = _make_messages()
+    # Newest first: the second line is the oldest shown, so its stamp is the cursor.
+    msgs[1].created_at = datetime.datetime(2026, 6, 11, 21, 20, 0, tzinfo=datetime.UTC)
+    _patch_common(monkeypatch, lambda **_kw: MessageListResponse(messages=msgs, total=7))
+
+    result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest", "--limit", "2"])
+
+    assert result.exit_code == 0, result.output
+    assert "5 older" in result.output
+    assert (
+        "mycelium room messages msgtest --limit 2 --before 2026-06-11T21:20:00+00:00"
+        in result.output
+    )
+
+
+def test_room_messages_says_nothing_about_older_when_the_page_is_everything(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mycelium_backend_client.models import MessageListResponse
+
+    msgs = _make_messages()
+    _patch_common(monkeypatch, lambda **_kw: MessageListResponse(messages=msgs, total=len(msgs)))
+
+    result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest"])
+
+    assert result.exit_code == 0, result.output
+    assert "older" not in result.output
+    assert "--before" not in result.output
+
+
+def test_room_messages_json_carries_the_cursor(monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+
+    from mycelium_backend_client.models import MessageListResponse
+
+    msgs = _make_messages()
+    msgs[1].created_at = datetime.datetime(2026, 6, 11, 21, 20, 0, tzinfo=datetime.UTC)
+    _patch_common(monkeypatch, lambda **_kw: MessageListResponse(messages=msgs, total=7))
+
+    result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest"], obj={"json": True})
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["total"] == 7
+    assert payload["older_before"] == "2026-06-11T21:20:00+00:00"
+
+
+def test_json_cursor_is_null_when_the_page_is_everything(monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+
+    from mycelium_backend_client.models import MessageListResponse
+
+    msgs = _make_messages()
+    _patch_common(monkeypatch, lambda **_kw: MessageListResponse(messages=msgs, total=len(msgs)))
+
+    result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest"], obj={"json": True})
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["older_before"] is None
+
+
+def test_parse_stamp_reads_iso_and_ages() -> None:
+    from mycelium import chat
+
+    now = datetime.datetime(2026, 9, 3, 12, 0, tzinfo=datetime.UTC)
+    assert chat.parse_stamp("2026-09-03T09:00:00Z") == now.replace(hour=9)
+    # A naive stamp is what the hub writes; it is read back as UTC, not local time.
+    assert chat.parse_stamp("2026-09-03T09:00:00") == now.replace(hour=9)
+    assert chat.parse_stamp("30m", now=now) == now - datetime.timedelta(minutes=30)
+    assert chat.parse_stamp("2h", now=now) == now - datetime.timedelta(hours=2)
+    assert chat.parse_stamp("1d", now=now) == now - datetime.timedelta(days=1)
+    assert chat.parse_stamp(" 15 s ", now=now) == now - datetime.timedelta(seconds=15)

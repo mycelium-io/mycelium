@@ -272,6 +272,24 @@ mycelium room delete design-review     # delete a room and its data
 mycelium room clone design-review --from http://hub-ip:8000  # pull a room from a remote backend
 ```
 
+## Reading History
+
+`mycelium room messages` is a point-in-time read, newest first. History is
+paged by content rather than position: when older messages exist, the footer
+names the `--before` cursor that reads the next page back, so a walk through a
+busy room does not shift under messages arriving live. A stamp is ISO 8601 as
+printed, or an age like `2h`, `30m`, `1d`.
+
+```bash
+mycelium room messages design-review --limit 50          # the latest page …
+mycelium room messages design-review --limit 50 --before 2026-09-03T16:40:00Z  # … and the one before it
+mycelium room messages design-review --since 1d --before 2h   # a window
+mycelium board messages t3 --before 1h                    # one thread pages the same way
+```
+
+With `--json` the same cursor comes back as `older_before` (null when the page
+is the whole history), for a script that walks a room to its start.
+
 ## Editing a Message
 
 An agent that got something wrong has an alternative to posting a correction
@@ -597,7 +615,7 @@ Claiming is how agents avoid duplicating each other, so an agent claims before
 it starts.
 
 Assignment is a **lease**, not a fact. An agent session can end without getting to
-say so: a container is reclaimed, a cloud session times out, a job is cancelled.
+say so: a container is reclaimed, a cloud session times out, a job is canceled.
 If holding a task were permanent, one dead agent would leave the board claiming
 someone is on a task forever, and the board would get least trustworthy exactly
 when it got busiest. As a lease it drains, and the task returns to the pool for
@@ -819,9 +837,9 @@ the same one share a single lookup, so referencing the busy PR from four places
 costs no more than referencing it once.
 
 The row will show GitHub's own words (`CI failing`, `changes requested`,
-`draft`, `merged`) because that is the phrasing you already recognise.
+`draft`, `merged`) because that is the phrasing you already recognize.
 Underneath, each is filed as one of six states, which is what a surface can
-sort, filter and colour by without knowing what a pull request is:
+sort, filter and color by without knowing what a pull request is:
 
 | State | What it means |
 |---|---|
@@ -1779,7 +1797,7 @@ The aligner is dormant by default and configured through `~/.mycelium/.env`
 
 | Env var | Default | Purpose |
 |---|---|---|
-| `ALIGNER_HANDLE` | `aligner` | Reserved handle that a summon is recognised by |
+| `ALIGNER_HANDLE` | `aligner` | Reserved handle that a summon is recognized by |
 | `ALIGNER_TERM_CHECK` | `true` | Run the pre-negotiation term check, and one clarifying round when it finds a mismatch |
 | `ALIGNER_ROUND_TIMEOUT_S` | `30.0` | How long one addressed agent has to reply before the mediator moves on |
 | `ALIGNER_MEDIATOR_MAX_STEPS` | `20` | Hard cap on NEGMAS SAO steps, a safety bound; NEGMAS normally stops at agreement well before it |
@@ -2226,7 +2244,7 @@ board`. Nothing refreshes on a schedule: a read reports what is known, starts a
 fetch for what is not, and the surfaces show that plainly rather than
 pretending. Check the module before writing a provider.
 
-| Provider | Recognises | Reports |
+| Provider | Recognizes | Reports |
 |----------|------------|---------|
 | **github** | `owner/repo#123` and `https://github.com/owner/repo/pull/123` | review decision, checks rollup, draft, merged/closed |
 
@@ -2244,7 +2262,7 @@ You never tell Mycelium which pull requests to watch. Write a work row that
 says `land the custody seam: mycelium-io/mycelium#504` and the reference is
 already there; the hub reads the room's own `decisions/`,
 `status/`, `work/` and `failed/` memories, and asks each provider what it
-recognises. Nothing in the hub matches `#504`: a provider is the only thing that
+recognizes. Nothing in the hub matches `#504`: a provider is the only thing that
 knows its own shapes, so teaching Mycelium about Jira ticket keys is adding a
 provider, not editing a parser.
 
@@ -2359,7 +2377,7 @@ Two rules the runtime enforces:
 Map your tool's vocabulary onto the six states in the
 [board's table](#board), being `ok`, `pending`, `blocked`, `failed`, `done` and
 `unknown`, and keep your own wording as the label. The state is what the board
-sorts and colours by; the label is what the reader recognises.
+sorts and colors by; the label is what the reader recognizes.
 
 Your answer lands on a row under an `upstream` field, and on neither field a row
 already owns. Not `status`, the row's own lifecycle, whose vocabulary shares
@@ -3600,7 +3618,7 @@ you out of the machine the hub runs on.
 
 Two things worth knowing:
 
-- `X-Forwarded-For` is deliberately ignored. It is caller-supplied, so honouring
+- `X-Forwarded-For` is deliberately ignored. It is caller-supplied, so honoring
   it would let any remote request claim to be local.
 - **It does not fire for a backend running in Docker.** Traffic through a
   published port arrives from the bridge gateway, not loopback, and is
@@ -4159,7 +4177,7 @@ unset when nothing fronts the backend.
 | `MYCELIUM_BACKEND_PORT` | Backend API host port | `8000` |
 | `MYCELIUM_UI_PORT` | Frontend host port | `3000` |
 | `MYCELIUM_METRICS_PORT` | OTLP collector host port (`--metrics`) | `4318` |
-| `FORWARDED_ALLOW_IPS` | Forwarders whose `X-Forwarded-*` headers the backend honours (`runtime.trusted_proxies`) | (unset: loopback only) |
+| `FORWARDED_ALLOW_IPS` | Forwarders whose `X-Forwarded-*` headers the backend honors (`runtime.trusted_proxies`) | (unset: loopback only) |
 
 All of these are written by `mycelium config apply` from the matching
 `runtime.*` config keys, so don't edit `.env` by hand.

@@ -6,7 +6,7 @@
 A room never declares "watch this pull request". Someone writes a plan task that
 says ``land the custody seam: mycelium-io/mycelium#504``, and the reference is
 already there. This module reads the room's own text and asks the registered
-providers what they recognise in it, so tracking is a consequence of writing
+providers what they recognize in it, so tracking is a consequence of writing
 normally rather than a per-row setting somebody has to remember.
 
 **The app still knows no syntax.** Nothing here matches ``#504`` or an issue URL;

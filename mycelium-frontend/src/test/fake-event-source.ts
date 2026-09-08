@@ -5,7 +5,7 @@
 //
 // The app holds one multiplexed connection (`/api/stream`, see lib/sse.ts), so
 // a frame names its channel and carries a `{room, data}` envelope. The emit
-// helpers build that framing, taking the room from the URL the hub dialled.
+// helpers build that framing, taking the room from the URL the hub dialed.
 
 import { STREAM_STATUS_EVENT, type StreamChannel } from "@/lib/sse";
 
@@ -91,7 +91,7 @@ export class FakeEventSource {
     }
   }
 
-  /** The first room in the dialled URL — what `emit()` addresses. */
+  /** The first room in the dialed URL — what `emit()` addresses. */
   room(): string | null {
     const query = this.url.slice(this.url.indexOf("?") + 1);
     return new URLSearchParams(query).get("room");

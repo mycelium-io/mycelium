@@ -29,8 +29,8 @@ not share one :class:`PiSession` across parallel negotiations — build one per 
 
 **OpenShell sandboxing** is wired as a command-prefix seam (``openshell=True``),
 default **off**: ``openshell`` is not guaranteed installed and the sandbox path
-is a live-validation step (see the doc's honest caveats). The seam exists from
-the start so enabling it live is config, not a code change.
+is a live-validation step (see the doc's honest caveats). Controlled by
+config, no code change required.
 """
 
 from __future__ import annotations

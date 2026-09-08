@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Drive a registered A2A agent as a backend-held room member (epic #719, #714).
+"""Drive a registered A2A agent as a backend-held room member.
 
 Two pieces:
 
@@ -14,25 +14,17 @@ Two pieces:
   reply back as that handle. The aligner addressing the agent mid-negotiation is
   just one caller that happens to ``@``-mention it.
 
-The send path carries the #712 spike findings: resolve the card (dual well-known
-path), then build a client with ``accepted_output_modes`` set — without it,
-older servers reject the send with a pydantic ``-32600``.
+The send path resolves the card via a dual well-known probe, then builds a
+client with ``accepted_output_modes`` set — without it, older servers reject
+the send with a pydantic ``-32600``.
 
-**Transport decision (#726): HTTPS is the explicit default.** A bridged A2A
-agent is **not** a member of the room's MLS group channel — it never holds a
-group key. It is proxied by this backend seat, which reads the room's plaintext
-(as moderator/custodian) and calls the remote agent out-of-band over plain HTTPS.
-Moving the hop onto SLIM (SLIMRPC via ``agntcy/slim-a2a-python``) was evaluated
-and deferred: ``slima2a`` currently requires ``a2a-sdk[sqlite,telemetry]==1.1.0``
-exactly, while the project tracks ``1.1.2``, and adopting it would pull
-SQLAlchemy, aiosqlite, and OpenTelemetry into the backend image — none of which
-are present today. The purchase (a hardened point-to-point hop) would still not
-change the honest boundary (even SLIMRPC is point-to-point RPC, **not** MLS
-group membership), so the cost is not justified yet. Reopen #726 when slima2a
-relaxes its exact pin and a live SLIMRPC round-trip is proven over a running node.
-Either way the hub sees plaintext, so this is **NOT** E2E-from-the-hub. Auth to
-the remote is a bearer token whose value lives in the backend env
-(``a2a_auth_env`` names the var); the room manifest never stores the secret.
+**Transport: HTTPS.** A bridged A2A agent is **not** a member of the room's
+MLS group channel — it never holds a group key. It is proxied by this backend
+seat, which reads the room's plaintext (as moderator/custodian) and calls the
+remote agent out-of-band over plain HTTPS; the hub sees plaintext, so this is
+**NOT** E2E-from-the-hub. Auth to the remote is a bearer token whose value
+lives in the backend env (``a2a_auth_env`` names the var); the room manifest
+never stores the secret.
 """
 
 from __future__ import annotations
@@ -59,7 +51,7 @@ from app.services.persister import envelope_message_id, envelope_sender
 
 
 def _bare_sender(value: str | None) -> str | None:
-    """Normalise an L9 sender to a bare slug, stripping any ``#session`` qualifier.
+    """Normalize an L9 sender to a bare slug, stripping any ``#session`` qualifier.
 
     Stored slugs (allow_from, owner, agent handles) carry no session suffix;
     L9 actor ids may carry one (``alice#a8f3``). Stripping before any comparison
@@ -96,7 +88,7 @@ class A2aAgentRef:
     #: The RPC endpoint resolved from the card at registration, for telemetry —
     #: the send path still resolves the card itself.
     endpoint: str | None = None
-    #: Sender handles that may summon this agent (empty = anyone). Normalised to
+    #: Sender handles that may summon this agent (empty = anyone). Normalized to
     #: lowercase without '@' so comparisons are consistent with the gate check.
     allow_from: tuple[str, ...] = ()
     #: The handle that registered the agent. Always allowed to summon it,

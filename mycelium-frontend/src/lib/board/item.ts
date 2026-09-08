@@ -53,9 +53,9 @@ export const ATTENTION_FILTERS: { id: AttentionFilter; label: string; blurb: str
 ];
 
 /**
- * The stage a row is at, and only that. Who holds it is `assignment` (a lease that
- * drains); whether it is blocked is derived from `blocked_by`. Both used to be
- * spelled here, which is how one field ended up doing three jobs.
+ * The stage a row is at, and only that. Who holds it is `assignment` (a lease
+ * that drains); whether it is blocked is derived from `blocked_by`. Separate
+ * axes, so one field does not end up doing three jobs.
  */
 export type ItemStatus = "open" | "in_review" | "resolved" | "dismissed";
 
@@ -178,8 +178,8 @@ export interface RowActionContext {
  * A action returns the field patch it implies. `promote` is the one that leaves
  * the board: it marks the row as belonging somewhere more durable and resolves,
  * so the live slice stops carrying it. It does not stamp a back-link — nothing
- * here files the issue, and a reference the action invented would be one the
- * status providers then resolve against a real, unrelated one.
+ * here files the issue, and a fabricated reference would resolve against an
+ * unrelated one in the status providers.
  */
 export function applyRowAction(
   item: LiveItem,

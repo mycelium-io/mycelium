@@ -3,11 +3,9 @@
 
 """The frontend is part of the stack, not an opt-in compose profile.
 
-`mycelium-frontend` used to sit behind `profiles: [ui]`, so every command had
-to enable that profile or compose silently skipped the service — its logs
-never showed up and `down` left it running. It now starts with the node and
-the backend, which means the compose file declares no profile for it and
-`_compose_base_cmd` never passes `--profile ui`.
+`mycelium-frontend` starts with the node and the backend: the compose file
+declares no profile for it, and `_compose_base_cmd` never passes
+`--profile ui`.
 """
 
 from __future__ import annotations

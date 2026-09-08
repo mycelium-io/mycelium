@@ -292,7 +292,7 @@ board`. Nothing refreshes on a schedule: a read reports what is known, starts a
 fetch for what is not, and the surfaces show that plainly rather than
 pretending. Check the module before writing a provider.
 
-| Provider | Recognises | Reports |
+| Provider | Recognizes | Reports |
 |----------|------------|---------|
 | **github** | `owner/repo#123` and `https://github.com/owner/repo/pull/123` | review decision, checks rollup, draft, merged/closed |
 
@@ -310,7 +310,7 @@ You never tell Mycelium which pull requests to watch. Write a work row that
 says `land the custody seam: mycelium-io/mycelium#504` and the reference is
 already there; the hub reads the room's own `decisions/`,
 `status/`, `work/` and `failed/` memories, and asks each provider what it
-recognises. Nothing in the hub matches `#504`: a provider is the only thing that
+recognizes. Nothing in the hub matches `#504`: a provider is the only thing that
 knows its own shapes, so teaching Mycelium about Jira ticket keys is adding a
 provider, not editing a parser.
 
@@ -425,7 +425,7 @@ Two rules the runtime enforces:
 Map your tool's vocabulary onto the six states in the
 [board's table](#board), being `ok`, `pending`, `blocked`, `failed`, `done` and
 `unknown`, and keep your own wording as the label. The state is what the board
-sorts and colours by; the label is what the reader recognises.
+sorts and colors by; the label is what the reader recognizes.
 
 Your answer lands on a row under an `upstream` field, and on neither field a row
 already owns. Not `status`, the row's own lifecycle, whose vocabulary shares

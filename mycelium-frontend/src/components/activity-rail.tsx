@@ -42,7 +42,7 @@ export interface ActivityItem {
 /** How many rows stand open before the rest go behind "more". */
 const SHOWN = 3;
 
-/** The colour a row wears for the state it is standing in. Green when work
+/** The color a row wears for the state it is standing in. Green when work
  *  lands or closes, red when it stalls, yellow when it comes back up for
  *  grabs, accent while somebody holds it. */
 const STANDING_TONE: Record<string, string> = {

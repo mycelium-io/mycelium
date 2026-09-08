@@ -113,7 +113,7 @@ def test_append_transcript_is_o1_and_accumulates():
     assert "```" not in body
 
 
-# ── delivery-cursor persistence (D5) ─────────────────────────────────────────
+# ── delivery-cursor persistence ───────────────────────────────────────────────
 
 
 def test_cursors_round_trip_and_missing_file_is_empty():
@@ -126,7 +126,7 @@ def test_cursors_round_trip_and_missing_file_is_empty():
 
 
 def test_cursors_survive_a_restart_so_an_offline_tail_is_still_reserved():
-    """The D5 fix: an agent offline at shutdown must still be recognised as a
+    """The D5 fix: an agent offline at shutdown must still be recognized as a
     reconnect and re-served exactly its missed tail after a backend restart.
 
     Cursors persist alongside the transcript, so a reconnecting agent re-serves
@@ -432,7 +432,7 @@ async def test_transient_churn_is_counted_apart_from_fatal_faults():
     assert p.receive_errors == 0  # churn never counts as a fatal fault
 
 
-# ── H2 list-store invariant: one store, source-partitioned producers ──────────
+# ── list-store invariant: one store, source-partitioned producers ─────────────
 
 
 def _msg_content(message_id: str, *, sender: str, text: str, payload_type: str):
@@ -538,9 +538,8 @@ def test_conversational_messages_project_from_the_durable_transcript():
 
 
 def test_conversational_messages_survive_a_wiped_in_memory_store():
-    """The restart bug (issue #497 §3): the in-memory list store is empty after a
-    restart, but the durable transcript still projects the full history — so the
-    read path serves it regardless."""
+    """After a restart the in-memory list store is empty, but the durable
+    transcript still projects the full history, so the read path serves it."""
     from app.services import in_memory_store
 
     room = "conv-restart-room"

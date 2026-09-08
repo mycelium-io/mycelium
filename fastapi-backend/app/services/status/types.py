@@ -14,9 +14,9 @@ Two shapes carry the whole design.
 two rows pointing at the same pull request cost one fetch between them.
 
 ``UpstreamState`` is a closed vocabulary plus an open bag.  ``state`` is one of six
-words the board can colour and sort by without knowing what a "ticket" is;
+words the board can color and sort by without knowing what a "ticket" is;
 ``label`` is the provider's own phrasing, kept verbatim because "Needs review"
-and "In QA" are the words the reader actually recognises.
+and "In QA" are the words the reader actually recognizes.
 
 The word *upstream*, and not *status*, is deliberate.  A board row already owns
 ``status`` for its own lifecycle (``open``, ``claimed``, ``in_progress`` …), a
@@ -50,7 +50,7 @@ from app.services.status.auth import AuthScheme
 #:              not yet given, a draft.
 #: ``blocked``  waiting on a person: a decision, a revision, an approval.
 #: ``failed``   waiting on a fix, and a machine is what said no.
-#: ``done``     terminal, however it ended. Merged, closed, cancelled — the
+#: ``done``     terminal, however it ended. Merged, closed, canceled — the
 #:              distinction between a good and a bad ending is the ``label``'s
 #:              to carry, not this field's.
 #: ``unknown``  the provider met a state it cannot place. Honest ignorance,
@@ -130,7 +130,7 @@ class FetchSucceeded:
 class FetchFailed:
     ref: Ref
     reason: str
-    #: Honour a provider's rate-limit reply rather than hammering it.
+    #: Honor a provider's rate-limit reply rather than hammering it.
     retry_after: timedelta | None = None
 
 
@@ -213,7 +213,7 @@ class StatusProvider(Protocol):
     swr: timedelta
 
     def claims(self, text: str) -> list[Ref]:
-        """Refs this provider recognises in a piece of room text.
+        """Refs this provider recognizes in a piece of room text.
 
         This is why the app knows no syntax: ``#504`` means a pull request only
         because a provider said so.

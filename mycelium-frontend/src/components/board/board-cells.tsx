@@ -36,7 +36,7 @@ import {
   type Priority,
 } from "@/lib/board/item";
 
-/** One glyph + colour per row kind — the triage's fastest read. */
+/** One glyph + color per row kind — the triage's fastest read. */
 const KIND_STYLE: Record<ItemKind, { icon: typeof CircleDot; color: string; label: string }> = {
   decision: { icon: CircleHelp, color: "var(--accent)", label: "decision" },
   blocked: { icon: Ban, color: "var(--red)", label: "blocked" },
@@ -184,8 +184,8 @@ function UpstreamSkeleton({ label }: { label: string | null }) {
  * What the tool this row points at says about it, in that tool's own words.
  *
  * The provider's label is shown verbatim ("changes requested", "CI failing")
- * because that is the phrasing the reader already recognises; the state behind
- * it is what the board sorts and colours by. A stale answer wears its age, so a
+ * because that is the phrasing the reader already recognizes; the state behind
+ * it is what the board sorts and colors by. A stale answer wears its age, so a
  * reader is never asked to trust a number without knowing how old it is.
  */
 export function UpstreamChip({ item }: { item: LiveItem }) {
@@ -308,7 +308,7 @@ const TTL_VISIBLE_FROM = 0.4;
  * commitment, not a lease, so it gets a plain handle and nothing that drains.
  * The states that are not `held` are the interesting ones: `released` and
  * `expired` leave the same unclaimed row behind, and only the note's author says
- * which happened, so the byline is rendered rather than summarised away.
+ * which happened, so the byline is rendered rather than summarized away.
  */
 export function AssignmentChip({ item, now }: { item: LiveItem; now: number }) {
   const state = assignmentOf(item, now);

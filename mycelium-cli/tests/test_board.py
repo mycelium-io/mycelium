@@ -705,9 +705,8 @@ class TestTheTableSurvivesRoomContent:
 
 
 class TestHubHealthSaysWhatActuallyHappened:
-    """Reachability used to be inferred from one endpoint, so an authenticated
-    hub refusing a request read as "hub unreachable", and a board drawn with two
-    of its sources missing read as a quiet room."""
+    """Hub failures must report whether the hub is unreachable vs. refusing
+    the request, rather than drawing a partial board as a quiet room."""
 
     def test_a_hub_that_is_not_there_is_reported_as_unreachable(self):
         from mycelium.commands.board import HubHealth

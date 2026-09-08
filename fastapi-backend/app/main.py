@@ -92,12 +92,9 @@ async def lifespan(app: FastAPI):
     from app.services import telemetry as telemetry_service
 
     telemetry_service.setup()  # providers only — FastAPIInstrumentor wired at app-creation time
-    # A memory written before the binding carries no thread, so it reads as
-    # something there is nowhere to discuss. Minting one is a store annotation
-    # rather than an edit: the memory keeps its version, its stamps and its place
-    # on a time-ordered board. Runs before the index scan, so what it rewrites is
-    # indexed once rather than caught on the next restart — and walks the same
-    # files that scan is about to read anyway.
+    # Bind every pre-existing memory to a thread as a store annotation
+    # (version, stamps, and board position are untouched). Runs before the
+    # index scan so a rewrite is indexed once, not twice.
     from app.services.filesystem import list_room_names
     from app.services.tasks import backfill_room
 
@@ -120,6 +117,12 @@ async def lifespan(app: FastAPI):
     from app.services.event_sweep import start_event_sweep, stop_event_sweep
 
     start_event_sweep()
+
+    # Lease-expiry sweep: raises the `expired` timeline notice, which nothing
+    # writes (a lease drains by the clock, so there is no seam to raise it from).
+    from app.services.lease_sweep import start_lease_sweep, stop_lease_sweep
+
+    start_lease_sweep()
 
     # Pre-load embedding model so first request isn't slow
     from app.services.embedding import warmup as warmup_embeddings
@@ -212,6 +215,7 @@ async def lifespan(app: FastAPI):
     yield
     stop_watcher()
     stop_event_sweep()
+    stop_lease_sweep()
 
     # Flush and shut down the OTel SDK so spans are not lost on a clean restart.
     from app.services import telemetry as telemetry_service
@@ -479,7 +483,7 @@ async def get_hosts():
 async def _proxy_collector(path: str):
     """Forward a GET request to the collector and return the raw JSON response.
 
-    Defence-in-depth: sanitise any non-standard JSON tokens (``Infinity``,
+    Defense-in-depth: sanitize any non-standard JSON tokens (``Infinity``,
     ``NaN``) that might slip through from upstream before forwarding to the
     browser.
     """
@@ -489,14 +493,14 @@ async def _proxy_collector(path: str):
     import httpx
     from fastapi.responses import JSONResponse, Response
 
-    def _sanitise(obj: object) -> object:
+    def _sanitize(obj: object) -> object:
         """Replace float inf/nan with None for JSON compliance."""
         if isinstance(obj, float) and (math.isinf(obj) or math.isnan(obj)):
             return None
         if isinstance(obj, dict):
-            return {k: _sanitise(v) for k, v in obj.items()}
+            return {k: _sanitize(v) for k, v in obj.items()}
         if isinstance(obj, list | tuple):
-            return [_sanitise(v) for v in obj]
+            return [_sanitize(v) for v in obj]
         return obj
 
     def _parse_constant(c: str) -> None:
@@ -515,7 +519,7 @@ async def _proxy_collector(path: str):
                     status_code=502,
                     content={"detail": "Invalid JSON from collector"},
                 )
-            data = _sanitise(data)
+            data = _sanitize(data)
             return Response(
                 content=json.dumps(data, default=str),
                 media_type="application/json",

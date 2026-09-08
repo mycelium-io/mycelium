@@ -11,7 +11,7 @@ intended it to do.
 **Most of the HTML here is generated. Don't hand-edit it.**
 
 - The markdown under `mycelium-cli/src/mycelium/docs/` is the source of truth for
-  the site's prose, organised into `concepts/`, `guides/` and `reference/` so the
+  the site's prose, organized into `concepts/`, `guides/` and `reference/` so the
   tree also reads well browsed on GitHub. The CLI reference and configuration
   tables are generated from the decorators and the pydantic config schema, so
   they can't describe a flag that doesn't exist.

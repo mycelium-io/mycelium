@@ -100,7 +100,7 @@ function Nothing({ children }: { children: ReactNode }) {
   return <p className="px-4 py-3 text-label leading-relaxed text-muted-foreground">{children}</p>;
 }
 
-/** One labelled figure inside a panel's grid. */
+/** One labeled figure inside a panel's grid. */
 function Figure({
   label,
   value,

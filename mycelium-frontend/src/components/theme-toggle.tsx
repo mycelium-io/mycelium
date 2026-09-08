@@ -43,7 +43,7 @@ export function ThemeToggle() {
         id: `theme.${value}`,
         title: `${label} theme`,
         group: "Preferences",
-        keywords: ["theme", "appearance", "colour", "color"],
+        keywords: ["theme", "appearance", "color", "color"],
         run: () => setTheme(value),
       })),
     [setTheme],

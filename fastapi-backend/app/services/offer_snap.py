@@ -16,7 +16,7 @@ mirroring the good part of the sibling `ioc-scale-cf-cognition-engines`
 `offer_validation.py` (their 5-tier rapidfuzz/embedding version). We keep it
 **stdlib-only** (`difflib`) deliberately: option lists here are tiny (a handful
 per issue) and snapping runs once per agent turn, so a heavy fuzzy dep buys
-nothing. Order: exact → case-insensitive → normalised → `difflib` ratio.
+nothing. Order: exact → case-insensitive → normalized → `difflib` ratio.
 
 **Numbers are snapped numerically, not by string ratio.** `difflib` is meaningless
 on digits — "28" vs "30" scores 0, "32" vs "35" scores 50 — so a real numeric
@@ -68,7 +68,7 @@ def _numeric_snap(raw: str, valid: list[str]) -> str | None | bool:
     nearest is within :data:`_NUMERIC_STEP_TOLERANCE` grid-steps. Returns ``None``
     when it *is* a numeric issue but *raw* is off-grid or ambiguous (an
     authoritative refusal — do NOT fall through to `difflib`, which would mis-score
-    digits). Returns ``False`` when this is not a numeric issue at all, signalling
+    digits). Returns ``False`` when this is not a numeric issue at all, signaling
     the caller to keep going with the string tiers.
     """
     raw_val = _as_float(raw)
@@ -94,7 +94,7 @@ def _numeric_snap(raw: str, valid: list[str]) -> str | None | bool:
     return best_token
 
 
-def _normalise(text: str) -> str:
+def _normalize(text: str) -> str:
     return re.sub(r"[\s_\-]+", " ", str(text).strip().lower())
 
 
@@ -105,7 +105,7 @@ def _ratio(a: str, b: str) -> float:
 def snap(raw: str, valid: list[str], *, threshold: float = _SNAP_THRESHOLD) -> str | None:
     """Return the canonical member of *valid* matching *raw*, or ``None``.
 
-    Tiers, first match wins: exact, case-insensitive, normalised, then a
+    Tiers, first match wins: exact, case-insensitive, normalized, then a
     ``difflib`` ratio at/above *threshold* (best match). ``None`` means *raw* is
     too far from every option to snap — the caller should treat that as a real
     mismatch, not force it.
@@ -116,9 +116,9 @@ def snap(raw: str, valid: list[str], *, threshold: float = _SNAP_THRESHOLD) -> s
     for v in valid:
         if s.lower() == v.lower():
             return v
-    s_norm = _normalise(s)
+    s_norm = _normalize(s)
     for v in valid:
-        if s_norm == _normalise(v):
+        if s_norm == _normalize(v):
             return v
     # Numbers snap numerically, not by string ratio (difflib is meaningless on
     # digits). For a numeric issue this is authoritative: a match, or a refusal —
@@ -127,16 +127,16 @@ def snap(raw: str, valid: list[str], *, threshold: float = _SNAP_THRESHOLD) -> s
     if numeric is not False:
         return numeric  # type: ignore[return-value]
     # Token containment — "express delivery" ~ "express" (the CE's token_set_ratio
-    # intent, done with plain sets so difflib's whole-string ratio doesn't penalise
+    # intent, done with plain sets so difflib's whole-string ratio doesn't penalize
     # the extra word). Single-token numerics never trigger this (distinct tokens).
     raw_tokens = set(s_norm.split())
     for v in valid:
-        v_tokens = set(_normalise(v).split())
+        v_tokens = set(_normalize(v).split())
         if v_tokens and (v_tokens <= raw_tokens or raw_tokens <= v_tokens):
             return v
     best_score, best_match = 0.0, None
     for v in valid:
-        score = _ratio(s_norm, _normalise(v))
+        score = _ratio(s_norm, _normalize(v))
         if score > best_score:
             best_score, best_match = score, v
     return best_match if best_score >= threshold else None

@@ -2,15 +2,11 @@
 // Copyright 2026 Mycelium Contributors
 
 /**
- * Reading back through the channel (issue #899).
+ * Reading back through the channel.
  *
- * The feed used to be one fetch of the newest messages and nothing else: no
- * scroll-back, no load-older, and a default of fifty against a rail that loaded
- * two hundred. So a room with hundreds of messages in it read as having only
- * the last few minutes of churn. These cover the walk back — that a page before
- * is asked for, that it is asked for by content rather than position, that it
- * stops at the start of the room, and that it does not double what is already
- * on screen.
+ * These cover the walk back: that a page before is asked for, that it is
+ * asked for by content rather than position, that it stops at the start of
+ * the room, and that it does not double what is already on screen.
  *
  * jsdom does no layout, so the viewport never overflows: the fill pass (the one
  * that keeps pulling until there is something to scroll) is what drives paging

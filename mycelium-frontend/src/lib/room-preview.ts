@@ -58,7 +58,7 @@ function chatText(content: unknown): string {
 /** The last thing that happened in a room, as one line for an inbox row.
  *
  *  Takes the transcript newest-first (the order the backend serves) and returns
- *  the newest message that reads as something a person would recognise. What a
+ *  the newest message that reads as something a person would recognize. What a
  *  room actually said outranks what its protocol did, so a chat line is
  *  preferred over the coordination events that may sit on top of it; an event
  *  only wins when no one has spoken inside the scanned window. */

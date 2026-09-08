@@ -212,8 +212,8 @@ mycelium await --room $ROOM --handle designer --loop \
 LOOP_PID=$!
 
 # Opening positions (counterparty operator-driven, or a second loop)
-mycelium respond --room $ROOM --handle planner  "Optimise for ship date"
-mycelium respond --room $ROOM --handle designer "Optimise for design polish"
+mycelium respond --room $ROOM --handle planner  "Optimize for ship date"
+mycelium respond --room $ROOM --handle designer "Optimize for design polish"
 
 # Summon the aligner; it addresses designer by @mention each round.
 mycelium engine invoke aligner "converge on the ship-vs-polish tradeoff" -r $ROOM

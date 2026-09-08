@@ -93,10 +93,9 @@ def test_write_env_file_preserves_secret_on_reapply(isolated_home) -> None:
 def test_spoke_write_env_file_preserves_existing_secret(isolated_home) -> None:
     """write_env_file on a non-localhost hub must NOT blank MYCELIUM_SLIM_MASTER_SECRET.
 
-    Regression for the bug where _is_hub_config skipped ensure_slim_master_secret
-    entirely, so a secret in .env was never imported and generate_env_file rendered
-    MYCELIUM_SLIM_MASTER_SECRET= (empty). Hubs at LAN IPs / behind reverse proxies
-    hit this path.
+    If _is_hub_config skips ensure_slim_master_secret, a secret in .env is
+    never imported and generate_env_file renders MYCELIUM_SLIM_MASTER_SECRET=
+    (empty). Hubs at LAN IPs / behind reverse proxies hit this path.
     """
     myc = isolated_home / ".mycelium"
     myc.mkdir(parents=True)

@@ -30,11 +30,8 @@ import type {
 } from "@/lib/api";
 import type { RoomStatus } from "@/lib/board/upstream";
 
-// A fixed "now" so relative timestamps render deterministically. Callers offset
-// from this; nothing here calls Date.now(), so snapshots stay stable. The board
-// ages rows against the reader's real clock, so a stale anchor makes a lively
-// room look abandoned (drained TTL bars, "seen 10d ago") — pull this forward
-// when it drifts too far behind the present.
+// A fixed "now" so relative timestamps render deterministically. Callers
+// offset from this; nothing here calls Date.now(), so snapshots stay stable.
 const NOW = Date.parse("2026-08-28T17:30:00Z");
 const iso = (minsAgo: number): string => new Date(NOW - minsAgo * 60_000).toISOString();
 
@@ -49,12 +46,10 @@ export interface MockRoom {
 
 export interface MockMemory {
   key: string;
-  /** Prose (most memories) or an object — the board projects a row's typed
-   *  fields straight from an object value. This is the store's *structured
-   *  value* shape (a memory whose `value:` frontmatter key holds a mapping —
-   *  what `MemoryCreate.value` as an object round-trips to). Object-valued
-   *  memories must also set `content_text` so search and previews have a string
-   *  to read. */
+  /** Prose (most memories) or an object — the store's *structured value*
+   *  shape, which `MemoryCreate.value` as an object round-trips to; the
+   *  board projects a row's typed fields straight from it. Object-valued
+   *  memories must also set `content_text` for search and previews. */
   value: string | Record<string, unknown>;
   /** Frontmatter the store doesn't own, read back from `MemoryRead.meta`. This
    *  is where a lease lands and where a board action writes, so a row's fields
@@ -280,10 +275,9 @@ const atlasL9Frames: Record<string, unknown>[] = atlasL9Chain.map((env, i) => ({
  * envelope in `live` naming the thread that moved, who wrote and which message,
  * carrying no prose, so there is nothing here to echo even by accident.
  *
- * It belongs to the L9 wire feed and *not* to the message list, which is where
- * the backend puts it too: a ping is a control frame, so the conversational
- * read drops it and the transcript replay is where it survives a reload. A mock
- * that served it from both would hide the merge the channel actually does.
+ * A ping is a control frame: it belongs to the L9 wire feed, not the message
+ * list. The conversational read drops it; the transcript replay is where it
+ * survives a reload.
  */
 function atlasPing(message: string, sender: string, minutesAgo: number): Record<string, unknown> {
   return {

@@ -223,9 +223,8 @@
     searchSelected = -1;
   }
 
-  // Below the layout breakpoint the field is not in the bar at all: the bar has
-  // a search icon, and the field drops to a row beneath it. Above it, the field
-  // is always there and these are no-ops beyond focusing.
+  // Field is hidden below the layout breakpoint; these calls focus/clear it
+  // above that width and are no-ops below it.
   function openSearchField() {
     closeDrawer();
     if (searchBox) searchBox.classList.add('open');
@@ -369,8 +368,8 @@
     if (navigator.clipboard && window.isSecureContext) {
       return navigator.clipboard.writeText(text);
     }
-    // No async clipboard off a secure origin (file://, plain http): copy out of
-    // a scratch textarea instead so the docs still work opened from disk.
+    // Fall back to a scratch textarea when opened from disk (file://) or over
+    // plain http, where the async clipboard API is unavailable.
     return new Promise((resolve, reject) => {
       const scratch = document.createElement('textarea');
       scratch.value = text;

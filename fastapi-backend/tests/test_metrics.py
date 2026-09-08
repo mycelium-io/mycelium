@@ -6,7 +6,7 @@ Unit tests for the in-process metrics store.
 
 Guards the key invariants:
   * @_safe logs warnings instead of silently swallowing errors
-  * Token keys are normalised to input_tokens/output_tokens in the
+  * Token keys are normalized to input_tokens/output_tokens in the
     ``llm`` namespace
 """
 
@@ -45,7 +45,7 @@ def test_safe_decorator_logs_warning_on_bad_input(caplog: pytest.LogCaptureFixtu
     assert any("metrics.record_llm_call failed" in r.message for r in caplog.records)
 
 
-# ── llm normalised keys ──────────────────────────────────────────────
+# ── llm normalized keys ──────────────────────────────────────────────
 
 
 def test_llm_uses_input_output_keys() -> None:

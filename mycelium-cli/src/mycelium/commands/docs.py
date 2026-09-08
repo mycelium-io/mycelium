@@ -22,7 +22,7 @@ app = typer.Typer(
 
 # Ordered list of doc sections (topic → display name). Order matches the GUI
 # sidebar. A topic is the stem alone regardless of which subdirectory holds the
-# file, so "mycelium docs rooms" is stable across a source reorganisation.
+# file, so "mycelium docs rooms" is stable across a source reorganization.
 SECTIONS: list[tuple[str, str]] = [
     ("overview", "Overview"),
     ("quickstart", "Quick Start"),
@@ -47,7 +47,7 @@ SECTIONS: list[tuple[str, str]] = [
     ("troubleshooting", "Troubleshooting"),
 ]
 
-# Subdirectories the docs tree is organised into, in lookup order. "commands"
+# Subdirectories the docs tree is organized into, in lookup order. "commands"
 # and "examples" are older layouts that some installs may still carry.
 _DOC_DIRS = ("concepts", "guides", "reference", "adapters", "commands", "examples")
 

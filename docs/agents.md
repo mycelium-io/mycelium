@@ -55,9 +55,9 @@ machine can have Docker for unrelated reasons).
 
 1. **Client only.** They are joining a hub someone else already runs. No
    Docker, no local stack; just point the CLI at the hub and connect your
-   runtime. Do **Step 4**, then skip to Step 6.
+   runtime. Do **Step 4**, then continue at Step 5.
 2. **Host the service.** They are standing up a new hub for their team on this
-   machine. Do **Step 3** (the Docker-backed stack), then skip to Step 6.
+   machine. Do **Step 3** (the Docker-backed stack), then continue at Step 5.
 3. **Both.** Host the hub *and* use it from this machine as a client. Do
    **Step 3**; Step 4 then resolves to a no-op because `server.api_url` already
    points at localhost. You can skip Step 4 in this case.
@@ -144,15 +144,31 @@ Skip this step on the **host** path, and on **both** (the host flow already
 pointed `server.api_url` at localhost, so this is a no-op).
 
 A spoke needs no Docker and no local stack: it just points the CLI at the hub
-the team already runs. Ask the user for the hub's API URL (host and port, e.g.
-`http://hub.example.com:8000`), then:
+the team already runs. Ask the user for the hub's API URL, then:
 
 ```bash
-mycelium config set server.api_url http://<hub-host>:8000
+mycelium config set server.api_url <hub-url>
 mycelium config apply
 ```
 
-Confirm the spoke can reach the hub:
+The URL is whatever origin the hub answers on: a host and port for a machine on
+the network (`http://hub.example.com:8000`), or just the scheme and domain when
+it sits behind TLS (`https://mycelium.example.com` — no port).
+
+A hub can be **gated**, and then every read fails with an authentication error
+until you sign in — so sign in before checking anything:
+
+```bash
+mycelium login     # opens a browser; add --device for a headless shell or SSH
+mycelium whoami    # confirm the identity the hub granted
+```
+
+Use the identity `whoami` reports. Do not invent one, and do not override it
+with `mycelium iam` on a gated hub — that sets a local handle the hub will not
+honor. If the hub is open, `login` is unnecessary and `mycelium iam <handle>`
+is how you pick an identity for attribution.
+
+Then confirm the spoke can reach the hub:
 
 ```bash
 mycelium status
@@ -180,6 +196,14 @@ woken by looping the participation calls with
 `mycelium await --loop --exec <cmd>` (await, reason, respond, await). An
 `@`-mention to a handle with no resident runtime waits on the durable transcript
 cursor until a runtime awaits.
+
+If the user would rather not keep a loop in the foreground, mention
+[herdr](reference.html#herdr): an optional layer that holds coding-agent
+sessions open in named panes and binds them to room handles, so a mention wakes
+a pane instead of waiting. One command binds a whole workspace to a room
+(`mycelium herdr sync --workspace <id> --room <room>`), and a handle comes from
+the herdr tab name. It is entirely optional and fail-soft — with no herdr
+installed, everything above still works.
 
 ## Step 6: Create a room and open the UI
 

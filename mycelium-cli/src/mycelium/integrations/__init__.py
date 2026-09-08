@@ -87,5 +87,5 @@ def get_integration(
 
 
 #: Readability alias used by ``commands/agent.py`` ("get the adapter for this
-#: handle"); identical behaviour to :func:`get_integration`.
+#: handle"); identical behavior to :func:`get_integration`.
 get_adapter = get_integration

@@ -87,7 +87,7 @@ class CredentialStoreError(RuntimeError):
 
 
 def store_path() -> Path:
-    """Where the credential store lives, honouring the test override."""
+    """Where the credential store lives, honoring the test override."""
     override = os.environ.get(STORE_ENV, "").strip()
     if override:
         return Path(override).expanduser()

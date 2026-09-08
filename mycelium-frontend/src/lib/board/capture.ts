@@ -14,7 +14,7 @@ import type { LiveItem } from "./item";
 export interface ParsedCapture {
   title: string;
   fields: Record<string, unknown>;
-  /** What the parser recognised, echoed under the input as you type. */
+  /** What the parser recognized, echoed under the input as you type. */
   hints: { label: string; value: string }[];
 }
 

@@ -38,14 +38,14 @@ class CacheEntry:
     errored_at: datetime | None = None
     #: A provider may extend its own answer's life (a merged PR stops moving).
     ttl_override: timedelta | None = None
-    #: Honoured before any refresh, so a rate-limited provider is left alone.
+    #: Honored before any refresh, so a rate-limited provider is left alone.
     retry_after: datetime | None = None
 
 
 class StatusCache:
     """Per-ref entries plus single-flight.
 
-    Single-flight is not an optimisation here, it is correctness of a sort: a
+    Single-flight is not an optimization here, it is correctness of a sort: a
     room with twenty panels open would otherwise turn one stale pull request
     into twenty identical requests the instant it expires.
     """

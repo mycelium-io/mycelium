@@ -6,10 +6,10 @@
 Node-free and LLM-free: the mediator's LLM session is injected as a deterministic
 prompt-keyed stub (via the aligner's ``llm_session_factory``) and the agents are
 simulated by the same fake channel the aligner tests use. This exercises the
-anti-theatre property that matters —
+anti-theater property that matters —
 **NEGMAS owns termination**: once the agents accept a standing offer the
 mechanism *stops*, and the aligner emits a ``commit:converged`` carrying the
-agreed ``issue = value`` map (the anti-theatre guarantee), never looping to the
+agreed ``issue = value`` map (the anti-theater guarantee), never looping to the
 step cap.
 """
 
@@ -175,13 +175,13 @@ async def test_mediate_terminates_at_agreement() -> None:
     assert verdict["header"]["subkind"] == "converged"
     # The agreed issue=value map rides the envelope for plan_sync to compile.
     assert verdict["payload"]["data"]["assignments"] == {"cap": "30"}
-    # Episode lifecycle: frozen membership opened, drained on close. Each convening
-    # gets a unique episode id (no longer the hardcoded "align"), so assert the
-    # shape — one room-scoped episode opened — not a fixed suffix.
+    # Episode lifecycle: frozen membership opened, drained on close. Each
+    # convening gets a unique episode id, so assert the shape — one
+    # room-scoped episode opened — not a fixed suffix.
     assert len(manager.opened) == 1
     assert manager.opened[0].startswith(l9.episode_urn(_ROOM, ""))
     assert manager.closed == [_ROOM]
-    # Anti-theatre: it stopped the moment agreement was reached — the number of
+    # Anti-theater: it stopped the moment agreement was reached — the number of
     # agent turns (exchange prompts) is far below the step cap, not a full run.
     from app.services.l9_models import Kind
 
@@ -271,7 +271,7 @@ async def test_mediate_rejects_when_no_issues_discovered(
     assert manager.closed == [_ROOM]
 
 
-# ── stage 0: the pre-negotiation term check (#680) ────────────────────────────
+# ── stage 0: the pre-negotiation term check ───────────────────────────────────
 
 
 def _mismatch_llm(*, term: str = "done") -> Any:
@@ -487,7 +487,7 @@ async def test_mediate_survives_a_failing_term_check(monkeypatch: pytest.MonkeyP
     assert verdict["header"]["subkind"] == "converged"
 
 
-# ── #683: address the least-satisfied agent next (turn order) ─────────────────
+# ── address the least-satisfied agent next (turn order) ───────────────────────
 
 _ISSUES_683 = [{"name": "cap", "options": ["30", "40", "50", "60"]}]
 _OPTIONS_683 = {"cap": ["30", "40", "50", "60"]}
@@ -583,7 +583,7 @@ def test_mechanism_defaults_to_round_robin_before_first_offer() -> None:
 @pytest.mark.asyncio
 async def test_least_satisfied_order_preserves_termination() -> None:
     """Reordering who is asked must not break termination: a converging run still
-    stops at agreement, not the step cap (the anti-theatre invariant)."""
+    stops at agreement, not the step cap (the anti-theater invariant)."""
     persister = FakePersister()
     channel = FakeChannel(persister, reply_conf=0.9)
     managed = FakeManaged(_ROOM, "mycelium", channel, persister)

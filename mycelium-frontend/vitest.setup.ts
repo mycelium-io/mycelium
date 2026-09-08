@@ -7,7 +7,6 @@ import "@testing-library/jest-dom/vitest";
 // (no `clear`, `getItem`, etc.) that shadows jsdom's working Storage because
 // jsdom skips re-installing globals that already exist.  Detect the broken
 // stub and replace it with an in-memory Storage before any test code runs.
-// See https://github.com/vitest-dev/vitest/issues/8757
 if (typeof window !== "undefined") {
   const candidate = (globalThis as { localStorage?: Storage }).localStorage;
   const isBroken = !candidate || typeof candidate.getItem !== "function";
@@ -59,7 +58,7 @@ if (!("ResizeObserver" in globalThis)) {
 // `--localstorage-file` (it says so: "`--localstorage-file` was provided without
 // a valid path"). That bare global then shadows the implementation jsdom would
 // have installed, so anything calling `localStorage.getItem` fails on the
-// environment rather than on its own behaviour.
+// environment rather than on its own behavior.
 //
 // Installed only when the global isn't usable, so a runtime whose Web Storage
 // works keeps it. In-memory rather than file-backed on purpose: tests must not

@@ -346,7 +346,7 @@ async function renderCard(spec, eng) {
       prompt: typeof spec.prompt === "string" ? spec.prompt : undefined,
       exitCode: meta.exitCode,
       showExit: spec.showExit !== false,
-      // The title names what the card claims to show. With --command relabelling
+      // The title names what the card claims to show. With --command relabeling
       // the prompt (`mycelium …` for a line that really ran `uv run mycelium …`),
       // taking it from argv would caption the card with the wrong binary.
       title: spec.title ?? binaryOf(command) ?? "terminal",

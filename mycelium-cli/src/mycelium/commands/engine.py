@@ -171,7 +171,7 @@ def engine_invoke(
     """Summon a registered cognition engine by posting an ``@handle`` message.
 
     Fills gap #4: the built-in aligner previously had no CLI surface (you had to
-    hit the REST API directly). The backend recognises a registered ``engine``
+    hit the REST API directly). The backend recognizes a registered ``engine``
     and runs it as that handle.
 
     Example:

@@ -142,12 +142,9 @@ def _options(name: str, values: list[Any], type_: str) -> list[tuple[str, int]]:
 
     vocabulary = KNOWN_VOCABULARIES.get(name)
     if vocabulary:
-        # A defined vocabulary keeps its own order (open → resolved reads as a
-        # pipeline); a discovered one sorts by how much the room uses it.
+        # A defined vocabulary preserves its own order (open -> resolved pipeline);
+        # a value outside it sorts last.
         return sorted(
-            # A value outside the vocabulary sorts after every value in it: the
-            # vocabulary is a deliberate order (open reads through to resolved),
-            # and something unexpected does not belong in the middle of it.
             counts.items(),
             key=lambda kv: vocabulary.index(kv[0]) if kv[0] in vocabulary else len(vocabulary),
         )

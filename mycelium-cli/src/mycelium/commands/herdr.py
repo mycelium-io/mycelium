@@ -155,7 +155,7 @@ def _room_members(config: MyceliumConfig, room_name: str) -> dict[str, str] | No
 
 
 def _reconcile_note(mycelium_kind: str | None, herdr_status: str | None) -> tuple[str, str]:
-    """The three-way verdict for one binding → ``(text, colour)``.
+    """The three-way verdict for one binding → ``(text, color)``.
 
     ``mycelium_kind`` is the backend presence kind (``slim``/``lease``/``None``);
     ``herdr_status`` is the live pane state (``None`` = pane empty / herdr blind).
@@ -230,21 +230,21 @@ def herdr_ls(
             members = members_by_room.get(m.room)
             myc_kind = members.get(m.handle.lower()) if members is not None else None
 
-            hcolour = {
+            hcolor = {
                 "idle": "green",
                 "done": "green",
                 "working": "yellow",
                 "blocked": "red",
             }.get(herdr_status or "", "dim")
-            note, ncolour = _reconcile_note(myc_kind, herdr_status)
+            note, ncolor = _reconcile_note(myc_kind, herdr_status)
             myc_display = "[dim]?[/dim]" if members is None else (myc_kind or "[dim]absent[/dim]")
             table.add_row(
                 m.room,
                 f"@{m.handle}",
                 m.pane,
                 myc_display,
-                f"[{hcolour}]{herdr_status or '-'}[/{hcolour}]",
-                f"[{ncolour}]{note}[/{ncolour}]",
+                f"[{hcolor}]{herdr_status or '-'}[/{hcolor}]",
+                f"[{ncolor}]{note}[/{ncolor}]",
             )
         console.print(table)
     except typer.Exit:

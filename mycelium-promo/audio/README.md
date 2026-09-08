@@ -63,7 +63,7 @@ voice that renders silently — a mistuned envelope, a loop that exits on its
 own first sample — reads perfectly well as source and shows up only here.
 
 `npm run audio -- --wav` keeps the intermediate 48kHz WAV, which is what to
-point an analyser at.
+point an analyzer at.
 
 ## Known: 21ms
 

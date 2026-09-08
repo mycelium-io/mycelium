@@ -49,7 +49,7 @@ export function MemoryPreviewCard({ memory, anchor }: Props) {
   const [top, setTop] = useState<number | null>(null);
   const preview = memoryPreview(memory);
 
-  // Centre on the row once the card's real height is known — before paint, so
+  // Center on the row once the card's real height is known — before paint, so
   // the card never appears at the provisional position first.
   useLayoutEffect(() => {
     const el = ref.current;

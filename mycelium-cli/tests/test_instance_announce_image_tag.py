@@ -4,10 +4,9 @@
 """Tests for the post-``mycelium up`` image-tag announcement.
 
 Compose silently falls back to ``:latest`` when ``MYCELIUM_IMAGE_TAG`` is
-absent — a UX trap that bit us when running v1.0.13 while believing we were
-on rc3.  ``_announce_image_tag`` surfaces the effective tag (and warns when
-unpinned) so the next person debugging an image mismatch sees it
-immediately instead of digging through ``.env``.
+absent. ``_announce_image_tag`` surfaces the effective tag (and warns when
+unpinned) so a debugging session sees it immediately instead of digging
+through ``.env``.
 """
 
 from __future__ import annotations
@@ -71,7 +70,7 @@ def test_announce_treats_explicit_latest_as_unpinned(
 ) -> None:
     """``mycelium pull --version=latest`` records ``MYCELIUM_IMAGE_TAG=latest``
     as an explicit unpin — the user gets the same UX as if the line were
-    absent (warning + hint), since the effective behaviour is identical.
+    absent (warning + hint), since the effective behavior is identical.
     """
     env_path.write_text("MYCELIUM_IMAGE_TAG=latest\n", encoding="utf-8")
     instance._announce_image_tag()

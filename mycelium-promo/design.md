@@ -17,7 +17,7 @@ Brand source: `mycelium-frontend/src/app/globals.css`. Use these exact values. D
 | `purple`    | `#c084fc`                   | Agent / negotiation accent                  |
 | `yellow`    | `#fbbf24`                   | Warnings, transient state                   |
 | `text`      | `#eaeaea`                   | Primary text                                |
-| `text2`     | `#a8a6a0`                   | Secondary text (warm grey)                  |
+| `text2`     | `#a8a6a0`                   | Secondary text (warm gray)                  |
 | `muted`     | `#b8b5ae`                   | Tertiary text, labels                       |
 | `dim`       | `#46443e`                   | Fully-dimmed                                 |
 

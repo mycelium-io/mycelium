@@ -90,11 +90,11 @@ describe("readSseEvents", () => {
 });
 
 describe("readSseEvents cancellation", () => {
-  // Reading holds a lock, and cancelling the stream itself throws on a locked
+  // Reading holds a lock, and canceling the stream itself throws on a locked
   // stream — so cancellation has to reach the source through the reader.
   it("releases the underlying source when the signal aborts", async () => {
-    const cancelled = vi.fn();
-    const body = new ReadableStream<Uint8Array>({ start() {}, cancel: cancelled });
+    const canceled = vi.fn();
+    const body = new ReadableStream<Uint8Array>({ start() {}, cancel: canceled });
     const abort = new AbortController();
 
     const drained = (async () => {
@@ -106,17 +106,17 @@ describe("readSseEvents cancellation", () => {
     abort.abort();
     await drained;
 
-    expect(cancelled).toHaveBeenCalled();
+    expect(canceled).toHaveBeenCalled();
   });
 
   it("releases the underlying source when the caller stops reading early", async () => {
     const encoder = new TextEncoder();
-    const cancelled = vi.fn();
+    const canceled = vi.fn();
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(encoder.encode("data: 1\n\ndata: 2\n\n"));
       },
-      cancel: cancelled,
+      cancel: canceled,
     });
 
     for await (const event of readSseEvents(body)) {
@@ -124,18 +124,18 @@ describe("readSseEvents cancellation", () => {
       break;
     }
 
-    expect(cancelled).toHaveBeenCalled();
+    expect(canceled).toHaveBeenCalled();
   });
 
   it("does not start reading a body whose signal has already aborted", async () => {
-    const cancelled = vi.fn();
-    const body = new ReadableStream<Uint8Array>({ start() {}, cancel: cancelled });
+    const canceled = vi.fn();
+    const body = new ReadableStream<Uint8Array>({ start() {}, cancel: canceled });
 
     const seen = [];
     for await (const event of readSseEvents(body, AbortSignal.abort())) seen.push(event);
 
     expect(seen).toEqual([]);
-    expect(cancelled).toHaveBeenCalled();
+    expect(canceled).toHaveBeenCalled();
   });
 });
 

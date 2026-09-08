@@ -44,6 +44,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from app.services import l9
+from app.services.agent_registry import norm_handle
 from app.services.filesystem import (
     EPISODE_META,
     get_room_dir,
@@ -108,7 +109,7 @@ _REWRITTEN_META = frozenset({"key", "created_by", "updated_by", "version", "tags
 
 def _norm(handle: str) -> str:
     """A handle as it compares: the roster and the caller may spell it differently."""
-    return handle.strip().lstrip("@").lower()
+    return norm_handle(handle) or ""
 
 
 def slugify(title: str) -> str:
@@ -190,7 +191,7 @@ def known_episode(room: str, episode: str, *, transcript: Iterable[str] = ()) ->
     spoken in (a negotiation's, and an orphaned episode's, as well as a task's),
     and only a *first* write into a thread that is still silent falls through to
     the store scan — once per thread, not once per message. ``transcript`` is
-    read newest-first and short-circuits, so recognising an active thread costs
+    read newest-first and short-circuits, so recognizing an active thread costs
     a handful of records rather than the whole history.
     """
     if episode in transcript:
@@ -246,7 +247,7 @@ def thread_write_refusal(room: str, handle: str, episode: str | None) -> ThreadR
 
     The one call both write routes make, so ``/messages`` and ``/reply`` cannot
     grow separate ideas of who may speak in a thread. A room with no live channel
-    has no negotiation to be outside of and no transcript to recognise a thread
+    has no negotiation to be outside of and no transcript to recognize a thread
     by, so the rule falls back to what the store knows.
     """
     if episode is None or l9.is_live_episode(room, episode):

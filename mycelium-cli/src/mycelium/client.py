@@ -164,7 +164,7 @@ def typed_client(config: MyceliumConfig | None = None, *, handle: str | None = N
 def hub_error_detail(content: bytes) -> str:
     """Extract a human-readable message from a hub HTTP error response body.
 
-    FastAPI serialises ``HTTPException`` as ``{"detail": "..."}``; we surface
+    FastAPI serializes ``HTTPException`` as ``{"detail": "..."}``; we surface
     that string so the caller sees the backend's actual message rather than a
     bare status code.  Falls back to the raw decoded body, and to an empty
     string for truly empty responses.

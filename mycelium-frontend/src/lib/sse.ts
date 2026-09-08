@@ -32,7 +32,7 @@ export interface StreamEnvelope {
  *  is reported per feed rather than inferred from the socket. */
 export const STREAM_STATUS_EVENT = "status";
 
-/** How long the server waits before redialling a dropped upstream feed, and
+/** How long the server waits before redialing a dropped upstream feed, and
  *  the `retry:` hint handed to the browser for the connection itself. */
 export const STREAM_RETRY_MS = 5000;
 
@@ -105,7 +105,7 @@ export function createSseDecoder(): (chunk: string) => SseEvent[] {
  *
  * Cancellation goes through the reader, not the stream: reading holds a lock,
  * and `ReadableStream.cancel()` on a locked stream throws rather than stopping
- * anything. Cancelling the reader propagates to the underlying source, so a
+ * anything. Canceling the reader propagates to the underlying source, so a
  * feed's timers and sockets are released instead of parked on a read that will
  * never resolve.
  */

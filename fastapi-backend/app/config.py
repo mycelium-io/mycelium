@@ -138,7 +138,7 @@ class Settings(BaseSettings):
     # Mediator LLM session runtime — the cognitive engine behind the SAO
     # mediator, an *internal* agent — always a persistent, optionally
     # OpenShell-sandboxed `pi -p --session <id> --mode json` session that gives the
-    # internal agent real memory across SAO rounds (the anti-theatre property).
+    # internal agent real memory across SAO rounds (the anti-theater property).
     # This is ONLY the runtime for mycelium's own cognition engines; user/participant
     # agent runtimes (claude_code, cursor, …) are untouched and keep their own runtime.
     # Path/name of the `pi` binary the mediator LLM session runs.

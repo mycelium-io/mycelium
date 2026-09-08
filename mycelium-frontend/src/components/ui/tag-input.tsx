@@ -44,8 +44,8 @@ export function TagInput({ value, onChange, suggestions = [], placeholder, ariaL
     }
   };
 
-  // Commit any pending draft when the input loses focus so clicking Save
-  // without pressing Enter still captures whatever was typed.
+  // Commits the pending draft on blur, capturing text typed but not
+  // submitted with Enter.
   const onBlur = () => {
     if (draft.trim()) add(draft);
   };

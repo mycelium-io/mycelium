@@ -5,8 +5,8 @@
 
 A *handle* is an identity and can be minted by a real IdP, so an email-shaped
 ``preferred_username`` (Cisco SSO / Keycloak) must validate. A *slug* is a
-filename / composer trigger token and stays clean. These are deliberately two
-patterns; regressing either back to a single slug rule reintroduces #656.
+filename / composer trigger token and stays clean. The two stay separate
+patterns.
 """
 
 import pytest

@@ -250,7 +250,7 @@ def record_reply(
     handle: str,
     reply: dict[str, Any],
     round_n: int | None,
-    synthesised: bool = False,
+    synthesized: bool = False,
 ) -> None:
     """Record an agent's parsed reply as a synthesized ``exchange`` envelope.
 
@@ -267,8 +267,8 @@ def record_reply(
     move = reply.get("move")
     subkind = move if move in l9.EXCHANGE_MOVE_SUBKINDS else None
     payload_data: dict[str, Any] = {"round": round_n, "action": action}
-    if synthesised:
-        payload_data["synthesised"] = True
+    if synthesized:
+        payload_data["synthesized"] = True
     if isinstance(reply.get("offer"), dict):
         payload_data["offer"] = reply["offer"]
     for k in (
@@ -567,8 +567,8 @@ def _write_record(ep: EpisodeState, lines: list[str]) -> None:
         "\n".join(lines),
         created_by=l9.SYSTEM_ACTOR_ID,
         updated_by=l9.SYSTEM_ACTOR_ID,
-        # This write skips the upsert that mints one, and a record of a
-        # conversation is still a thing to have a conversation about.
+        # This write skips the upsert that mints an episode binding; the
+        # episode record is part of the conversation thread.
         extra_meta=carry_thread(ep.parent_room, key),
     )
 

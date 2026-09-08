@@ -48,9 +48,8 @@ def _episode_item(episode: dict) -> LiveItem:
         fields={
             EPISODE_FIELD: episode.get("episode"),
             "thread": episode.get("short_id"),
-            # A rejected negotiation is not a stage called "blocked" — nothing is
-            # blocking it, it failed and wants a human. It reads open, and the
-            # kind carries what happened.
+            # A rejected negotiation reads open with kind=blocked, not a
+            # "blocked" stage: it failed and wants a human.
             "status": ("open" if subkind == "rejected" else "resolved") if settled else "in_review",
             "kind": "blocked" if subkind == "rejected" else "decision",
             "owner": f"@{next(iter(assignments))}" if len(assignments) == 1 else None,
@@ -92,10 +91,8 @@ def _memory_item(memory: dict) -> LiveItem:
     fields: dict[str, Any] = {
         "status": custom.get("status") if isinstance(custom.get("status"), str) else derived,
         "kind": {"decisions": "decision", "failed": "blocked"}.get(namespace, "concern"),
-        # Who wrote it last is provenance, not assignment. Reading `owner` off
-        # `updated_by` gave every memory in the room a holder, which is the
-        # confident-lie failure this whole axis exists to stop: a holder is
-        # something a claim writes, so an unclaimed row says nobody.
+        # Who wrote it last is provenance (`updated_by`), not assignment.
+        # `owner` is written only by a claim; an unclaimed row says nobody.
         "owner": None,
         "writer": f"@{memory.get('updated_by') or memory.get('created_by')}",
         "priority": "normal",

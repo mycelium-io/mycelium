@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Unit tests for the SignerJwt-floor SLIM identity (#476), node-independent half.
+"""Unit tests for the SignerJwt-floor SLIM identity, node-independent half.
 
 The live MLS path (two identified members over a real 2.1.0 node) needs the rig
 and is out of scope here; these cover everything offline: the mode switch and its
@@ -29,7 +29,7 @@ def test_mode_unknown_value_falls_back_to_psk(monkeypatch):
 
 
 def test_retired_spire_tier_is_not_selectable(monkeypatch):
-    """The retired SPIRE tier reads as any other unknown value: psk (#668)."""
+    """The retired SPIRE tier reads as any other unknown value: psk."""
     monkeypatch.setenv("MYCELIUM_SLIM_IDENTITY", "spire")
     assert "spire" not in slim_identity.VALID_MODES
     assert slim_identity.resolve_identity_mode() == slim_identity.MODE_PSK
@@ -58,8 +58,8 @@ def test_generate_es256_keypair_is_pkcs8_and_loadable():
     from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
     private_pem, public_pem = slim_identity.generate_es256_keypair()
-    # PKCS#8 header, not SEC1 (`-----BEGIN EC PRIVATE KEY-----`) which the provider
-    # rejects with InvalidKeyFormat (#587).
+    # PKCS#8 header, not SEC1 (`-----BEGIN EC PRIVATE KEY-----`), which the
+    # provider rejects with InvalidKeyFormat.
     assert "BEGIN PRIVATE KEY" in private_pem
     assert "BEGIN EC PRIVATE KEY" not in private_pem
     key = load_pem_private_key(private_pem.encode(), password=None)
@@ -226,7 +226,7 @@ def test_provision_defaults_to_active_mode(tmp_path, monkeypatch):
     assert result["provisioned"] is True
 
 
-# ── revoke_channel_identity: the payoff — per-member revoke, no re-key (#590) ──
+# ── revoke_channel_identity: per-member revoke, no room-wide re-key ───────────
 def test_revoke_psk_is_a_noop(tmp_path):
     result = slim_identity.revoke_channel_identity("alice", slim_identity.MODE_PSK, tmp_path)
     assert result == {"mode": "psk", "handle": "alice", "revoked": False}

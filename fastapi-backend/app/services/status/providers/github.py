@@ -122,7 +122,7 @@ class GitHubProvider:
         response = await ctx.http.post("/graphql", json={"query": _document(refs)})
 
         # GraphQL reports its primary rate limit as a 200 with a RATE_LIMITED
-        # error, and secondary limits as 403/429; both are honoured, not sniffed
+        # error, and secondary limits as 403/429; both are honored, not sniffed
         # from body text alone.
         if _is_rate_limited(response):
             wait = _retry_after(response) or timedelta(minutes=5)

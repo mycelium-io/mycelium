@@ -27,7 +27,7 @@ describe("panel sizing", () => {
 
   // The whole point of the compact tab strip: it has to engage somewhere the
   // rail can actually be dragged to. A threshold at or below the minimum would
-  // mean the labelled tabs clip at the floor and the icon strip never appears.
+  // mean the labeled tabs clip at the floor and the icon strip never appears.
   it("drops the inspector's tab labels above its minimum width", () => {
     expect(TAB_LABELS_MIN_WIDTH).toBeGreaterThan(px(INSPECTOR_PANEL.min));
     expect(TAB_LABELS_MIN_WIDTH).toBeLessThan(px(INSPECTOR_PANEL.default));

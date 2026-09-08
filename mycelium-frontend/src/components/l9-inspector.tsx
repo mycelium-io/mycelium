@@ -26,6 +26,7 @@ import {
   type L9Envelope,
 } from "@/lib/api";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
+import { unwrapContent } from "@/lib/room-events";
 
 // The L9 protocol inspector renders the AOP layer legibly: the live L9 payloads
 // crossing a room's channel (exchange ticks/replies, commit verdicts with
@@ -99,16 +100,7 @@ export function toL9Frame(msg: Record<string, unknown>): L9Frame | null {
   const created = String(msg.created_at ?? "");
   const time = created.length >= 19 ? created.slice(11, 19) : "";
 
-  let content: Record<string, unknown> = {};
-  if (typeof msg.content === "string") {
-    try {
-      content = JSON.parse(msg.content);
-    } catch {
-      content = {};
-    }
-  } else {
-    content = asRecord(msg.content);
-  }
+  const content = unwrapContent(msg);
 
   // The envelope may be embedded under `l9`, OR be the content itself (the
   // persister feeds the bus a bare `{header, payload}` envelope as `l9_<kind>`),
@@ -321,7 +313,7 @@ function FrameRow({
         aria-expanded={expanded}
         onClick={() => setExpanded((prev) => !prev)}
         // No visual tooltip: the trigger is a full-width feed row, so a bubble
-        // anchored to it would sit over its neighbours. The chevron and
+        // anchored to it would sit over its neighbors. The chevron and
         // aria-expanded already carry the affordance.
         // Fixed columns so kind / actor / summary line up down the feed, one text
         // size throughout; timestamp + metrics ride a right-aligned meta cluster.
@@ -400,14 +392,14 @@ export function L9Inspector({ roomName }: Props) {
   // per room, before/alongside the live stream; the shared seenIds set dedups a
   // backfilled row against any live re-push.
   useEffect(() => {
-    let cancelled = false;
+    let canceled = false;
     seenIds.current = new Set();
     // Async fetch; the rest of the setState calls are in its .then(). Clearing
     // here drops the previous room's frames before the new ones arrive.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setFrames([]);
     fetchL9History(roomName).then((rows) => {
-      if (cancelled) return;
+      if (canceled) return;
       const seeded: L9Frame[] = [];
       for (const row of rows) {
         const frame = toL9Frame(row);
@@ -419,7 +411,7 @@ export function L9Inspector({ roomName }: Props) {
       // Prepend history ahead of any live frames that arrived during the fetch.
       setFrames((prev) => [...seeded, ...prev].slice(-MAX_FRAMES));
     }).catch(logFetchError("fetchL9History"));
-    return () => { cancelled = true; };
+    return () => { canceled = true; };
   }, [roomName]);
 
   // Live L9 wire: the room feed the channel view reads, projected into envelopes.

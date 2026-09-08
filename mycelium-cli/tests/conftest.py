@@ -4,10 +4,9 @@
 """Shared fixtures + in-process fakes for the CLI test suite.
 
 One import gets you a fake backend/transport stack — no SLIM node, no running
-backend server, no live HTTP. Before this module every file re-declared its own
-``_FakeResp`` / ``_FakeClient`` (six near-identical copies across the connector
-and daemon tests) and the membership tests each ported ``_FakeSlimClient`` by
-hand. This is the single home for them.
+backend server, no live HTTP. Single home for ``_FakeResp``/``_FakeClient``
+and ``_FakeSlimClient``, shared across the connector, daemon, and membership
+tests.
 
 What stands in for what:
 
@@ -283,7 +282,7 @@ def backend(monkeypatch: pytest.MonkeyPatch) -> Callable[..., None]:
 
 #: Agent-credential and agent-identity vars, from ``agent_credentials.py`` and the
 #: ``[agent_auth]`` env overrides in ``config.py``. A machine configured to talk to
-#: a hosted hub as an agent exports these, and the CLI's auth seam honours them:
+#: a hosted hub as an agent exports these, and the CLI's auth seam honors them:
 #: ``agent_credentials.resolve()`` would mint a real bearer mid-suite, so a test
 #: asserting an unauthenticated request would fail on that machine and pass on a
 #: bare one. The suite owns its environment, so every test starts without them.

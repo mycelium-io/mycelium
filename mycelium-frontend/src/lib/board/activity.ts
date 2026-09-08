@@ -16,7 +16,7 @@
 
 import type { EpisodeSummary, Memory, RoomMessage } from "@/lib/api";
 import { memoryHref } from "@/lib/memory-routes";
-import { parseJsonRawText } from "@/lib/json-text";
+import { CHAT_TYPES, parseEvent } from "@/lib/room-events";
 
 export type ActorKind = "agent" | "engine" | "human";
 
@@ -177,7 +177,7 @@ export function projectActivity(input: ActivityInput): ActivityEvent[] {
     const actor = (message.sender_handle ?? "").replace(/^@/, "");
     const type = (message.message_type ?? message.type ?? "") as string;
     if (!actor || !message.created_at || SKIP_TYPES.has(type)) continue;
-    const said = describe(type, message.content);
+    const said = describe(type, message);
     if (!said) continue;
     push({
       id: `msg:${message.id ?? i}`,
@@ -331,8 +331,6 @@ export function digest(days: Map<DayKey, ActivityEvent[]>, from: DayKey, to: Day
 /** How full today's log is. A target to fill, not a quota anyone is held to. */
 export const DAILY_GOAL = 6;
 
-const CHAT_TYPES = new Set(["broadcast", "direct", "announce", "delegate"]);
-
 /**
  * Facts the log reads from a truer source than the wire.
  *
@@ -347,32 +345,28 @@ const SKIP_TYPES = new Set([
 ]);
 
 /**
- * What a message says, in the log's terms. Coordination payloads are JSON on
- * the wire, so they're read by type rather than printed — a log line is who did
- * what, not the envelope they did it in.
+ * What a message says, in the log's terms. The envelope unwrap and the per-type
+ * line live in parseEvent — shared with the channel, so a coordination payload
+ * can never reach the log as printed JSON again. What stays here is the log's
+ * own ledger vocabulary: a past-tense verb per type, and a title shaped for a
+ * ledger row rather than for the conversation.
  */
-function describe(type: string, content: unknown): { action: string; title: string } | null {
+function describe(type: string, message: RoomMessage): { action: string; title: string } | null {
   if (CHAT_TYPES.has(type)) {
-    const text = typeof content === "string" ? content : "";
+    const text = parseEvent(message).content;
     return { action: "posted", title: firstLine(text) || "a message" };
   }
   if (!type.startsWith("coordination_")) return null;
 
-  const raw =
-    typeof content === "string"
-      ? ((parseJsonRawText(content) as Record<string, unknown> | null) ?? {})
-      : ((content as Record<string, unknown>) ?? {});
-
   if (type === "coordination_tick") {
-    const tick = (raw.payload as Record<string, unknown>) ?? raw;
-    const round = tick.round ?? "?";
-    const who = tick.participant_id ? `@${tick.participant_id}` : "a participant";
-    return { action: "negotiated", title: `round ${round} · ${who} ${tick.action ?? "replied"}` };
+    return { action: "negotiated", title: parseEvent(message).content };
   }
   if (type === "coordination_join") {
+    const { raw } = parseEvent(message);
     return { action: "joined", title: String(raw.intent ?? "the episode") };
   }
   if (type === "coordination_start") {
+    const { raw } = parseEvent(message);
     return { action: "opened", title: `an episode with ${raw.agent_count ?? "?"} agents` };
   }
   return { action: type.replace("coordination_", ""), title: "" };

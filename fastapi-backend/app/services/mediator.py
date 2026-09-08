@@ -15,9 +15,9 @@ module runs that loop *live over SLIM*
 against real worker agents, still driven by the reserved ``@aligner`` handle.
 
 **The Node/Python-free seam.** NEGMAS is a synchronous Python mechanism; SLIM I/O
-is async on the backend event loop. Rather than know NEGMAS's next-actor and
-inject externally-collected moves (version-fragile), we run ``mech.run()`` on a
-worker thread and let each negotiator block for its own agent's real reply: the
+is async on the backend event loop. ``mech.run()`` runs on a worker thread so
+NEGMAS keeps ownership of turn order and termination; each negotiator blocks
+for its own agent's real reply: the
 negotiator's ``propose``/``respond`` bridge back to the loop with
 ``run_coroutine_threadsafe`` to publish an ``@``-addressed prompt and collect the
 reply the persister records, then interpret the prose in-thread. NEGMAS keeps
@@ -501,7 +501,7 @@ class SatisfactionOrderedSAO(SAOMechanism):
     we override it to sort by satisfaction with the current standing offer, so the
     aligner spends turns on the agent who actually needs to move rather than on one
     already content with the offer. Termination is untouched — NEGMAS still stops at
-    unanimity regardless of who is asked in what order (the anti-theatre property).
+    unanimity regardless of who is asked in what order (the anti-theater property).
     """
 
     def __init__(self, *args: Any, negotiation: MediatedNegotiation, **kwargs: Any) -> None:

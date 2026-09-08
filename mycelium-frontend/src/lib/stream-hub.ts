@@ -19,10 +19,10 @@
  * and an exhausted pool stalls both.
  *
  * There are two. Global feeds (app events, notifications) ride a connection
- * whose URL never changes, so it is never re-dialled; the open rooms ride a
+ * whose URL never changes, so it is never re-dialed; the open rooms ride a
  * second one, whose URL they are part of. The notification feed has no replay,
  * so its connection must survive navigation; the room feed is replayed over
- * REST when a room opens, so re-dialling that one costs nothing.
+ * REST when a room opens, so re-dialing that one costs nothing.
  *
  * Health is per feed, reported by the server, not inferred from the socket: the
  * multiplexer answers even when the backend behind it is down, so "the

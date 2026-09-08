@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Regression tests for the ``MYCELIUM_IMAGE_TAG`` round-trip behaviour.
+"""Regression tests for the ``MYCELIUM_IMAGE_TAG`` round-trip behavior.
 
 ``write_env_file`` must preserve a pre-existing ``MYCELIUM_IMAGE_TAG`` pin
 across regeneration, so that ``mycelium config apply`` (and any other path
@@ -12,7 +12,7 @@ The contract:
   1. ``generate_env_file(config)`` (no image_tag) MUST NOT emit
      ``MYCELIUM_IMAGE_TAG`` — compose's ``:latest`` default applies.
   2. ``generate_env_file(config, image_tag="X")`` MUST emit the pin verbatim
-     in a clearly-labelled "Operator-managed pins" section.
+     in a clearly-labeled "Operator-managed pins" section.
   3. ``write_env_file`` MUST round-trip the pin: a pre-existing pin in
      ``.env`` is preserved when the file is regenerated from config.toml.
   4. ``read_pinned_image_tag`` MUST return ``None`` for missing files /
@@ -100,7 +100,7 @@ def test_write_without_existing_pin_omits_line(tmp_path: Path) -> None:
 
 
 def test_write_preserves_pin_across_multiple_regenerations(tmp_path: Path) -> None:
-    """Defence-in-depth: round-trip should be stable even if the user runs
+    """Defense-in-depth: round-trip should be stable even if the user runs
     ``mycelium config apply`` repeatedly.
     """
     env_path = tmp_path / ".env"
@@ -117,7 +117,7 @@ def test_write_preserves_pin_across_multiple_regenerations(tmp_path: Path) -> No
 def test_write_ignores_non_managed_keys_in_existing_env(tmp_path: Path) -> None:
     """Round-trip is intentionally narrow — only the operator-managed pin
     survives.  Anything else in .env is fair game for regeneration from
-    config.toml (that's the whole point of materialising it).
+    config.toml (that's the whole point of materializing it).
     """
     env_path = tmp_path / ".env"
     env_path.write_text(

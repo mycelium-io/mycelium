@@ -100,7 +100,7 @@ ApiMessageType = Literal[
 ]
 
 
-# ── event primitive (#392) ────────────────────────────────────────────────────
+# ── event primitive ───────────────────────────────────────────────────────────
 
 # Kinds with documented semantics. The vocabulary is deliberately open —
 # unknown kinds are accepted (stateless, durable unless a TTL is given) so new

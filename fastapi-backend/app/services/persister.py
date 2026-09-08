@@ -525,7 +525,7 @@ def stored_message_from_record(
     ``in_memory_store``).
 
     ``fallback`` stands in when a record carries no readable ``recorded_at`` —
-    :func:`conversational_messages` passes the neighbouring record's stamp, the
+    :func:`conversational_messages` passes the neighboring record's stamp, the
     tightest true bound the append-ordered transcript offers. Without one the row
     keeps ``StoredMessage``'s read-time default, which sorts it to the newest end
     of the feed no matter when it was actually recorded.
@@ -866,7 +866,7 @@ class RoomPersister:
     moderator's authoritative membership from
     :class:`~app.services.room_channels.RoomChannelManager`), so the persister
     knows who received each broadcast live. The hooks are skeletons wired to real
-    behaviour in later steps.
+    behavior in later steps.
     """
 
     def __init__(
@@ -890,7 +890,7 @@ class RoomPersister:
         # Resume from disk so re-serve survives a backend restart: the transcript
         # supplies the records, and the persisted cursors supply each agent's
         # delivery position — so a member that was offline at shutdown is still
-        # recognised as a reconnect and re-served exactly its missed tail.
+        # recognized as a reconnect and re-served exactly its missed tail.
         self.log = DeliveryLog(load_transcript(room), cursors=load_cursors(room))
         # The same resume, for a thread-scoped ``await``: a per-(handle, thread)
         # position over the transcript above, so waking on one task never

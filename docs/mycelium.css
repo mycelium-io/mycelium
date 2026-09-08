@@ -1312,7 +1312,7 @@ h4:hover .heading-tools,
   color: var(--muted-foreground);
   text-align: center;
 }
-/* Keyboard legend, so the arrow/enter behaviour is discoverable. */
+/* Keyboard legend, so the arrow/enter behavior is discoverable. */
 .docsearch-legend {
   display: flex;
   align-items: center;
@@ -1350,7 +1350,7 @@ h4:hover .heading-tools,
 @media (max-width: 860px) {
   /* iOS does not repaint fixed elements in step with Safari's toolbar
      collapsing, so the rail detaches and floats mid-page with content showing
-     beneath it. It carries decoration — repo link, licence, tagline — and the
+     beneath it. It carries decoration — repo link, license, tagline — and the
      repo link is already in the top bar, so the mobile layout drops it rather
      than fighting the browser chrome. Zeroing the total is what reclaims the
      space every offset was reserving for it. */

@@ -358,7 +358,7 @@ you out of the machine the hub runs on.
 
 Two things worth knowing:
 
-- `X-Forwarded-For` is deliberately ignored. It is caller-supplied, so honouring
+- `X-Forwarded-For` is deliberately ignored. It is caller-supplied, so honoring
   it would let any remote request claim to be local.
 - **It does not fire for a backend running in Docker.** Traffic through a
   published port arrives from the bridge gateway, not loopback, and is

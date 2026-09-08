@@ -45,7 +45,7 @@ mycelium-promo/     HyperFrames promo video, a code-defined HTML→MP4 walkthrou
                     mockups mirror the frontend's workspace shell + dark design tokens.
                     Renders 1920x1080 H.264. `cd mycelium-promo && npm run dev` to
                     preview, `npm run render` to export to renders/*.mp4. Its
-                    backing track is synthesised from source too (`audio/`, see
+                    backing track is synthesized from source too (`audio/`, see
                     `mycelium-promo/audio/README.md`): the cues are keyed to the
                     composition's own GSAP times, so `npm run audio` has to
                     re-run after a beat moves.
@@ -184,7 +184,7 @@ is no litellm dependency.
   `_addressed_to`): a **ping** carries the episode, sender and message id when a
   thread moves; a **notice** carries the task, who moved it and the thread to open
   when the board moves. `NOTICE_SUBKINDS` is a closed set (`filed`, `claimed`,
-  `released`, `resolved`, `blocked`, `unblocked`) frozen in
+  `released`, `resolved`, `blocked`, `unblocked`, `expired`) frozen in
   `contracts/slim-l9-wire.json` and asserted on both sides. Room-wide events stay
   unfiltered: a task moving is the room's business however deep inside a task it
   happened. Two honest gaps: a ping is live-only in the conversational read
@@ -205,7 +205,7 @@ is no litellm dependency.
   OpenShell sandboxing (`ALIGNER_PI_OPENSHELL`) is an optional command-prefix seam,
   off by default. See `pi_session.py`.
 - **NEGMAS owns termination.** The mechanism stops at unanimity; the mediator never
-  loops to the step cap (the anti-theatre property). A failed negotiation commits as
+  loops to the step cap (the anti-theater property). A failed negotiation commits as
   `rejected`.
 - **Faithful interpretation, never fabricated.** An unreadable proposer holds its
   own last line, never the standing offer (no phantom convergence); numeric offers

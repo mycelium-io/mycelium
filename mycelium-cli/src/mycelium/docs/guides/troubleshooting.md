@@ -299,7 +299,7 @@ unset when nothing fronts the backend.
 | `MYCELIUM_BACKEND_PORT` | Backend API host port | `8000` |
 | `MYCELIUM_UI_PORT` | Frontend host port | `3000` |
 | `MYCELIUM_METRICS_PORT` | OTLP collector host port (`--metrics`) | `4318` |
-| `FORWARDED_ALLOW_IPS` | Forwarders whose `X-Forwarded-*` headers the backend honours (`runtime.trusted_proxies`) | (unset: loopback only) |
+| `FORWARDED_ALLOW_IPS` | Forwarders whose `X-Forwarded-*` headers the backend honors (`runtime.trusted_proxies`) | (unset: loopback only) |
 
 All of these are written by `mycelium config apply` from the matching
 `runtime.*` config keys, so don't edit `.env` by hand.

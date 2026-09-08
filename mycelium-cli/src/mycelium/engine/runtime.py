@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Same fix as the backend: neutralise ``@`` in outgoing prompts so the broker's
+# Same fix as the backend: neutralize ``@`` in outgoing prompts so the broker's
 # summary (which names the other agents) doesn't spuriously wake them; only the
 # L9 recipient should wake, one agent per turn.
 _AT_MENTION = re.compile(r"@(?=\w)")

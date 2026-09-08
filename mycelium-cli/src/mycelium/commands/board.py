@@ -94,9 +94,8 @@ GROUP_LABEL = {
 
 CI_COLOR = {"green": "green", "running": "yellow", "red": "red"}
 
-#: How a provider's answer reads on a row. `done` is deliberately dim: a merged
-#: pull request is finished, and a board that shouts about finished work buries
-#: the work that isn't.
+#: How a provider's answer reads on a row. `done` renders dim, unlike the
+#: other states, so finished work does not draw attention over open work.
 UPSTREAM_COLOR = {
     "failed": "red",
     "blocked": "red",
@@ -119,13 +118,11 @@ TTL_CELLS = 5
 
 @dataclass
 class HubHealth:
-    """How the read went, in enough detail to say something true about it.
+    """How the read went: which sources answered, which failed, and why.
 
-    Reachability used to be inferred from whether one source came back, which
-    reported an authenticated hub refusing a request, or a room that does not
-    exist, as "hub unreachable" and sent the reader to check their network. It
-    also let a board draw with two of its sources missing and look merely
-    quiet. Both are worse than an error, because the reader believes them.
+    Distinguishes a genuinely unreachable hub from an authenticated hub
+    refusing a request or a room that does not exist, so a partial or failed
+    read is reported as an error rather than drawn as a quiet, empty board.
     """
 
     #: Sources that answered with data, by name.
@@ -277,10 +274,10 @@ def _assignment_chip(item: LiveItem, now: datetime) -> Text:
 
 
 def _row_lines(item: LiveItem, now: datetime) -> Text:
-    glyph, colour = KIND_GLYPH.get(item.kind, ("●", "white"))
+    glyph, color = KIND_GLYPH.get(item.kind, ("●", "white"))
     attention_filter = attention_of_item(item, now)
     head = Text()
-    head.append(f" {glyph} ", style=colour)
+    head.append(f" {glyph} ", style=color)
     head.append(f"{item.id.split(':', 1)[1][:12]:<13}", style="dim")
     title = item.title if len(item.title) <= TITLE_WIDTH else item.title[: TITLE_WIDTH - 1] + "…"
     head.append(title, style="dim strike" if attention_filter == "resolved" else "")
@@ -302,7 +299,7 @@ def _row_lines(item: LiveItem, now: datetime) -> Text:
         meta.append("  checking…", style="dim")
     if upstream := item.text("upstream"):
         # The provider's own wording, not ours: "changes requested" is what the
-        # reader recognises, and the state behind it is what the board sorts by.
+        # reader recognizes, and the state behind it is what the board sorts by.
         label = item.text("upstream_label") or upstream
         meta.append(f"  {label}", style=UPSTREAM_COLOR.get(upstream, "dim"))
         if (count := item.get("upstream_count")) and isinstance(count, int):
@@ -888,7 +885,7 @@ def board_send(
 
 
 @doc_ref(
-    usage="mycelium board messages <id> [--limit N]",
+    usage="mycelium board messages <id> [--limit N] [--before <stamp|age>]",
     desc="Read one thread: the conversation about that row or memory, and nothing else from the room.",
     group="board",
 )
@@ -901,24 +898,41 @@ def board_messages(
     sender: str | None = typer.Option(
         None, "--sender", "-s", help="Only messages from this handle"
     ),
+    before: str | None = typer.Option(
+        None,
+        "--before",
+        "-b",
+        help="Only messages before this ISO stamp or age (2h, 30m, 1d): the cursor to walk back",
+    ),
+    since: str | None = typer.Option(
+        None, "--since", help="Only messages at/after this ISO stamp or age (2h, 30m, 1d)"
+    ),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
 ) -> None:
     """Read a thread.
 
     This is what a ping is for. The room said something moved; this is what
-    moved in it — a row's conversation, or a memory's.
+    moved in it — a row's conversation, or a memory's. A long thread pages the
+    way the room does: the footer names the `--before` cursor for the next
+    page back.
     """
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
     where, episode = _thread(name, row_id)
+    stem = f"mycelium board messages {row_id} --room {name} --limit {limit}"
+    if sender:
+        stem += f" --sender {sender}"
     chat.read(
         cfg,
         name,
         limit=limit,
         sender=sender,
         episode=episode,
+        since=chat.parse_stamp(since) if since else None,
+        before=chat.parse_stamp(before) if before else None,
         label=where,
         empty_note="nothing said in this thread yet",
+        older_with=stem,
     )
 
 

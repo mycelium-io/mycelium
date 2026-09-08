@@ -5,11 +5,11 @@
 /**
  * `shot` — the command line.
  *
- * Deliberately thin. Parsing argv into a spec and handing it to a daemon that
- * already has a browser open is the whole of the fast path, so this file imports
- * nothing but node builtins until it knows it has to do the work itself
- * (`--no-daemon`, or no daemon reachable). Pulling Playwright in here would put
- * a fixed cost on every invocation, including `shot --help`.
+ * Imports nothing but node builtins until it knows it has to do the work
+ * itself (`--no-daemon`, or no daemon reachable): Playwright is deferred so
+ * it does not add a fixed cost to every invocation, including `shot --help`.
+ * Parsing argv into a spec and handing it to a daemon that already has a
+ * browser open is the fast path.
  *
  * stdout is the artifact and stderr is the commentary: a bare `shot` prints the
  * absolute path and nothing else, so `$(shot term …)` is a usable expression,

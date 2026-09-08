@@ -39,7 +39,8 @@ from typing import Annotated, Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from app.services import actor, l9, principals, room_channels, tasks
+from app.services import activity, actor, l9, principals, room_channels, tasks
+from app.services.agent_registry import norm_handle
 from app.services.filesystem import room_exists
 from app.services.l9_models import Kind
 from app.services.l9_slim import serialize_content, serialize_envelope
@@ -63,7 +64,7 @@ _MAX_WAIT_S = 3600.0
 # ``[[mycelium: confidence=0.85 stance=accept]]``; those fields are lifted onto the
 # L9 payload so the aligner can score convergence, and stripped from the prose.
 _MARKER_RE = re.compile(r"\[\[\s*mycelium\s*:(.*?)\]\]", re.IGNORECASE | re.DOTALL)
-# Payloads that are never an addressed turn however they are actor-labelled:
+# Payloads that are never an addressed turn however they are actor-labeled:
 # presence/keepalive are liveness, a ``ping`` is the signal that a *thread* moved,
 # and a ``notice`` is the signal that the *board* moved (a task filed, claimed,
 # resolved) — all nudges to look, not turns to take. Excluded structurally here so
@@ -83,7 +84,7 @@ _STANCE_TO_ACTION = {
 
 
 def _norm(handle: str) -> str:
-    return handle.strip().lstrip("@").lower()
+    return norm_handle(handle) or ""
 
 
 def _parse_marker(text: str) -> tuple[dict[str, Any], str]:
@@ -266,6 +267,9 @@ async def await_message(
                     duration_ms=(_time.monotonic() - _t0) * 1000.0,
                     delivered=True,
                 )
+                # The turn is handed over: from here until this handle's reply
+                # lands, the room is waiting on it. Transient, bus-only (#513).
+                activity.signal(room_name, handle, "responding", episode=ep)
                 return _describe(room_name, handle, record)
         # Nothing addressed in the scanned range: consume it (advance past the
         # observer/broadcast turns this handle doesn't await) and keep polling.
@@ -381,6 +385,8 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
         sender=handle,
         message_id=envelope.header.message.id if envelope.header.message else None,
     )
+    # The reply is the turn ending; say so, in case the reader missed the message.
+    activity.signal(room_name, handle, "done", episode=episode)
     # herdr wake-on-mention, agent→agent leg: a reply that tags another handle
     # should wake it the same as a human's tag does. Shares the one hook the
     # human POST /messages path uses; ``exclude`` skips a self-mention so a reply

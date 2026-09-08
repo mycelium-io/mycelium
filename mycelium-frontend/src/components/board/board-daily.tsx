@@ -269,7 +269,7 @@ function ActorLane({
   tz: string;
 }) {
   const Icon = ACTOR_ICON[actorKind];
-  const colour = actorKind === "human" ? "var(--muted-foreground)" : "var(--accent)";
+  const color = actorKind === "human" ? "var(--muted-foreground)" : "var(--accent)";
   // A fortnight of this actor's own days, so a lane shows a rhythm and not
   // just a total.
   const spark = daysEnding(end, 14).map(
@@ -280,8 +280,8 @@ function ActorLane({
   return (
     <section className="rounded-lg border border-border bg-surface/30 px-3 py-2.5">
       <header className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-        <Icon className="size-3.5 shrink-0" strokeWidth={1.8} style={{ color: colour }} />
-        <span className="font-mono text-label" style={{ color: colour }}>
+        <Icon className="size-3.5 shrink-0" strokeWidth={1.8} style={{ color }} />
+        <span className="font-mono text-label" style={{ color }}>
           @{actor}
         </span>
         <span className="rounded bg-hairline px-1.5 font-mono text-micro text-faint">{actorKind}</span>
