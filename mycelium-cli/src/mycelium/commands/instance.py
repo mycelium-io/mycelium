@@ -73,13 +73,14 @@ def _get_compose_path() -> Path:
     if env_path := os.getenv("MYCELIUM_COMPOSE_FILE"):
         return Path(env_path)
 
-    # Walk up from package source to find repo's services/docker-compose.yml
+    # For editable installs, the compose.yml sits alongside the package source.
+    # Check pkg_path/docker/compose.yml directly — this is where compose-dev.yml
+    # also lives, so they stay in sync when the branch changes.
     try:
         pkg_path = Path(str(importlib.resources.files("mycelium")))
-        for depth in range(2, 7):
-            candidate = pkg_path.parents[depth] / "services" / "docker-compose.yml"
-            if candidate.exists():
-                return candidate
+        candidate = pkg_path / "docker" / "compose.yml"
+        if candidate.exists():
+            return candidate
     except Exception:
         pass
 
@@ -270,28 +271,40 @@ def _import_grafana_dashboard(grafana_port: str) -> None:
         return
 
     # The bundled file is a Grafana v2 Dashboard resource (apiVersion:
-    # dashboard.grafana.app/v2, kind: Dashboard, spec.elements: ...).
-    # The legacy /api/dashboards/import endpoint expects the old schemaVersion
-    # body, not the v2 wrapper. Use /api/dashboards/db which accepts the raw
-    # spec.elements content via the dashboard field.
-    # Unwrap: send spec (the inner dashboard) directly.
-    db_body = dashboard_json.get("spec") or dashboard_json
-    payload = json.dumps({"dashboard": db_body, "overwrite": True, "folderId": 0}).encode()
+    # dashboard.grafana.app/v2). Use the Kubernetes-style v2 API endpoint;
+    # the legacy /api/dashboards/db rejects v2 format with HTTP 400.
+    name = (dashboard_json.get("metadata") or {}).get("name") or "mycelium-performance"
+    payload = json.dumps(dashboard_json).encode()
     req = urllib.request.Request(
-        f"{grafana_url}/api/dashboards/db",
+        f"{grafana_url}/apis/dashboard.grafana.app/v2/namespaces/default/dashboards",
         data=payload,
         headers=headers,
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            result = json.loads(resp.read().decode())
-            slug = result.get("slug") or result.get("uid") or "mycelium-performance"
+        with urllib.request.urlopen(req, timeout=10):
             typer.secho(
-                f"  ✓ Dashboard imported → {grafana_url}/d/{slug}",
+                f"  ✓ Dashboard imported → {grafana_url}/d/{name}",
                 fg=typer.colors.GREEN,
             )
     except urllib.error.HTTPError as e:
+        # If the dashboard already exists, try PUT to update it.
+        if e.code == 409:
+            req2 = urllib.request.Request(
+                f"{grafana_url}/apis/dashboard.grafana.app/v2/namespaces/default/dashboards/{name}",
+                data=payload,
+                headers=headers,
+                method="PUT",
+            )
+            try:
+                with urllib.request.urlopen(req2, timeout=10):
+                    typer.secho(
+                        f"  ✓ Dashboard updated → {grafana_url}/d/{name}",
+                        fg=typer.colors.GREEN,
+                    )
+                return
+            except Exception:
+                pass
         body = e.read().decode()[:200] if e.fp else ""
         typer.secho(
             f"  ⚠  Dashboard import returned HTTP {e.code}: {body} — "
@@ -612,7 +625,10 @@ def start(
         typer.echo("Starting Mycelium...")
 
         quiet_cmd = base[:2] + ["--progress=plain"] + base[2:] + up_args
-        result = subprocess.run(quiet_cmd, capture_output=True, text=True, env=build_env)
+        if build:
+            result = subprocess.run(quiet_cmd, env=build_env)
+        else:
+            result = subprocess.run(quiet_cmd, capture_output=True, text=True, env=build_env)
 
         if result.returncode != 0:
             output = (result.stdout or "") + (result.stderr or "")
@@ -628,14 +644,14 @@ def start(
                 if result.returncode != 0:
                     raise typer.Exit(result.returncode)
             else:
-                # Show captured output on failure
+                # Show captured output on failure (only when captured)
                 if result.stdout:
                     typer.echo(result.stdout)
                 if result.stderr:
                     typer.echo(result.stderr, err=True)
                 raise typer.Exit(result.returncode)
         else:
-            # Show captured output on success too (warnings, pull info, etc.)
+            # Show captured output on success (only present when not --build)
             if result.stdout:
                 typer.echo(result.stdout)
             if result.stderr:
