@@ -44,6 +44,19 @@ jobs:
             --with mycelium-backend-client@./mycelium-client --force
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      # The backend image's process runs as a fixed uid (1000). The bind-mounted
+      # ~/.mycelium this creates is owned by whatever uid invoked `mycelium
+      # install` — on GitHub-hosted runners that's `runner`, uid 1001, not 1000 —
+      # so without this the container can't write its own data dir and the
+      # ASGI lifespan crashes on startup (PermissionError on `rooms/`), which
+      # compose reports as "unhealthy" within a couple seconds. Same fix
+      # e2e-test's own CI already needed for this exact class of problem.
+      - name: Prep ~/.mycelium for the backend's fixed uid
+        run: |
+          mkdir -p ~/.mycelium
+          chmod -R 777 ~/.mycelium
+          sudo setfacl -R -d -m o::rwx ~/.mycelium 2>/dev/null || true
+
       - name: mycelium install
         run: mycelium install --non-interactive --yes
 
@@ -97,6 +110,13 @@ jobs:
           mycelium memory ls
           mycelium search "staged release"
 
+      # Must run before `mycelium down` — that step (if: always()) removes
+      # the container, and a step ordered after it can never see its logs
+      # (docker logs then just reports "No such container").
+      - name: Backend logs (on failure)
+        if: failure()
+        run: docker logs mycelium-backend 2>&1 | tail -100 || true
+
       - name: mycelium down
         if: always()
         run: |
@@ -106,10 +126,6 @@ jobs:
             echo '::error::containers survived mycelium down'
             exit 1
           fi
-
-      - name: Backend logs (on failure)
-        if: failure()
-        run: docker logs mycelium-backend 2>&1 | tail -100 || true
 
   cognition:
     # The aligner's Pi brain and the plan compiler, run for real: structuring
@@ -171,7 +187,7 @@ jobs:
         run: >-
           uv run pytest -q
           tests/test_cognition_live.py
-          tests/test_plan_compiler.py
+          tests/test_task_compiler.py
           tests/test_synthesizer_live.py
 
   report:
