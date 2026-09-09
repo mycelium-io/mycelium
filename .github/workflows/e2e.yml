@@ -1,28 +1,40 @@
 name: E2E Tests
 
 # Trigger paths:
-# 1. Push to any non-main branch + PRs → pr suite (~10 min)
+# 1. Push to any non-main branch + PRs touching e2e-test/, fastapi-backend/,
+#    mycelium-cli/, mycelium-client/, or openapi.json → pr suite (~10 min)
 # 2. Nightly cron 05:00 UTC → pr + nightly suite (~30 min)
-# 3. Cross-repo dispatch from mycelium repo → pr or nightly
-# 4. workflow_dispatch → manual with suite choice
+# 3. workflow_dispatch → manual with suite choice
 #
 # The canary suite is NOT triggered here — it runs from canary_job.py manually
-# or via a separate weekly workflow. It never blocks release.
+# or via weekly-e2e.yml. It never blocks release.
+#
+# Always builds fastapi-backend/mycelium-cli from this commit's sibling
+# source — e2e-test lives in this monorepo, so there's no separate released
+# artifact to fall back to and no other repo to test against.
 
 on:
   push:
     branches:
       - '**'
       - '!main'
+    paths:
+      - 'e2e-test/**'
+      - 'fastapi-backend/**'
+      - 'mycelium-cli/**'
+      - 'mycelium-client/**'
+      - 'openapi.json'
   pull_request:
     branches: [main]
+    paths:
+      - 'e2e-test/**'
+      - 'fastapi-backend/**'
+      - 'mycelium-cli/**'
+      - 'mycelium-client/**'
+      - 'openapi.json'
   schedule:
     # Nightly 05:00 UTC — pr + nightly suite
     - cron: '0 5 * * *'
-  repository_dispatch:
-    types:
-      - mycelium-pr-test
-      - mycelium-nightly
   workflow_dispatch:
     inputs:
       suite:
@@ -32,12 +44,12 @@ on:
         options:
           - pr        # pr suite only (~10 min)
           - nightly   # pr + nightly suite (~30 min)
-      mycelium_ref:
-        description: 'Mycelium repo ref (branch/tag/SHA). Empty = use release install.'
-        default: ''
       datafile:
         description: 'Datafile override (relative to data/)'
         default: ''
+
+permissions:
+  contents: read
 
 env:
   LLM_MODEL: ${{ secrets.LLM_MODEL || vars.LLM_MODEL || '' }}
@@ -53,41 +65,28 @@ env:
 
 jobs:
   e2e:
-    name: ${{ format('E2E {0}', github.event.inputs.suite || (github.event.action == 'mycelium-pr-test' && 'pr') || (github.event.action == 'mycelium-nightly' && 'nightly') || (github.event_name == 'schedule' && 'nightly') || 'pr') }}
+    name: ${{ format('E2E {0}', github.event.inputs.suite || (github.event_name == 'schedule' && 'nightly') || 'pr') }}
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ fromJSON('{"pr":20,"nightly":75}')[github.event.inputs.suite || (github.event.action == 'mycelium-pr-test' && 'pr') || (github.event.action == 'mycelium-nightly' && 'nightly') || (github.event_name == 'schedule' && 'nightly') || 'pr'] || 20 }}
+    timeout-minutes: ${{ fromJSON('{"pr":20,"nightly":75}')[github.event.inputs.suite || (github.event_name == 'schedule' && 'nightly') || 'pr'] || 20 }}
 
     steps:
-      - name: Checkout e2e-test repo
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Resolve run parameters
         id: resolve
         env:
           INPUT_SUITE: ${{ github.event.inputs.suite }}
-          INPUT_REF: ${{ github.event.inputs.mycelium_ref }}
           INPUT_DATAFILE: ${{ github.event.inputs.datafile }}
-          PAYLOAD_SUITE: ${{ github.event.client_payload.suite }}
-          PAYLOAD_REF: ${{ github.event.client_payload.mycelium_ref }}
-          DISPATCH_ACTION: ${{ github.event.action }}
           EVENT_NAME: ${{ github.event_name }}
-          EVENT_SCHED: ${{ github.event.schedule }}
         run: |
           if [ -n "$INPUT_SUITE" ]; then
             SUITE="$INPUT_SUITE"
-          elif [ -n "$PAYLOAD_SUITE" ]; then
-            SUITE="$PAYLOAD_SUITE"
-          elif [ "$DISPATCH_ACTION" = "mycelium-pr-test" ]; then
-            SUITE="pr"
-          elif [ "$DISPATCH_ACTION" = "mycelium-nightly" ]; then
-            SUITE="nightly"
           elif [ "$EVENT_NAME" = "schedule" ]; then
             SUITE="nightly"
           else
             SUITE="pr"
           fi
-
-          MYCELIUM_REF="${INPUT_REF:-$PAYLOAD_REF}"
 
           DATAFILE="$INPUT_DATAFILE"
           if [ -z "$DATAFILE" ]; then
@@ -97,38 +96,17 @@ jobs:
             esac
           fi
 
-          echo "suite=$SUITE"             >> "$GITHUB_OUTPUT"
-          echo "mycelium_ref=$MYCELIUM_REF" >> "$GITHUB_OUTPUT"
-          echo "datafile=$DATAFILE"       >> "$GITHUB_OUTPUT"
-          echo "Resolved: suite=$SUITE datafile=$DATAFILE ref=$MYCELIUM_REF"
-
-      - name: Determine build mode
-        env:
-          REF: ${{ steps.resolve.outputs.mycelium_ref }}
-        run: |
-          if [ -n "$REF" ]; then
-            echo "BUILD_FROM_SOURCE=true" >> "$GITHUB_ENV"
-            echo "Building mycelium from source (ref=$REF)"
-          else
-            echo "BUILD_FROM_SOURCE=false" >> "$GITHUB_ENV"
-            echo "Using release install (no mycelium_ref set)"
-          fi
-
-      - name: Checkout mycelium repo (source build)
-        if: env.BUILD_FROM_SOURCE == 'true'
-        uses: actions/checkout@v4
-        with:
-          repository: mycelium-io/mycelium
-          ref: ${{ steps.resolve.outputs.mycelium_ref }}
-          path: mycelium-src
-          token: ${{ secrets.GITHUB_TOKEN }}
+          echo "suite=$SUITE"       >> "$GITHUB_OUTPUT"
+          echo "datafile=$DATAFILE" >> "$GITHUB_OUTPUT"
+          echo "Resolved: suite=$SUITE datafile=$DATAFILE"
 
       - name: Set up Python and uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: '3.12'
 
       - name: Install e2e dependencies
+        working-directory: e2e-test
         run: uv sync
 
       - name: Install cursor CLI
@@ -138,42 +116,32 @@ jobs:
           echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
           agent --version
 
-      - name: Install mycelium CLI (release)
-        if: env.BUILD_FROM_SOURCE != 'true'
-        run: |
-          curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
-          mycelium --version
-
       - name: Generate mycelium backend client (from committed spec)
-        if: env.BUILD_FROM_SOURCE == 'true'
         run: |
-          cd mycelium-src
           SPEC_FILE=openapi.json SKIP_FORMAT=1 bash scripts/gen-mycelium-client.sh
 
       - name: Install mycelium CLI (from source)
-        if: env.BUILD_FROM_SOURCE == 'true'
+        working-directory: mycelium-cli
         run: |
-          cd mycelium-src/mycelium-cli
           uv tool install -e . --with mycelium-backend-client@../mycelium-client --force
           mycelium --version
 
       - name: Write compose override for source build
-        if: env.BUILD_FROM_SOURCE == 'true'
         run: |
-          # Override backend/collector/frontend images to build from checked-out source.
+          # Build backend/collector images from this commit's sibling source.
           # mycelium up --build will use this file automatically.
           mkdir -p ~/.mycelium/docker
           cat > ~/.mycelium/docker/compose.override.yml <<'EOF'
           services:
             mycelium-backend:
               build:
-                context: ${{ github.workspace }}/mycelium-src/fastapi-backend
+                context: ${{ github.workspace }}/fastapi-backend
                 dockerfile: Dockerfile
               image: mycelium-backend:dev
               pull_policy: never
             mycelium-collector:
               build:
-                context: ${{ github.workspace }}/mycelium-src/mycelium-cli
+                context: ${{ github.workspace }}/mycelium-cli
                 dockerfile: Dockerfile.collector
               image: mycelium-collector:dev
               pull_policy: never
@@ -220,11 +188,7 @@ jobs:
           # world-writable) on just the path to the binary — this doesn't
           # touch file contents anywhere else under $HOME.
           chmod o+rx "$HOME" "$HOME/.local" "$HOME/.local/bin" 2>/dev/null || true
-          if [ "$BUILD_FROM_SOURCE" = "true" ]; then
-            mycelium up --build
-          else
-            mycelium up
-          fi
+          mycelium up --build
           echo "Waiting for backend..."
           for i in $(seq 1 60); do
             if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
@@ -265,28 +229,21 @@ jobs:
 
       - name: Start spoke containers (nightly only)
         if: steps.resolve.outputs.suite == 'nightly'
+        working-directory: e2e-test
         run: |
+          # mycelium is baked into the spoke images at build time (see
+          # infra/Dockerfile.spoke) — no async in-container install to poll
+          # for anymore, so `--wait` blocking on each service's own
+          # healthcheck is enough.
           MYCELIUM_BACKEND_URL=http://host.docker.internal:8000 \
-            docker compose -f infra/compose.spokes.yaml up -d
-          echo "Waiting for spokes to install CLI..."
-          # mycelium installs to /root/.local/bin inside the spoke containers
-          # (curl|bash runs as root); a bare `docker exec` doesn't have that
-          # on PATH, so this needs the same PATH export the actual tests use
-          # (see libs/host_exec.py) or it always reports "not ready".
-          for container in e2e-spoke1 e2e-spoke2; do
-            for i in $(seq 1 30); do
-              if docker exec "$container" sh -c 'export PATH="$HOME/.local/bin:$PATH"; mycelium --version' >/dev/null 2>&1; then
-                echo "  $container ready"
-                break
-              fi
-              [ "$i" -eq 30 ] && echo "  WARNING: $container CLI not ready" || sleep 5
-            done
-          done
+            docker compose -f infra/compose.spokes.yaml up -d --build --wait
 
       - name: Clean artifacts dir
+        working-directory: e2e-test
         run: rm -rf artifacts
 
       - name: Run E2E tests
+        working-directory: e2e-test
         env:
           MYCELIUM_BACKEND_URL: http://localhost:8000
           MYCELIUM_E2E_RUNTIME: local
@@ -339,6 +296,7 @@ jobs:
 
       - name: Print results summary
         if: always()
+        working-directory: e2e-test
         run: |
           echo "=== pyATS Results ==="
           RUNINFO=$(ls -td artifacts/pyats-runinfo/*/ 2>/dev/null | head -1)
@@ -350,20 +308,22 @@ jobs:
 
       - name: Collect service logs
         if: always()
+        working-directory: e2e-test
         run: |
           mkdir -p artifacts/logs
           mycelium logs > artifacts/logs/mycelium.log 2>&1 || true
 
       - name: Upload artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-results-${{ github.run_id }}
-          path: artifacts/
+          path: e2e-test/artifacts/
           retention-days: 30
 
       - name: Tear down spokes
         if: always()
+        working-directory: e2e-test
         run: docker compose -f infra/compose.spokes.yaml down 2>/dev/null || true
 
       - name: Tear down hub

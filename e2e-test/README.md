@@ -1,6 +1,6 @@
-# mycelium-e2e-test
+# e2e-test
 
-pyATS-based end-to-end test suite for [Mycelium](https://github.com/mycelium-io/mycelium), a SLIM-native multi-agent coordination platform.
+pyATS-based end-to-end test suite for the [Mycelium](https://github.com/mycelium-io/mycelium) backend, CLI, and hub-and-spoke coordination — lives in this monorepo as a sibling of `fastapi-backend/` and `mycelium-cli/`, so it always tests the commit it's part of.
 
 This is an **operator-side** harness: tests drive a running Mycelium backend over its public HTTP and CLI surfaces. Nothing here modifies Mycelium's own source — it's a black-box consumer of the backend API, the `mycelium` CLI, and (for the canary suite) real LLM-backed cursor agents.
 
@@ -132,12 +132,21 @@ uv run pytest tests/unit -q
 
 ## CI
 
-Two workflows:
+Two workflows, at the repo root (`.github/workflows/`, not nested under
+`e2e-test/` — GitHub Actions only reads workflows from the repo root):
 
-- **`.github/workflows/e2e.yml`** — PR suite on every push/PR to a non-main branch; PR + nightly suite at 05:00 UTC; also triggerable via `workflow_dispatch` or cross-repo `repository_dispatch` from the Mycelium repo (`mycelium-pr-test`/`mycelium-nightly`). Can build Mycelium from source (pass a `mycelium_ref`) instead of installing the latest release.
-- **`.github/workflows/weekly-e2e.yaml`** — canary suite, manual `workflow_dispatch` only (the weekly cron is currently commented out). Never blocks — `continue-on-error: true`.
+- **`e2e.yml`** — PR suite on every push/PR touching `e2e-test/**`,
+  `fastapi-backend/**`, `mycelium-cli/**`, `mycelium-client/**`, or
+  `openapi.json`; PR + nightly suite at 05:00 UTC; also triggerable via
+  `workflow_dispatch`. Always builds `fastapi-backend`/`mycelium-cli` from
+  this commit's sibling source — no more released-wheel fallback, since
+  there's no longer a separate repo to fall back to.
+- **`weekly-e2e.yml`** — canary suite, manual `workflow_dispatch` only (the
+  weekly cron is currently commented out). Never blocks —
+  `continue-on-error: true`.
 
-Both workflows start a real `mycelium` backend (Docker) on the runner before running any suite.
+Both workflows start a real `mycelium` backend (Docker) on the runner before
+running any suite.
 
 ## pyATS Concepts
 

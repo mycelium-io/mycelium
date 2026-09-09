@@ -3,6 +3,10 @@ name: Weekly Canary
 # Canary — live agent multi-episode.
 # Runs once a week. Informational only — NEVER blocks release.
 # Requires live LLM credentials to be set in GitHub secrets.
+#
+# Always builds fastapi-backend/mycelium-cli from this commit's sibling
+# source — e2e-test lives in this monorepo, so there's no separate released
+# artifact to fall back to and no other repo to test against.
 
 on:
   # schedule:
@@ -12,9 +16,9 @@ on:
       canary_room:
         description: 'Canary room name (domain-realistic, not qa-*)'
         default: 'api-design-review'
-      mycelium_ref:
-        description: 'Mycelium repo ref (branch/tag/SHA). Empty = use release install.'
-        default: ''
+
+permissions:
+  contents: read
 
 env:
   LLM_MODEL: ${{ secrets.LLM_MODEL || vars.LLM_MODEL || '' }}
@@ -35,25 +39,16 @@ jobs:
     continue-on-error: true  # Never block anything
 
     steps:
-      - name: Checkout e2e-test repo
-        uses: actions/checkout@v4
-
-      - name: Checkout mycelium repo
-        if: ${{ github.event.inputs.mycelium_ref != '' }}
-        uses: actions/checkout@v4
-        with:
-          repository: mycelium-io/mycelium
-          ref: ${{ github.event.inputs.mycelium_ref }}
-          path: mycelium-src
-          # For private repos, replace with: token: ${{ secrets.MYCELIUM_REPO_PAT }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python and uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: '3.12'
 
       - name: Install e2e dependencies
+        working-directory: e2e-test
         run: uv sync
 
       - name: Install cursor CLI
@@ -63,40 +58,30 @@ jobs:
           echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
           agent --version
 
-      - name: Install mycelium CLI (release)
-        if: ${{ github.event.inputs.mycelium_ref == '' }}
-        run: |
-          curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
-          mycelium --version
-
       - name: Generate mycelium backend client (from committed spec)
-        if: ${{ github.event.inputs.mycelium_ref != '' }}
         run: |
-          cd mycelium-src
           SPEC_FILE=openapi.json SKIP_FORMAT=1 bash scripts/gen-mycelium-client.sh
 
       - name: Install mycelium CLI (from source)
-        if: ${{ github.event.inputs.mycelium_ref != '' }}
+        working-directory: mycelium-cli
         run: |
-          cd mycelium-src/mycelium-cli
           uv tool install -e . --with mycelium-backend-client@../mycelium-client --force
           mycelium --version
 
       - name: Write compose override for source build
-        if: ${{ github.event.inputs.mycelium_ref != '' }}
         run: |
           mkdir -p ~/.mycelium/docker
           cat > ~/.mycelium/docker/compose.override.yml <<EOF
           services:
             mycelium-backend:
               build:
-                context: ${{ github.workspace }}/mycelium-src/fastapi-backend
+                context: ${{ github.workspace }}/fastapi-backend
                 dockerfile: Dockerfile
               image: mycelium-backend:dev
               pull_policy: never
             mycelium-collector:
               build:
-                context: ${{ github.workspace }}/mycelium-src/mycelium-cli
+                context: ${{ github.workspace }}/mycelium-cli
                 dockerfile: Dockerfile.collector
               image: mycelium-collector:dev
               pull_policy: never
@@ -122,11 +107,7 @@ jobs:
           # ~/.local/bin/mycelium for the MYCELIUM_LOCAL_WRITE_UID switch
           # below — grant traversal only (o+rx), not full access.
           chmod o+rx "$HOME" "$HOME/.local" "$HOME/.local/bin" 2>/dev/null || true
-          if [ -n "${{ github.event.inputs.mycelium_ref }}" ]; then
-            mycelium up --build
-          else
-            mycelium up
-          fi
+          mycelium up --build
           for i in $(seq 1 60); do
             curl -sf http://localhost:8000/health > /dev/null 2>&1 && echo "Backend healthy" && break
             [ "$i" -eq 60 ] && echo "ERROR: backend not healthy" && exit 1
@@ -142,6 +123,7 @@ jobs:
           chmod -R 777 ~/.mycelium || true
 
       - name: Run canary suite (informational only)
+        working-directory: e2e-test
         env:
           MYCELIUM_BACKEND_URL: http://localhost:8000
           MYCELIUM_CANARY_ROOM: ${{ github.event.inputs.canary_room || 'api-design-review' }}
@@ -173,6 +155,7 @@ jobs:
 
       - name: Write job summary
         if: always()
+        working-directory: e2e-test
         run: |
           RUNINFO=$(ls -td artifacts/pyats-runinfo/*/ 2>/dev/null | head -1)
           echo "## Canary Results (informational)" >> "$GITHUB_STEP_SUMMARY"
@@ -226,10 +209,10 @@ jobs:
 
       - name: Upload canary results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: canary-results-${{ github.run_id }}
-          path: artifacts/
+          path: e2e-test/artifacts/
           retention-days: 60
 
       - name: Tear down

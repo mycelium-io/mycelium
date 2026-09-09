@@ -5,7 +5,7 @@ Offline unit tests for pyATS harness libraries (`libs/`, provisioners, scenario 
 ## Running
 
 ```bash
-cd /home/ubuntu/mycelium-e2e-test
+cd e2e-test  # from the mycelium monorepo root
 uv run pytest tests/unit -q
 ```
 

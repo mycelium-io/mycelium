@@ -5,7 +5,7 @@
 # binary, no live LLM, no backend server. See fastapi-backend/tests/README.md and
 # mycelium-cli/tests/README.md for how the fakes work.
 
-.PHONY: help test test-backend test-cli test-frontend smoke lint
+.PHONY: help test test-backend test-cli test-frontend test-e2e-unit smoke lint
 
 help:
 	@echo "Targets:"
@@ -13,6 +13,7 @@ help:
 	@echo "  make test-backend   Backend unit tests (fastapi-backend)"
 	@echo "  make test-cli       CLI unit tests (mycelium-cli)"
 	@echo "  make test-frontend  Frontend unit tests (mycelium-frontend, vitest)"
+	@echo "  make test-e2e-unit  e2e-test's own offline unit suite (no live stack)"
 	@echo "  make smoke          Fast end-to-end happy-path over the fake stack"
 	@echo "  make lint           Ruff + ty gate for backend and CLI"
 
@@ -27,6 +28,12 @@ test-cli:
 
 test-frontend:
 	cd mycelium-frontend && pnpm test
+
+# e2e-test's real pyATS suites need a live docker-compose stack, so they run
+# in CI (.github/workflows/e2e.yml), not here — this is just its offline
+# libs/ unit tests, same fake-stack philosophy as the targets above.
+test-e2e-unit:
+	cd e2e-test && uv run pytest tests/ -q
 
 # room -> engine -> await -> respond -> converge -> plan, all over fakes.
 smoke:
