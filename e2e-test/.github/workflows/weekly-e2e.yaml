@@ -1,0 +1,237 @@
+name: Weekly Canary
+
+# Canary — live agent multi-episode.
+# Runs once a week. Informational only — NEVER blocks release.
+# Requires live LLM credentials to be set in GitHub secrets.
+
+on:
+  # schedule:
+  #   - cron: '0 8 * * 1'  # Monday 08:00 UTC — re-enable when ready
+  workflow_dispatch:
+    inputs:
+      canary_room:
+        description: 'Canary room name (domain-realistic, not qa-*)'
+        default: 'api-design-review'
+      mycelium_ref:
+        description: 'Mycelium repo ref (branch/tag/SHA). Empty = use release install.'
+        default: ''
+
+env:
+  LLM_MODEL: ${{ secrets.LLM_MODEL || vars.LLM_MODEL || '' }}
+  LLM_API_KEY: ${{ secrets.LLM_API_KEY || vars.LLM_API_KEY || '' }}
+  LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || vars.LLM_BASE_URL || '' }}
+  # canary_live_episode.py defaults to a real cursor-agent adapter
+  # (MYCELIUM_CANARY_ADAPTER, default "cursor") — this is what actually
+  # authenticates and drives it, unlike e2e.yml's nightly/pr suites, which
+  # only touch cursor via the opt-in MYCELIUM_E2E_USE_CURSOR_STUBS flag.
+  CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY || '' }}
+  CURSOR_MODEL: ${{ secrets.CURSOR_MODEL || vars.CURSOR_MODEL || '' }}
+
+jobs:
+  canary:
+    name: Canary (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    continue-on-error: true  # Never block anything
+
+    steps:
+      - name: Checkout e2e-test repo
+        uses: actions/checkout@v4
+
+      - name: Checkout mycelium repo
+        if: ${{ github.event.inputs.mycelium_ref != '' }}
+        uses: actions/checkout@v4
+        with:
+          repository: mycelium-io/mycelium
+          ref: ${{ github.event.inputs.mycelium_ref }}
+          path: mycelium-src
+          # For private repos, replace with: token: ${{ secrets.MYCELIUM_REPO_PAT }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python and uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install e2e dependencies
+        run: uv sync
+
+      - name: Install cursor CLI
+        if: env.CURSOR_API_KEY != ''
+        run: |
+          curl -fsS https://cursor.com/install | bash
+          echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
+          agent --version
+
+      - name: Install mycelium CLI (release)
+        if: ${{ github.event.inputs.mycelium_ref == '' }}
+        run: |
+          curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
+          mycelium --version
+
+      - name: Generate mycelium backend client (from committed spec)
+        if: ${{ github.event.inputs.mycelium_ref != '' }}
+        run: |
+          cd mycelium-src
+          SPEC_FILE=openapi.json SKIP_FORMAT=1 bash scripts/gen-mycelium-client.sh
+
+      - name: Install mycelium CLI (from source)
+        if: ${{ github.event.inputs.mycelium_ref != '' }}
+        run: |
+          cd mycelium-src/mycelium-cli
+          uv tool install -e . --with mycelium-backend-client@../mycelium-client --force
+          mycelium --version
+
+      - name: Write compose override for source build
+        if: ${{ github.event.inputs.mycelium_ref != '' }}
+        run: |
+          mkdir -p ~/.mycelium/docker
+          cat > ~/.mycelium/docker/compose.override.yml <<EOF
+          services:
+            mycelium-backend:
+              build:
+                context: ${{ github.workspace }}/mycelium-src/fastapi-backend
+                dockerfile: Dockerfile
+              image: mycelium-backend:dev
+              pull_policy: never
+            mycelium-collector:
+              build:
+                context: ${{ github.workspace }}/mycelium-src/mycelium-cli
+                dockerfile: Dockerfile.collector
+              image: mycelium-collector:dev
+              pull_policy: never
+          EOF
+
+      - name: Start mycelium hub
+        run: |
+          mycelium init --api-url http://localhost:8000 2>/dev/null || true
+          # Write LLM config into .env BEFORE `mycelium up` — the backend
+          # reads env_file once at container start, so writing this after
+          # start (the previous ordering) never actually reached it.
+          {
+            [ -n "$LLM_API_KEY" ]  && echo "LLM_API_KEY=$LLM_API_KEY"
+            [ -n "$LLM_BASE_URL" ] && echo "LLM_BASE_URL=$LLM_BASE_URL"
+            [ -n "$LLM_MODEL" ]    && echo "LLM_MODEL=$LLM_MODEL"
+          } > ~/.mycelium/.env || true
+          # See e2e.yml's "Start mycelium hub" step and the "Run canary
+          # suite" env block below for the full story on the backend
+          # container's fixed uid and why this is just generic insurance.
+          mkdir -p ~/.mycelium/rooms && chmod -R 777 ~/.mycelium
+          sudo setfacl -R -d -m o::rwx ~/.mycelium 2>/dev/null || true
+          # uid 1000 can't traverse into $HOME (default 750) to reach
+          # ~/.local/bin/mycelium for the MYCELIUM_LOCAL_WRITE_UID switch
+          # below — grant traversal only (o+rx), not full access.
+          chmod o+rx "$HOME" "$HOME/.local" "$HOME/.local/bin" 2>/dev/null || true
+          if [ -n "${{ github.event.inputs.mycelium_ref }}" ]; then
+            mycelium up --build
+          else
+            mycelium up
+          fi
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8000/health > /dev/null 2>&1 && echo "Backend healthy" && break
+            [ "$i" -eq 60 ] && echo "ERROR: backend not healthy" && exit 1
+            sleep 2
+          done
+
+      - name: Configure CLI
+        run: |
+          mycelium config set server.api_url http://localhost:8000 2>/dev/null || true
+          # LLM config (.env) is written earlier, before `mycelium up`.
+          # `config set` rewrites config.toml with a restrictive mode —
+          # see e2e.yml's "Configure mycelium CLI" step.
+          chmod -R 777 ~/.mycelium || true
+
+      - name: Run canary suite (informational only)
+        env:
+          MYCELIUM_BACKEND_URL: http://localhost:8000
+          MYCELIUM_CANARY_ROOM: ${{ github.event.inputs.canary_room || 'api-design-review' }}
+          # `mycelium agent create`/`engine create` write agents/<handle>.md
+          # locally as a side effect of their own HTTP call, which creates
+          # that file's parent dir server-side under the backend container's
+          # fixed uid (1000 — "packer" on GitHub-hosted runners).
+          # mycelium-cli's write guard rejects on exact uid mismatch by
+          # design (see mycelium-cli's test_agent_add_root_owned.py and
+          # `mycelium doctor`'s own ownership check) — no chmod/ACL
+          # satisfies it, only matching ownership does. Run just those
+          # local-write commands as the backend's own uid instead of
+          # chasing ownership after the fact (an inotify-triggered chown
+          # here previously — see git history — kept finding new edges).
+          # libs/mycelium_cli.py wraps just those commands with
+          # `sudo -u '#1000'` when this is set.
+          MYCELIUM_LOCAL_WRITE_UID: "1000"
+        run: |
+          echo "=== Canary run — results are INFORMATIONAL only ==="
+          echo "Room: $MYCELIUM_CANARY_ROOM"
+
+          mkdir -p artifacts/pyats-runinfo artifacts/pyats-archive
+          uv run pyats run job jobs/canary_job.py \
+            --datafile data/canary_datafile.yaml \
+            --html-logs artifacts \
+            --runinfo-dir artifacts/pyats-runinfo \
+            --archive-dir artifacts/pyats-archive \
+            --no-archive-subdir || echo "Canary run finished (non-zero exit is OK for the canary suite)"
+
+      - name: Write job summary
+        if: always()
+        run: |
+          RUNINFO=$(ls -td artifacts/pyats-runinfo/*/ 2>/dev/null | head -1)
+          echo "## Canary Results (informational)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "> Results are **never a release gate**. Failures indicate compatibility observations." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$RUNINFO" ]; then
+            echo "❌ No pyATS runinfo found — suite may have failed to start." >> "$GITHUB_STEP_SUMMARY"
+          else
+            # Extract pass/fail/skip counts
+            python3 - <<'PYEOF' >> "$GITHUB_STEP_SUMMARY"
+          import os, glob, json
+
+          runinfo = sorted(glob.glob("artifacts/pyats-runinfo/*/"), key=os.path.getmtime, reverse=True)
+          if not runinfo:
+              print("No runinfo found.")
+              exit(0)
+
+          results_file = os.path.join(runinfo[0], "results.json")
+          if not os.path.exists(results_file):
+              # Try to read TaskLog
+              tasklog = os.path.join(runinfo[0], "TaskLog.rst")
+              if os.path.exists(tasklog):
+                  with open(tasklog) as f:
+                      content = f.read()
+                  # Find summary lines
+                  for line in content.splitlines():
+                      if any(k in line for k in ["Passed", "Failed", "Skipped", "TOTAL", "Result"]):
+                          print(f"`{line.strip()}`  ")
+              exit(0)
+
+          with open(results_file) as f:
+              data = json.load(f)
+
+          passed = data.get("passed", 0)
+          failed = data.get("failed", 0)
+          skipped = data.get("skipped", 0)
+          total = data.get("total", passed + failed + skipped)
+          result = data.get("result", "unknown").upper()
+
+          icon = "✅" if result == "PASSED" else "⚠️" if result == "SKIPPED" else "❌"
+          print(f"| Metric | Value |")
+          print(f"|--------|-------|")
+          print(f"| Overall | {icon} **{result}** |")
+          print(f"| Passed | {passed} |")
+          print(f"| Failed | {failed} |")
+          print(f"| Skipped | {skipped} |")
+          print(f"| Total | {total} |")
+          PYEOF
+          fi
+
+      - name: Upload canary results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-results-${{ github.run_id }}
+          path: artifacts/
+          retention-days: 60
+
+      - name: Tear down
+        if: always()
+        run: mycelium down 2>/dev/null || true
