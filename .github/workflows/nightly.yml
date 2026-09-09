@@ -213,17 +213,22 @@ jobs:
       - name: Open or update the nightly issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           TITLE: "Nightly checks are failing"
         run: |
-          existing=$(gh issue list --state open --search "$TITLE in:title" \
+          # This job has no checkout step (it only needs the API, not the
+          # source), so `gh` has no local git repo to detect the target
+          # from — every call must name --repo explicitly or it fails with
+          # "fatal: not a git repository".
+          existing=$(gh issue list --repo "$GH_REPO" --state open --search "$TITLE in:title" \
             --json number --jq '.[0].number // empty')
           body=$(printf '%s\n\n| Job | Result |\n| --- | --- |\n| Install path | %s |\n| Cognition | %s |\n' \
             "The nightly run failed: $RUN_URL" \
             "${{ needs.install-path.result }}" \
             "${{ needs.cognition.result }}")
           if [ -n "$existing" ]; then
-            gh issue comment "$existing" --body "$body"
+            gh issue comment "$existing" --repo "$GH_REPO" --body "$body"
           else
-            gh issue create --title "$TITLE" --body "$body"
+            gh issue create --repo "$GH_REPO" --title "$TITLE" --body "$body"
           fi
