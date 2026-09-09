@@ -117,7 +117,7 @@ jobs:
             "Cut over the Atlas catalog in a staged release." -H nightly
           mycelium memory get decisions/cutover | grep -q "staged release"
           mycelium memory ls
-          mycelium search "staged release"
+          mycelium memory search "staged release"
 
       # Must run before `mycelium down` — that step (if: always()) removes
       # the container, and a step ordered after it can never see its logs
