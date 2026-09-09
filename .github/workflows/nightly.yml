@@ -78,6 +78,15 @@ jobs:
           docker logs mycelium-backend 2>&1 | tail -50
           exit 1
 
+      # The backend (uid 1000) writes into the bind-mounted ~/.mycelium while
+      # coming up (rooms/, config), leaving those specific files owned by 1000
+      # even though the dir itself is 777 — `mycelium doctor`'s ownership
+      # check (and later agent/memory writes run as this job's own uid) flags
+      # that as broken. Same fix `mycelium doctor` itself suggests, already
+      # used in e2e-test's own CI.
+      - name: Reclaim ~/.mycelium ownership after backend startup
+        run: sudo chown -R "$USER" ~/.mycelium 2>/dev/null || true
+
       # `--json` reports every check and exits 0, so the run decides what is
       # fatal. LLM connectivity is not — no key is configured here.
       - name: mycelium doctor
