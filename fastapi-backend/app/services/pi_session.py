@@ -235,7 +235,24 @@ def ensure_provider_config(
 
 
 class PiSessionError(RuntimeError):
-    """A ``pi`` invocation failed (missing binary, non-zero exit, timeout)."""
+    """A ``pi`` invocation failed (missing binary, non-zero exit, timeout, or a
+    provider-side error surfaced inside an otherwise-successful turn)."""
+
+
+def _assistant_error(message: dict[str, Any]) -> str | None:
+    """The provider-side error, if this assistant message's turn ended in one.
+
+    Pi reports an upstream API failure (bad key, model access denied, rate
+    limit, ...) as a *successful* (exit 0) turn whose assistant message has
+    ``content: []`` and ``stopReason: "error"`` — the real reason rides in
+    ``errorMessage``. Left undetected this is indistinguishable from "the
+    model said nothing", which every caller treats as a soft, retryable
+    outcome rather than the hard failure it actually is.
+    """
+    if message.get("stopReason") != "error":
+        return None
+    err = message.get("errorMessage")
+    return err if isinstance(err, str) and err.strip() else "pi reported an error with no message"
 
 
 def _assistant_text(message: dict[str, Any]) -> str:
@@ -264,8 +281,14 @@ def parse_pi_json_output(stdout: str) -> str:
     stream (no ``agent_end``) still yields the latest turn. Non-JSON lines and
     non-dict events are skipped defensively — a future Pi build adding a log line
     to stdout must not crash the session.
+
+    Raises :class:`PiSessionError` if the stream ends with no usable text *and*
+    the last assistant message reported a provider-side error (see
+    :func:`_assistant_error`) — otherwise that error is silently indistinguishable
+    from a model that genuinely produced nothing.
     """
     text = ""
+    error: str | None = None
     for raw in stdout.splitlines():
         line = raw.strip()
         if not line:
@@ -284,15 +307,22 @@ def parse_pi_json_output(stdout: str) -> str:
                     if isinstance(message, dict) and message.get("role") == "assistant":
                         candidate = _assistant_text(message)
                         if candidate.strip():
-                            text = candidate
+                            text, error = candidate, None
+                        else:
+                            error = _assistant_error(message) or error
                         break
         elif etype in ("message_end", "turn_end"):
             message = event.get("message")
             if isinstance(message, dict) and message.get("role") == "assistant":
                 candidate = _assistant_text(message)
                 if candidate.strip():
-                    text = candidate
-    return text.strip()
+                    text, error = candidate, None
+                else:
+                    error = _assistant_error(message) or error
+    text = text.strip()
+    if not text and error:
+        raise PiSessionError(f"pi reported an error: {error}")
+    return text
 
 
 class PiSession:
