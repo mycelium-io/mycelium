@@ -6,15 +6,12 @@ import { defineConfig } from "vitest/config";
 
 // Component tests for the room UI. jsdom + testing-library; the `@/`
 // alias mirrors tsconfig so component imports resolve the same as in Next.
-// JSX is transformed by vitest's built-in esbuild (React 19 automatic runtime),
-// so no vite React plugin is needed for the test build.
+// Vite 8's default transform already handles JSX (React 19 automatic
+// runtime) with no config — an explicit esbuild.jsx override is ignored
+// now that esbuild isn't Vite's default transform engine.
 export default defineConfig({
   resolve: {
     alias: { "@": path.resolve(__dirname, "src") },
-  },
-  esbuild: {
-    jsx: "automatic",
-    jsxImportSource: "react",
   },
   test: {
     environment: "jsdom",
