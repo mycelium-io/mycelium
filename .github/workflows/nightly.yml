@@ -190,7 +190,7 @@ jobs:
         env:
           MYCELIUM_LLM_TESTS: "1"
           MYCELIUM_STUB_EMBEDDINGS: "1"
-          LLM_MODEL: ${{ vars.LLM_MODEL || 'anthropic/claude-sonnet-4-6' }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL || 'anthropic/claude-sonnet-4-6' }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
         run: >-
