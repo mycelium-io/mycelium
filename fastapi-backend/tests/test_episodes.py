@@ -147,3 +147,121 @@ async def test_get_missing_episode_is_404(client):
     await client.post("/api/rooms", json={"name": "sprint"})
     resp = await client.get("/api/rooms/sprint/episodes/missing")
     assert resp.status_code == 404
+
+
+# ── an episode that carries its flow ─────────────────────────────────────────
+
+
+def _flow_record(outcome: str, trace: list[dict], *, within: str | None = None) -> str:
+    from app.services import l9_episode
+
+    ep = l9_episode.EpisodeState(
+        episode="urn:ioc:mycelium:episode:r:e1",
+        topic="urn:concept:mycelium:r",
+        parent_room="r",
+        short_id="e1",
+        workspace_id="ws",
+        mas_id="",
+        agents=["api", "sec"],
+        engine_handle="conductor",
+        flow={
+            "name": "gated",
+            "roles": ["proposer", "guardian"],
+            "steps": [
+                {"id": "propose", "to": "proposer", "next": "review"},
+                {
+                    "id": "review",
+                    "to": "guardian",
+                    "next": {"accept": "approved", "reject": "propose"},
+                },
+                {"id": "approved", "end": "resolved"},
+            ],
+            "bound": {"proposer": "api", "guardian": "sec"},
+        },
+        trace=trace,
+        within=within,
+    )
+    ep.messages.append(
+        {
+            "header": {
+                "kind": "commit" if outcome != "open" else "intent",
+                "subkind": outcome if outcome != "open" else "mission",
+                "message": {"id": "m1", "episode": ep.episode},
+                "context": {"topic": ep.topic},
+                "participants": {"actors": [{"id": "conductor", "role": "agent"}]},
+            },
+            "payload": {"type": "outcome", "data": {}},
+        }
+    )
+    l9_episode.write_episode_record(ep, outcome=outcome, metrics=None, tasks=None)
+    return f"log/episodes/{ep.short_id}"
+
+
+def test_a_flow_record_reads_back_its_graph_trace_and_parent(tmp_path, monkeypatch):
+    from app.services.episode_records import episode_summary
+    from app.services.filesystem import get_room_dir, read_memory_file
+
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    get_room_dir("r")
+    trace = [
+        {
+            "step": "propose",
+            "turn": 1,
+            "asked": ["api"],
+            "stances": {"api": None},
+            "stance": None,
+            "next": "review",
+        }
+    ]
+    key = _flow_record("open", trace, within="urn:ioc:mycelium:episode:r:t3")
+
+    found = read_memory_file(get_room_dir("r"), key)
+    assert found is not None
+    summary = episode_summary(key, *found)
+    assert summary["outcome"] == "open"
+    assert summary["within"] == "urn:ioc:mycelium:episode:r:t3"
+    assert summary["flow"]["name"] == "gated"
+    assert summary["flow"]["bound"] == {"proposer": "api", "guardian": "sec"}
+    assert summary["trace"] == trace
+    assert summary["current_step"] == "review", "the step the last trace entry led to"
+
+
+def test_an_open_flow_with_no_steps_yet_stands_at_its_first(tmp_path, monkeypatch, caplog):
+    from app.services.episode_records import episode_summary
+    from app.services.filesystem import get_room_dir, read_memory_file
+
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    get_room_dir("r")
+    key = _flow_record("open", [])
+    found = read_memory_file(get_room_dir("r"), key)
+    assert found is not None
+    with caplog.at_level("WARNING"):
+        summary = episode_summary(key, *found)
+    assert summary["current_step"] == "propose"
+    assert summary["within"] is None
+    # An empty Trace fence is an empty trace: it must not run on into the
+    # Messages block, which would log a malformed line per envelope there and
+    # hide the one message the record does carry.
+    assert summary["trace"] == []
+    assert summary["participants"] == ["conductor"]
+    assert "malformed" not in caplog.text
+
+
+def test_a_finished_flow_stands_nowhere_and_a_negotiation_has_no_flow(tmp_path, monkeypatch):
+    from app.services.episode_records import episode_summary
+    from app.services.filesystem import get_room_dir, read_memory_file
+
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    get_room_dir("r")
+    key = _flow_record("resolved", [{"step": "review", "turn": 2, "next": "approved"}])
+    found = read_memory_file(get_room_dir("r"), key)
+    assert found is not None
+    summary = episode_summary(key, *found)
+    assert summary["current_step"] is None
+    assert summary["outcome"] == "resolved"
+
+    plain = "# Episode x\n\n## Messages\n\n```jsonl\n\n```\n"
+    summary = episode_summary("log/episodes/x", {}, plain)
+    assert summary["flow"] is None
+    assert summary["trace"] == []
+    assert summary["within"] is None

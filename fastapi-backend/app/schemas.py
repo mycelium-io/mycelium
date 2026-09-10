@@ -731,6 +731,15 @@ class EpisodeSummaryRead(BaseModel):
     message_count: int = 0
     updated_at: str = ""
     updated_by: str = ""
+    #: The thread this episode was opened from, when it runs inside a task.
+    within: str | None = None
+    #: The interaction flow this episode runs (roles, steps, edges, bindings),
+    #: for an episode the conductor walks; ``None`` for a negotiation or a thread.
+    flow: dict[str, Any] | None = None
+    #: One entry per step taken, in order — written as the run walks.
+    trace: list[dict[str, Any]] = Field(default_factory=list)
+    #: Where an open run stands, read off the trace.
+    current_step: str | None = None
 
 
 class EpisodeListResponse(BaseModel):

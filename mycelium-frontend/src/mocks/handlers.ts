@@ -511,7 +511,9 @@ export async function handleMock(req: Request): Promise<Response | null> {
     case "sessions": {
       // Presence: a room's fixture may name resident members (there is no SLIM
       // node here to report them), which the board projects into resident rows.
-      if (sub[1] === "members" && method === "GET") return json({ members: fx.presence ?? [] });
+      if (sub[1] === "members" && method === "GET") {
+        return json({ members: fx.presence ?? [], floors: fx.floors ?? [] });
+      }
       return null;
     }
 

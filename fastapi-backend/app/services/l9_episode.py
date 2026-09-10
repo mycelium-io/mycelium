@@ -42,6 +42,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+import yaml
+
 from app.services import l9
 from app.services.l9_models import Kind
 
@@ -103,6 +105,18 @@ class EpisodeState:
     intent_id: str = ""
     # Ordered record of every envelope in the episode (dicts, wire shape).
     messages: list[dict[str, Any]] = field(default_factory=list)
+    # The interaction flow this episode runs, when it has one: the step graph
+    # (roles, steps, edges) and who was bound to each role. An episode with a
+    # flow is a run the conductor walks; the record carries the graph so a
+    # reader can see the shape of the interaction, not only its messages.
+    flow: dict[str, Any] | None = None
+    # One entry per step taken: which step, whose turn, what they answered
+    # with, and the edge followed. Written as the run walks, so an open episode
+    # shows where it is.
+    trace: list[dict[str, Any]] = field(default_factory=list)
+    # The thread this episode was opened from, when it was opened inside a
+    # task: the link back to the row a nested episode belongs to.
+    within: str | None = None
 
 
 @dataclass
@@ -490,6 +504,9 @@ def write_episode_record(
             )
         if tasks:
             lines.append("- work: " + ", ".join(f"`{key}`" for key in tasks))
+        if ep.within:
+            lines.append(f"- within: `{ep.within}`")
+        _append_flow(lines, ep)
         # The header and the envelope chain are any thread's; the sections below
         # exist only where a negotiation actually ran.
         if not isinstance(ep, NegotiationState):
@@ -538,6 +555,30 @@ def write_episode_record(
         _write_record(ep, lines)
     except Exception:
         logger.exception("episode record write failed for %s", ep.episode)
+
+
+def _append_flow(lines: list[str], ep: EpisodeState) -> None:
+    """The flow an episode runs and the steps it has taken, as two fenced blocks."""
+    if ep.flow is None:
+        return
+    lines += [
+        "",
+        "## Flow",
+        "",
+        "The interaction flow this episode runs — its roles, steps and edges:",
+        "",
+        "```yaml",
+        yaml.safe_dump(ep.flow, sort_keys=False, default_flow_style=False).strip(),
+        "```",
+        "",
+        "## Trace",
+        "",
+        "Each step taken, in order (one JSON entry per line):",
+        "",
+        "```jsonl",
+        *(json.dumps(t, sort_keys=True) for t in ep.trace),
+        "```",
+    ]
 
 
 def _append_messages(lines: list[str], ep: EpisodeState) -> None:

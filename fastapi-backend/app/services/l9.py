@@ -102,9 +102,12 @@ NOTICE_PAYLOAD_TYPE = "notice"
 #: ``kind`` (so the line reads "New decision", not always "New task") and who it
 #: is ``for``; the custody and lifecycle subkinds carry ``by`` (who moved it).
 #: ``expired`` is the one nobody writes: a held lease drained by the clock, and
-#: ``by`` names the holder who stopped renewing it.
+#: ``by`` names the holder who stopped renewing it. ``floor`` says whose turn it
+#: is in a thread (:mod:`app.services.floor`): ``key`` is the thread's short id,
+#: ``by`` the holder, ``speakers`` the comma-joined handles it was given to, and
+#: ``released`` marks the floor opening back up.
 NOTICE_SUBKINDS = frozenset(
-    {"filed", "claimed", "released", "resolved", "blocked", "unblocked", "expired"}
+    {"filed", "claimed", "released", "resolved", "blocked", "unblocked", "expired", "floor"}
 )
 
 

@@ -184,8 +184,10 @@ is no litellm dependency.
   `_addressed_to`): a **ping** carries the episode, sender and message id when a
   thread moves; a **notice** carries the task, who moved it and the thread to open
   when the board moves. `NOTICE_SUBKINDS` is a closed set (`filed`, `claimed`,
-  `released`, `resolved`, `blocked`, `unblocked`, `expired`) frozen in
-  `contracts/slim-l9-wire.json` and asserted on both sides. Room-wide events stay
+  `released`, `resolved`, `blocked`, `unblocked`, `expired`, `floor`) frozen in
+  `contracts/slim-l9-wire.json` and asserted on both sides; `floor` is the one
+  notice about a thread rather than a task, raised when whose turn it is
+  changes. Room-wide events stay
   unfiltered: a task moving is the room's business however deep inside a task it
   happened. Two honest gaps: a ping is live-only in the conversational read
   (`stored_message_from_record` promotes prose and raise-up kinds only), so the app
@@ -193,6 +195,65 @@ is no litellm dependency.
   print raw envelopes at `mycelium room messages`; and a notice carries no
   `content`, so `mycelium room watch` drops it and the terminal draws no timeline
   line.
+- **A thread's floor is held by code, never chosen by a writer.** Two things
+  narrow who may write into a thread, and both are enforced at the one gate
+  `/messages` and `/reply` share (`tasks.thread_write_refusal`): a frozen
+  negotiation admits only the roster it froze on (403), and a **floor**
+  (`app/services/floor.py`, held per episode on the managed channel via
+  `manager.hold_floor`/`release_floor`) admits only the handles its holder gave
+  it to (409, naming whose turn it is). A refused write never reaches the
+  transcript, so it wakes nobody and `await` needs no change. The room itself
+  (`live`) never holds a floor. A floor that moves raises a `floor` notice
+  and the members read (`/sessions/members`) lists every floor held, so the
+  rail marks whose turn it is (`lib/floors.ts`) whether or not that member
+  is present. `app/services/turns.py` is the one-agent turn the aligner
+  brokers with, lifted out so a protocol step asks the same way.
+- **A persona is a member played by a model, in character.** Engine kind
+  `persona` (`app/services/persona_engine.py`): the `agents/<handle>/notes`
+  memory is its system prompt, its Pi session is kept per (room, handle) so it
+  remembers, and it answers on two seams — a text mention (the summon hook)
+  and an **addressed turn** (`persister.on_addressed`, fired once per L9
+  recipient of an exchange that mentioned nobody in its text, which is how the
+  aligner and the conductor address one member). Only the persona is wired to
+  the addressed seam; the other engines act on mentions alone. A stance marker
+  in its answer is lifted onto the payload like `/reply` does, and every `@` in
+  what it says is neutralized, so personas cannot summon anything or each
+  other, and it never posts into a thread whose floor was not given to it.
+  Not a roster member: the aligner negotiates with one only when the
+  summon names it.
+- **A floor notice and the members' floors name the task, not the thread.**
+  `tasks.row_of_episode` is the reverse lookup from a thread to the row that
+  carries it; the `floor` notice and `/sessions/members` `floors` carry that
+  row's `key` and `title`, and the GUI shows the title, falling back to the
+  thread id only for a thread no row carries.
+- **The conductor walks a flow inside a task's thread, in code.** A fourth
+  engine kind (`app/services/conductor.py`) with no model of its own.
+  Summoned as `board coordinate <row> conductor "gated @a @b: …"`, it walks
+  a `protocols.Protocol` (three built in: `gated`, `fan-out`, `round-robin`;
+  a room's `protocols/<name>` memory overrides or adds one; `show <name>`
+  prints one as YAML to save there) **in the thread it was summoned in**,
+  holding that thread's floor for whoever each step addresses, asking through
+  `turns.addressed_turn` as a `message` the thread shows, and following the
+  edge the reply's stance takes (`markers.stance_of`). A task is one row and
+  one thread, so a run never opens a thread of its own; a summon from the
+  room is refused and told to use a task (`list`/`show` answer anywhere).
+  **The run's record is a nested episode carrying its flow:** it reads the
+  task thread's slice (`episode`), names it as `within`, and carries
+  `EpisodeState.flow` (the graph plus who was bound to each role) and
+  `EpisodeState.trace` (one entry per step taken), written onto
+  `log/episodes/{id}.md` at the opening and after every step;
+  `episode_records` parses them back (`flow`, `trace`, `within`,
+  `current_step` on the episode read), tolerating an empty fence. The app
+  draws the latest run's graph at the top of the task's thread
+  (`flow-panel.tsx`, `flow-graph.tsx`, laid out by `lib/flow-graph.ts`),
+  with the current step, the edges taken and the member holding the floor,
+  and reaches earlier runs from their records. The floor is taken
+  synchronously in `handle_summon`; the members named beside the conductor
+  are role bindings, so a persona there does not answer the summon and a
+  resident agent that replies early is refused. An `@`-mention of any engine
+  is a summon, never a SLIM invite. A run opens no negotiation and never
+  commits `converged`, so nothing it does compiles into rows. A model in the
+  nodes, code on the edges.
 - **The aligner mediates, inside a task.** Agents never talk to each other directly;
   all coordination flows through the aligner. It's a first-party engine registered
   as a room citizen (`mycelium engine create aligner --kind aligner`) and summoned
@@ -313,6 +374,16 @@ is no litellm dependency.
   the negotiation engine. It runs a one-shot `pi` turn
   (a throwaway session, off the event loop via `asyncio.to_thread`), like every
   other mycelium cognition call.
+- **A row waits on its dependencies, derived and never stored.** A `work/`
+  row whose `depends-on` names a live board row that is not settled reads as
+  waiting on it: `assignments.waiting_on` on the hub (in every assignment read
+  and in the lease watcher's signature, so `await --lease` wakes when a row
+  becomes claimable), and a `waiting_on` fold in both board projections, frozen
+  in `contracts/board-vocabulary.json` under `task`. Resolving a row raises an
+  `unblocked` notice for each dependent that now waits on nothing. Refusing a
+  claim on a waiting row is `BOARD_DEPENDENCY_GATE`, off by default; `force`
+  on the claim overrides it. A target outside the live namespaces or that
+  names no memory is a reference, not a prerequisite.
 - **Server-held membership.** A turn-based agent (Claude, a subagent, a shell) can't
   hold a SLIM socket between turns, so the backend holds membership: `await`
   long-polls off a durable transcript cursor and refreshes a presence lease;

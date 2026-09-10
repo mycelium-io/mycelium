@@ -320,10 +320,23 @@ function activityLine(ev: Event): { label: string; detail: string } {
   }
   if (ev.type === NOTICE_TYPE) {
     const by = ev.raw.by as string | undefined;
-    return {
-      label: noticeLabel((ev.raw.subkind as string) || "filed", ev.raw.kind as string | undefined),
-      detail: by ? `@${by}` : "",
-    };
+    const label = noticeLabel((ev.raw.subkind as string) || "filed", ev.raw.kind as string | undefined);
+    if (ev.raw.subkind === "floor") {
+      // Whose turn it is in a thread: the task the thread belongs to (its id
+      // only when no row carries it), then the handles it was given to, the
+      // holder alone, or the floor opening back up.
+      const speakers = (ev.raw.speakers as string[] | undefined) ?? [];
+      const where = (ev.raw.title as string | undefined) || (ev.raw.key as string | undefined) || "";
+      const turn = ev.raw.released
+        ? "released"
+        : speakers.length
+          ? speakers.map((h) => `@${h}`).join(", ")
+          : by
+            ? `held by @${by}`
+            : "";
+      return { label, detail: [where, turn].filter(Boolean).join(" · ") };
+    }
+    return { label, detail: by ? `@${by}` : "" };
   }
   if (ev.type === "l9_knowledge") {
     const version = ev.raw.version;

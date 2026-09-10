@@ -14,10 +14,13 @@ vi.mock("@/lib/api", () => ({
   fetchRoomAgents: vi.fn().mockResolvedValue([
     { handle: "aligner", adapter: "engine", kind: "aligner", description: "mediator", cwd: null, owner: null, team: null, allow_from: [] },
   ]),
-  fetchRoomMembers: vi.fn().mockResolvedValue([
-    { handle: "watcher", kind: "lease", last_seen: null },
-    { handle: "aligner", kind: "slim", last_seen: null },
-  ]),
+  fetchRoomMembers: vi.fn().mockResolvedValue({
+    members: [
+      { handle: "watcher", kind: "lease", last_seen: null },
+      { handle: "aligner", kind: "slim", last_seen: null },
+    ],
+    floors: [],
+  }),
   fetchMessages: vi.fn().mockResolvedValue({
     messages: [
       { message_type: "broadcast", sender_handle: "sam" },

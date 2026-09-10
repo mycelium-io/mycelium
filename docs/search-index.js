@@ -168,6 +168,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
+    "u": "index.html#board-order-the-pieces",
+    "t": "Order the pieces",
+    "s": "Concepts › Board",
+    "x": "When one piece cannot start before another is done, say so with the same kind of relation: mycelium board new \"Write the migration\" --parent work/ship-passkey-login mycelium memory set work/run-the-migration \"Run the migration\" \\ --meta depends-on=work/write-the-migration The board reads what a row still waits on off the rows it names, and shows it (after work/write-the-migration). Nothing stores that: when the depen",
+    "p": "Guide"
+  },
+  {
     "u": "index.html#board-hand-work-off",
     "t": "Hand work off",
     "s": "Concepts › Board",
@@ -727,6 +734,83 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Holding nothing",
     "s": "Engines › Hello",
     "x": "Hello keeps no state between summons and answers each one from scratch, so it is not a chat partner — it is a probe with a personality. Ask it something twice and it will not remember the first time. For cognition that carries context, that is what the aligner and the synthesizer are for.",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#persona",
+    "t": "Persona",
+    "s": "Engines",
+    "x": "A persona is an engine that plays a room member in character. Give it a character, and it answers as that character whenever it is addressed, on a Pi session kept for it alone, so it remembers what it said the last time it was asked. A room can register as many as a demonstration needs: a cautious security reviewer, a proposer with a deadline, a supplier with limited stock. None of them needs a resident session behin",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#persona-how-it-is-addressed",
+    "t": "How it is addressed",
+    "s": "Engines › Persona",
+    "x": "A persona answers on two seams, and that is what makes it useful beyond chat. A text mention (@sec) summons it like any engine. An addressed turn, a message naming it as recipient with nobody mentioned in the text, also reaches it, and that is how the conductor puts a step to one member and how the aligner addresses a participant. So a persona can hold a role in a protocol: mycelium engine create api --kind persona -",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#persona-what-it-says",
+    "t": "What it says",
+    "s": "Engines › Persona",
+    "x": "It answers where it was asked: in the thread the turn rode, or in the room. A reply that ends in a stance marker ([[mycelium: stance=accept]] or reject) has the stance lifted onto the message the way an agent's mycelium respond does, so a conductor step or an aligner round reads it the same as a resident agent's. Every @ in what it says is removed before posting, so a persona can never summon anything, and two person",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#persona-honest-boundaries",
+    "t": "Honest boundaries",
+    "s": "Engines › Persona",
+    "x": "A persona is an engine, not a member with a presence lease: it is not in the room's roster, so the aligner only negotiates with it when the summon names it (@aligner @api @sec), and a bare @aligner over the whole room does not find it. Its memory is its Pi session file, which lives with the backend process and does not survive a rebuild of the container. And it holds no keys: like every engine, it speaks through the ",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#conductor",
+    "t": "Conductor",
+    "s": "Engines",
+    "x": "The conductor is the engine that runs a flow inside a task: a fixed shape of who speaks to whom, in what order, and what happens on each answer. Where the aligner brokers a negotiation, the conductor walks a graph. It is the engine to reach for when an interaction has a shape you already know: a proposal a reviewer must approve, a lead asking every worker at once, members speaking in turn. It is the one engine with n",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#conductor-the-run-lives-in-the-tasks-thread",
+    "t": "The run lives in the task's thread",
+    "s": "Engines › Conductor",
+    "x": "A task is one row on the board and one thread on the channel, and a run keeps that: the conductor walks the flow in the thread it was summoned in. Summon it on a task: mycelium board coordinate work/rotate-signing-key conductor \\ \"gated @api @sec: rotate the signing key without downtime\" Every turn, every reply and the outcome land in that task's thread, where board messages reads them back. What the run adds is a re",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#conductor-the-built-in-flows",
+    "t": "The built-in flows",
+    "s": "Engines › Conductor",
+    "x": "Flow Roles Shape gated proposer, guardian The proposer states what it intends to do. The guardian approves or blocks, ending its reply with [[mycelium: stance=accept]] or [[mycelium: stance=reject]]. A block sends the proposal back with the objection attached, until an approval or the step cap. fan-out lead Every other member is asked at once. The lead then gets all the answers and combines them into one plan. round-",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#conductor-reading-a-run",
+    "t": "Reading a run",
+    "s": "Engines › Conductor",
+    "x": "A run is meant to be read from the outside. The conductor opens by saying who plays what and the graph it is about to walk: Running gated with api as proposer, sec as guardian. **gated**: A proposer proposes, a guardian approves or blocks; a block sends it back. roles: proposer, guardian (bound in that order) - propose: asks proposer, then review - review: asks guardian, then by stance (accept: approved, reject: prop",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#conductor-whose-turn-it-is",
+    "t": "Whose turn it is",
+    "s": "Engines › Conductor",
+    "x": "While a run is open, the task's thread has a floor. The conductor holds it from the instant the summon lands, and gives it to whoever the current step addresses: one member for a role step, everyone at once for a fan-out. A write from anyone else is refused with a 409 that says who holds the floor and who may speak, so an agent that tried early keeps awaiting rather than giving up. A refused write never reaches the t",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#conductor-how-a-run-ends",
+    "t": "How a run ends",
+    "s": "Engines › Conductor",
+    "x": "A run ends at one of its flow's end steps, resolved or rejected, or at the step cap, which counts as rejected. The outcome is committed into the thread and the record is final: the flow, the whole trace, and every envelope. A resolved run resolves no task and compiles nothing into rows.",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#conductor-writing-your-own-flow",
+    "t": "Writing your own flow",
+    "s": "Engines › Conductor",
+    "x": "A flow is a memory under protocols/. A room that writes protocols/gated reshapes the built-in under that name; a new name adds a flow. Nothing writes a built-in there by itself; to start from one, ask the conductor for it and save what it says: mycelium engine invoke conductor \"show gated\" The body is YAML: description: A reviewer signs off before the author ships. roles: [author, reviewer] max_steps: 6 steps: - id: ",
     "p": "Adapters"
   },
   {

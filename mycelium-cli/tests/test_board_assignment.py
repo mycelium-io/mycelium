@@ -374,3 +374,60 @@ class TestProjection:
         assert row_.status == "open"
         assert row_.kind == "blocked"
         assert assignment.attention_of_item(row_, NOW) == "needs_you"
+
+
+class TestWaiting:
+    """What a row still waits on, read off the other rows and stored nowhere."""
+
+    TASK_CONTRACT = json.loads(
+        (Path(__file__).resolve().parents[2] / "contracts" / "board-vocabulary.json").read_text()
+    )["task"]
+
+    def test_the_words_match_the_contract(self):
+        from mycelium.board import model
+
+        assert self.TASK_CONTRACT["dependency_relation"] == model.DEPENDENCY_RELATION
+        assert self.TASK_CONTRACT["waiting_field"] == model.WAITING_FIELD
+        assert self.TASK_CONTRACT["settled_statuses"] == model.SETTLED_STATUSES
+
+    @staticmethod
+    def memory(key: str, **meta):
+        return {
+            "key": key,
+            "value": "Spike the auth rewrite",
+            "created_by": "julia",
+            "updated_by": "julia",
+            "updated_at": ago(5),
+            "meta": meta,
+        }
+
+    def project(self, *memories):
+        rows = project_items(episodes=[], memories=list(memories), agents=[], members=[], now=NOW)
+        return {row.source.label: row for row in rows}
+
+    def test_a_row_waits_on_its_open_dependencies_and_not_its_settled_ones(self):
+        rows = self.project(
+            self.memory("work/schema"),
+            self.memory("work/migrate", status="resolved"),
+            self.memory("work/deploy", assignment="resolved"),
+            self.memory(
+                "work/api", **{"depends-on": ["work/schema", "work/migrate", "work/deploy"]}
+            ),
+        )
+        assert rows["work/api"].strings("waiting_on") == ["work/schema"]
+
+    def test_a_reference_is_not_a_prerequisite(self):
+        rows = self.project(
+            self.memory("work/api", **{"depends-on": ["context/design", "work/never-filed"]}),
+        )
+        assert rows["work/api"].strings("waiting_on") == []
+
+    def test_a_row_with_no_dependencies_carries_no_column(self):
+        rows = self.project(self.memory("work/api"))
+        assert "waiting_on" not in rows["work/api"].fields
+
+    def test_a_single_dependency_reads_as_one(self):
+        rows = self.project(
+            self.memory("work/schema"), self.memory("work/api", **{"depends-on": "work/schema"})
+        )
+        assert rows["work/api"].strings("waiting_on") == ["work/schema"]

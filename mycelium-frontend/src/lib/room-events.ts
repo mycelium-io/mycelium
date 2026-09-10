@@ -160,7 +160,16 @@ export function parseEvent(msg: Record<string, unknown>): Event {
         thread = notice.episode;
         content = notice.title ?? notice.key;
         mtype = NOTICE_TYPE;
-        raw = { ...raw, taskKey: notice.key, by: notice.by, kind: notice.kind, subkind: notice.subkind, for: notice.assignee };
+        raw = {
+          ...raw,
+          taskKey: notice.key,
+          by: notice.by,
+          kind: notice.kind,
+          subkind: notice.subkind,
+          for: notice.assignee,
+          speakers: notice.speakers,
+          released: notice.released,
+        };
         break;
       }
       // The live SSE stream wraps human/agent messages as an L9 exchange

@@ -86,6 +86,13 @@
       "kind",
       "priority"
     ],
+    "_dependencies_comment": "A row waits on the board rows its `dependency_relation` names that are not yet settled. `waiting_field` is derived on both surfaces and on the hub's assignment read, never stored: a dependency resolving changes what its dependents wait on with nobody writing a byte, the same way a lease drains. A target is settled when its status is one of `settled_statuses` or its assignment is resolved; a target outside the live namespaces, or that names no memory, is a reference rather than a prerequisite and is not waited on. Whether a claim on a waiting row is refused is the hub's BOARD_DEPENDENCY_GATE, off by default; `force` on the claim overrides it.",
+    "dependency_relation": "depends-on",
+    "waiting_field": "waiting_on",
+    "settled_statuses": [
+      "resolved",
+      "dismissed"
+    ],
     "_refusals_comment": "Why a row has no thread to speak into, keyed by the source that produced it. A chat verb refuses in these terms rather than falling back to the room: a message that quietly went somewhere other than where it was addressed is worse than one that did not go. Keyed by source kind, so an episode row is absent — an episode IS a thread, and speaking into a recorded negotiation is a write the hub judges (a frozen roster refuses an outsider), not one the surface guesses at. The memory refusal is not about what the memory is: EVERY memory carries a thread, whatever its namespace and whoever wrote it, so an unthreaded memory is a gap rather than a category — one written before threading and not yet backfilled. The copy says so, because a surface that refuses in terms of a rule nobody can see reads as a bug.",
     "refusals": {
       "agent": "presence is a lease the runtime renews, not a conversation to join",

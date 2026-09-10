@@ -584,7 +584,7 @@ export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]>
   });
 }
 
-export type EngineKind = "aligner" | "synthesizer" | "hello";
+export type EngineKind = "aligner" | "synthesizer" | "hello" | "conductor" | "persona";
 
 /** Invite a first-party cognition engine (aligner / synthesizer / hello) into a room.
  *  Engines are backend-owned — registration is just a manifest write with no
@@ -701,13 +701,37 @@ export interface PresenceMember {
   title?: string | null;
 }
 
-/** Live presence set for a room: SLIM-connected + server-held lease members. */
-export async function fetchRoomMembers(roomName: string): Promise<PresenceMember[]> {
-  const data = await apiFetch<{ members?: PresenceMember[] }>(`/api/rooms/${roomName}/sessions/members`, {
-    cache: "no-store",
-    fallback: {},
-  });
-  return Array.isArray(data.members) ? data.members : [];
+/** A thread whose floor a run of backend code holds: who holds it and who it
+ *  was given to. A thread fact, not a presence one — a member the floor was
+ *  given to may not be present at all (a persona engine never is). */
+export interface RoomFloor {
+  /** The thread's short id, as the board prints it. */
+  thread: string;
+  episode: string;
+  /** The task the thread belongs to, when a row carries it; null for a thread
+   *  no row does. A badge names the task, and falls back to the thread id. */
+  key: string | null;
+  title: string | null;
+  holder: string;
+  speakers: string[];
+}
+
+export interface RoomPresence {
+  members: PresenceMember[];
+  floors: RoomFloor[];
+}
+
+/** Live presence set for a room: SLIM-connected + server-held lease members,
+ *  and the floors held in its threads right now. */
+export async function fetchRoomMembers(roomName: string): Promise<RoomPresence> {
+  const data = await apiFetch<{ members?: PresenceMember[]; floors?: RoomFloor[] }>(
+    `/api/rooms/${roomName}/sessions/members`,
+    { cache: "no-store", fallback: {} },
+  );
+  return {
+    members: Array.isArray(data.members) ? data.members : [],
+    floors: Array.isArray(data.floors) ? data.floors : [],
+  };
 }
 
 // ── Principals (self-asserted user store) ─────────────────────────────────────
@@ -817,6 +841,52 @@ export interface EpisodeSummary {
   message_count: number;
   updated_at: string;
   updated_by: string;
+  /** The thread this episode was opened from, when it runs inside a task. */
+  within?: string | null;
+  /** The interaction flow this episode runs; null for a negotiation or a thread. */
+  flow?: EpisodeFlow | null;
+  /** The steps taken so far, in order. */
+  trace?: FlowTraceEntry[];
+  /** Where an open run stands, read off the trace. */
+  current_step?: string | null;
+}
+
+/** One step of an episode's interaction flow, as the record carries it. */
+export interface FlowStep {
+  id: string;
+  /** A role, or each / all / workers. Absent on an end step. */
+  to?: string | null;
+  prompt?: string;
+  wait?: "reply" | "none";
+  rounds?: number;
+  /** One step id, or a branch by stance (accept / reject / silent / default). */
+  next?: string | Record<string, string> | null;
+  end?: "resolved" | "rejected" | null;
+}
+
+/** The interaction flow an episode runs: the graph the conductor walks, plus
+ *  who was bound to each role and what was asked. */
+export interface EpisodeFlow {
+  name: string;
+  description?: string;
+  roles?: string[];
+  steps: FlowStep[];
+  max_steps?: number;
+  bound?: Record<string, string>;
+  /** Everyone the run was summoned with, in order: the pool a group step asks. */
+  cast?: string[];
+  ask?: string;
+}
+
+/** One step taken in a flow episode. */
+export interface FlowTraceEntry {
+  step: string;
+  turn: number;
+  asked?: string[];
+  stances?: Record<string, string | null>;
+  stance?: string | null;
+  next: string;
+  at?: string;
 }
 
 export interface EpisodeDetail extends EpisodeSummary {
