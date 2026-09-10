@@ -244,7 +244,7 @@
                       "kind": "DataQuery",
                       "version": "v0",
                       "spec": {
-                        "expr": "sum(increase(mycelium_aligner_run_duration_milliseconds_count{mycelium_aligner_outcome=\"converged\"}[1h])) / sum(increase(mycelium_aligner_run_duration_milliseconds_count[1h]))",
+                        "expr": "sum(mycelium_aligner_run_duration_milliseconds_count{mycelium_aligner_outcome=\"converged\"}) / sum(mycelium_aligner_run_duration_milliseconds_count)",
                         "legendFormat": "converged / total"
                       }
                     }
@@ -439,7 +439,7 @@
                       "kind": "DataQuery",
                       "version": "v0",
                       "spec": {
-                        "expr": "histogram_quantile(0.95, sum(increase(mycelium_slim_provision_duration_milliseconds_bucket[1h])) by (le))",
+                        "expr": "histogram_quantile(0.95, sum(mycelium_slim_provision_duration_milliseconds_bucket) by (le))",
                         "legendFormat": "p95"
                       }
                     }
@@ -570,7 +570,7 @@
                       "kind": "DataQuery",
                       "version": "v0",
                       "spec": {
-                        "expr": "histogram_quantile(0.95, sum(increase(mycelium_aligner_round_duration_milliseconds_bucket[1h])) by (le))",
+                        "expr": "histogram_quantile(0.95, sum(mycelium_aligner_round_duration_milliseconds_bucket) by (le))",
                         "legendFormat": "round p95 (total)"
                       }
                     }
@@ -585,7 +585,7 @@
                       "kind": "DataQuery",
                       "version": "v0",
                       "spec": {
-                        "expr": "histogram_quantile(0.95, sum(increase(mycelium_aligner_round_duration_excl_llm_milliseconds_bucket[1h])) by (le))",
+                        "expr": "histogram_quantile(0.95, sum(mycelium_aligner_round_duration_excl_llm_milliseconds_bucket) by (le))",
                         "legendFormat": "round p95 (excl LLM)"
                       }
                     }
@@ -600,7 +600,7 @@
                       "kind": "DataQuery",
                       "version": "v0",
                       "spec": {
-                        "expr": "histogram_quantile(0.95, sum(increase(mycelium_aligner_run_duration_milliseconds_bucket[1h])) by (le))",
+                        "expr": "histogram_quantile(0.95, sum(mycelium_aligner_run_duration_milliseconds_bucket) by (le))",
                         "legendFormat": "run p95 (total)"
                       }
                     }
@@ -665,7 +665,7 @@
                       "kind": "DataQuery",
                       "version": "v0",
                       "spec": {
-                        "expr": "sum(increase(mycelium_aligner_run_duration_milliseconds_count[1h]))"
+                        "expr": "sum(mycelium_aligner_run_duration_milliseconds_count)"
                       }
                     }
                   }
@@ -731,7 +731,7 @@
                       "kind": "DataQuery",
                       "version": "v0",
                       "spec": {
-                        "expr": "sum(increase(mycelium_aligner_run_duration_milliseconds_count{mycelium_aligner_outcome=\"converged\"}[1h])) / sum(increase(mycelium_aligner_run_duration_milliseconds_count[1h]))"
+                        "expr": "sum(mycelium_aligner_run_duration_milliseconds_count{mycelium_aligner_outcome=\"converged\"}) / sum(mycelium_aligner_run_duration_milliseconds_count)"
                       }
                     }
                   }
@@ -872,7 +872,7 @@
                       "kind": "DataQuery",
                       "version": "v0",
                       "spec": {
-                        "expr": "sum(increase(mycelium_slim_provision_duration_milliseconds_count[1h]))"
+                        "expr": "sum(mycelium_slim_provision_duration_milliseconds_count)"
                       }
                     }
                   }
