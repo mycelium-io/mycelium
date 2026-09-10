@@ -10,7 +10,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#quickstart",
     "t": "Quick Start",
     "s": "Get Started",
-    "x": "Mycelium runs on a server your team connects to. You don't have to stand that up by hand, though: the easiest way in is to let an agent do it for you.",
+    "x": "",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#quickstart-the-guided-tour",
+    "t": "The guided tour",
+    "s": "Get Started › Quick Start",
+    "x": "If you'd rather be walked through it, run the tour: mycelium onboard It points this machine at a hub (yours, or one someone already runs for you), signs you in if the hub asks, puts a task on a board, hands two of your coding agents a briefing each, lets the aligner mediate them to an agreement, and files the follow-up work. The agents are your own sessions: Claude Code, Cursor, anything with a shell. Every step prin",
     "p": "Guide"
   },
   {
@@ -956,6 +963,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "mycelium logout",
     "s": "CLI Reference",
     "x": "Drop the cached OIDC session; the CLI goes back to sending no token.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-setup",
+    "t": "mycelium onboard [--hub <url>] [--scenario <id>] [--room <name>] [--yes] [--list] [--briefings]",
+    "s": "CLI Reference",
+    "x": "Guided first run: point at a hub, sign in, put a task on a board, brief two of your coding agents, watch the aligner mediate them, and work the board.",
     "k": "cmd",
     "p": "Reference"
   },

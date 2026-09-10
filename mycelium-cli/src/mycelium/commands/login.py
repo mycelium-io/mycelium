@@ -81,16 +81,12 @@ def _hub_issuers(config: MyceliumConfig) -> tuple[list[str], str | None]:
     issuer up and copy it back in. Returns the issuers and, when the list is
     empty, a reason to print instead of a bare "no issuer configured".
     """
-    import httpx
+    from mycelium.client import probe_health
 
-    url = f"{config.server.api_url.rstrip('/')}/health"
-    try:
-        resp = httpx.get(url, timeout=5)
-        resp.raise_for_status()
-        body = resp.json()
-    except (httpx.HTTPError, ValueError):
-        return [], f"couldn't reach {url} to ask it"
-    auth = body.get("auth") or {} if isinstance(body, dict) else {}
+    body, why = probe_health(config.server.api_url)
+    if body is None:
+        return [], f"{why}, so it couldn't be asked"
+    auth = body.get("auth") or {}
     if not auth.get("enabled"):
         return [], f"{config.server.api_url} has its gate off, so it needs no login"
     issuers = [str(i).strip().rstrip("/") for i in auth.get("issuers") or [] if str(i).strip()]
