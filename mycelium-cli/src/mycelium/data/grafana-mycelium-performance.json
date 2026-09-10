@@ -504,7 +504,7 @@
                       "kind": "DataQuery",
                       "version": "v0",
                       "spec": {
-                        "expr": "histogram_quantile(0.95, sum(increase(mycelium_memory_search_duration_milliseconds_bucket[1h])) by (le))",
+                        "expr": "histogram_quantile(0.95, sum(mycelium_memory_search_duration_milliseconds_bucket) by (le))",
                         "legendFormat": "p95"
                       }
                     }
