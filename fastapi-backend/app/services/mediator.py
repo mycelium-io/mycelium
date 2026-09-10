@@ -129,8 +129,8 @@ def detect_term_mismatch(
                 temperature=_DISCOVER_TEMPERATURE,
             )
         )
-    except Exception:
-        logger.warning("mediator term check failed; continuing without a clarifying round")
+    except Exception as exc:
+        logger.warning("mediator term check failed; continuing without a clarifying round: %s", exc)
         return []
     raw = out.get("mismatches")
     if not isinstance(raw, list):
@@ -287,8 +287,10 @@ class MediatedNegotiation:
                 "preachy — do not pressure anyone to abandon a real limit.",
                 system="You are a fair mediator who wants a durable agreement, not to favor anyone.",
             )
-        except Exception:
-            logger.warning("mediator broker LLM failed (step %d); continuing without note", round_n)
+        except Exception as exc:
+            logger.warning(
+                "mediator broker LLM failed (step %d); continuing without note: %s", round_n, exc
+            )
             return ""
 
     def interpret(self, handle: str, prose: str, *, proposing: bool) -> dict[str, Any]:
@@ -331,8 +333,10 @@ class MediatedNegotiation:
                     temperature=_DISCOVER_TEMPERATURE,
                 )
             )
-        except Exception:
-            logger.warning("mediator interpret LLM failed for @%s; treating as reject", handle)
+        except Exception as exc:
+            logger.warning(
+                "mediator interpret LLM failed for @%s; treating as reject: %s", handle, exc
+            )
             reading = {}
         if self._on_reading is not None:
             self._on_reading(handle, reading, proposing)

@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # OpenShell sandboxing (ALIGNER_PI_OPENSHELL) is optional and layered on top.
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
-    && npm install -g @mariozechner/pi-coding-agent \
+    && npm install -g @earendil-works/pi-coding-agent \
     && npm cache clean --force \
     && rm -rf /var/lib/apt/lists/*
 
