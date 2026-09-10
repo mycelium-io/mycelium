@@ -212,6 +212,10 @@ uv run ruff check . && uv run ruff format . && uv run ty check .
 
 Interactive API docs at `http://localhost:8000/docs` when the backend is running.
 
+See [`e2e-test/README.md`](e2e-test/README.md) for the pyATS end-to-end suite
+that drives a running backend/CLI/hub-and-spoke stack over its public HTTP
+and CLI surfaces.
+
 ## Built On
 
 Mycelium builds on OSS projects we found invaluable in this space:
