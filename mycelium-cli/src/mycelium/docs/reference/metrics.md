@@ -82,76 +82,102 @@ Set any threshold to `0` to disable that check.
 ## OTel SDK in the backend (opt-in)
 
 When `telemetry.enabled = true`, the backend initialises the OpenTelemetry SDK
-at startup and exports traces + metrics over OTLP.  Two options for where
+at startup and exports traces + metrics over OTLP.  Three options for where
 the data goes:
 
-### Option A — lightweight collector (no browser UI)
+### Option A — remote collector only
 
-Uses the built-in Mycelium collector, which writes to local files.
-No extra infrastructure; no browser dashboard.
+Send directly to a third-party or Cisco-hosted OTLP backend.  No local
+infrastructure needed; the remote backend provides retention, dashboards,
+and alerting.
 
 ```toml
 [telemetry]
 enabled       = true
-otlp_endpoint = ""   # default: http://mycelium-collector:4318 ← works with --metrics
+otlp_endpoint = "https://otlp-gateway-prod-us-east-0.grafana.net/otlp"
 ```
 
 ```bash
 mycelium config set telemetry.enabled true
+mycelium config set telemetry.otlp_endpoint <remote-url>
 mycelium config apply
-mycelium up --metrics          # starts the collector on :4318
+docker restart mycelium-backend
+
+# Auth headers (vendor-specific) — add to ~/.mycelium/.env directly:
+#   Grafana Cloud:  OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <base64(instanceId:key)>
+#   Honeycomb:      OTEL_EXPORTER_OTLP_HEADERS=x-honeycomb-team=<api-key>
+#   Datadog agent:  OTEL_EXPORTER_OTLP_HEADERS=dd-api-key=<key>
 ```
 
-Data lands in `$MYCELIUM_DATA_DIR/metrics/` (`metrics.json` + `traces.db`).
-Read it with `mycelium metrics show` and `mycelium metrics traces`.
+No local dashboard.  Data goes straight to the remote backend.
 
-### Option B — Grafana LGTM (full browser UI + dashboard)
+### Option B — local Grafana LGTM only
 
-Starts `grafana/otel-lgtm` — OTel Collector + Prometheus + Tempo + Loki + Grafana.
-The Mycelium performance dashboard is imported automatically on first start.
+Starts `grafana/otel-lgtm` locally — OTel Collector + Prometheus + Tempo +
+Loki + Grafana UI.  Full visibility on your own machine; nothing leaves your
+network.  Good for development, debugging, and evaluating what telemetry
+exposes before committing to a remote.
 
 ```toml
 [telemetry]
 enabled          = true
-otlp_endpoint    = "http://mycelium-grafana:4318"  # ← must set explicitly for Grafana
-send_product_analytics = true                       # optional: analytics events → Loki
-analytics_destination  = "http://host.docker.internal:3100/loki/api/v1/push"
+otlp_endpoint    = "http://mycelium-grafana:4318"  # ← must set for Grafana
 ```
 
 ```bash
 mycelium config set telemetry.enabled true
 mycelium config set telemetry.otlp_endpoint http://mycelium-grafana:4318
-# optional: product analytics in Loki
-mycelium config set telemetry.send_product_analytics true
-mycelium config set telemetry.analytics_destination \
-  http://host.docker.internal:3100/loki/api/v1/push
 mycelium config apply
-docker restart mycelium-backend   # pick up new env
-mycelium up --grafana             # starts Grafana + imports the dashboard
+mycelium up --grafana   # imports the dashboard automatically
+docker restart mycelium-backend
 ```
 
 Grafana opens at `http://localhost:3001` (admin / admin).
 
-| Signal | Where it lands |
-|---|---|
-| OTel traces | Tempo → Explore |
-| OTel metrics | Prometheus → dashboard panels |
-| Product analytics events | Loki → "Product analytics events" panel |
+### Option C — local Grafana + forward to remote
 
-`--grafana` and `--metrics` can run simultaneously — Grafana LGTM uses host
-ports 4319/4320 to avoid colliding with the collector's 4318.
+Local Grafana gives you real-time visibility while the same telemetry is also
+forwarded to a team-wide remote backend.  `grafana/otel-lgtm`'s internal OTel
+Collector supports fan-out natively: set `OTEL_EXPORTER_OTLP_ENDPOINT` in
+`~/.mycelium/.env` and it forwards everything upstream with no extra
+infrastructure.
 
-**Important:** if `mycelium-grafana` is ever restarted (e.g. by `mycelium up --build`),
-restart the backend too — the OTel SDK's HTTP connection does not auto-reconnect after
-a target restart, so metrics stop flowing silently:
+```toml
+[telemetry]
+enabled       = true
+otlp_endpoint = "http://mycelium-grafana:4318"   # backend → local Grafana
+```
+
+```bash
+mycelium config set telemetry.enabled true
+mycelium config set telemetry.otlp_endpoint http://mycelium-grafana:4318
+mycelium config apply
+
+# Add forwarding config to ~/.mycelium/.env (not config.toml — operator-managed):
+echo 'OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp-gateway-prod-us-east-0.grafana.net/otlp' >> ~/.mycelium/.env
+echo 'OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <base64(instanceId:key)>'          >> ~/.mycelium/.env
+
+mycelium up --grafana
+docker restart mycelium-backend
+```
+
+The `mycelium-grafana` container reads `~/.mycelium/.env` and picks up
+`OTEL_EXPORTER_OTLP_ENDPOINT` automatically — no compose file edit needed.
+
+**Signal routing summary:**
+
+| Signal | Option A | Option B | Option C |
+|---|---|---|---|
+| OTel traces | Remote only | Local Tempo | Local + remote |
+| OTel metrics | Remote only | Local Prometheus + dashboard | Local + remote |
+| Product analytics | Loki destination (separate) | Loki destination (separate) | Loki destination (separate) |
+
+**Note:** if `mycelium-grafana` is restarted (e.g. by `mycelium up --build`),
+restart the backend too — the OTel SDK HTTP connection does not auto-reconnect:
 
 ```bash
 docker restart mycelium-backend
 ```
-
-The bundled dashboard JSON is at
-`mycelium-cli/src/mycelium/data/grafana-mycelium-performance.json` and ships
-with the CLI, so it is available on any install.
 
 When `telemetry.enabled = false` (the default), **no OTel code runs** — not even an
 import.  The in-process store is always-on regardless.
