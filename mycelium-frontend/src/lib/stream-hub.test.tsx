@@ -98,6 +98,21 @@ describe("stream hub", () => {
     expect(liveUrls()).toEqual(["/api/stream", "/api/stream?room=sprint"]);
   });
 
+  it("encodes a spaced room name once", () => {
+    const { getByTestId } = render(
+      <>
+        <RoomFeed room="CE-Area Team" />
+        <RoomBadge room="CE-Area Team" />
+      </>,
+    );
+    const connection = roomConnection();
+
+    expect(connection.url).toBe("/api/stream?room=CE-Area+Team");
+
+    act(() => connection.emitStatus("room", true, "CE-Area Team"));
+    expect(getByTestId("badge")).toHaveTextContent("live");
+  });
+
   it("routes each channel to the consumers that asked for it", () => {
     const room = vi.fn();
     const app = vi.fn();

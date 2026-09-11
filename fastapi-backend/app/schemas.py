@@ -10,7 +10,7 @@ from enum import StrEnum
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Two shape rules, deliberately distinct. A *handle* is an identity and can be
 # minted by a real IdP, so it allows the `@` a corporate SSO `preferred_username`
@@ -25,12 +25,36 @@ SLUG_PATTERN = r"^[a-z0-9][a-z0-9._-]*$"
 
 
 class RoomCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description=(
+            "Room name: 1-100 printable characters; path separators, blank names, "
+            "'.', '..', and the reserved ':session:' marker are not allowed"
+        ),
+    )
     description: str | None = Field(None, max_length=500)
     title: str | None = Field(None, max_length=200)
     is_public: bool = True
     mas_id: str | None = None
     workspace_id: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        """Keep a room name safe as one filesystem and SLIM namespace segment."""
+        if not value.strip():
+            raise ValueError("Room name must not be blank")
+        if value in {".", ".."}:
+            raise ValueError("Room name must not be '.' or '..'")
+        if "/" in value or "\\" in value:
+            raise ValueError("Room name must not contain path separators")
+        if ":session:" in value:
+            raise ValueError("Room name must not contain the reserved ':session:' marker")
+        if not value.isprintable():
+            raise ValueError("Room name must contain only printable characters")
+        return value
 
 
 class RoomRead(BaseModel):

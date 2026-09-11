@@ -126,6 +126,24 @@ describe("GET /api/stream", () => {
       ]);
     });
 
+    it("encodes a spaced room once in the upstream path", async () => {
+      const dialed: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => {
+          dialed.push(url);
+          return upstream().response;
+        }),
+      );
+
+      const res = await GET(new Request("http://ui/api/stream?room=CE-Area%20Team"));
+      await collect(res, 1);
+
+      expect(dialed).toEqual([
+        "http://backend:8000/api/rooms/CE-Area%20Team/messages/stream",
+      ]);
+    });
+
     it("deduplicates and caps the rooms a single request can open", async () => {
       const opened: string[] = [];
       vi.stubGlobal(
