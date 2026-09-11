@@ -626,7 +626,7 @@ def start(
 
         quiet_cmd = base[:2] + ["--progress=plain"] + base[2:] + up_args
         if build:
-            result = subprocess.run(quiet_cmd, env=build_env)
+            result = subprocess.run(quiet_cmd, env=build_env, text=True)
         else:
             result = subprocess.run(quiet_cmd, capture_output=True, text=True, env=build_env)
 

@@ -413,9 +413,8 @@ class AlignerEngine:
             opening_positions=positions,
         )
         try:
-            llm_session = self._signalling(
-                self._open_llm_session(episode, room=room), room, episode
-            )
+            raw_llm_session = self._open_llm_session(episode, room=room)
+            llm_session = self._signalling(raw_llm_session, room, episode)
             positions = await self._clarify_terms(
                 managed, persister, ep, me, episode, topic, positions, llm_session
             )
@@ -455,7 +454,7 @@ class AlignerEngine:
             _mech_t0 = __import__("time").monotonic()
             # Snapshot Pi time before mech.run() so we only subtract Pi calls
             # that happen *inside* the NEGMAS loop, not _clarify_terms/discover_issues.
-            _pi_ms_before = getattr(llm_session, "total_pi_ms", 0.0)
+            _pi_ms_before = getattr(raw_llm_session, "total_pi_ms", 0.0)
             await asyncio.to_thread(mech.run)
             _mech_ms = (__import__("time").monotonic() - _mech_t0) * 1000.0
 
@@ -470,7 +469,7 @@ class AlignerEngine:
                 _rounds_out[0] = _rounds_run
             from app.services import metrics as _metrics
 
-            _pi_ms = getattr(llm_session, "total_pi_ms", 0.0) - _pi_ms_before
+            _pi_ms = getattr(raw_llm_session, "total_pi_ms", 0.0) - _pi_ms_before
             _mechanism_ms = max(_mech_ms - _pi_ms, 0.0)
             _run_outcome = "converged" if converged else "rejected"
             _metrics.record_aligner_round(

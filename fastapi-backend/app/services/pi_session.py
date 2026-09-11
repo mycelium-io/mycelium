@@ -396,18 +396,18 @@ class PiSession:
         (best-effort determinism only).
         """
         del temperature  # no pi CLI knob; kept for LLM-callable signature parity
-        binary = self._binary
-        if shutil.which(binary) is None:
-            raise PiSessionError(
-                f"`{binary}` not found on PATH — the aligner's mediator runs on Pi; "
-                "install Pi (earendil-works/pi) or set ALIGNER_PI_BINARY to its path."
-            )
-        self._ensure_provider()
-        cmd = self._build_command(prompt, system)
         _t0 = __import__("time").monotonic()
         _error = False
         completed = None
         try:
+            binary = self._binary
+            if shutil.which(binary) is None:
+                raise PiSessionError(
+                    f"`{binary}` not found on PATH — the aligner's mediator runs on Pi; "
+                    "install Pi (earendil-works/pi) or set ALIGNER_PI_BINARY to its path."
+                )
+            self._ensure_provider()
+            cmd = self._build_command(prompt, system)
             completed = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -434,11 +434,8 @@ class PiSession:
         finally:
             _duration_ms = (__import__("time").monotonic() - _t0) * 1000.0
             self.total_pi_ms += _duration_ms
-            # Only record when operation is explicitly set.  Callers that manage
-            # their own record_llm_call wrapper (synthesizer, task_compiler,
-            # llm_health) leave operation="" to avoid double-counting the same
-            # Pi call.  Callers that rely solely on PiSession (aligner, probe)
-            # pass an explicit operation= string.
+            # Only record when operation is explicitly set. Callers with a
+            # separate metrics wrapper leave operation="" to avoid double-counting.
             if self._operation:
                 try:
                     from app.services.metrics import record_llm_call
