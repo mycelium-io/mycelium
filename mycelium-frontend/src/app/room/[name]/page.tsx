@@ -9,7 +9,7 @@ import { useDefaultLayout } from "react-resizable-panels";
 import { type EpisodeSummary } from "@/lib/api";
 import { useRoom, useRoomRevalidate, useRoomThreads } from "@/lib/room-data";
 import { parseFocus, type FocusTarget } from "@/lib/search";
-import { memoryHref } from "@/lib/memory-routes";
+import { memoryHref, parseRoomNameParam } from "@/lib/memory-routes";
 import { AppShell } from "@/components/app-shell";
 import { EventStream, type View } from "@/components/event-stream";
 import { RoomChatBox } from "@/components/room-chat-box";
@@ -69,7 +69,7 @@ export default function RoomPage() {
 
 function RoomWorkspace() {
   const params = useParams();
-  const roomName = params.name as string;
+  const roomName = parseRoomNameParam(params.name as string);
   const [connected, setConnected] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<Tab>("agents");
   const [inspectorOpen, setInspectorOpen] = useState(true);

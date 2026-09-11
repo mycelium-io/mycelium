@@ -5814,7 +5814,8 @@
             "type": "string",
             "maxLength": 100,
             "minLength": 1,
-            "title": "Name"
+            "title": "Name",
+            "description": "Room name: 1-100 printable characters; path separators, blank names, '.', '..', and the reserved ':session:' marker are not allowed"
           },
           "description": {
             "anyOf": [

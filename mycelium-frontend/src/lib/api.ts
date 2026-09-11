@@ -118,6 +118,11 @@ async function apiFetch<T = unknown>(path: string, opts: ApiFetchOptions<T> = {}
 
 const isArray = (d: unknown): d is unknown[] => Array.isArray(d);
 
+/** Canonical API path for a room whose name may contain spaces. */
+function roomApiPath(name: string): string {
+  return `/api/rooms/${encodeURIComponent(name)}`;
+}
+
 // ── Rooms ────────────────────────────────────────────────────────────────────
 
 export interface Room {
@@ -137,7 +142,7 @@ export interface Room {
 
 /** Rename a room. Throws `ApiError` on failure. */
 export async function setRoomTitle(roomName: string, title: string): Promise<Room> {
-  return apiFetch<Room>(`/api/rooms/${roomName}`, {
+  return apiFetch<Room>(roomApiPath(roomName), {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title }),
@@ -149,7 +154,7 @@ export async function fetchRooms(): Promise<Room[]> {
 }
 
 export async function fetchRoom(name: string): Promise<Room> {
-  return apiFetch<Room>(`/api/rooms/${name}`, { cache: "no-store" });
+  return apiFetch<Room>(roomApiPath(name), { cache: "no-store" });
 }
 
 export async function createRoom(data: { name: string; is_persistent?: boolean }): Promise<Room> {
@@ -206,7 +211,7 @@ export async function createMemories(
   roomName: string,
   items: MemoryCreate[],
 ): Promise<void> {
-  await apiFetch<unknown>(`/api/rooms/${roomName}/memory`, {
+  await apiFetch<unknown>(`${roomApiPath(roomName)}/memory`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ items }),
@@ -240,7 +245,7 @@ export async function writeAssignment(
   action: "claim" | "release" | "resolve",
   body: { key: string; handle: string; ttl_minutes?: number; note?: string },
 ): Promise<AssignmentState> {
-  return apiFetch<AssignmentState>(`/api/rooms/${roomName}/assignments/${action}`, {
+  return apiFetch<AssignmentState>(`${roomApiPath(roomName)}/assignments/${action}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -265,7 +270,7 @@ export async function writeFields(
   roomName: string,
   body: { key: string; handle: string; fields: Record<string, unknown> },
 ): Promise<FieldState> {
-  return apiFetch<FieldState>(`/api/rooms/${roomName}/fields`, {
+  return apiFetch<FieldState>(`${roomApiPath(roomName)}/fields`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -280,7 +285,7 @@ export const MEMORIES_PAGE_LIMIT = 50;
 export async function fetchMemories(roomName: string, prefix?: string): Promise<Memory[]> {
   const params = new URLSearchParams({ limit: String(MEMORIES_PAGE_LIMIT) });
   if (prefix) params.set("prefix", prefix);
-  return apiFetch<Memory[]>(`/api/rooms/${roomName}/memory?${params}`, {
+  return apiFetch<Memory[]>(`${roomApiPath(roomName)}/memory?${params}`, {
     cache: "no-store",
     fallback: [],
     guard: isArray as (d: unknown) => d is Memory[],
@@ -290,7 +295,7 @@ export async function fetchMemories(roomName: string, prefix?: string): Promise<
 /** One memory by key. Returns null when it isn't there (or the read failed). */
 export async function fetchMemory(roomName: string, key: string): Promise<Memory | null> {
   const path = encodeMemoryKeyPath(key);
-  return apiFetch<Memory | null>(`/api/rooms/${roomName}/memory/${path}`, {
+  return apiFetch<Memory | null>(`${roomApiPath(roomName)}/memory/${path}`, {
     cache: "no-store",
     fallback: null,
   });
@@ -304,7 +309,7 @@ export interface MemorySearchResult {
 /** Semantic search. Throws on failure so the UI can distinguish "no results"
  *  from "the request failed". */
 export async function searchMemories(roomName: string, query: string): Promise<MemorySearchResult[]> {
-  const data = await apiFetch<{ results?: MemorySearchResult[] }>(`/api/rooms/${roomName}/memory/search`, {
+  const data = await apiFetch<{ results?: MemorySearchResult[] }>(`${roomApiPath(roomName)}/memory/search`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, limit: 10 }),
@@ -352,7 +357,7 @@ const EMPTY_LINKS = { outbound: [], backlinks: [] };
 export async function fetchMemoryLinks(roomName: string, key: string): Promise<MemoryLinks> {
   const params = new URLSearchParams({ key });
   const data = await apiFetch<Omit<MemoryLinks, "key">>(
-    `/api/rooms/${roomName}/links?${params}`,
+    `${roomApiPath(roomName)}/links?${params}`,
     { cache: "no-store", fallback: EMPTY_LINKS },
   );
   return { key, outbound: data.outbound ?? [], backlinks: data.backlinks ?? [] };
@@ -371,7 +376,7 @@ const EMPTY_EXPAND: MemoryExpanded = { key: "", rendered: "", expansions: [], fo
 export async function fetchMemoryExpanded(roomName: string, key: string): Promise<MemoryExpanded> {
   const params = new URLSearchParams({ key });
   const data = await apiFetch<MemoryExpanded>(
-    `/api/rooms/${roomName}/links/expand?${params}`,
+    `${roomApiPath(roomName)}/links/expand?${params}`,
     { cache: "no-store", fallback: { ...EMPTY_EXPAND, key } },
   );
   return { ...EMPTY_EXPAND, ...data, key };
@@ -411,7 +416,7 @@ const EMPTY_GRAPH: MemoryGraph = { nodes: [], edges: [] };
 /** The room's whole link graph. Degrades to empty when the room has no link
  *  index yet, or the hub is unreachable. */
 export async function fetchMemoryGraph(roomName: string): Promise<MemoryGraph> {
-  const data = await apiFetch<Partial<MemoryGraph>>(`/api/rooms/${roomName}/links/graph`, {
+  const data = await apiFetch<Partial<MemoryGraph>>(`${roomApiPath(roomName)}/links/graph`, {
     cache: "no-store",
     fallback: EMPTY_GRAPH,
   });
@@ -439,7 +444,7 @@ export interface Skill {
  *  `skills/…` memories; in the GUI they surface as memories (with a tag), so this
  *  read is the only skill-specific frontend call. Degrades to empty on failure. */
 export async function fetchSkills(roomName: string): Promise<Skill[]> {
-  const data = await apiFetch<{ skills?: Skill[] }>(`/api/rooms/${roomName}/skills`, {
+  const data = await apiFetch<{ skills?: Skill[] }>(`${roomApiPath(roomName)}/skills`, {
     cache: "no-store",
     fallback: { skills: [] },
   });
@@ -450,7 +455,7 @@ export async function fetchSkills(roomName: string): Promise<Skill[]> {
  *  A read is answered from the hub's cache and never fetches, so polling this
  *  costs a cache lookup rather than a round trip to GitHub. */
 export async function fetchRoomStatus(roomName: string): Promise<RoomStatus> {
-  return apiFetch<RoomStatus>(`/api/rooms/${roomName}/status`, {
+  return apiFetch<RoomStatus>(`${roomApiPath(roomName)}/status`, {
     cache: "no-store",
     fallback: {
       room: roomName,
@@ -513,7 +518,7 @@ export async function fetchMessages(
   if (query.before) params.set("before", query.before);
   const qs = params.toString();
   return apiFetch<MessagesResponse>(
-    `/api/rooms/${roomName}/messages${qs ? `?${qs}` : ""}`,
+    `${roomApiPath(roomName)}/messages${qs ? `?${qs}` : ""}`,
     {
       cache: "no-store",
       fallback: { messages: [] },
@@ -533,7 +538,7 @@ export async function fetchL9History(
   const params = new URLSearchParams({ limit: String(limit) });
   if (before) params.set("before", before);
   return apiFetch<Record<string, unknown>[]>(
-    `/api/rooms/${roomName}/messages/l9?${params.toString()}`,
+    `${roomApiPath(roomName)}/messages/l9?${params.toString()}`,
     {
       cache: "no-store",
       fallback: [],
@@ -552,7 +557,7 @@ export async function sendRoomMessage(
     episode?: string | null;
   },
 ): Promise<RoomMessage> {
-  return apiFetch<RoomMessage>(`/api/rooms/${roomName}/messages`, {
+  return apiFetch<RoomMessage>(`${roomApiPath(roomName)}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message_type: "broadcast", ...data }),
@@ -577,7 +582,7 @@ export interface AgentSummary {
 
 /** List addressable agents in a room. Used to drive `@`-mention autocomplete. */
 export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]> {
-  return apiFetch<AgentSummary[]>(`/api/rooms/${roomName}/agents`, {
+  return apiFetch<AgentSummary[]>(`${roomApiPath(roomName)}/agents`, {
     cache: "no-store",
     fallback: [],
     guard: isArray as (d: unknown) => d is AgentSummary[],
@@ -593,7 +598,7 @@ export async function createEngine(
   roomName: string,
   data: { handle: string; kind: EngineKind; description?: string; created_by?: string },
 ): Promise<AgentSummary> {
-  return apiFetch<AgentSummary>(`/api/rooms/${roomName}/engines`, {
+  return apiFetch<AgentSummary>(`${roomApiPath(roomName)}/engines`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -607,7 +612,7 @@ export async function registerA2aAgent(
   roomName: string,
   data: { handle: string; card: string; description?: string },
 ): Promise<AgentSummary> {
-  return apiFetch<AgentSummary>(`/api/rooms/${roomName}/a2a-agents`, {
+  return apiFetch<AgentSummary>(`${roomApiPath(roomName)}/a2a-agents`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -674,7 +679,7 @@ export interface A2aBridgeState {
 /** Read a room's A2A bridge state. Returns null when the hub is unreachable
  *  or too old to serve the route. */
 export async function fetchA2aBridge(roomName: string): Promise<A2aBridgeState | null> {
-  return apiFetch<A2aBridgeState | null>(`/api/rooms/${roomName}/a2a/state`, {
+  return apiFetch<A2aBridgeState | null>(`${roomApiPath(roomName)}/a2a/state`, {
     cache: "no-store",
     fallback: null,
   });
@@ -703,7 +708,7 @@ export interface PresenceMember {
 
 /** Live presence set for a room: SLIM-connected + server-held lease members. */
 export async function fetchRoomMembers(roomName: string): Promise<PresenceMember[]> {
-  const data = await apiFetch<{ members?: PresenceMember[] }>(`/api/rooms/${roomName}/sessions/members`, {
+  const data = await apiFetch<{ members?: PresenceMember[] }>(`${roomApiPath(roomName)}/sessions/members`, {
     cache: "no-store",
     fallback: {},
   });
@@ -825,7 +830,7 @@ export interface EpisodeDetail extends EpisodeSummary {
 
 /** Episode summaries for a room, newest first. */
 export async function fetchEpisodes(roomName: string): Promise<EpisodeSummary[]> {
-  const data = await apiFetch<{ episodes?: EpisodeSummary[] }>(`/api/rooms/${roomName}/episodes`, {
+  const data = await apiFetch<{ episodes?: EpisodeSummary[] }>(`${roomApiPath(roomName)}/episodes`, {
     cache: "no-store",
     fallback: {},
   });
@@ -838,7 +843,7 @@ export async function fetchEpisode(
   shortId: string,
 ): Promise<EpisodeDetail | null> {
   return apiFetch<EpisodeDetail | null>(
-    `/api/rooms/${roomName}/episodes/${encodeURIComponent(shortId)}`,
+    `${roomApiPath(roomName)}/episodes/${encodeURIComponent(shortId)}`,
     { cache: "no-store", fallback: null },
   );
 }

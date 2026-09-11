@@ -18,6 +18,11 @@ export function parseMemoryKeyParam(segments: string[]): string {
   return segments.map(decodeURIComponent).join("/");
 }
 
+/** Decode a `[name]` route segment to the canonical room name. */
+export function parseRoomNameParam(segment: string): string {
+  return decodeURIComponent(segment);
+}
+
 /** Canonical in-app URL for a room memory page. */
 export function memoryHref(room: string, key: string): string {
   return `/room/${encodeURIComponent(room)}/memory/${encodeMemoryKeyPath(key)}`;
