@@ -45,6 +45,7 @@ async def test_summon_fires_only_for_the_reserved_handle():
         room: str,
         engine_handle: str | None = None,
         scoped_participants: list[str] | None = None,
+        **_kwargs: object,
     ) -> None:
         called.append(room)
 
@@ -155,6 +156,7 @@ async def test_engine_runtime_host_skips_registered_engine(
         r: str,
         engine_handle: str | None = None,
         scoped_participants: list[str] | None = None,
+        **_kwargs: object,
     ) -> None:
         called.append(r)
 

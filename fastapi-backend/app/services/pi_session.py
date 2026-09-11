@@ -313,6 +313,8 @@ class PiSession:
         binary: str = "pi",
         timeout_s: float = 120.0,
         openshell: bool = False,
+        operation: str = "",
+        room: str = "",
     ) -> None:
         self._session_path = session_path
         self._model = model
@@ -321,6 +323,13 @@ class PiSession:
         self._binary = binary
         self._timeout_s = timeout_s
         self._openshell = openshell
+        self._operation = operation
+        self._room = room
+        # Accumulated wall-clock time spent in Pi subprocess calls this session.
+        # The aligner reads this after mech.run() to derive mechanism overhead
+        # (round duration excluding LLM time). Thread-safe only within the
+        # serial-by-construction constraint documented in the class docstring.
+        self.total_pi_ms: float = 0.0
         # A LLM_BASE_URL is not a pi command-line flag — it becomes a models.json
         # provider entry we generate. Endpoint mode:
         #   "direct"  — no base URL; --model/--api-key straight through.
@@ -387,15 +396,18 @@ class PiSession:
         (best-effort determinism only).
         """
         del temperature  # no pi CLI knob; kept for LLM-callable signature parity
-        binary = self._binary
-        if shutil.which(binary) is None:
-            raise PiSessionError(
-                f"`{binary}` not found on PATH — the aligner's mediator runs on Pi; "
-                "install Pi (earendil-works/pi) or set ALIGNER_PI_BINARY to its path."
-            )
-        self._ensure_provider()
-        cmd = self._build_command(prompt, system)
+        _t0 = __import__("time").monotonic()
+        _error = False
+        completed = None
         try:
+            binary = self._binary
+            if shutil.which(binary) is None:
+                raise PiSessionError(
+                    f"`{binary}` not found on PATH — the aligner's mediator runs on Pi; "
+                    "install Pi (earendil-works/pi) or set ALIGNER_PI_BINARY to its path."
+                )
+            self._ensure_provider()
+            cmd = self._build_command(prompt, system)
             completed = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -410,9 +422,34 @@ class PiSession:
                 # prompt arg.
                 stdin=subprocess.DEVNULL,
             )
+            # Flag non-zero exit before finally fires so record_llm_call sees it.
+            if completed.returncode != 0:
+                _error = True
         except subprocess.TimeoutExpired as exc:
+            _error = True
             raise PiSessionError(f"pi turn exceeded {self._timeout_s:.0f}s and was killed") from exc
-        if completed.returncode != 0:
+        except Exception:
+            _error = True
+            raise
+        finally:
+            _duration_ms = (__import__("time").monotonic() - _t0) * 1000.0
+            self.total_pi_ms += _duration_ms
+            # Only record when operation is explicitly set. Callers with a
+            # separate metrics wrapper leave operation="" to avoid double-counting.
+            if self._operation:
+                try:
+                    from app.services.metrics import record_llm_call
+
+                    record_llm_call(
+                        operation=self._operation,
+                        model=self._model,
+                        room=self._room,
+                        duration_ms=_duration_ms,
+                        error=_error,
+                    )
+                except Exception:  # metrics must never break cognition
+                    pass
+        if completed is not None and completed.returncode != 0:
             stderr = (completed.stderr or "").strip()
             raise PiSessionError(f"pi exited {completed.returncode}: {stderr[:400]}")
         return parse_pi_json_output(completed.stdout)

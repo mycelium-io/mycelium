@@ -162,3 +162,47 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+
+  # ── Grafana LGTM (profile: grafana) ────────────────────────────────────────
+  #
+  # Full OpenTelemetry backend in a single image: OTel Collector + Prometheus
+  # (metrics) + Tempo (traces) + Loki (logs/analytics events) + Grafana UI.
+  # Opt-in via `mycelium up --grafana`. Can run alongside --metrics.
+  #
+  # Port mapping:
+  #   MYCELIUM_GRAFANA_PORT (default 3001)           → Grafana UI  (admin / admin)
+  #   MYCELIUM_GRAFANA_LOKI_PORT (default 3100)      → Loki push endpoint
+  #   MYCELIUM_GRAFANA_OTLP_PORT (default 4319)      → OTLP HTTP  (avoids 4318 conflict with collector)
+  #   MYCELIUM_GRAFANA_OTLP_GRPC_PORT (default 4320) → OTLP gRPC
+  #
+  # To route backend telemetry to Grafana instead of (or in addition to) the
+  # collector, set TELEMETRY_OTLP_ENDPOINT=http://mycelium-grafana:4318 in
+  # config.toml (the internal container port is always 4318).
+
+  mycelium-grafana:
+    image: grafana/otel-lgtm:latest
+    container_name: mycelium-grafana
+    restart: unless-stopped
+    profiles: [grafana]
+    depends_on:
+      mycelium-backend:
+        condition: service_healthy
+    # Option C (local Grafana + forward to remote): set OTEL_EXPORTER_OTLP_ENDPOINT
+    # in ~/.mycelium/.env to make the internal OTel Collector fan telemetry out to
+    # a remote OTLP backend (Grafana Cloud, Honeycomb, Datadog, Cisco, etc.).
+    # Set OTEL_EXPORTER_OTLP_HEADERS for auth (e.g. "x-honeycomb-team=<key>").
+    # Both are operator-managed env vars — not derived from config.toml.
+    env_file:
+      - path: ~/.mycelium/.env
+        required: false
+    ports:
+      - "${MYCELIUM_GRAFANA_PORT:-3001}:3000"
+      - "${MYCELIUM_GRAFANA_LOKI_PORT:-3100}:3100"
+      - "${MYCELIUM_GRAFANA_OTLP_PORT:-4319}:4318"
+      - "${MYCELIUM_GRAFANA_OTLP_GRPC_PORT:-4320}:4317"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s

@@ -83,6 +83,10 @@ LOCAL_ONLY_FIELDS: dict[str, str] = {
     "agent_auth.issuer": "workload half of auth: where agents mint their tokens",
     "agent_auth.scopes": "workload half of auth",
     "agent_auth.audience": "workload half of auth",
+    # telemetry.install_id is NOT local-only: it is rendered to TELEMETRY_INSTALL_ID
+    # in .env so the backend can emit session analytics events using the same
+    # installation identity as the CLI. The value is still only ever *sent* to an
+    # analytics destination when TELEMETRY_SEND_PRODUCT_ANALYTICS is true.
 }
 
 # Compose variables with no config.toml source. Compose substitutes from the
@@ -91,6 +95,10 @@ LOCAL_ONLY_FIELDS: dict[str, str] = {
 ENVIRONMENT_SUPPLIED_VARS: dict[str, str] = {
     "SLIM_IMAGE_TAG": "node image pin, overridable for a lockstep bindings bump",
     "MYCELIUM_SLIM_PORT": "published node port; the compose default is the norm",
+    "MYCELIUM_GRAFANA_PORT": "Grafana UI port for mycelium-grafana (--grafana profile); default 3001",
+    "MYCELIUM_GRAFANA_LOKI_PORT": "Loki push port for mycelium-grafana; default 3100",
+    "MYCELIUM_GRAFANA_OTLP_PORT": "OTLP HTTP host port for mycelium-grafana; default 4319 (avoids 4318 collision with collector)",
+    "MYCELIUM_GRAFANA_OTLP_GRPC_PORT": "OTLP gRPC host port for mycelium-grafana; default 4320",
     "MYCELIUM_OIDC_ISSUER": "browser OIDC login, exported per the Keycloak guide",
     "MYCELIUM_OIDC_INTERNAL_ISSUER": "browser OIDC login",
     "MYCELIUM_OIDC_CLIENT_ID": "browser OIDC login",
@@ -339,6 +347,30 @@ def generate_env_file(
         # config.toml (mycelium config set a2a.allow_private_hosts true) to disable
         # this guard for deployments where A2A agents live on an internal network.
         f"A2A_ALLOW_PRIVATE_HOSTS={'1' if config.a2a.allow_private_hosts else ''}",
+        "",
+        "# ── Telemetry (OTel SDK + optional product analytics) ─────────────────────",
+        # TELEMETRY_ENABLED activates the OTel SDK in the backend (BatchSpanProcessor
+        # → OTLP collector). Off by default. TELEMETRY_OTLP_ENDPOINT is the push
+        # target; when empty the backend defaults to the collector's in-network
+        # address (http://mycelium-collector:4318). TELEMETRY_SEND_PRODUCT_ANALYTICS
+        # enables anonymous adoption-metric events; TELEMETRY_ANALYTICS_DESTINATION
+        # is the destination URL (resolved once #937 is decided).
+        f"TELEMETRY_ENABLED={'true' if config.telemetry.enabled else 'false'}",
+        f"TELEMETRY_OTLP_ENDPOINT={config.telemetry.otlp_endpoint or ''}",
+        f"TELEMETRY_SEND_PRODUCT_ANALYTICS={'true' if config.telemetry.send_product_analytics else 'false'}",
+        f"TELEMETRY_ANALYTICS_DESTINATION={config.telemetry.analytics_destination or ''}",
+        # install_id is rendered here (not LOCAL_ONLY) so the backend can emit
+        # session events tied to the same installation identity as the CLI.
+        # The value is only ever sent to an analytics destination when
+        # TELEMETRY_SEND_PRODUCT_ANALYTICS is true.
+        f"TELEMETRY_INSTALL_ID={config.telemetry.install_id or ''}",
+        "",
+        "# ── Health degradation thresholds (#453) ────────────────────────────────",
+        # p95 latency above these values flips /health to status: degraded for the
+        # corresponding subsystem. 0 = disabled for that check.
+        f"HEALTH_LLM_P95_THRESHOLD_MS={config.health.llm_p95_threshold_ms}",
+        f"HEALTH_AWAIT_P95_THRESHOLD_MS={config.health.await_p95_threshold_ms}",
+        f"HEALTH_SEARCH_P95_THRESHOLD_MS={config.health.search_p95_threshold_ms}",
         "",
     ]
 

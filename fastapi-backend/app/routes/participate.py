@@ -195,6 +195,11 @@ async def await_message(
     persisted the same way, so a restart mid-thread resumes rather than
     re-serving.
     """
+    import time as _time
+
+    from app.services import metrics as _metrics
+
+    _t0 = _time.monotonic()
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
     # Draining a queue consumes it: the cursor advances, so a served turn is not
@@ -256,6 +261,12 @@ async def await_message(
                 _commit(i)
                 _last_tick[key] = record.content
                 room_channels.manager.refresh_lease(room_name, handle)
+                _metrics.record_await_poll(
+                    room=room_name,
+                    handle=handle,
+                    duration_ms=(_time.monotonic() - _t0) * 1000.0,
+                    delivered=True,
+                )
                 # The turn is handed over: from here until this handle's reply
                 # lands, the room is waiting on it. Transient, bus-only (#513).
                 activity.signal(room_name, handle, "responding", episode=ep)
@@ -264,6 +275,12 @@ async def await_message(
         # observer/broadcast turns this handle doesn't await) and keep polling.
         _commit(len(records))
         if loop.time() >= deadline:
+            _metrics.record_await_poll(
+                room=room_name,
+                handle=handle,
+                duration_ms=(_time.monotonic() - _t0) * 1000.0,
+                delivered=False,
+            )
             return {"room": room_name, "handle": handle, "message": None}
         room_channels.manager.refresh_lease(room_name, handle)
         await asyncio.sleep(_POLL_INTERVAL_S)

@@ -194,6 +194,38 @@ async def test_mediate_terminates_at_agreement() -> None:
 
 
 @pytest.mark.asyncio
+async def test_round_duration_excludes_pi_session_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Round overhead reads timing from the underlying session, not its signal wrapper."""
+
+    class TimedLlm:
+        def __init__(self) -> None:
+            self._delegate = make_fake_llm()
+            self.total_pi_ms = 0.0
+
+        def __call__(self, *args: Any, **kwargs: Any) -> str:
+            self.total_pi_ms += 1_000.0
+            return self._delegate(*args, **kwargs)
+
+    recorded: dict[str, Any] = {}
+    monkeypatch.setattr(
+        "app.services.metrics.record_aligner_round",
+        lambda **kwargs: recorded.update(kwargs),
+    )
+
+    persister = FakePersister()
+    channel = FakeChannel(persister, reply_conf=0.9)
+    managed = FakeManaged(_ROOM, "mycelium", channel, persister)
+    manager = FakeManager(managed, ["growth", "risk", "aligner"])
+
+    await _engine(manager, llm_session_factory=lambda _episode: TimedLlm()).mediate(_ROOM)
+
+    assert recorded["duration_ms"] > 0.0
+    assert recorded["duration_excl_llm_ms"] == 0.0
+
+
+@pytest.mark.asyncio
 async def test_two_convenings_write_distinct_episode_records() -> None:
     """Episodes are distinct sessions: two ``@aligner`` convenings in the SAME room
     must produce TWO distinct ``log/episodes/{id}.md`` records, not clobber one.
