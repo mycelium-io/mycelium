@@ -82,57 +82,79 @@ Set any threshold to `0` to disable that check.
 ## OTel SDK in the backend (opt-in)
 
 When `telemetry.enabled = true`, the backend initialises the OpenTelemetry SDK
-at startup and exports traces + metrics over OTLP to the collector.
+at startup and exports traces + metrics over OTLP.  Two options for where
+the data goes:
+
+### Option A — lightweight collector (no browser UI)
+
+Uses the built-in Mycelium collector, which writes to local files.
+No extra infrastructure; no browser dashboard.
 
 ```toml
 [telemetry]
-enabled          = true   # opt in to the OTel SDK
-otlp_endpoint    = ""     # default: http://mycelium-collector:4318
+enabled       = true
+otlp_endpoint = ""   # default: http://mycelium-collector:4318 ← works with --metrics
 ```
 
 ```bash
 mycelium config set telemetry.enabled true
-mycelium config apply          # regenerates ~/.mycelium/.env
-mycelium up --metrics          # bring up the collector if not already running
+mycelium config apply
+mycelium up --metrics          # starts the collector on :4318
 ```
 
-When `enabled = false` (the default), **no OTel code runs** — not even an
-import.  The in-process store is always-on regardless.
+Data lands in `$MYCELIUM_DATA_DIR/metrics/` (`metrics.json` + `traces.db`).
+Read it with `mycelium metrics show` and `mycelium metrics traces`.
 
-### Grafana LGTM — full OTel backend with browser UI
+### Option B — Grafana LGTM (full browser UI + dashboard)
 
-`mycelium up --grafana` starts `grafana/otel-lgtm` — a single container
-with OTel Collector, Prometheus, Tempo, Loki, and Grafana UI.  This is the
-recommended way to browse telemetry data locally and to see exactly what the
-telemetry opt-in exposes before choosing a production destination.
+Starts `grafana/otel-lgtm` — OTel Collector + Prometheus + Tempo + Loki + Grafana.
+The Mycelium performance dashboard is imported automatically on first start.
+
+```toml
+[telemetry]
+enabled          = true
+otlp_endpoint    = "http://mycelium-grafana:4318"  # ← must set explicitly for Grafana
+send_product_analytics = true                       # optional: analytics events → Loki
+analytics_destination  = "http://host.docker.internal:3100/loki/api/v1/push"
+```
 
 ```bash
 mycelium config set telemetry.enabled true
+mycelium config set telemetry.otlp_endpoint http://mycelium-grafana:4318
+# optional: product analytics in Loki
 mycelium config set telemetry.send_product_analytics true
 mycelium config set telemetry.analytics_destination \
   http://host.docker.internal:3100/loki/api/v1/push
 mycelium config apply
-mycelium up --grafana          # starts Grafana + imports the dashboard
+docker restart mycelium-backend   # pick up new env
+mycelium up --grafana             # starts Grafana + imports the dashboard
 ```
 
-Grafana opens at `http://localhost:3001` (admin / admin).  The Mycelium
-performance dashboard is imported automatically on first start.
+Grafana opens at `http://localhost:3001` (admin / admin).
 
 | Signal | Where it lands |
 |---|---|
 | OTel traces | Tempo → Explore |
-| OTel metrics | Prometheus → Explore + dashboard panels |
+| OTel metrics | Prometheus → dashboard panels |
 | Product analytics events | Loki → "Product analytics events" panel |
 
-`--grafana` and `--metrics` can run simultaneously — Grafana LGTM uses ports
-4319 (OTLP HTTP) and 4320 (gRPC) on the host to avoid colliding with the
-collector's 4318. To route backend telemetry to Grafana set
-`telemetry.otlp_endpoint = "http://mycelium-grafana:4318"` in `config.toml`
-(the in-container port is always 4318 regardless of the host mapping).
+`--grafana` and `--metrics` can run simultaneously — Grafana LGTM uses host
+ports 4319/4320 to avoid colliding with the collector's 4318.
+
+**Important:** if `mycelium-grafana` is ever restarted (e.g. by `mycelium up --build`),
+restart the backend too — the OTel SDK's HTTP connection does not auto-reconnect after
+a target restart, so metrics stop flowing silently:
+
+```bash
+docker restart mycelium-backend
+```
 
 The bundled dashboard JSON is at
-`mycelium-cli/src/mycelium/data/grafana-mycelium-performance.json` and is
-packaged with the CLI, so it is available on any install.
+`mycelium-cli/src/mycelium/data/grafana-mycelium-performance.json` and ships
+with the CLI, so it is available on any install.
+
+When `telemetry.enabled = false` (the default), **no OTel code runs** — not even an
+import.  The in-process store is always-on regardless.
 
 ### What the SDK adds
 
