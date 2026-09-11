@@ -115,35 +115,36 @@ def increment_session_count() -> int:
     """
     import sys
 
+    global _in_memory_session_count
+
     with _session_lock:
         path = _session_count_path()
         if path is None:
             # No DATA_DIR — use the module-level in-memory counter.
-            global _in_memory_session_count
             _in_memory_session_count += 1
             return _in_memory_session_count
-        count = 0
+        persisted_count = 0
         lock_fd = None
         try:
-            if path is not None:
-                # Open (creating if needed) and acquire an exclusive advisory lock
-                # so concurrent processes don't interleave read-modify-write.
-                lock_fd = open(path, "a+")
-                if sys.platform != "win32":
-                    import fcntl
+            # Open (creating if needed) and acquire an exclusive advisory lock
+            # so concurrent processes don't interleave read-modify-write.
+            lock_fd = open(path, "a+")
+            if sys.platform != "win32":
+                import fcntl
 
-                    fcntl.lockf(lock_fd, fcntl.LOCK_EX)
-                lock_fd.seek(0)
-                raw = lock_fd.read().strip()
-                count = int(raw) if raw.isdigit() else 0
-            count += 1
-            if path is not None and lock_fd is not None:
-                lock_fd.seek(0)
-                lock_fd.truncate()
-                lock_fd.write(str(count))
-                lock_fd.flush()
+                fcntl.lockf(lock_fd, fcntl.LOCK_EX)
+            lock_fd.seek(0)
+            raw = lock_fd.read().strip()
+            persisted_count = int(raw) if raw.isdigit() else 0
+            count = max(persisted_count, _in_memory_session_count) + 1
+            lock_fd.seek(0)
+            lock_fd.truncate()
+            lock_fd.write(str(count))
+            lock_fd.flush()
+            _in_memory_session_count = count
         except Exception:
-            count = max(count, 0) + 1
+            _in_memory_session_count = max(persisted_count, _in_memory_session_count) + 1
+            count = _in_memory_session_count
         finally:
             if lock_fd is not None:
                 try:

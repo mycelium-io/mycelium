@@ -15,6 +15,7 @@ No network, no backend process, no SLIM node required.
 
 from __future__ import annotations
 
+import io
 from unittest.mock import patch
 
 import pytest
@@ -24,6 +25,7 @@ from app.services.analytics import (
     AnalyticsEvent,
     EventName,
     emit,
+    increment_session_count,
     install_event,
     session_event,
 )
@@ -181,6 +183,33 @@ class TestProhibitedFields:
         assert "handle" not in payload
         assert "room" not in payload
         assert "hostname" not in payload
+
+
+class TestSessionCount:
+    """A failed persistence attempt still counts the session exactly once."""
+
+    def test_open_failure_uses_incrementing_memory_fallback(self):
+        with (
+            patch("app.services.analytics._session_count_path", return_value="/unavailable"),
+            patch("builtins.open", side_effect=OSError("unavailable")),
+            patch("app.services.analytics._in_memory_session_count", 0),
+        ):
+            assert increment_session_count() == 1
+            assert increment_session_count() == 2
+
+    def test_write_failure_advances_from_persisted_count_once(self):
+        class FailingWriteFile(io.StringIO):
+            def write(self, value: str) -> int:
+                raise OSError("disk full")
+
+        with (
+            patch("app.services.analytics._session_count_path", return_value="/sessions"),
+            patch("builtins.open", side_effect=lambda *_args: FailingWriteFile("5")),
+            patch("sys.platform", "win32"),
+            patch("app.services.analytics._in_memory_session_count", 0),
+        ):
+            assert increment_session_count() == 6
+            assert increment_session_count() == 7
 
 
 # ── Event shape sanity ────────────────────────────────────────────────────────

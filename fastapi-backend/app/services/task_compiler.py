@@ -29,7 +29,6 @@ import asyncio
 import logging
 import re
 import tempfile
-import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -210,19 +209,31 @@ def _pi_complete(prompt: str, room_name: str = "") -> str:
     """
     from app.services.pi_session import PiSession
 
-    session_dir = Path(tempfile.gettempdir()) / "mycelium-pi-sessions"
-    session_dir.mkdir(parents=True, exist_ok=True)
-    llm_session = PiSession(
-        session_path=session_dir / f"task-compile-{uuid.uuid4().hex}.jsonl",
-        model=settings.LLM_MODEL,
-        api_key=settings.LLM_API_KEY,
-        base_url=settings.LLM_BASE_URL,
-        binary=settings.ALIGNER_PI_BINARY,
-        timeout_s=COMPILER_TIMEOUT_SECS,
-        openshell=settings.ALIGNER_PI_OPENSHELL,
-        operation="task_compile",
-        room=room_name,
-    )
+    try:
+        session_dir = Path(tempfile.gettempdir()) / "mycelium-pi-sessions"
+        session_dir.mkdir(parents=True, exist_ok=True)
+        llm_session = PiSession(
+            session_path=session_dir / f"task-compile-{uuid.uuid4().hex}.jsonl",
+            model=settings.LLM_MODEL,
+            api_key=settings.LLM_API_KEY,
+            base_url=settings.LLM_BASE_URL,
+            binary=settings.ALIGNER_PI_BINARY,
+            timeout_s=COMPILER_TIMEOUT_SECS,
+            openshell=settings.ALIGNER_PI_OPENSHELL,
+            operation="task_compile",
+            room=room_name,
+        )
+    except Exception:
+        # PiSession cannot record failures that occur before it is constructed.
+        from app.services.metrics import record_llm_call
+
+        record_llm_call(
+            operation="task_compile",
+            model=settings.LLM_MODEL,
+            room=room_name,
+            error=True,
+        )
+        raise
     return llm_session(prompt)
 
 
@@ -231,22 +242,9 @@ async def _compile_body(prompt: str, room_name: str) -> str:
 
     Isolated so tests can patch it without a live Pi.
     """
-    t0 = time.monotonic()
-    try:
-        content = await asyncio.wait_for(
-            asyncio.to_thread(_pi_complete, prompt, room_name), timeout=COMPILER_TIMEOUT_SECS + 5.0
-        )
-    except Exception:
-        # Record failures that occurred before PiSession was even invoked (e.g.
-        # session_dir.mkdir() raising), since PiSession's own finally-block
-        # recording never runs in that case.
-        from app.services.metrics import record_llm_call as _record_llm_call
-
-        _record_llm_call(
-            operation="task_compile", model=settings.LLM_MODEL, room=room_name, error=True
-        )
-        raise
-    elapsed_ms = (time.monotonic() - t0) * 1000  # noqa: F841 — kept for future token tracking
+    content = await asyncio.wait_for(
+        asyncio.to_thread(_pi_complete, prompt, room_name), timeout=COMPILER_TIMEOUT_SECS + 5.0
+    )
 
     if not content or not content.strip():
         raise RuntimeError("task compiler: Pi returned empty content")
