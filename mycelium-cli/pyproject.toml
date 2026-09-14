@@ -22,7 +22,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "typer>=0.27.1",
+    "typer>=0.27.2",
     "rich>=13.7.0",
     "httpx>=0.28.1",
     "pydantic[email]>=2.13.4",
