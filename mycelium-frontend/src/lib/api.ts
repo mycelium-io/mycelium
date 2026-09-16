@@ -93,6 +93,8 @@ async function apiFetch<T = unknown>(path: string, opts: ApiFetchOptions<T> = {}
     throw new ApiError(message, res.status);
   }
 
+  if (res.status === 204) return undefined as T;
+
   let data: unknown = null;
   try {
     data = await res.json();
@@ -158,6 +160,10 @@ export async function createRoom(data: { name: string; is_persistent?: boolean }
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...data, is_public: true }),
   });
+}
+
+export async function deleteRoom(roomName: string): Promise<void> {
+  await apiFetch<void>(`/api/rooms/${encodeURIComponent(roomName)}`, { method: "DELETE" });
 }
 
 // ── Memory ───────────────────────────────────────────────────────────────────

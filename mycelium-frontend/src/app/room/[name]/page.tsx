@@ -8,6 +8,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useDefaultLayout } from "react-resizable-panels";
 import { type EpisodeSummary } from "@/lib/api";
 import { useRoom, useRoomRevalidate, useRoomThreads } from "@/lib/room-data";
+import { useAppStream } from "@/lib/stream-hub";
 import { parseFocus, type FocusTarget } from "@/lib/search";
 import { memoryHref } from "@/lib/memory-routes";
 import { AppShell } from "@/components/app-shell";
@@ -42,6 +43,9 @@ import {
 import { useCollapsibleRail } from "@/lib/use-collapsible-rail";
 import { useSheetLayout } from "@/lib/use-viewport";
 import { RailSheet } from "@/components/rail-sheet";
+import { DeleteRoomDialog } from "@/components/delete-room-dialog";
+import { Button } from "@/components/ui/button";
+import { Trash2 } from "lucide-react";
 
 function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string; color: string } | null {
   if (!episodes || episodes.length === 0) return null;
@@ -83,6 +87,7 @@ function RoomWorkspace() {
   // The open thread, as a URN. A transient pane and nothing more: no rail holds
   // it, no route names it, and closing it leaves the room exactly as it was.
   const [threadEpisode, setThreadEpisode] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const handleTourExit = useCallback(() => {
     setTourActive(false);
@@ -137,6 +142,11 @@ function RoomWorkspace() {
   // Acted on once per value: the request is a one-shot, and a re-run over the
   // same parameter would drag you back to the item you had just dismissed.
   const applied = useRef<string | null>(null);
+
+  useAppStream((data) => {
+    const msg = data as { type?: string; room_name?: string };
+    if (msg.type === "room_deleted" && msg.room_name === roomName) router.push("/");
+  });
 
   useEffect(() => {
     if (applied.current === focusParam) return;
@@ -354,10 +364,32 @@ function RoomWorkspace() {
     </>
   );
 
+  const headerRight = (
+    <>
+      <Tooltip content="Delete room" side="bottom">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Delete room ${roomName}`}
+          onClick={() => setDeleteOpen(true)}
+        >
+          <Trash2 className="size-3.5" />
+        </Button>
+      </Tooltip>
+      <DeleteRoomDialog
+        roomName={roomName}
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onDeleted={() => router.push("/")}
+      />
+    </>
+  );
+
   return (
     <AppShell
       activeRoom={roomName}
       header={header}
+      headerRight={headerRight}
       statusLeft={statusLeft}
       statusRight={statusRight}
     >

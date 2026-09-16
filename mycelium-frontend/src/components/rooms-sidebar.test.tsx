@@ -14,6 +14,7 @@ const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
 vi.mock("@/lib/api", () => ({
+  deleteRoom: vi.fn(),
   fetchRooms: vi.fn(),
 }));
 
@@ -23,7 +24,7 @@ import { InstallModalProvider } from "@/components/install-modal";
 import { KeymapProvider } from "@/components/keymap-provider";
 import { NotificationsProvider } from "@/components/notifications-provider";
 import { RoomsSidebar } from "@/components/rooms-sidebar";
-import { fetchRooms } from "@/lib/api";
+import { deleteRoom, fetchRooms } from "@/lib/api";
 
 function rooms(...names: string[]) {
   return names.map(name => ({ name }));
@@ -108,6 +109,7 @@ describe("<RoomsSidebar /> keyboard navigation", () => {
 
 describe("<RoomsSidebar /> unread badges", () => {
   beforeEach(() => {
+    push.mockClear();
     resetStreamHub();
     FakeEventSource.reset();
     vi.stubGlobal("EventSource", FakeEventSource);
@@ -187,5 +189,45 @@ describe("<RoomsSidebar /> collapsed strip", () => {
 
     await user.click(screen.getByRole("button", { name: /Expand the rooms rail/ }));
     expect(onCollapsedChange).toHaveBeenCalledWith(false);
+  });
+});
+
+describe("<RoomsSidebar /> room deletion", () => {
+  beforeEach(() => {
+    push.mockClear();
+    resetStreamHub();
+    FakeEventSource.reset();
+    vi.stubGlobal("EventSource", FakeEventSource);
+    vi.mocked(deleteRoom).mockResolvedValue(undefined);
+  });
+
+  it("requires confirmation before deleting a room", async () => {
+    const user = await renderSidebar(["design review"]);
+
+    await user.click(screen.getByRole("button", { name: "Delete room design review" }));
+    expect(screen.getByRole("heading", { name: "Delete “design review”?" })).toBeInTheDocument();
+    expect(deleteRoom).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(deleteRoom).not.toHaveBeenCalled();
+  });
+
+  it("deletes an inactive room without navigating", async () => {
+    const user = await renderSidebar(["design review"], null);
+
+    await user.click(screen.getByRole("button", { name: "Delete room design review" }));
+    await user.click(screen.getByRole("button", { name: "Delete room" }));
+
+    expect(deleteRoom).toHaveBeenCalledWith("design review");
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("returns home after deleting the active room", async () => {
+    const user = await renderSidebar(["design review"], "design review");
+
+    await user.click(screen.getByRole("button", { name: "Delete room design review" }));
+    await user.click(screen.getByRole("button", { name: "Delete room" }));
+
+    expect(push).toHaveBeenCalledWith("/");
   });
 });
