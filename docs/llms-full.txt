@@ -272,6 +272,22 @@ mycelium room delete design-review     # delete a room and its data
 mycelium room clone design-review --from http://hub-ip:8000  # pull a room from a remote backend
 ```
 
+## Room Names
+
+A room name is its stable filesystem and SLIM namespace identifier. Names are
+1–100 printable characters long. Unicode, spaces and ordinary punctuation are
+supported.
+
+Quote a spaced name when using a shell:
+
+```bash
+mycelium room create "CE-Area Team"
+mycelium room use "CE-Area Team"
+```
+
+Creation rejects blank names, `.` and `..`, path separators, control characters
+and the reserved `:session:` marker.
+
 ## Reading History
 
 `mycelium room messages` is a point-in-time read, newest first. History is

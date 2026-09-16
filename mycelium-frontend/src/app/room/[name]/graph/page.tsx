@@ -9,11 +9,12 @@ import { ArrowLeft } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { MemoryGraphView } from "@/components/memory-graph-view";
 import { GlobalStatusItems } from "@/components/status-items";
+import { parseRoomNameParam } from "@/lib/memory-routes";
 
 /** Dedicated full-page memory graph route: `/room/{room}/graph`. */
 export default function MemoryGraphPage() {
   const params = useParams();
-  const roomName = params.name as string;
+  const roomName = parseRoomNameParam(params.name as string);
 
   return (
     <AppShell

@@ -190,8 +190,9 @@ async def test_non_http_card_scheme_rejected():
     ],
 )
 @pytest.mark.asyncio
-async def test_private_host_card_rejected_ssrf(url):
+async def test_private_host_card_rejected_ssrf(url, monkeypatch):
     """SSRF guard: a card host resolving to a non-public address is refused."""
+    monkeypatch.setattr("app.config.settings.A2A_ALLOW_PRIVATE_HOSTS", False)
     with pytest.raises(A2aCardError, match="SSRF|non-public|did not resolve"):
         await a2a_card.resolve_card(url)
 

@@ -382,6 +382,12 @@
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">watch</span>                    # stream live room activity
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">delete</span> design-review     # delete a room and its data
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">clone</span> design-review <span class="flag">--from</span> <span class="url">http://hub-ip:8000</span>  # pull a room from a remote backend</code></pre>
+      <h2 id="rooms-room-names">Room Names</h2>
+      <p>A room name is its stable filesystem and SLIM namespace identifier. Names are 1–100 printable characters long. Unicode, spaces and ordinary punctuation are supported.</p>
+      <p>Quote a spaced name when using a shell:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> <span class="str">&quot;CE-Area Team&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> <span class="str">&quot;CE-Area Team&quot;</span></code></pre>
+      <p>Creation rejects blank names, <code>.</code> and <code>..</code>, path separators, control characters and the reserved <code>:session:</code> marker.</p>
       <h2 id="rooms-reading-history">Reading History</h2>
       <p><code>mycelium room messages</code> is a point-in-time read, newest first. History is paged by content rather than position: when older messages exist, the footer names the <code>--before</code> cursor that reads the next page back, so a walk through a busy room does not shift under messages arriving live. A stamp is ISO 8601 as printed, or an age like <code>2h</code>, <code>30m</code>, <code>1d</code>.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">messages</span> design-review <span class="flag">--limit</span> 50          # the latest page …

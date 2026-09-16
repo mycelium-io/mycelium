@@ -84,6 +84,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
+    "u": "index.html#rooms-room-names",
+    "t": "Room Names",
+    "s": "Concepts › Rooms",
+    "x": "A room name is its stable filesystem and SLIM namespace identifier. Names are 1–100 printable characters long. Unicode, spaces and ordinary punctuation are supported. Quote a spaced name when using a shell: mycelium room create \"CE-Area Team\" mycelium room use \"CE-Area Team\" Creation rejects blank names, . and .., path separators, control characters and the reserved :session: marker.",
+    "p": "Guide"
+  },
+  {
     "u": "index.html#rooms-reading-history",
     "t": "Reading History",
     "s": "Concepts › Rooms",
