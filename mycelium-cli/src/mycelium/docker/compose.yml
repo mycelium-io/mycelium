@@ -21,6 +21,10 @@ configs:
                   insecure: true
             clients: []
 
+networks:
+  mycelium:
+    driver: bridge
+
 services:
 
   # ── SLIM node (always started) ───────────────────────────────────────────────
@@ -46,6 +50,8 @@ services:
     configs:
       - source: slim-node-config
         target: /slim-config.yaml
+    networks:
+      - mycelium
     ports:
       - "${MYCELIUM_SLIM_PORT:-46357}:46357"
 
@@ -78,6 +84,8 @@ services:
       MYCELIUM_DATA_DIR: /home/mycelium/.mycelium
     volumes:
       - ${MYCELIUM_DATA_DIR:-~/.mycelium}:/home/mycelium/.mycelium
+    networks:
+      - mycelium
     ports:
       - "${MYCELIUM_BACKEND_PORT:-8000}:8000"
     healthcheck:
@@ -127,6 +135,8 @@ services:
     depends_on:
       mycelium-backend:
         condition: service_healthy
+    networks:
+      - mycelium
     ports:
       - "${MYCELIUM_UI_PORT:-8080}:3000"
 
@@ -148,6 +158,8 @@ services:
     depends_on:
       mycelium-backend:
         condition: service_healthy
+    networks:
+      - mycelium
     ports:
       - "${MYCELIUM_METRICS_PORT:-4318}:4318"
     volumes:
