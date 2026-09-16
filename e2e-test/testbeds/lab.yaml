@@ -1,0 +1,60 @@
+---
+# Lab testbed — physical hardware (oclw4 as hub).
+#
+# The mycelium CLI runs on oclw4 (or this host if pointing at oclw4).
+# Backend runs on oclw4; configure MYCELIUM_BACKEND_URL if running
+# the harness from a different machine.
+#
+# Usage (from oclw4):
+#   pyats run job jobs/pr_job.py --testbed-file testbeds/lab.yaml
+#
+# Usage (from another machine, targeting oclw4):
+#   MYCELIUM_BACKEND_URL=http://10.0.50.125:8000 \
+#     pyats run job jobs/pr_job.py --testbed-file testbeds/lab.yaml
+
+testbed:
+  name: mycelium-lab
+
+devices:
+  hub:
+    type: linux
+    os: linux
+    connections:
+      ssh:
+        protocol: ssh
+        ip: 10.0.50.125  # default oclw4; override via OCLW4_IP (read from custom.ssh_ip)
+    custom:
+      transport: ssh
+      # backend_url: external IP — used by spokes and remote runners (requires auth token)
+      backend_url: "%ENV{MYCELIUM_BACKEND_URL, http://10.0.50.125:8000}"
+      # harness_backend_url: localhost — used when harness runs ON oclw4 (auth bypassed)
+      harness_backend_url: "%ENV{MYCELIUM_HARNESS_BACKEND_URL, http://localhost:8000}"
+      ssh_ip: "%ENV{OCLW4_IP, 10.0.50.125}"
+      ssh_user: "%ENV{SSH_USER, ubuntu}"
+      ssh_key: "%ENV{SSH_KEY_PATH, ~/.ssh/ioc.pem}"
+
+  spoke1:
+    type: linux
+    os: linux
+    connections:
+      ssh:
+        protocol: ssh
+        ip: 10.0.50.171
+    custom:
+      transport: ssh
+      ssh_ip: "%ENV{OCLW3_IP, 10.0.50.171}"
+      ssh_user: "%ENV{SSH_USER, ubuntu}"
+      ssh_key: "%ENV{SSH_KEY_PATH, ~/.ssh/ioc.pem}"
+
+  spoke2:
+    type: linux
+    os: linux
+    connections:
+      ssh:
+        protocol: ssh
+        ip: 10.0.50.142
+    custom:
+      transport: ssh
+      ssh_ip: "%ENV{OCLW5_IP, 10.0.50.142}"
+      ssh_user: "%ENV{SSH_USER, ubuntu}"
+      ssh_key: "%ENV{SSH_KEY_PATH, ~/.ssh/ioc.pem}"

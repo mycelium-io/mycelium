@@ -1,0 +1,30 @@
+---
+# Base datafile for SLIM-native Mycelium E2E tests.
+# All URLs can be overridden via environment variables.
+
+parameters:
+
+  # ── Service Topology ──────────────────────────────────────────────────────
+  topology:
+    backend:
+      base_url: "%ENV{MYCELIUM_BACKEND_URL, http://localhost:8000}"
+      api_path: "/api"
+      health_path: "/health"
+
+  # ── Shared Test Parameters ────────────────────────────────────────────────
+  room_prefix: "qa-coord-fresh"
+
+  # Timeouts (seconds)
+  timeouts:
+    http_default: 10
+    cli_default: 30
+    stub_session_wait: 120
+    stub_turn_wait: 45
+    live_session_wait: 900
+    live_turn_wait: 180
+
+  # pyATS: abort suite after N failures (0 = run all)
+  max_failures: 5
+
+  # Logging
+  log_dir: "%ENV{MYCELIUM_E2E_LOG_DIR, ~/.mycelium/e2e-logs}"

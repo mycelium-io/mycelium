@@ -22,6 +22,10 @@ fastapi-backend/    FastAPI backend, room moderator + persister (Python 3.12).
 mycelium-cli/       CLI tool (typer, Rich, typed OpenAPI client)
 mycelium-client/    Generated OpenAPI client (openapi-python-client)
 mycelium-frontend/  Next.js frontend (TypeScript, Tailwind)
+e2e-test/           pyATS end-to-end suite — drives a running backend/CLI/hub-and-spoke
+                    stack over its public HTTP and CLI surfaces (black-box, no imports
+                    of this repo's own source). Own uv project/venv, own CI
+                    (.github/workflows/e2e.yml, weekly-e2e.yml). See e2e-test/README.md.
 docs/               Docs site (generated from mycelium-cli/src/mycelium/docs/),
                     demo script, design notes
 shotkit/            The repo's camera: fast screenshots of the running app and of
