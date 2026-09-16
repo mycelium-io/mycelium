@@ -156,7 +156,7 @@ This only bites when you run the backend **outside Docker** (a contributor
 doing `uvicorn app.main:app` on the host). There, put Pi on PATH:
 
 ```bash
-npm install -g @mariozechner/pi-coding-agent
+npm install -g @earendil-works/pi-coding-agent
 # or point ALIGNER_PI_BINARY at an existing pi install
 ```
 

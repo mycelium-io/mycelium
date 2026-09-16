@@ -2423,7 +2423,7 @@ lsof <span class="flag">-i</span> :46357   # SLIM node</code></pre>
       <p><strong>Symptom</strong>: summoning the aligner (<code>mycelium engine invoke aligner ...</code>) fails with <code>PiBrainError: pi not found</code>.</p>
       <p>The aligner&#x27;s mediator runs a NEGMAS negotiation whose brain is a <strong>Pi</strong> coding-agent session. The released backend image already ships Pi, so the normal <code>mycelium up</code> path needs nothing extra, and <code>mycelium doctor</code> reports this check as satisfied when the backend is dockerized.</p>
       <p>This only bites when you run the backend <strong>outside Docker</strong> (a contributor doing <code>uvicorn app.main:app</code> on the host). There, put Pi on PATH:</p>
-      <pre><code>npm install <span class="flag">-g</span> @mariozechner/pi-coding-agent
+      <pre><code>npm install <span class="flag">-g</span> @earendil-works/pi-coding-agent
 <span class="comment"># or point ALIGNER_PI_BINARY at an existing pi install</span></code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-8-memory-search-returns-nothing">8. Memory Search Returns Nothing</h3>

@@ -44,6 +44,19 @@ jobs:
             --with mycelium-backend-client@./mycelium-client --force
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      # The backend image's process runs as a fixed uid (1000). The bind-mounted
+      # ~/.mycelium this creates is owned by whatever uid invoked `mycelium
+      # install` — on GitHub-hosted runners that's `runner`, uid 1001, not 1000 —
+      # so without this the container can't write its own data dir and the
+      # ASGI lifespan crashes on startup (PermissionError on `rooms/`), which
+      # compose reports as "unhealthy" within a couple seconds. Same fix
+      # e2e-test's own CI already needed for this exact class of problem.
+      - name: Prep ~/.mycelium for the backend's fixed uid
+        run: |
+          mkdir -p ~/.mycelium
+          chmod -R 777 ~/.mycelium
+          sudo setfacl -R -d -m o::rwx ~/.mycelium 2>/dev/null || true
+
       - name: mycelium install
         run: mycelium install --non-interactive --yes
 
@@ -64,6 +77,15 @@ jobs:
           docker ps -a
           docker logs mycelium-backend 2>&1 | tail -50
           exit 1
+
+      # The backend (uid 1000) writes into the bind-mounted ~/.mycelium while
+      # coming up (rooms/, config), leaving those specific files owned by 1000
+      # even though the dir itself is 777 — `mycelium doctor`'s ownership
+      # check (and later agent/memory writes run as this job's own uid) flags
+      # that as broken. Same fix `mycelium doctor` itself suggests, already
+      # used in e2e-test's own CI.
+      - name: Reclaim ~/.mycelium ownership after backend startup
+        run: sudo chown -R "$USER" ~/.mycelium 2>/dev/null || true
 
       # `--json` reports every check and exits 0, so the run decides what is
       # fatal. LLM connectivity is not — no key is configured here.
@@ -95,7 +117,14 @@ jobs:
             "Cut over the Atlas catalog in a staged release." -H nightly
           mycelium memory get decisions/cutover | grep -q "staged release"
           mycelium memory ls
-          mycelium search "staged release"
+          mycelium memory search "staged release"
+
+      # Must run before `mycelium down` — that step (if: always()) removes
+      # the container, and a step ordered after it can never see its logs
+      # (docker logs then just reports "No such container").
+      - name: Backend logs (on failure)
+        if: failure()
+        run: docker logs mycelium-backend 2>&1 | tail -100 || true
 
       - name: mycelium down
         if: always()
@@ -106,10 +135,6 @@ jobs:
             echo '::error::containers survived mycelium down'
             exit 1
           fi
-
-      - name: Backend logs (on failure)
-        if: failure()
-        run: docker logs mycelium-backend 2>&1 | tail -100 || true
 
   cognition:
     # The aligner's Pi brain and the plan compiler, run for real: structuring
@@ -144,7 +169,7 @@ jobs:
       # needs it on PATH.
       - name: Install the Pi coding agent
         if: steps.key.outputs.run == 'true'
-        run: npm install -g @mariozechner/pi-coding-agent
+        run: npm install -g @earendil-works/pi-coding-agent
 
       - name: Install uv
         if: steps.key.outputs.run == 'true'
@@ -165,13 +190,13 @@ jobs:
         env:
           MYCELIUM_LLM_TESTS: "1"
           MYCELIUM_STUB_EMBEDDINGS: "1"
-          LLM_MODEL: ${{ vars.LLM_MODEL || 'anthropic/claude-sonnet-4-6' }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL || 'anthropic/claude-sonnet-4-6' }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
         run: >-
           uv run pytest -q
           tests/test_cognition_live.py
-          tests/test_plan_compiler.py
+          tests/test_task_compiler.py
           tests/test_synthesizer_live.py
 
   report:
@@ -188,17 +213,22 @@ jobs:
       - name: Open or update the nightly issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           TITLE: "Nightly checks are failing"
         run: |
-          existing=$(gh issue list --state open --search "$TITLE in:title" \
+          # This job has no checkout step (it only needs the API, not the
+          # source), so `gh` has no local git repo to detect the target
+          # from — every call must name --repo explicitly or it fails with
+          # "fatal: not a git repository".
+          existing=$(gh issue list --repo "$GH_REPO" --state open --search "$TITLE in:title" \
             --json number --jq '.[0].number // empty')
           body=$(printf '%s\n\n| Job | Result |\n| --- | --- |\n| Install path | %s |\n| Cognition | %s |\n' \
             "The nightly run failed: $RUN_URL" \
             "${{ needs.install-path.result }}" \
             "${{ needs.cognition.result }}")
           if [ -n "$existing" ]; then
-            gh issue comment "$existing" --body "$body"
+            gh issue comment "$existing" --repo "$GH_REPO" --body "$body"
           else
-            gh issue create --title "$TITLE" --body "$body"
+            gh issue create --repo "$GH_REPO" --title "$TITLE" --body "$body"
           fi
