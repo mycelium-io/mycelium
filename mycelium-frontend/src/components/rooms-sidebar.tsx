@@ -18,6 +18,7 @@ import {
   Plus,
   Search,
   SearchX,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 import { type Room } from "@/lib/api";
@@ -26,6 +27,7 @@ import { useRooms } from "@/lib/room-data";
 import { roomLevel, type RoomLevel } from "@/lib/notifications";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
+import { DeleteRoomDialog } from "@/components/delete-room-dialog";
 import { NotificationBell } from "@/components/notification-bell";
 import { ActingAsPicker } from "@/components/acting-as-picker";
 import { useNotifications } from "@/components/notifications-provider";
@@ -58,6 +60,7 @@ interface Props {
 export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsedChange }: Props) {
   const [query, setQuery] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   // The rooms list is a shared cache entry that outlives this mount — the
   // sidebar sits inside each page's AppShell, so navigation remounts it, and a
@@ -112,6 +115,14 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
       if (room) router.push(`/room/${encodeURIComponent(room.name)}`);
     },
     [router],
+  );
+
+  const handleDeleted = useCallback(
+    (roomName: string) => {
+      refresh();
+      if (roomName === activeRoom) router.push("/");
+    },
+    [activeRoom, refresh, router],
   );
 
   const cycle = useCallback(
@@ -205,35 +216,44 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
               const active = room.name === activeRoom;
               const unread = active ? 0 : unreadByRoom.get(room.name) ?? 0;
               return (
-                <Tooltip
-                  key={room.name}
-                  content={unread > 0 ? `${room.name} — ${unread} unread` : room.name}
-                  side="right"
-                >
-                  <Link
-                    href={`/room/${encodeURIComponent(room.name)}`}
-                    className="relative flex size-8 flex-shrink-0 items-center justify-center"
+                <div key={room.name} className="group/room relative">
+                  <Tooltip
+                    content={unread > 0 ? `${room.name} — ${unread} unread` : room.name}
+                    side="right"
                   >
-                    {active && (
-                      <span
-                        aria-hidden
-                        className="absolute -left-2 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-accent"
+                    <Link
+                      href={`/room/${encodeURIComponent(room.name)}`}
+                      className="relative flex size-8 flex-shrink-0 items-center justify-center"
+                    >
+                      {active && (
+                        <span
+                          aria-hidden
+                          className="absolute -left-2 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-accent"
+                        />
+                      )}
+                      <RoomAvatar
+                        name={room.name}
+                        className="size-8 rounded-md hover:brightness-125"
                       />
-                    )}
-                    <RoomAvatar
-                      name={room.name}
-                      className="size-8 rounded-md hover:brightness-125"
-                    />
-                    <span className="sr-only">{room.name}</span>
-                    {unread > 0 && (
-                      <span
-                        aria-label={`${unread} unread`}
-                        className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-accent ring-2 ring-surface"
-                      />
-                    )}
-                    {i < 9 && <KeyBadge chord={`alt+${i + 1}`} overlay />}
-                  </Link>
-                </Tooltip>
+                      <span className="sr-only">{room.name}</span>
+                      {unread > 0 && (
+                        <span
+                          aria-label={`${unread} unread`}
+                          className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-accent ring-2 ring-surface"
+                        />
+                      )}
+                      {i < 9 && <KeyBadge chord={`alt+${i + 1}`} overlay />}
+                    </Link>
+                  </Tooltip>
+                  <button
+                    type="button"
+                    aria-label={`Delete room ${room.name}`}
+                    onClick={() => setDeleteTarget(room.name)}
+                    className="absolute -right-1 -top-1 z-10 flex size-4 items-center justify-center rounded-full bg-elevated text-faint opacity-0 shadow transition-opacity hover:text-red group-hover/room:opacity-100"
+                  >
+                    <Trash2 className="size-2.5" />
+                  </button>
+                </div>
               );
             })}
           </nav>
@@ -254,6 +274,14 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
         </div>
 
         <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={refresh} />
+        {deleteTarget && (
+          <DeleteRoomDialog
+            roomName={deleteTarget}
+            open
+            onClose={() => setDeleteTarget(null)}
+            onDeleted={() => handleDeleted(deleteTarget)}
+          />
+        )}
       </aside>
     );
   }
@@ -365,6 +393,14 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
               <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover/room:pointer-events-auto group-hover/room:opacity-100">
                 <RoomLevelMenu room={room.name} level={level} onSet={setRoomLevel} />
               </div>
+              <button
+                type="button"
+                aria-label={`Delete room ${room.name}`}
+                onClick={() => setDeleteTarget(room.name)}
+                className="pointer-events-none absolute right-9 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:text-red group-hover/room:pointer-events-auto group-hover/room:opacity-100"
+              >
+                <Trash2 className="size-3.5" />
+              </button>
               </div>
             );
           })
@@ -383,6 +419,14 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
       </div>
 
       <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={refresh} />
+      {deleteTarget && (
+        <DeleteRoomDialog
+          roomName={deleteTarget}
+          open
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={() => handleDeleted(deleteTarget)}
+        />
+      )}
     </aside>
   );
 }
