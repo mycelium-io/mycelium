@@ -199,6 +199,8 @@ services:
     depends_on:
       mycelium-backend:
         condition: service_healthy
+    networks:
+      - mycelium
     # Option C (local Grafana + forward to remote): set OTEL_EXPORTER_OTLP_ENDPOINT
     # in ~/.mycelium/.env to make the internal OTel Collector fan telemetry out to
     # a remote OTLP backend (Grafana Cloud, Honeycomb, Datadog, Cisco, etc.).
