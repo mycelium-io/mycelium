@@ -105,6 +105,34 @@ class TestStripFences:
         assert task_compiler._strip_fences("- [ ] a") == "- [ ] a"
 
 
+def test_pi_failure_records_one_llm_error() -> None:
+    """PiSession owns call failures; the compiler must not count them again."""
+    with (
+        patch("app.services.pi_session.shutil.which", return_value=None),
+        patch("app.services.metrics.record_llm_call") as record,
+        pytest.raises(RuntimeError),
+    ):
+        task_compiler._pi_complete("compile this", "room-a")
+
+    record.assert_called_once()
+    assert record.call_args.kwargs["operation"] == "task_compile"
+    assert record.call_args.kwargs["error"] is True
+
+
+def test_pre_session_failure_records_one_llm_error() -> None:
+    """Setup failures before PiSession construction still reach metrics."""
+    with (
+        patch.object(task_compiler.Path, "mkdir", side_effect=OSError("read-only")),
+        patch("app.services.metrics.record_llm_call") as record,
+        pytest.raises(OSError, match="read-only"),
+    ):
+        task_compiler._pi_complete("compile this", "room-a")
+
+    record.assert_called_once()
+    assert record.call_args.kwargs["operation"] == "task_compile"
+    assert record.call_args.kwargs["error"] is True
+
+
 @pytest.mark.asyncio
 class TestCompileTasks:
     async def _compile(self, output: str):

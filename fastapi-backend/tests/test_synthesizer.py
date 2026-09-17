@@ -149,7 +149,7 @@ async def test_synthesize_distills_the_transcript(monkeypatch: pytest.MonkeyPatc
     _seed_memories(_ROOM)
     seen_prompt: list[str] = []
 
-    def fake_pi(prompt: str, _timeout: float) -> str:
+    def fake_pi(prompt: str, _timeout: float, _room: str = "") -> str:
         seen_prompt.append(prompt)
         return "# Room briefing\n\n- DB: PostgreSQL"
 
@@ -177,7 +177,7 @@ async def test_a_second_run_distills_only_what_is_new(monkeypatch: pytest.Monkey
     _seed_chat(_ROOM)
     prompts: list[str] = []
     monkeypatch.setattr(
-        synthesizer, "_pi_complete", lambda p, _t: prompts.append(p) or "first briefing"
+        synthesizer, "_pi_complete", lambda p, _t, _r="": prompts.append(p) or "first briefing"
     )
     engine = _engine()
 
@@ -185,7 +185,7 @@ async def test_a_second_run_distills_only_what_is_new(monkeypatch: pytest.Monkey
 
     _chat(_ROOM, "m-3", sender="agent-a", text="Ship it Friday.", at=_T0 + timedelta(minutes=5))
     monkeypatch.setattr(
-        synthesizer, "_pi_complete", lambda p, _t: prompts.append(p) or "second briefing"
+        synthesizer, "_pi_complete", lambda p, _t, _r="": prompts.append(p) or "second briefing"
     )
     await engine.synthesize(_ROOM)
 
@@ -204,11 +204,11 @@ async def test_a_second_run_distills_only_what_is_new(monkeypatch: pytest.Monkey
 @pytest.mark.asyncio
 async def test_rerunning_with_nothing_new_writes_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
     _seed_chat(_ROOM)
-    monkeypatch.setattr(synthesizer, "_pi_complete", lambda _p, _t: "briefing")
+    monkeypatch.setattr(synthesizer, "_pi_complete", lambda _p, _t, _r="": "briefing")
     engine = _engine()
     await engine.synthesize(_ROOM)
 
-    def boom(_p: str, _t: float) -> str:
+    def boom(_p: str, _t: float, _r: str = "") -> str:
         raise AssertionError("Pi must not run when there is nothing new")
 
     monkeypatch.setattr(synthesizer, "_pi_complete", boom)
@@ -223,7 +223,9 @@ async def test_rerunning_with_nothing_new_writes_nothing(monkeypatch: pytest.Mon
 async def test_full_pass_re_reads_the_whole_transcript(monkeypatch: pytest.MonkeyPatch) -> None:
     _seed_chat(_ROOM)
     prompts: list[str] = []
-    monkeypatch.setattr(synthesizer, "_pi_complete", lambda p, _t: prompts.append(p) or "briefing")
+    monkeypatch.setattr(
+        synthesizer, "_pi_complete", lambda p, _t, _r="": prompts.append(p) or "briefing"
+    )
     engine = _engine()
     await engine.synthesize(_ROOM)
 
@@ -242,7 +244,7 @@ async def test_the_engines_own_posts_never_feed_the_next_run(
     _seed_chat(_ROOM)
     prompts: list[str] = []
     monkeypatch.setattr(
-        synthesizer, "_pi_complete", lambda p, _t: prompts.append(p) or "BRIEFING TEXT"
+        synthesizer, "_pi_complete", lambda p, _t, _r="": prompts.append(p) or "BRIEFING TEXT"
     )
     engine = _engine()
 
@@ -275,7 +277,9 @@ async def test_system_frames_never_reach_the_prompt(monkeypatch: pytest.MonkeyPa
     _knowledge(_ROOM, "k-1", at=_T0)
     _chat(_ROOM, "m-1", sender="agent-a", text="Plain prose.", at=_T0 + timedelta(minutes=1))
     prompts: list[str] = []
-    monkeypatch.setattr(synthesizer, "_pi_complete", lambda p, _t: prompts.append(p) or "briefing")
+    monkeypatch.setattr(
+        synthesizer, "_pi_complete", lambda p, _t, _r="": prompts.append(p) or "briefing"
+    )
 
     result = await _engine().synthesize(_ROOM)
 
@@ -293,7 +297,7 @@ async def test_synthesize_noop_on_a_silent_room(monkeypatch: pytest.MonkeyPatch)
     get_room_dir(_ROOM).mkdir(parents=True, exist_ok=True)  # exists but nobody spoke
     _seed_memories(_ROOM)  # memory alone is not a reason to run
 
-    def boom(_p: str, _t: float) -> str:
+    def boom(_p: str, _t: float, _r: str = "") -> str:
         raise AssertionError("Pi must not run for a room with no conversation")
 
     monkeypatch.setattr(synthesizer, "_pi_complete", boom)
@@ -306,7 +310,7 @@ async def test_synthesize_noop_on_a_silent_room(monkeypatch: pytest.MonkeyPatch)
 async def test_synthesize_failsoft_on_pi_error(monkeypatch: pytest.MonkeyPatch) -> None:
     _seed_chat(_ROOM)
 
-    def boom(_p: str, _t: float) -> str:
+    def boom(_p: str, _t: float, _r: str = "") -> str:
         raise RuntimeError("pi exploded")
 
     monkeypatch.setattr(synthesizer, "_pi_complete", boom)
@@ -327,7 +331,9 @@ async def test_memory_source_summarizes_the_store(monkeypatch: pytest.MonkeyPatc
     _seed_memories(_ROOM)
     _seed_chat(_ROOM)
     seen_prompt: list[str] = []
-    monkeypatch.setattr(synthesizer, "_pi_complete", lambda p, _t: seen_prompt.append(p) or "ok")
+    monkeypatch.setattr(
+        synthesizer, "_pi_complete", lambda p, _t, _r="": seen_prompt.append(p) or "ok"
+    )
 
     assert await _engine().synthesize(_ROOM) is not None
 
@@ -355,7 +361,9 @@ async def test_memory_source_excludes_manifests_and_prior_summary(
         created_by="synthesizer",
     )
     seen_prompt: list[str] = []
-    monkeypatch.setattr(synthesizer, "_pi_complete", lambda p, _t: seen_prompt.append(p) or "ok")
+    monkeypatch.setattr(
+        synthesizer, "_pi_complete", lambda p, _t, _r="": seen_prompt.append(p) or "ok"
+    )
 
     await _engine().synthesize(_ROOM)
 
@@ -370,7 +378,7 @@ async def test_memory_source_noop_on_empty_room(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(settings, "SYNTHESIZER_SOURCE", "memory")
     get_room_dir(_ROOM).mkdir(parents=True, exist_ok=True)
 
-    def boom(_p: str, _t: float) -> str:
+    def boom(_p: str, _t: float, _r: str = "") -> str:
         raise AssertionError("Pi must not run for an empty room")
 
     monkeypatch.setattr(synthesizer, "_pi_complete", boom)
