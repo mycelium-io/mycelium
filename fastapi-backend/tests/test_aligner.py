@@ -283,7 +283,7 @@ async def test_every_pi_call_is_bracketed_by_the_activity_signal():
     manager = FakeManager(managed, ["solo"])  # the too-few-participants path: one Pi call
     engine = _engine(
         manager,
-        llm_session_factory=lambda _ep: (lambda _prompt, **_kw: "Post positions first."),
+        llm_session_factory=lambda _ep: lambda _prompt, **_kw: "Post positions first.",
     )
 
     queue = bus.subscribe(room_channel(_ROOM))

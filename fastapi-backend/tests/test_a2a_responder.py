@@ -339,7 +339,7 @@ async def test_session_qualified_owner_passes_allow_from(monkeypatch):
 @pytest.mark.asyncio
 async def test_empty_allow_from_allows_anyone(monkeypatch):
     _register_a2a(allow_from=[])
-    responder, channel, _persister, calls = _responder(monkeypatch)
+    responder, _channel, _persister, calls = _responder(monkeypatch)
 
     responder.handle_summon(_ROOM, "researcher", _summon_envelope("anyone"), [], "hi")
     await _drain(responder)

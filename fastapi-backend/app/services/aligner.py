@@ -522,7 +522,7 @@ class AlignerEngine:
         """
         if self._llm_session_factory is not None:
             return self._llm_session_factory(episode)
-        return self._pi_session(episode)
+        return self._pi_session(episode, room=room)
 
     def _signalling(
         self, session: Callable[..., str], room: str, episode: str
@@ -552,7 +552,7 @@ class AlignerEngine:
 
         return call
 
-    def _pi_session(self, episode: str) -> Callable[..., str]:
+    def _pi_session(self, episode: str, room: str = "") -> Callable[..., str]:
         import tempfile
         from pathlib import Path
 
