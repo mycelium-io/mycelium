@@ -19,6 +19,13 @@ dependencies = [
     "pyjwt[crypto]>=2.10,<3",
     "a2a-sdk==1.1.2",
     "sse-starlette>=3.4.8",
+    # Telemetry — OTel SDK (used only when TELEMETRY_ENABLED=true; all three are
+    # conditional imports so they add no startup cost when telemetry is off).
+    # Pin to the versions tested against (gen_ai.* conventions are Development as of Sep 2026;
+    # update the pin when conventions stabilise — see docs/reference/metrics.md).
+    "opentelemetry-sdk>=1.29.0,<2",
+    "opentelemetry-exporter-otlp-proto-http>=1.29.0,<2",
+    "opentelemetry-instrumentation-fastapi>=0.50b0,<0.60",
 ]
 
 [dependency-groups]

@@ -193,7 +193,7 @@ async def test_non_http_card_scheme_rejected():
 async def test_private_host_card_rejected_ssrf(url, monkeypatch):
     """SSRF guard: a card host resolving to a non-public address is refused."""
     monkeypatch.setattr("app.config.settings.A2A_ALLOW_PRIVATE_HOSTS", False)
-    with pytest.raises(A2aCardError, match="SSRF|non-public|did not resolve"):
+    with pytest.raises(A2aCardError, match=r"SSRF|non-public|did not resolve"):
         await a2a_card.resolve_card(url)
 
 
@@ -202,7 +202,7 @@ async def test_ssrf_guard_can_be_opted_out(monkeypatch):
     """A trusted internal deployment can allow private hosts; then the guard is a no-op
     and resolution proceeds (and fails later on the unreachable host, not the guard)."""
     monkeypatch.setattr("app.config.settings.A2A_ALLOW_PRIVATE_HOSTS", True)
-    with pytest.raises(A2aCardError, match="no Agent Card|did not resolve"):
+    with pytest.raises(A2aCardError, match=r"no Agent Card|did not resolve"):
         await a2a_card.resolve_card("http://127.0.0.1:9")
 
 
