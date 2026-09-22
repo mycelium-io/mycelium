@@ -161,6 +161,45 @@ def typed_client(config: MyceliumConfig | None = None, *, handle: str | None = N
     return client.with_headers(headers) if headers else client
 
 
+#: Where a hub answers its health check. The backend serves ``/health`` at its
+#: root; behind a reverse proxy that serves the frontend at ``/`` and the backend
+#: under ``/api``, only the prefixed path exists, so both are tried.
+HEALTH_PATHS = ("/health", "/api/health")
+
+
+def probe_health(api_url: str, *, timeout: float = 5.0) -> tuple[dict[str, Any] | None, str]:
+    """The hub's health document, under whichever prefix the hub answers on.
+
+    Returns ``(body, "")`` on the first path that answers with a JSON object,
+    else ``(None, why)`` with the last failure spelled out. A 404 on the bare
+    path is the reverse-proxy case, not a dead hub, so it falls through to the
+    prefixed path rather than being reported.
+    """
+    base = api_url.rstrip("/")
+    why = f"couldn't reach {base}"
+    for path in HEALTH_PATHS:
+        url = f"{base}{path}"
+        try:
+            resp = httpx.get(url, timeout=timeout)
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            why = f"{url} answered HTTP {exc.response.status_code}"
+            continue
+        except httpx.HTTPError as exc:
+            why = f"couldn't reach {url} ({exc.__class__.__name__})"
+            continue
+        try:
+            body = resp.json()
+        except ValueError:
+            why = f"{url} did not answer with JSON"
+            continue
+        if not isinstance(body, dict):
+            why = f"{url} did not answer with a health document"
+            continue
+        return body, ""
+    return None, why
+
+
 def hub_error_detail(content: bytes) -> str:
     """Extract a human-readable message from a hub HTTP error response body.
 
