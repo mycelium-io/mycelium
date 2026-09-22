@@ -303,7 +303,7 @@ class AlignerEngine:
             return None
         persister = managed.persister
         me = engine_handle or self._handle
-        participants = [m for m in self._manager.members(room) if _norm(m) != _norm(me)]
+        participants = self._roster(room, me)
         if scoped_participants:
             scoped = {_norm(h) for h in scoped_participants}
             participants = [m for m in participants if _norm(m) in scoped]
@@ -474,6 +474,41 @@ class AlignerEngine:
             openshell=settings.ALIGNER_PI_OPENSHELL,
         )
 
+    def _roster(self, room: str, me: str) -> list[str]:
+        """The agents this run may broker between: ``room``'s registered roster.
+
+        The union of the room's **registered** agents and whoever is currently
+        connected — because each set alone misses real participants.
+
+        ``members()`` answers "who holds a live SLIM socket or presence lease
+        right now", which is connectivity, not membership: an agent parked in a
+        herdr pane, or simply between turns, is a full member of the room that
+        ``members()`` omits. Brokering is not delivery — a mention wakes a herdr
+        pane and otherwise waits on the durable cursor, and every round already
+        has its own turn window — so gating the run on who happened to be
+        connected at summon time rejected rooms well able to negotiate.
+
+        The registry alone is not enough either: ``await``/``respond`` let any
+        awake caller join without ``agent create``, so a connected participant
+        may have no manifest at all.
+
+        Engines are excluded — the aligner brokers between teammates, and an
+        engine (itself, the synthesizer) is never a party to the deal.
+        """
+        from app.services.agent_registry import room_agents
+
+        drop = {_norm(me), _norm(self._handle), *(_norm(h) for h in _NON_PARTICIPANTS)}
+        roster: dict[str, str] = {}
+        for agent in room_agents(room):
+            if _norm(agent.handle) in drop or agent.adapter == "engine":
+                continue
+            roster[_norm(agent.handle)] = agent.handle
+        for handle in self._manager.members(room):
+            if _norm(handle) in drop:
+                continue
+            roster.setdefault(_norm(handle), handle)
+        return [roster[k] for k in sorted(roster)]
+
     def _opening_positions(
         self, persister: RoomPersister, participants: list[str]
     ) -> dict[str, str]:
@@ -634,12 +669,12 @@ class AlignerEngine:
         roster = ", ".join(participants) if participants else "no other agents"
         prompt = (
             "You are this room's alignment mediator, just summoned to help it align, "
-            "but you cannot run a negotiation right now: it needs at least two agents "
-            "that are present in the room and holding opening positions, and the current "
-            f"roster is: {roster}. Write a short, friendly message to the room (2-3 "
-            "sentences) that explains you can't align yet and says what to do next — have "
-            "at least two agents join and post their opening positions (e.g. with "
-            "'mycelium respond'), then summon you again. Plain prose, no @-mentions."
+            "but you cannot run a negotiation right now: brokering needs at least two "
+            "agents registered in the room besides you, and the room's roster is: "
+            f"{roster}. Write a short, friendly message to the room (2-3 sentences) that "
+            "explains you can't align yet and says what to do next — register a second "
+            "agent in this room (e.g. with 'mycelium agent create <handle> --room "
+            "<room>'), then summon you again. Plain prose, no @-mentions."
         )
         text = ""
         try:
@@ -652,9 +687,9 @@ class AlignerEngine:
             )
         if not text:
             text = (
-                "I can't align the room yet — a negotiation needs at least two agents "
-                "present with opening positions to broker between. Have the agents join "
-                "and post their positions, then summon me again."
+                "I can't align the room yet — brokering needs at least two agents "
+                "registered here besides me. Add another agent to the room, then "
+                "summon me again."
             )
         await self._say(managed, room, sender, text)
 
