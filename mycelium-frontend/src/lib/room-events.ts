@@ -192,7 +192,12 @@ export function parseEvent(msg: Record<string, unknown>): Event {
       content = (raw.content as string) || "";
       raw = {
         ...raw,
-        broken: header.subkind !== "converged",
+        // `resolved` is how a conductor run ends well, as `converged` is a
+        // negotiation's; only `rejected` is the one that came to nothing.
+        broken: header.subkind === "rejected",
+        outcome: header.subkind,
+        protocol: data.protocol,
+        steps: data.steps,
         assignments: data.assignments,
         metrics: data.metrics,
         episode: message?.episode,

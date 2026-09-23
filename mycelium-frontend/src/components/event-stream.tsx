@@ -1081,6 +1081,26 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                 const garRaw = metrics ? metrics.gar : undefined;
                 const gar = typeof garRaw === "number" && Number.isFinite(garRaw) ? garRaw : undefined;
                 const tone = broken ? "var(--yellow)" : "var(--green)";
+                // A conductor run ends `resolved`: a flow walked to its end, not
+                // an agreement over issues, so it says which flow and how far.
+                const flow = ev.raw.outcome === "resolved" ? (ev.raw.protocol as string | undefined) : undefined;
+                if (flow) {
+                  const steps = typeof ev.raw.steps === "number" ? ev.raw.steps : undefined;
+                  return (
+                    <SystemNotice key={ev.id} time={ev.time} dot={tone} label="Done" labelColor={tone} strong>
+                      <span>in</span>
+                      {shortId ? (
+                        <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined} />
+                      ) : (
+                        <span className="font-mono">episode</span>
+                      )}
+                      <span>
+                        · {flow} flow
+                        {steps !== undefined ? `, ${steps} step${steps === 1 ? "" : "s"}` : ""}
+                      </span>
+                    </SystemNotice>
+                  );
+                }
                 return (
                   <SystemNotice
                     key={ev.id}

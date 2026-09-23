@@ -188,7 +188,7 @@ describe("parseEvent", () => {
     expect(ev.raw.episode).toBe("urn:e:s1");
   });
 
-  it("marks a non-converged commit as broken", () => {
+  it("marks a rejected commit as broken", () => {
     const ev = parseEvent({
       message_type: "l9_commit",
       sender_handle: "aligner",
@@ -196,6 +196,24 @@ describe("parseEvent", () => {
       created_at: CREATED,
     });
     expect(ev.raw.broken).toBe(true);
+  });
+
+  it("reads a conductor run that reached its end as done, not a timeout", () => {
+    const ev = parseEvent({
+      message_type: "l9_commit",
+      sender_handle: "conductor",
+      content: JSON.stringify({
+        l9: {
+          header: { subkind: "resolved", message: { episode: "urn:e:t1" } },
+          payload: { data: { protocol: "swarm", steps: 2 } },
+        },
+      }),
+      created_at: CREATED,
+    });
+    expect(ev.raw.broken).toBe(false);
+    expect(ev.raw.outcome).toBe("resolved");
+    expect(ev.raw.protocol).toBe("swarm");
+    expect(ev.raw.steps).toBe(2);
   });
 
   it("reads an l9_knowledge push as its own notice with the memory fields kept", () => {
