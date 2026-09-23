@@ -186,11 +186,13 @@ def ensure_room(client: httpx.Client, room: str) -> bool:
 def ensure_engine(client: httpx.Client, room: str, handle: str, kind: str, me: str) -> None:
     """Register an engine in ``room``; one already there is fine."""
     body = {"handle": handle, "kind": kind, "created_by": me}
-    _check(
-        client.post(f"/api/rooms/{room}/engines", json=body),
-        f"register @{handle}",
-        ok=(409,),
-    )
+    resp = client.post(f"/api/rooms/{room}/engines", json=body)
+    if resp.status_code == 422 and "engine kind" in resp.text:
+        raise SwarmError(
+            f"this hub doesn't run {kind} engines yet. Upgrade it (mycelium upgrade), "
+            + ("or drop --server to use your own agents." if kind == "worker" else "then retry.")
+        )
+    _check(resp, f"register @{handle}", ok=(409,))
 
 
 def file_task(client: httpx.Client, room: str, title: str, me: str) -> tuple[str, str]:
@@ -316,20 +318,37 @@ def start_local(
     return local
 
 
-def brief_local(bridge: Any, room: str, local: LocalTeam, key: str, task: str) -> None:
-    """Hand each local member its brief: written to a file, and a prompt to read it."""
-    from mycelium.filesystem import get_mycelium_dir
+def brief_key(handle: str) -> str:
+    """Where a member's brief lives in the room: its notes, which every agent has."""
+    return f"agents/{handle}/notes"
 
+
+def brief_local(
+    client: httpx.Client, bridge: Any, room: str, local: LocalTeam, key: str, task: str, me: str
+) -> None:
+    """Hand each local member its brief: its notes memory, and a prompt to read it.
+
+    The brief lives in the room rather than a file because a member reads it
+    with ``mycelium memory get``, the one command it is allowed without asking;
+    a file outside its working directory would stop it at a permission prompt.
+    It also puts the brief where the app shows it.
+    """
     team = list(local.panes)
-    brief_dir = get_mycelium_dir() / "swarm" / room
-    brief_dir.mkdir(parents=True, exist_ok=True)
+    items = [
+        {
+            "key": brief_key(handle),
+            "value": kickoff_brief(room, handle, team, key, task),
+            "created_by": me,
+            "embed": False,
+        }
+        for handle in team
+    ]
+    _check(client.post(f"/api/rooms/{room}/memory", json={"items": items}), "write the briefs")
     for handle, pane in local.panes.items():
-        path = brief_dir / f"{handle}.md"
-        path.write_text(kickoff_brief(room, handle, team, key, task))
         bridge.prompt(
             pane,
             f"[mycelium] You are @{handle} on a team of {len(team)} in room '{room}'. "
-            f"Read {path} and follow it.",
+            f"Run `mycelium memory get {brief_key(handle)}` and follow it.",
             wait=False,
         )
 
@@ -579,7 +598,8 @@ def swarm(
                 worktree=worktree,
                 me=me,
             )
-            brief_local(bridge, room_name, local, key, task)
+            with hub_client(config, timeout=30) as client:
+                brief_local(client, bridge, room_name, local, key, task, me)
             sync = HerdrSync(config, bridge, local.workspace, room_name)
             sync.once()
             sync.start()

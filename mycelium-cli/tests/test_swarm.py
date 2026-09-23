@@ -152,7 +152,7 @@ def _hub(existing_room: bool = False) -> tuple[httpx.Client, list[tuple[str, str
             return httpx.Response(
                 201, json={"key": "work/fix-the-tests", "episode": "urn:ep:fix-tests:t1"}
             )
-        if path.endswith("/messages"):
+        if path.endswith(("/messages", "/memory")):
             return httpx.Response(201, json={})
         return httpx.Response(500, text="unexpected")
 
@@ -286,20 +286,28 @@ def test_each_member_gets_a_pane_an_agent_and_its_own_identity(
     assert bridge.registry.bindings() == {"w9": "fix-tests"}
 
 
-def test_each_local_member_is_handed_its_brief(
-    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+def test_each_local_member_is_handed_its_brief_through_the_room(
+    monkeypatch: pytest.MonkeyPatch,
 ):
+    # The brief is a room memory, read with the one command a member may run
+    # without asking; a file outside its checkout would stop it at a prompt.
     monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
     herdr = Herdr()
+    client, seen = _hub()
     local = swarm.LocalTeam(workspace="w9", panes={"agent-1": "w9:p1", "agent-2": "w9:p2"})
 
-    swarm.brief_local(HerdrBridge(runner=herdr), "fix-tests", local, "work/fix", "Fix it")
+    swarm.brief_local(
+        client, HerdrBridge(runner=herdr), "fix-tests", local, "work/fix", "Fix it", "julia"
+    )
 
+    _m, path, body = seen[-1]
+    assert path == "/api/rooms/fix-tests/memory"
+    assert [i["key"] for i in body["items"]] == ["agents/agent-1/notes", "agents/agent-2/notes"]
+    assert body["items"][1]["value"].startswith("# You are @agent-2")
     prompts = herdr.of("agent prompt")
     assert [p[2] for p in prompts] == ["w9:p1", "w9:p2"]
     assert "You are @agent-2 on a team of 2" in prompts[1][3]
-    path = prompts[1][3].split("Read ", 1)[1].removesuffix(" and follow it.")
-    assert "# You are @agent-2" in open(path).read()  # noqa: PTH123, SIM115
+    assert "`mycelium memory get agents/agent-2/notes`" in prompts[1][3]
 
 
 def test_a_wake_is_worded_by_why_it_was_queued():
@@ -445,3 +453,14 @@ def test_an_agent_is_started_again_while_its_pane_comes_up(monkeypatch: pytest.M
     with pytest.raises(HerdrError):
         swarm._start_when_ready(_Never(), "agent-1", "claude", "w9:p1")
     assert len(attempts) == swarm.START_ATTEMPTS
+
+
+def test_an_older_hub_without_workers_says_what_to_do():
+    client = httpx.Client(
+        base_url="http://hub",
+        transport=httpx.MockTransport(
+            lambda _r: httpx.Response(422, text="Unknown engine kind 'worker'; known: [...]")
+        ),
+    )
+    with pytest.raises(swarm.SwarmError, match="drop --server"):
+        swarm.ensure_engine(client, "r", "agent-1", "worker", "julia")
