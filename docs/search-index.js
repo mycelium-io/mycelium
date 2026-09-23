@@ -852,7 +852,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "adapters.html#worker-what-it-can-do",
     "t": "What it can do",
     "s": "Engines › Worker",
-    "x": "A worker has no tools. Its work is what it writes: the analysis, the plan, the draft. What it does to the board, it writes as a line in its reply, and the hub carries it out: Line What happens [[new: <title> -> @member]] A child task of the thread's task is filed, given to that member. [[done]] The thread's task is resolved. The lines are taken out before the reply is posted.",
+    "x": "A worker has no tools. Its work is what it writes: the analysis, the plan, the draft. What it does to the board, it writes as a line in its reply, and the hub carries it out: Line What happens [[new: <title> -> @member]] A child task of the thread's task is filed, given to that member. [[done]] The thread's task is resolved. The lines are taken out before the reply is posted. When a task is resolved, its result is wr",
     "p": "Adapters"
   },
   {

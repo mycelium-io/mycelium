@@ -508,3 +508,59 @@ async def test_a_split_is_wrapped_up_once(monkeypatch: pytest.MonkeyPatch):
     await _settle(engine)
 
     assert len(seen) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_part_resolved_by_its_reviewer_keeps_the_holders_final_version(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services.filesystem import EPISODE_META, system_meta
+    from app.services.in_memory_store import StoredMessage
+
+    for h in ("agent-1", "agent-2"):
+        _register(h)
+    parent, _pe = await _task("The whole")
+    part = await tasks.create_task(
+        _ROOM,
+        "Setup section",
+        created_by="agent-1",
+        meta={"part-of": parent, "assignee": "agent-2"},
+    )
+    await assignments.claim(_ROOM, part.key, "agent-2", 30, datetime.now(UTC))
+    said = [
+        StoredMessage("agent-2", "broadcast", "Setup v1", episode=part.episode),
+        StoredMessage("agent-2", "broadcast", "Setup v2: npm ci", episode=part.episode),
+    ]
+    monkeypatch.setattr("app.services.persister.prose_messages", lambda _room: said)
+    _patch_pi(monkeypatch, "Good to go.\n[[done]]")
+    engine, _managed, _manager = _engine()
+
+    await engine.turn(_ROOM, "agent-1", episode=str(part.episode), ask="Review it.")
+
+    found = read_memory_file(get_room_dir(_ROOM), part.key)
+    assert found is not None
+    meta, body = found
+    assert body.startswith("Setup section")
+    assert "Setup v2: npm ci" in body
+    assert "Good to go" not in body
+    # The row is still the same row: resolved, part of its parent, on its thread.
+    assert assignments.settled(meta, datetime.now(UTC))
+    assert meta.get("part-of") == parent
+    assert system_meta(meta).get(EPISODE_META) == part.episode
+
+
+@pytest.mark.asyncio
+async def test_the_parent_keeps_the_leads_combined_result(monkeypatch: pytest.MonkeyPatch):
+    _register("agent-1")
+    parent, episode = await _task("Write the guide")
+    _patch_pi(monkeypatch, "# The guide\n\nAll of it, together.\n[[done]]")
+    engine, _managed, _manager = _engine()
+
+    await engine.turn(_ROOM, "agent-1", episode=episode, ask="Put it together.")
+
+    found = read_memory_file(get_room_dir(_ROOM), parent)
+    assert found is not None
+    meta, body = found
+    assert body.splitlines()[0] == "Write the guide"
+    assert "All of it, together." in body
+    assert assignments.settled(meta, datetime.now(UTC))

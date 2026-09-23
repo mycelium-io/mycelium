@@ -502,3 +502,19 @@ def test_a_dropped_stream_ends_the_watch_quietly(monkeypatch: pytest.MonkeyPatch
 
     assert connected.is_set()
     assert not view.done.is_set()
+
+
+def test_the_result_is_written_into_the_tasks_row():
+    client, seen = _hub()
+    swarm.record_result(
+        client, "fix-tests", "work/fix", "Fix the tests", "# Result\n\nAll green.\n", "agent-1"
+    )
+    _m, path, body = seen[-1]
+    assert path == "/api/rooms/fix-tests/memory"
+    assert body["items"] == [
+        {
+            "key": "work/fix",
+            "value": "Fix the tests\n\n# Result\n\nAll green.",
+            "created_by": "agent-1",
+        }
+    ]

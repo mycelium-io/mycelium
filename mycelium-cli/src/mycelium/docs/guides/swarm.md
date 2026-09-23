@@ -31,7 +31,8 @@ fix-flaky-auth-tests · 3 agents in herdr workspace w4
 ```
 
 The same room is in the app, with the kickoff drawn as a flow at the top of
-the task's thread.
+the task's thread. The result stays in the room: it is written into the task
+itself, so it is there to open or search long after the terminal is closed.
 
 ## Where the agents run
 

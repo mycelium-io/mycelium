@@ -260,7 +260,8 @@ fix-flaky-auth-tests · 3 agents in herdr workspace w4
 ```
 
 The same room is in the app, with the kickoff drawn as a flow at the top of
-the task's thread.
+the task's thread. The result stays in the room: it is written into the task
+itself, so it is there to open or search long after the terminal is closed.
 
 ## Where the agents run
 
@@ -2335,6 +2336,11 @@ the hub carries it out:
 | `[[done]]` | The thread's task is resolved. |
 
 The lines are taken out before the reply is posted.
+
+When a task is resolved, its result is written into the task itself, under
+its title: a part keeps the final version its holder posted, and the parent
+keeps the combined result. The thread is where the work was argued; the task
+is what the room remembers, searchable like any memory.
 
 ## When it acts
 

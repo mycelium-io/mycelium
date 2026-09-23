@@ -210,6 +210,14 @@ def file_task(client: httpx.Client, room: str, title: str, me: str) -> tuple[str
     return str(task["key"]), str(task.get("episode") or "")
 
 
+def record_result(
+    client: httpx.Client, room: str, key: str, title: str, result: str, by: str
+) -> None:
+    """Write the team's result into the task's row, under its title, as the room's memory."""
+    item = {"key": key, "value": f"{title}\n\n{result.strip()}", "created_by": by}
+    _check(client.post(f"/api/rooms/{room}/memory", json={"items": [item]}), "save the result")
+
+
 def kick_off(client: httpx.Client, room: str, episode: str, team: list[str], task: str, me: str):
     """Summon the conductor in the task's thread to run the kickoff flow over the team."""
     names = " ".join(f"@{h}" for h in team)
@@ -678,6 +686,14 @@ def swarm(
         if view.done.is_set():
             if view.last_root is not None:
                 who, result = view.last_root
+                if not server:
+                    # Workers write their result into the row themselves; a
+                    # local lead resolves with `board resolve`, which does not.
+                    try:
+                        with hub_client(config, timeout=30) as client:
+                            record_result(client, room_name, key, task, result, who)
+                    except (SwarmError, httpx.HTTPError) as e:
+                        console.print(f"[dim]could not save the result to {key}: {e}[/dim]")
                 console.print()
                 console.print(
                     Panel(

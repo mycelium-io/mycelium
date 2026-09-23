@@ -238,6 +238,57 @@ def _parts_of(room: str, parent: str) -> str:
     return "\n\n".join(blocks) or "(no parts found)"
 
 
+def _result_of(room: str, key: str, *, resolver: str, said: str) -> str:
+    """The text a row resolves with: what its work produced, not the approval.
+
+    A part is resolved by its reviewer, whose reply is the verdict, so the
+    result is the last thing the part's holder said in its thread. A row
+    nobody else holds (the parent a lead puts together) resolves with what the
+    resolver just said.
+    """
+    from app.services import tasks
+    from app.services.persister import prose_messages
+
+    holder = _holder(room, key)
+    if holder is None or _norm(holder) == _norm(resolver):
+        return said.strip()
+    episode = tasks.episode_of(room, key)
+    final = next(
+        (
+            m.content.strip()
+            for m in reversed(prose_messages(room))
+            if m.episode == episode and m.content and _norm(m.sender_handle) == _norm(holder)
+        ),
+        "",
+    )
+    return final
+
+
+async def record_result(room: str, key: str, result: str, *, by: str) -> None:
+    """Write ``result`` into a resolved row, under its title.
+
+    A task's thread is where the work was argued; the row is what the room
+    keeps. Recording the result there makes it a memory like any other,
+    indexed and searchable, rather than a message scrolled past. The title
+    stays the first line, so the board reads the row as it did; the frontmatter
+    (its assignment, its parent, its thread) is carried across by the upsert.
+    """
+    from app.routes.memory import upsert_memories
+    from app.schemas import MemoryBatchCreate, MemoryCreate
+    from app.services.filesystem import get_room_dir, read_memory_file
+
+    found = read_memory_file(get_room_dir(room), key)
+    if found is None:
+        return
+    title = next((ln.strip() for ln in found[1].splitlines() if ln.strip()), key)
+    await upsert_memories(
+        room,
+        MemoryBatchCreate(
+            items=[MemoryCreate(key=key, value=f"{title}\n\n{result.strip()}", created_by=by)]
+        ),
+    )
+
+
 def _holder(room: str, key: str) -> str | None:
     """Who holds a board row right now, or ``None`` when nobody does."""
     from app.services.assignments import state_of
@@ -501,7 +552,7 @@ class WorkerEngine:
         if prose.strip():
             await self._say(managed, episode, handle, prose, payload=payload)
             self._manager.enqueue_herdr_wakes_for_mentions(room, prose, exclude=handle)
-        await self._act(room, handle, row[0] if row else None, actions)
+        await self._act(room, handle, row[0] if row else None, actions, prose)
         if row is not None and prose.strip():
             self._hand_back(room, handle, row[0], episode, prose, actions, team)
         return prose
@@ -571,8 +622,14 @@ class WorkerEngine:
                 return False
         return True
 
-    async def _act(self, room: str, handle: str, key: str | None, actions: list[Action]) -> None:
-        """Carry out a reply's action lines against the row its thread belongs to."""
+    async def _act(
+        self, room: str, handle: str, key: str | None, actions: list[Action], prose: str = ""
+    ) -> None:
+        """Carry out a reply's action lines against the row its thread belongs to.
+
+        ``prose`` is what the reply said; when it resolves a row nobody holds,
+        such as the parent a lead just put together, that is the row's result.
+        """
         from app.services import assignments, tasks
 
         if key is None:
@@ -596,7 +653,10 @@ class WorkerEngine:
                         },
                     )
                 elif action.kind == "done" and self._may_resolve(room, handle, key):
+                    result = _result_of(room, key, resolver=handle, said=prose)
                     await assignments.resolve(room, key, handle, datetime.now(UTC))
+                    if result:
+                        await record_result(room, key, result, by=handle)
             except Exception:
                 logger.exception("worker @%s could not %s on %s", handle, action.kind, key)
 

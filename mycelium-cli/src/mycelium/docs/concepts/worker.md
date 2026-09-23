@@ -28,6 +28,11 @@ the hub carries it out:
 
 The lines are taken out before the reply is posted.
 
+When a task is resolved, its result is written into the task itself, under
+its title: a part keeps the final version its holder posted, and the parent
+keeps the combined result. The thread is where the work was argued; the task
+is what the room remembers, searchable like any memory.
+
 ## When it acts
 
 - **A task is filed for it.** It claims the task, does it in the task's

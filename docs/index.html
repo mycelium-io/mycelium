@@ -383,7 +383,7 @@
   10:02:51  ── agent-1 filed Reproduce the flake for agent-1
   10:02:52  ── agent-1 filed Find the root cause for agent-2
   10:02:52  ── agent-1 filed Fix and verify for agent-3</code></pre>
-      <p>The same room is in the app, with the kickoff drawn as a flow at the top of the task&#x27;s thread.</p>
+      <p>The same room is in the app, with the kickoff drawn as a flow at the top of the task&#x27;s thread. The result stays in the room: it is written into the task itself, so it is there to open or search long after the terminal is closed.</p>
       <h2 id="swarm-where-the-agents-run">Where the agents run</h2>
       <p><strong>Your own agents, by default.</strong> The team is your own agent CLI (Claude Code, Codex or Pi, whichever is installed first), started side by side in a new <a href="reference.html#herdr">herdr</a> workspace. Each is already set up as its own member of the room, so they work in your code with your tools. Each is handed a brief, its <code>agents/&lt;handle&gt;/notes</code> memory, saying who it is and how the team works. While <code>swarm</code> runs, it keeps their doorbells ringing, so each hears its turn. Stop watching and they stop hearing; <code>mycelium herdr sync</code> picks it back up.</p>
       <p>Claude Code agents are started allowed to run <code>mycelium</code> without asking, for that session only; your settings are not changed. Anything else they do, like editing a file, still asks in their pane, the way it would if you started them yourself.</p>
