@@ -564,3 +564,12 @@ async def test_the_parent_keeps_the_leads_combined_result(monkeypatch: pytest.Mo
     assert body.splitlines()[0] == "Write the guide"
     assert "All of it, together." in body
     assert assignments.settled(meta, datetime.now(UTC))
+
+
+def test_a_title_written_as_a_key_is_filed_in_words():
+    assert worker_engine.task_title("work/draft-template-structure") == "Draft template structure"
+    assert worker_engine.task_title("`write_guidance_text`") == "Write guidance text"
+    assert worker_engine.task_title("Reproduce the flake") == "Reproduce the flake"
+    assert worker_engine.task_title("  'fix CI-only tests'  ") == "fix CI-only tests"
+    actions, _prose = worker_engine.parse_actions("[[new: work/create-sample -> @agent-3]]")
+    assert actions == [worker_engine.Action("new", "Create sample", "agent-3")]

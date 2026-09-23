@@ -90,7 +90,7 @@ the draft), not a description of what you would do.
 
 You can change the board by putting action lines in your reply, each on its
 own line:
-  [[new: <title> -> @<member>]]   file a child task of this thread's task, for that member
+  [[new: <short title, in words> -> @<member>]]   file a child task of this thread's task, for that member
   [[done]]                        mark this thread's task done
 
 When the task leaves something open, do not wait for someone to settle it:
@@ -110,6 +110,25 @@ class Action:
     handle: str = ""
 
 
+_KEY_PREFIX = re.compile(r"^(?:work|decisions|status|failed)/", re.IGNORECASE)
+
+
+def task_title(raw: str) -> str:
+    """A task's title as a person reads it, even when a model wrote it as a key.
+
+    A model asked to file a task sometimes names it the way the board keys it
+    (``work/draft-template-structure``); filed as is, the title reads as a path
+    and the key doubles its namespace. A key-shaped title is turned back into
+    words; anything already in words is kept as written.
+    """
+    title = raw.strip().strip("\"'`").strip()
+    title = _KEY_PREFIX.sub("", title)
+    if title and " " not in title and re.search(r"[-_]", title):
+        words = re.sub(r"[-_]+", " ", title).strip()
+        title = words[:1].upper() + words[1:]
+    return title
+
+
 def parse_actions(text: str) -> tuple[list[Action], str]:
     """``(actions, the prose without them)`` from a worker's reply.
 
@@ -124,13 +143,9 @@ def parse_actions(text: str) -> tuple[list[Action], str]:
             continue
         args = _NEW_ARGS.match(match.group(2).strip())
         if args:
-            actions.append(
-                Action(
-                    kind="new",
-                    title=args.group("title").strip().strip("\"'"),
-                    handle=args.group("handle").lower(),
-                )
-            )
+            title = task_title(args.group("title"))
+            if title:
+                actions.append(Action(kind="new", title=title, handle=args.group("handle").lower()))
     clean = _ACTION.sub("", text)
     clean = re.sub(r"\n{3,}", "\n\n", clean).strip()
     return actions, clean
