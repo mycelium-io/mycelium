@@ -317,6 +317,9 @@ async def test_a_review_that_names_nobody_goes_back_to_the_holder(
 
     assert [s["handle"] for s in seen] == ["agent-1", "agent-2"]
     assert "agent-1 said to you" in seen[1]["prompt"]
+    # The revision it is asked for is the work itself, since that is what the
+    # row keeps once it resolves.
+    assert "complete new version" in seen[1]["prompt"]
     assert "Missing shell compatibility" in seen[1]["prompt"]
     assert _posted(managed)[1][1] == "Added shell compatibility. @agent-1 can you look again?"
 

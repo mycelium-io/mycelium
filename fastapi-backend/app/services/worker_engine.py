@@ -71,6 +71,14 @@ NOTES_SUFFIX = "/notes"
 #: How many recent messages of a thread a turn is shown.
 THREAD_CONTEXT = 24
 
+#: How a revision is asked for. The holder's last message is what its task
+#: keeps once it is resolved, so it has to be the work, not a note about it.
+REVISE = (
+    "post the complete new version, starting with the version itself rather than "
+    "a note about it (it is what the task keeps once it is done), then say in one "
+    "line what changed, and"
+)
+
 _ACTION = re.compile(r"\[\[\s*(new|done)\b\s*:?\s*([^\]]*)\]\]", re.IGNORECASE)
 _NEW_ARGS = re.compile(r"^(?P<title>.+?)\s*(?:->|→)\s*@?(?P<handle>[\w.-]+)\s*$")
 _MENTION = re.compile(r"@([\w.-]+)")
@@ -459,8 +467,7 @@ class WorkerEngine:
             f"Answer {sender}. If you were asked to review something, say plainly what "
             "is good and what has to change; when it is good enough, end with [[done]] "
             f"to resolve the task, and if it is not, tell @{sender} exactly what to fix. "
-            "If you were asked to fix something, fix it, post the new version, and "
-            f"@mention {sender} to look again."
+            f"If you were asked to fix something, {REVISE} @mention {sender} to look again."
         )
         self._spawn(room, handle, self.turn(room, handle, episode=where, ask=ask))
 
@@ -601,8 +608,8 @@ class WorkerEngine:
         if self._is_worker(room, holder):
             ask = (
                 f"{handle} said to you:\n\n{prose.strip()}\n\n"
-                f"This is about your task {key}. Do what {handle} asked, post the new "
-                f"version, and @mention {handle} to look again."
+                f"This is about your task {key}. Do what {handle} asked: {REVISE} "
+                f"@mention {handle} to look again."
             )
             self._spawn(room, holder, self.turn(room, holder, episode=episode, ask=ask))
         else:
