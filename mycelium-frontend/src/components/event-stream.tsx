@@ -23,6 +23,7 @@ import {
 } from "@/lib/activity";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { MessageBody } from "@/components/message-body";
+import { ConductorRow } from "@/components/task/conductor-row";
 import { ChatFindBar } from "@/components/chat-find-bar";
 import { ChatMinimap, type MinimapTick } from "@/components/chat-minimap";
 import { HighlightText } from "@/components/ui/highlight-text";
@@ -1155,12 +1156,22 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                   </SystemNotice>
                 );
               }
+              // A conductor post is drawn from its structured line: one row
+              // naming the step and who it went to, the prompt behind a toggle.
+              if (ev.conductor) {
+                return (
+                  <div key={ev.id} data-event-id={ev.id}>
+                    <ConductorRow line={ev.conductor} text={ev.content} onOpenMemory={onOpenMemory} />
+                  </div>
+                );
+              }
               // A chat message groups with the one above it when the same
               // sender speaks consecutively (no intervening system notice).
               const prev = visible[idx - 1];
               const grouped =
                 prev &&
                 !SYSTEM_TYPES.has(prev.type) &&
+                !prev.conductor &&
                 prev.sender === ev.sender;
               const isAgent = agentHandles.has(ev.sender);
               // Match the members panel so one sender isn't two colors in two
