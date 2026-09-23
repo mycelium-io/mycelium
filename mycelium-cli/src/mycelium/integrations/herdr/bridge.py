@@ -422,10 +422,23 @@ class HerdrBridge:
             raise HerdrError("herdr split a pane but named no new pane")
         return new
 
-    def start_agent(self, name: str, kind: str, pane: str, *, timeout_ms: int = 60000) -> dict:
-        """Start an interactive ``kind`` agent named ``name`` in ``pane``; wait until it is ready."""
+    def start_agent(
+        self,
+        name: str,
+        kind: str,
+        pane: str,
+        *,
+        agent_args: list[str] | None = None,
+        timeout_ms: int = 60000,
+    ) -> dict:
+        """Start an interactive ``kind`` agent named ``name`` in ``pane``; wait until it is ready.
+
+        ``agent_args`` are passed through to the agent's own command line.
+        """
         args = ["agent", "start", name, "--kind", kind, "--pane", pane]
         args += ["--timeout", str(timeout_ms)]
+        if agent_args:
+            args += ["--", *agent_args]
         return self._run_json(args).get("result", {})
 
     # ── the wake orchestration ───────────────────────────────────────────────

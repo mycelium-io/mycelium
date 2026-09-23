@@ -274,6 +274,11 @@ def test_each_member_gets_a_pane_an_agent_and_its_own_identity(
         ["agent-2", "--kind", "claude", "--pane"],
         ["agent-3", "--kind", "claude", "--pane"],
     ]
+    # Each Claude session may run mycelium without a prompt, and only this one:
+    # the grant rides the command line, not the user's settings.
+    assert all(
+        c[-3:] == ["--", "--allowedTools", "Bash(mycelium:*)"] for c in herdr.of("agent start")
+    )
     assert written == ["agent-1", "agent-2", "agent-3"]
     mapping = bridge.registry.get("fix-tests", "agent-2")
     assert mapping is not None
@@ -414,3 +419,29 @@ def test_the_kickoff_is_one_line_and_the_last_word_in_the_task_is_kept():
     view.render(_frame("agent-2", text="a child's message", episode="ep-child"))
     view.render(_frame("agent-1", text="# The result\n\nAll of it.", episode="ep-root"))
     assert view.last_root == ("agent-1", "# The result\n\nAll of it.")
+
+
+def test_an_agent_is_started_again_while_its_pane_comes_up(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(swarm, "START_RETRY_S", 0)
+    attempts: list[str] = []
+
+    class _Bridge:
+        def start_agent(self, handle: str, kind: str, pane: str, **_: object) -> dict:
+            attempts.append(pane)
+            if len(attempts) < 2:
+                raise HerdrError("pane is not at a shell prompt")
+            return {}
+
+    swarm._start_when_ready(_Bridge(), "agent-1", "claude", "w9:p1")
+    assert attempts == ["w9:p1", "w9:p1"]
+
+    attempts.clear()
+
+    class _Never(_Bridge):
+        def start_agent(self, handle: str, kind: str, pane: str, **_: object) -> dict:
+            attempts.append(pane)
+            raise HerdrError("still not ready")
+
+    with pytest.raises(HerdrError):
+        swarm._start_when_ready(_Never(), "agent-1", "claude", "w9:p1")
+    assert len(attempts) == swarm.START_ATTEMPTS

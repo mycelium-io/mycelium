@@ -56,6 +56,11 @@ console = Console()
 DEFAULT_SIZE = 3
 #: Local agent kinds tried in order when none is named, by the executable herdr runs.
 LOCAL_KINDS = ("claude", "codex", "pi")
+#: Arguments each local agent kind is started with. Claude Code asks before
+#: every shell command it has not been allowed; a member that stops at a
+#: prompt on its first ``mycelium await`` never takes its turn, so the one
+#: command it needs is allowed for this session only, not in the user's settings.
+AGENT_ARGS: dict[str, list[str]] = {"claude": ["--allowedTools", "Bash(mycelium:*)"]}
 #: The conductor engine's handle in a swarm room, and the flow it runs.
 CONDUCTOR = "conductor"
 FLOW = "swarm"
@@ -238,6 +243,30 @@ def _worktree(repo: Path, room: str, handle: str) -> Path:
     return path
 
 
+#: How many times, and how far apart, to try starting an agent in a new pane.
+START_ATTEMPTS = 3
+START_RETRY_S = 1.5
+
+
+def _start_when_ready(bridge: Any, handle: str, kind: str, pane: str) -> None:
+    """Start ``kind`` in ``pane``, giving a just-opened pane's shell time to come up.
+
+    herdr starts an agent only in a pane sitting at its shell prompt, and a
+    pane split a moment ago may still be starting its shell.
+    """
+    from mycelium.integrations.herdr import HerdrError
+
+    for attempt in range(1, START_ATTEMPTS + 1):
+        try:
+            bridge.start_agent(handle, kind, pane, agent_args=AGENT_ARGS.get(kind))
+        except HerdrError:
+            if attempt == START_ATTEMPTS:
+                raise
+            time.sleep(START_RETRY_S)
+        else:
+            return
+
+
 def start_local(
     config: MyceliumConfig,
     bridge: Any,
@@ -271,7 +300,7 @@ def start_local(
         local.panes[handle] = last
 
     for handle, pane in local.panes.items():
-        bridge.start_agent(handle, kind, pane)
+        _start_when_ready(bridge, handle, kind, pane)
         manifest = get_integration("claude_code", cwd=str(dirs[handle])).build_manifest(
             handle=handle,
             opts=AddOptions(room=room),

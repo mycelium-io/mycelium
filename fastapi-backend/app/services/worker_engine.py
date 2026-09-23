@@ -315,6 +315,8 @@ class WorkerEngine:
         self._locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._turns: dict[str, int] = {}
         self._tasks: set[asyncio.Task[Any]] = set()
+        #: Parents whose wrap-up has been scheduled, so it happens once.
+        self._wrapped: set[tuple[str, str]] = set()
 
     # -- the seams --
 
@@ -361,7 +363,10 @@ class WorkerEngine:
             if done is None:
                 return
             parent, lead = done
-            if lead and self._is_worker(room, lead):
+            # Two parts settling at once both see the split finished; the
+            # parent is put back together once.
+            if lead and self._is_worker(room, lead) and (room, parent) not in self._wrapped:
+                self._wrapped.add((room, parent))
                 self._spawn(room, lead, self._wrap_up(room, lead, parent))
 
     # -- scheduling --
@@ -537,6 +542,35 @@ class WorkerEngine:
         else:
             self._manager.enqueue_herdr_wakes_for_mentions(room, f"@{holder}", exclude=handle)
 
+    @staticmethod
+    def _may_resolve(room: str, handle: str, key: str) -> bool:
+        """Whether ``handle`` saying ``[[done]]`` on ``key`` resolves it.
+
+        Not when it is already settled: a second reviewer agreeing is not news,
+        and every resolve raises a notice the rest of the team reacts to. And
+        not a part of a split, by the member holding it, before anyone else
+        has said a word in its thread: a part is reviewed before it is done.
+        """
+        from app.services import tasks
+        from app.services.assignments import PARENT_RELATION, settled
+        from app.services.filesystem import get_room_dir, read_memory_file
+        from app.services.persister import prose_messages
+
+        found = read_memory_file(get_room_dir(room), key)
+        if found is None or settled(found[0], datetime.now(UTC)):
+            return False
+        if found[0].get(PARENT_RELATION) and _norm(_holder(room, key) or "") == _norm(handle):
+            episode = tasks.episode_of(room, key)
+            others = {_norm(h) for h in team_of(room)} - {_norm(handle)}
+            reviewed = any(
+                m.episode == episode and _norm(m.sender_handle) in others
+                for m in prose_messages(room)
+            )
+            if not reviewed:
+                logger.info("worker @%s marked its own part %s done unreviewed", handle, key)
+                return False
+        return True
+
     async def _act(self, room: str, handle: str, key: str | None, actions: list[Action]) -> None:
         """Carry out a reply's action lines against the row its thread belongs to."""
         from app.services import assignments, tasks
@@ -561,7 +595,7 @@ class WorkerEngine:
                             assignments.PARENT_RELATION: key,
                         },
                     )
-                elif action.kind == "done":
+                elif action.kind == "done" and self._may_resolve(room, handle, key):
                     await assignments.resolve(room, key, handle, datetime.now(UTC))
             except Exception:
                 logger.exception("worker @%s could not %s on %s", handle, action.kind, key)

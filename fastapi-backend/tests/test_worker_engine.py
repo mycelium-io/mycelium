@@ -445,3 +445,66 @@ async def test_the_wrap_up_works_from_each_parts_final_version(monkeypatch: pyte
     assert "Setup v2: npm ci" in parts
     assert "Setup v1" not in parts
     assert "Trim it." not in parts
+
+
+@pytest.mark.asyncio
+async def test_a_second_done_on_a_settled_row_changes_nothing(monkeypatch: pytest.MonkeyPatch):
+    for h in ("agent-2", "agent-3"):
+        _register(h)
+    key, episode = await _task("Review it")
+    _patch_pi(monkeypatch, "Good.\n[[done]]", "Agreed.\n[[done]]")
+    engine, _managed, _manager = _engine()
+
+    await engine.turn(_ROOM, "agent-2", episode=episode, ask="Review it.")
+    await engine.turn(_ROOM, "agent-3", episode=episode, ask="Review it.")
+
+    found = read_memory_file(get_room_dir(_ROOM), key)
+    assert found is not None
+    assert found[0].get("assignment_note_by") == "agent-2"
+
+
+@pytest.mark.asyncio
+async def test_a_part_is_not_done_on_its_holders_word_alone(monkeypatch: pytest.MonkeyPatch):
+    from app.services.in_memory_store import StoredMessage
+
+    for h in ("agent-1", "agent-2"):
+        _register(h)
+    parent, _pe = await _task("The whole")
+    part = await tasks.create_task(
+        _ROOM, "A part", created_by="agent-1", meta={"part-of": parent, "assignee": "agent-2"}
+    )
+    await assignments.claim(_ROOM, part.key, "agent-2", 30, datetime.now(UTC))
+    said: list[StoredMessage] = []
+    monkeypatch.setattr("app.services.persister.prose_messages", lambda _room: said)
+    _patch_pi(monkeypatch, "Here it is, and it is done.\n[[done]]", "Fixed as asked.\n[[done]]")
+    engine, _managed, _manager = _engine()
+
+    await engine.turn(_ROOM, "agent-2", episode=str(part.episode), ask="Do it.")
+    found = read_memory_file(get_room_dir(_ROOM), part.key)
+    assert found is not None
+    assert not assignments.settled(found[0], datetime.now(UTC))
+
+    # Once a teammate has reviewed it, the holder closing it out is fine.
+    said.append(StoredMessage("agent-1", "broadcast", "Looks good.", episode=part.episode))
+    await engine.turn(_ROOM, "agent-2", episode=str(part.episode), ask="Close it out.")
+    found = read_memory_file(get_room_dir(_ROOM), part.key)
+    assert found is not None
+    assert assignments.settled(found[0], datetime.now(UTC))
+
+
+@pytest.mark.asyncio
+async def test_a_split_is_wrapped_up_once(monkeypatch: pytest.MonkeyPatch):
+    _register("agent-1")
+    parent, _pe = await _task("Ship it")
+    only = await tasks.create_task(
+        _ROOM, "The only part", created_by="agent-1", meta={"part-of": parent}
+    )
+    await assignments.resolve(_ROOM, only.key, "agent-1", datetime.now(UTC))
+    seen = _patch_pi(monkeypatch, "Here is the whole.", "Here is the whole, again.")
+    engine, _managed, _manager = _engine()
+
+    engine.handle_notice(_ROOM, {"subkind": "resolved", "key": only.key})
+    engine.handle_notice(_ROOM, {"subkind": "resolved", "key": only.key})
+    await _settle(engine)
+
+    assert len(seen) == 1
