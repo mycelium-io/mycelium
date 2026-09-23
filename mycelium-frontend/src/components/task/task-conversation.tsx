@@ -17,7 +17,9 @@ import {
 import { useRoomAgents, useThreadMessages } from "@/lib/room-data";
 import { useRoomStream } from "@/lib/stream-hub";
 import { pingOf } from "@/lib/threads";
+import { conductorLineOf } from "@/lib/conductor-line";
 import { MessageBody } from "@/components/message-body";
+import { ConductorRow } from "@/components/task/conductor-row";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Monogram } from "@/components/ui/monogram";
@@ -138,8 +140,8 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
   // lifecycle amounts to is the row's own state, which the board already draws.
   const ordered = [...messages]
     .reverse()
-    .map(message => ({ message, text: textOf(message) }))
-    .filter(({ text }) => text.trim().length > 0);
+    .map(message => ({ message, text: textOf(message), line: conductorLineOf(message) }))
+    .filter(({ text, line }) => line !== null || text.trim().length > 0);
 
   // A reply that lands while you are reading the bottom pulls you down with it;
   // one that lands while you are further up does not, and opening the task lands
@@ -192,9 +194,22 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
               </button>
             </div>
           )}
-          {ordered.map(({ message, text }, i) => {
+          {ordered.map(({ message, text, line }, i) => {
             const sender = message.sender_handle ?? message.updated_by ?? "?";
-            const previous = ordered[i - 1]?.message;
+            if (line) {
+              return (
+                <ConductorRow
+                  key={message.id ?? `${sender}-${i}`}
+                  line={line}
+                  text={text}
+                  onOpenMemory={onOpenMemory}
+                />
+              );
+            }
+            // A conductor row between two of one member's messages breaks the
+            // run, so the second one names its sender again.
+            const prev = ordered[i - 1];
+            const previous = prev && !prev.line ? prev.message : undefined;
             const grouped = previous && (previous.sender_handle ?? previous.updated_by) === sender;
             const isAgent = agentHandles.has(sender);
             return (

@@ -347,15 +347,26 @@ def _notice(**data: str) -> dict:
 def test_the_view_shows_the_conversation_across_the_task_and_its_children():
     view = swarm.LiveView(root_key="work/fix", root_episode="ep-root", root_title="Fix the tests")
 
+    turn = {
+        "event": "turn",
+        "protocol": "swarm",
+        "step": "check-in",
+        "to": "agent-1",
+        "turn": 1,
+        "cap": 4,
+    }
     step = view.render(
         _frame(
             "conductor",
             text="swarm · check-in · turn 1 of 4 · agent-1\n\nThe team is…",
             episode="ep-root",
+            payload={"type": "message", "data": {"conductor": turn}},
         )
     )
     assert step is not None
-    assert "check-in → agent-1" in step
+    # Drawn from the post's line, not its prose: the prompt stays out of view.
+    assert "check-in → agent-1 · turn 1 of 4" in step
+    assert "The team is" not in step
     said = view.render(_frame("agent-1", text="Here. I'll take the repro.", episode="ep-root"))
     assert said is not None
     assert "agent-1" in said and "Fix the tests" in said and "I'll take the repro." in said
@@ -518,3 +529,30 @@ def test_the_result_is_written_into_the_tasks_row():
             "created_by": "agent-1",
         }
     ]
+
+
+def test_each_conductor_line_is_said_in_a_few_words():
+    assert (
+        swarm.describe_line(
+            {
+                "event": "open",
+                "protocol": "swarm",
+                "roles": {"lead": "agent-1"},
+                "members": ["agent-2", "agent-3"],
+                "steps": [],
+            }
+        )
+        == "Running swarm · agent-1 as lead · agent-2, agent-3"
+    )
+    assert (
+        swarm.describe_line(
+            {"event": "edge", "step": "review", "who": "sec", "stance": "reject", "next": "propose"}
+        )
+        == "review: sec blocked, on to propose"
+    )
+    assert (
+        swarm.describe_line(
+            {"event": "close", "protocol": "swarm", "outcome": "resolved", "steps": 2, "reason": ""}
+        )
+        == "swarm done · 2 steps"
+    )

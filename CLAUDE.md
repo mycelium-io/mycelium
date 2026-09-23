@@ -258,7 +258,12 @@ is no litellm dependency.
   resident agent that replies early is refused. An `@`-mention of any engine
   is a summon, never a SLIM invite. A run opens no negotiation and never
   commits `converged`, so nothing it does compiles into rows. A model in the
-  nodes, code on the edges.
+  nodes, code on the edges. Every post it makes carries a structured line in
+  its payload under `conductor` (`open`, `turn`, `edge`, `close`) beside the
+  prose its members read; the history read copies it into the message's
+  `metadata`, and the app (`task/conductor-row.tsx`) and `swarm`'s view draw
+  the line, keeping the prompt behind a toggle. A run ending `resolved` is a
+  success (the channel reads it "Done"), only `rejected` a failure.
 - **A worker is a teammate the hub plays, and the board is its only tool.**
   Engine kind `worker` (`app/services/worker_engine.py`), on the persona's
   machinery (notes as character, a Pi session per (room, handle)). It acts on

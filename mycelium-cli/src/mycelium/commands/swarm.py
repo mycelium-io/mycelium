@@ -411,6 +411,39 @@ class HerdrSync:
 # ── the live view ────────────────────────────────────────────────────────────
 
 
+def describe_line(line: dict[str, Any]) -> str:
+    """A conductor post's structured line, said in a few words.
+
+    The conductor's prose is the prompt its members read; this is the one line
+    a person watching needs. Mirrors ``describeConductorLine`` in the app.
+    """
+    event = line.get("event")
+    if event == "open":
+        cast = [f"{who} as {role}" for role, who in (line.get("roles") or {}).items()]
+        if line.get("members"):
+            cast.append(", ".join(line["members"]))
+        return f"Running {line.get('protocol')}" + (f" · {' · '.join(cast)}" if cast else "")
+    if event == "turn":
+        rounds = (
+            f" · round {line.get('round')} of {line.get('rounds')}" if line.get("rounds") else ""
+        )
+        return (
+            f"{line.get('step')} → {line.get('to')} · turn {line.get('turn')} of {line.get('cap')}"
+            + rounds
+        )
+    if event == "edge":
+        said = {"accept": "accepted", "reject": "blocked", "silent": "did not answer"}.get(
+            str(line.get("stance")), "stated no stance"
+        )
+        return f"{line.get('step')}: {line.get('who')} {said}, on to {line.get('next')}"
+    if event == "close":
+        steps = line.get("steps")
+        if line.get("outcome") == "resolved":
+            return f"{line.get('protocol')} done · {steps} step{'' if steps == 1 else 's'}"
+        return f"{line.get('protocol')} {line.get('outcome')} · {line.get('reason')}"
+    return str(event)
+
+
 @dataclass
 class LiveView:
     """Render the room's stream as one conversation across a task and its children."""
@@ -492,13 +525,13 @@ class LiveView:
         episode = frame.get("episode")
         where = self._where(episode)
         if sender == CONDUCTOR:
-            head = text.splitlines()[0]
-            parts = [p.strip() for p in head.split("·")]
-            if len(parts) == 4 and parts[0] == FLOW:
-                return f"  {stamp}  [magenta]{CONDUCTOR}[/] {where}[dim]{parts[1]} → {parts[3]}[/]"
-            return (
-                f"  {stamp}  [magenta]{CONDUCTOR}[/] {where}[dim]{escape(self._short(head, 80))}[/]"
+            line = payload_data_of(data).get("conductor")
+            said = (
+                describe_line(line)
+                if isinstance(line, dict)
+                else self._short(text.splitlines()[0], 80)
             )
+            return f"  {stamp}  [magenta]{CONDUCTOR}[/] {where}[dim]{escape(said)}[/]"
         if f"@{CONDUCTOR} {FLOW}" in text:
             return f"  {stamp}  [cyan]{escape(sender)}[/] {where}[dim]kicked off the team[/]"
         if episode == self.root_episode:

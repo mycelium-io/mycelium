@@ -150,6 +150,67 @@ class Run:
         }
 
 
+#: The payload key every conductor post carries its structured line under. The
+#: text of the post is what members read; this is what a surface draws instead,
+#: so the thread shows a run's steps as a run rather than as walls of prompt.
+LINE_KEY = "conductor"
+
+
+def open_line(run: Run) -> dict[str, Any]:
+    """The opening of a run: which flow, who plays what, and its steps."""
+    named = set(run.bound.values())
+    return {
+        "event": "open",
+        "protocol": run.protocol.name,
+        "description": run.protocol.description,
+        "roles": dict(run.bound),
+        "members": [h for h in run.handles if h not in named],
+        "steps": [
+            {k: v for k, v in (("id", s.id), ("to", s.to), ("next", s.next), ("end", s.end)) if v}
+            for s in run.protocol.steps
+        ],
+    }
+
+
+def turn_line(run: Run, step: Step, handle: str, *, cap: int, round_n: int) -> dict[str, Any]:
+    """One step put to one member."""
+    line: dict[str, Any] = {
+        "event": "turn",
+        "protocol": run.protocol.name,
+        "step": step.id,
+        "to": handle,
+        "turn": run.steps_taken,
+        "cap": cap,
+    }
+    if step.rounds > 1:
+        line |= {"round": round_n, "rounds": step.rounds}
+    if step.wait == "none":
+        line["tell"] = True
+    return line
+
+
+def edge_event(step: Step, stance: str | None, who: str) -> dict[str, Any]:
+    """Which way a branching step went."""
+    return {
+        "event": "edge",
+        "step": step.id,
+        "who": who,
+        "stance": stance,
+        "next": step.edge(stance),
+    }
+
+
+def close_line(run: Run, outcome: str, why: str) -> dict[str, Any]:
+    """How the run ended."""
+    return {
+        "event": "close",
+        "protocol": run.protocol.name,
+        "outcome": outcome,
+        "steps": run.steps_taken,
+        "reason": why,
+    }
+
+
 def bind_roles(protocol: Protocol, handles: list[str]) -> dict[str, str] | None:
     """Roles bound to ``handles`` in order, or ``None`` when there are too few."""
     if len(handles) < len(protocol.roles):
@@ -394,7 +455,7 @@ class ConductorEngine:
             # The record exists from the opening, so the run can be read while
             # it is still walking.
             l9_episode.write_episode_record(ep, outcome="open", metrics=None, tasks=None)
-            await self._say(managed, thread, me, self._opening(run))
+            await self._say(managed, thread, me, self._opening(run), line=open_line(run))
             outcome, why = await self._walk(managed, run, ep, me)
         finally:
             self._manager.release_floor(room, thread)
@@ -483,7 +544,7 @@ class ConductorEngine:
             if line is not None:
                 # A branch taken is the one thing a reader cannot infer from the
                 # replies alone, so it is said in the episode.
-                await self._say(managed, run.episode, me, line)
+                await self._say(managed, run.episode, me, line, line=edge_event(step, stance, who))
             step = protocol.step(nxt)
 
     async def _take(
@@ -507,18 +568,29 @@ class ConductorEngine:
             body = step.prompt.format_map(run.fields(round_n=round_n, rounds=step.rounds))
             return f"{head}\n\n{body}"
 
+        def data(handle: str, round_n: int) -> dict[str, Any]:
+            return {
+                "step": step.id,
+                "protocol": run.protocol.name,
+                LINE_KEY: turn_line(run, step, handle, cap=cap, round_n=round_n),
+            }
+
         for round_n in range(1, step.rounds + 1):
             if step.wait == "none":
                 self._manager.hold_floor(room, run.episode, holder=me)
                 for handle in targets:
-                    await self._tell(managed, ep, me, run, step, handle, render(handle, round_n))
+                    await self._tell(
+                        managed, ep, me, run, handle, render(handle, round_n), data(handle, round_n)
+                    )
                 return []
             if step.to in ("all", "workers"):
                 self._manager.hold_floor(room, run.episode, holder=me, speakers=targets)
                 stances = list(
                     await asyncio.gather(
                         *(
-                            self._turn(managed, ep, me, run, step, h, render(h, round_n))
+                            self._turn(
+                                managed, ep, me, run, h, render(h, round_n), data(h, round_n)
+                            )
                             for h in targets
                         )
                     )
@@ -530,7 +602,9 @@ class ConductorEngine:
             for handle in targets:
                 self._manager.hold_floor(room, run.episode, holder=me, speakers=[handle])
                 stances.append(
-                    await self._turn(managed, ep, me, run, step, handle, render(handle, round_n))
+                    await self._turn(
+                        managed, ep, me, run, handle, render(handle, round_n), data(handle, round_n)
+                    )
                 )
         return stances
 
@@ -540,9 +614,9 @@ class ConductorEngine:
         ep: l9_episode.EpisodeState,
         me: str,
         run: Run,
-        step: Step,
         handle: str,
         prompt: str,
+        data: dict[str, Any],
     ) -> tuple[str, str | None]:
         """Ask ``handle`` one step; ``(handle, stance)`` with ``"silent"`` for no reply."""
         assert managed.persister is not None  # checked by run()
@@ -575,7 +649,7 @@ class ConductorEngine:
             # Posted as a message, not a tick: a turn is prose the room should
             # read in the thread, the way the aligner's questions are.
             payload_type="message",
-            payload_data={"step": step.id, "protocol": run.protocol.name},
+            payload_data=data,
             is_reply=is_reply,
             timeout_s=self._step_timeout_s,
             poll_interval_s=self._poll_interval_s,
@@ -594,9 +668,9 @@ class ConductorEngine:
         ep: l9_episode.EpisodeState,
         me: str,
         run: Run,
-        step: Step,
         handle: str,
         prompt: str,
+        data: dict[str, Any],
     ) -> None:
         """A fire-and-forget step: say it to one member and move on."""
         env = l9.build_envelope(
@@ -606,13 +680,13 @@ class ConductorEngine:
             recipients=[handle],
             topic=ep.topic,
             payload_type="message",
-            payload_data={"step": step.id, "protocol": run.protocol.name},
+            payload_data=data,
         )
         ep.messages.append(l9.envelope_to_dict(env))
         try:
             await managed.post(env, turns.neutralize_mentions(prompt))
         except Exception:
-            logger.warning("conductor failed to post step %s to @%s", step.id, handle)
+            logger.warning("conductor failed to post step %s to @%s", data.get("step"), handle)
 
     async def _close(
         self,
@@ -638,6 +712,7 @@ class ConductorEngine:
                 "reason": why,
                 "roles": run.bound,
                 "record": f"{EPISODES_PREFIX}{ep.short_id}",
+                LINE_KEY: close_line(run, outcome, why),
             },
         )
         ep.messages.append(l9.envelope_to_dict(commit))
@@ -652,14 +727,23 @@ class ConductorEngine:
             logger.warning("conductor failed to post the outcome for %s", run.episode)
         l9_episode.write_episode_record(ep, outcome=outcome, metrics=None, tasks=None)
 
-    async def _say(self, managed: ManagedRoomChannel, episode: str, sender: str, text: str) -> None:
-        """Post a plain message from the engine into ``episode``."""
+    async def _say(
+        self,
+        managed: ManagedRoomChannel,
+        episode: str,
+        sender: str,
+        text: str,
+        *,
+        line: dict[str, Any] | None = None,
+    ) -> None:
+        """Post a plain message from the engine into ``episode``, with its line when it has one."""
         env = l9.build_envelope(
             kind=Kind.exchange,
             episode=episode,
             sender=sender,
             topic=l9.topic_urn(managed.room),
             payload_type="message",
+            payload_data={LINE_KEY: line} if line else None,
         )
         try:
             await managed.post(env, text, list_write=True)
