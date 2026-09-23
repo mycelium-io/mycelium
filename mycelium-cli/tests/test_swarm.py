@@ -467,3 +467,38 @@ def test_an_older_hub_without_workers_says_what_to_do():
     )
     with pytest.raises(swarm.SwarmError, match="drop --server"):
         swarm.ensure_engine(client, "r", "agent-1", "worker", "julia")
+
+
+def test_the_view_knows_how_long_the_room_has_been_quiet(monkeypatch: pytest.MonkeyPatch):
+    clock = [1000.0]
+    monkeypatch.setattr(swarm.time, "monotonic", lambda: clock[0])
+    view = swarm.LiveView(root_key="work/fix", root_episode="ep-root", root_title="Fix")
+    clock[0] += 200
+    assert view.quiet_for() == 200
+    # A ping is not something the view shows, so it does not count as movement.
+    view.render(_frame("agent-1", payload={"type": "ping", "data": {}}))
+    assert view.quiet_for() == 200
+    view.render(_frame("agent-1", text="Still on it.", episode="ep-root"))
+    assert view.quiet_for() == 0
+
+
+def test_a_dropped_stream_ends_the_watch_quietly(monkeypatch: pytest.MonkeyPatch):
+    import threading
+
+    def refuse(_request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("hub went away")
+
+    monkeypatch.setattr(
+        swarm,
+        "hub_client",
+        lambda *_a, **_k: httpx.Client(
+            base_url="http://hub", transport=httpx.MockTransport(refuse)
+        ),
+    )
+    view = swarm.LiveView(root_key="work/fix", root_episode="ep-root", root_title="Fix")
+    connected = threading.Event()
+
+    swarm.watch(cast("MyceliumConfig", object()), "r", view, connected)
+
+    assert connected.is_set()
+    assert not view.done.is_set()

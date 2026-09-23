@@ -71,6 +71,8 @@ FLOW = "swarm"
 SYNC_INTERVAL_S = 3.0
 #: How many lines of one message the live view prints before pointing at the thread.
 BODY_LINES = 6
+#: How long the room may be silent before the view says so.
+QUIET_S = 180.0
 
 _SLUG = re.compile(r"[^a-z0-9]+")
 #: Words a room name reads fine without.
@@ -414,6 +416,8 @@ class LiveView:
     #: The most recent message in the task's own thread: at the end, the result.
     last_root: tuple[str, str] | None = None
     done: threading.Event = field(default_factory=threading.Event)
+    #: When the view last showed something, so a stalled team can be called out.
+    last_moved: float = field(default_factory=lambda: time.monotonic())
 
     def __post_init__(self) -> None:
         self.titles[self.root_episode] = self.root_title
@@ -448,7 +452,17 @@ class LiveView:
             return f"  {stamp}  [green]✓[/]  [cyan]{by}[/] resolved [bold]{title}[/]"
         return None
 
+    def quiet_for(self) -> float:
+        """Seconds since the view last had anything to show."""
+        return time.monotonic() - self.last_moved
+
     def render(self, frame: dict[str, Any]) -> str | None:
+        line = self._render(frame)
+        if line is not None:
+            self.last_moved = time.monotonic()
+        return line
+
+    def _render(self, frame: dict[str, Any]) -> str | None:
         if frame.get("message_type") != "l9_exchange":
             return None
         try:
@@ -497,25 +511,34 @@ class LiveView:
 
 
 def watch(config: MyceliumConfig, room: str, view: LiveView, connected: threading.Event) -> None:
-    """Stream the room into ``view`` until it says the task is done."""
-    with (
-        hub_client(config, timeout=None) as http,
-        http.stream("GET", f"/api/rooms/{room}/messages/stream") as response,
-    ):
+    """Stream the room into ``view`` until it says the task is done.
+
+    Returns when the stream ends or drops, too; the caller tells those apart
+    by whether ``view.done`` is set.
+    """
+    try:
+        with (
+            hub_client(config, timeout=None) as http,
+            http.stream("GET", f"/api/rooms/{room}/messages/stream") as response,
+        ):
+            connected.set()
+            for line in response.iter_lines():
+                line = line.strip()
+                if not line.startswith("data:"):
+                    continue
+                try:
+                    frame = json.loads(line[5:].strip())
+                except ValueError:
+                    continue
+                rendered = view.render(frame)
+                if rendered:
+                    console.print(rendered, highlight=False)
+                if view.done.is_set():
+                    return
+    except httpx.HTTPError:
+        return
+    finally:
         connected.set()
-        for line in response.iter_lines():
-            line = line.strip()
-            if not line.startswith("data:"):
-                continue
-            try:
-                frame = json.loads(line[5:].strip())
-            except ValueError:
-                continue
-            rendered = view.render(frame)
-            if rendered:
-                console.print(rendered, highlight=False)
-            if view.done.is_set():
-                return
 
 
 # ── the command ──────────────────────────────────────────────────────────────
@@ -635,8 +658,23 @@ def swarm(
     try:
         with hub_client(config, timeout=30) as client:
             kick_off(client, room_name, episode, team, task, me)
+        warned = False
         while streamer.is_alive():
             streamer.join(timeout=0.5)
+            quiet = view.quiet_for()
+            if quiet >= QUIET_S and not warned:
+                console.print(
+                    f"  [yellow]Nothing has moved for {int(quiet // 60)} minutes.[/yellow] "
+                    f"[dim]See what is open: mycelium board --room {room_name}[/dim]"
+                )
+                warned = True
+            elif quiet < QUIET_S:
+                warned = False
+        if not view.done.is_set():
+            console.print(
+                "\n[yellow]Lost the room's stream before the task resolved.[/yellow] "
+                f"The team keeps going: {_ui_room_url(room_name)}"
+            )
         if view.done.is_set():
             if view.last_root is not None:
                 who, result = view.last_root
