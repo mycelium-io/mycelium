@@ -243,6 +243,7 @@ def test_each_member_gets_a_pane_an_agent_and_its_own_identity(
         "mycelium.commands.agent._write_manifest",
         lambda config, room, manifest, created_by: written.append(manifest.handle),
     )
+    monkeypatch.setenv("MYCELIUM_API_URL", "http://127.0.0.1:8000")
     herdr = Herdr()
     bridge = HerdrBridge(runner=herdr)
 
@@ -259,15 +260,17 @@ def test_each_member_gets_a_pane_an_agent_and_its_own_identity(
 
     assert local.workspace == "w9"
     assert local.panes == {"agent-1": "w9:p1", "agent-2": "w9:p2", "agent-3": "w9:p3"}
-    # Every pane's shell is the member it plays, in the room it plays it in.
+    # Every pane's shell is the member it plays, in the room it plays it in,
+    # against the hub swarm itself was pointed at.
     envs = [c for call in herdr.calls for c in call if c.startswith("MYCELIUM_")]
     assert envs == [
-        "MYCELIUM_AGENT_HANDLE=agent-1",
-        "MYCELIUM_ROOM_ID=fix-tests",
-        "MYCELIUM_AGENT_HANDLE=agent-2",
-        "MYCELIUM_ROOM_ID=fix-tests",
-        "MYCELIUM_AGENT_HANDLE=agent-3",
-        "MYCELIUM_ROOM_ID=fix-tests",
+        f"{var}={value}"
+        for h in ("agent-1", "agent-2", "agent-3")
+        for var, value in (
+            ("MYCELIUM_API_URL", "http://127.0.0.1:8000"),
+            ("MYCELIUM_AGENT_HANDLE", h),
+            ("MYCELIUM_ROOM_ID", "fix-tests"),
+        )
     ]
     assert [c[2:6] for c in herdr.of("agent start")] == [
         ["agent-1", "--kind", "claude", "--pane"],

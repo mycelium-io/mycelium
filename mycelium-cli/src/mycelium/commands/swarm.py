@@ -29,6 +29,7 @@ agents stay.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -61,6 +62,8 @@ LOCAL_KINDS = ("claude", "codex", "pi")
 #: prompt on its first ``mycelium await`` never takes its turn, so the one
 #: command it needs is allowed for this session only, not in the user's settings.
 AGENT_ARGS: dict[str, list[str]] = {"claude": ["--allowedTools", "Bash(mycelium:*)"]}
+#: Variables passed on to each member's pane when set where swarm runs.
+CARRIED_ENV = ("MYCELIUM_API_URL",)
 #: The conductor engine's handle in a swarm room, and the flow it runs.
 CONDUCTOR = "conductor"
 FLOW = "swarm"
@@ -285,8 +288,12 @@ def start_local(
     from mycelium.integrations import AddOptions, get_integration
     from mycelium.integrations.herdr import HerdrPaneMapping
 
+    # The hub this swarm was started against, when the environment chose it,
+    # so a member's `mycelium` reaches the same hub rather than its config's.
+    carried = {k: os.environ[k] for k in CARRIED_ENV if os.environ.get(k)}
+
     def env(handle: str) -> dict[str, str]:
-        return {"MYCELIUM_AGENT_HANDLE": handle, "MYCELIUM_ROOM_ID": room}
+        return {**carried, "MYCELIUM_AGENT_HANDLE": handle, "MYCELIUM_ROOM_ID": room}
 
     dirs = {h: (_worktree(cwd, room, h) if worktree else cwd) for h in team}
     workspace, first = bridge.create_workspace(room, cwd=str(dirs[team[0]]), env=env(team[0]))
