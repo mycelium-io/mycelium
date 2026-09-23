@@ -204,6 +204,17 @@ def _row(room: str, key: str) -> tuple[str, str | None]:
     return title.lstrip("# ").strip(), parent if isinstance(parent, str) else None
 
 
+def _holder(room: str, key: str) -> str | None:
+    """Who holds a board row right now, or ``None`` when nobody does."""
+    from app.services.assignments import state_of
+    from app.services.filesystem import get_room_dir, read_memory_file
+
+    found = read_memory_file(get_room_dir(room), key)
+    if found is None or state_of(found[0], datetime.now(UTC)) != "held":
+        return None
+    return str(found[0].get("owner") or "").lstrip("@") or None
+
+
 def build_prompt(
     room: str,
     me: str,
@@ -340,11 +351,11 @@ class WorkerEngine:
         where = episode or l9.live_episode_urn(room)
         ask = (
             f"{sender} said to you:\n\n{message_text.strip()}\n\n"
-            "Answer it. If you were asked to review something, say plainly what is "
-            "good and what has to change; when it is good enough, end with [[done]] "
-            "to resolve the task, and if it is not, @mention its author with exactly "
-            "what to fix. If you were asked to fix something, fix it, post the new "
-            "version, and @mention whoever reviewed it to look again."
+            f"Answer {sender}. If you were asked to review something, say plainly what "
+            "is good and what has to change; when it is good enough, end with [[done]] "
+            f"to resolve the task, and if it is not, tell @{sender} exactly what to fix. "
+            "If you were asked to fix something, fix it, post the new version, and "
+            f"@mention {sender} to look again."
         )
         self._spawn(room, handle, self.turn(room, handle, episode=where, ask=ask))
 
@@ -451,7 +462,45 @@ class WorkerEngine:
             await self._say(managed, episode, handle, prose, payload=payload)
             self._manager.enqueue_herdr_wakes_for_mentions(room, prose, exclude=handle)
         await self._act(room, handle, row[0] if row else None, actions)
+        if row is not None and prose.strip():
+            self._hand_back(room, handle, row[0], episode, prose, actions, team)
         return prose
+
+    def _hand_back(
+        self,
+        room: str,
+        handle: str,
+        key: str,
+        episode: str,
+        prose: str,
+        actions: list[Action],
+        team: list[str],
+    ) -> None:
+        """A reply on someone else's row that settles nothing goes back to its holder.
+
+        A review that asks for changes has to reach the member holding the
+        row, and a model does not always name them. When a reply here neither
+        resolves the row nor mentions a teammate, the holder is the one it was
+        for: a worker holder gets the turn, a herdr one its doorbell. Nothing
+        is handed back to the one who spoke, so this cannot loop by itself.
+        """
+        if any(a.kind == "done" for a in actions):
+            return
+        members = {_norm(h) for h in team} - {_norm(handle)}
+        if any(_norm(m) in members for m in _MENTION.findall(prose)):
+            return
+        holder = _holder(room, key)
+        if holder is None or _norm(holder) == _norm(handle) or _norm(holder) not in members:
+            return
+        if self._is_worker(room, holder):
+            ask = (
+                f"{handle} said to you:\n\n{prose.strip()}\n\n"
+                f"This is about your task {key}. Do what {handle} asked, post the new "
+                f"version, and @mention {handle} to look again."
+            )
+            self._spawn(room, holder, self.turn(room, holder, episode=episode, ask=ask))
+        else:
+            self._manager.enqueue_herdr_wakes_for_mentions(room, f"@{holder}", exclude=handle)
 
     async def _act(self, room: str, handle: str, key: str | None, actions: list[Action]) -> None:
         """Carry out a reply's action lines against the row its thread belongs to."""

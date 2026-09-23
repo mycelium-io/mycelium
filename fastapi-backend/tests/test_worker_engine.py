@@ -274,6 +274,78 @@ async def test_an_addressed_turn_is_answered_where_it_was_asked(monkeypatch: pyt
     assert env.header.message.episode == episode
 
 
+@pytest.mark.asyncio
+async def test_a_review_request_names_who_to_answer(monkeypatch: pytest.MonkeyPatch):
+    _register("agent-1")
+    _register("agent-2")
+    _key, episode = await _task("Draft it")
+    seen = _patch_pi(monkeypatch, "Looks good.\n[[done]]")
+    engine, _managed, _manager = _engine()
+
+    engine.handle_summon(
+        _ROOM, "agent-1", _env("agent-2", episode), ["agent-1"], "@agent-1 can you check it?"
+    )
+    await _settle(engine)
+
+    assert "tell @agent-2 exactly what to fix" in seen[0]["prompt"]
+
+
+async def _held_by(handle: str, title: str) -> tuple[str, str]:
+    key, episode = await _task(title, assignee=handle)
+    await assignments.claim(_ROOM, key, handle, 30, datetime.now(UTC))
+    return key, episode
+
+
+@pytest.mark.asyncio
+async def test_a_review_that_names_nobody_goes_back_to_the_holder(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # The live failure: the reviewer asked for changes but addressed itself,
+    # so the holder never heard and the row went quiet.
+    for h in ("agent-1", "agent-2"):
+        _register(h)
+    _key, episode = await _held_by("agent-2", "Technical review")
+    seen = _patch_pi(
+        monkeypatch,
+        "Missing shell compatibility. agent-1: add the missing sections.",
+        "Added shell compatibility. @agent-1 can you look again?",
+    )
+    engine, managed, _manager = _engine()
+
+    await engine.turn(_ROOM, "agent-1", episode=episode, ask="Review it.")
+    await _settle(engine)
+
+    assert [s["handle"] for s in seen] == ["agent-1", "agent-2"]
+    assert "agent-1 said to you" in seen[1]["prompt"]
+    assert "Missing shell compatibility" in seen[1]["prompt"]
+    assert _posted(managed)[1][1] == "Added shell compatibility. @agent-1 can you look again?"
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_handed_back_that_settles_or_names_someone(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    for h in ("agent-1", "agent-2", "agent-3"):
+        _register(h)
+    _one, first = await _held_by("agent-2", "Part one")
+    _two, second = await _held_by("agent-2", "Part two")
+    _three, own = await _held_by("agent-1", "Part three")
+    seen = _patch_pi(
+        monkeypatch,
+        "Good.\n[[done]]",  # resolves it
+        "@agent-3 can you weigh in?",  # names someone else
+        "Here is my part.",  # on its own row
+    )
+    engine, _managed, _manager = _engine()
+
+    await engine.turn(_ROOM, "agent-1", episode=first, ask="Review it.")
+    await engine.turn(_ROOM, "agent-1", episode=second, ask="Review it.")
+    await engine.turn(_ROOM, "agent-1", episode=own, ask="Do it.")
+    await _settle(engine)
+
+    assert [s["handle"] for s in seen] == ["agent-1", "agent-1", "agent-1"]
+
+
 def test_the_seams_gate_on_the_worker_kind(monkeypatch: pytest.MonkeyPatch):
     _register("sec", "persona")
     engine, _managed, _manager = _engine()

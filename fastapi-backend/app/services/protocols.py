@@ -236,8 +236,11 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
                     "Everyone has checked in on {task}: {ask}\n\n{replies}\n\n"
                     "You are the lead. Split the work into child tasks of {task}, one "
                     "per piece, each given to the member who offered to take it, so "
-                    "every member has one. Create them now, then say the split in a "
-                    "few lines."
+                    "every member has one. Make them pieces that can be worked at the "
+                    "same time, each producing part of the result; do not make a task "
+                    "that only reviews or waits on another, since every piece is "
+                    "reviewed by another member anyway. Create them now, then say the "
+                    "split in a few lines."
                 ),
                 "next": "done",
             },

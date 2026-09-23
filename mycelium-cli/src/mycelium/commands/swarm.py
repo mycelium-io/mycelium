@@ -106,13 +106,16 @@ Your terminal is already set up as @{handle} in that room
    thread you were asked in.
 3. **The split** (@{lead}). One child task per member, matching what each
    offered: `mycelium board new "<title>" --parent {key} --assign @<member>`.
+   Make them pieces that can be worked at the same time; no task that only
+   reviews or waits on another, since every piece gets reviewed anyway.
 4. **Your task.** Claim it (`mycelium board claim <id> --to @{handle}`), do it
    for real, and post progress and results in its thread
    (`mycelium board send <id> "..." --as {handle}`).
 5. **Review.** Before resolving, ask a teammate to review in the task's thread
    (`mycelium board send <id> "@<member> can you check ...?" --as {handle}`).
-   When you review, say what is good and what has to change. Once the review
-   is good, resolve it: `mycelium board resolve <id>`.
+   When you review, say what is good and what has to change, and @mention the
+   author by name so they hear it. Once the review is good, resolve it:
+   `mycelium board resolve <id>`.
 6. **Wrap-up.** Whoever resolves the last child task tells @{lead} in `{key}`'s
    thread. @{lead} then posts the combined result there and resolves `{key}`.
 
