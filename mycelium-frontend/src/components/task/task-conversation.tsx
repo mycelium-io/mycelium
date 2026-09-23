@@ -163,7 +163,7 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
   }, [count]);
 
   return (
-    <div>
+    <div data-testid="thread-conversation">
       {loading && ordered.length === 0 ? (
         <div className="flex flex-col gap-4 px-5 py-4">
           <Skeleton className="h-3 w-2/5" />
