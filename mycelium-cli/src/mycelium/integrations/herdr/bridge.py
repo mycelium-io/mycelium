@@ -443,13 +443,24 @@ class HerdrBridge:
 
     # ── the wake orchestration ───────────────────────────────────────────────
 
-    def wake(self, mapping: HerdrPaneMapping, prompt_text: str, *, timeout_ms: int) -> WakeResult:
+    def wake(
+        self,
+        mapping: HerdrPaneMapping,
+        prompt_text: str,
+        *,
+        timeout_ms: int,
+        wait: bool = True,
+    ) -> WakeResult:
         """Wake the agent bound to ``mapping`` for one coordination turn.
 
         Only wakes an ``idle``/``done`` agent: a ``working``/``blocked`` agent is
         left alone so its message holds on the durable cursor (waking mid-turn
         would race the current turn — see the design doc's "wake-while-working").
         A stale mapping (no agent at the pane) also fails soft.
+
+        ``wait=False`` hands the prompt over and returns at once, rather than
+        waiting for the turn it starts to settle, so one caller can wake several
+        agents that then work at the same time.
         """
         agent = self.get_agent(mapping.pane)
         if agent is None:
@@ -468,7 +479,9 @@ class HerdrBridge:
                 detail=f"agent is '{status}' — holding on the cursor rather than waking mid-turn",
             )
         try:
-            result = self.prompt(mapping.pane, prompt_text, wait=True, timeout_ms=timeout_ms)
+            result = self.prompt(
+                mapping.pane, prompt_text, wait=wait, timeout_ms=timeout_ms if wait else None
+            )
         except HerdrError as e:
             return WakeResult(
                 ok=False, pane=mapping.pane, status=status, detail=f"wake failed: {e}"

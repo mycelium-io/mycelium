@@ -375,6 +375,7 @@ class HerdrSync:
                 room_filter=self._room,
                 ttl_s=max(90.0, SYNC_INTERVAL_S * 4),
                 log=console,
+                wait=False,
             )
         except Exception as e:  # noqa: BLE001 - a missed pass is retried on the next
             console.print(f"[dim]herdr sync: {e}[/dim]")

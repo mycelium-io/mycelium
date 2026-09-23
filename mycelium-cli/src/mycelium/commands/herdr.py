@@ -583,15 +583,21 @@ def wake_prompt_for(room: str, wake: dict) -> str:
 
 
 def _drain_wakes(
-    config: MyceliumConfig, bridge: HerdrBridge, room: str, *, log: Console | None = None
+    config: MyceliumConfig,
+    bridge: HerdrBridge,
+    room: str,
+    *,
+    log: Console | None = None,
+    wait: bool = True,
 ) -> int:
     """Drain the backend's herdr wake queue for a room and run each wake.
 
     The "commands down" leg: the backend queued a wake when a tag mentioned a
     herdr-present-but-not-joined handle, a turn was put to one, or a row was
     filed for one; here — the only place that can reach the herdr socket — we
-    turn each into a ``herdr agent prompt``. Returns the number of agents
-    actually woken.
+    turn each into a ``herdr agent prompt``. ``wait=False`` hands each prompt
+    over without waiting for the turn to settle, so the agents woken in one
+    pass work at the same time. Returns the number of agents actually woken.
     """
     out = log if log is not None else console
     import httpx
@@ -614,7 +620,9 @@ def _drain_wakes(
             continue
         prompt = wake_prompt_for(room, w)
         try:
-            result = bridge.wake(mapping, prompt, timeout_ms=config.herdr.wake_timeout_ms)
+            result = bridge.wake(
+                mapping, prompt, timeout_ms=config.herdr.wake_timeout_ms, wait=wait
+            )
         except HerdrError:
             continue
         reason = w.get("reason") or "mention"
@@ -637,11 +645,13 @@ def sync_pass(
     prefix: str = "",
     kind: str | None = None,
     log: Console | None = None,
+    wait: bool = True,
 ) -> tuple[int, int, int]:
     """One reconcile of the bound workspaces: membership, liveness up, wakes down.
 
     Returns ``(enrolled, retired, states pushed)``. Shared by ``herdr sync``
-    and ``swarm``, which runs it on a background thread while it shows the room.
+    and ``swarm``, which runs it on a background thread while it shows the room
+    and does not wait on a woken agent (``wait``), since its members work at once.
     """
     out = log if log is not None else console
     enrolled = retired = 0
@@ -659,7 +669,7 @@ def sync_pass(
     for r, statuses in view.items():
         _push_presence(config, r, statuses, ttl_s)
     for r in {r for _, r in targets} | set(view):
-        _drain_wakes(config, bridge, r, log=out)
+        _drain_wakes(config, bridge, r, log=out, wait=wait)
     return enrolled, retired, sum(len(v) for v in view.values())
 
 
