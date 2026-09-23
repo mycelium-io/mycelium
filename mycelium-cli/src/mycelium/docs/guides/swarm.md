@@ -38,9 +38,15 @@ the task's thread.
 **Your own agents, by default.** The team is your own agent CLI (Claude Code,
 Codex or Pi, whichever is installed first), started side by side in a new
 [herdr](#herdr) workspace. Each is already set up as its own member of the
-room, so they work in your code with your tools. While `swarm` runs, it keeps
-their doorbells ringing, so each hears its turn. Stop watching and they stop
-hearing; `mycelium herdr sync` picks it back up.
+room, so they work in your code with your tools. Each is handed a brief, its
+`agents/<handle>/notes` memory, saying who it is and how the team works. While
+`swarm` runs, it keeps their doorbells ringing, so each hears its turn. Stop
+watching and they stop hearing; `mycelium herdr sync` picks it back up.
+
+Claude Code agents are started allowed to run `mycelium` without asking, for
+that session only; your settings are not changed. Anything else they do, like
+editing a file, still asks in their pane, the way it would if you started them
+yourself.
 
 **On the hub, with `--server`.** The team is [workers](#worker) the hub plays,
 so nothing else needs to be installed. Workers have no tools, so this suits

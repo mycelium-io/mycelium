@@ -266,24 +266,37 @@ is no litellm dependency.
   claims the row and works it in the row's thread), and a `resolved` notice
   that left a parent with nothing open (`assignments.parent_completed`; the
   author of the children writes the combined result into the parent and
-  resolves it). What it does to the board it writes as action lines
-  (`[[new: title -> @member]]`, `[[done]]`), lifted out of the prose and
-  carried out against the row its thread belongs to through the same services
-  every writer uses. Unlike a persona it keeps `@` for teammates (asking for
-  review is the collaboration) and neutralizes every other mention, so it can
-  never summon an engine. Turns are serial per worker and capped per room
-  (`WORKER_MAX_TURNS_PER_ROOM`). Board events reach it through the manager's
-  `on_notice` hook, fired after every notice; a notice still wakes no `await`.
+  resolves it, once per parent, from each part's final version
+  (`_parts_of`), not from memory). What it does to the board it writes as
+  action lines (`[[new: title -> @member]]`, `[[done]]`), lifted out of the
+  prose and carried out against the row its thread belongs to through the
+  same services every writer uses. A `done` on a settled row changes nothing,
+  and a part's holder cannot resolve it before a teammate has spoken in its
+  thread. Unlike a persona it keeps `@` for teammates (asking for review is
+  the collaboration) and neutralizes every other mention, so it can never
+  summon an engine. A reply on someone else's row that neither resolves it
+  nor names a teammate goes back to the row's holder (`_hand_back`), so a
+  review cannot go quiet because a model forgot a mention. Turns are serial
+  per worker and capped per room (`WORKER_MAX_TURNS_PER_ROOM`). Board events
+  reach it through the manager's `on_notice` hook, fired after every notice;
+  a notice still wakes no `await`.
 - **`mycelium swarm` is the one-argument path to a working team.** It names a
   room after the task, registers a conductor, files the task, and summons the
   conductor's `swarm` flow (each member checks in, then the lead splits the
   task into a child row per member) in the task's thread. The members are the
   user's own agent CLI in a new herdr workspace by default, each pane's env
-  set to its handle and room (`MYCELIUM_AGENT_HANDLE`, `MYCELIUM_ROOM_ID`) and
-  handed a brief; `--server` makes them workers instead. The invoking terminal
-  is the live view (thread prose and notices across the task and its
-  children, which `room watch` deliberately hides) and, locally, runs the
-  herdr sync pass on a thread (`commands/herdr.sync_pass`).
+  set to its handle and room (`MYCELIUM_AGENT_HANDLE`, `MYCELIUM_ROOM_ID`,
+  plus `MYCELIUM_API_URL` when set) and handed a brief as its
+  `agents/<handle>/notes` memory, read with `mycelium memory get` (a file
+  outside the checkout would stop Claude Code at a permission prompt). Claude
+  is started with `--allowedTools Bash(mycelium:*)` for that session only,
+  never by editing the user's settings. `--server` makes the members workers
+  instead. The invoking terminal is the live view (thread prose and notices
+  across the task and its children, which `room watch` deliberately hides;
+  agent text is escaped, long messages cut to a few lines, and the finished
+  result printed in full) and, locally, runs the herdr sync pass on a thread
+  (`commands/herdr.sync_pass`) with `wait=False`, so woken members work at
+  once rather than one turn after another.
 - **The aligner mediates, inside a task.** Agents never talk to each other directly;
   all coordination flows through the aligner. It's a first-party engine registered
   as a room citizen (`mycelium engine create aligner --kind aligner`) and summoned
