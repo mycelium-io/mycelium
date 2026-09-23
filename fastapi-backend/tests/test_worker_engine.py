@@ -337,7 +337,7 @@ async def test_nothing_is_handed_back_that_settles_or_names_someone(
         monkeypatch,
         "Good.\n[[done]]",  # resolves it
         "@agent-3 can you weigh in?",  # names someone else
-        "Here is my part.",  # on its own row
+        "Here is my part. @agent-2 can you check it?",  # on its own row, naming its reviewer
     )
     engine, _managed, _manager = _engine()
 
@@ -347,6 +347,41 @@ async def test_nothing_is_handed_back_that_settles_or_names_someone(
     await _settle(engine)
 
     assert [s["handle"] for s in seen] == ["agent-1", "agent-1", "agent-1"]
+
+
+@pytest.mark.asyncio
+async def test_a_revision_that_names_nobody_goes_to_the_reviewer_who_settles_it_in_time(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # The sixth live run: an author posted its revision without naming its
+    # reviewer, nobody heard, and the part never resolved.
+    for h in ("agent-1", "agent-2"):
+        _register(h)
+    key, episode = await _held_by("agent-2", "Changelog")
+    reviewer_says = ["Needs dates.", "Needs versions.", "Workable, notes left.\n[[done]]"]
+    seen: list[dict[str, str]] = []
+
+    def fake(room: str, handle: str, prompt: str, system: str, _t: float) -> str:
+        seen.append({"handle": handle, "prompt": prompt})
+        # The author revises without naming anyone; the reviewer answers in turn.
+        return "Revised version." if handle == "agent-2" else reviewer_says.pop(0)
+
+    monkeypatch.setattr(worker_engine, "_pi_complete", fake)
+    engine, _managed, _manager = _engine()
+
+    for _ in range(worker_engine.REVIEW_ROUNDS):
+        await engine.turn(_ROOM, "agent-2", episode=episode, ask="Revise.")
+        await _settle(engine)
+        await _settle(engine)
+
+    reviews = [s for s in seen if s["handle"] == "agent-1"]
+    assert len(reviews) == worker_engine.REVIEW_ROUNDS
+    assert "you are its reviewer" in reviews[0]["prompt"]
+    assert "final round" not in reviews[0]["prompt"]
+    assert "final round" in reviews[-1]["prompt"]
+    found = read_memory_file(get_room_dir(_ROOM), key)
+    assert found is not None
+    assert assignments.settled(found[0], datetime.now(UTC))
 
 
 def test_the_seams_gate_on_the_worker_kind(monkeypatch: pytest.MonkeyPatch):

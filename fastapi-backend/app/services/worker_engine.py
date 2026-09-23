@@ -71,6 +71,9 @@ NOTES_SUFFIX = "/notes"
 #: How many recent messages of a thread a turn is shown.
 THREAD_CONTEXT = 24
 
+#: The review round on which a part's reviewer is asked to settle it.
+REVIEW_ROUNDS = 3
+
 #: How a revision is asked for. The holder's last message is what its task
 #: keeps once it is resolved, so it has to be the work, not a note about it.
 REVISE = (
@@ -406,6 +409,8 @@ class WorkerEngine:
         self._tasks: set[asyncio.Task[Any]] = set()
         #: Parents whose wrap-up has been scheduled, so it happens once.
         self._wrapped: set[tuple[str, str]] = set()
+        #: How many times each part has been put to its reviewer.
+        self._reviews: dict[tuple[str, str], int] = {}
 
     # -- the seams --
 
@@ -522,20 +527,32 @@ class WorkerEngine:
             f"{who} to review it, saying what to check. Do not mark it done "
             "yourself; the reviewer does."
         )
-        said = await self.turn(room, handle, episode=episode, ask=ask)
-        if said is None or reviewer is None:
+        await self.turn(room, handle, episode=episode, ask=ask)
+
+    def _ask_reviewer(self, room: str, handle: str, key: str, episode: str) -> None:
+        """Put ``handle``'s latest post on its own part to that part's reviewer.
+
+        A holder that posts its work or a revision without naming anyone would
+        otherwise be heard by nobody, and the part would sit held for good. Each
+        part gets a few rounds; on the last, the reviewer is asked to settle it.
+        """
+        reviewer = reviewer_for(room, handle)
+        if reviewer is None:
             return
-        members = {_norm(h) for h in team_of(room)} - {_norm(handle)}
-        if any(_norm(m) in members for m in _MENTION.findall(said)):
-            return
-        # The work went up but nobody was asked to look at it, so nobody would
-        # hear of it and the row would sit held forever. The reviewer it was
-        # meant for is asked directly.
+        rounds = self._reviews.get((room, key), 0) + 1
+        self._reviews[(room, key)] = rounds
+        title, _parent = _row(room, key)
+        last = (
+            " This is the final round: if it is workable, end with [[done]] and name "
+            "anything left for later; send it back only if it is unusable."
+            if rounds >= REVIEW_ROUNDS
+            else ""
+        )
         review = (
-            f"{handle} has posted its work on '{title}' ({key}) above, and you are its "
-            "reviewer. Say plainly what is good and what has to change; when it is "
-            f"good enough, end with [[done]] to resolve it, and if it is not, tell "
-            f"@{handle} exactly what to fix."
+            f"{handle} has posted its latest work on '{title}' ({key}) above, and you are "
+            "its reviewer. Say plainly what is good and what has to change; when it is "
+            "good enough, end with [[done]] to resolve it, and if it is not, tell "
+            f"@{handle} exactly what to fix.{last}"
         )
         self._spawn(room, reviewer, self.turn(room, reviewer, episode=episode, ask=review))
 
@@ -623,13 +640,15 @@ class WorkerEngine:
         actions: list[Action],
         team: list[str],
     ) -> None:
-        """A reply on someone else's row that settles nothing goes back to its holder.
+        """A post on a part that settles nothing and names nobody goes to whoever is next.
 
-        A review that asks for changes has to reach the member holding the
-        row, and a model does not always name them. When a reply here neither
-        resolves the row nor mentions a teammate, the holder is the one it was
-        for: a worker holder gets the turn, a herdr one its doorbell. Nothing
-        is handed back to the one who spoke, so this cannot loop by itself.
+        Work and review have to reach each other, and a model does not always
+        name who it means. When a post neither resolves the part nor mentions a
+        teammate, the code says who it was for: the holder's own post (its work,
+        or a revision) goes to the part's reviewer, and anyone else's (a review
+        asking for changes) goes back to the holder — a worker gets the turn, a
+        herdr member its doorbell. Review rounds are capped per part, so the two
+        cannot go back and forth forever.
         """
         if any(a.kind == "done" for a in actions):
             return
@@ -637,7 +656,12 @@ class WorkerEngine:
         if any(_norm(m) in members for m in _MENTION.findall(prose)):
             return
         holder = _holder(room, key)
-        if holder is None or _norm(holder) == _norm(handle) or _norm(holder) not in members:
+        if holder is None:
+            return
+        if _norm(holder) == _norm(handle):
+            self._ask_reviewer(room, handle, key, episode)
+            return
+        if _norm(holder) not in members:
             return
         if self._is_worker(room, holder):
             ask = (
