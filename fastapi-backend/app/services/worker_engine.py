@@ -93,6 +93,9 @@ own line:
   [[new: <title> -> @<member>]]   file a child task of this thread's task, for that member
   [[done]]                        mark this thread's task done
 
+When the task leaves something open, do not wait for someone to settle it:
+say in one line what you will assume, and go on. Nobody may be there to answer.
+
 Writing @name asks that teammate to act: review something, answer a question.
 Only do that when you need them to act, never to thank or acknowledge. Talk
 like a teammate: short, specific, no filler, no preamble, no code fences."""
@@ -202,6 +205,37 @@ def _row(room: str, key: str) -> tuple[str, str | None]:
     title = next((ln.strip() for ln in content.splitlines() if ln.strip()), key)
     parent = meta.get(PARENT_RELATION)
     return title.lstrip("# ").strip(), parent if isinstance(parent, str) else None
+
+
+def _parts_of(room: str, parent: str) -> str:
+    """Each child of ``parent``: its title and the last thing its holder said in its thread.
+
+    The holder's last message is the version the review settled on, so the
+    wrap-up works from the parts themselves rather than from what the lead
+    happens to remember of them.
+    """
+    from app.services.assignments import PARENT_RELATION
+    from app.services.filesystem import EPISODE_META, get_room_dir, list_memory_files, system_meta
+    from app.services.persister import prose_messages
+
+    said = prose_messages(room)
+    blocks: list[str] = []
+    for key, meta, content in list_memory_files(get_room_dir(room), prefix="work/"):
+        if meta.get(PARENT_RELATION) != parent:
+            continue
+        title = next((ln.strip() for ln in content.splitlines() if ln.strip()), key)
+        author = str(meta.get("owner") or meta.get("assignee") or "").lstrip("@")
+        episode = system_meta(meta).get(EPISODE_META)
+        final = next(
+            (
+                m.content.strip()
+                for m in reversed(said)
+                if m.episode == episode and m.content and _norm(m.sender_handle) == _norm(author)
+            ),
+            "(nothing posted)",
+        )
+        blocks.append(f"### {title.lstrip('# ')} (by {author or 'nobody'})\n\n{final}")
+    return "\n\n".join(blocks) or "(no parts found)"
 
 
 def _holder(room: str, key: str) -> str | None:
@@ -402,9 +436,10 @@ class WorkerEngine:
             return
         title, _grand = _row(room, parent)
         ask = (
-            f"Every part of '{title}' ({parent}) is done. Read what each part "
-            "produced in the thread and write the combined result for the team, in "
-            "a few paragraphs. End with [[done]]."
+            f"Every part of '{title}' ({parent}) is done. Here is the final version "
+            f"of each part:\n\n{_parts_of(room, parent)}\n\n"
+            "Put them together into the one result the task asked for, written out "
+            "in full, not summarized. End with [[done]]."
         )
         await self.turn(room, handle, episode=episode, ask=ask)
 

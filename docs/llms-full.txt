@@ -243,10 +243,12 @@ the last part is done, the first agent puts the result together and resolves
 the task.
 
 The terminal you ran it in shows the whole thing as it happens: who said what,
-in which task, and the board moving underneath.
+in which task, and the board moving underneath. A long message shows its first
+few lines and where to read the rest. When the task resolves, the team's result
+is printed in full and the command exits.
 
 ```
-fix-the-flaky-auth-tests · 3 agents in herdr workspace w4
+fix-flaky-auth-tests · 3 agents in herdr workspace w4
 
   10:02:11  conductor  Fix the flaky auth tests · check-in → agent-1
   10:02:19  agent-1    Fix the flaky auth tests · Here. I'll take the repro, I can loop the suite.

@@ -77,10 +77,31 @@ class Herdr:
 
 
 def test_the_room_is_named_after_the_task():
-    assert swarm.room_slug("Fix the flaky AUTH tests!") == "fix-the-flaky-auth-tests"
+    assert swarm.room_slug("Fix the flaky AUTH tests!") == "fix-flaky-auth-tests"
+    # A long task stops at the last whole word that fits, with the filler gone.
+    assert (
+        swarm.room_slug(
+            "write a one-page onboarding guide for new contributors to a small open source CLI tool"
+        )
+        == "write-one-page-onboarding-guide-new"
+    )
     assert len(swarm.room_slug("word " * 30)) <= 40
-    assert not swarm.room_slug("word " * 30).endswith("-")
+    assert swarm.room_slug("a the of") == "a-the-of"
+    assert swarm.room_slug("x" * 60) == "x" * 40
     assert swarm.room_slug("!!!") == "swarm"
+
+
+def test_the_sender_is_the_identity_else_the_login_name(monkeypatch: pytest.MonkeyPatch):
+    class _Cfg:
+        def __init__(self, me: str) -> None:
+            self._me = me
+
+        def get_current_identity(self) -> str:
+            return self._me
+
+    assert swarm.sender_of(cast("MyceliumConfig", _Cfg("julia"))) == "julia"
+    monkeypatch.setattr("getpass.getuser", lambda: "Julia.Valenti")
+    assert swarm.sender_of(cast("MyceliumConfig", _Cfg("unknown"))) == "julia-valenti"
 
 
 def test_the_team_is_numbered():
@@ -352,3 +373,44 @@ def test_the_view_hides_pings_and_ends_when_the_task_resolves():
     assert not view.done.is_set()
     assert view.render(_notice(subkind="resolved", key="work/fix", title="Fix")) is not None
     assert view.done.is_set()
+
+
+def test_what_an_agent_writes_is_never_read_as_markup():
+    from rich.console import Console
+
+    view = swarm.LiveView(root_key="work/fix", root_episode="ep-root", root_title="Fix [it]")
+    line = view.render(
+        _frame(
+            "agent-1", text="Fill in [Agent-2: build command] and [/bold] here", episode="ep-root"
+        )
+    )
+    assert line is not None
+    out = Console(width=200, record=True)
+    out.print(line)
+    printed = out.export_text()
+    assert "[Agent-2: build command]" in printed
+    assert "[/bold]" in printed
+    assert "Fix [it]" in printed
+
+
+def test_a_long_message_is_cut_short_with_where_to_read_the_rest():
+    view = swarm.LiveView(root_key="work/fix", root_episode="ep-root", root_title="Fix")
+    view.render(
+        _notice(subkind="filed", key="work/draft", title="Draft", by="agent-1", episode="ep-d")
+    )
+    long = "\n".join(f"line {i}" for i in range(1, 11))
+    line = view.render(_frame("agent-1", text=long, episode="ep-d"))
+    assert line is not None
+    assert "line 6" in line and "line 7" not in line
+    assert "4 more lines · board messages work/draft" in line
+
+
+def test_the_kickoff_is_one_line_and_the_last_word_in_the_task_is_kept():
+    view = swarm.LiveView(root_key="work/fix", root_episode="ep-root", root_title="Fix")
+    kick = view.render(
+        _frame("julia", text="@conductor swarm @agent-1 @agent-2: fix it", episode="ep-root")
+    )
+    assert kick is not None and "kicked off the team" in kick
+    view.render(_frame("agent-2", text="a child's message", episode="ep-child"))
+    view.render(_frame("agent-1", text="# The result\n\nAll of it.", episode="ep-root"))
+    assert view.last_root == ("agent-1", "# The result\n\nAll of it.")

@@ -224,7 +224,9 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
                     "The team ({handles}) is taking on task {task}: {ask}\n\n"
                     "Check in, in two or three sentences: say which part you would "
                     "take and what you would need from someone else. Answer what the "
-                    "others said where it matters. Do not start the work yet.\n\n"
+                    "others said where it matters. If the task leaves something open, "
+                    "say what you will assume rather than asking. Do not start the "
+                    "work yet.\n\n"
                     "Said so far:\n{replies}"
                 ),
                 "next": "split",

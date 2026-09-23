@@ -415,3 +415,33 @@ async def test_the_last_child_settling_hands_the_split_back(monkeypatch: pytest.
     found = read_memory_file(get_room_dir(_ROOM), parent)
     assert found is not None
     assert assignments.settled(found[0], datetime.now(UTC))
+
+
+@pytest.mark.asyncio
+async def test_the_wrap_up_works_from_each_parts_final_version(monkeypatch: pytest.MonkeyPatch):
+    from app.services.in_memory_store import StoredMessage
+
+    for h in ("agent-1", "agent-2"):
+        _register(h)
+    parent, _parent_episode = await _task("Write the guide")
+    one = await tasks.create_task(
+        _ROOM,
+        "Setup section",
+        created_by="agent-1",
+        meta={"part-of": parent, "assignee": "agent-2"},
+    )
+    await assignments.claim(_ROOM, one.key, "agent-2", 30, datetime.now(UTC))
+    said = [
+        StoredMessage("agent-2", "broadcast", "Setup v1: npm i", episode=one.episode),
+        StoredMessage("agent-1", "broadcast", "Trim it.", episode=one.episode),
+        StoredMessage("agent-2", "broadcast", "Setup v2: npm ci", episode=one.episode),
+        StoredMessage("agent-1", "broadcast", "Good. ", episode=one.episode),
+    ]
+    monkeypatch.setattr("app.services.persister.prose_messages", lambda _room: said)
+
+    parts = worker_engine._parts_of(_ROOM, parent)
+
+    assert parts.startswith("### Setup section (by agent-2)")
+    assert "Setup v2: npm ci" in parts
+    assert "Setup v1" not in parts
+    assert "Trim it." not in parts

@@ -41,6 +41,9 @@ from typing import Any
 import httpx
 import typer
 from rich.console import Console
+from rich.markdown import Markdown
+from rich.markup import escape
+from rich.panel import Panel
 
 from mycelium.client import hub_client
 from mycelium.config import MyceliumConfig
@@ -58,14 +61,43 @@ CONDUCTOR = "conductor"
 FLOW = "swarm"
 #: How often the herdr side refreshes presence and delivers doorbells.
 SYNC_INTERVAL_S = 3.0
+#: How many lines of one message the live view prints before pointing at the thread.
+BODY_LINES = 6
 
 _SLUG = re.compile(r"[^a-z0-9]+")
+#: Words a room name reads fine without.
+_FILLER = frozenset({"a", "an", "the", "for", "to", "of", "and", "in", "on", "with", "our"})
 
 
 def room_slug(task: str, limit: int = 40) -> str:
-    """A room name from a task: lowercase words joined by dashes."""
-    slug = _SLUG.sub("-", task.lower()).strip("-")
-    return slug[:limit].rstrip("-") or "swarm"
+    """A room name from a task: its words, lowercase, joined by dashes.
+
+    Filler words go first, and the name stops at the last whole word that
+    fits, so a long task reads as a name rather than a string cut mid-word.
+    """
+    words = [w for w in _SLUG.split(task.lower()) if w]
+    kept = [w for w in words if w not in _FILLER] or words
+    slug = ""
+    for word in kept:
+        candidate = f"{slug}-{word}" if slug else word
+        if len(candidate) > limit:
+            break
+        slug = candidate
+    return slug or (kept[0][:limit] if kept else "swarm")
+
+
+def sender_of(config: MyceliumConfig) -> str:
+    """Who is starting the swarm: the configured identity, else the login name."""
+    import getpass
+
+    me = config.get_current_identity()
+    if me and me != "unknown":
+        return me
+    try:
+        login = _SLUG.sub("-", getpass.getuser().lower()).strip("-")
+    except Exception:  # noqa: BLE001 - no login name is not worth failing a swarm over
+        login = ""
+    return login or "you"
 
 
 def team_handles(size: int) -> list[str]:
@@ -119,7 +151,9 @@ Your terminal is already set up as @{handle} in that room
 6. **Wrap-up.** Whoever resolves the last child task tells @{lead} in `{key}`'s
    thread. @{lead} then posts the combined result there and resolves `{key}`.
 
-Talk like a teammate: short, specific, no filler. Now wait for the conductor.
+When the task leaves something open, do not wait for an answer: say in one
+line what you will assume, and go on. Talk like a teammate: short, specific,
+no filler. Now wait for the conductor.
 """
 
 
@@ -319,10 +353,15 @@ class LiveView:
     root_episode: str
     root_title: str
     titles: dict[str, str] = field(default_factory=dict)
+    #: Thread → row key, so a cut-short message can say where the rest is.
+    keys: dict[str, str] = field(default_factory=dict)
+    #: The most recent message in the task's own thread: at the end, the result.
+    last_root: tuple[str, str] | None = None
     done: threading.Event = field(default_factory=threading.Event)
 
     def __post_init__(self) -> None:
         self.titles[self.root_episode] = self.root_title
+        self.keys[self.root_episode] = self.root_key
 
     @staticmethod
     def _short(text: str, limit: int = 60) -> str:
@@ -330,7 +369,7 @@ class LiveView:
 
     def _where(self, episode: str | None) -> str:
         title = self.titles.get(episode or "")
-        return f"[dim]{self._short(title, 32)} ·[/] " if title else ""
+        return f"[dim]{escape(self._short(title, 32))} ·[/] " if title else ""
 
     def _notice(self, n: dict[str, Any], stamp: str) -> str | None:
         subkind = n.get("subkind")
@@ -338,8 +377,12 @@ class LiveView:
         by = n.get("by") or "someone"
         if n.get("episode") and title:
             self.titles[str(n["episode"])] = title
+        if n.get("episode") and n.get("key"):
+            self.keys[str(n["episode"])] = str(n["key"])
+        title = escape(title)
+        by = escape(str(by))
         if subkind == "filed":
-            who = f" for [cyan]{n['for']}[/]" if n.get("for") else ""
+            who = f" for [cyan]{escape(str(n['for']))}[/]" if n.get("for") else ""
             return f"  {stamp}  [dim]──[/] [cyan]{by}[/] filed [bold]{title}[/]{who}"
         if subkind == "claimed":
             return f"  {stamp}  [dim]──[/] [cyan]{by}[/] took [bold]{title}[/]"
@@ -368,15 +411,33 @@ class LiveView:
         if not text:
             return None
         sender = str(frame.get("sender_handle") or "?")
-        where = self._where(frame.get("episode"))
+        episode = frame.get("episode")
+        where = self._where(episode)
         if sender == CONDUCTOR:
             head = text.splitlines()[0]
             parts = [p.strip() for p in head.split("·")]
             if len(parts) == 4 and parts[0] == FLOW:
                 return f"  {stamp}  [magenta]{CONDUCTOR}[/] {where}[dim]{parts[1]} → {parts[3]}[/]"
-            return f"  {stamp}  [magenta]{CONDUCTOR}[/] {where}[dim]{self._short(head, 80)}[/]"
-        body = text.replace("\n", "\n" + " " * 12)
-        return f"  {stamp}  [yellow]{sender}[/] {where}{body}"
+            return (
+                f"  {stamp}  [magenta]{CONDUCTOR}[/] {where}[dim]{escape(self._short(head, 80))}[/]"
+            )
+        if f"@{CONDUCTOR} {FLOW}" in text:
+            return f"  {stamp}  [cyan]{escape(sender)}[/] {where}[dim]kicked off the team[/]"
+        if episode == self.root_episode:
+            self.last_root = (sender, text)
+        return f"  {stamp}  [yellow]{escape(sender)}[/] {where}{self._body(text, episode)}"
+
+    def _body(self, text: str, episode: str | None) -> str:
+        """A message as the view prints it: its first lines, and where to read the rest."""
+        lines = [ln for ln in text.splitlines() if ln.strip()]
+        shown = "\n".join(lines[:BODY_LINES])
+        more = len(lines) - BODY_LINES
+        body = escape(shown).replace("\n", "\n" + " " * 12)
+        if more > 0:
+            key = self.keys.get(episode or "")
+            where = f" · board messages {key}" if key else ""
+            body += f"\n{' ' * 12}[dim]… {more} more line{'s' if more > 1 else ''}{where}[/]"
+        return body
 
 
 def watch(config: MyceliumConfig, room: str, view: LiveView, connected: threading.Event) -> None:
@@ -440,7 +501,7 @@ def swarm(
     from mycelium.integrations.herdr import HerdrBridge, HerdrError
 
     config = MyceliumConfig.load()
-    me = config.get_current_identity()
+    me = sender_of(config)
     if not task:
         task = typer.prompt("What should the agents work on?").strip()
     if not task:
@@ -520,8 +581,20 @@ def swarm(
         while streamer.is_alive():
             streamer.join(timeout=0.5)
         if view.done.is_set():
+            if view.last_root is not None:
+                who, result = view.last_root
+                console.print()
+                console.print(
+                    Panel(
+                        Markdown(result),
+                        title=f"[bold]{escape(task)}[/]",
+                        subtitle=f"[dim]by {escape(who)} and the team[/]",
+                        border_style="green",
+                        padding=(1, 2),
+                    )
+                )
             console.print(
-                f"\n[green]Done.[/green] The team's result is in the task's thread: "
+                f"\n[green]Done.[/green] The whole conversation: "
                 f"mycelium board messages {key} --room {room_name}"
             )
     except KeyboardInterrupt:

@@ -373,8 +373,8 @@
       <p>The quickest way to see agents work together is to give a team one task and watch:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">swarm</span> <span class="str">&quot;fix the flaky auth tests&quot;</span></code></pre>
       <p>Three agents join a room named after the task. Each checks in, the first one splits the work into a child task per member, and they get going: each works its part, asks a teammate to review it, and fixes what the review finds. When the last part is done, the first agent puts the result together and resolves the task.</p>
-      <p>The terminal you ran it in shows the whole thing as it happens: who said what, in which task, and the board moving underneath.</p>
-      <pre><code>fix-the-flaky-auth-tests · 3 agents in herdr workspace w4
+      <p>The terminal you ran it in shows the whole thing as it happens: who said what, in which task, and the board moving underneath. A long message shows its first few lines and where to read the rest. When the task resolves, the team&#x27;s result is printed in full and the command exits.</p>
+      <pre><code>fix-flaky-auth-tests · 3 agents in herdr workspace w4
 
   10:02:11  conductor  Fix the flaky auth tests · check-in → agent-1
   10:02:19  agent-1    Fix the flaky auth tests · Here. I&#x27;ll take the repro, I can loop the suite.

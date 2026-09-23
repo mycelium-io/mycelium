@@ -88,7 +88,7 @@ def _pi(room: str, handle: str, prompt: str, system: str, _t: float) -> str:
         return (
             f"{part.group(1) if part else 'It'} is done. @{_who_reviews(handle)} can you check it?"
         )
-    if "Every part of" in ask:
+    if "Every part of" in prompt:
         return "All three parts are in; here is the whole.\n[[done]]"
     if "can you check it?" in prompt:
         return "Checked, it holds up.\n[[done]]"
