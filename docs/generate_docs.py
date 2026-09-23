@@ -52,6 +52,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     # ── start (index.html), overview + quickstart ──
     ("overview.md",                   "overview",           "start",       "Get Started",  "Overview"),
     ("guides/quickstart.md",          "quickstart",         "start",       "Get Started",  "Quick Start"),
+    ("guides/swarm.md",               "swarm",              "start",       "Get Started",  "A Team on One Task"),
     # ── concepts (now on the start page, grouped in the sidebar) ──
     ("concepts/rooms.md",             "rooms",              "start",       "Concepts",     "Rooms"),
     ("concepts/slim.md",              "slim",               "start",       "Concepts",     "SLIM"),
@@ -75,6 +76,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("concepts/hello.md",             "hello",              "adapters",  "Engines",      "Hello"),
     ("concepts/persona.md",           "persona",            "adapters",  "Engines",      "Persona"),
     ("concepts/conductor.md",         "conductor",          "adapters",  "Engines",      "Conductor"),
+    ("concepts/worker.md",            "worker",             "adapters",  "Engines",      "Worker"),
     # ── reference (reference.html) ──
     ("reference/architecture.md",     "architecture",       "reference", "Architecture", "Architecture"),
     # CLI + Config blocks injected after architecture, before guides/troubleshooting.

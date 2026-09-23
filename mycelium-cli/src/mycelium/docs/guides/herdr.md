@@ -22,9 +22,10 @@ mention falls back to waiting on the cursor exactly as it does without herdr.
 ## Prerequisites
 
 - herdr installed and its local server running. See [herdr.dev](https://herdr.dev).
-- One or more agents already started in a herdr workspace (mycelium drives panes
-  you started; it never spawns them).
-- A mycelium room to bind them to (`mycelium room create …`).
+- One or more agents already started in a herdr workspace, and a mycelium room
+  to bind them to (`mycelium room create …`). Or skip both: [`mycelium
+  swarm`](#swarm) opens a workspace, starts a team in it, and binds it to a new
+  room in one step.
 
 ## The one command: `sync`
 
@@ -47,8 +48,10 @@ on each pass:
   pushed to the hub so the UI can badge it. The backend runs in a container and
   cannot see the herdr socket, so this host-side loop is the only thing that can
   report it.
-- **Wakes.** Queued `@`-mention doorbells are drained and delivered to the
-  right pane.
+- **Wakes.** Queued doorbells are drained and delivered to the right pane,
+  each worded by why it rang: an `@`-mention says read the room, a turn the
+  [conductor](#conductor) or the aligner put to the agent says `await` it and
+  answer, and a task filed for the agent says which task to take.
 
 Watching is the default because the wake leg has to run on the host: the
 containerized backend cannot reach the herdr socket, so nothing delivers a queued

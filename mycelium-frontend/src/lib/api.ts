@@ -584,7 +584,13 @@ export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]>
   });
 }
 
-export type EngineKind = "aligner" | "synthesizer" | "hello" | "conductor" | "persona";
+export type EngineKind =
+  | "aligner"
+  | "synthesizer"
+  | "hello"
+  | "conductor"
+  | "persona"
+  | "worker";
 
 /** Invite a first-party cognition engine (aligner / synthesizer / hello) into a room.
  *  Engines are backend-owned — registration is just a manifest write with no

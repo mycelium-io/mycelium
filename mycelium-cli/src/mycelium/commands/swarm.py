@@ -1,0 +1,533 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Mycelium Contributors
+
+"""``mycelium swarm``: put a team of agents on one task and watch them work it.
+
+One argument, the task. Everything else is a default:
+
+- a room named after the task, created if it is not there;
+- three members, ``agent-1`` to ``agent-3``;
+- the task filed on the board, with its thread;
+- a **kickoff** in that thread, run by the conductor's ``swarm`` flow: each
+  member checks in, in turn, then ``agent-1`` splits the work into child tasks,
+  one per member;
+- from there the members work their rows, ask each other for review, and
+  ``agent-1`` puts the result together when the last part is done.
+
+Where the members live is the one choice. By default they are your own CLI
+agents (Claude Code, Codex, Pi), started side by side in a new herdr workspace,
+each already set up as its own handle in the room. With ``--server`` they are
+workers the hub plays, so nothing but the hub needs to be installed.
+
+The terminal you run it in becomes the live view: the conversation across the
+task and its child tasks, and the board moving under it. For local members it
+also keeps their herdr presence and doorbells flowing (what ``herdr sync``
+does) until you stop it. Ctrl-C stops watching; the room, the board and the
+agents stay.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import shutil
+import subprocess
+import threading
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import httpx
+import typer
+from rich.console import Console
+
+from mycelium.client import hub_client
+from mycelium.config import MyceliumConfig
+from mycelium.doc_ref import doc_ref
+from mycelium.slim.l9 import payload_data_of, payload_type_of
+
+console = Console()
+
+#: How many members a swarm starts with.
+DEFAULT_SIZE = 3
+#: Local agent kinds tried in order when none is named, by the executable herdr runs.
+LOCAL_KINDS = ("claude", "codex", "pi")
+#: The conductor engine's handle in a swarm room, and the flow it runs.
+CONDUCTOR = "conductor"
+FLOW = "swarm"
+#: How often the herdr side refreshes presence and delivers doorbells.
+SYNC_INTERVAL_S = 3.0
+
+_SLUG = re.compile(r"[^a-z0-9]+")
+
+
+def room_slug(task: str, limit: int = 40) -> str:
+    """A room name from a task: lowercase words joined by dashes."""
+    slug = _SLUG.sub("-", task.lower()).strip("-")
+    return slug[:limit].rstrip("-") or "swarm"
+
+
+def team_handles(size: int) -> list[str]:
+    return [f"agent-{i}" for i in range(1, size + 1)]
+
+
+def pick_kind(explicit: str | None) -> str | None:
+    """The agent CLI to start: the one named, else the first one installed."""
+    if explicit:
+        return explicit
+    return next((k for k in LOCAL_KINDS if shutil.which(k)), None)
+
+
+def kickoff_brief(room: str, handle: str, team: list[str], key: str, task: str) -> str:
+    """What a local member is told before the kickoff: who it is and how the team works."""
+    lead = team[0]
+    others = ", ".join(f"@{h}" for h in team if h != handle)
+    return f"""\
+# You are @{handle}
+
+You are one of {len(team)} agents working together in the Mycelium room `{room}`,
+with {others}. The team's task is `{key}`:
+
+> {task}
+
+Your terminal is already set up as @{handle} in that room
+(`MYCELIUM_AGENT_HANDLE={handle}`, `MYCELIUM_ROOM_ID={room}`), so every
+`mycelium` command acts as you.
+
+## How the team works
+
+1. **Kickoff.** A conductor asks each member to check in, one at a time, then
+   asks @{lead} to split the work. Wait for your turn; do not start early.
+2. **Turns.** When a line starting with `[mycelium]` appears in your terminal,
+   do what it says. For a turn that means
+   `mycelium await --handle {handle} --json --timeout 5`, then
+   `mycelium respond --handle {handle} "<your reply>"`. The reply lands in the
+   thread you were asked in.
+3. **The split** (@{lead}). One child task per member, matching what each
+   offered: `mycelium board new "<title>" --parent {key} --assign @<member>`.
+4. **Your task.** Claim it (`mycelium board claim <id> --to @{handle}`), do it
+   for real, and post progress and results in its thread
+   (`mycelium board send <id> "..." --as {handle}`).
+5. **Review.** Before resolving, ask a teammate to review in the task's thread
+   (`mycelium board send <id> "@<member> can you check ...?" --as {handle}`).
+   When you review, say what is good and what has to change. Once the review
+   is good, resolve it: `mycelium board resolve <id>`.
+6. **Wrap-up.** Whoever resolves the last child task tells @{lead} in `{key}`'s
+   thread. @{lead} then posts the combined result there and resolves `{key}`.
+
+Talk like a teammate: short, specific, no filler. Now wait for the conductor.
+"""
+
+
+# ── the hub ──────────────────────────────────────────────────────────────────
+
+
+class SwarmError(Exception):
+    """A step of setting up a swarm that failed, with what to do about it."""
+
+
+def _check(resp: httpx.Response, what: str, *, ok: tuple[int, ...] = ()) -> httpx.Response:
+    if resp.status_code >= 400 and resp.status_code not in ok:
+        raise SwarmError(f"could not {what}: {resp.text.strip() or resp.status_code}")
+    return resp
+
+
+def ensure_room(client: httpx.Client, room: str) -> bool:
+    """Create ``room`` unless it exists; ``True`` when it was created."""
+    if client.get(f"/api/rooms/{room}").status_code == 200:
+        return False
+    _check(client.post("/api/rooms", json={"name": room, "is_public": True}), "create the room")
+    return True
+
+
+def ensure_engine(client: httpx.Client, room: str, handle: str, kind: str, me: str) -> None:
+    """Register an engine in ``room``; one already there is fine."""
+    body = {"handle": handle, "kind": kind, "created_by": me}
+    _check(
+        client.post(f"/api/rooms/{room}/engines", json=body),
+        f"register @{handle}",
+        ok=(409,),
+    )
+
+
+def file_task(client: httpx.Client, room: str, title: str, me: str) -> tuple[str, str]:
+    """Put the task on the board; ``(row key, thread URN)``."""
+    resp = _check(
+        client.post(f"/api/rooms/{room}/tasks", json={"title": title, "handle": me}),
+        "file the task",
+    )
+    task = resp.json()
+    return str(task["key"]), str(task.get("episode") or "")
+
+
+def kick_off(client: httpx.Client, room: str, episode: str, team: list[str], task: str, me: str):
+    """Summon the conductor in the task's thread to run the kickoff flow over the team."""
+    names = " ".join(f"@{h}" for h in team)
+    body = {
+        "sender_handle": me,
+        "message_type": "broadcast",
+        "content": f"@{CONDUCTOR} {FLOW} {names}: {task}",
+        "episode": episode,
+    }
+    _check(client.post(f"/api/rooms/{room}/messages", json=body), "start the kickoff")
+
+
+# ── local members, in herdr ──────────────────────────────────────────────────
+
+
+@dataclass
+class LocalTeam:
+    """The herdr side of a local swarm: its workspace and each member's pane."""
+
+    workspace: str
+    panes: dict[str, str] = field(default_factory=dict)
+
+
+def _worktree(repo: Path, room: str, handle: str) -> Path:
+    """A git worktree of ``repo`` for one member, on a branch of its own."""
+    path = repo.parent / f"{repo.name}-{room}-{handle}"
+    if path.exists():
+        return path
+    branch = f"swarm/{room}/{handle}"
+    proc = subprocess.run(  # noqa: S603 - arguments are code-built
+        ["git", "-C", str(repo), "worktree", "add", "-b", branch, str(path)],  # noqa: S607
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise SwarmError(f"could not create a worktree for @{handle}: {proc.stderr.strip()}")
+    return path
+
+
+def start_local(
+    config: MyceliumConfig,
+    bridge: Any,
+    room: str,
+    team: list[str],
+    *,
+    kind: str,
+    cwd: Path,
+    worktree: bool,
+    me: str,
+) -> LocalTeam:
+    """Open a herdr workspace with one ``kind`` agent per member, each set up as itself."""
+    from mycelium.commands.agent import _write_manifest
+    from mycelium.integrations import AddOptions, get_integration
+    from mycelium.integrations.herdr import HerdrPaneMapping
+
+    def env(handle: str) -> dict[str, str]:
+        return {"MYCELIUM_AGENT_HANDLE": handle, "MYCELIUM_ROOM_ID": room}
+
+    dirs = {h: (_worktree(cwd, room, h) if worktree else cwd) for h in team}
+    workspace, first = bridge.create_workspace(room, cwd=str(dirs[team[0]]), env=env(team[0]))
+    local = LocalTeam(workspace=workspace, panes={team[0]: first})
+    last = first
+    for i, handle in enumerate(team[1:]):
+        last = bridge.split_pane(
+            last,
+            direction="right" if i % 2 == 0 else "down",
+            cwd=str(dirs[handle]),
+            env=env(handle),
+        )
+        local.panes[handle] = last
+
+    for handle, pane in local.panes.items():
+        bridge.start_agent(handle, kind, pane)
+        manifest = get_integration("claude_code", cwd=str(dirs[handle])).build_manifest(
+            handle=handle,
+            opts=AddOptions(room=room),
+            description=f"swarm member ({kind}) in herdr pane {pane}",
+            allow_from=[],
+            owner=me,
+        )
+        _write_manifest(config, room, manifest, created_by=me)
+        bridge.registry.set(
+            HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=kind, managed=True)
+        )
+    bridge.registry.bind(workspace, room)
+    return local
+
+
+def brief_local(bridge: Any, room: str, local: LocalTeam, key: str, task: str) -> None:
+    """Hand each local member its brief: written to a file, and a prompt to read it."""
+    from mycelium.filesystem import get_mycelium_dir
+
+    team = list(local.panes)
+    brief_dir = get_mycelium_dir() / "swarm" / room
+    brief_dir.mkdir(parents=True, exist_ok=True)
+    for handle, pane in local.panes.items():
+        path = brief_dir / f"{handle}.md"
+        path.write_text(kickoff_brief(room, handle, team, key, task))
+        bridge.prompt(
+            pane,
+            f"[mycelium] You are @{handle} on a team of {len(team)} in room '{room}'. "
+            f"Read {path} and follow it.",
+            wait=False,
+        )
+
+
+class HerdrSync:
+    """``herdr sync`` for one swarm, on a background thread while the room is shown."""
+
+    def __init__(self, config: MyceliumConfig, bridge: Any, workspace: str, room: str) -> None:
+        self._config = config
+        self._bridge = bridge
+        self._targets = [(workspace, room)]
+        self._room = room
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+
+    def once(self) -> None:
+        from mycelium.commands.herdr import sync_pass
+
+        try:
+            sync_pass(
+                self._config,
+                self._bridge,
+                self._targets,
+                room_filter=self._room,
+                ttl_s=max(90.0, SYNC_INTERVAL_S * 4),
+                log=console,
+            )
+        except Exception as e:  # noqa: BLE001 - a missed pass is retried on the next
+            console.print(f"[dim]herdr sync: {e}[/dim]")
+
+    def _loop(self) -> None:
+        while not self._stop.wait(SYNC_INTERVAL_S):
+            self.once()
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+
+
+# ── the live view ────────────────────────────────────────────────────────────
+
+
+@dataclass
+class LiveView:
+    """Render the room's stream as one conversation across a task and its children."""
+
+    root_key: str
+    root_episode: str
+    root_title: str
+    titles: dict[str, str] = field(default_factory=dict)
+    done: threading.Event = field(default_factory=threading.Event)
+
+    def __post_init__(self) -> None:
+        self.titles[self.root_episode] = self.root_title
+
+    @staticmethod
+    def _short(text: str, limit: int = 60) -> str:
+        return text if len(text) <= limit else text[: limit - 1] + "…"
+
+    def _where(self, episode: str | None) -> str:
+        title = self.titles.get(episode or "")
+        return f"[dim]{self._short(title, 32)} ·[/] " if title else ""
+
+    def _notice(self, n: dict[str, Any], stamp: str) -> str | None:
+        subkind = n.get("subkind")
+        title = str(n.get("title") or n.get("key") or "")
+        by = n.get("by") or "someone"
+        if n.get("episode") and title:
+            self.titles[str(n["episode"])] = title
+        if subkind == "filed":
+            who = f" for [cyan]{n['for']}[/]" if n.get("for") else ""
+            return f"  {stamp}  [dim]──[/] [cyan]{by}[/] filed [bold]{title}[/]{who}"
+        if subkind == "claimed":
+            return f"  {stamp}  [dim]──[/] [cyan]{by}[/] took [bold]{title}[/]"
+        if subkind == "resolved":
+            if n.get("key") == self.root_key:
+                self.done.set()
+            return f"  {stamp}  [green]✓[/]  [cyan]{by}[/] resolved [bold]{title}[/]"
+        return None
+
+    def render(self, frame: dict[str, Any]) -> str | None:
+        if frame.get("message_type") != "l9_exchange":
+            return None
+        try:
+            data = json.loads(frame.get("content") or "{}")
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        stamp = f"[dim]{time.strftime('%H:%M:%S')}[/]"
+        ptype = payload_type_of(data)
+        if ptype == "notice":
+            return self._notice(payload_data_of(data), stamp)
+        if ptype in {"ping", "presence", "keepalive"}:
+            return None
+        text = str(data.get("content") or "").strip()
+        if not text:
+            return None
+        sender = str(frame.get("sender_handle") or "?")
+        where = self._where(frame.get("episode"))
+        if sender == CONDUCTOR:
+            head = text.splitlines()[0]
+            parts = [p.strip() for p in head.split("·")]
+            if len(parts) == 4 and parts[0] == FLOW:
+                return f"  {stamp}  [magenta]{CONDUCTOR}[/] {where}[dim]{parts[1]} → {parts[3]}[/]"
+            return f"  {stamp}  [magenta]{CONDUCTOR}[/] {where}[dim]{self._short(head, 80)}[/]"
+        body = text.replace("\n", "\n" + " " * 12)
+        return f"  {stamp}  [yellow]{sender}[/] {where}{body}"
+
+
+def watch(config: MyceliumConfig, room: str, view: LiveView, connected: threading.Event) -> None:
+    """Stream the room into ``view`` until it says the task is done."""
+    with (
+        hub_client(config, timeout=None) as http,
+        http.stream("GET", f"/api/rooms/{room}/messages/stream") as response,
+    ):
+        connected.set()
+        for line in response.iter_lines():
+            line = line.strip()
+            if not line.startswith("data:"):
+                continue
+            try:
+                frame = json.loads(line[5:].strip())
+            except ValueError:
+                continue
+            rendered = view.render(frame)
+            if rendered:
+                console.print(rendered, highlight=False)
+            if view.done.is_set():
+                return
+
+
+# ── the command ──────────────────────────────────────────────────────────────
+
+
+def _ui_room_url(room: str) -> str:
+    from mycelium.commands.ui import _ui_url
+
+    return f"{_ui_url()}/room/{room}"
+
+
+@doc_ref(
+    usage='mycelium swarm ["<task>"] [--server]',
+    desc="Put a team of agents on one task: they check in, split it, work it, and review each other.",
+    group="board",
+)
+def swarm(
+    task: str | None = typer.Argument(None, help="What the team should work on"),
+    server: bool = typer.Option(
+        False, "--server", help="Members the hub plays, instead of your own CLI agents in herdr"
+    ),
+    size: int = typer.Option(DEFAULT_SIZE, "-n", help="How many members", min=2, max=8),
+    room: str | None = typer.Option(
+        None, "--room", "-r", help="Room (default: named after the task)"
+    ),
+    kind: str | None = typer.Option(
+        None, "--kind", help="Local agent CLI to start (default: the first of claude, codex, pi)"
+    ),
+    worktree: bool = typer.Option(
+        False, "--worktree", help="Give each local member its own git worktree"
+    ),
+) -> None:
+    """Put a team of agents on one task and watch them work it together.
+
+    Examples:
+        mycelium swarm "fix the flaky auth tests"
+        mycelium swarm "compare three vendors for billing" --server
+    """
+    from mycelium.integrations.herdr import HerdrBridge, HerdrError
+
+    config = MyceliumConfig.load()
+    me = config.get_current_identity()
+    if not task:
+        task = typer.prompt("What should the agents work on?").strip()
+    if not task:
+        raise typer.Exit(1)
+    room_name = room or room_slug(task)
+    team = team_handles(size)
+
+    bridge = None
+    agent_kind = None
+    if not server:
+        bridge = HerdrBridge()
+        if not bridge.available():
+            console.print(
+                "[yellow]herdr isn't running here.[/yellow] Install it (https://herdr.dev), "
+                "or run the team on the hub:\n"
+                f'  mycelium swarm "{task}" --server'
+            )
+            raise typer.Exit(1)
+        agent_kind = pick_kind(kind)
+        if agent_kind is None:
+            console.print(
+                "[yellow]No agent CLI found[/yellow] (claude, codex or pi). Name one with "
+                "--kind, or run the team on the hub with --server."
+            )
+            raise typer.Exit(1)
+
+    local: LocalTeam | None = None
+    sync: HerdrSync | None = None
+    try:
+        with hub_client(config, timeout=30) as client:
+            ensure_room(client, room_name)
+            ensure_engine(client, room_name, CONDUCTOR, "conductor", me)
+            if server:
+                for handle in team:
+                    ensure_engine(client, room_name, handle, "worker", me)
+            key, episode = file_task(client, room_name, task, me)
+        if bridge is not None and agent_kind is not None:
+            console.print(f"[dim]starting {size} {agent_kind} agents in herdr…[/dim]")
+            local = start_local(
+                config,
+                bridge,
+                room_name,
+                team,
+                kind=agent_kind,
+                cwd=Path.cwd(),
+                worktree=worktree,
+                me=me,
+            )
+            brief_local(bridge, room_name, local, key, task)
+            sync = HerdrSync(config, bridge, local.workspace, room_name)
+            sync.once()
+            sync.start()
+    except (SwarmError, HerdrError) as e:
+        console.print(f"[red]✗[/red] {e}")
+        raise typer.Exit(1) from None
+    except httpx.HTTPError as e:
+        console.print(f"[red]✗[/red] hub unreachable: {e}")
+        raise typer.Exit(1) from None
+
+    where = "on the hub" if server else f"in herdr workspace {local.workspace if local else ''}"
+    console.print(
+        f"\n[bold]{room_name}[/bold] · {size} agents {where} · "
+        f"[link={_ui_room_url(room_name)}]{_ui_room_url(room_name)}[/link]"
+    )
+    console.print(f"[dim]{task}[/dim]\n")
+
+    view = LiveView(root_key=key, root_episode=episode, root_title=task)
+    connected = threading.Event()
+    streamer = threading.Thread(
+        target=watch, args=(config, room_name, view, connected), daemon=True
+    )
+    streamer.start()
+    connected.wait(timeout=10)
+    try:
+        with hub_client(config, timeout=30) as client:
+            kick_off(client, room_name, episode, team, task, me)
+        while streamer.is_alive():
+            streamer.join(timeout=0.5)
+        if view.done.is_set():
+            console.print(
+                f"\n[green]Done.[/green] The team's result is in the task's thread: "
+                f"mycelium board messages {key} --room {room_name}"
+            )
+    except KeyboardInterrupt:
+        console.print(f"\n[dim]Stopped watching. The room stays: {_ui_room_url(room_name)}[/dim]")
+        if sync is not None:
+            console.print(
+                "[dim]Local agents only hear their turns while herdr sync runs: "
+                "mycelium herdr sync[/dim]"
+            )
+    finally:
+        if sync is not None:
+            sync.stop()

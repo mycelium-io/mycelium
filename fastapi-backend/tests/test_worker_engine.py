@@ -1,0 +1,345 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Mycelium Contributors
+
+"""The worker engine: a member the hub plays that takes work off the board.
+
+Node-free; the Pi turn is patched. What these hold: action lines are lifted out
+of the prose and carried out against the row the thread belongs to; a worker
+may name a teammate but never an engine; a row filed for a worker gets claimed
+and worked; the last child settling hands the split back to whoever made it;
+the seams gate on the manifest kind; and a room's turns are capped.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from datetime import UTC, datetime
+from typing import Any
+
+import pytest
+import yaml
+
+from app.services import assignments, l9, tasks, worker_engine
+from app.services.filesystem import (
+    get_room_dir,
+    list_memory_files,
+    read_memory_file,
+    write_memory_file,
+)
+from app.services.l9_models import Kind
+from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
+
+_ROOM = "worker-room"
+
+
+class _Manager(FakeManager):
+    """The fake manager plus the two calls a worker makes after it speaks."""
+
+    def __init__(self, managed: FakeManaged) -> None:
+        super().__init__(managed, [])
+        self.rung: list[str] = []
+        self.pings: list[str] = []
+
+    def enqueue_herdr_wakes_for_mentions(
+        self, room: str, content: str, *, exclude: str | None = None
+    ) -> list[str]:
+        self.rung.append(content)
+        return []
+
+    async def raise_ping(self, room: str, *, episode: str | None, sender: str, message_id: Any):
+        self.pings.append(sender)
+
+
+def _engine(**kwargs: Any) -> tuple[worker_engine.WorkerEngine, FakeManaged, _Manager]:
+    managed = FakeManaged(_ROOM, "mycelium", FakeChannel(), FakePersister())
+    manager = _Manager(managed)
+    return worker_engine.WorkerEngine(manager, **kwargs), managed, manager  # type: ignore[arg-type]
+
+
+def _register(handle: str, kind: str | None = "worker", adapter: str = "engine") -> None:
+    body: dict[str, Any] = {"adapter": adapter}
+    if kind:
+        body["kind"] = kind
+    write_memory_file(
+        get_room_dir(_ROOM), f"agents/{handle}", yaml.safe_dump(body), created_by="julia"
+    )
+
+
+def _posted(managed: FakeManaged) -> list[tuple[Any, str]]:
+    return [(env, (extra or {}).get("content", "")) for env, extra in managed.channel.sent]
+
+
+def _patch_pi(monkeypatch: pytest.MonkeyPatch, *replies: str) -> list[dict[str, str]]:
+    seen: list[dict[str, str]] = []
+    queue = list(replies)
+
+    def fake(room: str, handle: str, prompt: str, system: str, _t: float) -> str:
+        seen.append({"handle": handle, "prompt": prompt, "system": system})
+        return queue.pop(0) if queue else ""
+
+    monkeypatch.setattr(worker_engine, "_pi_complete", fake)
+    return seen
+
+
+@pytest.fixture(autouse=True)
+def _backend_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "ENGINE_RUNTIME", "backend")
+    monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
+    get_room_dir(_ROOM)
+
+
+async def _task(title: str, **meta: Any) -> tuple[str, str]:
+    row = await tasks.create_task(_ROOM, title, created_by="julia", meta=meta or None)
+    return row.key, str(row.episode)
+
+
+async def _settle(engine: worker_engine.WorkerEngine) -> None:
+    for _ in range(50):
+        if not engine._tasks:
+            return
+        await asyncio.sleep(0.01)
+
+
+# ── reading a reply ────────────────────────────────────────────────────────────
+
+
+def test_action_lines_are_lifted_out_of_the_prose():
+    actions, prose = worker_engine.parse_actions(
+        "Here is the split.\n\n[[new: Reproduce the flake -> @agent-2]]\n"
+        "[[NEW: Find the root cause → agent-3]]\n[[done]]\nThat's it."
+    )
+    assert actions == [
+        worker_engine.Action("new", "Reproduce the flake", "agent-2"),
+        worker_engine.Action("new", "Find the root cause", "agent-3"),
+        worker_engine.Action("done"),
+    ]
+    assert "[[" not in prose
+    assert prose.startswith("Here is the split.")
+    assert prose.endswith("That's it.")
+
+
+def test_a_new_task_that_names_nobody_is_not_filed():
+    actions, _prose = worker_engine.parse_actions("[[new: An orphan task]]")
+    assert actions == []
+
+
+def test_a_worker_may_name_a_teammate_but_never_an_engine():
+    team = ["agent-1", "agent-2", "julia"]
+    text = "@agent-2 can you review? @aligner @conductor @agent-1 @julia @nobody"
+    kept = worker_engine.keep_team_mentions(text, team, "agent-1")
+    assert kept == "@agent-2 can you review? aligner conductor agent-1 @julia nobody"
+
+
+def test_the_team_is_the_agents_and_the_workers_not_the_other_engines():
+    _register("agent-1")
+    _register("agent-2")
+    _register("conductor", "conductor")
+    _register("aligner", "aligner")
+    _register("julia-laptop", None, adapter="claude_code")
+    assert worker_engine.team_of(_ROOM) == ["agent-1", "agent-2", "julia-laptop"]
+
+
+def test_the_prompt_names_the_team_the_task_and_the_thread():
+    prompt = worker_engine.build_prompt(
+        _ROOM,
+        "agent-2",
+        team=["agent-1", "agent-2", "agent-3"],
+        task=("work/fix-flake", "Fix the flaky test"),
+        thread="- agent-1: I'll split it.",
+        ask="Check in.",
+    )
+    assert "You are @agent-2" in prompt
+    assert "agent-1, agent-3" in prompt
+    assert "work/fix-flake: Fix the flaky test" in prompt
+    assert "- agent-1: I'll split it." in prompt
+    assert prompt.endswith("Check in.")
+
+
+# ── a turn ─────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_turn_posts_the_prose_and_files_the_split(monkeypatch: pytest.MonkeyPatch):
+    for h in ("agent-1", "agent-2", "agent-3"):
+        _register(h)
+    parent, episode = await _task("Fix the flaky auth tests")
+    seen = _patch_pi(
+        monkeypatch,
+        "Splitting it three ways.\n[[new: Reproduce it -> @agent-2]]\n"
+        "[[new: Root-cause it -> @agent-3]]\n[[new: Ghost task -> @nobody]]",
+    )
+    engine, managed, _manager = _engine()
+
+    said = await engine.turn(_ROOM, "agent-1", episode=episode, ask="Split the work.")
+
+    assert said == "Splitting it three ways."
+    assert "You have no tools" in seen[0]["system"]
+    env, text = _posted(managed)[0]
+    assert text == "Splitting it three ways."
+    assert env.header.message.episode == episode
+    children = [
+        (key, meta)
+        for key, meta, _body in list_memory_files(get_room_dir(_ROOM), prefix="work/")
+        if meta.get(assignments.PARENT_RELATION) == parent
+    ]
+    assert sorted(meta[tasks.ASSIGNEE_FIELD] for _k, meta in children) == ["agent-2", "agent-3"]
+    assert all(meta.get("created_by") == "agent-1" for _k, meta in children)
+    await _settle(engine)
+
+
+@pytest.mark.asyncio
+async def test_done_resolves_the_row_the_thread_belongs_to(monkeypatch: pytest.MonkeyPatch):
+    _register("agent-2")
+    key, episode = await _task("Review the fix")
+    _patch_pi(monkeypatch, "Looks right to me.\n[[done]]")
+    engine, _managed, _manager = _engine()
+
+    await engine.turn(_ROOM, "agent-2", episode=episode, ask="Review it.")
+
+    found = read_memory_file(get_room_dir(_ROOM), key)
+    assert found is not None
+    assert assignments.state_of(found[0], datetime.now(UTC)) == "resolved"
+
+
+@pytest.mark.asyncio
+async def test_a_mention_of_a_teammate_rings_their_doorbell(monkeypatch: pytest.MonkeyPatch):
+    _register("agent-1")
+    _register("agent-2")
+    _key, episode = await _task("Draft it")
+    _patch_pi(monkeypatch, "Draft is up. @agent-2 can you check the edge cases?")
+    engine, _managed, manager = _engine()
+
+    await engine.turn(_ROOM, "agent-1", episode=episode, ask="Do it.")
+
+    assert manager.rung == ["Draft is up. @agent-2 can you check the edge cases?"]
+    assert manager.pings == ["agent-1"]
+
+
+@pytest.mark.asyncio
+async def test_a_room_runs_out_of_worker_turns(monkeypatch: pytest.MonkeyPatch):
+    _register("agent-1")
+    _key, episode = await _task("Chatter")
+    seen = _patch_pi(monkeypatch, "one", "two", "three")
+    engine, managed, _manager = _engine(max_turns=2)
+
+    for _ in range(3):
+        await engine.turn(_ROOM, "agent-1", episode=episode, ask="Say something.")
+
+    assert len(seen) == 2
+    assert [text for _env, text in _posted(managed)] == ["one", "two"]
+
+
+@pytest.mark.asyncio
+async def test_off_the_floor_a_worker_says_nothing(monkeypatch: pytest.MonkeyPatch):
+    _register("agent-2")
+    _key, episode = await _task("Kickoff")
+    _patch_pi(monkeypatch, "Jumping in early.")
+    engine, managed, manager = _engine()
+    manager.hold_floor(_ROOM, episode, holder="conductor", speakers=["agent-1"])
+
+    await engine.turn(_ROOM, "agent-2", episode=episode, ask="Hi.")
+
+    assert _posted(managed) == []
+
+
+# ── the seams ──────────────────────────────────────────────────────────────────
+
+
+def _env(sender: str, episode: str, recipients: list[str] | None = None) -> Any:
+    return l9.build_envelope(
+        kind=Kind.exchange,
+        episode=episode,
+        sender=sender,
+        recipients=recipients,
+        topic=l9.topic_urn(_ROOM),
+        payload_type="message",
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_addressed_turn_is_answered_where_it_was_asked(monkeypatch: pytest.MonkeyPatch):
+    _register("agent-1")
+    _key, episode = await _task("Kickoff")
+    seen = _patch_pi(monkeypatch, "Here. I'll take the repro.")
+    engine, managed, _manager = _engine()
+
+    engine.handle_addressed(_ROOM, "agent-1", _env("conductor", episode, ["agent-1"]), "Check in.")
+    await _settle(engine)
+
+    assert "conductor said to you" in seen[0]["prompt"]
+    env, text = _posted(managed)[0]
+    assert text == "Here. I'll take the repro."
+    assert env.header.message.episode == episode
+
+
+def test_the_seams_gate_on_the_worker_kind(monkeypatch: pytest.MonkeyPatch):
+    _register("sec", "persona")
+    engine, _managed, _manager = _engine()
+    env = _env("julia", l9.live_episode_urn(_ROOM))
+    engine.handle_addressed(_ROOM, "sec", env, "hi")
+    engine.handle_summon(_ROOM, "sec", env, ["sec"], "@sec hi")
+    engine.handle_notice(_ROOM, {"subkind": "filed", "key": "work/x", "episode": "e", "for": "sec"})
+    assert engine._tasks == set()
+
+
+def test_a_role_named_beside_a_conductor_is_not_asked_anything():
+    _register("agent-1")
+    _register("conductor", "conductor")
+    engine, _managed, _manager = _engine()
+    env = _env("julia", l9.live_episode_urn(_ROOM))
+    engine.handle_summon(
+        _ROOM, "agent-1", env, ["conductor", "agent-1"], "@conductor swarm @agent-1: go"
+    )
+    assert engine._tasks == set()
+
+
+@pytest.mark.asyncio
+async def test_a_row_filed_for_a_worker_is_claimed_and_worked(monkeypatch: pytest.MonkeyPatch):
+    _register("agent-2")
+    key, episode = await _task("Reproduce the flake", assignee="agent-2")
+    seen = _patch_pi(monkeypatch, "Reproduced it: the seed 4412 fails. @agent-3 can you check?")
+    engine, managed, _manager = _engine()
+
+    engine.handle_notice(
+        _ROOM,
+        {"subkind": "filed", "key": key, "episode": episode, "for": "agent-2", "title": "x"},
+    )
+    await _settle(engine)
+
+    found = read_memory_file(get_room_dir(_ROOM), key)
+    assert found is not None
+    assert found[0].get("owner") == "@agent-2"
+    assert "is yours" in seen[0]["prompt"]
+    assert _posted(managed)[0][0].header.message.episode == episode
+
+
+@pytest.mark.asyncio
+async def test_the_last_child_settling_hands_the_split_back(monkeypatch: pytest.MonkeyPatch):
+    for h in ("agent-1", "agent-2"):
+        _register(h)
+    parent, parent_episode = await _task("Ship the fix")
+    one = await tasks.create_task(
+        _ROOM, "Part one", created_by="agent-1", meta={"part-of": parent, "assignee": "agent-1"}
+    )
+    two = await tasks.create_task(
+        _ROOM, "Part two", created_by="agent-1", meta={"part-of": parent, "assignee": "agent-2"}
+    )
+    now = datetime.now(UTC)
+    await assignments.resolve(_ROOM, one.key, "agent-2", now)
+    assert assignments.parent_completed(_ROOM, one.key, now) is None
+    await assignments.resolve(_ROOM, two.key, "agent-1", now)
+    assert assignments.parent_completed(_ROOM, two.key, now) == (parent, "agent-1")
+
+    seen = _patch_pi(monkeypatch, "Both parts landed; here is the whole of it.\n[[done]]")
+    engine, managed, _manager = _engine()
+    engine.handle_notice(_ROOM, {"subkind": "resolved", "key": two.key})
+    await _settle(engine)
+
+    assert seen[0]["handle"] == "agent-1"
+    assert "Every part of 'Ship the fix'" in seen[0]["prompt"]
+    assert _posted(managed)[0][0].header.message.episode == parent_episode
+    found = read_memory_file(get_room_dir(_ROOM), parent)
+    assert found is not None
+    assert assignments.settled(found[0], datetime.now(UTC))

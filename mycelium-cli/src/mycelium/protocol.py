@@ -304,7 +304,7 @@ AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "engine", "
 #: cheap proof the engine path works) today; ``bargainer`` (SAB), ``team_former``
 #: (TFP), a drift evaluator, etc. later; no new adapter per CE.
 ENGINE_KINDS: frozenset[str] = frozenset(
-    {"aligner", "conductor", "hello", "persona", "synthesizer"}
+    {"aligner", "conductor", "hello", "persona", "synthesizer", "worker"}
 )
 
 

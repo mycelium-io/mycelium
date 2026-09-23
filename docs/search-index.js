@@ -63,6 +63,34 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
+    "u": "index.html#swarm",
+    "t": "A Team on One Task",
+    "s": "Get Started",
+    "x": "The quickest way to see agents work together is to give a team one task and watch: mycelium swarm \"fix the flaky auth tests\" Three agents join a room named after the task. Each checks in, the first one splits the work into a child task per member, and they get going: each works its part, asks a teammate to review it, and fixes what the review finds. When the last part is done, the first agent puts the result together",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#swarm-where-the-agents-run",
+    "t": "Where the agents run",
+    "s": "Get Started › A Team on One Task",
+    "x": "Your own agents, by default. The team is your own agent CLI (Claude Code, Codex or Pi, whichever is installed first), started side by side in a new herdr workspace. Each is already set up as its own member of the room, so they work in your code with your tools. While swarm runs, it keeps their doorbells ringing, so each hears its turn. Stop watching and they stop hearing; mycelium herdr sync picks it back up. On the ",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#swarm-how-the-team-works",
+    "t": "How the team works",
+    "s": "Get Started › A Team on One Task",
+    "x": "The kickoff is the conductor's swarm flow: a check-in from each member, one at a time, then the split from the first. Nobody jumps ahead, because the thread's floor belongs to whoever the flow addresses. After the split, the rest is the ordinary board: claim, work in the task's thread, ask for a review, resolve.",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#swarm-options",
+    "t": "Options",
+    "s": "Get Started › A Team on One Task",
+    "x": "Flag Default What it changes --server off Workers on the hub instead of your own agents. -n 3 How many agents. --room named after the task Which room to use. --kind first of claude, codex, pi Which agent CLI to start. --worktree off Give each local agent its own git worktree, so they never edit the same checkout.",
+    "p": "Guide"
+  },
+  {
     "u": "index.html#rooms",
     "t": "Rooms",
     "s": "Concepts",
@@ -811,6 +839,27 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Writing your own flow",
     "s": "Engines › Conductor",
     "x": "A flow is a memory under protocols/. A room that writes protocols/gated reshapes the built-in under that name; a new name adds a flow. Nothing writes a built-in there by itself; to start from one, ask the conductor for it and save what it says: mycelium engine invoke conductor \"show gated\" The body is YAML: description: A reviewer signs off before the author ships. roles: [author, reviewer] max_steps: 6 steps: - id: ",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#worker",
+    "t": "Worker",
+    "s": "Engines",
+    "x": "A worker is an engine that plays a teammate. Give it a task and it does the task, asks another member to check the work, and resolves it when the check passes. It runs on the hub, on a Pi session kept for it, so a room can have a working team with nothing installed but the hub. It is what mycelium swarm --server fills a room with. mycelium engine create agent-1 --kind worker --room launch-plan mycelium engine create ",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#worker-what-it-can-do",
+    "t": "What it can do",
+    "s": "Engines › Worker",
+    "x": "A worker has no tools. Its work is what it writes: the analysis, the plan, the draft. What it does to the board, it writes as a line in its reply, and the hub carries it out: Line What happens [[new: <title> -> @member]] A child task of the thread's task is filed, given to that member. [[done]] The thread's task is resolved. The lines are taken out before the reply is posted.",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#worker-when-it-acts",
+    "t": "When it acts",
+    "s": "Engines › Worker",
+    "x": "A task is filed for it. It claims the task, does it in the task's thread, and @-mentions a teammate to review it. Someone mentions it. It answers where it was asked. Asked to review, it says what is good and what has to change, and resolves the task once it is good. Asked to fix something, it posts the new version and asks again. A step is put to it. The conductor addresses it like any member, so a worker can hold a ",
     "p": "Adapters"
   },
   {
@@ -1937,7 +1986,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#herdr-prerequisites",
     "t": "Prerequisites",
     "s": "Guides › Persistent Agents (herdr)",
-    "x": "herdr installed and its local server running. See herdr.dev. One or more agents already started in a herdr workspace (mycelium drives panes you started; it never spawns them). A mycelium room to bind them to (mycelium room create …).",
+    "x": "herdr installed and its local server running. See herdr.dev. One or more agents already started in a herdr workspace, and a mycelium room to bind them to (mycelium room create …). Or skip both: mycelium swarm opens a workspace, starts a team in it, and binds it to a new room in one step.",
     "p": "Reference"
   },
   {

@@ -194,6 +194,43 @@ def dependents_of(room: str, key: str) -> list[tuple[str, dict]]:
     return found
 
 
+#: The relation a child row names its parent with (``routes/tasks.PARENT_RELATION``).
+PARENT_RELATION = "part-of"
+
+
+def parent_completed(room: str, key: str, now: datetime) -> tuple[str, str | None] | None:
+    """``(parent, lead)`` when ``key`` settling left its parent with nothing open.
+
+    A decomposed task is finished when every row that is ``part-of`` it has
+    settled and the parent itself has not. ``lead`` is who split it — the
+    author of those child rows, when one member wrote them all — so the one
+    who divided the work is the one asked to put it back together. ``None``
+    while a sibling is still open, or when ``key`` has no parent row.
+    """
+    room_dir = get_room_dir(room)
+    found = read_memory_file(room_dir, key)
+    if found is None:
+        return None
+    parent = found[0].get(PARENT_RELATION)
+    if not isinstance(parent, str) or not parent.strip():
+        return None
+    parent = parent.strip()
+    parent_row = read_memory_file(room_dir, parent)
+    if parent_row is None or settled(parent_row[0], now):
+        return None
+    authors: set[str] = set()
+    for namespace in ASSIGNABLE_NAMESPACES:
+        for _row_key, meta, _content in list_memory_files(room_dir, prefix=f"{namespace}/"):
+            if meta.get(PARENT_RELATION) != parent:
+                continue
+            if not settled(meta, now):
+                return None
+            author = str(meta.get("created_by") or "").lstrip("@")
+            if author:
+                authors.add(author)
+    return parent, (authors.pop() if len(authors) == 1 else None)
+
+
 def _load(room: str, key: str) -> tuple[dict, str]:
     if not assignable(key):
         raise AssignmentError(

@@ -359,6 +359,45 @@ async def test_with_nobody_named_the_room_takes_part():
     assert [to for _s, to, _p in channel.ticks()] == ["a", "b", "a", "b"]
 
 
+@pytest.mark.asyncio
+async def test_swarm_checks_everyone_in_then_the_lead_splits_the_task(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import tasks
+
+    monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
+    row = await tasks.create_task(ROOM, "Fix the flaky auth tests", created_by="julia")
+    engine, manager, channel = _engine(
+        {
+            "agent-1": [("I'll take the repro.", None), ("Split: repro, cause, fix.", None)],
+            "agent-2": [("Root cause is mine.", None)],
+            "agent-3": [("I'll write the fix.", None)],
+        }
+    )
+
+    outcome = await engine.run(
+        ROOM,
+        episode=str(row.episode),
+        directive="swarm @agent-1 @agent-2 @agent-3: fix the flaky auth tests",
+        named=["agent-1", "agent-2", "agent-3"],
+    )
+
+    assert outcome == "resolved"
+    ticks = channel.ticks()
+    assert [(s, to) for s, to, _p in ticks] == [
+        ("check-in", "agent-1"),
+        ("check-in", "agent-2"),
+        ("check-in", "agent-3"),
+        ("split", "agent-1"),
+    ]
+    # Each check-in names the row, so a member can file under it; each hears
+    # the ones before it; the lead's split carries every check-in.
+    assert row.key in ticks[0][2]
+    assert "agent-1: I'll take the repro." in ticks[1][2]
+    assert "agent-3: I'll write the fix." in ticks[3][2]
+    assert f"child tasks of {row.key}" in ticks[3][2]
+
+
 # ── the record, and what it does not do ───────────────────────────────────────
 
 

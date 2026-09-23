@@ -35,6 +35,7 @@ from mycelium.integrations.herdr import (
     HerdrBridge,
     HerdrError,
     HerdrPaneMapping,
+    build_assigned_prompt,
     build_mention_prompt,
     build_wake_prompt,
 )
@@ -564,15 +565,35 @@ def _push_presence(
     return True
 
 
-def _drain_wakes(config: MyceliumConfig, bridge: HerdrBridge, room: str) -> int:
+def wake_prompt_for(room: str, wake: dict) -> str:
+    """The prompt a queued wake turns into, worded by why it was queued.
+
+    A ``turn`` (the conductor or the aligner put a question to this handle) is
+    answered through ``await`` so the reply lands in the thread it was asked
+    in; an ``assigned`` row names the row to take; a plain mention says read
+    the room.
+    """
+    handle = str(wake.get("handle") or "")
+    reason = wake.get("reason")
+    if reason == "turn":
+        return build_wake_prompt(room, handle)
+    if reason == "assigned" and wake.get("key"):
+        return build_assigned_prompt(room, handle, str(wake["key"]), wake.get("title"))
+    return build_mention_prompt(room, handle)
+
+
+def _drain_wakes(
+    config: MyceliumConfig, bridge: HerdrBridge, room: str, *, log: Console | None = None
+) -> int:
     """Drain the backend's herdr wake queue for a room and run each wake.
 
     The "commands down" leg: the backend queued a wake when a tag mentioned a
-    herdr-present-but-not-joined handle; here — the only place that can reach the
-    herdr socket — we turn each into a ``herdr agent prompt``. The mention text
-    rides inline (no await), so the woken agent replies straight to the room.
-    Returns the number of agents actually woken.
+    herdr-present-but-not-joined handle, a turn was put to one, or a row was
+    filed for one; here — the only place that can reach the herdr socket — we
+    turn each into a ``herdr agent prompt``. Returns the number of agents
+    actually woken.
     """
+    out = log if log is not None else console
     import httpx
 
     from mycelium.client import auth_headers
@@ -591,17 +612,55 @@ def _drain_wakes(config: MyceliumConfig, bridge: HerdrBridge, room: str) -> int:
         mapping = bridge.registry.get(room, handle)
         if mapping is None:
             continue
-        prompt = build_mention_prompt(room, handle)
+        prompt = wake_prompt_for(room, w)
         try:
             result = bridge.wake(mapping, prompt, timeout_ms=config.herdr.wake_timeout_ms)
         except HerdrError:
             continue
+        reason = w.get("reason") or "mention"
         if result.ok:
             woke += 1
-            console.print(f"[green]↯ woke[/green] @{handle} [dim]on mention → {mapping.pane}[/dim]")
+            out.print(f"[green]↯ woke[/green] @{handle} [dim]on {reason} → {mapping.pane}[/dim]")
         else:
-            console.print(f"[yellow]↯ skip[/yellow] @{handle} [dim]{result.detail}[/dim]")
+            out.print(f"[yellow]↯ skip[/yellow] @{handle} [dim]{result.detail}[/dim]")
     return woke
+
+
+def sync_pass(
+    config: MyceliumConfig,
+    bridge: HerdrBridge,
+    targets: list[tuple[str, str]],
+    *,
+    room_filter: str | None,
+    ttl_s: float,
+    name_from: str = "tab",
+    prefix: str = "",
+    kind: str | None = None,
+    log: Console | None = None,
+) -> tuple[int, int, int]:
+    """One reconcile of the bound workspaces: membership, liveness up, wakes down.
+
+    Returns ``(enrolled, retired, states pushed)``. Shared by ``herdr sync``
+    and ``swarm``, which runs it on a background thread while it shows the room.
+    """
+    out = log if log is not None else console
+    enrolled = retired = 0
+    for ws, r in targets:
+        e, x = _reconcile_workspace(
+            config, bridge, ws, r, name_from=name_from, prefix=prefix, kind=kind
+        )
+        for h in e:
+            out.print(f"[green]＋ enrolled[/green] @{h} [dim]({ws} → {r})[/dim]")
+        for h in x:
+            out.print(f"[yellow]－ retired[/yellow] @{h} [dim](pane closed in {r})[/dim]")
+        enrolled += len(e)
+        retired += len(x)
+    view = _collect_presence(bridge, room_filter)
+    for r, statuses in view.items():
+        _push_presence(config, r, statuses, ttl_s)
+    for r in {r for _, r in targets} | set(view):
+        _drain_wakes(config, bridge, r, log=out)
+    return enrolled, retired, sum(len(v) for v in view.values())
 
 
 @doc_ref(
@@ -694,27 +753,16 @@ def herdr_sync(
         ttl_s = max(90.0, interval * 4.0)
 
         def reconcile_and_push() -> tuple[int, int, int]:
-            """One pass: reconcile every target, then push liveness + drain wakes
-            for the touched rooms. Returns (enrolled, retired, states-pushed)."""
-            enrolled = retired = 0
-            for ws, r in targets:
-                e, x = _reconcile_workspace(
-                    config, bridge, ws, r, name_from=name_from, prefix=prefix, kind=kind
-                )
-                for h in e:
-                    console.print(f"[green]＋ enrolled[/green] @{h} [dim]({ws} → {r})[/dim]")
-                for h in x:
-                    console.print(
-                        f"[yellow]－ retired[/yellow] @{h} [dim](pane closed in {r})[/dim]"
-                    )
-                enrolled += len(e)
-                retired += len(x)
-            view = _collect_presence(bridge, room_name)
-            for r, statuses in view.items():
-                _push_presence(config, r, statuses, ttl_s)
-            for r in {r for _, r in targets} | set(view):
-                _drain_wakes(config, bridge, r)
-            return enrolled, retired, sum(len(v) for v in view.values())
+            return sync_pass(
+                config,
+                bridge,
+                targets,
+                room_filter=room_name,
+                ttl_s=ttl_s,
+                name_from=name_from,
+                prefix=prefix,
+                kind=kind,
+            )
 
         enrolled, retired, states = reconcile_and_push()
         console.print(

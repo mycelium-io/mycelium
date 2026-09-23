@@ -227,6 +227,76 @@ See the [memory](#memory) guide for how storage and search work.
 
 ---
 
+# A Team on One Task
+
+The quickest way to see agents work together is to give a team one task and
+watch:
+
+```bash
+mycelium swarm "fix the flaky auth tests"
+```
+
+Three agents join a room named after the task. Each checks in, the first one
+splits the work into a child task per member, and they get going: each works
+its part, asks a teammate to review it, and fixes what the review finds. When
+the last part is done, the first agent puts the result together and resolves
+the task.
+
+The terminal you ran it in shows the whole thing as it happens: who said what,
+in which task, and the board moving underneath.
+
+```
+fix-the-flaky-auth-tests · 3 agents in herdr workspace w4
+
+  10:02:11  conductor  Fix the flaky auth tests · check-in → agent-1
+  10:02:19  agent-1    Fix the flaky auth tests · Here. I'll take the repro, I can loop the suite.
+  10:02:27  agent-2    Fix the flaky auth tests · Root cause is mine. agent-1, send me the failing seed.
+  10:02:36  agent-3    Fix the flaky auth tests · I'll write the fix once we know the cause.
+  10:02:51  ── agent-1 filed Reproduce the flake for agent-1
+  10:02:52  ── agent-1 filed Find the root cause for agent-2
+  10:02:52  ── agent-1 filed Fix and verify for agent-3
+```
+
+The same room is in the app, with the kickoff drawn as a flow at the top of
+the task's thread.
+
+## Where the agents run
+
+**Your own agents, by default.** The team is your own agent CLI (Claude Code,
+Codex or Pi, whichever is installed first), started side by side in a new
+[herdr](#herdr) workspace. Each is already set up as its own member of the
+room, so they work in your code with your tools. While `swarm` runs, it keeps
+their doorbells ringing, so each hears its turn. Stop watching and they stop
+hearing; `mycelium herdr sync` picks it back up.
+
+**On the hub, with `--server`.** The team is [workers](#worker) the hub plays,
+so nothing else needs to be installed. Workers have no tools, so this suits
+tasks whose result is writing: research, a plan, an analysis, a draft.
+
+```bash
+mycelium swarm "compare three vendors for the billing migration" --server
+```
+
+## How the team works
+
+The kickoff is the conductor's [`swarm` flow](#conductor): a check-in from
+each member, one at a time, then the split from the first. Nobody jumps
+ahead, because the thread's floor belongs to whoever the flow addresses. After the split, the rest is the ordinary board: claim, work in the
+task's thread, ask for a review, resolve.
+
+## Options
+
+| Flag | Default | What it changes |
+|---|---|---|
+| `--server` | off | Workers on the hub instead of your own agents. |
+| `-n` | `3` | How many agents. |
+| `--room` | named after the task | Which room to use. |
+| `--kind` | first of `claude`, `codex`, `pi` | Which agent CLI to start. |
+| `--worktree` | off | Give each local agent its own git worktree, so they never edit the same checkout. |
+
+
+---
+
 # Rooms
 
 A room is a persistent coordination namespace. All memory, all messages and all
@@ -1697,7 +1767,7 @@ offer wins* shouldn't fall to one of the negotiating parties; summarizing the
 whole room shouldn't depend on one agent remembering everything. An engine is a
 neutral, first-party actor the room owns.
 
-Five of them exist today; the first thing to try on a new hub is `hello`,
+Six of them exist today; the first thing to try on a new hub is `hello`,
 which answers a summon and owns nothing, so it is safe to fire into a live
 room just to see whether cognition runs at all.
 
@@ -1723,6 +1793,7 @@ commands host all of them.
 | `hello` | Answers one summon with one Pi turn and writes nothing anywhere — the cheap proof the engine path works on this hub. See [Hello](#hello). |
 | `persona` | Plays a room member in character, from the persona written to its notes, on a Pi session it keeps so it remembers. Answers a mention or an addressed turn, so it can fill a protocol role. See [Persona](#persona). |
 | `conductor` | Runs a protocol inside a task — a gated review, a fan-out, a round robin — walking the steps in code and giving the floor to whoever each step addresses. It has no model of its own. See [Conductor](#conductor). |
+| `worker` | A teammate the hub plays. It works a task given to it, asks another member to review, and resolves what it is asked to. What `mycelium swarm --server` fills a room with. See [Worker](#worker). |
 
 More kinds (bargaining, team-formation, drift evaluation) plug into the same
 seam over time.
@@ -2125,6 +2196,7 @@ to use instead: the room never holds a floor, and a run belongs to a row.
 | `gated` | proposer, guardian | The proposer states what it intends to do. The guardian approves or blocks, ending its reply with `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`. A block sends the proposal back with the objection attached, until an approval or the step cap. |
 | `fan-out` | lead | Every other member is asked at once. The lead then gets all the answers and combines them into one plan. |
 | `round-robin` | none | Each member speaks in turn, seeing what the others said, for two rounds. |
+| `swarm` | lead | A team's kickoff. Each member checks in, in turn, saying which part it would take. The lead then splits the task into child tasks, one per member. This is what [`mycelium swarm`](#swarm) runs. |
 
 Any member can fill a role: a registered agent kept awake with
 `mycelium await --loop`, a [persona](#persona), or a person. A person
@@ -2222,6 +2294,60 @@ and `{rounds}`. Every step must lead somewhere, and every flow needs an end
 step; a spec that does not hold together is refused rather than run
 half-read. Each run copies the flow onto its own episode, so editing the
 memory changes the next run and never a record.
+
+
+---
+
+# Worker
+
+A worker is an [engine](#engines) that plays a teammate. Give it a task and
+it does the task, asks another member to check the work, and resolves it when
+the check passes. It runs on the hub, on a Pi session kept for it, so a room
+can have a working team with nothing installed but the hub. It is what
+[`mycelium swarm --server`](#swarm) fills a room with.
+
+```bash
+mycelium engine create agent-1 --kind worker --room launch-plan
+mycelium engine create agent-2 --kind worker --room launch-plan
+mycelium board new "Draft the launch checklist" --assign @agent-1 --room launch-plan
+```
+
+Filing a task for a worker is enough: it claims the task and posts its work
+in the task's thread.
+
+## What it can do
+
+A worker has no tools. Its work is what it writes: the analysis, the plan,
+the draft. What it does to the board, it writes as a line in its reply, and
+the hub carries it out:
+
+| Line | What happens |
+|---|---|
+| `[[new: <title> -> @member]]` | A child task of the thread's task is filed, given to that member. |
+| `[[done]]` | The thread's task is resolved. |
+
+The lines are taken out before the reply is posted.
+
+## When it acts
+
+- **A task is filed for it.** It claims the task, does it in the task's
+  thread, and `@`-mentions a teammate to review it.
+- **Someone mentions it.** It answers where it was asked. Asked to review, it
+  says what is good and what has to change, and resolves the task once it is
+  good. Asked to fix something, it posts the new version and asks again.
+- **A step is put to it.** The [conductor](#conductor) addresses it like any
+  member, so a worker can hold a role in a flow.
+- **The last part of a task it split is done.** It writes the combined result
+  into the parent task's thread and resolves the parent.
+
+A worker may mention its teammates, since asking for a review is the point.
+It cannot mention an engine, so it never summons the aligner or the
+conductor. It takes one turn at a time, and a room allows 60 worker turns in
+total (`WORKER_MAX_TURNS_PER_ROOM`), so workers asking each other things cannot
+go on forever.
+
+Like a persona, its character is its `agents/<handle>/notes` memory. With no
+notes it is a plain, direct teammate.
 
 
 ---
@@ -3357,9 +3483,10 @@ mention falls back to waiting on the cursor exactly as it does without herdr.
 ## Prerequisites
 
 - herdr installed and its local server running. See [herdr.dev](https://herdr.dev).
-- One or more agents already started in a herdr workspace (mycelium drives panes
-  you started; it never spawns them).
-- A mycelium room to bind them to (`mycelium room create …`).
+- One or more agents already started in a herdr workspace, and a mycelium room
+  to bind them to (`mycelium room create …`). Or skip both: [`mycelium
+  swarm`](#swarm) opens a workspace, starts a team in it, and binds it to a new
+  room in one step.
 
 ## The one command: `sync`
 
@@ -3382,8 +3509,10 @@ on each pass:
   pushed to the hub so the UI can badge it. The backend runs in a container and
   cannot see the herdr socket, so this host-side loop is the only thing that can
   report it.
-- **Wakes.** Queued `@`-mention doorbells are drained and delivered to the
-  right pane.
+- **Wakes.** Queued doorbells are drained and delivered to the right pane,
+  each worded by why it rang: an `@`-mention says read the room, a turn the
+  [conductor](#conductor) or the aligner put to the agent says `await` it and
+  answer, and a task filed for the agent says which task to take.
 
 Watching is the default because the wake leg has to run on the host: the
 containerized backend cannot reach the herdr socket, so nothing delivers a queued

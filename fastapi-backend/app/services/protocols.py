@@ -211,6 +211,39 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
             {"id": "done", "end": "resolved"},
         ],
     },
+    "swarm": {
+        "name": "swarm",
+        "description": "A team kicks off a task: each member checks in, then the lead splits the work.",
+        "roles": ["lead"],
+        "max_steps": 4,
+        "steps": [
+            {
+                "id": "check-in",
+                "to": "each",
+                "prompt": (
+                    "The team ({handles}) is taking on task {task}: {ask}\n\n"
+                    "Check in, in two or three sentences: say which part you would "
+                    "take and what you would need from someone else. Answer what the "
+                    "others said where it matters. Do not start the work yet.\n\n"
+                    "Said so far:\n{replies}"
+                ),
+                "next": "split",
+            },
+            {
+                "id": "split",
+                "to": "lead",
+                "prompt": (
+                    "Everyone has checked in on {task}: {ask}\n\n{replies}\n\n"
+                    "You are the lead. Split the work into child tasks of {task}, one "
+                    "per piece, each given to the member who offered to take it, so "
+                    "every member has one. Create them now, then say the split in a "
+                    "few lines."
+                ),
+                "next": "done",
+            },
+            {"id": "done", "end": "resolved"},
+        ],
+    },
     "gated": {
         "name": "gated",
         "description": "A proposer proposes, a guardian approves or blocks; a block sends it back.",

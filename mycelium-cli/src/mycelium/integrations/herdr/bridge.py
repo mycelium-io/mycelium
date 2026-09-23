@@ -105,6 +105,18 @@ def build_wake_prompt(room: str, handle: str) -> str:
     )
 
 
+def build_assigned_prompt(room: str, handle: str, key: str, title: str | None = None) -> str:
+    """The doorbell for a row just filed for this agent: go take it."""
+    h = handle.lstrip("@")
+    what = f"'{title}' ({key})" if title else key
+    return (
+        f"[mycelium] The task {what} in room '{room}' was given to you as '@{h}'. "
+        f"Claim it (`mycelium board claim {key} --room {room} --to @{h}`), read its thread "
+        f"(`mycelium board messages {key} --room {room}`), do the work, and post what you "
+        f'did there with `mycelium board send {key} "..." --room {room} --as {h}`.'
+    )
+
+
 def build_mention_prompt(room: str, handle: str) -> str:
     """A doorbell, not a payload: nudge the agent that messages are waiting.
 
@@ -364,6 +376,56 @@ class HerdrBridge:
             args += ["--until", until]
         if timeout_ms is not None:
             args += ["--timeout", str(timeout_ms)]
+        return self._run_json(args).get("result", {})
+
+    # ── making panes ─────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _env_args(env: dict[str, str] | None) -> list[str]:
+        return [arg for k, v in (env or {}).items() for arg in ("--env", f"{k}={v}")]
+
+    def create_workspace(
+        self, label: str, *, cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> tuple[str, str]:
+        """Open a new workspace; ``(workspace id, its first pane id)``.
+
+        Opened without taking focus, so the terminal the caller runs in stays
+        where it is.
+        """
+        args = ["workspace", "create", "--label", label, "--no-focus"]
+        if cwd:
+            args += ["--cwd", cwd]
+        args += self._env_args(env)
+        result = self._run_json(args).get("result", {})
+        workspace = str((result.get("workspace") or {}).get("workspace_id") or "")
+        pane = str((result.get("root_pane") or {}).get("pane_id") or "")
+        if not workspace or not pane:
+            raise HerdrError("herdr created a workspace but named no workspace or pane")
+        return workspace, pane
+
+    def split_pane(
+        self,
+        pane: str,
+        *,
+        direction: str = "right",
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+    ) -> str:
+        """Split ``pane``; return the new pane's id."""
+        args = ["pane", "split", pane, "--direction", direction, "--no-focus"]
+        if cwd:
+            args += ["--cwd", cwd]
+        args += self._env_args(env)
+        result = self._run_json(args).get("result", {})
+        new = str((result.get("pane") or {}).get("pane_id") or "")
+        if not new:
+            raise HerdrError("herdr split a pane but named no new pane")
+        return new
+
+    def start_agent(self, name: str, kind: str, pane: str, *, timeout_ms: int = 60000) -> dict:
+        """Start an interactive ``kind`` agent named ``name`` in ``pane``; wait until it is ready."""
+        args = ["agent", "start", name, "--kind", kind, "--pane", pane]
+        args += ["--timeout", str(timeout_ms)]
         return self._run_json(args).get("result", {})
 
     # ── the wake orchestration ───────────────────────────────────────────────

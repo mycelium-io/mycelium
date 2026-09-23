@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from app.config import settings
-from app.services import l9, l9_episode, markers, protocols, turns
+from app.services import l9, l9_episode, markers, protocols, tasks, turns
 from app.services.agent_registry import norm_handle
 from app.services.aligner import _NON_PARTICIPANTS, _registered_engine_kind
 from app.services.episode_records import EPISODES_PREFIX
@@ -114,6 +114,8 @@ class Run:
     #: The most recent reply anyone gave.
     recent: str = ""
     steps_taken: int = 0
+    #: The key of the row whose thread the run walks, for prompts to name it.
+    task: str = ""
 
     def targets(self, step: Step) -> list[str]:
         to = step.to or ""
@@ -131,6 +133,7 @@ class Run:
             reply=self.recent,
             replies="\n".join(f"- {h}: {p}" for h, p in said) or "(nothing yet)",
             handles=", ".join(self.handles),
+            task=self.task or "this task",
             round=str(round_n),
             rounds=str(rounds),
         )
@@ -350,7 +353,15 @@ class ConductorEngine:
         # The run walks in the task's own thread; its record is a nested
         # episode of its own — the same slice, with the flow and the trace on
         # it — so the task stays one row and one thread.
-        run = Run(protocol=protocol, ask=ask, handles=handles, bound=bound, episode=thread)
+        row = tasks.row_of_episode(room, thread)
+        run = Run(
+            protocol=protocol,
+            ask=ask,
+            handles=handles,
+            bound=bound,
+            episode=thread,
+            task=row[0] if row else "",
+        )
         ep = l9_episode.EpisodeState(
             episode=thread,
             topic=l9.topic_urn(room),

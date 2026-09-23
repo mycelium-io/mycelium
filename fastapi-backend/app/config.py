@@ -201,6 +201,14 @@ class Settings(BaseSettings):
     PERSONA_HANDLE: str = "persona"
     PERSONA_PI_TIMEOUT_S: float = 120.0
 
+    # Worker engine (kind ``worker``) — a member the hub plays that takes work
+    # off the board: it answers when addressed, works a row given to it, asks a
+    # teammate to review, and resolves what it was asked to. Tool-less; its
+    # work is what it writes. Per-turn timeout, and a cap on turns per room so
+    # a team of workers mentioning each other cannot run forever.
+    WORKER_PI_TIMEOUT_S: float = 180.0
+    WORKER_MAX_TURNS_PER_ROOM: int = 60
+
     # Conductor engine (kind ``conductor``) — runs a protocol's steps over a
     # thread in code, holding the floor for whoever each step addresses. No
     # model of its own, so no Pi settings: only its handle default, how long

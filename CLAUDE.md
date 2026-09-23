@@ -131,6 +131,9 @@ the user's own Claude Code / Cursor session — kept woken with `mycelium await
 --loop --exec <cmd>`, which loops `await` → reason → `respond`. The loop *is* the
 wake; there is no cold-spawn. Cold-start-on-demand, waking a handle when nothing is
 resident, is served by herdr plus per-agent identity (`mycelium herdr sync`).
+A herdr doorbell rings on a text mention, on a turn put to the handle as an L9
+recipient (`herdr_wake_addressed`), and on a row filed for it
+(`herdr_wake_assigned`), each carrying a `reason` the bridge words its prompt by.
 
 **Tasks are the surface.** A board row is a markdown memory (body + frontmatter)
 and, through a store-owned episode binding, a thread on the room's channel
@@ -214,8 +217,9 @@ is no litellm dependency.
   remembers, and it answers on two seams — a text mention (the summon hook)
   and an **addressed turn** (`persister.on_addressed`, fired once per L9
   recipient of an exchange that mentioned nobody in its text, which is how the
-  aligner and the conductor address one member). Only the persona is wired to
-  the addressed seam; the other engines act on mentions alone. A stance marker
+  aligner and the conductor address one member). The persona and the worker
+  answer on the addressed seam (and it rings a herdr member's doorbell); the
+  other engines act on mentions alone. A stance marker
   in its answer is lifted onto the payload like `/reply` does, and every `@` in
   what it says is neutralized, so personas cannot summon anything or each
   other, and it never posts into a thread whose floor was not given to it.
@@ -229,7 +233,8 @@ is no litellm dependency.
 - **The conductor walks a flow inside a task's thread, in code.** A fourth
   engine kind (`app/services/conductor.py`) with no model of its own.
   Summoned as `board coordinate <row> conductor "gated @a @b: …"`, it walks
-  a `protocols.Protocol` (three built in: `gated`, `fan-out`, `round-robin`;
+  a `protocols.Protocol` (four built in: `gated`, `fan-out`, `round-robin`,
+  `swarm`; a step's prompt can name the row as `{task}`;
   a room's `protocols/<name>` memory overrides or adds one; `show <name>`
   prints one as YAML to save there) **in the thread it was summoned in**,
   holding that thread's floor for whoever each step addresses, asking through
@@ -254,6 +259,31 @@ is no litellm dependency.
   is a summon, never a SLIM invite. A run opens no negotiation and never
   commits `converged`, so nothing it does compiles into rows. A model in the
   nodes, code on the edges.
+- **A worker is a teammate the hub plays, and the board is its only tool.**
+  Engine kind `worker` (`app/services/worker_engine.py`), on the persona's
+  machinery (notes as character, a Pi session per (room, handle)). It acts on
+  four things: a mention, an addressed turn, a `filed` notice naming it (it
+  claims the row and works it in the row's thread), and a `resolved` notice
+  that left a parent with nothing open (`assignments.parent_completed`; the
+  author of the children writes the combined result into the parent and
+  resolves it). What it does to the board it writes as action lines
+  (`[[new: title -> @member]]`, `[[done]]`), lifted out of the prose and
+  carried out against the row its thread belongs to through the same services
+  every writer uses. Unlike a persona it keeps `@` for teammates (asking for
+  review is the collaboration) and neutralizes every other mention, so it can
+  never summon an engine. Turns are serial per worker and capped per room
+  (`WORKER_MAX_TURNS_PER_ROOM`). Board events reach it through the manager's
+  `on_notice` hook, fired after every notice; a notice still wakes no `await`.
+- **`mycelium swarm` is the one-argument path to a working team.** It names a
+  room after the task, registers a conductor, files the task, and summons the
+  conductor's `swarm` flow (each member checks in, then the lead splits the
+  task into a child row per member) in the task's thread. The members are the
+  user's own agent CLI in a new herdr workspace by default, each pane's env
+  set to its handle and room (`MYCELIUM_AGENT_HANDLE`, `MYCELIUM_ROOM_ID`) and
+  handed a brief; `--server` makes them workers instead. The invoking terminal
+  is the live view (thread prose and notices across the task and its
+  children, which `room watch` deliberately hides) and, locally, runs the
+  herdr sync pass on a thread (`commands/herdr.sync_pass`).
 - **The aligner mediates, inside a task.** Agents never talk to each other directly;
   all coordination flows through the aligner. It's a first-party engine registered
   as a room citizen (`mycelium engine create aligner --kind aligner`) and summoned
