@@ -21,7 +21,8 @@ is printed in full and the command exits.
 ```
 fix-flaky-auth-tests · 3 agents in herdr workspace w4
 
-  10:02:11  conductor  Fix the flaky auth tests · check-in → agent-1
+  10:02:11  conductor  Fix the flaky auth tests · Running swarm · agent-1 as lead · agent-2, agent-3
+  10:02:11  conductor  Fix the flaky auth tests · check-in → agent-1 · turn 1 of 4
   10:02:19  agent-1    Fix the flaky auth tests · Here. I'll take the repro, I can loop the suite.
   10:02:27  agent-2    Fix the flaky auth tests · Root cause is mine. agent-1, send me the failing seed.
   10:02:36  agent-3    Fix the flaky auth tests · I'll write the fix once we know the cause.
@@ -31,8 +32,11 @@ fix-flaky-auth-tests · 3 agents in herdr workspace w4
 ```
 
 The same room is in the app, with the kickoff drawn as a flow at the top of
-the task's thread. The result stays in the room: it is written into the task
-itself, so it is there to open or search long after the terminal is closed.
+the task's thread. The conductor's turns show as one line each ("check-in →
+agent-2 · turn 1 of 4"), with the prompt it sent a click away, so the thread
+reads as the agents talking. The result stays in the room: it is written into
+the task itself, so it is there to open or search long after the terminal is
+closed.
 
 ## Where the agents run
 
@@ -61,8 +65,15 @@ mycelium swarm "compare three vendors for the billing migration" --server
 
 The kickoff is the conductor's [`swarm` flow](#conductor): a check-in from
 each member, one at a time, then the split from the first. Nobody jumps
-ahead, because the thread's floor belongs to whoever the flow addresses. After the split, the rest is the ordinary board: claim, work in the
-task's thread, ask for a review, resolve.
+ahead, because the thread's floor belongs to whoever the flow addresses.
+
+After the split, the rest is the ordinary board: claim, work in the task's
+thread, get it reviewed, resolve. Each part is reviewed by the next agent
+round a ring (agent-1's by agent-2, and so on), so review is spread across the
+team. The reviewer says what has to change, the author revises, and the
+reviewer resolves it when it is good. On the hub, the routing is done in code:
+work or a revision that names nobody still reaches the reviewer, so a part
+cannot stall on a forgotten mention (see [Worker](#worker)).
 
 ## Options
 

@@ -36,7 +36,7 @@ is what the room remembers, searchable like any memory.
 ## When it acts
 
 - **A task is filed for it.** It claims the task, does it in the task's
-  thread, and `@`-mentions a teammate to review it.
+  thread, and asks its reviewer to look.
 - **Someone mentions it.** It answers where it was asked. Asked to review, it
   says what is good and what has to change, and resolves the task once it is
   good. Asked to fix something, it posts the new version and asks again.
@@ -44,6 +44,27 @@ is what the room remembers, searchable like any memory.
   member, so a worker can hold a role in a flow.
 - **The last part of a task it split is done.** It writes the combined result
   into the parent task's thread and resolves the parent.
+
+## Review
+
+Every part is reviewed by another worker before it is done. The reviewer is
+the next worker in the room, round a ring (agent-1's work goes to agent-2,
+agent-2's to agent-3, the last back to agent-1), so review is spread across the
+team rather than falling to the lead. The author is told who its reviewer is.
+
+A worker is asked to name who it wants to act, but the hub does not rely on
+it: a post on a part that neither resolves it nor mentions anyone is routed.
+The author's post (its work, or a revision) goes to its reviewer, and a review
+asking for changes goes back to the author. So a part cannot stall because a
+model forgot to mention someone. The third time a part comes back for review
+is the last: the reviewer resolves it if it is workable, naming anything left
+for later.
+
+A part is done when its reviewer says so. Its author cannot resolve it before
+anyone else has looked, and a second approval of a part already done changes
+nothing.
+
+## Limits
 
 A worker may mention its teammates, since asking for a review is the point.
 It cannot mention an engine, so it never summons the aligner or the

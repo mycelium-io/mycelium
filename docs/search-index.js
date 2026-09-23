@@ -80,7 +80,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#swarm-how-the-team-works",
     "t": "How the team works",
     "s": "Get Started › A Team on One Task",
-    "x": "The kickoff is the conductor's swarm flow: a check-in from each member, one at a time, then the split from the first. Nobody jumps ahead, because the thread's floor belongs to whoever the flow addresses. After the split, the rest is the ordinary board: claim, work in the task's thread, ask for a review, resolve.",
+    "x": "The kickoff is the conductor's swarm flow: a check-in from each member, one at a time, then the split from the first. Nobody jumps ahead, because the thread's floor belongs to whoever the flow addresses. After the split, the rest is the ordinary board: claim, work in the task's thread, get it reviewed, resolve. Each part is reviewed by the next agent round a ring (agent-1's by agent-2, and so on), so review is spread",
     "p": "Guide"
   },
   {
@@ -859,7 +859,21 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "adapters.html#worker-when-it-acts",
     "t": "When it acts",
     "s": "Engines › Worker",
-    "x": "A task is filed for it. It claims the task, does it in the task's thread, and @-mentions a teammate to review it. Someone mentions it. It answers where it was asked. Asked to review, it says what is good and what has to change, and resolves the task once it is good. Asked to fix something, it posts the new version and asks again. A step is put to it. The conductor addresses it like any member, so a worker can hold a ",
+    "x": "A task is filed for it. It claims the task, does it in the task's thread, and asks its reviewer to look. Someone mentions it. It answers where it was asked. Asked to review, it says what is good and what has to change, and resolves the task once it is good. Asked to fix something, it posts the new version and asks again. A step is put to it. The conductor addresses it like any member, so a worker can hold a role in a",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#worker-review",
+    "t": "Review",
+    "s": "Engines › Worker",
+    "x": "Every part is reviewed by another worker before it is done. The reviewer is the next worker in the room, round a ring (agent-1's work goes to agent-2, agent-2's to agent-3, the last back to agent-1), so review is spread across the team rather than falling to the lead. The author is told who its reviewer is. A worker is asked to name who it wants to act, but the hub does not rely on it: a post on a part that neither r",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#worker-limits",
+    "t": "Limits",
+    "s": "Engines › Worker",
+    "x": "A worker may mention its teammates, since asking for a review is the point. It cannot mention an engine, so it never summons the aligner or the conductor. It takes one turn at a time, and a room allows 60 worker turns in total (WORKER_MAX_TURNS_PER_ROOM), so workers asking each other things cannot go on forever. Like a persona, its character is its agents/<handle>/notes memory. With no notes it is a plain, direct tea",
     "p": "Adapters"
   },
   {
