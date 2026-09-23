@@ -576,3 +576,65 @@ def test_a_title_written_as_a_key_is_filed_in_words():
     assert worker_engine.task_title("  'fix CI-only tests'  ") == "fix CI-only tests"
     actions, _prose = worker_engine.parse_actions("[[new: work/create-sample -> @agent-3]]")
     assert actions == [worker_engine.Action("new", "Create sample", "agent-3")]
+
+
+def test_review_goes_round_a_ring_of_workers():
+    for h in ("agent-1", "agent-2", "agent-3"):
+        _register(h)
+    _register("conductor", "conductor")
+    _register("julia-laptop", None, adapter="claude_code")
+    assert worker_engine.reviewer_for(_ROOM, "agent-1") == "agent-2"
+    assert worker_engine.reviewer_for(_ROOM, "agent-3") == "agent-1"
+    assert worker_engine.reviewer_for(_ROOM, "julia-laptop") is None
+
+
+def test_a_lone_worker_has_no_reviewer():
+    _register("agent-1")
+    assert worker_engine.reviewer_for(_ROOM, "agent-1") is None
+
+
+@pytest.mark.asyncio
+async def test_work_that_asks_nobody_to_review_it_is_put_to_its_reviewer(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # The fifth live run: a worker answered its task with a question for no
+    # one, nobody heard, and the row sat held for good.
+    for h in ("agent-1", "agent-2"):
+        _register(h)
+    key, episode = await _task("New features", assignee="agent-2")
+    seen = _patch_pi(
+        monkeypatch,
+        "I don't have the changelog, so here is a draft with placeholders: [feature].",
+        "Placeholders are clear. Good enough.\n[[done]]",
+    )
+    engine, _managed, _manager = _engine()
+
+    engine.handle_notice(
+        _ROOM, {"subkind": "filed", "key": key, "episode": episode, "for": "agent-2"}
+    )
+    await _settle(engine)
+    await _settle(engine)
+
+    assert [s["handle"] for s in seen] == ["agent-2", "agent-1"]
+    assert "ask @agent-1 to review it" in seen[0]["prompt"]
+    assert "you are its reviewer" in seen[1]["prompt"]
+    found = read_memory_file(get_room_dir(_ROOM), key)
+    assert found is not None
+    assert assignments.settled(found[0], datetime.now(UTC))
+
+
+@pytest.mark.asyncio
+async def test_work_that_asks_its_reviewer_is_left_to_the_mention(monkeypatch: pytest.MonkeyPatch):
+    for h in ("agent-1", "agent-2"):
+        _register(h)
+    key, episode = await _task("New features", assignee="agent-2")
+    seen = _patch_pi(monkeypatch, "Here it is. @agent-1 can you check the list?")
+    engine, _managed, _manager = _engine()
+
+    engine.handle_notice(
+        _ROOM, {"subkind": "filed", "key": key, "episode": episode, "for": "agent-2"}
+    )
+    await _settle(engine)
+
+    # The fake channel fires no summons, so only the work turn itself ran.
+    assert [s["handle"] for s in seen] == ["agent-2"]

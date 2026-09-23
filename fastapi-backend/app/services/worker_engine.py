@@ -230,6 +230,21 @@ def _row(room: str, key: str) -> tuple[str, str | None]:
     return title.lstrip("# ").strip(), parent if isinstance(parent, str) else None
 
 
+def reviewer_for(room: str, handle: str) -> str | None:
+    """Who reviews ``handle``'s work: the next worker in the room, round a ring.
+
+    Named rather than left to the author, so review is spread across the team
+    instead of falling to whoever the author thinks of first (in practice, the
+    lead), and so there is always someone to hand the work to. ``None`` when
+    ``handle`` is the only worker.
+    """
+    workers = [h for h in team_of(room) if _registered_engine_kind(room, h) == ENGINE_KIND]
+    if _norm(handle) not in {_norm(w) for w in workers} or len(workers) < 2:
+        return None
+    at = next(i for i, w in enumerate(workers) if _norm(w) == _norm(handle))
+    return workers[(at + 1) % len(workers)]
+
+
 def _parts_of(room: str, parent: str) -> str:
     """Each child of ``parent``: its title and the last thing its holder said in its thread.
 
@@ -498,12 +513,31 @@ class WorkerEngine:
             logger.info("worker @%s could not claim %s: %s", handle, key, exc.reason)
             return
         title, _parent = _row(room, key)
+        reviewer = reviewer_for(room, handle)
+        who = f"@{reviewer}" if reviewer else "one teammate"
         ask = (
             f"The task '{title}' ({key}) is yours. Do it now: write the actual result "
-            "in this thread. Then @mention one teammate to review it, saying what to "
-            "check. Do not mark it done yourself; the reviewer does."
+            "in this thread. If you lack source material, write it anyway with "
+            "clearly marked placeholders rather than asking for it. Then ask "
+            f"{who} to review it, saying what to check. Do not mark it done "
+            "yourself; the reviewer does."
         )
-        await self.turn(room, handle, episode=episode, ask=ask)
+        said = await self.turn(room, handle, episode=episode, ask=ask)
+        if said is None or reviewer is None:
+            return
+        members = {_norm(h) for h in team_of(room)} - {_norm(handle)}
+        if any(_norm(m) in members for m in _MENTION.findall(said)):
+            return
+        # The work went up but nobody was asked to look at it, so nobody would
+        # hear of it and the row would sit held forever. The reviewer it was
+        # meant for is asked directly.
+        review = (
+            f"{handle} has posted its work on '{title}' ({key}) above, and you are its "
+            "reviewer. Say plainly what is good and what has to change; when it is "
+            f"good enough, end with [[done]] to resolve it, and if it is not, tell "
+            f"@{handle} exactly what to fix."
+        )
+        self._spawn(room, reviewer, self.turn(room, reviewer, episode=episode, ask=review))
 
     async def _wrap_up(self, room: str, handle: str, parent: str) -> None:
         """Every child of ``parent`` settled: combine them into its thread and resolve it."""
