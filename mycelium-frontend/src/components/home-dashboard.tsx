@@ -5,13 +5,14 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Boxes, Plus, Sparkles, Terminal } from "lucide-react";
+import { AlertTriangle, Boxes, Plus, Sparkles, Terminal, UsersRound } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RoomAvatar } from "@/components/ui/room-avatar";
 import { Monogram } from "@/components/ui/monogram";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
+import { StartSwarmDialog } from "@/components/start-swarm-dialog";
 import { useOpenInstallModal } from "@/components/install-modal";
 import { type EpisodeSummary, type Room } from "@/lib/api";
 import { avatarTint } from "@/lib/avatar-color";
@@ -82,6 +83,7 @@ function episodeState(ep: EpisodeSummary): { label: string; color: string; live:
  *  said, how long ago. */
 export function HomeDashboard() {
   const [showCreate, setShowCreate] = useState(false);
+  const [showSwarm, setShowSwarm] = useState(false);
   const { rooms, loading, refresh } = useRooms();
   // Newest first, the way an inbox is read. The hub serves the list in its own
   // order, which is stable but says nothing about what moved while you were
@@ -114,6 +116,10 @@ export function HomeDashboard() {
           {!disconnected && (
             <div className="mt-1 flex flex-shrink-0 items-center gap-2">
               <RunSampleLink />
+              <Button variant="outline" onClick={() => setShowSwarm(true)}>
+                <UsersRound className="size-4" />
+                Start a swarm
+              </Button>
               <Button onClick={() => setShowCreate(true)}>
                 <Plus className="size-4" />
                 New room
@@ -149,6 +155,10 @@ export function HomeDashboard() {
                       <Plus className="size-4" />
                       New room
                     </Button>
+                    <Button variant="outline" onClick={() => setShowSwarm(true)}>
+                      <UsersRound className="size-4" />
+                      Start a swarm
+                    </Button>
                     <RunSampleLink />
                   </div>
                   <InstallLink />
@@ -166,6 +176,7 @@ export function HomeDashboard() {
       </div>
 
       <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={refresh} />
+      <StartSwarmDialog open={showSwarm} onClose={() => setShowSwarm(false)} />
     </div>
   );
 }

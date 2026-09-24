@@ -160,6 +160,29 @@ export async function createRoom(data: { name: string; is_persistent?: boolean }
   });
 }
 
+/** Where a swarm is running: its room, its task's key, and the task's thread. */
+export interface Swarm {
+  room: string;
+  key: string;
+  episode: string;
+  members: string[];
+}
+
+/** Put a team of workers on a task: a room, a conductor, the workers, the task
+ *  and the kickoff, in one write (the app's `mycelium swarm --server`). */
+export async function startSwarm(data: {
+  task: string;
+  size?: number;
+  room?: string;
+  created_by?: string;
+}): Promise<Swarm> {
+  return apiFetch<Swarm>(`/api/swarms`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
 // ── Memory ───────────────────────────────────────────────────────────────────
 
 export interface Memory {

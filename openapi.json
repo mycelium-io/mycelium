@@ -1520,6 +1520,48 @@
         }
       }
     },
+    "/api/swarms": {
+      "post": {
+        "tags": [
+          "swarms"
+        ],
+        "summary": "Start Swarm",
+        "description": "Start a team of workers on a task and return where to watch it.",
+        "operationId": "start_swarm_api_swarms_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwarmCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwarmRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/episodes": {
       "get": {
         "tags": [
@@ -6483,6 +6525,88 @@
           "created_at"
         ],
         "title": "SubscriptionRead"
+      },
+      "SwarmCreate": {
+        "properties": {
+          "task": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Task",
+            "description": "What the team works on"
+          },
+          "size": {
+            "type": "integer",
+            "maximum": 8.0,
+            "minimum": 2.0,
+            "title": "Size",
+            "description": "How many workers",
+            "default": 3
+          },
+          "room": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room",
+            "description": "Room to run in (default: named after the task)"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By",
+            "description": "Who is starting it"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task"
+        ],
+        "title": "SwarmCreate",
+        "description": "What a team should work on, and how big the team is."
+      },
+      "SwarmRead": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "episode": {
+            "type": "string",
+            "title": "Episode"
+          },
+          "members": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Members"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "key",
+          "episode",
+          "members"
+        ],
+        "title": "SwarmRead",
+        "description": "Where the swarm is running: its room, its task, and the task's thread."
       },
       "TaskCreate": {
         "properties": {
