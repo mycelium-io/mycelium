@@ -1,64 +1,61 @@
 # Metrics and observability
 
-Mycelium surfaces its own operational metrics today, and can ingest agent
-telemetry over OpenTelemetry (OTLP) for a fuller picture. The v1 story is
-deliberately minimal; it will grow as the agent-telemetry side lands.
+Mycelium records metrics about what its own backend does. It can also collect
+telemetry from your agents over OpenTelemetry (OTLP), though that side is still
+basic.
 
-## What you get today
+## What the backend records
 
-**Mycelium's own metrics.** The backend records what it does as it runs: memory
-writes and searches, embeddings computed by the local model, index runs, and Pi
-cognition calls (by operation and model). It exposes them as JSON at
-`GET /api/observability` (counters plus latency histograms). Cognition runs
-through the `pi` binary, which reports no per-turn token usage, so calls,
-failures and latency are counted and spend is not.
+**Backend metrics.** The backend counts memory writes and searches, embeddings,
+index runs and model calls (by operation and model), with how long each took.
+You can read them as JSON at `GET /api/observability`. Model calls go through
+`pi`, which doesn't report token usage, so calls, failures and timings are
+recorded but cost isn't.
 
-**The coordination health surface.** `GET /health` reports whether the fabric is
-actually working: channels provisioned and failed, invite failures, and per-room
-re-serve and drop counts, plus storage, embedding, and LLM status. This is the
-one call that answers "is the room bus healthy?" and is what `mycelium doctor`
-reads.
+**Health.** `GET /health` tells you whether messaging is working: channels set
+up and failed, failed invites, and per-room counts of messages re-sent and
+dropped, plus the state of storage, embeddings and the model. This is what
+`mycelium doctor` checks.
 
 ## Viewing metrics
 
 ```bash
-mycelium metrics status     # health of the collector, backend, and config
-mycelium metrics show       # render the collected metrics as tables
-mycelium metrics show --json  # raw JSON for scripting
-mycelium metrics reset      # clear locally collected metrics
+mycelium metrics status       # is the collector running, and is the config right
+mycelium metrics show         # the collected metrics, as tables
+mycelium metrics show --json  # the same, as JSON
+mycelium metrics reset        # clear the metrics collected on this machine
 ```
 
-`mycelium metrics show` renders Mycelium's backend metrics, and any agent
-telemetry the collector has received (see below).
+`mycelium metrics show` includes the backend's metrics and any agent telemetry
+the collector has received.
 
-The app draws the same two surfaces — the backend counters and the `/health`
-fabric block, alongside every room's episode records — on its **Metrics** page,
-reachable from the status bar.
+In the app, the **Metrics** page (open it from the status bar) shows the
+backend's metrics, the `/health` messaging details, and every room's episode
+records.
 
-## Agent telemetry over OTLP (optional, minimal in v1)
+## Agent telemetry over OTLP (optional)
 
-The **collector** is an OpenTelemetry receiver: start it with
-`mycelium up --metrics` and it listens for OTLP metrics and traces on
-`localhost:4318`, alongside polling the backend's `/api/observability`. It writes
-an aggregated snapshot to `$MYCELIUM_DATA_DIR/metrics/` that `mycelium metrics`
-reads.
+The collector receives OpenTelemetry data. Start it with
+`mycelium up --metrics`, and it listens for OTLP metrics and traces on
+`localhost:4318`, and also reads the backend's `/api/observability`. It saves
+a combined snapshot to `$MYCELIUM_DATA_DIR/metrics/`, which is what
+`mycelium metrics` reads.
 
-Point any OTLP source at the receiver to feed it. The intended source is an
-agent-side observability plugin such as
-[InsightClaw](https://github.com/outshift-open/InsightClaw), which emits
-per-request, agent, tool, and LLM cost/token telemetry. Wiring a first-party
-emitter is future work; for now the receiver is present and any OTLP exporter
-configured to `http://<host>:4318` will populate the trace and metric views.
+Point any OTLP exporter at `http://<host>:4318` to send data to it. It's meant
+for agent-side plugins such as
+[InsightClaw](https://github.com/outshift-open/InsightClaw), which reports
+requests, agents, tools, and model cost and token use. Mycelium doesn't ship
+its own exporter yet.
 
-Collected trace spans are queryable:
+You can query the traces it collects:
 
 ```bash
-mycelium metrics traces summary      # rollup over a time window
-mycelium metrics traces by-agent     # pivot spans by agent, room, model, tool, …
+mycelium metrics traces summary    # totals over a time window
+mycelium metrics traces by-agent   # spans grouped by agent, room, model, tool and more
 ```
 
 ## Files
 
-All metrics data lives under `$MYCELIUM_DATA_DIR/metrics/` (default
-`~/.mycelium/metrics/`): `metrics.json` (the aggregated snapshot) and
-`traces.db` (the OTLP span store).
+Metrics are stored in `$MYCELIUM_DATA_DIR/metrics/` (`~/.mycelium/metrics/` by
+default): `metrics.json` is the combined snapshot, and `traces.db` holds the
+OTLP traces.

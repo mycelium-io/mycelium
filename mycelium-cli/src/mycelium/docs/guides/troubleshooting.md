@@ -1,134 +1,148 @@
 # Troubleshooting
 
-## Quick Diagnostics
+## Start with `mycelium doctor`
 
 ```bash
-mycelium doctor          # full diagnostic: config, backend, LLM, SLIM, adapters
-mycelium doctor --fix    # auto-fix everything it can
-mycelium status          # quick service health (backend, LLM, disk)
-mycelium logs --tail 50  # recent service logs
+mycelium doctor          # checks config, backend, model, SLIM and adapters
+mycelium doctor --fix    # fixes whatever it can without asking
+mycelium status          # a quick look at the services
+mycelium logs --tail 50  # recent logs
 ```
 
-`mycelium doctor` is the first thing to run for almost any problem. It
-auto-detects whether this machine is a **hub** (runs the backend + SLIM node
-locally) or a **spoke** (points at a remote hub), and skips the checks that
-don't apply. Force it with `--mode hub` or `--mode spoke`.
+`mycelium doctor` is the first thing to run for almost any problem. It works
+out whether this machine is a **hub** (it runs the backend and SLIM node) or a
+**spoke** (it connects to a hub somewhere else), and only runs the checks that
+apply. To choose yourself, pass `--mode hub` or `--mode spoke`.
 
 ---
 
-## Common Issues
+## Common problems
 
-### 1. Command Not Found
+### `mycelium: command not found`
 
-**Symptom**: `mycelium: command not found`
+The CLI isn't installed, or isn't on your `PATH`. Install it:
 
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 ```
 
-Or add to PATH if the binary exists:
+If it's installed but your shell can't find it, add its folder to your `PATH`:
+
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
 ---
 
-### 2. Backend Not Running
+### The backend isn't running
 
-**Symptom**: `Cannot connect to Mycelium API at http://localhost:8000`
+**You see:** commands can't connect to the hub at `http://localhost:8000`.
 
-The backend is the room moderator; nothing coordinates without it.
+Nothing in a room works without the backend. Check it and start it:
 
 ```bash
 mycelium status                     # quick check
-docker ps | grep mycelium-backend   # container status
-mycelium up                         # start services
+docker ps | grep mycelium-backend   # is the container up?
+mycelium up                         # start the services
 mycelium logs mycelium-backend --tail 50
 ```
 
 ---
 
-### 3. Config Not Found
+### No config yet
 
-**Symptom**: `Configuration file not found: ~/.mycelium/config.toml`
+**You see:** commands behave as if nothing is set up, or connect to the wrong
+hub.
+
+Create the config, either for a hub on this machine or pointing at one
+elsewhere:
 
 ```bash
 mycelium init
-# or point at a remote hub:
+# or, for a hub somewhere else:
 mycelium init --api-url http://your-hub:8000
 ```
 
 ---
 
-### 4. Spoke Can't Reach the Hub (or Backend Down)
+### A spoke can't reach the hub
 
-**Symptom**: `Cannot connect to Mycelium API`; memory/`await`/`respond` fail;
-`mycelium doctor` reports backend unreachable.
+**You see:** from a spoke, `memory`, `room ls`, `await` or `respond` fail with
+"can't reach the hub", and `mycelium doctor` says the backend is unreachable.
 
-Spokes talk to the hub over **HTTP** (`server.api_url`, default port **8000**).
-They do not need the SLIM node for normal participation.
+Spokes talk to the hub over HTTP, at `server.api_url` (port **8000** by
+default). They don't need the hub's SLIM node for normal use.
+
+Check what the spoke is pointing at, and whether it can reach it:
 
 ```bash
-mycelium doctor                     # detects hub vs spoke; checks /health
-curl http://<hub-ip>:8000/health    # from the spoke
-mycelium config get server.api_url    # should point at the hub backend
+mycelium doctor                       # checks the hub's /health
+mycelium config get server.api_url    # should be the hub's backend
+curl http://<hub-ip>:8000/health      # run this from the spoke
 ```
 
-On the **hub**, ensure the backend and SLIM node are running:
+Common causes:
+
+- A firewall is blocking port 8000.
+- `server.api_url` is wrong. Fix it with
+  `mycelium init --api-url http://<correct-hub-ip>:8000`.
+- The backend isn't running on the hub. Run `mycelium up` there.
+- A VPN or Tailscale isn't connected.
+- The hub has [authentication](#auth) on and you haven't run `mycelium login`
+  on the spoke.
+
+On the hub itself, make sure both the backend and the SLIM node are running:
 
 ```bash
 mycelium up
 docker ps | grep mycelium
-mycelium hub host                   # (re)start the SLIM node if needed
+mycelium hub host                   # start the SLIM node again if it's down
 ```
 
-If coordination still fails on the hub itself, check the SLIM node (port
-**46357**) — the backend moderator needs it. Spokes rarely need `:46357`
-unless you use native SLIM tooling (`mycelium slim send`).
-
-Common causes: firewall blocks **8000**, wrong `server.api_url`, VPN not
-connected, or auth enabled on the hub without `mycelium login` on the spoke.
-See [Security Planes](#security-planes) and [Authentication](#auth).
+The backend needs the SLIM node (port **46357**) to run rooms. Spokes only
+need that port if they use SLIM tools directly, such as `mycelium slim send`.
+See also [Security Planes](#security-planes).
 
 ---
 
-### 5. Port Already in Use
+### Port already in use
 
-**Symptom**: `bind: address already in use`
+**You see:** `bind: address already in use` when starting the stack.
+
+Find what's using the port:
 
 ```bash
 lsof -i :8000    # backend
 lsof -i :46357   # SLIM node
 ```
 
-Remap published host ports through config rather than hand-editing `.env`:
+Then move Mycelium to other ports with config. Don't edit `.env` by hand:
 
 ```bash
 mycelium config set runtime.backend_port 8001     # MYCELIUM_BACKEND_PORT
 mycelium config set runtime.frontend_port 3001    # MYCELIUM_UI_PORT
 mycelium config set runtime.collector_port 4319   # MYCELIUM_METRICS_PORT
 mycelium config apply
-mycelium down && mycelium up                      # restart to pick up new ports
+mycelium down && mycelium up                      # restart on the new ports
 ```
 
 ---
 
-### 6. LLM Not Configured
+### No model configured
 
-**Symptom**: `LLM unavailable, no API key configured`, or `mycelium doctor`
-reports the LLM connectivity check as *not configured* / *auth failed*.
+**You see:** `mycelium doctor` says the model check is *not configured* or
+*auth failed*, or engines like the [aligner](#aligner) don't answer.
 
-The LLM powers the [aligner](#aligner) mediator and memory embedding-adjacent
-work. Set it through config, not by hand-editing `.env`:
+Engines need a model. Set it with config, not by editing `.env`:
 
 ```bash
 mycelium config set llm.model "anthropic/claude-sonnet-4-6"
 mycelium config set llm.api_key "sk-ant-..."
 mycelium config apply
-mycelium up                         # recreate the backend with the new env
+mycelium up                         # restart the backend with the new settings
 ```
 
-For local Ollama:
+For a local Ollama:
 
 ```bash
 mycelium config set llm.model "ollama/llama3"
@@ -136,86 +150,88 @@ mycelium config set llm.base_url "http://localhost:11434"
 mycelium config apply && mycelium up
 ```
 
-`mycelium doctor` runs a real completion probe inside the backend, so it
-catches missing provider SDKs (e.g. boto3 for Bedrock) and bad model strings,
-not just a missing key.
+`mycelium doctor` actually calls the model from inside the backend, so it also
+catches a wrong model name or a missing provider package (such as boto3 for
+Bedrock), not only a missing key.
 
 ---
 
-### 7. Aligner Negotiation Fails ("pi not found")
+### Engines fail with "`pi` not found on PATH"
 
-**Symptom**: summoning the aligner (`mycelium engine invoke aligner ...`) fails
-with `PiBrainError: pi not found`.
+**You see:** mentioning the aligner or another engine fails with an error
+saying `pi` isn't found.
 
-The aligner's mediator runs a NEGMAS negotiation whose brain is a **Pi**
-coding-agent session. The released backend image already ships Pi, so the
-normal `mycelium up` path needs nothing extra, and `mycelium doctor` reports this
-check as satisfied when the backend is dockerized.
-
-This only bites when you run the backend **outside Docker** (a contributor
-doing `uvicorn app.main:app` on the host). There, put Pi on PATH:
+Engines run on Pi. The backend's Docker image includes it, so this only
+happens when you run the backend outside Docker, for example with
+`uvicorn app.main:app` while working on it. Install Pi on that machine:
 
 ```bash
 npm install -g @mariozechner/pi-coding-agent
-# or point ALIGNER_PI_BINARY at an existing pi install
+# or set ALIGNER_PI_BINARY to the path of an existing pi
 ```
 
 ---
 
-### 8. Memory Search Returns Nothing
+### Memory search finds nothing
 
-**Symptom**: `mycelium memory search` is empty despite memories existing.
+**You see:** `mycelium memory search` returns nothing, but you know the
+memories exist.
 
-Search runs against a **local embedding index** (no external service). Direct
-file writes (cat, editor, agent file I/O) don't update it until you reindex.
+Search uses an index on the hub. Memories written with `mycelium memory set`
+are indexed right away, but files you edit or add directly (with an editor,
+`cat`, or an agent writing files) aren't indexed until you rebuild the index:
 
 ```bash
-mycelium memory ls          # do memories exist?
-ls ~/.mycelium/rooms/       # files present?
-mycelium reindex            # rebuild the index after direct file writes
-mycelium room ls            # wrong active room?
+mycelium memory ls          # are the memories there?
+ls ~/.mycelium/rooms/       # are the files there?
+mycelium memory reindex     # rebuild the index
+mycelium room ls            # are you in the right room?
 ```
 
 ---
 
-### 9. No Active Room
+### No active room
 
-**Symptom**: `No active room. Use 'mycelium room use <name>'`
+**You see:** `No active room set.`, or `No room specified and no active room
+set`.
+
+Pick a room for this shell, or name one on the command:
 
 ```bash
 mycelium room ls
 mycelium room use <name>
-# or pass room explicitly:
+# or name it each time:
 mycelium memory ls --room <name>
 ```
 
 ---
 
-### 10. Config Drift (edited one file, not the other)
+### Config changes don't take effect
 
-**Symptom**: config changes seem to have no effect; `mycelium doctor` flags
-*Config file drift* or *Runtime config drift*.
+**You see:** you changed a setting and nothing happened, or `mycelium doctor`
+reports *Config file drift* or *Runtime config drift*.
 
-`mycelium config apply` regenerates `~/.mycelium/.env` from `config.toml`, which
-is the source of truth. If you hand-edit `.env`, the next `apply` overwrites it.
-And if you change config but don't recreate the backend, it keeps running the
-old env.
+`config.toml` is where settings live. `mycelium config apply` writes
+`~/.mycelium/.env` from it, so any hand edits to `.env` are overwritten the
+next time you apply. And the backend only picks up changes when it's
+restarted.
 
 ```bash
 mycelium config apply       # rewrite .env from config.toml
-mycelium up                 # recreate the backend with current env
-mycelium doctor             # confirm drift cleared
+mycelium up                 # restart the backend with the new settings
+mycelium doctor             # check the drift is gone
 ```
 
 ---
 
-### 11. Permission Errors Under ~/.mycelium
+### Permission errors in `~/.mycelium`
 
-**Symptom**: opaque `PermissionError` on memory or agent writes; `mycelium
-doctor` flags *~/.mycelium ownership* with root-owned files.
+**You see:** a `PermissionError` when writing memories or adding agents, or
+`mycelium doctor` flags files in `~/.mycelium` owned by root.
 
-Usually a sudo install paired with a non-sudo agent add (or a containerized
-gateway running as root bind-mounting your home). One `chown` fixes it:
+This usually happens when Mycelium was installed with `sudo` but later run
+without it, or when a container running as root wrote into your home
+directory. Take the files back:
 
 ```bash
 sudo chown -R $USER ~/.mycelium
@@ -223,46 +239,23 @@ sudo chown -R $USER ~/.mycelium
 
 ---
 
-### 12. Spoke Cannot Reach Hub Backend
+### The hub hands out `http://` links behind HTTPS
 
-**Symptom**: `mycelium status` / `mycelium room ls` from a spoke returns a
-connection error pointing at the hub's URL.
-
-```bash
-curl http://<hub-ip>:8000/health      # raw backend reachability
-grep api_url ~/.mycelium/config.toml  # what the spoke targets
-```
-
-Common causes: firewall blocks port 8000, hub backend isn't running
-(`mycelium up` on the hub), VPN/Tailscale not connected, or the wrong URL in
-`config.toml`. Re-point if needed:
-
-```bash
-mycelium init --api-url http://<correct-hub-ip>:8000
-```
-
-Note the spoke must also reach the hub's **SLIM node** on 46357 (see *SLIM Node
-Unreachable* above); the backend and the node are separate ports.
-
----
-
-### 13. Hub Advertises `http://` URLs Behind HTTPS
-
-**Symptom**: the hub is served over `https://`, but an absolute URL it hands out
-comes back `http://`. Most visible on the A2A agent card:
+**You see:** the hub is served over `https://`, but links it gives out start
+with `http://`. The A2A agent card is where you'll notice it most:
 
 ```bash
 curl -s https://hub.example.com/api/rooms/my-room/.well-known/agent-card.json
 # "url": "http://hub.example.com/api/rooms/my-room/a2a"
 ```
 
-**Cause**: a TLS-terminating reverse proxy forwards plain HTTP to the backend
-container, so the backend sees an `http` request. The proxy reports the original
-scheme in `X-Forwarded-Proto`, but the backend believes that header only from a
-forwarder it trusts, and by default it trusts loopback alone. The proxy connects
-from the Docker bridge, so its header is ignored.
+**Why:** a reverse proxy handles TLS and forwards plain HTTP to the backend.
+The proxy tells the backend the original scheme in `X-Forwarded-Proto`, but
+the backend only believes that header from proxies it trusts, which by
+default means loopback only. Your proxy connects through Docker's network, so
+the header is ignored.
 
-**Fix**: name the proxy, then re-render `.env` and recreate the stack.
+**Fix:** tell the backend to trust the proxy, then apply and restart:
 
 ```bash
 mycelium config set runtime.trusted_proxies '*'
@@ -270,72 +263,77 @@ mycelium config apply
 mycelium up
 ```
 
-Use `'*'` when the backend port is reachable only through the proxy. If it is
-also reachable directly, list the proxy addresses instead
-(`'172.18.0.1,10.0.0.5'`) so a direct caller cannot spoof the scheme. Leave it
-unset when nothing fronts the backend.
+Use `'*'` only if the backend's port can be reached through the proxy alone.
+If it can also be reached directly, list the proxy's addresses instead
+(`'172.18.0.1,10.0.0.5'`), so someone connecting directly can't fake the
+header. Leave it unset if there's no proxy in front of the backend.
 
 ---
 
-## Configuration Reference
+## Settings reference
 
 ### CLI settings: `~/.mycelium/config.toml`
 
-| Setting | Key | Env var override |
+| Setting | Key | Environment variable |
 |---------|-----|------------------|
-| Backend URL | `server.api_url` | `MYCELIUM_API_URL` |
-| SLIM node endpoint | `slim.node_endpoint` | (none) |
+| Hub URL | `server.api_url` | `MYCELIUM_API_URL` |
+| SLIM node address | `slim.node_endpoint` | (none) |
 | Active room | `rooms.active` | `MYCELIUM_ACTIVE_ROOM` |
-| Agent handle | `identity.name` | `MYCELIUM_AGENT_HANDLE` |
+| Your handle | `identity.name` | `MYCELIUM_AGENT_HANDLE` |
 
 ### Backend settings: `~/.mycelium/.env`
 
-| Variable | Description | Default |
+| Variable | What it is | Default |
 |----------|-------------|---------|
-| `LLM_MODEL` | `provider/model` string, as Pi takes it | `anthropic/claude-sonnet-4-6` |
-| `LLM_API_KEY` | Provider API key | (none) |
-| `LLM_BASE_URL` | Custom LLM endpoint (Ollama, vLLM) | (none) |
-| `MYCELIUM_DATA_DIR` | Data directory | `~/.mycelium` |
-| `MYCELIUM_BACKEND_PORT` | Backend API host port | `8000` |
-| `MYCELIUM_UI_PORT` | Frontend host port | `3000` |
-| `MYCELIUM_METRICS_PORT` | OTLP collector host port (`--metrics`) | `4318` |
-| `FORWARDED_ALLOW_IPS` | Forwarders whose `X-Forwarded-*` headers the backend honors (`runtime.trusted_proxies`) | (unset: loopback only) |
+| `LLM_MODEL` | The model, as `provider/model` | `anthropic/claude-sonnet-4-6` |
+| `LLM_API_KEY` | The provider's API key | (none) |
+| `LLM_BASE_URL` | A custom model endpoint, such as Ollama or vLLM | (none) |
+| `MYCELIUM_DATA_DIR` | Where rooms and memories are stored | `~/.mycelium` |
+| `MYCELIUM_BACKEND_PORT` | The backend's port on your machine | `8000` |
+| `MYCELIUM_UI_PORT` | The app's port on your machine | `3000` |
+| `MYCELIUM_METRICS_PORT` | The metrics collector's port (`--metrics`) | `4318` |
+| `FORWARDED_ALLOW_IPS` | Proxies whose `X-Forwarded-*` headers the backend trusts (`runtime.trusted_proxies`) | (unset: loopback only) |
 
-All of these are written by `mycelium config apply` from the matching
-`runtime.*` config keys, so don't edit `.env` by hand.
+`mycelium config apply` writes all of these from your config, so don't edit
+`.env` by hand.
 
 ### Agent environment variables
 
-Read by the CLI and adapters at runtime to identify the agent and locate the backend:
+The CLI reads these to know which hub to use and who the agent is:
 
-| Variable | Description |
+| Variable | What it is |
 |----------|-------------|
-| `MYCELIUM_API_URL` | Backend API URL (default: `http://localhost:8000`) |
-| `MYCELIUM_AGENT_HANDLE` | This agent's identity handle |
-| `MYCELIUM_ROOM` | Active room name |
+| `MYCELIUM_API_URL` | The hub's URL (default `http://localhost:8000`) |
+| `MYCELIUM_AGENT_HANDLE` | The agent's handle |
+| `MYCELIUM_ACTIVE_ROOM` | The room to use when none is given |
+
+`mycelium await --exec` also sets `MYCELIUM_ROOM`, `MYCELIUM_HANDLE`,
+`MYCELIUM_SENDER` and `MYCELIUM_PROMPT` for the command it runs.
 
 ---
 
-## Log Locations
+## Logs
 
 ```bash
-mycelium logs                       # all services
-mycelium logs mycelium-backend      # backend only
-mycelium --verbose status           # CLI debug output
+mycelium logs                       # every service
+mycelium logs mycelium-backend      # just the backend
+mycelium --verbose status           # extra detail from the CLI
 ```
 
 ---
 
-## Reset Everything
+## Starting over
+
+This deletes all your rooms, memories and config.
 
 ```bash
-mycelium down --volumes   # stop and delete all data
-rm -rf ~/.mycelium        # remove all config and room files
-mycelium install          # fresh install
+mycelium down --volumes   # stop everything and delete its data
+rm -rf ~/.mycelium        # remove config and room files
+mycelium install          # install again
 ```
 
 ---
 
-## Getting Help
+## Getting help
 
-Report issues at **https://github.com/mycelium-io/mycelium/issues**
+Report problems at **https://github.com/mycelium-io/mycelium/issues**

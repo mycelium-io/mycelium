@@ -1,114 +1,108 @@
 # Persistent Agents (herdr)
 
-> ![herdr](assets/herdr-ram.svg) [herdr](https://herdr.dev) is an optional persistent-runtime layer that keeps coding-agent sessions alive and addressable across detach. Mycelium coordinates agents through rooms; herdr gives those agents a place to *live*, so a mention to a handle that has stepped away can wake it instead of waiting.
+> ![herdr](assets/herdr-ram.svg) [herdr](https://herdr.dev) keeps coding-agent sessions running in named panes, even after you close the terminal. Used with Mycelium, a mention of an agent that isn't running at the moment can wake it up.
 
 ## Why you might want it
 
-A mycelium agent participates as your own live session. It picks up an `@handle`
-mention only while its `await` loop is running (see [Bring your agents
-in](#quickstart-bring-your-agents-in)). Close the terminal and the handle is
-still a member of the room, but nothing is home: a mention just waits on the
-durable transcript cursor until you start the loop again.
+Your agents take part in a room through their own live sessions. An agent
+only notices an `@handle` mention while its `await` loop is running (see
+[Add your agents](index.html#quickstart-add-your-agents)). Close the terminal
+and the agent is still a member of the room, but nobody is there to answer.
+Mentions wait until you start the loop again.
 
-herdr closes that gap. It holds coding-agent sessions (Claude, Pi, and others)
-open in named panes across a workspace, and mycelium binds those panes to room
-handles. Now a mention to a non-resident handle rings a doorbell that wakes the
-pane, and the agent answers on its next turn without anyone re-attaching.
+herdr fills that gap. It keeps your agent sessions open in panes, and
+Mycelium links each pane to a handle in a room. When someone mentions an
+agent that isn't running, Mycelium wakes its pane, and the agent answers on
+its next turn without you reattaching.
 
-Everything here is **optional and fail-soft**. If herdr is not installed or its
-server is down, every `mycelium herdr` command says so and exits cleanly, and a
-mention falls back to waiting on the cursor exactly as it does without herdr.
+You don't need herdr for anything else. If it isn't installed or isn't
+running, every `mycelium herdr` command says so and exits, and mentions wait
+for the agent as they normally would.
 
-## Prerequisites
+## Before you start
 
-- herdr installed and its local server running. See [herdr.dev](https://herdr.dev).
-- One or more agents already started in a herdr workspace, and a mycelium room
-  to bind them to (`mycelium room create …`). Or skip both: [`mycelium
-  swarm`](#swarm) opens a workspace, starts a team in it, and binds it to a new
-  room in one step.
+- Install herdr and start its local server. See [herdr.dev](https://herdr.dev).
+- Start one or more agents in a herdr workspace, and have a room to connect
+  them to (`mycelium room create …`).
 
-## The one command: `sync`
+Or let [`mycelium swarm`](#swarm) do both: it opens a workspace, starts a team
+of agents in it, and connects them to a room you already work in.
 
-The simplest path is a single binding. Point a herdr workspace at a room once,
-and mycelium keeps the two reconciled:
+## Connecting a workspace: `sync`
+
+Connect a herdr workspace to a room once, and Mycelium keeps them in step:
 
 ```bash
-# Bind herdr workspace w2 to the room `my-project`, then keep watching.
+# Connect herdr workspace w2 to the room my-project, then keep watching.
 mycelium herdr sync --workspace w2 --room my-project
 ```
 
-That first call **binds** the workspace to the room. From then on a bare
-`mycelium herdr sync` watches every bound workspace and reconciles three things
-on each pass:
+After that, a plain `mycelium herdr sync` watches every connected workspace.
+On each pass it:
 
-- **Membership.** Every live agent in the workspace is enrolled as a room
-  member, with its handle taken from the herdr tab name. When a pane closes, that
-  member leaves the room. No manual `map` step.
-- **Liveness.** Each agent's herdr state (`idle` / `working` / `blocked`) is
-  pushed to the hub so the UI can badge it. The backend runs in a container and
-  cannot see the herdr socket, so this host-side loop is the only thing that can
-  report it.
-- **Wakes.** Queued doorbells are drained and delivered to the right pane,
-  each worded by why it rang: an `@`-mention says read the room, a turn the
-  [conductor](#conductor) or the aligner put to the agent says `await` it and
-  answer, and a task filed for the agent says which task to take.
+- **adds and removes members.** Every agent running in the workspace becomes
+  a member of the room, named after its herdr tab. When a pane closes, that
+  member leaves the room.
+- **reports what each agent is doing.** Whether each one is `idle`, `working`
+  or `blocked` is sent to the hub, so the app can show it.
+- **delivers wake-ups.** Waiting wake-ups are sent to the right pane. Each one
+  tells the agent why it was woken: to read a mention in the room, to answer
+  a turn the [conductor](#conductor) or aligner gave it, or to pick up a task
+  assigned to it.
 
-Watching is the default because the wake leg has to run on the host: the
-containerized backend cannot reach the herdr socket, so nothing delivers a queued
-mention unless `sync` keeps draining. Add `--once` to reconcile a single pass and
-exit (useful in a script), or `--interval <seconds>` to change the poll cadence.
-Ctrl-C clears the liveness overlay.
+`sync` needs to keep running for wake-ups to be delivered. The backend runs in
+a container and can't reach herdr on your machine, so this command is what
+passes the wake-ups along. Press Ctrl-C to stop it; the agents' status is
+cleared from the app when you do.
 
 ```bash
-mycelium herdr sync --once                 # one reconcile pass, then exit
-mycelium herdr sync --interval 10          # watch, polling every 10s
-mycelium herdr sync --kind claude          # only enroll claude agents
+mycelium herdr sync --once                 # run one pass, then exit
+mycelium herdr sync --interval 10          # check every 10 seconds
+mycelium herdr sync --kind <kind>          # only add agents of one kind
 ```
 
-## Manual binding and autowake
+## Connecting single agents, and autowake
 
-If you would rather bind individual handles than a whole workspace, map them by
-hand. A mapping is a durable `handle -> pane` record that survives herdr clearing
-its ephemeral agent names on exit.
+To connect individual agents instead of a whole workspace, map each handle to
+a pane. The mapping is saved, so it survives herdr forgetting agent names when
+they exit.
 
 ```bash
-mycelium herdr map planner w2:pV           # bind @planner to pane w2:pV
-mycelium herdr ls                          # show the registry
-mycelium herdr unmap planner               # drop the binding
+mycelium herdr map planner w2:pV           # connect @planner to pane w2:pV
+mycelium herdr ls                          # list the mappings
+mycelium herdr unmap planner               # remove a mapping
 ```
 
-With handles mapped, turn on **autowake** so a non-resident `agent invoke` wakes
-the mapped pane instead of only queuing on the cursor:
+With handles mapped, you can turn on **autowake**, so `agent invoke` wakes the
+agent's pane when the agent isn't running:
 
 ```bash
 mycelium config set herdr.autowake true
 mycelium config apply
 ```
 
-Autowake is off by default and always fail-soft: a missing or unreachable herdr,
-or an unmapped or busy agent, falls straight back to the normal `agent invoke`
-behavior. Tune how long a wake may take to settle with
-`herdr.wake_timeout_ms` (default `120000`).
+Autowake is off by default. If herdr isn't reachable, or the agent isn't
+mapped or is busy, `agent invoke` behaves as it normally does. To change how
+long a wake-up can take, set `herdr.wake_timeout_ms` (default `120000`).
 
-You can also wake a handle explicitly, without an invoke:
+You can also wake an agent yourself:
 
 ```bash
-mycelium herdr wake planner                # ring the doorbell now
-mycelium herdr status                      # is herdr reachable, what is bound
+mycelium herdr wake planner                # wake @planner now
+mycelium herdr status                      # is herdr reachable, and what's connected
 ```
 
 ## Configuration
 
 | Key | Default | What it does |
 |---|---|---|
-| `herdr.autowake` | `false` | On a non-resident `agent invoke`, wake the handle's mapped herdr pane. |
-| `herdr.wake_timeout_ms` | `120000` | Wait budget (ms) for a herdr wake to settle. |
+| `herdr.autowake` | `false` | When `agent invoke` targets an agent that isn't running, wake its herdr pane. |
+| `herdr.wake_timeout_ms` | `120000` | How long (in ms) to wait for a wake-up to finish. |
 
-## Honest scope
+## What herdr isn't needed for
 
-herdr is a convenience layer over the coordination model, not a part of it. Rooms,
-memory, the board, and the negotiation flow all work with no herdr at all; turn-based
-agents kept awake with `mycelium await --loop` never miss a tick, because the hub
-holds their membership between turns (see [Architecture](#architecture)). What herdr
-adds is waking a handle when nothing is resident, so you do not have to be at the
-terminal for an agent to answer.
+Rooms, memory, the board and negotiations all work without herdr. Agents kept
+running with `mycelium await --loop` never miss a message, because the hub
+keeps their place in the room between turns (see
+[Architecture](#architecture)). herdr only adds waking an agent that isn't
+running, so you don't have to be at the terminal for it to answer.

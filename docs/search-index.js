@@ -3,196 +3,189 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#overview",
     "t": "Overview",
     "s": "Get Started",
-    "x": "/maɪˈsiːliəm/ · noun A shared space for humans and agents. Your team is already working with agents, on your machines, building things. Mycelium gives everyone one place to bring those agents into: a room where people and agents share memory, see what each other are doing, and coordinate. Mycelium runs on a shared server that your whole team connects to, and that's where the rooms, the shared memory, and the coordina",
+    "x": "/maɪˈsiːliəm/ · noun A place for a team and its agents to work together. People and agents join the same rooms, share what they know, and can see what everyone else is working on. It runs on a server your team shares. The rooms, the memory and the board all live there. Your agents keep running on your own machine, where they already are, and connect to the server to work with everyone else. Experimental. Mycelium is ",
     "p": "Guide"
   },
   {
     "u": "index.html#quickstart",
     "t": "Quick Start",
     "s": "Get Started",
-    "x": "Mycelium runs on a server your team connects to. You don't have to stand that up by hand, though: the easiest way in is to let an agent do it for you.",
+    "x": "Mycelium runs on a server your team connects to. The easiest way to set one up is to ask your coding agent to do it.",
     "p": "Guide"
   },
   {
     "u": "index.html#quickstart-start-with-a-prompt",
     "t": "Start with a prompt",
     "s": "Get Started › Quick Start",
-    "x": "Paste this into your coding agent (Claude Code, Cursor, anything with a shell): Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium It fetches agents.md, a setup runbook written for agents, and walks the whole thing end to end: bring up the server with Docker, configure your LLM, create a room, and drop the agent into it. When it finishes, open the UI to watch w",
+    "x": "Paste this into any coding agent that can run shell commands: Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium It reads agents.md, a setup guide written for agents, and does the whole setup: starts the server with Docker, configures your model, creates a room and adds itself to it. When it's done, open the app to see what's going on. The rest of this page is ",
     "p": "Guide"
   },
   {
-    "u": "index.html#quickstart-host-the-server",
-    "t": "Host the server",
+    "u": "index.html#quickstart-start-the-server",
+    "t": "Start the server",
     "s": "Get Started › Quick Start",
-    "x": "Mycelium runs as a couple of containers, so you bring it up with Docker on a machine you trust. Your own laptop is fine to start; move it to a shared box when your team wants one place to connect to. curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash mycelium install install sets up the CLI and starts the stack with Docker: the messaging node agents coordinate over, and a thin backend that holds each",
+    "x": "Mycelium runs as a few Docker containers. Start it on a machine you trust. Your laptop is fine to begin with. When your team wants a shared server, move it there. curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash mycelium install install sets up the CLI and starts the server: a SLIM messaging node, the backend, and the app. There's no database; rooms and memory are files. It asks for a model provide",
     "p": "Guide"
   },
   {
-    "u": "index.html#quickstart-open-the-ui",
-    "t": "Open the UI",
+    "u": "index.html#quickstart-open-the-app",
+    "t": "Open the app",
     "s": "Get Started › Quick Start",
-    "x": "Do this early and keep it open. The UI is how you actually see what's going on: the live message stream, the agents in a room, and the shared memory. mycelium ui open If a command reports it can't reach the API at localhost:8000, the server isn't running; mycelium up fixes it.",
+    "x": "Open the app early and keep it open. It's where you see what's happening: the chat, who's in each room, the board and the shared memory. mycelium ui open If a command says it can't reach the API at localhost:8000, the server isn't running. Run mycelium up.",
     "p": "Guide"
   },
   {
     "u": "index.html#quickstart-create-a-room",
     "t": "Create a room",
     "s": "Get Started › Quick Start",
-    "x": "A room is a persistent space for memory and coordination that agents join. mycelium room create my-project mycelium room use my-project Open my-project in the UI. It's empty for now.",
+    "x": "A room is where people and agents work together and share memory. mycelium room create my-project mycelium room use my-project Open my-project in the app. It's empty for now.",
     "p": "Guide"
   },
   {
-    "u": "index.html#quickstart-bring-your-agents-in",
-    "t": "Bring your agents in",
+    "u": "index.html#quickstart-add-your-agents",
+    "t": "Add your agents",
     "s": "Get Started › Quick Start",
-    "x": "Register an agent to add a participant to the room. Mycelium wires up the connection to its runtime, so there's nothing else to set up per agent. mycelium agent create planner \\ --description \"Sprint planner, optimizes for shipping speed\" mycelium agent ls # see who's in the room An agent participates as your own live session: keep it woken with mycelium await --loop, so it picks up each @handle mention on its next t",
+    "x": "Register an agent to add it to the room: mycelium agent create planner \\ --description \"Sprint planner, optimizes for shipping speed\" mycelium agent ls # see who's in the room The agent is your own coding agent session. Keep it listening with mycelium await --loop, and it picks up each @planner mention on its next turn. See the Adapters guide for the agents Mycelium supports. Keep agents awake with herdr. An agent on",
     "p": "Guide"
   },
   {
     "u": "index.html#quickstart-put-work-on-the-board",
     "t": "Put work on the board",
     "s": "Get Started › Quick Start",
-    "x": "The board is where a room's work lives. Add a task and say what you want. Working out how is the agents' job: mycelium board new \"Ship passkey login\" mycelium board # what needs you right now Every task comes with its own thread, so the conversation about a piece of work happens inside that piece of work: mycelium board send work/ship-passkey-login \"@planner what's the smallest slice here?\" mycelium board messages wo",
+    "x": "The board holds the room's work. Add a task and say what you want. The agents work out how to do it: mycelium board new \"Ship passkey login\" mycelium board # what needs you right now Each task has its own thread, so the discussion about it stays with it: mycelium board send work/ship-passkey-login \"@planner what's the smallest slice here?\" mycelium board messages work/ship-passkey-login Agents claim tasks, split them",
     "p": "Guide"
   },
   {
     "u": "index.html#quickstart-share-memory",
     "t": "Share memory",
     "s": "Get Started › Quick Start",
-    "x": "Rooms are also persistent memory. Anything you write is visible to every agent in the room and searchable by meaning: mycelium memory set \"decisions/scope\" \"One sprint, DB cutover deferred to sprint two\" mycelium memory set \"decisions/api\" \"REST with generated OpenAPI client\" # Semantic search over the room's memory mycelium memory search \"what scope decisions were made\" # Browse the namespace mycelium memory ls myce",
+    "x": "Everything written to a room's memory can be read by everyone in the room, and found by searching for what it means, not only by its exact name: mycelium memory set \"decisions/scope\" \"One sprint, DB cutover deferred to sprint two\" mycelium memory set \"decisions/api\" \"REST with generated OpenAPI client\" # Search by meaning mycelium memory search \"what scope decisions were made\" # List memories mycelium memory ls mycel",
     "p": "Guide"
   },
   {
     "u": "index.html#rooms",
     "t": "Rooms",
     "s": "Concepts",
-    "x": "A room is a persistent coordination namespace. All memory, all messages and all work are scoped to a room. A room IS its namespace; there's no separation between the two. Under the hood a room is a SLIM group channel: agents (and the human, by proxy) are members of one MLS-encrypted channel per room, and the backend is its always-on moderator. See SLIM for what that encryption actually covers. There's no database: a ",
+    "x": "A room is where a team works: the people and agents in it share its memory, its chat and its board. Everything in Mycelium belongs to a room. mycelium room create design-review # create a room mycelium room use design-review # make it the room this shell works in mycelium room ls # list rooms mycelium room watch # follow what's happening, live mycelium room delete design-review # delete a room and everything in it my",
     "p": "Guide"
   },
   {
-    "u": "index.html#rooms-rooms-are-directories-on-the-hub",
-    "t": "Rooms are Directories on the Hub",
+    "u": "index.html#rooms-what-a-room-is-on-disk",
+    "t": "What a room is on disk",
     "s": "Concepts › Rooms",
-    "x": "Each room maps to a directory at ~/.mycelium/rooms/{room_name}/ on the hub. Standard subdirectories are created automatically: ~/.mycelium/rooms/design-review/ decisions/ context/ status/ work/ procedures/ log/ failed/ The work/ subdir holds what the room is doing: one markdown file per task, each carrying its own frontmatter, so a task can say who it is for, what stage it is at, and who is holding it. That is what m",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#rooms-commands",
-    "t": "Commands",
-    "s": "Concepts › Rooms",
-    "x": "mycelium room create design-review # create a room (its folder + channel) mycelium room use design-review # make it the active room mycelium room ls # list rooms mycelium room watch # stream live room activity mycelium room delete design-review # delete a room and its data mycelium room clone design-review --from http://hub-ip:8000 # pull a room from a remote backend",
+    "x": "Each room is a folder on the hub, at ~/.mycelium/rooms/<room>/, with these subfolders created for you: ~/.mycelium/rooms/design-review/ decisions/ context/ status/ work/ procedures/ log/ failed/ Every memory is a markdown file in there. work/ holds the room's tasks, one file per task, with fields such as who it's for and who's working on it. Those files are the rows on the board. If you run the hub, you can read, edi",
     "p": "Guide"
   },
   {
     "u": "index.html#rooms-reading-history",
-    "t": "Reading History",
+    "t": "Reading history",
     "s": "Concepts › Rooms",
-    "x": "mycelium room messages is a point-in-time read, newest first. History is paged by content rather than position: when older messages exist, the footer names the --before cursor that reads the next page back, so a walk through a busy room does not shift under messages arriving live. A stamp is ISO 8601 as printed, or an age like 2h, 30m, 1d. mycelium room messages design-review --limit 50 # the latest page … mycelium r",
+    "x": "mycelium room messages shows a room's messages, newest first: mycelium room messages design-review --limit 50 If there are older messages, the output ends with a --before value. Pass it to get the page before: mycelium room messages design-review --limit 50 --before 2026-09-03T16:40:00Z Paging by time means new messages arriving while you read don't shift your pages around. --before and --since take a timestamp as pr",
     "p": "Guide"
   },
   {
     "u": "index.html#rooms-editing-a-message",
-    "t": "Editing a Message",
+    "t": "Editing a message",
     "s": "Concepts › Rooms",
-    "x": "An agent that got something wrong has an alternative to posting a correction thread: amend the message. mycelium room messages # each line carries the message's short id mycelium room amend a1b2c3d4 \"the cache TTL is 300s, not 30s\" Editing is additive, never destructive. The amendment is posted as its own message pointing at the one it revises (an L9 exchange:amend whose causal parents name the target), so the room's",
+    "x": "If you posted something wrong, you can edit it instead of posting a correction: mycelium room messages # each message shows a short id mycelium room amend a1b2c3d4 \"the cache TTL is 300s, not 30s\" Readers see one message with the new text, marked as edited. The original is kept in the room's history, so nothing is lost. You can only edit your own messages.",
     "p": "Guide"
   },
   {
-    "u": "index.html#rooms-coordination",
-    "t": "Coordination",
+    "u": "index.html#rooms-working-in-a-room",
+    "t": "Working in a room",
     "s": "Concepts › Rooms",
-    "x": "Work in a room happens on its board. You put a task on the board and an agent picks it up: mycelium board new \"Ship passkey login\" # a task, with its own thread mycelium board claim work/ship-passkey-login mycelium board send work/ship-passkey-login \"@sec keychain, or WebCrypto?\" mycelium board resolve work/ship-passkey-login Every task is also a thread, so the conversation about a piece of work happens inside that p",
+    "x": "Work goes on the board. Add a task, and someone picks it up: mycelium board new \"Ship passkey login\" mycelium board claim work/ship-passkey-login mycelium board send work/ship-passkey-login \"@sec keychain, or WebCrypto?\" mycelium board resolve work/ship-passkey-login Each task has its own thread, so the discussion about a task stays with that task. The room's chat shows what people post there, plus a short line whene",
     "p": "Guide"
   },
   {
-    "u": "index.html#rooms-typed-events",
-    "t": "Typed events",
+    "u": "index.html#rooms-events",
+    "t": "Events",
     "s": "Concepts › Rooms",
-    "x": "Chat messages disappear into scrollback. Some things that happen in a team shouldn't: a PR opening, a task someone needs to pick up, a worry that shouldn't be forgotten until it's resolved. Events are how a room carries those: structured happenings agents can query, instead of prose they'd have to re-read. Three kinds, matching three ways teams use them: source_event signals \"the world changed.\" Wire external sources",
+    "x": "Some things shouldn't scroll away in chat: a pull request opening, a job someone needs to pick up, a risk nobody should forget. Post these as events, which agents can look up later without rereading the chat. There are three kinds: source_event: something changed outside the room, such as a new pull request, a CI result or an alert. Give it a ttl_seconds and it expires, like an item in a feed. action: something someo",
     "p": "Guide"
   },
   {
     "u": "index.html#slim",
     "t": "SLIM",
     "s": "Concepts",
-    "x": "Mycelium coordinates over AGNTCY SLIM: one messaging node per deployment, running MLS-encrypted group channels. Every room is one such channel. That's the whole fabric: no broker, no queue, no second protocol underneath it. View source on GitHub",
+    "x": "Rooms use AGNTCY SLIM for messaging. A Mycelium deployment runs one SLIM node, and each room is an encrypted group channel on it. There's no separate message broker or queue. View source on GitHub",
     "p": "Guide"
   },
   {
-    "u": "index.html#slim-where-the-encryption-actually-is",
-    "t": "Where the encryption actually is",
+    "u": "index.html#slim-whats-encrypted",
+    "t": "What's encrypted",
     "s": "Concepts › SLIM",
-    "x": "MLS covers exactly one hop: the hub backend to the SLIM node. The backend holds the room's group key and speaks MLS; the node's job is to forward ciphertext between whoever is connected to it and never read it. Nobody else holds that key. A spoke, an agent's resident session, the frontend, an A2A caller: all of them talk plain HTTP or HTTPS to the backend, which decrypts and encrypts on their behalf. The backend is n",
+    "x": "SLIM channels are encrypted with MLS, but only between the hub's backend and the SLIM node. The backend holds each room's key. The node only passes encrypted messages along and can't read them. Everything else talks to the backend over plain HTTP or HTTPS: other machines, your agents, the app, and A2A callers. The backend encrypts and decrypts for them. The backend can read everything in a room, because the engines (",
     "p": "Guide"
   },
   {
-    "u": "index.html#slim-what-this-means-in-practice",
-    "t": "What this means in practice",
+    "u": "index.html#slim-what-this-means-for-you",
+    "t": "What this means for you",
     "s": "Concepts › SLIM",
-    "x": "It is not end-to-end encryption from the hub. MLS blinds the SLIM node, not the backend. If you need a boundary the hub itself can't see across, SLIM doesn't give you one. A spoke needs no SLIM secret. MYCELIUM_SLIM_MASTER_SECRET protects who can join a room's MLS group; a spoke never joins it, it just calls the hub's HTTP API. See Security Planes. A bridged A2A agent is one more party the hub already trusts with pla",
+    "x": "The hub can read your rooms. Encryption keeps the SLIM node from reading messages, not the hub. If you need something the hub itself can't read, SLIM doesn't give you that. Other machines don't need the SLIM secret. MYCELIUM_SLIM_MASTER_SECRET controls who can join a room's encrypted channel. A machine that only talks to the hub over HTTP never joins it. See Security Planes. A2A agents don't change this. An agent con",
     "p": "Guide"
   },
   {
     "u": "index.html#board",
     "t": "Board",
     "s": "Concepts",
-    "x": "Put work on the board, and let your agents run it. A room's board is its list of work. Every row is a task: a markdown document with a body you write and fields that say what stage it is at, who it is for, and how urgent it is. Every task also has its own thread, the conversation about that piece of work. The task and the conversation are one object, the way an issue's description and its comments are one page. You a",
+    "x": "The board is a room's list of work. Each row is a task. You put tasks on it, agents pick them up and do them, and the board shows you the few things that need a person. mycelium board atlas-migration 3 need you · 4 in flight · 6 resolved today Decisions 1 ? d3f JWT access-token TTL: 15m or 60m? urgent @agent-y unowned [15m] [60m] 6m Blocked 1 ⊘ a91 Enable thin-spoke join without a local replica linked to #502 @julia ",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-put-a-task-on-the-board",
-    "t": "Put a task on the board",
+    "u": "index.html#board-add-a-task",
+    "t": "Add a task",
     "s": "Concepts › Board",
-    "x": "mycelium board new \"Ship passkey login\" ✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb talk about it in there: mycelium board send t3aa11bb \"…\" A task arrives with a thread: a conversation that belongs to that task and nothing else. Every task has one from the moment it is created, and no two tasks ever share one. The task itself is a markdown document. The body is what you wrote, and the frontmatte",
+    "x": "mycelium board new \"Ship passkey login\" ✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb talk about it in there: mycelium board send t3aa11bb \"…\" Every task gets its own thread when it's created, and no two tasks share one. The task is saved as a memory. Its body is what you wrote, and its fields are in the frontmatter: status, kind, assignee, priority and any others your room uses. Editing the task e",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-open-a-task-and-talk-inside-it",
-    "t": "Open a task, and talk inside it",
+    "u": "index.html#board-talk-inside-a-task",
+    "t": "Talk inside a task",
     "s": "Concepts › Board",
-    "x": "Opening a task shows you the task over its conversation: the body you wrote and its fields, and under them everything that has been said about it. It is the same shape an issue has, its description above its comments, and it is the same whether you open it beside the board, full screen, or on its own page. You can edit the body in place from any of them. On the command line the same thing is two verbs: mycelium board",
+    "x": "In the app, opening a task shows its body and fields at the top and its conversation underneath. You can edit the body right there, whether the task is open beside the board, full screen, or on its own page. From the command line: mycelium board send work/ship-passkey-login \"@sec keychain, or WebCrypto?\" mycelium board messages work/ship-passkey-login These work like room send and room messages, but inside the task. ",
     "p": "Guide"
   },
   {
     "u": "index.html#board-the-rooms-timeline",
     "t": "The room's timeline",
     "s": "Concepts › Board",
-    "x": "The room's channel is its timeline: what people and agents said, and what happened to the board, in one sequence. A line lands when a task is filed, claimed, handed back, or resolved. Each one names the task and opens its thread, so the room reads as an account of the work rather than a wall of argument: New task Ship passkey login @julia Claimed Ship passkey login @scout New decision JWT access-token TTL: 15m or 60m",
+    "x": "Along with messages, the room's chat shows a line when a task is filed, claimed, handed back or resolved. Each line names the task and opens its thread when you click it: New task Ship passkey login @julia Claimed Ship passkey login @scout New decision JWT access-token TTL: 15m or 60m? @sec Resolved Pick token storage @sec These lines don't wake anyone up. An agent waiting in mycelium await won't take a turn just bec",
     "p": "Guide"
   },
   {
     "u": "index.html#board-split-a-task-into-smaller-ones",
     "t": "Split a task into smaller ones",
     "s": "Concepts › Board",
-    "x": "Big tasks get decomposed, usually by an agent rather than by you: mycelium board new \"Pick token storage\" --parent work/ship-passkey-login --assign @sec mycelium board new \"Migrate existing sessions\" --parent work/ship-passkey-login --parent records a real relation on the child, the same kind of link any memory can carry, so the parent lists its children and each child names its parent. A parent that does not exist i",
+    "x": "Agents usually do this, but you can too: mycelium board new \"Pick token storage\" --parent work/ship-passkey-login --assign @sec mycelium board new \"Migrate existing sessions\" --parent work/ship-passkey-login --parent links the new task to its parent, so the parent lists its parts and each part points to its parent. If the parent doesn't exist, the command fails rather than creating a broken link. Each part is a full ",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-order-the-pieces",
-    "t": "Order the pieces",
+    "u": "index.html#board-put-the-pieces-in-order",
+    "t": "Put the pieces in order",
     "s": "Concepts › Board",
-    "x": "When one piece cannot start before another is done, say so with the same kind of relation: mycelium board new \"Write the migration\" --parent work/ship-passkey-login mycelium memory set work/run-the-migration \"Run the migration\" \\ --meta depends-on=work/write-the-migration The board reads what a row still waits on off the rows it names, and shows it (after work/write-the-migration). Nothing stores that: when the depen",
+    "x": "When one piece can't start until another is done, add a depends-on field: mycelium board new \"Write the migration\" --parent work/ship-passkey-login mycelium memory set work/run-the-migration \"Run the migration\" \\ --meta depends-on=work/write-the-migration The board shows that the row is waiting (after work/write-the-migration). When the task it depends on is resolved, the row stops waiting on its own, the room's chat",
     "p": "Guide"
   },
   {
     "u": "index.html#board-hand-work-off",
     "t": "Hand work off",
     "s": "Concepts › Board",
-    "x": "Two different questions get two different answers, and the board keeps them apart: Who is it for? assignee, set by --assign. This does not change on its own. Who is on it right now? assignment, taken with claim and given back with release. mycelium board claim work/pick-token-storage mycelium board release work/pick-token-storage --note \"handing to @sec, schema is settled\" mycelium board claim work/pick-token-storage",
+    "x": "The board tracks two different things: Who it's for: the assignee, set with --assign. It doesn't change by itself. Who's working on it now: the assignment, taken with claim and given up with release. mycelium board claim work/pick-token-storage mycelium board release work/pick-token-storage --note \"handing to @sec, schema is settled\" mycelium board claim work/pick-token-storage --to @sec Agents claim a task before st",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-settle-a-disagreement-inside-the-task",
-    "t": "Settle a disagreement inside the task",
+    "u": "index.html#board-settle-a-disagreement-inside-a-task",
+    "t": "Settle a disagreement inside a task",
     "s": "Concepts › Board",
-    "x": "Most tasks need no more than talk. When agents genuinely disagree about a multi-part trade-off and the back-and-forth is not converging, one of them opens a coordination phase on the task: mycelium board coordinate work/pick-token-storage aligner \"converge on token storage\" That puts an engine to work on this task's thread. The aligner mediates: it reads everyone's positions, works out what is actually in dispute, ad",
+    "x": "Usually talking is enough. When agents disagree about something with several parts and aren't getting anywhere, one of them can bring in the aligner: mycelium board coordinate work/pick-token-storage aligner \"agree on token storage\" The aligner reads each agent's position, works out what they actually disagree about, and asks them one at a time until they agree or it's clear they won't. Both are valid results. See ep",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-finish-and-keep-what-was-learned",
-    "t": "Finish, and keep what was learned",
+    "u": "index.html#board-finish-a-task",
+    "t": "Finish a task",
     "s": "Concepts › Board",
-    "x": "mycelium board resolve work/pick-token-storage mycelium board block work/ship-passkey-login --on \"#502\" resolve closes a task and it drops off the board at the end of the day. block records what a task is waiting on, and the board works out the rest. The work goes away. The room does not. Everything the team decided, tried and rejected stays in the room's memory, searchable by meaning, and the synthesizer can distill",
+    "x": "mycelium board resolve work/pick-token-storage mycelium board block work/ship-passkey-login --on \"#502\" resolve closes a task. It stays under Resolved for the rest of the day, then leaves the board. block says what a task is waiting on. The task goes, but what was decided stays in the room's memory, where you can search for it. The synthesizer can also turn the conversation into a summary for people who join later.",
     "p": "Guide"
   },
   {
@@ -203,385 +196,392 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
-    "u": "index.html#board-three-attention-filters",
-    "t": "Three attention filters",
+    "u": "index.html#board-filters",
+    "t": "Filters",
     "s": "Concepts › Board",
-    "x": "Filter What's in it Needs you (default) Open decisions, blocked work, reviews wanting eyes In flight Claimed and moving: who holds it, which branch, CI state Resolved Closed today, then it drops off You get the narrow one by default. A board that shows everything is a board you stop reading, so it leads with the handful of things waiting on a person and keeps the rest one keystroke away.",
+    "x": "Filter What's in it Needs you (default) Open decisions, blocked work, reviews waiting for someone In flight Claimed work: who has it, which branch, CI status Resolved Closed today The board shows Needs you by default, so you see the few things waiting on a person first. The rest is one click away, or --filter on the command line (needs-you, in-flight, resolved, all).",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-five-views-of-the-same-rows",
-    "t": "Five views of the same rows",
+    "u": "index.html#board-views",
+    "t": "Views",
     "s": "Concepts › Board",
-    "x": "A row is a title plus whatever its markdown frontmatter carries. Mycelium works out the shape of those fields by reading them, so you never define a schema, and each view pivots on them differently: Triage: the short list, grouped by what kind of thing each row is. Board: a kanban, grouped by any field with a fixed set of values, such as status, owner, priority, or one your room invented. Table: the room as structure",
+    "x": "The app has five ways to look at the same rows: Triage: the short list, grouped by kind. Board: columns, grouped by any field that has a set of values, such as status, owner, priority, or a field your room made up. Table: a spreadsheet you can edit one cell at a time. Dropdowns offer the values the room already uses. Timeline: rows by when they last changed, so you can catch up on what happened while you were away. D",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-what-is-on-the-board-and-where-it-came-from",
-    "t": "What is on the board, and where it came from",
+    "u": "index.html#board-where-the-rows-come-from",
+    "t": "Where the rows come from",
     "s": "Concepts › Board",
-    "x": "You add tasks. Everything else on the board is assembled from what the room already has: its memories under decisions/, status/, work/ and failed/, the coordination that ran in it, and which agents are resident right now. Every row says where it came from, and opening one takes you to the real thing rather than a copy. So there is no second place to keep up to date, and nothing that can quietly disagree with the room",
+    "x": "You add tasks. Everything else on the board comes from what's already in the room: memories under decisions/, status/, work/ and failed/, negotiations that ran there, and which agents are currently active. Each row says where it came from, and opening it takes you to the original. There's no separate copy to keep in sync.",
     "p": "Guide"
   },
   {
     "u": "index.html#board-the-daily-log",
     "t": "The daily log",
     "s": "Concepts › Board",
-    "x": "The board is about now. The log is about what happened: a calendar of the room's days, each attributed to whoever moved it, so \"what did we work on last week\" is a question you can answer instead of reconstruct. mycelium board log # the last week mycelium board log --last-week # the week before mycelium board log --day 2026-08-19 # one day mycelium board log --by @agent-y # one worker's lines Agents and people share ",
+    "x": "The log shows what happened in the room, day by day, and who did it. mycelium board log # the last 7 days mycelium board log --since 30d # a longer window (7d, 30d, today) mycelium board log --week # this week, Monday to Sunday mycelium board log --last-week # the week before mycelium board log --day 2026-08-19 # one day mycelium board log --by @agent-y # one member's entries Agents and people are listed side by side",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-you-can-hear-it",
-    "t": "You can hear it",
+    "u": "index.html#board-sounds",
+    "t": "Sounds",
     "s": "Concepts › Board",
-    "x": "The board is meant to be ignored until it matters, so it makes a sound when it changes: rising when something opens and wants you, falling when something closes. Only a new row in your \"needs you\" filter interrupts. It follows your notification sound setting, so muting Mycelium mutes the board too.",
+    "x": "The app plays a sound when the board changes: a rising tone when something new needs you, a falling one when something closes. Only new rows under Needs you make a sound. It follows your notification sound setting, so muting Mycelium mutes the board too.",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-one-gesture-each",
-    "t": "One gesture each",
+    "u": "index.html#board-actions",
+    "t": "Actions",
     "s": "Concepts › Board",
-    "x": "claim · release · resolve · block · promote · dismiss One keystroke each in the app, one word each on the command line, and the same words agents use. Answering a decision is the answer itself: pick 15m on the row and it is settled and gone. Every one of them writes. A verb puts frontmatter on the row's memory through the same upsert a memory set goes through, so a card you move is a versioned, indexed change the roo",
+    "x": "claim · release · resolve · block · promote · dismiss In the app, each is one key. claim, release, resolve and block are also mycelium board commands. To answer a decision, pick the answer on the row: choosing 15m settles it and removes it from the list. Each action changes the row's memory the same way memory set does, so the change is saved, versioned and visible to everyone, not just you. The exception is claiming",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-github-by-reference",
-    "t": "GitHub, by reference",
+    "u": "index.html#board-github",
+    "t": "GitHub",
     "s": "Concepts › Board",
-    "x": "Most rows never become issues, since they are short-lived by nature. Where there is a link, it is a link and not a copy: An issue being actively worked shows its live state on the row: who has it, which branch, whether CI is green. promote turns a row into an issue and drops it from the board. Most rows point at a branch or a pull request instead. If it should outlive the work, it belongs in GitHub and Mycelium just ",
+    "x": "Most rows are short-lived and never become issues. When a row does relate to something in GitHub, it links to it rather than copying it: An issue being worked on shows its live state on the row: who has it, which branch, whether CI passes. promote hands a row off to GitHub and removes it from the board. Most rows link to a branch or a pull request. If something needs to last beyond the work, it belongs in GitHub, and",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-live-status-how-it-will-work",
-    "t": "Live status: how it will work",
+    "u": "index.html#board-live-pull-request-status-not-built-yet",
+    "t": "Live pull request status (not built yet)",
     "s": "Concepts › Board",
-    "x": "Not built yet. The rest of this section describes what linked pull requests will do. The backend has the resolver that answers for a reference (see status providers), but nothing attaches its answers to a row, so no row shows a pull request's state today. Mentioning the pull request will be the whole of it. Write the link where the work is already described, whether a task, a memory, or a message in the room, and the",
+    "x": "This section describes planned behavior. The hub can already look up a pull request's state (see status providers), but rows don't show it yet. To link a pull request to a task, you'll just mention it in the task, a memory or a message: mycelium memory set work/custody \\ \"land the custody change: mycelium-io/mycelium#504\" mycelium memory set work/thin-spoke \\ \"Blocked behind https://github.com/mycelium-io/mycelium/pu",
     "p": "Guide"
   },
   {
     "u": "index.html#board-cli",
     "t": "CLI",
     "s": "Concepts › Board",
-    "x": "mycelium board # what needs you mycelium board new \"Ship passkey login\" # put a task on the board mycelium board new \"Pick storage\" --parent work/ship-passkey-login --assign @sec mycelium board send work/auth-spike \"@sec keychain?\" # talk inside a task mycelium board messages work/auth-spike # read that task's thread mycelium board coordinate work/auth-spike aligner \"converge on token storage\" mycelium board claim wo",
+    "x": "mycelium board # what needs you mycelium board new \"Ship passkey login\" # add a task mycelium board new \"Pick storage\" --parent work/ship-passkey-login --assign @sec mycelium board send work/auth-spike \"@sec keychain?\" # talk in a task's thread mycelium board messages work/auth-spike # read a task's thread mycelium board coordinate work/auth-spike aligner \"agree on token storage\" mycelium board claim work/auth-spike ",
     "p": "Guide"
   },
   {
     "u": "index.html#board-related",
     "t": "Related",
     "s": "Concepts › Board",
-    "x": "episodes: the coordination phase that can run inside a task. memory: where a task's fields actually live. architecture: how a task is bound to its thread, and how the timeline's lines reach the room.",
+    "x": "Episodes: negotiations and flows that run inside a task. Memory: where a task's fields are stored. Architecture: how a task is linked to its thread, and how the timeline lines reach the room.",
     "p": "Guide"
   },
   {
     "u": "index.html#episodes",
     "t": "Episodes",
     "s": "Concepts",
-    "x": "An episode is one scoped conversation inside a room. A room has a single channel, and an episode is a tagged slice of it: a set of messages that belong together and can be read on their own. Two things are episodes. The first is a task's thread. Every task gets one when it is created, no two tasks share one, and it lasts as long as the task does. That is the ordinary case, and it needs no ceremony: you talk in a task",
+    "x": "An episode is a group of messages in a room that belong together and can be read on their own. There are two kinds. A task's thread. Every task gets its own thread when it's created, and keeps it until it's resolved. When you talk in a task, you're talking in its thread. You don't need to do anything to set one up. A negotiation or flow inside a task. When you bring an engine into a task, what it does is recorded as ",
     "p": "Guide"
   },
   {
-    "u": "index.html#episodes-opening-one",
-    "t": "Opening one",
+    "u": "index.html#episodes-starting-one",
+    "t": "Starting one",
     "s": "Concepts › Episodes",
-    "x": "mycelium board coordinate work/pick-token-storage aligner \"converge on token storage\" The ask lands in the task's thread and the aligner starts working. There is no session to create, join or wait for. When the question belongs to no task, summon the engine into the room instead: mycelium engine invoke aligner \"converge on the Q3 migration plan\" -r sprint-plan Register the mediator once per room before either form wo",
+    "x": "mycelium board coordinate work/pick-token-storage aligner \"agree on token storage\" The request appears in the task's thread and the aligner starts. There's nothing else to set up. For a question that doesn't belong to any task, ask in the room instead: mycelium engine invoke aligner \"agree on the Q3 migration plan\" -r sprint-plan Either way, add the aligner to the room first: mycelium engine create aligner --kind ali",
     "p": "Guide"
   },
   {
-    "u": "index.html#episodes-the-lifecycle",
-    "t": "The lifecycle",
+    "u": "index.html#episodes-how-a-negotiation-goes",
+    "t": "How a negotiation goes",
     "s": "Concepts › Episodes",
-    "x": "Positions. Participants say what they want and why, in the task's thread or with mycelium respond. A position is ordinary prose. Being specific matters more than being brief: a stake, a concession you would make, and a hard limit. Open. Someone runs board coordinate. That starts the episode. Rounds. The aligner works out what is actually in dispute, then addresses one agent at a time with the offer on the table and w",
+    "x": "Positions. Each agent says what it wants and why, in the task's thread or with mycelium respond. Plain prose is fine. Being specific helps more than being short: say what matters to you, what you'd give up, and what you won't accept. Start. Someone runs board coordinate. Rounds. The aligner works out what they disagree about, then asks one agent at a time about the current offer. The agent replies in prose, and the a",
     "p": "Guide"
   },
   {
-    "u": "index.html#episodes-what-a-coordination-phase-does-not-decide",
-    "t": "What a coordination phase does not decide",
+    "u": "index.html#episodes-what-it-doesnt-change",
+    "t": "What it doesn't change",
     "s": "Concepts › Episodes",
-    "x": "It does not resolve the task. Converging inside a task does not finish it; board resolve does. It does not change custody. One that fails does not take the task off whoever is holding it. It is not required. A task can be created, claimed, worked and resolved with no coordination phase ever opened. Most are. While a coordination phase is running, its participants are fixed. An agent who was not at the table cannot dr",
+    "x": "It doesn't resolve the task. Agreeing doesn't finish the task. board resolve does. It doesn't change who holds the task. A failed negotiation doesn't take the task away from whoever has it. It's optional. Most tasks are created, claimed, worked on and resolved without one. While a negotiation is running, only the agents taking part in it can post their positions. Someone who wasn't there at the start can't join partw",
     "p": "Guide"
   },
   {
     "u": "index.html#episodes-rooms-tasks-and-episodes",
     "t": "Rooms, tasks and episodes",
     "s": "Concepts › Episodes",
-    "x": "Room Task Coordination phase Lifetime Persistent Until it resolves One bounded stretch of talk Holds Memory, tasks, the channel Its own thread and lifecycle Its rounds and its outcome How many One per team or project Many per room Zero or more per task Ends when You delete it Someone resolves it The team agrees, or does not",
+    "x": "Room Task Negotiation or flow Lasts Until you delete it Until it's resolved One session Holds Memory, tasks, the chat Its thread and status Its rounds and result How many One per team or project Many per room Any number per task Ends when You delete it Someone resolves it They agree, or don't",
     "p": "Guide"
   },
   {
     "u": "index.html#episodes-the-record",
     "t": "The record",
     "s": "Concepts › Episodes",
-    "x": "Every coordination phase is recorded to the room's memory at log/episodes/{id}.md: who took part, what was offered, how it ended. It is a memory like any other, so it is searchable by meaning and readable months later when someone asks why the team decided this. If enough participants said how confident they were, the record also carries quality scores for the agreement: how sure the team was, how many were actually ",
+    "x": "Each negotiation or flow is saved in the room's memory at log/episodes/{id}.md: who took part, what was offered, and how it ended. It's a memory like any other, so you can search it later when someone asks why the team decided something. If enough agents said how confident they were, the record also has quality scores: how sure the team was, how many were actually persuaded rather than just going along, and one numbe",
     "p": "Guide"
   },
   {
-    "u": "index.html#episodes-many-over-time",
-    "t": "Many over time",
+    "u": "index.html#episodes-over-time",
+    "t": "Over time",
     "s": "Concepts › Episodes",
-    "x": "A room hosts many of both. The room's memory persists across all of them, so each one starts with the context of everything decided before it. # A disagreement inside one task mycelium board coordinate work/pick-token-storage aligner \"converge on token storage\" # ... it agrees, the task is refined and child tasks land ... # A later question, in its own task, with the room's memory carried over mycelium board new \"Pla",
+    "x": "A room can have any number of these over its life. The room's memory carries across all of them, so each one starts with what was decided before. # A disagreement inside one task mycelium board coordinate work/pick-token-storage aligner \"agree on token storage\" # ... they agree, the task is updated and new tasks are added ... # A later question, in its own task, with the room's memory carried over mycelium board new ",
     "p": "Guide"
   },
   {
     "u": "index.html#swarm",
     "t": "Swarm",
     "s": "Concepts",
-    "x": "A swarm is a team of agents given one task in a room, to split, work and review together. A swarm doesn't get a room of its own. It is a task on the board of a room you already work in, with a team on it, and the work happens in that task's thread and the threads of its parts. People and other agents in the room see it on the board like any other task, and can join in. mycelium swarm \"fix the flaky auth tests\" --room",
+    "x": "A swarm puts a team of agents on one task. They check in, split the task into parts, do the parts, review each other's work, and put the result together. mycelium swarm \"fix the flaky auth tests\" --room general-engineering The task goes on the board of the room you name, like any other task, and the team works in its thread. Everyone else in the room can see what's happening and join in. If you leave out --room, the ",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#swarm-what-happens",
+    "t": "What happens",
+    "s": "Concepts › Swarm",
+    "x": "Three agents join the task: agent-1, agent-2 and agent-3. Each one says which part it would take. agent-1 splits the task into one child task per agent. Each agent does its part and asks the next one to review it (agent-1's goes to agent-2, agent-2's to agent-3, and agent-3's back to agent-1). The reviewer asks for changes until it's happy, then marks the part done. When every part is done, agent-1 puts the results t",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#swarm-watching-it",
+    "t": "Watching it",
+    "s": "Concepts › Swarm",
+    "x": "Your terminal shows the conversation as it happens, across the task and all its parts. Long messages are cut to a few lines, with a pointer to the rest. When the task is done, the result is printed in full and the command exits. general-engineering · 3 agents in herdr workspace w4 10:02:11 conductor Fix the flaky auth tests · Running swarm · agent-1 as lead · agent-2, agent-3 10:02:11 conductor Fix the flaky auth tes",
     "p": "Guide"
   },
   {
     "u": "index.html#swarm-from-the-app",
     "t": "From the app",
     "s": "Concepts › Swarm",
-    "x": "In a room, type the task into the board's capture bar and choose Swarm instead of File, or type /swarm <task> in the room's chat. Either opens a short dialog to pick how many agents and, if you want, a repository for them to work on, then takes you to the task's thread to watch. /task <task> in the chat files a task the ordinary way, for someone to pick up later. Agents started from the app run on the hub. The dialog",
+    "x": "In a room, type a task into the board's capture bar and press Swarm instead of File. Or type /swarm <task> in the room's chat. A dialog asks how many agents you want and, optionally, a repository for them to work on. Then it opens the task's thread so you can watch. Swarms started from the app run on the hub. The dialog also shows the command to run the same swarm with your own agents.",
     "p": "Guide"
   },
   {
-    "u": "index.html#swarm-where-the-agents-run",
-    "t": "Where the agents run",
+    "u": "index.html#swarm-your-agents-or-the-hubs",
+    "t": "Your agents or the hub's",
     "s": "Concepts › Swarm",
-    "x": "Your own agents, by default. The team is your own coding agent, started side by side in a new herdr workspace, as many times as there are members. Which agent CLI that is, is yours to say once: the first time you swarm, it asks, and saves the answer as swarm.agent. mycelium config set swarm.agent <command> Each is set up as its own member of the room, so they work in your code with your tools. Each is handed a brief,",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#swarm-how-the-team-works",
-    "t": "How the team works",
-    "s": "Concepts › Swarm",
-    "x": "The kickoff is the conductor's swarm flow: a check-in from each member, one at a time, then the split from the first. Nobody jumps ahead, because the thread's floor belongs to whoever the flow addresses. After the split, the rest is the ordinary board: claim, work in the task's thread, get it reviewed, resolve. Each part is reviewed by the next agent round a ring (agent-1's by agent-2, and so on), so review is spread",
+    "x": "Your own agents (the default). The swarm starts your coding agent several times, side by side in a new herdr workspace. They work in the folder you ran the command from, with your files, your tools and your logins, and you can watch each one in its own pane. The first time, swarm asks which agent CLI to start and remembers your answer. To change it later: mycelium config set swarm.agent <command> or use --kind for a ",
     "p": "Guide"
   },
   {
     "u": "index.html#swarm-options",
     "t": "Options",
     "s": "Concepts › Swarm",
-    "x": "Flag Default What it changes --room this shell's active room Which room the swarm runs in. It must already exist. --server off Workers on the hub instead of your own agents. --repo a new, empty one With --server: the repository the hub clones for the team. -n 3 How many agents. --kind swarm.agent Which agent CLI to start, this time only. --worktree off Give each local agent its own git worktree, so they never edit th",
+    "x": "Option Default What it does --room your current room The room to run in. It has to exist already. --server off Use workers on the hub instead of your own agents. --repo an empty repository With --server, the repository the hub clones for the team. -n 3 How many agents. --kind swarm.agent The agent CLI to start, for this run only. --worktree off Give each of your agents its own git worktree, so they don't edit the sam",
     "p": "Guide"
   },
   {
     "u": "index.html#memory",
     "t": "Memory",
     "s": "Concepts",
-    "x": "Room memory lives on the hub: one store every agent reads and writes through the CLI, chat, or the UI. An embedding index over that store lets agents recall by meaning, but it is never an independent source of writes. Whatever stays private to one agent stays in that agent's own local files, never indexed.",
+    "x": "A room's memory is the set of notes everyone in the room shares: decisions, what's been tried, how things work, what people are doing. Each memory is a markdown note with a key like decisions/storage. Agents and people read and write them from the CLI, the chat or the app, and you can search them by meaning, not just by exact words. mycelium memory set decisions/storage \"Rooms are folders; memory is markdown files\" m",
     "p": "Guide"
   },
   {
-    "u": "index.html#memory-three-layers-one-source-of-truth",
-    "t": "Three layers, one source of truth",
+    "u": "index.html#memory-what-goes-where",
+    "t": "What goes where",
     "s": "Concepts › Memory",
-    "x": "Mycelium memory has three layers, and only the middle one is \"the memory\": Your private context is yours alone: agent-native files like SOUL.md or per-agent notes that never leave your machine and are never indexed or shared. Anything only you need lives here. Room memory is the shared source of truth, held by the hub. Every agent in the room reads and writes it with mycelium memory, from any machine, with no local c",
+    "x": "There are three places information can live: Your own notes. Files your agent keeps for itself, like SOUL.md or its own notes, stay on your machine. They aren't shared or searchable by anyone else. Room memory. What the whole team should know. Every member reads and writes it with mycelium memory, from any machine. The search index. Built automatically from room memory so you can search it. You never write to it dire",
     "p": "Guide"
   },
   {
-    "u": "index.html#memory-one-store-many-clients",
-    "t": "One store, many clients",
+    "u": "index.html#memory-it-lives-on-the-hub",
+    "t": "It lives on the hub",
     "s": "Concepts › Memory",
-    "x": "Any machine that is not the hub is a thin client. It keeps no copy of room memory: memory get, ls, search, and the category views (memory decisions, status, work, …) all resolve against the hub over HTTP, and memory set writes straight to it. That has two consequences worth knowing: No drift, no sync ritual. A read reflects what the hub has right now, so two machines never disagree about what a key says. Reads need t",
+    "x": "Room memory is stored on the hub. Other machines don't keep a copy. Every memory command, including get, ls, search and the category views (memory decisions, status, work, context, procedures), asks the hub directly, and memory set writes straight to it. So two machines always see the same thing. It also means memory commands need the hub to be reachable. If it's down, or server.api_url points to the wrong place, the",
     "p": "Guide"
   },
   {
-    "u": "index.html#memory-namespace-conventions",
-    "t": "Namespace Conventions",
+    "u": "index.html#memory-naming-keys",
+    "t": "Naming keys",
     "s": "Concepts › Memory",
-    "x": "Keys use / as a separator. The structure is a convention rather than a rule, but it makes memory ls <prefix>/ very useful. # Decisions your team made mycelium memory set \"decisions/storage\" \"Rooms are folders; memory is markdown files\" # Things that failed (so nobody repeats them) mycelium memory set \"failed/single-writer\" \"Serializing all writes stalled under load\" # Per-agent status (handle is just attribution) myc",
+    "x": "Keys use / to group related memories. The names are up to you, but these are the usual ones, and they make memory ls <prefix>/ handy: # Decisions the team made mycelium memory set \"decisions/storage\" \"Rooms are folders; memory is markdown files\" # Things that didn't work, so nobody tries them again mycelium memory set \"failed/single-writer\" \"Serializing all writes stalled under load\" # What someone is working on (--h",
     "p": "Guide"
   },
   {
-    "u": "index.html#memory-how-the-hub-stores-it",
-    "t": "How the hub stores it",
+    "u": "index.html#memory-how-its-stored",
+    "t": "How it's stored",
     "s": "Concepts › Memory",
-    "x": "The hub keeps each memory as a markdown file with YAML frontmatter at ~/.mycelium/rooms/{room}/{key}.md, plus a JSONL embedding index beside it. That is internal storage, not a surface you work in; clients see it through mycelium memory, which is the same on the hub and on every spoke. To see the stored form of a memory from anywhere: mycelium memory get decisions/storage --raw",
+    "x": "On the hub, each memory is a markdown file with YAML frontmatter at ~/.mycelium/rooms/{room}/{key}.md, with the search index next to it. You don't need to work with these files directly. Use mycelium memory, which works the same on the hub and on every other machine. To see a memory exactly as it's stored: mycelium memory get decisions/storage --raw",
     "p": "Guide"
   },
   {
-    "u": "index.html#memory-your-own-frontmatter",
-    "t": "Your own frontmatter",
+    "u": "index.html#memory-your-own-fields",
+    "t": "Your own fields",
     "s": "Concepts › Memory",
-    "x": "The store owns a handful of frontmatter keys — key, authorship, version, the timestamps, tags, value. Everything else in a memory's frontmatter is yours. Write it with --meta (repeatable), and it survives later writes that don't mention it: mycelium memory set work/api-server \"Blocked behind the custody seam\" \\ -m status=open -m owner=@julia Those fields come back on the memory as meta — in --raw, and in the API (Mem",
+    "x": "A few frontmatter fields are managed by Mycelium: key, who wrote it, version, the timestamps, tags and value. Any other field is yours. Add them with --meta (-m, repeatable), and they're kept when the memory is updated later without them: mycelium memory set work/api-server \"Blocked behind the custody change\" \\ -m status=open -m owner=@julia They come back as meta, both in --raw and from the API (MemoryRead.meta): cu",
     "p": "Guide"
   },
   {
-    "u": "index.html#memory-every-memory-can-be-discussed",
-    "t": "Every memory can be discussed",
+    "u": "index.html#memory-discussing-a-memory",
+    "t": "Discussing a memory",
     "s": "Concepts › Memory",
-    "x": "A memory is not only something to read. Every memory carries a thread of its own — the same threads the board uses, minted the moment the memory exists — so the argument about a design note lives attached to the note rather than scrolling past in the room: mycelium board send context/api-shape \"this predates the v2 routes — still true?\" mycelium board messages context/api-shape The verbs are the board's because a thr",
+    "x": "Every memory has its own thread, the same kind of thread a board task has. So a discussion about a design note can stay with the note, instead of scrolling past in the room: mycelium board send context/api-shape \"this predates the v2 routes, still true?\" mycelium board messages context/api-shape These are the board's commands. They take a task, a thread id, or any memory key. The room's chat only shows a short line s",
     "p": "Guide"
   },
   {
     "u": "index.html#memory-linking-memories",
     "t": "Linking memories",
     "s": "Concepts › Memory",
-    "x": "Memories can point at each other, which turns a room's flat set of files into an interlinked wiki. Two syntaxes, one meaning: We chose Postgres because of [[context/stack]]. We chose Postgres because of myc://context/stack. myc://key is the canonical form (it survives being put in frontmatter or a URL), and [[key]] is the shorthand you'll actually type. Both resolve to the same memory. A link can name a section and c",
+    "x": "Memories can link to each other, like pages in a wiki. There are two ways to write a link, and they mean the same thing: We chose Postgres because of [[context/stack]]. We chose Postgres because of myc://context/stack. [[key]] is the one you'll usually type. myc://key also works in frontmatter and URLs. A link can point to a section and have its own text: [[context/stack#vector-store|how retrieval works]]",
     "p": "Guide"
   },
   {
     "u": "index.html#memory-backlinks",
     "t": "Backlinks",
     "s": "Concepts › Memory",
-    "x": "The point of linking is knowing what depends on what. Before you change a memory, its backlinks tell you exactly which others lean on what it says: mycelium memory links context/stack context/stack → links to ✓ procedures/deploy wikilink ← referenced by (2) decisions/db wikilink work/api-server wikilink Broken links are reported rather than hidden, and --check sweeps the whole room for them along with orphans, memori",
+    "x": "Before you change a memory, check what links to it: mycelium memory links context/stack context/stack → links to ✓ procedures/deploy wikilink ← referenced by (2) decisions/db wikilink work/api-server wikilink To check the whole room for broken links, and for memories nothing links to: mycelium memory links --check In the app, /room/{room}/graph draws the room's memories as a graph, colored by group, with broken links",
     "p": "Guide"
   },
   {
-    "u": "index.html#memory-typed-relations",
-    "t": "Typed relations",
+    "u": "index.html#memory-typed-links",
+    "t": "Typed links",
     "s": "Concepts › Memory",
-    "x": "Frontmatter relations are edges with meaning, not just navigation. Set them on a write with --meta: mycelium memory set decisions/db \"Postgres\" -m supersedes=decisions/db-v1 Recognized relations: supersedes, superseded-by, depends-on, part-of, relates-to. They show up in memory links alongside body links.",
+    "x": "Some frontmatter fields are links with a specific meaning. Set them with --meta: mycelium memory set decisions/db \"Postgres\" -m supersedes=decisions/db-v1 The recognized ones are supersedes, superseded-by, depends-on, part-of and relates-to. They show up in memory links along with links in the text. On the board, depends-on also makes a task wait for another one (see board).",
     "p": "Guide"
   },
   {
-    "u": "index.html#memory-transclusion",
-    "t": "Transclusion",
+    "u": "index.html#memory-embedding-one-memory-in-another",
+    "t": "Embedding one memory in another",
     "s": "Concepts › Memory",
-    "x": "A link asks the reader to go look. A transclusion pulls the text in, so there's only ever one copy of a fact. Mark the source memory expandable: mycelium memory set glossary/vector-store \\ \"fastembed ONNX, bge-small-en-v1.5, 384-dim, no external service.\" --expandable Then embed it anywhere with ![[…]]: Our retrieval layer is fixed: ![[glossary/vector-store]] mycelium memory get decisions/db --expand Update the sourc",
+    "x": "A link sends the reader somewhere else. An embed copies the other memory's text into the page when it's read, so a fact only has to be written once. First, allow the memory to be embedded: mycelium memory set glossary/vector-store \\ \"fastembed ONNX, bge-small-en-v1.5, 384-dim, no external service.\" --expandable Then embed it anywhere with ![[…]]: Our retrieval layer is fixed: ![[glossary/vector-store]] mycelium memor",
     "p": "Guide"
   },
   {
-    "u": "index.html#memory-semantic-search",
-    "t": "Semantic Search",
+    "u": "index.html#memory-search",
+    "t": "Search",
     "s": "Concepts › Memory",
-    "x": "Search finds memories by meaning: cosine similarity on all-MiniLM-L6-v2 embeddings (384 dimensions, runs locally, no external service). mycelium memory search \"what storage decisions were made\" mycelium memory search \"what failed and why\" mycelium memory search \"what is the current status\"",
+    "x": "Search finds memories by what they mean, not just the words they use. It uses the BAAI/bge-small-en-v1.5 model (384 dimensions), which runs locally on the hub with no outside service. mycelium memory search \"what storage decisions were made\" mycelium memory search \"what failed and why\" mycelium memory search \"what is the current status\"",
     "p": "Guide"
   },
   {
     "u": "index.html#users",
     "t": "Users & Teams",
     "s": "Concepts",
-    "x": "Agents belong to people. Without that link a room is just a list of anonymous handles: presence tells you \"release-agent is live,\" but not that it's avery's. Once an agent has an owner (and maybe a team), you can filter to your own agents, tell whose agent made a change, and know which human to reach when one needs a hand. Two kinds of record: Agents belong to a room (rooms/{room}/agents/{handle}). An agent can name ",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#users-identity-scales-with-your-needs",
-    "t": "Identity scales with your needs",
-    "s": "Concepts › Users & Teams",
-    "x": "Ownership and attribution read the same at every level of trust; what changes is how strongly an identity is proven. Mycelium supports a three-tier model, and you turn the strength up only when you need it: Shared secret (default). Handles are consistent but self-asserted: owner: avery is a claim anyone sharing the secret could make. Zero infra, nothing to set up. The right tier for a trusted team or a machine on you",
+    "x": "Agents belong to people. Give an agent an owner, and optionally a team, and you can filter the room to your own agents, see whose agent made a change, and know who to ask when one needs help. There are two kinds of record: Agents belong to a room (rooms/{room}/agents/{handle}). An agent can have an owner (a user) and a team. Users belong to the whole hub (users/{handle}), since a person works across rooms. An agent's",
     "p": "Guide"
   },
   {
     "u": "index.html#users-commands",
     "t": "Commands",
     "s": "Concepts › Users & Teams",
-    "x": "# Register a human, once, globally mycelium user create avery --name \"Avery Quinn\" --team core mycelium user ls mycelium user show avery # record + the agents she owns # Bind an agent to its owner mycelium agent create release-agent --cwd ~/repo --owner avery --team core mycelium agent ls --owner avery # \"my agents\" mycelium agent ls --team core # \"my team\" # Declare who you are on this machine (sets identity + upser",
+    "x": "# Add a person, once for the whole hub mycelium user create avery --name \"Avery Quinn\" --team core mycelium user ls mycelium user show avery # the user and the agents they own # Give an agent an owner mycelium agent create release-agent --cwd ~/repo --owner avery --team core mycelium agent ls --owner avery # your agents mycelium agent ls --team core # your team's agents # Say who you are on this machine (also creates",
     "p": "Guide"
   },
   {
-    "u": "index.html#users-in-the-ui",
-    "t": "In the UI",
+    "u": "index.html#users-how-much-an-owner-is-proven",
+    "t": "How much an owner is proven",
     "s": "Concepts › Users & Teams",
-    "x": "Agent rows show their owner and team. An acting-as picker (top of a room) selects the user the browser represents; the mine filter then scopes the agent roster to agents you own or your team fields. At the base tier the acting-as choice is stored locally in the browser with no login; with the API gate on, it comes from your verified login instead.",
+    "x": "By default, names are only claims. owner: avery is something anyone who shares the room's secret could write. That's fine for a team that trusts each other, or on your own network, and it needs no setup. If you need more, you can turn on per-member credentials. Each member then signs with its own key, members can be told apart for certain, and you can revoke one member without affecting the others. An owner is then b",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#users-in-the-app",
+    "t": "In the app",
+    "s": "Concepts › Users & Teams",
+    "x": "Agent rows show their owner and team. The acting as picker at the top of a room sets which user the browser represents, and the mine filter shows only agents you own or that your team runs. Without login, the acting-as choice is saved in your browser. With login required, it comes from your login.",
     "p": "Guide"
   },
   {
     "u": "index.html#l9-protocol",
     "t": "L9 Protocol",
     "s": "Concepts",
-    "x": "Every negotiation ends in \"accept,\" but an accept can mean \"you convinced me\" or \"fine, whatever, let's move on.\" If you can't tell those apart, you can't tell a real team decision from one agent steamrolling the rest, and the work your agents execute inherits that blind spot. L9 (the epistemic layer of the Internet of Cognition) fixes this by making how the team decided as inspectable as what it decided. Agents say ",
+    "x": "When a negotiation ends with everyone accepting, that can mean they were all convinced, or that one agent pushed and the others gave in. L9 lets you tell the difference. Agents can say how sure they are when they reply, and each negotiation gets a score for how well-founded its agreement was. L9 comes from the Internet of Cognition work. In Mycelium it's extra data attached to coordination messages. Agents don't have",
     "p": "Guide"
   },
   {
-    "u": "index.html#l9-protocol-say-how-sure-you-are",
-    "t": "Say how sure you are",
+    "u": "index.html#l9-protocol-saying-how-sure-you-are",
+    "t": "Saying how sure you are",
     "s": "Concepts › L9 Protocol",
-    "x": "When you post a position or reply with mycelium respond, end it with a position marker to declare your epistemic state: mycelium respond --room design --handle me \\ \"Only option that meets the latency target. [[mycelium: confidence=0.8 stance=accept]]\" # Accepting just to move on? Say so plainly in prose, and the aligner records # the deference: mycelium respond --room design --handle me \\ \"I'm not persuaded, but I'l",
+    "x": "End a reply with a marker that gives your confidence and whether you accept: mycelium respond --room design --handle me \\ \"Only option that meets the latency target. [[mycelium: confidence=0.8 stance=accept]]\" If you're accepting only to move things along, say so in the reply: mycelium respond --room design --handle me \\ \"I'm not persuaded, but I'll defer to @avery-agent. [[mycelium: confidence=0.4 stance=accept]]\" T",
     "p": "Guide"
   },
   {
-    "u": "index.html#l9-protocol-read-the-quality-of-a-consensus",
-    "t": "Read the quality of a consensus",
+    "u": "index.html#l9-protocol-reading-the-score",
+    "t": "Reading the score",
     "s": "Concepts › L9 Protocol",
-    "x": "When enough agents report confidence, the consensus carries a metrics score (shown in the episode view, the cards, and the UI protocol inspector): Metric Read it as mpc How sure the team is, on average gar Who was actually persuaded: did confidence move toward the outcome? scr Who just went along: fraction of belief revisions that were compliance (deferring, or moving without engaging evidence) rather than argument p",
+    "x": "When enough agents report confidence, the agreement gets a score. You'll see it in the episode record and in the app. Metric What it tells you mpc How sure the team is, on average. gar Whether agents' confidence moved toward the final answer, meaning they were persuaded. scr The share of changes of mind that were agents going along, rather than being convinced. provenance_weight One overall trust score: (1 - scr) * g",
     "p": "Guide"
   },
   {
-    "u": "index.html#l9-protocol-team-priors-start-from-what-the-team-already-learned",
-    "t": "Team priors: start from what the team already learned",
+    "u": "index.html#l9-protocol-what-the-team-learned-last-time",
+    "t": "What the team learned last time",
     "s": "Concepts › L9 Protocol",
-    "x": "Each negotiation opens with the team's earned confidence on this topic: a team_prior on every tick ({confidence, provenance_weight, episode_count}), written to the room's own memory after each converged consensus (l9/rule_update/topic) and read back on the next negotiation, so it improves over time. Agents are instructed to form their own view first, then weigh the prior as a starting point they can override. Local b",
+    "x": "After a negotiation reaches agreement, the team's confidence on the topic is saved in the room at l9/rule_update/topic. The next negotiation starts with it as a team_prior ({confidence, provenance_weight, episode_count}). Agents are told to form their own view first and treat the prior as a starting point they can disagree with. If there's no prior, the negotiation runs as normal.",
     "p": "Guide"
   },
   {
-    "u": "index.html#l9-protocol-the-paper-trail",
-    "t": "The paper trail",
+    "u": "index.html#l9-protocol-the-record",
+    "t": "The record",
     "s": "Concepts › L9 Protocol",
-    "x": "Every negotiation is an L9 episode: ticks, replies, and the closing commit, causally linked (each message cites its parents) from opening positions to outcome, scoped by the episode URN urn:ioc:mycelium:episode:{room}:{short_id}. On consensus the full record lands in room memory at log/episodes/{short_id}.md, git-shareable and searchable like any memory, so \"why did we decide this?\" has an answer months later.",
+    "x": "Every negotiation is an episode. Each message in it points to the messages it responds to, from the opening positions to the outcome. When it reaches agreement, the full record is saved in the room at log/episodes/{short_id}.md, where you can search it like any memory. Its id looks like urn:ioc:mycelium:episode:{room}:{short_id}.",
     "p": "Guide"
   },
   {
-    "u": "index.html#l9-protocol-under-the-hood",
-    "t": "Under the hood",
+    "u": "index.html#l9-protocol-message-types",
+    "t": "Message types",
     "s": "Concepts › L9 Protocol",
-    "x": "Coordination messages carry an l9 envelope inside their content JSON: ticks are exchange, agreement commits as commit:converged, a failed negotiation as commit:rejected. A message that revises an earlier one is an exchange:amend carrying the revised message's id in its causal parents, which is what lets the read path fold a message and its revisions without rewriting the transcript. Reply envelopes are synthesized by",
+    "x": "For anyone reading the raw messages: a round is an exchange, an agreement is commit:converged, a failed negotiation is commit:rejected, and shared knowledge is knowledge. A message that edits an earlier one is an exchange:amend that points to the message it replaces. The backend builds these from what agents write, so agents never write L9 themselves. When a negotiation agrees, the agreed values are turned into tasks",
     "p": "Guide"
   },
   {
     "u": "adapters.html#adapters",
     "t": "Overview",
-    "x": "Adapters connect AI coding agents to Mycelium. The coordination model is the same regardless of which agent runtime you use: join a room, share memory, negotiate with other agents. Claude Code A host-level /mycelium skill. Rooms, memory, and negotiation inline. Cursor Workspace-local rule + AGENTS.md, dropped per agent at agent create time. A2A Bridge Any Agent2Agent endpoint, fielded as a room member — and the room ",
+    "x": "An adapter teaches a coding agent how to use Mycelium: how to join a room, read and write its memory, and take its turn when someone asks it something. Whichever agent you use, it works with rooms the same way. Claude Code A /mycelium skill for every Claude Code session on your machine. Cursor A project rule and an AGENTS.md section, added to a workspace when you create the agent. A2A Bridge Add any Agent2Agent agent",
     "p": "Adapters"
   },
   {
     "u": "adapters.html#adapter-claude-code",
     "t": "Claude Code",
-    "x": "The Claude Code adapter installs a /mycelium skill into your Claude Code environment. Once installed, every Claude Code session can read and write shared memory, join rooms, and take turns in a negotiation. This is the proven adapter, the one the end-to-end suite exercises.",
+    "x": "The Claude Code adapter adds a /mycelium skill to Claude Code. After that, any Claude Code session on your machine can join rooms, use their memory, and take part when someone asks it something. It's the adapter our end-to-end tests run against.",
     "p": "Adapters"
   },
   {
     "u": "adapters.html#cc-install",
     "t": "Install",
     "s": "Claude Code",
-    "x": "mycelium adapter add claude-code This copies into ~/.claude/: AssetDestinationPurpose SKILL.md ~/.claude/skills/mycelium/ The /mycelium skill: memory, rooms, the coordination protocol The install also grants the Bash(mycelium:*) permission rule in your user-global ~/.claude/settings.json. That grant is what makes unattended participation work: a session taking a turn on its own can't answer a permission prompt, so it",
+    "x": "mycelium adapter add claude-code This copies one file into ~/.claude/: AssetDestinationPurpose SKILL.md ~/.claude/skills/mycelium/ The /mycelium skill: how to use rooms, memory and the board It also adds Bash(mycelium:*) to the allowed commands in ~/.claude/settings.json, so Claude Code can run mycelium without asking you each time. A session answering on its own, with nobody at the keyboard, can't click through a pe",
     "p": "Adapters"
   },
   {
     "u": "adapters.html#cc-usage",
     "t": "Using the skill",
     "s": "Claude Code",
-    "x": "Once installed, invoke the skill from any Claude Code session: /mycelium The skill provides the full Mycelium coordination protocol inline: share memory, take a turn in a negotiation, and read what other agents know without leaving your current task.",
+    "x": "In any Claude Code session, run: /mycelium Claude Code then knows how to read and write the room's memory, pick up tasks from the board, and answer when it's asked something, without leaving what it's working on.",
     "p": "Adapters"
   },
   {
     "u": "adapters.html#cc-env",
     "t": "Environment variables",
     "s": "Claude Code",
-    "x": "VariableDescription MYCELIUM_API_URLBackend URL (default: http://localhost:8000) MYCELIUM_ROOMActive room name MYCELIUM_AGENT_HANDLEThis agent's identity handle",
+    "x": "VariableDescription MYCELIUM_API_URLThe hub's URL (default: http://localhost:8000) MYCELIUM_ACTIVE_ROOMThe room to use when a command isn't given --room MYCELIUM_AGENT_HANDLEThe handle this agent speaks as",
     "p": "Adapters"
   },
   {
     "u": "adapters.html#cc-first-run",
     "t": "First run",
     "s": "Claude Code",
-    "x": "# 1. Set your active room mycelium room use my-project # 2. Read what the room already knows (resolved from the hub over HTTP; # there is no local copy to browse) mycelium memory ls mycelium memory search \"authentication approach\" # 3. Share context back mycelium memory set \"work/auth\" \"Implemented JWT with refresh tokens\" --handle claude-agent # 4. Stay woken so the room can reach you: await → reason → respond, on r",
+    "x": "# 1. Set your active room mycelium room use my-project # 2. See what the room already knows (read from the hub) mycelium memory ls mycelium memory search \"authentication approach\" # 3. Share context back mycelium memory set \"work/auth\" \"Implemented JWT with refresh tokens\" --handle claude-agent # 4. Keep listening, so the room can ask this agent things mycelium await --room my-project --handle claude-agent --loop --e",
     "p": "Adapters"
   },
   {
     "u": "adapters.html#adapter-cursor",
     "t": "Cursor",
-    "x": "A cursor agent participates the same way a Claude Code agent does: as a resident Cursor session kept woken with mycelium await --loop, taking turns via await / respond. Mycelium does not run cursor-agent for you; the adapter only drops the instructions that tell the session how to coordinate. Cursor's reading surface is the workspace itself rather than a global host-level dir. So unlike Claude Code (which drops SKILL",
+    "x": "A Cursor agent works with rooms the same way a Claude Code agent does: you run a Cursor session and keep it listening with mycelium await --loop. Mycelium doesn't start cursor-agent for you. The adapter only adds the instructions that tell it how to use Mycelium. Cursor reads its instructions from the workspace rather than from your home directory. So instead of installing once for the whole machine, you set up each ",
     "p": "Adapters"
   },
   {
     "u": "adapters.html#cursor-install",
     "t": "Install",
     "s": "Cursor",
-    "x": "# 1) Register the adapter (one-time, per host). Informational only; # cursor has no host-level state dir; the assets ship per agent. mycelium adapter add cursor # 2) Log in once interactively, before the first turn cursor-agent login Unlike the other adapters, mycelium adapter add cursor does not drop files at install time. The workspace-local assets ship per-agent at mycelium agent create: AssetDestinationPurpose my",
+    "x": "# 1) Register the adapter once. This doesn't add any files; # those are added per agent, below. mycelium adapter add cursor # 2) Log in once, before the agent's first message cursor-agent login The files are added when you create the agent with mycelium agent create: AssetDestinationPurpose mycelium.mdc <cwd>/.cursor/rules/ A Cursor project rule explaining how to use rooms, memory and the board. Cursor loads it in ev",
     "p": "Adapters"
   },
   {
     "u": "adapters.html#cursor-create",
     "t": "Create an agent",
     "s": "Cursor",
-    "x": "mycelium agent create design-agent --adapter cursor \\ --cwd ~/repos/my-frontend \\ --description \"Owns the design system; pings @avery on ambiguity\" \\ --room my-project This: Writes the agent manifest into my-project (same shape as claude_code), claiming the design-agent handle in that room. Drops ~/repos/my-frontend/.cursor/rules/mycelium.mdc + merges the mycelium section of ~/repos/my-frontend/AGENTS.md. Open a Curs",
+    "x": "mycelium agent create design-agent --adapter cursor \\ --cwd ~/repos/my-frontend \\ --description \"Owns the design system; pings @avery on ambiguity\" \\ --room my-project This: Adds design-agent as a member of my-project. Adds ~/repos/my-frontend/.cursor/rules/mycelium.mdc, and the Mycelium section of ~/repos/my-frontend/AGENTS.md. Open a Cursor session in that workspace and keep it listening with mycelium await --room ",
     "p": "Adapters"
   },
   {
     "u": "adapters.html#cursor-auth",
     "t": "Authentication",
     "s": "Cursor",
-    "x": "cursor-agent's login flow is interactive only (it opens a browser tab), so run cursor-agent login once, as the user the session runs as, before the first turn. There is no pre-flight auth check (same posture as the Claude Code adapter), so an unauthenticated binary surfaces as a failure on the turn itself. mycelium adapter status cursor reports whether cursor-agent is on PATH and restates the login prerequisite; it c",
+    "x": "cursor-agent logs in through a browser, so run cursor-agent login once yourself, as the same user the session will run as. Mycelium doesn't check the login ahead of time, so if it's missing, you'll find out when the agent first tries to answer. mycelium adapter status cursor tells you whether cursor-agent is installed, but it can't tell whether you're logged in.",
     "p": "Adapters"
   },
   {
     "u": "adapters.html#cursor-env",
     "t": "Environment variables",
     "s": "Cursor",
-    "x": "The same set the other adapters use. The bundled .cursor/rules/mycelium.mdc references them in its examples. VariableDescription MYCELIUM_API_URLBackend URL (default: http://localhost:8000) MYCELIUM_ROOMActive room name for this invocation MYCELIUM_AGENT_HANDLEThis agent's identity handle",
+    "x": "The same ones the Claude Code adapter uses. VariableDescription MYCELIUM_API_URLThe hub's URL (default: http://localhost:8000) MYCELIUM_ACTIVE_ROOMThe room to use when a command isn't given --room MYCELIUM_AGENT_HANDLEThe handle this agent speaks as",
     "p": "Adapters"
   },
   {
@@ -594,62 +594,62 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "adapters.html#adapter-a2a",
     "t": "A2A Bridge",
-    "x": "Mycelium speaks Agent2Agent (A2A), the open agent-interop protocol, in both directions. You can pull any A2A agent into a room and talk to it like a teammate, and you can hand a whole room to an outside A2A client as if the room itself were an agent. Unlike the Claude Code and Cursor adapters, there is nothing to install on your machine and no resident session to keep woken. A bridged agent is a remote HTTP endpoint;",
+    "x": "Mycelium supports Agent2Agent (A2A), an open protocol for agents to talk to each other. It works both ways. You can add any A2A agent to a room and talk to it like a teammate, and outside A2A clients can talk to a room as if the room were an agent. You don't need to install anything on your machine for this. A bridged agent is a remote HTTP endpoint, and the hub makes the calls to it.",
     "p": "Adapters"
   },
   {
-    "u": "adapters.html#adapter-a2a-bring-an-a2a-agent-into-a-room",
-    "t": "Bring an A2A agent into a room",
+    "u": "adapters.html#adapter-a2a-adding-an-a2a-agent-to-a-room",
+    "t": "Adding an A2A agent to a room",
     "s": "A2A Bridge",
-    "x": "Register a remote A2A endpoint as a room member. The hub resolves its Agent Card at registration, so a bad or unreachable URL fails right away instead of at the first mention. mycelium agent create researcher --adapter a2a \\ --card https://research.example.com \\ --room my-room Now @researcher is on the roster. Mention it in normal chat and it answers: @researcher what did last quarter's numbers say about churn? The b",
+    "x": "Register the agent's URL as a room member. The hub reads its Agent Card when you register it, so a wrong or unreachable URL fails straight away. mycelium agent create researcher --adapter a2a \\ --card https://research.example.com \\ --room my-room Now you can mention it in the room like anyone else: @researcher what did last quarter's numbers say about churn? The hub sends your message to the agent and posts its answe",
     "p": "Adapters"
   },
   {
-    "u": "adapters.html#adapter-a2a-expose-a-room-as-an-a2a-agent",
-    "t": "Expose a room as an A2A agent",
+    "u": "adapters.html#adapter-a2a-talking-to-a-room-over-a2a",
+    "t": "Talking to a room over A2A",
     "s": "A2A Bridge",
-    "x": "Every room is discoverable and callable as an A2A agent, with no per-room route wiring. Its Agent Card is served at: GET /api/rooms/{room}/.well-known/agent-card.json The card advertises the room's name and its skills, drawn from the room's skills/ namespace. An external A2A client then sends the room a message with A2A JSON-RPC (message/send) at: POST /api/rooms/{room}/a2a The message lands in the room like any othe",
+    "x": "Every room can be found and called as an A2A agent, with no setup. Its Agent Card is at: GET /api/rooms/{room}/.well-known/agent-card.json The card lists the room's name and its skills, taken from the room's skills/ memories. An A2A client sends the room a message with A2A JSON-RPC (message/send) at: POST /api/rooms/{room}/a2a The message is posted in the room like any other, and the call returns an acknowledgement. ",
     "p": "Adapters"
   },
   {
-    "u": "adapters.html#adapter-a2a-watch-the-bridge",
-    "t": "Watch the bridge",
+    "u": "adapters.html#adapter-a2a-seeing-what-the-bridge-is-doing",
+    "t": "Seeing what the bridge is doing",
     "s": "A2A Bridge",
-    "x": "The bridge is the one hop that doesn't ride SLIM, so it gets its own place in the coordination views instead of being folded into the channel telemetry. From the CLI, mycelium network [room] prints a bridge block per room under the fabric table: the bridged agents with their endpoint and advertised skills, the room's own card and how often it has been read, and the last exchanges either way — an answered call with wh",
+    "x": "mycelium network [room] shows the bridge for each room below the network table: the bridged agents with their URLs and skills, the room's own card and how often it's been read, and the most recent calls in each direction, with what came back or why it failed. mycelium network my-room In the app, the Network pane shows the same thing in a strip under the SLIM view. Rooms without a bridge don't show it. To get the raw ",
     "p": "Adapters"
   },
   {
-    "u": "adapters.html#adapter-a2a-what-the-bridge-is-and-what-it-is-not",
-    "t": "What the bridge is, and what it is not",
+    "u": "adapters.html#adapter-a2a-privacy",
+    "t": "Privacy",
     "s": "A2A Bridge",
-    "x": "A bridged A2A agent is a member of the room in the coordination sense: it is on the roster, it answers when mentioned, and its replies are attributed to its handle. It is not a member of the room's MLS group, and it never holds a group key. (Nor, for that matter, is the room's own MLS group end-to-end from the hub: the backend holds that key too, which is why cognition works at all.) The backend is a translation boun",
+    "x": "A bridged A2A agent can be mentioned and answers under its own name, but it isn't part of the room's encrypted group and never has the room's key. The hub reads the room's messages and sends them to the remote agent over HTTPS. The hub can already read everything in the room. It needs to, for engines to work (see SLIM). Adding an A2A agent means sending some of the room's content to another service as well, so add on",
     "p": "Adapters"
   },
   {
     "u": "adapters.html#adapter-api",
     "t": "REST API",
-    "x": "Any agent or tool that can make HTTP requests can use the Mycelium API directly, with no adapter required. The API is the same one the CLI wraps.",
+    "x": "Anything that can make HTTP requests can use Mycelium directly, without an adapter. It's the same API the CLI uses.",
     "p": "Adapters"
   },
   {
     "u": "adapters.html#api-docs",
     "t": "Interactive docs",
     "s": "REST API",
-    "x": "When the backend is running, interactive API docs are available at: http://localhost:8000/docs",
+    "x": "While the hub is running, you can browse and try the API at: http://localhost:8000/docs",
     "p": "Adapters"
   },
   {
     "u": "adapters.html#api-example",
     "t": "Quick example",
     "s": "REST API",
-    "x": "Memory is scoped by room, so the room name is part of the path. Writes are batched: items takes 1–100 memories per call. # Write a memory curl -X POST http://localhost:8000/api/rooms/my-project/memory \\ -H \"Content-Type: application/json\" \\ -d '{\"items\": [{\"key\": \"work/api\", \"value\": \"REST with OpenAPI client\", \"created_by\": \"avery-agent\"}]}' # Read it back curl http://localhost:8000/api/rooms/my-project/memory/work/",
+    "x": "Memory belongs to a room, so the room's name is in the path. You can write up to 100 memories in one call by putting them in items. # Write a memory curl -X POST http://localhost:8000/api/rooms/my-project/memory \\ -H \"Content-Type: application/json\" \\ -d '{\"items\": [{\"key\": \"work/api\", \"value\": \"REST with OpenAPI client\", \"created_by\": \"avery-agent\"}]}' # Read it back curl http://localhost:8000/api/rooms/my-project/m",
     "p": "Adapters"
   },
   {
     "u": "adapters.html#api-a2a",
     "t": "A2A endpoints",
     "s": "REST API",
-    "x": "A room is also reachable over Agent2Agent, so an external A2A client can discover and message it without knowing anything about the Mycelium API. See the A2A bridge for what happens to the message once it lands. # Discover the room as an A2A agent (public: discovery is unauthenticated by spec) curl http://localhost:8000/api/rooms/my-project/.well-known/agent-card.json # Send it a message (A2A JSON-RPC; gated by the h",
+    "x": "An outside Agent2Agent client can also find a room and send it messages, without knowing the Mycelium API. See the A2A bridge for what happens to a message after it arrives. # Get the room's agent card (always public, as the A2A spec requires) curl http://localhost:8000/api/rooms/my-project/.well-known/agent-card.json # Send it a message (needs a token if the hub has sign-in turned on) curl -X POST http://localhost:8",
     "p": "Adapters"
   },
   {
@@ -866,105 +866,119 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#architecture-deployment-modes",
     "t": "Deployment Modes",
     "s": "Architecture",
-    "x": "Mycelium supports two deployment modes. The stack is identical in both; what differs is where the agents run and how they reach the room.",
+    "x": "Mycelium runs the same stack in two setups. The difference is where the agents run and how they reach the room.",
     "p": "Reference"
   },
   {
     "u": "reference.html#architecture-1-single-device-default",
     "t": "1. Single-device (default)",
     "s": "Architecture",
-    "x": "Everything (the backend, the SLIM node, agents, and CLI) runs on one machine, typically a developer's laptop. This is what mycelium install sets up out of the box. No network configuration, no remote services to point at, no shared infrastructure required. This is the primary deployment target. Use it when one person (or one machine) owns the whole agent workflow.",
+    "x": "Everything runs on one machine: the backend, the SLIM node, the app, the CLI and your agents. This is what mycelium install sets up, and it needs no network configuration. Use it when one person or one machine runs the whole workflow.",
     "p": "Reference"
   },
   {
     "u": "reference.html#architecture-2-hub-and-spoke-small-teams",
     "t": "2. Hub-and-spoke (small teams)",
     "s": "Architecture",
-    "x": "A second, optional mode for small teams that want to share memory, rooms, and coordination across machines. One machine runs the SLIM node and backend (the hub); other machines run only the CLI + agents (spokes) as thin HTTP clients to the hub API. Role What runs locally When to use Hub The SLIM node, the thin FastAPI backend (room moderator), and the UI. The team's shared coordination server. One per team. Spoke CLI",
+    "x": "For a team that wants to share rooms and memory across machines. One machine, the hub, runs the SLIM node, the backend and the app. The other machines, the spokes, run only the CLI and agents, and talk to the hub over HTTP. Role What runs on it Used for Hub The SLIM node, the backend and the app. The team's shared server. One per team. Spoke The CLI and agents, with server.api_url pointing at the hub. Each teammate's",
     "p": "Reference"
   },
   {
     "u": "reference.html#architecture-reading-a-remote-room-spoke",
     "t": "Reading a remote room (spoke)",
     "s": "Architecture",
-    "x": "When the backend runs on a remote server (EC2, Raspberry Pi, a hub), a spoke is a thin client: mycelium memory and mycelium room resolve against the hub over HTTP, so reads are always fresh and there is no sync step: nothing is mirrored locally to fall out of date. room clone / mycelium sync remain only as an explicit export: a point-in-time local snapshot for backup or offline reference, not part of the normal flow.",
+    "x": "A spoke keeps no copy of the hub's data. mycelium memory and mycelium room read from the hub over HTTP every time, so there's nothing to sync and nothing to go stale. If you do want a local copy, for a backup or to read offline, room clone exports a snapshot of a room as it is right now: mycelium room clone my-project --from http://ec2-host:8000",
     "p": "Reference"
   },
   {
     "u": "reference.html#architecture-stack",
     "t": "Stack",
     "s": "Architecture",
-    "x": "Mycelium runs on one SLIM node and a thin backend: no database, no message broker, no vector store. The hub backend moderates an AGNTCY SLIM group channel per room (MLS-encrypted; PSK or SignerJwt on the SLIM plane). Turn-based agents on spokes (and humans by proxy) participate over HTTP — the backend holds server-side presence and serves turns from the durable transcript. Room state lives on the hub as markdown file",
+    "x": "The hub is one SLIM node and a FastAPI backend. There's no database, message broker or vector store. Each room is an encrypted AGNTCY SLIM group channel, and the backend runs it. Agents on spokes, and people using the app, take part over HTTP; the backend keeps track of who is present and serves them messages from the stored transcript. Room contents are markdown files on the hub, searched with a local embedding inde",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#architecture-taking-part-in-a-room",
+    "t": "Taking part in a room",
+    "s": "Architecture",
+    "x": "An agent takes part with two HTTP calls. await waits until there's a message for it, and respond posts its reply: # Wait until a message is addressed to this handle mycelium await --room my-project --handle me --json # Post a reply mycelium respond --room my-project --handle me \"moving toward 30% …\" The backend remembers where each agent is up to, so nothing is missed between calls, even if the agent takes a while to",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#architecture-engines",
+    "t": "Engines",
+    "s": "Architecture",
+    "x": "Engines are agents that come with Mycelium and run on the hub. You add one to a room and mention it to use it. The aligner helps agents settle a disagreement, using a NEGMAS negotiation that ends as soon as they agree. The synthesizer summarizes the room's conversation into a memory. See also episodes.",
     "p": "Reference"
   },
   {
     "u": "reference.html#architecture-tasks-threads-and-pings",
     "t": "Tasks, threads and pings",
     "s": "Architecture",
-    "x": "A task is a work/ memory. Its thread is a scoped, tagged slice of the room's existing channel, identified by an episode id, and not a separate encrypted group. Membership in a room is membership in its threads; a thread separates attention rather than access. The binding is store-owned, and one per row. The backend mints the episode id at the memory-upsert chokepoint for every board namespace (work/, decisions/, stat",
+    "x": "A task is a memory on the board, usually under work/. Each task has a thread: its own conversation within the room's channel, identified by an episode id. A thread isn't a separate encrypted group. Everyone in the room can see every thread; threads just keep conversations apart. Every task gets its own thread, for good. The backend gives a task its thread when the task is first written, for every board namespace (wor",
     "p": "Reference"
   },
   {
     "u": "reference.html#architecture-adapters",
     "t": "Adapters",
     "s": "Architecture",
-    "x": "Mycelium integrates with AI coding agents via adapters. The coordination model is the same regardless of adapter: join, await, respond. Adapter How it connects claude_code Skill + resident await/respond loop cursor Workspace rules + the same resident loop a2a A remote Agent2Agent endpoint the hub calls; no local runtime",
+    "x": "Adapters connect agent tools to Mycelium. Whichever one you use, the agent does the same three things: join, await, respond. Adapter How it connects claude_code A skill, plus the await/respond loop cursor Workspace rules, plus the same loop a2a A remote Agent2Agent endpoint that the hub calls; nothing runs locally",
     "p": "Reference"
   },
   {
     "u": "reference.html#architecture-claude-code",
     "t": "Claude Code",
     "s": "Architecture",
-    "x": "The Mycelium skill installs as a Claude Code skill (~/.claude/skills/mycelium/SKILL.md), invoked via the /mycelium slash command for memory and coordination commands. The adapter is skill-only. # The skill is invoked automatically in Claude Code sessions # or explicitly via the slash command /mycelium A Claude Code session participates as a resident runtime: it loops mycelium await → reason → mycelium respond, pickin",
+    "x": "The Mycelium skill is installed at ~/.claude/skills/mycelium/SKILL.md and used with the /mycelium slash command. It covers memory and coordination commands. # Claude Code uses the skill when it's relevant, or you can call it directly /mycelium A Claude Code session takes part by running mycelium await, working out its answer, and running mycelium respond. It picks up each @handle mention on its next turn. For an agen",
     "p": "Reference"
   },
   {
     "u": "reference.html#architecture-cursor",
     "t": "Cursor",
     "s": "Architecture",
-    "x": "Same resident model as Claude Code: a Cursor session loops await → reason → respond. mycelium adapter add cursor # installs the workspace rule + AGENTS.md assets cursor-agent login # one-time, interactive # Per agent: --cwd is the session's workspace root (optional) mycelium agent create design-agent --adapter cursor \\ --cwd ~/repos/my-frontend --room my-project",
+    "x": "Works the same way as Claude Code: a Cursor session runs await, works out its answer, and runs respond. mycelium adapter add cursor # installs the workspace rule and AGENTS.md cursor-agent login # once, interactively # Per agent. --cwd is the session's workspace folder (optional) mycelium agent create design-agent --adapter cursor \\ --cwd ~/repos/my-frontend --room my-project",
     "p": "Reference"
   },
   {
     "u": "reference.html#architecture-a2a",
     "t": "A2A",
     "s": "Architecture",
-    "x": "An a2a agent has no local runtime at all: it is a remote Agent2Agent endpoint the hub calls on its behalf. The card is resolved at registration, so a bad URL fails immediately. mycelium agent create researcher --adapter a2a \\ --card https://research.example.com --room my-project The same bridge runs inbound: every room is served as an A2A agent, discoverable at GET /api/rooms/{room}/.well-known/agent-card.json (publi",
+    "x": "An a2a agent doesn't run on your machine. It's a remote Agent2Agent endpoint that the hub calls for it. The hub fetches the agent's card when you register it, so a wrong URL fails straight away. mycelium agent create researcher --adapter a2a \\ --card https://research.example.com --room my-project It also works the other way. Every room is available as an A2A agent: its card is at GET /api/rooms/{room}/.well-known/age",
     "p": "Reference"
   },
   {
     "u": "reference.html#architecture-backend-api",
     "t": "Backend API",
     "s": "Architecture",
-    "x": "Any agent that can make HTTP requests can use the REST API directly. Interactive API docs are available at http://localhost:8000/docs when the backend is running.",
+    "x": "Any agent that can make HTTP requests can use the REST API directly. When the backend is running, the interactive API docs are at http://localhost:8000/docs.",
     "p": "Reference"
   },
   {
     "u": "reference.html#architecture-status-providers",
     "t": "Status providers",
     "s": "Architecture",
-    "x": "Adapters connect agents to a room. Status providers connect the tools your work already lives in, so that a board row pointing at a pull request can report whether it's approved, blocked or failing instead of someone copying that state into Mycelium. This works end to end: give the hub a token, write a pull request into a row, and that row carries the pull request's state, in both the app and mycelium board. Nothing ",
+    "x": "Adapters connect agents to a room. Status providers connect the tools your work already happens in. If a board row mentions a pull request, a status provider lets the row show whether that pull request is approved, blocked or failing, without anyone copying it across by hand. Give the hub a token, mention a pull request in a row, and the row shows its state in both the app and mycelium board. Nothing is polled on a t",
     "p": "Reference"
   },
   {
-    "u": "reference.html#architecture-asking-what-the-tools-say",
-    "t": "Asking what the tools say",
+    "u": "reference.html#architecture-asking-for-status",
+    "t": "Asking for status",
     "s": "Architecture",
-    "x": "GET /api/rooms/{room}/status You never tell Mycelium which pull requests to watch. Write a work row that says land the custody seam: mycelium-io/mycelium#504 and the reference is already there; the hub reads the room's own decisions/, status/, work/ and failed/ memories, and asks each provider what it recognizes. Nothing in the hub matches #504: a provider is the only thing that knows its own shapes, so teaching Myce",
+    "x": "GET /api/rooms/{room}/status You don't list which pull requests to watch. The hub reads the room's decisions/, status/, work/ and failed/ memories and asks each provider which references it recognizes. So a row that says land the custody seam: mycelium-io/mycelium#504 is already tracked. Only the provider knows what its references look like, so supporting a new kind (Jira ticket keys, say) means adding a provider. Th",
     "p": "Reference"
   },
   {
-    "u": "reference.html#architecture-giving-the-hub-a-credential",
-    "t": "Giving the hub a credential",
+    "u": "reference.html#architecture-giving-the-hub-a-token",
+    "t": "Giving the hub a token",
     "s": "Architecture",
-    "x": "Resolving pull requests takes a GitHub token; read-only is enough, plus repo scope for private repositories. A provider declares which credential it needs and how it is presented (a scheme: bearer token, basic auth, a raw key in a header), and never handles the value. The runtime resolves it and hands back a transport that already carries it. You give the hub the value by name, on the machine the backend runs on: # T",
+    "x": "To read pull requests the hub needs a GitHub token. Read-only access is enough, plus repo scope for private repositories. Set it on the machine the backend runs on. The name to use is the one the provider asks for; GitHub's is GITHUB_TOKEN: mycelium board credential set GITHUB_TOKEN --stdin < token.txt mycelium board credential set GITHUB_TOKEN # or type it at a hidden prompt mycelium board credential ls # shows name",
     "p": "Reference"
   },
   {
-    "u": "reference.html#architecture-teaching-mycelium-another-tracker",
-    "t": "Teaching Mycelium another tracker",
+    "u": "reference.html#architecture-adding-a-provider",
+    "t": "Adding a provider",
     "s": "Architecture",
-    "x": "A provider is one small class in app/services/status/providers/; providers/github.py is written to be copied. It declares its batching and freshness, then implements two methods: class JiraProvider: name = \"jira\" base_url = \"https://your-org.atlassian.net\" # ctx.http is bound to this host auth = Basic(\"JIRA_EMAIL\", \"JIRA_TOKEN\") # a scheme, not a value; the runtime resolves both names max_batch = 50 # most references",
+    "x": "A provider is a small class in app/services/status/providers/. providers/github.py is a good one to copy. It sets a few options and implements two methods: class JiraProvider: name = \"jira\" base_url = \"https://your-org.atlassian.net\" # ctx.http only talks to this host auth = Basic(\"JIRA_EMAIL\", \"JIRA_TOKEN\") # which credentials, by name; the hub supplies the values max_batch = 50 # most references to fetch in one cal",
     "p": "Reference"
   },
   {
@@ -1699,147 +1713,133 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#structured-memory",
     "t": "Structured Memory",
     "s": "Guides",
-    "x": "This guide shows how to use Mycelium's structured memory conventions to give agents continuity across separate runs.",
+    "x": "When an agent finishes a stretch of work and goes away, the next agent (or person) to pick it up starts from nothing unless the work was written down. This guide shows a simple set of key prefixes that makes that easy: what was built, why, what the user wants, where things stand, and how to do things again.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#structured-memory-the-problem",
-    "t": "The Problem",
+    "u": "reference.html#structured-memory-the-prefixes",
+    "t": "The prefixes",
     "s": "Guides › Structured Memory",
-    "x": "An agent helps build something over a long stretch of work, then goes away. When the user (or another agent) comes back, there's no memory of what happened. The next agent starts from scratch.",
+    "x": "work/ What was built or changed decisions/ Why choices were made context/ User preferences and background status/ Current state of ongoing work procedures/ Steps you'll want to repeat later When a key starts with one of these, memory set checks the rest of the key and adds a timestamp to the content. work/, decisions/ and status/ are also board namespaces, so memories there show up on the room's board too.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#structured-memory-the-solution-category-conventions",
-    "t": "The Solution: Category Conventions",
-    "s": "Guides › Structured Memory",
-    "x": "Instead of writing memories with arbitrary keys, use structured prefixes: work/ What was built or changed decisions/ Why choices were made context/ User preferences and background status/ Current state of ongoing work procedures/ Reusable how-to steps (do this again later) memory set validates these automatically: when the key starts with a known category prefix, it checks the slug format and auto-timestamps the cont",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#structured-memory-workflow",
-    "t": "Workflow",
+    "u": "reference.html#structured-memory-using-them",
+    "t": "Using them",
     "s": "Guides › Structured Memory",
     "x": "",
     "p": "Reference"
   },
   {
-    "u": "reference.html#structured-memory-1-set-up-a-room",
-    "t": "1. Set up a room",
+    "u": "reference.html#structured-memory-1-pick-a-room",
+    "t": "1. Pick a room",
     "s": "Guides › Structured Memory",
     "x": "mycelium room create project-x mycelium room use project-x",
     "p": "Reference"
   },
   {
-    "u": "reference.html#structured-memory-2-write-structured-memories-as-you-work",
-    "t": "2. Write structured memories as you work",
+    "u": "reference.html#structured-memory-2-write-things-down-as-you-go",
+    "t": "2. Write things down as you go",
     "s": "Guides › Structured Memory",
-    "x": "# Record what you built mycelium memory set work/api-server \"Set up FastAPI with auth endpoints\" mycelium memory set work/database \"Created PostgreSQL schema, 3 tables\" # Record why you made choices mycelium memory set decisions/framework \"FastAPI over Flask: async + type hints\" mycelium memory set decisions/auth \"JWT tokens, 1hr expiry, refresh via cookie\" # Record user context mycelium memory set context/goal \"Buil",
+    "x": "# What you built mycelium memory set work/api-server \"Set up FastAPI with auth endpoints\" mycelium memory set work/database \"Created PostgreSQL schema, 3 tables\" # Why you made the choices you did mycelium memory set decisions/framework \"FastAPI over Flask: async + type hints\" mycelium memory set decisions/auth \"JWT tokens, 1hr expiry, refresh via cookie\" # What the user wants mycelium memory set context/goal \"Build ",
     "p": "Reference"
   },
   {
-    "u": "reference.html#structured-memory-3-check-status-at-a-glance",
-    "t": "3. Check status at a glance",
+    "u": "reference.html#structured-memory-3-read-them-back",
+    "t": "3. Read them back",
     "s": "Guides › Structured Memory",
-    "x": "mycelium memory status # Table of all status/* memories mycelium memory work # What's been built mycelium memory decisions # Why things are the way they are mycelium memory procedures # How to do things again",
+    "x": "mycelium memory status # everything under status/ mycelium memory work # what's been built mycelium memory decisions # why things are the way they are mycelium memory context # background and preferences mycelium memory procedures # how to do things again",
     "p": "Reference"
   },
   {
-    "u": "reference.html#structured-memory-4-update-status-as-things-change",
-    "t": "4. Update status as things change",
+    "u": "reference.html#structured-memory-4-update-as-things-change",
+    "t": "4. Update as things change",
     "s": "Guides › Structured Memory",
-    "x": "# memory set always upserts, so just set the new value mycelium memory set status/deploy \"ACTIVE: deployed to vps.example.com\"",
+    "x": "memory set replaces the old value, so just set the new one: mycelium memory set status/deploy \"ACTIVE: deployed to vps.example.com\"",
     "p": "Reference"
   },
   {
-    "u": "reference.html#structured-memory-type-safety",
-    "t": "Type Safety",
+    "u": "reference.html#structured-memory-key-rules",
+    "t": "Key rules",
     "s": "Guides › Structured Memory",
-    "x": "memory set validates category keys against the MemoryLogEntry type (defined in mycelium.protocol). This is the same pattern used for the negotiation reply payload (RespondReply): Pydantic validation before the API call, so malformed slugs fail fast on the client side. Valid slugs: lowercase alphanumeric, hyphens, dots, underscores. work/api-server (valid) status/v2.deploy (valid) decisions/Why We Chose X (invalid: up",
+    "x": "After the prefix, a key can use lowercase letters, numbers, hyphens, dots and underscores, and must start with a letter or number. Uppercase letters are lowercased for you. A key that breaks these rules is rejected before anything is sent to the hub. work/api-server works status/v2.deploy works decisions/Why We Chose X is rejected (spaces) Keys with any other prefix aren't checked: custom/anything research/index-perf",
     "p": "Reference"
   },
   {
     "u": "reference.html#hub-and-spoke",
     "t": "Hub & Spoke",
     "s": "Guides",
-    "x": "Run Mycelium across two or more machines so a small team shares rooms, memory, and coordination from one hub. One machine is the hub: it runs the SLIM node and the always-on FastAPI backend (room moderator + memory store). Every other machine is a spoke: CLI + agents only, talking to the hub over HTTP. There is no database and no separate channel server. Two planes. Spokes use the HTTP API (:8000) for memory and part",
+    "x": "This guide sets up Mycelium across several machines, so a team can share rooms, memory and tasks. One machine runs Mycelium and holds all the data. That's the hub. The other machines, the spokes, only need the CLI and your agents, and they talk to the hub over HTTP. If everyone works on one machine, you don't need this. The normal install already does it; see the Quick Start.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#hub-and-spoke-when-to-use-this",
-    "t": "When to use this",
+    "u": "reference.html#hub-and-spoke-what-runs-where",
+    "t": "What runs where",
     "s": "Guides › Hub & Spoke",
-    "x": "Use hub-and-spoke when people on different machines need to join the same rooms, see the same memories, and run negotiations together. If everything runs on one machine, the default single-device install already does this; see the Quick Start.",
+    "x": "┌─────────────────────────────────────────────┐ │ Hub (one machine) │ │ │ │ mycelium install │ │ mycelium hub host │ │ ├─ SLIM node :46357 │ │ └─ backend (API) :8000 │ │ rooms, memory, engines │ └──────────────────┬──────────────────────────┘ │ HTTP :8000 (memory, await, respond) │ ┌─────────────┴─────────────┐ │ │ ┌────┴──────┐ ┌─────┴─────┐ │ Spoke A │ │ Spoke B │ │ CLI │ │ CLI │ │ + agents │ │ + agents │ └────────",
     "p": "Reference"
   },
   {
-    "u": "reference.html#hub-and-spoke-topology",
-    "t": "Topology",
+    "u": "reference.html#hub-and-spoke-step-1-set-up-the-hub",
+    "t": "Step 1: Set up the hub",
     "s": "Guides › Hub & Spoke",
-    "x": "┌─────────────────────────────────────────────┐ │ Hub (one machine) │ │ │ │ mycelium install │ │ mycelium hub host │ │ ├─ SLIM node :46357 (MLS fabric) │ │ └─ FastAPI backend :8000 (HTTP API) │ │ moderator + memory store │ └──────────────────┬──────────────────────────┘ │ HTTP :8000 (memory, await, respond) │ ┌─────────────┴─────────────┐ │ │ ┌────┴──────┐ ┌─────┴─────┐ │ Spoke A │ │ Spoke B │ │ CLI │ │ CLI │ │ + age",
+    "x": "On the hub machine, install Mycelium and start the SLIM node: mycelium install mycelium hub host mycelium hub host starts the SLIM node and prints its addresses: SLIM node running. local → http://127.0.0.1:46357 (this machine, saved to config) for peers → http://192.168.1.20:46357 Make sure the backend is running too (mycelium up starts it if it isn't), then check everything: mycelium doctor doctor works out whether ",
     "p": "Reference"
   },
   {
-    "u": "reference.html#hub-and-spoke-step-1-stand-up-the-hub",
-    "t": "Step 1: Stand up the hub",
+    "u": "reference.html#hub-and-spoke-the-slim-secret",
+    "t": "The SLIM secret",
     "s": "Guides › Hub & Spoke",
-    "x": "On the hub machine, install the stack and start the SLIM node: mycelium install mycelium hub host mycelium hub host starts the slim node container and prints addresses: SLIM node running. local → http://127.0.0.1:46357 (this machine, saved to config) for peers → http://192.168.1.20:46357 Ensure the backend is up as well (mycelium up or the full install stack). Verify with: mycelium doctor doctor auto-detects hub vs s",
+    "x": "The hub's SLIM secret is kept in config.toml. The first time you run mycelium install or mycelium config apply, Mycelium generates it (slim.master_secret) if it isn't set, and passes it to the backend as MYCELIUM_SLIM_MASTER_SECRET. Running config apply again keeps the same secret. mycelium config apply # creates slim.master_secret if it's missing mycelium config show # shows it masked To change it: mycelium config s",
     "p": "Reference"
   },
   {
-    "u": "reference.html#hub-and-spoke-hub-only-slim-master-secret",
-    "t": "Hub-only: SLIM master secret",
+    "u": "reference.html#hub-and-spoke-ports",
+    "t": "Ports",
     "s": "Guides › Hub & Spoke",
-    "x": "The hub SLIM PSK lives in config.toml, not as a hand-edited .env entry. On first mycelium install or mycelium config apply, Mycelium generates [slim].master_secret when unset and renders it to MYCELIUM_SLIM_MASTER_SECRET in ~/.mycelium/.env for the backend container. mycelium config apply # generates [slim].master_secret if missing mycelium config show # SLIM PSK shown masked To rotate: mycelium config set slim.maste",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#hub-and-spoke-open-ports",
-    "t": "Open ports",
-    "s": "Guides › Hub & Spoke",
-    "x": "Port Service Spokes need it? Purpose 8000 FastAPI backend Yes Memory, await/respond, room ops 46357 SLIM node No (default) Native SLIM on hub; optional for slim send Restrict :8000 on the hub when the team shares a network. Enable the HTTP JWT gate — that is what protects spokes, not the SLIM PSK.",
+    "x": "Port Service Do spokes need it? Used for 8000 Backend API Yes Memory, await/respond, rooms 46357 SLIM node No SLIM on the hub; optionally mycelium slim send If other people share the network, turn on authentication on the hub. That's what protects the API from other machines. The SLIM secret doesn't.",
     "p": "Reference"
   },
   {
     "u": "reference.html#hub-and-spoke-step-2-connect-each-spoke",
     "t": "Step 2: Connect each spoke",
     "s": "Guides › Hub & Spoke",
-    "x": "On each spoke, install the CLI: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash Point the spoke at the hub backend (required): mycelium config set server.api_url http://192.168.1.20:8000 Or during init: mycelium init --api-url http://192.168.1.20:8000 Optional: store the hub's SLIM node address (only needed for native SLIM tooling such as mycelium slim send, not for normal participation): mycelium",
+    "x": "On each spoke, install the CLI: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash Point it at the hub's API: mycelium config set server.api_url http://192.168.1.20:8000 or do it when you set up the CLI: mycelium init --api-url http://192.168.1.20:8000 You only need the hub's SLIM address for SLIM tools like mycelium slim send, not for normal use. To save it anyway: mycelium connect http://192.168.1.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#hub-and-spoke-secure-a-shared-hub",
-    "t": "Secure a shared hub",
+    "u": "reference.html#hub-and-spoke-securing-a-shared-hub",
+    "t": "Securing a shared hub",
     "s": "Guides › Hub & Spoke",
-    "x": "When spokes reach the hub over a LAN or VPN, turn on HTTP authentication on the hub. See Authentication. Without it, any peer on the network can read/write memory and post as any @handle — independent of SLIM PSK.",
+    "x": "When spokes reach the hub over a LAN or VPN, turn on authentication on the hub. Without it, anyone who can reach port 8000 can read and write memory and post as any @handle. The SLIM secret doesn't prevent this.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#hub-and-spoke-behind-a-tls-terminating-proxy",
-    "t": "Behind a TLS-terminating proxy",
+    "u": "reference.html#hub-and-spoke-behind-an-https-proxy",
+    "t": "Behind an HTTPS proxy",
     "s": "Guides › Hub & Spoke",
-    "x": "A public hub usually sits behind a reverse proxy (Caddy, nginx, a cloud load balancer) that terminates HTTPS and forwards plain HTTP to the backend container. The backend then sees an http request and builds every absolute URL with that scheme, so an external client reading the A2A agent card is pointed at http:// for a hub that is only served over https://. The proxy says what the original request was in X-Forwarded",
+    "x": "A public hub usually sits behind a reverse proxy (Caddy, nginx or a cloud load balancer) that handles HTTPS and forwards plain HTTP to the backend. The backend then thinks requests came in over http, and puts http:// in the links it gives out. For example, the A2A agent card advertises an http:// address for a hub that only works over https://. The proxy passes the original scheme in the X-Forwarded-Proto header. By ",
     "p": "Reference"
   },
   {
     "u": "reference.html#hub-and-spoke-step-3-use-a-room-from-a-spoke",
     "t": "Step 3: Use a room from a spoke",
     "s": "Guides › Hub & Spoke",
-    "x": "There is one store: the hub's. Create the room on the hub, then use it from anywhere. # On the hub mycelium room create portfolio mycelium room use portfolio On a spoke, just make it the active room: mycelium room use portfolio Every memory command resolves against the hub over HTTP: mycelium memory ls mycelium memory get decisions/allocation mycelium memory set decisions/allocation \"60/40 equities to bonds\" mycelium",
+    "x": "All the data lives on the hub, so a room created on the hub is available from every spoke. # On the hub mycelium room create portfolio mycelium room use portfolio On a spoke, just switch to it: mycelium room use portfolio Memory commands work as usual, and go to the hub: mycelium memory ls mycelium memory get decisions/allocation mycelium memory set decisions/allocation \"60/40 equities to bonds\" mycelium memory searc",
     "p": "Reference"
   },
   {
     "u": "reference.html#hub-and-spoke-step-4-run-a-negotiation-across-machines",
     "t": "Step 4: Run a negotiation across machines",
     "s": "Guides › Hub & Spoke",
-    "x": "Register the aligner once in the room, post opening positions, and loop on participation. The aligner runs on the hub over the SLIM fabric; spoke agents use HTTP await/respond. mycelium engine create aligner --kind aligner --room portfolio Each participant posts an opening position: # Spoke A's agent mycelium respond --room portfolio --handle alice \"I want 60% equities.\" # Spoke B's agent mycelium respond --room port",
+    "x": "Add the aligner to the room once. It runs on the hub. Agents on the spokes take part over HTTP with await and respond. mycelium engine create aligner --kind aligner --room portfolio Each agent posts its position: # An agent on spoke A mycelium respond --room portfolio --handle alice \"I want 60% equities.\" # An agent on spoke B mycelium respond --room portfolio --handle bob \"No more than 40% equities.\" Start the negot",
     "p": "Reference"
   },
   {
     "u": "reference.html#hub-and-spoke-agent-identity",
     "t": "Agent identity",
     "s": "Guides › Hub & Spoke",
-    "x": "Each agent needs a unique handle across the deployment. The handle is resolved from, in order: identity.name in ~/.mycelium/config.toml The MYCELIUM_AGENT_HANDLE environment variable The --handle flag on await / respond On a shared hub with auth enabled, the token — not the body alone — is the actor of record. Configure agent credentials for unattended spokes.",
+    "x": "Every agent needs a handle that's unique across the whole setup. A command uses the first of these it finds: the handle you pass on the command (--handle on await and respond) the MYCELIUM_AGENT_HANDLE environment variable who the hub says you're signed in as, when authentication is on the name set with mycelium iam (identity.name in ~/.mycelium/config.toml) When authentication is on, the hub goes by who your token b",
     "p": "Reference"
   },
   {
@@ -1850,451 +1850,423 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Reference"
   },
   {
-    "u": "reference.html#hub-and-spoke-spoke-cant-reach-the-hub",
-    "t": "Spoke can't reach the hub",
+    "u": "reference.html#hub-and-spoke-a-spoke-cant-reach-the-hub",
+    "t": "A spoke can't reach the hub",
     "s": "Guides › Hub & Spoke",
-    "x": "Check the backend first (the path spokes actually use): curl http://192.168.1.20:8000/health If this fails, check firewall rules, VPN connectivity, or security groups. The backend must be reachable on port 8000. The SLIM node (:46357) is only required on the hub for coordination fabric; spokes do not need it for memory or await/respond.",
+    "x": "Check the API first, since that's what spokes use: curl http://192.168.1.20:8000/health If that fails, check firewall rules, the VPN and any security groups. The hub has to accept connections on port 8000. Spokes don't need port 46357.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#hub-and-spoke-doctor-reports-spoke-mode-unexpectedly",
-    "t": "doctor reports \"spoke mode\" unexpectedly",
+    "u": "reference.html#hub-and-spoke-doctor-says-spoke-mode-on-the-hub",
+    "t": "doctor says \"spoke mode\" on the hub",
     "s": "Guides › Hub & Spoke",
-    "x": "mycelium doctor infers mode from server.api_url. If it points at a non-local address, doctor assumes spoke mode. If you're running the backend locally on a non-default address, set server.api_url to http://localhost:8000 in ~/.mycelium/config.toml, or force hub mode: mycelium doctor --mode hub See Troubleshooting for the full runbook and Security Planes for HTTP vs SLIM protection.",
+    "x": "doctor decides the mode from server.api_url. If that points at another address, it assumes it's on a spoke. If the backend runs on this machine at a different address, set server.api_url to http://localhost:8000 in ~/.mycelium/config.toml, or run: mycelium doctor --mode hub See Troubleshooting for more, and Security Planes for how the API and SLIM are protected.",
     "p": "Reference"
   },
   {
     "u": "reference.html#ephemeral-agents",
     "t": "Ephemeral Agents",
     "s": "Guides",
-    "x": "An ephemeral agent is a runtime that exists for one task and then disappears: a Claude Code cloud session, a CI job, a docker run that ends when the command does. It has no .mycelium/ directory, no config.toml, usually no Docker, and nobody sitting at a terminal to run mycelium login. It should still be able to say what it did. This guide covers the thinnest possible spoke: a container that installs the CLI, reads it",
+    "x": "An ephemeral agent is one that runs for a single job and then goes away: a Claude Code cloud session, a CI job, a docker run that exits when it's done. There's no .mycelium/ folder, no config.toml, usually no Docker, and nobody at a keyboard to run mycelium login. This guide shows how to let an agent like that post into a room. You'll end up with a container that installs the CLI, gets all its settings from environme",
     "p": "Reference"
   },
   {
-    "u": "reference.html#ephemeral-agents-the-shape-of-it",
-    "t": "The shape of it",
+    "u": "reference.html#ephemeral-agents-how-it-fits-together",
+    "t": "How it fits together",
     "s": "Guides › Ephemeral Agents",
-    "x": "┌──────────────────────────────┐ │ Ephemeral container │ │ │ │ env: MYCELIUM_API_URL │ HTTPS │ MYCELIUM_ACTIVE_ROOM │ ─────────────► Hub (backend :8000) │ MYCELIUM_AGENT_HANDLE │ room + memory + transcript │ │ │ curl install.sh | bash │ │ mycelium room send \"…\" │ └──────────────────────────────┘ no config.toml, no .mycelium/, no Docker Nothing is written to disk that matters. The room is on the hub, and every call is",
+    "x": "┌──────────────────────────────┐ │ Ephemeral container │ │ │ │ env: MYCELIUM_API_URL │ HTTPS │ MYCELIUM_ACTIVE_ROOM │ ─────────────► Hub (backend :8000) │ MYCELIUM_AGENT_HANDLE │ rooms, memory, messages │ │ │ curl install.sh | bash │ │ mycelium room send \"…\" │ └──────────────────────────────┘ no config.toml, no .mycelium/, no Docker The room lives on the hub, and each command is a single HTTP request. The container d",
     "p": "Reference"
   },
   {
-    "u": "reference.html#ephemeral-agents-what-the-container-needs",
-    "t": "What the container needs",
+    "u": "reference.html#ephemeral-agents-environment-variables",
+    "t": "Environment variables",
     "s": "Guides › Ephemeral Agents",
-    "x": "Four environment variables, no config file: Variable What it sets Needed MYCELIUM_API_URL The hub's backend URL, e.g. https://mycelium.example.com Always MYCELIUM_ACTIVE_ROOM The room to post into (MYCELIUM_ROOM_ID also works) Unless you pass --room MYCELIUM_AGENT_HANDLE Who the message is from Always MYCELIUM_AGENT_AUTH_TOKEN Bearer token for the hub Only if the hub's auth gate is on MYCELIUM_AGENT_HANDLE does doubl",
+    "x": "You need these, and no config file: Variable What it's for Needed MYCELIUM_API_URL The hub's address, such as https://mycelium.example.com Always MYCELIUM_ACTIVE_ROOM The room to post in (MYCELIUM_ROOM_ID works too) Unless you pass --room MYCELIUM_AGENT_HANDLE Who the messages are from Always MYCELIUM_AGENT_AUTH_TOKEN A token for the hub Only if the hub has authentication on MYCELIUM_AGENT_HANDLE is the name on every",
     "p": "Reference"
   },
   {
-    "u": "reference.html#ephemeral-agents-install-without-docker",
-    "t": "Install without Docker",
+    "u": "reference.html#ephemeral-agents-install-the-cli-without-docker",
+    "t": "Install the CLI without Docker",
     "s": "Guides › Ephemeral Agents",
-    "x": "The normal installer sets up the whole stack, which needs Docker. An ephemeral agent only talks to a hub that already exists, so it wants the CLI alone: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only Client-only mode skips the Docker check entirely, and when the container's python3 is older than 3.12 it installs a managed 3.12 for the CLI rather than failing. Both are what an ",
+    "x": "The normal installer sets up the whole Mycelium stack, which needs Docker. An ephemeral agent only talks to an existing hub, so it only needs the CLI: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only With --client-only, the installer doesn't check for Docker. If the container's python3 is older than 3.12, it installs Python 3.12 for the CLI instead of failing. Many base images h",
     "p": "Reference"
   },
   {
-    "u": "reference.html#ephemeral-agents-announce-something",
-    "t": "Announce something",
+    "u": "reference.html#ephemeral-agents-post-a-message",
+    "t": "Post a message",
     "s": "Guides › Ephemeral Agents",
-    "x": "mycelium room send \"Migrated the session store to Redis. Tests green, PR #412 up.\" That is the whole flow. The message lands in the room's stream, where every other member and the UI sees it. @handle mentions inside the text address specific agents, and a mentioned resident agent picks it up on its next await: mycelium room send \"@avery-agent the retry backoff is in — worth a look before you re-run the bench.\" Read t",
+    "x": "mycelium room send \"Moved the session store to Redis. Tests pass, PR is up.\" The message appears in the room for every member and in the app. Mention an agent with @handle to get its attention; a mentioned agent sees it the next time it runs await: mycelium room send \"@avery-agent the retry backoff is in, worth a look before you re-run the bench.\" To check whether anyone replied before the job exits, read the room: m",
     "p": "Reference"
   },
   {
-    "u": "reference.html#ephemeral-agents-beyond-announcing",
-    "t": "Beyond announcing",
+    "u": "reference.html#ephemeral-agents-taking-part-not-just-posting",
+    "t": "Taking part, not just posting",
     "s": "Guides › Ephemeral Agents",
-    "x": "Announcing is one-way. To let the container take a turn in a negotiation — receive an addressed tick and reply as a position — use await and respond instead (see Rooms): mycelium await --handle ci-runner --timeout 120 mycelium respond --handle ci-runner \"I can hold the deploy until the bench lands.\" respond posts as an agent, so unlike a broadcast the handle must be a registered principal — an agent or a user. Regist",
+    "x": "room send only posts. For the agent to take a turn in a negotiation, where it's asked something and answers, use await and respond (see Rooms): mycelium await --handle ci-runner --timeout 120 mycelium respond --handle ci-runner \"I can hold the deploy until the bench lands.\" respond does need a registered handle, either an agent or a user. Register it once, from any machine that can reach the hub: mycelium user create",
     "p": "Reference"
   },
   {
     "u": "reference.html#ephemeral-agents-claude-code-on-the-web",
     "t": "Claude Code on the web",
     "s": "Guides › Ephemeral Agents",
-    "x": "A Claude Code cloud session is the case this guide was written for: an agent working in someone's repository, in a container you never touch, that should report back into a room when it is done. Cloud sessions read their configuration from a cloud environment, which is where the environment variables above go.",
+    "x": "A Claude Code cloud session works in someone's repository, in a container you never touch. Here's how to have it post to a room when it finishes. Cloud sessions take their settings from a cloud environment, and that's where the environment variables go.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#ephemeral-agents-1-configure-the-environment",
-    "t": "1. Configure the environment",
+    "u": "reference.html#ephemeral-agents-1-set-up-the-environment",
+    "t": "1. Set up the environment",
     "s": "Guides › Ephemeral Agents",
-    "x": "On claude.ai/code, select the cloud icon above the message box, then Add cloud environment (or the settings icon on an existing one). The dialog holds the name, network access, environment variables, and setup script. Put this in Environment variables (.env format, one KEY=value per line): MYCELIUM_API_URL=https://mycelium.example.com MYCELIUM_ACTIVE_ROOM=build MYCELIUM_AGENT_HANDLE=claude-web Sessions copy these onc",
+    "x": "On claude.ai/code, click the cloud icon above the message box, then Add cloud environment (or the settings icon on one you already have). There you can set the name, network access, environment variables and a setup script. Add these under Environment variables, one KEY=value per line: MYCELIUM_API_URL=https://mycelium.example.com MYCELIUM_ACTIVE_ROOM=build MYCELIUM_AGENT_HANDLE=claude-web A session reads these once ",
     "p": "Reference"
   },
   {
     "u": "reference.html#ephemeral-agents-2-let-the-session-reach-the-hub",
     "t": "2. Let the session reach the hub",
     "s": "Guides › Ephemeral Agents",
-    "x": "Cloud sessions get Trusted network access by default: package registries and GitHub, and nothing else. Your hub is not on that list, so set Network access to Custom and add its host to Allowed domains: mycelium.example.com Leave Also include default list of common package managers checked, or the installer itself cannot reach PyPI and GitHub releases. Two constraints follow from the session's egress proxy, and neithe",
+    "x": "By default, cloud sessions can only reach package registries and GitHub. To let them reach your hub, set Network access to Custom and add the hub's host under Allowed domains: mycelium.example.com Leave Also include default list of common package managers ticked, or the installer won't be able to download anything. Two more things, both set by the cloud environment rather than by Mycelium: The hub has to be public an",
     "p": "Reference"
   },
   {
-    "u": "reference.html#ephemeral-agents-3-install-the-cli-once-per-environment",
-    "t": "3. Install the CLI once per environment",
+    "u": "reference.html#ephemeral-agents-3-install-the-cli-in-the-setup-script",
+    "t": "3. Install the CLI in the setup script",
     "s": "Guides › Ephemeral Agents",
-    "x": "Put the client-only install in the Setup script, the Bash script that runs before Claude Code starts: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only The filesystem is snapshotted after the setup script runs and reused for later sessions, so the CLI is already on disk at the start of every session in that environment rather than being reinstalled each time.",
+    "x": "Put the client-only install in the Setup script, which runs before Claude Code starts: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only The environment is saved after the setup script runs and reused, so later sessions start with the CLI already installed.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#ephemeral-agents-4-tell-the-agent-to-use-it",
-    "t": "4. Tell the agent to use it",
+    "u": "reference.html#ephemeral-agents-4-tell-the-agent-to-post",
+    "t": "4. Tell the agent to post",
     "s": "Guides › Ephemeral Agents",
-    "x": "Nothing so far tells Claude to announce anything. Commit that instruction to the repository, in CLAUDE.md or a skill, so it applies to every session: ## Reporting When you finish a piece of work, announce it in the Mycelium room: mycelium room send \"<what changed, what's left, links>\" The room, handle, and hub are already in the environment. Address teammates with @handle when they need to act.",
+    "x": "Nothing so far tells Claude to post anything. Add an instruction to the repository, in CLAUDE.md or a skill, so every session sees it: ## Reporting When you finish a piece of work, post an update in the Mycelium room: mycelium room send \"<what changed, what's left, links>\" The room, handle and hub are already set in the environment. Mention teammates with @handle when they need to do something.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#ephemeral-agents-5-link-the-announcement-back-to-the-session",
-    "t": "5. Link the announcement back to the session",
+    "u": "reference.html#ephemeral-agents-5-link-to-the-session",
+    "t": "5. Link to the session",
     "s": "Guides › Ephemeral Agents",
-    "x": "A cloud session knows its own transcript URL, which makes an announcement traceable to the run that produced it: mycelium room send \"$(cat <<EOF @team Retry backoff landed — PR #412, CI green. Session: https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID/#cse_/session_} EOF )\" CLAUDE_CODE_REMOTE_SESSION_ID is set by the platform; the substitution turns its cse_ prefix into the session_ prefix the transcript URL exp",
+    "x": "A cloud session can link to its own transcript, so anyone reading the update can see how the work was done: mycelium room send \"$(cat <<EOF @team Retry backoff is in, CI is green. Session: https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID/#cse_/session_} EOF )\" The cloud environment sets CLAUDE_CODE_REMOTE_SESSION_ID. The substitution swaps its cse_ prefix for the session_ prefix the transcript link uses. If the",
     "p": "Reference"
   },
   {
     "u": "reference.html#ephemeral-agents-other-ephemeral-runtimes",
     "t": "Other ephemeral runtimes",
     "s": "Guides › Ephemeral Agents",
-    "x": "Nothing above is specific to Claude Code. Any container that can set environment variables and reach the hub works the same way — a GitHub Actions job, a Nomad batch task, a docker run: docker run --rm \\ -e MYCELIUM_API_URL=https://mycelium.example.com \\ -e MYCELIUM_ACTIVE_ROOM=build \\ -e MYCELIUM_AGENT_HANDLE=nightly-bench \\ python:3.12-slim bash -c ' curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | ba",
+    "x": "None of this is specific to Claude Code. Any container that can set environment variables and reach the hub works the same way, whether it's a GitHub Actions job, a Nomad batch task or a docker run: docker run --rm \\ -e MYCELIUM_API_URL=https://mycelium.example.com \\ -e MYCELIUM_ACTIVE_ROOM=build \\ -e MYCELIUM_AGENT_HANDLE=nightly-bench \\ python:3.12-slim bash -c ' curl -fsSL https://mycelium-io.github.io/mycelium/in",
     "p": "Reference"
   },
   {
     "u": "reference.html#ephemeral-agents-troubleshooting",
     "t": "Troubleshooting",
     "s": "Guides › Ephemeral Agents",
-    "x": "Symptom Cause Failed to connect to the Mycelium API MYCELIUM_API_URL unreachable: not public, not HTTPS, or not on the session's allowlist 502 Bad Gateway / ProxyError from a hub that is up The hub's domain is not on the environment's Allowed domains; the refusal is the egress proxy's, not the hub's No room context found Neither MYCELIUM_ACTIVE_ROOM / MYCELIUM_ROOM_ID nor --room is set 403 … is not a registered agent",
+    "x": "What you see Why Failed to connect to the Mycelium API The hub at MYCELIUM_API_URL can't be reached: it isn't public, isn't HTTPS, or isn't on the session's allowed domains 502 Bad Gateway or ProxyError, but the hub is up The hub's domain isn't in the environment's Allowed domains. The error comes from the environment's proxy, not the hub No room context found None of MYCELIUM_ACTIVE_ROOM, MYCELIUM_ROOM_ID or --room ",
     "p": "Reference"
   },
   {
     "u": "reference.html#herdr",
     "t": "Persistent Agents (herdr)",
     "s": "Guides",
-    "x": "herdr is an optional persistent-runtime layer that keeps coding-agent sessions alive and addressable across detach. Mycelium coordinates agents through rooms; herdr gives those agents a place to live, so a mention to a handle that has stepped away can wake it instead of waiting.",
+    "x": "herdr keeps coding-agent sessions running in named panes, even after you close the terminal. Used with Mycelium, a mention of an agent that isn't running at the moment can wake it up.",
     "p": "Reference"
   },
   {
     "u": "reference.html#herdr-why-you-might-want-it",
     "t": "Why you might want it",
     "s": "Guides › Persistent Agents (herdr)",
-    "x": "A mycelium agent participates as your own live session. It picks up an @handle mention only while its await loop is running (see Bring your agents in). Close the terminal and the handle is still a member of the room, but nothing is home: a mention just waits on the durable transcript cursor until you start the loop again. herdr closes that gap. It holds coding-agent sessions (Claude, Pi, and others) open in named pan",
+    "x": "Your agents take part in a room through their own live sessions. An agent only notices an @handle mention while its await loop is running (see Add your agents). Close the terminal and the agent is still a member of the room, but nobody is there to answer. Mentions wait until you start the loop again. herdr fills that gap. It keeps your agent sessions open in panes, and Mycelium links each pane to a handle in a room. ",
     "p": "Reference"
   },
   {
-    "u": "reference.html#herdr-prerequisites",
-    "t": "Prerequisites",
+    "u": "reference.html#herdr-before-you-start",
+    "t": "Before you start",
     "s": "Guides › Persistent Agents (herdr)",
-    "x": "herdr installed and its local server running. See herdr.dev. One or more agents already started in a herdr workspace, and a mycelium room to bind them to (mycelium room create …). Or skip both: mycelium swarm opens a workspace, starts a team in it, and binds it to a new room in one step.",
+    "x": "Install herdr and start its local server. See herdr.dev. Start one or more agents in a herdr workspace, and have a room to connect them to (mycelium room create …). Or let mycelium swarm do both: it opens a workspace, starts a team of agents in it, and connects them to a room you already work in.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#herdr-the-one-command-sync",
-    "t": "The one command: sync",
+    "u": "reference.html#herdr-connecting-a-workspace-sync",
+    "t": "Connecting a workspace: sync",
     "s": "Guides › Persistent Agents (herdr)",
-    "x": "The simplest path is a single binding. Point a herdr workspace at a room once, and mycelium keeps the two reconciled: # Bind herdr workspace w2 to the room `my-project`, then keep watching. mycelium herdr sync --workspace w2 --room my-project That first call binds the workspace to the room. From then on a bare mycelium herdr sync watches every bound workspace and reconciles three things on each pass: Membership. Ever",
+    "x": "Connect a herdr workspace to a room once, and Mycelium keeps them in step: # Connect herdr workspace w2 to the room my-project, then keep watching. mycelium herdr sync --workspace w2 --room my-project After that, a plain mycelium herdr sync watches every connected workspace. On each pass it: adds and removes members. Every agent running in the workspace becomes a member of the room, named after its herdr tab. When a ",
     "p": "Reference"
   },
   {
-    "u": "reference.html#herdr-manual-binding-and-autowake",
-    "t": "Manual binding and autowake",
+    "u": "reference.html#herdr-connecting-single-agents-and-autowake",
+    "t": "Connecting single agents, and autowake",
     "s": "Guides › Persistent Agents (herdr)",
-    "x": "If you would rather bind individual handles than a whole workspace, map them by hand. A mapping is a durable handle -> pane record that survives herdr clearing its ephemeral agent names on exit. mycelium herdr map planner w2:pV # bind @planner to pane w2:pV mycelium herdr ls # show the registry mycelium herdr unmap planner # drop the binding With handles mapped, turn on autowake so a non-resident agent invoke wakes t",
+    "x": "To connect individual agents instead of a whole workspace, map each handle to a pane. The mapping is saved, so it survives herdr forgetting agent names when they exit. mycelium herdr map planner w2:pV # connect @planner to pane w2:pV mycelium herdr ls # list the mappings mycelium herdr unmap planner # remove a mapping With handles mapped, you can turn on autowake, so agent invoke wakes the agent's pane when the agent",
     "p": "Reference"
   },
   {
     "u": "reference.html#herdr-configuration",
     "t": "Configuration",
     "s": "Guides › Persistent Agents (herdr)",
-    "x": "Key Default What it does herdr.autowake false On a non-resident agent invoke, wake the handle's mapped herdr pane. herdr.wake_timeout_ms 120000 Wait budget (ms) for a herdr wake to settle.",
+    "x": "Key Default What it does herdr.autowake false When agent invoke targets an agent that isn't running, wake its herdr pane. herdr.wake_timeout_ms 120000 How long (in ms) to wait for a wake-up to finish.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#herdr-honest-scope",
-    "t": "Honest scope",
+    "u": "reference.html#herdr-what-herdr-isnt-needed-for",
+    "t": "What herdr isn't needed for",
     "s": "Guides › Persistent Agents (herdr)",
-    "x": "herdr is a convenience layer over the coordination model, not a part of it. Rooms, memory, the board, and the negotiation flow all work with no herdr at all; turn-based agents kept awake with mycelium await --loop never miss a tick, because the hub holds their membership between turns (see Architecture). What herdr adds is waking a handle when nothing is resident, so you do not have to be at the terminal for an agent",
+    "x": "Rooms, memory, the board and negotiations all work without herdr. Agents kept running with mycelium await --loop never miss a message, because the hub keeps their place in the room between turns (see Architecture). herdr only adds waking an agent that isn't running, so you don't have to be at the terminal for it to answer.",
     "p": "Reference"
   },
   {
     "u": "reference.html#security-planes",
     "t": "Security Planes",
     "s": "Guides",
-    "x": "Mycelium has two enforcement planes. They protect different things, use different credentials, and apply to different machines. Conflating them is the most common hub-and-spoke misconfiguration.",
+    "x": "Mycelium has two separate things to secure, and it's easy to mix them up: The HTTP API on port 8000. This is what spokes, people and agents use for memory, await and respond. You protect it with authentication. SLIM on port 46357. This carries the rooms' encrypted messages between SLIM members. On a normal setup, the only member is the hub's backend. You protect it with the SLIM secret. Securing one doesn't secure th",
     "p": "Reference"
   },
   {
-    "u": "reference.html#security-planes-the-two-planes",
-    "t": "The two planes",
+    "u": "reference.html#security-planes-side-by-side",
+    "t": "Side by side",
     "s": "Guides › Security Planes",
-    "x": "Plane Port (default) Who uses it What it protects Default Upgrade HTTP API 8000 Spokes, humans, agents (memory, await, respond) Memory, participation, handle attribution Open (no token) Authentication (auth.enabled) SLIM / MLS 46357 Hub backend (moderator); dev slim send; future native connectors Native SLIM group membership on the coordination fabric Shared-secret PSK (hub only) SignerJwt (slim.identity) Spokes do n",
+    "x": "HTTP API SLIM Port 8000 46357 Used by Spokes, people and agents (memory, await, respond) The hub's backend; mycelium slim send for testing; native SLIM clients Protects Memory, taking part in rooms, who can post as which @handle Who can join a room's encrypted SLIM group Default Open, no token needed A shared secret, on the hub only Stronger option Authentication (auth.enabled) Per-member identity (slim.identity sign",
     "p": "Reference"
   },
   {
-    "u": "reference.html#security-planes-what-psk-actually-protects",
-    "t": "What PSK actually protects",
+    "u": "reference.html#security-planes-what-the-slim-secret-does",
+    "t": "What the SLIM secret does",
     "s": "Guides › Security Planes",
-    "x": "PSK (MYCELIUM_SLIM_MASTER_SECRET → HMAC per workspace/room → create_app_with_secret) is the SLIM-plane room gate: It decides who may authenticate as a SLIM app and join a room's MLS group. It is scoped per room, not per agent — every member with the secret is cryptographically indistinguishable under the psk tier. It does not encrypt message bodies; MLS performs group key agreement once members are admitted. It does ",
+    "x": "The secret (MYCELIUM_SLIM_MASTER_SECRET) decides who can join a room's SLIM group. A key for each room is derived from it. It works per room, not per agent. Everyone who has the secret looks the same to SLIM. It doesn't encrypt messages itself. Once members are in, SLIM's MLS encryption handles that. It doesn't protect the API, memory, or who can post as which @handle. The repository ships a public development value ",
     "p": "Reference"
   },
   {
     "u": "reference.html#security-planes-what-protects-spokes",
     "t": "What protects spokes",
     "s": "Guides › Security Planes",
-    "x": "For hub-and-spoke, the urgent control is the HTTP API gate, not PSK: mycelium config set auth.enabled true mycelium config set auth.audience mycelium # … configure [[auth.issuers]] … mycelium config apply See Authentication for humans and agent service accounts. Without the gate, anyone who can reach :8000 can read/write memory and post as any @handle — even if the hub uses a private SLIM master secret.",
+    "x": "For a hub with spokes, the setting that matters is authentication on the API: mycelium config set auth.enabled true mycelium config set auth.audience mycelium # … then set up [[auth.issuers]] … mycelium config apply See Authentication for setting it up for people and for agents. Without it, anyone who can reach port 8000 can read and write memory and post as any @handle, even if the hub has a private SLIM secret.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#security-planes-deployment-profiles",
-    "t": "Deployment profiles",
+    "u": "reference.html#security-planes-typical-setups",
+    "t": "Typical setups",
     "s": "Guides › Security Planes",
-    "x": "Profile HTTP API SLIM (hub) Spoke config Solo dev Open Dev PSK literal (fallback if no config secret) N/A (all-in-one) LAN team JWT on Auto-generated [slim].master_secret on hub server.api_url → hub:8000 only Hosted JWT required Private hub secret + SignerJwt Same; no master secret on spokes mycelium doctor reports HTTP auth status from the hub's /health endpoint. In hub mode it also warns when [slim].master_secret i",
+    "x": "Setup HTTP API SLIM (on the hub) Spokes Just you, one machine Open The development secret, unless one is set in config None A team on a LAN Authentication on The hub's generated slim.master_secret server.api_url set to the hub's port 8000, nothing else Hosted Authentication required A private secret, plus per-member identity Same as LAN; spokes never get the SLIM secret mycelium doctor shows whether authentication is",
     "p": "Reference"
   },
   {
-    "u": "reference.html#security-planes-slim-identity-ladder-hub-native-clients",
-    "t": "SLIM identity ladder (hub native clients)",
+    "u": "reference.html#security-planes-slim-identity-options",
+    "t": "SLIM identity options",
     "s": "Guides › Security Planes",
-    "x": "Tier Plane Spoke needs it? psk SLIM No (hub backend only today) signerjwt SLIM Only if the spoke runs a native SLIM connector mycelium config set slim.identity signerjwt changes SLIM channel identity on machines that open native SLIM connections. It does not turn on HTTP API auth. Configure [auth] separately.",
+    "x": "Option Applies to Does a spoke need it? psk (the default) SLIM No. Only the hub's backend uses it. signerjwt SLIM Only if the spoke runs its own SLIM client. mycelium config set slim.identity signerjwt changes how machines identify themselves when they connect to SLIM directly. It doesn't turn on authentication for the API; set up [auth] for that separately.",
     "p": "Reference"
   },
   {
     "u": "reference.html#security-planes-related-guides",
     "t": "Related guides",
     "s": "Guides › Security Planes",
-    "x": "Hub & Spoke Setup — topology and spoke checklist Authentication — HTTP JWT gate (spokes and hub API)",
+    "x": "Hub & Spoke Setup: setting up a hub and its spokes Authentication: turning on authentication for the API",
     "p": "Reference"
   },
   {
     "u": "reference.html#auth",
     "t": "Authentication",
     "s": "Guides",
-    "x": "Mycelium's backend can require a signed bearer token on every HTTP API call, validated against an OIDC issuer you configure. It is off by default and nothing about the default install changes until you turn it on. This is the HTTP API plane — what protects spokes in hub-and-spoke deployments. It is separate from SLIM/MLS PSK or SignerJwt on the coordination fabric; see Security Planes.",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#auth-off-by-default-on-purpose",
-    "t": "Off by default, on purpose",
-    "s": "Guides › Authentication",
-    "x": "Auth must never be a wall between someone and trying Mycelium. A fresh install runs with no issuer, no tokens, and no extra containers: memory, rooms, and coordination all work exactly as they do today. Turn it on when a team shares a hub over a network. Until then, leaving it off is the supported configuration, not a shortcut. Without the gate, anyone who can reach the backend's port can read and write every room an",
+    "x": "You can make the hub require a signed token on every API call. Once it's on, people sign in with mycelium login, agents sign in with their own credentials, and every write in a room is attributed to whoever the token says they are. It's off by default, and a fresh install works without it. Leave it off while the hub is only on your own machine. Turn it on when a team shares a hub over a network. With auth off, anyone",
     "p": "Reference"
   },
   {
     "u": "reference.html#auth-turning-it-on",
     "t": "Turning it on",
     "s": "Guides › Authentication",
-    "x": "mycelium config set auth.enabled true mycelium config set auth.audience mycelium mycelium config apply Then declare at least one trust root in ~/.mycelium/config.toml: [auth] enabled = true audience = \"mycelium\" [[auth.issuers]] issuer = \"https://sso.example.com/realms/mycelium\" jwks_url = \"https://sso.example.com/realms/mycelium/protocol/openid-connect/certs\" role = \"user\" Re-run mycelium config apply and recreate t",
+    "x": "You need an OIDC identity provider, such as Keycloak, Dex, ZITADEL, Authentik or your company's SSO. If you don't have one yet, the Keycloak / OIDC Setup guide walks you through a local one. Enable auth and set an audience: mycelium config set auth.enabled true mycelium config set auth.audience mycelium mycelium config apply Then add your provider as a trusted issuer in ~/.mycelium/config.toml: [auth] enabled = true ",
     "p": "Reference"
   },
   {
     "u": "reference.html#auth-always-set-an-audience",
     "t": "Always set an audience",
     "s": "Guides › Authentication",
-    "x": "audience is optional but you should always set it when enabling auth. Without one, any token your issuer has ever minted is accepted, including a token a user obtained for a completely unrelated application on the same identity provider. That token's holder was never authorized against your hub. Setting an audience is what makes \"a valid token\" mean \"a token meant for this hub\". The backend logs a warning at startup ",
+    "x": "The audience is technically optional, but set it. Without one, the hub accepts any token your provider has issued, including tokens meant for other applications that use the same provider. The audience limits it to tokens issued for this hub. If auth is on with no audience, the backend logs a warning at startup and shows it under auth in /health.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#auth-configuration",
-    "t": "Configuration",
+    "u": "reference.html#auth-settings",
+    "t": "Settings",
     "s": "Guides › Authentication",
-    "x": "Key Default What it does auth.enabled false Enforce bearer-token auth on the HTTP API. auth.issuers (none) Trust roots, as repeatable [[auth.issuers]] blocks. auth.audience (unset) Required aud claim. Set this whenever auth is on. auth.localhost_bypass true Let loopback callers through without a token. auth.handle_claim sub Claim carrying the canonical @handle. auth.role_claim mycelium_role Claim distinguishing a use",
+    "x": "Key Default What it does auth.enabled false Require a token on the HTTP API. auth.issuers (none) Trusted issuers, as repeated [[auth.issuers]] blocks. auth.audience (unset) The aud claim a token must have. Set this whenever auth is on. auth.localhost_bypass true Let requests from the hub's own machine through without a token. auth.handle_claim sub The claim that holds the user's @handle. auth.role_claim mycelium_role",
     "p": "Reference"
   },
   {
     "u": "reference.html#auth-signing-in-from-the-cli",
     "t": "Signing in from the CLI",
     "s": "Guides › Authentication",
-    "x": "The gate above is the hub's half. mycelium login is yours: it obtains an OIDC token for you, caches it, and every later command sends it. mycelium config set login.audience mycelium # match the hub's auth.audience mycelium login Your browser opens, you sign in at your identity provider, and the CLI takes it from there: mycelium memory, mycelium room, await, respond and the rest now carry Authorization: Bearer <token>",
+    "x": "mycelium config set login.audience mycelium # same as the hub's auth.audience mycelium login Your browser opens, you sign in with your provider, and from then on every command (mycelium memory, mycelium room, await, respond and the rest) sends your token. You don't need to set login.issuer. The CLI asks the hub which issuer it trusts and uses that. It won't guess in these cases: The hub can't be reached. It asks you ",
     "p": "Reference"
   },
   {
-    "u": "reference.html#auth-the-issuer-comes-from-the-hub",
-    "t": "The issuer comes from the hub",
+    "u": "reference.html#auth-where-your-token-is-stored",
+    "t": "Where your token is stored",
     "s": "Guides › Authentication",
-    "x": "You do not set login.issuer to sign in. A gated hub advertises the issuers it trusts in the auth block of its /health, and server.api_url already points at it — so with no issuer configured and none passed, login asks the hub and uses the answer, remembering it once the sign-in it drove has actually worked. Three cases where it steps back and tells you instead, rather than guessing: The hub is unreachable — nothing t",
+    "x": "In ~/.mycelium/token.json, readable only by you (0600). It's kept out of config.toml because config files get printed and copied around. Set MYCELIUM_TOKEN_FILE to store it somewhere else, for example on a CI runner with a shared home directory. The token is renewed automatically when it expires, so you don't have to log in again on a schedule. Renewal needs a refresh token, which most providers only give out for the",
     "p": "Reference"
   },
   {
-    "u": "reference.html#auth-login-is-opt-in-like-the-gate",
-    "t": "Login is opt-in, like the gate",
+    "u": "reference.html#auth-checking-who-you-are",
+    "t": "Checking who you are",
     "s": "Guides › Authentication",
-    "x": "Never running mycelium login changes nothing: with no cached session the CLI sends no Authorization header, exactly as before this existed. That is what keeps it safe against an ungated hub, which is the default one.",
+    "x": "mycelium whoami, or mycelium iam with no arguments, shows the handle from your token when you're signed in, and your configured identity.name when you're not: acting as @avery (avery#a8f3) signed in (https://sso.example.com/realms/mycelium, expires in 42 min) When auth is on, the hub attributes your writes to the handle in your token (see Who wrote it), so a different identity.name would get your writes rejected. Whe",
     "p": "Reference"
   },
   {
-    "u": "reference.html#auth-where-the-token-lives",
-    "t": "Where the token lives",
+    "u": "reference.html#auth-login-settings",
+    "t": "Login settings",
     "s": "Guides › Authentication",
-    "x": "In ~/.mycelium/token.json, created mode 0600, not in config.toml. Config is printed, copied between machines, and mirrored to config.json for the frontend; a token in there would leak by routine. Set MYCELIUM_TOKEN_FILE to cache it somewhere else (a CI runner with a shared home, say). The access token is renewed automatically when it expires, using the refresh token, on the way into the next call that needs it; you d",
+    "x": "Key Default What it does login.issuer (unset) The OIDC issuer to sign in with. If unset, login asks the hub and remembers the answer. login.client_id mycelium-cli The OAuth client id registered for the CLI. login.client_secret (unset) Only for providers that don't allow public clients. The CLI normally doesn't need one. login.scopes openid profile email offline_access Scopes to request. login.audience (unset) The aud",
     "p": "Reference"
   },
   {
-    "u": "reference.html#auth-who-you-are",
-    "t": "Who you are",
+    "u": "reference.html#auth-signing-in-agents",
+    "t": "Signing in agents",
     "s": "Guides › Authentication",
-    "x": "mycelium whoami (and mycelium iam with no arguments) reports the handle from your token when you're signed in, and the self-asserted identity.name when you're not: acting as @avery (avery#a8f3) signed in (https://sso.example.com/realms/mycelium, expires in 42 min) Because a gated hub attributes writes to the token (see The token is the author below), a self-asserted handle that names someone else is a 403 in waiting.",
+    "x": "mycelium login is for people. An agent can't open a browser, so it signs in with its own OIDC client using the client_credentials grant. The client id becomes the agent's handle. Because each agent has its own credential, you can revoke one agent without affecting the others. Point the machine at the issuer your agents use, then give each agent its own client secret: mycelium config set agent_auth.issuer https://sso.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#auth-configuration",
-    "t": "Configuration",
+    "u": "reference.html#auth-where-agent-credentials-are-stored",
+    "t": "Where agent credentials are stored",
     "s": "Guides › Authentication",
-    "x": "Key Default What it does login.issuer (unset) OIDC issuer to log in against. Unset means login asks the hub for one and caches what it gets. login.client_id mycelium-cli OAuth client id registered for the CLI. login.client_secret (unset) Only for issuers that refuse public clients; PKCE means the CLI normally needs none. login.scopes openid profile email offline_access Scopes requested at login. login.audience (unset",
+    "x": "In ~/.mycelium/agent-credentials.json, readable only by you (0600), with a cached token for each agent in ~/.mycelium/agent-tokens/. There are no refresh tokens for this grant; an expired token is just requested again. For a container that runs one agent and has no config file, use environment variables: MYCELIUM_AGENT_AUTH_ISSUER, MYCELIUM_AGENT_AUTH_CLIENT_ID, MYCELIUM_AGENT_AUTH_CLIENT_SECRET, MYCELIUM_AGENT_AUTH_",
     "p": "Reference"
   },
   {
-    "u": "reference.html#auth-agents-sign-in-as-themselves",
-    "t": "Agents sign in as themselves",
+    "u": "reference.html#auth-using-a-token-from-somewhere-else",
+    "t": "Using a token from somewhere else",
     "s": "Guides › Authentication",
-    "x": "mycelium login is for a human. An agent has no browser to open and nobody sitting there to click through a consent screen, so it authenticates as a workload: its own OIDC client, minted with the client_credentials grant. The token's sub is the client id, which is the agent's handle: the same handle the hub binds its writes to. That is the property a shared secret can't give you: each agent holds a different credentia",
+    "x": "Set MYCELIUM_AGENT_AUTH_TOKEN to use a token you already have, for example one from a CI job or a workload identity system. It's sent as-is and never renewed. The hub also has to trust whoever issued it: add another [[auth.issuers]] block for it with role = \"agent\".",
     "p": "Reference"
   },
   {
-    "u": "reference.html#auth-off-by-default-here-too",
-    "t": "Off by default here too",
+    "u": "reference.html#auth-agent-settings",
+    "t": "Agent settings",
     "s": "Guides › Authentication",
-    "x": "An agent with no credential sends no token, exactly as before. Configuring agent_auth.issuer alone is not a credential: something has to have been issued to that specific agent first, or a shared issuer would quietly turn every handle into a token request. And if minting fails, the CLI drops the header rather than inventing an error; against an ungated hub the call still works.",
+    "x": "Key Default What it does agent_auth.issuer (unset) The issuer agents get tokens from. If unset, agents send no token. agent_auth.scopes (unset) Scopes to request. Most providers don't need any for client_credentials. agent_auth.audience (unset) The audience to request. Should match the hub's auth.audience.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#auth-where-the-credential-lives",
-    "t": "Where the credential lives",
+    "u": "reference.html#auth-people-and-agents-from-different-issuers",
+    "t": "People and agents from different issuers",
     "s": "Guides › Authentication",
-    "x": "In ~/.mycelium/agent-credentials.json, mode 0600, alongside a cached token per agent under ~/.mycelium/agent-tokens/. Client secrets are secrets, so they stay out of config.toml for the same reason your session does. client_credentials issues no refresh token; an expired agent token is simply re-minted from the client. For a container that runs exactly one agent and has no config file, MYCELIUM_AGENT_AUTH_ISSUER, MYC",
+    "x": "The hub works with any OIDC provider. It only needs each issuer's URL and signing keys. It's common for people and agents to come from different issuers. Add a block for each: [[auth.issuers]] issuer = \"https://sso.example.com/realms/people\" role = \"user\" [[auth.issuers]] issuer = \"https://sso.example.com/realms/agents\" role = \"agent\" A token is checked against the keys of the issuer it names in iss, so one issuer's ",
     "p": "Reference"
   },
   {
-    "u": "reference.html#auth-a-credential-mycelium-didnt-mint",
-    "t": "A credential Mycelium didn't mint",
+    "u": "reference.html#auth-how-a-token-becomes-a-handle-and-a-role",
+    "t": "How a token becomes a handle and a role",
     "s": "Guides › Authentication",
-    "x": "MYCELIUM_AGENT_AUTH_TOKEN supplies a bearer token directly, used as-is and never renewed here. That is the seam for a token minted elsewhere: a CI job, or a JWT issued by a workload-identity system. Trusting one is a config entry on the hub side too: another [[auth.issuers]] block with role = \"agent\". Nothing about it is required, and nothing about it is on by default.",
+    "x": "When a token is accepted, the hub reads two things from it: The handle, from auth.handle_claim (sub by default). It's lowercased and any leading @ is removed, so an agent client called release-agent shows up as @release-agent. The role, from auth.role_claim if the token has it, otherwise from the role on the issuer's block. Since people and agents usually come from different issuers, most setups never need a role cla",
     "p": "Reference"
   },
   {
-    "u": "reference.html#auth-configuration",
-    "t": "Configuration",
+    "u": "reference.html#auth-who-wrote-it",
+    "t": "Who wrote it",
     "s": "Guides › Authentication",
-    "x": "Key Default What it does agent_auth.issuer (unset) Issuer agents mint service-account tokens from. Unset means agents send no token. agent_auth.scopes (unset) Scopes requested for an agent token. Most issuers want none for client_credentials. agent_auth.audience (unset) Audience to request; should match the hub's auth.audience.",
+    "x": "With auth on, the handle in the token is who a write is attributed to. That covers memory authorship (created_by, updated_by), message senders and L9 attribution. The handle in the request itself only matters if it disagrees: If the request leaves the handle out, or gives the same one (@Alice and alice count as the same), the token's handle is used. If the request names a different handle, it's rejected with a 403, r",
     "p": "Reference"
   },
   {
-    "u": "reference.html#auth-issuer-agnostic-by-design",
-    "t": "Issuer-agnostic by design",
+    "u": "reference.html#auth-acting-for-an-agent",
+    "t": "Acting for an agent",
     "s": "Guides › Authentication",
-    "x": "The backend trusts a configured issuer and its JWKS. It has no idea whether that is Keycloak, Dex, ZITADEL, Authentik, or your existing corporate SSO, and it never needs one particular product installed. More than one trust root is normal. Humans log in through an interactive OIDC issuer; agents present service-account tokens, possibly from an entirely separate root. List each as its own block: [[auth.issuers]] issue",
+    "x": "Two calls take a handle that isn't about authorship: mycelium await reads and consumes that handle's queue of messages. Joining a room records that handle as present. Without a check, anyone with a valid token could read another member's messages by awaiting as them. So with auth on, these calls are only allowed when: the handle is your own (a session suffix like alice#a8f3 still counts as alice), or the agent's mani",
     "p": "Reference"
   },
   {
-    "u": "reference.html#auth-handle-and-role",
-    "t": "Handle and role",
+    "u": "reference.html#auth-rotating-signing-keys",
+    "t": "Rotating signing keys",
     "s": "Guides › Authentication",
-    "x": "Once a token validates, the request has a principal: handle, from auth.handle_claim (sub by default), normalized the same way stored handles are (leading @ stripped, lowercased). An OIDC service-account whose client id is release-agent therefore arrives as @release-agent. role, from auth.role_claim if the token carries it, otherwise the role on the matched issuer block. Which root signed a token is usually the whole ",
+    "x": "The hub caches your provider's signing keys for auth.jwks_ttl_s. When a token arrives signed with a key it hasn't seen, it fetches the keys again right away (with a rate limit). You don't need to restart Mycelium after rotating keys. If your provider is briefly unreachable, the hub keeps using the keys it already has, so an outage at the provider doesn't take the hub down with it.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#auth-the-token-is-the-author",
-    "t": "The token is the author",
+    "u": "reference.html#auth-requests-from-the-hubs-own-machine",
+    "t": "Requests from the hub's own machine",
     "s": "Guides › Authentication",
-    "x": "The principal is not just recorded; it is the actor of record for every write it makes. Memory authorship (created_by / updated_by), the transcript sender, and L9 actor attribution all come from the token rather than from the handle the request body supplies: The body omits the actor, or names the same handle, and the token's handle is stored. @Alice and alice are one principal; the comparison uses the same normaliza",
+    "x": "With auth.localhost_bypass on (the default), requests from the hub's own machine (127.0.0.0/8 or ::1) don't need a token. That way, turning auth on can't lock you out. The hub only looks at the connection's real address. It ignores X-Forwarded-For, since a caller can set that to anything. This doesn't work when the backend runs in Docker. Requests through a published port come from Docker's network, not from loopback",
     "p": "Reference"
   },
   {
-    "u": "reference.html#auth-acting-as-another-handle",
-    "t": "Acting as another handle",
+    "u": "reference.html#auth-what-doesnt-need-a-token",
+    "t": "What doesn't need a token",
     "s": "Guides › Authentication",
-    "x": "Attribution answers who wrote this. Two calls ask something different: mycelium await names whose queue to drain, and joining a room names whose presence to register. Both take the handle as a request parameter, and draining a queue consumes it (a turn served to one caller is not served again) so an unchecked handle there means a valid token for @bob could read and swallow @alice's coordination stream. A gated hub al",
+    "x": "These stay open even with auth on: /, /health and /healthz, for health checks. They don't include any room content. /docs, /redoc and /openapi.json, which describe the API. A room's A2A agent card (/.well-known/agent-card.json), which only lists the room's name and skills. The room's A2A endpoint itself needs a token. With auth on, /health includes an auth section showing whether auth is on, which issuers are trusted",
     "p": "Reference"
   },
   {
-    "u": "reference.html#auth-key-rotation",
-    "t": "Key rotation",
+    "u": "reference.html#auth-errors",
+    "t": "Errors",
     "s": "Guides › Authentication",
-    "x": "The JWKS is fetched from your issuer and cached for auth.jwks_ttl_s. When a token arrives signed by a key ID the backend hasn't seen, it re-fetches immediately (rate-limited), so rotating your signing key does not require restarting Mycelium. If the issuer is briefly unreachable, previously fetched keys keep serving. The keys are still your issuer's; only their freshness is in doubt, and failing closed would take the",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#auth-the-localhost-bypass",
-    "t": "The localhost bypass",
-    "s": "Guides › Authentication",
-    "x": "With auth.localhost_bypass on (the default), requests whose peer address is real loopback (127.0.0.0/8, ::1) skip the gate, so turning auth on can't lock you out of the machine the hub runs on. Two things worth knowing: X-Forwarded-For is deliberately ignored. It is caller-supplied, so honoring it would let any remote request claim to be local. It does not fire for a backend running in Docker. Traffic through a publi",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#auth-what-stays-open",
-    "t": "What stays open",
-    "s": "Guides › Authentication",
-    "x": "Health (/, /health) and the schema/docs routes are served without a token even when the gate is on: orchestrator probes are unauthenticated by nature, and the health payload reveals no room content. /health gains an auth block reporting whether the hub is gated, which issuers it trusts, and any configuration warnings. Every other route requires a token.",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#auth-failure-modes",
-    "t": "Failure modes",
-    "s": "Guides › Authentication",
-    "x": "Response Meaning 401 + WWW-Authenticate: Bearer Missing, malformed, expired, forged, wrong-audience, or wrong-issuer token. 403 A valid token acting as a handle that is not its own: a body claiming a different author, or an await/join naming a handle that has not granted it. 503 The gate is on but unusable: no trusted issuers configured, or the issuer's JWKS is unreachable and nothing is cached. Only asymmetric signa",
+    "x": "Response What it means 401 with WWW-Authenticate: Bearer The token is missing, malformed, expired, forged, or for a different audience or issuer. 403 The token is valid, but it's trying to act as a different handle: a write naming someone else, or an await or join for a handle that hasn't granted it access. 503 Auth is on but can't work: no trusted issuers are configured, or the issuer's signing keys can't be fetched",
     "p": "Reference"
   },
   {
     "u": "reference.html#auth-trying-it-locally",
     "t": "Trying it locally",
     "s": "Guides › Authentication",
-    "x": "Follow the Keycloak / OIDC Setup guide to stand up a realm, client, and human mycelium login, wired end-to-end.",
+    "x": "The Keycloak / OIDC Setup guide sets up a local provider, a client and mycelium login, end to end.",
     "p": "Reference"
   },
   {
     "u": "reference.html#keycloak-oidc",
     "t": "Keycloak / OIDC Setup",
     "s": "Guides",
-    "x": "<!-- SPDX-License-Identifier: Apache-2.0 --> Authentication explains the gate in the abstract: the backend trusts an OIDC issuer and validates a bearer token against its JWKS. This guide makes the human OIDC tier concrete against real Keycloak: realm, client, the claims the gate keys off, and a human mycelium login. Every command here was run against a live Keycloak: the wiring below is confirmed, not aspirational. K",
+    "x": "<!-- SPDX-License-Identifier: Apache-2.0 --> This guide gets authentication working end to end on your machine, using Keycloak as the identity provider. When you're done, the hub will reject requests without a valid token, and you'll be signed in with mycelium login, from the terminal and in the app. Keycloak is just an example here. Dex, ZITADEL, Authentik or your company's SSO work the same way; only the URLs chang",
     "p": "Reference"
   },
   {
-    "u": "reference.html#keycloak-oidc-stand-up-keycloak",
-    "t": "Stand up Keycloak",
+    "u": "reference.html#keycloak-oidc-start-keycloak",
+    "t": "Start Keycloak",
     "s": "Guides › Keycloak / OIDC Setup",
-    "x": "A ready-to-run Keycloak ships as an opt-in compose overlay, off the default stack, added with an extra -f exactly like the dev issuer. It imports a mycelium realm with a public CLI client, an audience mapper, and a demo user, so there is nothing to click in the admin console. cd mycelium-cli/src/mycelium/docker docker compose -f compose.yml -f compose-dev.yml -f compose-keycloak.yml \\ up -d keycloak The realm is read",
+    "x": "Mycelium comes with a Keycloak setup you can add to the stack. It's a separate compose file, so it isn't part of the normal install. It comes with a mycelium realm already set up, so you don't need to use the admin console. cd mycelium-cli/src/mycelium/docker docker compose -f compose.yml -f compose-dev.yml -f compose-keycloak.yml \\ up -d keycloak It's ready when this prints the issuer URL: curl -s http://localhost:8",
     "p": "Reference"
   },
   {
-    "u": "reference.html#keycloak-oidc-what-the-realm-ships-and-what-the-gate-expects",
-    "t": "What the realm ships (and what the gate expects)",
+    "u": "reference.html#keycloak-oidc-whats-in-the-realm",
+    "t": "What's in the realm",
     "s": "Guides › Keycloak / OIDC Setup",
-    "x": "The imported realm (docker/keycloak/mycelium-realm.json) is the whole anatomy the gate needs. Point your own Keycloak at these same four things: A public client mycelium-cli: this is the client mycelium login uses. Public (no secret; it authenticates with PKCE), with the loopback redirect http://127.0.0.1:*/callback for the browser flow and the device grant enabled for headless login. An audience mapper stamping myce",
+    "x": "The realm is defined in docker/keycloak/mycelium-realm.json. If you're setting up your own Keycloak instead, it needs the same things: A public client called mycelium-cli, which mycelium login uses. It has no secret (the CLI uses PKCE), allows the redirect http://127.0.0.1:*/callback for browser sign-in, and has the device grant enabled for signing in without a browser. An audience mapper that adds mycelium to the to",
     "p": "Reference"
   },
   {
-    "u": "reference.html#keycloak-oidc-wire-the-gate",
-    "t": "Wire the gate",
+    "u": "reference.html#keycloak-oidc-point-the-hub-at-keycloak",
+    "t": "Point the hub at Keycloak",
     "s": "Guides › Keycloak / OIDC Setup",
-    "x": "The one subtlety worth understanding is which URL goes where, because the backend runs in a container and the browser/CLI run on the host: Keycloak stamps the token iss as http://localhost:8080/realms/mycelium for every caller (the overlay pins its advertised URL). That is what the browser and CLI reach it by, so it is the issuer the gate matches. The backend can't use localhost: inside the container that is the back",
+    "x": "The backend runs in a container, but your browser and the CLI run on your machine, so they reach Keycloak at different addresses: Your browser and the CLI reach it at localhost:8080, and Keycloak puts http://localhost:8080/realms/mycelium in every token's iss. So that's the issuer the hub checks tokens against. Inside the backend container, localhost is the container itself. It reaches Keycloak at keycloak:8080 on th",
     "p": "Reference"
   },
   {
-    "u": "reference.html#keycloak-oidc-sign-in-with-mycelium-login",
-    "t": "Sign in with mycelium login",
+    "u": "reference.html#keycloak-oidc-sign-in",
+    "t": "Sign in",
     "s": "Guides › Keycloak / OIDC Setup",
-    "x": "mycelium login # opens your browser to Keycloak mycelium login --device # headless: prints a URL + code to approve from any device Sign in as demo / demo. The CLI caches the token (~/.mycelium/token.json, mode 0600) and every later command carries it: mycelium whoami # acting as @demo # signed in (http://localhost:8080/realms/mycelium, expires in 4 min) mycelium room ls # now authorized through the Keycloak token myc",
+    "x": "mycelium login # opens Keycloak in your browser mycelium login --device # no browser: prints a URL and a code to enter on another device Sign in as demo / demo. Every command after that sends your token: mycelium whoami # acting as @demo # signed in (http://localhost:8080/realms/mycelium, expires in 4 min) mycelium room ls mycelium logout signs you out, and the CLI stops sending a token.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#keycloak-oidc-prove-the-gate-what-validated-means",
-    "t": "Prove the gate (what \"validated\" means)",
+    "u": "reference.html#keycloak-oidc-check-that-its-enforced",
+    "t": "Check that it's enforced",
     "s": "Guides › Keycloak / OIDC Setup",
-    "x": "The same three checks that were run to confirm this guide, against the published backend port: # A real Keycloak token for the demo user TOKEN=$(curl -s -X POST \\ http://localhost:8080/realms/mycelium/protocol/openid-connect/token \\ -d 'grant_type=password&client_id=mycelium-cli&username=demo&password=demo&scope=openid profile' \\ | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"access_token\"])') curl -s -o ",
+    "x": "Get a token for the demo user, then try the API with no token, the real one, and a fake one: TOKEN=$(curl -s -X POST \\ http://localhost:8080/realms/mycelium/protocol/openid-connect/token \\ -d 'grant_type=password&client_id=mycelium-cli&username=demo&password=demo&scope=openid profile' \\ | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"access_token\"])') curl -s -o /dev/null -w '%{http_code}\\n' http://localho",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#keycloak-oidc-signing-in-to-the-app",
+    "t": "Signing in to the app",
+    "s": "Guides › Keycloak / OIDC Setup",
+    "x": "The app can use the same Keycloak. With auth off, nothing changes: you pick a handle and go. With auth on, the app shows a Sign in screen and sends you to Keycloak. After you sign in, the app sends your token with every request. The token is kept in an httpOnly cookie and added by the app's server, so JavaScript in the browser never sees it. The realm has a second public client for this, mycelium-web, with the redire",
     "p": "Reference"
   },
   {
     "u": "reference.html#keycloak-oidc-agents-and-more-than-one-issuer",
     "t": "Agents, and more than one issuer",
     "s": "Guides › Keycloak / OIDC Setup",
-    "x": "This guide is the human tier. Agents authenticate as workloads with the client_credentials grant from their own Keycloak client; see Authentication → Agents sign in as themselves. Humans and agents are often separate realms; list each as its own [[auth.issuers]] block (a human root with role = \"user\", an agent root with role = \"agent\"), matched by exact iss and never interchangeable. For per-agent identity on the SLI",
+    "x": "This guide covers people. Agents sign in with their own Keycloak client using the client_credentials grant; see Authentication, under \"Signing in agents\". People and agents are often in separate realms. Add a [[auth.issuers]] block for each: one with role = \"user\" and one with role = \"agent\". A token only passes against the issuer it came from. To give each agent its own identity on the SLIM channel as well, see Secu",
     "p": "Reference"
   },
   {
-    "u": "reference.html#keycloak-oidc-browser-login-the-frontend",
-    "t": "Browser login (the frontend)",
+    "u": "reference.html#keycloak-oidc-not-for-production",
+    "t": "Not for production",
     "s": "Guides › Keycloak / OIDC Setup",
-    "x": "The Next.js frontend does the same OIDC flow for humans in a browser. With the gate off it is unchanged: the localStorage handle-picker, no login. With the gate on, the app shows a Sign in screen and redirects to Keycloak; after you authenticate it carries your token on every /api/* call (sealed in an httpOnly cookie, injected server-side by the proxy; it never reaches browser JS). The realm import ships a second pub",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#keycloak-oidc-limitations",
-    "t": "Limitations",
-    "s": "Guides › Keycloak / OIDC Setup",
-    "x": "The shipped overlay is dev-grade: Keycloak in start-dev (in-memory H2, HTTP, a demo user with a weak password). It is a real OIDC provider minting real RS256 tokens against a real JWKS (enough to build and prove against) but it is not a hardened production Keycloak. For a real deployment, run your own Keycloak over TLS with a persistent datastore and real users, then point the same three config values (issuer, jwks_u",
+    "x": "This Keycloak setup is for development. It runs in start-dev mode, with an in-memory database, plain HTTP and a demo user with a weak password. The tokens it issues are real (RS256, with real signing keys), so it's fine for building and testing against, but don't use it for a real deployment. For production, run your own Keycloak over TLS, with a persistent database and real users, and point the same three settings a",
     "p": "Reference"
   },
   {
@@ -2305,113 +2277,106 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Reference"
   },
   {
-    "u": "reference.html#troubleshooting-quick-diagnostics",
-    "t": "Quick Diagnostics",
+    "u": "reference.html#troubleshooting-start-with-mycelium-doctor",
+    "t": "Start with mycelium doctor",
     "s": "Help › Troubleshooting",
-    "x": "mycelium doctor # full diagnostic: config, backend, LLM, SLIM, adapters mycelium doctor --fix # auto-fix everything it can mycelium status # quick service health (backend, LLM, disk) mycelium logs --tail 50 # recent service logs mycelium doctor is the first thing to run for almost any problem. It auto-detects whether this machine is a hub (runs the backend + SLIM node locally) or a spoke (points at a remote hub), and",
+    "x": "mycelium doctor # checks config, backend, model, SLIM and adapters mycelium doctor --fix # fixes whatever it can without asking mycelium status # a quick look at the services mycelium logs --tail 50 # recent logs mycelium doctor is the first thing to run for almost any problem. It works out whether this machine is a hub (it runs the backend and SLIM node) or a spoke (it connects to a hub somewhere else), and only run",
     "p": "Reference"
   },
   {
-    "u": "reference.html#troubleshooting-common-issues",
-    "t": "Common Issues",
+    "u": "reference.html#troubleshooting-common-problems",
+    "t": "Common problems",
     "s": "Help › Troubleshooting",
     "x": "",
     "p": "Reference"
   },
   {
-    "u": "reference.html#troubleshooting-1-command-not-found",
-    "t": "1. Command Not Found",
+    "u": "reference.html#troubleshooting-mycelium-command-not-found",
+    "t": "mycelium: command not found",
     "s": "Help › Troubleshooting",
-    "x": "Symptom: mycelium: command not found curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash Or add to PATH if the binary exists: export PATH=\"$HOME/.local/bin:$PATH\"",
+    "x": "The CLI isn't installed, or isn't on your PATH. Install it: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash If it's installed but your shell can't find it, add its folder to your PATH: export PATH=\"$HOME/.local/bin:$PATH\"",
     "p": "Reference"
   },
   {
-    "u": "reference.html#troubleshooting-2-backend-not-running",
-    "t": "2. Backend Not Running",
+    "u": "reference.html#troubleshooting-the-backend-isnt-running",
+    "t": "The backend isn't running",
     "s": "Help › Troubleshooting",
-    "x": "Symptom: Cannot connect to Mycelium API at http://localhost:8000 The backend is the room moderator; nothing coordinates without it. mycelium status # quick check docker ps | grep mycelium-backend # container status mycelium up # start services mycelium logs mycelium-backend --tail 50",
+    "x": "You see: commands can't connect to the hub at http://localhost:8000. Nothing in a room works without the backend. Check it and start it: mycelium status # quick check docker ps | grep mycelium-backend # is the container up? mycelium up # start the services mycelium logs mycelium-backend --tail 50",
     "p": "Reference"
   },
   {
-    "u": "reference.html#troubleshooting-3-config-not-found",
-    "t": "3. Config Not Found",
+    "u": "reference.html#troubleshooting-no-config-yet",
+    "t": "No config yet",
     "s": "Help › Troubleshooting",
-    "x": "Symptom: Configuration file not found: ~/.mycelium/config.toml mycelium init # or point at a remote hub: mycelium init --api-url http://your-hub:8000",
+    "x": "You see: commands behave as if nothing is set up, or connect to the wrong hub. Create the config, either for a hub on this machine or pointing at one elsewhere: mycelium init # or, for a hub somewhere else: mycelium init --api-url http://your-hub:8000",
     "p": "Reference"
   },
   {
-    "u": "reference.html#troubleshooting-4-spoke-cant-reach-the-hub-or-backend-down",
-    "t": "4. Spoke Can't Reach the Hub (or Backend Down)",
+    "u": "reference.html#troubleshooting-a-spoke-cant-reach-the-hub",
+    "t": "A spoke can't reach the hub",
     "s": "Help › Troubleshooting",
-    "x": "Symptom: Cannot connect to Mycelium API; memory/await/respond fail; mycelium doctor reports backend unreachable. Spokes talk to the hub over HTTP (server.api_url, default port 8000). They do not need the SLIM node for normal participation. mycelium doctor # detects hub vs spoke; checks /health curl http://<hub-ip>:8000/health # from the spoke mycelium config get server.api_url # should point at the hub backend On the",
+    "x": "You see: from a spoke, memory, room ls, await or respond fail with \"can't reach the hub\", and mycelium doctor says the backend is unreachable. Spokes talk to the hub over HTTP, at server.api_url (port 8000 by default). They don't need the hub's SLIM node for normal use. Check what the spoke is pointing at, and whether it can reach it: mycelium doctor # checks the hub's /health mycelium config get server.api_url # sho",
     "p": "Reference"
   },
   {
-    "u": "reference.html#troubleshooting-5-port-already-in-use",
-    "t": "5. Port Already in Use",
+    "u": "reference.html#troubleshooting-port-already-in-use",
+    "t": "Port already in use",
     "s": "Help › Troubleshooting",
-    "x": "Symptom: bind: address already in use lsof -i :8000 # backend lsof -i :46357 # SLIM node Remap published host ports through config rather than hand-editing .env: mycelium config set runtime.backend_port 8001 # MYCELIUM_BACKEND_PORT mycelium config set runtime.frontend_port 3001 # MYCELIUM_UI_PORT mycelium config set runtime.collector_port 4319 # MYCELIUM_METRICS_PORT mycelium config apply mycelium down && mycelium up",
+    "x": "You see: bind: address already in use when starting the stack. Find what's using the port: lsof -i :8000 # backend lsof -i :46357 # SLIM node Then move Mycelium to other ports with config. Don't edit .env by hand: mycelium config set runtime.backend_port 8001 # MYCELIUM_BACKEND_PORT mycelium config set runtime.frontend_port 3001 # MYCELIUM_UI_PORT mycelium config set runtime.collector_port 4319 # MYCELIUM_METRICS_POR",
     "p": "Reference"
   },
   {
-    "u": "reference.html#troubleshooting-6-llm-not-configured",
-    "t": "6. LLM Not Configured",
+    "u": "reference.html#troubleshooting-no-model-configured",
+    "t": "No model configured",
     "s": "Help › Troubleshooting",
-    "x": "Symptom: LLM unavailable, no API key configured, or mycelium doctor reports the LLM connectivity check as not configured / auth failed. The LLM powers the aligner mediator and memory embedding-adjacent work. Set it through config, not by hand-editing .env: mycelium config set llm.model \"anthropic/claude-sonnet-4-6\" mycelium config set llm.api_key \"sk-ant-...\" mycelium config apply mycelium up # recreate the backend w",
+    "x": "You see: mycelium doctor says the model check is not configured or auth failed, or engines like the aligner don't answer. Engines need a model. Set it with config, not by editing .env: mycelium config set llm.model \"anthropic/claude-sonnet-4-6\" mycelium config set llm.api_key \"sk-ant-...\" mycelium config apply mycelium up # restart the backend with the new settings For a local Ollama: mycelium config set llm.model \"o",
     "p": "Reference"
   },
   {
-    "u": "reference.html#troubleshooting-7-aligner-negotiation-fails-pi-not-found",
-    "t": "7. Aligner Negotiation Fails (\"pi not found\")",
+    "u": "reference.html#troubleshooting-engines-fail-with-pi-not-found-on-path",
+    "t": "Engines fail with \"pi not found on PATH\"",
     "s": "Help › Troubleshooting",
-    "x": "Symptom: summoning the aligner (mycelium engine invoke aligner ...) fails with PiBrainError: pi not found. The aligner's mediator runs a NEGMAS negotiation whose brain is a Pi coding-agent session. The released backend image already ships Pi, so the normal mycelium up path needs nothing extra, and mycelium doctor reports this check as satisfied when the backend is dockerized. This only bites when you run the backend ",
+    "x": "You see: mentioning the aligner or another engine fails with an error saying pi isn't found. Engines run on Pi. The backend's Docker image includes it, so this only happens when you run the backend outside Docker, for example with uvicorn app.main:app while working on it. Install Pi on that machine: npm install -g @mariozechner/pi-coding-agent # or set ALIGNER_PI_BINARY to the path of an existing pi",
     "p": "Reference"
   },
   {
-    "u": "reference.html#troubleshooting-8-memory-search-returns-nothing",
-    "t": "8. Memory Search Returns Nothing",
+    "u": "reference.html#troubleshooting-memory-search-finds-nothing",
+    "t": "Memory search finds nothing",
     "s": "Help › Troubleshooting",
-    "x": "Symptom: mycelium memory search is empty despite memories existing. Search runs against a local embedding index (no external service). Direct file writes (cat, editor, agent file I/O) don't update it until you reindex. mycelium memory ls # do memories exist? ls ~/.mycelium/rooms/ # files present? mycelium reindex # rebuild the index after direct file writes mycelium room ls # wrong active room?",
+    "x": "You see: mycelium memory search returns nothing, but you know the memories exist. Search uses an index on the hub. Memories written with mycelium memory set are indexed right away, but files you edit or add directly (with an editor, cat, or an agent writing files) aren't indexed until you rebuild the index: mycelium memory ls # are the memories there? ls ~/.mycelium/rooms/ # are the files there? mycelium memory reind",
     "p": "Reference"
   },
   {
-    "u": "reference.html#troubleshooting-9-no-active-room",
-    "t": "9. No Active Room",
+    "u": "reference.html#troubleshooting-no-active-room",
+    "t": "No active room",
     "s": "Help › Troubleshooting",
-    "x": "Symptom: No active room. Use 'mycelium room use <name>' mycelium room ls mycelium room use <name> # or pass room explicitly: mycelium memory ls --room <name>",
+    "x": "You see: No active room set., or No room specified and no active room set. Pick a room for this shell, or name one on the command: mycelium room ls mycelium room use <name> # or name it each time: mycelium memory ls --room <name>",
     "p": "Reference"
   },
   {
-    "u": "reference.html#troubleshooting-10-config-drift-edited-one-file-not-the-other",
-    "t": "10. Config Drift (edited one file, not the other)",
+    "u": "reference.html#troubleshooting-config-changes-dont-take-effect",
+    "t": "Config changes don't take effect",
     "s": "Help › Troubleshooting",
-    "x": "Symptom: config changes seem to have no effect; mycelium doctor flags Config file drift or Runtime config drift. mycelium config apply regenerates ~/.mycelium/.env from config.toml, which is the source of truth. If you hand-edit .env, the next apply overwrites it. And if you change config but don't recreate the backend, it keeps running the old env. mycelium config apply # rewrite .env from config.toml mycelium up # ",
+    "x": "You see: you changed a setting and nothing happened, or mycelium doctor reports Config file drift or Runtime config drift. config.toml is where settings live. mycelium config apply writes ~/.mycelium/.env from it, so any hand edits to .env are overwritten the next time you apply. And the backend only picks up changes when it's restarted. mycelium config apply # rewrite .env from config.toml mycelium up # restart the ",
     "p": "Reference"
   },
   {
-    "u": "reference.html#troubleshooting-11-permission-errors-under-mycelium",
-    "t": "11. Permission Errors Under ~/.mycelium",
+    "u": "reference.html#troubleshooting-permission-errors-in-mycelium",
+    "t": "Permission errors in ~/.mycelium",
     "s": "Help › Troubleshooting",
-    "x": "Symptom: opaque PermissionError on memory or agent writes; mycelium doctor flags ~/.mycelium ownership with root-owned files. Usually a sudo install paired with a non-sudo agent add (or a containerized gateway running as root bind-mounting your home). One chown fixes it: sudo chown -R $USER ~/.mycelium",
+    "x": "You see: a PermissionError when writing memories or adding agents, or mycelium doctor flags files in ~/.mycelium owned by root. This usually happens when Mycelium was installed with sudo but later run without it, or when a container running as root wrote into your home directory. Take the files back: sudo chown -R $USER ~/.mycelium",
     "p": "Reference"
   },
   {
-    "u": "reference.html#troubleshooting-12-spoke-cannot-reach-hub-backend",
-    "t": "12. Spoke Cannot Reach Hub Backend",
+    "u": "reference.html#troubleshooting-the-hub-hands-out-http-links-behind-https",
+    "t": "The hub hands out http:// links behind HTTPS",
     "s": "Help › Troubleshooting",
-    "x": "Symptom: mycelium status / mycelium room ls from a spoke returns a connection error pointing at the hub's URL. curl http://<hub-ip>:8000/health # raw backend reachability grep api_url ~/.mycelium/config.toml # what the spoke targets Common causes: firewall blocks port 8000, hub backend isn't running (mycelium up on the hub), VPN/Tailscale not connected, or the wrong URL in config.toml. Re-point if needed: mycelium in",
+    "x": "You see: the hub is served over https://, but links it gives out start with http://. The A2A agent card is where you'll notice it most: curl -s https://hub.example.com/api/rooms/my-room/.well-known/agent-card.json # \"url\": \"http://hub.example.com/api/rooms/my-room/a2a\" Why: a reverse proxy handles TLS and forwards plain HTTP to the backend. The proxy tells the backend the original scheme in X-Forwarded-Proto, but the",
     "p": "Reference"
   },
   {
-    "u": "reference.html#troubleshooting-13-hub-advertises-http-urls-behind-https",
-    "t": "13. Hub Advertises http:// URLs Behind HTTPS",
-    "s": "Help › Troubleshooting",
-    "x": "Symptom: the hub is served over https://, but an absolute URL it hands out comes back http://. Most visible on the A2A agent card: curl -s https://hub.example.com/api/rooms/my-room/.well-known/agent-card.json # \"url\": \"http://hub.example.com/api/rooms/my-room/a2a\" Cause: a TLS-terminating reverse proxy forwards plain HTTP to the backend container, so the backend sees an http request. The proxy reports the original sc",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#troubleshooting-configuration-reference",
-    "t": "Configuration Reference",
+    "u": "reference.html#troubleshooting-settings-reference",
+    "t": "Settings reference",
     "s": "Help › Troubleshooting",
     "x": "",
     "p": "Reference"
@@ -2420,42 +2385,42 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#troubleshooting-cli-settings-myceliumconfigtoml",
     "t": "CLI settings: ~/.mycelium/config.toml",
     "s": "Help › Troubleshooting",
-    "x": "Setting Key Env var override Backend URL server.api_url MYCELIUM_API_URL SLIM node endpoint slim.node_endpoint (none) Active room rooms.active MYCELIUM_ACTIVE_ROOM Agent handle identity.name MYCELIUM_AGENT_HANDLE",
+    "x": "Setting Key Environment variable Hub URL server.api_url MYCELIUM_API_URL SLIM node address slim.node_endpoint (none) Active room rooms.active MYCELIUM_ACTIVE_ROOM Your handle identity.name MYCELIUM_AGENT_HANDLE",
     "p": "Reference"
   },
   {
     "u": "reference.html#troubleshooting-backend-settings-myceliumenv",
     "t": "Backend settings: ~/.mycelium/.env",
     "s": "Help › Troubleshooting",
-    "x": "Variable Description Default LLM_MODEL provider/model string, as Pi takes it anthropic/claude-sonnet-4-6 LLM_API_KEY Provider API key (none) LLM_BASE_URL Custom LLM endpoint (Ollama, vLLM) (none) MYCELIUM_DATA_DIR Data directory ~/.mycelium MYCELIUM_BACKEND_PORT Backend API host port 8000 MYCELIUM_UI_PORT Frontend host port 3000 MYCELIUM_METRICS_PORT OTLP collector host port (--metrics) 4318 FORWARDED_ALLOW_IPS Forwa",
+    "x": "Variable What it is Default LLM_MODEL The model, as provider/model anthropic/claude-sonnet-4-6 LLM_API_KEY The provider's API key (none) LLM_BASE_URL A custom model endpoint, such as Ollama or vLLM (none) MYCELIUM_DATA_DIR Where rooms and memories are stored ~/.mycelium MYCELIUM_BACKEND_PORT The backend's port on your machine 8000 MYCELIUM_UI_PORT The app's port on your machine 3000 MYCELIUM_METRICS_PORT The metrics ",
     "p": "Reference"
   },
   {
     "u": "reference.html#troubleshooting-agent-environment-variables",
     "t": "Agent environment variables",
     "s": "Help › Troubleshooting",
-    "x": "Read by the CLI and adapters at runtime to identify the agent and locate the backend: Variable Description MYCELIUM_API_URL Backend API URL (default: http://localhost:8000) MYCELIUM_AGENT_HANDLE This agent's identity handle MYCELIUM_ROOM Active room name",
+    "x": "The CLI reads these to know which hub to use and who the agent is: Variable What it is MYCELIUM_API_URL The hub's URL (default http://localhost:8000) MYCELIUM_AGENT_HANDLE The agent's handle MYCELIUM_ACTIVE_ROOM The room to use when none is given mycelium await --exec also sets MYCELIUM_ROOM, MYCELIUM_HANDLE, MYCELIUM_SENDER and MYCELIUM_PROMPT for the command it runs.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#troubleshooting-log-locations",
-    "t": "Log Locations",
+    "u": "reference.html#troubleshooting-logs",
+    "t": "Logs",
     "s": "Help › Troubleshooting",
-    "x": "mycelium logs # all services mycelium logs mycelium-backend # backend only mycelium --verbose status # CLI debug output",
+    "x": "mycelium logs # every service mycelium logs mycelium-backend # just the backend mycelium --verbose status # extra detail from the CLI",
     "p": "Reference"
   },
   {
-    "u": "reference.html#troubleshooting-reset-everything",
-    "t": "Reset Everything",
+    "u": "reference.html#troubleshooting-starting-over",
+    "t": "Starting over",
     "s": "Help › Troubleshooting",
-    "x": "mycelium down --volumes # stop and delete all data rm -rf ~/.mycelium # remove all config and room files mycelium install # fresh install",
+    "x": "This deletes all your rooms, memories and config. mycelium down --volumes # stop everything and delete its data rm -rf ~/.mycelium # remove config and room files mycelium install # install again",
     "p": "Reference"
   },
   {
     "u": "reference.html#troubleshooting-getting-help",
-    "t": "Getting Help",
+    "t": "Getting help",
     "s": "Help › Troubleshooting",
-    "x": "Report issues at https://github.com/mycelium-io/mycelium/issues",
+    "x": "Report problems at https://github.com/mycelium-io/mycelium/issues",
     "p": "Reference"
   }
 ];

@@ -1,23 +1,20 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Keycloak / OIDC setup
 
-[Authentication](#auth) explains the gate in the abstract: the backend trusts an
-OIDC issuer and validates a bearer token against its JWKS. This guide makes the
-**human OIDC tier** concrete against real **Keycloak**: realm, client, the claims
-the gate keys off, and a human `mycelium login`. Every command here was run against
-a live Keycloak: the wiring below is confirmed, not aspirational.
+This guide gets [authentication](#auth) working end to end on your machine,
+using Keycloak as the identity provider. When you're done, the hub will
+reject requests without a valid token, and you'll be signed in with
+`mycelium login`, from the terminal and in the app.
 
-Keycloak is a *supported* issuer, not the default. The gate stays **off by default**
-(the try-it path never touches it); you turn it on when a team shares a hub over a
-network. Dex, ZITADEL, Authentik, or your corporate SSO slot in exactly the same
-way; nothing here is Keycloak-specific except the URLs.
+Keycloak is just an example here. Dex, ZITADEL, Authentik or your company's
+SSO work the same way; only the URLs change. Auth stays off unless you turn
+it on.
 
-## Stand up Keycloak
+## Start Keycloak
 
-A ready-to-run Keycloak ships as an **opt-in compose overlay**, off the default
-stack, added with an extra `-f` exactly like the dev issuer. It imports a `mycelium`
-realm with a public CLI client, an audience mapper, and a demo user, so there is
-nothing to click in the admin console.
+Mycelium comes with a Keycloak setup you can add to the stack. It's a separate
+compose file, so it isn't part of the normal install. It comes with a
+`mycelium` realm already set up, so you don't need to use the admin console.
 
 ```bash
 cd mycelium-cli/src/mycelium/docker
@@ -25,7 +22,7 @@ docker compose -f compose.yml -f compose-dev.yml -f compose-keycloak.yml \
   up -d keycloak
 ```
 
-The realm is ready when discovery answers:
+It's ready when this prints the issuer URL:
 
 ```bash
 curl -s http://localhost:8080/realms/mycelium/.well-known/openid-configuration \
@@ -33,51 +30,49 @@ curl -s http://localhost:8080/realms/mycelium/.well-known/openid-configuration \
 # → http://localhost:8080/realms/mycelium
 ```
 
-> **Port already in use?** Publish it elsewhere with
-> `MYCELIUM_KEYCLOAK_PORT=8085 docker compose … up -d keycloak`. The overlay pins
-> Keycloak's advertised URL to the same port, so the issuer becomes
-> `http://localhost:8085/realms/mycelium`; use that everywhere below. The admin
-> console is at `/admin` (`admin` / `admin`, override with
-> `MYCELIUM_KEYCLOAK_ADMIN[_PASSWORD]`).
+> **Port 8080 already in use?** Start it on another port with
+> `MYCELIUM_KEYCLOAK_PORT=8085 docker compose … up -d keycloak`. The issuer
+> becomes `http://localhost:8085/realms/mycelium`; use that everywhere below.
+> The admin console is at `/admin`, with `admin` / `admin` as the login (change
+> it with `MYCELIUM_KEYCLOAK_ADMIN` and `MYCELIUM_KEYCLOAK_ADMIN_PASSWORD`).
 
-## What the realm ships (and what the gate expects)
+## What's in the realm
 
-The imported realm (`docker/keycloak/mycelium-realm.json`) is the whole anatomy the
-gate needs. Point your own Keycloak at these same four things:
+The realm is defined in `docker/keycloak/mycelium-realm.json`. If you're
+setting up your own Keycloak instead, it needs the same things:
 
-- **A public client `mycelium-cli`**: this is the client `mycelium login` uses.
-  Public (no secret; it authenticates with PKCE), with the loopback redirect
-  `http://127.0.0.1:*/callback` for the browser flow and the **device grant** enabled
-  for headless login.
-- **An audience mapper** stamping `mycelium` into the access token's `aud`. This is
-  what makes `auth.audience = "mycelium"` meaningful: a token minted for some other
-  app on the same Keycloak is refused.
-- **`sub` is a UUID, so the human handle comes from `preferred_username`.** Set
-  `auth.handle_claim = "preferred_username"` for the human tier; otherwise every
-  human arrives as an opaque UUID instead of `@demo`.
-- **A demo user** (`demo` / `demo`) so a human login has someone to sign in as.
+- **A public client called `mycelium-cli`**, which `mycelium login` uses. It
+  has no secret (the CLI uses PKCE), allows the redirect
+  `http://127.0.0.1:*/callback` for browser sign-in, and has the device grant
+  enabled for signing in without a browser.
+- **An audience mapper** that adds `mycelium` to the token's `aud` claim. This
+  is what `auth.audience = "mycelium"` checks for, so tokens issued for other
+  apps on the same Keycloak are rejected.
+- **A demo user**, `demo` with password `demo`.
 
-> **A gotcha worth knowing if you build your own client:** the CLI's *device* flow
-> does not send PKCE parameters, so do **not** set the client to *require* PKCE
-> (`pkce.code.challenge.method`); that rejects the device grant with
-> `Missing parameter: code_challenge_method`. Leave enforcement off; the CLI still
-> uses PKCE on the browser flow, Keycloak just doesn't mandate it on every grant.
+Keycloak's `sub` claim is a UUID, so the handle comes from
+`preferred_username` instead. Set `auth.handle_claim = "preferred_username"`,
+or every person will show up as a UUID rather than as `@demo`.
 
-## Wire the gate
+> **If you set up your own client:** don't make PKCE required on it (the
+> `pkce.code.challenge.method` setting). The CLI's device flow doesn't send
+> PKCE parameters, so requiring it breaks `mycelium login --device` with
+> `Missing parameter: code_challenge_method`. The browser flow still uses
+> PKCE either way.
 
-The one subtlety worth understanding is **which URL goes where**, because the
-backend runs in a container and the browser/CLI run on the host:
+## Point the hub at Keycloak
 
-- Keycloak stamps the token `iss` as `http://localhost:8080/realms/mycelium` for
-  every caller (the overlay pins its advertised URL). That is what the browser and
-  CLI reach it by, so it is the `issuer` the gate matches.
-- The **backend can't use `localhost`**: inside the container that is the backend
-  itself. On the compose network Keycloak is reachable as `keycloak:8080`, so that
-  is where the backend fetches keys from.
+The backend runs in a container, but your browser and the CLI run on your
+machine, so they reach Keycloak at different addresses:
 
-The gate matches `iss` by **exact string** but fetches keys from a **separately
-configured `jwks_url`**, so you point them at different hostnames on purpose. In
-`~/.mycelium/config.toml`:
+- Your browser and the CLI reach it at `localhost:8080`, and Keycloak puts
+  `http://localhost:8080/realms/mycelium` in every token's `iss`. So that's the
+  `issuer` the hub checks tokens against.
+- Inside the backend container, `localhost` is the container itself. It reaches
+  Keycloak at `keycloak:8080` on the compose network, so that's where it
+  fetches the signing keys from (`jwks_url`).
+
+Add this to `~/.mycelium/config.toml`:
 
 ```toml
 [auth]
@@ -96,7 +91,7 @@ client_id = "mycelium-cli"
 audience  = "mycelium"
 ```
 
-Apply it and recreate the backend so it picks up the gate:
+Apply it and recreate the backend:
 
 ```bash
 mycelium config apply
@@ -104,7 +99,7 @@ docker compose -f compose.yml -f compose-dev.yml -f compose-keycloak.yml \
   up -d --force-recreate mycelium-backend
 ```
 
-`/health` now reports the gate on and the issuer trusted:
+`/health` should now show auth on, with Keycloak as a trusted issuer:
 
 ```bash
 curl -s http://localhost:8000/health | python3 -m json.tool
@@ -112,38 +107,36 @@ curl -s http://localhost:8000/health | python3 -m json.tool
 #           "audience": "mycelium", "localhost_bypass": true }
 ```
 
-> **The localhost bypass does not save you here**, and that is the point. Traffic
-> from the CLI to the containerized backend arrives from the Docker bridge, not real
-> loopback, so the gate genuinely enforces. See
-> [Authentication → The localhost bypass](#auth).
+`localhost_bypass` shows `true`, but it won't let your requests through here.
+Because the backend runs in Docker, your requests come from Docker's network
+rather than from loopback, so they need a token like anyone else's. See
+[Authentication](#auth), under "Requests from the hub's own machine".
 
-## Sign in with `mycelium login`
+## Sign in
 
 ```bash
-mycelium login            # opens your browser to Keycloak
-mycelium login --device   # headless: prints a URL + code to approve from any device
+mycelium login            # opens Keycloak in your browser
+mycelium login --device   # no browser: prints a URL and a code to enter on another device
 ```
 
-Sign in as `demo` / `demo`. The CLI caches the token (`~/.mycelium/token.json`,
-mode `0600`) and every later command carries it:
+Sign in as `demo` / `demo`. Every command after that sends your token:
 
 ```bash
 mycelium whoami
 # acting as @demo
 #   signed in (http://localhost:8080/realms/mycelium, expires in 4 min)
 
-mycelium room ls          # now authorized through the Keycloak token
+mycelium room ls
 ```
 
-`mycelium logout` drops the session and the CLI goes back to sending no token.
+`mycelium logout` signs you out, and the CLI stops sending a token.
 
-## Prove the gate (what "validated" means)
+## Check that it's enforced
 
-The same three checks that were run to confirm this guide, against the published
-backend port:
+Get a token for the demo user, then try the API with no token, the real one,
+and a fake one:
 
 ```bash
-# A real Keycloak token for the demo user
 TOKEN=$(curl -s -X POST \
   http://localhost:8080/realms/mycelium/protocol/openid-connect/token \
   -d 'grant_type=password&client_id=mycelium-cli&username=demo&password=demo&scope=openid profile' \
@@ -153,38 +146,26 @@ curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/api/rooms        
 curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" \
   http://localhost:8000/api/rooms                                                     # 200  (valid)
 curl -s -o /dev/null -w '%{http_code}\n' -H 'Authorization: Bearer not.a.jwt' \
-  http://localhost:8000/api/rooms                                                     # 401  (garbage)
+  http://localhost:8000/api/rooms                                                     # 401  (fake)
 ```
 
-An **expired** token is refused the same way: the response is
-`401` with `token rejected: Signature has expired` once it ages past `exp` plus
-`auth.leeway_s` (default 60s).
+An expired token also gets a `401`, with `token rejected: Signature has
+expired`, once it's past its `exp` plus `auth.leeway_s` (60 seconds by
+default).
 
-## Agents, and more than one issuer
+## Signing in to the app
 
-This guide is the **human** tier. Agents authenticate as workloads with the
-`client_credentials` grant from their own Keycloak client; see
-[Authentication → Agents sign in as themselves](#auth). Humans and agents are often
-separate realms; list each as its own `[[auth.issuers]]` block (a human root with
-`role = "user"`, an agent root with `role = "agent"`), matched by exact `iss` and
-never interchangeable.
+The app can use the same Keycloak. With auth off, nothing changes: you pick a
+handle and go. With auth on, the app shows a **Sign in** screen and sends you
+to Keycloak. After you sign in, the app sends your token with every request.
+The token is kept in an httpOnly cookie and added by the app's server, so
+JavaScript in the browser never sees it.
 
-For per-agent identity on the SLIM channel itself, see
-[Security Planes](#security-planes) — a different tier from this HTTP-API gate.
+The realm has a second public client for this, **`mycelium-web`**, with the
+redirect `http://localhost:3000/api/auth/callback`. It's separate from the
+CLI's client, so you can revoke one without the other.
 
-## Browser login (the frontend)
-
-The Next.js frontend does the same OIDC flow for humans in a browser. With the
-gate **off** it is unchanged: the localStorage handle-picker, no login. With the
-gate **on**, the app shows a **Sign in** screen and redirects to Keycloak; after
-you authenticate it carries your token on every `/api/*` call (sealed in an
-httpOnly cookie, injected server-side by the proxy; it never reaches browser JS).
-
-The realm import ships a second public client, **`mycelium-web`**, with the web
-redirect `http://localhost:3000/api/auth/callback` (the CLI's `mycelium-cli`
-client uses a loopback redirect instead: separate clients, separately revocable).
-
-Configure the frontend (server-side env) and bring the UI up:
+Set these for the frontend and bring the stack up:
 
 ```bash
 export MYCELIUM_OIDC_ISSUER=http://localhost:8080/realms/mycelium
@@ -196,22 +177,35 @@ export AUTH_SESSION_SECRET=$(openssl rand -hex 32)
 docker compose -f compose.yml -f compose-dev.yml -f compose-keycloak.yml up -d
 ```
 
-The **issuer split is the same as the backend's**, for the same reason: the
-browser reaches Keycloak at `MYCELIUM_OIDC_ISSUER` (`localhost:8080`) and the
-token's `iss` matches it, but the containerized frontend server can't use
-`localhost`, so it runs discovery + token exchange against
-`MYCELIUM_OIDC_INTERNAL_ISSUER` (`keycloak:8080`). Running the frontend on the
-host with `pnpm dev` instead? Drop `INTERNAL_ISSUER`; the two coincide.
+There are two issuer addresses for the same reason as the backend. Your
+browser uses `MYCELIUM_OIDC_ISSUER` (`localhost:8080`), and the frontend's
+server, inside its container, uses `MYCELIUM_OIDC_INTERNAL_ISSUER`
+(`keycloak:8080`). If you run the frontend on your machine with `pnpm dev`
+instead, leave out `MYCELIUM_OIDC_INTERNAL_ISSUER`.
 
-> **Off by default here too.** With `MYCELIUM_OIDC_ISSUER` / `AUTH_SESSION_SECRET`
-> unset, the frontend never engages OIDC. And it only shows the sign-in screen
-> when the backend's `/health` reports the gate on; the try-it path is untouched.
+If `MYCELIUM_OIDC_ISSUER` or `AUTH_SESSION_SECRET` isn't set, the app doesn't
+use sign-in at all. It also only shows the sign-in screen when the backend's
+`/health` says auth is on.
 
-## Limitations
+## Agents, and more than one issuer
 
-The shipped overlay is **dev-grade**: Keycloak in `start-dev` (in-memory H2, HTTP,
-a demo user with a weak password). It is a real OIDC provider minting real RS256
-tokens against a real JWKS (enough to build and prove against) but it is **not** a
-hardened production Keycloak. For a real deployment, run your own Keycloak over TLS
-with a persistent datastore and real users, then point the same three config values
-(`issuer`, `jwks_url`, `login.issuer`) at it. Nothing else changes.
+This guide covers people. Agents sign in with their own Keycloak client using
+the `client_credentials` grant; see [Authentication](#auth), under "Signing in
+agents". People and agents are often in separate realms. Add a
+`[[auth.issuers]]` block for each: one with `role = "user"` and one with
+`role = "agent"`. A token only passes against the issuer it came from.
+
+To give each agent its own identity on the SLIM channel as well, see
+[Security Planes](#security-planes). That's separate from the API auth this
+guide sets up.
+
+## Not for production
+
+This Keycloak setup is for development. It runs in `start-dev` mode, with an
+in-memory database, plain HTTP and a demo user with a weak password. The
+tokens it issues are real (RS256, with real signing keys), so it's fine for
+building and testing against, but don't use it for a real deployment.
+
+For production, run your own Keycloak over TLS, with a persistent database and
+real users, and point the same three settings at it: `issuer`, `jwks_url` and
+`login.issuer`.
