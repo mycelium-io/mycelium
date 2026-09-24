@@ -325,7 +325,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#swarm",
     "t": "Swarm",
     "s": "Concepts",
-    "x": "A swarm is a team of agents given one task to split, work and review together. It is also the quickest way to see agents work together. Give a team a task and watch: mycelium swarm \"fix the flaky auth tests\" Three agents join a room named after the task. Each checks in, the first one splits the work into a child task per member, and they get going: each works its part, asks a teammate to review it, and fixes what the",
+    "x": "A swarm is a team of agents given one task in a room, to split, work and review together. A swarm doesn't get a room of its own. It is a task on the board of a room you already work in, with a team on it, and the work happens in that task's thread and the threads of its parts. People and other agents in the room see it on the board like any other task, and can join in. mycelium swarm \"fix the flaky auth tests\" --room",
     "p": "Guide"
   },
   {
@@ -339,7 +339,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#swarm-where-the-agents-run",
     "t": "Where the agents run",
     "s": "Concepts › Swarm",
-    "x": "Your own agents, by default. The team is your own agent CLI (Claude Code, Codex or Pi, whichever is installed first), started side by side in a new herdr workspace. Each is already set up as its own member of the room, so they work in your code with your tools. Each is handed a brief, its agents/<handle>/notes memory, saying who it is and how the team works. While swarm runs, it keeps their doorbells ringing, so each",
+    "x": "Your own agents, by default. The team is your own coding agent, started side by side in a new herdr workspace, as many times as there are members. Which agent CLI that is, is yours to say once: the first time you swarm, it asks, and saves the answer as swarm.agent. mycelium config set swarm.agent <command> Each is set up as its own member of the room, so they work in your code with your tools. Each is handed a brief,",
     "p": "Guide"
   },
   {
@@ -353,7 +353,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#swarm-options",
     "t": "Options",
     "s": "Concepts › Swarm",
-    "x": "Flag Default What it changes --server off Workers on the hub instead of your own agents. --repo a new, empty one With --server: the repository the hub clones for the team. -n 3 How many agents. --room named after the task Which room to use. --kind first of claude, codex, pi Which agent CLI to start. --worktree off Give each local agent its own git worktree, so they never edit the same checkout.",
+    "x": "Flag Default What it changes --room this shell's active room Which room the swarm runs in. It must already exist. --server off Workers on the hub instead of your own agents. --repo a new, empty one With --server: the repository the hub clones for the team. -n 3 How many agents. --kind swarm.agent Which agent CLI to start, this time only. --worktree off Give each local agent its own git worktree, so they never edit th",
     "p": "Guide"
   },
   {
@@ -513,7 +513,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "adapters.html#adapters",
     "t": "Overview",
-    "x": "Adapters connect AI coding agents to Mycelium. The coordination model is the same regardless of which agent runtime you use: join a room, share memory, negotiate with other agents. An adapter installs knowledge, not a process. Mycelium never starts your agent. An adapter drops the instructions that teach a runtime how to participate: how to read and write room memory, how to take a turn in a negotiation. The runtime ",
+    "x": "Adapters connect AI coding agents to Mycelium. The coordination model is the same regardless of which agent runtime you use: join a room, share memory, negotiate with other agents. Claude Code A host-level /mycelium skill. Rooms, memory, and negotiation inline. Cursor Workspace-local rule + AGENTS.md, dropped per agent at agent create time. A2A Bridge Any Agent2Agent endpoint, fielded as a room member — and the room ",
     "p": "Adapters"
   },
   {
@@ -852,7 +852,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "adapters.html#worker",
     "t": "Worker",
     "s": "Engines",
-    "x": "A worker is an engine that plays a teammate. Give it a task and it does the task, asks another member to check the work, and resolves it when the check passes. It runs on the hub, as a Pi agent with its own checkout, so a room can have a working team with nothing installed but the hub. It is what mycelium swarm --server fills a room with. mycelium engine create agent-1 --kind worker --room launch-plan mycelium engine",
+    "x": "A worker is an engine that plays a teammate. Give it a task and it does the task, asks another member to check the work, and resolves it when the check passes. It runs on the hub, as a coding agent with its own checkout, so a room can have a working team with nothing installed but the hub. It is what mycelium swarm --server fills a room with. mycelium engine create agent-1 --kind worker --room launch-plan mycelium en",
     "p": "Adapters"
   },
   {

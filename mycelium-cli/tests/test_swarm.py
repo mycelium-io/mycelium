@@ -21,6 +21,7 @@ import pytest
 
 from mycelium.commands import swarm
 from mycelium.commands.herdr import wake_prompt_for
+from mycelium.config import SwarmConfig
 from mycelium.integrations.herdr import HerdrBridge, HerdrError
 
 if TYPE_CHECKING:
@@ -76,21 +77,6 @@ class Herdr:
 # ── defaults ──────────────────────────────────────────────────────────────────
 
 
-def test_the_room_is_named_after_the_task():
-    assert swarm.room_slug("Fix the flaky AUTH tests!") == "fix-flaky-auth-tests"
-    # A long task stops at the last whole word that fits, with the filler gone.
-    assert (
-        swarm.room_slug(
-            "write a one-page onboarding guide for new contributors to a small open source CLI tool"
-        )
-        == "write-one-page-onboarding-guide-new"
-    )
-    assert len(swarm.room_slug("word " * 30)) <= 40
-    assert swarm.room_slug("a the of") == "a-the-of"
-    assert swarm.room_slug("x" * 60) == "x" * 40
-    assert swarm.room_slug("!!!") == "swarm"
-
-
 def test_the_sender_is_the_identity_else_the_login_name(monkeypatch: pytest.MonkeyPatch):
     class _Cfg:
         def __init__(self, me: str) -> None:
@@ -108,14 +94,40 @@ def test_the_team_is_numbered():
     assert swarm.team_handles(3) == ["agent-1", "agent-2", "agent-3"]
 
 
-def test_the_agent_cli_is_the_one_named_else_the_first_installed(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    monkeypatch.setattr(swarm.shutil, "which", lambda exe: exe if exe in {"codex", "pi"} else None)
-    assert swarm.pick_kind(None) == "codex"
-    assert swarm.pick_kind("cursor") == "cursor"
-    monkeypatch.setattr(swarm.shutil, "which", lambda _exe: None)
-    assert swarm.pick_kind(None) is None
+class _SavedConfig:
+    """The slice of config pick_kind reads and writes."""
+
+    def __init__(self, agent: str | None = None) -> None:
+        self.swarm = SwarmConfig(agent=agent)
+        self.saves = 0
+
+    def save(self) -> None:
+        self.saves += 1
+
+
+def test_the_agent_cli_is_the_one_named_else_the_configured_one():
+    cfg = _SavedConfig("agent-x")
+    assert swarm.pick_kind("agent-y", cast("MyceliumConfig", cfg), ask=False) == "agent-y"
+    assert swarm.pick_kind(None, cast("MyceliumConfig", cfg), ask=False) == "agent-x"
+
+
+def test_nothing_is_guessed_from_what_is_installed(monkeypatch: pytest.MonkeyPatch):
+    # Every CLI on the PATH, and still no pick without being told.
+    monkeypatch.setattr(swarm.shutil, "which", lambda exe: exe)
+    cfg = _SavedConfig()
+    assert swarm.pick_kind(None, cast("MyceliumConfig", cfg), ask=False) is None
+    assert cfg.saves == 0
+
+
+def test_the_agent_cli_is_asked_once_and_saved(monkeypatch: pytest.MonkeyPatch):
+    answers = iter(["not-installed", "agent-x"])
+    monkeypatch.setattr(swarm.typer, "prompt", lambda *_a, **_k: next(answers))
+    monkeypatch.setattr(swarm.shutil, "which", lambda exe: exe if exe == "agent-x" else None)
+    cfg = _SavedConfig()
+
+    assert swarm.pick_kind(None, cast("MyceliumConfig", cfg), ask=True) == "agent-x"
+    assert cfg.swarm.agent == "agent-x"
+    assert cfg.saves == 1
 
 
 def test_the_brief_says_who_you_are_and_how_the_team_works():
@@ -160,16 +172,16 @@ def _hub(existing_room: bool = False) -> tuple[httpx.Client, list[tuple[str, str
     return client, seen
 
 
-def test_the_room_is_created_once_and_an_engine_already_there_is_fine():
-    client, seen = _hub()
-    assert swarm.ensure_room(client, "fix-tests") is True
-    swarm.ensure_engine(client, "fix-tests", "conductor", "conductor", "julia")
-    swarm.ensure_engine(client, "fix-tests", "agent-1", "worker", "julia")
-    assert ("POST", "/api/rooms", {"name": "fix-tests", "is_public": True}) in seen
-    assert seen[-1][2] == {"handle": "agent-1", "kind": "worker", "created_by": "julia"}
-
+def test_a_swarm_joins_a_room_and_never_makes_one():
     client, seen = _hub(existing_room=True)
-    assert swarm.ensure_room(client, "fix-tests") is False
+    swarm.require_room(client, "fix-tests")
+    swarm.ensure_engine(client, "fix-tests", "conductor", "conductor", "julia")
+    assert not any(path == "/api/rooms" for _m, path, _b in seen)
+    assert seen[-1][2] == {"handle": "conductor", "kind": "conductor", "created_by": "julia"}
+
+    client, seen = _hub()
+    with pytest.raises(swarm.SwarmError, match="no room named fix-tests"):
+        swarm.require_room(client, "fix-tests")
     assert [m for m, _p, _b in seen] == ["GET"]
 
 
@@ -484,7 +496,10 @@ def _swarms_hub(response: httpx.Response) -> tuple[httpx.Client, list[dict[str, 
     sent: list[dict[str, Any]] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
-        assert (request.method, request.url.path) == ("POST", "/api/swarms")
+        if request.method == "GET":
+            assert request.url.path == "/api/rooms/r"
+            return httpx.Response(200, json={"name": "r"})
+        assert (request.method, request.url.path) == ("POST", "/api/rooms/r/swarms")
         sent.append(json.loads(request.content))
         return response
 
@@ -503,7 +518,6 @@ def test_a_hub_team_is_set_up_by_the_hub_and_kicked_off_by_the_view():
         {
             "task": "Add a health check",
             "size": 3,
-            "room": "r",
             "created_by": "julia",
             "kickoff": False,
             "repo": "git@host:org/api",

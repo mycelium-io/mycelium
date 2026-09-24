@@ -2,7 +2,7 @@
 
 A worker is an [engine](#engines) that plays a teammate. Give it a task and
 it does the task, asks another member to check the work, and resolves it when
-the check passes. It runs on the hub, as a Pi agent with its own checkout,
+the check passes. It runs on the hub, as a coding agent with its own checkout,
 so a room can have a working team with nothing installed but the hub. It is
 what [`mycelium swarm --server`](#swarm) fills a room with.
 

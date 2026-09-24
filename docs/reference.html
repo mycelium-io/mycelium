@@ -160,6 +160,7 @@
           <a href="#config-login" class="nav-link sub">login</a>
           <a href="#config-agent-auth" class="nav-link sub">agent_auth</a>
           <a href="#config-herdr" class="nav-link sub">herdr</a>
+          <a href="#config-swarm" class="nav-link sub">swarm</a>
           <a href="#config-metrics" class="nav-link sub">metrics</a>
           <a href="#config-a2a" class="nav-link sub">a2a</a>
         </div>
@@ -1197,6 +1198,12 @@
 
 <span class="comment"># Wait budget (ms) for a herdr wake to settle.</span>
 <span class="arg">wake_timeout_ms</span> = 120000
+
+<span class="comment"># What ``mycelium swarm`` starts when it runs your own agents.</span>
+<span class="cmd" id="config-swarm">[swarm]</span>
+
+<span class="comment"># The agent CLI a local swarm starts in herdr, as the command herdr runs. Asked for, and saved here, the first time you swarm without one.</span>
+<span class="arg">agent</span> = <span class="str">&quot;&quot;</span>
 
 <span class="comment"># Configuration for the metrics collector + display.</span>
 <span class="cmd" id="config-metrics">[metrics]</span>

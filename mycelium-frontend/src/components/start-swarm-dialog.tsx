@@ -60,10 +60,9 @@ export function StartSwarmDialog({ open, onClose, roomName, initialTask = "" }: 
     setStarting(true);
     setError(null);
     try {
-      const swarm = await startSwarm({
+      const swarm = await startSwarm(roomName, {
         task: what,
         size,
-        room: roomName,
         repo: repo.trim() || undefined,
         created_by: principal.trim() || undefined,
       });
@@ -172,9 +171,9 @@ export function StartSwarmDialog({ open, onClose, roomName, initialTask = "" }: 
         <div className="mt-5 border-t border-border pt-4">
           <p className="text-label font-medium text-text">Or use the agents on your machine</p>
           <p className="mt-1 text-label text-muted-foreground">
-            These agents run on your hub. To have your own Claude Code (or Codex, or Pi) do
-            it instead, in the folder you&apos;re working in and with your uncommitted
-            changes, run this there:
+            These agents run on your hub. To have your own coding agent do it instead, in
+            the folder you&apos;re working in and with your uncommitted changes, run this
+            there:
           </p>
           <CopyField value={localCommand(task, roomName, size)} className="mt-2 font-mono" />
         </div>

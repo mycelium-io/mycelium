@@ -295,18 +295,24 @@ is no litellm dependency.
   per worker and capped per room (`WORKER_MAX_TURNS_PER_ROOM`). Board events
   reach it through the manager's `on_notice` hook, fired after every notice;
   a notice still wakes no `await`.
-- **`mycelium swarm` is the one-argument path to a working team.** It names a
-  room after the task, registers a conductor, files the task, and summons the
+- **`mycelium swarm` is the one-argument path to a working team, in a room
+  you already work in.** A swarm is a task with a team on it, never a room of
+  its own: it runs in `--room` or the shell's active room, refuses a room that
+  does not exist rather than making one, and its work stays in the task's
+  thread and its parts' threads, where the rest of the room can see and join
+  it. It registers a conductor, files the task, and summons the
   conductor's `swarm` flow (each member checks in, then the lead splits the
   task into a child row per member) in the task's thread. The members are the
-  user's own agent CLI in a new herdr workspace by default, each pane's env
+  user's own agent CLI in a new herdr workspace by default: `--kind`, else
+  `swarm.agent` in config, else asked once and saved there, never guessed
+  from what is installed (copy never names a harness). Each pane's env
   set to its handle and room (`MYCELIUM_AGENT_HANDLE`, `MYCELIUM_ROOM_ID`,
   plus `MYCELIUM_API_URL` when set) and handed a brief as its
   `agents/<handle>/notes` memory, read with `mycelium memory get` (a file
   outside the checkout would stop Claude Code at a permission prompt). Claude
   is started with `--allowedTools Bash(mycelium:*)` for that session only,
   never by editing the user's settings. `--server` makes the members workers
-  instead, set up through the hub's `POST /api/swarms` (the one setup path the
+  instead, set up through the hub's `POST /rooms/{room}/swarms` (the one setup path the
   app's Swarm dialog uses too; the CLI passes `kickoff: false` and posts the
   kickoff once its view is listening), with `--repo` for the hub to clone. The invoking terminal is the live view (thread prose and notices
   across the task and its children, which `room watch` deliberately hides;

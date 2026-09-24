@@ -36,10 +36,9 @@ describe("StartSwarmDialog", () => {
     fireEvent.click(start);
 
     await waitFor(() => expect(push).toHaveBeenCalled());
-    expect(startSwarm).toHaveBeenCalledWith({
+    expect(startSwarm).toHaveBeenCalledWith("launch", {
       task: "Write release notes for the 2.0 launch",
       size: 4,
-      room: "launch",
       created_by: "julia",
     });
     expect(push).toHaveBeenCalledWith("/room/launch?focus=episode:5cc0a8c5");
@@ -65,6 +64,7 @@ describe("StartSwarmDialog", () => {
 
     await waitFor(() => expect(push).toHaveBeenCalled());
     expect(startSwarm).toHaveBeenCalledWith(
+      "api",
       expect.objectContaining({ task: "Add a health check", repo: "https://github.com/org/api" }),
     );
   });

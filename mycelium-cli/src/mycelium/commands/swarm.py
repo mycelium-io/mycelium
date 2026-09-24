@@ -3,9 +3,10 @@
 
 """``mycelium swarm``: put a team of agents on one task and watch them work it.
 
-One argument, the task. Everything else is a default:
+One argument, the task. A swarm runs in a room you already work in (``--room``,
+else this shell's active room), like any other task there; it never makes a
+room of its own. Everything else is a default:
 
-- a room named after the task, created if it is not there;
 - three members, ``agent-1`` to ``agent-3``;
 - the task filed on the board, with its thread;
 - a **kickoff** in that thread, run by the conductor's ``swarm`` flow: each
@@ -14,10 +15,11 @@ One argument, the task. Everything else is a default:
 - from there the members work their rows, ask each other for review, and
   ``agent-1`` puts the result together when the last part is done.
 
-Where the members live is the one choice. By default they are your own CLI
-agents (Claude Code, Codex, Pi), started side by side in a new herdr workspace,
+Where the members live is the one choice. By default they are your own agent
+CLI (``swarm.agent`` in config, asked for the first time), started side by
+side in a new herdr workspace,
 each already set up as its own handle in the room. With ``--server`` they are
-workers the hub plays, set up by the hub's own ``POST /api/swarms``, so nothing
+workers the hub plays, set up by the hub's own ``POST /rooms/{room}/swarms``, so nothing
 but the hub needs to be installed; each works in its own checkout on the hub,
 of ``--repo`` when one is given.
 
@@ -35,6 +37,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -57,8 +60,6 @@ console = Console()
 
 #: How many members a swarm starts with.
 DEFAULT_SIZE = 3
-#: Local agent kinds tried in order when none is named, by the executable herdr runs.
-LOCAL_KINDS = ("claude", "codex", "pi")
 #: Arguments each local agent kind is started with. Claude Code asks before
 #: every shell command it has not been allowed; a member that stops at a
 #: prompt on its first ``mycelium await`` never takes its turn, so the one
@@ -77,25 +78,6 @@ BODY_LINES = 6
 QUIET_S = 180.0
 
 _SLUG = re.compile(r"[^a-z0-9]+")
-#: Words a room name reads fine without.
-_FILLER = frozenset({"a", "an", "the", "for", "to", "of", "and", "in", "on", "with", "our"})
-
-
-def room_slug(task: str, limit: int = 40) -> str:
-    """A room name from a task: its words, lowercase, joined by dashes.
-
-    Filler words go first, and the name stops at the last whole word that
-    fits, so a long task reads as a name rather than a string cut mid-word.
-    """
-    words = [w for w in _SLUG.split(task.lower()) if w]
-    kept = [w for w in words if w not in _FILLER] or words
-    slug = ""
-    for word in kept:
-        candidate = f"{slug}-{word}" if slug else word
-        if len(candidate) > limit:
-            break
-        slug = candidate
-    return slug or (kept[0][:limit] if kept else "swarm")
 
 
 def sender_of(config: MyceliumConfig) -> str:
@@ -116,11 +98,31 @@ def team_handles(size: int) -> list[str]:
     return [f"agent-{i}" for i in range(1, size + 1)]
 
 
-def pick_kind(explicit: str | None) -> str | None:
-    """The agent CLI to start: the one named, else the first one installed."""
+def pick_kind(explicit: str | None, config: MyceliumConfig, *, ask: bool) -> str | None:
+    """The agent CLI to start: the one named, else ``swarm.agent``, else asked once.
+
+    Never a guess from what happens to be installed, so one command starts the
+    same agent every time. What is asked is saved to ``swarm.agent``. ``None``
+    when nothing says which and asking is not possible.
+    """
     if explicit:
         return explicit
-    return next((k for k in LOCAL_KINDS if shutil.which(k)), None)
+    if config.swarm.agent:
+        return config.swarm.agent
+    if not ask:
+        return None
+    console.print(
+        "Which agent CLI should the swarm start? Give the command herdr runs for it. "
+        "This is saved as swarm.agent, so you're asked once."
+    )
+    while True:
+        answer = typer.prompt("Agent CLI").strip()
+        if answer and shutil.which(answer):
+            break
+        console.print(f"[yellow]{answer or 'That'} isn't on your PATH.[/yellow] Try again.")
+    config.swarm.agent = answer
+    config.save()
+    return answer
 
 
 def kickoff_brief(room: str, handle: str, team: list[str], key: str, task: str) -> str:
@@ -182,12 +184,15 @@ def _check(resp: httpx.Response, what: str, *, ok: tuple[int, ...] = ()) -> http
     return resp
 
 
-def ensure_room(client: httpx.Client, room: str) -> bool:
-    """Create ``room`` unless it exists; ``True`` when it was created."""
-    if client.get(f"/api/rooms/{room}").status_code == 200:
-        return False
-    _check(client.post("/api/rooms", json={"name": room, "is_public": True}), "create the room")
-    return True
+def require_room(client: httpx.Client, room: str) -> None:
+    """Refuse a room that is not there: a swarm joins a room, it never makes one."""
+    resp = client.get(f"/api/rooms/{room}")
+    if resp.status_code == 404:
+        raise SwarmError(
+            f"there's no room named {room}. A swarm runs in a room you already work in; "
+            "name one with --room."
+        )
+    _check(resp, f"read room {room}")
 
 
 def ensure_engine(client: httpx.Client, room: str, handle: str, kind: str, me: str) -> None:
@@ -224,16 +229,11 @@ def start_on_hub(
     The kickoff is left to the caller, so the live view is listening before
     the first turn is put.
     """
-    body: dict[str, Any] = {
-        "task": task,
-        "size": size,
-        "room": room,
-        "created_by": me,
-        "kickoff": False,
-    }
+    require_room(client, room)
+    body: dict[str, Any] = {"task": task, "size": size, "created_by": me, "kickoff": False}
     if repo:
         body["repo"] = repo
-    resp = client.post("/api/swarms", json=body)
+    resp = client.post(f"/api/rooms/{room}/swarms", json=body)
     if resp.status_code in (404, 405):
         raise SwarmError(
             "this hub can't start a team on its own yet. Upgrade it (mycelium upgrade), "
@@ -632,7 +632,7 @@ def _ui_room_url(room: str) -> str:
 
 
 @doc_ref(
-    usage='mycelium swarm ["<task>"] [--server]',
+    usage='mycelium swarm ["<task>"] [--room <room>] [--server]',
     desc="Put a team of agents on one task: they check in, split it, work it, and review each other.",
     group="board",
 )
@@ -643,10 +643,10 @@ def swarm(
     ),
     size: int = typer.Option(DEFAULT_SIZE, "-n", help="How many members", min=2, max=8),
     room: str | None = typer.Option(
-        None, "--room", "-r", help="Room (default: named after the task)"
+        None, "--room", "-r", help="Room to swarm in (default: this shell's active room)"
     ),
     kind: str | None = typer.Option(
-        None, "--kind", help="Local agent CLI to start (default: the first of claude, codex, pi)"
+        None, "--kind", help="Agent CLI to start this time (default: swarm.agent)"
     ),
     worktree: bool = typer.Option(
         False, "--worktree", help="Give each local member its own git worktree"
@@ -661,8 +661,8 @@ def swarm(
 
     Examples:
         mycelium swarm "fix the flaky auth tests"
+        mycelium swarm "fix the flaky auth tests" --room general-engineering
         mycelium swarm "add a health check" --server --repo https://github.com/org/api
-        mycelium swarm "compare three vendors for billing" --server
     """
     if repo and not server:
         console.print(
@@ -674,11 +674,18 @@ def swarm(
 
     config = MyceliumConfig.load()
     me = sender_of(config)
+    room_name = room or config.get_active_room()
+    if not room_name:
+        console.print(
+            "[yellow]Which room?[/yellow] A swarm is a task in a room you already work "
+            "in. Name it with --room, or set this shell's room:\n"
+            "  mycelium config set rooms.active <room>"
+        )
+        raise typer.Exit(1)
     if not task:
         task = typer.prompt("What should the agents work on?").strip()
     if not task:
         raise typer.Exit(1)
-    room_name = room or room_slug(task)
     team = team_handles(size)
 
     bridge = None
@@ -692,11 +699,12 @@ def swarm(
                 f'  mycelium swarm "{task}" --server'
             )
             raise typer.Exit(1)
-        agent_kind = pick_kind(kind)
+        agent_kind = pick_kind(kind, config, ask=sys.stdin.isatty())
         if agent_kind is None:
             console.print(
-                "[yellow]No agent CLI found[/yellow] (claude, codex or pi). Name one with "
-                "--kind, or run the team on the hub with --server."
+                "[yellow]Which agent CLI should the swarm start?[/yellow] Set it once:\n"
+                "  mycelium config set swarm.agent <command>\n"
+                "or run the team on the hub with --server."
             )
             raise typer.Exit(1)
 
@@ -708,7 +716,7 @@ def swarm(
             if server:
                 key, episode = start_on_hub(client, task, size, room_name, me, repo)
             else:
-                ensure_room(client, room_name)
+                require_room(client, room_name)
                 ensure_engine(client, room_name, CONDUCTOR, "conductor", me)
                 key, episode = file_task(client, room_name, task, me)
         if bridge is not None and agent_kind is not None:

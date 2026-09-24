@@ -160,6 +160,7 @@
           <a href="reference.html#config-login" class="nav-link sub">login</a>
           <a href="reference.html#config-agent-auth" class="nav-link sub">agent_auth</a>
           <a href="reference.html#config-herdr" class="nav-link sub">herdr</a>
+          <a href="reference.html#config-swarm" class="nav-link sub">swarm</a>
           <a href="reference.html#config-metrics" class="nav-link sub">metrics</a>
           <a href="reference.html#config-a2a" class="nav-link sub">a2a</a>
         </div>
@@ -210,20 +211,6 @@
         same regardless of which agent runtime you use: join a room, share memory,
         negotiate with other agents.
       </p>
-
-      <div class="callout callout-note">
-        <div class="callout-bar"></div>
-        <div class="callout-body">
-          <strong>An adapter installs knowledge, not a process.</strong> Mycelium never
-          starts your agent. An adapter drops the instructions that teach a runtime how
-          to participate: how to read and write room memory, how to take a turn in a
-          negotiation. The runtime itself is <em>yours</em>: an agent participates as a
-          <strong>resident</strong> session kept woken by
-          <code>mycelium await --loop --exec &lt;cmd&gt;</code>, which loops
-          await → reason → respond. The loop <em>is</em> the wake; nothing is
-          cold-spawned per mention, so the session keeps its context between turns.
-        </div>
-      </div>
 
       <div class="card-grid">
         <div class="card">
@@ -912,7 +899,7 @@ steps:
 
     <section class="doc-section" id="worker">
       <h1>Worker</h1>
-      <p>A worker is an <a href="#engines">engine</a> that plays a teammate. Give it a task and it does the task, asks another member to check the work, and resolves it when the check passes. It runs on the hub, as a Pi agent with its own checkout, so a room can have a working team with nothing installed but the hub. It is what <a href="index.html#swarm"><code>mycelium swarm --server</code></a> fills a room with.</p>
+      <p>A worker is an <a href="#engines">engine</a> that plays a teammate. Give it a task and it does the task, asks another member to check the work, and resolves it when the check passes. It runs on the hub, as a coding agent with its own checkout, so a room can have a working team with nothing installed but the hub. It is what <a href="index.html#swarm"><code>mycelium swarm --server</code></a> fills a room with.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> agent-1 <span class="flag">--kind</span> worker <span class="flag">--room</span> launch-plan
 <span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> agent-2 <span class="flag">--kind</span> worker <span class="flag">--room</span> launch-plan
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Draft the launch checklist&quot;</span> <span class="flag">--assign</span> @agent-1 <span class="flag">--room</span> launch-plan</code></pre>

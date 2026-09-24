@@ -180,17 +180,19 @@ export interface Swarm {
   members: string[];
 }
 
-/** Put a team of workers on a task: a room, a conductor, the workers, the task
- *  and the kickoff, in one write (the app's `mycelium swarm --server`). */
-export async function startSwarm(data: {
-  task: string;
-  size?: number;
-  room?: string;
-  /** A repository for the hub to clone; each agent works on its own branch of it. */
-  repo?: string;
-  created_by?: string;
-}): Promise<Swarm> {
-  return apiFetch<Swarm>(`/api/swarms`, {
+/** Put a team of workers on a task in a room: a conductor, the workers, the
+ *  task and the kickoff, in one write (the app's `mycelium swarm --server`). */
+export async function startSwarm(
+  room: string,
+  data: {
+    task: string;
+    size?: number;
+    /** A repository for the hub to clone; each agent works on its own branch of it. */
+    repo?: string;
+    created_by?: string;
+  },
+): Promise<Swarm> {
+  return apiFetch<Swarm>(`/api/rooms/${encodeURIComponent(room)}/swarms`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
