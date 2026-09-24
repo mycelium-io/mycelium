@@ -42,6 +42,7 @@ import { BoardKanban } from "./board-kanban";
 import { BoardTable } from "./board-table";
 import { BoardTimeline } from "./board-timeline";
 import { BoardCapture } from "./board-capture";
+import { StartSwarmDialog } from "@/components/start-swarm-dialog";
 import { BoardDaily } from "./board-daily";
 import { playBoardSound, type BoardSound } from "@/lib/board/board-sounds";
 
@@ -90,6 +91,8 @@ export function RoomBoard({ roomName, onOpenThread }: Props) {
   const revalidate = useRoomRevalidate(roomName);
   const { principal } = useCurrentUser();
   const actor = principal.replace(/^@/, "") || "you";
+  // The task a swarm is being started on, while its dialog is open.
+  const [swarmTask, setSwarmTask] = useState<string | null>(null);
 
   // A day boundary is only meaningful in some zone, and which one is the
   // reader's business — so it is remembered per browser, not per room.
@@ -405,7 +408,22 @@ export function RoomBoard({ roomName, onOpenThread }: Props) {
         onOptions={() => setOptionsOpen(o => !o)}
       />
 
-      <BoardCapture ref={captureRef} actor={actor} now={new Date(now).toISOString()} onCapture={capture} />
+      <BoardCapture
+        ref={captureRef}
+        actor={actor}
+        now={new Date(now).toISOString()}
+        onCapture={capture}
+        onSwarm={text => setSwarmTask(text)}
+      />
+      {/* Mounted only while open, so each opening starts from what was typed. */}
+      {swarmTask !== null && (
+        <StartSwarmDialog
+          open
+          onClose={() => setSwarmTask(null)}
+          roomName={roomName}
+          initialTask={swarmTask}
+        />
+      )}
 
       <div className="min-h-0 flex-1">
         {ordered.length === 0 && view.mode !== "daily" ? (

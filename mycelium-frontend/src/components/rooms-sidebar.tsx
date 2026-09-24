@@ -26,7 +26,6 @@ import { useRooms } from "@/lib/room-data";
 import { roomLevel, type RoomLevel } from "@/lib/notifications";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
-import { StartSwarmDialog } from "@/components/start-swarm-dialog";
 import { NotificationBell } from "@/components/notification-bell";
 import { ActingAsPicker } from "@/components/acting-as-picker";
 import { useNotifications } from "@/components/notifications-provider";
@@ -59,7 +58,6 @@ interface Props {
 export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsedChange }: Props) {
   const [query, setQuery] = useState("");
   const [showCreate, setShowCreate] = useState(false);
-  const [showSwarm, setShowSwarm] = useState(false);
 
   // The rooms list is a shared cache entry that outlives this mount — the
   // sidebar sits inside each page's AppShell, so navigation remounts it, and a
@@ -159,13 +157,6 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
         keywords: ["new", "add"],
         run: () => setShowCreate(true),
       },
-      {
-        id: "swarm.start",
-        title: "Start a swarm",
-        group: "Rooms",
-        keywords: ["team", "agents", "workers", "task", "new"],
-        run: () => setShowSwarm(true),
-      },
       { id: "nav.metrics", title: "Metrics", group: "Navigate", run: () => router.push("/metrics") },
       {
         id: "nav.install",
@@ -263,7 +254,6 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
         </div>
 
         <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={refresh} />
-        <StartSwarmDialog open={showSwarm} onClose={() => setShowSwarm(false)} />
       </aside>
     );
   }
@@ -393,7 +383,6 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
       </div>
 
       <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={refresh} />
-      <StartSwarmDialog open={showSwarm} onClose={() => setShowSwarm(false)} />
     </aside>
   );
 }

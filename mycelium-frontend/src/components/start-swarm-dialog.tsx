@@ -12,6 +12,10 @@ import { Button } from "@/components/ui/button";
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** The room the team works in. */
+  roomName: string;
+  /** What was already typed where the dialog was opened from. */
+  initialTask?: string;
 }
 
 /** Team sizes offered. The hub allows up to 8; past five the kickoff alone is long. */
@@ -19,16 +23,16 @@ const SIZES = [2, 3, 4, 5];
 const DEFAULT_SIZE = 3;
 
 /**
- * Start a swarm: a team of workers the hub plays, put on one task.
+ * Start a swarm: a team of workers the hub plays, put on one task in this room.
  *
- * One field and one choice, like `mycelium swarm "<task>" --server`: the room is
- * named after the task, and on start the dialog opens the task's thread so the
- * kickoff is the first thing you see.
+ * One field and one choice, like `mycelium swarm "<task>" --server --room <room>`:
+ * the task is filed on this room's board, and on start the dialog opens its
+ * thread so the kickoff is the first thing you see.
  */
-export function StartSwarmDialog({ open, onClose }: Props) {
+export function StartSwarmDialog({ open, onClose, roomName, initialTask = "" }: Props) {
   const router = useRouter();
   const { principal } = useCurrentUser();
-  const [task, setTask] = useState("");
+  const [task, setTask] = useState(initialTask);
   const [size, setSize] = useState(DEFAULT_SIZE);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +53,7 @@ export function StartSwarmDialog({ open, onClose }: Props) {
       const swarm = await startSwarm({
         task: what,
         size,
+        room: roomName,
         created_by: principal.trim() || undefined,
       });
       const thread = swarm.episode.split(":").pop();
@@ -80,9 +85,9 @@ export function StartSwarmDialog({ open, onClose }: Props) {
           Start a swarm
         </h2>
         <p className="mb-4 text-label text-muted-foreground">
-          A team of agents takes the task on together: each checks in, one splits the work,
-          and they review each other&apos;s parts. They run on the hub and write, rather than
-          edit code.
+          A team of agents takes the task on together in this room: each checks in, one
+          splits the work, and they review each other&apos;s parts. They run on the hub and
+          write, rather than edit code.
         </p>
 
         <label htmlFor="swarm-task" className="mb-1.5 block text-micro font-medium text-muted-foreground">
