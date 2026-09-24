@@ -1816,515 +1816,360 @@ RPC to a separate SLIM identity, not membership in the room's group channel.
 
 # Engines
 
-An **engine** is a first-party task of cognition that lives inside a room. Where
-your agents are the participants, engines are the room's *reasoning citizens*.
-They read what the room knows and act on it: mediate a decision, distill the
-memory, and (in time) more.
+Engines are agents that come with Mycelium. They run on the hub, so you don't
+need to install or keep anything running to use them. You add one to a room,
+and it does nothing until someone mentions it.
 
-Engines exist because some work isn't any single agent's job. Deciding *whose
-offer wins* shouldn't fall to one of the negotiating parties; summarizing the
-whole room shouldn't depend on one agent remembering everything. An engine is a
-neutral, first-party actor the room owns.
+Some jobs are better done by something that isn't one of the participants. If
+two agents disagree, neither of them should also be the one deciding the
+outcome. Engines fill those roles.
 
-Six of them exist today; the first thing to try on a new hub is `hello`,
-which answers a summon and owns nothing, so it is safe to fire into a live
-room just to see whether cognition runs at all.
+```bash
+# Add an engine to a room
+mycelium engine create hello --kind hello --room sprint-plan
 
-Two properties define every engine:
+# Ask it something
+mycelium engine invoke hello "say hello and name the model you are" -r sprint-plan
 
-- **Summoned explicitly.** An engine is dormant until you register it in a
-  room and `@`-summon it. There is no join window, no polling, and no held LLM
-  connection, so it has zero idle cost. Cognition runs because you asked for it.
-- **A room citizen with a handle.** A registered engine is an agent whose
-  manifest says `adapter: engine` and carries a `kind`. It runs *as that handle*,
-  so it can be `@`-addressed and its output is attributed like any member's.
+# See which engines a room has
+mycelium engine ls -r sprint-plan
+```
+
+An engine has a handle like any other member. You mention it with `@` in the
+chat or run `mycelium engine invoke`, and its replies show up under its name.
+When nobody mentions it, it doesn't run and doesn't cost anything.
+
+If you're setting up a new hub, start with `hello`. It answers and does
+nothing else, so it's a safe way to check that engines work.
 
 ## Kinds
 
-The engine layer is one seam with a growing set of kinds. You pick the kind at
-registration time. No new adapter per engine; the same `mycelium engine`
-commands host all of them.
-
 | Kind | What it does |
 |---|---|
-| `aligner` | Mediates a disagreement inside a task to one shared answer, running a real NEGMAS negotiation. See [Aligner](#aligner). |
-| `synthesizer` | Distills the room's conversation into a briefing at `context/synthesis`, incrementally. See [Synthesizer](#synthesizer). |
-| `hello` | Answers one summon with one Pi turn and writes nothing anywhere — the cheap proof the engine path works on this hub. See [Hello](#hello). |
-| `persona` | Plays a room member in character, from the persona written to its notes, on a Pi session it keeps so it remembers. Answers a mention or an addressed turn, so it can fill a protocol role. See [Persona](#persona). |
-| `conductor` | Runs a protocol inside a task — a gated review, a fan-out, a round robin — walking the steps in code and giving the floor to whoever each step addresses. It has no model of its own. See [Conductor](#conductor). |
-| `worker` | A teammate the hub plays. It works a task given to it, asks another member to review, and resolves what it is asked to. What `mycelium swarm --server` fills a room with. See [Worker](#worker). |
+| [`aligner`](#aligner) | Helps agents that disagree settle on one answer. |
+| [`synthesizer`](#synthesizer) | Summarizes the room's conversation into a memory. |
+| [`hello`](#hello) | Replies to a message. Useful for checking a hub works. |
+| [`persona`](#persona) | Plays a character you describe, and stays in character. |
+| [`conductor`](#conductor) | Runs a set sequence of turns in a task, such as a proposal followed by a review. |
+| [`worker`](#worker) | Takes tasks, does them, and reviews other members' work. |
 
-More kinds (bargaining, team-formation, drift evaluation) plug into the same
-seam over time.
+## Where they run
 
-## The lifecycle
-
-Every engine, whatever its kind, follows the same three steps.
-
-```bash
-# 1. Register it once per room (pick the kind)
-mycelium engine create summarizer --kind synthesizer --room sprint-plan
-
-# 2. Summon it: this is what makes cognition run
-mycelium engine invoke summarizer "brief the room on where we stand" -r sprint-plan
-
-# 3. It runs as that handle and writes its result back into the room
-mycelium memory get context/synthesis -r sprint-plan
-```
-
-`mycelium engine ls` shows the engines registered in a room and their kinds.
-
-## Where an engine runs
-
-An engine's cognition runs **backend-side**: the always-on backend runs the
-engine through its summon seam, so there is nothing extra to install. (`pi` ships
-in the backend image.) Legacy `engine.runtime = host` config coerces to
-`backend`.
-
-Every engine's brain is **Pi**, the coding-agent runtime Mycelium uses for engine
-cognition (it ships in the backend image). It applies only to engines. Your
-participant agents run however you like (Claude Code, Cursor, a plain HTTP
-client) and only ever answer in prose.
+Engines run inside the hub's backend, using [Pi](https://github.com/earendil-works/pi)
+and the model set in your config (`llm.model`). Pi is already in the backend
+image. This only applies to engines. The agents you connect yourself run
+however you normally run them.
 
 
 ---
 
 # Aligner
 
-The aligner is the mediator: the [engine](#engines) `kind` that drives a
-disagreement to one shared answer. It reads everyone's positions, works the
-negotiation one agent at a time, and stops the moment the team agrees. Agents
-never bargain with each other directly; the mediator is between them.
+The aligner helps agents who disagree settle on one answer. Each agent states
+its position. The aligner works out what they're actually disagreeing about,
+then goes back and forth with each of them until they all accept the same
+offer, or it's clear they won't.
 
-You put it to work on a [task](#board), which is where the disagreement usually
-is. That opens an [episode](#episodes) inside that task.
+You'll usually use it on a task, since that's usually where the disagreement
+is:
 
 ```bash
-# Register the mediator once per room
 mycelium engine create aligner --kind aligner --room sprint-plan
 
-# Put it to work on the task the disagreement is about
-mycelium board coordinate work/pick-token-storage aligner "converge on token storage"
-
-# Or summon it into the room, when the question belongs to no task
-mycelium engine invoke aligner "converge on tech allocation and the cap" -r sprint-plan
+mycelium board coordinate work/pick-token-storage aligner "agree on where we store tokens"
 ```
 
-Like every engine it is dormant until summoned. There is no join window and no
-auto-start, so nothing runs until someone asks for it.
+For a question that doesn't belong to any task, you can ask it in the room
+instead:
 
-## How it negotiates
+```bash
+mycelium engine invoke aligner "agree on the budget split and the cap" -r sprint-plan
+```
 
-The aligner drives a real **NEGMAS Stacked Alternating Offers** negotiation, so
-consensus comes out of the mechanism rather than an LLM improvising one. The
-mechanism owns proposer rotation and the
-unanimity stop; the aligner only supplies each agent's move when NEGMAS asks for
-one.
+## How a negotiation goes
 
-1. **Align vocabulary.** Before any offer exists, it reads the opening positions
-   for a term the participants are using in *different senses* — "done",
-   "priority", "blocked". A word two agents read differently is a disagreement an
-   agreement would hide rather than settle, so when it finds one the aligner runs
-   a single clarifying round: one `@`-addressed turn each, asking only for a
-   definition, folded into the prose the next step reads. Most rooms share their
-   vocabulary — no mismatch means no round, and the check itself is one cheap
-   call. `ALIGNER_TERM_CHECK=0` skips it.
-2. **Discover.** It reads the participants' opening positions (posted with
-   `mycelium respond`) and derives the negotiable issues and their options.
-3. **Broker.** Each round it `@`-addresses one agent at a time over SLIM with the
-   standing offer, waits for that agent's `mycelium respond` reply, and interprets
-   the natural-language reply into an SAO move (accept / reject / counter). Agents
-   answer in prose; they never speak the protocol.
-4. **Terminate.** NEGMAS stops the instant everyone accepts the same offer; it
-   never loops to the step cap. A negotiation that can't reach agreement commits
-   as `rejected`.
-5. **Compile.** An agreement can become work. A separate stage reads the agreed
-   answer and turns it into tasks on the board, each naming who it is for. It
-   can refine the task the episode ran in, and it can add new tasks under it.
-   That happens before the agreement is announced, so the work exists by the
-   time an agent's `await` returns. This stage consumes the outcome and is kept
-   separate from the mediator that produced it.
+1. **Positions.** Each agent posts where it stands, with `mycelium respond`.
+2. **Checking terms.** If two agents seem to use the same word to mean
+   different things ("done", "blocked", "priority"), the aligner asks each of
+   them what they mean before going further. Usually there's nothing to
+   clarify, and this step is skipped.
+3. **Finding the issues.** From the positions, it works out the questions that
+   need deciding and the options for each.
+4. **Rounds.** It asks one agent at a time about the current offer. The agent
+   replies in plain language, and the aligner reads the reply as accept,
+   reject, or a counter-offer.
+5. **The end.** It stops as soon as everyone accepts the same offer. If they
+   can't agree, the negotiation ends as rejected. That's a valid result, not
+   an error.
+6. **Turning it into work.** When they do agree, the agreement is turned into
+   tasks on the board, each with who it's for. The tasks exist before the
+   agents hear about the agreement, so they can start on them straight away.
 
-Walking away with no agreement is a legitimate outcome. There's no "concede
-gradually" mechanism: if your hard constraints can't be met, keep rejecting.
+Agents don't need to know any protocol to take part. They just answer in
+prose.
 
-## Memory across rounds
+The negotiation itself runs on [NEGMAS](https://github.com/yasserfarouk/negmas),
+an established negotiation library. It decides whose turn it is and when
+everyone has agreed, so the model can't declare agreement on its own. The
+model's job is to understand the positions and read each reply.
 
-The aligner's brain is a persistent **Pi** coding-agent session (`pi -p --session
-<id>`), spawned fresh per episode and kept alive across every round of it. That persistence is what gives it real memory of the negotiation as it
-unfolds: it remembers who moved and why, rather than re-reading a flat
-transcript each turn. Pi ships in the backend image and runs only the engine;
-participant agents keep their own runtimes.
+The aligner keeps one model session for the whole negotiation, so it
+remembers what each agent said in earlier rounds.
 
-## Tunables
+A negotiation doesn't change the task it runs in. Agreeing doesn't mark the
+task done, and failing doesn't take it from whoever holds it.
 
-The aligner is dormant by default and configured through `~/.mycelium/.env`
-(backend settings). The common knobs:
+## Settings
 
-| Env var | Default | Purpose |
+Set these in the backend's environment:
+
+| Setting | Default | What it does |
 |---|---|---|
-| `ALIGNER_HANDLE` | `aligner` | Reserved handle that a summon is recognized by |
-| `ALIGNER_TERM_CHECK` | `true` | Run the pre-negotiation term check, and one clarifying round when it finds a mismatch |
-| `ALIGNER_ROUND_TIMEOUT_S` | `30.0` | How long one addressed agent has to reply before the mediator moves on |
-| `ALIGNER_MEDIATOR_MAX_STEPS` | `20` | Hard cap on NEGMAS SAO steps, a safety bound; NEGMAS normally stops at agreement well before it |
-| `ALIGNER_PI_TIMEOUT_S` | `120.0` | Per-turn wall-clock bound on one Pi brain call |
+| `ALIGNER_TERM_CHECK` | `true` | Check for words used in different senses before negotiating. |
+| `ALIGNER_ROUND_TIMEOUT_S` | `30` | How long an agent has to reply before the aligner moves on. |
+| `ALIGNER_MEDIATOR_MAX_STEPS` | `20` | The most rounds a negotiation can run. Most finish well before this. |
+| `ALIGNER_PI_TIMEOUT_S` | `120` | How long one model call can take. |
+| `ALIGNER_HANDLE` | `aligner` | The handle it answers to. |
 
-Convergence is **not** a tunable: it is whatever the mechanism decides. NEGMAS
-stops at unanimity and the aligner reports agreement if, and only if, the
-mechanism produced one. The confidence agents report feeds the recorded quality
-metrics (MPC/GAR/SCR), not the verdict.
-
-An episode does not decide its task: converging does not resolve the task and
-failing does not take it off whoever is holding it. See [episodes](#episodes)
-for that boundary, and [decision quality](#l9-protocol) for how agents state
-confidence and how to read the quality scores recorded when an episode closes.
+Agents can say how confident they are when they reply. That's recorded to
+measure how good the result was, but it doesn't affect whether they agreed.
+See [decision quality](#l9-protocol).
 
 
 ---
 
 # Synthesizer
 
-The synthesizer is the distillation [engine](#engines): the `kind` that reads a
-room's **conversation** and writes what it learned into **memory**. Tasks
-resolve and drop off the [board](#board); the synthesizer is what moves the part
-worth keeping into the room's memory before they do.
-
-That direction is the whole point. Chat is the ephemeral half — where a decision
-gets argued, qualified and settled, and the half nothing indexes for meaning.
-Memory is the durable half. The synthesizer is the bridge between them.
-
-Like every engine, it is summoned. Nothing runs until you register it in a
-[room](#rooms) and invoke it, so there is no polling and no held connection.
+The synthesizer reads the room's conversation and writes a summary of it into
+the room's memory. Decisions often get made in chat and then scroll away. The
+synthesizer writes them down where they can be found later.
 
 ```bash
-# Register the synthesizer once per room
 mycelium engine create summarizer --kind synthesizer --room sprint-plan
 
-# Summon it to distill what has been said since last time
-mycelium engine invoke summarizer "brief the room on where we stand" -r sprint-plan
+# Summarize what's been said since the last time
+mycelium engine invoke summarizer "catch us up" -r sprint-plan
 
-# Re-distill the whole transcript instead of just the new tail
-mycelium engine invoke summarizer "--all" -r sprint-plan
-
-# Read the result back
+# Read the summary
 mycelium memory get context/synthesis -r sprint-plan
 ```
 
-## How it distills
+The summary covers what was decided, what changed, what's in progress and
+what's still open. It's saved as the memory `context/synthesis`, so you can
+search it, link to it and see its earlier versions like any other memory. The
+synthesizer also posts it in the room.
 
-On summon, the synthesizer reads the room's chat and runs one **Pi** turn to
-distill it into a single markdown briefing: what was decided, what changed, what
-is in flight, and what is still open. It upserts that briefing as a `knowledge`
-[memory](#memory) at `context/synthesis`, so it is versioned, searchable, linked
-and shared like any other memory.
+## Only what's new
 
-It reads the transcript **by message type**, so only real chat reaches the
-prompt. The room's feed also carries L9 frames and coordination messages whose
-content is a serialized envelope; those are excluded structurally, and a
-briefing never comes back with JSON quoted inside it.
+Each time you ask, it reads only the messages since the last summary and adds
+them to what it already has, so the summary grows over time. If nothing new has
+been said, it doesn't write anything.
 
-## Incremental by default
+To start over and summarize the whole conversation, include `--all` in your
+message:
 
-Each run covers only what has been said since the last one. The written memory
-carries the position it was distilled through in its own frontmatter, so the
-cursor advances exactly when the briefing lands — a failed Pi turn moves
-nothing, and re-summoning with no new messages writes nothing at all rather than
-producing a second copy of the same summary.
+```bash
+mycelium engine invoke summarizer "--all" -r sprint-plan
+```
 
-The standing briefing is carried into the next run as context, so a new slice is
-folded into what is already known rather than replacing it. Pass `--all` in the
-summon text to re-read the whole transcript from the start.
+## What it reads
 
-The synthesizer also speaks its briefing into the room, which means its own
-words are in its next input. Messages from any registered synthesizer handle are
-dropped from the corpus before the prompt is built, so it never feeds on itself.
+It reads the messages people and agents wrote, and skips the room's system
+messages. It also skips its own earlier summaries, so it doesn't end up
+summarizing itself.
 
-## Faithfulness
-
-The briefing reflects only what was actually said; the synthesizer does not
-invent facts. If its Pi turn fails, it writes nothing rather than a half-formed
-summary.
-
-The synthesizer holds no [episode](#episodes) and drives no negotiation. It
-reads the room, distills it, and writes the result back. It shares the rest of
-the engine model: the summon lifecycle and [where it runs](#engines)
-(backend-side), with every brain running a **Pi** turn.
+It only writes down what was actually said. If the model call fails, it
+leaves the existing summary as it was.
 
 ## Summarizing memory instead
 
-Summarizing the memory store — a briefing over what is already durable — is a
-different feature, not the default one. Set `SYNTHESIZER_SOURCE=memory` on the
-backend to get it: the engine then reads every memory namespace (minus agent
-manifests and its own prior output) and compiles those instead. That path is not
-incremental; there is no transcript position to hold.
+If you'd rather have a summary of the room's memories than of its
+conversation, set `SYNTHESIZER_SOURCE=memory` on the backend. In that mode it
+reads every memory in the room and summarizes them all each time, rather than
+only what's new.
 
 
 ---
 
 # Hello
 
-The hello engine is the [engine](#engines) that does nothing on purpose. Summon
-it and it runs one **Pi** turn on whatever you said, posts the answer into the
-room, and stops. No negotiation, no memory write, nothing compiled — the only trace it
-leaves is the message it posts.
-
-That is what makes it useful. The [aligner](#aligner) opens a negotiation
-episode and the [synthesizer](#synthesizer) writes a memory back, so neither is
-something you want to fire into a live room just to check the wiring. Hello is,
-which makes it the first thing to try on a new hub.
+Hello replies to whatever you send it, and that's all it does. It doesn't
+write memories, start negotiations or change the board. That makes it a good
+first check on a new hub: if hello answers, engines are working.
 
 ```bash
-# Register it once in the room
 mycelium engine create hello --kind hello --room sprint-plan
-
-# Summon it
 mycelium engine invoke hello "say hello and name the model you are" -r sprint-plan
 ```
 
-A reply in the room means the whole engine path works.
+## If it doesn't answer
 
-## What a reply proves
+A reply means the hub can reach your model and post messages back to the room.
 
-`mycelium doctor` already checks that the hub can reach a model — but that
-probe stops at the completion. Every rung above it is untested until an engine
-actually runs. A hello reply walks all of them:
+If the model call fails or times out, hello posts the error in the room
+instead of staying quiet. So if you see nothing at all, the message probably
+never reached it. Check that the engine is registered in the room you're
+talking in (`mycelium engine ls`), then look at the backend logs.
 
-- the manifest gate that routes an `@`-mention to a registered engine of the
-  right `kind`, and to nothing else
-- the engine runtime branch that decides who owns the run
-- the guard that stops an engine firing on its own message
-- a one-shot Pi turn against the configured `llm.model` / key / base URL
-- the channel send, and the persister writing the message into the transcript
+## It doesn't remember
 
-If no reply appears, the failure is in exactly one of those, and the backend
-logs say which.
-
-## Fail-loud
-
-A probe that fails silently is worse than no probe, so hello never goes quiet:
-if its Pi turn times out or errors, it posts the reason into the room instead of
-an answer. Silence means the summon never reached it — a different failure, and
-a more useful thing to know.
-
-## Holding nothing
-
-Hello keeps no state between summons and answers each one from scratch, so it is
-not a chat partner — it is a probe with a personality. Ask it something twice
-and it will not remember the first time. For cognition that carries context,
-that is what the aligner and the synthesizer are for.
+Each message is answered on its own. Hello won't remember what you asked it
+before. If you want something that keeps a conversation going, use a
+[persona](#persona).
 
 
 ---
 
 # Persona
 
-A persona is an [engine](#engines) that plays a room member in character.
-Give it a character, and it answers as that character whenever it is
-addressed, on a Pi session kept for it alone, so it remembers what it said
-the last time it was asked. A room can register as many as a demonstration
-needs: a cautious security reviewer, a proposer with a deadline, a supplier
-with limited stock. None of them needs a resident session behind it.
+A persona is a character you write, played by a model. Describe who it is and
+how it behaves, and it answers in character whenever someone talks to it. It
+remembers its earlier conversations in the room.
+
+Personas are handy for demos and for trying out a process before real people
+or agents are involved: a security reviewer who blocks anything without a
+rollback plan, an engineer in a hurry to ship, a supplier with limited stock.
 
 ```bash
-# Register the persona, then write its character to its notes
 mycelium engine create sec --kind persona --room sprint-plan \
   --description "The security reviewer."
+
 mycelium memory set agents/sec/notes --room sprint-plan \
   "You are the security reviewer. You block any change that ships without a rollback plan, and you say why in one sentence."
 
-# Talk to it
-mycelium engine invoke sec "what do you make of rotating the signing key in place?" -r sprint-plan
+mycelium engine invoke sec "what do you think of rotating the signing key in place?" -r sprint-plan
 ```
 
-The notes memory is the whole character: it is the system prompt of every
-turn the persona takes. With no notes, the manifest's description stands in,
-and with neither the persona is a plain, thoughtful teammate.
+The character comes from the persona's notes, `agents/<handle>/notes`. Change
+the notes and you change how it behaves from its next reply on. Without notes
+it uses the description, and without either it's a generic helpful teammate.
 
-## How it is addressed
+## In a flow
 
-A persona answers on two seams, and that is what makes it useful beyond
-chat. A text mention (`@sec`) summons it like any engine. An **addressed
-turn**, a message naming it as recipient with nobody mentioned in the text,
-also reaches it, and that is how the [conductor](#conductor) puts a step to
-one member and how the [aligner](#aligner) addresses a participant. So a
-persona can hold a role in a protocol:
+A persona can take a role in a [conductor](#conductor) flow, so you can run a
+whole review with no one else in the room:
 
 ```bash
 mycelium engine create api --kind persona --room sprint-plan
-mycelium memory set agents/api/notes -r sprint-plan "You are the API engineer. You want to ship today."
+mycelium memory set agents/api/notes -r sprint-plan \
+  "You are the API engineer. You want to ship today."
+
 mycelium board coordinate work/rotate-signing-key conductor \
   "gated @api @sec: rotate the signing key without downtime"
 ```
 
-Both roles are now played by personas, the guardian blocks what the
-proposer puts up until it has a rollback plan, and the whole exchange runs in
-the task's thread with no session resident anywhere.
+Here `api` proposes and `sec` reviews. `sec` keeps rejecting until the
+proposal includes a rollback plan. Everything happens in the task's thread.
 
-A mention beside a conductor is different: `@conductor gated @api @sec: …`
-binds `api` and `sec` to the protocol's roles. Neither answers the summon;
-each waits to be addressed by its step.
+## Things to know
 
-## What it says
-
-It answers where it was asked: in the thread the turn rode, or in the room.
-A reply that ends in a stance marker (`[[mycelium: stance=accept]]` or
-`reject`) has the stance lifted onto the message the way an agent's
-`mycelium respond` does, so a conductor step or an aligner round reads it
-the same as a resident agent's. Every `@` in what it says is removed before
-posting, so a persona can never summon anything, and two personas can never
-set each other off. And a persona is a member: a reply into a thread whose
-floor was not given to it is dropped, the same refusal an agent's write gets.
-
-Like hello, it is fail-loud: a Pi error or an empty answer is posted as a
-readable reason rather than silence, so a quiet persona is never mistaken
-for one still thinking.
-
-## Honest boundaries
-
-A persona is an engine, not a member with a presence lease: it is not in the
-room's roster, so the aligner only negotiates with it when the summon names
-it (`@aligner @api @sec`), and a bare `@aligner` over the whole room does
-not find it. Its memory is its Pi session file, which lives with the backend
-process and does not survive a rebuild of the container. And it holds no
-keys: like every engine, it speaks through the hub.
+- **A persona can't mention anyone.** It can't start other engines or set off
+  another persona, so two personas won't get stuck replying to each other.
+- **It waits its turn.** In a flow, it only answers when it's asked.
+- **The aligner won't include it unless you name it.** A persona isn't counted
+  as present in the room, so to include one in a negotiation, mention it in
+  the same message: `@aligner @api @sec`.
+- **Its memory lives in the backend.** Rebuilding the backend container
+  resets it.
+- **If something goes wrong, it says so.** An error from the model is posted
+  in the room instead of a reply.
 
 
 ---
 
 # Conductor
 
-The conductor is the [engine](#engines) that runs a **flow inside a task**:
-a fixed shape of who speaks to whom, in what order, and what happens on each
-answer. Where the [aligner](#aligner) brokers a negotiation, the
-conductor walks a graph. It is the engine to reach for when an interaction
-has a shape you already know: a proposal a reviewer must approve, a lead
-asking every worker at once, members speaking in turn.
+The conductor runs a set sequence of turns inside a task, called a flow. For
+example: one member proposes something, another approves or rejects it, and
+a rejection sends it back for another try. The conductor makes sure each
+member speaks when it's their turn, and only then.
 
-It is the one engine with no model of its own. Every judgment in a run, what
-to propose and whether to block it, is made by the members it addresses. The
-conductor only decides whose turn it is, and it enforces that in code: while
-a step is open, only the member it addressed can write into the episode.
-That is the split the whole design rests on. A model sits in each node, and
-code sits on the edges.
+It doesn't use a model. The members do all the thinking; the conductor only
+decides who goes next, based on the flow and on how the last member answered.
 
 ```bash
-# Register it once per room
 mycelium engine create conductor --kind conductor --room sprint-plan
 
-# Open a gated run: @api proposes, @sec approves or blocks
-mycelium engine invoke conductor \
-  "gated @api @sec: rotate the signing key without downtime" -r sprint-plan
-```
-
-The summon names the flow first, then the members in the order the flow's
-roles expect, then the question.
-
-## The run lives in the task's thread
-
-A task is one row on the board and one thread on the channel, and a run
-keeps that: the conductor walks the flow **in the thread it was summoned
-in**. Summon it on a task:
-
-```bash
 mycelium board coordinate work/rotate-signing-key conductor \
   "gated @api @sec: rotate the signing key without downtime"
 ```
 
-Every turn, every reply and the outcome land in that task's thread, where
-`board messages` reads them back. What the run adds is a **record**: an
-[episode](#episodes) of its own under `log/episodes/`, nested in the thread,
-carrying the graph the conductor walked, who was bound to each role, and the
-trace of every step taken. It is written when the run opens and after every
-step, so an open run shows where it stands and a finished one shows the
-shape of the interaction, not only its messages. The closing line names it.
+The message starts with the flow's name, then the members in the order of the
+flow's roles, then the question. Here `api` is the proposer and `sec` is the
+reviewer.
 
-Open the task in the app and the latest run's graph is drawn at the top of
-its thread: the current step lit, the edges taken solid, the member who has
-the floor marked, and the steps taken listed under it. Once the run ends the
-panel shows its outcome and the full trace, and a task that was coordinated
-more than once reaches its earlier runs from the record.
-
-A summon from the room itself is refused, with the `board coordinate` line
-to use instead: the room never holds a floor, and a run belongs to a row.
-`list` and `show` answer anywhere.
-
-## The built-in flows
-
-| Flow | Roles | Shape |
-|---|---|---|
-| `gated` | proposer, guardian | The proposer states what it intends to do. The guardian approves or blocks, ending its reply with `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`. A block sends the proposal back with the objection attached, until an approval or the step cap. |
-| `fan-out` | lead | Every other member is asked at once. The lead then gets all the answers and combines them into one plan. |
-| `round-robin` | none | Each member speaks in turn, seeing what the others said, for two rounds. |
-| `swarm` | lead | A team's kickoff. Each member checks in, in turn, saying which part it would take. The lead then splits the task into child tasks, one per member. This is what [`mycelium swarm`](#swarm) runs. |
-
-Any member can fill a role: a registered agent kept awake with
-`mycelium await --loop`, a [persona](#persona), or a person. A person
-answers a step the way they answer anything in a thread, and a stance marker
-left in the text is read the same as one an agent's reply carried. That is
-how a human-in-the-loop step works: the conductor gives the person the floor
-and waits. Ask the conductor what it can run with
+A flow always runs on a task, and everything happens in that task's thread.
+To see the flows a room can run, use
 `mycelium engine invoke conductor "list"`.
 
-## Reading a run
+## Built-in flows
 
-A run is meant to be read from the outside. The conductor opens by saying
-who plays what and the graph it is about to walk:
+| Flow | Roles | What happens |
+|---|---|---|
+| `gated` | proposer, guardian | The proposer says what it plans to do. The guardian approves or rejects it. A rejection goes back to the proposer with the reason, until the guardian approves or the step limit is reached. |
+| `fan-out` | lead | Every other member is asked the question at once. The lead gets all the answers and combines them into one. |
+| `round-robin` | none | Members speak one after another, each seeing what the others said, for two rounds. |
+| `swarm` | lead | Each member says which part of the task it would take. Then the lead splits the task into one child task per member. [`mycelium swarm`](#swarm) starts with this. |
 
+Members approve or reject by ending their reply with
+`[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`.
+
+## Who can take part
+
+Any member can fill a role: your own agent, a [persona](#persona), a
+[worker](#worker), or you. To take a role yourself, put your own handle in the
+message. When it's your turn, reply in the task's thread in the app, or from
+the terminal:
+
+```bash
+mycelium board coordinate work/rotate-signing-key conductor "gated @api @julia: rotate the key"
+
+mycelium await --handle julia
+mycelium respond --handle julia "Not without a canary. [[mycelium: stance=reject]]"
 ```
-Running gated with api as proposer, sec as guardian.
 
-**gated**: A proposer proposes, a guardian approves or blocks; a block sends it back.
-roles: proposer, guardian (bound in that order)
-- propose: asks proposer, then review
-- review: asks guardian, then by stance (accept: approved, reject: propose, default: propose)
-- approved: ends resolved
-up to 6 steps
-```
+## Taking turns
 
-Every turn it puts to a member starts with a line saying which step of
-which flow it is (`gated · review · turn 2 of 6 · sec`), so a block reads as
-the guardian's stance at the review step, not as the conductor blocking
-anyone. When a step branches, the conductor says which way it went
-(`review: sec blocked, on to propose`).
+While a flow is running, only the member whose turn it is can post in the
+task's thread. Anyone else who tries gets an error saying whose turn it is,
+and their message isn't posted. The rest of the room isn't affected: the room
+chat and other tasks' threads stay open to everyone. The members list shows
+who has the turn.
 
-The members named in the summon are bound to roles, not asked a question: a
-persona mentioned there waits for its turn rather than answering the summon,
-and a resident agent that replies before its turn is refused.
+## Following along
 
-## Whose turn it is
+In the task's thread, each question from the conductor shows as one line,
+such as `review → sec · turn 2 of 6`. Click it to see the full prompt.
 
-While a run is open, the task's thread has a **floor**. The conductor holds
-it from the instant the summon lands, and gives it to whoever the current step
-addresses: one member for a role step, everyone at once for a fan-out. A
-write from anyone else is refused with a `409` that says who holds the floor
-and who may speak, so an agent that tried early keeps awaiting rather than
-giving up. A refused write never reaches the transcript, which means it wakes
-nobody. The room's timeline gets a line each time the floor moves, and the
-members rail marks who has it.
+In the app, the flow is drawn at the top of the thread, with the current step
+highlighted and the path taken so far. When the flow finishes, it shows how it
+ended and each step that was taken. If a task has run more than one flow, you
+can open the earlier ones from there.
 
-Nothing else narrows. The room stays open, other threads are untouched, and a
-member joining the room mid-run aborts nothing, because a run is not a
-negotiation and freezes no roster. When the run ends, the floor is released.
+Each run is also saved as a record under `log/episodes/`, with the flow, who
+played each role, and every step taken.
 
-## How a run ends
+## How a flow ends
 
-A run ends at one of its flow's end steps, `resolved` or `rejected`, or at
-the step cap, which counts as `rejected`. The outcome is committed into the
-thread and the record is final: the flow, the whole trace, and every
-envelope. A resolved run resolves no task and compiles nothing into rows.
+A flow ends at one of its end steps, as either `resolved` or `rejected`. If it
+reaches its step limit first, it ends as `rejected`.
+
+Finishing a flow doesn't finish the task. To mark the task done, resolve it as
+usual with `mycelium board resolve`.
 
 ## Writing your own flow
 
-A flow is a memory under `protocols/`. A room that writes `protocols/gated`
-reshapes the built-in under that name; a new name adds a flow. Nothing writes
-a built-in there by itself; to start from one, ask the conductor for it and
-save what it says:
+A flow is a memory under `protocols/`, written in YAML. Saving one as
+`protocols/gated` replaces the built-in `gated` in that room, and a new name
+adds a new flow.
+
+To start from a built-in, print it and edit it:
 
 ```bash
 mycelium engine invoke conductor "show gated"
 ```
 
-The body is YAML:
+For example:
 
 ```yaml
 description: A reviewer signs off before the author ships.
@@ -2337,135 +2182,152 @@ steps:
     next: review
   - id: review
     to: reviewer
-    prompt: "On the table:\n\n{reply}\n\nApprove or block, ending with a stance marker."
+    prompt: "On the table:\n\n{reply}\n\nApprove or reject, ending with a stance marker."
     next: {accept: done, reject: draft, default: draft}
   - id: done
     end: resolved
 ```
 
-A step addresses a role, or `each` (every member, one at a time), `all`
-(every member, at once) or `workers` (every member not bound to a role).
-`wait: none` makes a step fire and forget. `rounds` repeats an `each` or `all`
-step. `next` is one step id, or a map from `accept`, `reject`, `silent` and
-`default` to step ids. Prompts can carry `{ask}`, `{reply}` (the most recent
-answer), `{replies}` (everyone's latest, one per line), `{handles}`, `{round}`
-and `{rounds}`. Every step must lead somewhere, and every flow needs an end
-step; a spec that does not hold together is refused rather than run
-half-read. Each run copies the flow onto its own episode, so editing the
-memory changes the next run and never a record.
+Each step has an `id`, and either asks someone (`to`) and says where to go
+next (`next`), or ends the flow (`end: resolved` or `end: rejected`).
+
+`to` can be:
+
+- a role, such as `author`
+- `each`: every member, one at a time
+- `all`: every member at once
+- `workers`: every member that doesn't have a role
+
+`next` is either a step id, or a map that picks the next step from the answer:
+`accept`, `reject`, `silent` (no answer in time) and `default`.
+
+Other options:
+
+- `rounds: 2` repeats an `each` or `all` step.
+- `wait: none` asks without waiting for an answer.
+- `max_steps` limits how many steps a run can take.
+
+Prompts can use these placeholders:
+
+| Placeholder | Filled with |
+|---|---|
+| `{ask}` | The question from the message that started the flow. |
+| `{task}` | The task's key, such as `work/rotate-signing-key`. |
+| `{reply}` | The last answer. |
+| `{replies}` | Every member's latest answer, one per line. |
+| `{handles}` | The members taking part. |
+| `{round}`, `{rounds}` | The current round and the total. |
+
+If a flow doesn't make sense, for example a step leads nowhere or there's no
+end step, the conductor refuses to run it and says why. Each run keeps its own
+copy of the flow, so editing the memory changes future runs, not past records.
 
 
 ---
 
 # Worker
 
-A worker is an [engine](#engines) that plays a teammate. Give it a task and
-it does the task, asks another member to check the work, and resolves it when
-the check passes. It runs on the hub, as a coding agent with its own checkout,
-so a room can have a working team with nothing installed but the hub. It is
-what [`mycelium swarm --server`](#swarm) fills a room with.
+A worker is a teammate that runs on the hub. Give it a task and it does the
+work, asks another member to review it, and makes the changes the review asks
+for. It's a coding agent: it can read and edit files and run commands. When
+you run [`mycelium swarm --server`](#swarm), the team is made of workers.
 
 ```bash
 mycelium engine create agent-1 --kind worker --room launch-plan
 mycelium engine create agent-2 --kind worker --room launch-plan
+
 mycelium board new "Draft the launch checklist" --assign @agent-1 --room launch-plan
 ```
 
-Filing a task for a worker is enough: it claims the task and posts its work
-in the task's thread.
+Assigning a task to a worker is enough to get it started. It claims the task
+and posts its work in the task's thread.
 
-## What it can do
+## When it does something
 
-A worker is a coding agent. It can read, edit and write files and run
-commands, in its own checkout on the hub:
+A worker acts when:
 
-- The room has one git repository on the hub. It is a clone of the repository
-  the swarm was started on, or a new, empty one if it was given none.
-- Each worker works in its own worktree of it, on its own branch
-  (`swarm/agent-1`, `swarm/agent-2`, …), so two workers never edit the same
-  files at once.
-- It commits its work to its branch and says in the thread what it did. A
-  reviewer reads the author's branch and runs what checks it. The lead merges
-  every part's branch when the last one is done.
+- **a task is assigned to it.** It does the task, says in the thread what it
+  did, and asks a teammate to review it.
+- **someone mentions it.** It answers in the thread where it was mentioned. If
+  it was asked to review something, it says what's good and what needs to
+  change. If it was asked to fix something, it posts the new version.
+- **it's their turn in a flow.** A worker can take a role in a
+  [conductor](#conductor) flow like any other member.
+- **every part of a task it split up is done.** It combines the parts, posts
+  the result, and marks the task done.
 
-The workspace is under the hub's data directory, at
-`~/.mycelium/workspaces/<room>/` on a hub started with `mycelium up`. Every
-branch is in its `repo/`, so from your machine you can read, check out or
-push them there (`git -C ~/.mycelium/workspaces/<room>/repo log swarm/agent-1`).
-The worktrees beside it record the hub container's paths, so work with the
-branches in `repo/` rather than inside a worktree.
+## Where it works
 
-What it does to the board, it writes as a line in its reply, and the hub
-carries it out:
+Each room with workers has a git repository on the hub. When a swarm is
+started with a repository, this is a clone of it; otherwise it starts empty.
+Each worker gets its own copy to work in, on its own branch (`swarm/agent-1`,
+`swarm/agent-2`, and so on), and commits its work there. Reviewers look at the
+author's branch. At the end, the member who split up the task merges all the
+branches together.
 
-| Line | What happens |
+On a hub started with `mycelium up`, the repository is at
+`~/.mycelium/workspaces/<room>/repo`, so you can look at the branches from your
+own machine or push them somewhere:
+
+```bash
+git -C ~/.mycelium/workspaces/<room>/repo log swarm/agent-1
+```
+
+Use the branches from `repo/` rather than from the workers' own folders next
+to it. Those folders only work from inside the hub's container.
+
+## Reviews
+
+Every part of a task is reviewed by another worker before it's done. Workers
+review in a circle: agent-1's work goes to agent-2, agent-2's to agent-3, and
+the last one's back to agent-1. This way the reviewing is shared across the
+team instead of all landing on one member.
+
+If a worker finishes something and forgets to ask for a review, the hub sends
+it to the reviewer anyway. If a reviewer asks for changes without saying who
+should make them, they go back to the author. A part gets up to three rounds
+of review. On the third, the reviewer approves it if it's good enough and
+notes anything left to do.
+
+Only the reviewer can mark a part done. The author can't mark its own work
+done before someone else has looked at it.
+
+## Changing the board
+
+A worker files and finishes tasks by putting a line in its reply:
+
+| Line | What it does |
 |---|---|
-| `[[new: <title> -> @member]]` | A child task of the thread's task is filed, given to that member. |
-| `[[done]]` | The thread's task is resolved. |
+| `[[new: <title> -> @member]]` | Adds a child task under the current task, assigned to that member. |
+| `[[done]]` | Marks the current task done. |
 
-The lines are taken out before the reply is posted.
+These lines are removed before the reply is posted.
 
-When a task is resolved, its result is written into the task itself, under
-its title: a part keeps the final version its holder posted, and the parent
-keeps the combined result. The thread is where the work was argued; the task
-is what the room remembers, searchable like any memory.
-
-## When it acts
-
-- **A task is filed for it.** It claims the task, does it in its checkout,
-  says what it did in the task's thread, and asks its reviewer to look.
-- **Someone mentions it.** It answers where it was asked. Asked to review, it
-  says what is good and what has to change, and resolves the task once it is
-  good. Asked to fix something, it posts the new version and asks again.
-- **A step is put to it.** The [conductor](#conductor) addresses it like any
-  member, so a worker can hold a role in a flow.
-- **The last part of a task it split is done.** It merges the parts'
-  branches, says what the team made in the parent task's thread, and resolves
-  the parent.
-
-## Review
-
-Every part is reviewed by another worker before it is done. The reviewer is
-the next worker in the room, round a ring (agent-1's work goes to agent-2,
-agent-2's to agent-3, the last back to agent-1), so review is spread across the
-team rather than falling to the lead. The author is told who its reviewer is.
-
-A worker is asked to name who it wants to act, but the hub does not rely on
-it: a post on a part that neither resolves it nor mentions anyone is routed.
-The author's post (its work, or a revision) goes to its reviewer, and a review
-asking for changes goes back to the author. So a part cannot stall because a
-model forgot to mention someone. The third time a part comes back for review
-is the last: the reviewer resolves it if it is workable, naming anything left
-for later.
-
-A part is done when its reviewer says so. Its author cannot resolve it before
-anyone else has looked, and a second approval of a part already done changes
-nothing.
+When a task is marked done, its result is saved in the task, under its title.
+That way the result stays in the room's memory, where you can search for it,
+even after the conversation has scrolled away.
 
 ## Limits
 
-A worker may mention its teammates, since asking for a review is the point.
-It cannot mention an engine, so it never summons the aligner or the
-conductor. It takes one turn at a time, and a room allows 60 worker turns in
-total (`WORKER_MAX_TURNS_PER_ROOM`), so workers asking each other things cannot
-go on forever.
+- **One thing at a time.** A worker handles one request at a time, and each
+  request can take up to 10 minutes (`WORKER_PI_TIMEOUT_S`). It remembers
+  earlier requests, but nothing keeps running in between, so it suits steps
+  that take minutes, not jobs that run for hours.
+- **60 turns per room.** Workers in a room can take 60 turns in total
+  (`WORKER_MAX_TURNS_PER_ROOM`), so they can't keep going back and forth
+  forever.
+- **Mentions.** A worker can mention its teammates, but it can't mention
+  engines, so it can't start the aligner or the conductor.
+- **Access.** A worker's commands run inside the hub's backend container, so
+  they can reach anything the backend can, including the room's files and the
+  model's API key. That's fine on a hub only you use. On a shared hub, think
+  about who can start a swarm, or set `WORKER_TOOLS=false` so workers can only
+  write replies, not edit files or run commands. Workers also can't edit files
+  when the OpenShell sandbox is on (`ALIGNER_PI_OPENSHELL`), because it can't
+  see their files yet.
 
-A turn runs for up to ten minutes (`WORKER_PI_TIMEOUT_S`). A worker is
-started for each turn and remembers the ones before it; nothing keeps running
-between turns, so it suits work done in steps of minutes, not a job that runs
-for an hour.
-
-Its commands run inside the hub's backend container, as the backend's user,
-with what that container can reach: the room files and the model key
-included. On a hub you run for yourself, that is like running an agent on your
-own machine. On a hub you share, decide whether you trust everyone who can
-start a swarm with that, or turn tools off with `WORKER_TOOLS=false`, and
-workers go back to only writing. The OpenShell sandbox
-(`ALIGNER_PI_OPENSHELL`) cannot see the checkout yet, so with it on, workers
-only write as well.
-
-Like a persona, its character is its `agents/<handle>/notes` memory. With no
-notes it is a plain, direct teammate.
+Like a persona, a worker takes its character from its notes,
+`agents/<handle>/notes`.
 
 
 ---

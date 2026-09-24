@@ -1,137 +1,96 @@
 # Conductor
 
-The conductor is the [engine](#engines) that runs a **flow inside a task**:
-a fixed shape of who speaks to whom, in what order, and what happens on each
-answer. Where the [aligner](#aligner) brokers a negotiation, the
-conductor walks a graph. It is the engine to reach for when an interaction
-has a shape you already know: a proposal a reviewer must approve, a lead
-asking every worker at once, members speaking in turn.
+The conductor runs a set sequence of turns inside a task, called a flow. For
+example: one member proposes something, another approves or rejects it, and
+a rejection sends it back for another try. The conductor makes sure each
+member speaks when it's their turn, and only then.
 
-It is the one engine with no model of its own. Every judgment in a run, what
-to propose and whether to block it, is made by the members it addresses. The
-conductor only decides whose turn it is, and it enforces that in code: while
-a step is open, only the member it addressed can write into the episode.
-That is the split the whole design rests on. A model sits in each node, and
-code sits on the edges.
+It doesn't use a model. The members do all the thinking; the conductor only
+decides who goes next, based on the flow and on how the last member answered.
 
 ```bash
-# Register it once per room
 mycelium engine create conductor --kind conductor --room sprint-plan
 
-# Open a gated run: @api proposes, @sec approves or blocks
-mycelium engine invoke conductor \
-  "gated @api @sec: rotate the signing key without downtime" -r sprint-plan
-```
-
-The summon names the flow first, then the members in the order the flow's
-roles expect, then the question.
-
-## The run lives in the task's thread
-
-A task is one row on the board and one thread on the channel, and a run
-keeps that: the conductor walks the flow **in the thread it was summoned
-in**. Summon it on a task:
-
-```bash
 mycelium board coordinate work/rotate-signing-key conductor \
   "gated @api @sec: rotate the signing key without downtime"
 ```
 
-Every turn, every reply and the outcome land in that task's thread, where
-`board messages` reads them back. What the run adds is a **record**: an
-[episode](#episodes) of its own under `log/episodes/`, nested in the thread,
-carrying the graph the conductor walked, who was bound to each role, and the
-trace of every step taken. It is written when the run opens and after every
-step, so an open run shows where it stands and a finished one shows the
-shape of the interaction, not only its messages. The closing line names it.
+The message starts with the flow's name, then the members in the order of the
+flow's roles, then the question. Here `api` is the proposer and `sec` is the
+reviewer.
 
-Open the task in the app and the latest run's graph is drawn at the top of
-its thread: the current step lit, the edges taken solid, the member who has
-the floor marked, and the steps taken listed under it. Once the run ends the
-panel shows its outcome and the full trace, and a task that was coordinated
-more than once reaches its earlier runs from the record.
-
-A summon from the room itself is refused, with the `board coordinate` line
-to use instead: the room never holds a floor, and a run belongs to a row.
-`list` and `show` answer anywhere.
-
-## The built-in flows
-
-| Flow | Roles | Shape |
-|---|---|---|
-| `gated` | proposer, guardian | The proposer states what it intends to do. The guardian approves or blocks, ending its reply with `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`. A block sends the proposal back with the objection attached, until an approval or the step cap. |
-| `fan-out` | lead | Every other member is asked at once. The lead then gets all the answers and combines them into one plan. |
-| `round-robin` | none | Each member speaks in turn, seeing what the others said, for two rounds. |
-| `swarm` | lead | A team's kickoff. Each member checks in, in turn, saying which part it would take. The lead then splits the task into child tasks, one per member. This is what [`mycelium swarm`](#swarm) runs. |
-
-Any member can fill a role: a registered agent kept awake with
-`mycelium await --loop`, a [persona](#persona), or a person. A person
-answers a step the way they answer anything in a thread, and a stance marker
-left in the text is read the same as one an agent's reply carried. That is
-how a human-in-the-loop step works: the conductor gives the person the floor
-and waits. Ask the conductor what it can run with
+A flow always runs on a task, and everything happens in that task's thread.
+To see the flows a room can run, use
 `mycelium engine invoke conductor "list"`.
 
-## Reading a run
+## Built-in flows
 
-A run is meant to be read from the outside. The conductor opens by saying
-who plays what and the graph it is about to walk:
+| Flow | Roles | What happens |
+|---|---|---|
+| `gated` | proposer, guardian | The proposer says what it plans to do. The guardian approves or rejects it. A rejection goes back to the proposer with the reason, until the guardian approves or the step limit is reached. |
+| `fan-out` | lead | Every other member is asked the question at once. The lead gets all the answers and combines them into one. |
+| `round-robin` | none | Members speak one after another, each seeing what the others said, for two rounds. |
+| `swarm` | lead | Each member says which part of the task it would take. Then the lead splits the task into one child task per member. [`mycelium swarm`](#swarm) starts with this. |
 
+Members approve or reject by ending their reply with
+`[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`.
+
+## Who can take part
+
+Any member can fill a role: your own agent, a [persona](#persona), a
+[worker](#worker), or you. To take a role yourself, put your own handle in the
+message. When it's your turn, reply in the task's thread in the app, or from
+the terminal:
+
+```bash
+mycelium board coordinate work/rotate-signing-key conductor "gated @api @julia: rotate the key"
+
+mycelium await --handle julia
+mycelium respond --handle julia "Not without a canary. [[mycelium: stance=reject]]"
 ```
-Running gated with api as proposer, sec as guardian.
 
-**gated**: A proposer proposes, a guardian approves or blocks; a block sends it back.
-roles: proposer, guardian (bound in that order)
-- propose: asks proposer, then review
-- review: asks guardian, then by stance (accept: approved, reject: propose, default: propose)
-- approved: ends resolved
-up to 6 steps
-```
+## Taking turns
 
-Every turn it puts to a member starts with a line saying which step of
-which flow it is (`gated · review · turn 2 of 6 · sec`), so a block reads as
-the guardian's stance at the review step, not as the conductor blocking
-anyone. When a step branches, the conductor says which way it went
-(`review: sec blocked, on to propose`).
+While a flow is running, only the member whose turn it is can post in the
+task's thread. Anyone else who tries gets an error saying whose turn it is,
+and their message isn't posted. The rest of the room isn't affected: the room
+chat and other tasks' threads stay open to everyone. The members list shows
+who has the turn.
 
-The members named in the summon are bound to roles, not asked a question: a
-persona mentioned there waits for its turn rather than answering the summon,
-and a resident agent that replies before its turn is refused.
+## Following along
 
-## Whose turn it is
+In the task's thread, each question from the conductor shows as one line,
+such as `review → sec · turn 2 of 6`. Click it to see the full prompt.
 
-While a run is open, the task's thread has a **floor**. The conductor holds
-it from the instant the summon lands, and gives it to whoever the current step
-addresses: one member for a role step, everyone at once for a fan-out. A
-write from anyone else is refused with a `409` that says who holds the floor
-and who may speak, so an agent that tried early keeps awaiting rather than
-giving up. A refused write never reaches the transcript, which means it wakes
-nobody. The room's timeline gets a line each time the floor moves, and the
-members rail marks who has it.
+In the app, the flow is drawn at the top of the thread, with the current step
+highlighted and the path taken so far. When the flow finishes, it shows how it
+ended and each step that was taken. If a task has run more than one flow, you
+can open the earlier ones from there.
 
-Nothing else narrows. The room stays open, other threads are untouched, and a
-member joining the room mid-run aborts nothing, because a run is not a
-negotiation and freezes no roster. When the run ends, the floor is released.
+Each run is also saved as a record under `log/episodes/`, with the flow, who
+played each role, and every step taken.
 
-## How a run ends
+## How a flow ends
 
-A run ends at one of its flow's end steps, `resolved` or `rejected`, or at
-the step cap, which counts as `rejected`. The outcome is committed into the
-thread and the record is final: the flow, the whole trace, and every
-envelope. A resolved run resolves no task and compiles nothing into rows.
+A flow ends at one of its end steps, as either `resolved` or `rejected`. If it
+reaches its step limit first, it ends as `rejected`.
+
+Finishing a flow doesn't finish the task. To mark the task done, resolve it as
+usual with `mycelium board resolve`.
 
 ## Writing your own flow
 
-A flow is a memory under `protocols/`. A room that writes `protocols/gated`
-reshapes the built-in under that name; a new name adds a flow. Nothing writes
-a built-in there by itself; to start from one, ask the conductor for it and
-save what it says:
+A flow is a memory under `protocols/`, written in YAML. Saving one as
+`protocols/gated` replaces the built-in `gated` in that room, and a new name
+adds a new flow.
+
+To start from a built-in, print it and edit it:
 
 ```bash
 mycelium engine invoke conductor "show gated"
 ```
 
-The body is YAML:
+For example:
 
 ```yaml
 description: A reviewer signs off before the author ships.
@@ -144,19 +103,42 @@ steps:
     next: review
   - id: review
     to: reviewer
-    prompt: "On the table:\n\n{reply}\n\nApprove or block, ending with a stance marker."
+    prompt: "On the table:\n\n{reply}\n\nApprove or reject, ending with a stance marker."
     next: {accept: done, reject: draft, default: draft}
   - id: done
     end: resolved
 ```
 
-A step addresses a role, or `each` (every member, one at a time), `all`
-(every member, at once) or `workers` (every member not bound to a role).
-`wait: none` makes a step fire and forget. `rounds` repeats an `each` or `all`
-step. `next` is one step id, or a map from `accept`, `reject`, `silent` and
-`default` to step ids. Prompts can carry `{ask}`, `{reply}` (the most recent
-answer), `{replies}` (everyone's latest, one per line), `{handles}`, `{round}`
-and `{rounds}`. Every step must lead somewhere, and every flow needs an end
-step; a spec that does not hold together is refused rather than run
-half-read. Each run copies the flow onto its own episode, so editing the
-memory changes the next run and never a record.
+Each step has an `id`, and either asks someone (`to`) and says where to go
+next (`next`), or ends the flow (`end: resolved` or `end: rejected`).
+
+`to` can be:
+
+- a role, such as `author`
+- `each`: every member, one at a time
+- `all`: every member at once
+- `workers`: every member that doesn't have a role
+
+`next` is either a step id, or a map that picks the next step from the answer:
+`accept`, `reject`, `silent` (no answer in time) and `default`.
+
+Other options:
+
+- `rounds: 2` repeats an `each` or `all` step.
+- `wait: none` asks without waiting for an answer.
+- `max_steps` limits how many steps a run can take.
+
+Prompts can use these placeholders:
+
+| Placeholder | Filled with |
+|---|---|
+| `{ask}` | The question from the message that started the flow. |
+| `{task}` | The task's key, such as `work/rotate-signing-key`. |
+| `{reply}` | The last answer. |
+| `{replies}` | Every member's latest answer, one per line. |
+| `{handles}` | The members taking part. |
+| `{round}`, `{rounds}` | The current round and the total. |
+
+If a flow doesn't make sense, for example a step leads nowhere or there's no
+end step, the conductor refuses to run it and says why. Each run keeps its own
+copy of the flow, so editing the memory changes future runs, not past records.

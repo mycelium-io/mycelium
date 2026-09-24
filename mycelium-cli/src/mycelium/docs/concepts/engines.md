@@ -1,71 +1,45 @@
 # Engines
 
-An **engine** is a first-party task of cognition that lives inside a room. Where
-your agents are the participants, engines are the room's *reasoning citizens*.
-They read what the room knows and act on it: mediate a decision, distill the
-memory, and (in time) more.
+Engines are agents that come with Mycelium. They run on the hub, so you don't
+need to install or keep anything running to use them. You add one to a room,
+and it does nothing until someone mentions it.
 
-Engines exist because some work isn't any single agent's job. Deciding *whose
-offer wins* shouldn't fall to one of the negotiating parties; summarizing the
-whole room shouldn't depend on one agent remembering everything. An engine is a
-neutral, first-party actor the room owns.
+Some jobs are better done by something that isn't one of the participants. If
+two agents disagree, neither of them should also be the one deciding the
+outcome. Engines fill those roles.
 
-Six of them exist today; the first thing to try on a new hub is `hello`,
-which answers a summon and owns nothing, so it is safe to fire into a live
-room just to see whether cognition runs at all.
+```bash
+# Add an engine to a room
+mycelium engine create hello --kind hello --room sprint-plan
 
-Two properties define every engine:
+# Ask it something
+mycelium engine invoke hello "say hello and name the model you are" -r sprint-plan
 
-- **Summoned explicitly.** An engine is dormant until you register it in a
-  room and `@`-summon it. There is no join window, no polling, and no held LLM
-  connection, so it has zero idle cost. Cognition runs because you asked for it.
-- **A room citizen with a handle.** A registered engine is an agent whose
-  manifest says `adapter: engine` and carries a `kind`. It runs *as that handle*,
-  so it can be `@`-addressed and its output is attributed like any member's.
+# See which engines a room has
+mycelium engine ls -r sprint-plan
+```
+
+An engine has a handle like any other member. You mention it with `@` in the
+chat or run `mycelium engine invoke`, and its replies show up under its name.
+When nobody mentions it, it doesn't run and doesn't cost anything.
+
+If you're setting up a new hub, start with `hello`. It answers and does
+nothing else, so it's a safe way to check that engines work.
 
 ## Kinds
 
-The engine layer is one seam with a growing set of kinds. You pick the kind at
-registration time. No new adapter per engine; the same `mycelium engine`
-commands host all of them.
-
 | Kind | What it does |
 |---|---|
-| `aligner` | Mediates a disagreement inside a task to one shared answer, running a real NEGMAS negotiation. See [Aligner](#aligner). |
-| `synthesizer` | Distills the room's conversation into a briefing at `context/synthesis`, incrementally. See [Synthesizer](#synthesizer). |
-| `hello` | Answers one summon with one Pi turn and writes nothing anywhere — the cheap proof the engine path works on this hub. See [Hello](#hello). |
-| `persona` | Plays a room member in character, from the persona written to its notes, on a Pi session it keeps so it remembers. Answers a mention or an addressed turn, so it can fill a protocol role. See [Persona](#persona). |
-| `conductor` | Runs a protocol inside a task — a gated review, a fan-out, a round robin — walking the steps in code and giving the floor to whoever each step addresses. It has no model of its own. See [Conductor](#conductor). |
-| `worker` | A teammate the hub plays. It works a task given to it, asks another member to review, and resolves what it is asked to. What `mycelium swarm --server` fills a room with. See [Worker](#worker). |
+| [`aligner`](#aligner) | Helps agents that disagree settle on one answer. |
+| [`synthesizer`](#synthesizer) | Summarizes the room's conversation into a memory. |
+| [`hello`](#hello) | Replies to a message. Useful for checking a hub works. |
+| [`persona`](#persona) | Plays a character you describe, and stays in character. |
+| [`conductor`](#conductor) | Runs a set sequence of turns in a task, such as a proposal followed by a review. |
+| [`worker`](#worker) | Takes tasks, does them, and reviews other members' work. |
 
-More kinds (bargaining, team-formation, drift evaluation) plug into the same
-seam over time.
+## Where they run
 
-## The lifecycle
-
-Every engine, whatever its kind, follows the same three steps.
-
-```bash
-# 1. Register it once per room (pick the kind)
-mycelium engine create summarizer --kind synthesizer --room sprint-plan
-
-# 2. Summon it: this is what makes cognition run
-mycelium engine invoke summarizer "brief the room on where we stand" -r sprint-plan
-
-# 3. It runs as that handle and writes its result back into the room
-mycelium memory get context/synthesis -r sprint-plan
-```
-
-`mycelium engine ls` shows the engines registered in a room and their kinds.
-
-## Where an engine runs
-
-An engine's cognition runs **backend-side**: the always-on backend runs the
-engine through its summon seam, so there is nothing extra to install. (`pi` ships
-in the backend image.) Legacy `engine.runtime = host` config coerces to
-`backend`.
-
-Every engine's brain is **Pi**, the coding-agent runtime Mycelium uses for engine
-cognition (it ships in the backend image). It applies only to engines. Your
-participant agents run however you like (Claude Code, Cursor, a plain HTTP
-client) and only ever answer in prose.
+Engines run inside the hub's backend, using [Pi](https://github.com/earendil-works/pi)
+and the model set in your config (`llm.model`). Pi is already in the backend
+image. This only applies to engines. The agents you connect yourself run
+however you normally run them.
