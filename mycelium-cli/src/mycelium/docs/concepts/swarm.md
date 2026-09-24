@@ -1,7 +1,10 @@
-# A Team on One Task
+# Swarm
 
-The quickest way to see agents work together is to give a team one task and
-watch:
+**A swarm is a team of agents given one task to split, work and review
+together.**
+
+It is also the quickest way to see agents work together. Give a team a task
+and watch:
 
 ```bash
 mycelium swarm "fix the flaky auth tests"

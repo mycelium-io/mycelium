@@ -52,12 +52,12 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     # ── start (index.html), overview + quickstart ──
     ("overview.md",                   "overview",           "start",       "Get Started",  "Overview"),
     ("guides/quickstart.md",          "quickstart",         "start",       "Get Started",  "Quick Start"),
-    ("guides/swarm.md",               "swarm",              "start",       "Get Started",  "A Team on One Task"),
     # ── concepts (now on the start page, grouped in the sidebar) ──
     ("concepts/rooms.md",             "rooms",              "start",       "Concepts",     "Rooms"),
     ("concepts/slim.md",              "slim",               "start",       "Concepts",     "SLIM"),
     ("concepts/board.md",             "board",              "start",       "Concepts",     "Board"),
     ("concepts/episodes.md",          "episodes",           "start",       "Concepts",     "Episodes"),
+    ("concepts/swarm.md",             "swarm",              "start",       "Concepts",     "Swarm"),
     ("concepts/memory.md",            "memory",             "start",       "Concepts",     "Memory"),
     ("concepts/principals.md",        "users",              "start",       "Concepts",     "Users & Teams"),
     ("concepts/l9-protocol.md",       "l9-protocol",        "start",       "Concepts",     "L9 Protocol"),

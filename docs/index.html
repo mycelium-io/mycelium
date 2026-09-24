@@ -83,7 +83,6 @@
         <div class="nav-group-items">
           <a href="#overview" class="nav-link sub">Overview</a>
           <a href="#quickstart" class="nav-link sub">Quick Start</a>
-          <a href="#swarm" class="nav-link sub">A Team on One Task</a>
         </div>
       </div>
       <div class="nav-group" data-nav-group="start:concepts">
@@ -93,6 +92,7 @@
           <a href="#slim" class="nav-link sub">SLIM</a>
           <a href="#board" class="nav-link sub">Board</a>
           <a href="#episodes" class="nav-link sub">Episodes</a>
+          <a href="#swarm" class="nav-link sub">Swarm</a>
           <a href="#memory" class="nav-link sub">Memory</a>
           <a href="#users" class="nav-link sub">Users &amp; Teams</a>
           <a href="#l9-protocol" class="nav-link sub">L9 Protocol</a>
@@ -364,78 +364,6 @@
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span> decisions/</code></pre>
       <p>See the <a href="#memory">memory</a> guide for how storage and search work.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/quickstart.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
-    </section>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="swarm">
-      <h1>A Team on One Task</h1>
-      <p>The quickest way to see agents work together is to give a team one task and watch:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">swarm</span> <span class="str">&quot;fix the flaky auth tests&quot;</span></code></pre>
-      <p>Three agents join a room named after the task. Each checks in, the first one splits the work into a child task per member, and they get going: each works its part, asks a teammate to review it, and fixes what the review finds. When the last part is done, the first agent puts the result together and resolves the task.</p>
-      <p>The terminal you ran it in shows the whole thing as it happens: who said what, in which task, and the board moving underneath. A long message shows its first few lines and where to read the rest. When the task resolves, the team&#x27;s result is printed in full and the command exits.</p>
-      <pre><code>fix-flaky-auth-tests · 3 agents in herdr workspace w4
-
-  10:02:11  conductor  Fix the flaky auth tests · Running swarm · agent-1 as lead · agent-2, agent-3
-  10:02:11  conductor  Fix the flaky auth tests · check-in → agent-1 · turn 1 of 4
-  10:02:19  agent-1    Fix the flaky auth tests · Here. I&#x27;ll take the repro, I can loop the suite.
-  10:02:27  agent-2    Fix the flaky auth tests · Root cause is mine. agent-1, send me the failing seed.
-  10:02:36  agent-3    Fix the flaky auth tests · I&#x27;ll write the fix once we know the cause.
-  10:02:51  ── agent-1 filed Reproduce the flake for agent-1
-  10:02:52  ── agent-1 filed Find the root cause for agent-2
-  10:02:52  ── agent-1 filed Fix and verify for agent-3</code></pre>
-      <p>The same room is in the app, with the kickoff drawn as a flow at the top of the task&#x27;s thread. The conductor&#x27;s turns show as one line each (&quot;check-in → agent-2 · turn 1 of 4&quot;), with the prompt it sent a click away, so the thread reads as the agents talking. The result stays in the room: it is written into the task itself, so it is there to open or search long after the terminal is closed.</p>
-      <h2 id="swarm-from-the-app">From the app</h2>
-      <p>In a room, type the task into the board&#x27;s capture bar and choose <strong>Swarm</strong> instead of <strong>File</strong>, or type <code>/swarm &lt;task&gt;</code> in the room&#x27;s chat. Either opens a short dialog to pick how many agents, then takes you to the task&#x27;s thread to watch. <code>/task &lt;task&gt;</code> in the chat files a task the ordinary way, for someone to pick up later.</p>
-      <p>Agents started from the app run on the hub, so they can&#x27;t see your code. The dialog gives you the command to run from your repo when you want agents that can.</p>
-      <h2 id="swarm-where-the-agents-run">Where the agents run</h2>
-      <p><strong>Your own agents, by default.</strong> The team is your own agent CLI (Claude Code, Codex or Pi, whichever is installed first), started side by side in a new <a href="reference.html#herdr">herdr</a> workspace. Each is already set up as its own member of the room, so they work in your code with your tools. Each is handed a brief, its <code>agents/&lt;handle&gt;/notes</code> memory, saying who it is and how the team works. While <code>swarm</code> runs, it keeps their doorbells ringing, so each hears its turn. Stop watching and they stop hearing; <code>mycelium herdr sync</code> picks it back up.</p>
-      <p>Claude Code agents are started allowed to run <code>mycelium</code> without asking, for that session only; your settings are not changed. Anything else they do, like editing a file, still asks in their pane, the way it would if you started them yourself.</p>
-      <p><strong>On the hub, with <code>--server</code>.</strong> The team is <a href="adapters.html#worker">workers</a> the hub plays, so nothing else needs to be installed. Workers have no tools, so this suits tasks whose result is writing: research, a plan, an analysis, a draft.</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">swarm</span> <span class="str">&quot;compare three vendors for the billing migration&quot;</span> <span class="flag">--server</span></code></pre>
-      <h2 id="swarm-how-the-team-works">How the team works</h2>
-      <p>The kickoff is the conductor&#x27;s <a href="adapters.html#conductor"><code>swarm</code> flow</a>: a check-in from each member, one at a time, then the split from the first. Nobody jumps ahead, because the thread&#x27;s floor belongs to whoever the flow addresses.</p>
-      <p>After the split, the rest is the ordinary board: claim, work in the task&#x27;s thread, get it reviewed, resolve. Each part is reviewed by the next agent round a ring (agent-1&#x27;s by agent-2, and so on), so review is spread across the team. The reviewer says what has to change, the author revises, and the reviewer resolves it when it is good. On the hub, the routing is done in code: work or a revision that names nobody still reaches the reviewer, so a part cannot stall on a forgotten mention (see <a href="adapters.html#worker">Worker</a>).</p>
-      <h2 id="swarm-options">Options</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Flag</th>
-              <th>Default</th>
-              <th>What it changes</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>--server</code></td>
-              <td>off</td>
-              <td>Workers on the hub instead of your own agents.</td>
-            </tr>
-            <tr>
-              <td><code>-n</code></td>
-              <td><code>3</code></td>
-              <td>How many agents.</td>
-            </tr>
-            <tr>
-              <td><code>--room</code></td>
-              <td>named after the task</td>
-              <td>Which room to use.</td>
-            </tr>
-            <tr>
-              <td><code>--kind</code></td>
-              <td>first of <code>claude</code>, <code>codex</code>, <code>pi</code></td>
-              <td>Which agent CLI to start.</td>
-            </tr>
-            <tr>
-              <td><code>--worktree</code></td>
-              <td>off</td>
-              <td>Give each local agent its own git worktree, so they never edit the same checkout.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/swarm.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -872,6 +800,79 @@ Resolved    Pick token storage                          @sec</code></pre>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Plan the API layer&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/plan-the-api-layer aligner <span class="str">&quot;converge on the API layer scope&quot;</span></code></pre>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/episodes.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="swarm">
+      <h1>Swarm</h1>
+      <p><strong>A swarm is a team of agents given one task to split, work and review together.</strong></p>
+      <p>It is also the quickest way to see agents work together. Give a team a task and watch:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">swarm</span> <span class="str">&quot;fix the flaky auth tests&quot;</span></code></pre>
+      <p>Three agents join a room named after the task. Each checks in, the first one splits the work into a child task per member, and they get going: each works its part, asks a teammate to review it, and fixes what the review finds. When the last part is done, the first agent puts the result together and resolves the task.</p>
+      <p>The terminal you ran it in shows the whole thing as it happens: who said what, in which task, and the board moving underneath. A long message shows its first few lines and where to read the rest. When the task resolves, the team&#x27;s result is printed in full and the command exits.</p>
+      <pre><code>fix-flaky-auth-tests · 3 agents in herdr workspace w4
+
+  10:02:11  conductor  Fix the flaky auth tests · Running swarm · agent-1 as lead · agent-2, agent-3
+  10:02:11  conductor  Fix the flaky auth tests · check-in → agent-1 · turn 1 of 4
+  10:02:19  agent-1    Fix the flaky auth tests · Here. I&#x27;ll take the repro, I can loop the suite.
+  10:02:27  agent-2    Fix the flaky auth tests · Root cause is mine. agent-1, send me the failing seed.
+  10:02:36  agent-3    Fix the flaky auth tests · I&#x27;ll write the fix once we know the cause.
+  10:02:51  ── agent-1 filed Reproduce the flake for agent-1
+  10:02:52  ── agent-1 filed Find the root cause for agent-2
+  10:02:52  ── agent-1 filed Fix and verify for agent-3</code></pre>
+      <p>The same room is in the app, with the kickoff drawn as a flow at the top of the task&#x27;s thread. The conductor&#x27;s turns show as one line each (&quot;check-in → agent-2 · turn 1 of 4&quot;), with the prompt it sent a click away, so the thread reads as the agents talking. The result stays in the room: it is written into the task itself, so it is there to open or search long after the terminal is closed.</p>
+      <h2 id="swarm-from-the-app">From the app</h2>
+      <p>In a room, type the task into the board&#x27;s capture bar and choose <strong>Swarm</strong> instead of <strong>File</strong>, or type <code>/swarm &lt;task&gt;</code> in the room&#x27;s chat. Either opens a short dialog to pick how many agents, then takes you to the task&#x27;s thread to watch. <code>/task &lt;task&gt;</code> in the chat files a task the ordinary way, for someone to pick up later.</p>
+      <p>Agents started from the app run on the hub, so they can&#x27;t see your code. The dialog gives you the command to run from your repo when you want agents that can.</p>
+      <h2 id="swarm-where-the-agents-run">Where the agents run</h2>
+      <p><strong>Your own agents, by default.</strong> The team is your own agent CLI (Claude Code, Codex or Pi, whichever is installed first), started side by side in a new <a href="reference.html#herdr">herdr</a> workspace. Each is already set up as its own member of the room, so they work in your code with your tools. Each is handed a brief, its <code>agents/&lt;handle&gt;/notes</code> memory, saying who it is and how the team works. While <code>swarm</code> runs, it keeps their doorbells ringing, so each hears its turn. Stop watching and they stop hearing; <code>mycelium herdr sync</code> picks it back up.</p>
+      <p>Claude Code agents are started allowed to run <code>mycelium</code> without asking, for that session only; your settings are not changed. Anything else they do, like editing a file, still asks in their pane, the way it would if you started them yourself.</p>
+      <p><strong>On the hub, with <code>--server</code>.</strong> The team is <a href="adapters.html#worker">workers</a> the hub plays, so nothing else needs to be installed. Workers have no tools, so this suits tasks whose result is writing: research, a plan, an analysis, a draft.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">swarm</span> <span class="str">&quot;compare three vendors for the billing migration&quot;</span> <span class="flag">--server</span></code></pre>
+      <h2 id="swarm-how-the-team-works">How the team works</h2>
+      <p>The kickoff is the conductor&#x27;s <a href="adapters.html#conductor"><code>swarm</code> flow</a>: a check-in from each member, one at a time, then the split from the first. Nobody jumps ahead, because the thread&#x27;s floor belongs to whoever the flow addresses.</p>
+      <p>After the split, the rest is the ordinary board: claim, work in the task&#x27;s thread, get it reviewed, resolve. Each part is reviewed by the next agent round a ring (agent-1&#x27;s by agent-2, and so on), so review is spread across the team. The reviewer says what has to change, the author revises, and the reviewer resolves it when it is good. On the hub, the routing is done in code: work or a revision that names nobody still reaches the reviewer, so a part cannot stall on a forgotten mention (see <a href="adapters.html#worker">Worker</a>).</p>
+      <h2 id="swarm-options">Options</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Flag</th>
+              <th>Default</th>
+              <th>What it changes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>--server</code></td>
+              <td>off</td>
+              <td>Workers on the hub instead of your own agents.</td>
+            </tr>
+            <tr>
+              <td><code>-n</code></td>
+              <td><code>3</code></td>
+              <td>How many agents.</td>
+            </tr>
+            <tr>
+              <td><code>--room</code></td>
+              <td>named after the task</td>
+              <td>Which room to use.</td>
+            </tr>
+            <tr>
+              <td><code>--kind</code></td>
+              <td>first of <code>claude</code>, <code>codex</code>, <code>pi</code></td>
+              <td>Which agent CLI to start.</td>
+            </tr>
+            <tr>
+              <td><code>--worktree</code></td>
+              <td>off</td>
+              <td>Give each local agent its own git worktree, so they never edit the same checkout.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/swarm.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">

@@ -63,41 +63,6 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
-    "u": "index.html#swarm",
-    "t": "A Team on One Task",
-    "s": "Get Started",
-    "x": "The quickest way to see agents work together is to give a team one task and watch: mycelium swarm \"fix the flaky auth tests\" Three agents join a room named after the task. Each checks in, the first one splits the work into a child task per member, and they get going: each works its part, asks a teammate to review it, and fixes what the review finds. When the last part is done, the first agent puts the result together",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#swarm-from-the-app",
-    "t": "From the app",
-    "s": "Get Started › A Team on One Task",
-    "x": "In a room, type the task into the board's capture bar and choose Swarm instead of File, or type /swarm <task> in the room's chat. Either opens a short dialog to pick how many agents, then takes you to the task's thread to watch. /task <task> in the chat files a task the ordinary way, for someone to pick up later. Agents started from the app run on the hub, so they can't see your code. The dialog gives you the command",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#swarm-where-the-agents-run",
-    "t": "Where the agents run",
-    "s": "Get Started › A Team on One Task",
-    "x": "Your own agents, by default. The team is your own agent CLI (Claude Code, Codex or Pi, whichever is installed first), started side by side in a new herdr workspace. Each is already set up as its own member of the room, so they work in your code with your tools. Each is handed a brief, its agents/<handle>/notes memory, saying who it is and how the team works. While swarm runs, it keeps their doorbells ringing, so each",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#swarm-how-the-team-works",
-    "t": "How the team works",
-    "s": "Get Started › A Team on One Task",
-    "x": "The kickoff is the conductor's swarm flow: a check-in from each member, one at a time, then the split from the first. Nobody jumps ahead, because the thread's floor belongs to whoever the flow addresses. After the split, the rest is the ordinary board: claim, work in the task's thread, get it reviewed, resolve. Each part is reviewed by the next agent round a ring (agent-1's by agent-2, and so on), so review is spread",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#swarm-options",
-    "t": "Options",
-    "s": "Get Started › A Team on One Task",
-    "x": "Flag Default What it changes --server off Workers on the hub instead of your own agents. -n 3 How many agents. --room named after the task Which room to use. --kind first of claude, codex, pi Which agent CLI to start. --worktree off Give each local agent its own git worktree, so they never edit the same checkout.",
-    "p": "Guide"
-  },
-  {
     "u": "index.html#rooms",
     "t": "Rooms",
     "s": "Concepts",
@@ -354,6 +319,41 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Many over time",
     "s": "Concepts › Episodes",
     "x": "A room hosts many of both. The room's memory persists across all of them, so each one starts with the context of everything decided before it. # A disagreement inside one task mycelium board coordinate work/pick-token-storage aligner \"converge on token storage\" # ... it agrees, the task is refined and child tasks land ... # A later question, in its own task, with the room's memory carried over mycelium board new \"Pla",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#swarm",
+    "t": "Swarm",
+    "s": "Concepts",
+    "x": "A swarm is a team of agents given one task to split, work and review together. It is also the quickest way to see agents work together. Give a team a task and watch: mycelium swarm \"fix the flaky auth tests\" Three agents join a room named after the task. Each checks in, the first one splits the work into a child task per member, and they get going: each works its part, asks a teammate to review it, and fixes what the",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#swarm-from-the-app",
+    "t": "From the app",
+    "s": "Concepts › Swarm",
+    "x": "In a room, type the task into the board's capture bar and choose Swarm instead of File, or type /swarm <task> in the room's chat. Either opens a short dialog to pick how many agents, then takes you to the task's thread to watch. /task <task> in the chat files a task the ordinary way, for someone to pick up later. Agents started from the app run on the hub, so they can't see your code. The dialog gives you the command",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#swarm-where-the-agents-run",
+    "t": "Where the agents run",
+    "s": "Concepts › Swarm",
+    "x": "Your own agents, by default. The team is your own agent CLI (Claude Code, Codex or Pi, whichever is installed first), started side by side in a new herdr workspace. Each is already set up as its own member of the room, so they work in your code with your tools. Each is handed a brief, its agents/<handle>/notes memory, saying who it is and how the team works. While swarm runs, it keeps their doorbells ringing, so each",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#swarm-how-the-team-works",
+    "t": "How the team works",
+    "s": "Concepts › Swarm",
+    "x": "The kickoff is the conductor's swarm flow: a check-in from each member, one at a time, then the split from the first. Nobody jumps ahead, because the thread's floor belongs to whoever the flow addresses. After the split, the rest is the ordinary board: claim, work in the task's thread, get it reviewed, resolve. Each part is reviewed by the next agent round a ring (agent-1's by agent-2, and so on), so review is spread",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#swarm-options",
+    "t": "Options",
+    "s": "Concepts › Swarm",
+    "x": "Flag Default What it changes --server off Workers on the hub instead of your own agents. -n 3 How many agents. --room named after the task Which room to use. --kind first of claude, codex, pi Which agent CLI to start. --worktree off Give each local agent its own git worktree, so they never edit the same checkout.",
     "p": "Guide"
   },
   {
