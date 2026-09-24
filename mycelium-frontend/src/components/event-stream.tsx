@@ -242,6 +242,17 @@ function isActivity(event: Event): boolean {
 }
 
 /**
+ * Activity the chat shows as well: a new task. Work being filed is the room's
+ * news, the thing people in the chat need to see to pick it up, so it gets a
+ * line where they are reading. It stays on the rail too, where the task's later
+ * activity collects. Every other board event (claimed, resolved, the floor
+ * moving) stays on the rail alone.
+ */
+function isAlsoInChat(event: Event): boolean {
+  return event.type === NOTICE_TYPE && ((event.raw.subkind as string) || "filed") === "filed";
+}
+
+/**
  * What a row is *about*, so activity can be grouped by it.
  *
  * The room's task key, wherever the room knows one — that is what makes a
@@ -613,7 +624,10 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     [events, roomName],
   );
 
-  const visible = useMemo(() => inChannel.filter(e => !isActivity(e)), [inChannel]);
+  const visible = useMemo(
+    () => inChannel.filter(e => !isActivity(e) || isAlsoInChat(e)),
+    [inChannel],
+  );
 
   // What the room has been doing, one entry per task rather than one per frame.
   // No window here: the rail is the room's current state, so a task that has

@@ -180,10 +180,10 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     expect(screen.queryByText("Claimed")).not.toBeInTheDocument();
   });
 
-  it("keeps a task's own arrival and outcome on its row, not in the feed", async () => {
-    // Narrated in the feed, these were coalesced across tasks — a filing into a
-    // "New tasks" line, a resolve into a "Resolved" one — so the row nobody
-    // could read as created → worked → resolved was the row the work was on.
+  it("says a new task in the chat, and keeps the rest of its life on its row", async () => {
+    // A task being filed is the room's news, so the chat says it where people
+    // are reading. What happens to it after (claimed, resolved) stays on the
+    // rail, where the row reads created → worked → resolved in one place.
     await stream([
       notice("filed", "aligner"),
       said("taking this one", "growth", 400),
@@ -191,8 +191,8 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     ]);
 
     expect(await screen.findByText("taking this one")).toBeInTheDocument();
-    expect(screen.queryByText("New task")).not.toBeInTheDocument();
-    expect(screen.queryByText("New tasks")).not.toBeInTheDocument();
+    expect(screen.getByText("New task")).toBeInTheDocument();
+    expect(screen.queryByText("Resolved")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: `Show 2 updates to ${TITLE}` }),
     ).toBeInTheDocument();
