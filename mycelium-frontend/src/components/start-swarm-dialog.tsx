@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { startSwarm } from "@/lib/api";
 import { useCurrentUser } from "@/components/current-user";
 import { Button } from "@/components/ui/button";
+import { CopyField } from "@/components/ui/copy-field";
 
 interface Props {
   open: boolean;
@@ -21,6 +22,13 @@ interface Props {
 /** Team sizes offered. The hub allows up to 8; past five the kickoff alone is long. */
 const SIZES = [2, 3, 4, 5];
 const DEFAULT_SIZE = 3;
+
+/** The same swarm, run from a repo with agents that can work in it. */
+export function localCommand(task: string, room: string, size: number): string {
+  const what = task.trim().replace(/["\\$`]/g, m => `\\${m}`) || "<task>";
+  const n = size === DEFAULT_SIZE ? "" : ` -n ${size}`;
+  return `mycelium swarm "${what}" --room ${room}${n}`;
+}
 
 /**
  * Start a swarm: a team of workers the hub plays, put on one task in this room.
@@ -85,9 +93,8 @@ export function StartSwarmDialog({ open, onClose, roomName, initialTask = "" }: 
           Start a swarm
         </h2>
         <p className="mb-4 text-label text-muted-foreground">
-          A team of agents takes the task on together in this room: each checks in, one
-          splits the work, and they review each other&apos;s parts. They run on the hub and
-          write, rather than edit code.
+          {size} agents split this task between them, each do a part, and check each
+          other&apos;s work. You watch it happen in the task&apos;s thread.
         </p>
 
         <label htmlFor="swarm-task" className="mb-1.5 block text-micro font-medium text-muted-foreground">
@@ -132,6 +139,16 @@ export function StartSwarmDialog({ open, onClose, roomName, initialTask = "" }: 
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="mt-5 border-t border-border pt-4">
+          <p className="text-label font-medium text-text">These agents can&apos;t see your code</p>
+          <p className="mt-1 text-label text-muted-foreground">
+            They&apos;re good for work that ends in writing: a plan, a comparison, a draft. To
+            have agents work in a repo, run this from the repo instead. It opens Claude Code
+            (or Codex, or Pi) in herdr, one per agent, working in this room:
+          </p>
+          <CopyField value={localCommand(task, roomName, size)} className="mt-2 font-mono" />
         </div>
 
         {error && (

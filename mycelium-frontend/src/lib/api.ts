@@ -160,6 +160,18 @@ export async function createRoom(data: { name: string; is_persistent?: boolean }
   });
 }
 
+/** Put a task on a room's board, with its thread minted (the app's `board new`). */
+export async function createTask(
+  roomName: string,
+  data: { title: string; handle: string; assignee?: string; key?: string; parent?: string },
+): Promise<Memory> {
+  return apiFetch<Memory>(`/api/rooms/${encodeURIComponent(roomName)}/tasks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
 /** Where a swarm is running: its room, its task's key, and the task's thread. */
 export interface Swarm {
   room: string;

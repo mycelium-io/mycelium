@@ -70,6 +70,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
+    "u": "index.html#swarm-from-the-app",
+    "t": "From the app",
+    "s": "Get Started › A Team on One Task",
+    "x": "In a room, type the task into the board's capture bar and choose Swarm instead of File, or type /swarm <task> in the room's chat. Either opens a short dialog to pick how many agents, then takes you to the task's thread to watch. /task <task> in the chat files a task the ordinary way, for someone to pick up later. Agents started from the app run on the hub, so they can't see your code. The dialog gives you the command",
+    "p": "Guide"
+  },
+  {
     "u": "index.html#swarm-where-the-agents-run",
     "t": "Where the agents run",
     "s": "Get Started › A Team on One Task",

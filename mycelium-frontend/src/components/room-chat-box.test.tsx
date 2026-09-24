@@ -7,10 +7,17 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const sendRoomMessage = vi.fn().mockResolvedValue(undefined);
+const createTask = vi.fn().mockResolvedValue({ key: "work/fix-the-flaky-tests", episode: "urn:e:t1" });
+const writeFields = vi.fn().mockResolvedValue({});
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 vi.mock("@/lib/api", () => ({
   logFetchError: () => () => undefined,
   sendRoomMessage: (...args: unknown[]) => sendRoomMessage(...args),
+  createTask: (...args: unknown[]) => createTask(...args),
+  writeFields: (...args: unknown[]) => writeFields(...args),
+  startSwarm: vi.fn(),
   fetchRoomAgents: vi.fn().mockResolvedValue([
     { handle: "aligner", adapter: "engine", kind: "aligner", description: "mediator", cwd: null, owner: null, team: null, allow_from: [] },
   ]),
@@ -126,6 +133,74 @@ describe("<RoomChatBox /> composer triggers", () => {
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: /\/summarize-room/ })).toBeNull();
     });
+  });
+});
+
+describe("<RoomChatBox /> commands", () => {
+  beforeEach(() => {
+    sendRoomMessage.mockClear();
+    createTask.mockClear();
+    writeFields.mockClear();
+  });
+
+  it("lists the commands ahead of the skills, only as the message's first word", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "/");
+
+    expect(await screen.findByRole("button", { name: /\/task.*command/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /\/swarm.*command/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /\/summarize-room/ })).toBeInTheDocument();
+
+    await userEvent.clear(box);
+    await userEvent.type(box, "see /");
+    await screen.findByRole("button", { name: /\/summarize-room/ });
+    expect(screen.queryByRole("button", { name: /\/task/ })).toBeNull();
+  });
+
+  it("files /task as a task on the board instead of posting it", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "/task fix the flaky tests @agent-2 !! #ci{Enter}");
+
+    await waitFor(() => expect(createTask).toHaveBeenCalled());
+    expect(createTask).toHaveBeenCalledWith("demo", {
+      title: "fix the flaky tests",
+      handle: "julia",
+      assignee: "agent-2",
+    });
+    expect(writeFields).toHaveBeenCalledWith("demo", {
+      key: "work/fix-the-flaky-tests",
+      handle: "julia",
+      fields: { priority: "urgent", tags: ["ci"] },
+    });
+    expect(sendRoomMessage).not.toHaveBeenCalled();
+    expect((box as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("opens the swarm dialog for /swarm, with the task filled in", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "/swarm write the 2.0 release notes{Enter}");
+
+    expect(await screen.findByRole("dialog", { name: "Start a swarm" })).toBeInTheDocument();
+    expect(screen.getByLabelText("What should the team work on?")).toHaveValue(
+      "write the 2.0 release notes",
+    );
+    expect(sendRoomMessage).not.toHaveBeenCalled();
+  });
+
+  it("asks what the task is when a command comes with nothing", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "/task{Escape}{Enter}");
+
+    expect(await screen.findByText(/Say what it is: \/task/)).toBeInTheDocument();
+    expect(createTask).not.toHaveBeenCalled();
   });
 });
 

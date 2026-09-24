@@ -38,6 +38,18 @@ reads as the agents talking. The result stays in the room: it is written into
 the task itself, so it is there to open or search long after the terminal is
 closed.
 
+## From the app
+
+In a room, type the task into the board's capture bar and choose **Swarm**
+instead of **File**, or type `/swarm <task>` in the room's chat. Either opens
+a short dialog to pick how many agents, then takes you to the task's thread to
+watch. `/task <task>` in the chat files a task the ordinary way, for someone to
+pick up later.
+
+Agents started from the app run on the hub, so they can't see your code. The
+dialog gives you the command to run from your repo when you want agents that
+can.
+
 ## Where the agents run
 
 **Your own agents, by default.** The team is your own agent CLI (Claude Code,

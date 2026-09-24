@@ -35,6 +35,7 @@ import { EPISODE_FIELD, projectItems } from "@/lib/board/projection";
 import { attachUpstream } from "@/lib/board/upstream";
 import { localZone, projectActivity } from "@/lib/board/activity";
 import { captureToItem, type ParsedCapture } from "@/lib/board/capture";
+import { fileCapture } from "@/lib/board/file-capture";
 import { groupableFields, inferSchema } from "@/lib/board/schema";
 import { applyView, filterItems, attentionFilterCounts, SAVED_VIEWS, sortItems, UNGROUPED, type ViewConfig, type ViewMode } from "@/lib/board/view";
 import { BoardTriage, summarize } from "./board-triage";
@@ -292,15 +293,27 @@ export function RoomBoard({ roomName, onOpenThread }: Props) {
     [patch, play],
   );
 
+  // A captured line is filed on the hub as a real task. It shows at once as a
+  // captured row, and gives way to the task itself once the board re-reads.
   const capture = useCallback(
     (parsed: ParsedCapture) => {
       const item = captureToItem(parsed, captured.length + 1, actor);
       setCaptured(prev => [item, ...prev]);
       setSelectedId(item.id);
-      setStatusMessage(`capture → ${item.title}`);
+      setStatusMessage(`filing → ${item.title}`);
       play("capture");
+      fileCapture(roomName, parsed, actor)
+        .then(task => {
+          setStatusMessage(`filed → ${item.title}`);
+          revalidate();
+          setSelectedId(`memory:${task.key}`);
+        })
+        .catch(err => {
+          setStatusMessage(`could not file “${item.title}”: ${err instanceof Error ? err.message : err}`);
+        })
+        .finally(() => setCaptured(prev => prev.filter(c => c.id !== item.id)));
     },
-    [actor, captured.length, play],
+    [actor, captured.length, play, revalidate, roomName],
   );
 
   const pick = useCallback(

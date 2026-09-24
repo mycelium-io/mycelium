@@ -384,7 +384,13 @@ is no litellm dependency.
   room's skills (inserts `/name`). One cursor-prefix detector feeds one candidate
   popover; `[[` is matched before `/` and `@` since a memory key can contain
   slashes. Skills insert a reference token — the resident agent/engine interprets
-  it; the composer never runs the skill.
+  it; the composer never runs the skill. **Commands** are the one `/` that runs:
+  `/task` and `/swarm`, only as a message's first word, listed ahead of the
+  skills. `/task` files a task with the board capture's grammar through the same
+  `lib/board/file-capture.ts` the board's File button uses (the tasks route,
+  then ordinary fields); `/swarm` opens the swarm dialog, since a swarm spends
+  model turns. A skill that shares a command's name is still reachable by
+  picking it from the list.
 - **One keycap, sized by where it sits.** Every surface that names a key draws it
   through `ui/kbd.tsx` — `Kbd` for a literal, `KbdChord` for a chord the keymap
   owns (platform-spelled, and silent when nothing binds the action). Three sizes,

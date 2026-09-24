@@ -35,6 +35,12 @@ export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCa
     ? "Capture a concern…"
     : "Capture a concern…  @owner · !urgent · #tag · #502 · ? for a decision";
 
+  const file = () => {
+    if (!armed) return;
+    onCapture(parsed);
+    setText("");
+  };
+
   return (
     <div className="mt-2 px-3 pb-2 sm:px-5">
       <div className="flex items-center gap-2">
@@ -50,33 +56,41 @@ export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCa
             value={text}
             onChange={e => setText(e.target.value)}
             onKeyDown={e => {
-              if (e.key === "Enter" && armed) {
-                onCapture(parsed);
-                setText("");
-              }
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && onSwarm) onSwarm(text.trim());
+              else if (e.key === "Enter") file();
               if (e.key === "Escape") (e.target as HTMLInputElement).blur();
             }}
             placeholder={placeholder}
+            aria-label="New task"
             className="min-w-0 flex-1 bg-transparent text-label text-text outline-none placeholder:text-faint"
           />
-          {armed && (
-            <span className="flex shrink-0 items-center gap-1 font-mono text-micro text-faint">
-              <CornerDownLeft className="size-3" />
-              file
-            </span>
-          )}
         </div>
-        {onSwarm && (
+        {/* One control, two outcomes: a row someone claims later, or a team
+            on it now. Filing is the everyday one; a swarm costs model turns,
+            so it asks first. */}
+        <div role="group" aria-label="Add the task" className="flex shrink-0 items-center gap-1">
           <button
             type="button"
-            onClick={() => onSwarm(text.trim())}
-            title="Put a team of agents on this task"
-            className="flex h-[34px] shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 text-label text-muted-foreground transition-colors hover:border-border2 hover:text-text"
+            onClick={file}
+            disabled={!armed}
+            title="Add it to the board for someone to pick up (Enter)"
+            className="flex h-[34px] items-center gap-1.5 rounded-lg px-3 text-label transition-colors btn-accent disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <UsersRound className="size-3.5" />
-            Swarm
+            <CornerDownLeft className="size-3.5" />
+            File
           </button>
-        )}
+          {onSwarm && (
+            <button
+              type="button"
+              onClick={() => onSwarm(text.trim())}
+              title="Have a team of agents work on it now (⌘Enter)"
+              className="flex h-[34px] items-center gap-1.5 rounded-lg border border-border px-3 text-label text-muted-foreground transition-colors hover:border-border2 hover:text-text"
+            >
+              <UsersRound className="size-3.5" />
+              Swarm
+            </button>
+          )}
+        </div>
       </div>
 
       {armed && parsed.hints.length > 0 && (
