@@ -15,6 +15,20 @@ mycelium room clone design-review --from http://hub-ip:8000  # copy a room from 
 Rooms last until you delete them. Tasks come and go, but what the room has
 learned stays in its memory.
 
+## Room names
+
+A room's name can be up to 100 characters, and can include spaces, accents and
+ordinary punctuation. Put quotes around a name with spaces in the shell:
+
+```bash
+mycelium room create "CE-Area Team"
+mycelium room use "CE-Area Team"
+```
+
+A name can't be blank, `.` or `..`, and can't contain slashes, control
+characters or `:session:`. The name is also the room's folder on disk and its
+channel name, so it can't be changed later.
+
 ## What a room is on disk
 
 Each room is a folder on the hub, at `~/.mycelium/rooms/<room>/`, with these

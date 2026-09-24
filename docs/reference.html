@@ -2484,7 +2484,7 @@ lsof <span class="flag">-i</span> :46357   # SLIM node</code></pre>
       <h3 id="troubleshooting-engines-fail-with-pi-not-found-on-path">Engines fail with &quot;<code>pi</code> not found on PATH&quot;</h3>
       <p><strong>You see:</strong> mentioning the aligner or another engine fails with an error saying <code>pi</code> isn&#x27;t found.</p>
       <p>Engines run on Pi. The backend&#x27;s Docker image includes it, so this only happens when you run the backend outside Docker, for example with <code>uvicorn app.main:app</code> while working on it. Install Pi on that machine:</p>
-      <pre><code>npm install <span class="flag">-g</span> @mariozechner/pi-coding-agent
+      <pre><code>npm install <span class="flag">-g</span> @earendil-works/pi-coding-agent
 <span class="comment"># or set ALIGNER_PI_BINARY to the path of an existing pi</span></code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-memory-search-finds-nothing">Memory search finds nothing</h3>

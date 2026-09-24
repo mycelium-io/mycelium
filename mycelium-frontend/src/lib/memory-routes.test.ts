@@ -2,7 +2,13 @@
 // Copyright 2026 Mycelium Contributors
 
 import { describe, expect, it } from "vitest";
-import { encodeMemoryKeyPath, memoryGraphHref, memoryHref, parseMemoryKeyParam } from "@/lib/memory-routes";
+import {
+  encodeMemoryKeyPath,
+  memoryGraphHref,
+  memoryHref,
+  parseMemoryKeyParam,
+  parseRoomNameParam,
+} from "@/lib/memory-routes";
 
 describe("encodeMemoryKeyPath", () => {
   it("encodes each slash segment separately", () => {
@@ -23,6 +29,12 @@ describe("memoryHref", () => {
 
   it("encodes room names with spaces", () => {
     expect(memoryHref("atlas migration", "plan/title")).toBe("/room/atlas%20migration/memory/plan/title");
+  });
+});
+
+describe("parseRoomNameParam", () => {
+  it("decodes a room route segment exactly once", () => {
+    expect(parseRoomNameParam("CE-Area%20Team")).toBe("CE-Area Team");
   });
 });
 

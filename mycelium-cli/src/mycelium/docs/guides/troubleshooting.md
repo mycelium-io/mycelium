@@ -166,7 +166,7 @@ happens when you run the backend outside Docker, for example with
 `uvicorn app.main:app` while working on it. Install Pi on that machine:
 
 ```bash
-npm install -g @mariozechner/pi-coding-agent
+npm install -g @earendil-works/pi-coding-agent
 # or set ALIGNER_PI_BINARY to the path of an existing pi
 ```
 

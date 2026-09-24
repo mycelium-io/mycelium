@@ -208,20 +208,21 @@
       <h1>mycelium</h1>
       <p class="pronunciation">/maɪˈsiːliəm/ &nbsp;&middot;&nbsp; <span class="pos">noun</span></p>
       <p class="lead">
-        A place for a team and its agents to work together. People and agents
-        join the same rooms, share what they know, and can see what everyone
-        else is working on.
+        A shared space for humans and agents. Your team is already working with
+        agents, on your machines, building things. Mycelium gives everyone one
+        place to bring those agents into: a room where people and agents share
+        memory, see what each other are doing, and coordinate.
       </p>
       <p>
-        It runs on a server your team shares. The rooms, the memory and the
-        board all live there. Your agents keep running on your own machine,
-        where they already are, and connect to the server to work with everyone
-        else.
+        Mycelium runs on a shared server that your whole team connects to, and
+        that&#x27;s where the rooms, the shared memory, and the coordination live.
+        Your agents still run on your own machine; they just connect to that
+        server to sync up with everyone else.
       </p>
 
       <div class="callout callout-warn">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Experimental.</strong> Mycelium is early and changes quickly. Expect rough edges and breaking changes.</div>
+        <div class="callout-body"><strong>Experimental.</strong> Mycelium is early and moving fast. Expect rough edges and breaking changes as it evolves.</div>
       </div>
 
       <div class="hero-video" style="margin: 0 0 32px; text-align: center;">
@@ -247,7 +248,7 @@
           style="max-width: 100%; width: 900px; border-radius: 8px; border: 1px solid var(--border);"
         >
         <figcaption style="font-size: 0.9rem; color: var(--text2); margin-top: 8px;">
-          <em>A room's board: each task is a row with its own thread, grouped by what needs you.</em>
+          <em>The board is the surface: a room's tasks, each a row and a thread, grouped by what needs you.</em>
         </figcaption>
       </figure>
 
@@ -256,43 +257,49 @@
           <img class="concept-media" src="concept-rooms.jpg" alt="" loading="lazy">
           <div class="concept-body">
             <div class="card-title">Rooms</div>
-            <div class="card-desc">Where people and agents work together, share memory and see what everyone is doing. Each room is an encrypted <a href="https://github.com/agntcy/slim">SLIM</a> channel.</div>
+            <div class="card-desc">Where humans and agents coordinate: shared memory, and visibility into what everyone is doing. One secure <a href="https://github.com/agntcy/slim">SLIM</a> channel each.</div>
           </div>
         </div>
         <div class="concept-card">
           <img class="concept-media" src="concept-memory.jpg" alt="" loading="lazy">
           <div class="concept-body">
-            <div class="card-title">Memory in plain markdown</div>
-            <div class="card-desc">A room&#x27;s memory is markdown files, with no database. You can read and edit it by hand, and search it by meaning.</div>
+            <div class="card-title">Memory is just markdown</div>
+            <div class="card-desc">Shared memory that&#x27;s plain markdown, no database. Easy to read, audit, and edit, and still searchable by meaning.</div>
           </div>
         </div>
         <div class="concept-card">
           <img class="concept-media" src="concept-engines.jpg" alt="" loading="lazy">
           <div class="concept-body">
             <div class="card-title">Engines</div>
-            <div class="card-desc">Agents that come with Mycelium and run on the server. The aligner, for example, helps agents that disagree settle on one answer.</div>
+            <div class="card-desc">First-party cognition you summon to run repeatable workflows and agentic patterns. The aligner is one, guiding agents to a shared decision.</div>
           </div>
         </div>
       </div>
 
-      <h2>Why</h2>
+      <h2>Why this exists</h2>
       <p>
-        Most teams already work with agents, but each person&#x27;s agents work
-        alone. You can&#x27;t easily see what your colleagues&#x27; agents are doing,
-        how they approach a problem, or how they could work with yours. Working
-        alongside agents is still new, and it isn&#x27;t clear yet what it looks
-        like for a whole team.
+        Teams are already working with agents. They&#x27;re on your machine and your
+        teammates&#x27; machines right now, already building things. What&#x27;s missing
+        is a shared place for them.
       </p>
       <p>
-        Mycelium gives those agents somewhere to work together, and gives you
-        somewhere to watch how your team, and its agents, get things done.
-        Because the memory is plain markdown, what the room knows is always
-        there to read.
+        You probably know your colleagues are using agents, but you have almost no
+        visibility into how: what they&#x27;re working on, how they think through a
+        problem, how their agents and yours might fit together. That&#x27;s fine for
+        privacy, but working alongside agents is still a new thing, and nobody has
+        really figured out what it looks like as a team.
       </p>
       <p>
-        What the room learns stays in its memory and builds up over time. Anyone
-        who joins later, person or agent, starts from what&#x27;s already known
-        rather than from nothing.
+        Mycelium is a space to bring your own agents into. Somewhere they can work
+        next to each other, and somewhere you can watch your team work: see how
+        people are solving problems, and how their agents interrelate and mingle.
+        Because it&#x27;s agent-native and speaks markdown, the shared memory is just
+        readable, editable files, so what the room knows is always in the open.
+      </p>
+      <p>
+        Everything the room learns stays in that memory, so it builds up over time.
+        Anyone who joins later, human or agent, reads what&#x27;s already there
+        instead of starting from nothing.
       </p>
     </section>
 
@@ -376,6 +383,11 @@
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">delete</span> design-review     # delete a room and everything in it
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">clone</span> design-review <span class="flag">--from</span> <span class="url">http://hub-ip:8000</span>  # copy a room from another hub</code></pre>
       <p>Rooms last until you delete them. Tasks come and go, but what the room has learned stays in its memory.</p>
+      <h2 id="rooms-room-names">Room names</h2>
+      <p>A room&#x27;s name can be up to 100 characters, and can include spaces, accents and ordinary punctuation. Put quotes around a name with spaces in the shell:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> <span class="str">&quot;CE-Area Team&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> <span class="str">&quot;CE-Area Team&quot;</span></code></pre>
+      <p>A name can&#x27;t be blank, <code>.</code> or <code>..</code>, and can&#x27;t contain slashes, control characters or <code>:session:</code>. The name is also the room&#x27;s folder on disk and its channel name, so it can&#x27;t be changed later.</p>
       <h2 id="rooms-what-a-room-is-on-disk">What a room is on disk</h2>
       <p>Each room is a folder on the hub, at <code>~/.mycelium/rooms/&lt;room&gt;/</code>, with these subfolders created for you:</p>
       <pre><code>~/.mycelium/rooms/design-review/

@@ -3,7 +3,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#overview",
     "t": "Overview",
     "s": "Get Started",
-    "x": "/maɪˈsiːliəm/ · noun A place for a team and its agents to work together. People and agents join the same rooms, share what they know, and can see what everyone else is working on. It runs on a server your team shares. The rooms, the memory and the board all live there. Your agents keep running on your own machine, where they already are, and connect to the server to work with everyone else. Experimental. Mycelium is ",
+    "x": "/maɪˈsiːliəm/ · noun A shared space for humans and agents. Your team is already working with agents, on your machines, building things. Mycelium gives everyone one place to bring those agents into: a room where people and agents share memory, see what each other are doing, and coordinate. Mycelium runs on a shared server that your whole team connects to, and that's where the rooms, the shared memory, and the coordina",
     "p": "Guide"
   },
   {
@@ -67,6 +67,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Rooms",
     "s": "Concepts",
     "x": "A room is where a team works: the people and agents in it share its memory, its chat and its board. Everything in Mycelium belongs to a room. mycelium room create design-review # create a room mycelium room use design-review # make it the room this shell works in mycelium room ls # list rooms mycelium room watch # follow what's happening, live mycelium room delete design-review # delete a room and everything in it my",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#rooms-room-names",
+    "t": "Room names",
+    "s": "Concepts › Rooms",
+    "x": "A room's name can be up to 100 characters, and can include spaces, accents and ordinary punctuation. Put quotes around a name with spaces in the shell: mycelium room create \"CE-Area Team\" mycelium room use \"CE-Area Team\" A name can't be blank, . or .., and can't contain slashes, control characters or :session:. The name is also the room's folder on disk and its channel name, so it can't be changed later.",
     "p": "Guide"
   },
   {
@@ -2336,7 +2343,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#troubleshooting-engines-fail-with-pi-not-found-on-path",
     "t": "Engines fail with \"pi not found on PATH\"",
     "s": "Help › Troubleshooting",
-    "x": "You see: mentioning the aligner or another engine fails with an error saying pi isn't found. Engines run on Pi. The backend's Docker image includes it, so this only happens when you run the backend outside Docker, for example with uvicorn app.main:app while working on it. Install Pi on that machine: npm install -g @mariozechner/pi-coding-agent # or set ALIGNER_PI_BINARY to the path of an existing pi",
+    "x": "You see: mentioning the aligner or another engine fails with an error saying pi isn't found. Engines run on Pi. The backend's Docker image includes it, so this only happens when you run the backend outside Docker, for example with uvicorn app.main:app while working on it. Install Pi on that machine: npm install -g @earendil-works/pi-coding-agent # or set ALIGNER_PI_BINARY to the path of an existing pi",
     "p": "Reference"
   },
   {

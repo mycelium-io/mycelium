@@ -17,6 +17,57 @@ async def _create_room(client, name: str) -> None:
     assert resp.status_code == 201, resp.text
 
 
+@pytest.mark.asyncio
+async def test_room_name_with_spaces_round_trips(client) -> None:
+    name = "CE-Area Team"
+
+    created = await client.post("/api/rooms", json={"name": name})
+    fetched = await client.get("/api/rooms/CE-Area%20Team")
+
+    assert created.status_code == 201
+    assert created.json()["name"] == name
+    assert fetched.status_code == 200
+    assert fetched.json()["name"] == name
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "name",
+    [
+        "café #1%",
+        "-leading-and-trailing-",
+        " padded ",
+        "room:name",
+    ],
+)
+async def test_create_room_accepts_safe_unicode_and_punctuation(client, name: str) -> None:
+    resp = await client.post("/api/rooms", json={"name": name})
+
+    assert resp.status_code == 201
+    assert resp.json()["name"] == name
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "name",
+    [
+        "   ",
+        ".",
+        "..",
+        "room/name",
+        r"room\name",
+        "../escape",
+        "room:session:child",
+        "line\nbreak",
+        "null\u0000byte",
+    ],
+)
+async def test_create_room_rejects_unsafe_names(client, name: str) -> None:
+    resp = await client.post("/api/rooms", json={"name": name})
+
+    assert resp.status_code == 422
+
+
 def _touch_transcript(room: str) -> None:
     ensure_room_structure(get_room_dir(room))
     append_transcript(

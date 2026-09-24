@@ -21,6 +21,10 @@ configs:
                   insecure: true
             clients: []
 
+networks:
+  mycelium:
+    driver: bridge
+
 services:
 
   # ── SLIM node (always started) ───────────────────────────────────────────────
@@ -46,6 +50,8 @@ services:
     configs:
       - source: slim-node-config
         target: /slim-config.yaml
+    networks:
+      - mycelium
     ports:
       - "${MYCELIUM_SLIM_PORT:-46357}:46357"
 
@@ -61,7 +67,7 @@ services:
     container_name: mycelium-backend
     restart: unless-stopped
     env_file:
-      - path: ../.env
+      - path: ~/.mycelium/.env
         required: false
     environment:
       API_BASE_URL: http://mycelium-backend:8000
@@ -78,6 +84,8 @@ services:
       MYCELIUM_DATA_DIR: /home/mycelium/.mycelium
     volumes:
       - ${MYCELIUM_DATA_DIR:-~/.mycelium}:/home/mycelium/.mycelium
+    networks:
+      - mycelium
     ports:
       - "${MYCELIUM_BACKEND_PORT:-8000}:8000"
     healthcheck:
@@ -104,7 +112,7 @@ services:
     container_name: mycelium-frontend
     restart: unless-stopped
     env_file:
-      - path: ../.env
+      - path: ~/.mycelium/.env
         required: false
     environment:
       MYCELIUM_INTERNAL_API_URL: http://mycelium-backend:8000
@@ -127,8 +135,10 @@ services:
     depends_on:
       mycelium-backend:
         condition: service_healthy
+    networks:
+      - mycelium
     ports:
-      - "${MYCELIUM_UI_PORT:-3000}:3000"
+      - "${MYCELIUM_UI_PORT:-8080}:3000"
 
   # ── OTLP Collector (profile: metrics) ──────────────────────────────────────
   #
@@ -143,11 +153,13 @@ services:
     restart: unless-stopped
     profiles: [metrics]
     env_file:
-      - path: ../.env
+      - path: ~/.mycelium/.env
         required: false
     depends_on:
       mycelium-backend:
         condition: service_healthy
+    networks:
+      - mycelium
     ports:
       - "${MYCELIUM_METRICS_PORT:-4318}:4318"
     volumes:
