@@ -359,6 +359,45 @@ async def test_with_nobody_named_the_room_takes_part():
     assert [to for _s, to, _p in channel.ticks()] == ["a", "b", "a", "b"]
 
 
+@pytest.mark.asyncio
+async def test_swarm_checks_everyone_in_then_the_lead_splits_the_task(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import tasks
+
+    monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
+    row = await tasks.create_task(ROOM, "Fix the flaky auth tests", created_by="julia")
+    engine, manager, channel = _engine(
+        {
+            "agent-1": [("I'll take the repro.", None), ("Split: repro, cause, fix.", None)],
+            "agent-2": [("Root cause is mine.", None)],
+            "agent-3": [("I'll write the fix.", None)],
+        }
+    )
+
+    outcome = await engine.run(
+        ROOM,
+        episode=str(row.episode),
+        directive="swarm @agent-1 @agent-2 @agent-3: fix the flaky auth tests",
+        named=["agent-1", "agent-2", "agent-3"],
+    )
+
+    assert outcome == "resolved"
+    ticks = channel.ticks()
+    assert [(s, to) for s, to, _p in ticks] == [
+        ("check-in", "agent-1"),
+        ("check-in", "agent-2"),
+        ("check-in", "agent-3"),
+        ("split", "agent-1"),
+    ]
+    # Each check-in names the row, so a member can file under it; each hears
+    # the ones before it; the lead's split carries every check-in.
+    assert row.key in ticks[0][2]
+    assert "agent-1: I'll take the repro." in ticks[1][2]
+    assert "agent-3: I'll write the fix." in ticks[3][2]
+    assert f"child tasks of {row.key}" in ticks[3][2]
+
+
 # ── the record, and what it does not do ───────────────────────────────────────
 
 
@@ -748,3 +787,88 @@ async def test_a_summon_that_cannot_start_lets_the_floor_go():
     assert manager.floors == {}
     assert "Built in:" in channel.said()[0]
     assert channel.sent[0][0].header.message.episode == THREAD, "answered where it was asked"
+
+
+# ── the structured line every post carries ────────────────────────────────────
+
+
+def _lines(channel: ScriptedChannel) -> list[dict[str, Any]]:
+    return [
+        (env.payload.data or {})[conductor.LINE_KEY]
+        for env, _x in channel.sent
+        if conductor.LINE_KEY in (env.payload.data or {})
+    ]
+
+
+@pytest.mark.asyncio
+async def test_every_post_of_a_run_carries_a_line_a_surface_can_draw():
+    """The text is what members read; the line is what the app draws instead."""
+    engine, _manager, channel = _engine(
+        {
+            "api": [("rotate in place", None), ("with a window", None)],
+            "sec": [("no rollback", "reject"), ("fine", "accept")],
+        }
+    )
+
+    await engine.run(ROOM, episode=THREAD, directive="gated: rotate the key", named=["api", "sec"])
+
+    lines = _lines(channel)
+    assert [ln["event"] for ln in lines] == [
+        "open",
+        "turn",
+        "turn",
+        "edge",
+        "turn",
+        "turn",
+        "edge",
+        "close",
+    ]
+    opening, first = lines[0], lines[1]
+    assert opening["protocol"] == "gated"
+    assert opening["roles"] == {"proposer": "api", "guardian": "sec"}
+    assert [s["id"] for s in opening["steps"]] == ["propose", "review", "approved"]
+    assert first == {
+        "event": "turn",
+        "protocol": "gated",
+        "step": "propose",
+        "to": "api",
+        "turn": 1,
+        "cap": 6,
+    }
+    assert lines[3] == {
+        "event": "edge",
+        "step": "review",
+        "who": "sec",
+        "stance": "reject",
+        "next": "propose",
+    }
+    assert lines[-1] == {
+        "event": "close",
+        "protocol": "gated",
+        "outcome": "resolved",
+        "steps": 4,
+        "reason": "reached `approved`",
+    }
+
+
+def test_a_reload_carries_a_conductor_line_in_the_messages_metadata():
+    from app.services.persister import stored_message_from_record
+
+    env = l9.build_envelope(
+        kind=Kind.exchange,
+        episode=THREAD,
+        sender="conductor",
+        recipients=["api"],
+        topic=l9.topic_urn(ROOM),
+        payload_type="message",
+        payload_data={conductor.LINE_KEY: {"event": "turn", "step": "propose", "to": "api"}},
+    )
+    record = record_from(env, serialize_content(env, extra={"content": "gated · propose · …"}))
+    msg = stored_message_from_record(ROOM, record)
+    assert msg is not None
+    assert msg.content == "gated · propose · …"
+    assert msg.event_metadata == {"conductor": {"event": "turn", "step": "propose", "to": "api"}}
+
+    plain = _reply("api", "just talking", episode=THREAD, action=None)
+    said = stored_message_from_record(ROOM, plain)
+    assert said is not None and said.event_metadata is None

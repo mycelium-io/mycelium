@@ -10,7 +10,7 @@ offer wins* shouldn't fall to one of the negotiating parties; summarizing the
 whole room shouldn't depend on one agent remembering everything. An engine is a
 neutral, first-party actor the room owns.
 
-Five of them exist today; the first thing to try on a new hub is `hello`,
+Six of them exist today; the first thing to try on a new hub is `hello`,
 which answers a summon and owns nothing, so it is safe to fire into a live
 room just to see whether cognition runs at all.
 
@@ -36,6 +36,7 @@ commands host all of them.
 | `hello` | Answers one summon with one Pi turn and writes nothing anywhere — the cheap proof the engine path works on this hub. See [Hello](#hello). |
 | `persona` | Plays a room member in character, from the persona written to its notes, on a Pi session it keeps so it remembers. Answers a mention or an addressed turn, so it can fill a protocol role. See [Persona](#persona). |
 | `conductor` | Runs a protocol inside a task — a gated review, a fan-out, a round robin — walking the steps in code and giving the floor to whoever each step addresses. It has no model of its own. See [Conductor](#conductor). |
+| `worker` | A teammate the hub plays. It works a task given to it, asks another member to review, and resolves what it is asked to. What `mycelium swarm --server` fills a room with. See [Worker](#worker). |
 
 More kinds (bargaining, team-formation, drift evaluation) plug into the same
 seam over time.

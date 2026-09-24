@@ -563,11 +563,18 @@ def stored_message_from_record(
     header = record.content.get("l9", {}).get("header", {})
     episode = header.get("message", {}).get("episode")
     seed = record.message_id or f"{record.recorded_at}:{record.sender}"
+    # A conductor post carries a structured line beside its prose (see
+    # ``conductor.LINE_KEY``). The chat projection keeps only prose, so the line
+    # rides the message's metadata, and a reload draws the run as the live
+    # stream did rather than as the prompts behind it.
+    data = (record.content.get("l9", {}).get("payload") or {}).get("data") or {}
+    line = data.get("conductor") if isinstance(data, dict) else None
     msg = StoredMessage(
         room_name=room,
         sender_handle=record.sender or l9.SYSTEM_ACTOR_ID,
         message_type=message_type,
         content=content,
+        event_metadata={"conductor": line} if isinstance(line, dict) else None,
         episode=episode if isinstance(episode, str) else None,
         message_id=record.message_id or None,
         amends=amended_target(record.subkind, header.get("message", {}).get("parents")),

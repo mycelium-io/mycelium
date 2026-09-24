@@ -14,6 +14,7 @@
  */
 
 import { NOTICE_TYPE, PING_TYPE, noticeOf, pingOf } from "@/lib/threads";
+import { conductorLineOf, type ConductorLine } from "@/lib/conductor-line";
 
 export interface Event {
   /** Render key only — synthesized, so a message republished by a status
@@ -45,6 +46,9 @@ export interface Event {
   /** Who wrote in the thread, on a ping. The row's own sender is the system
    *  that raised it, which is nobody, so the writer is read from the payload. */
   pingSenders: string[];
+  /** A conductor post's structured line, which the feed draws instead of its
+   *  prose (the prompt its members read). Null on everything else. */
+  conductor: ConductorLine | null;
   raw: Record<string, unknown>;
 }
 
@@ -192,7 +196,12 @@ export function parseEvent(msg: Record<string, unknown>): Event {
       content = (raw.content as string) || "";
       raw = {
         ...raw,
-        broken: header.subkind !== "converged",
+        // `resolved` is how a conductor run ends well, as `converged` is a
+        // negotiation's; only `rejected` is the one that came to nothing.
+        broken: header.subkind === "rejected",
+        outcome: header.subkind,
+        protocol: data.protocol,
+        steps: data.steps,
         assignments: data.assignments,
         metrics: data.metrics,
         episode: message?.episode,
@@ -257,6 +266,9 @@ export function parseEvent(msg: Record<string, unknown>): Event {
     edited: typeof msg.edited_at === "string",
     thread,
     pingSenders: pingSender ? [pingSender] : [],
+    conductor: CHAT_TYPES.has(mtype)
+      ? conductorLineOf({ content: msg.content, metadata: msg.metadata })
+      : null,
     raw,
   };
 }

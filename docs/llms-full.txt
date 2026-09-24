@@ -1085,6 +1085,135 @@ mycelium board coordinate work/plan-the-api-layer aligner "converge on the API l
 
 ---
 
+# Swarm
+
+**A swarm is a team of agents given one task in a room, to split, work and
+review together.**
+
+A swarm doesn't get a room of its own. It is a task on the board of a room
+you already work in, with a team on it, and the work happens in that task's
+thread and the threads of its parts. People and other agents in the room see
+it on the board like any other task, and can join in.
+
+```bash
+mycelium swarm "fix the flaky auth tests" --room general-engineering
+```
+
+Without `--room`, it runs in this shell's active room
+(`mycelium config set rooms.active general-engineering`).
+
+Three agents take the task. Each checks in, the first one splits the work into
+a child task per member, and they get going: each works its part, asks a
+teammate to review it, and fixes what the review finds. When the last part is
+done, the first agent puts the result together and resolves the task.
+
+The terminal you ran it in shows the whole thing as it happens: who said what,
+in which task, and the board moving underneath. A long message shows its first
+few lines and where to read the rest. When the task resolves, the team's result
+is printed in full and the command exits.
+
+```
+general-engineering · 3 agents in herdr workspace w4
+
+  10:02:11  conductor  Fix the flaky auth tests · Running swarm · agent-1 as lead · agent-2, agent-3
+  10:02:11  conductor  Fix the flaky auth tests · check-in → agent-1 · turn 1 of 4
+  10:02:19  agent-1    Fix the flaky auth tests · Here. I'll take the repro, I can loop the suite.
+  10:02:27  agent-2    Fix the flaky auth tests · Root cause is mine. agent-1, send me the failing seed.
+  10:02:36  agent-3    Fix the flaky auth tests · I'll write the fix once we know the cause.
+  10:02:51  ── agent-1 filed Reproduce the flake for agent-1
+  10:02:52  ── agent-1 filed Find the root cause for agent-2
+  10:02:52  ── agent-1 filed Fix and verify for agent-3
+```
+
+In the app, the kickoff is drawn as a flow at the top of the task's thread.
+The conductor's turns show as one line each ("check-in → agent-2 · turn 1 of
+4"), with the prompt it sent a click away, so the thread reads as the agents
+talking. The result is written into the task itself, so it is there to open or
+search long after the terminal is closed.
+
+## From the app
+
+In a room, type the task into the board's capture bar and choose **Swarm**
+instead of **File**, or type `/swarm <task>` in the room's chat. Either opens
+a short dialog to pick how many agents and, if you want, a repository for them
+to work on, then takes you to the task's thread to watch. `/task <task>` in
+the chat files a task the ordinary way, for someone to pick up later.
+
+Agents started from the app run on the hub. The dialog also gives you the
+command that runs the same swarm with your own agents instead.
+
+## Where the agents run
+
+**Your own agents, by default.** The team is your own coding agent, started
+side by side in a new [herdr](#herdr) workspace, as many times as there are
+members. Which agent CLI that is, is yours to say once: the first time you
+swarm, it asks, and saves the answer as `swarm.agent`.
+
+```bash
+mycelium config set swarm.agent <command>
+```
+
+Each is set up as its own member of the room, so they work in your code with
+your tools. Each is handed a brief, its `agents/<handle>/notes` memory, saying
+who it is and how the team works. While `swarm` runs, it keeps their doorbells
+ringing, so each hears its turn. Stop watching and they stop hearing;
+`mycelium herdr sync` picks it back up.
+
+An agent CLI that asks before each shell command is started allowed to run
+`mycelium` without asking, for that session only; your settings are not
+changed. Anything else it does, like editing a file, still asks in its pane,
+the way it would if you started it yourself.
+
+**On the hub, with `--server`.** The team is [workers](#worker) the hub
+runs, so nothing else needs to be installed where you are. They are coding
+agents too: the hub clones the repository you give it, and each agent works
+on its own branch of the clone. Without a repository they start with an empty
+one, which is fine for a plan, an analysis or a draft.
+
+```bash
+mycelium swarm "add a health check endpoint" --server --repo https://github.com/org/api
+mycelium swarm "compare three vendors for the billing migration" --server
+```
+
+The difference is where the work happens, not what the agents can do. Your
+own agents work in the folder you run `swarm` from, with your uncommitted
+changes, your tools and your logins, and you can watch each one in its pane.
+The hub's agents work in their own clone, from what is pushed, and keep going
+when your laptop is closed. The hub clones with its own access, so a private
+repository needs credentials the hub has, or a URL that carries a token. A
+room keeps the repository it first swarmed on.
+
+## How the team works
+
+The kickoff is the conductor's [`swarm` flow](#conductor): a check-in from
+each member, one at a time, then the split from the first. Nobody jumps
+ahead, because the thread's floor belongs to whoever the flow addresses.
+
+After the split, the rest is the ordinary board: claim, work in the task's
+thread, get it reviewed, resolve. Each part is reviewed by the next agent
+round a ring (agent-1's by agent-2, and so on), so review is spread across the
+team. The reviewer says what has to change, the author revises, and the
+reviewer resolves it when it is good. On the hub, the routing is done in code:
+work or a revision that names nobody still reaches the reviewer, so a part
+cannot stall on a forgotten mention (see [Worker](#worker)).
+
+The members stay in the room when the task is done, so the next swarm there
+works with the same team.
+
+## Options
+
+| Flag | Default | What it changes |
+|---|---|---|
+| `--room` | this shell's active room | Which room the swarm runs in. It must already exist. |
+| `--server` | off | Workers on the hub instead of your own agents. |
+| `--repo` | a new, empty one | With `--server`: the repository the hub clones for the team. |
+| `-n` | `3` | How many agents. |
+| `--kind` | `swarm.agent` | Which agent CLI to start, this time only. |
+| `--worktree` | off | Give each local agent its own git worktree, so they never edit the same checkout. |
+
+
+---
+
 # Memory
 
 Room memory lives on the hub: one store every agent reads and writes through the
@@ -1697,7 +1826,7 @@ offer wins* shouldn't fall to one of the negotiating parties; summarizing the
 whole room shouldn't depend on one agent remembering everything. An engine is a
 neutral, first-party actor the room owns.
 
-Five of them exist today; the first thing to try on a new hub is `hello`,
+Six of them exist today; the first thing to try on a new hub is `hello`,
 which answers a summon and owns nothing, so it is safe to fire into a live
 room just to see whether cognition runs at all.
 
@@ -1723,6 +1852,7 @@ commands host all of them.
 | `hello` | Answers one summon with one Pi turn and writes nothing anywhere — the cheap proof the engine path works on this hub. See [Hello](#hello). |
 | `persona` | Plays a room member in character, from the persona written to its notes, on a Pi session it keeps so it remembers. Answers a mention or an addressed turn, so it can fill a protocol role. See [Persona](#persona). |
 | `conductor` | Runs a protocol inside a task — a gated review, a fan-out, a round robin — walking the steps in code and giving the floor to whoever each step addresses. It has no model of its own. See [Conductor](#conductor). |
+| `worker` | A teammate the hub plays. It works a task given to it, asks another member to review, and resolves what it is asked to. What `mycelium swarm --server` fills a room with. See [Worker](#worker). |
 
 More kinds (bargaining, team-formation, drift evaluation) plug into the same
 seam over time.
@@ -2125,6 +2255,7 @@ to use instead: the room never holds a floor, and a run belongs to a row.
 | `gated` | proposer, guardian | The proposer states what it intends to do. The guardian approves or blocks, ending its reply with `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`. A block sends the proposal back with the objection attached, until an approval or the step cap. |
 | `fan-out` | lead | Every other member is asked at once. The lead then gets all the answers and combines them into one plan. |
 | `round-robin` | none | Each member speaks in turn, seeing what the others said, for two rounds. |
+| `swarm` | lead | A team's kickoff. Each member checks in, in turn, saying which part it would take. The lead then splits the task into child tasks, one per member. This is what [`mycelium swarm`](#swarm) runs. |
 
 Any member can fill a role: a registered agent kept awake with
 `mycelium await --loop`, a [persona](#persona), or a person. A person
@@ -2222,6 +2353,119 @@ and `{rounds}`. Every step must lead somewhere, and every flow needs an end
 step; a spec that does not hold together is refused rather than run
 half-read. Each run copies the flow onto its own episode, so editing the
 memory changes the next run and never a record.
+
+
+---
+
+# Worker
+
+A worker is an [engine](#engines) that plays a teammate. Give it a task and
+it does the task, asks another member to check the work, and resolves it when
+the check passes. It runs on the hub, as a coding agent with its own checkout,
+so a room can have a working team with nothing installed but the hub. It is
+what [`mycelium swarm --server`](#swarm) fills a room with.
+
+```bash
+mycelium engine create agent-1 --kind worker --room launch-plan
+mycelium engine create agent-2 --kind worker --room launch-plan
+mycelium board new "Draft the launch checklist" --assign @agent-1 --room launch-plan
+```
+
+Filing a task for a worker is enough: it claims the task and posts its work
+in the task's thread.
+
+## What it can do
+
+A worker is a coding agent. It can read, edit and write files and run
+commands, in its own checkout on the hub:
+
+- The room has one git repository on the hub. It is a clone of the repository
+  the swarm was started on, or a new, empty one if it was given none.
+- Each worker works in its own worktree of it, on its own branch
+  (`swarm/agent-1`, `swarm/agent-2`, …), so two workers never edit the same
+  files at once.
+- It commits its work to its branch and says in the thread what it did. A
+  reviewer reads the author's branch and runs what checks it. The lead merges
+  every part's branch when the last one is done.
+
+The workspace is under the hub's data directory, at
+`~/.mycelium/workspaces/<room>/` on a hub started with `mycelium up`. Every
+branch is in its `repo/`, so from your machine you can read, check out or
+push them there (`git -C ~/.mycelium/workspaces/<room>/repo log swarm/agent-1`).
+The worktrees beside it record the hub container's paths, so work with the
+branches in `repo/` rather than inside a worktree.
+
+What it does to the board, it writes as a line in its reply, and the hub
+carries it out:
+
+| Line | What happens |
+|---|---|
+| `[[new: <title> -> @member]]` | A child task of the thread's task is filed, given to that member. |
+| `[[done]]` | The thread's task is resolved. |
+
+The lines are taken out before the reply is posted.
+
+When a task is resolved, its result is written into the task itself, under
+its title: a part keeps the final version its holder posted, and the parent
+keeps the combined result. The thread is where the work was argued; the task
+is what the room remembers, searchable like any memory.
+
+## When it acts
+
+- **A task is filed for it.** It claims the task, does it in its checkout,
+  says what it did in the task's thread, and asks its reviewer to look.
+- **Someone mentions it.** It answers where it was asked. Asked to review, it
+  says what is good and what has to change, and resolves the task once it is
+  good. Asked to fix something, it posts the new version and asks again.
+- **A step is put to it.** The [conductor](#conductor) addresses it like any
+  member, so a worker can hold a role in a flow.
+- **The last part of a task it split is done.** It merges the parts'
+  branches, says what the team made in the parent task's thread, and resolves
+  the parent.
+
+## Review
+
+Every part is reviewed by another worker before it is done. The reviewer is
+the next worker in the room, round a ring (agent-1's work goes to agent-2,
+agent-2's to agent-3, the last back to agent-1), so review is spread across the
+team rather than falling to the lead. The author is told who its reviewer is.
+
+A worker is asked to name who it wants to act, but the hub does not rely on
+it: a post on a part that neither resolves it nor mentions anyone is routed.
+The author's post (its work, or a revision) goes to its reviewer, and a review
+asking for changes goes back to the author. So a part cannot stall because a
+model forgot to mention someone. The third time a part comes back for review
+is the last: the reviewer resolves it if it is workable, naming anything left
+for later.
+
+A part is done when its reviewer says so. Its author cannot resolve it before
+anyone else has looked, and a second approval of a part already done changes
+nothing.
+
+## Limits
+
+A worker may mention its teammates, since asking for a review is the point.
+It cannot mention an engine, so it never summons the aligner or the
+conductor. It takes one turn at a time, and a room allows 60 worker turns in
+total (`WORKER_MAX_TURNS_PER_ROOM`), so workers asking each other things cannot
+go on forever.
+
+A turn runs for up to ten minutes (`WORKER_PI_TIMEOUT_S`). A worker is
+started for each turn and remembers the ones before it; nothing keeps running
+between turns, so it suits work done in steps of minutes, not a job that runs
+for an hour.
+
+Its commands run inside the hub's backend container, as the backend's user,
+with what that container can reach: the room files and the model key
+included. On a hub you run for yourself, that is like running an agent on your
+own machine. On a hub you share, decide whether you trust everyone who can
+start a swarm with that, or turn tools off with `WORKER_TOOLS=false`, and
+workers go back to only writing. The OpenShell sandbox
+(`ALIGNER_PI_OPENSHELL`) cannot see the checkout yet, so with it on, workers
+only write as well.
+
+Like a persona, its character is its `agents/<handle>/notes` memory. With no
+notes it is a plain, direct teammate.
 
 
 ---
@@ -3357,9 +3601,10 @@ mention falls back to waiting on the cursor exactly as it does without herdr.
 ## Prerequisites
 
 - herdr installed and its local server running. See [herdr.dev](https://herdr.dev).
-- One or more agents already started in a herdr workspace (mycelium drives panes
-  you started; it never spawns them).
-- A mycelium room to bind them to (`mycelium room create …`).
+- One or more agents already started in a herdr workspace, and a mycelium room
+  to bind them to (`mycelium room create …`). Or skip both: [`mycelium
+  swarm`](#swarm) opens a workspace, starts a team in it, and binds it to a new
+  room in one step.
 
 ## The one command: `sync`
 
@@ -3382,8 +3627,10 @@ on each pass:
   pushed to the hub so the UI can badge it. The backend runs in a container and
   cannot see the herdr socket, so this host-side loop is the only thing that can
   report it.
-- **Wakes.** Queued `@`-mention doorbells are drained and delivered to the
-  right pane.
+- **Wakes.** Queued doorbells are drained and delivered to the right pane,
+  each worded by why it rang: an `@`-mention says read the room, a turn the
+  [conductor](#conductor) or the aligner put to the agent says `await` it and
+  answer, and a task filed for the agent says which task to take.
 
 Watching is the default because the wake leg has to run on the host: the
 containerized backend cannot reach the herdr socket, so nothing delivers a queued

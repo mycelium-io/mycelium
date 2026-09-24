@@ -11,6 +11,9 @@ import { useRoomMemories, useRoomRoster, useRoomSkills } from "@/lib/room-data";
 import { useKeyAction } from "@/components/keymap-provider";
 import { useCurrentUser } from "@/components/current-user";
 import { Kbd } from "@/components/ui/kbd";
+import { StartSwarmDialog } from "@/components/start-swarm-dialog";
+import { parseCapture } from "@/lib/board/capture";
+import { fileCapture } from "@/lib/board/file-capture";
 
 interface Props {
   roomName: string;
@@ -80,6 +83,33 @@ function memoryKey(m: Memory): string {
   return m.key;
 }
 
+// Commands are the one kind of `/` that runs rather than inserts a reference,
+// and only as the first word of the message: `/task fix it` files a task, while
+// a `/name` anywhere else is a skill for an agent to read. They are listed
+// ahead of the room's skills, and a skill with the same name is still reachable
+// by picking it from the list.
+const COMMANDS = [
+  {
+    name: "task",
+    usage: "/task <what> @owner !urgent #tag",
+    description: "add it to the board for someone to pick up",
+  },
+  {
+    name: "swarm",
+    usage: "/swarm <what>",
+    description: "have a team of agents work on it now",
+  },
+] as const;
+
+type CommandName = (typeof COMMANDS)[number]["name"];
+
+/** The command a message runs, and what follows it, or `null` for a message. */
+export function commandOf(body: string): { name: CommandName; rest: string } | null {
+  const match = body.match(/^\/(task|swarm)(?:\s+([\s\S]*))?$/);
+  if (!match) return null;
+  return { name: match[1] as CommandName, rest: (match[2] ?? "").trim() };
+}
+
 export function RoomChatBox({ roomName, onSent, className, episode = null, threadLabel = null }: Props) {
   const [content, setContent] = useState("");
   // A human message is sent as the acting-as principal — the single source of
@@ -90,6 +120,8 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
   const [error, setError] = useState<string | null>(null);
   const [trigger, setTrigger] = useState<Trigger | null>(null);
   const [highlight, setHighlight] = useState(0);
+  // The task a `/swarm` is being started on, while its dialog is open.
+  const [swarmTask, setSwarmTask] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   // `@` reaches everyone in the room, off the same roster the Members rail
@@ -160,16 +192,27 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
         tertiary: `v${m.version} · ${m.created_by}`,
       }));
     }
-    // skill
+    // `/`: the commands first (only as the message's first word, the one place
+    // they run), then the room's skills.
     const q = trigger.query;
+    const commands = trigger.start === 0 ? COMMANDS.filter((c) => c.name.startsWith(q)) : [];
     const pool = q ? skills.filter((s) => s.name.toLowerCase().startsWith(q)) : skills;
-    return pool.slice(0, 6).map((s) => ({
-      id: s.name,
-      insert: `/${s.name}`,
-      primary: `/${s.name}`,
-      secondary: "skill",
-      tertiary: s.description || undefined,
-    }));
+    return [
+      ...commands.map((c) => ({
+        id: `command:${c.name}`,
+        insert: `/${c.name}`,
+        primary: `/${c.name}`,
+        secondary: "command",
+        tertiary: c.description,
+      })),
+      ...pool.slice(0, 6).map((s) => ({
+        id: s.name,
+        insert: `/${s.name}`,
+        primary: `/${s.name}`,
+        secondary: "skill",
+        tertiary: s.description || undefined,
+      })),
+    ];
   }, [mentionRoster, memories, skills, trigger]);
 
   const accept = useCallback(
@@ -197,10 +240,26 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
     const body = content.trim();
     if (!body || sending) return;
     const handle = principal.trim() || "user";
+    const command = commandOf(body);
+    if (command && !command.rest) {
+      setError(`Say what it is: ${COMMANDS.find((c) => c.name === command.name)?.usage}`);
+      return;
+    }
+    if (command?.name === "swarm") {
+      // A swarm spends model turns, so it asks first: the dialog takes it from here.
+      setSwarmTask(command.rest);
+      setContent("");
+      setTrigger(null);
+      return;
+    }
     setSending(true);
     setError(null);
     try {
-      await sendRoomMessage(roomName, { sender_handle: handle, content: body, episode });
+      if (command?.name === "task") {
+        await fileCapture(roomName, parseCapture(command.rest, handle, new Date().toISOString()), handle);
+      } else {
+        await sendRoomMessage(roomName, { sender_handle: handle, content: body, episode });
+      }
       setContent("");
       setTrigger(null);
       onSent?.();
@@ -328,7 +387,7 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
             this narrow on a phone and again in a room with both rails open,
             and the row has to fit the box either way. */}
         <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 px-1 text-micro text-muted-foreground">
-          <span className="text-faint">@ mention · [[ memory · / skill</span>
+          <span className="text-faint">@ mention · [[ memory · / command or skill</span>
           <span className="hidden flex-wrap items-center gap-x-1.5 gap-y-1 @[34rem]:flex">
             <Kbd size="xs" tone="muted">Enter</Kbd> to send ·
             <Kbd size="xs" tone="muted">Shift+Enter</Kbd> for newline ·
@@ -336,6 +395,14 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
           </span>
         </div>
       </div>
+      {swarmTask !== null && (
+        <StartSwarmDialog
+          open
+          onClose={() => setSwarmTask(null)}
+          roomName={roomName}
+          initialTask={swarmTask}
+        />
+      )}
     </div>
   );
 }

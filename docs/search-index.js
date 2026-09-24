@@ -322,6 +322,41 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
+    "u": "index.html#swarm",
+    "t": "Swarm",
+    "s": "Concepts",
+    "x": "A swarm is a team of agents given one task in a room, to split, work and review together. A swarm doesn't get a room of its own. It is a task on the board of a room you already work in, with a team on it, and the work happens in that task's thread and the threads of its parts. People and other agents in the room see it on the board like any other task, and can join in. mycelium swarm \"fix the flaky auth tests\" --room",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#swarm-from-the-app",
+    "t": "From the app",
+    "s": "Concepts › Swarm",
+    "x": "In a room, type the task into the board's capture bar and choose Swarm instead of File, or type /swarm <task> in the room's chat. Either opens a short dialog to pick how many agents and, if you want, a repository for them to work on, then takes you to the task's thread to watch. /task <task> in the chat files a task the ordinary way, for someone to pick up later. Agents started from the app run on the hub. The dialog",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#swarm-where-the-agents-run",
+    "t": "Where the agents run",
+    "s": "Concepts › Swarm",
+    "x": "Your own agents, by default. The team is your own coding agent, started side by side in a new herdr workspace, as many times as there are members. Which agent CLI that is, is yours to say once: the first time you swarm, it asks, and saves the answer as swarm.agent. mycelium config set swarm.agent <command> Each is set up as its own member of the room, so they work in your code with your tools. Each is handed a brief,",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#swarm-how-the-team-works",
+    "t": "How the team works",
+    "s": "Concepts › Swarm",
+    "x": "The kickoff is the conductor's swarm flow: a check-in from each member, one at a time, then the split from the first. Nobody jumps ahead, because the thread's floor belongs to whoever the flow addresses. After the split, the rest is the ordinary board: claim, work in the task's thread, get it reviewed, resolve. Each part is reviewed by the next agent round a ring (agent-1's by agent-2, and so on), so review is spread",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#swarm-options",
+    "t": "Options",
+    "s": "Concepts › Swarm",
+    "x": "Flag Default What it changes --room this shell's active room Which room the swarm runs in. It must already exist. --server off Workers on the hub instead of your own agents. --repo a new, empty one With --server: the repository the hub clones for the team. -n 3 How many agents. --kind swarm.agent Which agent CLI to start, this time only. --worktree off Give each local agent its own git worktree, so they never edit th",
+    "p": "Guide"
+  },
+  {
     "u": "index.html#memory",
     "t": "Memory",
     "s": "Concepts",
@@ -478,7 +513,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "adapters.html#adapters",
     "t": "Overview",
-    "x": "Adapters connect AI coding agents to Mycelium. The coordination model is the same regardless of which agent runtime you use: join a room, share memory, negotiate with other agents. An adapter installs knowledge, not a process. Mycelium never starts your agent. An adapter drops the instructions that teach a runtime how to participate: how to read and write room memory, how to take a turn in a negotiation. The runtime ",
+    "x": "Adapters connect AI coding agents to Mycelium. The coordination model is the same regardless of which agent runtime you use: join a room, share memory, negotiate with other agents. Claude Code A host-level /mycelium skill. Rooms, memory, and negotiation inline. Cursor Workspace-local rule + AGENTS.md, dropped per agent at agent create time. A2A Bridge Any Agent2Agent endpoint, fielded as a room member — and the room ",
     "p": "Adapters"
   },
   {
@@ -811,6 +846,41 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Writing your own flow",
     "s": "Engines › Conductor",
     "x": "A flow is a memory under protocols/. A room that writes protocols/gated reshapes the built-in under that name; a new name adds a flow. Nothing writes a built-in there by itself; to start from one, ask the conductor for it and save what it says: mycelium engine invoke conductor \"show gated\" The body is YAML: description: A reviewer signs off before the author ships. roles: [author, reviewer] max_steps: 6 steps: - id: ",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#worker",
+    "t": "Worker",
+    "s": "Engines",
+    "x": "A worker is an engine that plays a teammate. Give it a task and it does the task, asks another member to check the work, and resolves it when the check passes. It runs on the hub, as a coding agent with its own checkout, so a room can have a working team with nothing installed but the hub. It is what mycelium swarm --server fills a room with. mycelium engine create agent-1 --kind worker --room launch-plan mycelium en",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#worker-what-it-can-do",
+    "t": "What it can do",
+    "s": "Engines › Worker",
+    "x": "A worker is a coding agent. It can read, edit and write files and run commands, in its own checkout on the hub: The room has one git repository on the hub. It is a clone of the repository the swarm was started on, or a new, empty one if it was given none. Each worker works in its own worktree of it, on its own branch (swarm/agent-1, swarm/agent-2, …), so two workers never edit the same files at once. It commits its w",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#worker-when-it-acts",
+    "t": "When it acts",
+    "s": "Engines › Worker",
+    "x": "A task is filed for it. It claims the task, does it in its checkout, says what it did in the task's thread, and asks its reviewer to look. Someone mentions it. It answers where it was asked. Asked to review, it says what is good and what has to change, and resolves the task once it is good. Asked to fix something, it posts the new version and asks again. A step is put to it. The conductor addresses it like any member",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#worker-review",
+    "t": "Review",
+    "s": "Engines › Worker",
+    "x": "Every part is reviewed by another worker before it is done. The reviewer is the next worker in the room, round a ring (agent-1's work goes to agent-2, agent-2's to agent-3, the last back to agent-1), so review is spread across the team rather than falling to the lead. The author is told who its reviewer is. A worker is asked to name who it wants to act, but the hub does not rely on it: a post on a part that neither r",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#worker-limits",
+    "t": "Limits",
+    "s": "Engines › Worker",
+    "x": "A worker may mention its teammates, since asking for a review is the point. It cannot mention an engine, so it never summons the aligner or the conductor. It takes one turn at a time, and a room allows 60 worker turns in total (WORKER_MAX_TURNS_PER_ROOM), so workers asking each other things cannot go on forever. A turn runs for up to ten minutes (WORKER_PI_TIMEOUT_S). A worker is started for each turn and remembers t",
     "p": "Adapters"
   },
   {
@@ -1937,7 +2007,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#herdr-prerequisites",
     "t": "Prerequisites",
     "s": "Guides › Persistent Agents (herdr)",
-    "x": "herdr installed and its local server running. See herdr.dev. One or more agents already started in a herdr workspace (mycelium drives panes you started; it never spawns them). A mycelium room to bind them to (mycelium room create …).",
+    "x": "herdr installed and its local server running. See herdr.dev. One or more agents already started in a herdr workspace, and a mycelium room to bind them to (mycelium room create …). Or skip both: mycelium swarm opens a workspace, starts a team in it, and binds it to a new room in one step.",
     "p": "Reference"
   },
   {

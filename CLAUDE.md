@@ -131,6 +131,9 @@ the user's own Claude Code / Cursor session — kept woken with `mycelium await
 --loop --exec <cmd>`, which loops `await` → reason → `respond`. The loop *is* the
 wake; there is no cold-spawn. Cold-start-on-demand, waking a handle when nothing is
 resident, is served by herdr plus per-agent identity (`mycelium herdr sync`).
+A herdr doorbell rings on a text mention, on a turn put to the handle as an L9
+recipient (`herdr_wake_addressed`), and on a row filed for it
+(`herdr_wake_assigned`), each carrying a `reason` the bridge words its prompt by.
 
 **Tasks are the surface.** A board row is a markdown memory (body + frontmatter)
 and, through a store-owned episode binding, a thread on the room's channel
@@ -214,8 +217,9 @@ is no litellm dependency.
   remembers, and it answers on two seams — a text mention (the summon hook)
   and an **addressed turn** (`persister.on_addressed`, fired once per L9
   recipient of an exchange that mentioned nobody in its text, which is how the
-  aligner and the conductor address one member). Only the persona is wired to
-  the addressed seam; the other engines act on mentions alone. A stance marker
+  aligner and the conductor address one member). The persona and the worker
+  answer on the addressed seam (and it rings a herdr member's doorbell); the
+  other engines act on mentions alone. A stance marker
   in its answer is lifted onto the payload like `/reply` does, and every `@` in
   what it says is neutralized, so personas cannot summon anything or each
   other, and it never posts into a thread whose floor was not given to it.
@@ -229,7 +233,8 @@ is no litellm dependency.
 - **The conductor walks a flow inside a task's thread, in code.** A fourth
   engine kind (`app/services/conductor.py`) with no model of its own.
   Summoned as `board coordinate <row> conductor "gated @a @b: …"`, it walks
-  a `protocols.Protocol` (three built in: `gated`, `fan-out`, `round-robin`;
+  a `protocols.Protocol` (four built in: `gated`, `fan-out`, `round-robin`,
+  `swarm`; a step's prompt can name the row as `{task}`;
   a room's `protocols/<name>` memory overrides or adds one; `show <name>`
   prints one as YAML to save there) **in the thread it was summoned in**,
   holding that thread's floor for whoever each step addresses, asking through
@@ -253,7 +258,68 @@ is no litellm dependency.
   resident agent that replies early is refused. An `@`-mention of any engine
   is a summon, never a SLIM invite. A run opens no negotiation and never
   commits `converged`, so nothing it does compiles into rows. A model in the
-  nodes, code on the edges.
+  nodes, code on the edges. Every post it makes carries a structured line in
+  its payload under `conductor` (`open`, `turn`, `edge`, `close`) beside the
+  prose its members read; the history read copies it into the message's
+  `metadata`, and the app (`task/conductor-row.tsx`) and `swarm`'s view draw
+  the line, keeping the prompt behind a toggle. A run ending `resolved` is a
+  success (the channel reads it "Done"), only `rejected` a failure.
+- **A worker is a teammate the hub runs, a coding agent in its own checkout.**
+  Engine kind `worker` (`app/services/worker_engine.py`), on the persona's
+  machinery (notes as character, a Pi session per (room, handle)), but the one
+  Pi session that keeps Pi's tools: each turn runs in its own git worktree
+  (`app/services/workspace.py`) of the room's repository at
+  `<data dir>/workspaces/<room>/repo`, on branch `swarm/<handle>`, committing
+  as itself. The repository is a clone of the swarm's `repo` (cloned before
+  anything else is set up, so an unreachable one starts nothing; a room keeps
+  the repository it started on) or an empty one. Its commands run in the
+  backend container as its user, so running on the hub is not what limits a
+  worker; `WORKER_TOOLS=false` makes it write-only, and so does
+  `ALIGNER_PI_OPENSHELL`, whose sandbox cannot see the checkout. A turn is
+  bounded (`WORKER_PI_TIMEOUT_S`) and nothing runs between turns. It acts on
+  four things: a mention, an addressed turn, a `filed` notice naming it (it
+  claims the row and works it in the row's thread), and a `resolved` notice
+  that left a parent with nothing open (`assignments.parent_completed`; the
+  author of the children writes the combined result into the parent and
+  resolves it, once per parent, from each part's final version
+  (`_parts_of`), not from memory). What it does to the board it writes as
+  action lines (`[[new: title -> @member]]`, `[[done]]`), lifted out of the
+  prose and carried out against the row its thread belongs to through the
+  same services every writer uses. A `done` on a settled row changes nothing,
+  and a part's holder cannot resolve it before a teammate has spoken in its
+  thread. Unlike a persona it keeps `@` for teammates (asking for review is
+  the collaboration) and neutralizes every other mention, so it can never
+  summon an engine. A reply on someone else's row that neither resolves it
+  nor names a teammate goes back to the row's holder (`_hand_back`), so a
+  review cannot go quiet because a model forgot a mention. Turns are serial
+  per worker and capped per room (`WORKER_MAX_TURNS_PER_ROOM`). Board events
+  reach it through the manager's `on_notice` hook, fired after every notice;
+  a notice still wakes no `await`.
+- **`mycelium swarm` is the one-argument path to a working team, in a room
+  you already work in.** A swarm is a task with a team on it, never a room of
+  its own: it runs in `--room` or the shell's active room, refuses a room that
+  does not exist rather than making one, and its work stays in the task's
+  thread and its parts' threads, where the rest of the room can see and join
+  it. It registers a conductor, files the task, and summons the
+  conductor's `swarm` flow (each member checks in, then the lead splits the
+  task into a child row per member) in the task's thread. The members are the
+  user's own agent CLI in a new herdr workspace by default: `--kind`, else
+  `swarm.agent` in config, else asked once and saved there, never guessed
+  from what is installed (copy never names a harness). Each pane's env
+  set to its handle and room (`MYCELIUM_AGENT_HANDLE`, `MYCELIUM_ROOM_ID`,
+  plus `MYCELIUM_API_URL` when set) and handed a brief as its
+  `agents/<handle>/notes` memory, read with `mycelium memory get` (a file
+  outside the checkout would stop Claude Code at a permission prompt). Claude
+  is started with `--allowedTools Bash(mycelium:*)` for that session only,
+  never by editing the user's settings. `--server` makes the members workers
+  instead, set up through the hub's `POST /rooms/{room}/swarms` (the one setup path the
+  app's Swarm dialog uses too; the CLI passes `kickoff: false` and posts the
+  kickoff once its view is listening), with `--repo` for the hub to clone. The invoking terminal is the live view (thread prose and notices
+  across the task and its children, which `room watch` deliberately hides;
+  agent text is escaped, long messages cut to a few lines, and the finished
+  result printed in full) and, locally, runs the herdr sync pass on a thread
+  (`commands/herdr.sync_pass`) with `wait=False`, so woken members work at
+  once rather than one turn after another.
 - **The aligner mediates, inside a task.** Agents never talk to each other directly;
   all coordination flows through the aligner. It's a first-party engine registered
   as a room citizen (`mycelium engine create aligner --kind aligner`) and summoned
@@ -336,7 +402,13 @@ is no litellm dependency.
   room's skills (inserts `/name`). One cursor-prefix detector feeds one candidate
   popover; `[[` is matched before `/` and `@` since a memory key can contain
   slashes. Skills insert a reference token — the resident agent/engine interprets
-  it; the composer never runs the skill.
+  it; the composer never runs the skill. **Commands** are the one `/` that runs:
+  `/task` and `/swarm`, only as a message's first word, listed ahead of the
+  skills. `/task` files a task with the board capture's grammar through the same
+  `lib/board/file-capture.ts` the board's File button uses (the tasks route,
+  then ordinary fields); `/swarm` opens the swarm dialog, since a swarm spends
+  model turns. A skill that shares a command's name is still reachable by
+  picking it from the list.
 - **One keycap, sized by where it sits.** Every surface that names a key draws it
   through `ui/kbd.tsx` — `Kbd` for a literal, `KbdChord` for a chord the keymap
   owns (platform-spelled, and silent when nothing binds the action). Three sizes,

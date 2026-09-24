@@ -84,6 +84,10 @@ RoomConvergedHook = Callable[[str, "L9"], None]
 # The room-aware addressed hook: ``(room, handle, envelope, message_text)`` for
 # each L9 recipient of a turn that named nobody in its text.
 RoomAddressedHook = Callable[[str, str, "L9", str], None]
+# The board-event hook: ``(room, data)`` for every notice raised, where ``data``
+# is the notice's payload (``subkind``, ``key``, ``title``, ``episode``, ``by``,
+# and ``for`` on a ``filed`` row given to someone).
+RoomNoticeHook = Callable[[str, dict[str, str]], None]
 
 logger = logging.getLogger(__name__)
 
@@ -110,11 +114,16 @@ def _is_own_registered_agent(room: str, handle: str) -> bool:
     return (get_room_dir(room) / "agents" / f"{handle}.md").exists()
 
 
-def _is_engine(room: str, handle: str) -> bool:
-    """True if ``handle``'s manifest in ``room`` names an engine kind."""
+def _registered_kind(room: str, handle: str) -> str | None:
+    """The engine kind ``handle``'s manifest in ``room`` names, or ``None``."""
     from app.services.aligner import _registered_engine_kind
 
-    return _registered_engine_kind(room, handle) is not None
+    return _registered_engine_kind(room, handle)
+
+
+def _is_engine(room: str, handle: str) -> bool:
+    """True if ``handle``'s manifest in ``room`` names an engine kind."""
+    return _registered_kind(room, handle) is not None
 
 
 def _registered_agent_handles(room: str) -> list[str]:
@@ -290,6 +299,10 @@ class RoomChannelManager:
         self.on_summon: RoomSummonHook | None = None
         self.on_converged: RoomConvergedHook | None = None
         self.on_addressed: RoomAddressedHook | None = None
+        # Fired after every notice, so something that acts on the board (the
+        # worker engine, the herdr doorbell) hears it move without polling it.
+        # A notice still wakes no ``await``; this is an in-process listener.
+        self.on_notice: RoomNoticeHook | None = None
         self._metrics = ChannelMetrics()
         # Server-held presence: a handle that participates over HTTP (the CLI
         # ``await``/``respond`` long-poll) never holds a client SLIM connection,
@@ -481,22 +494,42 @@ class RoomChannelManager:
         herdr-present. Used to decide whether a mention should enqueue a wake."""
         return self._live_herdr(room).get(handle, (None,))[0]
 
-    def enqueue_herdr_wake(self, room: str, handle: str) -> None:
-        """Ring the doorbell for a herdr-present handle mentioned in ``room``.
+    def enqueue_herdr_wake(
+        self,
+        room: str,
+        handle: str,
+        *,
+        reason: str = "mention",
+        key: str | None = None,
+        title: str | None = None,
+    ) -> None:
+        """Ring the doorbell for a herdr-present handle in ``room``.
 
         Enqueued regardless of the agent's current state — a tag for a *busy*
         agent is **held** here and released once it goes idle (see
         :meth:`drain_herdr_wakes`), so the nudge is never lost just because the
-        agent was mid-turn. Deduped by handle: the wake carries no payload (the
+        agent was mid-turn. Deduped by handle: the wake carries no message (the
         agent reads the room itself), so repeated tags collapse to one pending
         nudge — refreshing its hold timer, never adding content to lose.
+
+        ``reason`` says what kind of doorbell it is, so the bridge can word the
+        prompt: ``mention`` (read the room), ``turn`` (a turn is addressed to
+        you: ``await`` it and answer), or ``assigned`` (the row ``key`` was
+        given to you). The most specific reason pending wins over a mention.
         """
         queue = self._herdr_wakes.setdefault(room, [])
+        entry: dict = {"handle": handle, "ts": time.monotonic(), "reason": reason}
+        if key:
+            entry["key"] = key
+        if title:
+            entry["title"] = title
         for w in queue:
             if w["handle"] == handle:
-                w["ts"] = time.monotonic()  # fresh activity refreshes the hold timer
+                w["ts"] = entry["ts"]  # fresh activity refreshes the hold timer
+                if reason != "mention":
+                    w.update({k: v for k, v in entry.items() if k != "handle"})
                 return
-        queue.append({"handle": handle, "ts": time.monotonic()})
+        queue.append(entry)
 
     def enqueue_herdr_wakes_for_mentions(
         self, room: str, content: str, *, exclude: str | None = None
@@ -509,17 +542,54 @@ class RoomChannelManager:
         isn't ours; the normal SLIM/consent path covers it. Pass ``exclude`` (the
         sender's own handle) so a reply that mentions itself doesn't enqueue a
         self-wake. Returns the handles enqueued.
+
+        A text that summons a conductor wakes nobody: the handles named beside
+        one are bound to its roles, and the conductor addresses each in its
+        turn, which rings the doorbell then (:meth:`herdr_wake_addressed`).
         """
+        mentions = [raw.lstrip("@").lower() for raw in parse_mentions(content or "")]
+        if any(_registered_kind(room, h) == "conductor" for h in mentions):
+            return []
         exclude_norm = exclude.lstrip("@").lower() if exclude else None
         enqueued: list[str] = []
-        for raw in parse_mentions(content or ""):
-            handle = raw.lstrip("@").lower()
+        for handle in mentions:
             if handle == exclude_norm:
                 continue
             if self.herdr_status(room, handle) is not None:
                 self.enqueue_herdr_wake(room, handle)
                 enqueued.append(handle)
         return enqueued
+
+    def herdr_wake_addressed(self, room: str, handle: str) -> bool:
+        """Ring a herdr-present handle that was just put a turn (an L9 recipient).
+
+        How the aligner and the conductor reach a member: an exchange naming it,
+        with nobody mentioned in the text. Without this a herdr agent only woke
+        on a text mention, so a conductor step addressed to one waited out its
+        timeout. ``True`` when a wake was queued.
+        """
+        name = handle.lstrip("@").lower()
+        if self.herdr_status(room, name) is None:
+            return False
+        self.enqueue_herdr_wake(room, name, reason="turn")
+        return True
+
+    def herdr_wake_assigned(self, room: str, notice: dict[str, str]) -> bool:
+        """Ring the herdr-present handle a newly filed row was given to.
+
+        A ``filed`` notice carrying ``for`` is a row put on the board for
+        someone; if that someone lives in herdr, they hear about it now rather
+        than on their next look at the board. ``True`` when a wake was queued.
+        """
+        if notice.get("subkind") != "filed" or not notice.get("for"):
+            return False
+        name = str(notice["for"]).lstrip("@").lower()
+        if self.herdr_status(room, name) is None:
+            return False
+        self.enqueue_herdr_wake(
+            room, name, reason="assigned", key=notice.get("key"), title=notice.get("title")
+        )
+        return True
 
     def pending_herdr_wakes(self, room: str, *, hold_ttl_s: float = 600.0) -> set[str]:
         """Handles with a queued (not-yet-delivered) wake in ``room`` — read-only.
@@ -1240,6 +1310,11 @@ class RoomChannelManager:
             from app.bus import bus, room_channel
 
             bus.publish(room_channel(room), l9_bus_frame(room, record_from(notice, content)))
+        if self.on_notice is not None:
+            try:
+                self.on_notice(room, dict(data))
+            except Exception:
+                logger.exception("notice hook failed for %s in %s", subkind, room)
 
     # -- deferred invites (L9 stable membership) --
 

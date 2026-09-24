@@ -711,6 +711,7 @@ const ENGINE_KINDS: { kind: EngineKind; blurb: string }[] = [
   { kind: "hello", blurb: "Answers once, writes nothing, and proves the path." },
   { kind: "persona", blurb: "Plays a member in character, from its notes, and remembers." },
   { kind: "conductor", blurb: "Runs a protocol inside a task, in code, giving the floor per step." },
+  { kind: "worker", blurb: "Takes work off the board, asks a teammate to review it, and resolves it." },
 ];
 
 /** Invite a first-party cognition engine into the room — a native manifest

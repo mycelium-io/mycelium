@@ -92,6 +92,7 @@
           <a href="index.html#slim" class="nav-link sub">SLIM</a>
           <a href="index.html#board" class="nav-link sub">Board</a>
           <a href="index.html#episodes" class="nav-link sub">Episodes</a>
+          <a href="index.html#swarm" class="nav-link sub">Swarm</a>
           <a href="index.html#memory" class="nav-link sub">Memory</a>
           <a href="index.html#users" class="nav-link sub">Users &amp; Teams</a>
           <a href="index.html#l9-protocol" class="nav-link sub">L9 Protocol</a>
@@ -119,6 +120,7 @@
           <a href="adapters.html#hello" class="nav-link sub">Hello</a>
           <a href="adapters.html#persona" class="nav-link sub">Persona</a>
           <a href="adapters.html#conductor" class="nav-link sub">Conductor</a>
+          <a href="adapters.html#worker" class="nav-link sub">Worker</a>
         </div>
       </div>
     </div>
@@ -158,6 +160,7 @@
           <a href="#config-login" class="nav-link sub">login</a>
           <a href="#config-agent-auth" class="nav-link sub">agent_auth</a>
           <a href="#config-herdr" class="nav-link sub">herdr</a>
+          <a href="#config-swarm" class="nav-link sub">swarm</a>
           <a href="#config-metrics" class="nav-link sub">metrics</a>
           <a href="#config-a2a" class="nav-link sub">a2a</a>
         </div>
@@ -1196,6 +1199,12 @@
 <span class="comment"># Wait budget (ms) for a herdr wake to settle.</span>
 <span class="arg">wake_timeout_ms</span> = 120000
 
+<span class="comment"># What ``mycelium swarm`` starts when it runs your own agents.</span>
+<span class="cmd" id="config-swarm">[swarm]</span>
+
+<span class="comment"># The agent CLI a local swarm starts in herdr, as the command herdr runs. Asked for, and saved here, the first time you swarm without one.</span>
+<span class="arg">agent</span> = <span class="str">&quot;&quot;</span>
+
 <span class="comment"># Configuration for the metrics collector + display.</span>
 <span class="cmd" id="config-metrics">[metrics]</span>
 
@@ -1769,8 +1778,7 @@ EOF
       <h2 id="herdr-prerequisites">Prerequisites</h2>
       <ul>
         <li>herdr installed and its local server running. See <a href="https://herdr.dev">herdr.dev</a>.</li>
-        <li>One or more agents already started in a herdr workspace (mycelium drives panes you started; it never spawns them).</li>
-        <li>A mycelium room to bind them to (<code>mycelium room create …</code>).</li>
+        <li>One or more agents already started in a herdr workspace, and a mycelium room to bind them to (<code>mycelium room create …</code>). Or skip both: <a href="index.html#swarm"><code>mycelium swarm</code></a> opens a workspace, starts a team in it, and binds it to a new room in one step.</li>
       </ul>
       <h2 id="herdr-the-one-command-sync">The one command: <code>sync</code></h2>
       <p>The simplest path is a single binding. Point a herdr workspace at a room once, and mycelium keeps the two reconciled:</p>
@@ -1780,7 +1788,7 @@ EOF
       <ul>
         <li><strong>Membership.</strong> Every live agent in the workspace is enrolled as a room member, with its handle taken from the herdr tab name. When a pane closes, that member leaves the room. No manual <code>map</code> step.</li>
         <li><strong>Liveness.</strong> Each agent&#x27;s herdr state (<code>idle</code> / <code>working</code> / <code>blocked</code>) is pushed to the hub so the UI can badge it. The backend runs in a container and cannot see the herdr socket, so this host-side loop is the only thing that can report it.</li>
-        <li><strong>Wakes.</strong> Queued <code>@</code>-mention doorbells are drained and delivered to the right pane.</li>
+        <li><strong>Wakes.</strong> Queued doorbells are drained and delivered to the right pane, each worded by why it rang: an <code>@</code>-mention says read the room, a turn the <a href="adapters.html#conductor">conductor</a> or the aligner put to the agent says <code>await</code> it and answer, and a task filed for the agent says which task to take.</li>
       </ul>
       <p>Watching is the default because the wake leg has to run on the host: the containerized backend cannot reach the herdr socket, so nothing delivers a queued mention unless <code>sync</code> keeps draining. Add <code>--once</code> to reconcile a single pass and exit (useful in a script), or <code>--interval &lt;seconds&gt;</code> to change the poll cadence. Ctrl-C clears the liveness overlay.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--once</span>                 # one reconcile pass, then exit

@@ -62,6 +62,7 @@ to use instead: the room never holds a floor, and a run belongs to a row.
 | `gated` | proposer, guardian | The proposer states what it intends to do. The guardian approves or blocks, ending its reply with `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`. A block sends the proposal back with the objection attached, until an approval or the step cap. |
 | `fan-out` | lead | Every other member is asked at once. The lead then gets all the answers and combines them into one plan. |
 | `round-robin` | none | Each member speaks in turn, seeing what the others said, for two rounds. |
+| `swarm` | lead | A team's kickoff. Each member checks in, in turn, saying which part it would take. The lead then splits the task into child tasks, one per member. This is what [`mycelium swarm`](#swarm) runs. |
 
 Any member can fill a role: a registered agent kept awake with
 `mycelium await --loop`, a [persona](#persona), or a person. A person

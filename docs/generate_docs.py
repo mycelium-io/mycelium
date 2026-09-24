@@ -57,6 +57,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("concepts/slim.md",              "slim",               "start",       "Concepts",     "SLIM"),
     ("concepts/board.md",             "board",              "start",       "Concepts",     "Board"),
     ("concepts/episodes.md",          "episodes",           "start",       "Concepts",     "Episodes"),
+    ("concepts/swarm.md",             "swarm",              "start",       "Concepts",     "Swarm"),
     ("concepts/memory.md",            "memory",             "start",       "Concepts",     "Memory"),
     ("concepts/principals.md",        "users",              "start",       "Concepts",     "Users & Teams"),
     ("concepts/l9-protocol.md",       "l9-protocol",        "start",       "Concepts",     "L9 Protocol"),
@@ -75,6 +76,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("concepts/hello.md",             "hello",              "adapters",  "Engines",      "Hello"),
     ("concepts/persona.md",           "persona",            "adapters",  "Engines",      "Persona"),
     ("concepts/conductor.md",         "conductor",          "adapters",  "Engines",      "Conductor"),
+    ("concepts/worker.md",            "worker",             "adapters",  "Engines",      "Worker"),
     # ── reference (reference.html) ──
     ("reference/architecture.md",     "architecture",       "reference", "Architecture", "Architecture"),
     # CLI + Config blocks injected after architecture, before guides/troubleshooting.

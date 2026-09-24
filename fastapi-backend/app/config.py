@@ -201,6 +201,19 @@ class Settings(BaseSettings):
     PERSONA_HANDLE: str = "persona"
     PERSONA_PI_TIMEOUT_S: float = 120.0
 
+    # Worker engine (kind ``worker``) — a member the hub plays that takes work
+    # off the board: it answers when addressed, works a row given to it, asks a
+    # teammate to review, and resolves what it was asked to. With tools on (the
+    # default) each worker has Pi's read/edit/write/bash in its own git
+    # worktree of the room's repository on the hub (services/workspace.py), and
+    # they run inside the backend container as its user; off, its work is only
+    # what it writes. Per-turn timeout (a turn that edits and runs things takes
+    # longer than one that only writes), and a cap on turns per room so a team
+    # of workers mentioning each other cannot run forever.
+    WORKER_TOOLS: bool = True
+    WORKER_PI_TIMEOUT_S: float = 600.0
+    WORKER_MAX_TURNS_PER_ROOM: int = 60
+
     # Conductor engine (kind ``conductor``) — runs a protocol's steps over a
     # thread in code, holding the floor for whoever each step addresses. No
     # model of its own, so no Pi settings: only its handle default, how long

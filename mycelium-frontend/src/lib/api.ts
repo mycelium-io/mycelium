@@ -160,6 +160,45 @@ export async function createRoom(data: { name: string; is_persistent?: boolean }
   });
 }
 
+/** Put a task on a room's board, with its thread minted (the app's `board new`). */
+export async function createTask(
+  roomName: string,
+  data: { title: string; handle: string; assignee?: string; key?: string; parent?: string },
+): Promise<Memory> {
+  return apiFetch<Memory>(`/api/rooms/${encodeURIComponent(roomName)}/tasks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+/** Where a swarm is running: its room, its task's key, and the task's thread. */
+export interface Swarm {
+  room: string;
+  key: string;
+  episode: string;
+  members: string[];
+}
+
+/** Put a team of workers on a task in a room: a conductor, the workers, the
+ *  task and the kickoff, in one write (the app's `mycelium swarm --server`). */
+export async function startSwarm(
+  room: string,
+  data: {
+    task: string;
+    size?: number;
+    /** A repository for the hub to clone; each agent works on its own branch of it. */
+    repo?: string;
+    created_by?: string;
+  },
+): Promise<Swarm> {
+  return apiFetch<Swarm>(`/api/rooms/${encodeURIComponent(room)}/swarms`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
 // ── Memory ───────────────────────────────────────────────────────────────────
 
 export interface Memory {
@@ -584,7 +623,13 @@ export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]>
   });
 }
 
-export type EngineKind = "aligner" | "synthesizer" | "hello" | "conductor" | "persona";
+export type EngineKind =
+  | "aligner"
+  | "synthesizer"
+  | "hello"
+  | "conductor"
+  | "persona"
+  | "worker";
 
 /** Invite a first-party cognition engine (aligner / synthesizer / hello) into a room.
  *  Engines are backend-owned — registration is just a manifest write with no

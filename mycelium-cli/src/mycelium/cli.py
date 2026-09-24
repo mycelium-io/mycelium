@@ -28,6 +28,7 @@ from mycelium.commands import (
     participate,
     room,
     skill,
+    swarm,
     ui,
     user,
     wire,
@@ -100,6 +101,9 @@ app.command(name="connect")(hub.connect)
 # Participation primitives: join a room's SLIM channel and reply, no daemon.
 app.command(name="await")(participate.await_room)
 app.command(name="respond")(participate.respond)
+
+# A team on one task: the quickest way to watch agents coordinate.
+app.command(name="swarm")(swarm.swarm)
 
 # Convenience alias: `mycelium ls` is `mycelium room ls`; rooms are the entry
 # point, so listing them shouldn't need the `room` prefix.
