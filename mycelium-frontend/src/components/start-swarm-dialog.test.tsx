@@ -46,6 +46,29 @@ describe("StartSwarmDialog", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("hands the hub a repository to clone when one is given", async () => {
+    startSwarm.mockResolvedValue({
+      room: "api",
+      key: "work/add-a-health-check",
+      episode: "urn:ioc:mycelium:episode:api:1a2b3c4d",
+      members: ["agent-1", "agent-2", "agent-3"],
+    });
+    render(<StartSwarmDialog open onClose={vi.fn()} roomName="api" />);
+
+    fireEvent.change(screen.getByLabelText("What should the team work on?"), {
+      target: { value: "Add a health check" },
+    });
+    fireEvent.change(screen.getByLabelText(/Repository/), {
+      target: { value: "  https://github.com/org/api  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Start swarm" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    expect(startSwarm).toHaveBeenCalledWith(
+      expect.objectContaining({ task: "Add a health check", repo: "https://github.com/org/api" }),
+    );
+  });
+
   it("starts from what was typed on the board", () => {
     render(
       <StartSwarmDialog open onClose={vi.fn()} roomName="launch" initialTask="Draft the FAQ" />,

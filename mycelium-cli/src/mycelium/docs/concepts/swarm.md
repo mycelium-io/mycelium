@@ -45,13 +45,12 @@ closed.
 
 In a room, type the task into the board's capture bar and choose **Swarm**
 instead of **File**, or type `/swarm <task>` in the room's chat. Either opens
-a short dialog to pick how many agents, then takes you to the task's thread to
-watch. `/task <task>` in the chat files a task the ordinary way, for someone to
-pick up later.
+a short dialog to pick how many agents and, if you want, a repository for them
+to work on, then takes you to the task's thread to watch. `/task <task>` in
+the chat files a task the ordinary way, for someone to pick up later.
 
-Agents started from the app run on the hub, so they can't see your code. The
-dialog gives you the command to run from your repo when you want agents that
-can.
+Agents started from the app run on the hub. The dialog also gives you the
+command that runs the same swarm with your own agents instead.
 
 ## Where the agents run
 
@@ -68,13 +67,23 @@ that session only; your settings are not changed. Anything else they do, like
 editing a file, still asks in their pane, the way it would if you started them
 yourself.
 
-**On the hub, with `--server`.** The team is [workers](#worker) the hub plays,
-so nothing else needs to be installed. Workers have no tools, so this suits
-tasks whose result is writing: research, a plan, an analysis, a draft.
+**On the hub, with `--server`.** The team is [workers](#worker) the hub
+runs, so nothing else needs to be installed where you are. They are coding
+agents too: the hub clones the repository you give it, and each agent works
+on its own branch of the clone. Without a repository they start with an empty
+one, which is fine for a plan, an analysis or a draft.
 
 ```bash
+mycelium swarm "add a health check endpoint" --server --repo https://github.com/org/api
 mycelium swarm "compare three vendors for the billing migration" --server
 ```
+
+The difference is where the work happens, not what the agents can do. Your
+own agents work in the folder you run `swarm` from, with your uncommitted
+changes, your tools and your logins, and you can watch each one in its pane.
+The hub's agents work in their own clone, from what is pushed, and keep going
+when your laptop is closed. The hub clones with its own access, so a private
+repository needs credentials the hub has, or a URL that carries a token.
 
 ## How the team works
 
@@ -95,6 +104,7 @@ cannot stall on a forgotten mention (see [Worker](#worker)).
 | Flag | Default | What it changes |
 |---|---|---|
 | `--server` | off | Workers on the hub instead of your own agents. |
+| `--repo` | a new, empty one | With `--server`: the repository the hub clones for the team. |
 | `-n` | `3` | How many agents. |
 | `--room` | named after the task | Which room to use. |
 | `--kind` | first of `claude`, `codex`, `pi` | Which agent CLI to start. |

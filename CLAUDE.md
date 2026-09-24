@@ -264,9 +264,19 @@ is no litellm dependency.
   `metadata`, and the app (`task/conductor-row.tsx`) and `swarm`'s view draw
   the line, keeping the prompt behind a toggle. A run ending `resolved` is a
   success (the channel reads it "Done"), only `rejected` a failure.
-- **A worker is a teammate the hub plays, and the board is its only tool.**
+- **A worker is a teammate the hub runs, a coding agent in its own checkout.**
   Engine kind `worker` (`app/services/worker_engine.py`), on the persona's
-  machinery (notes as character, a Pi session per (room, handle)). It acts on
+  machinery (notes as character, a Pi session per (room, handle)), but the one
+  Pi session that keeps Pi's tools: each turn runs in its own git worktree
+  (`app/services/workspace.py`) of the room's repository at
+  `<data dir>/workspaces/<room>/repo`, on branch `swarm/<handle>`, committing
+  as itself. The repository is a clone of the swarm's `repo` (cloned before
+  anything else is set up, so an unreachable one starts nothing; a room keeps
+  the repository it started on) or an empty one. Its commands run in the
+  backend container as its user, so running on the hub is not what limits a
+  worker; `WORKER_TOOLS=false` makes it write-only, and so does
+  `ALIGNER_PI_OPENSHELL`, whose sandbox cannot see the checkout. A turn is
+  bounded (`WORKER_PI_TIMEOUT_S`) and nothing runs between turns. It acts on
   four things: a mention, an addressed turn, a `filed` notice naming it (it
   claims the row and works it in the row's thread), and a `resolved` notice
   that left a parent with nothing open (`assignments.parent_completed`; the
@@ -296,7 +306,9 @@ is no litellm dependency.
   outside the checkout would stop Claude Code at a permission prompt). Claude
   is started with `--allowedTools Bash(mycelium:*)` for that session only,
   never by editing the user's settings. `--server` makes the members workers
-  instead. The invoking terminal is the live view (thread prose and notices
+  instead, set up through the hub's `POST /api/swarms` (the one setup path the
+  app's Swarm dialog uses too; the CLI passes `kickoff: false` and posts the
+  kickoff once its view is listening), with `--repo` for the hub to clone. The invoking terminal is the live view (thread prose and notices
   across the task and its children, which `room watch` deliberately hides;
   agent text is escaped, long messages cut to a few lines, and the finished
   result printed in full) and, locally, runs the herdr sync pass on a thread

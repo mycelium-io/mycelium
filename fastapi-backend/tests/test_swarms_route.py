@@ -74,3 +74,50 @@ async def test_a_swarm_needs_a_task_and_a_sensible_size(client):
     assert (await client.post("/api/swarms", json={"task": "   "})).status_code == 422
     assert (await client.post("/api/swarms", json={"task": "x", "size": 1})).status_code == 422
     assert (await client.post("/api/swarms", json={"task": "x", "size": 99})).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_a_swarm_on_a_repository_clones_it_first(client, tmp_path):
+    import subprocess
+
+    from app.services import workspace
+
+    upstream = tmp_path / "upstream"
+    upstream.mkdir()
+    for args in (["init", "-q", "-b", "main"], ["commit", "-q", "--allow-empty", "-m", "x"]):
+        subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=upstream, check=True
+        )
+
+    resp = await client.post(
+        "/api/swarms", json={"task": "Add a health check", "repo": str(upstream)}
+    )
+
+    assert resp.status_code == 201, resp.text
+    assert workspace.origin_of(resp.json()["room"]) == str(upstream)
+
+
+@pytest.mark.asyncio
+async def test_a_repository_the_hub_cannot_clone_starts_nothing(client, tmp_path):
+    resp = await client.post(
+        "/api/swarms",
+        json={"task": "Add a health check", "room": "never-made", "repo": str(tmp_path / "no")},
+    )
+
+    assert resp.status_code == 422
+    assert "git clone failed" in resp.json()["detail"]
+    assert (await client.get("/api/rooms/never-made")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_caller_can_post_the_kickoff_itself(client):
+    resp = await client.post(
+        "/api/swarms", json={"task": "Plan the offsite", "room": "quiet-start", "kickoff": False}
+    )
+
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["key"]
+    said = [
+        m for m in persister.prose_messages("quiet-start") if m.episode == resp.json()["episode"]
+    ]
+    assert said == []

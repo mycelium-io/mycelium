@@ -74,7 +74,7 @@ def _who_reviews(handle: str) -> str:
     return TEAM[(TEAM.index(handle) + 1) % len(TEAM)]
 
 
-def _pi(room: str, handle: str, prompt: str, system: str, _t: float) -> str:
+def _pi(room: str, handle: str, prompt: str, system: str, _t: float, **_kw: Any) -> str:
     """A scripted teammate: what each kind of turn says back."""
     ask = prompt.rsplit("\n\n", 1)[-1] if "said to you" not in prompt else prompt
     if "check-in" in prompt and "Check in" in prompt:

@@ -2,9 +2,9 @@
 
 A worker is an [engine](#engines) that plays a teammate. Give it a task and
 it does the task, asks another member to check the work, and resolves it when
-the check passes. It runs on the hub, on a Pi session kept for it, so a room
-can have a working team with nothing installed but the hub. It is what
-[`mycelium swarm --server`](#swarm) fills a room with.
+the check passes. It runs on the hub, as a Pi agent with its own checkout,
+so a room can have a working team with nothing installed but the hub. It is
+what [`mycelium swarm --server`](#swarm) fills a room with.
 
 ```bash
 mycelium engine create agent-1 --kind worker --room launch-plan
@@ -17,9 +17,24 @@ in the task's thread.
 
 ## What it can do
 
-A worker has no tools. Its work is what it writes: the analysis, the plan,
-the draft. What it does to the board, it writes as a line in its reply, and
-the hub carries it out:
+A worker is a coding agent. It can read, edit and write files and run
+commands, in its own checkout on the hub:
+
+- The room has one git repository on the hub. It is a clone of the repository
+  the swarm was started on, or a new, empty one if it was given none.
+- Each worker works in its own worktree of it, on its own branch
+  (`swarm/agent-1`, `swarm/agent-2`, …), so two workers never edit the same
+  files at once.
+- It commits its work to its branch and says in the thread what it did. A
+  reviewer reads the author's branch and runs what checks it. The lead merges
+  every part's branch when the last one is done.
+
+The workspace is under the hub's data directory, at
+`~/.mycelium/workspaces/<room>/` on a hub started with `mycelium up`, so you
+can open the branches there, or push them.
+
+What it does to the board, it writes as a line in its reply, and the hub
+carries it out:
 
 | Line | What happens |
 |---|---|
@@ -35,15 +50,16 @@ is what the room remembers, searchable like any memory.
 
 ## When it acts
 
-- **A task is filed for it.** It claims the task, does it in the task's
-  thread, and asks its reviewer to look.
+- **A task is filed for it.** It claims the task, does it in its checkout,
+  says what it did in the task's thread, and asks its reviewer to look.
 - **Someone mentions it.** It answers where it was asked. Asked to review, it
   says what is good and what has to change, and resolves the task once it is
   good. Asked to fix something, it posts the new version and asks again.
 - **A step is put to it.** The [conductor](#conductor) addresses it like any
   member, so a worker can hold a role in a flow.
-- **The last part of a task it split is done.** It writes the combined result
-  into the parent task's thread and resolves the parent.
+- **The last part of a task it split is done.** It merges the parts'
+  branches, says what the team made in the parent task's thread, and resolves
+  the parent.
 
 ## Review
 
@@ -71,6 +87,20 @@ It cannot mention an engine, so it never summons the aligner or the
 conductor. It takes one turn at a time, and a room allows 60 worker turns in
 total (`WORKER_MAX_TURNS_PER_ROOM`), so workers asking each other things cannot
 go on forever.
+
+A turn runs for up to ten minutes (`WORKER_PI_TIMEOUT_S`). A worker is
+started for each turn and remembers the ones before it; nothing keeps running
+between turns, so it suits work done in steps of minutes, not a job that runs
+for an hour.
+
+Its commands run inside the hub's backend container, as the backend's user,
+with what that container can reach: the room files and the model key
+included. On a hub you run for yourself, that is like running an agent on your
+own machine. On a hub you share, decide whether you trust everyone who can
+start a swarm with that, or turn tools off with `WORKER_TOOLS=false`, and
+workers go back to only writing. The OpenShell sandbox
+(`ALIGNER_PI_OPENSHELL`) cannot see the checkout yet, so with it on, workers
+only write as well.
 
 Like a persona, its character is its `agents/<handle>/notes` memory. With no
 notes it is a plain, direct teammate.

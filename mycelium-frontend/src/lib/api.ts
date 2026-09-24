@@ -186,6 +186,8 @@ export async function startSwarm(data: {
   task: string;
   size?: number;
   room?: string;
+  /** A repository for the hub to clone; each agent works on its own branch of it. */
+  repo?: string;
   created_by?: string;
 }): Promise<Swarm> {
   return apiFetch<Swarm>(`/api/swarms`, {

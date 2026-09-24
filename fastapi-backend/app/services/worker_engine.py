@@ -7,12 +7,19 @@ A sixth engine ``kind``, built on the persona's machinery (a Pi session kept
 per handle, its ``agents/<handle>/notes`` as character) but a teammate rather
 than a character: it answers when a turn is put to it, works a row given to
 it, asks another member to review what it did, and resolves what it was asked
-to. It is what ``mycelium swarm --server`` fills a room with, so a team can be
-seen working on a task with nothing installed but the hub.
+to. It is what ``mycelium swarm --server`` fills a room with, so a team can
+work on a task with nothing installed but the hub.
 
-**A model in the nodes, code on the edges.** The worker has no tools. What it
-decides to *do* to the board it writes as an action line in its reply, and the
-engine carries it out through the same services every other writer uses:
+**Its own checkout.** With ``WORKER_TOOLS`` on (the default) a worker has
+Pi's read, edit, write and bash, working in its own git worktree of the room's
+repository on the hub (:mod:`app.services.workspace`), on its own branch. Its
+work is what it commits there, and its post in the thread says what it did.
+With tools off, or under the OpenShell sandbox (which cannot see the checkout
+yet), its work is only what it writes.
+
+**A model in the nodes, code on the edges.** What it decides to *do* to the
+board it writes as an action line in its reply, and the engine carries it out
+through the same services every other writer uses:
 
 - ``[[new: <title> -> @handle]]`` files a child task of the row whose thread it
   is speaking in, given to ``handle``;
@@ -95,9 +102,9 @@ DEFAULT_CHARACTER = (
 WORKER_RULES = """\
 You are a member of a team working together in Mycelium, a shared room with a
 task board. Each task on the board has its own thread, and you are always
-speaking in one of them. You have no tools: your work is what you write, so
-when you do a piece of work, write the actual result (the analysis, the plan,
-the draft), not a description of what you would do.
+speaking in one of them.
+
+{tools}
 
 You can change the board by putting action lines in your reply, each on its
 own line:
@@ -110,6 +117,38 @@ say in one line what you will assume, and go on. Nobody may be there to answer.
 Writing @name asks that teammate to act: review something, answer a question.
 Only do that when you need them to act, never to thank or acknowledge. Talk
 like a teammate: short, specific, no filler, no preamble, no code fences."""
+
+#: How a worker with no tools does its work.
+WRITES_ONLY = """\
+You have no tools: your work is what you write, so when you do a piece of work,
+write the actual result (the analysis, the plan, the draft), not a description
+of what you would do."""
+
+#: How a worker with its own checkout does its work.
+HAS_CHECKOUT = """\
+You have tools to read, edit and write files and run commands, in your own git
+checkout (where it is is said at the start of each turn). Do the work there:
+change the files, run what checks the work, and commit it to your branch. Then
+say in the thread what you did, which files, what you ran and what it showed,
+and show the part a reviewer most needs to see. The thread is how the team
+knows what you did, so a change you made but did not describe is one nobody
+reviews. Only change your own checkout; read teammates' branches, never edit
+their checkouts."""
+
+
+def tooled() -> bool:
+    """Whether workers work in a checkout with tools, or only write.
+
+    The OpenShell sandbox runs Pi in a sandbox that cannot see the hub's
+    checkout, so a sandboxed worker keeps to writing rather than editing files
+    nobody will find.
+    """
+    return settings.WORKER_TOOLS and not settings.ALIGNER_PI_OPENSHELL
+
+
+def rules() -> str:
+    """The worker's standing instructions, for how it works on this hub."""
+    return WORKER_RULES.format(tools=HAS_CHECKOUT if tooled() else WRITES_ONLY)
 
 
 @dataclass(frozen=True)
@@ -275,7 +314,10 @@ def _parts_of(room: str, parent: str) -> str:
             ),
             "(nothing posted)",
         )
-        blocks.append(f"### {title.lstrip('# ')} (by {author or 'nobody'})\n\n{final}")
+        by = f"by {author or 'nobody'}"
+        if author and tooled():
+            by += f", on branch swarm/{author}"
+        blocks.append(f"### {title.lstrip('# ')} ({by})\n\n{final}")
     return "\n\n".join(blocks) or "(no parts found)"
 
 
@@ -349,13 +391,15 @@ def build_prompt(
     task: tuple[str, str] | None,
     thread: str,
     ask: str,
+    checkout: str = "",
 ) -> str:
     """Assemble one turn's prompt. Pure — no I/O, directly unit-testable."""
     others = ", ".join(h for h in team if _norm(h) != _norm(me)) or "nobody else yet"
     where = f"the thread of task {task[0]}: {task[1]}" if task else "the room"
+    at = f"{checkout}\n" if checkout else ""
     return (
         f"You are @{me}, in room '{room}', working with {others}.\n"
-        f"You are speaking in {where}.\n\n"
+        f"You are speaking in {where}.\n{at}\n"
         f"The thread so far:\n{thread}\n\n"
         f"{ask}"
     )
@@ -369,11 +413,22 @@ def _session_path(room: str, handle: str) -> Path:
     return session_dir / f"{slug}.jsonl"
 
 
-def _pi_complete(room: str, handle: str, prompt: str, system: str, timeout_s: float) -> str:
+def _pi_complete(
+    room: str,
+    handle: str,
+    prompt: str,
+    system: str,
+    timeout_s: float,
+    *,
+    cwd: Path | None = None,
+) -> str:
     """One blocking Pi turn on the worker's own persistent session.
 
-    Isolated so tests can patch it without a live Pi.
+    With ``cwd`` (its checkout) the turn has Pi's tools and works there, and
+    what it commits is authored by the worker. Isolated so tests can patch it
+    without a live Pi.
     """
+    from app.services import workspace
     from app.services.pi_session import PiSession
 
     llm_session = PiSession(
@@ -384,6 +439,9 @@ def _pi_complete(room: str, handle: str, prompt: str, system: str, timeout_s: fl
         binary=settings.ALIGNER_PI_BINARY,
         timeout_s=timeout_s,
         openshell=settings.ALIGNER_PI_OPENSHELL,
+        tools=cwd is not None,
+        cwd=cwd,
+        env=workspace.identity(handle) if cwd is not None else None,
     )
     return llm_session(prompt, system=system)
 
@@ -520,12 +578,19 @@ class WorkerEngine:
         title, _parent = _row(room, key)
         reviewer = reviewer_for(room, handle)
         who = f"@{reviewer}" if reviewer else "one teammate"
+        doing = (
+            "Do it now, in your checkout: make the change, check it, and commit it "
+            "to your branch. Then say in this thread what you did, with the part a "
+            "reviewer most needs to see. If something you need is missing, make "
+            "the smallest sound assumption, say it, and go on."
+            if tooled()
+            else "Do it now: write the actual result in this thread. If you lack "
+            "source material, write it anyway with clearly marked placeholders "
+            "rather than asking for it."
+        )
         ask = (
-            f"The task '{title}' ({key}) is yours. Do it now: write the actual result "
-            "in this thread. If you lack source material, write it anyway with "
-            "clearly marked placeholders rather than asking for it. Then ask "
-            f"{who} to review it, saying what to check. Do not mark it done "
-            "yourself; the reviewer does."
+            f"The task '{title}' ({key}) is yours. {doing} Then ask {who} to review "
+            "it, saying what to check. Do not mark it done yourself; the reviewer does."
         )
         await self.turn(room, handle, episode=episode, ask=ask)
 
@@ -548,9 +613,15 @@ class WorkerEngine:
             if rounds >= REVIEW_ROUNDS
             else ""
         )
+        branch = (
+            f" Its commits are on branch swarm/{handle}: read them, and run what "
+            "checks them, rather than taking the summary on trust."
+            if tooled()
+            else ""
+        )
         review = (
             f"{handle} has posted its latest work on '{title}' ({key}) above, and you are "
-            "its reviewer. Say plainly what is good and what has to change; when it is "
+            f"its reviewer.{branch} Say plainly what is good and what has to change; when it is "
             "good enough, end with [[done]] to resolve it, and if it is not, tell "
             f"@{handle} exactly what to fix.{last}"
         )
@@ -564,11 +635,17 @@ class WorkerEngine:
         if not episode:
             return
         title, _grand = _row(room, parent)
+        combine = (
+            "Merge each part's branch into yours, resolve any conflicts, check the "
+            "whole, and commit. Then say in this thread what the team made: what "
+            "changed, where, and how it was checked. End with [[done]]."
+            if tooled()
+            else "Put them together into the one result the task asked for, written "
+            "out in full, not summarized. End with [[done]]."
+        )
         ask = (
             f"Every part of '{title}' ({parent}) is done. Here is the final version "
-            f"of each part:\n\n{_parts_of(room, parent)}\n\n"
-            "Put them together into the one result the task asked for, written out "
-            "in full, not summarized. End with [[done]]."
+            f"of each part:\n\n{_parts_of(room, parent)}\n\n{combine}"
         )
         await self.turn(room, handle, episode=episode, ask=ask)
 
@@ -591,6 +668,16 @@ class WorkerEngine:
         managed = self._manager.get(room)
         team = team_of(room)
         row = tasks.row_of_episode(room, episode)
+        checkout = None
+        if tooled():
+            from app.services import workspace
+
+            try:
+                checkout = await asyncio.to_thread(workspace.checkout_for, room, handle)
+            except workspace.WorkspaceError as exc:
+                logger.warning("worker @%s: no checkout in room %s: %s", handle, room, exc)
+                await self._say(managed, episode, handle, f"I have no checkout to work in: {exc}")
+                return None
         prompt = build_prompt(
             room,
             handle,
@@ -598,12 +685,21 @@ class WorkerEngine:
             task=row,
             thread=_thread_so_far(room, episode),
             ask=ask,
+            checkout=checkout.describe() if checkout else "",
         )
-        system = f"{WORKER_RULES}\n\n{_character(room, handle)}"
+        system = f"{rules()}\n\n{_character(room, handle)}"
         activity.signal(room, handle, "responding", episode=episode)
         try:
             raw = await asyncio.wait_for(
-                asyncio.to_thread(_pi_complete, room, handle, prompt, system, self._timeout_s),
+                asyncio.to_thread(
+                    _pi_complete,
+                    room,
+                    handle,
+                    prompt,
+                    system,
+                    self._timeout_s,
+                    cwd=checkout.path if checkout else None,
+                ),
                 timeout=self._timeout_s + 5.0,
             )
         except Exception:

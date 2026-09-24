@@ -6556,6 +6556,19 @@
             "title": "Room",
             "description": "Room to run in (default: named after the task)"
           },
+          "repo": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo",
+            "description": "Repository the team works on, cloned on the hub: an https, ssh or git@ URL, or an absolute path on the hub (default: a new, empty one)"
+          },
           "created_by": {
             "anyOf": [
               {
@@ -6567,6 +6580,12 @@
             ],
             "title": "Created By",
             "description": "Who is starting it"
+          },
+          "kickoff": {
+            "type": "boolean",
+            "title": "Kickoff",
+            "description": "Post the kickoff now. A caller that wants to be listening first (the CLI's live view) sets this false and posts it itself",
+            "default": true
           }
         },
         "type": "object",

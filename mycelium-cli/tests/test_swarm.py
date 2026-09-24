@@ -469,15 +469,60 @@ def test_an_agent_is_started_again_while_its_pane_comes_up(monkeypatch: pytest.M
     assert len(attempts) == swarm.START_ATTEMPTS
 
 
-def test_an_older_hub_without_workers_says_what_to_do():
+def test_an_older_hub_without_the_conductor_says_what_to_do():
     client = httpx.Client(
         base_url="http://hub",
         transport=httpx.MockTransport(
-            lambda _r: httpx.Response(422, text="Unknown engine kind 'worker'; known: [...]")
+            lambda _r: httpx.Response(422, text="Unknown engine kind 'conductor'; known: [...]")
         ),
     )
+    with pytest.raises(swarm.SwarmError, match="mycelium upgrade"):
+        swarm.ensure_engine(client, "r", "conductor", "conductor", "julia")
+
+
+def _swarms_hub(response: httpx.Response) -> tuple[httpx.Client, list[dict[str, Any]]]:
+    sent: list[dict[str, Any]] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert (request.method, request.url.path) == ("POST", "/api/swarms")
+        sent.append(json.loads(request.content))
+        return response
+
+    return httpx.Client(base_url="http://hub", transport=httpx.MockTransport(handle)), sent
+
+
+def test_a_hub_team_is_set_up_by_the_hub_and_kicked_off_by_the_view():
+    client, sent = _swarms_hub(
+        httpx.Response(201, json={"room": "r", "key": "work/x", "episode": "urn:ep:r:t1"})
+    )
+
+    got = swarm.start_on_hub(client, "Add a health check", 3, "r", "julia", "git@host:org/api")
+
+    assert got == ("work/x", "urn:ep:r:t1")
+    assert sent == [
+        {
+            "task": "Add a health check",
+            "size": 3,
+            "room": "r",
+            "created_by": "julia",
+            "kickoff": False,
+            "repo": "git@host:org/api",
+        }
+    ]
+
+
+def test_a_repository_the_hub_cannot_clone_is_said_plainly():
+    client, _sent = _swarms_hub(
+        httpx.Response(422, json={"detail": "git clone failed: repository not found"})
+    )
+    with pytest.raises(swarm.SwarmError, match="^git clone failed: repository not found$"):
+        swarm.start_on_hub(client, "t", 3, "r", "julia", "https://x/y")
+
+
+def test_an_older_hub_without_the_swarm_route_says_what_to_do():
+    client, _sent = _swarms_hub(httpx.Response(404, json={"detail": "Not Found"}))
     with pytest.raises(swarm.SwarmError, match="drop --server"):
-        swarm.ensure_engine(client, "r", "agent-1", "worker", "julia")
+        swarm.start_on_hub(client, "t", 3, "r", "julia")
 
 
 def test_the_view_knows_how_long_the_room_has_been_quiet(monkeypatch: pytest.MonkeyPatch):

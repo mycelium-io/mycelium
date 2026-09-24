@@ -48,7 +48,8 @@ logger = logging.getLogger(__name__)
 
 #: Pi's built-in coding tools (read/bash/edit/write) are useless to a pure
 #: interpret-and-broker session and would let it touch the filesystem — disable
-#: them so a mediator turn is cognition only.
+#: them so a mediator turn is cognition only. A worker is the one session that
+#: keeps them (``tools=True``), working in its own checkout.
 _NO_TOOLS = "--no-tools"
 
 #: A non-built-in endpoint is assumed OpenAI-compatible (Ollama, vLLM, LM Studio,
@@ -313,7 +314,13 @@ class PiSession:
         binary: str = "pi",
         timeout_s: float = 120.0,
         openshell: bool = False,
+        tools: bool = False,
+        cwd: Path | None = None,
+        env: dict[str, str] | None = None,
     ) -> None:
+        self._tools = tools
+        self._cwd = cwd
+        self._env = env
         self._session_path = session_path
         self._model = model
         self._api_key = api_key
@@ -357,8 +364,9 @@ class PiSession:
             "json",
             "--session",
             str(self._session_path),
-            _NO_TOOLS,
         ]
+        if not self._tools:
+            cmd.append(_NO_TOOLS)
         if self._endpoint_mode == "custom":
             # Endpoint + key live in the generated models.json provider entry;
             # address it by its canonical ``provider/model-id`` reference.
@@ -409,6 +417,9 @@ class PiSession:
                 # the timeout. DEVNULL gives it immediate EOF so it uses the
                 # prompt arg.
                 stdin=subprocess.DEVNULL,
+                # A tooled session's read/edit/bash act on its working directory.
+                cwd=self._cwd,
+                env={**os.environ, **self._env} if self._env else None,
             )
         except subprocess.TimeoutExpired as exc:
             raise PiSessionError(f"pi turn exceeded {self._timeout_s:.0f}s and was killed") from exc

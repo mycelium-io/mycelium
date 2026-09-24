@@ -332,7 +332,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#swarm-from-the-app",
     "t": "From the app",
     "s": "Concepts › Swarm",
-    "x": "In a room, type the task into the board's capture bar and choose Swarm instead of File, or type /swarm <task> in the room's chat. Either opens a short dialog to pick how many agents, then takes you to the task's thread to watch. /task <task> in the chat files a task the ordinary way, for someone to pick up later. Agents started from the app run on the hub, so they can't see your code. The dialog gives you the command",
+    "x": "In a room, type the task into the board's capture bar and choose Swarm instead of File, or type /swarm <task> in the room's chat. Either opens a short dialog to pick how many agents and, if you want, a repository for them to work on, then takes you to the task's thread to watch. /task <task> in the chat files a task the ordinary way, for someone to pick up later. Agents started from the app run on the hub. The dialog",
     "p": "Guide"
   },
   {
@@ -353,7 +353,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#swarm-options",
     "t": "Options",
     "s": "Concepts › Swarm",
-    "x": "Flag Default What it changes --server off Workers on the hub instead of your own agents. -n 3 How many agents. --room named after the task Which room to use. --kind first of claude, codex, pi Which agent CLI to start. --worktree off Give each local agent its own git worktree, so they never edit the same checkout.",
+    "x": "Flag Default What it changes --server off Workers on the hub instead of your own agents. --repo a new, empty one With --server: the repository the hub clones for the team. -n 3 How many agents. --room named after the task Which room to use. --kind first of claude, codex, pi Which agent CLI to start. --worktree off Give each local agent its own git worktree, so they never edit the same checkout.",
     "p": "Guide"
   },
   {
@@ -852,21 +852,21 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "adapters.html#worker",
     "t": "Worker",
     "s": "Engines",
-    "x": "A worker is an engine that plays a teammate. Give it a task and it does the task, asks another member to check the work, and resolves it when the check passes. It runs on the hub, on a Pi session kept for it, so a room can have a working team with nothing installed but the hub. It is what mycelium swarm --server fills a room with. mycelium engine create agent-1 --kind worker --room launch-plan mycelium engine create ",
+    "x": "A worker is an engine that plays a teammate. Give it a task and it does the task, asks another member to check the work, and resolves it when the check passes. It runs on the hub, as a Pi agent with its own checkout, so a room can have a working team with nothing installed but the hub. It is what mycelium swarm --server fills a room with. mycelium engine create agent-1 --kind worker --room launch-plan mycelium engine",
     "p": "Adapters"
   },
   {
     "u": "adapters.html#worker-what-it-can-do",
     "t": "What it can do",
     "s": "Engines › Worker",
-    "x": "A worker has no tools. Its work is what it writes: the analysis, the plan, the draft. What it does to the board, it writes as a line in its reply, and the hub carries it out: Line What happens [[new: <title> -> @member]] A child task of the thread's task is filed, given to that member. [[done]] The thread's task is resolved. The lines are taken out before the reply is posted. When a task is resolved, its result is wr",
+    "x": "A worker is a coding agent. It can read, edit and write files and run commands, in its own checkout on the hub: The room has one git repository on the hub. It is a clone of the repository the swarm was started on, or a new, empty one if it was given none. Each worker works in its own worktree of it, on its own branch (swarm/agent-1, swarm/agent-2, …), so two workers never edit the same files at once. It commits its w",
     "p": "Adapters"
   },
   {
     "u": "adapters.html#worker-when-it-acts",
     "t": "When it acts",
     "s": "Engines › Worker",
-    "x": "A task is filed for it. It claims the task, does it in the task's thread, and asks its reviewer to look. Someone mentions it. It answers where it was asked. Asked to review, it says what is good and what has to change, and resolves the task once it is good. Asked to fix something, it posts the new version and asks again. A step is put to it. The conductor addresses it like any member, so a worker can hold a role in a",
+    "x": "A task is filed for it. It claims the task, does it in its checkout, says what it did in the task's thread, and asks its reviewer to look. Someone mentions it. It answers where it was asked. Asked to review, it says what is good and what has to change, and resolves the task once it is good. Asked to fix something, it posts the new version and asks again. A step is put to it. The conductor addresses it like any member",
     "p": "Adapters"
   },
   {
@@ -880,7 +880,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "adapters.html#worker-limits",
     "t": "Limits",
     "s": "Engines › Worker",
-    "x": "A worker may mention its teammates, since asking for a review is the point. It cannot mention an engine, so it never summons the aligner or the conductor. It takes one turn at a time, and a room allows 60 worker turns in total (WORKER_MAX_TURNS_PER_ROOM), so workers asking each other things cannot go on forever. Like a persona, its character is its agents/<handle>/notes memory. With no notes it is a plain, direct tea",
+    "x": "A worker may mention its teammates, since asking for a review is the point. It cannot mention an engine, so it never summons the aligner or the conductor. It takes one turn at a time, and a room allows 60 worker turns in total (WORKER_MAX_TURNS_PER_ROOM), so workers asking each other things cannot go on forever. A turn runs for up to ten minutes (WORKER_PI_TIMEOUT_S). A worker is started for each turn and remembers t",
     "p": "Adapters"
   },
   {

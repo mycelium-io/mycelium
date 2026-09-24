@@ -6,7 +6,9 @@
 What ``mycelium swarm --server`` does from the CLI, as one write the app can
 make: a room named after the task (created if it is not there), a conductor
 and a worker per member registered in it, the task filed, and the kickoff
-posted in the task's thread. The team takes it from there.
+posted in the task's thread. The team takes it from there. Given a
+repository, the hub clones it first, and each worker works in its own
+worktree of the clone.
 
 Each step goes through the route that owns it — rooms, engines, messages —
 rather than around it, so a swarm started here provisions its channel, is
@@ -14,6 +16,7 @@ checked for who may post, and summons the conductor exactly as the same
 writes made one at a time would.
 """
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, HTTPException, Request
@@ -23,7 +26,7 @@ from app.routes.engines import EngineCreate, create_engine
 from app.routes.messages import send_message
 from app.routes.rooms import create_room
 from app.schemas import MessageCreate, MessageType, RoomCreate
-from app.services import actor, swarm, tasks
+from app.services import actor, swarm, tasks, worker_engine, workspace
 from app.services.filesystem import get_room_dir, read_memory_file
 
 logger = logging.getLogger(__name__)
@@ -39,7 +42,22 @@ class SwarmCreate(BaseModel):
     room: str | None = Field(
         None, max_length=100, description="Room to run in (default: named after the task)"
     )
+    repo: str | None = Field(
+        None,
+        max_length=500,
+        description=(
+            "Repository the team works on, cloned on the hub: an https, ssh or git@ URL, "
+            "or an absolute path on the hub (default: a new, empty one)"
+        ),
+    )
     created_by: str | None = Field(None, description="Who is starting it")
+    kickoff: bool = Field(
+        True,
+        description=(
+            "Post the kickoff now. A caller that wants to be listening first (the CLI's "
+            "live view) sets this false and posts it itself"
+        ),
+    )
 
 
 class SwarmRead(BaseModel):
@@ -60,6 +78,20 @@ async def start_swarm(payload: SwarmCreate, request: Request) -> SwarmRead:
     room = (payload.room or "").strip() or swarm.room_slug(task)
     me = actor.bind_optional_actor(request, payload.created_by, field="created_by") or "web-ui"
     team = swarm.team_handles(payload.size)
+    repo = (payload.repo or "").strip() or None
+
+    # The clone comes first: a repository the hub cannot reach is said at once,
+    # before there is a room with a team in it waiting on nothing.
+    if repo is not None:
+        if not worker_engine.tooled():
+            raise HTTPException(
+                status_code=422,
+                detail="This hub's workers have no tools, so they cannot work on a repository",
+            )
+        try:
+            await asyncio.to_thread(workspace.prepare, room, repo)
+        except workspace.WorkspaceError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     await create_room(RoomCreate(name=room, is_public=True))
     room_dir = get_room_dir(room)
@@ -72,6 +104,9 @@ async def start_swarm(payload: SwarmCreate, request: Request) -> SwarmRead:
 
     row = await tasks.create_task(room, task, created_by=me)
     episode = str(row.episode or "")
+    if not payload.kickoff:
+        logger.info("room %s: swarm of %d set up on %s by %s", room, len(team), row.key, me)
+        return SwarmRead(room=room, key=row.key, episode=episode, members=team)
     await send_message(
         room,
         MessageCreate(

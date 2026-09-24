@@ -17,7 +17,9 @@ One argument, the task. Everything else is a default:
 Where the members live is the one choice. By default they are your own CLI
 agents (Claude Code, Codex, Pi), started side by side in a new herdr workspace,
 each already set up as its own handle in the room. With ``--server`` they are
-workers the hub plays, so nothing but the hub needs to be installed.
+workers the hub plays, set up by the hub's own ``POST /api/swarms``, so nothing
+but the hub needs to be installed; each works in its own checkout on the hub,
+of ``--repo`` when one is given.
 
 The terminal you run it in becomes the live view: the conversation across the
 task and its child tasks, and the board moving under it. For local members it
@@ -194,8 +196,7 @@ def ensure_engine(client: httpx.Client, room: str, handle: str, kind: str, me: s
     resp = client.post(f"/api/rooms/{room}/engines", json=body)
     if resp.status_code == 422 and "engine kind" in resp.text:
         raise SwarmError(
-            f"this hub doesn't run {kind} engines yet. Upgrade it (mycelium upgrade), "
-            + ("or drop --server to use your own agents." if kind == "worker" else "then retry.")
+            f"this hub doesn't run {kind} engines yet. Upgrade it (mycelium upgrade), then retry."
         )
     _check(resp, f"register @{handle}", ok=(409,))
 
@@ -208,6 +209,45 @@ def file_task(client: httpx.Client, room: str, title: str, me: str) -> tuple[str
     )
     task = resp.json()
     return str(task["key"]), str(task.get("episode") or "")
+
+
+def start_on_hub(
+    client: httpx.Client,
+    task: str,
+    size: int,
+    room: str,
+    me: str,
+    repo: str | None = None,
+) -> tuple[str, str]:
+    """Set up a team of workers through the hub's own swarm route; ``(row key, thread)``.
+
+    The kickoff is left to the caller, so the live view is listening before
+    the first turn is put.
+    """
+    body: dict[str, Any] = {
+        "task": task,
+        "size": size,
+        "room": room,
+        "created_by": me,
+        "kickoff": False,
+    }
+    if repo:
+        body["repo"] = repo
+    resp = client.post("/api/swarms", json=body)
+    if resp.status_code in (404, 405):
+        raise SwarmError(
+            "this hub can't start a team on its own yet. Upgrade it (mycelium upgrade), "
+            "or drop --server to use your own agents."
+        )
+    if resp.status_code == 422:
+        try:
+            detail = resp.json().get("detail")
+        except ValueError:
+            detail = None
+        if isinstance(detail, str):
+            raise SwarmError(detail)
+    swarm = _check(resp, "start the team").json()
+    return str(swarm["key"]), str(swarm.get("episode") or "")
 
 
 def record_result(
@@ -611,13 +651,25 @@ def swarm(
     worktree: bool = typer.Option(
         False, "--worktree", help="Give each local member its own git worktree"
     ),
+    repo: str | None = typer.Option(
+        None,
+        "--repo",
+        help="With --server: a repository for the hub to clone and the team to work on",
+    ),
 ) -> None:
     """Put a team of agents on one task and watch them work it together.
 
     Examples:
         mycelium swarm "fix the flaky auth tests"
+        mycelium swarm "add a health check" --server --repo https://github.com/org/api
         mycelium swarm "compare three vendors for billing" --server
     """
+    if repo and not server:
+        console.print(
+            "[yellow]--repo is for --server.[/yellow] Your own agents work in the "
+            "directory you run swarm from; cd into the repository instead."
+        )
+        raise typer.Exit(1)
     from mycelium.integrations.herdr import HerdrBridge, HerdrError
 
     config = MyceliumConfig.load()
@@ -651,13 +703,14 @@ def swarm(
     local: LocalTeam | None = None
     sync: HerdrSync | None = None
     try:
-        with hub_client(config, timeout=30) as client:
-            ensure_room(client, room_name)
-            ensure_engine(client, room_name, CONDUCTOR, "conductor", me)
+        # A clone can take a while, so the hub gets longer to answer than usual.
+        with hub_client(config, timeout=330 if repo else 30) as client:
             if server:
-                for handle in team:
-                    ensure_engine(client, room_name, handle, "worker", me)
-            key, episode = file_task(client, room_name, task, me)
+                key, episode = start_on_hub(client, task, size, room_name, me, repo)
+            else:
+                ensure_room(client, room_name)
+                ensure_engine(client, room_name, CONDUCTOR, "conductor", me)
+                key, episode = file_task(client, room_name, task, me)
         if bridge is not None and agent_kind is not None:
             console.print(f"[dim]starting {size} {agent_kind} agents in herdr…[/dim]")
             local = start_local(

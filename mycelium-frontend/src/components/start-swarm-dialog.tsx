@@ -23,7 +23,7 @@ interface Props {
 const SIZES = [2, 3, 4, 5];
 const DEFAULT_SIZE = 3;
 
-/** The same swarm, run from a repo with agents that can work in it. */
+/** The same swarm with the user's own agent CLI, run from the folder they work in. */
 export function localCommand(task: string, room: string, size: number): string {
   const what = task.trim().replace(/["\\$`]/g, m => `\\${m}`) || "<task>";
   const n = size === DEFAULT_SIZE ? "" : ` -n ${size}`;
@@ -33,15 +33,17 @@ export function localCommand(task: string, room: string, size: number): string {
 /**
  * Start a swarm: a team of workers the hub plays, put on one task in this room.
  *
- * One field and one choice, like `mycelium swarm "<task>" --server --room <room>`:
- * the task is filed on this room's board, and on start the dialog opens its
- * thread so the kickoff is the first thing you see.
+ * Like `mycelium swarm "<task>" --server --room <room> [--repo <repo>]`: the
+ * task is filed on this room's board, and on start the dialog opens its thread
+ * so the kickoff is the first thing you see. A repository is optional; the hub
+ * clones it before anything else, so one it cannot reach is said here.
  */
 export function StartSwarmDialog({ open, onClose, roomName, initialTask = "" }: Props) {
   const router = useRouter();
   const { principal } = useCurrentUser();
   const [task, setTask] = useState(initialTask);
   const [size, setSize] = useState(DEFAULT_SIZE);
+  const [repo, setRepo] = useState("");
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,6 +64,7 @@ export function StartSwarmDialog({ open, onClose, roomName, initialTask = "" }: 
         task: what,
         size,
         room: roomName,
+        repo: repo.trim() || undefined,
         created_by: principal.trim() || undefined,
       });
       const thread = swarm.episode.split(":").pop();
@@ -141,12 +144,37 @@ export function StartSwarmDialog({ open, onClose, roomName, initialTask = "" }: 
           </div>
         </div>
 
+        <label
+          htmlFor="swarm-repo"
+          className="mb-1.5 mt-4 block text-micro font-medium text-muted-foreground"
+        >
+          Repository <span className="font-normal">(optional)</span>
+        </label>
+        <input
+          id="swarm-repo"
+          value={repo}
+          onChange={e => {
+            setRepo(e.target.value);
+            if (error) setError(null);
+          }}
+          onKeyDown={e => {
+            if (e.key === "Enter") start();
+          }}
+          spellCheck={false}
+          placeholder="https://github.com/your-org/your-repo"
+          className="w-full rounded-lg border border-border bg-bg px-3 py-2 font-mono text-label text-text outline-none transition-colors placeholder:font-sans placeholder:text-muted-foreground hover:border-border2 focus:border-accent"
+        />
+        <p className="mt-1.5 text-micro text-muted-foreground">
+          The hub clones it, and each agent works on its own branch of the clone. Leave it
+          empty and they start with an empty one.
+        </p>
+
         <div className="mt-5 border-t border-border pt-4">
-          <p className="text-label font-medium text-text">These agents can&apos;t see your code</p>
+          <p className="text-label font-medium text-text">Or use the agents on your machine</p>
           <p className="mt-1 text-label text-muted-foreground">
-            They&apos;re good for work that ends in writing: a plan, a comparison, a draft. To
-            have agents work in a repo, run this from the repo instead. It opens Claude Code
-            (or Codex, or Pi) in herdr, one per agent, working in this room:
+            These agents run on your hub. To have your own Claude Code (or Codex, or Pi) do
+            it instead, in the folder you&apos;re working in and with your uncommitted
+            changes, run this there:
           </p>
           <CopyField value={localCommand(task, roomName, size)} className="mt-2 font-mono" />
         </div>
@@ -162,7 +190,7 @@ export function StartSwarmDialog({ open, onClose, roomName, initialTask = "" }: 
             Cancel
           </Button>
           <Button onClick={start} disabled={!task.trim() || starting}>
-            {starting ? "Starting…" : "Start swarm"}
+            {starting ? (repo.trim() ? "Cloning…" : "Starting…") : "Start swarm"}
           </Button>
         </div>
       </div>

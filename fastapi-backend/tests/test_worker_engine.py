@@ -69,12 +69,12 @@ def _posted(managed: FakeManaged) -> list[tuple[Any, str]]:
     return [(env, (extra or {}).get("content", "")) for env, extra in managed.channel.sent]
 
 
-def _patch_pi(monkeypatch: pytest.MonkeyPatch, *replies: str) -> list[dict[str, str]]:
-    seen: list[dict[str, str]] = []
+def _patch_pi(monkeypatch: pytest.MonkeyPatch, *replies: str) -> list[dict[str, Any]]:
+    seen: list[dict[str, Any]] = []
     queue = list(replies)
 
-    def fake(room: str, handle: str, prompt: str, system: str, _t: float) -> str:
-        seen.append({"handle": handle, "prompt": prompt, "system": system})
+    def fake(room: str, handle: str, prompt: str, system: str, _t: float, **kw: Any) -> str:
+        seen.append({"handle": handle, "prompt": prompt, "system": system, "cwd": kw.get("cwd")})
         return queue.pop(0) if queue else ""
 
     monkeypatch.setattr(worker_engine, "_pi_complete", fake)
@@ -86,6 +86,8 @@ def _backend_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.config import settings
 
     monkeypatch.setattr(settings, "ENGINE_RUNTIME", "backend")
+    # The board behavior is the same either way; the checkout has its own tests.
+    monkeypatch.setattr(settings, "WORKER_TOOLS", False)
     monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
     get_room_dir(_ROOM)
 
@@ -361,7 +363,7 @@ async def test_a_revision_that_names_nobody_goes_to_the_reviewer_who_settles_it_
     reviewer_says = ["Needs dates.", "Needs versions.", "Workable, notes left.\n[[done]]"]
     seen: list[dict[str, str]] = []
 
-    def fake(room: str, handle: str, prompt: str, system: str, _t: float) -> str:
+    def fake(room: str, handle: str, prompt: str, system: str, _t: float, **_kw: Any) -> str:
         seen.append({"handle": handle, "prompt": prompt})
         # The author revises without naming anyone; the reviewer answers in turn.
         return "Revised version." if handle == "agent-2" else reviewer_says.pop(0)
@@ -673,3 +675,50 @@ async def test_work_that_asks_its_reviewer_is_left_to_the_mention(monkeypatch: p
 
     # The fake channel fires no summons, so only the work turn itself ran.
     assert [s["handle"] for s in seen] == ["agent-2"]
+
+
+# -- working in a checkout --
+
+
+@pytest.mark.asyncio
+async def test_a_tooled_worker_works_in_its_own_checkout(monkeypatch: pytest.MonkeyPatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "WORKER_TOOLS", True)
+    for h in ("agent-1", "agent-2"):
+        _register(h)
+    key, episode = await _task("Add a health check", assignee="agent-1")
+    seen = _patch_pi(monkeypatch, "Added /healthz and a test; @agent-2 please check it.")
+    engine, _managed, _manager = _engine()
+
+    engine.handle_notice(
+        _ROOM, {"subkind": "filed", "for": "agent-1", "key": key, "episode": episode}
+    )
+    await _settle(engine)
+
+    turn = seen[0]
+    assert turn["cwd"] is not None
+    assert turn["cwd"].name == "agent-1"
+    assert (turn["cwd"] / ".git").exists()
+    assert "swarm/agent-1" in turn["prompt"]
+    assert "in your checkout" in turn["prompt"]
+    assert "You have tools" in turn["system"]
+
+
+@pytest.mark.asyncio
+async def test_the_sandbox_keeps_a_worker_to_writing(monkeypatch: pytest.MonkeyPatch):
+    # The sandbox cannot see the hub's checkout, so a tooled turn there would
+    # edit files nobody finds.
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "WORKER_TOOLS", True)
+    monkeypatch.setattr(settings, "ALIGNER_PI_OPENSHELL", True)
+    _register("agent-1")
+    _key, episode = await _task("Draft the plan")
+    seen = _patch_pi(monkeypatch, "The plan.")
+    engine, _managed, _manager = _engine()
+
+    await engine.turn(_ROOM, "agent-1", episode=episode, ask="Write it.")
+
+    assert seen[0]["cwd"] is None
+    assert "You have no tools" in seen[0]["system"]
