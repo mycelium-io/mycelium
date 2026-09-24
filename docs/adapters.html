@@ -924,7 +924,7 @@ steps:
         <li>Each worker works in its own worktree of it, on its own branch (<code>swarm/agent-1</code>, <code>swarm/agent-2</code>, …), so two workers never edit the same files at once.</li>
         <li>It commits its work to its branch and says in the thread what it did. A reviewer reads the author&#x27;s branch and runs what checks it. The lead merges every part&#x27;s branch when the last one is done.</li>
       </ul>
-      <p>The workspace is under the hub&#x27;s data directory, at <code>~/.mycelium/workspaces/&lt;room&gt;/</code> on a hub started with <code>mycelium up</code>, so you can open the branches there, or push them.</p>
+      <p>The workspace is under the hub&#x27;s data directory, at <code>~/.mycelium/workspaces/&lt;room&gt;/</code> on a hub started with <code>mycelium up</code>. Every branch is in its <code>repo/</code>, so from your machine you can read, check out or push them there (<code>git -C ~/.mycelium/workspaces/&lt;room&gt;/repo log swarm/agent-1</code>). The worktrees beside it record the hub container&#x27;s paths, so work with the branches in <code>repo/</code> rather than inside a worktree.</p>
       <p>What it does to the board, it writes as a line in its reply, and the hub carries it out:</p>
       <div class="table-wrap">
         <table>

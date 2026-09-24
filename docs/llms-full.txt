@@ -2375,8 +2375,11 @@ commands, in its own checkout on the hub:
   every part's branch when the last one is done.
 
 The workspace is under the hub's data directory, at
-`~/.mycelium/workspaces/<room>/` on a hub started with `mycelium up`, so you
-can open the branches there, or push them.
+`~/.mycelium/workspaces/<room>/` on a hub started with `mycelium up`. Every
+branch is in its `repo/`, so from your machine you can read, check out or
+push them there (`git -C ~/.mycelium/workspaces/<room>/repo log swarm/agent-1`).
+The worktrees beside it record the hub container's paths, so work with the
+branches in `repo/` rather than inside a worktree.
 
 What it does to the board, it writes as a line in its reply, and the hub
 carries it out:
