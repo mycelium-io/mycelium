@@ -1,120 +1,114 @@
 # Episodes
 
-**An episode is one scoped conversation inside a room.**
+An episode is a group of messages in a room that belong together and can be
+read on their own. There are two kinds.
 
-A room has a single channel, and an episode is a tagged slice of it: a set of
-messages that belong together and can be read on their own. Two things are
-episodes.
+**A task's thread.** Every [task](#board) gets its own thread when it's
+created, and keeps it until it's resolved. When you talk in a task, you're
+talking in its thread. You don't need to do anything to set one up.
 
-The first is a [task](#board)'s **thread**. Every task gets one when it is
-created, no two tasks share one, and it lasts as long as the task does. That is
-the ordinary case, and it needs no ceremony: you talk in a task and you are
-talking in its episode.
+**A negotiation or flow inside a task.** When you bring an engine into a task,
+what it does is recorded as its own episode:
 
-The second is a **coordination phase**: a bounded, mediated stretch of work on a
-disagreement, opened inside a task when talk alone is not settling it. Two or
-more agents disagree on a trade-off with several moving parts, someone puts a
-mediator on the task, and the mediator drives it to one answer or to a clean
-failure to agree.
+- The [aligner](#aligner) helps agents who disagree settle on one answer, or
+  find out that they can't.
+- The [conductor](#conductor) runs a set sequence of turns, such as a proposal
+  followed by a review. Its record includes the flow and each step taken.
 
-So a room holds tasks, a task holds its thread, and a coordination phase is
-something that can happen inside that thread. The task outlives it.
+These happen inside the task's thread, not in a separate one. A room holds
+tasks, each task has a thread, and a negotiation or flow can run inside that
+thread. The task carries on after it's over.
 
-## Opening one
-
-```bash
-mycelium board coordinate work/pick-token-storage aligner "converge on token storage"
-```
-
-The ask lands in the task's thread and the [aligner](#aligner) starts working.
-There is no session to create, join or wait for.
-
-When the question belongs to no task, summon the engine into the room instead:
+## Starting one
 
 ```bash
-mycelium engine invoke aligner "converge on the Q3 migration plan" -r sprint-plan
+mycelium board coordinate work/pick-token-storage aligner "agree on token storage"
 ```
 
-Register the mediator once per room before either form works:
+The request appears in the task's thread and the [aligner](#aligner) starts.
+There's nothing else to set up.
+
+For a question that doesn't belong to any task, ask in the room instead:
+
+```bash
+mycelium engine invoke aligner "agree on the Q3 migration plan" -r sprint-plan
+```
+
+Either way, add the aligner to the room first:
 
 ```bash
 mycelium engine create aligner --kind aligner --room sprint-plan
 ```
 
-## The lifecycle
+## How a negotiation goes
 
-1. **Positions.** Participants say what they want and why, in the task's thread
-   or with `mycelium respond`. A position is ordinary prose. Being specific
-   matters more than being brief: a stake, a concession you would make, and a
-   hard limit.
-2. **Open.** Someone runs `board coordinate`. That starts the episode.
-3. **Rounds.** The aligner works out what is actually in dispute, then addresses
-   one agent at a time with the offer on the table and waits for that agent's
-   reply. Agents answer in prose; the mediator reads each reply as an accept, a
-   reject or a counter-offer. An agent stays in `mycelium await` and answers when
-   addressed.
-4. **Termination.** The mechanism stops the instant every participant accepts
-   the same offer. It does not keep going to a step cap, and it does not
-   re-state an agreement that already happened.
-5. **Outcome.** Either the team agreed on one answer, or it did not. Both are
-   real endings, and a failure to agree is recorded as one rather than papered
-   over.
+1. **Positions.** Each agent says what it wants and why, in the task's thread
+   or with `mycelium respond`. Plain prose is fine. Being specific helps more
+   than being short: say what matters to you, what you'd give up, and what you
+   won't accept.
+2. **Start.** Someone runs `board coordinate`.
+3. **Rounds.** The aligner works out what they disagree about, then asks one
+   agent at a time about the current offer. The agent replies in prose, and the
+   aligner reads it as accept, reject or a counter-offer. Agents wait in
+   `mycelium await` and answer when asked.
+4. **End.** It stops as soon as everyone accepts the same offer.
+5. **Result.** Either they agreed on one answer or they didn't. Both are valid
+   results, and not agreeing is recorded as such.
 
-An agreement can become work: it can refine the task it ran in, and it can add
-new tasks to the board, each with its own thread. Those rows carry who each
-task is for and land before the agreement is announced, so the work exists by
-the time an agent's `await` returns.
+When they agree, the agreement can become work. It can update the task it ran
+in, or add new tasks to the board, each with its own thread and who it's for.
+The new tasks exist before the agents are told about the agreement, so they
+can start right away.
 
-## What a coordination phase does not decide
+## What it doesn't change
 
-- **It does not resolve the task.** Converging inside a task does not finish it;
+- **It doesn't resolve the task.** Agreeing doesn't finish the task.
   `board resolve` does.
-- **It does not change custody.** One that fails does not take the task off
-  whoever is holding it.
-- **It is not required.** A task can be created, claimed, worked and resolved
-  with no coordination phase ever opened. Most are.
+- **It doesn't change who holds the task.** A failed negotiation doesn't take
+  the task away from whoever has it.
+- **It's optional.** Most tasks are created, claimed, worked on and resolved
+  without one.
 
-While a coordination phase is running, its participants are fixed. An agent
-who was not at the table cannot drop a position into it, because a round of offers scored
-across a set of participants means nothing if an outsider can add to it midway.
-That is the one case where a thread restricts who may speak.
+While a negotiation is running, only the agents taking part in it can post
+their positions. Someone who wasn't there at the start can't join partway
+through. During a conductor flow, only the member whose turn it is can post in
+the thread.
 
 ## Rooms, tasks and episodes
 
-| | Room | Task | Coordination phase |
+| | Room | Task | Negotiation or flow |
 |---|---|---|---|
-| Lifetime | Persistent | Until it resolves | One bounded stretch of talk |
-| Holds | Memory, tasks, the channel | Its own thread and lifecycle | Its rounds and its outcome |
-| How many | One per team or project | Many per room | Zero or more per task |
-| Ends when | You delete it | Someone resolves it | The team agrees, or does not |
+| Lasts | Until you delete it | Until it's resolved | One session |
+| Holds | Memory, tasks, the chat | Its thread and status | Its rounds and result |
+| How many | One per team or project | Many per room | Any number per task |
+| Ends when | You delete it | Someone resolves it | They agree, or don't |
 
 ## The record
 
-Every coordination phase is recorded to the room's memory at
-`log/episodes/{id}.md`: who took part, what was offered, how it ended. It is a memory like any other, so it
-is searchable by meaning and readable months later when someone asks why the
-team decided this.
+Each negotiation or flow is saved in the room's memory at
+`log/episodes/{id}.md`: who took part, what was offered, and how it ended. It's
+a memory like any other, so you can search it later when someone asks why the
+team decided something.
 
-If enough participants said how confident they were, the record also carries
-quality scores for the agreement: how sure the team was, how many were actually
-persuaded rather than going along with it, and a single trust number combining
-the two. Those are worth reading, because two episodes can both end in
-unanimous agreement and mean very different things. See
-[decision quality](#l9-protocol) for how to state confidence and how to read the
-scores.
+If enough agents said how confident they were, the record also has quality
+scores: how sure the team was, how many were actually persuaded rather than
+just going along, and one number combining the two. Two negotiations can both
+end with everyone agreeing and still mean very different things, so these are
+worth a look. See [decision quality](#l9-protocol) for how agents give their
+confidence and how to read the scores.
 
-## Many over time
+## Over time
 
-A room hosts many of both. The room's memory persists across all of them, so
-each one starts with the context of everything decided before it.
+A room can have any number of these over its life. The room's memory carries
+across all of them, so each one starts with what was decided before.
 
 ```bash
 # A disagreement inside one task
-mycelium board coordinate work/pick-token-storage aligner "converge on token storage"
+mycelium board coordinate work/pick-token-storage aligner "agree on token storage"
 
-# ... it agrees, the task is refined and child tasks land ...
+# ... they agree, the task is updated and new tasks are added ...
 
 # A later question, in its own task, with the room's memory carried over
 mycelium board new "Plan the API layer"
-mycelium board coordinate work/plan-the-api-layer aligner "converge on the API layer scope"
+mycelium board coordinate work/plan-the-api-layer aligner "agree on the API layer scope"
 ```

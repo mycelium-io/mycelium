@@ -27,6 +27,7 @@ import type {
   MemoryGraphEdge,
   MemoryGraphNode,
   PresenceMember,
+  RoomFloor,
 } from "@/lib/api";
 import type { RoomStatus } from "@/lib/board/upstream";
 
@@ -90,6 +91,8 @@ export interface RoomFixture {
    *  (one whose handle appears here) projects a board row; without a SLIM node
    *  there is otherwise no presence, so the board's resident rows come from here. */
   presence?: PresenceMember[];
+  /** Floors held in the room's threads right now, served beside presence. */
+  floors?: RoomFloor[];
   /** The room's link graph (#599/#611) — undefined means "no link index yet",
    *  the same degrade-to-empty case the real backend serves for an unlinked room. */
   links?: MemoryGraph;
@@ -359,6 +362,173 @@ const atlasEpisodeSummary: EpisodeSummary = {
   updated_by: "aligner",
 };
 
+// A flow the conductor is walking right now: the gated review of the key
+// rotation, opened from the read-switch task. Two steps taken (a proposal, a
+// block), standing at the proposer's second turn with the floor given to it.
+// A run the conductor walked inside the read-switch task's thread. Its record
+// is an episode of its own, nested in the thread (``within``) and reading the
+// same slice (``episode``): the task stays one row and one thread.
+const atlasFlowEpisode: EpisodeSummary = {
+  short_id: "f10a2c",
+  episode: ATLAS_FLIP_THREAD,
+  topic: "urn:concept:mycelium:atlas-migration",
+  outcome: "open",
+  subkind: null,
+  participants: ["reads", "operator", "conductor"],
+  metrics: null,
+  assignments: null,
+  tasks: [],
+  message_count: 5,
+  updated_at: iso(2),
+  updated_by: "conductor",
+  within: ATLAS_FLIP_THREAD,
+  current_step: "propose",
+  flow: {
+    name: "gated",
+    description: "A proposer proposes, a guardian approves or blocks; a block sends it back.",
+    roles: ["proposer", "guardian"],
+    max_steps: 6,
+    bound: { proposer: "reads", guardian: "operator" },
+    cast: ["reads", "operator"],
+    ask: "flip reads to the new store without a soak window",
+    steps: [
+      { id: "propose", to: "proposer", next: "review", prompt: "{ask}\n\nState exactly what you intend to do." },
+      { id: "review", to: "guardian", next: { accept: "approved", reject: "propose", default: "propose" }, prompt: "A proposal is on the table:\n\n{reply}\n\nApprove it or block it." },
+      { id: "approved", end: "resolved" },
+    ],
+  },
+  trace: [
+    { step: "propose", turn: 1, asked: ["reads"], stances: { reads: null }, stance: null, next: "review", at: iso(6) },
+    { step: "review", turn: 2, asked: ["operator"], stances: { operator: "reject" }, stance: "reject", next: "propose", at: iso(3) },
+  ],
+};
+
+
+// The other two built-in flows, and one a room wrote for itself, so the pane
+// has every shape a flow can take: a fan-out in progress, a round-robin that
+// finished, and a long branching one deep in its loops.
+const atlasFanOutEpisode: EpisodeSummary = {
+  short_id: "a2b3c4",
+  episode: ATLAS_RETIRE_THREAD,
+  topic: "urn:concept:mycelium:atlas-migration",
+  outcome: "open",
+  subkind: null,
+  participants: ["operator", "backfill", "reads", "conductor"],
+  metrics: null,
+  assignments: null,
+  tasks: [],
+  message_count: 4,
+  updated_at: iso(4),
+  updated_by: "conductor",
+  within: ATLAS_RETIRE_THREAD,
+  current_step: "combine",
+  flow: {
+    name: "fan-out",
+    description: "A lead asks every worker at once, then combines what came back.",
+    roles: ["lead"],
+    max_steps: 6,
+    bound: { lead: "operator" },
+    cast: ["operator", "backfill", "reads"],
+    ask: "carve up the reconciliation day: who checks what, in what order",
+    steps: [
+      { id: "gather", to: "workers", next: "combine", prompt: "{ask}\n\nAnswer with what you can contribute, what you would need, and any blocker you see." },
+      { id: "combine", to: "lead", next: "done", prompt: "You asked the team: {ask}\n\nThey answered:\n{replies}\n\nCombine those into one plan." },
+      { id: "done", end: "resolved" },
+    ],
+  },
+  trace: [
+    { step: "gather", turn: 1, asked: ["backfill", "reads"], stances: { backfill: null, reads: null }, stance: null, next: "combine", at: iso(5) },
+  ],
+};
+
+// An earlier run in the read-switch thread, finished: the pane shows the
+// latest run and reaches this one from its record.
+const atlasRoundRobinEpisode: EpisodeSummary = {
+  short_id: "c7d8e9",
+  episode: ATLAS_FLIP_THREAD,
+  topic: "urn:concept:mycelium:atlas-migration",
+  outcome: "resolved",
+  subkind: null,
+  participants: ["backfill", "reads", "operator", "conductor"],
+  metrics: null,
+  assignments: null,
+  tasks: [],
+  message_count: 8,
+  updated_at: iso(40),
+  updated_by: "conductor",
+  within: ATLAS_FLIP_THREAD,
+  current_step: null,
+  flow: {
+    name: "round-robin",
+    description: "Every member speaks in turn, for a fixed number of rounds.",
+    roles: [],
+    max_steps: 12,
+    bound: {},
+    cast: ["backfill", "reads", "operator"],
+    ask: "should the old store stay readable after cutover, and for how long",
+    steps: [
+      { id: "round", to: "each", rounds: 2, next: "done", prompt: "Round {round} of {rounds}.\n\nThe question: {ask}" },
+      { id: "done", end: "resolved" },
+    ],
+  },
+  trace: [
+    { step: "round", turn: 1, asked: ["backfill", "reads", "operator"], stances: { backfill: null, reads: null, operator: null }, stance: null, next: "round", at: iso(44) },
+    { step: "round", turn: 2, asked: ["backfill", "reads", "operator"], stances: { backfill: "accept", reads: "accept", operator: "accept" }, stance: "accept", next: "done", at: iso(41) },
+  ],
+};
+
+const ATLAS_CATALOG_THREAD = atlasEpisode("d6f8b0");
+const atlasReleaseTrainEpisode: EpisodeSummary = {
+  short_id: "d4e5f6",
+  episode: ATLAS_CATALOG_THREAD,
+  topic: "urn:concept:mycelium:atlas-migration",
+  outcome: "open",
+  subkind: null,
+  participants: ["backfill", "reads", "operator", "conductor"],
+  metrics: null,
+  assignments: null,
+  tasks: [],
+  message_count: 14,
+  updated_at: iso(1),
+  updated_by: "conductor",
+  within: ATLAS_CATALOG_THREAD,
+  current_step: "security",
+  flow: {
+    name: "release-train",
+    description: "Plan with the team, clear security, canary it, get sign-off; any block sends it back.",
+    roles: ["lead", "guardian", "human", "operator"],
+    max_steps: 24,
+    bound: { lead: "backfill", guardian: "reads", human: "operator", operator: "backfill" },
+    cast: ["backfill", "reads", "operator"],
+    ask: "ship the cutover as one release train",
+    steps: [
+      { id: "triage", to: "lead", next: "plan", prompt: "{ask}\n\nSay what has to be true before this ships." },
+      { id: "plan", to: "each", next: "combine", prompt: "{ask}\n\nWhat is your part, and what do you need?" },
+      { id: "combine", to: "lead", next: "security", prompt: "The team said:\n{replies}\n\nCombine into one plan." },
+      { id: "security", to: "guardian", next: { accept: "canary", reject: "revise", silent: "escalate", default: "revise" }, prompt: "Review the plan:\n{reply}" },
+      { id: "revise", to: "lead", next: "security", prompt: "Security objected:\n{reply}\n\nRevise the plan." },
+      { id: "escalate", to: "human", next: { accept: "canary", reject: "abandoned", default: "escalate" }, prompt: "Security did not answer. Proceed?" },
+      { id: "canary", to: "operator", next: { accept: "signoff", reject: "rollback" }, prompt: "Run the canary and report." },
+      { id: "signoff", to: "guardian", next: { accept: "shipped", reject: "rollback" }, prompt: "Canary is green. Sign off?" },
+      { id: "rollback", to: "operator", next: "revise", prompt: "Roll back and say what you saw." },
+      { id: "shipped", end: "resolved" },
+      { id: "abandoned", end: "rejected" },
+    ],
+  },
+  trace: [
+    { step: "triage", turn: 1, asked: ["backfill"], stances: { backfill: null }, stance: null, next: "plan", at: iso(30) },
+    { step: "plan", turn: 2, asked: ["backfill", "reads", "operator"], stances: { backfill: null, reads: null, operator: null }, stance: null, next: "combine", at: iso(27) },
+    { step: "combine", turn: 3, asked: ["backfill"], stances: { backfill: null }, stance: null, next: "security", at: iso(24) },
+    { step: "security", turn: 4, asked: ["reads"], stances: { reads: "reject" }, stance: "reject", next: "revise", at: iso(21) },
+    { step: "revise", turn: 5, asked: ["backfill"], stances: { backfill: null }, stance: null, next: "security", at: iso(18) },
+    { step: "security", turn: 6, asked: ["reads"], stances: { reads: null }, stance: "silent", next: "escalate", at: iso(15) },
+    { step: "escalate", turn: 7, asked: ["operator"], stances: { operator: "accept" }, stance: "accept", next: "canary", at: iso(12) },
+    { step: "canary", turn: 8, asked: ["backfill"], stances: { backfill: "reject" }, stance: "reject", next: "rollback", at: iso(9) },
+    { step: "rollback", turn: 9, asked: ["backfill"], stances: { backfill: null }, stance: null, next: "revise", at: iso(6) },
+    { step: "revise", turn: 10, asked: ["backfill"], stances: { backfill: null }, stance: null, next: "security", at: iso(3) },
+  ],
+};
+
 // Coordination-state memories the board projects into rows. Every one is what
 // the docs promise a task is: a markdown file with frontmatter — prose in the
 // body (`value`), the row's typed fields in `meta`. The board reads status,
@@ -378,7 +548,7 @@ const atlasBoardRows: MockMemory[] = [
       "Point reads at the new store\n\n" +
       "Behind `catalog.reads.newstore`, default off. Don't flip until the copy is " +
       "reconciled and backfill signs off. Waiting on the copy (#502).",
-    meta: { kind: "action", status: "open", assignee: "@reads", priority: "high", issue: "#502" },
+    meta: { "depends-on": ["work/reconcile-review", "work/backfill-metrics"],  kind: "action", status: "open", assignee: "@reads", priority: "high", issue: "#502" },
     content_text: "Point reads at the new store, behind a flag. Waiting on the copy.",
     created_by: "aligner",
     updated_by: "aligner",
@@ -389,7 +559,7 @@ const atlasBoardRows: MockMemory[] = [
   {
     key: "work/decommission-old-store",
     value: "Decommission the old store after the soak",
-    meta: { kind: "action", status: "open", assignee: "@reads", issue: "#499" },
+    meta: { "depends-on": ["work/read-switch"],  kind: "action", status: "open", assignee: "@reads", issue: "#499" },
     content_text: "Decommission the old store once the soak is clean.",
     created_by: "aligner",
     updated_by: "aligner",
@@ -437,7 +607,7 @@ const atlasBoardRows: MockMemory[] = [
   {
     key: "work/reconcile-review",
     value: "Review the reconciliation script (PR #504)",
-    meta: {
+    meta: { "depends-on": ["work/backfill-catalog"], 
       status: "in_review",
       kind: "review",
       owner: "@reads",
@@ -457,7 +627,7 @@ const atlasBoardRows: MockMemory[] = [
   {
     key: "work/backfill-catalog",
     value: "Backfill the catalog into the new store",
-    meta: {
+    meta: { "depends-on": ["work/dual-write-setup"], 
       status: "in_progress",
       kind: "action",
       owner: "@backfill",
@@ -477,7 +647,7 @@ const atlasBoardRows: MockMemory[] = [
   {
     key: "work/backfill-metrics",
     value: "Watch backfill throughput during the run",
-    meta: {
+    meta: { "depends-on": ["work/dual-write-setup"], 
       status: "in_progress",
       kind: "action",
       owner: "@operator",
@@ -710,8 +880,21 @@ const atlas: RoomFixture = {
         "Decision: we're go for Friday am pending a clean 24h soak, as backfill laid out. I'm adding one gate — the pool-recycle fix has to land and be verified before we flip, not after. If it's not in by Thursday evening we slip to Monday. I'd rather ship a day late than ship into a known write-dropping window. Filing both follow-ups as tasks now.",
     },
   ],
-  episodes: [atlasEpisodeSummary],
-  episodeDetails: { e4f1a2: { ...atlasEpisodeSummary, messages: atlasL9Chain } },
+  episodes: [atlasReleaseTrainEpisode, atlasFlowEpisode, atlasFanOutEpisode, atlasEpisodeSummary, atlasRoundRobinEpisode],
+  episodeDetails: {
+    e4f1a2: { ...atlasEpisodeSummary, messages: atlasL9Chain },
+    f10a2c: { ...atlasFlowEpisode, messages: [] },
+    a2b3c4: { ...atlasFanOutEpisode, messages: [] },
+    c7d8e9: { ...atlasRoundRobinEpisode, messages: [] },
+    d4e5f6: { ...atlasReleaseTrainEpisode, messages: [] },
+  },
+  // The floors the running flows hold on their tasks' threads: each names the
+  // task, and the member each run is waiting on.
+  floors: [
+    { thread: "f1a5c7", episode: ATLAS_FLIP_THREAD, key: "work/read-switch", title: "Point reads at the new store", holder: "conductor", speakers: ["reads"] },
+    { thread: "d2b8e0", episode: ATLAS_RETIRE_THREAD, key: "work/decommission-old-store", title: "Decommission the old store after the soak", holder: "conductor", speakers: ["operator"] },
+    { thread: "d6f8b0", episode: ATLAS_CATALOG_THREAD, key: "work/backfill-catalog", title: "Backfill the catalog into the new store", holder: "conductor", speakers: ["reads"] },
+  ],
   // backfill holds an open SLIM socket; reads is present on a server-held await
   // lease. Both are agents in the roster, so the board projects a resident row
   // for each — the presence signal that a live SLIM node would otherwise supply.
@@ -800,6 +983,15 @@ const atlas: RoomFixture = {
 // referrers yet (#599's graph and #611's rail integrity banner agree on this by
 // construction, since both read the same edge list).
 const ATLAS_LINK_EDGES: MemoryGraphEdge[] = [
+  // The migration's order of work: each row waits on the ones before it, so
+  // the board reads "after …" on the rows still blocked and the graph draws
+  // the pipeline dual-write → backfill → reconcile → read switch → decommission.
+  { source: "work/backfill-catalog", target: "work/dual-write-setup", kind: "relation", relation: "depends-on", resolved: true },
+  { source: "work/backfill-metrics", target: "work/dual-write-setup", kind: "relation", relation: "depends-on", resolved: true },
+  { source: "work/reconcile-review", target: "work/backfill-catalog", kind: "relation", relation: "depends-on", resolved: true },
+  { source: "work/read-switch", target: "work/reconcile-review", kind: "relation", relation: "depends-on", resolved: true },
+  { source: "work/read-switch", target: "work/backfill-metrics", kind: "relation", relation: "depends-on", resolved: true },
+  { source: "work/decommission-old-store", target: "work/read-switch", kind: "relation", relation: "depends-on", resolved: true },
   { source: "context/synthesis", target: "decisions/cutover", kind: "wikilink", resolved: true },
   { source: "context/synthesis", target: "status/sprint", kind: "wikilink", resolved: true },
   { source: "context/synthesis", target: "context/goal", kind: "transclusion", resolved: true },

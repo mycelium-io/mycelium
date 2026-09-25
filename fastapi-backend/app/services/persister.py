@@ -101,6 +101,21 @@ def envelope_message_id(envelope: L9) -> str | None:
     return message.id if message is not None else None
 
 
+#: Payloads an exchange carries that are signals rather than turns: nothing
+#: to answer, so the addressed hook never fires for them.
+_SIGNAL_PAYLOADS = frozenset(
+    {"presence", "keepalive", l9.PING_PAYLOAD_TYPE, l9.NOTICE_PAYLOAD_TYPE}
+)
+
+
+def is_addressed_turn(envelope: L9) -> bool:
+    """True for an ``exchange`` that puts something to its recipients."""
+    header = envelope.header
+    if header.kind.value != "exchange":
+        return False
+    return envelope.payload.type not in _SIGNAL_PAYLOADS
+
+
 def is_converged(envelope: L9) -> bool:
     """True for a ``commit:converged`` envelope (the plan-compile trigger)."""
     header = envelope.header
@@ -548,11 +563,18 @@ def stored_message_from_record(
     header = record.content.get("l9", {}).get("header", {})
     episode = header.get("message", {}).get("episode")
     seed = record.message_id or f"{record.recorded_at}:{record.sender}"
+    # A conductor post carries a structured line beside its prose (see
+    # ``conductor.LINE_KEY``). The chat projection keeps only prose, so the line
+    # rides the message's metadata, and a reload draws the run as the live
+    # stream did rather than as the prompts behind it.
+    data = (record.content.get("l9", {}).get("payload") or {}).get("data") or {}
+    line = data.get("conductor") if isinstance(data, dict) else None
     msg = StoredMessage(
         room_name=room,
         sender_handle=record.sender or l9.SYSTEM_ACTOR_ID,
         message_type=message_type,
         content=content,
+        event_metadata={"conductor": line} if isinstance(line, dict) else None,
         episode=episode if isinstance(episode, str) else None,
         message_id=record.message_id or None,
         amends=amended_target(record.subkind, header.get("message", {}).get("parents")),
@@ -785,6 +807,11 @@ def write_episode_cursors(room: str, cursors: dict[str, dict[str, int]]) -> None
 # ── The receive loop ─────────────────────────────────────────────────────────
 
 SummonHook = Callable[[str, "L9", list[str], str], None]
+# Called once per L9 recipient of an exchange that named nobody in its text —
+# an addressed turn, the way the aligner and the conductor put a question to
+# one member. A mention in the text is a summon and fires the summon hook
+# instead, so a handle is never told twice about one message.
+AddressedHook = Callable[[str, "L9", str], None]
 ConvergedHook = Callable[["L9"], None]
 # Called with the handle of a member that dropped off the channel, so the
 # moderator can update its membership — presence, not a fatal error.
@@ -878,12 +905,14 @@ class RoomPersister:
         on_summon: SummonHook | None = None,
         on_converged: ConvergedHook | None = None,
         on_member_left: MemberLeftHook | None = None,
+        on_addressed: AddressedHook | None = None,
         feed_bus: bool = True,
     ) -> None:
         self.room = room
         self._channel = channel
         self._members_provider = members_provider
         self.on_summon = on_summon or _default_summon_hook
+        self.on_addressed = on_addressed
         self.on_converged = on_converged or _default_converged_hook
         self.on_member_left = on_member_left
         self._feed_bus = feed_bus
@@ -1166,6 +1195,14 @@ class RoomPersister:
                 self.on_summon(handle, envelope, summons, message_text)
             except Exception:
                 logger.exception("summon hook failed for @%s", handle)
+        if self.on_addressed is not None and is_addressed_turn(envelope):
+            for handle in envelope_recipients(envelope):
+                if handle in summons:
+                    continue
+                try:
+                    self.on_addressed(handle, envelope, message_text)
+                except Exception:
+                    logger.exception("addressed hook failed for @%s", handle)
         if is_converged(envelope):
             try:
                 self.on_converged(envelope)

@@ -23,6 +23,7 @@ import {
   type AttentionFilter,
   type LiveItem,
 } from "./item";
+import { waitingOnRows } from "./assignment";
 import { fieldByName, humanize, type FieldSchema } from "./schema";
 
 export type ViewMode = "triage" | "board" | "table" | "timeline" | "daily";
@@ -288,6 +289,8 @@ export function attentionFilterCounts(items: LiveItem[], now: number = Date.now(
 export function waitingOn(item: LiveItem): string | null {
   const blockedBy = fieldAsList(item, "blocked_by");
   if (blockedBy.length) return `waiting on ${blockedBy.join(", ")}`;
+  const after = waitingOnRows(item);
+  if (after.length) return `after ${after.join(", ")}`;
   if (kindOf(item) === "decision" && statusOf(item) === "in_review") return "awaiting a call";
   return null;
 }

@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Adapters · mycelium</title>
-<meta name="description" content="Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer, and summon the first-party engines: the aligner, the synthesizer and hello.">
+<meta name="description" content="Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer, and summon the first-party engines: the aligner, the synthesizer, hello, a persona and the conductor.">
 <meta property="og:title" content="Adapters · mycelium">
-<meta property="og:description" content="Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer, and summon the first-party engines: the aligner, the synthesizer and hello.">
+<meta property="og:description" content="Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer, and summon the first-party engines: the aligner, the synthesizer, hello, a persona and the conductor.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/adapters.html">
 <meta property="og:type" content="website">
@@ -92,6 +92,7 @@
           <a href="index.html#slim" class="nav-link sub">SLIM</a>
           <a href="index.html#board" class="nav-link sub">Board</a>
           <a href="index.html#episodes" class="nav-link sub">Episodes</a>
+          <a href="index.html#swarm" class="nav-link sub">Swarm</a>
           <a href="index.html#memory" class="nav-link sub">Memory</a>
           <a href="index.html#users" class="nav-link sub">Users &amp; Teams</a>
           <a href="index.html#l9-protocol" class="nav-link sub">L9 Protocol</a>
@@ -117,6 +118,9 @@
           <a href="#aligner" class="nav-link sub">Aligner</a>
           <a href="#synthesizer" class="nav-link sub">Synthesizer</a>
           <a href="#hello" class="nav-link sub">Hello</a>
+          <a href="#persona" class="nav-link sub">Persona</a>
+          <a href="#conductor" class="nav-link sub">Conductor</a>
+          <a href="#worker" class="nav-link sub">Worker</a>
         </div>
       </div>
     </div>
@@ -156,6 +160,7 @@
           <a href="reference.html#config-login" class="nav-link sub">login</a>
           <a href="reference.html#config-agent-auth" class="nav-link sub">agent_auth</a>
           <a href="reference.html#config-herdr" class="nav-link sub">herdr</a>
+          <a href="reference.html#config-swarm" class="nav-link sub">swarm</a>
           <a href="reference.html#config-metrics" class="nav-link sub">metrics</a>
           <a href="reference.html#config-a2a" class="nav-link sub">a2a</a>
         </div>
@@ -202,61 +207,33 @@
       <!-- keep -->
       <h1>Adapters</h1>
       <p class="lead">
-        Adapters connect AI coding agents to Mycelium. The coordination model is the
-        same regardless of which agent runtime you use: join a room, share memory,
-        negotiate with other agents.
+        An adapter teaches a coding agent how to use Mycelium: how to join a room,
+        read and write its memory, and take its turn when someone asks it something.
+        Whichever agent you use, it works with rooms the same way.
       </p>
-
-      <div class="callout callout-note">
-        <div class="callout-bar"></div>
-        <div class="callout-body">
-          <strong>An adapter installs knowledge, not a process.</strong> Mycelium never
-          starts your agent. An adapter drops the instructions that teach a runtime how
-          to participate: how to read and write room memory, how to take a turn in a
-          negotiation. The runtime itself is <em>yours</em>: an agent participates as a
-          <strong>resident</strong> session kept woken by
-          <code>mycelium await --loop --exec &lt;cmd&gt;</code>, which loops
-          await → reason → respond. The loop <em>is</em> the wake; nothing is
-          cold-spawned per mention, so the session keeps its context between turns.
-        </div>
-      </div>
 
       <div class="card-grid">
         <div class="card">
           <div class="card-icon"><i data-lucide="terminal-square"></i></div>
           <div class="card-title">Claude Code</div>
-          <div class="card-desc">A host-level <code>/mycelium</code> skill. Rooms, memory, and negotiation inline.</div>
+          <div class="card-desc">A <code>/mycelium</code> skill for every Claude Code session on your machine.</div>
         </div>
         <div class="card">
           <div class="card-icon"><i data-lucide="mouse-pointer-2"></i></div>
           <div class="card-title">Cursor</div>
-          <div class="card-desc">Workspace-local rule + AGENTS.md, dropped per agent at <code>agent create</code> time.</div>
+          <div class="card-desc">A project rule and an AGENTS.md section, added to a workspace when you create the agent.</div>
         </div>
         <div class="card">
           <div class="card-icon"><i data-lucide="network"></i></div>
           <div class="card-title">A2A Bridge</div>
-          <div class="card-desc">Any Agent2Agent endpoint, fielded as a room member — and the room served back as an A2A agent.</div>
+          <div class="card-desc">Add any Agent2Agent agent to a room, or let outside A2A clients talk to a room.</div>
         </div>
         <div class="card">
           <div class="card-icon"><i data-lucide="code-2"></i></div>
           <div class="card-title">REST API</div>
-          <div class="card-desc">Any agent that can make HTTP requests can use the Mycelium API directly.</div>
+          <div class="card-desc">Anything that can make HTTP requests can use Mycelium directly.</div>
         </div>
       </div>
-
-      <p>
-        The <a href="#adapter-a2a">A2A bridge</a> is the exception to the note above:
-        a bridged agent is a remote endpoint the hub calls, not a runtime you keep
-        woken, so there is nothing to install on your machine.
-      </p>
-
-      <p>
-        The <a href="#engines">engines</a> further down the page are the other half of
-        who is in a room. An adapter connects a runtime you own; an engine —
-        the <a href="#aligner">aligner</a>, the <a href="#synthesizer">synthesizer</a>,
-        <a href="#hello">hello</a> — is first-party cognition the room itself owns,
-        registered once and summoned by <code>@</code>-mention.
-      </p>
 
       <pre><code><span class="comment"># List available adapters</span>
 <span class="cmd">mycelium adapter ls</span>
@@ -276,16 +253,16 @@
       <!-- keep -->
       <h1>Claude Code</h1>
       <p>
-        The Claude Code adapter installs a <code>/mycelium</code> skill into your Claude
-        Code environment. Once installed, every Claude Code session can read and write
-        shared memory, join rooms, and take turns in a negotiation. This is the
-        <strong>proven</strong> adapter, the one the end-to-end suite exercises.
+        The Claude Code adapter adds a <code>/mycelium</code> skill to Claude Code.
+        After that, any Claude Code session on your machine can join rooms, use their
+        memory, and take part when someone asks it something. It's the adapter our
+        end-to-end tests run against.
       </p>
 
       <h2 id="cc-install">Install</h2>
       <pre><code><span class="cmd">mycelium adapter add</span> <span class="arg">claude-code</span></code></pre>
 
-      <p>This copies into <code>~/.claude/</code>:</p>
+      <p>This copies one file into <code>~/.claude/</code>:</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -295,28 +272,27 @@
             <tr>
               <td><code>SKILL.md</code></td>
               <td><code>~/.claude/skills/mycelium/</code></td>
-              <td>The <code>/mycelium</code> skill: memory, rooms, the coordination protocol</td>
+              <td>The <code>/mycelium</code> skill: how to use rooms, memory and the board</td>
             </tr>
           </tbody>
         </table>
       </div>
       <p>
-        The install also grants the <code>Bash(mycelium:*)</code> permission rule in your
-        user-global <code>~/.claude/settings.json</code>. That grant is what makes
-        <em>unattended</em> participation work: a session taking a turn on its own can't
-        answer a permission prompt, so it has to be able to run <code>mycelium await</code>
-        and <code>mycelium respond</code> without one. It lives in <code>$HOME</code>, never
-        in a repo, so it is never accidentally committed.
+        It also adds <code>Bash(mycelium:*)</code> to the allowed commands in
+        <code>~/.claude/settings.json</code>, so Claude Code can run <code>mycelium</code>
+        without asking you each time. A session answering on its own, with nobody at
+        the keyboard, can't click through a permission prompt. The setting is in your
+        home directory, not in a repo, so it won't get committed by accident.
       </p>
       <p>
-        Claude Code does not hot-reload skills, so restart any session that was already
-        open before the install.
+        Restart any Claude Code sessions that were already open. They don't pick up
+        new skills until they're restarted.
       </p>
 
       <h2 id="cc-usage">Using the skill</h2>
-      <p>Once installed, invoke the skill from any Claude Code session:</p>
+      <p>In any Claude Code session, run:</p>
       <pre><code>/mycelium</code></pre>
-      <p>The skill provides the full Mycelium coordination protocol inline: share memory, take a turn in a negotiation, and read what other agents know without leaving your current task.</p>
+      <p>Claude Code then knows how to read and write the room's memory, pick up tasks from the board, and answer when it's asked something, without leaving what it's working on.</p>
 
       <h2 id="cc-env">Environment variables</h2>
       <div class="table-wrap">
@@ -325,9 +301,9 @@
             <tr><th>Variable</th><th>Description</th></tr>
           </thead>
           <tbody>
-            <tr><td><code>MYCELIUM_API_URL</code></td><td>Backend URL (default: <code>http://localhost:8000</code>)</td></tr>
-            <tr><td><code>MYCELIUM_ROOM</code></td><td>Active room name</td></tr>
-            <tr><td><code>MYCELIUM_AGENT_HANDLE</code></td><td>This agent's identity handle</td></tr>
+            <tr><td><code>MYCELIUM_API_URL</code></td><td>The hub's URL (default: <code>http://localhost:8000</code>)</td></tr>
+            <tr><td><code>MYCELIUM_ACTIVE_ROOM</code></td><td>The room to use when a command isn't given <code>--room</code></td></tr>
+            <tr><td><code>MYCELIUM_AGENT_HANDLE</code></td><td>The handle this agent speaks as</td></tr>
           </tbody>
         </table>
       </div>
@@ -336,22 +312,21 @@
       <pre><code><span class="comment"># 1. Set your active room</span>
 <span class="cmd">mycelium room use</span> my-project
 
-<span class="comment"># 2. Read what the room already knows (resolved from the hub over HTTP;</span>
-<span class="comment">#    there is no local copy to browse)</span>
+<span class="comment"># 2. See what the room already knows (read from the hub)</span>
 <span class="cmd">mycelium memory ls</span>
 <span class="cmd">mycelium memory search</span> <span class="str">&quot;authentication approach&quot;</span>
 
 <span class="comment"># 3. Share context back</span>
 <span class="cmd">mycelium memory set</span> <span class="str">&quot;work/auth&quot;</span> <span class="str">&quot;Implemented JWT with refresh tokens&quot;</span> <span class="flag">--handle</span> claude-agent
 
-<span class="comment"># 4. Stay woken so the room can reach you: await → reason → respond, on repeat</span>
+<span class="comment"># 4. Keep listening, so the room can ask this agent things</span>
 <span class="cmd">mycelium await</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> claude-agent <span class="flag">--loop</span> <span class="flag">--exec</span> ./drive-agent.sh</code></pre>
       <p>
-        Step 4 is the participation loop. <code>--exec</code> receives the turn as JSON on
-        stdin and is expected to call <code>mycelium respond</code>; the reasoning happens
-        in your session's own head, and <code>respond</code> just posts the result. An
-        <code>@</code>-mention aimed at a handle with no resident runtime is not lost: it
-        waits on the durable transcript cursor until one awaits.
+        Step 4 keeps the agent listening. Each time someone mentions it, the command
+        you pass to <code>--exec</code> gets the message as JSON on stdin, and should
+        reply with <code>mycelium respond</code>. If nothing is listening when the
+        agent is mentioned, the message waits, and the agent gets it the next time it
+        runs <code>mycelium await</code>.
       </p>
     </section>
 
@@ -361,33 +336,29 @@
       <!-- keep -->
       <h1>Cursor</h1>
       <p>
-        A <code>cursor</code> agent participates the same way a Claude Code agent does: as
-        a <strong>resident</strong> Cursor session kept woken with
-        <code>mycelium await --loop</code>, taking turns via <code>await</code> /
-        <code>respond</code>. Mycelium does not run <code>cursor-agent</code> for you; the
-        adapter only drops the instructions that tell the session how to coordinate.
+        A Cursor agent works with rooms the same way a Claude Code agent does: you run
+        a Cursor session and keep it listening with <code>mycelium await --loop</code>.
+        Mycelium doesn't start <code>cursor-agent</code> for you. The adapter only adds
+        the instructions that tell it how to use Mycelium.
       </p>
       <p>
-        Cursor's reading surface is the workspace itself rather than a global host-level
-        dir. So unlike Claude Code (which drops <code>SKILL.md</code> into
-        <code>~/.claude/</code>), the cursor adapter does its work per-agent:
-        <code>mycelium agent create --adapter cursor --cwd &lt;workspace&gt;</code> drops two
-        files into that workspace, and <code>cursor-agent</code> reads them on every
-        session in that directory.
+        Cursor reads its instructions from the workspace rather than from your home
+        directory. So instead of installing once for the whole machine, you set up each
+        agent in its own workspace: <code>mycelium agent create --adapter cursor --cwd
+        &lt;workspace&gt;</code> adds two files there, and every Cursor session in that
+        folder reads them.
       </p>
 
       <h2 id="cursor-install">Install</h2>
-      <pre><code><span class="comment"># 1) Register the adapter (one-time, per host). Informational only;</span>
-<span class="comment">#    cursor has no host-level state dir; the assets ship per agent.</span>
+      <pre><code><span class="comment"># 1) Register the adapter once. This doesn't add any files;</span>
+<span class="comment">#    those are added per agent, below.</span>
 <span class="cmd">mycelium adapter add</span> <span class="arg">cursor</span>
 
-<span class="comment"># 2) Log in once interactively, before the first turn</span>
+<span class="comment"># 2) Log in once, before the agent's first message</span>
 <span class="cmd">cursor-agent login</span></code></pre>
 
       <p>
-        Unlike the other adapters, <code>mycelium adapter add cursor</code> does
-        not drop files at install time. The workspace-local assets ship per-agent
-        at <code>mycelium agent create</code>:
+        The files are added when you create the agent with <code>mycelium agent create</code>:
       </p>
       <div class="table-wrap">
         <table>
@@ -398,12 +369,12 @@
             <tr>
               <td><code>mycelium.mdc</code></td>
               <td><code>&lt;cwd&gt;/.cursor/rules/</code></td>
-              <td>Cursor project-rules file covering the coordination protocol, memory/room/negotiate commands, and agent-mode behavior. Loaded automatically on every Cursor session in the workspace.</td>
+              <td>A Cursor project rule explaining how to use rooms, memory and the board. Cursor loads it in every session in the workspace.</td>
             </tr>
             <tr>
               <td><code>AGENTS.md</code></td>
               <td><code>&lt;cwd&gt;/</code> (merged)</td>
-              <td>Agent-readable preamble. Written inside <code>&lt;!-- mycelium:start --&gt; ... &lt;!-- mycelium:end --&gt;</code> markers so any other content the user or another tool has placed in <code>AGENTS.md</code> is preserved verbatim.</td>
+A short Mycelium section for the agent to read. It goes between <code>&lt;!-- mycelium:start --&gt;</code> and <code>&lt;!-- mycelium:end --&gt;</code> markers, and anything else already in <code>AGENTS.md</code> is left as it is.</td>
             </tr>
           </tbody>
         </table>
@@ -417,33 +388,30 @@
 
       <p>This:</p>
       <ul>
-        <li>Writes the agent manifest into <code>my-project</code> (same shape as claude_code), claiming the <code>design-agent</code> handle in that room.</li>
-        <li>Drops <code>~/repos/my-frontend/.cursor/rules/mycelium.mdc</code> + merges the mycelium section of <code>~/repos/my-frontend/AGENTS.md</code>.</li>
+        <li>Adds <code>design-agent</code> as a member of <code>my-project</code>.</li>
+        <li>Adds <code>~/repos/my-frontend/.cursor/rules/mycelium.mdc</code>, and the Mycelium section of <code>~/repos/my-frontend/AGENTS.md</code>.</li>
       </ul>
       <p>
-        Open a Cursor session in that workspace and keep it woken with
+        Open a Cursor session in that workspace and keep it listening with
         <code>mycelium await --room my-project --handle design-agent --loop --exec
-        &lt;cmd&gt;</code>. A mention of <code>@design-agent</code> in the room then lands
-        on that live session, which reasons and calls <code>mycelium respond</code>. If no
-        session is awaiting, the mention waits on the durable transcript cursor rather
-        than being dropped.
+        &lt;cmd&gt;</code>. When someone mentions <code>@design-agent</code> in the room,
+        that session gets the message and replies with <code>mycelium respond</code>. If
+        no session is listening, the message waits until one is.
       </p>
 
       <h2 id="cursor-auth">Authentication</h2>
       <p>
-        <code>cursor-agent</code>'s login flow is interactive only (it opens a browser
-        tab), so run <code>cursor-agent login</code> once, as the user the session runs
-        as, before the first turn. There is no pre-flight auth check (same posture as
-        the Claude Code adapter), so an unauthenticated binary surfaces as a failure on
-        the turn itself. <code>mycelium adapter status cursor</code> reports whether
-        <code>cursor-agent</code> is on <code>PATH</code> and restates the login
-        prerequisite; it cannot verify the credential itself.
+        <code>cursor-agent</code> logs in through a browser, so run
+        <code>cursor-agent login</code> once yourself, as the same user the session will
+        run as. Mycelium doesn't check the login ahead of time, so if it's missing,
+        you'll find out when the agent first tries to answer.
+        <code>mycelium adapter status cursor</code> tells you whether
+        <code>cursor-agent</code> is installed, but it can't tell whether you're logged in.
       </p>
 
       <h2 id="cursor-env">Environment variables</h2>
       <p>
-        The same set the other adapters use. The bundled
-        <code>.cursor/rules/mycelium.mdc</code> references them in its examples.
+        The same ones the Claude Code adapter uses.
       </p>
       <div class="table-wrap">
         <table>
@@ -451,9 +419,9 @@
             <tr><th>Variable</th><th>Description</th></tr>
           </thead>
           <tbody>
-            <tr><td><code>MYCELIUM_API_URL</code></td><td>Backend URL (default: <code>http://localhost:8000</code>)</td></tr>
-            <tr><td><code>MYCELIUM_ROOM</code></td><td>Active room name for this invocation</td></tr>
-            <tr><td><code>MYCELIUM_AGENT_HANDLE</code></td><td>This agent's identity handle</td></tr>
+            <tr><td><code>MYCELIUM_API_URL</code></td><td>The hub's URL (default: <code>http://localhost:8000</code>)</td></tr>
+            <tr><td><code>MYCELIUM_ACTIVE_ROOM</code></td><td>The room to use when a command isn't given <code>--room</code></td></tr>
+            <tr><td><code>MYCELIUM_AGENT_HANDLE</code></td><td>The handle this agent speaks as</td></tr>
           </tbody>
         </table>
       </div>
@@ -471,60 +439,54 @@
 
     <section class="doc-section" id="adapter-a2a">
       <h1>A2A Bridge</h1>
-      <p>Mycelium speaks <a href="https://github.com/a2aproject/A2A">Agent2Agent (A2A)</a>, the open agent-interop protocol, in both directions. You can pull any A2A agent into a room and talk to it like a teammate, and you can hand a whole room to an outside A2A client as if the room itself were an agent.</p>
-      <p>Unlike the Claude Code and Cursor adapters, there is nothing to install on your machine and no resident session to keep woken. A bridged agent is a remote HTTP endpoint; the hub holds its seat.</p>
-      <h2 id="adapter-a2a-bring-an-a2a-agent-into-a-room">Bring an A2A agent into a room</h2>
-      <p>Register a remote A2A endpoint as a room member. The hub resolves its Agent Card at registration, so a bad or unreachable URL fails right away instead of at the first mention.</p>
+      <p>Mycelium supports <a href="https://github.com/a2aproject/A2A">Agent2Agent (A2A)</a>, an open protocol for agents to talk to each other. It works both ways. You can add any A2A agent to a room and talk to it like a teammate, and outside A2A clients can talk to a room as if the room were an agent.</p>
+      <p>You don&#x27;t need to install anything on your machine for this. A bridged agent is a remote HTTP endpoint, and the hub makes the calls to it.</p>
+      <h2 id="adapter-a2a-adding-an-a2a-agent-to-a-room">Adding an A2A agent to a room</h2>
+      <p>Register the agent&#x27;s URL as a room member. The hub reads its Agent Card when you register it, so a wrong or unreachable URL fails straight away.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> researcher <span class="flag">--adapter</span> a2a \
     <span class="flag">--card</span> <span class="url">https://research.example.com</span> \
     <span class="flag">--room</span> my-room</code></pre>
-      <p>Now <code>@researcher</code> is on the roster. Mention it in normal chat and it answers:</p>
+      <p>Now you can mention it in the room like anyone else:</p>
       <pre><code>@researcher what did last quarter&#x27;s numbers say about churn?</code></pre>
-      <p>The backend calls the remote agent over A2A with your message and posts its reply back into the room as <code>@researcher</code>. Each mention continues the same remote conversation (the thread&#x27;s <code>contextId</code> is carried across turns), so it remembers what you were talking about. This is plain chat, not a special negotiation mode: when the aligner runs a negotiation and addresses <code>@researcher</code>, that is just one more caller mentioning it.</p>
-      <p>If the remote agent needs a credential, name a backend env var that holds the bearer token. Only the variable name is stored in the room; the secret stays in the hub&#x27;s environment.</p>
+      <p>The hub sends your message to the agent and posts its answer in the room as <code>@researcher</code>. It keeps the same conversation going across mentions, so the agent remembers what you were talking about. The aligner can address it in a negotiation the same way.</p>
+      <p>If the agent needs a token, put the token in an environment variable on the backend and give the variable&#x27;s name. Only the name is saved in the room; the token stays in the hub&#x27;s environment.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> researcher <span class="flag">--adapter</span> a2a \
     <span class="flag">--card</span> <span class="url">https://research.example.com</span> \
     <span class="flag">--card-auth-env</span> RESEARCHER_TOKEN</code></pre>
-      <p>Two guards keep the bridge from being used as a lever:</p>
+      <p>Some safeguards:</p>
       <ul>
-        <li><strong>Card hosts must be public.</strong> The hub refuses a card URL that resolves to a private or link-local address, so a registration can&#x27;t point the backend at its own network. For a trusted internal deployment whose A2A agents live on the internal network, disable the guard:</li>
+        <li><strong>Only public addresses.</strong> The hub won&#x27;t register a card URL that points to a private or local network address, so a registration can&#x27;t be used to make the backend call into its own network. If your A2A agents are on an internal network you trust, turn this off:</li>
       </ul>
       <p>``<code> mycelium config set a2a.allow_private_hosts true mycelium config apply </code>``</p>
-      <p>This renders <code>A2A_ALLOW_PRIVATE_HOSTS=1</code> into the backend&#x27;s environment on the next <code>config apply</code>. Do not set this on a public-facing hub.</p>
+      <p>This sets <code>A2A_ALLOW_PRIVATE_HOSTS=1</code> on the backend. Don&#x27;t do this on a hub that&#x27;s open to the internet.</p>
       <ul>
-        <li><strong>A2A agents don&#x27;t summon each other.</strong> A bridged agent&#x27;s auto-reply never triggers another bridged agent, so two of them mentioning each other can&#x27;t ping-pong forever. Humans, the aligner, and resident agents still get a reply.</li>
+        <li><strong>Bridged agents don&#x27;t set each other off.</strong> A reply from one A2A agent never triggers another, so two of them can&#x27;t get stuck mentioning each other. People, the aligner and your own agents still get replies.</li>
+        <li><strong>No made-up replies.</strong> If the remote agent is down or sends something unreadable, nothing is posted.</li>
       </ul>
-      <p>A remote that is dead or unreadable posts nothing rather than a fabricated reply — the caller sees silence, not an invented answer.</p>
-      <figure class="doc-figure"><img class="doc-img" src="diagrams/02-a2a-outbound.svg" alt="Pattern B: A2A outbound, a remote agent joins the room as a member, summon over SLIM, call over HTTPS, reply back onto SLIM" loading="lazy">
+      <figure class="doc-figure"><img class="doc-img" src="diagrams/02-a2a-outbound.svg" alt="A remote A2A agent joins the room as a member: the hub calls it over HTTPS and posts its reply in the room" loading="lazy">
         <figcaption><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/diagrams/02-a2a-outbound.d2" target="_blank" rel="noopener">View source on GitHub</a></figcaption>
       </figure>
-      <h2 id="adapter-a2a-expose-a-room-as-an-a2a-agent">Expose a room as an A2A agent</h2>
-      <p>Every room is discoverable and callable as an A2A agent, with no per-room route wiring. Its Agent Card is served at:</p>
+      <h2 id="adapter-a2a-talking-to-a-room-over-a2a">Talking to a room over A2A</h2>
+      <p>Every room can be found and called as an A2A agent, with no setup. Its Agent Card is at:</p>
       <pre><code>GET /api/rooms/{room}/.well-known/agent-card.json</code></pre>
-      <p>The card advertises the room&#x27;s name and its skills, drawn from the room&#x27;s <code>skills/</code> namespace. An external A2A client then sends the room a message with A2A JSON-RPC (<code>message/send</code>) at:</p>
+      <p>The card lists the room&#x27;s name and its skills, taken from the room&#x27;s <code>skills/</code> memories. An A2A client sends the room a message with A2A JSON-RPC (<code>message/send</code>) at:</p>
       <pre><code>POST /api/rooms/{room}/a2a</code></pre>
-      <p>The message lands in the room like any other post and the call returns an ack. If it <code>@</code>-mentions a room agent, normal room dynamics take over — including the inbound-to-outbound path, where an incoming A2A message drives a bridged A2A agent that lives in the room.</p>
-      <p>The card endpoint is public: discovery is unauthenticated by the A2A spec, the same way <code>/.well-known/openid-configuration</code> is. The room&#x27;s message endpoint is gated by the hub&#x27;s auth when <a href="reference.html#auth">authentication</a> is enabled.</p>
-      <p>On a gated hub the message is attributed to the caller&#x27;s token: a call authenticated as <code>claude-web</code> posts as <code>@claude-web</code>, so two external A2A agents are told apart in the transcript and either one is addressable by handle. On an ungated hub nothing proves who called, and the message posts as the shared <code>@a2a-guest</code> handle instead.</p>
-      <p>The card advertises an absolute URL, which the hub builds from the scheme it sees. Behind a TLS-terminating reverse proxy that is plain <code>http</code>, so a public hub has to be told which forwarder to believe or the card points external clients at <code>http://</code>. See <a href="reference.html#hub-and-spoke">Behind a TLS-terminating proxy</a>.</p>
-      <figure class="doc-figure"><img class="doc-img" src="diagrams/03-a2a-inbound.svg" alt="Pattern C: A2A inbound, the room exposed as an A2A agent, card discovery and JSON-RPC injected onto the room&#x27;s SLIM channel" loading="lazy">
+      <p>The message is posted in the room like any other, and the call returns an acknowledgement. If it mentions an agent in the room, that agent answers as usual, including an A2A agent bridged into the room.</p>
+      <p>Anyone can read the card, as the A2A spec expects. Sending messages requires a login when <a href="reference.html#auth">authentication</a> is on. With authentication on, the message is posted under the caller&#x27;s name: a call made as <code>claude-web</code> shows up as <code>@claude-web</code>. Without authentication there&#x27;s no way to know who called, so messages are posted as <code>@a2a-guest</code>.</p>
+      <p>The card contains the room&#x27;s full URL, built from the scheme the hub sees. Behind a proxy that handles TLS, the hub sees plain <code>http</code>, so you need to tell it which proxy to trust or the card will point clients at <code>http://</code>. See <a href="reference.html#hub-and-spoke">Behind a TLS-terminating proxy</a>.</p>
+      <figure class="doc-figure"><img class="doc-img" src="diagrams/03-a2a-inbound.svg" alt="The room as an A2A agent: clients read its card and send messages that are posted in the room" loading="lazy">
         <figcaption><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/diagrams/03-a2a-inbound.d2" target="_blank" rel="noopener">View source on GitHub</a></figcaption>
       </figure>
-      <h2 id="adapter-a2a-watch-the-bridge">Watch the bridge</h2>
-      <p>The bridge is the one hop that doesn&#x27;t ride SLIM, so it gets its own place in the coordination views instead of being folded into the channel telemetry.</p>
-      <p>From the CLI, <code>mycelium network [room]</code> prints a bridge block per room under the fabric table: the bridged agents with their endpoint and advertised skills, the room&#x27;s own card and how often it has been read, and the last exchanges either way — an answered call with what came back, a failed one with why.</p>
+      <h2 id="adapter-a2a-seeing-what-the-bridge-is-doing">Seeing what the bridge is doing</h2>
+      <p><code>mycelium network [room]</code> shows the bridge for each room below the network table: the bridged agents with their URLs and skills, the room&#x27;s own card and how often it&#x27;s been read, and the most recent calls in each direction, with what came back or why it failed.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">network</span> <span class="cmd">my-room</span></code></pre>
-      <p>In the web UI, the <strong>Network</strong> pane carries the same thing as a strip beneath the SLIM rail, expanding to the agents, the served card, and the recent exchanges. A room without a bridge shows no strip. Both surfaces label a bridged agent as proxied and not a member of the room&#x27;s encrypted group, for the reason the next section spells out.</p>
-      <p>The raw state is one read:</p>
+      <p>In the app, the <strong>Network</strong> pane shows the same thing in a strip under the SLIM view. Rooms without a bridge don&#x27;t show it.</p>
+      <p>To get the raw data:</p>
       <pre><code>GET /api/rooms/{room}/a2a/state</code></pre>
-      <p>Its counters are process-lifetime and in-memory: a hub restart zeroes them. The room transcript remains the durable record — a bridged reply is persisted there like any other message.</p>
-      <h2 id="adapter-a2a-what-the-bridge-is-and-what-it-is-not">What the bridge is, and what it is not</h2>
-      <p>A bridged A2A agent is a member of the room in the coordination sense: it is on the roster, it answers when mentioned, and its replies are attributed to its handle.</p>
-      <p>It is <strong>not</strong> a member of the room&#x27;s MLS group, and it never holds a group key. (Nor, for that matter, is the room&#x27;s own MLS group end-to-end from the hub: the backend holds that key too, which is <a href="index.html#slim">why cognition works at all</a>.) The backend is a translation boundary: it reads the room&#x27;s plaintext and calls the remote agent out-of-band. Today that call is plain HTTPS. It can be moved onto SLIM (SLIM identity, encrypted transport), but even then it is point-to-point RPC to a separate SLIM identity, not membership in the room&#x27;s group channel.</p>
-      <div class="callout callout-note">
-        <div class="callout-bar"></div>
-        <div class="callout-body">Practically: adding an A2A agent means the room&#x27;s content is shared with that external service over the network. The hub already reads everything in the room in plaintext; a bridged agent is one more party it hands that plaintext to. Add one the way you would grant any third party access to a conversation.</div>
-      </div>
+      <p>These counts are kept in memory and reset when the hub restarts. The room&#x27;s messages, including replies from bridged agents, are saved as usual.</p>
+      <h2 id="adapter-a2a-privacy">Privacy</h2>
+      <p>A bridged A2A agent can be mentioned and answers under its own name, but it isn&#x27;t part of the room&#x27;s encrypted group and never has the room&#x27;s key. The hub reads the room&#x27;s messages and sends them to the remote agent over HTTPS.</p>
+      <p>The hub can already read everything in the room. It needs to, for engines to work (see <a href="index.html#slim">SLIM</a>). Adding an A2A agent means sending some of the room&#x27;s content to another service as well, so add one the way you&#x27;d give any outside party access to a conversation.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/a2a-bridge.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
@@ -534,16 +496,16 @@
       <!-- keep -->
       <h1>REST API</h1>
       <p>
-        Any agent or tool that can make HTTP requests can use the Mycelium API directly,
-        with no adapter required. The API is the same one the CLI wraps.
+        Anything that can make HTTP requests can use Mycelium directly, without an
+        adapter. It's the same API the CLI uses.
       </p>
 
       <h2 id="api-docs">Interactive docs</h2>
-      <p>When the backend is running, interactive API docs are available at:</p>
+      <p>While the hub is running, you can browse and try the API at:</p>
       <pre><code>http://localhost:8000/docs</code></pre>
 
       <h2 id="api-example">Quick example</h2>
-      <p>Memory is scoped by room, so the room name is part of the path. Writes are batched: <code>items</code> takes 1–100 memories per call.</p>
+      <p>Memory belongs to a room, so the room's name is in the path. You can write up to 100 memories in one call by putting them in <code>items</code>.</p>
       <pre><code><span class="comment"># Write a memory</span>
 curl -X POST http://localhost:8000/api/rooms/my-project/memory \
   -H "Content-Type: application/json" \
@@ -558,14 +520,14 @@ curl -X POST http://localhost:8000/api/rooms/my-project/memory/search \
   -d '{"query": "what was decided about the API"}'</code></pre>
       <h2 id="api-a2a">A2A endpoints</h2>
       <p>
-        A room is also reachable over Agent2Agent, so an external A2A client can discover
-        and message it without knowing anything about the Mycelium API. See the
-        <a href="#adapter-a2a">A2A bridge</a> for what happens to the message once it lands.
+        An outside Agent2Agent client can also find a room and send it messages,
+        without knowing the Mycelium API. See the <a href="#adapter-a2a">A2A bridge</a>
+        for what happens to a message after it arrives.
       </p>
-      <pre><code><span class="comment"># Discover the room as an A2A agent (public: discovery is unauthenticated by spec)</span>
+      <pre><code><span class="comment"># Get the room's agent card (always public, as the A2A spec requires)</span>
 curl http://localhost:8000/api/rooms/my-project/.well-known/agent-card.json
 
-<span class="comment"># Send it a message (A2A JSON-RPC; gated by the hub's auth when auth is enabled)</span>
+<span class="comment"># Send it a message (needs a token if the hub has sign-in turned on)</span>
 curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc": "2.0", "id": "1", "method": "message/send",
@@ -573,8 +535,8 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
                   "message": {"kind": "message", "messageId": "m1", "role": "user",
                               "parts": [{"kind": "text", "text": "@researcher status?"}]}}}'</code></pre>
       <p>
-        The generated OpenAPI spec at the repo root (<code>openapi.json</code>) is the
-        authoritative shape for every endpoint; <code>/docs</code> renders it live.
+        Every endpoint is described in <code>openapi.json</code> at the root of the repo.
+        <code>/docs</code> shows the same thing in your browser.
       </p>
     </section>
 
@@ -582,16 +544,19 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
 
     <section class="doc-section" id="engines">
       <h1>Engines</h1>
-      <p>An <strong>engine</strong> is a first-party task of cognition that lives inside a room. Where your agents are the participants, engines are the room&#x27;s <em>reasoning citizens</em>. They read what the room knows and act on it: mediate a decision, distill the memory, and (in time) more.</p>
-      <p>Engines exist because some work isn&#x27;t any single agent&#x27;s job. Deciding <em>whose offer wins</em> shouldn&#x27;t fall to one of the negotiating parties; summarizing the whole room shouldn&#x27;t depend on one agent remembering everything. An engine is a neutral, first-party actor the room owns.</p>
-      <p>Three of them exist today; the first thing to try on a new hub is <code>hello</code>, which answers a summon and owns nothing, so it is safe to fire into a live room just to see whether cognition runs at all.</p>
-      <p>Two properties define every engine:</p>
-      <ul>
-        <li><strong>Summoned explicitly.</strong> An engine is dormant until you register it in a room and <code>@</code>-summon it. There is no join window, no polling, and no held LLM connection, so it has zero idle cost. Cognition runs because you asked for it.</li>
-        <li><strong>A room citizen with a handle.</strong> A registered engine is an agent whose manifest says <code>adapter: engine</code> and carries a <code>kind</code>. It runs <em>as that handle</em>, so it can be <code>@</code>-addressed and its output is attributed like any member&#x27;s.</li>
-      </ul>
+      <p>Engines are agents that come with Mycelium. They run on the hub, so you don&#x27;t need to install or keep anything running to use them. You add one to a room, and it does nothing until someone mentions it.</p>
+      <p>Some jobs are better done by something that isn&#x27;t one of the participants. If two agents disagree, neither of them should also be the one deciding the outcome. Engines fill those roles.</p>
+      <pre><code><span class="comment"># Add an engine to a room</span>
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> hello <span class="flag">--kind</span> hello <span class="flag">--room</span> sprint-plan
+
+<span class="comment"># Ask it something</span>
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> hello <span class="str">&quot;say hello and name the model you are&quot;</span> <span class="flag">-r</span> sprint-plan
+
+<span class="comment"># See which engines a room has</span>
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">ls</span> <span class="flag">-r</span> sprint-plan</code></pre>
+      <p>An engine has a handle like any other member. You mention it with <code>@</code> in the chat or run <code>mycelium engine invoke</code>, and its replies show up under its name. When nobody mentions it, it doesn&#x27;t run and doesn&#x27;t cost anything.</p>
+      <p>If you&#x27;re setting up a new hub, start with <code>hello</code>. It answers and does nothing else, so it&#x27;s a safe way to check that engines work.</p>
       <h2 id="engines-kinds">Kinds</h2>
-      <p>The engine layer is one seam with a growing set of kinds. You pick the kind at registration time. No new adapter per engine; the same <code>mycelium engine</code> commands host all of them.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -602,35 +567,34 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
           </thead>
           <tbody>
             <tr>
-              <td><code>aligner</code></td>
-              <td>Mediates a disagreement inside a task to one shared answer, running a real NEGMAS negotiation. See <a href="#aligner">Aligner</a>.</td>
+              <td><a href="#aligner"><code>aligner</code></a></td>
+              <td>Helps agents that disagree settle on one answer.</td>
             </tr>
             <tr>
-              <td><code>synthesizer</code></td>
-              <td>Distills the room&#x27;s conversation into a briefing at <code>context/synthesis</code>, incrementally. See <a href="#synthesizer">Synthesizer</a>.</td>
+              <td><a href="#synthesizer"><code>synthesizer</code></a></td>
+              <td>Summarizes the room&#x27;s conversation into a memory.</td>
             </tr>
             <tr>
-              <td><code>hello</code></td>
-              <td>Answers one summon with one Pi turn and writes nothing anywhere — the cheap proof the engine path works on this hub. See <a href="#hello">Hello</a>.</td>
+              <td><a href="#hello"><code>hello</code></a></td>
+              <td>Replies to a message. Useful for checking a hub works.</td>
+            </tr>
+            <tr>
+              <td><a href="#persona"><code>persona</code></a></td>
+              <td>Plays a character you describe, and stays in character.</td>
+            </tr>
+            <tr>
+              <td><a href="#conductor"><code>conductor</code></a></td>
+              <td>Runs a set sequence of turns in a task, such as a proposal followed by a review.</td>
+            </tr>
+            <tr>
+              <td><a href="#worker"><code>worker</code></a></td>
+              <td>Takes tasks, does them, and reviews other members&#x27; work.</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p>More kinds (bargaining, team-formation, drift evaluation) plug into the same seam over time.</p>
-      <h2 id="engines-the-lifecycle">The lifecycle</h2>
-      <p>Every engine, whatever its kind, follows the same three steps.</p>
-      <pre><code><span class="comment"># 1. Register it once per room (pick the kind)</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> summarizer <span class="flag">--kind</span> synthesizer <span class="flag">--room</span> sprint-plan
-
-<span class="comment"># 2. Summon it: this is what makes cognition run</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> summarizer <span class="str">&quot;brief the room on where we stand&quot;</span> <span class="flag">-r</span> sprint-plan
-
-<span class="comment"># 3. It runs as that handle and writes its result back into the room</span>
-<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> context/synthesis <span class="flag">-r</span> sprint-plan</code></pre>
-      <p><code>mycelium engine ls</code> shows the engines registered in a room and their kinds.</p>
-      <h2 id="engines-where-an-engine-runs">Where an engine runs</h2>
-      <p>An engine&#x27;s cognition runs <strong>backend-side</strong>: the always-on backend runs the engine through its summon seam, so there is nothing extra to install. (<code>pi</code> ships in the backend image.) Legacy <code>engine.runtime = host</code> config coerces to <code>backend</code>.</p>
-      <p>Every engine&#x27;s brain is <strong>Pi</strong>, the coding-agent runtime Mycelium uses for engine cognition (it ships in the backend image). It applies only to engines. Your participant agents run however you like (Claude Code, Cursor, a plain HTTP client) and only ever answer in prose.</p>
+      <h2 id="engines-where-they-run">Where they run</h2>
+      <p>Engines run inside the hub&#x27;s backend, using <a href="https://github.com/earendil-works/pi">Pi</a> and the model set in your config (<code>llm.model</code>). Pi is already in the backend image. This only applies to engines. The agents you connect yourself run however you normally run them.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/engines.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
@@ -638,71 +602,67 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
 
     <section class="doc-section" id="aligner">
       <h1>Aligner</h1>
-      <p>The aligner is the mediator: the <a href="#engines">engine</a> <code>kind</code> that drives a disagreement to one shared answer. It reads everyone&#x27;s positions, works the negotiation one agent at a time, and stops the moment the team agrees. Agents never bargain with each other directly; the mediator is between them.</p>
-      <p>You put it to work on a <a href="index.html#board">task</a>, which is where the disagreement usually is. That opens an <a href="index.html#episodes">episode</a> inside that task.</p>
-      <pre><code><span class="comment"># Register the mediator once per room</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> sprint-plan
+      <p>The aligner helps agents who disagree settle on one answer. Each agent states its position. The aligner works out what they&#x27;re actually disagreeing about, then goes back and forth with each of them until they all accept the same offer, or it&#x27;s clear they won&#x27;t.</p>
+      <p>You&#x27;ll usually use it on a task, since that&#x27;s usually where the disagreement is:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> sprint-plan
 
-<span class="comment"># Put it to work on the task the disagreement is about</span>
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage aligner <span class="str">&quot;converge on token storage&quot;</span>
-
-<span class="comment"># Or summon it into the room, when the question belongs to no task</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;converge on tech allocation and the cap&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
-      <p>Like every engine it is dormant until summoned. There is no join window and no auto-start, so nothing runs until someone asks for it.</p>
-      <h2 id="aligner-how-it-negotiates">How it negotiates</h2>
-      <p>The aligner drives a real <strong>NEGMAS Stacked Alternating Offers</strong> negotiation, so consensus comes out of the mechanism rather than an LLM improvising one. The mechanism owns proposer rotation and the unanimity stop; the aligner only supplies each agent&#x27;s move when NEGMAS asks for one.</p>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage aligner <span class="str">&quot;agree on where we store tokens&quot;</span></code></pre>
+      <p>For a question that doesn&#x27;t belong to any task, you can ask it in the room instead:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;agree on the budget split and the cap&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
+      <h2 id="aligner-how-a-negotiation-goes">How a negotiation goes</h2>
       <ol class="steps">
-        <li><strong>Align vocabulary.</strong> Before any offer exists, it reads the opening positions for a term the participants are using in <em>different senses</em> — &quot;done&quot;, &quot;priority&quot;, &quot;blocked&quot;. A word two agents read differently is a disagreement an agreement would hide rather than settle, so when it finds one the aligner runs a single clarifying round: one <code>@</code>-addressed turn each, asking only for a definition, folded into the prose the next step reads. Most rooms share their vocabulary — no mismatch means no round, and the check itself is one cheap call. <code>ALIGNER_TERM_CHECK=0</code> skips it.</li>
-        <li><strong>Discover.</strong> It reads the participants&#x27; opening positions (posted with <code>mycelium respond</code>) and derives the negotiable issues and their options.</li>
-        <li><strong>Broker.</strong> Each round it <code>@</code>-addresses one agent at a time over SLIM with the standing offer, waits for that agent&#x27;s <code>mycelium respond</code> reply, and interprets the natural-language reply into an SAO move (accept / reject / counter). Agents answer in prose; they never speak the protocol.</li>
-        <li><strong>Terminate.</strong> NEGMAS stops the instant everyone accepts the same offer; it never loops to the step cap. A negotiation that can&#x27;t reach agreement commits as <code>rejected</code>.</li>
-        <li><strong>Compile.</strong> An agreement can become work. A separate stage reads the agreed answer and turns it into tasks on the board, each naming who it is for. It can refine the task the episode ran in, and it can add new tasks under it. That happens before the agreement is announced, so the work exists by the time an agent&#x27;s <code>await</code> returns. This stage consumes the outcome and is kept separate from the mediator that produced it.</li>
+        <li><strong>Positions.</strong> Each agent posts where it stands, with <code>mycelium respond</code>.</li>
+        <li><strong>Checking terms.</strong> If two agents seem to use the same word to mean different things (&quot;done&quot;, &quot;blocked&quot;, &quot;priority&quot;), the aligner asks each of them what they mean before going further. Usually there&#x27;s nothing to clarify, and this step is skipped.</li>
+        <li><strong>Finding the issues.</strong> From the positions, it works out the questions that need deciding and the options for each.</li>
+        <li><strong>Rounds.</strong> It asks one agent at a time about the current offer. The agent replies in plain language, and the aligner reads the reply as accept, reject, or a counter-offer.</li>
+        <li><strong>The end.</strong> It stops as soon as everyone accepts the same offer. If they can&#x27;t agree, the negotiation ends as rejected. That&#x27;s a valid result, not an error.</li>
+        <li><strong>Turning it into work.</strong> When they do agree, the agreement is turned into tasks on the board, each with who it&#x27;s for. The tasks exist before the agents hear about the agreement, so they can start on them straight away.</li>
       </ol>
-      <p>Walking away with no agreement is a legitimate outcome. There&#x27;s no &quot;concede gradually&quot; mechanism: if your hard constraints can&#x27;t be met, keep rejecting.</p>
-      <h2 id="aligner-memory-across-rounds">Memory across rounds</h2>
-      <p>The aligner&#x27;s brain is a persistent <strong>Pi</strong> coding-agent session (<code>pi -p --session &lt;id&gt;</code>), spawned fresh per episode and kept alive across every round of it. That persistence is what gives it real memory of the negotiation as it unfolds: it remembers who moved and why, rather than re-reading a flat transcript each turn. Pi ships in the backend image and runs only the engine; participant agents keep their own runtimes.</p>
-      <h2 id="aligner-tunables">Tunables</h2>
-      <p>The aligner is dormant by default and configured through <code>~/.mycelium/.env</code> (backend settings). The common knobs:</p>
+      <p>Agents don&#x27;t need to know any protocol to take part. They just answer in prose.</p>
+      <p>The negotiation itself runs on <a href="https://github.com/yasserfarouk/negmas">NEGMAS</a>, an established negotiation library. It decides whose turn it is and when everyone has agreed, so the model can&#x27;t declare agreement on its own. The model&#x27;s job is to understand the positions and read each reply.</p>
+      <p>The aligner keeps one model session for the whole negotiation, so it remembers what each agent said in earlier rounds.</p>
+      <p>A negotiation doesn&#x27;t change the task it runs in. Agreeing doesn&#x27;t mark the task done, and failing doesn&#x27;t take it from whoever holds it.</p>
+      <h2 id="aligner-settings">Settings</h2>
+      <p>Set these in the backend&#x27;s environment:</p>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Env var</th>
+              <th>Setting</th>
               <th>Default</th>
-              <th>Purpose</th>
+              <th>What it does</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td><code>ALIGNER_HANDLE</code></td>
-              <td><code>aligner</code></td>
-              <td>Reserved handle that a summon is recognized by</td>
-            </tr>
-            <tr>
               <td><code>ALIGNER_TERM_CHECK</code></td>
               <td><code>true</code></td>
-              <td>Run the pre-negotiation term check, and one clarifying round when it finds a mismatch</td>
+              <td>Check for words used in different senses before negotiating.</td>
             </tr>
             <tr>
               <td><code>ALIGNER_ROUND_TIMEOUT_S</code></td>
-              <td><code>30.0</code></td>
-              <td>How long one addressed agent has to reply before the mediator moves on</td>
+              <td><code>30</code></td>
+              <td>How long an agent has to reply before the aligner moves on.</td>
             </tr>
             <tr>
               <td><code>ALIGNER_MEDIATOR_MAX_STEPS</code></td>
               <td><code>20</code></td>
-              <td>Hard cap on NEGMAS SAO steps, a safety bound; NEGMAS normally stops at agreement well before it</td>
+              <td>The most rounds a negotiation can run. Most finish well before this.</td>
             </tr>
             <tr>
               <td><code>ALIGNER_PI_TIMEOUT_S</code></td>
-              <td><code>120.0</code></td>
-              <td>Per-turn wall-clock bound on one Pi brain call</td>
+              <td><code>120</code></td>
+              <td>How long one model call can take.</td>
+            </tr>
+            <tr>
+              <td><code>ALIGNER_HANDLE</code></td>
+              <td><code>aligner</code></td>
+              <td>The handle it answers to.</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p>Convergence is <strong>not</strong> a tunable: it is whatever the mechanism decides. NEGMAS stops at unanimity and the aligner reports agreement if, and only if, the mechanism produced one. The confidence agents report feeds the recorded quality metrics (MPC/GAR/SCR), not the verdict.</p>
-      <p>An episode does not decide its task: converging does not resolve the task and failing does not take it off whoever is holding it. See <a href="index.html#episodes">episodes</a> for that boundary, and <a href="index.html#l9-protocol">decision quality</a> for how agents state confidence and how to read the quality scores recorded when an episode closes.</p>
+      <p>Agents can say how confident they are when they reply. That&#x27;s recorded to measure how good the result was, but it doesn&#x27;t affect whether they agreed. See <a href="index.html#l9-protocol">decision quality</a>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/aligner.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
@@ -710,32 +670,24 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
 
     <section class="doc-section" id="synthesizer">
       <h1>Synthesizer</h1>
-      <p>The synthesizer is the distillation <a href="#engines">engine</a>: the <code>kind</code> that reads a room&#x27;s <strong>conversation</strong> and writes what it learned into <strong>memory</strong>. Tasks resolve and drop off the <a href="index.html#board">board</a>; the synthesizer is what moves the part worth keeping into the room&#x27;s memory before they do.</p>
-      <p>That direction is the whole point. Chat is the ephemeral half — where a decision gets argued, qualified and settled, and the half nothing indexes for meaning. Memory is the durable half. The synthesizer is the bridge between them.</p>
-      <p>Like every engine, it is summoned. Nothing runs until you register it in a <a href="index.html#rooms">room</a> and invoke it, so there is no polling and no held connection.</p>
-      <pre><code><span class="comment"># Register the synthesizer once per room</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> summarizer <span class="flag">--kind</span> synthesizer <span class="flag">--room</span> sprint-plan
+      <p>The synthesizer reads the room&#x27;s conversation and writes a summary of it into the room&#x27;s memory. Decisions often get made in chat and then scroll away. The synthesizer writes them down where they can be found later.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> summarizer <span class="flag">--kind</span> synthesizer <span class="flag">--room</span> sprint-plan
 
-<span class="comment"># Summon it to distill what has been said since last time</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> summarizer <span class="str">&quot;brief the room on where we stand&quot;</span> <span class="flag">-r</span> sprint-plan
+<span class="comment"># Summarize what&#x27;s been said since the last time</span>
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> summarizer <span class="str">&quot;catch us up&quot;</span> <span class="flag">-r</span> sprint-plan
 
-<span class="comment"># Re-distill the whole transcript instead of just the new tail</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> summarizer <span class="str">&quot;--all&quot;</span> <span class="flag">-r</span> sprint-plan
-
-<span class="comment"># Read the result back</span>
+<span class="comment"># Read the summary</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> context/synthesis <span class="flag">-r</span> sprint-plan</code></pre>
-      <h2 id="synthesizer-how-it-distills">How it distills</h2>
-      <p>On summon, the synthesizer reads the room&#x27;s chat and runs one <strong>Pi</strong> turn to distill it into a single markdown briefing: what was decided, what changed, what is in flight, and what is still open. It upserts that briefing as a <code>knowledge</code> <a href="index.html#memory">memory</a> at <code>context/synthesis</code>, so it is versioned, searchable, linked and shared like any other memory.</p>
-      <p>It reads the transcript <strong>by message type</strong>, so only real chat reaches the prompt. The room&#x27;s feed also carries L9 frames and coordination messages whose content is a serialized envelope; those are excluded structurally, and a briefing never comes back with JSON quoted inside it.</p>
-      <h2 id="synthesizer-incremental-by-default">Incremental by default</h2>
-      <p>Each run covers only what has been said since the last one. The written memory carries the position it was distilled through in its own frontmatter, so the cursor advances exactly when the briefing lands — a failed Pi turn moves nothing, and re-summoning with no new messages writes nothing at all rather than producing a second copy of the same summary.</p>
-      <p>The standing briefing is carried into the next run as context, so a new slice is folded into what is already known rather than replacing it. Pass <code>--all</code> in the summon text to re-read the whole transcript from the start.</p>
-      <p>The synthesizer also speaks its briefing into the room, which means its own words are in its next input. Messages from any registered synthesizer handle are dropped from the corpus before the prompt is built, so it never feeds on itself.</p>
-      <h2 id="synthesizer-faithfulness">Faithfulness</h2>
-      <p>The briefing reflects only what was actually said; the synthesizer does not invent facts. If its Pi turn fails, it writes nothing rather than a half-formed summary.</p>
-      <p>The synthesizer holds no <a href="index.html#episodes">episode</a> and drives no negotiation. It reads the room, distills it, and writes the result back. It shares the rest of the engine model: the summon lifecycle and <a href="#engines">where it runs</a> (backend-side), with every brain running a <strong>Pi</strong> turn.</p>
+      <p>The summary covers what was decided, what changed, what&#x27;s in progress and what&#x27;s still open. It&#x27;s saved as the memory <code>context/synthesis</code>, so you can search it, link to it and see its earlier versions like any other memory. The synthesizer also posts it in the room.</p>
+      <h2 id="synthesizer-only-whats-new">Only what&#x27;s new</h2>
+      <p>Each time you ask, it reads only the messages since the last summary and adds them to what it already has, so the summary grows over time. If nothing new has been said, it doesn&#x27;t write anything.</p>
+      <p>To start over and summarize the whole conversation, include <code>--all</code> in your message:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> summarizer <span class="str">&quot;--all&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
+      <h2 id="synthesizer-what-it-reads">What it reads</h2>
+      <p>It reads the messages people and agents wrote, and skips the room&#x27;s system messages. It also skips its own earlier summaries, so it doesn&#x27;t end up summarizing itself.</p>
+      <p>It only writes down what was actually said. If the model call fails, it leaves the existing summary as it was.</p>
       <h2 id="synthesizer-summarizing-memory-instead">Summarizing memory instead</h2>
-      <p>Summarizing the memory store — a briefing over what is already durable — is a different feature, not the default one. Set <code>SYNTHESIZER_SOURCE=memory</code> on the backend to get it: the engine then reads every memory namespace (minus agent manifests and its own prior output) and compiles those instead. That path is not incremental; there is no transcript position to hold.</p>
+      <p>If you&#x27;d rather have a summary of the room&#x27;s memories than of its conversation, set <code>SYNTHESIZER_SOURCE=memory</code> on the backend. In that mode it reads every memory in the room and summarizes them all each time, rather than only what&#x27;s new.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/synthesizer.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
@@ -743,29 +695,248 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
 
     <section class="doc-section" id="hello">
       <h1>Hello</h1>
-      <p>The hello engine is the <a href="#engines">engine</a> that does nothing on purpose. Summon it and it runs one <strong>Pi</strong> turn on whatever you said, posts the answer into the room, and stops. No negotiation, no memory write, nothing compiled — the only trace it leaves is the message it posts.</p>
-      <p>That is what makes it useful. The <a href="#aligner">aligner</a> opens a negotiation episode and the <a href="#synthesizer">synthesizer</a> writes a memory back, so neither is something you want to fire into a live room just to check the wiring. Hello is, which makes it the first thing to try on a new hub.</p>
-      <pre><code><span class="comment"># Register it once in the room</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> hello <span class="flag">--kind</span> hello <span class="flag">--room</span> sprint-plan
-
-<span class="comment"># Summon it</span>
+      <p>Hello replies to whatever you send it, and that&#x27;s all it does. It doesn&#x27;t write memories, start negotiations or change the board. That makes it a good first check on a new hub: if hello answers, engines are working.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> hello <span class="flag">--kind</span> hello <span class="flag">--room</span> sprint-plan
 <span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> hello <span class="str">&quot;say hello and name the model you are&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
-      <p>A reply in the room means the whole engine path works.</p>
-      <h2 id="hello-what-a-reply-proves">What a reply proves</h2>
-      <p><code>mycelium doctor</code> already checks that the hub can reach a model — but that probe stops at the completion. Every rung above it is untested until an engine actually runs. A hello reply walks all of them:</p>
-      <ul>
-        <li>the manifest gate that routes an <code>@</code>-mention to a registered engine of the right <code>kind</code>, and to nothing else</li>
-        <li>the engine runtime branch that decides who owns the run</li>
-        <li>the guard that stops an engine firing on its own message</li>
-        <li>a one-shot Pi turn against the configured <code>llm.model</code> / key / base URL</li>
-        <li>the channel send, and the persister writing the message into the transcript</li>
-      </ul>
-      <p>If no reply appears, the failure is in exactly one of those, and the backend logs say which.</p>
-      <h2 id="hello-fail-loud">Fail-loud</h2>
-      <p>A probe that fails silently is worse than no probe, so hello never goes quiet: if its Pi turn times out or errors, it posts the reason into the room instead of an answer. Silence means the summon never reached it — a different failure, and a more useful thing to know.</p>
-      <h2 id="hello-holding-nothing">Holding nothing</h2>
-      <p>Hello keeps no state between summons and answers each one from scratch, so it is not a chat partner — it is a probe with a personality. Ask it something twice and it will not remember the first time. For cognition that carries context, that is what the aligner and the synthesizer are for.</p>
+      <h2 id="hello-if-it-doesnt-answer">If it doesn&#x27;t answer</h2>
+      <p>A reply means the hub can reach your model and post messages back to the room.</p>
+      <p>If the model call fails or times out, hello posts the error in the room instead of staying quiet. So if you see nothing at all, the message probably never reached it. Check that the engine is registered in the room you&#x27;re talking in (<code>mycelium engine ls</code>), then look at the backend logs.</p>
+      <h2 id="hello-it-doesnt-remember">It doesn&#x27;t remember</h2>
+      <p>Each message is answered on its own. Hello won&#x27;t remember what you asked it before. If you want something that keeps a conversation going, use a <a href="#persona">persona</a>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/hello.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="persona">
+      <h1>Persona</h1>
+      <p>A persona is a character you write, played by a model. Describe who it is and how it behaves, and it answers in character whenever someone talks to it. It remembers its earlier conversations in the room.</p>
+      <p>Personas are handy for demos and for trying out a process before real people or agents are involved: a security reviewer who blocks anything without a rollback plan, an engineer in a hurry to ship, a supplier with limited stock.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> sec <span class="flag">--kind</span> persona <span class="flag">--room</span> sprint-plan \
+  <span class="flag">--description</span> <span class="str">&quot;The security reviewer.&quot;</span>
+
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> agents/sec/notes <span class="flag">--room</span> sprint-plan \
+  <span class="str">&quot;You are the security reviewer. You block any change that ships without a rollback plan, and you say why in one sentence.&quot;</span>
+
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> sec <span class="str">&quot;what do you think of rotating the signing key in place?&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
+      <p>The character comes from the persona&#x27;s notes, <code>agents/&lt;handle&gt;/notes</code>. Change the notes and you change how it behaves from its next reply on. Without notes it uses the description, and without either it&#x27;s a generic helpful teammate.</p>
+      <h2 id="persona-in-a-flow">In a flow</h2>
+      <p>A persona can take a role in a <a href="#conductor">conductor</a> flow, so you can run a whole review with no one else in the room:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> api <span class="flag">--kind</span> persona <span class="flag">--room</span> sprint-plan
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> agents/api/notes <span class="flag">-r</span> sprint-plan \
+  <span class="str">&quot;You are the API engineer. You want to ship today.&quot;</span>
+
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor \
+  <span class="str">&quot;gated @api @sec: rotate the signing key without downtime&quot;</span></code></pre>
+      <p>Here <code>api</code> proposes and <code>sec</code> reviews. <code>sec</code> keeps rejecting until the proposal includes a rollback plan. Everything happens in the task&#x27;s thread.</p>
+      <h2 id="persona-things-to-know">Things to know</h2>
+      <ul>
+        <li><strong>A persona can&#x27;t mention anyone.</strong> It can&#x27;t start other engines or set off another persona, so two personas won&#x27;t get stuck replying to each other.</li>
+        <li><strong>It waits its turn.</strong> In a flow, it only answers when it&#x27;s asked.</li>
+        <li><strong>The aligner won&#x27;t include it unless you name it.</strong> A persona isn&#x27;t counted as present in the room, so to include one in a negotiation, mention it in the same message: <code>@aligner @api @sec</code>.</li>
+        <li><strong>Its memory lives in the backend.</strong> Rebuilding the backend container resets it.</li>
+        <li><strong>If something goes wrong, it says so.</strong> An error from the model is posted in the room instead of a reply.</li>
+      </ul>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/persona.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="conductor">
+      <h1>Conductor</h1>
+      <p>The conductor runs a set sequence of turns inside a task, called a flow. For example: one member proposes something, another approves or rejects it, and a rejection sends it back for another try. The conductor makes sure each member speaks when it&#x27;s their turn, and only then.</p>
+      <p>It doesn&#x27;t use a model. The members do all the thinking; the conductor only decides who goes next, based on the flow and on how the last member answered.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> conductor <span class="flag">--kind</span> conductor <span class="flag">--room</span> sprint-plan
+
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor \
+  <span class="str">&quot;gated @api @sec: rotate the signing key without downtime&quot;</span></code></pre>
+      <p>The message starts with the flow&#x27;s name, then the members in the order of the flow&#x27;s roles, then the question. Here <code>api</code> is the proposer and <code>sec</code> is the reviewer.</p>
+      <p>A flow always runs on a task, and everything happens in that task&#x27;s thread. To see the flows a room can run, use <code>mycelium engine invoke conductor &quot;list&quot;</code>.</p>
+      <h2 id="conductor-built-in-flows">Built-in flows</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Flow</th>
+              <th>Roles</th>
+              <th>What happens</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>gated</code></td>
+              <td>proposer, guardian</td>
+              <td>The proposer says what it plans to do. The guardian approves or rejects it. A rejection goes back to the proposer with the reason, until the guardian approves or the step limit is reached.</td>
+            </tr>
+            <tr>
+              <td><code>fan-out</code></td>
+              <td>lead</td>
+              <td>Every other member is asked the question at once. The lead gets all the answers and combines them into one.</td>
+            </tr>
+            <tr>
+              <td><code>round-robin</code></td>
+              <td>none</td>
+              <td>Members speak one after another, each seeing what the others said, for two rounds.</td>
+            </tr>
+            <tr>
+              <td><code>swarm</code></td>
+              <td>lead</td>
+              <td>Each member says which part of the task it would take. Then the lead splits the task into one child task per member. <a href="index.html#swarm"><code>mycelium swarm</code></a> starts with this.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Members approve or reject by ending their reply with <code>[[mycelium: stance=accept]]</code> or <code>[[mycelium: stance=reject]]</code>.</p>
+      <h2 id="conductor-who-can-take-part">Who can take part</h2>
+      <p>Any member can fill a role: your own agent, a <a href="#persona">persona</a>, a <a href="#worker">worker</a>, or you. To take a role yourself, put your own handle in the message. When it&#x27;s your turn, reply in the task&#x27;s thread in the app, or from the terminal:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor <span class="str">&quot;gated @api @julia: rotate the key&quot;</span>
+
+<span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--handle</span> julia
+<span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> julia <span class="str">&quot;Not without a canary. [[mycelium: stance=reject]]&quot;</span></code></pre>
+      <h2 id="conductor-taking-turns">Taking turns</h2>
+      <p>While a flow is running, only the member whose turn it is can post in the task&#x27;s thread. Anyone else who tries gets an error saying whose turn it is, and their message isn&#x27;t posted. The rest of the room isn&#x27;t affected: the room chat and other tasks&#x27; threads stay open to everyone. The members list shows who has the turn.</p>
+      <h2 id="conductor-following-along">Following along</h2>
+      <p>In the task&#x27;s thread, each question from the conductor shows as one line, such as <code>review → sec · turn 2 of 6</code>. Click it to see the full prompt.</p>
+      <p>In the app, the flow is drawn at the top of the thread, with the current step highlighted and the path taken so far. When the flow finishes, it shows how it ended and each step that was taken. If a task has run more than one flow, you can open the earlier ones from there.</p>
+      <p>Each run is also saved as a record under <code>log/episodes/</code>, with the flow, who played each role, and every step taken.</p>
+      <h2 id="conductor-how-a-flow-ends">How a flow ends</h2>
+      <p>A flow ends at one of its end steps, as either <code>resolved</code> or <code>rejected</code>. If it reaches its step limit first, it ends as <code>rejected</code>.</p>
+      <p>Finishing a flow doesn&#x27;t finish the task. To mark the task done, resolve it as usual with <code>mycelium board resolve</code>.</p>
+      <h2 id="conductor-writing-your-own-flow">Writing your own flow</h2>
+      <p>A flow is a memory under <code>protocols/</code>, written in YAML. Saving one as <code>protocols/gated</code> replaces the built-in <code>gated</code> in that room, and a new name adds a new flow.</p>
+      <p>To start from a built-in, print it and edit it:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> conductor <span class="str">&quot;show gated&quot;</span></code></pre>
+      <p>For example:</p>
+      <pre><code>description: A reviewer signs off before the author ships.
+roles: [author, reviewer]
+max_steps: 6
+steps:
+  - id: draft
+    to: author
+    prompt: &quot;{ask}\n\nSay what you will ship.\n\n{reply}&quot;
+    next: review
+  - id: review
+    to: reviewer
+    prompt: &quot;On the table:\n\n{reply}\n\nApprove or reject, ending with a stance marker.&quot;
+    next: {accept: done, reject: draft, default: draft}
+  - id: done
+    end: resolved</code></pre>
+      <p>Each step has an <code>id</code>, and either asks someone (<code>to</code>) and says where to go next (<code>next</code>), or ends the flow (<code>end: resolved</code> or <code>end: rejected</code>).</p>
+      <p><code>to</code> can be:</p>
+      <ul>
+        <li>a role, such as <code>author</code></li>
+        <li><code>each</code>: every member, one at a time</li>
+        <li><code>all</code>: every member at once</li>
+        <li><code>workers</code>: every member that doesn&#x27;t have a role</li>
+      </ul>
+      <p><code>next</code> is either a step id, or a map that picks the next step from the answer: <code>accept</code>, <code>reject</code>, <code>silent</code> (no answer in time) and <code>default</code>.</p>
+      <p>Other options:</p>
+      <ul>
+        <li><code>rounds: 2</code> repeats an <code>each</code> or <code>all</code> step.</li>
+        <li><code>wait: none</code> asks without waiting for an answer.</li>
+        <li><code>max_steps</code> limits how many steps a run can take.</li>
+      </ul>
+      <p>Prompts can use these placeholders:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Placeholder</th>
+              <th>Filled with</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>{ask}</code></td>
+              <td>The question from the message that started the flow.</td>
+            </tr>
+            <tr>
+              <td><code>{task}</code></td>
+              <td>The task&#x27;s key, such as <code>work/rotate-signing-key</code>.</td>
+            </tr>
+            <tr>
+              <td><code>{reply}</code></td>
+              <td>The last answer.</td>
+            </tr>
+            <tr>
+              <td><code>{replies}</code></td>
+              <td>Every member&#x27;s latest answer, one per line.</td>
+            </tr>
+            <tr>
+              <td><code>{handles}</code></td>
+              <td>The members taking part.</td>
+            </tr>
+            <tr>
+              <td><code>{round}</code>, <code>{rounds}</code></td>
+              <td>The current round and the total.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>If a flow doesn&#x27;t make sense, for example a step leads nowhere or there&#x27;s no end step, the conductor refuses to run it and says why. Each run keeps its own copy of the flow, so editing the memory changes future runs, not past records.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/conductor.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="worker">
+      <h1>Worker</h1>
+      <p>A worker is a teammate that runs on the hub. Give it a task and it does the work, asks another member to review it, and makes the changes the review asks for. It&#x27;s a coding agent: it can read and edit files and run commands. When you run <a href="index.html#swarm"><code>mycelium swarm --server</code></a>, the team is made of workers.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> agent-1 <span class="flag">--kind</span> worker <span class="flag">--room</span> launch-plan
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> agent-2 <span class="flag">--kind</span> worker <span class="flag">--room</span> launch-plan
+
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Draft the launch checklist&quot;</span> <span class="flag">--assign</span> @agent-1 <span class="flag">--room</span> launch-plan</code></pre>
+      <p>Assigning a task to a worker is enough to get it started. It claims the task and posts its work in the task&#x27;s thread.</p>
+      <h2 id="worker-when-it-does-something">When it does something</h2>
+      <p>A worker acts when:</p>
+      <ul>
+        <li><strong>a task is assigned to it.</strong> It does the task, says in the thread what it did, and asks a teammate to review it.</li>
+        <li><strong>someone mentions it.</strong> It answers in the thread where it was mentioned. If it was asked to review something, it says what&#x27;s good and what needs to change. If it was asked to fix something, it posts the new version.</li>
+        <li><strong>it&#x27;s their turn in a flow.</strong> A worker can take a role in a <a href="#conductor">conductor</a> flow like any other member.</li>
+        <li><strong>every part of a task it split up is done.</strong> It combines the parts, posts the result, and marks the task done.</li>
+      </ul>
+      <h2 id="worker-where-it-works">Where it works</h2>
+      <p>Each room with workers has a git repository on the hub. When a swarm is started with a repository, this is a clone of it; otherwise it starts empty. Each worker gets its own copy to work in, on its own branch (<code>swarm/agent-1</code>, <code>swarm/agent-2</code>, and so on), and commits its work there. Reviewers look at the author&#x27;s branch. At the end, the member who split up the task merges all the branches together.</p>
+      <p>On a hub started with <code>mycelium up</code>, the repository is at <code>~/.mycelium/workspaces/&lt;room&gt;/repo</code>, so you can look at the branches from your own machine or push them somewhere:</p>
+      <pre><code><span class="cmd">git</span> <span class="flag">-C</span> ~/.mycelium/workspaces/&lt;room&gt;/repo log swarm/agent-1</code></pre>
+      <p>Use the branches from <code>repo/</code> rather than from the workers&#x27; own folders next to it. Those folders only work from inside the hub&#x27;s container.</p>
+      <h2 id="worker-reviews">Reviews</h2>
+      <p>Every part of a task is reviewed by another worker before it&#x27;s done. Workers review in a circle: agent-1&#x27;s work goes to agent-2, agent-2&#x27;s to agent-3, and the last one&#x27;s back to agent-1. This way the reviewing is shared across the team instead of all landing on one member.</p>
+      <p>If a worker finishes something and forgets to ask for a review, the hub sends it to the reviewer anyway. If a reviewer asks for changes without saying who should make them, they go back to the author. A part gets up to three rounds of review. On the third, the reviewer approves it if it&#x27;s good enough and notes anything left to do.</p>
+      <p>Only the reviewer can mark a part done. The author can&#x27;t mark its own work done before someone else has looked at it.</p>
+      <h2 id="worker-changing-the-board">Changing the board</h2>
+      <p>A worker files and finishes tasks by putting a line in its reply:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Line</th>
+              <th>What it does</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>[[new: &lt;title&gt; -&gt; @member]]</code></td>
+              <td>Adds a child task under the current task, assigned to that member.</td>
+            </tr>
+            <tr>
+              <td><code>[[done]]</code></td>
+              <td>Marks the current task done.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>These lines are removed before the reply is posted.</p>
+      <p>When a task is marked done, its result is saved in the task, under its title. That way the result stays in the room&#x27;s memory, where you can search for it, even after the conversation has scrolled away.</p>
+      <h2 id="worker-limits">Limits</h2>
+      <ul>
+        <li><strong>One thing at a time.</strong> A worker handles one request at a time, and each request can take up to 10 minutes (<code>WORKER_PI_TIMEOUT_S</code>). It remembers earlier requests, but nothing keeps running in between, so it suits steps that take minutes, not jobs that run for hours.</li>
+        <li><strong>60 turns per room.</strong> Workers in a room can take 60 turns in total (<code>WORKER_MAX_TURNS_PER_ROOM</code>), so they can&#x27;t keep going back and forth forever.</li>
+        <li><strong>Mentions.</strong> A worker can mention its teammates, but it can&#x27;t mention engines, so it can&#x27;t start the aligner or the conductor.</li>
+        <li><strong>Access.</strong> A worker&#x27;s commands run inside the hub&#x27;s backend container, so they can reach anything the backend can, including the room&#x27;s files and the model&#x27;s API key. That&#x27;s fine on a hub only you use. On a shared hub, think about who can start a swarm, or set <code>WORKER_TOOLS=false</code> so workers can only write replies, not edit files or run commands. Workers also can&#x27;t edit files when the OpenShell sandbox is on (<code>ALIGNER_PI_OPENSHELL</code>), because it can&#x27;t see their files yet.</li>
+      </ul>
+      <p>Like a persona, a worker takes its character from its notes, <code>agents/&lt;handle&gt;/notes</code>.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/worker.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
   </div>
   </main>

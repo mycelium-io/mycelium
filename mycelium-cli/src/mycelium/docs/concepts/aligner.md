@@ -1,89 +1,71 @@
 # Aligner
 
-The aligner is the mediator: the [engine](#engines) `kind` that drives a
-disagreement to one shared answer. It reads everyone's positions, works the
-negotiation one agent at a time, and stops the moment the team agrees. Agents
-never bargain with each other directly; the mediator is between them.
+The aligner helps agents who disagree settle on one answer. Each agent states
+its position. The aligner works out what they're actually disagreeing about,
+then goes back and forth with each of them until they all accept the same
+offer, or it's clear they won't.
 
-You put it to work on a [task](#board), which is where the disagreement usually
-is. That opens an [episode](#episodes) inside that task.
+You'll usually use it on a task, since that's usually where the disagreement
+is:
 
 ```bash
-# Register the mediator once per room
 mycelium engine create aligner --kind aligner --room sprint-plan
 
-# Put it to work on the task the disagreement is about
-mycelium board coordinate work/pick-token-storage aligner "converge on token storage"
-
-# Or summon it into the room, when the question belongs to no task
-mycelium engine invoke aligner "converge on tech allocation and the cap" -r sprint-plan
+mycelium board coordinate work/pick-token-storage aligner "agree on where we store tokens"
 ```
 
-Like every engine it is dormant until summoned. There is no join window and no
-auto-start, so nothing runs until someone asks for it.
+For a question that doesn't belong to any task, you can ask it in the room
+instead:
 
-## How it negotiates
+```bash
+mycelium engine invoke aligner "agree on the budget split and the cap" -r sprint-plan
+```
 
-The aligner drives a real **NEGMAS Stacked Alternating Offers** negotiation, so
-consensus comes out of the mechanism rather than an LLM improvising one. The
-mechanism owns proposer rotation and the
-unanimity stop; the aligner only supplies each agent's move when NEGMAS asks for
-one.
+## How a negotiation goes
 
-1. **Align vocabulary.** Before any offer exists, it reads the opening positions
-   for a term the participants are using in *different senses* — "done",
-   "priority", "blocked". A word two agents read differently is a disagreement an
-   agreement would hide rather than settle, so when it finds one the aligner runs
-   a single clarifying round: one `@`-addressed turn each, asking only for a
-   definition, folded into the prose the next step reads. Most rooms share their
-   vocabulary — no mismatch means no round, and the check itself is one cheap
-   call. `ALIGNER_TERM_CHECK=0` skips it.
-2. **Discover.** It reads the participants' opening positions (posted with
-   `mycelium respond`) and derives the negotiable issues and their options.
-3. **Broker.** Each round it `@`-addresses one agent at a time over SLIM with the
-   standing offer, waits for that agent's `mycelium respond` reply, and interprets
-   the natural-language reply into an SAO move (accept / reject / counter). Agents
-   answer in prose; they never speak the protocol.
-4. **Terminate.** NEGMAS stops the instant everyone accepts the same offer; it
-   never loops to the step cap. A negotiation that can't reach agreement commits
-   as `rejected`.
-5. **Compile.** An agreement can become work. A separate stage reads the agreed
-   answer and turns it into tasks on the board, each naming who it is for. It
-   can refine the task the episode ran in, and it can add new tasks under it.
-   That happens before the agreement is announced, so the work exists by the
-   time an agent's `await` returns. This stage consumes the outcome and is kept
-   separate from the mediator that produced it.
+1. **Positions.** Each agent posts where it stands, with `mycelium respond`.
+2. **Checking terms.** If two agents seem to use the same word to mean
+   different things ("done", "blocked", "priority"), the aligner asks each of
+   them what they mean before going further. Usually there's nothing to
+   clarify, and this step is skipped.
+3. **Finding the issues.** From the positions, it works out the questions that
+   need deciding and the options for each.
+4. **Rounds.** It asks one agent at a time about the current offer. The agent
+   replies in plain language, and the aligner reads the reply as accept,
+   reject, or a counter-offer.
+5. **The end.** It stops as soon as everyone accepts the same offer. If they
+   can't agree, the negotiation ends as rejected. That's a valid result, not
+   an error.
+6. **Turning it into work.** When they do agree, the agreement is turned into
+   tasks on the board, each with who it's for. The tasks exist before the
+   agents hear about the agreement, so they can start on them straight away.
 
-Walking away with no agreement is a legitimate outcome. There's no "concede
-gradually" mechanism: if your hard constraints can't be met, keep rejecting.
+Agents don't need to know any protocol to take part. They just answer in
+prose.
 
-## Memory across rounds
+The negotiation itself runs on [NEGMAS](https://github.com/yasserfarouk/negmas),
+an established negotiation library. It decides whose turn it is and when
+everyone has agreed, so the model can't declare agreement on its own. The
+model's job is to understand the positions and read each reply.
 
-The aligner's brain is a persistent **Pi** coding-agent session (`pi -p --session
-<id>`), spawned fresh per episode and kept alive across every round of it. That persistence is what gives it real memory of the negotiation as it
-unfolds: it remembers who moved and why, rather than re-reading a flat
-transcript each turn. Pi ships in the backend image and runs only the engine;
-participant agents keep their own runtimes.
+The aligner keeps one model session for the whole negotiation, so it
+remembers what each agent said in earlier rounds.
 
-## Tunables
+A negotiation doesn't change the task it runs in. Agreeing doesn't mark the
+task done, and failing doesn't take it from whoever holds it.
 
-The aligner is dormant by default and configured through `~/.mycelium/.env`
-(backend settings). The common knobs:
+## Settings
 
-| Env var | Default | Purpose |
+Set these in the backend's environment:
+
+| Setting | Default | What it does |
 |---|---|---|
-| `ALIGNER_HANDLE` | `aligner` | Reserved handle that a summon is recognized by |
-| `ALIGNER_TERM_CHECK` | `true` | Run the pre-negotiation term check, and one clarifying round when it finds a mismatch |
-| `ALIGNER_ROUND_TIMEOUT_S` | `30.0` | How long one addressed agent has to reply before the mediator moves on |
-| `ALIGNER_MEDIATOR_MAX_STEPS` | `20` | Hard cap on NEGMAS SAO steps, a safety bound; NEGMAS normally stops at agreement well before it |
-| `ALIGNER_PI_TIMEOUT_S` | `120.0` | Per-turn wall-clock bound on one Pi brain call |
+| `ALIGNER_TERM_CHECK` | `true` | Check for words used in different senses before negotiating. |
+| `ALIGNER_ROUND_TIMEOUT_S` | `30` | How long an agent has to reply before the aligner moves on. |
+| `ALIGNER_MEDIATOR_MAX_STEPS` | `20` | The most rounds a negotiation can run. Most finish well before this. |
+| `ALIGNER_PI_TIMEOUT_S` | `120` | How long one model call can take. |
+| `ALIGNER_HANDLE` | `aligner` | The handle it answers to. |
 
-Convergence is **not** a tunable: it is whatever the mechanism decides. NEGMAS
-stops at unanimity and the aligner reports agreement if, and only if, the
-mechanism produced one. The confidence agents report feeds the recorded quality
-metrics (MPC/GAR/SCR), not the verdict.
-
-An episode does not decide its task: converging does not resolve the task and
-failing does not take it off whoever is holding it. See [episodes](#episodes)
-for that boundary, and [decision quality](#l9-protocol) for how agents state
-confidence and how to read the quality scores recorded when an episode closes.
+Agents can say how confident they are when they reply. That's recorded to
+measure how good the result was, but it doesn't affect whether they agreed.
+See [decision quality](#l9-protocol).

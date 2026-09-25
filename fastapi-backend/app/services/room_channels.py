@@ -32,13 +32,15 @@ import contextlib
 import json
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from app.config import settings
 from app.services import custody, l9, slim_identity
+from app.services.agent_registry import norm_handle
+from app.services.floor import Floor
 from app.services.l9_models import Kind
 from app.services.l9_slim import (
     EpisodeLifecycle,
@@ -47,6 +49,7 @@ from app.services.l9_slim import (
     serialize_content,
 )
 from app.services.persister import (
+    AddressedHook,
     ConvergedHook,
     RoomPersister,
     SummonHook,
@@ -78,6 +81,13 @@ RoomSummonHook = Callable[[str, str, "L9", list[str], str], None]
 # it (the plan-sync consumer) needs the room to compile that room's plan + sync its
 # memory. ``_converged_adapter`` binds the room down to the persister signature.
 RoomConvergedHook = Callable[[str, "L9"], None]
+# The room-aware addressed hook: ``(room, handle, envelope, message_text)`` for
+# each L9 recipient of a turn that named nobody in its text.
+RoomAddressedHook = Callable[[str, str, "L9", str], None]
+# The board-event hook: ``(room, data)`` for every notice raised, where ``data``
+# is the notice's payload (``subkind``, ``key``, ``title``, ``episode``, ``by``,
+# and ``for`` on a ``filed`` row given to someone).
+RoomNoticeHook = Callable[[str, dict[str, str]], None]
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +112,18 @@ def _is_own_registered_agent(room: str, handle: str) -> bool:
     from app.services.filesystem import get_room_dir
 
     return (get_room_dir(room) / "agents" / f"{handle}.md").exists()
+
+
+def _registered_kind(room: str, handle: str) -> str | None:
+    """The engine kind ``handle``'s manifest in ``room`` names, or ``None``."""
+    from app.services.aligner import _registered_engine_kind
+
+    return _registered_engine_kind(room, handle)
+
+
+def _is_engine(room: str, handle: str) -> bool:
+    """True if ``handle``'s manifest in ``room`` names an engine kind."""
+    return _registered_kind(room, handle) is not None
 
 
 def _registered_agent_handles(room: str) -> list[str]:
@@ -142,6 +164,11 @@ class ManagedRoomChannel:
     channel: L9SlimChannel
     members: set[str] = field(default_factory=set)
     lifecycle: EpisodeLifecycle = field(default_factory=EpisodeLifecycle)
+    # Threads whose floor a run of backend code holds, keyed by episode URN
+    # (:mod:`app.services.floor`). Independent of ``lifecycle``: a negotiation
+    # freezes a roster, a floor names whose turn it is, and a room may hold
+    # several floors at once — one per thread a protocol is running in.
+    floors: dict[str, Floor] = field(default_factory=dict)
     persister: RoomPersister | None = None
     persister_task: asyncio.Task[None] | None = None
     # Per-actor custodial MLS sessions this backend holds for the room (#666), keyed by
@@ -271,6 +298,11 @@ class RoomChannelManager:
         # ``handle_converged``. Unset → the persister's log-only defaults.
         self.on_summon: RoomSummonHook | None = None
         self.on_converged: RoomConvergedHook | None = None
+        self.on_addressed: RoomAddressedHook | None = None
+        # Fired after every notice, so something that acts on the board (the
+        # worker engine, the herdr doorbell) hears it move without polling it.
+        # A notice still wakes no ``await``; this is an in-process listener.
+        self.on_notice: RoomNoticeHook | None = None
         self._metrics = ChannelMetrics()
         # Server-held presence: a handle that participates over HTTP (the CLI
         # ``await``/``respond`` long-poll) never holds a client SLIM connection,
@@ -462,22 +494,42 @@ class RoomChannelManager:
         herdr-present. Used to decide whether a mention should enqueue a wake."""
         return self._live_herdr(room).get(handle, (None,))[0]
 
-    def enqueue_herdr_wake(self, room: str, handle: str) -> None:
-        """Ring the doorbell for a herdr-present handle mentioned in ``room``.
+    def enqueue_herdr_wake(
+        self,
+        room: str,
+        handle: str,
+        *,
+        reason: str = "mention",
+        key: str | None = None,
+        title: str | None = None,
+    ) -> None:
+        """Ring the doorbell for a herdr-present handle in ``room``.
 
         Enqueued regardless of the agent's current state — a tag for a *busy*
         agent is **held** here and released once it goes idle (see
         :meth:`drain_herdr_wakes`), so the nudge is never lost just because the
-        agent was mid-turn. Deduped by handle: the wake carries no payload (the
+        agent was mid-turn. Deduped by handle: the wake carries no message (the
         agent reads the room itself), so repeated tags collapse to one pending
         nudge — refreshing its hold timer, never adding content to lose.
+
+        ``reason`` says what kind of doorbell it is, so the bridge can word the
+        prompt: ``mention`` (read the room), ``turn`` (a turn is addressed to
+        you: ``await`` it and answer), or ``assigned`` (the row ``key`` was
+        given to you). The most specific reason pending wins over a mention.
         """
         queue = self._herdr_wakes.setdefault(room, [])
+        entry: dict = {"handle": handle, "ts": time.monotonic(), "reason": reason}
+        if key:
+            entry["key"] = key
+        if title:
+            entry["title"] = title
         for w in queue:
             if w["handle"] == handle:
-                w["ts"] = time.monotonic()  # fresh activity refreshes the hold timer
+                w["ts"] = entry["ts"]  # fresh activity refreshes the hold timer
+                if reason != "mention":
+                    w.update({k: v for k, v in entry.items() if k != "handle"})
                 return
-        queue.append({"handle": handle, "ts": time.monotonic()})
+        queue.append(entry)
 
     def enqueue_herdr_wakes_for_mentions(
         self, room: str, content: str, *, exclude: str | None = None
@@ -490,17 +542,54 @@ class RoomChannelManager:
         isn't ours; the normal SLIM/consent path covers it. Pass ``exclude`` (the
         sender's own handle) so a reply that mentions itself doesn't enqueue a
         self-wake. Returns the handles enqueued.
+
+        A text that summons a conductor wakes nobody: the handles named beside
+        one are bound to its roles, and the conductor addresses each in its
+        turn, which rings the doorbell then (:meth:`herdr_wake_addressed`).
         """
+        mentions = [raw.lstrip("@").lower() for raw in parse_mentions(content or "")]
+        if any(_registered_kind(room, h) == "conductor" for h in mentions):
+            return []
         exclude_norm = exclude.lstrip("@").lower() if exclude else None
         enqueued: list[str] = []
-        for raw in parse_mentions(content or ""):
-            handle = raw.lstrip("@").lower()
+        for handle in mentions:
             if handle == exclude_norm:
                 continue
             if self.herdr_status(room, handle) is not None:
                 self.enqueue_herdr_wake(room, handle)
                 enqueued.append(handle)
         return enqueued
+
+    def herdr_wake_addressed(self, room: str, handle: str) -> bool:
+        """Ring a herdr-present handle that was just put a turn (an L9 recipient).
+
+        How the aligner and the conductor reach a member: an exchange naming it,
+        with nobody mentioned in the text. Without this a herdr agent only woke
+        on a text mention, so a conductor step addressed to one waited out its
+        timeout. ``True`` when a wake was queued.
+        """
+        name = handle.lstrip("@").lower()
+        if self.herdr_status(room, name) is None:
+            return False
+        self.enqueue_herdr_wake(room, name, reason="turn")
+        return True
+
+    def herdr_wake_assigned(self, room: str, notice: dict[str, str]) -> bool:
+        """Ring the herdr-present handle a newly filed row was given to.
+
+        A ``filed`` notice carrying ``for`` is a row put on the board for
+        someone; if that someone lives in herdr, they hear about it now rather
+        than on their next look at the board. ``True`` when a wake was queued.
+        """
+        if notice.get("subkind") != "filed" or not notice.get("for"):
+            return False
+        name = str(notice["for"]).lstrip("@").lower()
+        if self.herdr_status(room, name) is None:
+            return False
+        self.enqueue_herdr_wake(
+            room, name, reason="assigned", key=notice.get("key"), title=notice.get("title")
+        )
+        return True
 
     def pending_herdr_wakes(self, room: str, *, hold_ttl_s: float = 600.0) -> set[str]:
         """Handles with a queued (not-yet-delivered) wake in ``room`` — read-only.
@@ -720,6 +809,7 @@ class RoomChannelManager:
             members_provider=lambda: set(managed.members),
             on_summon=self._summon_adapter(room),
             on_converged=self._converged_adapter(room),
+            on_addressed=self._addressed_adapter(room),
             on_member_left=lambda handle, _room=room: self._drop_member(_room, handle),
         )
         managed.persister_task = asyncio.create_task(managed.persister.run())
@@ -816,6 +906,18 @@ class RoomChannelManager:
             _room: str = room,
         ) -> None:
             hook(_room, handle, envelope, co_summons, message_text)
+
+        return adapter
+
+    def _addressed_adapter(self, room: str) -> AddressedHook | None:
+        """Bind ``room`` onto the room-aware ``on_addressed`` hook, like
+        :meth:`_summon_adapter`; ``None`` keeps the persister silent."""
+        hook = self.on_addressed
+        if hook is None:
+            return None
+
+        def adapter(handle: str, envelope: L9, message_text: str = "", _room: str = room) -> None:
+            hook(_room, handle, envelope, message_text)
 
         return adapter
 
@@ -1080,6 +1182,10 @@ class RoomChannelManager:
             if not _is_own_registered_agent(room, handle):
                 unrecognized.append(handle)
                 continue
+            if _is_engine(room, handle):
+                # An engine is a seat the backend plays, not a SLIM member: the
+                # summon seam answers the mention, and an invite would only fail.
+                continue
             if managed.lifecycle.frozen:
                 # Adding a member mid-negotiation would abort it (L9's
                 # stable-membership rule), so hold the invite until the episode
@@ -1204,6 +1310,11 @@ class RoomChannelManager:
             from app.bus import bus, room_channel
 
             bus.publish(room_channel(room), l9_bus_frame(room, record_from(notice, content)))
+        if self.on_notice is not None:
+            try:
+                self.on_notice(room, dict(data))
+            except Exception:
+                logger.exception("notice hook failed for %s in %s", subkind, room)
 
     # -- deferred invites (L9 stable membership) --
 
@@ -1260,6 +1371,97 @@ class RoomChannelManager:
             return False
         managed.lifecycle.open(episode, set(self.members(room)), negotiation=negotiation)
         return True
+
+    # -- the floor --
+
+    def hold_floor(
+        self, room: str, episode: str, *, holder: str, speakers: Iterable[str] = ()
+    ) -> Floor | None:
+        """Give ``speakers`` the floor in ``episode``, held by ``holder``.
+
+        Replaces whatever floor the thread held, so a runner moving from one
+        step to the next calls this once per step. ``None`` when the room has
+        no live channel, or when ``episode`` is the room itself — the room never
+        holds a floor, so a protocol cannot close the room around itself.
+        """
+        managed = self._channels.get(room)
+        if managed is None or l9.is_live_episode(room, episode):
+            return None
+        floor = Floor(
+            episode=episode,
+            holder=norm_handle(holder) or holder,
+            speakers=frozenset(h for h in (norm_handle(s) for s in speakers) if h),
+        )
+        previous = managed.floors.get(episode)
+        managed.floors[episode] = floor
+        if previous != floor:
+            # Whose turn it is changed: one line in the room's timeline, and the
+            # roster re-reads. Nothing when a step re-holds the same floor.
+            self._notice_in_background(
+                room,
+                subkind="floor",
+                **self._floor_names(room, episode),
+                by=floor.holder,
+                speakers=",".join(sorted(floor.speakers)),
+            )
+        return floor
+
+    @staticmethod
+    def _floor_names(room: str, episode: str) -> dict[str, str | None]:
+        """How a floor notice names its thread: by the task it belongs to.
+
+        A task and its thread are one object, so a line about the thread says
+        the task's key and title; only a thread no row carries falls back to
+        the id. The lookup is the store's, done lazily so this module does not
+        import the task model at load.
+        """
+        from app.services.tasks import row_of_episode
+
+        row = row_of_episode(room, episode)
+        if row is None:
+            return {"key": episode.rsplit(":", 1)[-1], "episode": episode, "title": None}
+        return {"key": row[0], "episode": episode, "title": row[1]}
+
+    def release_floor(self, room: str, episode: str) -> bool:
+        """Open ``episode`` back up; True when a floor was actually held."""
+        managed = self._channels.get(room)
+        if managed is None:
+            return False
+        floor = managed.floors.pop(episode, None)
+        if floor is None:
+            return False
+        self._notice_in_background(
+            room,
+            subkind="floor",
+            **self._floor_names(room, episode),
+            by=floor.holder,
+            released="1",
+        )
+        return True
+
+    def floors_of(self, room: str) -> list[Floor]:
+        """Every floor held in ``room`` right now, in thread order."""
+        managed = self._channels.get(room)
+        if managed is None:
+            return []
+        return [managed.floors[key] for key in sorted(managed.floors)]
+
+    def _notice_in_background(self, room: str, **notice: str | None) -> None:
+        """Raise a notice from a sync caller, on the running loop if there is one."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        task = loop.create_task(self.raise_notice(room, **notice))  # type: ignore[arg-type]
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    def floor(self, room: str, episode: str | None) -> Floor | None:
+        """The floor ``episode`` holds, or ``None`` when anyone may write."""
+        managed = self._channels.get(room)
+        if managed is None or episode is None:
+            return None
+        return managed.floors.get(episode)
 
     async def close_episode(self, room: str) -> bool:
         """Close the room's active episode normally and flush deferred invites.

@@ -2,437 +2,393 @@
 
 ## Deployment Modes
 
-Mycelium supports two deployment modes. The stack is identical in both;
-what differs is *where the agents run* and *how they reach the room*.
+Mycelium runs the same stack in two setups. The difference is where the agents
+run and how they reach the room.
 
 ### 1. Single-device (default)
 
-Everything (the backend, the SLIM node, agents, and CLI) runs on one
-machine, typically a developer's laptop. This is what `mycelium install`
-sets up out of the box. No network configuration, no remote services to
-point at, no shared infrastructure required.
-
-This is the primary deployment target. Use it when one person (or one
-machine) owns the whole agent workflow.
+Everything runs on one machine: the backend, the SLIM node, the app, the CLI
+and your agents. This is what `mycelium install` sets up, and it needs no
+network configuration. Use it when one person or one machine runs the whole
+workflow.
 
 ### 2. Hub-and-spoke (small teams)
 
-A second, optional mode for small teams that want to share memory, rooms,
-and coordination across machines. One machine runs the SLIM node and
-backend (the **hub**); other machines run only the CLI + agents (**spokes**)
-as **thin HTTP clients** to the hub API.
+For a team that wants to share rooms and memory across machines. One machine,
+the **hub**, runs the SLIM node, the backend and the app. The other machines,
+the **spokes**, run only the CLI and agents, and talk to the hub over HTTP.
 
-| Role  | What runs locally | When to use |
-|-------|-------------------|-------------|
-| **Hub**   | The SLIM node, the thin FastAPI backend (room moderator), and the UI. | The team's shared coordination server. One per team. |
-| **Spoke** | CLI + agents only. Points `server.api_url` at the hub backend. | Each teammate's laptop. Memory and participation go over HTTP `:8000`. |
-
-Stand a hub up and point spokes at the **backend** (required):
+| Role  | What runs on it | Used for |
+|-------|-----------------|----------|
+| **Hub**   | The SLIM node, the backend and the app. | The team's shared server. One per team. |
+| **Spoke** | The CLI and agents, with `server.api_url` pointing at the hub. | Each teammate's machine. Everything goes over HTTP on port 8000. |
 
 ```bash
-# On the hub: starts the SLIM node, backend, and UI
+# On the hub: start the SLIM node, backend and app
 mycelium hub host
 mycelium up
 
-# On each spoke: point at the hub's HTTP API
+# On each spoke: point the CLI at the hub
 mycelium config set server.api_url http://<hub-ip>:8000
 ```
 
-Spokes do not need `MYCELIUM_SLIM_MASTER_SECRET` for the default path. The
-SLIM/MLS fabric is hub-side; spokes use `await`/`respond` over HTTP. See
-[Security Planes](#security-planes) and the [Hub & Spoke Setup guide](#hub-and-spoke)
-for step-by-step instructions.
+Spokes don't need `MYCELIUM_SLIM_MASTER_SECRET`. Only the hub talks to SLIM;
+spokes use `await` and `respond` over HTTP. See
+[Security Planes](#security-planes) and the [Hub & Spoke guide](#hub-and-spoke)
+for the full setup.
 
-`mycelium doctor` auto-detects which mode you're in by looking at
-`server.api_url` in `~/.mycelium/config.toml`: if it points to
-`localhost`/`127.0.0.1`, you're a hub; otherwise a spoke. Override the
-auto-detection with:
+`mycelium doctor` works out which one you are from `server.api_url` in
+`~/.mycelium/config.toml`. If it points at `localhost` or `127.0.0.1`, you're a
+hub; otherwise you're a spoke. You can set it yourself:
 
 ```bash
-mycelium doctor --mode hub     # force hub checks
-mycelium doctor --mode spoke   # force spoke checks (skip local-only)
-mycelium doctor --mode auto    # default; detect from api_url
+mycelium doctor --mode hub     # run the hub checks
+mycelium doctor --mode spoke   # run the spoke checks, skipping local-only ones
+mycelium doctor --mode auto    # the default: decide from api_url
 ```
 
 ### Reading a remote room (spoke)
 
-When the backend runs on a remote server (EC2, Raspberry Pi, a hub), a spoke is
-a **thin client**: `mycelium memory` and `mycelium room` resolve against the hub
-over HTTP, so reads are always fresh and there is **no sync step**: nothing is
-mirrored locally to fall out of date.
+A spoke keeps no copy of the hub's data. `mycelium memory` and `mycelium room`
+read from the hub over HTTP every time, so there's nothing to sync and nothing
+to go stale.
 
-`room clone` / `mycelium sync` remain only as an explicit **export**: a
-point-in-time local snapshot for backup or offline reference, not part of the
-normal flow.
+If you do want a local copy, for a backup or to read offline, `room clone`
+exports a snapshot of a room as it is right now:
 
 ```bash
-# Optional: export a point-in-time snapshot of a room to local files
 mycelium room clone my-project --from http://ec2-host:8000
 ```
 
 ## Stack
 
-Mycelium runs on **one SLIM node** and a thin backend: no database, no
-message broker, no vector store.
+The hub is one SLIM node and a FastAPI backend. There's no database, message
+broker or vector store.
 
-The hub backend moderates an [AGNTCY SLIM](https://github.com/agntcy) group
-channel per room (MLS-encrypted; PSK or SignerJwt on the **SLIM plane**).
-Turn-based agents on spokes (and humans by proxy) participate over **HTTP** —
-the backend holds server-side presence and serves turns from the durable
-transcript. Room state lives on the hub as markdown files; search runs against
-a local embedding index. Every spoke reads and writes that state over HTTP.
-Coordination messages on the fabric ride SLIM as additive [L9 envelopes](#l9-protocol).
+Each room is an encrypted [AGNTCY SLIM](https://github.com/agntcy) group
+channel, and the backend runs it. Agents on spokes, and people using the app,
+take part over HTTP; the backend keeps track of who is present and serves them
+messages from the stored transcript. Room contents are markdown files on the
+hub, searched with a local embedding index. Coordination messages on the
+channel carry [L9 envelopes](#l9-protocol).
 
 | Layer | Technology | Used for |
 |-------|-----------|----------|
-| Messaging | one SLIM node (MLS group channels) | per-room encrypted coordination fabric |
-| State | markdown files on the hub, under `~/.mycelium/rooms/{room}/` | rooms and memories: the source of truth |
-| Search | local ONNX embedding index (JSONL) | ~384-dim semantic recall, no external service |
-| Protocol | L9 envelopes over SLIM | `exchange` ticks/replies, `commit:*`, `knowledge` |
-| Cognition | the aligner (Pi + NEGMAS) | drives the negotiation (see [aligner](#aligner)) |
-| Embeddings | local ONNX model | 384-dim embeddings, no API key |
-| LLM | Pi | task compilation + health probe |
-| Backend | FastAPI (room moderator) | membership, transcript, moderation API |
-| CLI | Typer + Rich | agent interface |
-| Frontend | Next.js + Tailwind | the human-facing app; starts with the stack |
+| Messaging | one SLIM node (MLS group channels) | each room's encrypted channel |
+| State | markdown files on the hub, under `~/.mycelium/rooms/{room}/` | rooms and memories |
+| Search | a local ONNX embedding model (`BAAI/bge-small-en-v1.5`, 384 dimensions), with the index stored as JSONL | semantic search, with no API key or external service |
+| Protocol | L9 envelopes over SLIM | turns and replies (`exchange`), outcomes (`commit:*`), memory updates (`knowledge`) |
+| Engines | Pi, plus NEGMAS for the aligner | the built-in agents (see [engines](#engines)) |
+| LLM calls | Pi | engines, turning agreements into tasks, the health check |
+| Backend | FastAPI | runs the rooms, stores the transcript, serves the API |
+| CLI | Typer + Rich | how agents and people use Mycelium from a terminal |
+| Frontend | Next.js + Tailwind | the app; starts with the rest of the stack |
 
-**Participation is built into the CLI.** Any already-awake caller joins a room and
-coordinates with two stateless HTTP calls. The backend holds membership via a
-presence lease and a durable transcript cursor, so ticks are never missed
-between turns:
+### Taking part in a room
+
+An agent takes part with two HTTP calls. `await` waits until there's a message
+for it, and `respond` posts its reply:
 
 ```bash
-# Long-poll until a message is addressed to the handle
+# Wait until a message is addressed to this handle
 mycelium await --room my-project --handle me --json
 
-# Post a reply or opening position
+# Post a reply
 mycelium respond --room my-project --handle me "moving toward 30% …"
 ```
 
-**An agent is a resident runtime.** A participant is your own live Claude Code or
-Cursor session. It just loops the participation calls itself: no wrapper, no
-separate process, no shelling out:
+The backend remembers where each agent is up to, so nothing is missed between
+calls, even if the agent takes a while to reply.
 
-```bash
-mycelium await --room my-project --handle me     # blocks until you're addressed
-# …you reason, in your own context…
-mycelium respond --room my-project --handle me "moving toward 30% …"
-# …then await again
-```
+An agent is a session you already have open, such as Claude Code or Cursor. It
+runs the loop itself: `await`, think about the message, `respond`, `await`
+again. There's no background process, and agents never talk to SLIM or write
+L9 themselves.
 
-The loop *is* the wake: await → reason → respond → await. The session does the
-reasoning **in its own head**; `respond` just posts it. There is no daemon and no
-cold-spawn, and agents never speak SLIM or L9 directly.
+![A turn-based CLI agent using await and respond over HTTP, with the backend as the only thing talking to SLIM](diagrams/01-turnbased-cli.svg)
 
-![Pattern A: turn-based CLI agent, await/respond over HTTP, backend is the sole SLIM speaker](diagrams/01-turnbased-cli.svg)
+For an agent with no interactive session to run that loop,
+`mycelium await --loop --exec <cmd>` runs it for you. Each turn is passed to
+`<cmd>` as JSON on stdin, and `<cmd>` calls `respond`. Point it at something
+that keeps its context between turns, such as an Agent SDK session; a fresh
+process each turn forgets everything before it.
 
-For a **headless** agent (no interactive session sitting there to hold the loop),
-`mycelium await --loop --exec <cmd>` runs the loop for you and hands each turn to
-`<cmd>` (turn JSON on stdin); `<cmd>` is your reasoning runtime and calls
-`respond`. Point it at a **persistent** runtime (e.g. an Agent-SDK session) so
-context accumulates across turns; a throwaway one-shot per turn would just rebuild
-the amnesiac cold-spawn this design replaced.
+If you mention a handle that has no session running, the message waits until
+that agent next calls `await`. To start a stopped agent when it's mentioned,
+use [herdr](#herdr), which keeps coding-agent sessions available and wakes them.
 
-An `@`-mention to a handle with no resident runtime simply waits on the durable
-transcript cursor until one awaits. Waking a handle on demand when nothing is
-resident is the job of the optional [herdr](#herdr) persistent-runtime layer,
-which keeps coding-agent sessions alive so a mention can wake one instead of
-queuing.
+### Engines
 
-**Cognition rides on engines.** First-party [engines](#engines) are registered in
-a room and summoned by `@`-mention; each `kind` is a distinct task of reasoning.
-The `aligner` mediates a disagreement; its brain is a persistent Pi coding-agent
-session running a NEGMAS Stacked Alternating Offers mechanism that owns
-termination, stopping the instant the agents agree. The `synthesizer` distills
-the room's conversation into a shared briefing in memory, incrementally. See [engines](#engines),
-[aligner](#aligner), and [episodes](#episodes).
+[Engines](#engines) are agents that come with Mycelium and run on the hub. You
+add one to a room and mention it to use it. The [aligner](#aligner) helps
+agents settle a disagreement, using a NEGMAS negotiation that ends as soon as
+they agree. The [synthesizer](#synthesizer) summarizes the room's conversation
+into a memory. See also [episodes](#episodes).
 
 ## Tasks, threads and pings
 
-A [task](#board) is a `work/` memory. Its **thread** is a scoped, tagged slice
-of the room's existing channel, identified by an episode id, and not a separate
-encrypted group. Membership in a room is membership in its threads; a thread
-separates attention rather than access.
+A [task](#board) is a memory on the board, usually under `work/`. Each task has
+a **thread**: its own conversation within the room's channel, identified by an
+episode id. A thread isn't a separate encrypted group. Everyone in the room can
+see every thread; threads just keep conversations apart.
 
-**The binding is store-owned, and one per row.** The backend mints the episode
-id at the memory-upsert chokepoint for every board namespace (`work/`,
-`decisions/`, `status/`, `failed/`), so a row born any way at all gets its own
-thread and no two rows share one. It is absent from the memory's user-settable
-`meta`, so no `memory set` and no board verb can point a row at a conversation it
-was not part of, and the binding is write-once, so a row keeps its thread for
-life. A later coordination phase opens its own episode inside that task rather
-than moving it, and a negotiation that compiled several tasks keeps its own
-episode as a record bound to no row.
+**Every task gets its own thread, for good.** The backend gives a task its
+thread when the task is first written, for every board namespace (`work/`,
+`decisions/`, `status/`, `failed/`). The thread id can't be set or changed
+through `memory set` or any board command, so a task can't be pointed at
+someone else's conversation. A negotiation or flow run on a task gets its own
+episode inside the task's thread; it doesn't replace the task's thread.
 
-**Creating a task has its own route.** `POST /api/rooms/{room}/tasks` is the one
-door that mints a thread; the memory routes deliberately have no wire form for
-it. `--parent` lands as a real `part-of` relation, and a parent that does not
-resolve is refused rather than written as a dangling edge.
+**Tasks are created through their own route.** `POST /api/rooms/{room}/tasks`
+is the only way to create a task with its thread. With `--parent`, the new task
+is linked to its parent with a `part-of` relation, and a parent that doesn't
+exist is refused.
 
-**The board draws one row per task.** What happens in the thread folds onto that
-row as its own read-only fields (the thread's id and state, who took part, how
-many rounds) and never writes the row's own axes. Status and custody belong to
-the task; a converged or aborted episode changes neither. Those thread fields are
-columns a surface can show, and are excluded from the axes a board can pivot on,
-because grouping tasks by the state of the negotiation inside them would invert
-that separation on the surface where it shows most.
+**The board shows one row per task.** Information about the thread (its id,
+its state, who took part, how many rounds) is shown on the row as read-only
+fields. It never changes the task's own status or who holds it: a negotiation
+that succeeds or fails leaves both alone. You can show these fields as columns,
+but you can't group the board by them.
 
-**Two kinds of line reach the room, and neither carries prose.** A **ping** says
-a thread moved: every threaded write emits one carrying the thread, the sender,
-and the id of the message it is about. A **notice** says the board moved: the
-backend raises one at each lifecycle seam (the upsert that files a row, and
-claim, release and resolve) carrying the task, who moved it, and the thread to
-open. The subkinds are a closed set frozen in `contracts/slim-l9-wire.json`:
-`filed`, `claimed`, `released`, `resolved`. Both are control payloads excluded
-from `_addressed_to`, so neither spends an agent's turn, and surfaces draw one
-line from each while filtering the thread's own prose out of the channel by
-episode. Room-wide events stay unfiltered: a task moving is the room's business
-however deep inside a task it happened.
+**The room's channel shows short updates, not thread conversations.** Two
+kinds of update appear there:
 
-> **CLI gap.** A notice carries no `content`, so `mycelium room watch` drops it
-> rather than drawing a line. The app renders the timeline; the terminal shows
-> chat and thread activity only.
+- A **ping** says a thread has a new message. It carries the thread, the sender
+  and the message id.
+- A **notice** says the board changed. It carries the task, who changed it and
+  the thread to open. The kinds are `filed`, `claimed`, `released`, `resolved`,
+  `blocked`, `unblocked` and `expired`, plus `floor`, which says whose turn it
+  is in a thread. The list is fixed in `contracts/slim-l9-wire.json`.
 
-> **Live-only, for now.** A ping is not projected into the stored conversational
-> read (`GET /messages`), which promotes prose and a few raise-up kinds only. The
-> app merges pings in from the transcript replay so a live channel is correct;
-> a cold reload of a busy room reads quieter than it was. Promoting pings into
-> the conversational read would print raw envelopes at anyone running `mycelium
-> room messages`, which is why it has not simply been widened.
+Neither one counts as a message to an agent, so neither uses up an agent's
+turn.
 
-**A wake can be narrowed to one task.** `await --task <id>` waits against that
-thread's own cursor. The presence lease stays room-scoped, so an agent watching
-one task is still a full member of the room and mentions elsewhere keep their
-place in its queue.
+> **Terminal gap.** A notice has no text, so `mycelium room watch` doesn't show
+> it. The app shows notices; the terminal shows chat and thread activity only.
+
+> **Pings are live only.** The stored message history (`GET /messages`)
+> doesn't include pings. The app adds them from the transcript as it streams,
+> so a room you're watching is complete, but a room you reload later looks
+> quieter than it was. Adding pings to the history would print raw envelopes in
+> `mycelium room messages`.
+
+**Waiting on one task.** `await --task <id>` waits only for messages in that
+task's thread. The agent is still a full member of the room, and mentions
+elsewhere stay queued for it.
 
 ## Adapters
 
-Mycelium integrates with AI coding agents via adapters. The coordination model is
-the same regardless of adapter: join, await, respond.
+Adapters connect agent tools to Mycelium. Whichever one you use, the agent
+does the same three things: join, `await`, `respond`.
 
 | Adapter | How it connects |
 |---------|--------|
-| **claude_code** | Skill + resident await/respond loop |
-| **cursor** | Workspace rules + the same resident loop |
-| **a2a** | A remote Agent2Agent endpoint the hub calls; no local runtime |
+| **claude_code** | A skill, plus the `await`/`respond` loop |
+| **cursor** | Workspace rules, plus the same loop |
+| **a2a** | A remote Agent2Agent endpoint that the hub calls; nothing runs locally |
 
 ### Claude Code
 
-The Mycelium skill installs as a Claude Code skill (`~/.claude/skills/mycelium/SKILL.md`),
-invoked via the `/mycelium` slash command for memory and coordination commands.
-The adapter is skill-only.
+The Mycelium skill is installed at `~/.claude/skills/mycelium/SKILL.md` and used
+with the `/mycelium` slash command. It covers memory and coordination commands.
 
 ```bash
-# The skill is invoked automatically in Claude Code sessions
-# or explicitly via the slash command
+# Claude Code uses the skill when it's relevant, or you can call it directly
 /mycelium
 ```
 
-A Claude Code session participates as a resident runtime: it loops `mycelium
-await` → reason → `mycelium respond`, picking up each `@handle` mention on its
-next turn and answering in its own context. (For a headless, unattended agent,
-`mycelium await --loop --exec <cmd>` runs that loop for you; see above.)
+A Claude Code session takes part by running `mycelium await`, working out its
+answer, and running `mycelium respond`. It picks up each `@handle` mention on
+its next turn. For an agent with no interactive session, use
+`mycelium await --loop --exec <cmd>` (see above).
 
 ### Cursor
 
-Same resident model as Claude Code: a Cursor session loops `await` → reason →
-`respond`.
+Works the same way as Claude Code: a Cursor session runs `await`, works out its
+answer, and runs `respond`.
 
 ```bash
-mycelium adapter add cursor   # installs the workspace rule + AGENTS.md assets
-cursor-agent login            # one-time, interactive
+mycelium adapter add cursor   # installs the workspace rule and AGENTS.md
+cursor-agent login            # once, interactively
 
-# Per agent: --cwd is the session's workspace root (optional)
+# Per agent. --cwd is the session's workspace folder (optional)
 mycelium agent create design-agent --adapter cursor \
     --cwd ~/repos/my-frontend --room my-project
 ```
 
 ### A2A
 
-An `a2a` agent has no local runtime at all: it is a remote
-[Agent2Agent](https://github.com/a2aproject/A2A) endpoint the hub calls on its
-behalf. The card is resolved at registration, so a bad URL fails immediately.
+An `a2a` agent doesn't run on your machine. It's a remote
+[Agent2Agent](https://github.com/a2aproject/A2A) endpoint that the hub calls for
+it. The hub fetches the agent's card when you register it, so a wrong URL fails
+straight away.
 
 ```bash
 mycelium agent create researcher --adapter a2a \
     --card https://research.example.com --room my-project
 ```
 
-The same bridge runs inbound: every room is served as an A2A agent, discoverable
-at `GET /api/rooms/{room}/.well-known/agent-card.json` (public — discovery is
-unauthenticated by the A2A spec) and callable with A2A JSON-RPC at
-`POST /api/rooms/{room}/a2a` (gated by the hub's auth when it is enabled).
+It also works the other way. Every room is available as an A2A agent:
 
-Neither direction is a tunnel straight between the two agents. A bridged agent
-is a room member for coordination, but it is **not** a member of the room's MLS
-group: the backend seat reads the room's plaintext and calls the remote over
-plain HTTPS, out-of-band from SLIM. Inbound is the same shape in reverse: the
-hub terminates the JSON-RPC call in plaintext, then republishes it onto the
-room's MLS channel on the caller's behalf. So this is not end-to-end encryption
-between the external agent and the room; the hub sees plaintext on both sides
-and is the translation boundary. See the
-[A2A bridge](adapters.html#adapter-a2a) for the full boundary.
+- its card is at `GET /api/rooms/{room}/.well-known/agent-card.json`, which is
+  public, as the A2A spec expects;
+- it takes A2A JSON-RPC calls at `POST /api/rooms/{room}/a2a`, which requires
+  auth when the hub has auth turned on.
+
+In both directions the hub sits in the middle. A remote A2A agent counts as a
+room member, but it isn't part of the room's encrypted SLIM group. The hub
+reads the room's messages and calls the remote agent over HTTPS. Incoming calls
+work the same way in reverse: the hub receives the call, then posts it into
+the room for the caller. So the hub sees everything in plain text, and this
+isn't end-to-end encryption between the remote agent and the room. See the
+[A2A bridge](adapters.html#adapter-a2a) for details.
 
 ### Backend API
 
-Any agent that can make HTTP requests can use the REST API directly.
-Interactive API docs are available at `http://localhost:8000/docs`
-when the backend is running.
+Any agent that can make HTTP requests can use the REST API directly. When the
+backend is running, the interactive API docs are at
+`http://localhost:8000/docs`.
 
 ## Status providers
 
-Adapters connect **agents** to a room. Status providers connect the **tools your
-work already lives in**, so that a [board](#board) row pointing at a pull request
-can report whether it's approved, blocked or failing instead of someone copying
-that state into Mycelium.
+Adapters connect agents to a room. Status providers connect the tools your work
+already happens in. If a [board](#board) row mentions a pull request, a status
+provider lets the row show whether that pull request is approved, blocked or
+failing, without anyone copying it across by hand.
 
-This works end to end: give the hub a token, write a pull request into a row,
-and that row carries the pull request's state, in both the app and `mycelium
-board`. Nothing refreshes on a schedule: a read reports what is known, starts a
-fetch for what is not, and the surfaces show that plainly rather than
-pretending. Check the module before writing a provider.
+Give the hub a token, mention a pull request in a row, and the row shows its
+state in both the app and `mycelium board`. Nothing is polled on a timer: each
+read shows what's already known and fetches anything that's out of date.
 
 | Provider | Recognizes | Reports |
 |----------|------------|---------|
-| **github** | `owner/repo#123` and `https://github.com/owner/repo/pull/123` | review decision, checks rollup, draft, merged/closed |
+| **github** | `owner/repo#123` and `https://github.com/owner/repo/pull/123` | review decision, checks, draft, merged or closed |
 
-Providers run on the hub only. That is where the credential is, and it means one
-cache is shared by everyone in the room rather than each client polling GitHub
-for itself. A spoke never holds a service token.
+Providers run only on the hub. That's where the token is, and it means the
+whole room shares one cache instead of every client calling GitHub. Spokes never
+hold a service token.
 
-### Asking what the tools say
+### Asking for status
 
 ```
 GET /api/rooms/{room}/status
 ```
 
-You never tell Mycelium which pull requests to watch. Write a work row that
-says `land the custody seam: mycelium-io/mycelium#504` and the reference is
-already there; the hub reads the room's own `decisions/`,
-`status/`, `work/` and `failed/` memories, and asks each provider what it
-recognizes. Nothing in the hub matches `#504`: a provider is the only thing that
-knows its own shapes, so teaching Mycelium about Jira ticket keys is adding a
-provider, not editing a parser.
+You don't list which pull requests to watch. The hub reads the room's
+`decisions/`, `status/`, `work/` and `failed/` memories and asks each provider
+which references it recognizes. So a row that says
+`land the custody seam: mycelium-io/mycelium#504` is already tracked. Only the
+provider knows what its references look like, so supporting a new kind (Jira
+ticket keys, say) means adding a provider.
 
-The response carries one entry per reference, each with the state, the
-provider's own label, and the board row ids whose text mentioned it, so a
-surface attaches an answer to a row by matching an id it already has.
+The response has one entry per reference: its state, the provider's own label
+for it, and the ids of the rows that mention it.
 
-**Reading does not fetch.** Opening a board must not become a burst of calls to
-GitHub, so a read answers from cache, says how fresh each answer is, and starts
-a refresh in the background for whatever is due. The next read sees it. Two
-query parameters are the exceptions worth knowing:
+**Reading doesn't wait on fetching.** A read answers from the cache, says how
+old each answer is, and starts a background refresh for anything that's due.
+The next read gets the fresh answer. Two query parameters change this:
 
 | Parameter | What it does |
 |-----------|--------------|
-| `?refresh=true` | Fetch before answering. The blocking path, for a one-shot caller with nowhere to come back to. |
-| `?max_age=<seconds>` | Anything older is reported `missing` rather than handed over. Recency you can demand instead of hope for. |
+| `?refresh=true` | Fetch first, then answer. For a caller that can't come back later. |
+| `?max_age=<seconds>` | Report anything older than this as `missing` instead of returning it. |
 
-A reference whose provider has no credential comes back with the reason
-(`github: GITHUB_TOKEN not configured`), never as a blank.
+If a provider has no token, its references come back with the reason (for
+example `github: GITHUB_TOKEN not configured`), not blank.
 
-### Giving the hub a credential
+### Giving the hub a token
 
-Resolving pull requests takes a GitHub token; read-only is enough, plus `repo`
-scope for private repositories. A provider **declares** which credential it needs
-and how it is presented (a scheme: bearer token, basic auth, a raw key in a
-header), and never handles the value. The runtime resolves it and hands back a
-transport that already carries it.
+To read pull requests the hub needs a GitHub token. Read-only access is
+enough, plus `repo` scope for private repositories.
 
-You give the hub the value by name, on the machine the backend runs on:
+Set it on the machine the backend runs on. The name to use is the one the
+provider asks for; GitHub's is `GITHUB_TOKEN`:
 
 ```bash
-# The name is the provider's, not yours: GitHub's provider declares GITHUB_TOKEN.
 mycelium board credential set GITHUB_TOKEN --stdin < token.txt
-mycelium board credential set GITHUB_TOKEN            # or a hidden prompt
-mycelium board credential ls                          # names and set/empty, never values
+mycelium board credential set GITHUB_TOKEN            # or type it at a hidden prompt
+mycelium board credential ls                          # shows names and whether they're set, never values
 ```
 
 The value is read from stdin or a hidden prompt, never the command line, so it
-does not land in shell history or `ps` output. It is stored `0600` in
-`~/.mycelium/status-credentials.json`, a flat name-to-value file the backend
-reads directly (compose already bind-mounts `~/.mycelium` into the container).
+doesn't end up in your shell history or in `ps`. It's saved with `0600`
+permissions in `~/.mycelium/status-credentials.json`, which the backend reads
+directly (compose mounts `~/.mycelium` into the container).
 
-Three sources resolve, explicit always beating ambient: a namespaced
-`MYCELIUM_STATUS_GITHUB_TOKEN` environment variable overrides everything, then
-the stored value, then a bare `GITHUB_TOKEN` environment variable last. The bare
-name is a convenience so a container with one injected token and no store file
-works, but it sits *below* the store on purpose: a credential name looks like an
-ordinary environment variable, so an ambient `GITHUB_TOKEN` set for some
-unrelated tool must never silently override one you explicitly stored. To force
-an override from the environment, use the namespaced form.
+The hub looks for a token in this order:
 
-Do not put the value in `config.toml` or hand-edit `~/.mycelium/.env`. Both are
-rewritten wholesale (`.env` is regenerated by `mycelium config apply`), so a
-token written into either disappears the next time they run, with no error to
-explain where it went. The credential store exists precisely to survive that.
+1. `MYCELIUM_STATUS_GITHUB_TOKEN` in the environment
+2. the value saved with `mycelium board credential set`
+3. `GITHUB_TOKEN` in the environment
 
-A reference whose provider has no credential is refused with the reason, rather
-than answered with a blank. A blank on a row reads as *this pull request has no
-CI*, which is worse than an honest gap. The runtime refuses it without calling
-the provider at all, so a misconfigured one never spends a request discovering
-it has no token. The reason distinguishes a name that was never set (*not
-configured*) from one set to an empty value (*set but empty*), because an
-operator fixes those two differently.
+A plain `GITHUB_TOKEN` comes last so that one set for some other tool doesn't
+replace the one you saved. To override the saved value from the environment,
+use the `MYCELIUM_STATUS_` form.
 
-### Teaching Mycelium another tracker
+Don't put the token in `config.toml` or in `~/.mycelium/.env`. Both files get
+rewritten (`mycelium config apply` regenerates `.env`), and a token in either
+would disappear without any error.
 
-A provider is one small class in `app/services/status/providers/`;
-`providers/github.py` is written to be copied. It declares its batching and
-freshness, then implements two methods:
+A reference with no token is reported with a reason instead of an empty
+result, because an empty result would look like the pull request has no
+checks. The hub doesn't call the provider at all in that case. The reason
+says whether the token was never set (*not configured*) or set to an empty
+value (*set but empty*).
+
+### Adding a provider
+
+A provider is a small class in `app/services/status/providers/`.
+`providers/github.py` is a good one to copy. It sets a few options and
+implements two methods:
 
 ```python
 class JiraProvider:
     name = "jira"
-    base_url = "https://your-org.atlassian.net"   # ctx.http is bound to this host
-    auth = Basic("JIRA_EMAIL", "JIRA_TOKEN")  # a scheme, not a value; the runtime resolves both names
-    max_batch = 50                  # most references the runtime sends in one call
+    base_url = "https://your-org.atlassian.net"   # ctx.http only talks to this host
+    auth = Basic("JIRA_EMAIL", "JIRA_TOKEN")  # which credentials, by name; the hub supplies the values
+    max_batch = 50                  # most references to fetch in one call
     ttl = timedelta(minutes=1)      # how long an answer counts as current
-    swr = timedelta(minutes=30)     # how long past that it's still shown while refreshing
+    swr = timedelta(minutes=30)     # how long an older answer is still shown while it refreshes
 
     def claims(self, text: str) -> list[Ref]:
-        """Which references in room text are yours. Mycelium knows no syntax
-        of its own: PROJ-14 means a ticket because you said so."""
+        """Find this provider's references in a row's text, e.g. PROJ-14."""
 
     async def fetch(self, refs: list[Ref], ctx: Context) -> list[Outcome]:
-        """Resolve a batch. One Ok or Err per reference, in any order."""
+        """Look up a batch. Return one Ok or Err per reference, in any order."""
 ```
 
-The `auth` line is the whole of what a provider says about credentials. It picks
-a scheme and names the value(s) it needs: `Bearer("GITHUB_TOKEN")` for GitHub,
-Asana, Sentry or Notion; `Basic("JIRA_EMAIL", "JIRA_TOKEN")` for Jira Cloud, which
-takes an identity and a secret rather than one opaque token; `Header("LINEAR_TOKEN")`
-for a raw token with no scheme word, or `Header("KEY", header="X-Api-Key")` for a
-key under a header of the tracker's own. The runtime resolves the name(s) and
-renders the header; a provider never sees the value or writes the encoding.
+`auth` says how the tool expects credentials, and which names to look up:
 
-What you don't write is as important as what you do. `ctx.http` arrives bound to
-the declared `base_url`, with the credential, timeout and retry policy already
-applied, so a provider is request-and-parse: it names a host and a secret and is
-handed neither. Batching, de-duplication, caching, single-flight and rate-limit
-backoff belong to the runtime; a provider that reimplements them is doing that
-job twice, and worse.
+| Auth | Sends | For |
+|------|-------|-----|
+| `Bearer("GITHUB_TOKEN")` | `Authorization: Bearer <token>` | GitHub, Asana, Sentry, Notion |
+| `Basic("JIRA_EMAIL", "JIRA_TOKEN")` | HTTP basic auth | Jira Cloud |
+| `Header("LINEAR_TOKEN")` | the raw token in `Authorization` | Linear |
+| `Header("KEY", header="X-Api-Key")` | the raw token in a header you name | tools with their own header |
 
-Two rules the runtime enforces:
+The provider never sees the token itself. `ctx.http` is already set up with the
+base URL, the credentials, a timeout and retries, so a provider only makes
+requests and reads the answers. The hub handles batching, de-duplication,
+caching, avoiding duplicate requests, and backing off when rate-limited.
 
-- **Bulk only.** There is no single-reference fetch to call in a loop. A hundred
-  rows resolve in two calls at `max_batch = 50`. A tool that can only answer one
-  at a time is still fine: declare `max_batch = 1` and it gets paced.
-- **Failure is per reference.** A batch where three links 404 still answers for
-  the other forty-seven. A link your token can't see is marked unreachable, not
-  reported as green.
+The hub also enforces two rules:
 
-Map your tool's vocabulary onto the six states in the
-[board's table](#board), being `ok`, `pending`, `blocked`, `failed`, `done` and
-`unknown`, and keep your own wording as the label. The state is what the board
-sorts and colors by; the label is what the reader recognizes.
+- **Batches only.** There's no way to fetch one reference at a time in a loop.
+  A hundred rows with `max_batch = 50` take two calls. If a tool can only look
+  up one thing per request, set `max_batch = 1` and the hub will pace the calls.
+- **Each reference succeeds or fails on its own.** If three links in a batch
+  return 404, the rest still get answers. A link your token can't see is marked
+  unreachable, not reported as passing.
 
-Your answer lands on a row under an `upstream` field, and on neither field a row
-already owns. Not `status`, the row's own lifecycle, whose vocabulary shares
-the word `blocked` with yours and means something else by it. Not `live` either,
-which is a yes-or-no for whether an agent is resident on the row. In the backend
-the answer is a `Liveness`, kept apart from both for the same reason.
+Map the tool's states onto the board's six: `ok`, `pending`, `blocked`,
+`failed`, `done` and `unknown` (see the [board](#board)). Keep the tool's own
+wording as the label. The board sorts and colors by the state, and shows the
+label.
 
-The host bound is enforced, not merely declared: `ctx.http` refuses any request
-to a host other than your `base_url`, so a redirect or a hand-written absolute
-URL cannot carry your credential somewhere it was never meant to go.
+The answer appears on the row as a field called `upstream`. It doesn't use
+`status`, which is the task's own state (and uses `blocked` to mean something
+different), or `live`, which says whether an agent is working on the row right
+now. In the backend this is the `Liveness` type.
+
+`ctx.http` refuses requests to any host other than `base_url`, so a redirect
+or a hard-coded URL can't send your credentials anywhere else.

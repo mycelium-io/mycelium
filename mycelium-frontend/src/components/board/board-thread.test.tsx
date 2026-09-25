@@ -18,7 +18,7 @@ vi.mock("@/lib/api", () => ({
   fetchEpisodes: vi.fn().mockResolvedValue([]),
   fetchMemories: (...args: unknown[]) => fetchMemories(...args),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
-  fetchRoomMembers: vi.fn().mockResolvedValue([]),
+  fetchRoomMembers: vi.fn().mockResolvedValue({ members: [], floors: [] }),
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
   fetchRoomStatus: vi.fn().mockResolvedValue({ room: "atlas", field: "upstream", providers: [], refs: [], rows: {}, refreshing: false }),
   writeFields: vi.fn(),

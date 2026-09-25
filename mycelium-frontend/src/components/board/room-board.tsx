@@ -35,6 +35,7 @@ import { EPISODE_FIELD, projectItems } from "@/lib/board/projection";
 import { attachUpstream } from "@/lib/board/upstream";
 import { localZone, projectActivity } from "@/lib/board/activity";
 import { captureToItem, type ParsedCapture } from "@/lib/board/capture";
+import { fileCapture } from "@/lib/board/file-capture";
 import { groupableFields, inferSchema } from "@/lib/board/schema";
 import { applyView, filterItems, attentionFilterCounts, SAVED_VIEWS, sortItems, UNGROUPED, type ViewConfig, type ViewMode } from "@/lib/board/view";
 import { BoardTriage, summarize } from "./board-triage";
@@ -42,6 +43,7 @@ import { BoardKanban } from "./board-kanban";
 import { BoardTable } from "./board-table";
 import { BoardTimeline } from "./board-timeline";
 import { BoardCapture } from "./board-capture";
+import { StartSwarmDialog } from "@/components/start-swarm-dialog";
 import { BoardDaily } from "./board-daily";
 import { playBoardSound, type BoardSound } from "@/lib/board/board-sounds";
 
@@ -90,6 +92,8 @@ export function RoomBoard({ roomName, onOpenThread }: Props) {
   const revalidate = useRoomRevalidate(roomName);
   const { principal } = useCurrentUser();
   const actor = principal.replace(/^@/, "") || "you";
+  // The task a swarm is being started on, while its dialog is open.
+  const [swarmTask, setSwarmTask] = useState<string | null>(null);
 
   // A day boundary is only meaningful in some zone, and which one is the
   // reader's business — so it is remembered per browser, not per room.
@@ -289,15 +293,27 @@ export function RoomBoard({ roomName, onOpenThread }: Props) {
     [patch, play],
   );
 
+  // A captured line is filed on the hub as a real task. It shows at once as a
+  // captured row, and gives way to the task itself once the board re-reads.
   const capture = useCallback(
     (parsed: ParsedCapture) => {
       const item = captureToItem(parsed, captured.length + 1, actor);
       setCaptured(prev => [item, ...prev]);
       setSelectedId(item.id);
-      setStatusMessage(`capture → ${item.title}`);
+      setStatusMessage(`filing → ${item.title}`);
       play("capture");
+      fileCapture(roomName, parsed, actor)
+        .then(task => {
+          setStatusMessage(`filed → ${item.title}`);
+          revalidate();
+          setSelectedId(`memory:${task.key}`);
+        })
+        .catch(err => {
+          setStatusMessage(`could not file “${item.title}”: ${err instanceof Error ? err.message : err}`);
+        })
+        .finally(() => setCaptured(prev => prev.filter(c => c.id !== item.id)));
     },
-    [actor, captured.length, play],
+    [actor, captured.length, play, revalidate, roomName],
   );
 
   const pick = useCallback(
@@ -405,7 +421,22 @@ export function RoomBoard({ roomName, onOpenThread }: Props) {
         onOptions={() => setOptionsOpen(o => !o)}
       />
 
-      <BoardCapture ref={captureRef} actor={actor} now={new Date(now).toISOString()} onCapture={capture} />
+      <BoardCapture
+        ref={captureRef}
+        actor={actor}
+        now={new Date(now).toISOString()}
+        onCapture={capture}
+        onSwarm={text => setSwarmTask(text)}
+      />
+      {/* Mounted only while open, so each opening starts from what was typed. */}
+      {swarmTask !== null && (
+        <StartSwarmDialog
+          open
+          onClose={() => setSwarmTask(null)}
+          roomName={roomName}
+          initialTask={swarmTask}
+        />
+      )}
 
       <div className="min-h-0 flex-1">
         {ordered.length === 0 && view.mode !== "daily" ? (

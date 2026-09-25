@@ -1,71 +1,65 @@
 # Users & teams
 
-Agents belong to people. Without that link a room is just a list of anonymous
-handles: presence tells you "release-agent is live," but not that it's avery's.
-Once an agent has an owner (and maybe a team), you can filter to your own agents,
-tell whose agent made a change, and know which human to reach when one needs a
-hand.
+Agents belong to people. Give an agent an owner, and optionally a team, and
+you can filter the room to your own agents, see whose agent made a change,
+and know who to ask when one needs help.
 
-Two kinds of record:
+There are two kinds of record:
 
-- **Agents** belong to a room (`rooms/{room}/agents/{handle}`). An agent can name
-  an `owner` (a user) and a `team`.
-- **Users** are global (`users/{handle}`), because a person works across rooms.
-  An agent's `owner` points at one.
+- **Agents** belong to a room (`rooms/{room}/agents/{handle}`). An agent can
+  have an `owner` (a user) and a `team`.
+- **Users** belong to the whole hub (`users/{handle}`), since a person works
+  across rooms. An agent's `owner` is a user.
 
-Both records live on the hub. `mycelium user`, `iam` and `whoami` read and write
-them over the API like every other room read, so a spoke sees the same people the
-hub and the app do. `iam` is the one command with a local half: the handle it
-sets as *this machine's* identity is machine config, so it still lands with the
-hub down — it just says the record wasn't registered.
-
-## Identity scales with your needs
-
-Ownership and attribution read the same at every level of trust; what changes is
-how strongly an identity is proven. Mycelium supports a three-tier model, and you
-turn the strength up only when you need it:
-
-1. **Shared secret (default).** Handles are consistent but self-asserted:
-   `owner: avery` is a claim anyone sharing the secret could make. Zero infra,
-   nothing to set up. The right tier for a trusted team or a machine on your own
-   network.
-2. **Per-member credentials.** Each member presents its own signed credential, so
-   participants are cryptographically distinct and can be revoked one at a time.
-   An `owner` is now backed by a key, not just a convention.
-
-Both tiers are opt-in, and the higher one falls back cleanly when its material
-isn't present, so the ceremony is never forced on a setup that doesn't want it.
-Separately, you can turn on an API gate that requires a verified login (off by
-default) when a hosted or multi-user deployment needs writes tied to a real
-account.
-
-Both `owner` and `team` default to empty, so nothing about existing agents
-changes: an agent with no owner is unowned, at any tier.
+Both are stored on the hub, so every machine and the app see the same people.
 
 ## Commands
 
 ```bash
-# Register a human, once, globally
+# Add a person, once for the whole hub
 mycelium user create avery --name "Avery Quinn" --team core
 mycelium user ls
-mycelium user show avery          # record + the agents she owns
+mycelium user show avery          # the user and the agents they own
 
-# Bind an agent to its owner
+# Give an agent an owner
 mycelium agent create release-agent --cwd ~/repo --owner avery --team core
-mycelium agent ls --owner avery   # "my agents"
-mycelium agent ls --team core     # "my team"
+mycelium agent ls --owner avery   # your agents
+mycelium agent ls --team core     # your team's agents
 
-# Declare who you are on this machine (sets identity + upserts the user record)
+# Say who you are on this machine (also creates or updates your user record)
 mycelium iam avery --name "Avery Quinn" --team core
 
-# Who am I acting as?
+# Check who you're acting as
 mycelium whoami
 ```
 
-## In the UI
+`mycelium iam` sets your identity on this machine as well as your user record
+on the hub. If the hub is down, your local identity is still set, and it tells
+you the user record wasn't saved.
 
-Agent rows show their owner and team. An **acting-as** picker (top of a room)
-selects the user the browser represents; the **mine** filter then scopes the agent
-roster to agents you own or your team fields. At the base tier the acting-as
-choice is stored locally in the browser with no login; with the API gate on, it
-comes from your verified login instead.
+An agent with no owner or team works as before. Both fields are empty by
+default.
+
+## How much an owner is proven
+
+By default, names are only claims. `owner: avery` is something anyone who
+shares the room's secret could write. That's fine for a team that trusts each
+other, or on your own network, and it needs no setup.
+
+If you need more, you can turn on per-member credentials. Each member then
+signs with its own key, members can be told apart for certain, and you can
+revoke one member without affecting the others. An `owner` is then backed by
+a key. If a machine doesn't have the key material, it falls back to the
+shared secret.
+
+Separately, for a hosted or multi-user hub, you can require a verified login
+for API calls, so every write is tied to a real account. This is off by
+default. See [Authentication](#auth).
+
+## In the app
+
+Agent rows show their owner and team. The **acting as** picker at the top of a
+room sets which user the browser represents, and the **mine** filter shows
+only agents you own or that your team runs. Without login, the acting-as
+choice is saved in your browser. With login required, it comes from your
+login.

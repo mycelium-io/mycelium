@@ -28,6 +28,7 @@ from mycelium.integrations.herdr.bridge import (
     HerdrRegistry,
     HerdrUnavailableError,
     WakeResult,
+    build_assigned_prompt,
     build_mention_prompt,
     build_wake_prompt,
 )
@@ -39,6 +40,7 @@ __all__ = [
     "HerdrRegistry",
     "HerdrUnavailableError",
     "WakeResult",
+    "build_assigned_prompt",
     "build_mention_prompt",
     "build_wake_prompt",
 ]

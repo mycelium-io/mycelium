@@ -38,7 +38,7 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
      "A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, the board, episodes, and the L9 protocol."),
     ("adapters", "adapters.html", "Adapters · mycelium", "Adapters",
      "ADP-001", "ADAPTERS · CLAUDE CODE · CURSOR · A2A BRIDGE · REST API · ENGINES",
-     "Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer, and summon the first-party engines: the aligner, the synthesizer and hello."),
+     "Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer, and summon the first-party engines: the aligner, the synthesizer, hello, a persona and the conductor."),
     ("reference", "reference.html", "Reference · mycelium", "Reference",
      "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · DEPENDENCIES · GUIDES · HELP",
      "Architecture, CLI reference, configuration, dependencies and compatibility, guides, and troubleshooting for Mycelium."),
@@ -57,6 +57,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("concepts/slim.md",              "slim",               "start",       "Concepts",     "SLIM"),
     ("concepts/board.md",             "board",              "start",       "Concepts",     "Board"),
     ("concepts/episodes.md",          "episodes",           "start",       "Concepts",     "Episodes"),
+    ("concepts/swarm.md",             "swarm",              "start",       "Concepts",     "Swarm"),
     ("concepts/memory.md",            "memory",             "start",       "Concepts",     "Memory"),
     ("concepts/principals.md",        "users",              "start",       "Concepts",     "Users & Teams"),
     ("concepts/l9-protocol.md",       "l9-protocol",        "start",       "Concepts",     "L9 Protocol"),
@@ -73,6 +74,9 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("concepts/aligner.md",           "aligner",            "adapters",  "Engines",      "Aligner"),
     ("concepts/synthesizer.md",       "synthesizer",        "adapters",  "Engines",      "Synthesizer"),
     ("concepts/hello.md",             "hello",              "adapters",  "Engines",      "Hello"),
+    ("concepts/persona.md",           "persona",            "adapters",  "Engines",      "Persona"),
+    ("concepts/conductor.md",         "conductor",          "adapters",  "Engines",      "Conductor"),
+    ("concepts/worker.md",            "worker",             "adapters",  "Engines",      "Worker"),
     # ── reference (reference.html) ──
     ("reference/architecture.md",     "architecture",       "reference", "Architecture", "Architecture"),
     # CLI + Config blocks injected after architecture, before guides/troubleshooting.

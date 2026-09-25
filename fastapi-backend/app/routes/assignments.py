@@ -56,6 +56,13 @@ class ClaimBody(BaseModel):
         ge=1,
         description="Minutes the claim holds without a renewal before it drains",
     )
+    force: bool = Field(
+        False,
+        description=(
+            "Take the row even while it waits on an unresolved dependency "
+            "(only refused when the room's dependency gate is on)"
+        ),
+    )
 
 
 class ReleaseBody(BaseModel):
@@ -80,7 +87,7 @@ async def claim_assignment(room_name: str, body: ClaimBody, request: Request):
     handle = actor.bind_delegated_actor(request, room_name, body.handle, field="handle")
     try:
         return await assignments.claim(
-            room_name, body.key, handle, body.ttl_minutes, datetime.now(UTC)
+            room_name, body.key, handle, body.ttl_minutes, datetime.now(UTC), force=body.force
         )
     except assignments.AssignmentError as e:
         raise _fail(e) from e

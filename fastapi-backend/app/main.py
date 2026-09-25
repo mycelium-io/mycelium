@@ -48,6 +48,7 @@ from app.routes.sessions import router as sessions_router
 from app.routes.skills import router as skills_router
 from app.routes.status import router as status_router
 from app.routes.stream import router as stream_router
+from app.routes.swarms import router as swarms_router
 from app.routes.tasks import router as tasks_router
 from app.routes.users import router as users_router
 from app.services.auth import auth_gate
@@ -130,21 +131,27 @@ async def lifespan(app: FastAPI):
     # Wire the SIEP aligner into every room's summon seam before any
     # channel is provisioned, so all persisters pick it up. Dormant until an
     # @-summon of its reserved handle arrives — zero idle cost.
-    # Several handlers share the one summon seam: two engine kinds (aligner,
-    # synthesizer) plus the A2A responder. Each self-selects by the summoned
+    # Several handlers share the one summon seam: the engine kinds (aligner,
+    # synthesizer, hello, conductor, persona) plus the A2A responder. Each self-selects by the summoned
     # handle's manifest (kind for engines, adapter=a2a for the responder), so a
     # fan-out dispatcher is enough — no central table. Only one ever acts per
     # summon since a handle maps to a single runtime.
     from app.services.a2a_bridge import A2aResponder
     from app.services.aligner import AlignerEngine
+    from app.services.conductor import ConductorEngine
+    from app.services.persona_engine import PersonaEngine
     from app.services.probe_engine import ProbeEngine
     from app.services.room_channels import manager as room_channel_manager
     from app.services.synthesizer import SynthesizerEngine
     from app.services.task_sync import TaskSyncEngine
+    from app.services.worker_engine import WorkerEngine
 
     app.state.aligner = AlignerEngine(room_channel_manager)
     app.state.synthesizer = SynthesizerEngine(room_channel_manager)
     app.state.hello = ProbeEngine(room_channel_manager)
+    app.state.conductor = ConductorEngine(room_channel_manager)
+    app.state.persona = PersonaEngine(room_channel_manager)
+    app.state.worker = WorkerEngine(room_channel_manager)
     # The A2A responder shares the seam too: it answers @-mentions of a
     # registered a2a agent by calling the remote endpoint, gating on the manifest
     # like the engines gate on their kind, so only one handler ever acts.
@@ -153,6 +160,9 @@ async def lifespan(app: FastAPI):
         app.state.aligner.handle_summon,
         app.state.synthesizer.handle_summon,
         app.state.hello.handle_summon,
+        app.state.conductor.handle_summon,
+        app.state.persona.handle_summon,
+        app.state.worker.handle_summon,
         app.state.a2a_responder.handle_summon,
     )
 
@@ -170,11 +180,40 @@ async def lifespan(app: FastAPI):
                 logger.exception("engine summon handler failed for @%s in %s", handle, room)
 
     room_channel_manager.on_summon = _dispatch_summon
+
+    # A turn whose text names nobody, put to one member as its L9 recipient —
+    # the way the aligner and the conductor address one member. The members
+    # the hub plays (persona, worker) answer it; a member living in herdr gets
+    # its doorbell rung, since it would otherwise only wake on a text mention.
+    # Each self-selects by the handle, like the summon handlers.
+    def _dispatch_addressed(room: str, handle: str, envelope: Any, message_text: str) -> None:
+        for fire in (app.state.persona.handle_addressed, app.state.worker.handle_addressed):
+            try:
+                fire(room, handle, envelope, message_text)
+            except Exception:
+                logger.exception("addressed handler failed for @%s in %s", handle, room)
+        room_channel_manager.herdr_wake_addressed(room, handle)
+
+    room_channel_manager.on_addressed = _dispatch_addressed
+
+    # The board moving: a row filed for a worker gets worked, a finished split
+    # gets wrapped up, and a row filed for a herdr member rings its doorbell.
+    def _dispatch_notice(room: str, notice: dict[str, str]) -> None:
+        try:
+            app.state.worker.handle_notice(room, notice)
+        except Exception:
+            logger.exception("worker notice handler failed in %s", room)
+        room_channel_manager.herdr_wake_assigned(room, notice)
+
+    room_channel_manager.on_notice = _dispatch_notice
     logger.info(
-        "engines wired (aligner @%s, synthesizer @%s, hello @%s; llm=pi via %s)",
+        "engines wired (aligner @%s, synthesizer @%s, hello @%s, conductor @%s, "
+        "persona @%s, workers by kind; llm=pi via %s)",
         app.state.aligner.handle,
         app.state.synthesizer.handle,
         app.state.hello.handle,
+        app.state.conductor.handle,
+        app.state.persona.handle,
         settings.ALIGNER_PI_BINARY,
     )
 
@@ -279,6 +318,7 @@ app.include_router(messages_router, prefix="/api")
 app.include_router(assignments_router, prefix="/api")
 app.include_router(fields_router, prefix="/api")
 app.include_router(tasks_router, prefix="/api")
+app.include_router(swarms_router, prefix="/api")
 app.include_router(episodes_router, prefix="/api")
 app.include_router(participate_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")

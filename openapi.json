@@ -1520,6 +1520,59 @@
         }
       }
     },
+    "/api/rooms/{room_name}/swarms": {
+      "post": {
+        "tags": [
+          "swarms"
+        ],
+        "summary": "Start Swarm",
+        "description": "Start a team of workers on a task in this room and return where to watch it.",
+        "operationId": "start_swarm_api_rooms__room_name__swarms_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwarmCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwarmRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/episodes": {
       "get": {
         "tags": [
@@ -4114,6 +4167,12 @@
             "title": "Ttl Minutes",
             "description": "Minutes the claim holds without a renewal before it drains",
             "default": 30
+          },
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "description": "Take the row even while it waits on an unresolved dependency (only refused when the room's dependency gate is on)",
+            "default": false
           }
         },
         "type": "object",
@@ -4398,6 +4457,48 @@
             "title": "Updated By",
             "default": ""
           },
+          "within": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Within"
+          },
+          "flow": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow"
+          },
+          "trace": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Trace"
+          },
+          "current_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Step"
+          },
           "messages": {
             "items": {
               "$ref": "#/components/schemas/L9EnvelopeRead"
@@ -4549,6 +4650,48 @@
             "type": "string",
             "title": "Updated By",
             "default": ""
+          },
+          "within": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Within"
+          },
+          "flow": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow"
+          },
+          "trace": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Trace"
+          },
+          "current_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Step"
           }
         },
         "type": "object",
@@ -6394,6 +6537,94 @@
           "created_at"
         ],
         "title": "SubscriptionRead"
+      },
+      "SwarmCreate": {
+        "properties": {
+          "task": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Task",
+            "description": "What the team works on"
+          },
+          "size": {
+            "type": "integer",
+            "maximum": 8.0,
+            "minimum": 2.0,
+            "title": "Size",
+            "description": "How many workers",
+            "default": 3
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo",
+            "description": "Repository the team works on, cloned on the hub: an https, ssh or git@ URL, or an absolute path on the hub (default: a new, empty one)"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By",
+            "description": "Who is starting it"
+          },
+          "kickoff": {
+            "type": "boolean",
+            "title": "Kickoff",
+            "description": "Post the kickoff now. A caller that wants to be listening first (the CLI's live view) sets this false and posts it itself",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "task"
+        ],
+        "title": "SwarmCreate",
+        "description": "What a team should work on, and how big the team is."
+      },
+      "SwarmRead": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "episode": {
+            "type": "string",
+            "title": "Episode"
+          },
+          "members": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Members"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "key",
+          "episode",
+          "members"
+        ],
+        "title": "SwarmRead",
+        "description": "Where the swarm is running: its room, its task, and the task's thread."
       },
       "TaskCreate": {
         "properties": {

@@ -107,6 +107,7 @@ export const NOTICE_SUBKINDS = [
   "blocked",
   "unblocked",
   "expired",
+  "floor",
 ] as const;
 
 export type NoticeSubkind = (typeof NOTICE_SUBKINDS)[number];
@@ -122,6 +123,11 @@ export interface Notice {
   kind: string | null;
   /** Who a `filed` task is for (its assignee), so the line can read "for @x". */
   assignee: string | null;
+  /** On a `floor` notice: the handles the floor was given to (empty when the
+   *  holder alone has it). */
+  speakers: string[];
+  /** On a `floor` notice: the floor opened back up. */
+  released: boolean;
 }
 
 /**
@@ -148,6 +154,8 @@ export function noticeOf(raw: Record<string, unknown> | null | undefined): Notic
     by: str(data.by),
     kind: str(data.kind),
     assignee: str(data.for),
+    speakers: str(data.speakers)?.split(",").filter(Boolean) ?? [],
+    released: data.released === "1",
   };
 }
 
@@ -180,6 +188,8 @@ export function noticeLabel(subkind: string, kind: string | null | undefined): s
       return "Unblocked";
     case "expired":
       return "Expired";
+    case "floor":
+      return "Floor";
     default:
       return subkind;
   }

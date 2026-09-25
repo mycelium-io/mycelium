@@ -23,6 +23,7 @@ import {
 } from "@/lib/activity";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { MessageBody } from "@/components/message-body";
+import { ConductorRow } from "@/components/task/conductor-row";
 import { ChatFindBar } from "@/components/chat-find-bar";
 import { ChatMinimap, type MinimapTick } from "@/components/chat-minimap";
 import { HighlightText } from "@/components/ui/highlight-text";
@@ -241,6 +242,17 @@ function isActivity(event: Event): boolean {
 }
 
 /**
+ * Activity the chat shows as well: a new task. Work being filed is the room's
+ * news, the thing people in the chat need to see to pick it up, so it gets a
+ * line where they are reading. It stays on the rail too, where the task's later
+ * activity collects. Every other board event (claimed, resolved, the floor
+ * moving) stays on the rail alone.
+ */
+function isAlsoInChat(event: Event): boolean {
+  return event.type === NOTICE_TYPE && ((event.raw.subkind as string) || "filed") === "filed";
+}
+
+/**
  * What a row is *about*, so activity can be grouped by it.
  *
  * The room's task key, wherever the room knows one — that is what makes a
@@ -320,10 +332,23 @@ function activityLine(ev: Event): { label: string; detail: string } {
   }
   if (ev.type === NOTICE_TYPE) {
     const by = ev.raw.by as string | undefined;
-    return {
-      label: noticeLabel((ev.raw.subkind as string) || "filed", ev.raw.kind as string | undefined),
-      detail: by ? `@${by}` : "",
-    };
+    const label = noticeLabel((ev.raw.subkind as string) || "filed", ev.raw.kind as string | undefined);
+    if (ev.raw.subkind === "floor") {
+      // Whose turn it is in a thread: the task the thread belongs to (its id
+      // only when no row carries it), then the handles it was given to, the
+      // holder alone, or the floor opening back up.
+      const speakers = (ev.raw.speakers as string[] | undefined) ?? [];
+      const where = (ev.raw.title as string | undefined) || (ev.raw.key as string | undefined) || "";
+      const turn = ev.raw.released
+        ? "released"
+        : speakers.length
+          ? speakers.map((h) => `@${h}`).join(", ")
+          : by
+            ? `held by @${by}`
+            : "";
+      return { label, detail: [where, turn].filter(Boolean).join(" · ") };
+    }
+    return { label, detail: by ? `@${by}` : "" };
   }
   if (ev.type === "l9_knowledge") {
     const version = ev.raw.version;
@@ -599,7 +624,10 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     [events, roomName],
   );
 
-  const visible = useMemo(() => inChannel.filter(e => !isActivity(e)), [inChannel]);
+  const visible = useMemo(
+    () => inChannel.filter(e => !isActivity(e) || isAlsoInChat(e)),
+    [inChannel],
+  );
 
   // What the room has been doing, one entry per task rather than one per frame.
   // No window here: the rail is the room's current state, so a task that has
@@ -1068,6 +1096,26 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                 const garRaw = metrics ? metrics.gar : undefined;
                 const gar = typeof garRaw === "number" && Number.isFinite(garRaw) ? garRaw : undefined;
                 const tone = broken ? "var(--yellow)" : "var(--green)";
+                // A conductor run ends `resolved`: a flow walked to its end, not
+                // an agreement over issues, so it says which flow and how far.
+                const flow = ev.raw.outcome === "resolved" ? (ev.raw.protocol as string | undefined) : undefined;
+                if (flow) {
+                  const steps = typeof ev.raw.steps === "number" ? ev.raw.steps : undefined;
+                  return (
+                    <SystemNotice key={ev.id} time={ev.time} dot={tone} label="Done" labelColor={tone} strong>
+                      <span>in</span>
+                      {shortId ? (
+                        <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined} />
+                      ) : (
+                        <span className="font-mono">episode</span>
+                      )}
+                      <span>
+                        · {flow} flow
+                        {steps !== undefined ? `, ${steps} step${steps === 1 ? "" : "s"}` : ""}
+                      </span>
+                    </SystemNotice>
+                  );
+                }
                 return (
                   <SystemNotice
                     key={ev.id}
@@ -1122,12 +1170,22 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                   </SystemNotice>
                 );
               }
+              // A conductor post is drawn from its structured line: one row
+              // naming the step and who it went to, the prompt behind a toggle.
+              if (ev.conductor) {
+                return (
+                  <div key={ev.id} data-event-id={ev.id}>
+                    <ConductorRow line={ev.conductor} text={ev.content} onOpenMemory={onOpenMemory} />
+                  </div>
+                );
+              }
               // A chat message groups with the one above it when the same
               // sender speaks consecutively (no intervening system notice).
               const prev = visible[idx - 1];
               const grouped =
                 prev &&
                 !SYSTEM_TYPES.has(prev.type) &&
+                !prev.conductor &&
                 prev.sender === ev.sender;
               const isAgent = agentHandles.has(ev.sender);
               // Match the members panel so one sender isn't two colors in two

@@ -188,7 +188,7 @@ describe("parseEvent", () => {
     expect(ev.raw.episode).toBe("urn:e:s1");
   });
 
-  it("marks a non-converged commit as broken", () => {
+  it("marks a rejected commit as broken", () => {
     const ev = parseEvent({
       message_type: "l9_commit",
       sender_handle: "aligner",
@@ -196,6 +196,24 @@ describe("parseEvent", () => {
       created_at: CREATED,
     });
     expect(ev.raw.broken).toBe(true);
+  });
+
+  it("reads a conductor run that reached its end as done, not a timeout", () => {
+    const ev = parseEvent({
+      message_type: "l9_commit",
+      sender_handle: "conductor",
+      content: JSON.stringify({
+        l9: {
+          header: { subkind: "resolved", message: { episode: "urn:e:t1" } },
+          payload: { data: { protocol: "swarm", steps: 2 } },
+        },
+      }),
+      created_at: CREATED,
+    });
+    expect(ev.raw.broken).toBe(false);
+    expect(ev.raw.outcome).toBe("resolved");
+    expect(ev.raw.protocol).toBe("swarm");
+    expect(ev.raw.steps).toBe(2);
   });
 
   it("reads an l9_knowledge push as its own notice with the memory fields kept", () => {
@@ -264,5 +282,44 @@ describe("parseEvent", () => {
     } finally {
       warn.mockRestore();
     }
+  });
+});
+
+describe("a conductor post", () => {
+  const line = { event: "turn", protocol: "swarm", step: "check-in", to: "agent-2", turn: 1, cap: 4 };
+
+  it("carries its line off a reload, where the line rides the metadata", () => {
+    const ev = parseEvent({
+      message_type: "broadcast",
+      sender_handle: "conductor",
+      content: "swarm · check-in · turn 1 of 4 · agent-2\n\nCheck in…",
+      metadata: { conductor: line },
+      episode: "urn:e:t1",
+      created_at: "2026-09-23T13:31:32Z",
+    });
+    expect(ev.conductor).toEqual(line);
+  });
+
+  it("carries its line off the live stream, where it rides the envelope", () => {
+    const ev = parseEvent({
+      message_type: "l9_exchange",
+      sender_handle: "conductor",
+      content: JSON.stringify({
+        content: "swarm · check-in · …",
+        l9: { header: { kind: "exchange" }, payload: { type: "message", data: { conductor: line } } },
+      }),
+      created_at: "2026-09-23T13:31:32Z",
+    });
+    expect(ev.conductor).toEqual(line);
+  });
+
+  it("is absent on everyone else's messages", () => {
+    const ev = parseEvent({
+      message_type: "broadcast",
+      sender_handle: "agent-1",
+      content: "I'll take the intro.",
+      created_at: "2026-09-23T13:31:32Z",
+    });
+    expect(ev.conductor).toBeNull();
   });
 });
