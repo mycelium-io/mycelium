@@ -142,10 +142,9 @@ services:
 
   # ── OTLP Collector (profile: metrics) ──────────────────────────────────────
   #
-  # Lightweight HTTP receiver for OpenClaw diagnostics-otel and deep-
-  # observability traces/metrics. Writes $DATA_DIR/metrics/metrics.json and
-  # traces.db, and polls the backend for coordination metrics.
-  # Opt-in via `mycelium up --metrics`.
+  # Polls the backend's usage counters and any Prometheus scrape targets, and
+  # receives OTLP traces. Writes $DATA_DIR/metrics/metrics.json and
+  # traces.db. Opt-in via `mycelium up --metrics`.
 
   mycelium-collector:
     image: ghcr.io/mycelium-io/mycelium-collector:${MYCELIUM_IMAGE_TAG:-latest}

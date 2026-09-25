@@ -2,12 +2,12 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Metrics commands: collect, display, and manage OpenClaw telemetry data.
+Metrics commands: see what the hub is doing and what it costs.
 
-Provides an OTLP HTTP receiver that aggregates token usage, costs, durations,
-and session data from OpenClaw's diagnostics-otel plugin. The `show` command
-augments OTLP data with agent metadata from `openclaw status --json` and
-workspace file sizes computed at display time.
+The collector polls the backend's ``/api/observability`` counters (LLM calls,
+embeddings, memory, knowledge), scrapes any configured Prometheus targets,
+and receives OTLP traces from anything pointed at it. ``show`` reads what it
+collected; ``traces`` browses the traces.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from mycelium.collector import _ensure_shared_dir
 from mycelium.commands.traces import app as traces_app
 
 app = typer.Typer(
-    help="Collect and display OpenClaw agent metrics (OTLP receiver + display).",
+    help="See the hub's usage and cost, and the traces it has collected.",
     no_args_is_help=True,
 )
 # Trace-level views over ~/.mycelium/metrics/traces.db.
@@ -131,10 +131,8 @@ def status() -> None:
 
     if spoke and collector_url:
         # Spoke mode: show hub (remote) AND local collector state
-        hub_alive = False
         remote_data = _fetch_remote_metrics(collector_url)
         if remote_data is not None:
-            hub_alive = True
             console.print(f"[green]✓[/green] Hub collector      reachable ({collector_url})")
         else:
             console.print(f"[red]✗[/red] Hub collector      unreachable ({collector_url})")
@@ -150,10 +148,8 @@ def status() -> None:
         else:
             console.print(
                 f"[yellow]⚠[/yellow] Local collector    not running on :{collector_port}\n"
-                "  [dim]Start with [bold]mycelium metrics collect[/bold] for local OpenClaw data[/dim]"
+                "  [dim]Start with [bold]mycelium metrics collect[/bold] to receive traces on this machine[/dim]"
             )
-
-        collector_alive = hub_alive
     else:
         # Hub / local mode
         collector_alive = False
@@ -187,100 +183,21 @@ def status() -> None:
                 age_str = f"{int(age.total_seconds() / 60)}m ago"
 
             data = json.loads(_metrics_json().read_text())
-            sessions = data.get("sessions", [])
-            counters = data.get("counters", {})
-            msgs = counters.get("messages", {}).get("processed", 0)
-            total_tok = counters.get("tokens", {}).get("total", {}).get("total", 0)
+            llm_calls = (
+                (data.get("backend") or {}).get("counters", {}).get("llm", {}).get("calls", 0)
+            )
+            hosts = len(data.get("by_host") or {})
 
             console.print(f"[green]✓[/green] Data file          {_metrics_json()}")
             console.print(
-                f"  [dim]Last updated {age_str}  •  {msgs} messages  •  {len(sessions)} sessions  •  {total_tok:,} tokens[/dim]"
+                f"  [dim]Last updated {age_str}  •  {llm_calls:,} backend LLM calls  •  "
+                f"{hosts} host(s) sending traces[/dim]"
             )
         except Exception:
             console.print(f"[yellow]⚠[/yellow] Data file exists but unreadable: {_metrics_json()}")
             all_ok = False
     else:
-        console.print("[yellow]⚠[/yellow] No metrics data yet (no messages received)")
-
-    # ── OpenClaw OTEL config ─────────────────────────────────────────────
-    oc_config_path = Path.home() / ".openclaw" / "openclaw.json"
-    otel_endpoint: str | None = None
-    otel_enabled = False
-    if oc_config_path.exists():
-        try:
-            cfg = json.loads(oc_config_path.read_text())
-            diag = cfg.get("diagnostics", {})
-            otel = diag.get("otel", {})
-            otel_enabled = diag.get("enabled", False) and otel.get("enabled", False)
-            otel_endpoint = otel.get("endpoint", "")
-        except Exception:
-            pass
-
-    if otel_enabled and otel_endpoint:
-        console.print(f"[green]✓[/green] OTEL plugin        enabled → {otel_endpoint}")
-
-        # Check endpoint matches collector port
-        try:
-            from urllib.parse import urlparse
-
-            parsed = urlparse(otel_endpoint)
-            ep_port = parsed.port or (443 if parsed.scheme == "https" else 80)
-            if collector_alive and ep_port != collector_port:
-                console.print(
-                    f"  [red]✗ Port mismatch:[/red] plugin sends to :{ep_port} but collector listens on :{collector_port}"
-                )
-                all_ok = False
-            elif collector_alive:
-                console.print(f"  [dim]Endpoint port :{ep_port} matches collector[/dim]")
-        except Exception:
-            pass
-    elif oc_config_path.exists():
-        console.print("[red]✗[/red] OTEL plugin        not enabled in openclaw.json")
-        console.print(
-            "  [dim]Point an OTLP source (e.g. InsightClaw) at http://localhost:4318[/dim]"
-        )
-        all_ok = False
-    else:
-        console.print("[yellow]⚠[/yellow] No openclaw.json found (gateway not configured)")
-        all_ok = False
-
-    # ── OpenClaw model cost / compat flags ─────────────────────────────
-    if oc_config_path.exists():
-        try:
-            cfg = json.loads(oc_config_path.read_text())
-            zero_cost_models: list[str] = []
-            missing_compat: list[str] = []
-            for _pname, prov in cfg.get("models", {}).get("providers", {}).items():
-                for m in prov.get("models", []):
-                    mid = m.get("id", "")
-                    if not mid:
-                        continue
-                    cost = m.get("cost", {})
-                    if all(cost.get(k, 0) == 0 for k in ("input", "output")):
-                        zero_cost_models.append(mid)
-                    if not m.get("compat", {}).get("supportsUsageInStreaming"):
-                        missing_compat.append(mid)
-            if zero_cost_models:
-                console.print(
-                    f"[yellow]⚠[/yellow] Model cost = $0     {', '.join(zero_cost_models)}"
-                )
-                console.print(
-                    "  [dim]OpenClaw will report $0 cost via OTLP. Set it in openclaw.json.[/dim]"
-                )
-                all_ok = False
-            elif otel_enabled:
-                console.print("[green]✓[/green] Model cost          configured for all models")
-            if missing_compat:
-                console.print(f"[yellow]⚠[/yellow] Missing compat      {', '.join(missing_compat)}")
-                console.print(
-                    "  [dim]supportsUsageInStreaming not set; streaming token counts may be lost. "
-                    "Set it in openclaw.json.[/dim]"
-                )
-                all_ok = False
-            elif otel_enabled:
-                console.print("[green]✓[/green] Streaming compat    set for all models")
-        except Exception:
-            pass
+        console.print("[yellow]⚠[/yellow] No metrics data yet")
 
     # ── Pricing data ────────────────────────────────────────────────────
     pricing = _load_pricing()
@@ -352,42 +269,6 @@ def _hub_suffix() -> str:
     a spoke operator doesn't think their node is doing the ingestion.
     """
     return " [dim](from hub)[/dim]" if _is_spoke_mode() else ""
-
-
-_AGENT_ROOM_CACHE: dict[str, str] | None = None
-
-
-def _resolve_agent_to_room() -> dict[str, str]:
-    """Return ``{agent_id: room_name}`` from local + reachable openclaw.json files.
-
-    The mycelium openclaw plugin's per-host config (``channels.mycelium-room``)
-    is the authoritative agent→room mapping; that's what tells the gateway
-    which OpenClaw agents fan into which Mycelium room. We read the local
-    file directly. In hub-and-spoke deployments, spoke agents won't appear
-    in the hub's config; covering them properly would require collecting
-    each spoke's mapping (future work; for now the local mapping is enough
-    to color-code single-host deployments correctly and to label the
-    co-located agents on a hub).
-    """
-    global _AGENT_ROOM_CACHE
-    if _AGENT_ROOM_CACHE is not None:
-        return _AGENT_ROOM_CACHE
-    _AGENT_ROOM_CACHE = {}
-    try:
-        oc_json = Path.home() / ".openclaw" / "openclaw.json"
-        if not oc_json.exists():
-            return _AGENT_ROOM_CACHE
-        oc = json.loads(oc_json.read_text())
-        ch = (oc.get("channels") or {}).get("mycelium-room") or {}
-        room = ch.get("room")
-        agents = ch.get("agents") or []
-        if room and isinstance(agents, list):
-            for a in agents:
-                if isinstance(a, str):
-                    _AGENT_ROOM_CACHE[a] = room
-    except Exception:
-        pass
-    return _AGENT_ROOM_CACHE
 
 
 _ROOM_LOOKUP_CACHE: tuple[dict[str, str], dict[str, str]] | None = None
@@ -533,11 +414,11 @@ def collect(
         False, "--foreground", "-f", help="Run in the foreground instead of daemonizing"
     ),
 ) -> None:
-    """Start the spoke OTLP collector (background by default).
+    """Start a collector on this machine (in the background by default).
 
-    Accepts OpenClaw OTLP pushes and writes to the local metrics file.
-    Backend polling and Prometheus scraping are disabled; use this on
-    spoke nodes that fetch hub data via ``collector_url``.
+    It receives OTLP traces sent to this machine, keeps them locally and
+    forwards them to the hub's collector. It doesn't poll the backend; a
+    spoke reads the hub's numbers through ``collector_url``.
 
     Stop with ``mycelium metrics stop``.
     """
@@ -853,11 +734,9 @@ def _resolve_litellm_key(model_string: str) -> str:
 
 
 def _discover_models_from_metrics() -> list[str]:
-    """Extract model names from collected metrics not covered by _TRACKED_MODELS.
+    """Model names the backend has used that ``_TRACKED_MODELS`` doesn't cover.
 
-    Reads metrics.json from the metrics directory and returns model strings from:
-      - OTLP: ``counters.tokens.by_model`` keys
-      - Backend: ``backend.counters.llm.by_model.*`` keys
+    Read from ``backend.counters.llm.by_model.*`` in metrics.json.
     """
     try:
         data = json.loads(_metrics_json().read_text())
@@ -865,9 +744,6 @@ def _discover_models_from_metrics() -> list[str]:
         return []
 
     raw_models: set[str] = set()
-
-    otlp_by_model = data.get("counters", {}).get("tokens", {}).get("by_model", {})
-    raw_models.update(otlp_by_model.keys())
 
     be_llm = data.get("backend", {}).get("counters", {}).get("llm", {})
     for key in be_llm:
@@ -1072,60 +948,40 @@ def update_pricing(
             console.print("  No pricing changes vs bundled defaults.")
 
 
-_VALID_SECTIONS = ("openclaw", "claude", "mycelium", "cost", "all")
-_SECTION_ALIASES: dict[str, str] = {}  # reserved for future aliases
+_VALID_SECTIONS = ("mycelium", "cost", "all")
 
 
 @app.command("show")
 def show(
     section: str | None = typer.Argument(
         None,
-        help="Section to show: openclaw, claude, mycelium, cost, all. Omit for overview.",
+        help="Section to show: mycelium, cost, all. Omit for an overview.",
     ),
     json_output: bool = typer.Option(False, "--json", help="Output raw JSON"),
-    workspace: bool = typer.Option(False, "--workspace", help="Show per-file workspace breakdown"),
-    include_heartbeat: bool = typer.Option(
-        False,
-        "--include-heartbeat",
-        help="Include OpenClaw 'heartbeat' channel tokens in totals (excluded by default).",
-    ),
-    host: str | None = typer.Option(
-        None,
-        "--host",
-        help="Filter to a specific spoke host (IP or hostname from OTLP resource attributes).",
-    ),
     detail: bool = typer.Option(
         False,
         "--detail",
-        help=(
-            "Expand truncated 'By room' tables and show full mas_id UUIDs. "
-            "Without this flag those sub-tables show only the top 5 rooms "
-            "with an '...and N more' tail and mas_ids are truncated to 8 "
-            "chars; with --detail every non-zero row renders and the MAS "
-            "column shows the full UUID."
-        ),
+        help=("Show every room in the per-room tables, not just the top 5, and show ids in full."),
     ),
 ) -> None:
     """
-    Display collected metrics with agent metadata and workspace sizes.
+    Show the hub's LLM calls, search indexing, knowledge writes and estimated cost.
 
-    With no argument, shows a compact overview. Pass a section name for
-    full detail: openclaw, claude, mycelium.
+    With no argument, shows a short overview. Pass a section for the detail:
+    mycelium (the backend's activity), cost, or all.
     """
     if section is not None:
         section = section.lower()
         if section not in _VALID_SECTIONS:
             typer.secho(
-                f"Unknown section '{section}'. Valid: openclaw, claude, mycelium, cost, all",
+                f"Unknown section '{section}'. Valid: {', '.join(_VALID_SECTIONS)}",
                 fg=typer.colors.RED,
             )
             raise typer.Exit(1)
-        section = _SECTION_ALIASES.get(section, section)
 
     otel_data = _load_metrics_json()
-    oc_status = _get_openclaw_status()
 
-    if otel_data is None and oc_status is None:
+    if otel_data is None:
         spoke = _is_spoke_mode()
         hub_url = _get_collector_url()
         collector_up = (
@@ -1136,10 +992,8 @@ def show(
         if collector_up:
             console.print(
                 "[yellow]No metrics data yet.[/yellow]\n\n"
-                "  The collector is running but hasn't received data.\n"
-                "  Make sure agents are active and OpenClaw's diagnostics-otel\n"
-                "  plugin is configured:\n"
-                "    Point your OTLP exporter (e.g. InsightClaw) at http://localhost:4318."
+                "  The collector is running but hasn't written anything yet.\n"
+                "  It polls the backend every 30 seconds; try again shortly."
             )
         else:
             hint = (
@@ -1147,73 +1001,22 @@ def show(
                 if spoke
                 else "  Start the collector:  [bold]mycelium up --metrics[/bold]"
             )
-            console.print(
-                f"[yellow]No metrics data available.[/yellow]\n\n"
-                f"{hint}\n\n"
-                "  Make sure OpenClaw's diagnostics-otel plugin is configured:\n"
-                "    Point your OTLP exporter (e.g. InsightClaw) at http://localhost:4318."
-            )
+            console.print(f"[yellow]No metrics data available.[/yellow]\n\n{hint}")
         raise typer.Exit(0)
 
-    agents_meta = _extract_agents(oc_status)
-    oc_sessions = _extract_oc_sessions(oc_status)
-    oc_cost = _extract_oc_cost(oc_status)
-
-    backend_data = (otel_data or {}).get("backend")
+    backend_data = otel_data.get("backend")
     _set_room_lookup_context(backend_data)
 
     if json_output:
-        combined = {
-            "otel": otel_data or {},
-            "openclaw_status": {
-                "agents": agents_meta,
-                "sessions": oc_sessions,
-                "cost": oc_cost,
-            },
-        }
-        if backend_data:
-            combined["backend"] = backend_data
-        console.print_json(json.dumps(combined, default=str))
+        console.print_json(json.dumps(otel_data, default=str))
         return
-
-    # ── Dispatch by section ───────────────────────────────────────────
-    if host and section is None:
-        section = "openclaw"
 
     if section is None:
-        _render_overview(otel_data, oc_cost, backend_data, include_heartbeat=include_heartbeat)
+        _render_overview(otel_data, backend_data)
         return
 
-    show_openclaw = section in ("openclaw", "all")
-    show_claude = section in ("claude", "all")
     show_mycelium = section in ("mycelium", "all")
     show_cost = section in ("cost", "all")
-
-    if show_claude:
-        console.print(
-            "[bold blue]Claude Code[/bold blue]\n"
-            "[dim]Metrics collection for the Claude Code adapter is not yet wired.\n"
-            "Once connected, token usage and session data will appear here.[/dim]\n"
-        )
-
-    if show_openclaw:
-        if host:
-            _render_host_filtered_view(otel_data, host)
-            return
-        else:
-            _render_summary_table(
-                otel_data,
-                oc_status,
-                include_background=include_heartbeat,
-            )
-            _render_cache_efficiency_table(otel_data, include_background=include_heartbeat)
-            _render_agent_table(otel_data, agents_meta)
-            if otel_data and otel_data.get("sessions"):
-                _render_session_table(otel_data["sessions"])
-            if workspace:
-                _render_workspace_tables(agents_meta)
-            if not _is_spoke_mode():
-                _render_spoke_sites_table(otel_data)
 
     if show_mycelium:
         if not backend_data:
@@ -1262,22 +1065,13 @@ def show(
                 console.print()
 
     if show_cost:
-        _render_cost_estimates(
-            otel_data, oc_cost, backend_data, include_heartbeat=include_heartbeat
-        )
+        _render_cost_estimates(backend_data)
 
-    _render_field_legend()
     console.print()
 
 
-def _render_overview(
-    otel: dict | None,
-    oc_cost: dict | None,
-    backend: dict | None,
-    *,
-    include_heartbeat: bool = False,
-) -> None:
-    """Compact overview pulling headline numbers from all data sources."""
+def _render_overview(otel: dict | None, backend: dict | None) -> None:
+    """Short overview: the backend's headline numbers, and the hosts sending traces."""
     table = Table(
         title="Mycelium Metrics Overview",
         title_style="bold",
@@ -1288,25 +1082,6 @@ def _render_overview(
     table.add_column("Metric", style="bold")
     table.add_column("Value", justify="right")
 
-    # ── OpenClaw section ──────────────────────────────────────────────
-    fg_tokens, _ = _oc_token_totals(otel, include_background=include_heartbeat)
-    total_tokens = fg_tokens.get("total", 0)
-    otel_sessions = (otel or {}).get("sessions", [])
-
-    cache_read = fg_tokens.get("cache_read", 0)
-    cache_write = fg_tokens.get("cache_write", 0)
-    input_tokens = fg_tokens.get("input", 0)
-    denom = cache_read + cache_write + input_tokens
-    cache_rate = (cache_read / denom * 100) if denom > 0 and cache_read > 0 else 0.0
-
-    table.add_row("[cyan]Adapters (OpenClaw)[/cyan]", "")
-    table.add_row("  Tokens", _fmt_num(total_tokens))
-    table.add_row("  Sessions", _fmt_num(len(otel_sessions)))
-    if cache_rate > 0:
-        table.add_row("  Cache hit rate", f"{cache_rate:.0f}%")
-
-    # ── Mycelium backend section ──────────────────────────────────────
-    table.add_section()
     if backend:
         be_counters = backend.get("counters", {})
         llm = be_counters.get("llm", {})
@@ -1363,7 +1138,7 @@ def _render_overview(
     is_spoke = _is_spoke_mode()
     if by_host and not is_spoke:
         host_table = Table(
-            title="Spoke Sites",
+            title="Hosts sending traces",
             title_style="bold cyan",
             title_justify="left",
             show_header=True,
@@ -1390,9 +1165,9 @@ def _render_overview(
         console.print(host_table)
         console.print()
 
-    console.print("[dim]Detail: mycelium metrics show <openclaw|mycelium|cost>[/dim]")
+    console.print("[dim]Detail: mycelium metrics show <mycelium|cost>[/dim]")
     if by_host and not is_spoke:
-        console.print("[dim]Filter: mycelium metrics show --host <HOST>[/dim]")
+        console.print("[dim]Traces: mycelium metrics traces[/dim]")
     console.print()
 
 
@@ -1438,10 +1213,8 @@ def _load_metrics_json() -> dict | None:
 
     Spoke mode (``collector_url`` points to a remote hub):
       1. Fetch backend data from the hub's ``/collector/metrics``.
-      2. Read local ``metrics.json`` for OpenClaw OTLP data written by
-         the lightweight spoke collector.
-      3. Merge: local OpenClaw counters/histograms/sessions take priority;
-         the hub ``backend`` section is overlaid.
+      2. Read the local ``metrics.json`` written by this machine's collector.
+      3. Merge: local data wins, with the hub's ``backend`` section overlaid.
     """
     if not _is_spoke_mode():
         return _load_local_metrics()
@@ -1462,142 +1235,6 @@ def _load_metrics_json() -> dict | None:
         merged["backend"] = hub_data["backend"]
     merged.setdefault("updated_at", hub_data.get("updated_at", ""))
     return merged
-
-
-_OC_STATUS_CACHE = _data_dir() / "openclaw_status_cache.json"
-_OC_STATUS_MAX_AGE_S = 60
-
-
-def _get_openclaw_status() -> dict | None:
-    """Get openclaw status, using a short-lived cache to avoid blocking the CLI.
-
-    ``openclaw status --json`` can take 10+ seconds.  We cache the result for
-    up to 60s so repeated ``metrics show`` calls are fast.  A null result is
-    also cached to avoid re-attempting a slow/failing subprocess.
-    """
-    import time as _t
-
-    # Try cache first
-    try:
-        if _OC_STATUS_CACHE.exists():
-            age = _t.time() - _OC_STATUS_CACHE.stat().st_mtime
-            if age < _OC_STATUS_MAX_AGE_S:
-                raw = _OC_STATUS_CACHE.read_text()
-                if not raw.strip() or raw.strip() == "null":
-                    return None
-                return json.loads(raw)
-    except (OSError, json.JSONDecodeError):
-        pass
-
-    # Cache miss or stale; fetch fresh
-    data = _fetch_openclaw_status()
-    try:
-        _OC_STATUS_CACHE.write_text(json.dumps(data) if data else "null")
-    except OSError:
-        pass
-    return data
-
-
-def _fetch_openclaw_status() -> dict | None:
-    try:
-        result = subprocess.run(
-            ["openclaw", "status", "--json"],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            timeout=15,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return json.loads(result.stdout)
-    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError, OSError):
-        pass
-    finally:
-        _restore_terminal()
-    return None
-
-
-def _restore_terminal() -> None:
-    """Reset terminal to cooked/canonical mode if stdin is a tty.
-
-    Node-based CLIs (like openclaw) may put the terminal into raw mode for
-    interactive prompts.  If the subprocess is killed or exits uncleanly the
-    terminal stays in raw mode, breaking readline (arrow keys, Ctrl-P, etc.).
-    """
-    if not sys.stdin.isatty():
-        return
-    try:
-        import termios
-
-        fd = sys.stdin.fileno()
-        attrs = termios.tcgetattr(fd)
-        # If ICANON or ECHO are off, the terminal is in raw/cbreak mode
-        if not (attrs[3] & termios.ICANON) or not (attrs[3] & termios.ECHO):
-            subprocess.run(["stty", "sane"], stdin=sys.stdin, check=False)
-    except (ImportError, OSError, ValueError):
-        pass
-
-
-def _extract_agents(oc: dict | None) -> list[dict]:
-    """Extract the agent list from ``openclaw status --json`` or config fallback.
-
-    Tries ``oc["agents"]["agents"]`` first (legacy), then ``oc["agents"]["list"]``
-    (current openclaw config layout).  If ``oc`` is None (status command failed or
-    timed out), falls back to reading ``~/.openclaw/openclaw.json`` directly.
-    """
-    agents_section = None
-    if oc:
-        agents_section = oc.get("agents")
-    else:
-        agents_section = _read_openclaw_agents_from_config()
-
-    if isinstance(agents_section, dict):
-        agent_list = agents_section.get("agents") or agents_section.get("list") or []
-    elif isinstance(agents_section, list):
-        agent_list = agents_section
-    else:
-        return []
-    result = []
-    for a in agent_list:
-        if not isinstance(a, dict):
-            continue
-        entry = dict(a)
-        if "name" not in entry and "id" in entry:
-            entry["name"] = entry["id"]
-        result.append(entry)
-    return result
-
-
-def _read_openclaw_agents_from_config() -> dict | None:
-    """Read agents section directly from ~/.openclaw/openclaw.json as fallback."""
-    config_path = Path.home() / ".openclaw" / "openclaw.json"
-    try:
-        with open(config_path) as f:
-            data = json.load(f)
-        return data.get("agents")
-    except (OSError, json.JSONDecodeError):
-        return None
-
-
-def _extract_oc_sessions(oc: dict | None) -> list[dict]:
-    """Extract recent sessions from ``openclaw status --json``.
-
-    Sessions live at ``oc["sessions"]["recent"]``.
-    """
-    if not oc:
-        return []
-    sessions = oc.get("sessions")
-    if isinstance(sessions, dict):
-        return sessions.get("recent", [])
-    if isinstance(sessions, list):
-        return sessions
-    return []
-
-
-def _extract_oc_cost(oc: dict | None) -> dict | None:
-    if not oc:
-        return None
-    return oc.get("cost")
 
 
 def _fmt_num(n: int | float | None) -> str:
@@ -1717,484 +1354,6 @@ def _fmt_histogram_s(h: dict, n_width: int) -> str:
     return f"{_fmt_val_s(avg):>{_W}} [dim]avg {_fmt_val_s(avg):>{_W}} {n_field}[/dim]"
 
 
-def _fmt_histogram_raw(h: dict) -> str:
-    """Format a unitless histogram with fixed-width aligned sparkline."""
-    count = h.get("count", 0)
-    if count == 0:
-        return "-"
-    avg = h.get("sum", 0) / count
-    min_v = h.get("min")
-    max_v = h.get("max")
-    _W = 6  # match _fmt_histogram_s field width
-
-    if min_v is not None and max_v is not None:
-        if abs(max_v - min_v) > 0.5:
-            bar = _sparkline(min_v, avg, max_v)
-            return (
-                f"{min_v:>{_W}.0f}  {bar} {max_v:<{_W}.0f}  "
-                f"[dim]avg {avg:>{_W}.1f}  n={count}[/dim]"
-            )
-
-    bar = "━" * 8
-    return f"{avg:>{_W}.1f}  {bar} {'':<{_W}}  [dim]avg {avg:>{_W}.1f}  n={count}[/dim]"
-
-
-def _fmt_size(nbytes: int) -> str:
-    if nbytes < 1024:
-        return f"{nbytes} B"
-    if nbytes < 1024 * 1024:
-        return f"{nbytes / 1024:.1f} KB"
-    return f"{nbytes / (1024 * 1024):.1f} MB"
-
-
-def _render_summary_table(
-    otel: dict | None,
-    oc: dict | None,
-    *,
-    include_background: bool = False,
-) -> None:
-    table = Table(
-        title="OpenClaw Agent Activity",
-        title_style="bold cyan",
-        title_justify="left",
-        show_header=False,
-        border_style="dim",
-    )
-    table.add_column("Metric", style="bold")
-    table.add_column("Value", justify="right")
-
-    counters = (otel or {}).get("counters", {})
-    histograms = (otel or {}).get("histograms", {})
-    messages = counters.get("messages", {})
-    otel_sessions = (otel or {}).get("sessions", [])
-
-    fg_tokens, bg_tokens = _oc_token_totals(otel, include_background=include_background)
-    bg_total = bg_tokens.get("total", 0)
-
-    title_suffix = "" if include_background else " (excl. heartbeat)"
-    table.add_row(
-        f"Total tokens{title_suffix}",
-        _fmt_num(fg_tokens.get("total", 0)),
-    )
-    table.add_row("  input", _fmt_num(fg_tokens.get("input", 0)))
-    table.add_row("  output", _fmt_num(fg_tokens.get("output", 0)))
-    table.add_row("  cache read", _fmt_num(fg_tokens.get("cache_read", 0)))
-    table.add_row("  cache write", _fmt_num(fg_tokens.get("cache_write", 0)))
-    if not include_background and bg_total > 0:
-        grand = bg_total + fg_tokens.get("total", 0)
-        bg_pct = bg_total / grand * 100 if grand else 0
-        table.add_row(
-            "  [dim]heartbeat (background)[/dim]",
-            f"[dim]{_fmt_num(bg_total)} ({bg_pct:.0f}%)[/dim]",
-        )
-
-    table.add_row("Messages", _fmt_num(messages.get("processed", 0)))
-
-    run_dur = histograms.get("run_duration_ms", {})
-    msg_dur = histograms.get("message_duration_ms", {})
-    qwait = histograms.get("queue_wait_ms", {})
-    oc_durations_n = _max_n_width(run_dur, msg_dur, qwait)
-
-    if run_dur.get("count", 0) > 0:
-        table.add_row("Run duration", _fmt_histogram_s(run_dur, oc_durations_n))
-    else:
-        table.add_row("Run duration", "-")
-
-    if msg_dur.get("count", 0) > 0:
-        table.add_row("Msg duration", _fmt_histogram_s(msg_dur, oc_durations_n))
-    else:
-        table.add_row("Msg duration", "-")
-
-    qdepth = histograms.get("queue_depth", {})
-    if qdepth.get("count", 0) > 0:
-        table.add_row("Queue depth", _fmt_histogram_raw(qdepth))
-    else:
-        table.add_row("Queue depth", "-")
-
-    if qwait.get("count", 0) > 0:
-        table.add_row("Queue wait", _fmt_histogram_s(qwait, oc_durations_n))
-    else:
-        table.add_row("Queue wait", "-")
-
-    table.add_row("Sessions (OTEL)", _fmt_num(len(otel_sessions)))
-    total_turns = sum(s.get("turns", 1) for s in otel_sessions)
-    table.add_row("Total turns", _fmt_num(total_turns) if otel_sessions else "-")
-
-    # Context utilization histogram
-    ctx = histograms.get("context_tokens", {})
-    if ctx.get("count", 0) > 0:
-        table.add_row("Context window", _fmt_histogram_raw(ctx))
-
-    # Webhook stats
-    webhooks = counters.get("webhooks", {})
-    wh_received = webhooks.get("received", 0)
-    if wh_received > 0:
-        wh_errors = webhooks.get("errors", 0)
-        wh_str = _fmt_num(wh_received)
-        if wh_errors:
-            wh_str += f"  [red]({wh_errors} errors)[/red]"
-        table.add_row("Webhooks", wh_str)
-        wh_dur = histograms.get("webhook_duration_ms", {})
-        if wh_dur.get("count", 0) > 0:
-            table.add_row("Webhook latency", _fmt_histogram_s(wh_dur, _max_n_width(wh_dur)))
-
-    # Session state and stuck
-    stuck = counters.get("sessions_stuck", 0)
-    if stuck:
-        table.add_row("Sessions stuck", f"[red]{_fmt_num(stuck)}[/red]")
-        stuck_age = histograms.get("session_stuck_age_ms", {})
-        if stuck_age.get("count", 0) > 0:
-            table.add_row("Stuck age", _fmt_histogram_s(stuck_age, _max_n_width(stuck_age)))
-
-    # Run attempts (newly captured)
-    run_attempts = counters.get("run_attempts", 0)
-    if run_attempts:
-        table.add_row("Run attempts", _fmt_num(run_attempts))
-
-    # By-model token breakdown
-    tokens_by_model = counters.get("tokens", {}).get("by_model", {})
-    if tokens_by_model:
-        table.add_section()
-        table.add_row("[dim]Tokens by model[/dim]", "")
-        for model_name in sorted(tokens_by_model):
-            mt = tokens_by_model[model_name]
-            table.add_row(f"  {model_name}", _fmt_num(mt.get("total", 0)))
-
-    console.print(table)
-    console.print()
-
-
-def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
-    counters = (otel or {}).get("counters", {})
-    by_channel_histograms = (otel or {}).get("histograms", {}).get("by_agent", {})
-    by_channel_tokens = counters.get("tokens", {}).get("by_agent", {})
-    otel_sessions = (otel or {}).get("sessions", [])
-
-    session_tokens_by_agent: dict[str, dict[str, int]] = {}
-    for s in otel_sessions:
-        a = s.get("agent", "")
-        if not a:
-            continue
-        bucket = session_tokens_by_agent.setdefault(
-            a,
-            {
-                "input": 0,
-                "output": 0,
-                "cache_read": 0,
-                "cache_write": 0,
-                "total": 0,
-            },
-        )
-        st = s.get("tokens", {})
-        for k in ("input", "output", "cache_read", "cache_write", "total"):
-            bucket[k] += st.get(k, 0)
-
-    known_agents = {a.get("name", "") for a in agents_meta} - {""}
-    agent_names: set[str] = set()
-    for name in set(by_channel_tokens.keys()) | set(session_tokens_by_agent.keys()):
-        if name in known_agents:
-            agent_names.add(name)
-    agent_names |= known_agents
-
-    has_hist = any(
-        by_channel_histograms.get(n, {}).get("run_duration_ms", {}).get("count", 0) > 0
-        for n in agent_names
-    )
-
-    table = Table(
-        title="OpenClaw Agents", title_style="bold cyan", title_justify="left", border_style="dim"
-    )
-    table.add_column("Agent", style="bold")
-    table.add_column("Input\ntokens", justify="right")
-    table.add_column("Output\ntokens", justify="right")
-    table.add_column("Cache R\ntokens", justify="right", style="dim")
-    table.add_column("Cache W\ntokens", justify="right", style="dim")
-    table.add_column("Sessions", justify="right")
-    table.add_column("Turns", justify="right")
-    if has_hist:
-        table.add_column("Avg Run", justify="right")
-    table.add_column("Workspace", justify="right")
-
-    totals: dict[str, int | float] = {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0,
-        "cache_write": 0,
-        "sessions": 0,
-        "turns": 0,
-    }
-
-    for name in sorted(agent_names):
-        tok = by_channel_tokens.get(name, session_tokens_by_agent.get(name, {}))
-        agent_sessions = [s for s in otel_sessions if s.get("agent") == name]
-        sess_count = len(agent_sessions)
-        total_turns = sum(s.get("turns", 1) for s in agent_sessions)
-
-        totals["input"] += tok.get("input", 0)
-        totals["output"] += tok.get("output", 0)
-        totals["cache_read"] += tok.get("cache_read", 0)
-        totals["cache_write"] += tok.get("cache_write", 0)
-        totals["sessions"] += sess_count
-        totals["turns"] += total_turns
-
-        ws_size = "-"
-        for a in agents_meta:
-            if a.get("name") == name:
-                wdir = a.get("workspaceDir")
-                if wdir:
-                    ws_size = _fmt_size(_dir_size(Path(wdir)))
-                break
-
-        avg_run = "-"
-        agent_h = by_channel_histograms.get(name, {})
-        rd = agent_h.get("run_duration_ms", {})
-        if rd.get("count", 0) > 0:
-            avg_s = rd["sum"] / rd["count"] / 1000
-            avg_run = f"{avg_s:.1f}s"
-
-        row: list[str] = [
-            name,
-            _fmt_num(tok.get("input", 0)),
-            _fmt_num(tok.get("output", 0)),
-            _fmt_num(tok.get("cache_read", 0)),
-            _fmt_num(tok.get("cache_write", 0)),
-        ]
-        row.append(str(sess_count))
-        row.append(str(total_turns) if total_turns else "-")
-        if has_hist:
-            row.append(avg_run)
-        row.append(ws_size)
-        table.add_row(*row)
-
-    if len(agent_names) > 1:
-        total_row: list[str] = [
-            "[bold]Total[/bold]",
-            f"[bold]{_fmt_num(totals['input'])}[/bold]",
-            f"[bold]{_fmt_num(totals['output'])}[/bold]",
-            f"[bold]{_fmt_num(totals['cache_read'])}[/bold]",
-            f"[bold]{_fmt_num(totals['cache_write'])}[/bold]",
-        ]
-        total_row.append(f"[bold]{totals['sessions']}[/bold]")
-        total_row.append(f"[bold]{totals['turns']}[/bold]")
-        if has_hist:
-            total_row.append("-")
-        total_row.append("-")
-        table.add_row(*total_row)
-
-    if not agent_names:
-        placeholder_cols = 7 + (1 if has_hist else 0)
-        table.add_row("(none)", *["-"] * (placeholder_cols - 1))
-
-    console.print(table)
-    console.print()
-
-    _render_channel_table(by_channel_tokens, by_channel_histograms, known_agents)
-
-
-def _render_channel_table(
-    by_channel_tokens: dict,
-    by_channel_histograms: dict,
-    known_agents: set[str],
-) -> None:
-    """Show token usage by openclaw.channel for non-agent channels."""
-    channel_names = {c for c in by_channel_tokens if c and c not in known_agents}
-    if not channel_names:
-        return
-
-    has_hist = any(
-        by_channel_histograms.get(c, {}).get("run_duration_ms", {}).get("count", 0) > 0
-        for c in channel_names
-    )
-
-    table = Table(
-        title="Tokens by Channel",
-        title_style="bold cyan",
-        title_justify="left",
-        border_style="dim",
-    )
-    table.add_column("Channel", style="bold")
-    table.add_column("Input\ntokens", justify="right")
-    table.add_column("Output\ntokens", justify="right")
-    table.add_column("Cache R\ntokens", justify="right", style="dim")
-    table.add_column("Cache W\ntokens", justify="right", style="dim")
-    if has_hist:
-        table.add_column("Avg Run", justify="right")
-
-    totals: dict[str, int | float] = {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0,
-        "cache_write": 0,
-    }
-
-    for name in sorted(channel_names):
-        tok = by_channel_tokens.get(name, {})
-        totals["input"] += tok.get("input", 0)
-        totals["output"] += tok.get("output", 0)
-        totals["cache_read"] += tok.get("cache_read", 0)
-        totals["cache_write"] += tok.get("cache_write", 0)
-
-        avg_run = "-"
-        ch_h = by_channel_histograms.get(name, {})
-        rd = ch_h.get("run_duration_ms", {})
-        if rd.get("count", 0) > 0:
-            avg_s = rd["sum"] / rd["count"] / 1000
-            avg_run = f"{avg_s:.1f}s"
-
-        row: list[str] = [
-            name,
-            _fmt_num(tok.get("input", 0)),
-            _fmt_num(tok.get("output", 0)),
-            _fmt_num(tok.get("cache_read", 0)),
-            _fmt_num(tok.get("cache_write", 0)),
-        ]
-        if has_hist:
-            row.append(avg_run)
-        table.add_row(*row)
-
-    if len(channel_names) > 1:
-        total_row: list[str] = [
-            "[bold]Total[/bold]",
-            f"[bold]{_fmt_num(totals['input'])}[/bold]",
-            f"[bold]{_fmt_num(totals['output'])}[/bold]",
-            f"[bold]{_fmt_num(totals['cache_read'])}[/bold]",
-            f"[bold]{_fmt_num(totals['cache_write'])}[/bold]",
-        ]
-        if has_hist:
-            total_row.append("-")
-        table.add_row(*total_row)
-
-    console.print(table)
-    console.print()
-
-
-def _render_session_table(sessions: list[dict]) -> None:
-    table = Table(
-        title="OpenClaw Recent Sessions",
-        title_style="bold cyan",
-        title_justify="left",
-        border_style="dim",
-    )
-    table.add_column("ID", style="dim")
-    table.add_column("Agent", style="bold")
-    table.add_column("Model")
-    table.add_column("Turns", justify="right")
-    table.add_column("Input", justify="right")
-    table.add_column("Output", justify="right")
-    table.add_column("Time")
-
-    for s in sessions[:20]:
-        sid = s.get("session_id", "")
-        display_id = sid[:8] + ".." if len(sid) > 8 else sid
-        ts = s.get("timestamp", "")
-        if "T" in ts:
-            ts = ts.split("T")[1][:8]
-
-        table.add_row(
-            display_id,
-            s.get("agent", ""),
-            s.get("model", ""),
-            str(s.get("turns", "-")),
-            _fmt_num(s.get("tokens", {}).get("input", 0)),
-            _fmt_num(s.get("tokens", {}).get("output", 0)),
-            ts,
-        )
-
-    console.print(table)
-    console.print()
-
-
-def _render_workspace_tables(agents_meta: list[dict]) -> None:
-    for agent in agents_meta:
-        name = agent.get("name", "unknown")
-        wdir = agent.get("workspaceDir")
-        if not wdir:
-            continue
-
-        ws_path = Path(wdir)
-        if not ws_path.exists():
-            continue
-
-        table = Table(
-            title=f"Workspace Files ({name}: {wdir})",
-            title_style="bold cyan",
-            title_justify="left",
-            border_style="dim",
-        )
-        table.add_column("File", style="bold")
-        table.add_column("Size", justify="right")
-
-        total = 0
-        entries: list[tuple[str, int]] = []
-
-        for item in sorted(ws_path.iterdir()):
-            if item.is_file():
-                sz = item.stat().st_size
-                entries.append((item.name, sz))
-                total += sz
-            elif item.is_dir():
-                dir_sz, file_count = _dir_size_and_count(item)
-                entries.append((f"{item.name}/ ({file_count} files)", dir_sz))
-                total += dir_sz
-
-        for fname, sz in entries:
-            table.add_row(fname, _fmt_size(sz))
-
-        table.add_section()
-        table.add_row("Total", _fmt_size(total), style="bold")
-
-        console.print(table)
-        console.print()
-
-
-# OpenClaw "channels" that represent background/idle traffic rather than agent work.
-# These tend to dominate token counts on long-running gateways because the prompt
-# prefix gets re-cached on every tick. Excluded from headline numbers by default;
-# pass --include-heartbeat to fold them back in.
-_BACKGROUND_CHANNELS: set[str] = {"heartbeat"}
-
-
-def _oc_token_totals(
-    otel: dict | None,
-    *,
-    include_background: bool = False,
-) -> tuple[dict[str, int], dict[str, int]]:
-    """Compute OpenClaw token totals split into (foreground, background) buckets.
-
-    ``foreground`` is the sum across non-background channels (real agent work).
-    ``background`` is the sum across channels in ``_BACKGROUND_CHANNELS``.
-
-    When ``include_background`` is True, foreground includes background channels
-    so callers can pass a single total back to the existing display code.
-
-    Falls back to ``counters.tokens.total`` if no per-channel breakdown exists
-    (older metrics.json files).
-    """
-    counters = (otel or {}).get("counters", {})
-    by_channel = counters.get("tokens", {}).get("by_agent", {}) or {}
-    keys = ("input", "output", "cache_read", "cache_write", "total")
-    fg: dict[str, int] = dict.fromkeys(keys, 0)
-    bg: dict[str, int] = dict.fromkeys(keys, 0)
-
-    if not by_channel:
-        total = counters.get("tokens", {}).get("total", {})
-        for k in keys:
-            fg[k] = int(total.get(k, 0) or 0)
-        return fg, bg
-
-    for channel, tok in by_channel.items():
-        bucket = bg if channel in _BACKGROUND_CHANNELS else fg
-        for k in keys:
-            bucket[k] += int(tok.get(k, 0) or 0)
-
-    if include_background:
-        for k in keys:
-            fg[k] += bg[k]
-        bg = dict.fromkeys(keys, 0)
-
-    return fg, bg
-
-
 _BUNDLED_PRICING_JSON = Path(__file__).resolve().parent.parent / "data" / "pricing.json"
 
 
@@ -2273,70 +1432,6 @@ def _pricing_generated_at() -> str:
     if source == "litellm_catalog_api":
         return f"{date_part}, via update-pricing" if date_part else ""
     return date_part
-
-
-def _render_cache_efficiency_table(
-    otel: dict | None,
-    *,
-    include_background: bool = False,
-) -> None:
-    """Diagnostic panel for OpenClaw's prompt cache behavior.
-
-    Intentionally does NOT show dollar "savings". The cache is operated by the
-    LLM provider (e.g. Anthropic), not by Mycelium, so attributing the saving
-    to us would be misleading. We show the operational signal instead:
-    hit rate, read/write/input volumes, and reads-per-write (cache reuse).
-    """
-    fg_tokens, bg_tokens = _oc_token_totals(otel, include_background=include_background)
-    cache_read = fg_tokens.get("cache_read", 0)
-    cache_write = fg_tokens.get("cache_write", 0)
-    input_tokens = fg_tokens.get("input", 0)
-    bg_total = bg_tokens.get("total", 0)
-
-    denom = cache_read + cache_write + input_tokens
-    if cache_read == 0 or denom == 0:
-        return
-
-    table = Table(
-        title="OpenClaw Cache Efficiency",
-        title_style="bold cyan",
-        title_justify="left",
-        show_header=False,
-        border_style="dim",
-    )
-    table.add_column("Metric", style="bold")
-    table.add_column("Value", justify="right")
-
-    scope_suffix = "" if include_background else " (excl. heartbeat)"
-
-    cache_ratio = cache_read / denom * 100
-    table.add_row(
-        f"Prompt cache hit rate{scope_suffix}",
-        f"[green]{cache_ratio:.1f}%[/green]",
-    )
-    table.add_row("  cache read tokens", _fmt_num(cache_read))
-    table.add_row("  cache write tokens", _fmt_num(cache_write))
-    table.add_row("  uncached input tokens", _fmt_num(input_tokens))
-
-    if cache_write > 0:
-        reuse = cache_read / cache_write
-        table.add_row(
-            "  reads per write",
-            f"{reuse:.1f}× [dim](higher = more reuse before re-cache)[/dim]",
-        )
-
-    if not include_background and bg_total > 0:
-        grand = bg_total + fg_tokens.get("total", 0)
-        if grand > 0:
-            bg_pct = bg_total / grand * 100
-            table.add_section()
-            table.add_row(
-                "[dim]heartbeat tokens excluded[/dim]",
-                f"[dim]{_fmt_num(bg_total)} ({bg_pct:.0f}% of OpenClaw total)[/dim]",
-            )
-
-    console.print(table)
-    console.print()
 
 
 def _render_cost_avoidance_table(backend: dict | None) -> None:
@@ -2623,14 +1718,8 @@ def _estimate_cost(
     )
 
 
-def _render_cost_estimates(
-    otel: dict | None,
-    oc_cost: dict | None,
-    backend: dict | None,
-    *,
-    include_heartbeat: bool = False,
-) -> None:
-    """Unified cost section compiling token usage from all sources."""
+def _render_cost_estimates(backend: dict | None) -> None:
+    """What the backend's own LLM calls cost, reported or estimated, by room."""
     from mycelium.config import MyceliumConfig
 
     try:
@@ -2653,84 +1742,6 @@ def _render_cost_estimates(
     table.add_column("Pricing", style="dim")
 
     total_cost = 0.0
-
-    # ── OpenClaw (provider-reported cost) ──────────────────────────────
-    oc_reported_cost = 0.0
-    if oc_cost and oc_cost.get("total") is not None:
-        oc_reported_cost = oc_cost["total"]
-    elif otel:
-        oc_reported_cost = otel.get("counters", {}).get("cost_usd", {}).get("total", 0.0)
-
-    fg_tokens, _ = _oc_token_totals(otel, include_background=include_heartbeat)
-    oc_total_tokens = (
-        fg_tokens.get("input", 0)
-        + fg_tokens.get("output", 0)
-        + fg_tokens.get("cache_read", 0)
-        + fg_tokens.get("cache_write", 0)
-    )
-
-    if oc_total_tokens > 0 or oc_reported_cost > 0:
-        if oc_reported_cost > 0:
-            oc_pricing_label = "otel (provider-reported)"
-        else:
-            oc_pricing_label = "[yellow]otel: $0 (check model cost config)[/yellow]"
-        table.add_row(
-            "[cyan]OpenClaw Agents[/cyan]",
-            _fmt_num(oc_total_tokens) if oc_total_tokens else "-",
-            _fmt_cost(oc_reported_cost) if oc_reported_cost > 0 else "[dim]$0.00[/dim]",
-            oc_pricing_label,
-        )
-        total_cost += oc_reported_cost
-
-        # Per-room sub-rows: aggregate session-level tokens by the agent's
-        # configured room (from the local openclaw.json mycelium-room
-        # channel block).  We can't compute per-room cost reliably without
-        # provider-reported cost per session, so we estimate from the
-        # configured LLM model, labeled accordingly.  Sessions whose
-        # agent isn't in the local channel config are bucketed under
-        # ``other``.
-        sessions = (otel or {}).get("sessions", []) if otel else []
-        agent_room = _resolve_agent_to_room()
-        if sessions and agent_room:
-            by_room: dict[str, dict[str, int]] = {}
-            for s in sessions:
-                agent = s.get("agent")
-                tok = s.get("tokens", {}) or {}
-                room = agent_room.get(agent or "", "other")
-                bucket = by_room.setdefault(
-                    room, {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
-                )
-                for k in ("input", "output", "cache_read", "cache_write"):
-                    bucket[k] += int(tok.get(k, 0) or 0)
-
-            ranked = sorted(
-                by_room.items(),
-                key=lambda kv: (
-                    kv[1]["input"] + kv[1]["output"] + kv[1]["cache_read"] + kv[1]["cache_write"]
-                ),
-                reverse=True,
-            )
-            shown = [(r, b) for r, b in ranked if any(b.values())]
-            if shown:
-                table.add_row("  [dim italic]By room:[/dim italic]", "", "", "")
-                for room, b in shown:
-                    room_total = b["input"] + b["output"] + b["cache_read"] + b["cache_write"]
-                    if room_total == 0:
-                        continue
-                    room_est = _estimate_cost(
-                        input_tokens=b["input"],
-                        output_tokens=b["output"],
-                        cache_read_tokens=b["cache_read"],
-                        cache_write_tokens=b["cache_write"],
-                        model=est_model,
-                    )
-                    label = "other (no channel match)" if room == "other" else room
-                    table.add_row(
-                        f"    [dim]{label}[/dim]",
-                        f"[dim]{_fmt_num(room_total)}[/dim]",
-                        f"[dim]{_fmt_cost(room_est)}[/dim]",
-                        "[dim]est. (local agents only)[/dim]",
-                    )
 
     # ── Mycelium Backend LLM (estimated) ───────────────────────────────
     be_counters = (backend or {}).get("counters", {})
@@ -2813,15 +1824,11 @@ def _render_cost_estimates(
                             "[dim]est.[/dim]",
                         )
 
-    # ── Claude Code (placeholder) ──────────────────────────────────────
-    # Not yet wired; omit row entirely until data available
-
     # ── Totals ─────────────────────────────────────────────────────────
     if total_cost > 0:
         table.add_section()
         table.add_row("[bold]Total[/bold]", "", f"[bold]{_fmt_cost(total_cost)}[/bold]", "")
-
-    if total_cost == 0 and oc_total_tokens == 0:
+    elif myc_calls == 0:
         table.add_row("[dim]No cost data yet[/dim]", "", "", "")
 
     console.print(table)
@@ -2831,144 +1838,3 @@ def _render_cost_estimates(
     if gen_date:
         console.print(f"[dim]  Estimates use catalog pricing data (updated {gen_date})[/dim]")
     console.print()
-
-
-def _render_spoke_sites_table(otel: dict | None) -> None:
-    """Show per-host summary table from by_host data in the collector metrics.
-
-    Rendered on the hub only. The hub is itself one of the rows (it runs a
-    co-located gateway + collector pair just like every spoke); we tag it
-    as ``(hub)`` to make the topology obvious.
-    """
-    by_host = (otel or {}).get("by_host")
-    if not by_host:
-        return
-
-    import socket
-
-    local_host = socket.gethostname()
-
-    table = Table(
-        title="Sites",
-        title_style="bold cyan",
-        title_justify="left",
-        show_header=True,
-        border_style="dim",
-    )
-    table.add_column("Host", style="bold")
-    table.add_column("Role", style="dim")
-    table.add_column("Agents")
-    table.add_column("Spans", justify="right")
-    table.add_column("Tokens", justify="right")
-    table.add_column("Last Seen")
-
-    for host_key in sorted(by_host, key=lambda h: by_host[h].get("last_seen", ""), reverse=True):
-        data = by_host[host_key]
-        # Match liberally; hostname may be "oclw4" while OTLP host could be
-        # "oclw4.local", "oclw-4", FQDN, etc. Compare normalized forms.
-        norm_local = local_host.lower().split(".")[0].replace("-", "")
-        norm_key = host_key.lower().split(".")[0].replace("-", "")
-        role = "hub" if norm_local == norm_key else "spoke"
-        agents = ", ".join(data.get("agents", [])) or "-"
-        spans = str(data.get("spans", 0))
-        tokens = data.get("tokens", {})
-        total_tokens = tokens.get("total", 0)
-        tok_str = f"{total_tokens:,}" if total_tokens else "-"
-        last_seen = data.get("last_seen", "-")
-        if last_seen and last_seen != "-":
-            try:
-                from datetime import datetime
-
-                dt = datetime.fromisoformat(last_seen.replace("Z", "+00:00"))
-                last_seen = dt.strftime("%H:%M:%S")
-            except Exception:
-                pass
-        table.add_row(host_key, role, agents, spans, tok_str, last_seen)
-
-    console.print(table)
-    console.print()
-
-
-def _render_host_filtered_view(otel: dict | None, host: str) -> bool:
-    """Show metrics filtered to a single host. Returns True if data was found."""
-    by_host = (otel or {}).get("by_host", {})
-    data = by_host.get(host)
-    if not data:
-        matching = [h for h in by_host if host in h]
-        if matching:
-            data = by_host[matching[0]]
-            host = matching[0]
-
-    if not data:
-        console.print(f"[yellow]No data found for host '{host}'.[/yellow]")
-        if by_host:
-            console.print(f"[dim]Known hosts: {', '.join(sorted(by_host))}[/dim]")
-        else:
-            console.print(
-                "[dim]No per-host data collected yet. Host tracking starts when "
-                "spoke nodes send OTLP data to the hub collector.[/dim]"
-            )
-        console.print()
-        return False
-
-    table = Table(
-        title=f"OpenClaw · {host}",
-        title_style="bold cyan",
-        title_justify="left",
-        show_header=False,
-        border_style="dim",
-    )
-    table.add_column("Metric", style="bold")
-    table.add_column("Value", justify="right")
-
-    agents = ", ".join(data.get("agents", [])) or "-"
-    tokens = data.get("tokens", {})
-    cost = data.get("cost_usd", 0.0)
-    table.add_row("Agents", agents)
-    table.add_row("Spans", f"{data.get('spans', 0):,}")
-    table.add_row("Messages processed", str(data.get("messages_processed", 0)))
-    table.add_row("Tokens (input)", f"{tokens.get('input', 0):,}")
-    table.add_row("Tokens (output)", f"{tokens.get('output', 0):,}")
-    table.add_row("Tokens (cache read)", f"{tokens.get('cache_read', 0):,}")
-    table.add_row("Tokens (total)", f"{tokens.get('total', 0):,}")
-    table.add_row("Cost (USD)", f"${cost:.4f}" if cost > 0 else "-")
-    table.add_row("Last seen", data.get("last_seen", "-"))
-
-    console.print(table)
-    console.print()
-    return True
-
-
-def _render_field_legend() -> None:
-    console.print("[dim]Data sources:[/dim]")
-    console.print(
-        "[dim]  [cyan]OpenClaw[/cyan]:  Agent activity via OTLP telemetry (tokens, sessions)[/dim]"
-    )
-    console.print(
-        "[dim]  [magenta]Mycelium[/magenta]:  Backend API metrics (embeddings, memory, LLM calls)[/dim]"
-    )
-    console.print()
-
-
-def _dir_size(path: Path) -> int:
-    total = 0
-    try:
-        for f in path.rglob("*"):
-            if f.is_file():
-                total += f.stat().st_size
-    except OSError:
-        pass
-    return total
-
-
-def _dir_size_and_count(path: Path) -> tuple[int, int]:
-    total = 0
-    count = 0
-    try:
-        for f in path.rglob("*"):
-            if f.is_file():
-                total += f.stat().st_size
-                count += 1
-    except OSError:
-        pass
-    return total, count

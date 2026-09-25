@@ -4,29 +4,25 @@
 """
 Trace viewer: query and pivot the spans collected in ``~/.mycelium/metrics/traces.db``.
 
-The OTLP receiver in ``mycelium.collector`` writes every span it receives
-from OpenClaw (typically via the built-in ``diagnostics-otel`` plugin)
+The OTLP receiver in ``mycelium.collector`` writes every span sent to it
 into a SQLite table::
 
     spans(trace_id, span_id, parent_span_id, name, kind, service, host,
           start_time, duration_ms, status, status_message, attributes,
           created_at)
 
-``attributes`` is a JSON blob containing rich identity / behavior info:
+``attributes`` is a JSON blob. The pivots read OpenTelemetry's GenAI
+attributes where a span carries them:
 
   Identity
-    - openclaw.agent / gen_ai.agent.id / ioa_observe.entity.name
+    - gen_ai.agent.id / gen_ai.agent.name / ioa_observe.entity.name
     - gen_ai.conversation.id           (e.g. agent:claire-agent:mycelium-room:channel:room-42:local)
-    - openclaw.session.key             (same shape as conversation.id)
     - session.id                       (UUID for one logical conversation)
-    - openclaw.channel                 (mycelium-room | …)
 
   Behavior
     - gen_ai.request.model / response.model
     - gen_ai.usage.input_tokens / output_tokens / total_tokens
-    - openclaw.toolName / gen_ai.tool.name
-    - openclaw.outcome                 (completed | failed | …)
-    - openclaw.exec.exit_code
+    - gen_ai.tool.name
     - status / status_message          (span-level OK/ERROR)
 
 This module exposes a ``traces`` Typer subapp mounted under ``mycelium
@@ -48,7 +44,7 @@ from rich.table import Table
 
 app = typer.Typer(
     help=(
-        "View distributed traces collected via OTLP from OpenClaw."
+        "Browse the traces the collector has received over OTLP."
         " Run with no subcommand to see the rollup summary."
     ),
     invoke_without_command=True,
@@ -110,8 +106,7 @@ def _open_db() -> sqlite3.Connection:
 # The same physical host can show up under multiple labels in the spans
 # table:
 #
-#   - ``oclw-3``  (alternate host label from an older diagnostics-otel version)
-#   - ``oclw3``   (current diagnostics-otel resource attribute format)
+#   - ``build-3`` and ``build3`` (two exporters labelling one host differently)
 #   - ``10.0.50.171`` (spans where host.name wasn't set in
 #                      OTEL_RESOURCE_ATTRIBUTES, so the OTLP collector
 #                      fell back to the source IP)
@@ -121,7 +116,7 @@ def _open_db() -> sqlite3.Connection:
 # of precedence:
 #
 #   1. Explicit overrides in ~/.mycelium/config.toml under
-#      ``[metrics.traces.host_aliases]`` (e.g. ``"10.0.50.171" = "oclw3"``)
+#      ``[metrics.traces.host_aliases]`` (e.g. ``"10.0.50.171" = "build3"``)
 #   2. Best-effort reverse DNS for raw IPs
 
 _HOST_ALIAS_CACHE: dict[str, str] | None = None
@@ -137,7 +132,7 @@ def _reverse_dns(host: str) -> str | None:
         name, _, _ = socket.gethostbyaddr(host)
     except (OSError, socket.herror, socket.gaierror):
         return None
-    # Strip trailing FQDN bits (oclw3.example.com → oclw3) so the column
+    # Strip trailing FQDN bits (build3.example.com → build3) so the column
     # stays narrow.
     return name.split(".", 1)[0]
 
@@ -258,7 +253,6 @@ def _event_message(ev: dict) -> str:
         "log.message",
         "message",
         "body",
-        "openclaw.message",
     ):
         v = attrs.get(key)
         if v:
@@ -281,7 +275,6 @@ def _attr_first(attrs: dict, *keys: str, default: str = "") -> str:
 def _agent_of(attrs: dict) -> str:
     return _attr_first(
         attrs,
-        "openclaw.agent",
         "gen_ai.agent.id",
         "gen_ai.agent.name",
         "ioa_observe.entity.name",
@@ -293,7 +286,6 @@ def _conversation_of(attrs: dict) -> str:
     return _attr_first(
         attrs,
         "gen_ai.conversation.id",
-        "openclaw.session.key",
         default="-",
     )
 
@@ -303,7 +295,6 @@ def _model_of(attrs: dict) -> str:
         attrs,
         "gen_ai.response.model",
         "gen_ai.request.model",
-        "openclaw.model",
         default="-",
     )
 
@@ -349,7 +340,7 @@ def _hosts_matching_alias(target: str) -> list[str]:
     """Return the set of *raw* host values whose alias resolves to *target*.
 
     Discovered by scanning distinct host strings in the spans table so a
-    --host=oclw3 filter also matches legacy 'oclw-3' and IP-only spans.
+    --host=build3 filter also matches 'build-3' and IP-only spans.
     """
     target_norm = target.lower()
     raw_hosts: list[str] = []
@@ -421,11 +412,11 @@ def _row_matches_attr_filter(row: sqlite3.Row, agent: str | None, room: str | No
 
 
 SinceOpt = typer.Option("1h", "--since", help="Time window: 30s, 15m, 2h, 1d.")
-HostOpt = typer.Option(None, "--host", help="Filter to a single host (e.g. oclw3, oclw4).")
+HostOpt = typer.Option(None, "--host", help="Filter to a single host (e.g. build-box).")
 AgentOpt = typer.Option(
     None,
     "--agent",
-    help="Filter to a single agent (matched against openclaw.agent / gen_ai.agent.id).",
+    help="Filter to a single agent (matched against gen_ai.agent.id / gen_ai.agent.name).",
 )
 RoomOpt = typer.Option(
     None,
@@ -481,7 +472,7 @@ def summary(
             models[m] += 1
         tokens_in += int(a.get("gen_ai.usage.input_tokens") or 0)
         tokens_out += int(a.get("gen_ai.usage.output_tokens") or 0)
-        if a.get("openclaw.toolName") or a.get("gen_ai.tool.name"):
+        if a.get("gen_ai.tool.name"):
             tool_calls += 1
         if r["duration_ms"]:
             durations.append(float(r["duration_ms"]))
@@ -609,7 +600,7 @@ def by_agent(
     room: str | None = RoomOpt,
     limit: int = LimitOpt,
 ) -> None:
-    """Group spans by agent (openclaw.agent / gen_ai.agent.id)."""
+    """Group spans by agent (gen_ai.agent.id / gen_ai.agent.name)."""
     rows = _load_filtered_rows(since, host, None, room)
     _print_groupby(f"Spans by agent (since {since})", rows, lambda _r, a: _agent_of(a), limit)
 
@@ -645,8 +636,6 @@ def by_channel(
 
     def key(_r, attrs: dict) -> str:
         _, ck, _ = _split_conversation(_conversation_of(attrs))
-        if ck == "-":
-            ck = _attr_first(attrs, "openclaw.channel", default="-")
         return ck
 
     _print_groupby(f"Spans by channel kind (since {since})", rows, key, limit)
@@ -673,7 +662,7 @@ def by_name(
     room: str | None = RoomOpt,
     limit: int = LimitOpt,
 ) -> None:
-    """Group spans by span name (e.g. openclaw.agent.turn, openclaw.tool.execution)."""
+    """Group spans by span name (e.g. chat, execute_tool)."""
     rows = _load_filtered_rows(since, host, agent, room)
     _print_groupby(f"Spans by name (since {since})", rows, lambda r, _a: r["name"], limit)
 
@@ -688,41 +677,12 @@ def by_tool(
 ) -> None:
     """Group tool-call spans by tool name."""
     rows = _load_filtered_rows(since, host, agent, room)
-    rows = [
-        r
-        for r in rows
-        if (a := _parse_attrs(r["attributes"]))
-        and (a.get("openclaw.toolName") or a.get("gen_ai.tool.name"))
-    ]
+    rows = [r for r in rows if (a := _parse_attrs(r["attributes"])) and a.get("gen_ai.tool.name")]
 
     def key(_r, attrs: dict) -> str:
-        return _attr_first(attrs, "openclaw.toolName", "gen_ai.tool.name", default="-")
+        return _attr_first(attrs, "gen_ai.tool.name", default="-")
 
     _print_groupby(f"Tool-call spans (since {since})", rows, key, limit)
-
-
-# These spans come from OpenClaw's built-in CPU/event-loop watchdogs. They
-# fire on a fixed schedule from the gateway itself (not from any agent
-# turn) and dominate "errors" / "slow" listings if not excluded. Pass
-# --all to include them.
-_INFRA_SPAN_NAMES: set[str] = {
-    "openclaw.diagnostic.phase",
-    "openclaw.liveness.warning",
-}
-
-
-def _drop_infra_spans(rows: list[sqlite3.Row]) -> list[sqlite3.Row]:
-    return [r for r in rows if r["name"] not in _INFRA_SPAN_NAMES]
-
-
-AllOpt = typer.Option(
-    False,
-    "--all",
-    help=(
-        "Include infrastructure spans (openclaw.diagnostic.phase /"
-        " openclaw.liveness.warning) that fire on a timer from the gateway."
-    ),
-)
 
 
 @app.command("errors")
@@ -732,12 +692,9 @@ def errors(
     agent: str | None = AgentOpt,
     room: str | None = RoomOpt,
     limit: int = LimitOpt,
-    include_all: bool = AllOpt,
 ) -> None:
     """Show spans with status=error in the window."""
     rows = _load_filtered_rows(since, host, agent, room, status="error")
-    if not include_all:
-        rows = _drop_infra_spans(rows)
     if not rows:
         typer.secho(f"No error spans (since {since}).", fg=typer.colors.GREEN)
         return
@@ -769,12 +726,9 @@ def slow(
     room: str | None = RoomOpt,
     name: str | None = NameOpt,
     limit: int = LimitOpt,
-    include_all: bool = AllOpt,
 ) -> None:
     """Show the slowest spans in the window."""
     rows = _load_filtered_rows(since, host, agent, room, name=name)
-    if not include_all:
-        rows = _drop_infra_spans(rows)
     rows.sort(key=lambda r: float(r["duration_ms"] or 0), reverse=True)
     table = Table(title=f"Slowest spans (since {since})")
     table.add_column("Dur ms", justify="right")
@@ -869,8 +823,8 @@ def show_trace(
         False,
         "--events",
         help=(
-            "Interleave OTel span events (timestamped log-like records the"
-            " gateway attached mid-span: exceptions, prompt build steps,"
+            "Interleave OTel span events (timestamped log-like records"
+            " attached mid-span: exceptions, prompt build steps,"
             " tool I/O snapshots, etc.) under their parent spans."
         ),
     ),
@@ -927,12 +881,8 @@ def show_trace(
         toks_out = int(a.get("gen_ai.usage.output_tokens") or 0)
         if toks_in or toks_out:
             notes.append(f"tok={toks_in}/{toks_out}")
-        if tn := _attr_first(a, "openclaw.toolName", "gen_ai.tool.name"):
+        if tn := _attr_first(a, "gen_ai.tool.name"):
             notes.append(f"tool={tn}")
-        if oc := _attr_first(a, "openclaw.outcome"):
-            notes.append(f"outcome={oc}")
-        if (xc := a.get("openclaw.exec.exit_code")) is not None:
-            notes.append(f"exit={xc}")
         st = s["status"] or "unset"
         if st == "error":
             st = f"[red]{st}[/red]"

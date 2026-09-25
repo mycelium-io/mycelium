@@ -2,19 +2,9 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Unit tests for the metrics display math.
-
-These guard regressions in token bucketing (foreground work vs
-background ``heartbeat`` keep-alive traffic) and in the cache hit-rate
-and savings math, which must match how LLM providers bill cached
-prefixes.
+Unit tests for the metrics cost math.
 
 What's covered:
-  * _oc_token_totals correctly splits by-channel tokens into
-    foreground (real work) and background (heartbeat) buckets, and
-    can optionally fold background back in.
-  * _oc_token_totals degrades gracefully when only aggregate
-    ``counters.tokens.total`` exists (older metrics.json files).
   * pricing.json carries a cache_write_premium for every model
     entry — this field is load-bearing for any future net-savings
     calculation and easy to forget when new models are added.
@@ -30,13 +20,11 @@ from pathlib import Path
 import pytest
 
 from mycelium.commands.metrics import (
-    _BACKGROUND_CHANNELS,
     _build_pricing_entry,
     _discover_models_from_metrics,
     _estimate_cost,
     _get_model_pricing,
     _load_pricing,
-    _oc_token_totals,
     _parse_add_spec,
     _resolve_litellm_key,
 )
@@ -44,102 +32,6 @@ from mycelium.commands.metrics import (
 _PRICING_JSON = (
     Path(__file__).resolve().parent.parent / "src" / "mycelium" / "data" / "pricing.json"
 )
-
-
-# ── _oc_token_totals ─────────────────────────────────────────────────
-
-
-def test_oc_token_totals_splits_heartbeat_from_foreground() -> None:
-    """Background channels are removed from the default (foreground) bucket."""
-    otel = {
-        "counters": {
-            "tokens": {
-                "by_agent": {
-                    "heartbeat": {
-                        "input": 10,
-                        "output": 20,
-                        "cache_read": 1000,
-                        "cache_write": 1000,
-                        "total": 1030,
-                    },
-                    "external": {
-                        "input": 5,
-                        "output": 200,
-                        "cache_read": 800,
-                        "cache_write": 100,
-                        "total": 1005,
-                    },
-                }
-            }
-        }
-    }
-
-    fg, bg = _oc_token_totals(otel)
-
-    assert fg["total"] == 1005
-    assert fg["cache_read"] == 800
-    assert fg["cache_write"] == 100
-    assert bg["total"] == 1030
-    assert bg["cache_read"] == 1000
-
-
-def test_oc_token_totals_include_background_folds_back_in() -> None:
-    otel = {
-        "counters": {
-            "tokens": {
-                "by_agent": {
-                    "heartbeat": {"total": 1030, "cache_read": 1000},
-                    "external": {"total": 1005, "cache_read": 800},
-                }
-            }
-        }
-    }
-
-    fg, bg = _oc_token_totals(otel, include_background=True)
-
-    assert fg["total"] == 1030 + 1005
-    assert fg["cache_read"] == 1000 + 800
-    # Background bucket is zeroed so callers can't accidentally double-count.
-    assert all(v == 0 for v in bg.values())
-
-
-def test_oc_token_totals_falls_back_to_counters_total() -> None:
-    """Older metrics.json files without by_agent still produce a total."""
-    otel = {
-        "counters": {
-            "tokens": {
-                "total": {
-                    "input": 1,
-                    "output": 2,
-                    "cache_read": 3,
-                    "cache_write": 4,
-                    "total": 10,
-                }
-            }
-        }
-    }
-
-    fg, bg = _oc_token_totals(otel)
-
-    assert fg["total"] == 10
-    assert fg["cache_read"] == 3
-    assert all(v == 0 for v in bg.values())
-
-
-def test_oc_token_totals_handles_empty_input() -> None:
-    """No OTLP data at all → zeroed buckets, no crash."""
-    fg, bg = _oc_token_totals(None)
-    assert all(v == 0 for v in fg.values())
-    assert all(v == 0 for v in bg.values())
-
-    fg, bg = _oc_token_totals({})
-    assert all(v == 0 for v in fg.values())
-    assert all(v == 0 for v in bg.values())
-
-
-def test_heartbeat_is_in_background_channels() -> None:
-    """Sanity check: the specific channel name we filter on is still listed."""
-    assert "heartbeat" in _BACKGROUND_CHANNELS
 
 
 # ── pricing.json / _get_model_pricing ────────────────────────────────
@@ -477,17 +369,11 @@ def test_discover_models_from_metrics_finds_untracked(
     import mycelium.commands.metrics as mod
 
     metrics = {
-        "counters": {
-            "tokens": {
-                "by_model": {
-                    "bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0": {"total": 100},
-                    "deepseek/deepseek-chat": {"total": 50},
-                }
-            }
-        },
         "backend": {
             "counters": {
                 "llm": {
+                    "by_model.bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0": 100,
+                    "by_model.deepseek/deepseek-chat": 50,
                     "by_model.some-custom-model": 42,
                 }
             }
@@ -511,14 +397,11 @@ def test_discover_models_from_metrics_empty_when_all_tracked(
     import mycelium.commands.metrics as mod
 
     metrics = {
-        "counters": {
-            "tokens": {
-                "by_model": {
-                    "bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0": {"total": 100},
-                }
+        "backend": {
+            "counters": {
+                "llm": {"by_model.bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0": 100}
             }
         },
-        "backend": {"counters": {"llm": {}}},
     }
     metrics_file = tmp_path / "metrics.json"
     metrics_file.write_text(json.dumps(metrics))

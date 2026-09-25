@@ -21,13 +21,15 @@ dropped, plus the state of storage, embeddings and the model. This is what
 
 ```bash
 mycelium metrics status       # is the collector running, and is the config right
-mycelium metrics show         # the collected metrics, as tables
-mycelium metrics show --json  # the same, as JSON
+mycelium metrics show         # an overview
+mycelium metrics show mycelium  # the backend's activity in detail
+mycelium metrics show cost    # estimated cost of the backend's model calls, by room
+mycelium metrics show --json  # everything collected, as JSON
 mycelium metrics reset        # clear the metrics collected on this machine
 ```
 
-`mycelium metrics show` includes the backend's metrics and any agent telemetry
-the collector has received.
+The overview also lists the hosts that have sent the collector traces, with
+the agents their spans named.
 
 In the app, the **Metrics** page (open it from the status bar) shows the
 backend's metrics, the `/health` messaging details, and every room's episode
@@ -41,11 +43,12 @@ The collector receives OpenTelemetry data. Start it with
 a combined snapshot to `$MYCELIUM_DATA_DIR/metrics/`, which is what
 `mycelium metrics` reads.
 
-Point any OTLP exporter at `http://<host>:4318` to send data to it. It's meant
-for agent-side plugins such as
-[InsightClaw](https://github.com/outshift-open/InsightClaw), which reports
-requests, agents, tools, and model cost and token use. Mycelium doesn't ship
-its own exporter yet.
+Point any OTLP exporter at `http://<host>:4318` to send data to it. Traces are
+stored in full. Spans that carry OpenTelemetry's GenAI attributes
+(`gen_ai.agent.name`, `gen_ai.request.model`, `gen_ai.tool.name`,
+`gen_ai.usage.*`) can be grouped by agent, model and tool. For metrics, the
+collector only counts how many data points each host has sent. Mycelium
+doesn't ship its own exporter yet.
 
 You can query the traces it collects:
 

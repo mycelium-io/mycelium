@@ -1,335 +1,121 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""
-Regression tests for ``MetricsStore`` cross-host aggregation.
+"""What the collector keeps about the hosts that send it OTLP data.
 
-These guard a hub bug where OTLP cumulative counters from multiple
-hosts were stored in a single shared bucket and ``set`` rather than
-summed. Whichever host pushed its OTLP batch last would clobber the
-others, so the headline ``Tokens by Channel`` / ``Cost Estimates``
-panels on the hub silently showed the value from one (essentially
-random) spoke instead of the cluster total.
-
-What's covered:
-  * ``MetricsStore._process_metric`` keeps per-host buckets and the
-    aggregated ``counters`` view in ``to_dict()`` sums (latest)
-    cumulative samples across hosts for tokens, cost, message counts,
-    queues, webhooks, session-state gauges, and run attempts.
-  * Histogram counts/sums are summed across hosts and min/max are
-    folded as min(min)/max(max).
-  * Per-host persistence round-trips via ``counters_by_host`` /
-    ``histograms_by_host`` so a collector restart can reload without
-    re-aggregating the old snapshot into a single bucket (which would
-    double-count on the next push).
+Each host gets one entry: how many spans and metric points it has sent, when
+it was last heard from, and the agents its spans name (read from the GenAI
+semantic-convention attributes). The trace store reports the same agents per
+host. Built from real OTLP protobufs, so the parsing path is exercised too.
 """
 
 from __future__ import annotations
 
-import pytest
+from pathlib import Path
 
-from mycelium.collector import MetricsStore
+from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
+    ExportMetricsServiceRequest,
+)
+from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue
+from opentelemetry.proto.metrics.v1.metrics_pb2 import Metric, NumberDataPoint
 
-# ── helpers to synthesize OTLP-shaped metric protos ──────────────────
+from mycelium.collector import MetricsStore, TraceStore
 
-
-class _Attr:
-    def __init__(self, key: str, value: str) -> None:
-        self.key = key
-
-        class _V:
-            string_value = value
-            int_value = 0
-            double_value = 0.0
-            bool_value = False
-
-            @staticmethod
-            def HasField(name: str) -> bool:
-                return name == "string_value"
-
-        self.value = _V()
+_NS = 1_700_000_000_000_000_000
 
 
-class _DataPoint:
-    def __init__(self, value: float | int, attrs: dict[str, str]) -> None:
-        self.attributes = [_Attr(k, v) for k, v in attrs.items()]
-        self.as_int = int(value)
-        self.as_double = float(value)
-        self.count = 0
-        self.sum = 0
-        self.min = 0.0
-        self.max = 0.0
-        # OTel exporters set either as_int or as_double depending on the
-        # instrument's value type; floats go to as_double (which the
-        # collector path prefers when present), ints to as_int.
-        if isinstance(value, float) and not value.is_integer():
-            self._has_fields = {"as_double"}
-        else:
-            self._has_fields = {"as_int"}
-
-    def HasField(self, name: str) -> bool:  # noqa: N802 - mirrors proto API
-        return name in self._has_fields
+def _kv(key: str, value: str) -> KeyValue:
+    return KeyValue(key=key, value=AnyValue(string_value=value))
 
 
-class _HistogramDataPoint(_DataPoint):
-    def __init__(
-        self,
-        *,
-        count: int,
-        h_sum: float,
-        h_min: float,
-        h_max: float,
-        attrs: dict[str, str],
-    ) -> None:
-        super().__init__(0, attrs)
-        self.count = count
-        self.sum = h_sum
-        self.min = h_min
-        self.max = h_max
-        self._has_fields = {"min", "max"}
+def _traces(host: str, *agents: str) -> bytes:
+    req = ExportTraceServiceRequest()
+    rs = req.resource_spans.add()
+    rs.resource.attributes.append(_kv("host.name", host))
+    ss = rs.scope_spans.add()
+    for i, agent in enumerate(agents):
+        span = ss.spans.add()
+        span.trace_id = bytes([i + 1]) * 16
+        span.span_id = bytes([i + 1]) * 8
+        span.name = "chat"
+        span.start_time_unix_nano = _NS + i
+        span.end_time_unix_nano = _NS + i + 1_000_000
+        if agent:
+            span.attributes.append(_kv("gen_ai.agent.name", agent))
+    return req.SerializeToString()
 
 
-class _SumMetric:
-    def __init__(self, name: str, data_points: list[_DataPoint]) -> None:
-        self.name = name
-
-        class _Sum:
-            def __init__(self, dps: list[_DataPoint]) -> None:
-                self.data_points = dps
-
-        self.sum = _Sum(data_points)
-        self.histogram = None
-
-    def HasField(self, name: str) -> bool:  # noqa: N802 - mirrors proto API
-        return name == "sum"
+def _metrics(host: str, points: int) -> bytes:
+    req = ExportMetricsServiceRequest()
+    rm = req.resource_metrics.add()
+    rm.resource.attributes.append(_kv("host.name", host))
+    metric = Metric(name="gen_ai.client.token.usage")
+    for n in range(points):
+        metric.sum.data_points.append(NumberDataPoint(as_int=n))
+    rm.scope_metrics.add().metrics.append(metric)
+    return req.SerializeToString()
 
 
-class _HistogramMetric:
-    def __init__(self, name: str, data_points: list[_HistogramDataPoint]) -> None:
-        self.name = name
-
-        class _H:
-            def __init__(self, dps: list[_HistogramDataPoint]) -> None:
-                self.data_points = dps
-
-        self.sum = None
-        self.histogram = _H(data_points)
-
-    def HasField(self, name: str) -> bool:  # noqa: N802 - mirrors proto API
-        return name == "histogram"
-
-
-def _push_tokens(
-    store: MetricsStore,
-    *,
-    host: str,
-    channel: str,
-    input_tokens: int = 0,
-    output_tokens: int = 0,
-) -> None:
-    """Push a pair of OTLP ``openclaw.tokens`` samples for one host."""
-    metric = _SumMetric(
-        "openclaw.tokens",
-        [
-            _DataPoint(input_tokens, {"openclaw.token": "input", "openclaw.channel": channel}),
-            _DataPoint(output_tokens, {"openclaw.token": "output", "openclaw.channel": channel}),
-        ],
-    )
-    store._process_metric(metric, host)
-
-
-def _push_cost(store: MetricsStore, *, host: str, channel: str, value: float) -> None:
-    metric = _SumMetric(
-        "openclaw.cost.usd",
-        [_DataPoint(value, {"openclaw.channel": channel})],
-    )
-    store._process_metric(metric, host)
-
-
-def _push_messages_processed(store: MetricsStore, *, host: str, value: int) -> None:
-    metric = _SumMetric("openclaw.message.processed", [_DataPoint(value, {})])
-    store._process_metric(metric, host)
-
-
-def _push_run_duration_histogram(
-    store: MetricsStore,
-    *,
-    host: str,
-    count: int,
-    h_sum: float,
-    h_min: float,
-    h_max: float,
-) -> None:
-    metric = _HistogramMetric(
-        "openclaw.run.duration_ms",
-        [_HistogramDataPoint(count=count, h_sum=h_sum, h_min=h_min, h_max=h_max, attrs={})],
-    )
-    store._process_metric(metric, host)
-
-
-# ── tokens: cross-host aggregation ──────────────────────────────────
-
-
-def test_tokens_by_channel_sums_across_hosts() -> None:
-    """``mycelium-room`` tokens pushed by three hosts must sum, not overwrite.
-
-    This is the bug that motivated the per-host bucketing: before the
-    fix the hub's ``counters.tokens.by_agent.mycelium-room.input`` was
-    set to whichever spoke pushed last, masking the cluster total.
-    """
+def test_each_host_gets_its_spans_and_agents() -> None:
     store = MetricsStore()
+    store.ingest_traces(_traces("build-1", "agent-1", "agent-2", "agent-1"))
+    store.ingest_traces(_traces("build-2", "agent-3"))
 
-    # Each host's OTel SDK reports its own running cumulative total.
-    _push_tokens(store, host="oclw-3", channel="mycelium-room", input_tokens=8_342_843)
-    _push_tokens(store, host="oclw-4", channel="mycelium-room", input_tokens=17_898)
-    _push_tokens(store, host="oclw-5", channel="mycelium-room", input_tokens=5_904_558)
-
-    snap = store.to_dict()
-    by_agent = snap["counters"]["tokens"]["by_agent"]
-
-    assert by_agent["mycelium-room"]["input"] == 8_342_843 + 17_898 + 5_904_558
+    by_host = store.to_dict()["by_host"]
+    assert by_host["build-1"]["spans"] == 3
+    assert by_host["build-1"]["agents"] == ["agent-1", "agent-2"]
+    assert by_host["build-2"]["agents"] == ["agent-3"]
+    assert by_host["build-1"]["last_seen"]
 
 
-def test_tokens_total_sums_across_hosts() -> None:
-    """``tokens.total`` is also aggregated, not last-writer-wins."""
+def test_a_span_that_names_no_agent_still_counts() -> None:
     store = MetricsStore()
+    store.ingest_traces(_traces("build-1", ""))
 
-    metric_a = _SumMetric(
-        "openclaw.tokens",
-        [_DataPoint(1000, {"openclaw.token": "total"})],
-    )
-    metric_b = _SumMetric(
-        "openclaw.tokens",
-        [_DataPoint(2500, {"openclaw.token": "total"})],
-    )
-    store._process_metric(metric_a, "oclw-3")
-    store._process_metric(metric_b, "oclw-5")
-
-    snap = store.to_dict()
-    assert snap["counters"]["tokens"]["total"]["total"] == 3500
+    host = store.to_dict()["by_host"]["build-1"]
+    assert host["spans"] == 1
+    assert host["agents"] == []
 
 
-def test_tokens_by_channel_disjoint_channels_per_host() -> None:
-    """Hosts can report different channels; aggregation preserves all of them."""
+def test_metric_points_are_counted_per_host() -> None:
     store = MetricsStore()
+    store.ingest_metrics(_metrics("build-1", 4))
+    store.ingest_metrics(_metrics("build-1", 2))
 
-    _push_tokens(store, host="oclw-3", channel="external", input_tokens=100, output_tokens=10)
-    _push_tokens(store, host="oclw-4", channel="cfn", input_tokens=200, output_tokens=20)
-    _push_tokens(store, host="oclw-5", channel="external", input_tokens=300, output_tokens=30)
-
-    by_agent = store.to_dict()["counters"]["tokens"]["by_agent"]
-    assert by_agent["external"]["input"] == 100 + 300
-    assert by_agent["external"]["output"] == 10 + 30
-    assert by_agent["cfn"]["input"] == 200
-    assert by_agent["cfn"]["output"] == 20
+    assert store.to_dict()["by_host"]["build-1"]["metric_points"] == 6
 
 
-def test_tokens_repushed_from_same_host_overwrites_within_host() -> None:
-    """A host's later cumulative sample replaces its earlier sample (within its own bucket),
-    so the aggregated total reflects each host's *latest* value.
-    """
+def test_a_push_with_no_host_falls_back_to_the_sender_address() -> None:
     store = MetricsStore()
+    req = ExportTraceServiceRequest()
+    span = req.resource_spans.add().scope_spans.add().spans.add()
+    span.trace_id = b"\x01" * 16
+    span.span_id = b"\x01" * 8
+    span.name = "chat"
+    span.start_time_unix_nano = _NS
 
-    _push_tokens(store, host="oclw-3", channel="external", input_tokens=100)
-    _push_tokens(store, host="oclw-4", channel="external", input_tokens=200)
-    # oclw-3 pushes again with a larger cumulative value.
-    _push_tokens(store, host="oclw-3", channel="external", input_tokens=150)
+    store.ingest_traces(req.SerializeToString(), source_ip="10.0.0.7")
 
-    by_agent = store.to_dict()["counters"]["tokens"]["by_agent"]
-    assert by_agent["external"]["input"] == 150 + 200
+    assert store.to_dict()["by_host"]["10.0.0.7"]["spans"] == 1
 
 
-# ── cost / simple counters / gauges ──────────────────────────────────
-
-
-def test_cost_usd_sums_across_hosts() -> None:
+def test_the_snapshot_holds_only_what_was_collected() -> None:
     store = MetricsStore()
+    assert set(store.to_dict()) == {"updated_at"}
 
-    _push_cost(store, host="oclw-3", channel="external", value=1.25)
-    _push_cost(store, host="oclw-5", channel="external", value=0.75)
-
-    snap = store.to_dict()
-    assert snap["counters"]["cost_usd"]["by_agent"]["external"] == pytest.approx(2.00)
-    assert snap["counters"]["cost_usd"]["total"] == pytest.approx(2.00)
-
-
-def test_messages_processed_sums_across_hosts() -> None:
-    store = MetricsStore()
-
-    _push_messages_processed(store, host="oclw-3", value=42)
-    _push_messages_processed(store, host="oclw-4", value=7)
-    _push_messages_processed(store, host="oclw-5", value=100)
-
-    assert store.to_dict()["counters"]["messages"]["processed"] == 42 + 7 + 100
+    store.set_backend_metrics({"counters": {"llm": {"calls": 3}}})
+    snapshot = store.to_dict()
+    assert snapshot["backend"]["counters"]["llm"]["calls"] == 3
+    assert "counters" not in snapshot
+    assert "sessions" not in snapshot
 
 
-def test_session_state_gauge_sums_across_hosts() -> None:
-    """``openclaw.session.state{state="idle"}`` reports per host; rollup should sum."""
-    store = MetricsStore()
-    for host, value in [("oclw-3", 3), ("oclw-4", 1), ("oclw-5", 2)]:
-        metric = _SumMetric(
-            "openclaw.session.state",
-            [_DataPoint(value, {"openclaw.state": "idle"})],
-        )
-        store._process_metric(metric, host)
+def test_the_trace_store_lists_each_hosts_agents(tmp_path: Path) -> None:
+    traces = TraceStore(tmp_path / "traces.db")
+    traces.ingest_traces(_traces("build-1", "agent-1", "agent-2"))
 
-    assert store.to_dict()["counters"]["sessions_state"]["idle"] == 6
-
-
-# ── histograms ───────────────────────────────────────────────────────
-
-
-def test_run_duration_histogram_merges_across_hosts() -> None:
-    """Counts and sums add; min/max fold to overall min/max."""
-    store = MetricsStore()
-
-    _push_run_duration_histogram(store, host="oclw-3", count=10, h_sum=500.0, h_min=5.0, h_max=80.0)
-    _push_run_duration_histogram(store, host="oclw-4", count=4, h_sum=120.0, h_min=2.0, h_max=60.0)
-    _push_run_duration_histogram(store, host="oclw-5", count=6, h_sum=300.0, h_min=10.0, h_max=95.0)
-
-    h = store.to_dict()["histograms"]["run_duration_ms"]
-    assert h["count"] == 20
-    assert h["sum"] == pytest.approx(920.0)
-    assert h["min"] == pytest.approx(2.0)
-    assert h["max"] == pytest.approx(95.0)
-
-
-# ── per-host bucket exposure / persistence shape ─────────────────────
-
-
-def test_snapshot_exposes_counters_by_host_for_persistence() -> None:
-    """Per-host buckets must surface in ``to_dict()`` so the collector
-    can persist them and reload without re-aggregating (which would
-    double-count once any host pushes again)."""
-    store = MetricsStore()
-    _push_tokens(store, host="oclw-3", channel="external", input_tokens=10)
-    _push_tokens(store, host="oclw-5", channel="external", input_tokens=20)
-
-    snap = store.to_dict()
-    assert "counters_by_host" in snap
-    assert set(snap["counters_by_host"].keys()) == {"oclw-3", "oclw-5"}
-    assert snap["counters_by_host"]["oclw-3"]["tokens"]["by_agent"]["external"]["input"] == 10
-    assert snap["counters_by_host"]["oclw-5"]["tokens"]["by_agent"]["external"]["input"] == 20
-
-
-def test_unknown_host_does_not_clobber_known_hosts() -> None:
-    """OTLP pushes with no resource attributes land in an ``"unknown"``
-    bucket rather than overwriting other hosts' buckets."""
-    store = MetricsStore()
-
-    _push_tokens(store, host="oclw-3", channel="external", input_tokens=500)
-    _push_tokens(store, host="", channel="external", input_tokens=42)
-
-    snap = store.to_dict()
-    assert snap["counters_by_host"]["oclw-3"]["tokens"]["by_agent"]["external"]["input"] == 500
-    assert snap["counters_by_host"]["unknown"]["tokens"]["by_agent"]["external"]["input"] == 42
-    assert snap["counters"]["tokens"]["by_agent"]["external"]["input"] == 500 + 42
-
-
-def test_empty_store_produces_zeroed_counters() -> None:
-    """With no inputs, ``counters`` is shaped correctly with zero values."""
-    snap = MetricsStore().to_dict()
-    assert snap["counters"]["tokens"]["total"]["input"] == 0
-    assert snap["counters"]["tokens"]["by_agent"] == {}
-    assert snap["counters"]["cost_usd"]["total"] == 0.0
-    assert "counters_by_host" not in snap  # nothing to persist yet
+    hosts = traces.get_hosts()
+    assert [h["host"] for h in hosts] == ["build-1"]
+    assert hosts[0]["agents"] == ["agent-1", "agent-2"]
+    assert traces.get_recent_traces()[0]["agent"] in {"agent-1", "agent-2"}
