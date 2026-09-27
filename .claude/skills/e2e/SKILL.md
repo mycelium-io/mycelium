@@ -8,6 +8,10 @@ argument-hint: "[--full | --quick]"
 
 Run structured smoke tests against the live Mycelium stack. Tests are cumulative — each phase depends on the previous one passing.
 
+For automated, CI-driven end-to-end coverage (PR/nightly/canary suites,
+pyATS-based, hub-and-spoke), see [`e2e-test/README.md`](../../../e2e-test/README.md)
+instead — this skill is for manual/interactive validation by a human or agent.
+
 ## Arguments
 
 - `--quick` — Stack health + memory CRUD + search only (< 1 min)

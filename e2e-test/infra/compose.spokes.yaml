@@ -1,0 +1,73 @@
+# Spoke containers for hub-and-spoke E2E tests.
+#
+# Each container builds the mycelium CLI from this commit's local
+# mycelium-cli/ source (see Dockerfile.spoke) and has the cursor CLI
+# (`agent`, https://cursor.com/install) installed at container start, and
+# points at the hub backend. No SLIM socket needed — await/respond are pure
+# HTTP calls to the backend API. CURSOR_API_KEY/CURSOR_MODEL are NOT baked
+# into this container's own environment — libs/host_exec.py forwards them
+# per-`docker exec` call from whatever process (the pytest run) invokes
+# the CLI, so a stub opted into `use_cursor=True` (see libs/remote_stub.py)
+# can call `agent` here without the key ever being written into this
+# container's config.
+#
+# Usage (CI, from e2e-test/):
+#   SPEC_FILE=openapi.json SKIP_FORMAT=1 ../scripts/gen-mycelium-client.sh
+#   docker compose -f infra/compose.spokes.yaml up -d --build --wait
+#   docker compose -f infra/compose.spokes.yaml down
+#
+# The hub backend must already be running at MYCELIUM_BACKEND_URL before
+# spokes start. Tests dispatch via `docker exec e2e-spoke1 mycelium ...`.
+
+name: mycelium-e2e-spokes
+
+services:
+  spoke1:
+    container_name: e2e-spoke1
+    build:
+      context: ../../mycelium-cli
+      dockerfile: ../e2e-test/infra/Dockerfile.spoke
+    command: >
+      bash -c "
+        curl -fsS https://cursor.com/install | bash &&
+        export PATH=\"$$HOME/.local/bin:$$HOME/.cursor/bin:$$PATH\" &&
+        mycelium config set server.api_url http://host.docker.internal:8000 &&
+        echo 'spoke1 ready' &&
+        tail -f /dev/null
+      "
+    environment:
+      MYCELIUM_BACKEND_URL: "http://host.docker.internal:8000"
+      MYCELIUM_STUB_EMBEDDINGS: "1"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "export PATH=\"$$HOME/.local/bin:$$PATH\"; mycelium config get server.api_url | grep -q host.docker.internal"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
+
+  spoke2:
+    container_name: e2e-spoke2
+    build:
+      context: ../../mycelium-cli
+      dockerfile: ../e2e-test/infra/Dockerfile.spoke
+    command: >
+      bash -c "
+        curl -fsS https://cursor.com/install | bash &&
+        export PATH=\"$$HOME/.local/bin:$$HOME/.cursor/bin:$$PATH\" &&
+        mycelium config set server.api_url http://host.docker.internal:8000 &&
+        echo 'spoke2 ready' &&
+        tail -f /dev/null
+      "
+    environment:
+      MYCELIUM_BACKEND_URL: "http://host.docker.internal:8000"
+      MYCELIUM_STUB_EMBEDDINGS: "1"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "export PATH=\"$$HOME/.local/bin:$$PATH\"; mycelium config get server.api_url | grep -q host.docker.internal"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 60s

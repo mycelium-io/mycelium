@@ -1,0 +1,331 @@
+name: E2E Tests
+
+# Trigger paths:
+# 1. Push to any non-main branch + PRs touching e2e-test/, fastapi-backend/,
+#    mycelium-cli/, mycelium-client/, or openapi.json → pr suite (~10 min)
+# 2. Nightly cron 05:00 UTC → pr + nightly suite (~30 min)
+# 3. workflow_dispatch → manual with suite choice
+#
+# The canary suite is NOT triggered here — it runs from canary_job.py manually
+# or via weekly-e2e.yml. It never blocks release.
+#
+# Always builds fastapi-backend/mycelium-cli from this commit's sibling
+# source — e2e-test lives in this monorepo, so there's no separate released
+# artifact to fall back to and no other repo to test against.
+
+on:
+  push:
+    branches:
+      - '**'
+      - '!main'
+    paths:
+      - 'e2e-test/**'
+      - 'fastapi-backend/**'
+      - 'mycelium-cli/**'
+      - 'mycelium-client/**'
+      - 'openapi.json'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'e2e-test/**'
+      - 'fastapi-backend/**'
+      - 'mycelium-cli/**'
+      - 'mycelium-client/**'
+      - 'openapi.json'
+  schedule:
+    # Nightly 05:00 UTC — pr + nightly suite
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: 'Suite to run'
+        type: choice
+        default: 'pr'
+        options:
+          - pr        # pr suite only (~10 min)
+          - nightly   # pr + nightly suite (~30 min)
+      datafile:
+        description: 'Datafile override (relative to data/)'
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  LLM_MODEL: ${{ secrets.LLM_MODEL || vars.LLM_MODEL || '' }}
+  LLM_API_KEY: ${{ secrets.LLM_API_KEY || vars.LLM_API_KEY || '' }}
+  LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || vars.LLM_BASE_URL || '' }}
+  # Non-interactive auth for the `agent`/`cursor-agent` CLI (installed on
+  # the hub below and in the spoke containers) — see libs/remote_stub.py's
+  # use_cursor option. Job-level env is inherited by every step's own
+  # process, so the hub-local "Run E2E tests" step sees these directly;
+  # libs/host_exec.py forwards them into spoke docker-exec calls too.
+  CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY || '' }}
+  CURSOR_MODEL: ${{ secrets.CURSOR_MODEL || vars.CURSOR_MODEL || '' }}
+
+jobs:
+  e2e:
+    name: ${{ format('E2E {0}', github.event.inputs.suite || (github.event_name == 'schedule' && 'nightly') || 'pr') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ fromJSON('{"pr":20,"nightly":75}')[github.event.inputs.suite || (github.event_name == 'schedule' && 'nightly') || 'pr'] || 20 }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Resolve run parameters
+        id: resolve
+        env:
+          INPUT_SUITE: ${{ github.event.inputs.suite }}
+          INPUT_DATAFILE: ${{ github.event.inputs.datafile }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ -n "$INPUT_SUITE" ]; then
+            SUITE="$INPUT_SUITE"
+          elif [ "$EVENT_NAME" = "schedule" ]; then
+            SUITE="nightly"
+          else
+            SUITE="pr"
+          fi
+
+          DATAFILE="$INPUT_DATAFILE"
+          if [ -z "$DATAFILE" ]; then
+            case "$SUITE" in
+              nightly) DATAFILE="nightly_datafile.yaml" ;;
+              *)       DATAFILE="pr_datafile.yaml" ;;
+            esac
+          fi
+
+          echo "suite=$SUITE"       >> "$GITHUB_OUTPUT"
+          echo "datafile=$DATAFILE" >> "$GITHUB_OUTPUT"
+          echo "Resolved: suite=$SUITE datafile=$DATAFILE"
+
+      - name: Set up Python and uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install e2e dependencies
+        working-directory: e2e-test
+        run: uv sync
+
+      - name: Install cursor CLI
+        if: env.CURSOR_API_KEY != ''
+        run: |
+          curl -fsS https://cursor.com/install | bash
+          echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
+          agent --version
+
+      - name: Generate mycelium backend client (from committed spec)
+        run: |
+          SPEC_FILE=openapi.json SKIP_FORMAT=1 bash scripts/gen-mycelium-client.sh
+
+      - name: Install mycelium CLI (from source)
+        working-directory: mycelium-cli
+        run: |
+          uv tool install -e . --with mycelium-backend-client@../mycelium-client --force
+          mycelium --version
+
+      - name: Write compose override for source build
+        run: |
+          # Build backend/collector images from this commit's sibling source.
+          # mycelium up --build will use this file automatically.
+          mkdir -p ~/.mycelium/docker
+          cat > ~/.mycelium/docker/compose.override.yml <<'EOF'
+          services:
+            mycelium-backend:
+              build:
+                context: ${{ github.workspace }}/fastapi-backend
+                dockerfile: Dockerfile
+              image: mycelium-backend:dev
+              pull_policy: never
+            mycelium-collector:
+              build:
+                context: ${{ github.workspace }}/mycelium-cli
+                dockerfile: Dockerfile.collector
+              image: mycelium-collector:dev
+              pull_policy: never
+          EOF
+          echo "compose.override.yml written for source build"
+
+      - name: Start mycelium hub (SLIM node + backend)
+        run: |
+          mycelium init --api-url http://localhost:8000 2>/dev/null || true
+          # Write LLM config into .env BEFORE `mycelium up` — the backend
+          # container reads `env_file` once at container start (Docker
+          # Compose semantics), so writing this after start (the previous
+          # ordering, in "Configure mycelium CLI" below) had no effect:
+          # secrets.LLM_BASE_URL reached the runner fine, but the backend
+          # never saw it and `mycelium doctor` always reported
+          # base_url=NOT SET regardless.
+          mkdir -p ~/.mycelium
+          {
+            [ -n "$LLM_API_KEY" ]  && echo "LLM_API_KEY=$LLM_API_KEY"
+            [ -n "$LLM_BASE_URL" ] && echo "LLM_BASE_URL=$LLM_BASE_URL"
+            [ -n "$LLM_MODEL" ]    && echo "LLM_MODEL=$LLM_MODEL"
+            # nightly_a2a.py's OutboundA2A* tests register a second local room
+            # as a remote A2A agent — card resolution's SSRF guard rejects that
+            # (localhost is never public) without this. Safe here: a runner is
+            # exactly the "trusted internal deployment" the flag exists for.
+            echo "A2A_ALLOW_PRIVATE_HOSTS=1"
+          } > ~/.mycelium/.env || true
+          # The backend container always runs as a fixed uid (1000 — "packer"
+          # on GitHub-hosted runners; see MYCELIUM_LOCAL_WRITE_UID below for
+          # why that matters and why we don't try to change it). Set a
+          # default ACL so every dir created from here on — by either side —
+          # inherits world-writable "other" bits regardless of who owns it,
+          # as generic insurance (e.g. a stale root/uid-1000 leftover from a
+          # previous run's teardown).
+          mkdir -p ~/.mycelium/rooms
+          chmod -R 777 ~/.mycelium
+          sudo setfacl -R -d -m o::rwx ~/.mycelium 2>/dev/null || true
+          # MYCELIUM_LOCAL_WRITE_UID (below, in the "Run E2E tests" env
+          # block) runs a few CLI commands as uid 1000 via sudo. $HOME is
+          # preserved across that switch, but home directories default to
+          # 750 (owner rwx, group r-x, other none) — uid 1000 can't even
+          # traverse into $HOME to reach ~/.local/bin/mycelium, regardless
+          # of the binary's own mode. Grant traversal only (o+rx, not
+          # world-writable) on just the path to the binary — this doesn't
+          # touch file contents anywhere else under $HOME.
+          chmod o+rx "$HOME" "$HOME/.local" "$HOME/.local/bin" 2>/dev/null || true
+          mycelium up --build
+          echo "Waiting for backend..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "Backend healthy"
+              break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "ERROR: Backend did not become healthy after 120s"
+              mycelium logs 2>&1 | tail -30
+              exit 1
+            fi
+            sleep 2
+          done
+          # Fix ownership of dirs the backend created during startup.
+          sudo chown -R "$USER" ~/.mycelium 2>/dev/null || true
+          chmod -R 777 ~/.mycelium || true
+
+      - name: Configure mycelium CLI
+        run: |
+          mycelium config set server.api_url http://localhost:8000 2>/dev/null || true
+          # LLM config (.env) is written earlier, before `mycelium up`, in
+          # "Start mycelium hub" — the backend needs it at container-start
+          # time, not now.
+          # `config set` rewrites config.toml with a restrictive mode
+          # (config.toml/.env come back owner-only), which the
+          # MYCELIUM_LOCAL_WRITE_UID switch (uid 1000) then can't read —
+          # every earlier chmod -R 777 ran before this point, so it missed
+          # this rewrite.
+          chmod -R 777 ~/.mycelium || true
+          mycelium doctor 2>&1 || true
+
+      - name: Verify LLM configuration
+        run: |
+          echo "=== LLM environment check ==="
+          [ -n "$LLM_API_KEY" ]  && echo "LLM_API_KEY:  set" || echo "LLM_API_KEY:  NOT SET (LLM tests will skip)"
+          [ -n "$LLM_BASE_URL" ] && echo "LLM_BASE_URL: set" || echo "LLM_BASE_URL: NOT SET"
+          [ -n "$LLM_MODEL" ]    && echo "LLM_MODEL:    $LLM_MODEL" || echo "LLM_MODEL:    NOT SET"
+
+      - name: Start spoke containers (nightly only)
+        if: steps.resolve.outputs.suite == 'nightly'
+        working-directory: e2e-test
+        run: |
+          # mycelium is baked into the spoke images at build time (see
+          # infra/Dockerfile.spoke) — no async in-container install to poll
+          # for anymore, so `--wait` blocking on each service's own
+          # healthcheck is enough.
+          MYCELIUM_BACKEND_URL=http://host.docker.internal:8000 \
+            docker compose -f infra/compose.spokes.yaml up -d --build --wait
+
+      - name: Clean artifacts dir
+        working-directory: e2e-test
+        run: rm -rf artifacts
+
+      - name: Run E2E tests
+        working-directory: e2e-test
+        env:
+          MYCELIUM_BACKEND_URL: http://localhost:8000
+          MYCELIUM_E2E_RUNTIME: local
+          SUITE: ${{ steps.resolve.outputs.suite }}
+          MYCELIUM_DATAFILE: ${{ steps.resolve.outputs.datafile }}
+          # `mycelium agent create`/`engine create` write agents/<handle>.md
+          # locally as a side effect of their own HTTP call, which creates
+          # that same file's parent dir server-side under the backend
+          # container's fixed uid (1000 — "packer" on GitHub-hosted
+          # runners). mycelium-cli's write guard rejects on exact uid
+          # mismatch by design (see mycelium-cli's
+          # test_agent_add_root_owned.py and `mycelium doctor`'s own
+          # ownership check) — no chmod/ACL satisfies it, only matching
+          # ownership does. We tried chasing that ownership after the fact
+          # with an inotify-triggered chown (several iterations — see git
+          # history on this step) and kept finding new edges (the dual
+          # write, event-volume backlog); running the local-write commands
+          # as the same uid the backend already uses avoids the mismatch
+          # instead of racing it. libs/mycelium_cli.py wraps just those
+          # commands with `sudo -u '#1000'` when this is set — everything
+          # else (room/memory CRUD, which are pure HTTP, no local writes)
+          # is unaffected.
+          MYCELIUM_LOCAL_WRITE_UID: "1000"
+        run: |
+          case "$SUITE" in
+            nightly)
+              JOB_FILE="jobs/nightly_job.py"
+              # Use compose testbed for nightly so hub-spoke tests run via docker exec
+              TESTBED="testbeds/compose.yaml"
+              ;;
+            *)
+              JOB_FILE="jobs/pr_job.py"
+              TESTBED="testbeds/local.yaml"
+              ;;
+          esac
+
+          echo "Suite:    $SUITE"
+          echo "Job:      $JOB_FILE"
+          echo "Testbed:  $TESTBED"
+          echo "Datafile: $MYCELIUM_DATAFILE"
+
+          mkdir -p artifacts/pyats-runinfo artifacts/pyats-archive
+
+          uv run pyats run job "$JOB_FILE" \
+            --testbed-file "$TESTBED" \
+            --html-logs artifacts \
+            --runinfo-dir artifacts/pyats-runinfo \
+            --archive-dir artifacts/pyats-archive \
+            --no-archive-subdir
+
+      - name: Print results summary
+        if: always()
+        working-directory: e2e-test
+        run: |
+          echo "=== pyATS Results ==="
+          RUNINFO=$(ls -td artifacts/pyats-runinfo/*/ 2>/dev/null | head -1)
+          if [ -n "$RUNINFO" ]; then
+            for logfile in "$RUNINFO"/TaskLog.rst "$RUNINFO"/TaskLog; do
+              [ -f "$logfile" ] && cat "$logfile" && break
+            done
+          fi
+
+      - name: Collect service logs
+        if: always()
+        working-directory: e2e-test
+        run: |
+          mkdir -p artifacts/logs
+          mycelium logs > artifacts/logs/mycelium.log 2>&1 || true
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-results-${{ github.run_id }}
+          path: e2e-test/artifacts/
+          retention-days: 30
+
+      - name: Tear down spokes
+        if: always()
+        working-directory: e2e-test
+        run: docker compose -f infra/compose.spokes.yaml down 2>/dev/null || true
+
+      - name: Tear down hub
+        if: always()
+        run: mycelium down 2>/dev/null || true

@@ -1,0 +1,6 @@
+---
+extends: base_datafile.yaml
+
+parameters:
+  room_prefix: "qa-coord-fresh"
+  max_failures: 3

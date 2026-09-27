@@ -1,0 +1,8 @@
+.venv/
+.git/
+__pycache__/
+artifacts/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.github/
