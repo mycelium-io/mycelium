@@ -35,9 +35,13 @@ COMMAND = re.compile(r"mycelium ((?:[a-z][a-z-]* ){1,2})[^`\"'\n]*?--room\b")
 runner = CliRunner()
 
 
+#: Rich colors help on CI, and its escape codes split "--room" apart.
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
 def _help(words: list[str]) -> str | None:
     result = runner.invoke(app, [*words, "--help"])
-    return result.output if result.exit_code == 0 else None
+    return ANSI.sub("", result.output) if result.exit_code == 0 else None
 
 
 def told_to_run_with_room() -> set[tuple[str, ...]]:
