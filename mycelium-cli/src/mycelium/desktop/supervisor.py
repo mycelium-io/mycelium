@@ -85,6 +85,11 @@ def repo_root(start: Path | None = None) -> Path | None:
     return None
 
 
+def runnable_ui(ui_dir: Path) -> bool:
+    """A standalone UI build that can serve pages: its server and its static files."""
+    return (ui_dir / "server.js").exists() and (ui_dir / ".next" / "static").is_dir()
+
+
 @dataclass
 class Locator:
     """Where the programs a mode needs are, resolved the same way every time."""
@@ -132,15 +137,20 @@ class Locator:
     def ui(self) -> tuple[list[str], Path | None]:
         node = os.environ.get("MYCELIUM_NODE") or self._bundled("node") or shutil.which("node")
         ui_dir = os.environ.get("MYCELIUM_UI_DIR") or self._bundled("ui")
-        if ui_dir and node:
+        if ui_dir and node and runnable_ui(Path(ui_dir)):
             return [str(node), "server.js"], Path(ui_dir)
         if self.repo is not None:
             frontend = self.repo / "mycelium-frontend"
-            standalone = frontend / ".next" / "standalone" / "server.js"
-            if standalone.exists() and node:
-                return [str(node), "server.js"], standalone.parent
+            standalone = frontend / ".next" / "standalone"
+            # `next build` leaves the static files beside the standalone
+            # server, not in it; without them every page renders blank.
+            if node and runnable_ui(standalone):
+                return [str(node), "server.js"], standalone
             if shutil.which("pnpm"):
-                return ["pnpm", "exec", "next", "dev", "-p", str(UI_PORT)], frontend
+                # `next dev` ignores HOSTNAME and listens on every interface
+                # unless told; the hub's UI stays on this machine.
+                argv = ["pnpm", "exec", "next", "dev", "-H", HOST, "-p", str(UI_PORT)]
+                return argv, frontend
         raise LocateError(
             "This build doesn't include the UI, and there's no Mycelium checkout to run it from."
         )

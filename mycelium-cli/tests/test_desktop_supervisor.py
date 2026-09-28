@@ -155,7 +155,8 @@ def test_programs_are_found_in_the_bundle_before_the_path(
     macos = tmp_path / "Mycelium.app" / "Contents" / "MacOS"
     resources = macos.parent / "Resources"
     macos.mkdir(parents=True)
-    (resources / "ui").mkdir(parents=True)
+    (resources / "ui" / ".next" / "static").mkdir(parents=True)
+    (resources / "ui" / "server.js").write_text("")
     for name in ("slimctl", "mycelium-hub", "node"):
         (macos / name).write_text("")
     monkeypatch.delenv("MYCELIUM_SLIMCTL", raising=False)
@@ -170,6 +171,15 @@ def test_programs_are_found_in_the_bundle_before_the_path(
 
     monkeypatch.setenv("MYCELIUM_HUB_CMD", "my-hub --port 9")
     assert loc.hub() == (["my-hub", "--port", "9"], None)
+
+
+def test_a_ui_build_without_its_static_files_is_not_used(tmp_path: Path):
+    # `next build` puts the static files beside the standalone server; a
+    # server without them renders every page blank.
+    (tmp_path / "server.js").write_text("")
+    assert not sv.runnable_ui(tmp_path)
+    (tmp_path / ".next" / "static").mkdir(parents=True)
+    assert sv.runnable_ui(tmp_path)
 
 
 def test_without_a_bundle_or_checkout_the_hub_says_so(monkeypatch: pytest.MonkeyPatch):
