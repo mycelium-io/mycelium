@@ -94,13 +94,23 @@ def runner(
         help="A folder agents may be started in (repeatable; default: this folder)",
     ),
     detach: bool = typer.Option(False, "--detach", "-d", help="Run in the background"),
+    trust_hub: bool = typer.Option(
+        False,
+        "--trust-hub",
+        help="Start agents the hub asks for without asking here. Only for a hub nobody "
+        "else can reach: anyone who can reach the hub could start agents on this machine.",
+    ),
 ) -> None:
     """Connect this machine to the hub so the app can start agents on it.
+
+    Each agent or team the app asks for waits until you say yes here, with
+    `mycelium runner approve <id>`, since anyone who can reach the hub can ask.
 
     Examples:
         mycelium runner
         mycelium runner --root ~/code --detach
-        mycelium runner status
+        mycelium runner requests
+        mycelium runner approve 3f9a12c4b0de
     """
     if ctx.invoked_subcommand is not None:
         return
@@ -116,6 +126,8 @@ def runner(
 
     if detach:
         args = [sys.argv[0], "runner", *(a for r in roots for a in ("--root", str(r)))]
+        if trust_hub:
+            args.append("--trust-hub")
         with _log_path().open("ab") as log:
             proc = subprocess.Popen(  # noqa: S603 - this same CLI, code-built arguments
                 args,
@@ -131,7 +143,7 @@ def runner(
         return
 
     config = MyceliumConfig.load()
-    daemon = Runner(config, roots=roots)
+    daemon = Runner(config, roots=roots, trust_hub=trust_hub)
     _pid_path().write_text(f"{os.getpid()}\n")
 
     def _terminate(*_: object) -> None:
@@ -143,7 +155,14 @@ def runner(
     console.print(f"[bold]{daemon.label}[/bold] · runner [cyan]{daemon.id}[/cyan]")
     console.print(_scan_table(found, herdr=daemon.herdr))
     console.print(f"[dim]Agents may be started in: {', '.join(str(r) for r in daemon.roots)}[/dim]")
-    console.print("[dim]Open the app to start agents here. Ctrl-C to disconnect.[/dim]\n")
+    console.print(
+        f"[dim]In the app's Machines page, add this machine with its code "
+        f"[/dim][cyan]{daemon.id}[/cyan][dim] to start agents here.[/dim]"
+    )
+    if trust_hub:
+        console.print("[yellow]Starting what the hub asks for without asking here.[/yellow]")
+    else:
+        console.print("[dim]Each start waits for your yes here. Ctrl-C to disconnect.[/dim]\n")
     try:
         daemon.run()
     except KeyboardInterrupt:
@@ -190,6 +209,60 @@ def runner_status() -> None:
     console.print(f"hub: {state} · herdr {'yes' if seen.get('herdr') else 'no'}")
     for a in seen.get("agents") or []:
         console.print(f"  @{a['handle']} in {a['room']} · {a['framework']} · {a['status']}")
+
+
+@doc_ref(
+    usage="mycelium runner requests",
+    desc="List what the hub asked this machine to start that is waiting for your yes.",
+    group="agent",
+)
+@app.command("requests")
+def runner_requests() -> None:
+    """What is waiting for your yes: agents and teams the hub asked this machine to start."""
+    from mycelium.runner import approvals
+
+    waiting = approvals.pending()
+    if not waiting:
+        console.print("[dim]Nothing is waiting.[/dim]")
+        return
+    for request in waiting:
+        console.print(f"[bold]{request.get('title')}[/bold]  [cyan]{request.get('id')}[/cyan]")
+        console.print(f"{request.get('message')}\n")
+    console.print("[dim]Answer with: mycelium runner approve <id> / decline <id>[/dim]")
+
+
+def _answer(job_id: str, *, yes: bool) -> None:
+    from mycelium.runner import approvals
+
+    try:
+        request = approvals.answer(job_id, yes=yes)
+    except approvals.ApprovalError as e:
+        console.print(f"[red]{e}[/red] See what is: mycelium runner requests")
+        raise typer.Exit(1) from None
+    said = "[green]Starting[/green]" if yes else "[yellow]Declined[/yellow]"
+    console.print(f"{said}: {request.get('title')}")
+
+
+@doc_ref(
+    usage="mycelium runner approve <id>",
+    desc="Say yes to an agent or team the hub asked this machine to start.",
+    group="agent",
+)
+@app.command("approve")
+def runner_approve(job_id: str = typer.Argument(..., help="The request's id")) -> None:
+    """Start an agent or team the hub asked for (see `mycelium runner requests`)."""
+    _answer(job_id, yes=True)
+
+
+@doc_ref(
+    usage="mycelium runner decline <id>",
+    desc="Say no to an agent or team the hub asked this machine to start.",
+    group="agent",
+)
+@app.command("decline")
+def runner_decline(job_id: str = typer.Argument(..., help="The request's id")) -> None:
+    """Refuse an agent or team the hub asked for; the app is told it was declined."""
+    _answer(job_id, yes=False)
 
 
 @doc_ref(

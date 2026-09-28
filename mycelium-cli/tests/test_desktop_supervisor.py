@@ -126,6 +126,24 @@ def test_something_already_on_the_port_counts_as_running():
     assert "not started by the app" in (outside.detail or "")
 
 
+def test_the_runner_trusts_only_a_hub_the_app_started():
+    # A hub the app started listens on 127.0.0.1 alone, so a launch from it
+    # needs no question. One that was already there (Docker publishes to the
+    # network) or a hub elsewhere could be reached by anyone.
+    events = Events()
+    started = comp("hub", SLEEP)
+    sup = hub(events, [started])
+    run_until(sup, lambda: started.state == "running" and sup._own_hub())
+
+    outside = comp("hub", EXIT, external=lambda: True)
+    sup = hub(events, [outside])
+    run_until(sup, lambda: outside.state == "running")
+    assert not sup._own_hub()
+
+    client = Supervisor("client", hub_url="https://hub.example.com", emit=events, env={})
+    assert not client._own_hub()
+
+
 def test_a_missing_program_says_what_to_install():
     def missing() -> tuple[list[str], Path | None]:
         raise LocateError("slimctl isn't installed")

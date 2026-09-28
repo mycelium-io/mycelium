@@ -366,8 +366,12 @@ export function AgentsPanel({
                       key={`agent-${a.handle}`}
                       agent={a}
                       groupOwner={groupOwner}
+                      // Named only on your own machines: another person's
+                      // computer isn't listed here, even by its id.
                       machine={
-                        a.runner ? runnerName(runnersById.get(a.runner), a.runner) : null
+                        a.runner && runnersById.has(a.runner)
+                          ? runnerName(runnersById.get(a.runner), a.runner)
+                          : null
                       }
                       memberPresence={presence.get(a.handle.toLowerCase())}
                       floor={floors.get(a.handle.toLowerCase())}

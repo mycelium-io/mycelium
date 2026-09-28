@@ -249,6 +249,7 @@ fn handle_line(app: &AppHandle, generation: u64, line: &str) {
             report_error(app, generation, component, message);
         }
         Some("log") => crate::on_log(app, &value),
+        Some("request") => crate::on_request(app, &value),
         _ => {}
     }
 }

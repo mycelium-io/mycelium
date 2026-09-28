@@ -63,6 +63,11 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/** The principal, or "" outside a CurrentUserProvider (where nobody is signed in). */
+export function usePrincipal(): string {
+  return useContext(CurrentUserContext)?.principal ?? "";
+}
+
 export function useCurrentUser(): CurrentUser {
   const ctx = useContext(CurrentUserContext);
   if (!ctx) {

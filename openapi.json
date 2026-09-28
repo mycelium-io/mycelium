@@ -1579,7 +1579,7 @@
           "runners"
         ],
         "summary": "List Runners",
-        "description": "Every machine heard from recently, connected ones first.",
+        "description": "Every machine heard from recently, connected ones first (a verified caller's own only).",
         "operationId": "list_runners_api_runners_get",
         "responses": {
           "200": {
@@ -1985,7 +1985,7 @@
           "runners"
         ],
         "summary": "Launch Agent",
-        "description": "Define an agent in a room and start it on this runner's machine.\n\nAn agent this runner started before is started again (with new notes when\ninstructions are given); a handle that names any other agent is refused.",
+        "description": "Define an agent in a room and start it on this runner's machine.\n\nAn agent this runner started before is started again (with new notes when\ninstructions are given); a handle that names any other agent is refused.\nThe runner asks the person at its machine before it starts it.",
         "operationId": "launch_agent_api_runners__runner_id__agents_post",
         "parameters": [
           {
@@ -7038,6 +7038,7 @@
             "enum": [
               "queued",
               "running",
+              "waiting",
               "done",
               "failed"
             ],
@@ -7107,6 +7108,7 @@
             "enum": [
               "queued",
               "running",
+              "waiting",
               "done",
               "failed"
             ],

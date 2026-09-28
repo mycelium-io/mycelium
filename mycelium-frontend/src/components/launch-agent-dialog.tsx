@@ -585,9 +585,21 @@ function LaunchProgress({
   const status = job?.status ?? "queued";
   const failed = status === "failed";
   const machine = runnerName(runner);
+  // A machine asks the person there before starting what a hub sent it,
+  // except the app's own hub; the step shows only once it has asked.
+  const [asked, setAsked] = useState(false);
+  if (status === "waiting" && !asked) setAsked(true);
   const steps: { label: string; state: StepState }[] = [
     { label: `@${handle} added to ${room}, with its notes`, state: "done" },
     { label: `${machine} picked it up`, state: status === "queued" ? "active" : "done" },
+    ...(asked
+      ? [
+          {
+            label: `Yes given on ${machine}`,
+            state: (status === "waiting" ? "active" : failed ? "failed" : "done") as StepState,
+          },
+        ]
+      : []),
     {
       label: `${frameworkName} running in herdr, reading its notes`,
       state: status === "done" ? "done" : failed ? "failed" : status === "running" ? "active" : "waiting",
@@ -604,7 +616,9 @@ function LaunchProgress({
               ? `Running on ${machine}, in herdr workspace ${room}.`
               : failed
                 ? `Added to ${room}, but ${machine} could not start it.`
-                : `Starting on ${machine}…`}
+                : status === "waiting"
+                  ? `Waiting for a yes on ${machine}: it asks there before starting anything.`
+                  : `Starting on ${machine}…`}
           </p>
         </div>
       </div>

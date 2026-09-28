@@ -46,6 +46,7 @@ vi.mock("@/lib/api", () => ({
 
 vi.mock("@/components/current-user", () => ({
   useCurrentUser: () => ({ principal: "julia" }),
+  usePrincipal: () => "julia",
 }));
 
 vi.mock("@/components/keymap-provider", () => ({

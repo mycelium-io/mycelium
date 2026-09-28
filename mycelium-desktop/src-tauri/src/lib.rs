@@ -28,7 +28,7 @@ use tauri::{
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt as _};
 use tauri_plugin_deep_link::DeepLinkExt;
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 use settings::{Mode, Settings};
 use supervisor::Supervisor;
@@ -126,9 +126,50 @@ pub(crate) fn on_status(app: &AppHandle, generation: u64, status: &Value) {
     let Some(path) = sup.take_ready(generation) else { return };
     let Some(ui) = status.get("ui_url").and_then(Value::as_str) else { return };
     let target = format!("{}{}", ui.trim_end_matches('/'), path.unwrap_or_default());
-    if let Ok(url) = Url::parse(&target) {
+    if let Ok(mut url) = Url::parse(&target) {
+        // Tells the page which machine is this one, so it offers only this
+        // Mac for starting agents and never lists anyone else's.
+        if let Some(runner) = status.get("runner_id").and_then(Value::as_str) {
+            let others: Vec<(String, String)> = url
+                .query_pairs()
+                .filter(|(k, _)| k != "machine")
+                .map(|(k, v)| (k.into_owned(), v.into_owned()))
+                .collect();
+            url.query_pairs_mut().clear().extend_pairs(others).append_pair("machine", runner);
+        }
         navigate_main(app, url);
     }
+}
+
+/// A launch a hub asked this Mac's runner for, put to the person as a dialog.
+///
+/// The answer is a file in the runner's folder, which nothing that reaches
+/// this Mac over the network can write, so only a yes given here starts it.
+pub(crate) fn on_request(app: &AppHandle, event: &Value) {
+    let request = event.get("request").cloned().unwrap_or_default();
+    let id = request.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+    let Some(folder) = event.get("folder").and_then(Value::as_str) else { return };
+    // The id becomes a file name: only the hex the hub makes.
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_hexdigit()) {
+        return;
+    }
+    let text = |key: &str| request.get(key).and_then(Value::as_str).unwrap_or("").to_string();
+    let (title, message) = (text("title"), text("message"));
+    let folder = std::path::PathBuf::from(folder);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let yes = app
+            .dialog()
+            .message(message)
+            .title(title)
+            .kind(MessageDialogKind::Warning)
+            .buttons(MessageDialogButtons::OkCancelCustom("Start".into(), "Decline".into()))
+            .blocking_show();
+        let answer = folder.join(format!("{id}.{}", if yes { "yes" } else { "no" }));
+        if let Err(e) = std::fs::write(&answer, "") {
+            eprintln!("[mycelium] couldn't answer {id}: {e}");
+        }
+    });
 }
 
 pub(crate) fn on_log(app: &AppHandle, line: &Value) {

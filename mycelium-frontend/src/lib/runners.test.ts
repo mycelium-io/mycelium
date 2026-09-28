@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { describeJob, herdrMissing, launchable, sortFrameworks } from "./runners";
+import { describeJob, herdrMissing, isMine, launchable, sortFrameworks } from "./runners";
 import { framework, runner } from "./runners.fixture";
 import type { RunnerJob } from "./api";
+
+describe("which machines are yours", () => {
+  it("lists a machine added to this browser, or owned by who you say you are", () => {
+    const mac = runner({ id: "julias-mbp", owner: "julia" });
+    expect(isMine(mac, ["julias-mbp"], "")).toBe(true);
+    expect(isMine(mac, [], "julia")).toBe(true);
+    expect(isMine(mac, [], "bob")).toBe(false);
+    // Nobody signed in and nothing added: nothing listed, not everything.
+    expect(isMine(mac, [], "")).toBe(false);
+    expect(isMine(runner({ id: "x", owner: null }), [], "")).toBe(false);
+  });
+});
 
 describe("runner helpers", () => {
   it("orders frameworks startable, then found but not startable, then missing", () => {

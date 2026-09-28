@@ -1924,7 +1924,7 @@ EOF
       <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span></code></pre>
       <p>Leave it running. It looks for the agent CLIs installed on the machine, tells the hub what it found, and starts agents in <a href="#herdr">herdr</a> when someone asks for one from the app. Agents it starts are ordinary interactive sessions in herdr panes, so you can watch them work and type to them.</p>
       <h2 id="machines-how-it-connects">How it connects</h2>
-      <p>The runner only ever connects out to the hub. The app never talks to your machine directly: it asks the hub, and the hub hands the request to the runner the next time the runner checks in (a few seconds at most). So it works the same whether the hub is on your laptop or on a server somewhere else, and whether or not your laptop can be reached from outside.</p>
+      <p>The runner only ever connects out to the hub. The app never talks to your machine directly: it asks the hub, and the hub hands the request to the runner the next time the runner checks in (a few seconds at most). So it works the same whether the hub is on your laptop or on a server somewhere else, and whether or not your laptop can be reached from outside. Before it starts anything, it asks you (below).</p>
       <h2 id="machines-what-it-finds">What it finds</h2>
       <p>On start, and whenever you press <strong>Rescan</strong> in the app, the runner checks your <code>PATH</code> for the agent CLIs it knows (Claude Code, Codex, Gemini CLI, Cursor Agent, OpenCode, Pi, GitHub Copilot CLI, Amp and others). Which of them it can start is up to herdr: the runner asks herdr which agent kinds it supports, so a newer herdr can start more of them with no change to Mycelium.</p>
       <p>See the same list from a terminal:</p>
@@ -1949,9 +1949,20 @@ EOF
       <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="flag">--detach</span>     # start in the background
 <span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">status</span>       # is it running, and does the hub see it?
 <span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">stop</span>         # stop it; agents it started keep running</code></pre>
-      <p>The Machines page (the laptop icon beside the notification bell) lists every connected runner, what it found, the agents it is running, and its recent requests.</p>
-      <h2 id="machines-who-can-use-it">Who can use it</h2>
-      <p>A runner does what the hub asks. With the hub&#x27;s <a href="#auth">sign-in</a> turned off, anyone who can reach the hub can start agents on a connected machine, within its folders and its scan. On a shared or public hub, turn sign-in on before connecting a runner.</p>
+      <p>The Machines page (the laptop icon beside the notification bell) lists your connected runners, what each found, the agents it is running, and its recent requests.</p>
+      <h2 id="machines-you-say-yes-on-the-machine">You say yes on the machine</h2>
+      <p>Anyone who can reach a hub can ask it for an agent on any machine connected to it, and the hub can&#x27;t prove who asked. So the runner asks you before it starts anything. It shows who the hub says asked, the agent CLI, the folder, and the start of the agent&#x27;s instructions:</p>
+      <ul>
+        <li>in the Mac app, as a dialog with <strong>Start</strong> and <strong>Decline</strong>;</li>
+        <li>from a terminal, in the runner&#x27;s output, answered with a command:</li>
+      </ul>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">requests</span>          # what is waiting
+<span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">approve</span> &lt;id&gt;      # start it
+<span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">decline</span> &lt;id&gt;      # don&#x27;t</code></pre>
+      <p>Nobody answering within ten minutes is a no. The app shows <strong>Waiting for a yes</strong> until you answer, and says so when you decline.</p>
+      <p>One case doesn&#x27;t ask: the Mac app&#x27;s own hub. It listens only on your Mac, so nobody else can reach it. A hub the app didn&#x27;t start, such as a Docker one, still asks. For a hub you know nobody else can reach, <code>mycelium runner --trust-hub</code> skips the question.</p>
+      <h2 id="machines-only-your-machines-are-listed">Only your machines are listed</h2>
+      <p>The Machines page and <strong>where it runs</strong> show only your own machines, never anyone else&#x27;s. In the Mac app that is the Mac it runs on. In a browser, add a machine with the code <code>mycelium runner</code> prints when it starts. With the hub&#x27;s <a href="#auth">sign-in</a> turned on, the hub itself shows each person only the machines they own.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/machines.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 

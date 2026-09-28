@@ -219,7 +219,7 @@ export function StartSwarmDialog({ open, onClose, roomName, initialTask = "" }: 
             <p className="text-micro text-muted-foreground">
               The agents open side by side in a new herdr workspace on {machine.label || machine.id},
               where you can watch and type to them, each already set up as its own handle in this
-              room.
+              room. Unless the machine runs this hub itself, it asks you there before starting them.
             </p>
           </div>
         ) : (

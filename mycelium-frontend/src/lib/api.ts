@@ -747,7 +747,8 @@ export interface Runner {
 }
 
 export type RunnerJobKind = "launch" | "stop" | "scan" | "swarm";
-export type RunnerJobStatus = "queued" | "running" | "done" | "failed";
+/** `waiting`: the machine's runner is asking the person there before it starts anything. */
+export type RunnerJobStatus = "queued" | "running" | "waiting" | "done" | "failed";
 
 export interface RunnerJob {
   id: string;

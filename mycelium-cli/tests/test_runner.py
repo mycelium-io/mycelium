@@ -22,7 +22,7 @@ import pytest
 
 from mycelium.config import MyceliumConfig
 from mycelium.integrations.herdr import HerdrBridge, HerdrRegistry
-from mycelium.runner import daemon, frameworks
+from mycelium.runner import approvals, daemon, frameworks
 
 HELP = """Start a supported interactive agent in an existing pane
 
@@ -141,7 +141,9 @@ def herdr(monkeypatch: pytest.MonkeyPatch) -> Herdr:
 
 @pytest.fixture
 def make_runner(tmp_path: Path, herdr: Herdr, isolated_home: Path):
-    def make(roots: list[Path] | None = None) -> daemon.Runner:
+    def make(
+        roots: list[Path] | None = None, *, trust_hub: bool = True, on_request: Any = None
+    ) -> daemon.Runner:
         config = MyceliumConfig()
         config.server.api_url = "http://hub:8000"
         bridge = HerdrBridge(runner=herdr, registry=HerdrRegistry(tmp_path / "herdr.json"))
@@ -151,6 +153,9 @@ def make_runner(tmp_path: Path, herdr: Herdr, isolated_home: Path):
             bridge=bridge,
             rid="julias-mbp-ab12",
             state_path=tmp_path / "state.json",
+            trust_hub=trust_hub,
+            on_request=on_request,
+            requests_base=tmp_path,
         )
         r.scan()
         return r
@@ -425,3 +430,131 @@ def test_a_swarm_job_starts_the_team_briefs_it_and_kicks_it_off(
     assert [a["handle"] for a in r.hello_body()["agents"]] == ["agent-1", "agent-2"]
     env = herdr.of("workspace create")[0]
     assert "MYCELIUM_API_URL=http://hub:8000" in env
+
+
+# ── asking the person at this machine ─────────────────────────────────────────
+
+
+def _until(check: Any, timeout: float = 5.0) -> Any:
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if found := check():
+            return found
+        time.sleep(0.01)
+    raise AssertionError("timed out")
+
+
+def _report(hub: Hub, job_id: str, status: str) -> dict | None:
+    return next(
+        (
+            b
+            for m, p, b in hub.seen
+            if m == "PATCH" and p.endswith(job_id) and b["status"] == status
+        ),
+        None,
+    )
+
+
+@pytest.fixture
+def quick(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(approvals, "CHECK_S", 0.01)
+
+
+LAUNCH = {"room": "eng", "handle": "a", "framework": "claude"}
+
+
+def test_a_launch_from_a_hub_the_runner_does_not_own_waits_for_a_yes(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, quick: None
+):
+    asked: list[dict] = []
+    r = make_runner(trust_hub=False, on_request=asked.append)
+    r.take({"id": "a1b2c3d4", "kind": "launch", "spec": LAUNCH, "created_by": "bob"})
+
+    _until(lambda: _report(hub, "a1b2c3d4", "waiting"))
+    assert herdr.of("agent start") == []
+    [waiting] = approvals.pending(base=tmp_path)
+    assert waiting["title"] == f"Start @a on {r.label}?"
+    assert "Asked for by @bob" in waiting["message"]
+    assert asked == [waiting]
+
+    approvals.answer("a1b2c3d4", yes=True, base=tmp_path)
+    _until(lambda: _report(hub, "a1b2c3d4", "done"))
+    assert [c[2] for c in herdr.of("agent start")] == ["a"]
+    assert approvals.pending(base=tmp_path) == []
+
+
+def test_a_declined_launch_starts_nothing_and_says_so(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, quick: None
+):
+    r = make_runner(trust_hub=False)
+    r.take({"id": "a1b2c3d4", "kind": "launch", "spec": LAUNCH})
+    _until(lambda: approvals.pending(base=tmp_path))
+    approvals.answer("a1b2c3d4", yes=False, base=tmp_path)
+
+    failed = _until(lambda: _report(hub, "a1b2c3d4", "failed"))
+    assert failed["error"] == f"Declined on {r.label}."
+    assert herdr.of("agent start") == []
+    assert herdr.of("workspace create") == []
+
+
+def test_the_question_shows_the_agents_instructions_and_folder(
+    make_runner, hub: Hub, tmp_path: Path, quick: None
+):
+    hub.notes_for = "a"
+    r = make_runner(trust_hub=False)
+    r.take({"id": "a1b2c3d4", "kind": "launch", "spec": {**LAUNCH, "cwd": str(tmp_path)}})
+    [waiting] = _until(lambda: approvals.pending(base=tmp_path))
+    assert "Claude Code would start as @a" in waiting["message"]
+    assert str(tmp_path) in waiting["message"]
+    assert "Its instructions:\nBe terse." in waiting["message"]
+    assert "someone on that hub" in waiting["message"]
+    r.stop()
+    _until(lambda: _report(hub, "a1b2c3d4", "failed"))
+
+
+def test_a_launch_this_machine_could_not_do_fails_without_asking(
+    make_runner, hub: Hub, tmp_path: Path, quick: None
+):
+    r = make_runner(trust_hub=False)
+    r.take({"id": "a1b2c3d4", "kind": "launch", "spec": {**LAUNCH, "framework": "codex"}})
+    failed = _until(lambda: _report(hub, "a1b2c3d4", "failed"))
+    assert "codex is not installed" in failed["error"]
+    assert approvals.pending(base=tmp_path) == []
+
+
+def test_a_job_id_that_isnt_one_never_becomes_a_file(
+    make_runner, hub: Hub, tmp_path: Path, quick: None
+):
+    r = make_runner(trust_hub=False)
+    r.take({"id": "../../evil", "kind": "launch", "spec": LAUNCH})
+    _until(
+        lambda: any(
+            m == "PATCH" and "isn't a job id" in (b.get("error") or "") for m, _p, b in hub.seen
+        )
+    )
+    assert not (tmp_path.parent / "evil.json").exists()
+
+
+def test_a_scan_and_a_stop_do_not_ask(make_runner, hub: Hub, tmp_path: Path):
+    r = make_runner(trust_hub=False)
+    r.take({"id": "a1b2c3d4", "kind": "scan", "spec": {}})
+    assert _report(hub, "a1b2c3d4", "done")
+    assert approvals.pending(base=tmp_path) == []
+
+
+def test_a_stopped_runner_gives_up_on_its_question(
+    make_runner, hub: Hub, tmp_path: Path, quick: None
+):
+    r = make_runner(trust_hub=False)
+    r.take({"id": "a1b2c3d4", "kind": "launch", "spec": LAUNCH})
+    _until(lambda: approvals.pending(base=tmp_path))
+    r.stop()
+    failed = _until(lambda: _report(hub, "a1b2c3d4", "failed"))
+    assert "stopped before anyone answered" in failed["error"]
+
+
+def test_answering_what_isnt_waiting_says_so(tmp_path: Path):
+    with pytest.raises(approvals.ApprovalError, match="Nothing is waiting"):
+        approvals.answer("a1b2c3d4", yes=True, base=tmp_path)
