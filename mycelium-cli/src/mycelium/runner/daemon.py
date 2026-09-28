@@ -60,13 +60,6 @@ _SLUG = re.compile(r"[^a-z0-9]+")
 _OPAQUE_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
 
-class _NoIdentity:
-    """A config with no identity, so ``sender_of`` answers with the login name."""
-
-    def get_current_identity(self) -> str:
-        return "unknown"
-
-
 class JobError(Exception):
     """A job this runner could not do, said as a sentence for the app to show."""
 
@@ -256,13 +249,16 @@ class Runner:
         person would recognize on the roster, so the login name stands in, as
         ``mycelium swarm`` does when there is no identity at all.
         """
-        from mycelium.commands.swarm import sender_of
+        import getpass
 
         me = self.config.get_current_identity()
         if me and me != "unknown" and not _OPAQUE_ID.match(me):
             return me
-        login = sender_of(_NoIdentity())
-        return None if login == "you" else login
+        try:
+            login = _SLUG.sub("-", getpass.getuser().lower()).strip("-")
+        except Exception:  # noqa: BLE001 - no login name leaves the agents unowned
+            login = ""
+        return login or None
 
     # ── talking to the hub ───────────────────────────────────────────────────
 
