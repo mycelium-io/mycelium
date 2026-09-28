@@ -13,6 +13,7 @@ mod paths;
 mod settings;
 mod supervisor;
 mod terminal;
+mod updates;
 
 use std::process::Command;
 use std::sync::Mutex;
@@ -179,7 +180,8 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let autostart =
         CheckMenuItem::with_id(app, "autostart", "Start at login", true, at_login, None::<&str>)?;
     let health = MenuItem::with_id(app, "doctor", "Health check…", true, None::<&str>)?;
-    let switch = MenuItem::with_id(app, "switch", "Switch hub…", true, None::<&str>)?;
+    let switch = MenuItem::with_id(app, "switch", "Settings…", true, None::<&str>)?;
+    let updates = MenuItem::with_id(app, "updates", "Check for Updates…", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit Mycelium", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
@@ -193,6 +195,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             &autostart,
             &health,
             &switch,
+            &updates,
             &PredefinedMenuItem::separator(app)?,
             &quit_item,
         ],
@@ -206,6 +209,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             "terminal" => open_terminal_window(app, None),
             "switch" => show_local(app, "onboarding"),
             "doctor" => show_local(app, "doctor"),
+            "updates" => updates::check(app.clone(), true),
             "autostart" => toggle_autostart(app),
             "quit" => quit(app),
             _ => {}
@@ -229,10 +233,33 @@ fn toggle_autostart(app: &AppHandle) {
     }
 }
 
-fn quit(app: &AppHandle) {
+/// Stop what the app runs (herdr and its agents carry on).
+pub(crate) fn shut_down(app: &AppHandle) {
     app.state::<Supervisor>().stop();
     terminal::close(app);
+}
+
+fn quit(app: &AppHandle) {
+    shut_down(app);
     app.exit(0);
+}
+
+/// The macOS app menu, with Check for Updates… and Settings… (⌘,) where a
+/// Mac app keeps them.
+fn app_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
+    let menu = Menu::default(app)?;
+    if let Some(first) = menu.items()?.into_iter().next() {
+        if let Some(app_submenu) = first.as_submenu() {
+            let updates =
+                MenuItem::with_id(app, "updates", "Check for Updates…", true, None::<&str>)?;
+            let settings = MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
+            // After "About Mycelium" and its separator.
+            app_submenu.insert(&updates, 2)?;
+            app_submenu.insert(&settings, 3)?;
+            app_submenu.insert(&PredefinedMenuItem::separator(app)?, 4)?;
+        }
+    }
+    Ok(menu)
 }
 
 // ── links ───────────────────────────────────────────────────────────────────
@@ -504,6 +531,13 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .menu(app_menu)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "settings" => show_local(app, "onboarding"),
+            "updates" => updates::check(app.clone(), true),
+            _ => {}
+        })
         .manage(Shell::default())
         .manage(Supervisor::default())
         .manage(Terminal::default())
@@ -541,6 +575,15 @@ pub fn run() {
             if let Some(saved) = settings::load().and_then(|s| s.validate().ok()) {
                 paths::link_bundled();
                 supervisor::restart(&handle, saved);
+            }
+            // A quiet look for an update once the app has settled; it speaks
+            // only if there is one. Not in development, where every release is newer.
+            if !cfg!(debug_assertions) {
+                let later = handle.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(10));
+                    updates::check(later, false);
+                });
             }
             Ok(())
         })

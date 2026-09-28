@@ -253,6 +253,10 @@ jobs:
 
       - name: Build the app and its disk image
         working-directory: mycelium-desktop
+        env:
+          # Signs the update archive the app's updater installs (latest.json).
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           npx tauri build --bundles app --config src-tauri/tauri.bundle.conf.json
           # Signs the app as a whole (else macOS calls it damaged) and makes
@@ -262,7 +266,11 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mycelium-desktop-macos-arm64
-          path: dist/desktop/Mycelium-macos-arm64.dmg
+          path: |
+            dist/desktop/Mycelium-macos-arm64.dmg
+            dist/desktop/Mycelium-macos-arm64.app.tar.gz
+            dist/desktop/latest.json
+          if-no-files-found: error
 
   build-and-release:
     needs: [detect-release-type, publish-images, build-binaries, build-desktop]
@@ -318,7 +326,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd mycelium-cli/dist
-          sha256sum *.whl binaries/mycelium-* binaries/Mycelium-*.dmg > binaries/checksums.txt
+          sha256sum *.whl binaries/mycelium-* binaries/Mycelium-*.dmg binaries/Mycelium-*.app.tar.gz > binaries/checksums.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
@@ -352,6 +360,8 @@ jobs:
             mycelium-cli/dist/*.whl
             mycelium-cli/dist/binaries/mycelium-*
             mycelium-cli/dist/binaries/Mycelium-macos-arm64.dmg
+            mycelium-cli/dist/binaries/Mycelium-macos-arm64.app.tar.gz
+            mycelium-cli/dist/binaries/latest.json
             mycelium-cli/dist/binaries/checksums.txt
           fail_on_unmatched_files: true
 

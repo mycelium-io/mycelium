@@ -3453,7 +3453,17 @@ herdr either way.
 - **Open Mycelium** and **Agents terminal**;
 - **Start at login**;
 - **Health check…**, below;
-- **Switch hub…**, to change how this Mac takes part.
+- **Settings…** (also **Mycelium → Settings…**, ⌘,), to change how this Mac
+  takes part;
+- **Check for Updates…**.
+
+## Updates
+
+The app checks for a new release shortly after it opens, and when you choose
+**Check for Updates…**. If one is out, it asks before installing it, then
+restarts. Agents keep running in herdr through the restart. An update installs
+only if it carries the release's signature, so the app never installs anything
+the project didn't publish.
 
 ## Health check
 
