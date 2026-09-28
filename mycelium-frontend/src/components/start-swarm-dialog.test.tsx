@@ -42,7 +42,8 @@ describe("StartSwarmDialog", () => {
     fireEvent.click(screen.getByRole("radio", { name: "On julias-mbp" }));
     // The repository is the hub's; a machine's team works in a folder there.
     expect(screen.queryByLabelText(/Repository/)).not.toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "Codex CLI" })).toBeDisabled();
+    // Only what the machine can start is offered.
+    expect(screen.queryByRole("radio", { name: "Codex CLI" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("radio", { name: "opencode" }));
     fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "Start swarm" }));

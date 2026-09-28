@@ -52,15 +52,14 @@ describe("LaunchAgentForm", () => {
     expect(screen.getByDisplayValue("mycelium runner")).toBeInTheDocument();
   });
 
-  it("lists the scan, startable first, with what isn't installed greyed out", () => {
+  it("offers only what the machine can start, leaving the rest of the scan out", () => {
     connected = [runner()];
     renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
 
     const choices = screen.getAllByRole("radio").map((r) => r.getAttribute("aria-label"));
-    expect(choices).toEqual(["Claude Code", "opencode", "Codex CLI"]);
+    expect(choices).toEqual(["Claude Code", "opencode"]);
     expect(screen.getByRole("radio", { name: "Claude Code" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("radio", { name: "Codex CLI" })).toBeDisabled();
-    expect(screen.getByText("Not found on PATH.")).toBeInTheDocument();
+    expect(screen.queryByText(/Codex/)).not.toBeInTheDocument();
   });
 
   it("registers the agent and starts it, then follows the machine until it runs", async () => {
@@ -71,7 +70,7 @@ describe("LaunchAgentForm", () => {
     renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={onLaunched} />);
 
     fireEvent.click(screen.getByRole("radio", { name: "opencode" }));
-    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "@Reviewer" } });
+    fireEvent.change(screen.getByLabelText(/^Handle/), { target: { value: "@Reviewer" } });
     fireEvent.change(screen.getByLabelText(/Instructions/), {
       target: { value: "  Review every change for correctness.  " },
     });
@@ -83,7 +82,6 @@ describe("LaunchAgentForm", () => {
       handle: "reviewer",
       framework: "opencode",
       instructions: "Review every change for correctness.",
-      description: undefined,
       cwd: "/Users/julia/code/atlas",
       created_by: "julia",
     });
@@ -98,7 +96,7 @@ describe("LaunchAgentForm", () => {
     );
     renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
 
-    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.change(screen.getByLabelText(/^Handle/), { target: { value: "scout" } });
     fireEvent.click(screen.getByRole("button", { name: "Start Claude Code" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("outside the folders");
@@ -111,8 +109,9 @@ describe("LaunchAgentForm", () => {
     expect(screen.getByRole("note")).toHaveTextContent(
       "herdr isn't running on julias-mbp. Install it from https://herdr.dev",
     );
-    for (const choice of screen.getAllByRole("radio")) expect(choice).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    expect(screen.queryAllByRole("radio")).toEqual([]);
+    expect(screen.getByText("Nothing can start here until herdr is running.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^Handle/), { target: { value: "scout" } });
     expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
   });
 });

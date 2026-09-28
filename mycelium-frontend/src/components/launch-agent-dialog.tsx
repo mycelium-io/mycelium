@@ -10,6 +10,7 @@ import { launchable, runnerName, useRunnerJob, useRunners, useRunnersRevalidate 
 import { useRoomRevalidate } from "@/lib/room-data";
 import { useCurrentUser } from "@/components/current-user";
 import { Button } from "@/components/ui/button";
+import { InstructionExamples } from "@/components/instruction-examples";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -50,13 +51,11 @@ interface Props {
 export function LaunchAgentDialog({ open, onOpenChange, roomName, onLaunched }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-ui font-semibold text-text">Start an agent on your machine</DialogTitle>
-          <DialogDescription className="text-label leading-relaxed text-muted-foreground">
-            Pick an agent CLI you have installed and say how it should work. It opens in a herdr
-            terminal on that machine, where you can watch and type to it, already a member of
-            this room.
+          <DialogDescription className="text-label text-muted-foreground">
+            It opens in herdr, already in this room.
           </DialogDescription>
         </DialogHeader>
         {open && (
@@ -91,7 +90,6 @@ export function LaunchAgentForm({
   const [folderPick, setFolderPick] = useState<string | null>(null);
   const [handle, setHandle] = useState("");
   const [instructions, setInstructions] = useState("");
-  const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -140,7 +138,6 @@ export function LaunchAgentForm({
         handle: trimmed,
         framework: framework.id,
         instructions: instructions.trim() || undefined,
-        description: description.trim() || undefined,
         cwd: folder.trim() || undefined,
         created_by: principal.trim() || undefined,
       });
@@ -162,7 +159,7 @@ export function LaunchAgentForm({
 
       <div className="space-y-1.5">
         <label htmlFor="launch-handle" className="block text-micro font-medium text-muted-foreground">
-          Handle
+          Handle <span className="font-normal text-faint">@{trimmed || "handle"} in the room</span>
         </label>
         <Input
           id="launch-handle"
@@ -176,38 +173,33 @@ export function LaunchAgentForm({
           spellCheck={false}
           aria-invalid={trimmed.length > 0 && !handleOk}
         />
-        <p className="text-micro leading-snug text-muted-foreground">
-          Address it in the room with <code className="font-mono text-accent">@{trimmed || "handle"}</code>.
-          Lowercase letters, digits, - and _.
-        </p>
+        {trimmed.length > 0 && !handleOk && (
+          <p className="text-micro leading-snug text-red">
+            Lowercase letters, digits, - and _, starting with a letter or digit.
+          </p>
+        )}
       </div>
 
       <div className="space-y-1.5">
-        <label htmlFor="launch-instructions" className="block text-micro font-medium text-muted-foreground">
-          Instructions <span className="font-normal">(optional)</span>
-        </label>
+        <div className="flex items-center">
+          <label htmlFor="launch-instructions" className="text-micro font-medium text-muted-foreground">
+            Instructions <span className="font-normal text-faint">saved as its notes</span>
+          </label>
+          <InstructionExamples
+            current={instructions}
+            onPick={(example) => {
+              setInstructions(example.text);
+              if (!handle.trim()) setHandle(example.name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-"));
+            }}
+          />
+        </div>
         <textarea
           id="launch-instructions"
           value={instructions}
           onChange={(e) => setInstructions(e.target.value)}
-          rows={4}
+          rows={2}
           placeholder="You review pull requests for correctness. Be specific and brief."
           className="w-full resize-y rounded-lg border border-border bg-bg px-3 py-2 text-label text-text outline-none transition-colors placeholder:text-muted-foreground hover:border-border2 focus:border-accent"
-        />
-        <p className="text-micro leading-snug text-muted-foreground">
-          How this agent should work. Saved as its notes, which it reads when it starts.
-        </p>
-      </div>
-
-      <div className="space-y-1.5">
-        <label htmlFor="launch-description" className="block text-micro font-medium text-muted-foreground">
-          Description <span className="font-normal">(optional)</span>
-        </label>
-        <Input
-          id="launch-description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="What this agent does in the room"
         />
       </div>
 
@@ -229,15 +221,10 @@ export function LaunchAgentForm({
         </p>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex justify-end">
         <Button size="sm" onClick={submit} disabled={!canSubmit}>
           {busy ? "Starting…" : framework ? `Start ${framework.name}` : "Start"}
         </Button>
-        {runner.herdr && !framework && (
-          <span className="text-micro text-muted-foreground">
-            No agent CLI this machine can start. Install one, then rescan.
-          </span>
-        )}
       </div>
     </div>
   );

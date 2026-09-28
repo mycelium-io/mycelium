@@ -4,6 +4,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Check, Laptop, RefreshCw } from "lucide-react";
 import { rescanRunner, type Framework, type Runner } from "@/lib/api";
 import {
@@ -84,10 +85,9 @@ export function MachinePicker({
 }
 
 /**
- * The scan result as a choice: startable frameworks first, each with its
- * version; ones the scan did not find are listed greyed so it is clear what
- * else the runner knows how to start. Nothing can be picked on a machine
- * without herdr, since herdr is how a runner starts every agent.
+ * The agent CLIs this machine can start, as one row of choices. Only what can
+ * be picked is shown; the rest of the scan (what isn't installed, or what herdr
+ * can't start) is one line pointing at the Machines page, which lists it all.
  */
 export function FrameworkPicker({
   runner,
@@ -101,6 +101,8 @@ export function FrameworkPicker({
   usable?: (f: Framework) => boolean;
 }) {
   const frameworks = sortFrameworks(runner.frameworks);
+  const choices = frameworks.filter(usable);
+  const blocked = frameworks.filter((f) => f.installed && !usable(f));
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2">
@@ -109,15 +111,17 @@ export function FrameworkPicker({
         </span>
         <RescanButton runner={runner} className="ml-auto" />
       </div>
-      {frameworks.length === 0 ? (
+      {choices.length === 0 ? (
         <p className="text-label text-muted-foreground">
-          The machine has not reported any agent CLIs yet.
+          {runner.herdr
+            ? "No agent CLI here that herdr can start. Install one, then rescan."
+            : "Nothing can start here until herdr is running."}
         </p>
       ) : (
-        <div role="radiogroup" aria-labelledby="runner-framework-label" className="space-y-1">
-          {frameworks.map((f) => {
-            const ok = usable(f);
+        <div role="radiogroup" aria-labelledby="runner-framework-label" className="flex flex-wrap gap-1.5">
+          {choices.map((f) => {
             const picked = value === f.id;
+            const version = shortVersion(f.version);
             return (
               <button
                 key={f.id}
@@ -125,37 +129,38 @@ export function FrameworkPicker({
                 role="radio"
                 aria-checked={picked}
                 aria-label={f.name}
-                disabled={!ok}
+                title={f.path ?? undefined}
                 onClick={() => onChange(f.id)}
-                className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${
+                className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-label transition-colors ${
                   picked
-                    ? "border-accent bg-accent/10"
-                    : ok
-                      ? "border-border hover:bg-hairline"
-                      : "cursor-not-allowed border-border opacity-50"
+                    ? "border-accent bg-accent/10 text-text"
+                    : "border-border text-muted-foreground hover:border-border2 hover:text-text"
                 }`}
               >
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-baseline gap-2">
-                    <span className={`text-label font-medium ${picked ? "text-text" : "text-muted-foreground"}`}>
-                      {f.name}
-                    </span>
-                    <span className="truncate font-mono text-micro text-faint">
-                      {f.installed ? (f.version ?? f.command) : "not installed"}
-                    </span>
-                  </span>
-                  {f.note && (
-                    <span className="block text-micro leading-snug text-muted-foreground">{f.note}</span>
-                  )}
-                </span>
-                {picked && <Check className="size-4 flex-shrink-0 text-accent" />}
+                {picked && <Check className="size-3 text-accent" />}
+                <span className="font-medium">{f.name}</span>
+                {version && <span className="font-mono text-micro text-faint">{version}</span>}
               </button>
             );
           })}
         </div>
       )}
+      {blocked.length > 0 && (
+        <p className="text-micro text-muted-foreground">
+          Also installed, can&apos;t start here: {blocked.map((f) => f.name).join(", ")}.{" "}
+          <Link href="/machines" className="text-accent hover:underline">
+            See why
+          </Link>
+        </p>
+      )}
     </div>
   );
+}
+
+/** "2.1.280 (Claude Code)" or "codex-cli 0.9.1" read as just the version number. */
+export function shortVersion(version: string | null | undefined): string | null {
+  if (!version) return null;
+  return version.match(/\d+(?:\.\d+)+/)?.[0] ?? version.slice(0, 12);
 }
 
 /** Ask the machine to scan again, and say so while it does. */
@@ -216,7 +221,10 @@ export function FolderField({
   return (
     <div className="space-y-1.5">
       <label htmlFor={id} className="block text-micro font-medium text-muted-foreground">
-        Folder
+        Folder{" "}
+        {runner.roots.length > 0 && (
+          <span className="font-normal text-faint">inside {runner.roots.join(" or ")}</span>
+        )}
       </label>
       <input
         id={id}
@@ -232,11 +240,11 @@ export function FolderField({
           <option key={r} value={r} />
         ))}
       </datalist>
-      <p className="text-micro leading-snug text-muted-foreground">
-        {runner.roots.length > 0
-          ? `Must be inside a folder this machine allows: ${runner.roots.join(", ")}.`
-          : "This machine allows no folders yet. Start the runner with --root <folder>."}
-      </p>
+      {runner.roots.length === 0 && (
+        <p className="text-micro leading-snug text-muted-foreground">
+          This machine allows no folders yet. Start the runner with --root &lt;folder&gt;.
+        </p>
+      )}
     </div>
   );
 }
