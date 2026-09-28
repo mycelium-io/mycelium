@@ -43,6 +43,7 @@ from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
 from app.routes.participate import router as participate_router
 from app.routes.rooms import router as rooms_router
+from app.routes.runners import router as runners_router
 from app.routes.search import router as search_router
 from app.routes.sessions import router as sessions_router
 from app.routes.skills import router as skills_router
@@ -319,6 +320,7 @@ app.include_router(assignments_router, prefix="/api")
 app.include_router(fields_router, prefix="/api")
 app.include_router(tasks_router, prefix="/api")
 app.include_router(swarms_router, prefix="/api")
+app.include_router(runners_router, prefix="/api")
 app.include_router(episodes_router, prefix="/api")
 app.include_router(participate_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")

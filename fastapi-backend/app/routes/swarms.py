@@ -24,8 +24,10 @@ from pydantic import BaseModel, Field
 
 from app.routes.engines import EngineCreate, create_engine
 from app.routes.messages import send_message
+from app.routes.runners import existing_runner_of, runner_manifest
 from app.schemas import MessageCreate, MessageType
-from app.services import actor, swarm, tasks, worker_engine, workspace
+from app.services import actor, runners, swarm, tasks, worker_engine, workspace
+from app.services.agent_registry import write_agent_manifest
 from app.services.filesystem import get_room_dir, read_memory_file, room_exists
 
 logger = logging.getLogger(__name__)
@@ -54,6 +56,18 @@ class SwarmCreate(BaseModel):
             "live view) sets this false and posts it itself"
         ),
     )
+    runner: str | None = Field(
+        None,
+        description=(
+            "Run the members on this runner's machine, in a herdr workspace, instead of as "
+            "workers on the hub. The runner posts the kickoff once they are up"
+        ),
+    )
+    framework: str | None = Field(
+        None, description="With runner: the agent CLI each member runs (default: the first found)"
+    )
+    cwd: str | None = Field(None, description="With runner: the folder the members start in")
+    worktree: bool = Field(False, description="With runner: a git worktree per member")
 
 
 class SwarmRead(BaseModel):
@@ -63,6 +77,99 @@ class SwarmRead(BaseModel):
     key: str
     episode: str
     members: list[str]
+    job: str | None = Field(None, description="With a runner: the job starting the members")
+
+
+async def _start_on_runner(
+    room_name: str, payload: SwarmCreate, task: str, team: list[str], me: str, request: Request
+) -> SwarmRead:
+    """A swarm whose members are agents on someone's machine, started by its runner.
+
+    The hub does what it owns (the conductor, the members' manifests, the
+    task) and queues one job; the runner opens the herdr workspace, briefs
+    each member, and posts the kickoff when they are listening, which is the
+    order ``mycelium swarm`` keeps from a terminal.
+    """
+    runner = runners.registry.get(payload.runner or "")
+    if runner is None:
+        raise HTTPException(status_code=404, detail="Runner not found")
+    if payload.repo:
+        raise HTTPException(
+            status_code=422,
+            detail="A repository is cloned by the hub for its own workers. Agents on a "
+            "machine work in a folder there; pick the folder instead.",
+        )
+    framework = payload.framework or next(
+        (f.id for f in runner.frameworks if f.installed and f.launchable), None
+    )
+    if framework is None:
+        raise HTTPException(
+            status_code=422, detail=f"{runner.label} has no agent CLI herdr can start."
+        )
+    try:
+        runners.check_ready(runner)
+        runners.check_framework(runner, framework)
+        cwd = runners.check_cwd(runner, payload.cwd)
+    except runners.RunnerError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    for handle in team:
+        exists, started_by = existing_runner_of(room_name, handle)
+        if exists and started_by != runner.id:
+            raise HTTPException(
+                status_code=409,
+                detail=f"@{handle} is already a member of {room_name}, and not one "
+                f"{runner.label} started.",
+            )
+
+    room_dir = get_room_dir(room_name)
+    if read_memory_file(room_dir, f"agents/{swarm.CONDUCTOR}") is None:
+        await create_engine(
+            room_name,
+            EngineCreate(handle=swarm.CONDUCTOR, kind="conductor", created_by=me),
+            request,
+        )
+    for handle in team:
+        await write_agent_manifest(
+            room_name,
+            handle,
+            runner_manifest(
+                framework=framework,
+                runner=runner.id,
+                cwd=cwd,
+                description=f"swarm member ({framework}) on {runner.label}",
+                owner=me if me != "web-ui" else runner.owner,
+            ),
+            created_by=me,
+        )
+
+    row = await tasks.create_task(room_name, task, created_by=me)
+    episode = str(row.episode or "")
+    job = runners.registry.enqueue(
+        runner.id,
+        "swarm",
+        {
+            "room": room_name,
+            "key": row.key,
+            "episode": episode,
+            "task": task,
+            "team": team,
+            "framework": framework,
+            "cwd": cwd,
+            "worktree": payload.worktree,
+            "kickoff": payload.kickoff,
+        },
+        created_by=me,
+    )
+    logger.info(
+        "room %s: swarm of %d on runner %s (%s) for %s",
+        room_name,
+        len(team),
+        runner.id,
+        framework,
+        row.key,
+    )
+    return SwarmRead(room=room_name, key=row.key, episode=episode, members=team, job=job.id)
 
 
 @router.post("", response_model=SwarmRead, status_code=201)
@@ -75,6 +182,8 @@ async def start_swarm(room_name: str, payload: SwarmCreate, request: Request) ->
         raise HTTPException(status_code=422, detail="A swarm needs a task")
     me = actor.bind_optional_actor(request, payload.created_by, field="created_by") or "web-ui"
     team = swarm.team_handles(payload.size)
+    if payload.runner:
+        return await _start_on_runner(room_name, payload, task, team, me, request)
     repo = (payload.repo or "").strip() or None
 
     # The clone comes first: a repository the hub cannot reach is said at once,

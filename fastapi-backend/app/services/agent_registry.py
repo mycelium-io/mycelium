@@ -122,6 +122,8 @@ def room_agents(room_name: str) -> list[AgentRead]:
                 a2a_card=str(data["a2a_card"]) if data.get("a2a_card") else None,
                 a2a_endpoint=str(data["a2a_endpoint"]) if data.get("a2a_endpoint") else None,
                 a2a_skills=[str(s) for s in skills if s],
+                runner=str(data["runner"]) if data.get("runner") else None,
+                framework=str(data["framework"]) if data.get("framework") else None,
             )
         )
 

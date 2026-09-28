@@ -189,10 +189,13 @@ export interface Swarm {
   key: string;
   episode: string;
   members: string[];
+  /** The runner job starting the members, when they run on a machine. */
+  job?: string | null;
 }
 
-/** Put a team of workers on a task in a room: a conductor, the workers, the
- *  task and the kickoff, in one write (the app's `mycelium swarm --server`). */
+/** Put a team of agents on a task in a room: a conductor, the members, the
+ *  task and the kickoff, in one write. The members are workers on the hub, or
+ *  with `runner` set, agent CLIs on that machine in a herdr workspace. */
 export async function startSwarm(
   room: string,
   data: {
@@ -201,6 +204,14 @@ export async function startSwarm(
     /** A repository for the hub to clone; each agent works on its own branch of it. */
     repo?: string;
     created_by?: string;
+    /** The machine whose agent CLIs are the members (`mycelium runner`). */
+    runner?: string;
+    /** Which of that machine's frameworks to start. */
+    framework?: string;
+    /** The folder on that machine the members work in. */
+    cwd?: string;
+    /** Give each member its own git worktree of `cwd`. */
+    worktree?: boolean;
   },
 ): Promise<Swarm> {
   return apiFetch<Swarm>(`${roomApiPath(room)}/swarms`, {
@@ -623,6 +634,10 @@ export interface AgentSummary {
   a2a_card?: string | null;
   a2a_endpoint?: string | null;
   a2a_skills?: string[];
+  /** The machine (runner id) this agent was started on from the app. */
+  runner?: string | null;
+  /** Which agent CLI it runs there (a runner framework id). */
+  framework?: string | null;
 }
 
 /** List addressable agents in a room. Used to drive `@`-mention autocomplete. */
@@ -668,6 +683,149 @@ export async function registerA2aAgent(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+}
+
+// ── Runners (the machines agents run on) ─────────────────────────────────────
+//
+// A runner is `mycelium runner` on someone's computer. It dials out to the hub,
+// reports which agent CLIs it found, and takes the jobs queued here. The
+// browser never talks to the machine: every call below goes through the hub.
+
+/** One agent CLI the runner knows about, found on the machine or not. */
+export interface Framework {
+  id: string;
+  name: string;
+  command: string;
+  path: string | null;
+  version: string | null;
+  /** False for a known framework the scan did not find. */
+  installed: boolean;
+  /** herdr can start it in a terminal pane. A runner starts agents no other way. */
+  launchable: boolean;
+  /** Why an installed framework can't be started, or anything else worth saying. */
+  note: string | null;
+}
+
+export type RunnerAgentStatus =
+  | "starting"
+  | "running"
+  | "idle"
+  | "working"
+  | "blocked"
+  | "stopped"
+  | "failed";
+
+/** An agent the runner started in a herdr pane and is keeping track of. */
+export interface RunnerAgent {
+  handle: string;
+  room: string;
+  framework: string;
+  status: RunnerAgentStatus;
+  /** The herdr pane it runs in. */
+  pane: string | null;
+  cwd: string | null;
+  started_at: string;
+  detail: string | null;
+}
+
+export interface Runner {
+  id: string;
+  label: string;
+  owner: string | null;
+  platform: string;
+  version: string;
+  /** herdr is running there. Without it the machine can start nothing. */
+  herdr: boolean;
+  /** Folders agents may be started in. The first is the default. */
+  roots: string[];
+  frameworks: Framework[];
+  agents: RunnerAgent[];
+  /** False once the machine's heartbeat is stale. */
+  connected: boolean;
+  last_seen: string;
+  started_at: string;
+}
+
+export type RunnerJobKind = "launch" | "stop" | "scan" | "swarm";
+export type RunnerJobStatus = "queued" | "running" | "done" | "failed";
+
+export interface RunnerJob {
+  id: string;
+  runner: string;
+  kind: RunnerJobKind;
+  spec: Record<string, unknown>;
+  status: RunnerJobStatus;
+  result: Record<string, unknown> | null;
+  /** A sentence saying what went wrong, when `status` is failed. */
+  error: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function runnerApiPath(id: string): string {
+  return `/api/runners/${encodeURIComponent(id)}`;
+}
+
+/** The machines that have checked in with this hub recently. */
+export async function fetchRunners(): Promise<Runner[]> {
+  return apiFetch<Runner[]>(`/api/runners`, {
+    cache: "no-store",
+    fallback: [],
+    guard: isArray as (d: unknown) => d is Runner[],
+  });
+}
+
+export async function fetchRunner(id: string): Promise<Runner> {
+  return apiFetch<Runner>(runnerApiPath(id), { cache: "no-store" });
+}
+
+/** A machine's recent jobs, newest first. */
+export async function fetchRunnerJobs(id: string): Promise<RunnerJob[]> {
+  return apiFetch<RunnerJob[]>(`${runnerApiPath(id)}/jobs`, {
+    cache: "no-store",
+    fallback: [],
+    guard: isArray as (d: unknown) => d is RunnerJob[],
+  });
+}
+
+export async function fetchRunnerJob(id: string, jobId: string): Promise<RunnerJob> {
+  return apiFetch<RunnerJob>(`${runnerApiPath(id)}/jobs/${encodeURIComponent(jobId)}`, {
+    cache: "no-store",
+  });
+}
+
+/** Ask the machine to look for agent CLIs again. */
+export async function rescanRunner(id: string): Promise<RunnerJob> {
+  return apiFetch<RunnerJob>(`${runnerApiPath(id)}/scan`, { method: "POST" });
+}
+
+export interface RunnerAgentLaunch {
+  room: string;
+  handle: string;
+  framework: string;
+  /** Saved as the agent's notes (`agents/<handle>/notes`), which it reads first. */
+  instructions?: string;
+  description?: string;
+  cwd?: string;
+  created_by?: string;
+}
+
+/** Register an agent in a room and start it in a herdr pane on a machine. Throws `ApiError`. */
+export async function launchRunnerAgent(id: string, data: RunnerAgentLaunch): Promise<RunnerJob> {
+  return apiFetch<RunnerJob>(`${runnerApiPath(id)}/agents`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+/** Stop an agent a machine started. Its registration in the room stays. */
+export async function stopRunnerAgent(id: string, room: string, handle: string): Promise<RunnerJob> {
+  return apiFetch<RunnerJob>(
+    `${runnerApiPath(id)}/agents/${encodeURIComponent(room)}/${encodeURIComponent(handle)}/stop`,
+    { method: "POST" },
+  );
 }
 
 // ── A2A bridge (the Network pane's off-channel half) ─────────────────────────

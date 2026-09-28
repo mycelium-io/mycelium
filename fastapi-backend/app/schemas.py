@@ -590,6 +590,110 @@ class AgentRead(BaseModel):
     a2a_card: str | None = None
     a2a_endpoint: str | None = None
     a2a_skills: list[str] = Field(default_factory=list)
+    # An agent a runner started on someone's machine: which machine, and which
+    # agent CLI it runs there. None for every agent the hub did not start that way.
+    runner: str | None = None
+    framework: str | None = None
+
+
+# ── Runners (a user's machine, dialed in) ────────────────────────────────────
+#
+# A runner is `mycelium runner` on someone's computer. It dials out to the hub,
+# says which agent CLIs it found there, and takes jobs the app queues for it.
+# The hub never reaches into the machine: everything it asks for is a job the
+# runner chose to poll for, naming a framework from the runner's own scan.
+# Every agent a runner starts is an interactive session in a herdr pane.
+
+RunnerAgentStatus = Literal[
+    "starting", "running", "idle", "working", "blocked", "stopped", "failed"
+]
+RunnerJobKind = Literal["launch", "stop", "scan", "swarm"]
+RunnerJobStatus = Literal["queued", "running", "done", "failed"]
+
+
+class FrameworkRead(BaseModel):
+    """One agent CLI a runner knows about, found on its machine or not."""
+
+    id: str
+    name: str
+    command: str
+    path: str | None = None
+    version: str | None = None
+    installed: bool = False
+    launchable: bool = Field(False, description="herdr can start it in a pane")
+    note: str | None = None
+
+
+class RunnerAgentRead(BaseModel):
+    """An agent a runner started in a herdr pane and is keeping track of."""
+
+    handle: str
+    room: str
+    framework: str
+    status: RunnerAgentStatus = "starting"
+    pane: str | None = None
+    cwd: str | None = None
+    started_at: datetime
+    detail: str | None = None
+
+
+class RunnerHello(BaseModel):
+    """What a runner says about itself when it dials in, and on every heartbeat."""
+
+    id: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9-]*$")
+    label: str = Field(..., min_length=1, max_length=120)
+    owner: str | None = None
+    platform: str = ""
+    version: str = ""
+    herdr: bool = False
+    roots: list[str] = Field(default_factory=list)
+    frameworks: list[FrameworkRead] = Field(default_factory=list)
+    agents: list[RunnerAgentRead] = Field(default_factory=list)
+
+
+class RunnerRead(RunnerHello):
+    """A runner as the app sees it."""
+
+    connected: bool
+    last_seen: datetime
+    started_at: datetime
+
+
+class RunnerJobRead(BaseModel):
+    """Something the hub asked a runner to do, and how it went."""
+
+    id: str
+    runner: str
+    kind: RunnerJobKind
+    spec: dict[str, Any] = Field(default_factory=dict)
+    status: RunnerJobStatus = "queued"
+    result: dict[str, Any] | None = None
+    error: str | None = None
+    created_by: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RunnerJobReport(BaseModel):
+    """A runner reporting on a job it took."""
+
+    status: RunnerJobStatus
+    result: dict[str, Any] | None = None
+    error: str | None = None
+
+
+class RunnerAgentLaunch(BaseModel):
+    """Start an agent on a runner's machine, as a member of a room."""
+
+    room: str = Field(..., min_length=1)
+    handle: str = Field(..., min_length=1, max_length=64)
+    framework: str = Field(..., min_length=1, description="A framework id from the runner's scan")
+    instructions: str | None = Field(
+        None, description="How the agent should work; saved as its notes, which it reads first"
+    )
+    description: str = ""
+    cwd: str | None = Field(None, description="Folder to start it in; inside one of the roots")
+    created_by: str | None = None
 
 
 # ── A2A bridge state (the Network views) ─────────────────────────────────────

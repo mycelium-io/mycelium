@@ -332,15 +332,22 @@ def start_local(
     cwd: Path,
     worktree: bool,
     me: str,
+    write_manifests: bool = True,
+    carry: dict[str, str] | None = None,
 ) -> LocalTeam:
-    """Open a herdr workspace with one ``kind`` agent per member, each set up as itself."""
+    """Open a herdr workspace with one ``kind`` agent per member, each set up as itself.
+
+    ``write_manifests`` is off when the members were already written into the
+    room, as the hub does for a swarm the app starts on a runner. ``carry`` is
+    extra environment for every pane.
+    """
     from mycelium.commands.agent import _write_manifest
     from mycelium.integrations import AddOptions, get_integration
     from mycelium.integrations.herdr import HerdrPaneMapping
 
     # The hub this swarm was started against, when the environment chose it,
     # so a member's `mycelium` reaches the same hub rather than its config's.
-    carried = {k: os.environ[k] for k in CARRIED_ENV if os.environ.get(k)}
+    carried = {k: os.environ[k] for k in CARRIED_ENV if os.environ.get(k)} | (carry or {})
 
     def env(handle: str) -> dict[str, str]:
         return {**carried, "MYCELIUM_AGENT_HANDLE": handle, "MYCELIUM_ROOM_ID": room}
@@ -360,6 +367,11 @@ def start_local(
 
     for handle, pane in local.panes.items():
         _start_when_ready(bridge, handle, kind, pane)
+        if not write_manifests:
+            bridge.registry.set(
+                HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=kind, managed=True)
+            )
+            continue
         manifest = get_integration("claude_code", cwd=str(dirs[handle])).build_manifest(
             handle=handle,
             opts=AddOptions(room=room),
