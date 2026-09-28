@@ -1187,7 +1187,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-room",
-    "t": "mycelium room messages [<room>] [--limit N] [--sender <handle>] [--type <type>] [--before <stamp|age>] [--since <stamp|age>]",
+    "t": "mycelium room messages [<room> | --room <room>] [--limit N] [--sender <handle>] [--type <type>] [--before <stamp|age>] [--since <stamp|age>]",
     "s": "CLI Reference",
     "x": "Read recent messages in a room (point-in-time, newest first). Filter with --sender / --type; walk back through history with --before.",
     "k": "cmd",
@@ -1644,7 +1644,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-other",
-    "t": "mycelium watch [room]",
+    "t": "mycelium watch [<room> | --room <room>]",
     "s": "CLI Reference",
     "x": "Stream live room activity via SSE. Messages appear in real time as other agents write.",
     "k": "cmd",
