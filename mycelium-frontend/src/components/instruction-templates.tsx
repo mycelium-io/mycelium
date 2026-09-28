@@ -7,28 +7,28 @@ import { useState } from "react";
 import { ChevronDown, Trash2 } from "lucide-react";
 import {
   BUILT_IN,
-  deleteExample,
+  deleteTemplate,
   loadSaved,
-  saveExample,
-  type InstructionExample,
-} from "@/lib/instruction-examples";
+  saveTemplate,
+  type InstructionTemplate,
+} from "@/lib/instruction-templates";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 
 /**
- * A menu of example instructions to start from, and a way to keep your own.
+ * A menu of instruction templates to start from, and a way to keep your own.
  * Yours are saved in this browser only.
  */
-export function InstructionExamples({
+export function InstructionTemplates({
   current,
   onPick,
 }: {
-  /** What the instructions box holds now, which "Save as example" keeps. */
+  /** What the instructions box holds now, which "Save as a template" keeps. */
   current: string;
-  onPick: (example: InstructionExample) => void;
+  onPick: (template: InstructionTemplate) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [saved, setSaved] = useState<InstructionExample[]>([]);
+  const [saved, setSaved] = useState<InstructionTemplate[]>([]);
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
 
@@ -51,30 +51,30 @@ export function InstructionExamples({
           />
         }
       >
-        Examples <ChevronDown className="size-3" />
+        Templates <ChevronDown className="size-3" />
       </PopoverTrigger>
       <PopoverContent className="w-72 p-1" align="end">
-        {[...saved, ...BUILT_IN].map((e) => (
-          <div key={`${e.saved ? "saved" : "built"}-${e.name}`} className="group flex items-start">
+        {[...saved, ...BUILT_IN].map((t) => (
+          <div key={`${t.saved ? "saved" : "built"}-${t.name}`} className="group flex items-start">
             <button
               type="button"
               onClick={() => {
-                onPick(e);
+                onPick(t);
                 setOpen(false);
               }}
               className="min-w-0 flex-1 rounded-md px-2.5 py-1.5 text-left hover:bg-hairline"
             >
               <span className="block text-label font-medium text-text">
-                {e.name}
-                {e.saved && <span className="ml-1.5 text-micro font-normal text-faint">yours</span>}
+                {t.name}
+                {t.saved && <span className="ml-1.5 text-micro font-normal text-faint">yours</span>}
               </span>
-              <span className="line-clamp-1 text-micro text-muted-foreground">{e.text}</span>
+              <span className="line-clamp-1 text-micro text-muted-foreground">{t.text}</span>
             </button>
-            {e.saved && (
+            {t.saved && (
               <button
                 type="button"
-                aria-label={`Delete ${e.name}`}
-                onClick={() => setSaved(deleteExample(e.name))}
+                aria-label={`Delete ${t.name}`}
+                onClick={() => setSaved(deleteTemplate(t.name))}
                 className="mt-1.5 mr-1 rounded p-1 text-faint opacity-0 hover:text-red group-hover:opacity-100 focus:opacity-100"
               >
                 <Trash2 className="size-3.5" />
@@ -89,14 +89,14 @@ export function InstructionExamples({
               onSubmit={(ev) => {
                 ev.preventDefault();
                 if (!name.trim()) return;
-                setSaved(saveExample(name, current));
+                setSaved(saveTemplate(name, current));
                 setName("");
                 setNaming(false);
               }}
             >
               <input
                 autoFocus
-                aria-label="Example name"
+                aria-label="Template name"
                 value={name}
                 onChange={(ev) => setName(ev.target.value)}
                 placeholder="Name"
@@ -113,7 +113,7 @@ export function InstructionExamples({
               onClick={() => setNaming(true)}
               className="w-full rounded-md px-1.5 py-1 text-left text-micro text-accent hover:bg-hairline disabled:cursor-not-allowed disabled:text-faint disabled:hover:bg-transparent"
             >
-              {canSave ? "Save these instructions as an example" : "Write instructions to save them"}
+              {canSave ? "Save these instructions as a template" : "Write instructions to save them"}
             </button>
           )}
         </div>

@@ -5,25 +5,25 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BUILT_IN,
   STORAGE_KEY,
-  deleteExample,
+  deleteTemplate,
   loadSaved,
-  saveExample,
-} from "@/lib/instruction-examples";
+  saveTemplate,
+} from "@/lib/instruction-templates";
 
 afterEach(() => {
   window.localStorage.clear();
   vi.restoreAllMocks();
 });
 
-describe("instruction examples", () => {
+describe("instruction templates", () => {
   it("ships a few to start from", () => {
-    expect(BUILT_IN.map((e) => e.name)).toContain("reviewer");
-    expect(BUILT_IN.every((e) => e.text.length > 0)).toBe(true);
+    expect(BUILT_IN.map((t) => t.name)).toContain("reviewer");
+    expect(BUILT_IN.every((t) => t.text.length > 0)).toBe(true);
   });
 
   it("keeps saved ones in this browser, one per name", () => {
-    saveExample(" triager ", "Sort new issues.");
-    saveExample("triager", "Sort new issues by area.");
+    saveTemplate(" triager ", "Sort new issues.");
+    saveTemplate("triager", "Sort new issues by area.");
     expect(loadSaved()).toEqual([{ name: "triager", text: "Sort new issues by area.", saved: true }]);
     expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "")).toEqual([
       { name: "triager", text: "Sort new issues by area." },
@@ -31,10 +31,10 @@ describe("instruction examples", () => {
   });
 
   it("deletes a saved one", () => {
-    saveExample("a", "one");
-    saveExample("b", "two");
-    expect(deleteExample("a").map((e) => e.name)).toEqual(["b"]);
-    expect(loadSaved().map((e) => e.name)).toEqual(["b"]);
+    saveTemplate("a", "one");
+    saveTemplate("b", "two");
+    expect(deleteTemplate("a").map((t) => t.name)).toEqual(["b"]);
+    expect(loadSaved().map((t) => t.name)).toEqual(["b"]);
   });
 
   it("reads nothing from storage it can't use", () => {

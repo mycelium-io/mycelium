@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-// Examples for an agent's instructions: a few built in, and the ones a person
-// saved, kept in this browser's localStorage. Saved examples are a per-viewer
+// Templates for an agent's instructions: a few built in, and the ones a person
+// saved, kept in this browser's localStorage. Saved templates are a per-viewer
 // convenience, so a read or write that fails (private mode, blocked storage)
 // just leaves the built-in ones.
 
-export interface InstructionExample {
+export interface InstructionTemplate {
   /** Shown in the menu, and the handle suggested when the handle is still empty. */
   name: string;
   text: string;
@@ -14,9 +14,9 @@ export interface InstructionExample {
   saved?: boolean;
 }
 
-export const STORAGE_KEY = "mycelium.instruction-examples";
+export const STORAGE_KEY = "mycelium.instruction-templates";
 
-export const BUILT_IN: InstructionExample[] = [
+export const BUILT_IN: InstructionTemplate[] = [
   {
     name: "reviewer",
     text:
@@ -51,46 +51,46 @@ export const BUILT_IN: InstructionExample[] = [
   },
 ];
 
-export function loadSaved(): InstructionExample[] {
+export function loadSaved(): InstructionTemplate[] {
   if (typeof window === "undefined") return [];
   try {
     const parsed: unknown = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "[]");
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter(
-        (e): e is InstructionExample =>
-          !!e && typeof e.name === "string" && typeof e.text === "string" && !!e.name.trim(),
+        (t): t is InstructionTemplate =>
+          !!t && typeof t.name === "string" && typeof t.text === "string" && !!t.name.trim(),
       )
-      .map((e) => ({ name: e.name, text: e.text, saved: true }));
+      .map((t) => ({ name: t.name, text: t.text, saved: true }));
   } catch {
     return [];
   }
 }
 
-function store(list: InstructionExample[]): void {
+function store(list: InstructionTemplate[]): void {
   try {
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify(list.map(({ name, text }) => ({ name, text }))),
     );
   } catch {
-    // Storage blocked or full: the example lasts until the page closes.
+    // Storage blocked or full: the template lasts until the page closes.
   }
 }
 
-/** Save an example under ``name``, replacing one saved under the same name. */
-export function saveExample(name: string, text: string): InstructionExample[] {
+/** Save a template under ``name``, replacing one saved under the same name. */
+export function saveTemplate(name: string, text: string): InstructionTemplate[] {
   const clean = name.trim();
   const next = [
-    ...loadSaved().filter((e) => e.name !== clean),
+    ...loadSaved().filter((t) => t.name !== clean),
     { name: clean, text: text.trim(), saved: true },
   ];
   store(next);
   return next;
 }
 
-export function deleteExample(name: string): InstructionExample[] {
-  const next = loadSaved().filter((e) => e.name !== name);
+export function deleteTemplate(name: string): InstructionTemplate[] {
+  const next = loadSaved().filter((t) => t.name !== name);
   store(next);
   return next;
 }

@@ -10,7 +10,7 @@ import { launchable, runnerName, useRunnerJob, useRunners, useRunnersRevalidate 
 import { useRoomRevalidate } from "@/lib/room-data";
 import { useCurrentUser } from "@/components/current-user";
 import { Button } from "@/components/ui/button";
-import { InstructionExamples } from "@/components/instruction-examples";
+import { InstructionTemplates } from "@/components/instruction-templates";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -185,11 +185,11 @@ export function LaunchAgentForm({
           <label htmlFor="launch-instructions" className="text-micro font-medium text-muted-foreground">
             Instructions <span className="font-normal text-faint">saved as its notes</span>
           </label>
-          <InstructionExamples
+          <InstructionTemplates
             current={instructions}
-            onPick={(example) => {
-              setInstructions(example.text);
-              if (!handle.trim()) setHandle(example.name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-"));
+            onPick={(template) => {
+              setInstructions(template.text);
+              if (!handle.trim()) setHandle(template.name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-"));
             }}
           />
         </div>
