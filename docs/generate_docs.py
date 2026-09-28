@@ -84,6 +84,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("guides/hub-and-spoke.md",       "hub-and-spoke",      "reference", "Guides",       "Hub & Spoke"),
     ("guides/ephemeral-agents.md",    "ephemeral-agents",   "reference", "Guides",       "Ephemeral Agents"),
     ("guides/herdr.md",               "herdr",              "reference", "Guides",       "Persistent Agents (herdr)"),
+    ("guides/desktop.md",             "desktop",            "reference", "Guides",       "The Mac App"),
     ("guides/machines.md",            "machines",           "reference", "Guides",       "Start Agents From the App"),
     ("guides/security-planes.md",     "security-planes",    "reference", "Guides",       "Security Planes"),
     ("guides/auth.md",                "auth",               "reference", "Guides",       "Authentication"),

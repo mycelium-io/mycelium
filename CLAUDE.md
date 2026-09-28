@@ -22,6 +22,11 @@ fastapi-backend/    FastAPI backend, room moderator + persister (Python 3.12).
 mycelium-cli/       CLI tool (typer, Rich, typed OpenAPI client)
 mycelium-client/    Generated OpenAPI client (openapi-python-client)
 mycelium-frontend/  Next.js frontend (TypeScript, Tailwind)
+mycelium-desktop/   Mycelium for Mac: a Tauri 2 shell over `mycelium desktop
+                    serve`, with the hub, UI, SLIM node (slimctl), herdr, Node,
+                    Pi and the search model inside
+                    (`scripts/stage-sidecars.sh`). Released as
+                    Mycelium-macos-arm64.dmg; unsigned for now.
 docs/               Docs site (generated from mycelium-cli/src/mycelium/docs/),
                     demo script, design notes
 shotkit/            The repo's camera: fast screenshots of the running app and of
@@ -341,6 +346,23 @@ is no litellm dependency.
   runs `swarm.start_local`/`brief_local`/`kick_off` exactly as the CLI does.
   The runner also runs the `herdr sync` loop, over the workspaces it opened
   only; any other binding is the user's own `herdr sync`'s.
+- **The Mac app is a window over a supervisor the CLI owns, and needs no
+  Docker.** `mycelium desktop serve` (`mycelium/desktop/supervisor.py`) runs
+  herdr's server, a native SLIM node (`slimctl slim start`, pinned 2.1.x to
+  match `slim-bindings`), the hub, the UI and the runner, each once the one
+  before answers; `--mode client` runs only herdr and the runner against a
+  hub elsewhere. It restarts what crashes with backoff, says why from the
+  program's own last output, treats a port something else already answers as
+  running (so it sits beside a Docker stack), leaves herdr running on stop
+  (agents live in it), and writes everything to
+  `~/.mycelium/logs/desktop.log`. Programs are found in the app bundle, then
+  a checkout, then PATH. `mycelium-desktop/` (Tauri 2) adds first run, the
+  menu bar, `mycelium://join|terminal` links and an agents terminal that can
+  start only herdr; the hub's pages get no IPC and reach the app only by
+  those links. The web UI knows it is inside the app by the
+  `MyceliumDesktop/` user agent. `doctor --mode desktop`
+  (`mycelium/desktop/checks.py`) checks what the app runs, and the app shows
+  it as its health check.
 - **The aligner mediates, inside a task.** Agents never talk to each other directly;
   all coordination flows through the aligner. It's a first-party engine registered
   as a room citizen (`mycelium engine create aligner --kind aligner`) and summoned

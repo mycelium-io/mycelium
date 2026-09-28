@@ -181,6 +181,7 @@
           <a href="reference.html#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
           <a href="reference.html#ephemeral-agents" class="nav-link sub">Ephemeral Agents</a>
           <a href="reference.html#herdr" class="nav-link sub">Persistent Agents (herdr)</a>
+          <a href="reference.html#desktop" class="nav-link sub">The Mac App</a>
           <a href="reference.html#machines" class="nav-link sub">Start Agents From the App</a>
           <a href="reference.html#security-planes" class="nav-link sub">Security Planes</a>
           <a href="reference.html#auth" class="nav-link sub">Authentication</a>
@@ -308,8 +309,15 @@
 
     <section class="doc-section" id="quickstart">
       <h1>Quick Start</h1>
-      <p>Mycelium runs on a server your team connects to. The easiest way to set one up is to ask your coding agent to do it.</p>
+      <p>There are two ways to install Mycelium.</p>
+      <ul>
+        <li><strong>On a Mac, use the app.</strong> It&#x27;s the quickest start: one download, no Docker, no terminal. It runs a hub on your Mac or joins your team&#x27;s, and starts your coding agents when you ask. <strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg">Download Mycelium for Mac</a></strong>, then see <a href="reference.html#desktop">The Mac App</a>.</li>
+        <li><strong>On Linux, a server, or from a terminal, use the CLI.</strong> It runs the hub with Docker. The rest of this page covers it.</li>
+      </ul>
+      <figure class="doc-figure"><img class="doc-img" src="desktop-onboarding.png" alt="Mycelium for Mac, first screen" loading="lazy">
+      </figure>
       <h2 id="quickstart-start-with-a-prompt">Start with a prompt</h2>
+      <p>Mycelium runs on a server your team connects to. The easiest way to set one up from the command line is to ask your coding agent to do it.</p>
       <p>Paste this into any coding agent that can run shell commands:</p>
       <pre><code>Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium</code></pre>
       <p>It reads <a href="agents.md">agents.md</a>, a setup guide written for agents, and does the whole setup: starts the server with Docker, configures your model, creates a room and adds itself to it. When it&#x27;s done, open the app to see what&#x27;s going on.</p>

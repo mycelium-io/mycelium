@@ -101,6 +101,23 @@ def test_a_crash_is_restarted_and_one_that_keeps_crashing_is_left_failed():
     assert "keeps exiting (last exit code 3)" in details[-1]
 
 
+def test_a_crash_says_what_the_program_said():
+    # A UI missing a dependency exits at once; the reason is in its output,
+    # and the status carries it where the app shows it.
+    events = Events()
+    noisy = comp(
+        "ui",
+        [
+            sys.executable,
+            "-c",
+            "print('booting'); print(\"Error: Cannot find module 'next'\"); raise SystemExit(1)",
+        ],
+        ready=lambda: False,
+    )
+    run_until(hub(events, [noisy]), lambda: noisy.state == "failed")
+    assert "Cannot find module 'next'" in (noisy.detail or "")
+
+
 def test_something_already_on_the_port_counts_as_running():
     events = Events()
     outside = comp("hub", EXIT, external=lambda: True)
@@ -132,7 +149,7 @@ def test_stopping_stops_the_children():
     assert events.state("slim") == "stopped"
 
 
-def test_client_mode_runs_only_the_runner_against_the_hub():
+def test_client_mode_runs_herdr_and_the_runner_against_the_hub():
     events = Events()
     sup = Supervisor(
         "client", hub_url="https://hub.example.com/", emit=events, env={}, start_runner=False
@@ -140,6 +157,7 @@ def test_client_mode_runs_only_the_runner_against_the_hub():
     status = sup.status()
     assert status["ui_url"] == status["api_url"] == "https://hub.example.com"
     assert {k: v["state"] for k, v in status["components"].items()} == {
+        "herdr": "stopped",
         "slim": "disabled",
         "hub": "disabled",
         "ui": "disabled",
@@ -147,6 +165,17 @@ def test_client_mode_runs_only_the_runner_against_the_hub():
     }
     with pytest.raises(ValueError, match="needs the hub's URL"):
         Supervisor("client", emit=events, env={})
+
+
+def test_herdr_is_left_running_when_mycelium_stops():
+    # Agents live in herdr's panes; quitting Mycelium must not end them.
+    events = Events()
+    herdr = comp("herdr", SLEEP, outlives=True)
+    sup = hub(events, [herdr])
+    run_until(sup, lambda: herdr.state == "running")
+    assert herdr.proc is not None
+    assert herdr.proc.poll() is None
+    herdr.proc.kill()
 
 
 def test_programs_are_found_in_the_bundle_before_the_path(
@@ -157,8 +186,11 @@ def test_programs_are_found_in_the_bundle_before_the_path(
     macos.mkdir(parents=True)
     (resources / "ui" / ".next" / "static").mkdir(parents=True)
     (resources / "ui" / "server.js").write_text("")
-    for name in ("slimctl", "mycelium-hub", "node"):
+    for name in ("slimctl", "node"):
         (macos / name).write_text("")
+    (resources / "hub").mkdir()
+    (resources / "hub" / "mycelium-hub").write_text("")
+    (resources / "models").mkdir()
     monkeypatch.delenv("MYCELIUM_SLIMCTL", raising=False)
     monkeypatch.delenv("MYCELIUM_HUB_CMD", raising=False)
     monkeypatch.delenv("MYCELIUM_UI_DIR", raising=False)
@@ -166,8 +198,10 @@ def test_programs_are_found_in_the_bundle_before_the_path(
     loc = Locator(bundle=macos, repo=None)
 
     assert loc.slim()[:3] == [str(macos / "slimctl"), "slim", "start"]
-    assert loc.hub()[0][0] == str(macos / "mycelium-hub")
+    assert loc.hub()[0][0] == str(resources / "hub" / "mycelium-hub")
     assert loc.ui() == ([str(macos / "node"), "server.js"], resources / "ui")
+    assert loc.models() == resources / "models"
+    assert Locator(bundle=None, repo=None).models() == Path.home() / ".mycelium" / "models"
 
     monkeypatch.setenv("MYCELIUM_HUB_CMD", "my-hub --port 9")
     assert loc.hub() == (["my-hub", "--port", "9"], None)

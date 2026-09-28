@@ -5,10 +5,14 @@
 
 Two modes, which are what the desktop app offers on its first screen:
 
-- **hub**: this machine runs the hub. A SLIM node (``slimctl slim start``),
-  the hub's API, the UI server, and the runner, each started in order once the
-  one before it answers.
-- **client**: another machine runs the hub. Only the runner, pointed at it.
+- **hub**: this machine runs the hub. herdr's server, a SLIM node
+  (``slimctl slim start``), the hub's API, the UI server, and the runner, each
+  started in order once the one before it answers.
+- **client**: another machine runs the hub. herdr's server and the runner,
+  pointed at it.
+
+herdr's server is started only when none is running, and is left running
+when the supervisor stops: agents live in its panes.
 
 Everything the app shows comes from here as JSON lines on stdout (a status
 object on every change, log lines, errors), so the app is a window over this
@@ -35,6 +39,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -57,6 +62,10 @@ BACKOFF_S = (1.0, 2.0, 4.0, 8.0, 16.0)
 MAX_RESTARTS = len(BACKOFF_S)
 #: How often the supervisor looks at its processes.
 TICK_S = 0.5
+#: How many lines of each component's output are kept to explain a crash.
+TAIL_LINES = 40
+#: Everything the supervisor says, for when something goes wrong.
+LOG_PATH = Path.home() / ".mycelium" / "logs" / "desktop.log"
 
 
 class LocateError(Exception):
@@ -123,7 +132,7 @@ class Locator:
     def hub(self) -> tuple[list[str], Path | None]:
         if cmd := os.environ.get("MYCELIUM_HUB_CMD"):
             return shlex.split(cmd), None
-        if bundled := self._bundled("mycelium-hub"):
+        if bundled := self._bundled("hub/mycelium-hub") or self._bundled("mycelium-hub"):
             return [str(bundled), "--host", HOST, "--port", str(HUB_PORT)], None
         if self.repo is not None and shutil.which("uv"):
             backend = self.repo / "fastapi-backend"
@@ -133,6 +142,29 @@ class Locator:
             "This build doesn't include the hub, and there's no Mycelium checkout to run "
             "it from. Use the desktop app, or run the hub with Docker (mycelium up)."
         )
+
+    def herdr(self) -> list[str]:
+        exe = self._bundled("herdr") or shutil.which("herdr")
+        if not exe:
+            raise LocateError(
+                "herdr isn't installed, so no agent can start here. See https://herdr.dev"
+            )
+        return [str(exe), "server"]
+
+    def pi(self) -> str | None:
+        """Pi, which the engines think with: the app's own, else one on PATH."""
+        return (
+            os.environ.get("ALIGNER_PI_BINARY")
+            or (str(bundled) if (bundled := self._bundled("pi/pi")) else None)
+            or shutil.which("pi")
+        )
+
+    def models(self) -> Path:
+        """Where the hub's embedding model is: the app's own copy, else a cache it fills.
+
+        The container keeps it at ``/opt/fastembed``, which is no place on a Mac.
+        """
+        return self._bundled("models") or Path.home() / ".mycelium" / "models"
 
     def ui(self) -> tuple[list[str], Path | None]:
         node = os.environ.get("MYCELIUM_NODE") or self._bundled("node") or shutil.which("node")
@@ -182,12 +214,23 @@ class Component:
     env: dict[str, str] = field(default_factory=dict)
     #: A check that something outside the supervisor already provides this.
     external: Callable[[], bool] | None = None
+    #: Left running when the supervisor stops (herdr: agents live in it).
+    outlives: bool = False
     state: State = "stopped"
     detail: str | None = None
     proc: subprocess.Popen | None = None
     restarts: int = 0
     started_at: float = 0.0
     retry_at: float = 0.0
+    #: Its last lines of output, so a crash can say why.
+    tail: deque[str] = field(default_factory=lambda: deque(maxlen=TAIL_LINES))
+
+    def last_words(self) -> str:
+        """The line most likely to say why it stopped: its last error-looking line, else its last."""
+        for line in reversed(self.tail):
+            if any(w in line for w in ("Error", "error", "Traceback", "panic", "FATAL")):
+                return line.strip()[:240]
+        return self.tail[-1].strip()[:240] if self.tail else ""
 
     def wire(self) -> dict[str, Any]:
         return {"state": self.state, "detail": self.detail}
@@ -224,7 +267,9 @@ class Supervisor:
         self.runner: Any = None
         self.runner_state: State = "stopped"
         self.runner_detail: str | None = None
-        self.components: list[Component] = self._components() if mode == "hub" else []
+        self.components: list[Component] = [self._herdr()]
+        if mode == "hub":
+            self.components += self._components()
 
     # ── what runs ────────────────────────────────────────────────────────────
 
@@ -236,13 +281,38 @@ class Supervisor:
     def ui_url(self) -> str:
         return f"http://{HOST}:{UI_PORT}" if self.mode == "hub" else str(self.hub_url)
 
+    def _herdr(self) -> Component:
+        """herdr's server, which agents run in: started when it isn't already.
+
+        It outlives the supervisor, since quitting Mycelium must not end the
+        agents' sessions.
+        """
+        from mycelium.integrations.herdr import HerdrBridge
+
+        def up() -> bool:
+            try:
+                return HerdrBridge().available()
+            except Exception:  # noqa: BLE001 - "can't tell" reads as not up
+                return False
+
+        return Component(
+            name="herdr",
+            argv=lambda: (self.locator.herdr(), None),
+            ready=up,
+            external=up,
+            outlives=True,
+        )
+
     def _components(self) -> list[Component]:
         loc = self.locator
         hub_env_vars = {
             **self.env,
             "SLIM_NODE_ENDPOINT": f"http://{HOST}:{SLIM_PORT}",
             "MYCELIUM_SLIM_ENDPOINT": f"http://{HOST}:{SLIM_PORT}",
+            "FASTEMBED_CACHE_PATH": str(loc.models()),
         }
+        if pi := loc.pi():
+            hub_env_vars["ALIGNER_PI_BINARY"] = pi
         ui_env = {
             "PORT": str(UI_PORT),
             "HOSTNAME": HOST,
@@ -308,6 +378,7 @@ class Supervisor:
         for raw in iter(stream.readline, ""):
             line = raw.rstrip()
             if line:
+                c.tail.append(line)
                 self.emit({"type": "log", "component": c.name, "line": line})
 
     def _spawn(self, c: Component) -> None:
@@ -355,11 +426,23 @@ class Supervisor:
             c.proc = None
             c.restarts += 1
             if c.restarts > MAX_RESTARTS:
-                self._set(c, "failed", f"{c.name} keeps exiting (last exit code {code})")
+                why = c.last_words()
+                self._set(
+                    c,
+                    "failed",
+                    f"{c.name} keeps exiting (last exit code {code})" + (f": {why}" if why else ""),
+                )
                 return False
             wait = BACKOFF_S[min(c.restarts, len(BACKOFF_S)) - 1]
             c.retry_at = time.monotonic() + wait
-            self._set(c, "starting", f"exited with code {code}; starting again in {wait:.0f}s")
+            why = c.last_words()
+            self._set(
+                c,
+                "starting",
+                f"exited with code {code}"
+                + (f" ({why})" if why else "")
+                + f"; starting again in {wait:.0f}s",
+            )
             return False
         if c.state == "starting":
             if c.ready():
@@ -448,7 +531,7 @@ class Supervisor:
             self.runner.goodbye()
             self.runner_state = "stopped"
         for c in reversed(self.components):
-            if c.proc is not None:
+            if c.proc is not None and not c.outlives:
                 self._terminate(c)
                 c.state = "stopped"
         self._publish()

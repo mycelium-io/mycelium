@@ -31,6 +31,24 @@ console = Console(stderr=True)
 _MARK = {"running": "[green]●[/]", "starting": "[yellow]◐[/]", "failed": "[red]✗[/]"}
 
 
+def _log_line(event: dict[str, Any]) -> str:
+    """One event as a line of the log file."""
+    import time
+
+    stamp = time.strftime("%H:%M:%S")
+    kind = event.get("type")
+    if kind == "log":
+        return f"{stamp} {event['component']:>6} | {event['line']}"
+    if kind == "error":
+        return f"{stamp} {event['component']:>6} ! {event['message']}"
+    states = ", ".join(
+        f"{name} {c['state']}" + (f" ({c['detail']})" if c.get("detail") else "")
+        for name, c in event.get("components", {}).items()
+        if c["state"] != "disabled"
+    )
+    return f"{stamp} status - {states}"
+
+
 def _human(event: dict[str, Any]) -> None:
     kind = event.get("type")
     if kind == "status":
@@ -79,14 +97,21 @@ def serve(
         console.print("[red]--mode client needs --hub-url.[/]")
         raise typer.Exit(2)
 
+    from mycelium.desktop.supervisor import LOG_PATH
+
     lock = threading.Lock()
+    # One log per run: what every part said, and each change of state.
+    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    log_file = LOG_PATH.open("w", encoding="utf-8")
 
     def emit(event: dict[str, Any]) -> None:
-        if json_out:
-            with lock:
+        with lock:
+            log_file.write(_log_line(event) + "\n")
+            log_file.flush()
+            if json_out:
                 sys.stdout.write(json.dumps(event) + "\n")
                 sys.stdout.flush()
-        elif event.get("type") != "log":
+        if not json_out and event.get("type") != "log":
             _human(event)
 
     roots = [p.expanduser().resolve() for p in (root or [Path.home()])]
