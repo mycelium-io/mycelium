@@ -2091,7 +2091,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#machines-how-it-connects",
     "t": "How it connects",
     "s": "Guides › Start Agents From the App",
-    "x": "The runner only ever connects out to the hub. The app never talks to your machine directly: it asks the hub, and the hub hands the request to the runner the next time the runner checks in (a few seconds at most). So it works the same whether the hub is on your laptop or on a server somewhere else, and whether or not your laptop can be reached from outside.",
+    "x": "The runner only ever connects out to the hub. The app never talks to your machine directly: it asks the hub, and the hub hands the request to the runner the next time the runner checks in (a few seconds at most). So it works the same whether the hub is on your laptop or on a server somewhere else, and whether or not your laptop can be reached from outside. Before it starts anything, it asks you (below).",
     "p": "Reference"
   },
   {
@@ -2126,14 +2126,21 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#machines-running-it-in-the-background",
     "t": "Running it in the background",
     "s": "Guides › Start Agents From the App",
-    "x": "mycelium runner --detach # start in the background mycelium runner status # is it running, and does the hub see it? mycelium runner stop # stop it; agents it started keep running The Machines page (the laptop icon beside the notification bell) lists every connected runner, what it found, the agents it is running, and its recent requests.",
+    "x": "mycelium runner --detach # start in the background mycelium runner status # is it running, and does the hub see it? mycelium runner stop # stop it; agents it started keep running The Machines page (the laptop icon beside the notification bell) lists your connected runners, what each found, the agents it is running, and its recent requests.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#machines-who-can-use-it",
-    "t": "Who can use it",
+    "u": "reference.html#machines-you-say-yes-on-the-machine",
+    "t": "You say yes on the machine",
     "s": "Guides › Start Agents From the App",
-    "x": "A runner does what the hub asks. With the hub's sign-in turned off, anyone who can reach the hub can start agents on a connected machine, within its folders and its scan. On a shared or public hub, turn sign-in on before connecting a runner.",
+    "x": "Anyone who can reach a hub can ask it for an agent on any machine connected to it, and the hub can't prove who asked. So the runner asks you before it starts anything. It shows who the hub says asked, the agent CLI, the folder, and the start of the agent's instructions: in the Mac app, as a dialog with Start and Decline; from a terminal, in the runner's output, answered with a command: mycelium runner requests # what",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#machines-only-your-machines-are-listed",
+    "t": "Only your machines are listed",
+    "s": "Guides › Start Agents From the App",
+    "x": "The Machines page and where it runs show only your own machines, never anyone else's. In the Mac app that is the Mac it runs on. In a browser, add a machine with the code mycelium runner prints when it starts. With the hub's sign-in turned on, the hub itself shows each person only the machines they own.",
     "p": "Reference"
   },
   {

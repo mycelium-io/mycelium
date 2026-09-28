@@ -261,6 +261,59 @@ async def test_the_runner_takes_jobs_in_order_and_reports_them(client, room, run
 
 
 @pytest.mark.asyncio
+async def test_a_launch_waiting_for_a_yes_on_the_machine_reads_as_waiting(client, room, runner):
+    await client.post(
+        f"/api/runners/{RUNNER}/agents", json={"room": room, "handle": "one", "framework": "claude"}
+    )
+    job = (await client.get(f"/api/runners/{RUNNER}/jobs/next?timeout=0")).json()
+    waiting = await client.patch(
+        f"/api/runners/{RUNNER}/jobs/{job['id']}", json={"status": "waiting"}
+    )
+    assert waiting.json()["status"] == "waiting"
+    # A job being asked about isn't handed out again.
+    assert (await client.get(f"/api/runners/{RUNNER}/jobs/next?timeout=0")).status_code == 204
+
+
+@pytest.fixture
+def signed_in_as(monkeypatch):
+    """Calls to the app's runner routes carry a verified token for ``handle``."""
+    from app.services.auth import Principal
+
+    def sign_in(handle: str) -> None:
+        principal = Principal(subject=handle, handle=handle, role="user", issuer="test")
+        monkeypatch.setattr("app.services.actor.current_principal", lambda _request: principal)
+
+    return sign_in
+
+
+@pytest.mark.asyncio
+async def test_a_verified_caller_sees_and_asks_only_its_own_machines(
+    client, room, runner, signed_in_as
+):
+    await client.post("/api/runners", json=hello(id="bobs-mbp", label="Bob's Mac", owner="bob"))
+    signed_in_as("julia")
+
+    listed = (await client.get("/api/runners")).json()
+    assert [r["id"] for r in listed] == [RUNNER]
+    assert (await client.get("/api/runners/bobs-mbp")).status_code == 404
+    assert (await client.get("/api/runners/bobs-mbp/jobs")).status_code == 404
+    launch = await client.post(
+        "/api/runners/bobs-mbp/agents",
+        json={"room": room, "handle": "sneaky", "framework": "claude"},
+    )
+    assert launch.status_code == 404
+    assert read_memory_file(get_room_dir(room), "agents/sneaky") is None
+    assert (await client.post("/api/runners/bobs-mbp/scan")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_without_a_token_every_machine_is_listed(client, runner):
+    await client.post("/api/runners", json=hello(id="bobs-mbp", label="Bob's Mac", owner="bob"))
+    listed = (await client.get("/api/runners")).json()
+    assert {r["id"] for r in listed} == {RUNNER, "bobs-mbp"}
+
+
+@pytest.mark.asyncio
 async def test_the_long_poll_wakes_when_a_job_is_queued(client, runner):
     waiting = asyncio.create_task(client.get(f"/api/runners/{RUNNER}/jobs/next?timeout=5"))
     await asyncio.sleep(0.05)

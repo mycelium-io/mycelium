@@ -12,6 +12,12 @@ Starting an agent is written here, not on the runner: the manifest and its
 notes land in the room first, through the same upsert every writer uses, and
 only then is the launch queued. A launch the runner then fails leaves an agent
 defined in the room that can be started again, which is what the app shows.
+
+The hub is not what keeps a machine safe. Anyone who can reach it can queue a
+job, and nothing here can prove who asked, so the runner asks the person at
+its machine before it starts anything (``mycelium/runner/approvals.py``). What
+the hub does is keep machines to their owners when it can tell who is calling:
+with a verified token, a caller sees and asks only runners it owns.
 """
 
 from __future__ import annotations
@@ -52,9 +58,22 @@ _HANDLE_RE = re.compile(HANDLE_PATTERN)
 MAX_POLL_S = 30.0
 
 
-def _runner_or_404(runner_id: str) -> RunnerRead:
+def _yours(runner: RunnerRead, request: Request | None) -> bool:
+    """Whether a verified caller owns ``runner``; any caller, when none is verified.
+
+    Without a token the hub can't tell who is calling (the gate is off by
+    default), so it shows every runner and the runner's own question is the
+    only check. A runner that names no owner belongs to no one it could hide from.
+    """
+    principal = actor.current_principal(request)
+    if principal is None or not runner.owner:
+        return True
+    return norm_handle(runner.owner) == norm_handle(principal.handle)
+
+
+def _runner_or_404(runner_id: str, request: Request | None = None) -> RunnerRead:
     runner = registry.get(runner_id)
-    if runner is None:
+    if runner is None or not _yours(runner, request):
         raise HTTPException(status_code=404, detail="Runner not found")
     return runner
 
@@ -151,19 +170,20 @@ async def report_job(runner_id: str, job_id: str, payload: RunnerJobReport) -> R
 
 
 @router.get("", response_model=list[RunnerRead])
-async def list_runners() -> list[RunnerRead]:
-    """Every machine heard from recently, connected ones first."""
-    return registry.all()
+async def list_runners(request: Request) -> list[RunnerRead]:
+    """Every machine heard from recently, connected ones first (a verified caller's own only)."""
+    return [r for r in registry.all() if _yours(r, request)]
 
 
 @router.get("/{runner_id}", response_model=RunnerRead)
-async def get_runner(runner_id: str) -> RunnerRead:
-    return _runner_or_404(runner_id)
+async def get_runner(runner_id: str, request: Request) -> RunnerRead:
+    return _runner_or_404(runner_id, request)
 
 
 @router.get("/{runner_id}/jobs", response_model=list[RunnerJobRead])
-async def list_jobs(runner_id: str) -> list[RunnerJobRead]:
+async def list_jobs(runner_id: str, request: Request) -> list[RunnerJobRead]:
     """A runner's recent jobs, newest first."""
+    _runner_or_404(runner_id, request)
     jobs = registry.jobs(runner_id)
     if jobs is None:
         raise HTTPException(status_code=404, detail="Runner not found")
@@ -171,7 +191,8 @@ async def list_jobs(runner_id: str) -> list[RunnerJobRead]:
 
 
 @router.get("/{runner_id}/jobs/{job_id}", response_model=RunnerJobRead)
-async def get_job(runner_id: str, job_id: str) -> RunnerJobRead:
+async def get_job(runner_id: str, job_id: str, request: Request) -> RunnerJobRead:
+    _runner_or_404(runner_id, request)
     job = registry.job(runner_id, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -181,7 +202,7 @@ async def get_job(runner_id: str, job_id: str) -> RunnerJobRead:
 @router.post("/{runner_id}/scan", response_model=RunnerJobRead, status_code=201)
 async def rescan(runner_id: str, request: Request) -> RunnerJobRead:
     """Ask a runner to look for agent CLIs again; its next heartbeat carries what it found."""
-    runner = _runner_or_404(runner_id)
+    runner = _runner_or_404(runner_id, request)
     try:
         check_ready(runner)
     except RunnerError as exc:
@@ -198,8 +219,9 @@ async def launch_agent(
 
     An agent this runner started before is started again (with new notes when
     instructions are given); a handle that names any other agent is refused.
+    The runner asks the person at its machine before it starts it.
     """
-    runner = _runner_or_404(runner_id)
+    runner = _runner_or_404(runner_id, request)
     if not room_exists(payload.room):
         raise HTTPException(status_code=404, detail="Room not found")
     handle = norm_handle(payload.handle)
@@ -261,7 +283,7 @@ async def stop_agent(
     runner_id: str, room_name: str, handle: str, request: Request
 ) -> RunnerJobRead:
     """Stop an agent this runner started. It stays defined in the room, to start again."""
-    runner = _runner_or_404(runner_id)
+    runner = _runner_or_404(runner_id, request)
     try:
         check_ready(runner)
     except RunnerError as exc:

@@ -14,6 +14,7 @@ import {
   useRunnerJob,
   useRunnersRevalidate,
 } from "@/lib/runners";
+import { addMachine } from "@/lib/my-machines";
 import { CopyField } from "@/components/ui/copy-field";
 import { Button } from "@/components/ui/button";
 
@@ -21,8 +22,9 @@ import { Button } from "@/components/ui/button";
 export const CONNECT_COMMAND = "mycelium runner";
 
 /**
- * What to do when no machine is connected: run one command. The page follows
- * the runner list, so it moves on by itself once the machine checks in.
+ * What to do when none of your machines is connected: run one command, then
+ * add the machine to this browser with the code it prints. Only machines
+ * added here are listed, so nobody sees anyone else's (`my-machines.ts`).
  */
 export function ConnectMachine({ compact = false }: { compact?: boolean }) {
   return (
@@ -34,10 +36,42 @@ export function ConnectMachine({ compact = false }: { compact?: boolean }) {
       <p className="mt-1.5 text-label leading-relaxed text-muted-foreground">
         Run this in a terminal on the computer your agents should run on, with herdr open. It
         looks for the agent CLIs you have installed and lets this page start them in herdr, where
-        you can watch and type to them. This page updates once it connects.
+        you can watch and type to them. It asks you there before it starts anything.
       </p>
       <CopyField value={CONNECT_COMMAND} className="mt-3 font-mono" />
+      <AddMachineCode />
     </div>
+  );
+}
+
+/** Add a machine to this browser by the code `mycelium runner` prints. */
+export function AddMachineCode() {
+  const [code, setCode] = useState("");
+  return (
+    <form
+      className="mt-3 flex flex-wrap items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        addMachine(code);
+        setCode("");
+      }}
+    >
+      <label htmlFor="machine-code" className="text-label text-muted-foreground">
+        Then enter the code it prints:
+      </label>
+      <input
+        id="machine-code"
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+        placeholder="julias-mbp-3f2a"
+        spellCheck={false}
+        autoComplete="off"
+        className="h-8 min-w-0 flex-1 rounded-md border border-border bg-bg px-2 font-mono text-label text-text placeholder:text-faint focus:border-accent focus:outline-none"
+      />
+      <Button type="submit" variant="secondary" size="sm" disabled={!code.trim()}>
+        Add
+      </Button>
+    </form>
   );
 }
 

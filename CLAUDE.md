@@ -346,6 +346,23 @@ is no litellm dependency.
   runs `swarm.start_local`/`brief_local`/`kick_off` exactly as the CLI does.
   The runner also runs the `herdr sync` loop, over the workspaces it opened
   only; any other binding is the user's own `herdr sync`'s.
+- **A runner starts nothing a hub sent it without a yes on its machine.**
+  Anyone who can reach a hub can queue a job for any runner on it, and the
+  hub can't prove who asked, so the machine is the only place the check can
+  live. A `launch` or `swarm` job waits (reported `waiting`) until it is
+  answered in `mycelium/runner/approvals.py`: a question file under the
+  runner's folder and a `.yes`/`.no` beside it, written by the Mac app's
+  dialog (the supervisor emits a `request` event) or by `mycelium runner
+  approve|decline`. Nothing over the network can write that file; a job id
+  that isn't the hub's hex never becomes a file name. `scan` and `stop` don't
+  ask. The one exception is a hub the runner may trust: the Mac app's own,
+  and only when its supervisor started it (it listens on 127.0.0.1 alone; a
+  hub already on the port, like a Docker one publishing to the network, does
+  not count), or `--trust-hub` said by the person. The UI lists only your own
+  machines (`lib/my-machines.ts`: the one the app names with `?machine=`, ones
+  added by the code the runner prints, or ones owned by your principal), and
+  with a verified token the hub shows and serves a caller only runners it
+  owns. That listing is tidiness; the question on the machine is the security.
 - **The Mac app is a window over a supervisor the CLI owns, and needs no
   Docker.** `mycelium desktop serve` (`mycelium/desktop/supervisor.py`) runs
   herdr's server, a native SLIM node (`slimctl slim start`, pinned 2.1.x to

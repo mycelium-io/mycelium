@@ -16,6 +16,13 @@ The runner only ever dials out, so it works behind NAT and against a hub
 anywhere. A job names a framework from its own scan and a folder inside its
 own roots; it never carries a command, so what the hub can ask of this machine
 is exactly "start one of the agent CLIs you found, here, in herdr".
+
+Even that is asked of the person here first. Anyone who can reach a hub can
+queue a job for any runner on it, so a launch or a swarm waits for a yes on
+this machine (``approvals``) unless the runner trusts its hub: the Mac app's
+own hub, which only this machine can reach, or one the person said to trust
+with ``--trust-hub``. Scans and stops don't ask: a scan changes nothing, and a
+stop only ends an agent this machine already agreed to start.
 """
 
 from __future__ import annotations
@@ -26,10 +33,12 @@ import re
 import secrets
 import socket
 import threading
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from rich.console import Console
@@ -39,7 +48,12 @@ from mycelium.client import hub_client
 from mycelium.config import MyceliumConfig
 from mycelium.filesystem import get_mycelium_dir
 from mycelium.integrations.herdr import HerdrBridge, HerdrError, HerdrPaneMapping
-from mycelium.runner import frameworks
+from mycelium.runner import approvals, frameworks
+
+#: Jobs that start something on this machine, and so wait for a yes here.
+ASK_FIRST = frozenset({"launch", "swarm"})
+#: How much of an agent's instructions the question shows.
+NOTES_PREVIEW = 400
 
 #: How often the runner says hello when nothing else has.
 HEARTBEAT_S = 10.0
@@ -190,6 +204,16 @@ def _inside(path: Path, root: Path) -> bool:
     return path == root or root in path.parents
 
 
+def _tilde(path: Path) -> str:
+    home = Path.home()
+    return "~/" + str(path.relative_to(home)) if _inside(path, home) and path != home else str(path)
+
+
+def _clip(text: str, limit: int) -> str:
+    text = text.strip()
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
 class Runner:
     """This machine's runner. ``run()`` blocks; ``stop()`` ends it from another thread."""
 
@@ -202,8 +226,16 @@ class Runner:
         rid: str | None = None,
         state_path: Path | None = None,
         log: Console | None = None,
+        trust_hub: bool = False,
+        on_request: Callable[[dict[str, Any]], None] | None = None,
+        requests_base: Path | None = None,
     ) -> None:
         self.config = config
+        #: Start what the hub asks without asking here: only for a hub nobody else can reach.
+        self.trust_hub = trust_hub
+        #: Told of each question as it is asked (the Mac app shows it as a dialog).
+        self.on_request = on_request
+        self._requests_base = requests_base
         self.roots = [r.expanduser().resolve() for r in roots]
         self.bridge = bridge or HerdrBridge()
         self.id = rid or runner_id()
@@ -392,13 +424,24 @@ class Runner:
         self.state.workspaces[room] = (workspace, pane)
         return workspace, pane
 
-    def has_notes(self, room: str, handle: str) -> bool:
+    def notes(self, room: str, handle: str) -> str | None:
+        """An agent's notes as the hub has them, or ``None`` when it has none."""
         try:
             with hub_client(self.config, timeout=10) as client:
                 resp = client.get(f"/api/rooms/{room}/memory/agents/{handle}/notes")
         except httpx.HTTPError:
-            return False
-        return resp.status_code == 200 and resp.content not in (b"", b"null")
+            return None
+        if resp.status_code != 200 or resp.content in (b"", b"null"):
+            return None
+        try:
+            body = resp.json()
+        except ValueError:
+            return None
+        value = body.get("value") if isinstance(body, dict) else None
+        return str(value) if value else None
+
+    def has_notes(self, room: str, handle: str) -> bool:
+        return self.notes(room, handle) is not None
 
     def launch(self, spec: dict[str, Any]) -> dict[str, Any]:
         """Start one agent in a herdr pane, as ``@handle`` in ``room``, and tell it who it is."""
@@ -537,12 +580,85 @@ class Runner:
             return self.swarm(spec, job.get("created_by"))
         raise JobError(f"this runner doesn't know how to do '{kind}'; update mycelium here.")
 
+    def question(self, job: dict[str, Any]) -> dict[str, Any]:
+        """What the person here is asked before ``job`` runs, checked against this machine first.
+
+        A job this machine couldn't do anyway fails with ``JobError`` without
+        asking anyone. Who asked is what the hub says, which it can't prove;
+        the question says so.
+        """
+        kind, spec = job.get("kind"), job.get("spec") or {}
+        known = self.framework(str(spec.get("framework")))
+        cwd = self.folder(spec.get("cwd"))
+        room = str(spec.get("room"))
+        hub = urlparse(self.config.server.api_url).netloc or self.config.server.api_url
+        asked_by = job.get("created_by")
+        where = f"Room {room} on {hub}. Asked for by {'@' + asked_by if asked_by else 'someone on that hub'}."
+        if kind == "launch":
+            handle = str(spec.get("handle"))
+            title = f"Start @{handle} on {self.label}?"
+            message = f"{known.name} would start as @{handle}, working in {_tilde(cwd)}.\n\n{where}"
+            if notes := self.notes(room, handle):
+                message += f"\n\nIts instructions:\n{_clip(notes, NOTES_PREVIEW)}"
+        else:
+            team = [f"@{h}" for h in spec.get("team") or []]
+            title = f"Start a team of {len(team)} on {self.label}?"
+            message = (
+                f"{', '.join(team)} would start in {known.name}, working in {_tilde(cwd)}, "
+                f"on: {_clip(str(spec.get('task') or ''), 200)}\n\n{where}"
+            )
+        return {"kind": kind, "title": title, "message": message, "hub": hub, "asked_by": asked_by}
+
     def take(self, job: dict[str, Any]) -> None:
-        """Do one job and report it; a job that fails says why rather than raising."""
+        """Do one job and report it; a job that fails says why rather than raising.
+
+        A job that starts something waits for a yes here, on its own thread,
+        so a stop or a scan isn't held up behind a question nobody has seen.
+        """
         job_id = str(job["id"])
         self.log.print(
             f"[dim]job {job_id}: {job.get('kind')} {json.dumps(job.get('spec') or {})}[/dim]"
         )
+        if job.get("kind") in ASK_FIRST and not self.trust_hub:
+            threading.Thread(target=self._take_once_approved, args=(job,), daemon=True).start()
+            return
+        self._do_and_report(job)
+
+    def _take_once_approved(self, job: dict[str, Any]) -> None:
+        job_id = str(job["id"])
+        try:
+            request = approvals.ask(job_id, self.question(job), base=self._requests_base)
+        except (JobError, approvals.ApprovalError) as e:
+            self._report(job_id, "failed", None, str(e))
+            self.log.print(f"[red]job {job_id} failed:[/red] {e}")
+            return
+        self._report(job_id, "waiting", None, None)
+        self.log.print(
+            f"\n[bold]{request['title']}[/bold]\n{request['message']}\n"
+            f"Start it: [cyan]mycelium runner approve {job_id}[/cyan]  "
+            f"Decline: [cyan]mycelium runner decline {job_id}[/cyan]\n"
+        )
+        if self.on_request is not None:
+            try:
+                self.on_request(request)
+            except Exception as e:  # noqa: BLE001 - the terminal still has the question
+                self.log.print(f"[dim]couldn't show the question: {e}[/dim]")
+        answer = approvals.wait(job_id, self._stop, base=self._requests_base)
+        approvals.forget(job_id, base=self._requests_base)
+        if answer is True:
+            self._do_and_report(job)
+            return
+        if answer is False:
+            error = f"Declined on {self.label}."
+        elif self._stop.is_set():
+            error = f"The runner on {self.label} stopped before anyone answered."
+        else:
+            error = f"Nobody on {self.label} answered in time."
+        self._report(job_id, "failed", None, error)
+        self.log.print(f"[yellow]job {job_id}:[/yellow] {error}")
+
+    def _do_and_report(self, job: dict[str, Any]) -> None:
+        job_id = str(job["id"])
         try:
             with self._panes:
                 result = self.do(job)
@@ -609,6 +725,8 @@ class Runner:
             self.log.print(f"[dim]herdr sync: {e}[/dim]")
 
     def run(self) -> None:
+        # Questions left by a runner that stopped are about jobs nobody is waiting on.
+        approvals.forget_all(base=self._requests_base)
         self.scan()
         while not self.hello():
             self.log.print(

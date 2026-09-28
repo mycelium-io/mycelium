@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 
 from app.routes.engines import EngineCreate, create_engine
 from app.routes.messages import send_message
-from app.routes.runners import existing_runner_of, runner_manifest
+from app.routes.runners import _runner_or_404, existing_runner_of, runner_manifest
 from app.schemas import MessageCreate, MessageType
 from app.services import actor, runners, swarm, tasks, worker_engine, workspace
 from app.services.agent_registry import write_agent_manifest
@@ -90,9 +90,7 @@ async def _start_on_runner(
     each member, and posts the kickoff when they are listening, which is the
     order ``mycelium swarm`` keeps from a terminal.
     """
-    runner = runners.registry.get(payload.runner or "")
-    if runner is None:
-        raise HTTPException(status_code=404, detail="Runner not found")
+    runner = _runner_or_404(payload.runner or "", request)
     if payload.repo:
         raise HTTPException(
             status_code=422,

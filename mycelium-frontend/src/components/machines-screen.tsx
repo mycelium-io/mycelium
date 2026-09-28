@@ -31,7 +31,7 @@ import {
 import { fmtAgo } from "@/lib/metrics-format";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ConnectMachine, HerdrMissing, RescanButton } from "@/components/runner-fields";
+import { AddMachineCode, ConnectMachine, HerdrMissing, RescanButton } from "@/components/runner-fields";
 
 /** How many of a machine's jobs are listed. */
 const RECENT_JOBS = 8;
@@ -44,9 +44,9 @@ export function MachinesScreen() {
       <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
         <h1 className="text-display font-semibold text-text">Machines</h1>
         <p className="mt-1 max-w-2xl text-label leading-relaxed text-muted-foreground">
-          Computers connected to this hub with <code className="font-mono text-accent">mycelium runner</code>.
+          Your computers connected to this hub with <code className="font-mono text-accent">mycelium runner</code>.
           Each one reports the agent CLIs it has installed, and starts the agents you ask for in a
-          herdr terminal there, where you can watch and type to them.
+          herdr terminal there, where you can watch and type to them. Only yours are listed here.
         </p>
 
         <div className="mt-6 space-y-4">
@@ -56,9 +56,10 @@ export function MachinesScreen() {
             <MachineCard key={r.id} runner={r} />
           ))}
           {runners.length > 0 && (
-            <p className="text-micro text-muted-foreground">
+            <div className="text-micro text-muted-foreground">
               To add another machine, run <code className="font-mono text-accent">mycelium runner</code> on it.
-            </p>
+              <AddMachineCode />
+            </div>
           )}
         </div>
       </div>

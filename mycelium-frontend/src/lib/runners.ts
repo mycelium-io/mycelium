@@ -22,6 +22,8 @@ import {
   type Runner,
   type RunnerJob,
 } from "@/lib/api";
+import { useMyMachines } from "@/lib/my-machines";
+import { usePrincipal } from "@/components/current-user";
 
 /** How often the machine list is read: close to the runner's heartbeat. */
 const RUNNERS_POLL = 5_000;
@@ -34,6 +36,12 @@ const NO_JOBS: RunnerJob[] = [];
 
 export const RUNNERS_KEY = ["runners"] as const;
 
+/** Whether `runner` is one of yours: added to this browser, or owned by who you say you are. */
+export function isMine(runner: Runner, mine: string[], principal: string): boolean {
+  return mine.includes(runner.id) || (!!principal && runner.owner?.toLowerCase() === principal);
+}
+
+/** Your machines: never anyone else's, even when the hub lists them (see `my-machines.ts`). */
 export function useRunners() {
   const { data, isLoading, mutate } = useSWR(RUNNERS_KEY, fetchRunners, {
     refreshInterval: RUNNERS_POLL,
@@ -41,7 +49,12 @@ export function useRunners() {
   const refresh = useCallback(() => {
     void mutate();
   }, [mutate]);
-  const runners = data ?? NO_RUNNERS;
+  const mine = useMyMachines();
+  const principal = usePrincipal();
+  const runners = useMemo(
+    () => (data ?? NO_RUNNERS).filter((r) => isMine(r, mine, principal)),
+    [data, mine, principal],
+  );
   const connected = useMemo(() => runners.filter((r) => r.connected), [runners]);
   return { runners, connected, loading: isLoading, refresh };
 }
@@ -117,6 +130,7 @@ export function describeJob(job: RunnerJob): string {
 export const JOB_STATUS_LABEL: Record<RunnerJob["status"], string> = {
   queued: "Waiting for the machine",
   running: "Starting",
+  waiting: "Waiting for a yes on the machine",
   done: "Done",
   failed: "Failed",
 };

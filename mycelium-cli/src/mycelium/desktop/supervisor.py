@@ -265,6 +265,9 @@ class Supervisor:
         self._lock = threading.Lock()
         self._last: str | None = None
         self.runner: Any = None
+        #: This machine's runner id, known from the first status so the app can
+        #: tell the page which machine is this one before the runner is up.
+        self.runner_id: str | None = None
         self.runner_state: State = "stopped"
         self.runner_detail: str | None = None
         self.components: list[Component] = [self._herdr()]
@@ -356,6 +359,8 @@ class Supervisor:
             "mode": self.mode,
             "ui_url": self.ui_url,
             "api_url": self.api_url,
+            # So the app can tell the page which machine is this one.
+            "runner_id": self.runner_id,
             "components": components,
         }
 
@@ -473,12 +478,28 @@ class Supervisor:
         from rich.console import Console
 
         from mycelium.config import MyceliumConfig
+        from mycelium.runner.approvals import requests_dir
         from mycelium.runner.daemon import Runner
 
         config = self.config or MyceliumConfig.load()
         config.server.api_url = self.api_url
         # stdout is the status stream; what the runner says goes to stderr.
-        self.runner = Runner(config, roots=self.roots, log=Console(stderr=True))
+        # Launches go ahead without asking only from the hub this supervisor
+        # started, which listens on 127.0.0.1 alone; a hub elsewhere, or one
+        # that was already running here (Docker publishes to the network),
+        # could be reached by anyone, so each launch from it waits for a yes
+        # in the app.
+        self.runner = Runner(
+            config,
+            roots=self.roots,
+            rid=self.runner_id,
+            log=Console(stderr=True),
+            trust_hub=self._own_hub(),
+            # The app answers by writing the answer file into this folder.
+            on_request=lambda request: self.emit(
+                {"type": "request", "request": request, "folder": str(requests_dir())}
+            ),
+        )
         self.runner_state, self.runner_detail = "starting", None
         self._publish()
 
@@ -490,6 +511,11 @@ class Supervisor:
                 self._publish()
 
         threading.Thread(target=run, daemon=True).start()
+
+    def _own_hub(self) -> bool:
+        """Whether the hub is one this supervisor started (and so only this machine reaches)."""
+        hub = next((c for c in self.components if c.name == "hub"), None)
+        return self.mode == "hub" and hub is not None and hub.proc is not None
 
     def _tick_runner(self) -> None:
         if self.runner is None:
@@ -507,6 +533,10 @@ class Supervisor:
 
     def run(self) -> None:
         """Start everything and keep it up until :meth:`stop`."""
+        if self.start_runner:
+            from mycelium.runner.daemon import runner_id
+
+            self.runner_id = runner_id()
         self._publish()
         try:
             while not self._stop.is_set():
