@@ -2028,7 +2028,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#desktop-install",
     "t": "Install",
     "s": "Guides › The Mac App",
-    "x": "Open the download and drag Mycelium into Applications. Open Mycelium from Applications. The app isn't signed yet, so the first time macOS stops it: right-click the app, choose Open, then Open again. Choose how this Mac takes part: - Run a hub on this Mac keeps your rooms, memory and agents here. Pick this to try Mycelium on your own. - Connect to a hub joins rooms someone else runs. Paste the hub's address, or open a",
+    "x": "Open the download and drag Mycelium into Applications. Open Mycelium from Applications. The app isn't signed by Apple yet, so the first time macOS says it can't verify it. Open System Settings → Privacy & Security, scroll to the message about Mycelium, and choose Open Anyway. You only do this once. Choose how this Mac takes part: - Run a hub on this Mac keeps your rooms, memory and agents here. Pick this to try Mycel",
     "p": "Reference"
   },
   {
