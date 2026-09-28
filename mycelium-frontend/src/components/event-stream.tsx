@@ -450,9 +450,14 @@ interface Props {
    *  page owns the key because it owns the pane switch that has to happen
    *  first; the channel owns the search itself. */
   openFind?: number;
+  /** More tabs after Channel, Board and Network (the memories open in the room). */
+  extraTabs?: React.ReactNode;
+  /** What one of those tabs shows, in front of the room's own views. While
+   *  it is set, none of Channel, Board or Network reads as the open tab. */
+  override?: React.ReactNode;
 }
 
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onOpenMemory, onOpenThread, view: viewProp, onViewChange, focusMessageId = null, onFocusConsumed, openFind = 0 }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onOpenMemory, onOpenThread, view: viewProp, onViewChange, focusMessageId = null, onFocusConsumed, openFind = 0, extraTabs, override }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const connected = useRoomConnected(roomName);
@@ -879,15 +884,15 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
       {/* An editor's tab strip: flat tabs flush to the edges, the open one in
           the pane's own color so it reads as attached to what it shows.
           Connection state lives in the shell status bar. */}
-      <div className="flex h-8 shrink-0 items-stretch border-b border-border bg-surface">
-        <div className="flex items-stretch">
+      <div className="flex h-8 shrink-0 items-stretch overflow-x-auto border-b border-border bg-surface [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex flex-shrink-0 items-stretch">
           {([
             { id: "channel" as const, label: "Channel", count: channelCount as number | null },
             { id: "board" as const,   label: "Board",   count: null },
             { id: "network" as const, label: "Network", count: null },
           ]).map(t => {
             // Hold the reveal modifier and each tab wears the key that selects it.
-            const active = view === t.id;
+            const active = view === t.id && !override;
             return (
               <button
                 key={t.id}
@@ -910,7 +915,12 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
             );
           })}
         </div>
+        {extraTabs}
       </div>
+      {/* Another tab (an open memory) in front: the room's own views stay
+          mounted behind it, so the channel keeps its place and its stream. */}
+      {override && <div className="flex min-h-0 flex-1 flex-col">{override}</div>}
+      <div className={override ? "hidden" : "contents"}>
       {view === "board" ? (
         <div className="flex-1 min-h-0">
           <RoomBoard roomName={roomName} onOpenThread={onOpenThread} />
@@ -1274,6 +1284,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
       )}
       </div>
       )}
+      </div>
     </div>
   );
 }

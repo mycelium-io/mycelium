@@ -4,7 +4,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MessageSquare } from "lucide-react";
 import type { RoomMessage } from "@/lib/api";
 import {
   applyActivity,
@@ -20,7 +19,6 @@ import { pingOf } from "@/lib/threads";
 import { conductorLineOf } from "@/lib/conductor-line";
 import { MessageBody } from "@/components/message-body";
 import { ConductorRow } from "@/components/task/conductor-row";
-import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Monogram } from "@/components/ui/monogram";
 
@@ -170,12 +168,10 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
           <Skeleton className="h-3 w-3/5" />
         </div>
       ) : ordered.length === 0 ? (
-        <EmptyState
-          className="py-14"
-          icon={MessageSquare}
-          title="No replies yet"
-          description="Reply below, or @-mention an agent — it lands in this task, not in the room."
-        />
+        // A quiet line, not a card: an empty thread is where every task starts.
+        <p className="px-5 py-3 text-micro text-faint">
+          No replies yet. Reply below, or @-mention an agent: it lands in this task, not in the room.
+        </p>
       ) : (
         <div className="py-3">
           {/* A control, not a scroll trigger. This conversation owns no scroll —
