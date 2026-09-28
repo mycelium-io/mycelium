@@ -14,6 +14,7 @@ from mycelium.commands import (
     board,
     config,
     demo,
+    desktop,
     docs,
     doctor,
     engine,
@@ -124,6 +125,7 @@ app.add_typer(user.app, name="user")
 app.add_typer(engine.app, name="engine")
 app.add_typer(herdr.app, name="herdr")
 app.add_typer(runner.app, name="runner")
+app.add_typer(desktop.app, name="desktop")
 app.add_typer(openshell.app, name="openshell")
 app.add_typer(demo.app, name="demo")
 app.add_typer(hub.app, name="hub")

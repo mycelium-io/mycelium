@@ -4,7 +4,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, Plus, Users } from "lucide-react";
+import { Check, ChevronRight, Plus, UserPlus, Users } from "lucide-react";
+import { inviteLink } from "@/lib/desktop";
 import { type PresenceMember, type RoomFloor } from "@/lib/api";
 import { floorLabel } from "@/lib/floors";
 import { useRoomRoster } from "@/lib/room-data";
@@ -262,10 +263,10 @@ export function AgentsPanel({
         <span className="text-micro tabular text-muted-foreground">
           {people.length + agents.length}
         </span>
+        <InviteButton roomName={roomName} />
         <Button
           variant="secondary"
           size="sm"
-          className="ml-auto"
           onClick={() => {
             setAddKind("machine");
             setAddOpen(true);
@@ -380,6 +381,29 @@ export function AgentsPanel({
         })}
       </div>
     </div>
+  );
+}
+
+/** Copy a link that invites a person into this room: it opens the desktop app
+ *  when they have it, and offers the download or the browser when they don't. */
+function InviteButton({ roomName }: { roomName: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(inviteLink(window.location.origin, roomName));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Clipboard blocked: nothing to undo, the button just doesn't confirm.
+    }
+  };
+  return (
+    <Tooltip content="Copy a link that invites someone to this room">
+      <Button variant="ghost" size="sm" className="ml-auto" onClick={copy}>
+        {copied ? <Check className="size-3 text-green" /> : <UserPlus className="size-3" />}
+        {copied ? "Copied" : "Invite"}
+      </Button>
+    </Tooltip>
   );
 }
 

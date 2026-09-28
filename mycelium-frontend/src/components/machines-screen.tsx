@@ -17,8 +17,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Laptop, Square } from "lucide-react";
+import { Laptop, Square, SquareTerminal } from "lucide-react";
 import { stopRunnerAgent, type Runner, type RunnerAgent } from "@/lib/api";
+import { terminalLink, useIsDesktop } from "@/lib/desktop";
 import {
   describeJob,
   JOB_STATUS_LABEL,
@@ -203,6 +204,7 @@ function AgentLine({ runner, agent }: { runner: Runner; agent: RunnerAgent }) {
   const [error, setError] = useState<string | null>(null);
   const revalidate = useRunnersRevalidate();
   const gone = agent.status === "stopped" || agent.status === "failed";
+  const desktop = useIsDesktop();
 
   const stop = async () => {
     setStopping(true);
@@ -232,6 +234,15 @@ function AgentLine({ runner, agent }: { runner: Runner; agent: RunnerAgent }) {
       {agent.cwd && <span className="hidden truncate font-mono text-micro text-faint md:inline">{agent.cwd}</span>}
       <span className="ml-auto flex items-center gap-2">
         {error && <span className="text-micro text-red">{error}</span>}
+        {desktop && !gone && agent.pane && (
+          <a
+            href={terminalLink(agent.pane)}
+            className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-label text-muted-foreground hover:bg-hairline hover:text-text"
+          >
+            <SquareTerminal className="size-3" />
+            Open terminal
+          </a>
+        )}
         {!gone && (
           <Button
             variant="ghost"
