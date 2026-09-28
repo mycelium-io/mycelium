@@ -2042,7 +2042,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#machines-starting-an-agent",
     "t": "Starting an agent",
     "s": "Guides › Start Agents From the App",
-    "x": "In a room, open Members → Invite → Agent on your machine. Pick: the machine, if more than one runner is connected; the agent CLI, from what the scan found; a handle, which is how the room addresses it (@scout); instructions, how the agent should work. They are saved as the agent's notes (agents/<handle>/notes), which it reads when it starts and you can edit later like any memory; the folder it starts in. The agent is",
+    "x": "In a room, open Members → Add → Your machine. The same dialog adds the other kinds of member too: an engine the hub runs, an A2A service, or a coding agent you already have open. For an agent on your machine, pick: a role to start from (reviewer, implementer, tester and so on), or a blank page. Instructions you write can be saved as a role of your own, kept in your browser; a handle, which is how the room addresses i",
     "p": "Reference"
   },
   {

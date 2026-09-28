@@ -164,7 +164,16 @@ export function shortVersion(version: string | null | undefined): string | null 
 }
 
 /** Ask the machine to scan again, and say so while it does. */
-export function RescanButton({ runner, className }: { runner: Runner; className?: string }) {
+export function RescanButton({
+  runner,
+  className,
+  iconOnly = false,
+}: {
+  runner: Runner;
+  className?: string;
+  /** Just the icon, named for screen readers and on hover. */
+  iconOnly?: boolean;
+}) {
   const [jobId, setJobId] = useState<string | null>(null);
   const [queueError, setError] = useState<string | null>(null);
   const revalidate = useRunnersRevalidate();
@@ -194,12 +203,14 @@ export function RescanButton({ runner, className }: { runner: Runner; className?
       <Button
         type="button"
         variant="ghost"
-        size="sm"
+        size={iconOnly ? "icon-sm" : "sm"}
         onClick={scan}
         disabled={running || !runner.connected}
+        aria-label={iconOnly ? (running ? "Scanning for agent CLIs" : "Rescan for agent CLIs") : undefined}
+        title={iconOnly ? "Rescan for agent CLIs" : undefined}
       >
         <RefreshCw className={`size-3 ${running ? "animate-spin" : ""}`} />
-        {running ? "Scanning…" : "Rescan"}
+        {!iconOnly && (running ? "Scanning…" : "Rescan")}
       </Button>
     </span>
   );

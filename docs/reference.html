@@ -1875,13 +1875,12 @@ EOF
       <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">scan</span></code></pre>
       <p>herdr is required. Without it the runner still connects and reports what it found, but the app can&#x27;t start anything on that machine and says so.</p>
       <h2 id="machines-starting-an-agent">Starting an agent</h2>
-      <p>In a room, open <strong>Members → Invite → Agent on your machine</strong>. Pick:</p>
+      <p>In a room, open <strong>Members → Add → Your machine</strong>. The same dialog adds the other kinds of member too: an engine the hub runs, an A2A service, or a coding agent you already have open. For an agent on your machine, pick:</p>
       <ul>
-        <li><strong>the machine</strong>, if more than one runner is connected;</li>
-        <li><strong>the agent CLI</strong>, from what the scan found;</li>
+        <li><strong>a role to start from</strong> (reviewer, implementer, tester and so on), or a blank page. Instructions you write can be saved as a role of your own, kept in your browser;</li>
         <li><strong>a handle</strong>, which is how the room addresses it (<code>@scout</code>);</li>
         <li><strong>instructions</strong>, how the agent should work. They are saved as the agent&#x27;s notes (<code>agents/&lt;handle&gt;/notes</code>), which it reads when it starts and you can edit later like any memory;</li>
-        <li><strong>the folder</strong> it starts in.</li>
+        <li>along the bottom, <strong>where it runs</strong>: the machine (if more than one runner is connected), the agent CLI from what the scan found, and the folder it starts in.</li>
       </ul>
       <p>The agent is added to the room first, then started. It opens in a herdr pane, reads its notes, and looks at the board. From then on it hears mentions and turns the same way any herdr agent does. The runner keeps <code>herdr sync</code> running for the agents it started, so you don&#x27;t need a separate terminal for that.</p>
       <p>Closing the pane, or pressing <strong>Stop</strong> on the Machines page, stops the agent but leaves it in the room with its notes. Starting it again from the app picks up where its notes leave off.</p>

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { renderWithSWR } from "@/test/swr";
 
 vi.mock("@/components/current-user", () => ({
@@ -21,7 +21,7 @@ vi.mock("@/lib/runners", async (importOriginal) => ({
 
 import type { Runner, RunnerJob } from "@/lib/api";
 import { runner } from "@/lib/runners.fixture";
-import { LaunchAgentForm } from "./launch-agent-dialog";
+import { LaunchAgentForm, expandPath, tildePath } from "./launch-agent-dialog";
 
 function job(over: Partial<RunnerJob> = {}): RunnerJob {
   return {
@@ -42,6 +42,7 @@ function job(over: Partial<RunnerJob> = {}): RunnerJob {
 describe("LaunchAgentForm", () => {
   beforeEach(() => {
     connected = [];
+    window.localStorage.clear();
     launchRunnerAgent.mockReset();
     fetchRunnerJob.mockReset();
   });
@@ -52,29 +53,61 @@ describe("LaunchAgentForm", () => {
     expect(screen.getByDisplayValue("mycelium runner")).toBeInTheDocument();
   });
 
-  it("offers only what the machine can start, leaving the rest of the scan out", () => {
+  it("offers only the agent CLIs the machine can start", () => {
     connected = [runner()];
     renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
 
-    const choices = screen.getAllByRole("radio").map((r) => r.getAttribute("aria-label"));
-    expect(choices).toEqual(["Claude Code", "opencode"]);
-    expect(screen.getByRole("radio", { name: "Claude Code" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.queryByText(/Codex/)).not.toBeInTheDocument();
+    const cli = screen.getByLabelText("Agent CLI");
+    expect(within(cli).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Claude Code 2.4.1",
+      "opencode 0.9.3",
+    ]);
   });
 
-  it("registers the agent and starts it, then follows the machine until it runs", async () => {
+  it("starts from a role, filling the handle until you type one", () => {
+    connected = [runner()];
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("radio", { name: "reviewer" }));
+    expect(screen.getByLabelText("Handle")).toHaveValue("reviewer");
+    expect((screen.getByLabelText("Instructions") as HTMLTextAreaElement).value).toMatch(/review/);
+
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "rita" } });
+    fireEvent.click(screen.getByRole("radio", { name: "tester" }));
+    expect(screen.getByLabelText("Handle")).toHaveValue("rita");
+
+    fireEvent.click(screen.getByRole("radio", { name: "blank" }));
+    expect(screen.getByLabelText("Instructions")).toHaveValue("");
+  });
+
+  it("keeps instructions you wrote as a role of your own", () => {
+    connected = [runner()];
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText("Instructions"), { target: { value: "Triage issues." } });
+    fireEvent.click(screen.getByRole("button", { name: "Save as a role" }));
+    fireEvent.change(screen.getByLabelText("Role name"), { target: { value: "triager" } });
+    fireEvent.submit(screen.getByLabelText("Role name").closest("form")!);
+
+    expect(screen.getByRole("radio", { name: "triager" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Delete triager" }));
+    expect(screen.queryByRole("radio", { name: "triager" })).not.toBeInTheDocument();
+  });
+
+  it("adds the agent, then follows the machine until it runs", async () => {
     connected = [runner()];
     launchRunnerAgent.mockResolvedValue(job());
     fetchRunnerJob.mockResolvedValue(job({ status: "done" }));
     const onLaunched = vi.fn();
     renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={onLaunched} />);
 
-    fireEvent.click(screen.getByRole("radio", { name: "opencode" }));
-    fireEvent.change(screen.getByLabelText(/^Handle/), { target: { value: "@Reviewer" } });
-    fireEvent.change(screen.getByLabelText(/Instructions/), {
+    fireEvent.change(screen.getByLabelText("Agent CLI"), { target: { value: "opencode" } });
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "@Reviewer" } });
+    fireEvent.change(screen.getByLabelText("Instructions"), {
       target: { value: "  Review every change for correctness.  " },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Start opencode" }));
+    fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "~/code/atlas/api" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add @reviewer" }));
 
     await waitFor(() => expect(onLaunched).toHaveBeenCalledWith("reviewer"));
     expect(launchRunnerAgent).toHaveBeenCalledWith("julias-mbp", {
@@ -82,10 +115,11 @@ describe("LaunchAgentForm", () => {
       handle: "reviewer",
       framework: "opencode",
       instructions: "Review every change for correctness.",
-      cwd: "/Users/julia/code/atlas",
+      cwd: "/Users/julia/code/atlas/api",
       created_by: "julia",
     });
-    expect(fetchRunnerJob).toHaveBeenCalledWith("julias-mbp", "job-0009");
+    expect(await screen.findByText(/Running on julias-mbp/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add another" })).toBeInTheDocument();
   });
 
   it("shows the machine's reason when it could not start the agent", async () => {
@@ -96,10 +130,12 @@ describe("LaunchAgentForm", () => {
     );
     renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
 
-    fireEvent.change(screen.getByLabelText(/^Handle/), { target: { value: "scout" } });
-    fireEvent.click(screen.getByRole("button", { name: "Start Claude Code" }));
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add @scout" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("outside the folders");
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByLabelText("Handle")).toHaveValue("scout");
   });
 
   it("can't start anything on a machine without herdr, and says why", () => {
@@ -109,9 +145,18 @@ describe("LaunchAgentForm", () => {
     expect(screen.getByRole("note")).toHaveTextContent(
       "herdr isn't running on julias-mbp. Install it from https://herdr.dev",
     );
-    expect(screen.queryAllByRole("radio")).toEqual([]);
-    expect(screen.getByText("Nothing can start here until herdr is running.")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(/^Handle/), { target: { value: "scout" } });
-    expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
+    expect(screen.queryByLabelText("Agent CLI")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    expect(screen.getByRole("button", { name: "Add @scout" })).toBeDisabled();
+  });
+});
+
+describe("folder paths", () => {
+  it("shows a home folder as ~ and sends it back expanded", () => {
+    expect(tildePath("/Users/julia/code/atlas")).toBe("~/code/atlas");
+    expect(tildePath("/home/julia")).toBe("~");
+    expect(tildePath("/srv/code")).toBe("/srv/code");
+    expect(expandPath("~/code/x", ["/Users/julia/code"])).toBe("/Users/julia/code/x");
+    expect(expandPath("/abs/path", ["/Users/julia/code"])).toBe("/abs/path");
   });
 });

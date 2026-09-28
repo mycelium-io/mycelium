@@ -3,31 +3,19 @@
 
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Check, ChevronDown, ChevronRight, Users } from "lucide-react";
-import { createEngine, registerA2aAgent, type EngineKind, type PresenceMember, type RoomFloor } from "@/lib/api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronRight, Plus, Users } from "lucide-react";
+import { type PresenceMember, type RoomFloor } from "@/lib/api";
 import { floorLabel } from "@/lib/floors";
-import { useNetworkStatus, useRoomRoster } from "@/lib/room-data";
+import { useRoomRoster } from "@/lib/room-data";
 import { runnerName, useRunners } from "@/lib/runners";
-import { LaunchAgentDialog } from "@/components/launch-agent-dialog";
-import { agentHandoffPrompt } from "@/lib/install";
+import { AddMemberDialog, type MemberKind } from "@/components/add-member-dialog";
 import { Button } from "@/components/ui/button";
-import { CopyAction } from "@/components/ui/copy-field";
-import { Input } from "@/components/ui/input";
 import { Monogram } from "@/components/ui/monogram";
 import { HerdrRam } from "@/components/ui/herdr-ram";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
-import { useCurrentUser } from "@/components/current-user";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 interface Props {
   roomName: string;
@@ -178,19 +166,8 @@ export function AgentsPanel({
 }: Props) {
   // People collapse to a facepile and the idle swarm folds away — both by default.
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(["people", "idle"]));
-  const [agentOpen, setAgentOpen] = useState(false);
-  const [launchOpen, setLaunchOpen] = useState(false);
-  const [engineOpen, setEngineOpen] = useState(false);
-  const [a2aOpen, setA2aOpen] = useState(false);
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const { principal } = useCurrentUser();
-  const { network } = useNetworkStatus();
-  const noSubscribe = () => () => {};
-  const hubUrl = useSyncExternalStore(
-    noSubscribe,
-    () => window.location.origin,
-    () => "<this-hub-url>",
-  );
+  const [addOpen, setAddOpen] = useState(false);
+  const [addKind, setAddKind] = useState<MemberKind>("machine");
 
   // Who's here, shared with the composer's `@` popover: agents from the room's
   // manifests, people from agent owners ∪ posters ∪ live presence ∪ you, and a
@@ -204,7 +181,8 @@ export function AgentsPanel({
     // One-shot: the parent asks specifically for an engine, rather than opening
     // the coding-agent handoff first.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setEngineOpen(true);
+    setAddKind("engine");
+    setAddOpen(true);
     onEngineInviteShown?.();
   }, [engineInvite, onEngineInviteShown]);
 
@@ -284,109 +262,24 @@ export function AgentsPanel({
         <span className="text-micro tabular text-muted-foreground">
           {people.length + agents.length}
         </span>
-        <Popover open={inviteOpen} onOpenChange={setInviteOpen}>
-          <PopoverTrigger render={<Button variant="secondary" size="sm" className="ml-auto" />}>
-            Invite <ChevronDown className="size-3" />
-          </PopoverTrigger>
-          <PopoverContent className="w-64 p-1">
-            <InviteOption
-              label="Agent on your machine"
-              hint="Scan and start a coding agent you have installed"
-              onClick={() => {
-                setInviteOpen(false);
-                setLaunchOpen(true);
-              }}
-            />
-            <InviteOption
-              label="Coding agent"
-              hint="Copy room-aware setup"
-              onClick={() => {
-                setInviteOpen(false);
-                setAgentOpen(true);
-              }}
-            />
-            <InviteOption
-              label="Engine"
-              hint="Add a room capability"
-              onClick={() => {
-                setInviteOpen(false);
-                setEngineOpen(true);
-              }}
-            />
-            <InviteOption
-              label="A2A agent"
-              hint="Connect an external agent service"
-              onClick={() => {
-                setInviteOpen(false);
-                setA2aOpen(true);
-              }}
-            />
-          </PopoverContent>
-        </Popover>
-        <LaunchAgentDialog
-          open={launchOpen}
-          onOpenChange={setLaunchOpen}
+        <Button
+          variant="secondary"
+          size="sm"
+          className="ml-auto"
+          onClick={() => {
+            setAddKind("machine");
+            setAddOpen(true);
+          }}
+        >
+          <Plus className="size-3" /> Add
+        </Button>
+        <AddMemberDialog
+          open={addOpen}
+          onOpenChange={setAddOpen}
           roomName={roomName}
-          onLaunched={refresh}
+          initialKind={addKind}
+          onAdded={refresh}
         />
-        <Dialog open={agentOpen} onOpenChange={setAgentOpen}>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="text-ui font-semibold text-text">
-                Invite a coding agent
-              </DialogTitle>
-              <DialogDescription className="text-label text-muted-foreground leading-relaxed">
-                Paste this into the coding agent you already have open. It connects to this
-                hub, registers in this room, and starts by reading the board.
-              </DialogDescription>
-            </DialogHeader>
-            <CopyAction
-              value={agentHandoffPrompt({
-                hubUrl,
-                roomName,
-                principal,
-                authRequired: network?.auth?.enabled ?? null,
-              })}
-              label="Copy setup"
-              className="mt-4 w-fit"
-            />
-          </DialogContent>
-        </Dialog>
-        <Dialog open={engineOpen} onOpenChange={setEngineOpen}>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="text-ui font-semibold text-text">Invite an engine</DialogTitle>
-              <DialogDescription className="text-label text-muted-foreground leading-relaxed">
-                Engines are backend-owned room capabilities, not local coding-agent sessions.
-              </DialogDescription>
-            </DialogHeader>
-            <EngineInviteForm
-              roomName={roomName}
-              createdBy={principal}
-              onCreated={() => {
-                refresh();
-                setEngineOpen(false);
-              }}
-            />
-          </DialogContent>
-        </Dialog>
-        <Dialog open={a2aOpen} onOpenChange={setA2aOpen}>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="text-ui font-semibold text-text">Connect an A2A agent</DialogTitle>
-              <DialogDescription className="text-label text-muted-foreground leading-relaxed">
-                Connect an external Agent2Agent service to this room.
-              </DialogDescription>
-            </DialogHeader>
-            <A2aAgentForm
-              roomName={roomName}
-              onCreated={() => {
-                refresh();
-                setA2aOpen(false);
-              }}
-            />
-          </DialogContent>
-        </Dialog>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -490,19 +383,6 @@ export function AgentsPanel({
   );
 }
 
-function InviteOption({ label, hint, onClick }: { label: string; hint: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors hover:bg-hairline"
-    >
-      <span className="text-label font-medium text-text">{label}</span>
-      <span className="text-micro text-muted-foreground">{hint}</span>
-    </button>
-  );
-}
-
 /** Small uppercase divider between roster groups, with a count. When `onToggle`
  *  is given it becomes a collapse control with a chevron — how the idle swarm is
  *  folded away by default. */
@@ -529,8 +409,8 @@ function SectionLabel({
           className={`size-3 transition-transform ${collapsed ? "" : "rotate-90"}`}
         />
       )}
-      <span>{children}</span>
-      {count !== undefined && <span className="font-normal tabular">{count}</span>}
+      <span className="flex-shrink-0 whitespace-nowrap">{children}</span>
+      {count !== undefined && <span className="flex-shrink-0 font-normal tabular">{count}</span>}
       {hint && (
         <span className="ml-auto min-w-0 truncate font-mono text-micro font-normal normal-case tracking-normal text-faint">
           {hint}
@@ -742,214 +622,3 @@ function AgentRow({
   );
 }
 
-const ENGINE_KINDS: { kind: EngineKind; blurb: string }[] = [
-  { kind: "aligner", blurb: "Mediates negotiation to consensus." },
-  { kind: "synthesizer", blurb: "Distills the room to memory." },
-  { kind: "hello", blurb: "Answers once, writes nothing, and proves the path." },
-  { kind: "persona", blurb: "Plays a member in character, from its notes, and remembers." },
-  { kind: "conductor", blurb: "Runs a protocol inside a task, in code, giving the floor per step." },
-  { kind: "worker", blurb: "Takes work off the board, asks a teammate to review it, and resolves it." },
-];
-
-/** Invite a first-party cognition engine into the room — a native manifest
- *  write over the backend (no CLI, no machine-local side effects). */
-function EngineInviteForm({
-  roomName,
-  createdBy,
-  onCreated,
-}: {
-  roomName: string;
-  createdBy: string | null;
-  onCreated: () => void;
-}) {
-  const [kind, setKind] = useState<EngineKind>("aligner");
-  // The handle defaults to the kind name (the common case: one aligner named
-  // "aligner"). It tracks the kind until the user edits it, then it's theirs.
-  const [handle, setHandle] = useState<EngineKind | string>("aligner");
-  const [handleTouched, setHandleTouched] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const trimmed = handle.trim().replace(/^@/, "");
-  const canSubmit = trimmed.length > 0 && !submitting;
-
-  const submit = async () => {
-    if (!canSubmit) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await createEngine(roomName, {
-        handle: trimmed,
-        kind,
-        description: "",
-        created_by: createdBy || "web-ui",
-      });
-      onCreated();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to register engine");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="mt-2 space-y-4">
-      <div className="space-y-1.5" role="radiogroup" aria-label="Engine kind">
-        {ENGINE_KINDS.map(({ kind: k, blurb }) => (
-          <button
-            key={k}
-            type="button"
-            role="radio"
-            aria-checked={kind === k}
-            onClick={() => {
-              setKind(k);
-              if (!handleTouched) setHandle(k);
-            }}
-            className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
-              kind === k ? "border-accent bg-accent/10" : "border-border hover:bg-hairline"
-            }`}
-          >
-            <span className="min-w-0 flex-1">
-              <span className={`block text-label font-medium ${kind === k ? "text-text" : "text-muted-foreground"}`}>
-                {k}
-              </span>
-              <span className="block text-micro leading-snug text-muted-foreground">{blurb}</span>
-            </span>
-            {kind === k && <Check className="size-4 flex-shrink-0 text-accent" />}
-          </button>
-        ))}
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-label font-medium text-text">Handle</label>
-        <Input
-          value={handle}
-          onChange={(e) => {
-            setHandle(e.target.value);
-            setHandleTouched(true);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") submit();
-          }}
-          placeholder={kind}
-          autoCapitalize="none"
-          spellCheck={false}
-          aria-invalid={!!error}
-        />
-        <p className="text-micro text-muted-foreground leading-snug">
-          Summon it in the channel with{" "}
-          <code className="font-mono text-accent">@{trimmed || kind}</code>. Lowercase slug.
-        </p>
-      </div>
-
-      {error && <p className="text-micro text-[#f87171] leading-snug">{error}</p>}
-
-      <div className="flex items-center gap-2">
-        <Button variant="default" size="sm" onClick={submit} disabled={!canSubmit}>
-          {submitting ? "Inviting…" : `Invite ${kind}`}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-/** Register an external A2A agent by its agent-card base URL — the backend
- *  resolves the card to discover the endpoint + skills, so a bad/unreachable
- *  card comes back as a 502 whose detail we surface verbatim. */
-function A2aAgentForm({
-  roomName,
-  onCreated,
-}: {
-  roomName: string;
-  onCreated: () => void;
-}) {
-  const [handle, setHandle] = useState("");
-  const [card, setCard] = useState("");
-  const [description, setDescription] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const trimmedHandle = handle.trim().replace(/^@/, "");
-  const trimmedCard = card.trim();
-  const canSubmit = trimmedHandle.length > 0 && trimmedCard.length > 0 && !submitting;
-
-  const submit = async () => {
-    if (!canSubmit) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await registerA2aAgent(roomName, {
-        handle: trimmedHandle,
-        card: trimmedCard,
-        description: description.trim(),
-      });
-      onCreated();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to register A2A agent");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="space-y-4 mt-2">
-      <div className="space-y-1.5">
-        <label className="text-label font-medium text-text">Handle</label>
-        <Input
-          value={handle}
-          onChange={(e) => setHandle(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") submit();
-          }}
-          placeholder="researcher"
-          autoCapitalize="none"
-          spellCheck={false}
-          aria-invalid={!!error}
-        />
-        <p className="text-micro text-muted-foreground leading-snug">
-          Address it in the channel with{" "}
-          <code className="font-mono text-accent">@{trimmedHandle || "handle"}</code>.
-          Lowercase slug.
-        </p>
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-label font-medium text-text">Agent card URL</label>
-        <Input
-          value={card}
-          onChange={(e) => setCard(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") submit();
-          }}
-          placeholder="https://agent.example.com"
-          autoCapitalize="none"
-          spellCheck={false}
-          aria-invalid={!!error}
-        />
-        <p className="text-micro text-muted-foreground leading-snug">
-          The base URL of the agent&apos;s A2A agent card. The hub resolves it to
-          discover the endpoint and advertised skills.
-        </p>
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-label font-medium text-text">
-          Description <span className="text-faint">(optional)</span>
-        </label>
-        <Input
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="What this agent does in the room"
-        />
-      </div>
-
-      {error && <p className="text-micro text-[#f87171] leading-snug">{error}</p>}
-
-      <div className="flex items-center gap-2">
-        <Button variant="default" size="sm" onClick={submit} disabled={!canSubmit}>
-          {submitting ? "Registering…" : "Register A2A agent"}
-        </Button>
-      </div>
-    </div>
-  );
-}

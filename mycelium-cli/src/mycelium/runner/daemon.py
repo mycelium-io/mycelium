@@ -56,6 +56,15 @@ KEEP_STOPPED = timedelta(hours=24)
 _STATUS = {"idle": "idle", "done": "idle", "working": "working", "blocked": "blocked"}
 
 _SLUG = re.compile(r"[^a-z0-9]+")
+#: A UUID-shaped identity: an id, not a handle anyone reads.
+_OPAQUE_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+
+class _NoIdentity:
+    """A config with no identity, so ``sender_of`` answers with the login name."""
+
+    def get_current_identity(self) -> str:
+        return "unknown"
 
 
 class JobError(Exception):
@@ -241,8 +250,19 @@ class Runner:
         }
 
     def owner(self) -> str | None:
+        """Whose agents these are: this machine's identity when it reads as a handle.
+
+        An identity that is an opaque id (an IdP subject, say) names no one a
+        person would recognize on the roster, so the login name stands in, as
+        ``mycelium swarm`` does when there is no identity at all.
+        """
+        from mycelium.commands.swarm import sender_of
+
         me = self.config.get_current_identity()
-        return me if me and me != "unknown" else None
+        if me and me != "unknown" and not _OPAQUE_ID.match(me):
+            return me
+        login = sender_of(_NoIdentity())
+        return None if login == "you" else login
 
     # ── talking to the hub ───────────────────────────────────────────────────
 

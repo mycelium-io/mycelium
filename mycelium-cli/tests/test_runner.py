@@ -191,6 +191,19 @@ def test_the_hello_says_what_this_machine_has(make_runner):
     assert body["agents"] == []
 
 
+def test_the_owner_is_a_handle_a_person_reads(make_runner, monkeypatch: pytest.MonkeyPatch):
+    r = make_runner()
+    monkeypatch.setattr("getpass.getuser", lambda: "Julia.Valenti")
+    monkeypatch.setattr(MyceliumConfig, "get_current_identity", lambda _self: "julia")
+    assert r.owner() == "julia"
+    monkeypatch.setattr(
+        MyceliumConfig,
+        "get_current_identity",
+        lambda _self: "9907770b-3781-49ad-a242-fce7c28e5008",
+    )
+    assert r.owner() == "julia-valenti"
+
+
 def test_a_runner_id_is_made_once_and_kept(tmp_path: Path):
     first = daemon.runner_id(tmp_path / "id")
     assert first == daemon.runner_id(tmp_path / "id")
