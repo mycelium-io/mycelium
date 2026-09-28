@@ -53,15 +53,28 @@ trap 'rm -rf "$tmp"' EXIT
 
 place() { cp "$1" "$bin/$2-$triple"; chmod +x "$bin/$2-$triple"; echo "staged $2"; }
 
+# Drop a program's debug symbols (a fifth of node, a sixth of slimctl), then
+# sign it ad hoc again: stripping breaks its signature, and macOS won't run
+# an arm64 program without a valid one. package-mac.sh signs it for real.
+# Never the mycelium CLI: its code is an archive appended to the program,
+# which strip cuts off.
+strip_program() {
+  # strip warns that the signature is now invalid; it is signed again below.
+  strip -x "$bin/$1-$triple" 2>/dev/null
+  codesign --force --sign - "$bin/$1-$triple" 2>/dev/null
+}
+
 stage_herdr() {
   gh release download "$HERDR_TAG" -R herdrdev/herdr -p "$herdr_asset" -D "$tmp"
   place "$tmp/$herdr_asset" herdr
+  strip_program herdr
 }
 
 stage_slimctl() {
   gh release download "$SLIMCTL_TAG" -R agntcy/slim -p "$slim_asset" -D "$tmp"
   tar -xzf "$tmp/$slim_asset" -C "$tmp"
   place "$(find "$tmp" -type f -name slimctl | head -n 1)" slimctl
+  strip_program slimctl
 }
 
 stage_node() {
@@ -73,6 +86,7 @@ stage_node() {
   curl -fsSL "https://nodejs.org/dist/v$NODE_VERSION/$node_dir.tar.gz" -o "$tmp/node.tar.gz"
   tar -xzf "$tmp/node.tar.gz" -C "$tmp" "$node_dir/bin/node"
   place "$tmp/$node_dir/bin/node" node
+  strip_program node
 }
 
 client_built=""
@@ -108,10 +122,16 @@ stage_mycelium() {
 
 stage_hub() {
   echo "building the hub…"
+  # NEGMAS depends on a data-science stack the aligner never loads (pyarrow
+  # alone is 200 MB with its libraries). Left out; the backend's whole suite
+  # passes with these imports blocked. plotly stays: NEGMAS imports it when an
+  # agent joins a negotiation.
+  local unused=(pyarrow pandas scipy sklearn matplotlib gif)
   (
     cd "$repo/fastapi-backend"
     uv run --with pyinstaller pyinstaller --noconfirm --onedir --name mycelium-hub \
       --distpath "$work/hub-dist" --workpath "$work/hub-build" --specpath "$work" \
+      "${unused[@]/#/--exclude-module=}" \
       --collect-all fastembed --collect-all onnxruntime --collect-all slim_bindings \
       --collect-all negmas --collect-all tokenizers --collect-submodules app \
       --hidden-import uvicorn.logging --hidden-import uvicorn.loops.auto \
@@ -127,8 +147,12 @@ stage_models() {
   rm -rf "$res/models" && mkdir -p "$res/models"
   (
     cd "$repo/fastapi-backend"
-    uv run python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='$EMBEDDING_MODEL', cache_dir='$res/models')"
+    uv run python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='$EMBEDDING_MODEL', cache_dir='$tmp/models')"
   )
+  # The download is a Hugging Face cache: the files in blobs/, and links to
+  # them in snapshots/. The app bundle turns links into copies, which would
+  # carry the model twice; the snapshot's files alone are what loads it.
+  rsync -aL --exclude blobs "$tmp/models/" "$res/models/"
   echo "staged the embedding model"
 }
 
@@ -169,6 +193,11 @@ stage_pi() {
   # Pi's lockfile pulls esbuild's native binary for every platform (~290 MB);
   # a Mac needs its own.
   find "$res/pi/node_modules" -type d -path "*/@esbuild/*" -prune ! -name "$node_arch" -exec rm -rf {} +
+  # Half of what is left is for building against Pi, not running it: source
+  # maps, type declarations, and npm's .bin shims (copies, once in the bundle).
+  find "$res/pi/node_modules" -type f \
+    \( -name "*.map" -o -name "*.d.ts" -o -name "*.d.mts" -o -name "*.d.cts" \) -delete
+  find "$res/pi/node_modules" -type d -name .bin -prune -exec rm -rf {} +
   # The hub runs `pi` as a program; this is that program, on the app's node.
   cat > "$res/pi/pi" <<'LAUNCHER'
 #!/bin/sh
