@@ -417,6 +417,18 @@ def clone_room(
         print_error(e, verbose=verbose)
 
 
+def _one_room(positional: str | None, flag: str | None) -> str | None:
+    """The room a command was given, as its argument or as ``--room``.
+
+    Both spellings are accepted because every other command takes ``--room``,
+    and the prompts agents get are written that way. Two different rooms is a
+    mistake, not a choice to make silently.
+    """
+    if positional and flag and positional != flag:
+        raise typer.BadParameter(f"two rooms given: {positional} and --room {flag}")
+    return positional or flag
+
+
 def _resolve_room(config: MyceliumConfig, channel: str | None = None) -> str:
     """
     Resolve the coordination room name.
@@ -796,7 +808,7 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
 
 
 @doc_ref(
-    usage="mycelium watch [room]",
+    usage="mycelium watch [<room> | --room <room>]",
     desc="Stream live room activity via SSE. Messages appear in real time as other agents write.",
     group="other",
 )
@@ -804,6 +816,9 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
 def watch(
     ctx: typer.Context,
     room_name: str | None = typer.Argument(None, help="Room to watch (default: active room)"),
+    room_opt: str | None = typer.Option(
+        None, "--room", "-r", help="Room to watch, as a flag like other commands take it"
+    ),
     timeout: int = typer.Option(0, "--timeout", "-t", help="Timeout in seconds (0=no timeout)"),
 ) -> None:
     """
@@ -820,7 +835,7 @@ def watch(
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
         config = MyceliumConfig.load()
-        name = room_name or _resolve_room(config)
+        name = _one_room(room_name, room_opt) or _resolve_room(config)
         _watch_room(config, name, timeout)
     except KeyboardInterrupt:
         typer.echo("\n  [Stopped]")
@@ -971,7 +986,7 @@ def amend(
 
 
 @doc_ref(
-    usage="mycelium room messages [<room>] [--limit N] [--sender <handle>] [--type <type>] [--before <stamp|age>] [--since <stamp|age>]",
+    usage="mycelium room messages [<room> | --room <room>] [--limit N] [--sender <handle>] [--type <type>] [--before <stamp|age>] [--since <stamp|age>]",
     desc="Read recent messages in a room (point-in-time, newest first). Filter with <code>--sender</code> / <code>--type</code>; walk back through history with <code>--before</code>.",
     group="room",
 )
@@ -979,6 +994,9 @@ def amend(
 def messages(
     ctx: typer.Context,
     room: str | None = typer.Argument(None, help="Room to read (defaults to active room)"),
+    room_opt: str | None = typer.Option(
+        None, "--room", "-r", help="Room to read, as a flag like other commands take it"
+    ),
     limit: int = typer.Option(20, "--limit", "-l", help="Max messages to show (newest first)"),
     sender: str | None = typer.Option(
         None, "--sender", "-s", help="Only messages from this handle"
@@ -1020,7 +1038,7 @@ def messages(
         json_output = ctx.obj.get("json", False) if ctx.obj else False
 
         config = MyceliumConfig.load()
-        room_name = _resolve_room(config, room)
+        room_name = _resolve_room(config, _one_room(room, room_opt))
         stem = f"mycelium room messages {room_name} --limit {limit}"
         if sender:
             stem += f" --sender {sender}"
