@@ -107,27 +107,27 @@ export function RoomInspector({
   // Collapsed: a slim strip of the tab icons; clicking one expands to it.
   if (!open) {
     return (
-      <aside className="flex w-full min-w-0 flex-col items-center gap-1 overflow-hidden bg-surface/40 pt-3">
+      <aside className="flex w-full min-w-0 flex-col items-center gap-0.5 overflow-hidden bg-surface/40 pt-1">
         <Tooltip content={railToggleTitle(false)} side="left">
           <button
             onClick={() => setOpen(true)}
             aria-label={railToggleTitle(false)}
-            className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+            className="flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
           >
-            <PanelRightOpen className="size-[18px]" />
+            <PanelRightOpen className="size-3.5" />
           </button>
         </Tooltip>
-        <div className="mt-1 h-px w-5 bg-border" />
+        <div className="my-1 h-px w-4 bg-border" />
         {TABS.map(({ id, label, icon: Icon }) => (
           <Tooltip key={id} content={label} side="left">
             <button
               onClick={() => { setTab(id); setOpen(true); }}
               aria-label={label}
-              className={`relative flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-surface hover:text-text ${
-                tab === id ? "text-accent" : "text-muted-foreground"
+              className={`relative flex size-6 items-center justify-center rounded transition-colors hover:bg-hairline hover:text-text ${
+                tab === id ? "text-text" : "text-muted-foreground"
               }`}
             >
-              <Icon className="size-[18px]" />
+              <Icon className="size-3.5" />
               <KeyBadge action={`rail.${id}`} overlay />
             </button>
           </Tooltip>
@@ -138,8 +138,8 @@ export function RoomInspector({
 
   return (
     <aside ref={railRef} className="flex w-full min-w-0 flex-col overflow-hidden bg-surface/30">
-      <div className="flex h-[48px] flex-shrink-0 items-center gap-1 border-b border-border bg-paper px-2">
-        <div className="flex min-w-0 items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
+      <div className="flex h-8 flex-shrink-0 items-stretch border-b border-border bg-surface pr-1">
+        <div className="flex min-w-0 items-stretch">
           {TABS.map(({ id, label, icon: Icon }) => {
             const active = tab === id;
             return (
@@ -148,10 +148,10 @@ export function RoomInspector({
                   data-tour={`inspector-${id}`}
                   onClick={() => setTab(id)}
                   aria-label={label}
-                  className={`relative flex items-center gap-1.5 rounded-md py-1 text-label font-medium transition-colors ${
-                    compact ? "px-2" : "px-2.5"
+                  className={`relative -mb-px flex items-center gap-1.5 border-r border-border text-label transition-colors ${
+                    compact ? "px-2" : "px-3"
                   } ${
-                    active ? "bg-elevated text-text shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-text"
+                    active ? "bg-bg text-text" : "text-muted-foreground hover:bg-hairline hover:text-text"
                   }`}
                 >
                   <Icon className="size-3.5 flex-shrink-0" />
@@ -166,9 +166,9 @@ export function RoomInspector({
           <button
             onClick={() => setOpen(false)}
             aria-label={railToggleTitle(true)}
-            className="ml-auto flex size-7 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+            className="my-auto ml-auto flex size-6 flex-shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
           >
-            <PanelRightClose className="size-4" />
+            <PanelRightClose className="size-3.5" />
           </button>
         </Tooltip>
       </div>

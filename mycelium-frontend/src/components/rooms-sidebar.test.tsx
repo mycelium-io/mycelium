@@ -85,8 +85,6 @@ describe("<RoomsSidebar /> keyboard navigation", () => {
     await user.keyboard("{Alt>}");
     const badges = [...document.querySelectorAll("nav [data-key-badge]")].map(el => el.textContent);
     expect(badges).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
-    // The brand wears its own key in the same hold.
-    expect(document.querySelector("a[href='/'] [data-key-badge]")).toHaveTextContent("H");
 
     await user.keyboard("2{/Alt}");
     expect(push).toHaveBeenCalledWith("/room/room-1");

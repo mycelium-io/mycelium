@@ -4,7 +4,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronRight, Plus, UserPlus, Users } from "lucide-react";
+import { Check, Plus, UserPlus, Users } from "lucide-react";
 import { inviteLink } from "@/lib/desktop";
 import { type PresenceMember, type RoomFloor } from "@/lib/api";
 import { floorLabel } from "@/lib/floors";
@@ -165,8 +165,6 @@ export function AgentsPanel({
   focusHandle = null,
   onFocusConsumed,
 }: Props) {
-  // People collapse to a facepile and the idle swarm folds away — both by default.
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(["people", "idle"]));
   const [addOpen, setAddOpen] = useState(false);
   const [addKind, setAddKind] = useState<MemberKind>("machine");
 
@@ -199,17 +197,10 @@ export function AgentsPanel({
     setHighlight(focusHandle);
     onFocusConsumed?.();
   }, [focusHandle, onFocusConsumed]);
-  // A highlighted row can live in a folded group (the idle swarm), so reveal
-  // every group first, then scroll once it has mounted.
-  useEffect(() => {
-    if (!highlight) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setCollapsedGroups(new Set());
-  }, [highlight]);
   useEffect(() => {
     if (!highlight) return;
     highlightRow.current?.scrollIntoView({ block: "center" });
-  }, [highlight, loading, collapsedGroups]);
+  }, [highlight, loading]);
 
   // Re-tick once a minute so the minute-granular "seen Xm ago" labels advance
   // without a refetch (matches the label resolution — no sub-minute churn).
@@ -248,25 +239,16 @@ export function AgentsPanel({
     ].filter((g) => g.agents.length > 0);
   }, [agents, presence]);
 
-  const toggleGroup = (id: string) =>
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-border bg-paper px-4 py-3">
-        <span className="text-label font-semibold text-text">Members</span>
+      <div className="flex h-8 flex-shrink-0 items-center gap-1 px-3">
         <span className="text-micro tabular text-muted-foreground">
-          {people.length + agents.length}
+          {people.length + agents.length} {people.length + agents.length === 1 ? "member" : "members"}
         </span>
         <InviteButton roomName={roomName} />
         <Button
-          variant="secondary"
-          size="sm"
+          variant="ghost"
+          size="xs"
           onClick={() => {
             setAddKind("machine");
             setAddOpen(true);
@@ -308,58 +290,39 @@ export function AgentsPanel({
           />
         )}
 
-        {people.length > 0 && (() => {
-          const collapsed = collapsedGroups.has("people");
-          return (
-            <>
-              <SectionLabel
-                collapsible
-                collapsed={collapsed}
-                onToggle={() => toggleGroup("people")}
-                count={people.length}
-              >
-                People
-              </SectionLabel>
-              {collapsed ? (
-                <Facepile people={people} presence={presence} />
-              ) : (
-                people.map((p) => {
-                  const marked = highlight === p.handle;
-                  return (
-                    <PersonRow
-                      key={`person-${p.handle}`}
-                      person={p}
-                      memberPresence={presence.get(p.handle)}
-                      floor={floors.get(p.handle)}
-                      marked={marked}
-                      rowRef={marked ? highlightRow : undefined}
-                    />
-                  );
-                })
-              )}
-            </>
-          );
-        })()}
+        {/* One plain list under quiet labels: nothing folds, so every member
+            is where you look for them. */}
+        {people.length > 0 && (
+          <>
+            <SectionLabel count={people.length}>People</SectionLabel>
+            {people.map((p) => {
+              const marked = highlight === p.handle;
+              return (
+                <PersonRow
+                  key={`person-${p.handle}`}
+                  person={p}
+                  memberPresence={presence.get(p.handle)}
+                  floor={floors.get(p.handle)}
+                  marked={marked}
+                  rowRef={marked ? highlightRow : undefined}
+                />
+              );
+            })}
+          </>
+        )}
 
         {agentGroups.map((group) => {
-          const collapsed = collapsedGroups.has(group.id);
           // The owner the whole group shares, shown once in the header instead of
           // repeated down every row. Null when the group's owners differ.
           const owners = new Set(group.agents.map((a) => a.owner).filter(Boolean));
           const groupOwner = owners.size === 1 ? [...owners][0]! : null;
           return (
-            <div key={group.id}>
-              <SectionLabel
-                collapsible
-                collapsed={collapsed}
-                onToggle={() => toggleGroup(group.id)}
-                count={group.agents.length}
-                hint={groupOwner ? `@${groupOwner}` : undefined}
-              >
+            // The idle swarm stays listed, dimmed, rather than folded away.
+            <div key={group.id} className={group.id === "idle" ? "opacity-60" : undefined}>
+              <SectionLabel count={group.agents.length} hint={groupOwner ? `@${groupOwner}` : undefined}>
                 {group.label}
               </SectionLabel>
-              {!collapsed &&
-                group.agents.map((a) => {
+              {group.agents.map((a) => {
                   const marked = highlight === a.handle;
                   return (
                     <AgentRow
@@ -403,7 +366,7 @@ function InviteButton({ roomName }: { roomName: string }) {
   };
   return (
     <Tooltip content="Copy a link that invites someone to this room">
-      <Button variant="ghost" size="sm" className="ml-auto" onClick={copy}>
+      <Button variant="ghost" size="xs" className="ml-auto" onClick={copy}>
         {copied ? <Check className="size-3 text-green" /> : <UserPlus className="size-3" />}
         {copied ? "Copied" : "Invite"}
       </Button>
@@ -411,96 +374,36 @@ function InviteButton({ roomName }: { roomName: string }) {
   );
 }
 
-/** Small uppercase divider between roster groups, with a count. When `onToggle`
- *  is given it becomes a collapse control with a chevron — how the idle swarm is
- *  folded away by default. */
+/** A quiet label over a roster group, as an editor's panel draws one: sentence
+ *  case and a count, nothing to fold. */
 function SectionLabel({
   children,
   count,
   hint,
-  collapsible = false,
-  collapsed = false,
-  onToggle,
 }: {
   children: React.ReactNode;
   count?: number;
-  /** A normal-case aside after the count, e.g. the owner a whole group shares. */
+  /** An aside after the count, e.g. the owner a whole group shares. */
   hint?: string;
-  collapsible?: boolean;
-  collapsed?: boolean;
-  onToggle?: () => void;
 }) {
-  const inner = (
-    <>
-      {collapsible && (
-        <ChevronRight
-          className={`size-3 transition-transform ${collapsed ? "" : "rotate-90"}`}
-        />
-      )}
+  return (
+    <div className="flex h-7 w-full items-end gap-1.5 px-3 pb-1 text-micro font-medium text-faint">
       <span className="flex-shrink-0 whitespace-nowrap">{children}</span>
       {count !== undefined && <span className="flex-shrink-0 font-normal tabular">{count}</span>}
       {hint && (
-        <span className="ml-auto min-w-0 truncate font-mono text-micro font-normal normal-case tracking-normal text-faint">
+        <span className="ml-auto min-w-0 truncate font-mono text-micro font-normal text-faint">
           {hint}
         </span>
       )}
-    </>
-  );
-  const cls =
-    "flex w-full items-center gap-2 px-3 pt-4 pb-1 text-micro font-semibold uppercase tracking-wide text-faint";
-  return collapsible ? (
-    <button type="button" onClick={onToggle} className={`${cls} text-left hover:text-muted-foreground`}>
-      {inner}
-    </button>
-  ) : (
-    <div className={cls}>{inner}</div>
+    </div>
   );
 }
 
 type AgentSummary = ReturnType<typeof useRoomRoster>["agents"][number];
 type RosterPerson = ReturnType<typeof useRoomRoster>["people"][number];
 
-/** People as an overlapping avatar stack: who's around, at a glance, in one row
- *  instead of a dozen. Live/awaiting rides each face as its halo; the rest is a
- *  hover tooltip. Overflow past `max` collapses to a `+N` disc. */
-function Facepile({
-  people,
-  presence,
-  max = 16,
-}: {
-  people: RosterPerson[];
-  presence: Map<string, PresenceMember>;
-  max?: number;
-}) {
-  const shown = people.slice(0, max);
-  const extra = people.length - shown.length;
-  return (
-    <div className="flex flex-wrap items-center gap-y-1.5 px-3 py-2">
-      {shown.map((p) => (
-        <Tooltip key={p.handle} content={`@${p.handle}${p.you ? " (you)" : ""}${p.owns ? " · owner" : ""}`}>
-          <div className="-ml-1.5 first:ml-0">
-            <Monogram
-              handle={p.handle}
-              color={p.you ? "var(--accent)" : "var(--avatar-neutral)"}
-              className="size-6 text-[9px] ring-2 ring-paper"
-              presence={presence.get(p.handle)?.kind}
-              status={presence.get(p.handle)?.status}
-              wakePending={presence.get(p.handle)?.wake_pending}
-            />
-          </div>
-        </Tooltip>
-      ))}
-      {extra > 0 && (
-        <div className="-ml-1.5 flex size-6 items-center justify-center rounded-full border border-border bg-surface text-[9px] font-medium text-muted-foreground ring-2 ring-paper">
-          +{extra}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** One person, one line — the expanded form of the facepile, matching the agent
- *  rows' density. Owns/posted/teams live in the hover tooltip. */
+/** One person, one line, at the agent rows' density. Owns/posted/teams live in
+ *  the hover tooltip. */
 function PersonRow({
   person: p,
   memberPresence,

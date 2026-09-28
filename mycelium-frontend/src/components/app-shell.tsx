@@ -4,7 +4,12 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Terminal } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Laptop, PanelLeft, Terminal } from "lucide-react";
+import { TitleBar } from "@/components/title-bar";
+import { Tooltip } from "@/components/ui/tooltip";
+import { KbdChord } from "@/components/ui/kbd";
 import { useDefaultLayout } from "react-resizable-panels";
 import { RoomsSidebar } from "@/components/rooms-sidebar";
 import { GlobalSearch, GlobalSearchButton } from "@/components/global-search";
@@ -38,9 +43,11 @@ import { useKeyAction } from "@/components/keymap-provider";
 interface Props {
   /** The open room (highlights its sidebar row); null on the home view. */
   activeRoom?: string | null;
-  /** Left side of the top header row: page/room identity. */
+  /** The page's name in the title bar, when it isn't a room's. */
+  title?: string;
+  /** The title bar's breadcrumb after the hub, in place of the room's name. */
   header?: ReactNode;
-  /** Right side of the top header row, before the always-present install button. */
+  /** The title bar's right side, before the app-wide buttons. */
   headerRight?: ReactNode;
   /** Left/right slots of the bottom status bar (editor-style). */
   statusLeft?: ReactNode;
@@ -71,14 +78,74 @@ function InstallCliButton() {
  *  Double-clicking the seam puts it back to the default, and on a window too
  *  narrow to hold the rail and the workspace at once it folds itself down to a
  *  strip of room monograms until there's room for names again. */
+/** A status-bar icon that shows or hides a dock, lit while the dock is open. */
+function DockToggle({
+  label,
+  action,
+  active,
+  onClick,
+  children,
+}: {
+  label: string;
+  action: string;
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip content={<>{label} <KbdChord size="xs" tone="muted" action={action} /></>} side="top">
+      <button
+        type="button"
+        aria-label={label}
+        aria-pressed={active}
+        onClick={onClick}
+        className={`flex size-5 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-hairline hover:text-text ${active ? "text-text" : ""}`}
+      >
+        {children}
+      </button>
+    </Tooltip>
+  );
+}
+
+function MachinesDockLink() {
+  const active = usePathname() === "/machines";
+  return (
+    <Tooltip content="Machines" side="top">
+      <Link
+        href="/machines"
+        aria-label="Machines"
+        aria-current={active ? "page" : undefined}
+        className={`flex size-5 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-hairline hover:text-text ${active ? "text-text" : ""}`}
+      >
+        <Laptop className="size-3.5" />
+      </Link>
+    </Tooltip>
+  );
+}
+
 export function AppShell({
   activeRoom = null,
+  title,
   header,
   headerRight,
   statusLeft,
   statusRight,
   children,
 }: Props) {
+  // Where you are, after the hub in the title bar: what the page names itself,
+  // else the room it belongs to, else its title.
+  const crumb =
+    header ??
+    (activeRoom ? (
+      <Link
+        href={`/room/${encodeURIComponent(activeRoom)}`}
+        className="truncate rounded-md px-1.5 py-1 font-medium transition-colors hover:bg-hairline"
+      >
+        {activeRoom}
+      </Link>
+    ) : title ? (
+      <span className="truncate px-1.5 font-medium">{title}</span>
+    ) : null);
   const { defaultLayout, onLayoutChange, onLayoutChanged } = useDefaultLayout({
     id: SHELL_GROUP_ID,
     storage: layoutStorage,
@@ -106,6 +173,17 @@ export function AppShell({
           className="flex h-screen flex-col overflow-hidden bg-bg text-text"
           data-app-shell="ready"
         >
+          <TitleBar
+            crumb={crumb}
+            right={
+              <>
+                {headerRight}
+                <InstallCliButton />
+                <DocsLink />
+                <ThemeToggle />
+              </>
+            }
+          />
           <div className="flex min-h-0 flex-1 overflow-hidden">
             {/* Folded, the rail is a plain strip beside the group rather than a
                 panel inside it. A panel that isn't there can't be squeezed, and
@@ -171,17 +249,6 @@ export function AppShell({
                 minSize={WORKSPACE_PANEL.min}
                 className="flex min-w-0 flex-col"
               >
-                <header className="flex h-[52px] flex-shrink-0 items-center gap-2 border-b border-border bg-surface/50 px-3 sm:gap-3 sm:px-5">
-                  {header}
-                  {/* Appearance sits top-right, the corner every app puts it in,
-                      rather than crowding the identity row at the other end. */}
-                  <div className="ml-auto flex flex-shrink-0 items-center gap-1 sm:gap-3">
-                    {headerRight}
-                    <InstallCliButton />
-                    <DocsLink />
-                    <ThemeToggle />
-                  </div>
-                </header>
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
               </ResizablePanel>
             </ResizablePanelGroup>
@@ -191,7 +258,20 @@ export function AppShell({
               it is supposed to annotate — so it scrolls sideways instead, and
               the cells that only name a keyboard drop out where there is no
               keyboard to name. */}
-          <footer className="flex h-6 flex-shrink-0 items-center gap-3 overflow-x-auto border-t border-border bg-surface px-3 text-micro whitespace-nowrap text-muted-foreground [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <footer className="flex h-6 flex-shrink-0 items-center gap-3 overflow-x-auto border-t border-border bg-surface px-2 text-micro whitespace-nowrap text-muted-foreground [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {/* The docks, as an editor keeps them: a toggle for the rooms
+                rail and the way to this machine's agents, always in the same
+                corner. */}
+            <DockToggle
+              label={roomsOpen ? "Hide rooms" : "Show rooms"}
+              action="rooms.toggle"
+              active={roomsOpen}
+              onClick={() => setRoomsOpen(open => !open)}
+            >
+              <PanelLeft className="size-3.5" />
+            </DockToggle>
+            <MachinesDockLink />
+            <span aria-hidden className="h-3 w-px flex-shrink-0 bg-border" />
             {statusLeft}
             <div className="ml-auto flex flex-shrink-0 items-center gap-3">
               {statusRight}

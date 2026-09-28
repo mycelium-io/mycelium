@@ -876,9 +876,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-3 border-b border-border shrink-0 h-[48px] bg-paper px-4">
-        {/* Connection state lives in the shell status bar. */}
-        <div className="ml-auto flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
+      {/* An editor's tab strip: flat tabs flush to the edges, the open one in
+          the pane's own color so it reads as attached to what it shows.
+          Connection state lives in the shell status bar. */}
+      <div className="flex h-8 shrink-0 items-stretch border-b border-border bg-surface">
+        <div className="flex items-stretch">
           {([
             { id: "channel" as const, label: "Channel", count: channelCount as number | null },
             { id: "board" as const,   label: "Board",   count: null },
@@ -891,9 +893,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                 key={t.id}
                 data-tour={`tab-${t.id}`}
                 onClick={() => setView(t.id)}
-                className={`relative flex items-center gap-1.5 rounded-md px-3 py-1 text-label font-medium transition-colors ${
+                className={`relative -mb-px flex items-center gap-1.5 border-r border-border px-3 text-label transition-colors ${
                   active
-                    ? "bg-elevated text-text shadow-sm ring-1 ring-border"
+                    ? "bg-paper text-text"
                     : "text-muted-foreground hover:bg-hairline hover:text-text"
                 }`}
               >

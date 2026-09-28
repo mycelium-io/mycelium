@@ -351,7 +351,7 @@ function RoomWorkspace() {
   // you do to the room sits with the room, not among the app-wide buttons.
   const header = (
     <>
-      <span className="text-ui font-semibold text-text truncate">{roomName}</span>
+      <span className="truncate px-1.5 font-medium text-text">{roomName}</span>
       <RoomMenu roomName={roomName} masId={room?.mas_id ?? null} />
     </>
   );
