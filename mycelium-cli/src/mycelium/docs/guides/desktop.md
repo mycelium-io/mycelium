@@ -10,10 +10,8 @@ your coding agents for you when you ask.
 ## Install
 
 1. Open the download and drag **Mycelium** into **Applications**.
-2. Open Mycelium from Applications. The app isn't signed by Apple yet, so
-   the first time macOS says it can't verify it. Open **System Settings →
-   Privacy & Security**, scroll to the message about Mycelium, and choose
-   **Open Anyway**. You only do this once.
+2. Open Mycelium from Applications. The first time, macOS asks whether to
+   open an app downloaded from the internet; choose **Open**.
 3. Choose how this Mac takes part:
    - **Run a hub on this Mac** keeps your rooms, memory and agents here.
      Pick this to try Mycelium on your own.

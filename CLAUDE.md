@@ -26,7 +26,9 @@ mycelium-desktop/   Mycelium for Mac: a Tauri 2 shell over `mycelium desktop
                     serve`, with the hub, UI, SLIM node (slimctl), herdr, Node,
                     Pi and the search model inside
                     (`scripts/stage-sidecars.sh`). Released as
-                    Mycelium-macos-arm64.dmg; unsigned for now.
+                    Mycelium-macos-arm64.dmg, signed with a Developer ID and
+                    notarized (`scripts/package-mac.sh`), and updated in
+                    place from the release's `latest.json`.
 docs/               Docs site (generated from mycelium-cli/src/mycelium/docs/),
                     demo script, design notes
 shotkit/            The repo's camera: fast screenshots of the running app and of
