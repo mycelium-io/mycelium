@@ -105,6 +105,8 @@ fn open_terminal_window(app: &AppHandle, pane: Option<String>) {
         .inner_size(1100.0, 700.0)
         .min_inner_size(560.0, 320.0)
         .background_color(tauri::webview::Color(12, 14, 17, 255))
+        // A dark title bar, to match the app, whatever the system appearance.
+        .theme(Some(tauri::Theme::Dark))
         .build();
     if let Err(e) = built {
         eprintln!("[mycelium] could not open the agents terminal: {e}");
@@ -489,6 +491,8 @@ fn main_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
         .inner_size(1320.0, 860.0)
         .min_inner_size(720.0, 520.0)
         .background_color(tauri::webview::Color(12, 14, 17, 255))
+        // A dark title bar, to match the app, whatever the system appearance.
+        .theme(Some(tauri::Theme::Dark))
         .user_agent(&ua)
         .build()
 }
