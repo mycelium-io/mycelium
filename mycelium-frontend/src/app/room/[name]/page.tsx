@@ -19,7 +19,6 @@ import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
 import { GlobalStatusItems, StatusButton } from "@/components/status-items";
 import { episodeUrn } from "@/lib/threads";
-import { Tooltip } from "@/components/ui/tooltip";
 import { useCommands, useKeyAction, useKeyScope } from "@/components/keymap-provider";
 import type { PaletteCommand } from "@/lib/commands";
 import { useRoomStatus } from "@/lib/use-status";
@@ -43,9 +42,7 @@ import {
 import { useCollapsibleRail } from "@/lib/use-collapsible-rail";
 import { useSheetLayout } from "@/lib/use-viewport";
 import { RailSheet } from "@/components/rail-sheet";
-import { DeleteRoomDialog } from "@/components/delete-room-dialog";
-import { Button } from "@/components/ui/button";
-import { Trash2 } from "lucide-react";
+import { RoomMenu } from "@/components/room-menu";
 
 function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string; color: string } | null {
   if (!episodes || episodes.length === 0) return null;
@@ -87,7 +84,6 @@ function RoomWorkspace() {
   // The open thread, as a URN. A transient pane and nothing more: no rail holds
   // it, no route names it, and closing it leaves the room exactly as it was.
   const [threadEpisode, setThreadEpisode] = useState<string | null>(null);
-  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const handleTourExit = useCallback(() => {
     setTourActive(false);
@@ -351,37 +347,12 @@ function RoomWorkspace() {
     </>
   );
 
+  // The name, then the room's own menu beside it (its id, deleting it): what
+  // you do to the room sits with the room, not among the app-wide buttons.
   const header = (
     <>
       <span className="text-ui font-semibold text-text truncate">{roomName}</span>
-      {room?.mas_id && (
-        <Tooltip content="MAS id" side="bottom">
-          {/* Below `md` the header has room for the room's name or its id, and
-              the name is the one a reader is orienting by. */}
-          <span className="hidden truncate font-mono text-micro text-faint md:inline">{room.mas_id}</span>
-        </Tooltip>
-      )}
-    </>
-  );
-
-  const headerRight = (
-    <>
-      <Tooltip content="Delete room" side="bottom">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={`Delete room ${roomName}`}
-          onClick={() => setDeleteOpen(true)}
-        >
-          <Trash2 className="size-3.5" />
-        </Button>
-      </Tooltip>
-      <DeleteRoomDialog
-        roomName={roomName}
-        open={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
-        onDeleted={() => router.push("/")}
-      />
+      <RoomMenu roomName={roomName} masId={room?.mas_id ?? null} />
     </>
   );
 
@@ -389,7 +360,6 @@ function RoomWorkspace() {
     <AppShell
       activeRoom={roomName}
       header={header}
-      headerRight={headerRight}
       statusLeft={statusLeft}
       statusRight={statusRight}
     >

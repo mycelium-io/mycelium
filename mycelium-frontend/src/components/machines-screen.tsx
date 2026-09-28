@@ -17,7 +17,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Laptop, Square, SquareTerminal } from "lucide-react";
+import { Laptop, Loader2, Square, SquareTerminal } from "lucide-react";
 import { stopRunnerAgent, type Runner, type RunnerAgent } from "@/lib/api";
 import { terminalLink, useIsDesktop } from "@/lib/desktop";
 import {
@@ -38,20 +38,28 @@ const RECENT_JOBS = 8;
 
 export function MachinesScreen() {
   const { runners, loading } = useRunners();
+  // Inside the Mac app this Mac is always one of them: the app runs its
+  // runner, so there is nothing to set up, only a moment to wait for it.
+  const desktop = useIsDesktop();
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
         <h1 className="text-display font-semibold text-text">Machines</h1>
         <p className="mt-1 max-w-2xl text-label leading-relaxed text-muted-foreground">
-          Your computers connected to this hub with <code className="font-mono text-accent">mycelium runner</code>.
-          Each one reports the agent CLIs it has installed, and starts the agents you ask for in a
-          herdr terminal there, where you can watch and type to them. Only yours are listed here.
+          {desktop ? (
+            <>This Mac, and any other computer of yours connected with </>
+          ) : (
+            <>Your computers connected to this hub with </>
+          )}
+          <code className="font-mono text-accent">mycelium runner</code>. Each one reports the agent
+          CLIs it has installed, and starts the agents you ask for in a herdr terminal there, where
+          you can watch and type to them. Only yours are listed here.
         </p>
 
         <div className="mt-6 space-y-4">
           {loading && runners.length === 0 && <Skeleton className="h-40 w-full rounded-xl" />}
-          {!loading && runners.length === 0 && <ConnectMachine />}
+          {!loading && runners.length === 0 && (desktop ? <ThisMacConnecting /> : <ConnectMachine />)}
           {runners.map((r) => (
             <MachineCard key={r.id} runner={r} />
           ))}
@@ -62,6 +70,22 @@ export function MachinesScreen() {
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** In the Mac app before its runner has checked in: it is on its way, not missing. */
+function ThisMacConnecting() {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-border bg-surface/40 p-4">
+      <Loader2 className="size-4 animate-spin text-muted-foreground" />
+      <div>
+        <p className="text-label font-medium text-text">This Mac is connecting</p>
+        <p className="text-micro text-muted-foreground">
+          Mycelium starts this Mac&apos;s runner for you. It appears here in a few seconds. If it
+          doesn&apos;t, open Health check in the menu bar.
+        </p>
       </div>
     </div>
   );

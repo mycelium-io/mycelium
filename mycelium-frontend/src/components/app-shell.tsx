@@ -11,6 +11,7 @@ import { GlobalSearch, GlobalSearchButton } from "@/components/global-search";
 import { CommandPaletteButton, KeymapHelpButton } from "@/components/keymap-provider";
 import { InstallModalProvider, useOpenInstallModal } from "@/components/install-modal";
 import { DocsLink } from "@/components/docs-link";
+import { useIsDesktop } from "@/lib/desktop";
 import { MetricsStatusLink } from "@/components/status-items";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -47,8 +48,10 @@ interface Props {
   children: ReactNode;
 }
 
+/** Hidden inside the Mac app, which puts the CLI on this Mac's PATH itself. */
 function InstallCliButton() {
   const openInstallModal = useOpenInstallModal();
+  if (useIsDesktop()) return null;
   return (
     <Button variant="ghost" size="sm" className="gap-1.5" onClick={openInstallModal} aria-label="Install CLI">
       <Terminal className="size-3.5" />
