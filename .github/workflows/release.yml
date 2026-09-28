@@ -255,19 +255,9 @@ jobs:
         working-directory: mycelium-desktop
         run: |
           npx tauri build --bundles app --config src-tauri/tauri.bundle.conf.json
-          # The disk image step lays out its Finder window with AppleScript,
-          # which now and then fails for no reason of ours; it's retried.
-          for try in 1 2 3; do
-            npx tauri bundle --bundles dmg --config src-tauri/tauri.bundle.conf.json && exit 0
-            echo "disk image attempt $try failed; retrying"
-            sleep 5
-          done
-          exit 1
-
-      - name: Name the disk image
-        run: |
-          mkdir -p dist/desktop
-          cp mycelium-desktop/src-tauri/target/release/bundle/dmg/*.dmg dist/desktop/Mycelium-macos-arm64.dmg
+          # Signs the app as a whole (else macOS calls it damaged) and makes
+          # the disk image with its layout written directly, no Finder.
+          bash scripts/package-mac.sh "$GITHUB_WORKSPACE/dist/desktop/Mycelium-macos-arm64.dmg"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -342,7 +332,7 @@ jobs:
           body: |
             ## Install
 
-            **On a Mac:** download [Mycelium for Mac](https://github.com/mycelium-io/mycelium/releases/download/${{ github.ref_name }}/Mycelium-macos-arm64.dmg) (Apple silicon), drag it into Applications and open it. It isn't signed yet: the first time, right-click it and choose Open.
+            **On a Mac:** download [Mycelium for Mac](https://github.com/mycelium-io/mycelium/releases/download/${{ github.ref_name }}/Mycelium-macos-arm64.dmg) (Apple silicon), drag it into Applications and open it. It isn't signed by Apple yet: the first time, open System Settings, Privacy & Security, and choose Open Anyway.
 
             **On Linux, a server, or from a terminal:**
 

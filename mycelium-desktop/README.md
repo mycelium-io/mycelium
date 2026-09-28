@@ -57,14 +57,18 @@ installed. `scripts/stage-sidecars.sh` stages it all, pinned:
 ```bash
 npm run sidecars                  # all of it, several minutes
 bash scripts/stage-sidecars.sh ui # or just the steps you changed
-npx tauri build --bundles app,dmg --config src-tauri/tauri.bundle.conf.json
+npx tauri build --bundles app --config src-tauri/tauri.bundle.conf.json
+bash scripts/package-mac.sh       # sign it, then make the disk image
 ```
 
-The disk image lands in `src-tauri/target/release/bundle/dmg/`. Building it
-arranges the Finder window with AppleScript, so the first local build asks
-whether your terminal may control Finder; say yes, or the last step fails.
-The release workflow builds the same thing and attaches it to each release
-as `Mycelium-macos-arm64.dmg`.
+`package-mac.sh` signs every program inside the app and then the app, and
+makes `src-tauri/target/release/bundle/dmg/Mycelium-macos-arm64.dmg` with
+`dmgbuild` (layout in `scripts/dmg-settings.py`). Both matter for a
+downloaded copy: an app whose bundled programs were added after it was
+signed is "damaged" to macOS, and Tauri's own disk image lays out its window
+by scripting Finder, which fails on CI. The signature is ad-hoc until
+`SIGN_IDENTITY` names a Developer ID. The release workflow runs the same
+steps and attaches the image to each release.
 
 `MYCELIUM_BIN=/path/to/mycelium` stages a `mycelium` binary you already have
 instead of building one. `npx tauri build --bundles app` without the bundle
