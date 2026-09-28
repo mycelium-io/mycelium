@@ -18,6 +18,7 @@ vi.mock("@/lib/api", () => ({
   createTask: (...args: unknown[]) => createTask(...args),
   writeFields: (...args: unknown[]) => writeFields(...args),
   startSwarm: vi.fn(),
+  fetchRunners: vi.fn().mockResolvedValue([]),
   fetchRoomAgents: vi.fn().mockResolvedValue([
     { handle: "aligner", adapter: "engine", kind: "aligner", description: "mediator", cwd: null, owner: null, team: null, allow_from: [] },
   ]),

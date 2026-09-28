@@ -8,6 +8,8 @@ import { Check, ChevronDown, ChevronRight, Users } from "lucide-react";
 import { createEngine, registerA2aAgent, type EngineKind, type PresenceMember, type RoomFloor } from "@/lib/api";
 import { floorLabel } from "@/lib/floors";
 import { useNetworkStatus, useRoomRoster } from "@/lib/room-data";
+import { runnerName, useRunners } from "@/lib/runners";
+import { LaunchAgentDialog } from "@/components/launch-agent-dialog";
 import { agentHandoffPrompt } from "@/lib/install";
 import { Button } from "@/components/ui/button";
 import { CopyAction } from "@/components/ui/copy-field";
@@ -162,8 +164,10 @@ function MemberTooltipCard({
  * (muted for people, accent for agents).
  *
  * Engines (aligner / synthesizer / hello) are backend-owned, so their separate
- * invitation action is a pure manifest write. Coding-agent registration stays
- * CLI-driven because it has spoke-local side effects the hub cannot perform.
+ * invitation action is a pure manifest write. A coding agent needs something on
+ * the user's machine to start it: with a runner connected (`mycelium runner`)
+ * the app queues that start through the hub; without one, the setup is copied
+ * into an agent the user already has open.
  */
 export function AgentsPanel({
   roomName,
@@ -175,6 +179,7 @@ export function AgentsPanel({
   // People collapse to a facepile and the idle swarm folds away — both by default.
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(["people", "idle"]));
   const [agentOpen, setAgentOpen] = useState(false);
+  const [launchOpen, setLaunchOpen] = useState(false);
   const [engineOpen, setEngineOpen] = useState(false);
   const [a2aOpen, setA2aOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -191,6 +196,8 @@ export function AgentsPanel({
   // manifests, people from agent owners ∪ posters ∪ live presence ∪ you, and a
   // presence entry for whoever holds a SLIM socket or an `await` lease.
   const { agents, people, presence, floors, loading, refresh } = useRoomRoster(roomName);
+  const { runners } = useRunners();
+  const runnersById = useMemo(() => new Map(runners.map((r) => [r.id, r])), [runners]);
 
   useEffect(() => {
     if (!engineInvite) return;
@@ -283,6 +290,14 @@ export function AgentsPanel({
           </PopoverTrigger>
           <PopoverContent className="w-64 p-1">
             <InviteOption
+              label="Agent on your machine"
+              hint="Scan and start a coding agent you have installed"
+              onClick={() => {
+                setInviteOpen(false);
+                setLaunchOpen(true);
+              }}
+            />
+            <InviteOption
               label="Coding agent"
               hint="Copy room-aware setup"
               onClick={() => {
@@ -308,6 +323,12 @@ export function AgentsPanel({
             />
           </PopoverContent>
         </Popover>
+        <LaunchAgentDialog
+          open={launchOpen}
+          onOpenChange={setLaunchOpen}
+          roomName={roomName}
+          onLaunched={refresh}
+        />
         <Dialog open={agentOpen} onOpenChange={setAgentOpen}>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
@@ -384,7 +405,7 @@ export function AgentsPanel({
             size="sm"
             icon={Users}
             title="No members yet"
-            description="Agents are registered from the CLI; people appear once they own an agent or post."
+            description="Start an agent on your machine from Invite, or register one from the CLI. People appear once they own an agent or post."
             action={
               <code className="font-mono text-micro bg-surface px-1.5 py-0.5 text-accent border border-border rounded whitespace-nowrap">
                 mycelium agent create
@@ -451,6 +472,9 @@ export function AgentsPanel({
                       key={`agent-${a.handle}`}
                       agent={a}
                       groupOwner={groupOwner}
+                      machine={
+                        a.runner ? runnerName(runnersById.get(a.runner), a.runner) : null
+                      }
                       memberPresence={presence.get(a.handle.toLowerCase())}
                       floor={floors.get(a.handle.toLowerCase())}
                       marked={marked}
@@ -626,7 +650,12 @@ function PersonRow({
 /** The one terse thing to show at the end of a compact row: what an engine is,
  *  or how present a worker is. The avatar halo already carries live/awaiting, so
  *  this stays short — the full story is in the row's hover tooltip. */
-function rowMeta(a: AgentSummary, presence?: PresenceMember, floor?: RoomFloor): string | null {
+function rowMeta(
+  a: AgentSummary,
+  presence?: PresenceMember,
+  floor?: RoomFloor,
+  machine?: string | null,
+): string | null {
   // Whose turn it is beats what the row is: a member the floor was given to is
   // being waited on, and that reads the same for a persona as for a session.
   if (floor) return floorLabel(a.handle, floor);
@@ -635,6 +664,7 @@ function rowMeta(a: AgentSummary, presence?: PresenceMember, floor?: RoomFloor):
   if (presence && isHerdr(presence)) return presence.status ?? "alive";
   if (presence?.kind === "slim") return "live";
   if (presence?.kind === "lease") return "awaiting";
+  if (machine) return `on ${machine}`;
   return null;
 }
 
@@ -653,6 +683,7 @@ function AgentRow({
   floor,
   marked,
   rowRef,
+  machine = null,
 }: {
   agent: AgentSummary;
   /** The owner shared by the row's group, if any — omitted from the row itself. */
@@ -661,8 +692,10 @@ function AgentRow({
   floor?: RoomFloor;
   marked: boolean;
   rowRef?: React.Ref<HTMLDivElement>;
+  /** The machine the app started this agent on, by name. */
+  machine?: string | null;
 }) {
-  const meta = rowMeta(a, memberPresence, floor);
+  const meta = rowMeta(a, memberPresence, floor, machine);
   const oddOwner = a.owner && a.owner !== groupOwner ? a.owner : null;
   const adapter = a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter;
   return (
@@ -675,6 +708,10 @@ function AgentRow({
           <DetailRow label="owner" value={a.owner ? `@${a.owner}` : undefined} />
           <DetailRow label="team" value={a.team ?? undefined} />
           <DetailRow label="adapter" value={adapter} />
+          <DetailRow
+            label="machine"
+            value={machine ? `${machine}${a.framework ? ` · ${a.framework}` : ""}` : undefined}
+          />
           <DetailRow
             label="skills"
             value={a.adapter === "a2a" && a.a2a_skills?.length ? a.a2a_skills.join(", ") : undefined}

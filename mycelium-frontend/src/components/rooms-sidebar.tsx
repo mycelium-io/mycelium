@@ -13,6 +13,7 @@ import {
   BellRing,
   Boxes,
   Check,
+  Laptop,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -40,6 +41,21 @@ import { useCommands, useKeyAction } from "@/components/keymap-provider";
 import { useOpenInstallModal } from "@/components/install-modal";
 import { chordFor, chordKey } from "@/lib/keymap";
 import type { PaletteCommand } from "@/lib/commands";
+
+/** The way to the machines agents run on, beside the bell on every screen. */
+function MachinesLink() {
+  return (
+    <Tooltip content="Machines">
+      <Link
+        href="/machines"
+        aria-label="Machines"
+        className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+      >
+        <Laptop className="size-4" />
+      </Link>
+    </Tooltip>
+  );
+}
 
 /** "Collapse the rooms rail (⌥B)" — spelled into the title so the strip says
  *  how to get back without holding the reveal modifier first. */
@@ -170,6 +186,13 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
       },
       { id: "nav.metrics", title: "Metrics", group: "Navigate", run: () => router.push("/metrics") },
       {
+        id: "nav.machines",
+        title: "Machines",
+        group: "Navigate",
+        keywords: ["runner", "computer", "agents", "start", "herdr"],
+        run: () => router.push("/machines"),
+      },
+      {
         id: "nav.install",
         title: "Install the CLI",
         group: "Navigate",
@@ -270,6 +293,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
         </Tooltip>
         <div className="flex w-full flex-col items-center gap-1 border-t border-border py-2">
           <ActingAsPicker compact />
+          <MachinesLink />
           <NotificationBell />
         </div>
 
@@ -414,6 +438,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
       <div className="flex items-center gap-1 border-t border-border px-2 py-2">
         <ActingAsPicker />
         <div className="flex flex-shrink-0 items-center">
+          <MachinesLink />
           <NotificationBell />
         </div>
       </div>

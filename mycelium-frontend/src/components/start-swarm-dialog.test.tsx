@@ -8,13 +8,70 @@ vi.mock("@/components/current-user", () => ({
 }));
 const startSwarm = vi.fn();
 vi.mock("@/lib/api", () => ({ startSwarm: (...args: unknown[]) => startSwarm(...args) }));
+let connected: Runner[] = [];
+vi.mock("@/lib/runners", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/runners")>()),
+  useRunners: () => ({ runners: connected, connected, loading: false, refresh: vi.fn() }),
+}));
 
+import type { Runner } from "@/lib/api";
+import { runner } from "@/lib/runners.fixture";
 import { StartSwarmDialog } from "./start-swarm-dialog";
 
 describe("StartSwarmDialog", () => {
   beforeEach(() => {
     push.mockReset();
     startSwarm.mockReset();
+    connected = [];
+  });
+
+  it("puts the team on a connected machine's agent CLI instead of the hub", async () => {
+    connected = [runner()];
+    startSwarm.mockResolvedValue({
+      room: "launch",
+      key: "work/fix-the-flaky-tests",
+      episode: "urn:ioc:mycelium:episode:launch:9f8e7d6c",
+      members: ["agent-1", "agent-2", "agent-3"],
+      job: "job-0007",
+    });
+    render(<StartSwarmDialog open onClose={vi.fn()} roomName="launch" />);
+
+    fireEvent.change(screen.getByLabelText("What should the team work on?"), {
+      target: { value: "Fix the flaky tests" },
+    });
+    fireEvent.click(screen.getByRole("radio", { name: "On julias-mbp" }));
+    // The repository is the hub's; a machine's team works in a folder there.
+    expect(screen.queryByLabelText(/Repository/)).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Codex CLI" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("radio", { name: "opencode" }));
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Start swarm" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    expect(startSwarm).toHaveBeenCalledWith("launch", {
+      task: "Fix the flaky tests",
+      size: 3,
+      created_by: "julia",
+      runner: "julias-mbp",
+      framework: "opencode",
+      cwd: "/Users/julia/code/atlas",
+      worktree: true,
+    });
+  });
+
+  it("can't start on a machine without herdr, and says why", () => {
+    connected = [runner({ herdr: false })];
+    render(<StartSwarmDialog open onClose={vi.fn()} roomName="launch" initialTask="Anything" />);
+
+    fireEvent.click(screen.getByRole("radio", { name: "On julias-mbp" }));
+    expect(screen.getByRole("note")).toHaveTextContent("herdr isn't running on julias-mbp");
+    expect(screen.getByRole("button", { name: "Start swarm" })).toBeDisabled();
+  });
+
+  it("offers the CLI command only when no machine is connected", () => {
+    render(<StartSwarmDialog open onClose={vi.fn()} roomName="launch" />);
+    expect(screen.getByText("Or use the agents on your machine")).toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "Where" })).not.toBeInTheDocument();
   });
 
   it("starts a team on the task in this room and opens the task's thread", async () => {

@@ -15,8 +15,9 @@ Design rules (mirrors the package docstring):
   :class:`HerdrUnavailableError`; callers on the wake path catch it and fall back
   to the pure-CLI ``await``/``respond`` behavior. Never let a herdr hiccup break
   ``agent invoke``.
-- **Drive, don't spawn.** We prompt agents the user already created. Spawning
-  panes/agents is deliberately out of scope.
+- **Interactive sessions only.** Agents started here (``swarm``, the runner)
+  are interactive sessions in panes the user can watch and type into; they
+  are driven by prompting the pane, never run one-shot.
 - **The reply channel is the room.** We never read agent stdout — herdr can't
   scrape alt-screen TUIs anyway. We supply the *wake*; the agent ``respond``s
   through mycelium on its own.
@@ -25,6 +26,7 @@ Design rules (mirrors the package docstring):
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -40,6 +42,9 @@ if TYPE_CHECKING:
 #: and will observe a fresh lifecycle change. ``working``/``blocked`` are held
 #: back to the durable cursor (see :meth:`HerdrBridge.wake`).
 _WAKEABLE_STATES = frozenset({"idle", "done", "unknown"})
+
+#: Where ``herdr agent start --help`` lists the kinds it can start.
+_POSSIBLE_KINDS = re.compile(r"\[possible values:\s*([^\]]+)\]")
 
 
 class HerdrError(RuntimeError):
@@ -421,6 +426,38 @@ class HerdrBridge:
         if not new:
             raise HerdrError("herdr split a pane but named no new pane")
         return new
+
+    def close_pane(self, pane: str) -> None:
+        """Close ``pane``, ending whatever runs in it."""
+        self._run_json(["pane", "close", pane])
+
+    def supported_kinds(self) -> set[str] | None:
+        """The agent kinds ``herdr agent start --kind`` accepts, read from its own help.
+
+        ``None`` when herdr is missing or its help no longer lists them, so a
+        caller can tell "herdr starts none of these" from "couldn't tell".
+        """
+        if not self.binary_present():
+            return None
+        try:
+            proc = self._runner(["agent", "start", "--help"])
+        except OSError:
+            return None
+        found = _POSSIBLE_KINDS.search(proc.stdout or "")
+        if not found:
+            return None
+        return {k.strip() for k in found.group(1).split(",") if k.strip()}
+
+    def version(self) -> str | None:
+        """herdr's version string, or ``None`` when it can't be read."""
+        if not self.binary_present():
+            return None
+        try:
+            proc = self._runner(["--version"])
+        except OSError:
+            return None
+        out = (proc.stdout or "").strip()
+        return out.removeprefix("herdr").strip() or None if proc.returncode == 0 else None
 
     def start_agent(
         self,

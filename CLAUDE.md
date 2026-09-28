@@ -320,6 +320,27 @@ is no litellm dependency.
   result printed in full) and, locally, runs the herdr sync pass on a thread
   (`commands/herdr.sync_pass`) with `wait=False`, so woken members work at
   once rather than one turn after another.
+- **The app starts agents on a machine through its runner, and only in
+  herdr.** `mycelium runner` (`mycelium/runner/`) runs on the user's machine
+  and only dials out: it says hello with its scan (agent CLIs found on `PATH`,
+  launchable when herdr's own `agent start --help` lists their kind), its
+  roots and its agents, heartbeats, and long-polls `GET
+  /api/runners/{id}/jobs/next` for `launch`, `stop`, `scan` and `swarm` jobs
+  (`app/services/runners.py`, in memory like presence; `routes/runners.py`).
+  The pattern is LangGraph Studio's (a hosted UI driving a local server),
+  turned around so the hub never reaches into the machine. A job names a
+  framework id from the runner's scan and a folder inside its roots, never a
+  command. The hub writes the agent (manifest with `runner` and `framework`,
+  instructions as its notes) before queuing the launch, so a failed start
+  leaves an agent that can be started again. Every agent a runner starts is an
+  interactive session in a herdr pane, prompted to read its notes; there is
+  no headless or one-shot mode, and a machine without herdr starts nothing. A
+  runner-started agent's pane mapping is not `managed`, so a closed pane stops
+  it without deleting it from the room. A swarm with `runner` set has the hub
+  register the conductor, write the members and file the task, and the runner
+  runs `swarm.start_local`/`brief_local`/`kick_off` exactly as the CLI does.
+  The runner also runs the `herdr sync` loop, over the workspaces it opened
+  only; any other binding is the user's own `herdr sync`'s.
 - **The aligner mediates, inside a task.** Agents never talk to each other directly;
   all coordination flows through the aligner. It's a first-party engine registered
   as a room citizen (`mycelium engine create aligner --kind aligner`) and summoned

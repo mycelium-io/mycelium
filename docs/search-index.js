@@ -2018,6 +2018,62 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Reference"
   },
   {
+    "u": "reference.html#machines",
+    "t": "Start Agents From the App",
+    "s": "Guides",
+    "x": "The app can start coding agents on your own computer: one agent with its own instructions, or a whole swarm on a task. To let it, run the runner on that computer. mycelium runner Leave it running. It looks for the agent CLIs installed on the machine, tells the hub what it found, and starts agents in herdr when someone asks for one from the app. Agents it starts are ordinary interactive sessions in herdr panes, so you",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#machines-how-it-connects",
+    "t": "How it connects",
+    "s": "Guides › Start Agents From the App",
+    "x": "The runner only ever connects out to the hub. The app never talks to your machine directly: it asks the hub, and the hub hands the request to the runner the next time the runner checks in (a few seconds at most). So it works the same whether the hub is on your laptop or on a server somewhere else, and whether or not your laptop can be reached from outside.",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#machines-what-it-finds",
+    "t": "What it finds",
+    "s": "Guides › Start Agents From the App",
+    "x": "On start, and whenever you press Rescan in the app, the runner checks your PATH for the agent CLIs it knows (Claude Code, Codex, Gemini CLI, Cursor Agent, OpenCode, Pi, GitHub Copilot CLI, Amp and others). Which of them it can start is up to herdr: the runner asks herdr which agent kinds it supports, so a newer herdr can start more of them with no change to Mycelium. See the same list from a terminal: mycelium runner",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#machines-starting-an-agent",
+    "t": "Starting an agent",
+    "s": "Guides › Start Agents From the App",
+    "x": "In a room, open Members → Invite → Agent on your machine. Pick: the machine, if more than one runner is connected; the agent CLI, from what the scan found; a handle, which is how the room addresses it (@scout); instructions, how the agent should work. They are saved as the agent's notes (agents/<handle>/notes), which it reads when it starts and you can edit later like any memory; the folder it starts in. The agent is",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#machines-a-swarm-on-your-machine",
+    "t": "A swarm on your machine",
+    "s": "Guides › Start Agents From the App",
+    "x": "The Start a swarm dialog has a Where choice. Pick a connected machine instead of the hub, and the team is your own agent CLI in a new herdr workspace on that machine, started in the folder you choose (optionally with a git worktree per member). It is the same as running mycelium swarm in that folder, without the terminal.",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#machines-which-folders",
+    "t": "Which folders",
+    "s": "Guides › Start Agents From the App",
+    "x": "The app can only start agents inside the folders the runner was given, and only with an agent CLI the scan found. It never sends a command to run. By default the allowed folder is the one you ran mycelium runner from; name others with --root: mycelium runner --root ~/code --root ~/work/api",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#machines-running-it-in-the-background",
+    "t": "Running it in the background",
+    "s": "Guides › Start Agents From the App",
+    "x": "mycelium runner --detach # start in the background mycelium runner status # is it running, and does the hub see it? mycelium runner stop # stop it; agents it started keep running The Machines page (the laptop icon beside the notification bell) lists every connected runner, what it found, the agents it is running, and its recent requests.",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#machines-who-can-use-it",
+    "t": "Who can use it",
+    "s": "Guides › Start Agents From the App",
+    "x": "A runner does what the hub asks. With the hub's sign-in turned off, anyone who can reach the hub can start agents on a connected machine, within its folders and its scan. On a shared or public hub, turn sign-in on before connecting a runner.",
+    "p": "Reference"
+  },
+  {
     "u": "reference.html#security-planes",
     "t": "Security Planes",
     "s": "Guides",
