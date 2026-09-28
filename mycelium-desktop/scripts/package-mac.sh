@@ -59,3 +59,34 @@ uv run --with dmgbuild dmgbuild \
   -D background="$here/src-tauri/dmg/background.png" \
   Mycelium "$out"
 echo "made $out"
+
+# The in-app updater's half: the signed app as an archive, signed with the
+# updater key, and latest.json naming it. The app checks latest.json on the
+# latest release and installs the archive only if its signature matches the
+# public key it was built with. Without the key (a local build) this is skipped.
+if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+  echo "no TAURI_SIGNING_PRIVATE_KEY; skipping the update archive"
+  exit 0
+fi
+outdir="$(dirname "$out")"
+archive="$outdir/Mycelium-macos-arm64.app.tar.gz"
+tag="${RELEASE_TAG:-${GITHUB_REF_NAME:?set RELEASE_TAG to the release tag}}"
+version="$(sed -nE 's/^  "version": "([^"]+)".*/\1/p' "$here/src-tauri/tauri.conf.json")"
+
+echo "making the update archive…"
+rm -f "$archive" "$archive.sig"
+COPYFILE_DISABLE=1 tar -czf "$archive" -C "$(dirname "$app")" Mycelium.app
+# Reads the key and its password from TAURI_SIGNING_PRIVATE_KEY(_PASSWORD).
+(cd "$here" && npx tauri signer sign "$archive" >/dev/null)
+
+python3 - "$outdir/latest.json" "$version" "$(cat "$archive.sig")" \
+  "https://github.com/mycelium-io/mycelium/releases/download/$tag/$(basename "$archive")" <<'PY'
+import datetime, json, sys
+path, version, signature, url = sys.argv[1:]
+json.dump({
+    "version": version,
+    "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "platforms": {"darwin-aarch64": {"signature": signature, "url": url}},
+}, open(path, "w"), indent=2)
+PY
+echo "made $archive and latest.json ($version)"

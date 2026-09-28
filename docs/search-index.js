@@ -2049,7 +2049,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#desktop-the-menu-bar",
     "t": "The menu bar",
     "s": "Guides › The Mac App",
-    "x": "Mycelium lives in the menu bar while it runs. Closing the window leaves it running; Quit Mycelium stops the hub. Agents you started keep running in herdr either way. the state of the hub, the SLIM node and the runner; Open Mycelium and Agents terminal; Start at login; Health check…, below; Switch hub…, to change how this Mac takes part.",
+    "x": "Mycelium lives in the menu bar while it runs. Closing the window leaves it running; Quit Mycelium stops the hub. Agents you started keep running in herdr either way. the state of the hub, the SLIM node and the runner; Open Mycelium and Agents terminal; Start at login; Health check…, below; Settings… (also Mycelium → Settings…, ⌘,), to change how this Mac takes part; Check for Updates….",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#desktop-updates",
+    "t": "Updates",
+    "s": "Guides › The Mac App",
+    "x": "The app checks for a new release shortly after it opens, and when you choose Check for Updates…. If one is out, it asks before installing it, then restarts. Agents keep running in herdr through the restart. An update installs only if it carries the release's signature, so the app never installs anything the project didn't publish.",
     "p": "Reference"
   },
   {
