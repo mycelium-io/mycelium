@@ -181,6 +181,7 @@
           <a href="#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
           <a href="#ephemeral-agents" class="nav-link sub">Ephemeral Agents</a>
           <a href="#herdr" class="nav-link sub">Persistent Agents (herdr)</a>
+          <a href="#desktop" class="nav-link sub">The Mac App</a>
           <a href="#machines" class="nav-link sub">Start Agents From the App</a>
           <a href="#security-planes" class="nav-link sub">Security Planes</a>
           <a href="#auth" class="nav-link sub">Authentication</a>
@@ -1858,6 +1859,58 @@ EOF
       <h2 id="herdr-what-herdr-isnt-needed-for">What herdr isn&#x27;t needed for</h2>
       <p>Rooms, memory, the board and negotiations all work without herdr. Agents kept running with <code>mycelium await --loop</code> never miss a message, because the hub keeps their place in the room between turns (see <a href="#architecture">Architecture</a>). herdr only adds waking an agent that isn&#x27;t running, so you don&#x27;t have to be at the terminal for it to answer.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/herdr.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="desktop">
+      <h1>The Mac App</h1>
+      <p>Mycelium for Mac is the quickest way to get going. It runs everything Mycelium needs on your Mac, with no Docker and no terminal, and starts your coding agents for you when you ask.</p>
+      <p><strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg">Download Mycelium for Mac</a></strong> (Apple silicon, macOS 13 or later)</p>
+      <h2 id="desktop-install">Install</h2>
+      <ol class="steps">
+        <li>Open the download and drag <strong>Mycelium</strong> into <strong>Applications</strong>.</li>
+        <li>Open Mycelium from Applications. The app isn&#x27;t signed yet, so the first time macOS stops it: right-click the app, choose <strong>Open</strong>, then <strong>Open</strong> again.</li>
+        <li>Choose how this Mac takes part: - <strong>Run a hub on this Mac</strong> keeps your rooms, memory and agents here. Pick this to try Mycelium on your own. - <strong>Connect to a hub</strong> joins rooms someone else runs. Paste the hub&#x27;s address, or open an invite link a teammate sent you.</li>
+        <li>Pick the folder your agents may work in, and press <strong>Start</strong>.</li>
+      </ol>
+      <figure class="doc-figure"><img class="doc-img" src="desktop-onboarding.png" alt="The first screen: run a hub here, or connect to one" loading="lazy">
+      </figure>
+      <p>Before you press Start, <strong>What this sets up on your Mac</strong> lists every change it makes. In short: <code>mycelium</code> and <code>herdr</code> are linked into <code>~/.local/bin</code> so agents can run them, your settings and rooms live in <code>~/.mycelium</code>, and the hub runs only while the app is open, reachable only from this Mac. It needs no admin password and writes nothing outside your home folder.</p>
+      <h2 id="desktop-whats-inside">What&#x27;s inside</h2>
+      <p>The app carries everything, pinned to versions tested together:</p>
+      <ul>
+        <li>the Mycelium hub and its UI;</li>
+        <li>a <a href="index.html#slim">SLIM</a> node, for the rooms&#x27; messages;</li>
+        <li><a href="#herdr">herdr</a>, where your agents run as interactive sessions you can watch and type to;</li>
+        <li>the <code>mycelium</code> CLI, which agents use to work in rooms;</li>
+        <li>Pi, which engines like the <a href="adapters.html#aligner">aligner</a> think with, and the model that powers memory search, so search works offline.</li>
+      </ul>
+      <p>It doesn&#x27;t include an agent CLI. Install the one you use (Claude Code, Codex, OpenCode and others), and the app finds it.</p>
+      <h2 id="desktop-adding-agents">Adding agents</h2>
+      <p>In a room, open <strong>Members</strong> and press <strong>Add</strong>. Pick <strong>Your machine</strong>, start from a role or write your own instructions, and add it. The agent opens in a herdr terminal, already a member of the room.</p>
+      <figure class="doc-figure"><img class="doc-img" src="desktop-add-member.png" alt="Adding an agent that runs on your Mac" loading="lazy">
+      </figure>
+      <p>The same dialog adds the other kinds of member: an engine the hub runs, an A2A service, or a coding agent you already have open. See <a href="#machines">Start Agents From the App</a> for how the app starts agents on your machine.</p>
+      <p>To watch or talk to an agent, open the <strong>Machines</strong> page and choose <strong>Open terminal</strong>, or use <strong>Agents terminal</strong> in the menu bar.</p>
+      <h2 id="desktop-the-menu-bar">The menu bar</h2>
+      <p>Mycelium lives in the menu bar while it runs. Closing the window leaves it running; <strong>Quit Mycelium</strong> stops the hub. Agents you started keep running in herdr either way.</p>
+      <ul>
+        <li>the state of the hub, the SLIM node and the runner;</li>
+        <li><strong>Open Mycelium</strong> and <strong>Agents terminal</strong>;</li>
+        <li><strong>Start at login</strong>;</li>
+        <li><strong>Health check…</strong>, below;</li>
+        <li><strong>Switch hub…</strong>, to change how this Mac takes part.</li>
+      </ul>
+      <h2 id="desktop-health-check">Health check</h2>
+      <p><strong>Health check…</strong> shows each part the app runs and whether it&#x27;s working, with what to do when something isn&#x27;t. It runs the same checks as <code>mycelium doctor --mode desktop</code>.</p>
+      <figure class="doc-figure"><img class="doc-img" src="desktop-health.png" alt="The health check" loading="lazy">
+      </figure>
+      <h2 id="desktop-inviting-people">Inviting people</h2>
+      <p>In <strong>Members</strong>, <strong>Invite</strong> copies a link to the room. Opening it offers the app (which joins that hub and room), the download, or the browser.</p>
+      <h2 id="desktop-the-command-line">The command line</h2>
+      <p>Everything the app does is also a command, for a Linux machine, a server, or if you&#x27;d rather use a terminal: <code>mycelium desktop serve</code> runs the same hub without the window. See <a href="index.html#quickstart">Quick Start</a> for the full CLI setup.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/desktop.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">

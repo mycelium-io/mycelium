@@ -1,9 +1,21 @@
 # Quick Start
 
-Mycelium runs on a server your team connects to. The easiest way to set one
-up is to ask your coding agent to do it.
+There are two ways to install Mycelium.
+
+- **On a Mac, use the app.** It's the quickest start: one download, no
+  Docker, no terminal. It runs a hub on your Mac or joins your team's, and
+  starts your coding agents when you ask.
+  **[Download Mycelium for Mac](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg)**,
+  then see [The Mac App](#desktop).
+- **On Linux, a server, or from a terminal, use the CLI.** It runs the hub
+  with Docker. The rest of this page covers it.
+
+![Mycelium for Mac, first screen](desktop-onboarding.png)
 
 ## Start with a prompt
+
+Mycelium runs on a server your team connects to. The easiest way to set one
+up from the command line is to ask your coding agent to do it.
 
 Paste this into any coding agent that can run shell commands:
 

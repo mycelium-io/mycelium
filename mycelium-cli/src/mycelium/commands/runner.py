@@ -214,12 +214,19 @@ def runner_stop() -> None:
     group="agent",
 )
 @app.command("scan")
-def runner_scan() -> None:
+def runner_scan(
+    json_out: bool = typer.Option(False, "--json", help="Print the scan as JSON"),
+) -> None:
     """What the runner would report: the agent CLIs here, and which herdr can start."""
+    import json
+
     from mycelium.integrations.herdr import HerdrBridge
     from mycelium.runner import frameworks
 
     bridge = HerdrBridge()
     herdr = bridge.available()
     found = frameworks.scan(bridge.supported_kinds() if herdr else None)
+    if json_out:
+        print(json.dumps({"herdr": herdr, "frameworks": [f.wire() for f in found]}))
+        return
     console.print(_scan_table(found, herdr=herdr))

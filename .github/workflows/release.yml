@@ -205,8 +205,77 @@ jobs:
           name: mycelium-${{ matrix.platform }}
           path: mycelium-cli/dist/mycelium-${{ matrix.platform }}
 
+  # Mycelium for Mac: the desktop app, with the hub, UI, SLIM node, herdr and
+  # Pi inside (mycelium-desktop/scripts/stage-sidecars.sh). Attached to the
+  # release under a fixed name, so the docs' download link
+  # (releases/latest/download/Mycelium-macos-arm64.dmg) always resolves.
+  # Unsigned until an Apple Developer ID is set up.
+  build-desktop:
+    needs: build-binaries
+    name: Build Mycelium for Mac
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Download the darwin CLI binary
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: mycelium-darwin-arm64
+          path: dist/cli
+
+      - name: Set the app's version from the tag
+        working-directory: mycelium-desktop
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Tauri wants semver; a PEP 440 prerelease (0.2.0rc1) becomes 0.2.0-rc1.
+          SEMVER="$(echo "$VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+)([a-z].*)$/\1-\2/')"
+          sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$SEMVER\"/" src-tauri/tauri.conf.json
+          rm -f src-tauri/tauri.conf.json.bak
+
+      - name: Stage what the app carries
+        working-directory: mycelium-desktop
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MYCELIUM_BIN: ${{ github.workspace }}/dist/cli/mycelium-darwin-arm64
+        run: |
+          npm install --no-audit --no-fund
+          bash scripts/stage-sidecars.sh
+
+      - name: Build the app and its disk image
+        working-directory: mycelium-desktop
+        run: |
+          npx tauri build --bundles app --config src-tauri/tauri.bundle.conf.json
+          # The disk image step lays out its Finder window with AppleScript,
+          # which now and then fails for no reason of ours; it's retried.
+          for try in 1 2 3; do
+            npx tauri bundle --bundles dmg --config src-tauri/tauri.bundle.conf.json && exit 0
+            echo "disk image attempt $try failed; retrying"
+            sleep 5
+          done
+          exit 1
+
+      - name: Name the disk image
+        run: |
+          mkdir -p dist/desktop
+          cp mycelium-desktop/src-tauri/target/release/bundle/dmg/*.dmg dist/desktop/Mycelium-macos-arm64.dmg
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mycelium-desktop-macos-arm64
+          path: dist/desktop/Mycelium-macos-arm64.dmg
+
   build-and-release:
-    needs: [detect-release-type, publish-images, build-binaries]
+    needs: [detect-release-type, publish-images, build-binaries, build-desktop]
     name: Build wheel and publish release
     runs-on: ubuntu-latest
 
@@ -250,10 +319,16 @@ jobs:
           name: mycelium-darwin-arm64
           path: mycelium-cli/dist/binaries
 
+      - name: Download Mycelium for Mac
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: mycelium-desktop-macos-arm64
+          path: mycelium-cli/dist/binaries
+
       - name: Generate checksums
         run: |
           cd mycelium-cli/dist
-          sha256sum *.whl binaries/mycelium-* > binaries/checksums.txt
+          sha256sum *.whl binaries/mycelium-* binaries/Mycelium-*.dmg > binaries/checksums.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
@@ -266,6 +341,10 @@ jobs:
           prerelease: ${{ needs.detect-release-type.outputs.is_prerelease == 'true' }}
           body: |
             ## Install
+
+            **On a Mac:** download [Mycelium for Mac](https://github.com/mycelium-io/mycelium/releases/download/${{ github.ref_name }}/Mycelium-macos-arm64.dmg) (Apple silicon), drag it into Applications and open it. It isn't signed yet: the first time, right-click it and choose Open.
+
+            **On Linux, a server, or from a terminal:**
 
             ```bash
             curl -fsSL https://raw.githubusercontent.com/mycelium-io/mycelium/main/install.sh | bash
@@ -282,6 +361,7 @@ jobs:
           files: |
             mycelium-cli/dist/*.whl
             mycelium-cli/dist/binaries/mycelium-*
+            mycelium-cli/dist/binaries/Mycelium-macos-arm64.dmg
             mycelium-cli/dist/binaries/checksums.txt
           fail_on_unmatched_files: true
 
