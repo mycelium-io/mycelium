@@ -94,7 +94,7 @@ export function ActivityRail({
     });
 
   return (
-    <div className="flex-shrink-0 border-b border-border bg-surface-2/40 px-3 py-2 sm:px-5">
+    <div className="flex-shrink-0 border-b border-border bg-surface px-3 py-2 sm:px-5">
       <div className="flex items-center gap-2 text-micro text-muted-foreground">
         <span className="font-medium">Recently updated</span>
         {/* The count is the header's least load-bearing word — the rows below

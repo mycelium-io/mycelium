@@ -24,10 +24,7 @@ import {
   LiveDot,
   AssignmentChip,
   openableThread,
-  PriorityMeter,
-  SourceTag,
   ThreadChip,
-  TtlBar,
   UpstreamChip,
   WorkLinks,
 } from "./board-cells";
@@ -105,7 +102,9 @@ function TriageRow({
   const choices = fieldAsList(item, "choices");
   const waiting = waitingOn(item);
   const resolved = attentionFilterOf(item, now) === "resolved";
-  const urgent = fieldAsString(item, "priority") === "urgent" && !resolved;
+  // Priority is only worth a word when it's above normal.
+  const priority = fieldAsString(item, "priority");
+  const raised = !resolved && (priority === "urgent" || priority === "high") ? priority : null;
 
   return (
     <div
@@ -135,6 +134,7 @@ function TriageRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           <span
+            title={item.source.label}
             className={cn(
               "min-w-0 flex-1 truncate text-label",
               resolved ? "text-muted-foreground line-through decoration-border2" : "text-text",
@@ -142,12 +142,17 @@ function TriageRow({
           >
             {item.title}
           </span>
-          {urgent && <span className="shrink-0 text-micro text-red">urgent</span>}
+          {raised && (
+            <span className={cn("shrink-0 text-micro", raised === "urgent" ? "text-red" : "text-yellow")}>
+              {raised}
+            </span>
+          )}
+          <AgeTag item={item} now={now} drain />
         </div>
 
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-micro">
-          <SourceTag item={item} />
-          <span className="text-faint">·</span>
+        {/* Only what's worth a glance: who has it, where the work is, what it waits on.
+            The row's key is the title's tooltip; an empty line draws nothing. */}
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-micro empty:hidden">
           <AssignmentChip item={item} now={now} />
           <ThreadChip item={item} onOpen={onOpenThread} />
           <WorkLinks item={item} />
@@ -195,13 +200,6 @@ function TriageRow({
         )}
       </div>
 
-      <div className="flex shrink-0 flex-col items-end gap-1 pt-[2px]">
-        <div className="flex items-center gap-2">
-          <PriorityMeter item={item} />
-          <AgeTag item={item} now={now} />
-        </div>
-        <TtlBar item={item} now={now} />
-      </div>
 
       {/* Row actions stay hidden until the row is under the cursor or the caret, so a
           long list reads as text rather than as a wall of buttons. */}

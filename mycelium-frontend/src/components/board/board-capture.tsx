@@ -7,7 +7,6 @@ import { forwardRef, useMemo, useState } from "react";
 import { CornerDownLeft, Plus, UsersRound } from "lucide-react";
 import { parseCapture, type ParsedCapture } from "@/lib/board/capture";
 import { cn } from "@/lib/utils";
-import { useSheetLayout } from "@/lib/use-viewport";
 
 interface Props {
   actor: string;
@@ -28,12 +27,10 @@ export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCa
   const [text, setText] = useState("");
   const parsed = useMemo(() => parseCapture(text, actor, now), [text, actor, now]);
   const armed = parsed.title.length > 0;
-  // The capture grammar is a hint, and a hint clipped mid-token teaches
-  // nothing: on a field this narrow it is the ask that has to survive.
-  const sheet = useSheetLayout();
-  const placeholder = sheet
-    ? "Capture a concern…"
-    : "Capture a concern…  @owner · !urgent · #tag · #502 · ? for a decision";
+  // The capture grammar (@owner, !urgent, #tag, ? for a decision) is the
+  // field's tooltip, not its placeholder: a cheat sheet in every empty box is
+  // the loudest thing on the board.
+  const placeholder = "Add a task…";
 
   const file = () => {
     if (!armed) return;
@@ -61,6 +58,7 @@ export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCa
               if (e.key === "Escape") (e.target as HTMLInputElement).blur();
             }}
             placeholder={placeholder}
+            title="@who · !urgent · #tag · #502 for an issue · end with ? for a decision"
             aria-label="New task"
             className="min-w-0 flex-1 bg-transparent text-label text-text outline-none placeholder:text-faint"
           />
