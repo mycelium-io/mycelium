@@ -43,6 +43,8 @@ import { useCollapsibleRail } from "@/lib/use-collapsible-rail";
 import { useSheetLayout } from "@/lib/use-viewport";
 import { RailSheet } from "@/components/rail-sheet";
 import { RoomMenu } from "@/components/room-menu";
+import { Tooltip } from "@/components/ui/tooltip";
+import { Lock } from "lucide-react";
 import { MemoryTab, type GuardHandle } from "@/components/memory-tab";
 import { MemoryTabs } from "@/components/memory-tabs";
 
@@ -93,7 +95,7 @@ function RoomWorkspace() {
   }, []);
 
   const { agents, episodes, openTasks } = useRoomStatus(roomName);
-  const { room } = useRoom(roomName);
+  const { room, refresh: refreshRoom } = useRoom(roomName);
 
   // A pushed memory/presence event refreshes every reader of this room's data
   // at once — the panels no longer take a refresh counter to find out.
@@ -426,8 +428,20 @@ function RoomWorkspace() {
   // you do to the room sits with the room, not among the app-wide buttons.
   const header = (
     <>
-      <span className="truncate px-1.5 font-medium text-text">{roomName}</span>
-      <RoomMenu roomName={roomName} masId={room?.mas_id ?? null} />
+      <span className="flex min-w-0 items-center gap-1.5 px-1.5 font-medium text-text">
+        <span className="truncate">{roomName}</span>
+        {room?.is_public === false && (
+          <Tooltip content="Private: listed only for its owner and members">
+            <Lock aria-label="private" className="size-3.5 flex-shrink-0 text-faint" />
+          </Tooltip>
+        )}
+      </span>
+      <RoomMenu
+        roomName={roomName}
+        masId={room?.mas_id ?? null}
+        isPrivate={room?.is_public === false}
+        onChanged={refreshRoom}
+      />
     </>
   );
 

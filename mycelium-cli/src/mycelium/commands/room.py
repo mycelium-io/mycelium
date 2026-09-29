@@ -31,6 +31,7 @@ from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 from mycelium.exceptions import MyceliumError
+from mycelium.identity import resolve_actor
 from mycelium.names import who
 from mycelium.slim.l9 import room_episode
 
@@ -83,7 +84,7 @@ def room_main(ctx: typer.Context) -> None:
         from mycelium_backend_client.models import HTTPValidationError
 
         with _typed_client(config) as client:
-            result = list_api.sync(client=client, name=active_room, limit=1)
+            result = list_api.sync(client=client, name=active_room, limit=1, viewer=_viewer(config))
             rooms_data = (
                 [r.to_dict() for r in result]
                 if result and not isinstance(result, HTTPValidationError)
@@ -107,9 +108,14 @@ def room_main(ctx: typer.Context) -> None:
         print_error(e, verbose=verbose)
 
 
+def _viewer(config: MyceliumConfig) -> str | None:
+    """Who is listing, so the hub includes their private rooms."""
+    return resolve_actor(config, require=False, fallback="") or None
+
+
 @doc_ref(
     usage="mycelium room ls",
-    desc="List all rooms with state and member count.",
+    desc="List the shared rooms and your private ones.",
     group="room",
 )
 @app.command("ls")
@@ -133,7 +139,7 @@ def list_rooms(
         from mycelium_backend_client.models import HTTPValidationError
 
         with _typed_client(config) as client:
-            result = list_api.sync(client=client, name=name, limit=limit)
+            result = list_api.sync(client=client, name=name, limit=limit, viewer=_viewer(config))
             rooms_data = (
                 [r.to_dict() for r in result]
                 if result and not isinstance(result, HTTPValidationError)
@@ -155,11 +161,12 @@ def list_rooms(
             for room in rooms_data:
                 is_active = room["name"] == active_room
                 created_at = str(room.get("created_at", ""))[:10]
+                private = ", private" if room.get("is_public") is False else ""
                 if is_active:
                     typer.secho(f"  * {room['name']}", fg=typer.colors.GREEN, bold=True, nl=False)
-                    typer.echo(f"  (created {created_at})")
+                    typer.echo(f"  (created {created_at}{private})")
                 else:
-                    typer.echo(f"    {room['name']}  (created {created_at})")
+                    typer.echo(f"    {room['name']}  (created {created_at}{private})")
 
             typer.echo("")
             typer.echo("Use 'mycelium room use <name>' to set the active room")
@@ -170,15 +177,22 @@ def list_rooms(
 
 
 @doc_ref(
-    usage="mycelium room create <name>",
-    desc="Create a new persistent coordination room.",
+    usage="mycelium room create <name> [--private]",
+    desc=(
+        "Create a new persistent coordination room. <code>--private</code> lists it only"
+        " for you (and members you add); anyone who knows its name can still open it."
+    ),
     group="room",
 )
 @app.command()
 def create(
     ctx: typer.Context,
     name: str | None = typer.Argument(None, help="Room name"),
-    public: bool = typer.Option(True, "--public/--private"),
+    public: bool = typer.Option(
+        True,
+        "--public/--private",
+        help="Private rooms are listed only for you. It hides the room; it doesn't lock it.",
+    ),
 ) -> None:
     """Create a new room."""
     try:
@@ -194,10 +208,10 @@ def create(
         from mycelium_backend_client.models import RoomCreate
 
         with _typed_client(config) as client:
-            body = RoomCreate(
-                name=name,
-                is_public=public,
-            )
+            # A private room is listed for its owner, so it needs one; the hub
+            # says so plainly when nobody could be named.
+            owner = None if public else _viewer(config)
+            body = RoomCreate(name=name, is_public=public, owner=owner)
             result = create_api.sync(client=client, body=body)
             room_data = result.to_dict() if result and hasattr(result, "to_dict") else {}
 

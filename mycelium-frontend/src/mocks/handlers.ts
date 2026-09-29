@@ -312,19 +312,30 @@ export async function handleMock(req: Request): Promise<Response | null> {
 
   // ── /api/rooms ──────────────────────────────────────────────────────────────
   if (rest.length === 1) {
-    if (method === "GET") return json(ROOMS);
+    if (method === "GET") {
+      // A private room is listed only for its owner and members, as on the hub.
+      const viewer = (searchParams.get("viewer") ?? "").toLowerCase();
+      return json(
+        ROOMS.filter(
+          (r) => r.is_public || (!!viewer && (r.owner === viewer || (r.members ?? []).includes(viewer))),
+        ),
+      );
+    }
     if (method === "POST") {
       const body = await readJson(req);
       const name = String(body.name ?? "new-room");
+      const isPublic = body.is_public !== false;
       // 201, like the real route.
       return json(
         {
           id: ROOMS.length + 1,
           name,
           created_at: MOCK_EPOCH,
-          is_public: true,
+          is_public: isPublic,
           is_persistent: true,
           mas_id: null,
+          owner: body.owner ?? null,
+          members: [],
         },
         201,
       );
@@ -339,8 +350,18 @@ export async function handleMock(req: Request): Promise<Response | null> {
 
   // GET /api/rooms/:name
   if (sub.length === 0) {
+    if (!fx) return notFound(`room ${roomName} not found (mock)`);
+    if (method === "PATCH") {
+      // Session-local, like the rest of the mock's writes.
+      const body = await readJson(req);
+      if (typeof body.is_public === "boolean") {
+        fx.room.is_public = body.is_public;
+        if (!body.is_public && !fx.room.owner) fx.room.owner = String(body.by ?? "") || null;
+      }
+      return json(fx.room);
+    }
     if (method !== "GET") return null;
-    return fx ? json(fx.room) : notFound(`room ${roomName} not found (mock)`);
+    return json(fx.room);
   }
 
   if (!fx) return notFound(`room ${roomName} not found (mock)`);

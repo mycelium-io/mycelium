@@ -12,6 +12,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { KbdChord } from "@/components/ui/kbd";
 import { useKeyAction } from "@/components/keymap-provider";
 import { searchEverything } from "@/lib/api";
+import { usePrincipal } from "@/components/current-user";
 import { resultHref, type SearchHit } from "@/lib/search";
 
 const OpenSearchContext = createContext<(() => void) | null>(null);
@@ -27,6 +28,8 @@ const OpenSearchContext = createContext<(() => void) | null>(null);
 export function GlobalSearch({ children }: { children?: ReactNode }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  // Who is searching, so their private rooms are in scope.
+  const principal = usePrincipal();
   // Resolved after mount: the server has no platform to read, and a guess would
   // hydrate a ⌘ over a Ctrl.
   const mac = useIsMac();
@@ -49,7 +52,7 @@ export function GlobalSearch({ children }: { children?: ReactNode }) {
         open={open}
         onClose={() => setOpen(false)}
         onPick={pick}
-        search={searchEverything}
+        search={(query, limit) => searchEverything(query, limit, principal)}
         mac={mac}
       />
     </OpenSearchContext.Provider>

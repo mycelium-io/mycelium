@@ -63,7 +63,7 @@ interface Source {
  * try — an upstream 401 ends the response instead, and the browser's reconnect
  * refreshes the token in a request scope where the write survives.
  */
-function sources(rooms: string[], headers: Record<string, string>): Source[] {
+function sources(rooms: string[], headers: Record<string, string>, viewer: string | null = null): Source[] {
   const backend = getBackendUrl();
   const upstream = (path: string) => (signal: AbortSignal) =>
     fetch(`${backend}${path}`, { headers, cache: "no-store", signal });
@@ -84,7 +84,11 @@ function sources(rooms: string[], headers: Record<string, string>): Source[] {
     {
       channel: "notification",
       room: null,
-      open: mock ? idleStream : upstream("/api/notifications/stream"),
+      // Who is asking, so their private rooms are in the feed and nobody
+      // else's are.
+      open: mock
+        ? idleStream
+        : upstream(`/api/notifications/stream${viewer ? `?viewer=${encodeURIComponent(viewer)}` : ""}`),
     },
   ];
 }
@@ -108,6 +112,7 @@ export async function GET(req: Request): Promise<Response> {
       new URL(req.url).searchParams.getAll("room").map((r) => r.trim()).filter(Boolean),
     ),
   ].slice(0, MAX_ROOMS);
+  const viewer = new URL(req.url).searchParams.get("viewer")?.trim() || null;
 
   // Resolved here, in the request scope, where a refreshed session can still be
   // written back to a cookie. See `sources`.
@@ -144,7 +149,7 @@ export async function GET(req: Request): Promise<Response> {
       send(`retry: ${STREAM_RETRY_MS}\n\n`);
       heartbeat = setInterval(() => send(": keep-alive\n\n"), HEARTBEAT_MS);
 
-      for (const source of sources(rooms, headers)) void pump(source);
+      for (const source of sources(rooms, headers, viewer)) void pump(source);
 
       async function pump(source: Source) {
         while (!closed) {

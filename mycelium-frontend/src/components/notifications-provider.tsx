@@ -14,7 +14,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useNotificationStream, useNotificationsConnected } from "@/lib/stream-hub";
+import { setStreamViewer, useNotificationStream, useNotificationsConnected } from "@/lib/stream-hub";
 import { useCurrentUser } from "@/components/current-user";
 import { ping, primeAudio } from "@/lib/audio-ping";
 import {
@@ -150,6 +150,11 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
   // Activity across every room the user participates in, independent of which
   // (if any) is open — one channel on the app's shared connection.
+  // The feed is for whoever this browser is, so it carries their private rooms.
+  useEffect(() => {
+    setStreamViewer(principal);
+  }, [principal]);
+
   useNotificationStream((raw) => {
     const n = classify(raw as Record<string, unknown>, principalRef.current);
     if (!n) return;
