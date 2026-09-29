@@ -5,7 +5,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Check, Laptop, RefreshCw } from "lucide-react";
+import { Check, Download, Laptop, RefreshCw } from "lucide-react";
+import { DMG_URL, useIsDesktop } from "@/lib/desktop";
+import { useIsMac } from "@/lib/client-hooks";
 import { rescanRunner, type Framework, type Runner } from "@/lib/api";
 import {
   herdrMissing,
@@ -27,16 +29,36 @@ export const CONNECT_COMMAND = "mycelium runner";
  * added here are listed, so nobody sees anyone else's (`my-machines.ts`).
  */
 export function ConnectMachine({ compact = false }: { compact?: boolean }) {
+  // In a browser on a Mac, the app is the short way: it connects this computer
+  // itself, with herdr and the CLI inside. The command stays for everyone else.
+  const mac = useIsMac();
+  const desktop = useIsDesktop();
+  const offerApp = mac && !desktop;
   return (
     <div className={`rounded-lg border border-dashed border-border ${compact ? "p-3" : "p-5"}`}>
       <div className="flex items-center gap-2">
         <Laptop className="size-4 text-muted-foreground" />
         <p className="text-label font-medium text-text">Connect this machine</p>
       </div>
-      <p className="mt-1.5 text-label leading-relaxed text-muted-foreground">
-        Run this in a terminal on the computer your agents should run on, with herdr open. It
-        looks for the agent CLIs you have installed and lets this page start them in herdr, where
-        you can watch and type to them. It asks you there before it starts anything.
+      {offerApp && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <a
+            href={DMG_URL}
+            className="inline-flex h-7 items-center gap-1.5 rounded-md bg-accent px-2.5 text-label font-medium text-accent-fg transition-opacity hover:opacity-90"
+          >
+            <Download className="size-3.5" />
+            Get Mycelium for Mac
+          </a>
+          <span className="text-micro text-muted-foreground">
+            The app connects this computer for you. No terminal needed.
+          </span>
+        </div>
+      )}
+      <p className="mt-2 text-label leading-relaxed text-muted-foreground">
+        {offerApp ? "Or run this in a terminal" : "Run this in a terminal"} on the computer your
+        agents should run on, with herdr open. It looks for the agent CLIs you have installed and
+        lets this page start them in herdr, where you can watch and type to them. It asks you
+        there before it starts anything.
       </p>
       <CopyField value={CONNECT_COMMAND} className="mt-3 font-mono" />
       <AddMachineCode />
