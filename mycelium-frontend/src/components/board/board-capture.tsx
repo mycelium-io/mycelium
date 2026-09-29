@@ -42,14 +42,14 @@ export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCa
   };
 
   return (
-    <div className="mt-2 px-3 pb-2 sm:px-5">
-      <div className="flex items-center gap-2">
-        <div
-          className={cn(
-            "flex min-w-0 flex-1 items-center gap-2 rounded-lg border bg-surface/60 px-3 py-1.5 transition-colors",
-            armed ? "border-accent/40" : "border-border",
-          )}
-        >
+    <div className="border-b border-border px-3 py-1 sm:px-5">
+      <div
+        className={cn(
+          "flex h-8 items-center gap-2 rounded px-1.5 transition-colors focus-within:bg-bg hover:bg-hairline",
+          armed && "bg-bg",
+        )}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <Plus className="size-3.5 shrink-0 text-faint" strokeWidth={2} />
           <input
             ref={ref}
@@ -68,15 +68,18 @@ export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCa
         {/* One control, two outcomes: a row someone claims later, or a team
             on it now. Filing is the everyday one; a swarm costs model turns,
             so it asks first. */}
-        <div role="group" aria-label="Add the task" className="flex shrink-0 items-center gap-1">
+        <div role="group" aria-label="Add the task" className="flex shrink-0 items-center gap-1 text-micro">
           <button
             type="button"
             onClick={file}
             disabled={!armed}
             title="Add it to the board for someone to pick up (Enter)"
-            className="flex h-[34px] items-center gap-1.5 rounded-lg px-3 text-label transition-colors btn-accent disabled:cursor-not-allowed disabled:opacity-40"
+            className={cn(
+              "flex h-6 items-center gap-1 rounded px-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+              armed ? "text-accent hover:bg-hairline" : "text-muted-foreground",
+            )}
           >
-            <CornerDownLeft className="size-3.5" />
+            <CornerDownLeft className="size-3" />
             File
           </button>
           {onSwarm && (
@@ -84,9 +87,9 @@ export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCa
               type="button"
               onClick={() => onSwarm(text.trim())}
               title="Have a team of agents work on it now (⌘Enter)"
-              className="flex h-[34px] items-center gap-1.5 rounded-lg border border-border px-3 text-label text-muted-foreground transition-colors hover:border-border2 hover:text-text"
+              className="flex h-6 items-center gap-1 rounded px-1.5 text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
             >
-              <UsersRound className="size-3.5" />
+              <UsersRound className="size-3" />
               Swarm
             </button>
           )}
