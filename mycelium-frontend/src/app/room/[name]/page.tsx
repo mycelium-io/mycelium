@@ -223,10 +223,13 @@ function RoomWorkspace() {
   // counter is the message — the channel opens (or re-focuses) its find bar on
   // every press, including the ones where the bar is already open.
   const [findRequest, setFindRequest] = useState(0);
-  useKeyAction("chat.find", () => {
-    showView("channel");
-    setFindRequest(n => n + 1);
-  });
+  // Only while the channel is what's showing: over a memory or the board, ⌘F
+  // is left to the browser's own find rather than yanking the reader away.
+  useKeyAction(
+    "chat.find",
+    () => setFindRequest(n => n + 1),
+    { enabled: editorView === "channel" && !activeMemory },
+  );
   useKeyAction("pane.channel", () => showView("channel"));
   useKeyAction("pane.board", () => showView("board"));
   useKeyAction("pane.network", () => showView("network"));
