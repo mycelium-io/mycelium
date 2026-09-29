@@ -212,19 +212,12 @@ body {
 
 /* ── Onyx atoms (used by RM-000 + future screens) ── */
 
-.caps-mono {
-  font-family: 'Geist Mono', 'SF Mono', 'JetBrains Mono', Menlo, monospace;
-  font-size: var(--text-label);
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-.caps-mono-sm {
+/* A small monospace label, as the inspectors draw their field names: quiet,
+   sentence case, never letter-spaced capitals. */
+.label-mono-sm {
   font-family: 'Geist Mono', 'SF Mono', 'JetBrains Mono', Menlo, monospace;
   font-size: var(--text-micro);
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  font-weight: 500;
 }
 .square-dot {
   display: inline-block;
