@@ -17,7 +17,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { platform } from "node:os";
+import { homedir, platform } from "node:os";
 import { resolve } from "node:path";
 import { helpFor, parse } from "../src/args.mjs";
 import { ACTION_HELP } from "../src/actions.mjs";
@@ -118,6 +118,11 @@ const PAGE = {
   css: { type: "string", help: "extra stylesheet" },
   delay: { type: "number", value: "<ms>", help: "idle before shooting" },
   storage: { type: "map", value: "<k>=<v>", help: "seed localStorage (repeatable)" },
+  "storage-state": {
+    type: "string",
+    value: "<file>",
+    help: "shoot signed in: a saved Playwright login (default $SHOTKIT_STORAGE_STATE)",
+  },
   timeout: { type: "number", value: "<ms>", help: "per-wait timeout (default 30000)" },
   offline: { type: "boolean", help: "resolve nothing but localhost — skips slow or unreachable CDNs" },
   block: { type: "list", value: "<host>", help: "fail this host's lookups immediately (repeatable)" },
@@ -218,9 +223,29 @@ async function readStdin() {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+/** Ops that open a browser context, and so can load a saved login. */
+const CONTEXT_OPS = new Set(["app", "url", "open", "video"]);
+
+/**
+ * The saved-login file as an absolute path, resolved here in the caller's
+ * working directory: the daemon runs elsewhere, so a relative path must not
+ * reach it. `~` is expanded because the documented way to make the file
+ * (`npx playwright open --save-storage=...`) leaves it under the home dir.
+ */
+function storageStatePath(value) {
+  if (!value) return undefined;
+  const expanded = value === "~" || value.startsWith("~/") ? homedir() + value.slice(1) : value;
+  return resolve(expanded);
+}
+
 /** Turn parsed flags into an api.mjs spec. */
 function toSpec(op, flags) {
   const spec = { op, ...flags };
+  delete spec.storageState;
+  if (CONTEXT_OPS.has(op)) {
+    const state = storageStatePath(flags.storageState ?? process.env.SHOTKIT_STORAGE_STATE);
+    if (state) spec.storageState = state;
+  }
   for (const local of ["daemon", "idle", "json", "open", "clickNames"]) delete spec[local];
   // `--click Foo` is sugar; the ordered `--do` list is the real interface, so
   // the shorthand lands at the end of it rather than in a second channel.

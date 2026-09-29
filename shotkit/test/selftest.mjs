@@ -24,6 +24,10 @@ import { cardDocument } from "../src/card.mjs";
 import { encodeArgs, findEncoder, forgetEncoder, jpegSize, startEncoder } from "../src/encode.mjs";
 import { parseZoom } from "../src/video.mjs";
 import { startPump } from "../src/pump.mjs";
+import { mkdtempSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Engine, frameOf, requireStorageState, storageStateKey } from "../src/engine.mjs";
 
 let failures = 0;
 function test(name, fn) {
@@ -47,6 +51,31 @@ async function atest(name, fn) {
 }
 
 const text = (input) => parseAnsi(input).map((r) => r.runs.map((x) => x.text).join(""));
+
+const stateDir = mkdtempSync(join(tmpdir(), "shotkit-state-"));
+const stateFile = join(stateDir, "login.json");
+writeFileSync(stateFile, JSON.stringify({ cookies: [], origins: [] }));
+
+test("a saved login rides on the frame into the context options", () => {
+  const frame = frameOf({ storageState: stateFile });
+  assert.equal(frame.storageState, stateFile);
+  assert.equal(new Engine().contextOptions(frame).storageState, stateFile);
+  assert.equal("storageState" in new Engine().contextOptions(frameOf({})), false);
+});
+
+test("a missing saved login says how to make one", () => {
+  const missing = join(stateDir, "nope.json");
+  assert.throws(() => requireStorageState(missing), /npx playwright open --save-storage=/);
+  assert.throws(() => frameOf({ storageState: missing }), /no saved login/);
+});
+
+test("re-saving a login changes the pool key, so stale cookies are not reused", () => {
+  const before = storageStateKey(stateFile);
+  const later = new Date(Date.now() + 5_000);
+  utimesSync(stateFile, later, later);
+  assert.notEqual(storageStateKey(stateFile), before);
+  assert.equal(storageStateKey(undefined), "anon");
+});
 
 test("carriage return overwrites the line rather than appending", () => {
   assert.deepEqual(text("first\rsecond"), ["second"]);

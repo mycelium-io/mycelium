@@ -116,6 +116,29 @@ Save, not a `<save>` element. Words that are also tag names are no exception:
 `click:Save changes` is a button, not a descendant selector — so a selector made
 only of tag names and spaces needs saying explicitly: `css=nav button`.
 
+## Signed in
+
+A page behind a login (SSO, Keycloak, anything with a cookie session) is shot
+signed in by loading a saved login. The browser shotkit drives is headless and
+keeps nothing between runs, so the login happens once, by a person, in a
+visible browser:
+
+```bash
+npx playwright open --save-storage=$HOME/.shotkit/staging.json https://staging.example.com
+# sign in as usual, then close the window
+shot url https://staging.example.com/dashboard --storage-state ~/.shotkit/staging.json
+```
+
+`--storage-state` works on `app`, `url`, `open` and `video`, and
+`SHOTKIT_STORAGE_STATE` sets a default. The file is Playwright's storage state
+(cookies and localStorage per origin), loaded when the context is created.
+shotkit never reads, prints or copies it. Re-saving it (the session expired, the
+shots show the login page again) takes effect on the next shot, since contexts
+are pooled per file *and* its modification time.
+
+The file is a session credential: keep it in your home directory, never in a
+repo, and never in `.shotkit/`, which is only gitignored, not private.
+
 ## Video
 
 `shot video` records the same flow a screenshot would take, as a short clip with
