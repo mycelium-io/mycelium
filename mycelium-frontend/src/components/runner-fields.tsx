@@ -85,7 +85,7 @@ export function AddMachineCode() {
         id="machine-code"
         value={code}
         onChange={(e) => setCode(e.target.value)}
-        placeholder="julias-mbp-3f2a"
+        placeholder="morgans-mbp-3f2a"
         spellCheck={false}
         autoComplete="off"
         className="h-7 min-w-0 flex-1 rounded bg-hairline px-2 font-mono text-micro text-text placeholder:text-faint focus:bg-bg focus:outline-none focus:ring-1 focus:ring-border"
