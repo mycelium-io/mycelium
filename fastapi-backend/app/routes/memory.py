@@ -78,6 +78,27 @@ def _flatten_value(value: dict | str) -> str:
     return json.dumps(value, indent=2, default=str)
 
 
+def _is_agent_manifest(key: str) -> bool:
+    """``agents/<handle>`` itself, not one of its sub-keys like ``/notes``."""
+    handle = key.removeprefix("agents/")
+    return handle != key and bool(handle) and "/" not in handle
+
+
+def _manifest_adapter(value: dict, content_text: str) -> str | None:
+    """The adapter a manifest names, from a structured value or its YAML text."""
+    adapter = value.get("adapter")
+    if isinstance(adapter, str):
+        return adapter
+    try:
+        import yaml
+
+        parsed = yaml.safe_load(value.get("text", content_text)) or {}
+    except Exception:
+        return None
+    found = parsed.get("adapter") if isinstance(parsed, dict) else None
+    return found if isinstance(found, str) else None
+
+
 def _reconstruct_value(meta: dict, content: str) -> dict | str:
     """Rebuild the API ``value`` from a memory file.
 
@@ -423,6 +444,12 @@ async def upsert_memories(
                 kind=extra_meta.get("kind"),
                 **({"for": str(extra_meta["assignee"])} if extra_meta.get("assignee") else {}),
             )
+        # Usage: an agent's manifest appearing is an agent joining the room.
+        # Counted by its adapter kind only, never its handle.
+        if not existing and _is_agent_manifest(item.key):
+            from app.services import analytics as usage
+
+            await asyncio.to_thread(usage.agent_joined, _manifest_adapter(value, content_text))
 
     for embedded in write_metrics:
         record_memory_write(scope="namespace", embedded=embedded)

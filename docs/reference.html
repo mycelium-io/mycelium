@@ -162,6 +162,8 @@
           <a href="#config-herdr" class="nav-link sub">herdr</a>
           <a href="#config-swarm" class="nav-link sub">swarm</a>
           <a href="#config-metrics" class="nav-link sub">metrics</a>
+          <a href="#config-telemetry" class="nav-link sub">telemetry</a>
+          <a href="#config-health" class="nav-link sub">health</a>
           <a href="#config-a2a" class="nav-link sub">a2a</a>
         </div>
       </div>
@@ -547,7 +549,7 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">up</span> [<span class="flag">--build</span>] [<span class="flag">--metrics</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">up</span> [<span class="flag">--build</span>] [<span class="flag">--metrics</span>] [<span class="flag">--grafana</span>]</code>
         </div>
         <div class="cmd-ref-body">Start the Mycelium stack via <code>docker compose up</code>.</div>
       </div>
@@ -1250,6 +1252,36 @@
 
 <span class="comment"># Explicit Prometheus /metrics endpoints for the collector to scrape.</span>
 <span class="arg">scrape</span> = PydanticUndefined
+
+<span class="comment"># Telemetry: the backend&#x27;s OTel export, and whether the hub shares its usage stats.</span>
+<span class="cmd" id="config-telemetry">[telemetry]</span>
+
+<span class="comment"># Enable the OTel SDK in the backend (traces + metrics exported to the OTLP collector). Off by default.</span>
+<span class="arg">enabled</span> = <span class="flag">false</span>
+
+<span class="comment"># OTLP HTTP endpoint the backend pushes spans and metrics to. When unset and telemetry.enabled is true, defaults to http://mycelium-collector:4318, the collector&#x27;s address in the Docker stack. The Mac app runs no collector, so set this there (for example http://127.0.0.1:4318 for a collector on the same Mac).</span>
+<span class="arg">otlp_endpoint</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># Share the hub&#x27;s anonymous usage events (tasks filed and resolved, flows and negotiations finished, agents joined) with the analytics destination. The hub records them either way. Off by default; the Mac app&#x27;s own setting wins there.</span>
+<span class="arg">send_product_analytics</span> = <span class="flag">false</span>
+
+<span class="comment"># Where shared usage events are POSTed, as JSON (or Loki&#x27;s push format for a /loki/ URL). HTTPS, or plain HTTP to this machine only.</span>
+<span class="arg">analytics_destination</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># Random UUID identifying this installation, generated on first interactive `mycelium install`; a hub without one mints its own. Carried on usage events, and sent nowhere unless the hub shares them.</span>
+<span class="arg">install_id</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># Health degradation thresholds for ``GET /health`` (#453).</span>
+<span class="cmd" id="config-health">[health]</span>
+
+<span class="comment"># LLM call p95 above this value degrades /health (0 = disabled).</span>
+<span class="arg">llm_p95_threshold_ms</span> = 30000.0
+
+<span class="comment"># Delivered-await p95 above this value degrades /health (0 = disabled). Timed-out long-polls are excluded.</span>
+<span class="arg">await_p95_threshold_ms</span> = 60000.0
+
+<span class="comment"># Memory search p95 above this value degrades /health (0 = disabled).</span>
+<span class="arg">search_p95_threshold_ms</span> = 500.0
 
 <span class="comment"># Configuration for the A2A bridge (outbound + inbound Agent2Agent gateway).</span>
 <span class="cmd" id="config-a2a">[a2a]</span>

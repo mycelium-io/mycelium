@@ -236,6 +236,27 @@ body {
   margin: 6px 0 0;
 }
 
+.share-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.toggle {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.share .hint {
+  margin-left: 22px;
+}
+
 .note {
   font-size: 12px;
   line-height: 1.5;

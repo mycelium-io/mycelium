@@ -255,14 +255,48 @@ class AlignerEngine:
     ) -> None:
         # A summon always drives a live NEGMAS SAO, running *as* the summoned
         # engine handle. There is one path — mediate — no mode to choose.
+        import time
+
+        from app.services import metrics as _metrics
+
+        _t0 = time.monotonic()
+        _outcome = "error"
+        _rounds = [0]  # mutable so mediate() can write rounds back to this scope
         try:
-            await self.mediate(
-                room, engine_handle=engine_handle, scoped_participants=scoped_participants
+            result = await self.mediate(
+                room,
+                engine_handle=engine_handle,
+                scoped_participants=scoped_participants,
+                _rounds_out=_rounds,
             )
+            # Derive outcome from the verdict committed to the channel.
+            # ``mediate`` returns the L9 envelope dict from ``_emit_verdict``;
+            # convergence is encoded as ``header.subkind`` ("converged" /
+            # "rejected"), not a top-level "converged" key.
+            if result is None:
+                _outcome = "stalled"
+            else:
+                _outcome = (
+                    result.get("header", {}).get("subkind", "rejected")
+                    if isinstance(result, dict)
+                    else "rejected"
+                )
         except Exception:
             logger.exception("aligner run failed on room %s", room)
+        else:
+            pass
         finally:
             self._active.discard(room)
+            _ms = (time.monotonic() - _t0) * 1000.0
+            _metrics.record_aligner_run(
+                room=room, rounds=_rounds[0], duration_ms=_ms, outcome=_outcome
+            )
+            # Usage: a negotiation that reached a conclusion. A stalled one (no
+            # participants) or an error concluded nothing, so it isn't counted.
+            if _outcome in ("converged", "rejected"):
+                from app.services import analytics as usage
+
+                await asyncio.to_thread(usage.negotiation_completed, _outcome, _rounds[0])
 
     # -- mediator mode (drive a real NEGMAS SAO over SLIM) --
 
@@ -271,6 +305,7 @@ class AlignerEngine:
         room: str,
         engine_handle: str | None = None,
         scoped_participants: list[str] | None = None,
+        _rounds_out: list[int] | None = None,
     ) -> dict[str, Any] | None:
         """Run a NEGMAS SAO negotiation live over SLIM, terminating at agreement.
 
@@ -336,7 +371,8 @@ class AlignerEngine:
             opening_positions=positions,
         )
         try:
-            llm_session = self._signalling(self._open_llm_session(episode), room, episode)
+            raw_llm_session = self._open_llm_session(episode, room=room)
+            llm_session = self._signalling(raw_llm_session, room, episode)
             positions = await self._clarify_terms(
                 managed, persister, ep, me, episode, topic, positions, llm_session
             )
@@ -373,11 +409,34 @@ class AlignerEngine:
                 ),
             )
             mech = mediator.build_mechanism(issues, participants, negotiation, cap=self._max_steps)
+            _mech_t0 = __import__("time").monotonic()
+            # Snapshot Pi time before mech.run() so we only subtract Pi calls
+            # that happen *inside* the NEGMAS loop, not _clarify_terms/discover_issues.
+            _pi_ms_before = getattr(raw_llm_session, "total_pi_ms", 0.0)
             await asyncio.to_thread(mech.run)
+            _mech_ms = (__import__("time").monotonic() - _mech_t0) * 1000.0
 
             assignments = mediator.agreement_assignments(mech, negotiation.names)
             converged = assignments is not None
             _, metrics = self._verdict(ep)
+            # Record round timing. NEGMAS gives us total elapsed, not per-round
+            # wall-clock, so we record one sample (the average) rather than N
+            # identical synthetic copies.
+            _rounds_run = max(mech.current_step, 1)
+            if _rounds_out is not None:
+                _rounds_out[0] = _rounds_run
+            from app.services import metrics as _metrics
+
+            _pi_ms = getattr(raw_llm_session, "total_pi_ms", 0.0) - _pi_ms_before
+            _mechanism_ms = max(_mech_ms - _pi_ms, 0.0)
+            _run_outcome = "converged" if converged else "rejected"
+            _metrics.record_aligner_round(
+                room=room,
+                round_num=_rounds_run,
+                duration_ms=_mech_ms / _rounds_run,
+                duration_excl_llm_ms=_mechanism_ms / _rounds_run,
+                outcome=_run_outcome,
+            )
             # Post-hoc satisfaction: how close the agreed outcome sits to
             # each agent's opening ask, and the room minimum — the least-happy
             # agent. Independent of MPC/GAR/SCR (which need stated confidence the
@@ -408,7 +467,7 @@ class AlignerEngine:
         finally:
             await self._manager.close_episode(room)
 
-    def _open_llm_session(self, episode: str) -> Callable[..., str]:
+    def _open_llm_session(self, episode: str, room: str = "") -> Callable[..., str]:
         """Build the mediator's LLM session for this negotiation — always a Pi agent.
 
         Default: a fresh :class:`~app.services.pi_session.PiSession` bound to a
@@ -421,7 +480,7 @@ class AlignerEngine:
         """
         if self._llm_session_factory is not None:
             return self._llm_session_factory(episode)
-        return self._pi_session(episode)
+        return self._pi_session(episode, room=room)
 
     def _signalling(
         self, session: Callable[..., str], room: str, episode: str
@@ -451,7 +510,7 @@ class AlignerEngine:
 
         return call
 
-    def _pi_session(self, episode: str) -> Callable[..., str]:
+    def _pi_session(self, episode: str, room: str = "") -> Callable[..., str]:
         import tempfile
         from pathlib import Path
 
@@ -468,6 +527,8 @@ class AlignerEngine:
             binary=settings.ALIGNER_PI_BINARY,
             timeout_s=settings.ALIGNER_PI_TIMEOUT_S,
             openshell=settings.ALIGNER_PI_OPENSHELL,
+            operation="aligner",
+            room=room,
         )
 
     def _roster(self, room: str, me: str) -> list[str]:
@@ -653,7 +714,9 @@ class AlignerEngine:
         text = ""
         try:
             one_shot = l9.episode_urn(room, _new_episode_id())
-            llm_session = self._signalling(self._open_llm_session(one_shot), room, one_shot)
+            llm_session = self._signalling(
+                self._open_llm_session(one_shot, room=room), room, one_shot
+            )
             text = (await asyncio.to_thread(llm_session, prompt) or "").strip()
         except Exception:
             logger.warning(

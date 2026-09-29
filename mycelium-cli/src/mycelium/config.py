@@ -504,6 +504,91 @@ class A2aConfig(BaseModel):
     )
 
 
+class TelemetryConfig(BaseModel):
+    """Telemetry: the backend's OTel export, and whether the hub shares its usage stats.
+
+    Two independent opt-ins kept deliberately separate:
+
+    ``enabled`` activates the OpenTelemetry SDK in the backend: traces and
+    metrics are exported over OTLP on every coordinated path (HTTP RED,
+    aligner rounds, SLIM channel timing, await long-poll). Off by default;
+    never required for coordination or storage to work.
+
+    ``send_product_analytics`` shares the hub's usage events. The hub records
+    them either way (tasks filed and resolved, flows and negotiations finished,
+    agents joined, the hub starting) and the app's Metrics page reads them;
+    this sends the same events to ``analytics_destination``. Off by default,
+    asked at interactive install and on the Mac app's first-run screen. No
+    names, handles, rooms, task text, prompts or replies are ever included.
+    """
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "Enable the OTel SDK in the backend (traces + metrics exported to the OTLP "
+            "collector). Off by default."
+        ),
+    )
+    otlp_endpoint: str | None = Field(
+        default=None,
+        description=(
+            "OTLP HTTP endpoint the backend pushes spans and metrics to. "
+            "When unset and telemetry.enabled is true, defaults to "
+            "http://mycelium-collector:4318, the collector's address in the Docker stack. "
+            "The Mac app runs no collector, so set this there (for example "
+            "http://127.0.0.1:4318 for a collector on the same Mac)."
+        ),
+    )
+    send_product_analytics: bool = Field(
+        default=False,
+        description=(
+            "Share the hub's anonymous usage events (tasks filed and resolved, flows and "
+            "negotiations finished, agents joined) with the analytics destination. The hub "
+            "records them either way. Off by default; the Mac app's own setting wins there."
+        ),
+    )
+    analytics_destination: str | None = Field(
+        default=None,
+        description=(
+            "Where shared usage events are POSTed, as JSON (or Loki's push format for a "
+            "/loki/ URL). HTTPS, or plain HTTP to this machine only."
+        ),
+    )
+    install_id: str | None = Field(
+        default=None,
+        description=(
+            "Random UUID identifying this installation, generated on first interactive "
+            "`mycelium install`; a hub without one mints its own. Carried on usage events, "
+            "and sent nowhere unless the hub shares them."
+        ),
+    )
+
+
+class HealthConfig(BaseModel):
+    """Health degradation thresholds for ``GET /health`` (#453).
+
+    When a histogram's p95 exceeds its threshold, ``/health`` reports
+    ``status: degraded`` for that subsystem. Set any threshold to ``0`` to
+    disable that check.
+    """
+
+    llm_p95_threshold_ms: float = Field(
+        default=30000.0,
+        description="LLM call p95 above this value degrades /health (0 = disabled).",
+    )
+    await_p95_threshold_ms: float = Field(
+        default=60000.0,
+        description=(
+            "Delivered-await p95 above this value degrades /health (0 = disabled). "
+            "Timed-out long-polls are excluded."
+        ),
+    )
+    search_p95_threshold_ms: float = Field(
+        default=500.0,
+        description="Memory search p95 above this value degrades /health (0 = disabled).",
+    )
+
+
 class MetricsConfig(BaseModel):
     """Configuration for the metrics collector + display.
 
@@ -547,6 +632,8 @@ class MyceliumConfig(BaseModel):
     swarm: SwarmConfig = Field(default_factory=SwarmConfig)
     rooms: RoomConfig = Field(default_factory=RoomConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
+    telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
+    health: HealthConfig = Field(default_factory=HealthConfig)
     a2a: A2aConfig = Field(default_factory=A2aConfig)
     adapters: dict[str, Any] = Field(
         default_factory=dict,
@@ -651,6 +738,8 @@ class MyceliumConfig(BaseModel):
             "agent_auth": {},
             "runtime": {},
             "metrics": {},
+            "telemetry": {},
+            "health": {},
         }
 
         if engine_runtime := os.getenv("ENGINE_RUNTIME"):
@@ -701,6 +790,24 @@ class MyceliumConfig(BaseModel):
         # Metrics overrides
         if collector_url := os.getenv("MYCELIUM_COLLECTOR_URL"):
             env_config["metrics"]["collector_url"] = collector_url
+
+        # Telemetry overrides
+        if val := os.getenv("MYCELIUM_TELEMETRY_ENABLED"):
+            env_config["telemetry"]["enabled"] = val.lower() in ("1", "true", "yes")
+        if val := os.getenv("MYCELIUM_TELEMETRY_OTLP_ENDPOINT"):
+            env_config["telemetry"]["otlp_endpoint"] = val
+        if val := os.getenv("MYCELIUM_TELEMETRY_SEND_ANALYTICS"):
+            env_config["telemetry"]["send_product_analytics"] = val.lower() in ("1", "true", "yes")
+        if val := os.getenv("MYCELIUM_ANALYTICS_DESTINATION"):
+            env_config["telemetry"]["analytics_destination"] = val
+
+        # Health degradation thresholds
+        if val := os.getenv("HEALTH_LLM_P95_THRESHOLD_MS"):
+            env_config["health"]["llm_p95_threshold_ms"] = float(val)
+        if val := os.getenv("HEALTH_AWAIT_P95_THRESHOLD_MS"):
+            env_config["health"]["await_p95_threshold_ms"] = float(val)
+        if val := os.getenv("HEALTH_SEARCH_P95_THRESHOLD_MS"):
+            env_config["health"]["search_p95_threshold_ms"] = float(val)
 
         return env_config
 
@@ -757,6 +864,8 @@ class MyceliumConfig(BaseModel):
             "herdr",
             "swarm",
             "metrics",
+            "telemetry",
+            "health",
             "a2a",
             "adapters",
         )

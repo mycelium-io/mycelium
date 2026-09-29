@@ -4076,6 +4076,48 @@
         }
       }
     },
+    "/api/observability/usage": {
+      "get": {
+        "tags": [
+          "metrics"
+        ],
+        "summary": "Get Usage",
+        "description": "What this hub is used for, as KPIs, from the usage events it records.\n\nTasks filed and resolved (and how long they stayed open), flows and\nnegotiations completed by outcome, agents joined by adapter, active days,\nand hours from the hub's first start to its first finished work. Counts\nonly: the events carry no names or content. ``sharing`` says whether\nthis hub also forwards them to its analytics destination.",
+        "operationId": "get_usage_api_observability_usage_get",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 30,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/observability/collector": {
       "get": {
         "tags": [

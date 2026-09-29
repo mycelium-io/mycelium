@@ -16,6 +16,7 @@ interface Settings {
   mode: Mode;
   hubUrl: string | null;
   roots: string[];
+  shareUsage?: boolean;
 }
 
 interface Found {
@@ -115,8 +116,26 @@ async function onboarding() {
   let mode: Mode = snap.settings?.mode ?? "hub";
   let hubUrl = snap.settings?.hubUrl ?? "";
   let root = tilde(snap.settings?.roots[0] ?? snap.home, snap.home);
+  let shareUsage = snap.settings?.shareUsage ?? false;
 
   const error = el("p", { class: "error", role: "alert", hidden: "" });
+  // Asked here, where a Mac's hub starts, and nowhere else: off unless ticked.
+  // Only for a hub on this Mac; in client mode the hub is someone else's.
+  const shareBox = el("input", { type: "checkbox", class: "toggle", id: "share-usage" });
+  shareBox.checked = shareUsage;
+  shareBox.addEventListener("change", () => {
+    shareUsage = shareBox.checked;
+  });
+  const shareRow = el(
+    "div",
+    { class: "share" },
+    el("label", { class: "share-label", for: "share-usage" }, shareBox, "Share anonymous usage stats"),
+    el(
+      "p",
+      { class: "hint" },
+      "Counts of tasks, flows and agents, so we know what's working. Never names, rooms or what anyone wrote. You can see them on the Metrics page either way.",
+    ),
+  );
   const hubField = el("input", {
     class: "field mono",
     placeholder: "https://hub.example.com",
@@ -169,6 +188,7 @@ async function onboarding() {
     hubChoice.setAttribute("aria-checked", String(mode === "hub"));
     clientChoice.setAttribute("aria-checked", String(mode === "client"));
     hubRow.hidden = mode !== "client";
+    shareRow.hidden = mode !== "hub";
     button.textContent = mode === "hub" ? "Start" : "Connect";
     renderSetsUp();
     where.textContent =
@@ -225,7 +245,12 @@ async function onboarding() {
   button.addEventListener("click", async () => {
     button.disabled = true;
     error.hidden = true;
-    const settings: Settings = { mode, hubUrl: mode === "client" ? hubUrl.trim() : null, roots: [root.trim()] };
+    const settings: Settings = {
+      mode,
+      hubUrl: mode === "client" ? hubUrl.trim() : null,
+      roots: [root.trim()],
+      shareUsage: mode === "hub" && shareUsage,
+    };
     try {
       const setup = inApp ? await invoke<PathSetup>("start", { settings }) : null;
       loading(setup);
@@ -253,6 +278,7 @@ async function onboarding() {
           rootField,
           el("p", { class: "hint" }, "Agents you start from Mycelium work inside this folder."),
         ),
+        shareRow,
         setsUp,
         error,
       ),

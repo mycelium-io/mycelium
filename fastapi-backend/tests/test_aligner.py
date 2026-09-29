@@ -45,6 +45,7 @@ async def test_summon_fires_only_for_the_reserved_handle():
         room: str,
         engine_handle: str | None = None,
         scoped_participants: list[str] | None = None,
+        **_kwargs: object,
     ) -> None:
         called.append(room)
 
@@ -155,6 +156,7 @@ async def test_engine_runtime_host_skips_registered_engine(
         r: str,
         engine_handle: str | None = None,
         scoped_participants: list[str] | None = None,
+        **_kwargs: object,
     ) -> None:
         called.append(r)
 
@@ -281,7 +283,7 @@ async def test_every_pi_call_is_bracketed_by_the_activity_signal():
     manager = FakeManager(managed, ["solo"])  # the too-few-participants path: one Pi call
     engine = _engine(
         manager,
-        llm_session_factory=lambda _ep: (lambda _prompt, **_kw: "Post positions first."),
+        llm_session_factory=lambda _ep: lambda _prompt, **_kw: "Post positions first.",
     )
 
     queue = bus.subscribe(room_channel(_ROOM))

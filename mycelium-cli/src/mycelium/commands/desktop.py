@@ -81,6 +81,11 @@ def serve(
     json_out: bool = typer.Option(
         False, "--json", help="Status, logs and errors as JSON lines on stdout (for the app)"
     ),
+    share_usage: bool | None = typer.Option(
+        None,
+        "--share-usage/--no-share-usage",
+        help="Send the hub's anonymous usage stats (default: config.toml's telemetry setting)",
+    ),
 ) -> None:
     """Run Mycelium here and keep it running until stopped.
 
@@ -115,7 +120,9 @@ def serve(
             _human(event)
 
     roots = [p.expanduser().resolve() for p in (root or [Path.home()])]
-    sup = Supervisor(cast("Mode", mode), hub_url=hub_url, roots=roots, emit=emit)
+    sup = Supervisor(
+        cast("Mode", mode), hub_url=hub_url, roots=roots, emit=emit, share_usage=share_usage
+    )
 
     def _stop(*_: object) -> None:
         sup.stop()

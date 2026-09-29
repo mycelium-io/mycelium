@@ -605,6 +605,24 @@ is no litellm dependency.
   agent-facing protocol, the browser is where a human works — so there is no
   `--ui` / `--no-ui` flag and no install prompt to decline it. The collector
   (`profiles: [metrics]`) is still the one opt-in service.
+- **Usage is counted by the task, recorded on the hub, and shared only with
+  consent.** The product's KPIs come from usage events the hub records
+  itself (`app/services/analytics.py`): `hub_started`, `task_filed` and
+  `task_resolved` (off the board's notices, in `main.py`'s notice
+  dispatcher), `flow_completed` (the conductor's close),
+  `negotiation_completed` (the aligner) and `agent_joined` (an
+  `agents/<handle>` manifest appearing). They follow the unit of work, not
+  one engine, so every way the app starts work lands in them. They are
+  appended to `usage/events.jsonl` in the data dir, always, and
+  `GET /api/observability/usage` adds them up for the Metrics page. They
+  carry kinds and outcomes, never a name, handle, room or text
+  (`PROHIBITED_FIELDS`, and a room's own flow counts as `custom`).
+  Sending them to `telemetry.analytics_destination` is
+  `telemetry.send_product_analytics`, off by default, asked at
+  `mycelium install` and on the Mac app's first screen, whose answer wins
+  for the hub it starts (`desktop serve --share-usage`). This is separate
+  from the OTel export (`telemetry.enabled`), which is the backend's own
+  operational metrics.
 - **GUI server state is one SWR cache; client state stays local.** Every room
   read in the frontend goes through `mycelium-frontend/src/lib/room-data.ts` —
   typed SWR hooks keyed `["room", name, resource]`, so N panels reading the same

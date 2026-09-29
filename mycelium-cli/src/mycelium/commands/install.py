@@ -591,6 +591,105 @@ def _report_llm_probe_result(
 # ── Config write ─────────────────────────────────────────────────────────────
 
 
+def _recreate_backend(compose_path: Path, env_path: Path) -> bool:
+    """Recreate the backend container so it picks up a regenerated .env."""
+    args = [
+        "docker",
+        "compose",
+        "-p",
+        "mycelium",
+        "-f",
+        str(compose_path),
+        "--env-file",
+        str(env_path),
+        "up",
+        "-d",
+        "--force-recreate",
+        "--no-build",
+        "mycelium-backend",
+    ]
+    result = subprocess.run(args, text=True)
+    return result.returncode == 0
+
+
+def _run_telemetry_disclosure(api_url: str, *, compose_path: Path) -> None:  # noqa: ARG001
+    """Ask whether this hub shares its usage stats, after saying what they are.
+
+    The hub records its usage either way (the app's Metrics page reads it);
+    this only decides whether the events are also sent. Defaults to *No*. The
+    Mac app asks the same question on its first-run screen.
+
+    Non-interactive installs never reach this path; they stay off unconditionally
+    as required by #938.
+    """
+    import uuid
+
+    from mycelium.config import MyceliumConfig, TelemetryConfig
+
+    print()
+    typer.secho("  ── Optional: share usage stats ─────────────────────────", bold=True)
+    print()
+    typer.echo("  Your hub counts what it's used for: tasks filed and resolved, flows and")
+    typer.echo("  negotiations finished, agents joined. You can see these on the app's")
+    typer.echo("  Metrics page either way. Sharing sends the same counts to Mycelium's")
+    typer.echo("  developers, so we know what's working.")
+    typer.echo("")
+    typer.echo("  What is sent: event kinds, outcomes, counts, release and OS.")
+    typer.echo("  Never sent: names, handles, rooms, task text, prompts, replies, IPs.")
+    typer.echo("  Each hub is identified by a random id, not by who uses it.")
+    typer.echo("")
+    typer.echo("  Change it any time:")
+    typer.echo("    mycelium config set telemetry.send_product_analytics false")
+    print()
+
+    try:
+        consent = typer.confirm(
+            "  Share anonymous usage stats?",
+            default=False,
+        )
+    except (EOFError, KeyboardInterrupt):
+        consent = False
+
+    config_path = MyceliumConfig.get_global_config_path()
+    try:
+        config = MyceliumConfig.load(config_path) if config_path.exists() else MyceliumConfig()
+    except Exception:
+        config = MyceliumConfig()
+
+    if config.telemetry is None:
+        config.telemetry = TelemetryConfig()
+
+    # Generate install_id regardless of consent so it's ready when the user
+    # opts in later via `mycelium config set telemetry.send_product_analytics true`.
+    if not config.telemetry.install_id:
+        config.telemetry.install_id = str(uuid.uuid4())
+
+    config.telemetry.send_product_analytics = consent
+    config.save()
+
+    # Phase 5 already wrote .env with send_product_analytics=false; regenerate
+    # so the running backend picks up the user's opt-in.
+    from mycelium.docker_utils import write_env_file
+
+    env_path, _ = write_env_file(config)
+    typer.echo(f"  ✓ Regenerated {env_path} from config.toml")
+
+    if consent:
+        if _recreate_backend(compose_path, env_path):
+            typer.echo("  ✓ Backend recreated with updated telemetry settings")
+        else:
+            typer.secho(
+                "  ⚠ Could not recreate backend — run "
+                "`mycelium config apply && mycelium up` to pick up telemetry settings",
+                fg=typer.colors.YELLOW,
+            )
+        # The recreated hub records its start and, now that it shares, sends it:
+        # that is this install's first event, so there's nothing to send here.
+        typer.secho("  ✓ Sharing usage stats. Thank you!", fg=typer.colors.GREEN)
+    else:
+        typer.echo("  Not sharing usage stats (the default).")
+
+
 def _write_mycelium_config(
     api_url: str,
     llm_config: dict[str, str] | None = None,
@@ -1011,6 +1110,11 @@ def install(
             custom_ports=custom_ports,
         )
         typer.secho("  ✓ Config written to ~/.mycelium/config.toml", fg=typer.colors.GREEN)
+
+        # ── Phase 6: Telemetry disclosure ─────────────────────────────────
+        # Non-interactive installs (handled in the early branch above) stay off
+        # unconditionally. This phase runs only on the interactive path.
+        _run_telemetry_disclosure(api_url, compose_path=compose_path)
 
         # ── Phase 7: LLM connectivity probe ─────────────────────────────────
         # Real one-shot pi turn inside the backend. Catches a missing/broken pi

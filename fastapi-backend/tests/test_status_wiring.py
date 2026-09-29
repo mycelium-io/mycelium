@@ -153,7 +153,7 @@ class TestRoute:
 
     @pytest.mark.asyncio
     async def test_a_read_answers_without_fetching_and_says_so(self, client, room: str):
-        http, toy, _ = client
+        http, _toy, _ = client
         async with http:
             body = (await http.get(f"/api/rooms/{room}/status")).json()
 

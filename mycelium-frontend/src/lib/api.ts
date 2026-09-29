@@ -1009,6 +1009,36 @@ export async function fetchBackendMetrics<T = Record<string, unknown>>(): Promis
   return apiFetch<T | null>(`/api/observability`, { cache: "no-store", fallback: null });
 }
 
+/** What the hub is used for, from the usage events it records (counts only). */
+export interface UsageKpis {
+  days: number;
+  /** Whether this hub also sends its usage events to its analytics destination. */
+  sharing: boolean;
+  tasks: {
+    filed: number;
+    resolved: number;
+    filed_by: Record<string, number>;
+    median_hours_open: number | null;
+    /** Median hours open, by who resolved the task (person, agent, engine). */
+    median_hours_open_by: Record<string, number>;
+  };
+  /** Flow name (built-in, or "custom") → outcome → runs. */
+  flows: Record<string, Record<string, number>>;
+  negotiations: Record<string, number>;
+  agents_joined: Record<string, number>;
+  active_days: number;
+  daily: { day: string; filed: number; resolved: number }[];
+  work_total: number;
+  first_value_hours: number | null;
+}
+
+export async function fetchUsage(days = 30): Promise<UsageKpis | null> {
+  return apiFetch<UsageKpis | null>(`/api/observability/usage?days=${days}`, {
+    cache: "no-store",
+    fallback: null,
+  });
+}
+
 // ── L9 protocol / episodes ─────────────────────────────────────────────────────
 // Episodes are the persisted, causally-linked L9 record of a coordination
 // session (one markdown file per session under `log/episodes/`). The protocol

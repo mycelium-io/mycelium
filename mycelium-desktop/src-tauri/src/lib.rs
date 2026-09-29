@@ -363,7 +363,7 @@ fn join(app: AppHandle, hub: String, path: Option<String>) {
             return;
         }
         let roots = current.map(|s| s.roots).unwrap_or_default();
-        let next = Settings { mode: Mode::Client, hub_url: Some(hub), roots };
+        let next = Settings { mode: Mode::Client, hub_url: Some(hub), roots, share_usage: false };
         match next.validate() {
             Ok(next) => {
                 if settings::save(&next).is_ok() {

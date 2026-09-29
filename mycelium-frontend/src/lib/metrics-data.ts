@@ -23,7 +23,13 @@
  */
 
 import useSWR from "swr";
-import { fetchBackendMetrics, fetchEpisodes, type EpisodeSummary } from "@/lib/api";
+import {
+  fetchBackendMetrics,
+  fetchEpisodes,
+  fetchUsage,
+  type EpisodeSummary,
+  type UsageKpis,
+} from "@/lib/api";
 import type { BackendHistogram } from "@/lib/metrics-format";
 
 // ── Backend metrics ──────────────────────────────────────────────────────────
@@ -57,6 +63,16 @@ export function useBackendMetrics(refreshInterval: number) {
     { refreshInterval, keepPreviousData: true },
   );
   return { metrics: data ?? null, loading: isLoading };
+}
+
+/** The hub's usage KPIs over the last `days`. */
+export function useUsage(days: number, refreshInterval: number) {
+  const { data, isLoading } = useSWR<UsageKpis | null>(
+    ["usage", days],
+    () => fetchUsage(days),
+    { refreshInterval, keepPreviousData: true },
+  );
+  return { usage: data ?? null, loading: isLoading };
 }
 
 // ── Episodes across the fleet ────────────────────────────────────────────────
