@@ -56,9 +56,50 @@ vi.mock("@/components/keymap-provider", () => ({
 
 import { RoomChatBox } from "@/components/room-chat-box";
 
+// A draft outlives its composer, which is the point, so each case starts
+// with none rather than inheriting the last one's typing.
+beforeEach(() => {
+  window.localStorage.clear();
+});
+
 async function textarea() {
   return await screen.findByPlaceholderText(/Message the room/);
 }
+
+describe("<RoomChatBox /> drafts", () => {
+  beforeEach(() => {
+    sendRoomMessage.mockClear();
+  });
+
+  it("keeps what was typed in a room when you leave and come back", async () => {
+    const { rerender } = renderWithSWR(<RoomChatBox roomName="demo" />);
+    await userEvent.type(await textarea(), "half a thought");
+
+    rerender(<RoomChatBox roomName="other" />);
+    await waitFor(async () => expect(await textarea()).toHaveValue(""));
+    await userEvent.type(await textarea(), "elsewhere");
+
+    rerender(<RoomChatBox roomName="demo" />);
+    await waitFor(async () => expect(await textarea()).toHaveValue("half a thought"));
+    rerender(<RoomChatBox roomName="other" />);
+    await waitFor(async () => expect(await textarea()).toHaveValue("elsewhere"));
+  });
+
+  it("keeps a thread's draft apart from its room's, and forgets it once sent", async () => {
+    const { rerender } = renderWithSWR(<RoomChatBox roomName="demo" episode="urn:e:t1" />);
+    await userEvent.type(await screen.findByRole("textbox"), "for the task");
+
+    rerender(<RoomChatBox roomName="demo" />);
+    await waitFor(async () => expect(await textarea()).toHaveValue(""));
+
+    rerender(<RoomChatBox roomName="demo" episode="urn:e:t1" />);
+    const box = await screen.findByRole("textbox");
+    await waitFor(() => expect(box).toHaveValue("for the task"));
+    await userEvent.type(box, "{Enter}");
+    await waitFor(() => expect(sendRoomMessage).toHaveBeenCalled());
+    await waitFor(() => expect(window.localStorage.getItem("mycelium.draft:demo#urn:e:t1")).toBeNull());
+  });
+});
 
 describe("<RoomChatBox /> composer triggers", () => {
   beforeEach(() => {
