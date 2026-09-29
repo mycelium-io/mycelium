@@ -20,7 +20,7 @@ import {
   Trash2,
   type LucideIcon,
 } from "lucide-react";
-import { type Room } from "@/lib/api";
+import { createRoom, type Room } from "@/lib/api";
 import { useAppStream } from "@/lib/stream-hub";
 import { useRooms } from "@/lib/room-data";
 import { roomLevel, type RoomLevel } from "@/lib/notifications";
@@ -57,6 +57,7 @@ interface Props {
 export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsedChange }: Props) {
   const [query, setQuery] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [creatingInline, setCreatingInline] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   // The rooms list is a shared cache entry that outlives this mount — the
@@ -285,7 +286,9 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
         <span className="text-micro tabular text-muted-foreground">{rooms.length}</span>
         <Tooltip content="New room">
           <button
-            onClick={() => setShowCreate(true)}
+            // Here the name is typed where the room will appear, as an
+            // editor's file tree does; the palette and home ask in a prompt.
+            onClick={() => setCreatingInline(true)}
             aria-label="New room"
             className="ml-auto flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
           >
@@ -317,8 +320,18 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
 
       <ScrollArea className="min-h-0 flex-1">
         <nav className="px-2 pb-2">
+        {creatingInline && (
+          <InlineNewRoom
+            onCancel={() => setCreatingInline(false)}
+            onCreated={name => {
+              setCreatingInline(false);
+              refresh();
+              router.push(`/room/${encodeURIComponent(name)}`);
+            }}
+          />
+        )}
         {filtered.length === 0 ? (
-          rooms.length === 0 ? (
+          creatingInline ? null : rooms.length === 0 ? (
             <EmptyState size="sm" icon={Boxes} title="No rooms yet" description="Create one with the + above." />
           ) : (
             <EmptyState size="sm" icon={SearchX} title="No matches" />
@@ -392,6 +405,59 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
         />
       )}
     </aside>
+  );
+}
+
+/**
+ * A new room's row, typed into the list where the room will appear: Enter
+ * creates it, Esc or clicking away leaves it. A name the hub refuses stays in
+ * the field with the reason under it.
+ */
+function InlineNewRoom({ onCancel, onCreated }: { onCancel: () => void; onCreated: (name: string) => void }) {
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const create = async () => {
+    const clean = name.trim();
+    if (!clean || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await createRoom({ name: clean, is_persistent: true });
+      onCreated(clean);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't create the room");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mb-0.5">
+      <div className="flex h-7 items-center gap-2 rounded bg-hairline px-1.5 ring-1 ring-border">
+        <RoomAvatar name={name.trim() || "?"} className="size-[18px] rounded-[4px] text-[8px]" />
+        <input
+          autoFocus
+          value={name}
+          onChange={e => {
+            setName(e.target.value);
+            if (error) setError(null);
+          }}
+          onKeyDown={e => {
+            if (e.key === "Enter") void create();
+            if (e.key === "Escape") onCancel();
+          }}
+          onBlur={() => {
+            if (!name.trim() && !busy) onCancel();
+          }}
+          placeholder="Room name"
+          aria-label="New room name"
+          spellCheck={false}
+          className="min-w-0 flex-1 bg-transparent text-label text-text placeholder:text-faint focus:outline-none"
+        />
+      </div>
+      {error && <p role="alert" className="px-1.5 pt-1 text-micro break-words text-red">{error}</p>}
+    </div>
   );
 }
 
