@@ -117,6 +117,17 @@ export function IntentDialog({
     }
   };
 
+  // What you wrote carries across tabs; who you picked doesn't, since each
+  // tab's picks mean something different.
+  const switchTo = (id: IntentId) => {
+    if (id === intentId) return;
+    setIntentId(id);
+    setRoles({});
+    setGroup([]);
+    setAssignee("");
+    setError(null);
+  };
+
   const toggleGroup = (h: string) =>
     setGroup(g => (g.includes(h) ? g.filter(x => x !== h) : [...g, h]));
 
@@ -144,7 +155,7 @@ export function IntentDialog({
                 type="button"
                 aria-pressed={on}
                 title={i.when}
-                onClick={() => setIntentId(i.id)}
+                onClick={() => switchTo(i.id)}
                 className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap border-r border-border px-2 py-2 text-micro last:border-r-0 transition-colors ${
                   on ? "bg-bg text-text" : "text-muted-foreground hover:bg-hairline hover:text-text"
                 }`}
