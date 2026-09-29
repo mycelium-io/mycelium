@@ -6,7 +6,7 @@
 import { useSyncExternalStore, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ActingAsPicker } from "@/components/acting-as-picker";
+import { AccountMenu } from "@/components/account-menu";
 import { KeyBadge } from "@/components/key-badge";
 import { NotificationBell } from "@/components/notification-bell";
 import { useIsDesktop } from "@/lib/desktop";
@@ -58,7 +58,7 @@ export function TitleBar({ crumb, right }: { crumb?: ReactNode; right?: ReactNod
       <div className="ml-auto flex flex-shrink-0 items-center gap-0.5">
         {right}
         <NotificationBell />
-        <ActingAsPicker compact />
+        <AccountMenu />
       </div>
     </header>
   );

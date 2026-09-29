@@ -115,7 +115,7 @@ export function commandOf(body: string): { name: CommandName; rest: string } | n
 export function RoomChatBox({ roomName, onSent, className, episode = null, threadLabel = null }: Props) {
   const [content, setContent] = useState("");
   // A human message is sent as the acting-as principal — the single source of
-  // "who am I" (the ActingAsPicker), not a per-composer handle. Anonymous falls
+  // "who am I" (the account menu), not a per-composer handle. Anonymous falls
   // back to "user" so the room still has a sender to attribute the message to.
   const { principal } = useCurrentUser();
   const [sending, setSending] = useState(false);

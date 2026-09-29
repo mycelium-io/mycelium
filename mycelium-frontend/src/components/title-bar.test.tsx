@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-vi.mock("@/components/acting-as-picker", () => ({ ActingAsPicker: () => <span>account</span> }));
+vi.mock("@/components/account-menu", () => ({ AccountMenu: () => <span>account</span> }));
 vi.mock("@/components/notification-bell", () => ({ NotificationBell: () => <span>bell</span> }));
 vi.mock("@/components/key-badge", () => ({ KeyBadge: () => null }));
 
