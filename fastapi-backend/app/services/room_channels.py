@@ -101,6 +101,40 @@ BACKEND_AGENT = "backend"
 # node, short enough that a room recovers quickly.
 _PERSISTER_RESTART_BACKOFF_S = 5.0
 
+# Who a room has announced as joined, kept beside its memories so a join is
+# said once per member, not again after every restart.
+ANNOUNCED_FILENAME = ".announced.json"
+
+
+def _announced_path(room: str):
+    """The room's announced-members file, or None when the room has no folder."""
+    from app.services.filesystem import get_data_dir
+
+    room_dir = get_data_dir() / "rooms" / room
+    return room_dir / ANNOUNCED_FILENAME if room_dir.is_dir() else None
+
+
+def _load_announced(room: str) -> set[str]:
+    path = _announced_path(room)
+    if path is None:
+        return set()
+    try:
+        handles = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    return {h for h in handles if isinstance(h, str)} if isinstance(handles, list) else set()
+
+
+def _save_announced(room: str, handles: set[str]) -> None:
+    path = _announced_path(room)
+    if path is None:
+        return
+    try:
+        path.write_text(json.dumps(sorted(handles)), encoding="utf-8")
+    except OSError:
+        # Best-effort: at worst a restart announces a member once more.
+        logger.debug("could not record announced members for room %s", room)
+
 
 def _is_own_registered_agent(room: str, handle: str) -> bool:
     """True if ``handle`` is an agent registered in ``room`` (manifest on disk).
@@ -316,8 +350,11 @@ class RoomChannelManager:
         # ``_leases``. Monotonic time drives expiry (skew-proof); this parallel
         # wall-clock stamp is only for surfacing "last seen 5s ago" in the UI.
         self._last_seen: dict[str, dict[str, float]] = {}
-        # Tracks which handles have had a coordination_join notice emitted for each
-        # room. Cleared on leave/disconnect so a returning member re-announces.
+        # Which handles have had a coordination_join notice in each room: a join is
+        # a member's first arrival, not every return from a lapsed lease or a
+        # reconnect. Loaded from and kept in the room's folder
+        # (``ANNOUNCED_FILENAME``), so a restart doesn't re-announce everyone;
+        # only removing a member from the room forgets them.
         self._announced: dict[str, set[str]] = {}
         # herdr liveness overlay: room → handle → (status, title, monotonic expiry,
         # wall-clock last_seen). ``title`` is herdr's terminal title (the agent's
@@ -641,11 +678,11 @@ class RoomChannelManager:
             return set()
         live = {h for h, exp in leases.items() if exp > now}
         # Opportunistically drop expired leases so the map doesn't grow forever.
-        # Also clear from _announced so a returning handle re-announces its arrival.
+        # A lapsed lease is an agent between turns, not one that left, so its
+        # return is not announced again.
         expired = set(leases) - live
         if expired:
             self._leases[room] = {h: leases[h] for h in live}
-            self._announced.get(room, set()).difference_update(expired)
             seen = self._last_seen.get(room)
             if seen:
                 for h in expired:
@@ -689,19 +726,29 @@ class RoomChannelManager:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
+    def _announced_in(self, room: str) -> set[str]:
+        """The handles already announced in ``room``, read from its folder once."""
+        known = self._announced.get(room)
+        if known is None:
+            known = _load_announced(room)
+            self._announced[room] = known
+        return known
+
     def announce_join(self, room: str, handle: str, intent: str = "") -> bool:
         """Emit a coordination_join notice on the first not-present → present transition.
 
-        Idempotent: returns False (and does nothing) if the handle is already
-        announced for this room. Clears on leave/disconnect so a returning member
-        re-announces. Called from every join path so the channel feed shows arrivals
-        consistently regardless of whether the agent joined via HTTP session, SLIM
-        invite, or server-held await lease.
+        Once per member per room: returns False (and does nothing) if the handle
+        has been announced here before, across lapsed leases, reconnects and
+        restarts. Only :meth:`remove` forgets it, so a member removed and added
+        again is announced again. Called from every join path so the channel feed
+        shows arrivals consistently regardless of whether the agent joined via
+        HTTP session, SLIM invite, or server-held await lease.
         """
-        announced = self._announced.setdefault(room, set())
+        announced = self._announced_in(room)
         if handle in announced:
             return False
         announced.add(handle)
+        _save_announced(room, announced)
         content = json.dumps({"handle": handle, "intent": intent})
         try:
             from app.services import in_memory_store
@@ -838,7 +885,6 @@ class RoomChannelManager:
         if managed is None or handle not in managed.members:
             return
         managed.members.discard(handle)
-        self._announced.get(room, set()).discard(handle)
         logger.info("dropped absent member %s from room %s membership", handle, room)
 
     def _on_persister_done(self, room: str, task: asyncio.Task) -> None:
@@ -873,9 +919,8 @@ class RoomChannelManager:
         """
         managed = self._channels.pop(room, None)
         workspace = managed.workspace if managed else None
-        # Clear announcements so agents re-announce when they reconnect to the
-        # fresh channel — the old channel's membership record is gone.
-        self._announced.pop(room, None)
+        # Members reconnecting to the fresh channel are the same members: their
+        # arrival was announced once already, so nothing is cleared here.
         if managed is not None:
             for cs in managed.custody.values():
                 with contextlib.suppress(Exception):
@@ -1354,7 +1399,11 @@ class RoomChannelManager:
                 logger.debug("SLIM remove skipped (room=%s agent=%s): %s", room, agent, exc)
                 return False
         managed.members.discard(agent)
-        self._announced.get(room, set()).discard(agent)
+        # Removed from the room: if they're added again, that's a new arrival.
+        announced = self._announced_in(room)
+        if agent in announced:
+            announced.discard(agent)
+            _save_announced(room, announced)
         await self._enforce_membership_change(managed)
         return True
 
