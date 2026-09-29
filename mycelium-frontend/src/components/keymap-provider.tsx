@@ -344,6 +344,13 @@ export function useKeyAction(id: string, handler: Handler): void {
 }
 
 /** Declare a scope live for as long as the component is mounted. */
+/** Opens the command palette; a no-op outside a KeymapProvider. */
+export function useOpenPalette(): () => void {
+  return useContext(KeymapContext)?.openPalette ?? noop;
+}
+
+const noop = () => {};
+
 export function useKeyScope(scope: KeyScope): void {
   const api = useKeymap("useKeyScope");
   useEffect(() => api.pushScope(scope), [api, scope]);

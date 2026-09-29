@@ -92,7 +92,7 @@ export const KEYMAP: Binding[] = [
     group: "Rooms",
     scope: "global",
   },
-  { id: "nav.home", keys: ["alt+h"], label: "Command center", group: "Navigate", scope: "global" },
+  { id: "nav.home", keys: ["alt+h"], label: "Home", group: "Navigate", scope: "global" },
 
   { id: "pane.channel", keys: ["alt+c"], label: "Channel", group: "Panes", scope: "room" },
   { id: "pane.board", keys: ["alt+p"], label: "Board", group: "Panes", scope: "room" },
