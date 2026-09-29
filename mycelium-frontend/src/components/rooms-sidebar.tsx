@@ -7,11 +7,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  ArrowRight,
   Bell,
   BellOff,
   BellRing,
   Boxes,
   Check,
+  Copy,
+  ExternalLink,
+  Link2,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -25,6 +29,18 @@ import { useAppStream } from "@/lib/stream-hub";
 import { useRooms } from "@/lib/room-data";
 import { roomLevel, type RoomLevel } from "@/lib/notifications";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuRadioGroup,
+  ContextMenuRadioItem,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { copyText, absoluteUrl } from "@/lib/clipboard";
+import { useIsDesktop } from "@/lib/desktop";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
 import { DeleteRoomDialog } from "@/components/delete-room-dialog";
 import { useNotifications } from "@/components/notifications-provider";
@@ -211,7 +227,15 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
               const active = room.name === activeRoom;
               const unread = active ? 0 : unreadByRoom.get(room.name) ?? 0;
               return (
-                <div key={room.name} className="group/room relative">
+                <RoomContextMenu
+                  key={room.name}
+                  room={room}
+                  level={roomLevel(settings, room.name)}
+                  onSetLevel={setRoomLevel}
+                  onOpen={() => go(room)}
+                  onDelete={() => setDeleteTarget(room.name)}
+                >
+                <div className="group/room relative">
                   <Tooltip
                     content={unread > 0 ? `${room.name} — ${unread} unread` : room.name}
                     side="right"
@@ -249,6 +273,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
                     <Trash2 className="size-2.5" />
                   </button>
                 </div>
+                </RoomContextMenu>
               );
             })}
           </nav>
@@ -344,7 +369,15 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
             const unread = active ? 0 : unreadByRoom.get(room.name) ?? 0;
             const level = roomLevel(settings, room.name);
             return (
-              <div key={room.name} className="group/room relative">
+              <RoomContextMenu
+                key={room.name}
+                room={room}
+                level={level}
+                onSetLevel={setRoomLevel}
+                onOpen={() => go(room)}
+                onDelete={() => setDeleteTarget(room.name)}
+              >
+              <div className="group/room relative">
               <Link
                 href={`/room/${encodeURIComponent(room.name)}`}
                 className={`group flex h-7 items-center gap-2 rounded px-1.5 transition-colors ${
@@ -389,6 +422,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
                 <Trash2 className="size-3.5" />
               </button>
               </div>
+              </RoomContextMenu>
             );
           })
         )}
@@ -458,6 +492,67 @@ function InlineNewRoom({ onCancel, onCreated }: { onCancel: () => void; onCreate
       </div>
       {error && <p role="alert" className="px-1.5 pt-1 text-micro break-words text-red">{error}</p>}
     </div>
+  );
+}
+
+/**
+ * A room's right-click menu: what its row's hover controls and the room's own
+ * `…` menu already do, in one place. Right-clicking the row's link replaces the
+ * browser's own menu, so opening in a new tab is offered here too.
+ */
+function RoomContextMenu({
+  room,
+  level,
+  onSetLevel,
+  onOpen,
+  onDelete,
+  children,
+}: {
+  room: Room;
+  level: RoomLevel;
+  onSetLevel: (room: string, level: RoomLevel) => void;
+  onOpen: () => void;
+  onDelete: () => void;
+  children: React.ReactElement;
+}) {
+  const desktop = useIsDesktop();
+  const path = `/room/${encodeURIComponent(room.name)}`;
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger>{children}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem icon={ArrowRight} onClick={onOpen}>
+          Open
+        </ContextMenuItem>
+        {!desktop && (
+          <ContextMenuItem icon={ExternalLink} onClick={() => window.open(path, "_blank", "noopener")}>
+            Open in new tab
+          </ContextMenuItem>
+        )}
+        <ContextMenuSub label="Notifications" icon={Bell}>
+          <ContextMenuRadioGroup value={level} onValueChange={(value) => onSetLevel(room.name, value as RoomLevel)}>
+            {LEVEL_OPTIONS.map(({ level: l, label }) => (
+              <ContextMenuRadioItem key={l} value={l}>
+                {label}
+              </ContextMenuRadioItem>
+            ))}
+          </ContextMenuRadioGroup>
+        </ContextMenuSub>
+        <ContextMenuSeparator />
+        <ContextMenuItem icon={Link2} onClick={() => void copyText(absoluteUrl(path))}>
+          Copy link
+        </ContextMenuItem>
+        {room.mas_id && (
+          <ContextMenuItem icon={Copy} onClick={() => void copyText(room.mas_id ?? "")}>
+            Copy room ID
+          </ContextMenuItem>
+        )}
+        <ContextMenuSeparator />
+        <ContextMenuItem icon={Trash2} destructive onClick={onDelete}>
+          Delete room…
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 

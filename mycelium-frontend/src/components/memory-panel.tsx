@@ -20,7 +20,18 @@ import {
   X,
   Search,
   Loader2,
+  Copy,
+  Link2,
+  Maximize2,
 } from "lucide-react";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { absoluteUrl, copyText } from "@/lib/clipboard";
 import {
   fetchMemory,
   fetchMemoryExpanded,
@@ -141,7 +152,52 @@ const PEEK_DELAY = 350; // ms of hover intent before the preview card opens
  *  button — the drawer is narrower than the page, so it clamps sooner. */
 const BODY_CLAMP_PX = 480;
 
+/**
+ * A memory's right-click menu in the tree: open it, open its full page (a
+ * right-click replaces the browser's own "open in new tab"), and copy it as a
+ * key, a `[[link]]` or a page link.
+ */
+function MemoryRowMenu({
+  roomName,
+  memory,
+  onOpen,
+  children,
+}: {
+  roomName: string;
+  memory: Memory | null;
+  onOpen: (mem: Memory) => void;
+  children: React.ReactElement;
+}) {
+  const router = useRouter();
+  if (!memory) return children;
+  const href = memoryHref(roomName, memory.key);
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger>{children}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem icon={FileText} onClick={() => onOpen(memory)}>
+          Open
+        </ContextMenuItem>
+        <ContextMenuItem icon={Maximize2} onClick={() => router.push(href)}>
+          Open full page
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem icon={Copy} onClick={() => void copyText(memory.key)}>
+          Copy key
+        </ContextMenuItem>
+        <ContextMenuItem icon={Link2} onClick={() => void copyText(`[[${memory.key}]]`)}>
+          Copy as [[link]]
+        </ContextMenuItem>
+        <ContextMenuItem icon={Link2} onClick={() => void copyText(absoluteUrl(href))}>
+          Copy page link
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
+
 interface TreeRowsProps {
+  roomName: string;
   nodes: TreeNode[];
   depth: number;
   collapsed: Set<string>;
@@ -156,6 +212,7 @@ interface TreeRowsProps {
 }
 
 function TreeRows({
+  roomName,
   nodes,
   depth,
   collapsed,
@@ -177,6 +234,7 @@ function TreeRows({
 
         return (
           <div key={node.path}>
+            <MemoryRowMenu roomName={roomName} memory={node.memory ?? null} onOpen={onSelect}>
             <div
               style={{ paddingLeft, height: ROW_H }}
               onMouseEnter={e => node.memory && onPeek(node.memory, e.currentTarget)}
@@ -243,9 +301,11 @@ function TreeRows({
                 </span>
               )}
             </div>
+            </MemoryRowMenu>
 
             {isOpen && (
               <TreeRows
+                roomName={roomName}
                 nodes={node.children}
                 depth={depth + 1}
                 collapsed={collapsed}
@@ -633,6 +693,7 @@ export function MemoryPanel({
               />
             ) : (
               <TreeRows
+                roomName={roomName}
                 nodes={tree}
                 depth={0}
                 collapsed={filterCollapsed ?? collapsed}

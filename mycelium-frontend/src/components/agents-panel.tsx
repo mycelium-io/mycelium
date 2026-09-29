@@ -4,7 +4,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Plus, UserPlus, Users } from "lucide-react";
+import { AtSign, Check, FileText, Plus, UserPlus, Users } from "lucide-react";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { copyText } from "@/lib/clipboard";
 import { inviteLink } from "@/lib/desktop";
 import { type PresenceMember, type RoomFloor } from "@/lib/api";
 import { floorLabel } from "@/lib/floors";
@@ -29,6 +31,43 @@ interface Props {
    *  so the row scrolls into sight and marks itself instead of opening. */
   focusHandle?: string | null;
   onFocusConsumed?: () => void;
+  /** Opens a memory as a room tab; an agent's right-click menu opens its profile. */
+  onOpenMemory?: (key: string) => void;
+}
+
+/**
+ * A member's right-click menu. It wraps the row's tooltip in an element that
+ * draws no box (`contents`), since the tooltip already owns the row as its
+ * trigger; a right-click on the row still bubbles here.
+ */
+function MemberMenu({
+  handle,
+  agent,
+  onOpenMemory,
+  children,
+}: {
+  handle: string;
+  agent: boolean;
+  onOpenMemory?: (key: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger>
+        <div className="contents">{children}</div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        {agent && onOpenMemory && (
+          <ContextMenuItem icon={FileText} onClick={() => onOpenMemory(`agents/${handle}`)}>
+            Open profile
+          </ContextMenuItem>
+        )}
+        <ContextMenuItem icon={AtSign} onClick={() => void copyText(`@${handle}`)}>
+          Copy @{handle}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
 }
 
 /** Minute-granular relative age; null under a minute (an actively-polling lease
@@ -165,6 +204,7 @@ export function AgentsPanel({
   onEngineInviteShown,
   focusHandle = null,
   onFocusConsumed,
+  onOpenMemory,
 }: Props) {
   const [addOpen, setAddOpen] = useState(false);
   const [addKind, setAddKind] = useState<MemberKind>("machine");
@@ -299,14 +339,15 @@ export function AgentsPanel({
             {people.map((p) => {
               const marked = highlight === p.handle;
               return (
-                <PersonRow
-                  key={`person-${p.handle}`}
-                  person={p}
-                  memberPresence={presence.get(p.handle)}
-                  floor={floors.get(p.handle)}
-                  marked={marked}
-                  rowRef={marked ? highlightRow : undefined}
-                />
+                <MemberMenu key={`person-${p.handle}`} handle={p.handle} agent={false}>
+                  <PersonRow
+                    person={p}
+                    memberPresence={presence.get(p.handle)}
+                    floor={floors.get(p.handle)}
+                    marked={marked}
+                    rowRef={marked ? highlightRow : undefined}
+                  />
+                </MemberMenu>
               );
             })}
           </>
@@ -326,8 +367,8 @@ export function AgentsPanel({
               {group.agents.map((a) => {
                   const marked = highlight === a.handle;
                   return (
+                    <MemberMenu key={`agent-${a.handle}`} handle={a.handle} agent onOpenMemory={onOpenMemory}>
                     <AgentRow
-                      key={`agent-${a.handle}`}
                       agent={a}
                       groupOwner={groupOwner}
                       // Named only on your own machines: another person's
@@ -342,6 +383,7 @@ export function AgentsPanel({
                       marked={marked}
                       rowRef={marked ? highlightRow : undefined}
                     />
+                    </MemberMenu>
                   );
                 })}
             </div>
