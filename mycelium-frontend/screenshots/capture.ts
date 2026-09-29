@@ -85,8 +85,10 @@ function specFor(shot: Shot, baseUrl: string, offline: boolean) {
     // shooting, then any state only actions can reach (a dialog filled in).
     do: [...(shot.steps ?? []).flatMap((name) => [`click:${name}`, "sleep:600"]), ...(shot.actions ?? [])],
     // next-themes reads the theme from localStorage before first paint; seed it
-    // so there's no flash of the default theme in the capture.
-    storage: { theme: shot.theme },
+    // so there's no flash of the default theme in the capture. The shots are
+    // taken as Morgan (@operator), the mock rooms' person, so a fresh browser
+    // doesn't open on "What should we call you?" over the page.
+    storage: { theme: shot.theme, "mycelium.principal": "operator", "mycelium.name-asked": "1" },
     offline,
     stdout: true,
   };
