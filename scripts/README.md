@@ -16,9 +16,8 @@ Three kinds live here:
 - **CI helpers.** `check_workflows.py` and `check_docs_links.py` are the
   exception to "run by hand" — they are gates, and they run locally the same
   way they run in CI (stdlib only, no install). The docs checker reports rather
-  than fails; pass `--strict` to make it exit non-zero. `ci_timing.py` and
-  `publish-screenshots.sh` read the Actions environment and only make sense on
-  a runner.
+  than fails; pass `--strict` to make it exit non-zero. `ci_timing.py` reads
+  the Actions environment and only makes sense on a runner.
 
 Each script's header comment states its prerequisites and where its output
 lands. Read that before running — several need a running backend or a font
