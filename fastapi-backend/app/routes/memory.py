@@ -232,8 +232,12 @@ async def create_memories(room_name: str, payload: MemoryBatchCreate, request: R
     incrementing ``version``; a write against a stale ``base_version`` is
     rejected with the current content + who/when last wrote it.
     """
+    # An agent's owner (or a handle it allows) may author as the agent, as it
+    # may reply and post as it: a runner-started agent writes memory as itself.
     for item in payload.items:
-        item.created_by = actor.bind_actor(request, item.created_by, field="created_by")
+        item.created_by = actor.bind_delegated_actor(
+            request, room_name, item.created_by, field="created_by"
+        )
     return await upsert_memories(room_name, payload)
 
 

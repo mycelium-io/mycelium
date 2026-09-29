@@ -276,3 +276,56 @@ async def test_room_send_rejects_an_ungranted_handle(client: AsyncClient, as_pri
     _seed_agent("cc-demo", owner="alice", allow_from=["claude-web"])
     as_principal("mallory")
     assert (await _send_as(client, "cc-demo")).status_code == 403
+
+
+# ── memory and skill writes honor delegation too (#1042) ──────────────────────
+
+
+async def _write_memory_as(client: AsyncClient, handle: str, *, room: str = ROOM):
+    return await client.post(
+        f"/api/rooms/{room}/memory",
+        json={"items": [{"key": "context/x", "value": "hi", "created_by": handle, "embed": False}]},
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_owner_may_write_memory_as_its_agent(client: AsyncClient, as_principal):
+    """A runner-started agent writes memory as itself on its owner's token."""
+    await _make_room(client)
+    _seed_agent("reviewer", owner="alice")
+    as_principal("alice", role="user")
+    resp = await _write_memory_as(client, "reviewer")
+    assert resp.status_code == 201, resp.text
+    assert resp.json()[0]["created_by"] == "reviewer"
+
+
+@pytest.mark.asyncio
+async def test_memory_as_an_ungranted_handle_is_refused(client: AsyncClient, as_principal):
+    await _make_room(client)
+    _seed_agent("reviewer", owner="alice")
+    as_principal("mallory")
+    assert (await _write_memory_as(client, "reviewer")).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_the_owner_may_write_a_skill_as_its_agent(
+    client: AsyncClient, as_principal, monkeypatch
+):
+    # A skill write always embeds; keep it off the ONNX model.
+    monkeypatch.setattr("app.services.embedding._STUB", True)
+    await _make_room(client)
+    _seed_agent("reviewer", owner="alice")
+    as_principal("alice", role="user")
+    resp = await client.post(
+        f"/api/rooms/{ROOM}/skills",
+        json={"name": "review", "body": "Read the diff.", "created_by": "reviewer"},
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["created_by"] == "reviewer"
+
+    as_principal("mallory")
+    refused = await client.post(
+        f"/api/rooms/{ROOM}/skills",
+        json={"name": "review", "body": "x", "created_by": "reviewer"},
+    )
+    assert refused.status_code == 403
