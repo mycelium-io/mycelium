@@ -110,7 +110,7 @@ export function IntentDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-6 pt-[12vh]">
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} aria-hidden />
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px] motion-safe:animate-in motion-safe:fade-in-0" onClick={onClose} aria-hidden />
       <div
         role="dialog"
         aria-modal="true"
