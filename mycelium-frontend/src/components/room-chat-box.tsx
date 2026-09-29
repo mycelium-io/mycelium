@@ -349,7 +349,9 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
           </div>
         )}
 
-        <div className="flex flex-col rounded-2xl border border-border bg-surface transition-colors focus-within:border-accent focus-within:bg-bg">
+        {/* One line when empty, growing with what is typed: the send button
+            sits beside the text rather than on a row of its own. */}
+        <div className="flex items-end gap-1 rounded-lg border border-border bg-surface transition-colors focus-within:border-border2 focus-within:bg-bg">
           <TextareaAutosize
             ref={inputRef}
             value={content}
@@ -358,17 +360,17 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
             placeholder={placeholder}
             minRows={1}
             maxRows={10}
-            className="w-full resize-none bg-transparent px-4 pt-3 pb-1.5 text-body text-text leading-relaxed focus:outline-none placeholder:text-muted-foreground"
+            className="min-w-0 flex-1 resize-none bg-transparent px-3 py-2 text-body text-text leading-relaxed focus:outline-none placeholder:text-faint"
             disabled={sending}
           />
-          <div className="flex items-center gap-2 px-3 pb-2.5 pt-0.5">
-            {error && <span className="text-micro text-red truncate">{error}</span>}
+          <div className="flex shrink-0 items-center gap-2 p-1">
+            {error && <span className="max-w-48 truncate text-micro text-red">{error}</span>}
             <button
               type="button"
               onClick={submit}
               disabled={!armed}
               aria-label="Send message"
-              className={`group ml-auto grid size-8 place-items-center rounded-xl transition-colors ${
+              className={`group grid size-8 place-items-center rounded-md transition-colors ${
                 armed ? "text-accent hover:bg-accent-soft" : "cursor-not-allowed text-faint"
               }`}
             >
@@ -386,12 +388,11 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
             Measured against the composer rather than the window: the box is
             this narrow on a phone and again in a room with both rails open,
             and the row has to fit the box either way. */}
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 px-1 text-micro text-muted-foreground">
-          <span className="text-faint">@ mention · [[ memory · / command or skill</span>
-          <span className="hidden flex-wrap items-center gap-x-1.5 gap-y-1 @[34rem]:flex">
-            <Kbd size="xs" tone="muted">Enter</Kbd> to send ·
-            <Kbd size="xs" tone="muted">Shift+Enter</Kbd> for newline ·
-            <Kbd size="xs" tone="muted">Esc</Kbd> for command mode
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-micro text-faint">
+          <span>@ mention · [[ memory · / command</span>
+          <span className="ml-auto hidden items-center gap-1.5 @[34rem]:flex">
+            <Kbd size="xs" tone="muted">⇧↵</Kbd> newline
+            <Kbd size="xs" tone="muted">esc</Kbd> commands
           </span>
         </div>
       </div>

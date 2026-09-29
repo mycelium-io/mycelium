@@ -10,7 +10,7 @@ import { type EpisodeSummary } from "@/lib/api";
 import { useRoom, useRoomRevalidate, useRoomThreads } from "@/lib/room-data";
 import { useAppStream } from "@/lib/stream-hub";
 import { parseFocus, type FocusTarget } from "@/lib/search";
-import { memoryHref, parseRoomNameParam } from "@/lib/memory-routes";
+import { parseRoomNameParam } from "@/lib/memory-routes";
 import { AppShell } from "@/components/app-shell";
 import { EventStream, type View } from "@/components/event-stream";
 import { RoomChatBox } from "@/components/room-chat-box";
@@ -19,7 +19,6 @@ import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
 import { GlobalStatusItems, StatusButton } from "@/components/status-items";
 import { episodeUrn } from "@/lib/threads";
-import { Tooltip } from "@/components/ui/tooltip";
 import { useCommands, useKeyAction, useKeyScope } from "@/components/keymap-provider";
 import type { PaletteCommand } from "@/lib/commands";
 import { useRoomStatus } from "@/lib/use-status";
@@ -43,9 +42,9 @@ import {
 import { useCollapsibleRail } from "@/lib/use-collapsible-rail";
 import { useSheetLayout } from "@/lib/use-viewport";
 import { RailSheet } from "@/components/rail-sheet";
-import { DeleteRoomDialog } from "@/components/delete-room-dialog";
-import { Button } from "@/components/ui/button";
-import { Trash2 } from "lucide-react";
+import { RoomMenu } from "@/components/room-menu";
+import { MemoryTab, type GuardHandle } from "@/components/memory-tab";
+import { MemoryTabs } from "@/components/memory-tabs";
 
 function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string; color: string } | null {
   if (!episodes || episodes.length === 0) return null;
@@ -87,7 +86,6 @@ function RoomWorkspace() {
   // The open thread, as a URN. A transient pane and nothing more: no rail holds
   // it, no route names it, and closing it leaves the room exactly as it was.
   const [threadEpisode, setThreadEpisode] = useState<string | null>(null);
-  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const handleTourExit = useCallback(() => {
     setTourActive(false);
@@ -106,12 +104,58 @@ function RoomWorkspace() {
     setInspectorOpen(true);
   }, []);
 
-  // A `[[wikilink]]` clicked in chat opens the Memory rail on that key.
-  const openMemory = useCallback((key: string) => {
-    setInspectorTab("memory");
-    setInspectorOpen(true);
-    setFocusMemory(prev => ({ key, nonce: (prev?.nonce ?? 0) + 1 }));
+  // Memories open as tabs beside Channel, Board and Network, from the Memory
+  // rail's tree or a `[[wikilink]]` anywhere in the room. The tree reveals the
+  // one opened. Leaving a memory with edits in progress asks first.
+  const [openMemories, setOpenMemories] = useState<string[]>([]);
+  const [activeMemory, setActiveMemory] = useState<string | null>(null);
+  const memoryGuards = useRef(new Map<string, GuardHandle>());
+  const onMemoryGuard = useCallback((key: string, guard: GuardHandle | null) => {
+    if (guard) memoryGuards.current.set(key, guard);
+    else memoryGuards.current.delete(key);
   }, []);
+  const leaveMemory = useCallback(
+    (then: () => void) => {
+      const guard = activeMemory ? memoryGuards.current.get(activeMemory) : undefined;
+      if (guard) guard(then);
+      else then();
+    },
+    [activeMemory],
+  );
+  const openMemory = useCallback(
+    (key: string) => {
+      leaveMemory(() => {
+        setOpenMemories(open => (open.includes(key) ? open : [...open, key]));
+        setActiveMemory(key);
+      });
+      setFocusMemory(prev => ({ key, nonce: (prev?.nonce ?? 0) + 1 }));
+    },
+    [leaveMemory],
+  );
+  const closeMemory = useCallback(
+    (key: string) => {
+      const close = () => {
+        setOpenMemories(open => {
+          const at = open.indexOf(key);
+          const rest = open.filter(k => k !== key);
+          // Closing the open tab shows its neighbor, or the room's view when it was the last.
+          setActiveMemory(active => (active === key ? (rest[Math.min(at, rest.length - 1)] ?? null) : active));
+          return rest;
+        });
+      };
+      const guard = memoryGuards.current.get(key);
+      if (guard) guard(close);
+      else close();
+    },
+    [],
+  );
+  const showView = useCallback(
+    (view: View) => leaveMemory(() => {
+      setActiveMemory(null);
+      setEditorView(view);
+    }),
+    [leaveMemory],
+  );
 
   const handleEngineInviteShown = useCallback(() => setInviteEngine(false), []);
 
@@ -154,18 +198,21 @@ function RoomWorkspace() {
     const target = parseFocus(focusParam);
     if (!target) return;
     if (target.type === "memory") {
-      router.replace(memoryHref(roomName, target.id));
+      // A memory opens as a tab in its room, like any other way into one. The
+      // request is a one-shot, so acting on it here is the point.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      openMemory(target.id);
+      router.replace(`/room/${encodeURIComponent(roomName)}`, { scroll: false });
       return;
     }
     // The focus target is consumed here rather than derived: it has to outlive
     // the parameter, which is cleared as soon as it has been acted on.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFocus(target);
     if (target.type === "episode") openThread(episodeUrn(roomName, target.id));
     else if (target.type === "agent") openTab("agents");
     else if (target.type === "message") setEditorView("channel");
     router.replace(`/room/${encodeURIComponent(roomName)}`, { scroll: false });
-  }, [focusParam, openTab, openThread, roomName, router]);
+  }, [focusParam, openMemory, openTab, openThread, roomName, router]);
 
   // Room-scoped keybinds: the panes, the inspector rails, and the composer are
   // all reachable without a pointer. The chat box focuses the textarea itself;
@@ -177,16 +224,16 @@ function RoomWorkspace() {
   // every press, including the ones where the bar is already open.
   const [findRequest, setFindRequest] = useState(0);
   useKeyAction("chat.find", () => {
-    setEditorView("channel");
+    showView("channel");
     setFindRequest(n => n + 1);
   });
-  useKeyAction("pane.channel", () => setEditorView("channel"));
-  useKeyAction("pane.board", () => setEditorView("board"));
-  useKeyAction("pane.network", () => setEditorView("network"));
+  useKeyAction("pane.channel", () => showView("channel"));
+  useKeyAction("pane.board", () => showView("board"));
+  useKeyAction("pane.network", () => showView("network"));
   useKeyAction("rail.agents", () => openTab("agents"));
   useKeyAction("rail.memory", () => openTab("memory"));
   useKeyAction("rail.toggle", () => setInspectorOpen(open => !open));
-  useKeyAction("focus.chat", () => setEditorView("channel"));
+  useKeyAction("focus.chat", () => showView("channel"));
 
   // The palette reaches the invite form wherever you are in the room: open the
   // rail it lives behind, and ask it to show itself. A one-shot request the
@@ -249,13 +296,35 @@ function RoomWorkspace() {
           onOpenMemory={openMemory}
           onOpenThread={openThread}
           view={editorView}
-          onViewChange={setEditorView}
+          onViewChange={showView}
           focusMessageId={focus?.type === "message" ? focus.id : null}
           onFocusConsumed={clearFocus}
           openFind={findRequest}
+          extraTabs={
+            <MemoryTabs
+              keys={openMemories}
+              active={activeMemory}
+              onSelect={key => leaveMemory(() => setActiveMemory(key))}
+              onClose={closeMemory}
+            />
+          }
+          override={
+            activeMemory ? (
+              <MemoryTab
+                key={activeMemory}
+                roomName={roomName}
+                memoryKey={activeMemory}
+                onOpenMemory={openMemory}
+                onGuard={onMemoryGuard}
+              />
+            ) : undefined
+          }
         />
       </div>
-      <RoomChatBox roomName={roomName} className={editorView !== "channel" ? "hidden" : undefined} />
+      <RoomChatBox
+        roomName={roomName}
+        className={editorView !== "channel" || activeMemory ? "hidden" : undefined}
+      />
     </div>
   );
 
@@ -297,6 +366,8 @@ function RoomWorkspace() {
       focus={focus}
       onFocusConsumed={clearFocus}
       focusMemory={focusMemory}
+      onOpenMemory={openMemory}
+      activeMemoryKey={activeMemory}
     />
   );
 
@@ -351,37 +422,12 @@ function RoomWorkspace() {
     </>
   );
 
+  // The name, then the room's own menu beside it (its id, deleting it): what
+  // you do to the room sits with the room, not among the app-wide buttons.
   const header = (
     <>
-      <span className="text-ui font-semibold text-text truncate">{roomName}</span>
-      {room?.mas_id && (
-        <Tooltip content="MAS id" side="bottom">
-          {/* Below `md` the header has room for the room's name or its id, and
-              the name is the one a reader is orienting by. */}
-          <span className="hidden truncate font-mono text-micro text-faint md:inline">{room.mas_id}</span>
-        </Tooltip>
-      )}
-    </>
-  );
-
-  const headerRight = (
-    <>
-      <Tooltip content="Delete room" side="bottom">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={`Delete room ${roomName}`}
-          onClick={() => setDeleteOpen(true)}
-        >
-          <Trash2 className="size-3.5" />
-        </Button>
-      </Tooltip>
-      <DeleteRoomDialog
-        roomName={roomName}
-        open={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
-        onDeleted={() => router.push("/")}
-      />
+      <span className="truncate px-1.5 font-medium text-text">{roomName}</span>
+      <RoomMenu roomName={roomName} masId={room?.mas_id ?? null} />
     </>
   );
 
@@ -389,7 +435,6 @@ function RoomWorkspace() {
     <AppShell
       activeRoom={roomName}
       header={header}
-      headerRight={headerRight}
       statusLeft={statusLeft}
       statusRight={statusRight}
     >

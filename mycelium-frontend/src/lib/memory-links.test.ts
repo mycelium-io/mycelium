@@ -2,26 +2,23 @@
 // Copyright 2026 Mycelium Contributors
 
 import { describe, expect, it } from "vitest";
-import { neighborKeys } from "@/lib/memory-links";
-import type { MemoryLink } from "@/lib/api";
+import { isBrokenLinkError, linkErrorLabel } from "@/lib/memory-links";
 
-const link = (over: Partial<MemoryLink>): MemoryLink => ({
-  target: "b",
-  kind: "wikilink",
-  raw: "[[b]]",
-  resolved: true,
-  ...over,
-});
-
-describe("neighborKeys", () => {
-  it("collects outbound targets and backlink sources, excluding self", () => {
-    const outbound = [link({ target: "decisions/a" }), link({ target: "context/b" })];
-    const backlinks = [link({ source: "context/c", target: "here" })];
-    expect(neighborKeys("here", outbound, backlinks)).toEqual(["context/b", "context/c", "decisions/a"]);
+describe("linkErrorLabel", () => {
+  it("says a failure the way a person reads it", () => {
+    expect(linkErrorLabel("not_found")).toBe("no such memory");
+    expect(linkErrorLabel("cross_room")).toBe("cross-room links are not supported");
   });
 
-  it("dedupes when the same key appears twice", () => {
-    const outbound = [link({ target: "a" }), link({ target: "a" })];
-    expect(neighborKeys("here", outbound, [])).toEqual(["a"]);
+  it("falls back to the code, or to 'broken' with none", () => {
+    expect(linkErrorLabel("something_new")).toBe("something_new");
+    expect(linkErrorLabel(null)).toBe("broken");
+  });
+});
+
+describe("isBrokenLinkError", () => {
+  it("counts a cross-room link as a limitation, not a defect", () => {
+    expect(isBrokenLinkError("cross_room")).toBe(false);
+    expect(isBrokenLinkError("not_found")).toBe(true);
   });
 });

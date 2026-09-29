@@ -9,7 +9,7 @@ import { GlobalStatusItems } from "@/components/status-items";
 
 export default function MetricsPage() {
   return (
-    <AppShell activeRoom={null} statusLeft={<span>Metrics</span>} statusRight={<GlobalStatusItems />}>
+    <AppShell activeRoom={null} title="Metrics" statusLeft={<span>Metrics</span>} statusRight={<GlobalStatusItems />}>
       <MetricsScreen />
     </AppShell>
   );

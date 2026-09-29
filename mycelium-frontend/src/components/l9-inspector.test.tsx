@@ -18,6 +18,8 @@ import { envelopeJson, L9Inspector, toL9Frame } from "@/components/l9-inspector"
 import { fetchL9History } from "@/lib/api";
 
 const CREATED = "2026-08-04T10:00:00.000000+00:00";
+/** A row's kind badge, not the kind toggle in the filter bar that shares its text. */
+const ROW_KIND = "span[aria-description]";
 
 // The real bus shape: the persister feeds each SLIM-ingested message as
 // `l9_<kind>` with the bare L9 envelope (header + payload) as its content.
@@ -174,12 +176,12 @@ describe("<L9Inspector />", () => {
     });
 
     // Commit verdict renders with its kind + the SIEP metrics.
-    expect(await screen.findByText(/^COMMIT/)).toBeInTheDocument();
+    expect(await screen.findByText(/^commit/, { selector: ROW_KIND })).toBeInTheDocument();
     expect(screen.getByText("MPC")).toBeInTheDocument();
     expect(screen.getByText("0.91")).toBeInTheDocument();
 
     // Knowledge push renders as its own frame.
-    expect(screen.getByText(/^KNOWLEDGE/)).toBeInTheDocument();
+    expect(screen.getByText(/^knowledge/, { selector: ROW_KIND })).toBeInTheDocument();
     expect(screen.getByText("decisions/scope")).toBeInTheDocument();
   });
 
@@ -188,14 +190,14 @@ describe("<L9Inspector />", () => {
     render(<L9Inspector roomName="sprint" />);
 
     // The frame comes purely from the transcript replay — nothing emitted on SSE.
-    expect(await screen.findByText(/^COMMIT/)).toBeInTheDocument();
+    expect(await screen.findByText(/^commit/, { selector: ROW_KIND })).toBeInTheDocument();
     expect(screen.getByText("MPC")).toBeInTheDocument();
   });
 
   it("dedups a backfilled frame against its live re-push (same envelope id)", async () => {
     vi.mocked(fetchL9History).mockResolvedValueOnce([commitMessage()]);
     render(<L9Inspector roomName="sprint" />);
-    expect(await screen.findByText(/^COMMIT/)).toBeInTheDocument();
+    expect(await screen.findByText(/^commit/, { selector: ROW_KIND })).toBeInTheDocument();
 
     const es = FakeEventSource.latest();
     await act(async () => {
@@ -203,8 +205,8 @@ describe("<L9Inspector />", () => {
       es.emit(commitMessage()); // same id as the backfilled row
     });
 
-    // Still exactly one COMMIT row — the live push was deduped by frame id.
-    expect(screen.getAllByText(/^COMMIT/)).toHaveLength(1);
+    // Still exactly one commit row — the live push was deduped by frame id.
+    expect(screen.getAllByText(/^commit/, { selector: ROW_KIND })).toHaveLength(1);
   });
 
   it("expands a wire row into the full envelope JSON and collapses it again", async () => {
@@ -216,7 +218,7 @@ describe("<L9Inspector />", () => {
       es.emit(commitMessage());
     });
 
-    const row = await screen.findByRole("button", { name: /COMMIT/ });
+    const row = await screen.findByRole("button", { name: /^commit/ });
     expect(row).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByTestId("frame-json")).not.toBeInTheDocument();
 
@@ -241,9 +243,9 @@ describe("<L9Inspector />", () => {
       es.emit(knowledgeMessage());
     });
 
-    fireEvent.click(await screen.findByRole("button", { name: /COMMIT/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^commit/ }));
     expect(screen.getAllByTestId("frame-json")).toHaveLength(1);
-    expect(screen.getByRole("button", { name: /KNOWLEDGE/ })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: /^knowledge/ })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
@@ -259,12 +261,12 @@ describe("<L9Inspector />", () => {
       es.emit(knowledgeMessage());
     });
 
-    expect(await screen.findByText(/^COMMIT/)).toBeInTheDocument();
-    expect(screen.getByText(/^KNOWLEDGE/)).toBeInTheDocument();
+    expect(await screen.findByText(/^commit/, { selector: ROW_KIND })).toBeInTheDocument();
+    expect(screen.getByText(/^knowledge/, { selector: ROW_KIND })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle knowledge frames" }));
-    expect(screen.getByText(/^COMMIT/)).toBeInTheDocument();
-    expect(screen.queryByText(/^KNOWLEDGE/)).not.toBeInTheDocument();
+    expect(screen.getByText(/^commit/, { selector: ROW_KIND })).toBeInTheDocument();
+    expect(screen.queryByText(/^knowledge/, { selector: ROW_KIND })).not.toBeInTheDocument();
 
     // Toggling every kind off surfaces the filtered-empty state.
     fireEvent.click(screen.getByRole("button", { name: "Toggle commit frames" }));
@@ -281,12 +283,12 @@ describe("<L9Inspector />", () => {
       es.emit(knowledgeMessage()); // no episode
     });
 
-    expect(await screen.findByText(/^COMMIT/)).toBeInTheDocument();
+    expect(await screen.findByText(/^commit/, { selector: ROW_KIND })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Filter by episode"), {
       target: { value: "urn:ioc:mycelium:episode:sprint:s1" },
     });
-    expect(screen.getByText(/^COMMIT/)).toBeInTheDocument();
-    expect(screen.queryByText(/^KNOWLEDGE/)).not.toBeInTheDocument();
+    expect(screen.getByText(/^commit/, { selector: ROW_KIND })).toBeInTheDocument();
+    expect(screen.queryByText(/^knowledge/, { selector: ROW_KIND })).not.toBeInTheDocument();
   });
 });

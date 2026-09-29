@@ -4,13 +4,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, CornerDownLeft, Share2 } from "lucide-react";
+import { ArrowUpRight, CornerDownLeft } from "lucide-react";
 import { highlightJson } from "@/components/l9-inspector";
 import { MarkdownContent } from "@/components/markdown-content";
 import { Expandable } from "@/components/ui/expandable";
 import { fetchMemoryLinks, type MemoryLink } from "@/lib/api";
 import { isJsonRawText, prettyPrintJsonRawText } from "@/lib/json-text";
-import { linkErrorLabel, neighborKeys } from "@/lib/memory-links";
+import { linkErrorLabel } from "@/lib/memory-links";
+import { fmtAgo } from "@/lib/metrics-format";
 
 export interface MemoryLike {
   key: string;
@@ -32,15 +33,6 @@ function formatValue(v: unknown): string {
     return JSON.stringify(v, null, 2);
   }
   return String(v);
-}
-
-function Meta({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-micro uppercase tracking-wide text-faint">{label}</span>
-      <span className="text-label text-text">{children}</span>
-    </div>
-  );
 }
 
 function linkTarget(link: MemoryLink): string {
@@ -107,10 +99,10 @@ function LinkGroup({
 }) {
   return (
     <div>
-      <div className="mb-1 flex items-center gap-1.5 text-micro uppercase tracking-wide text-faint">
+      <div className="mb-1 flex items-center gap-1.5 px-2 text-micro font-medium text-faint">
         <Icon className="size-3" />
         {title}
-        {rows.length > 0 && <span className="tabular">({rows.length})</span>}
+        {rows.length > 0 && <span className="font-normal tabular">{rows.length}</span>}
       </div>
       {rows.length === 0 ? (
         <p className="px-2 py-1 text-label text-faint">{empty}</p>
@@ -145,48 +137,10 @@ interface Props {
   collapseBodyAt?: number | null;
   /** The surface the body sits on, so its fade matches. */
   bodyFade?: "bg" | "paper" | "surface" | "elevated";
-}
-
-function NeighborChips({
-  keys,
-  onNavigate,
-  className,
-}: {
-  keys: string[];
-  onNavigate?: (key: string) => void;
-  className?: string;
-}) {
-  if (keys.length === 0) return null;
-  return (
-    <div className={`border-t border-border py-4 ${className ?? "px-5"}`}>
-      <div className="mb-2 flex items-center gap-1.5 text-micro uppercase tracking-wide text-faint">
-        <Share2 className="size-3" />
-        Related
-        <span className="tabular">({keys.length})</span>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {keys.map(key => (
-          onNavigate ? (
-            <button
-              key={key}
-              type="button"
-              onClick={() => onNavigate(key)}
-              className="rounded-md border border-border bg-surface px-2 py-1 font-mono text-micro text-accent transition-colors hover:bg-hairline"
-            >
-              {key}
-            </button>
-          ) : (
-            <span
-              key={key}
-              className="rounded-md border border-border bg-surface px-2 py-1 font-mono text-micro text-muted-foreground"
-            >
-              {key}
-            </span>
-          )
-        ))}
-      </div>
-    </div>
-  );
+  /** Lead the meta line with the memory's key, for a surface that shows it nowhere else. */
+  showKey?: boolean;
+  /** More controls at the end of the meta line (a tab's Edit and its own page). */
+  actions?: React.ReactNode;
 }
 
 /** The body, clamped where the surface asked for it and untouched where it
@@ -217,6 +171,8 @@ export function MemoryDetail({
   renderedBody = null,
   collapseBodyAt = null,
   bodyFade = "bg",
+  showKey = false,
+  actions,
 }: Props) {
   const pad = variant === "page" ? "px-6 md:px-8" : "px-5";
   const [raw, setRaw] = useState(false);
@@ -271,10 +227,6 @@ export function MemoryDetail({
   );
 
   const hasLinks = outbound.length > 0 || backlinks.length > 0;
-  const neighbors = useMemo(
-    () => (variant === "page" ? neighborKeys(memory.key, outbound, backlinks) : []),
-    [variant, memory.key, outbound, backlinks],
-  );
 
   return (
     <div>
@@ -286,65 +238,51 @@ export function MemoryDetail({
           </span>
         </div>
       )}
-      <div className={`grid grid-cols-2 gap-x-6 gap-y-4 border-b border-border ${pad} py-4`}>
-        <Meta label="Version"><span className="tabular">v{memory.version}</span></Meta>
-        <Meta label="Author">{memory.updated_by || memory.created_by}</Meta>
-        {memory.updated_at && (
-          <Meta label="Updated">
-            <span className="tabular">{new Date(memory.updated_at).toLocaleString()}</span>
-          </Meta>
-        )}
-        {memory.file_path && (
-          <Meta label="File">
-            <span className="break-all font-mono text-micro text-muted-foreground">{memory.file_path}</span>
-          </Meta>
-        )}
-        {memory.tags && memory.tags.length > 0 && (
-          <div className="col-span-2 flex flex-col gap-0.5">
-            <span className="text-micro uppercase tracking-wide text-faint">Tags</span>
-            <div className="flex flex-wrap gap-1">
-              {memory.tags.map(tag => (
-                <span
-                  key={tag}
-                  className="rounded border border-border bg-surface px-1.5 py-0.5 font-mono text-micro text-muted-foreground"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className={`flex flex-wrap items-center gap-2 ${pad} pt-4`}>
-        <div className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
+      {/* What it is in one line (version, who, when, its tags), and how to
+          read it at the end of the same line: nothing here needs a grid. */}
+      <div className={`flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border ${pad} py-1 text-micro text-muted-foreground`}>
+        {showKey && <span className="font-mono text-text">{memory.key}</span>}
+        <span className="tabular" title={memory.file_path || undefined}>
+          v{memory.version} · {memory.updated_by || memory.created_by}
+          {memory.updated_at && (
+            <>
+              {" · "}
+              <time dateTime={memory.updated_at} title={new Date(memory.updated_at).toLocaleString()}>
+                updated {fmtAgo(memory.updated_at)}
+              </time>
+            </>
+          )}
+        </span>
+        {memory.tags?.map(tag => (
+          <span key={tag} className="rounded bg-hairline px-1.5 font-mono text-faint">
+            {tag}
+          </span>
+        ))}
+        <div className="ml-auto flex items-center gap-2">
+          {raw && rawIsJson && (
+            <button
+              type="button"
+              aria-pressed={effectiveJsonView}
+              aria-label="Pretty-print JSON"
+              onClick={() => setJsonView(on => !on)}
+              className={`transition-colors hover:text-text ${effectiveJsonView ? "text-accent" : ""}`}
+            >
+              Format JSON
+            </button>
+          )}
           {([["Rendered", false], ["Raw", true]] as const).map(([label, on]) => (
             <button
               key={label}
+              type="button"
+              aria-pressed={raw === on}
               onClick={() => setRaw(on)}
-              className={`rounded-md px-2.5 py-1 text-micro font-medium transition-colors ${
-                raw === on ? "bg-elevated text-text shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-text"
-              }`}
+              className={`transition-colors hover:text-text ${raw === on ? "text-text" : ""}`}
             >
               {label}
             </button>
           ))}
+          {actions}
         </div>
-        {raw && rawIsJson && (
-          <button
-            type="button"
-            aria-pressed={effectiveJsonView}
-            aria-label="Pretty-print JSON"
-            onClick={() => setJsonView(on => !on)}
-            className={`rounded-lg border px-2.5 py-1 text-micro font-medium transition-colors ${
-              effectiveJsonView
-                ? "border-accent/40 bg-accent-soft/40 text-accent"
-                : "border-border bg-surface text-muted-foreground hover:text-text"
-            }`}
-          >
-            Format JSON
-          </button>
-        )}
       </div>
 
       <div className={`${pad} py-4`}>
@@ -364,10 +302,6 @@ export function MemoryDetail({
           )}
         </MaybeExpandable>
       </div>
-
-      {variant === "page" && (
-        <NeighborChips keys={neighbors} onNavigate={onNavigate} className={pad} />
-      )}
 
       {hasLinks && (
         <div className={`grid gap-4 border-t border-border ${pad} py-4`}>

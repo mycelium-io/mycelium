@@ -254,11 +254,11 @@ export function KindBadge({ kind, subkind }: { kind: string; subkind?: string | 
   return (
     <Tooltip content={full}>
       <span
-        className="block min-w-0 truncate font-mono text-label font-semibold uppercase tracking-[0.02em]"
+        className="block min-w-0 truncate font-mono text-micro"
         style={{ color: frameTone(kind, subkind) }}
         aria-description={full}
       >
-        {kind.toUpperCase()}
+        {kind}
         {subkind ? <span className="text-muted-foreground">:{subkind}</span> : null}
       </span>
     </Tooltip>
@@ -307,7 +307,7 @@ function FrameRow({
   const tone = frameTone(frame.kind, frame.subkind);
 
   return (
-    <div className="border-b border-border last:border-b-0">
+    <div>
       <button
         type="button"
         aria-expanded={expanded}
@@ -317,7 +317,7 @@ function FrameRow({
         // aria-expanded already carry the affordance.
         // Fixed columns so kind / actor / summary line up down the feed, one text
         // size throughout; timestamp + metrics ride a right-aligned meta cluster.
-        className="group grid w-full cursor-pointer grid-cols-[14px_16px_176px_120px_minmax(0,1fr)_auto] items-center gap-x-2.5 px-4 py-1.5 text-left text-label transition-colors hover:bg-hairline"
+        className="group grid h-7 w-full cursor-pointer grid-cols-[14px_16px_176px_120px_minmax(0,1fr)_auto] items-center gap-x-2.5 px-4 text-left text-micro transition-colors hover:bg-hairline"
       >
         <ChevronRight
           aria-hidden
@@ -463,17 +463,17 @@ export function L9Inspector({ roomName }: Props) {
     <div className="flex flex-col h-full" data-testid="l9-inspector">
       {/* No title bar; pane tab already reads "Network". */}
       {!connected && (
-        <div className="flex items-center gap-1.5 px-4 shrink-0 h-[28px] border-b border-border bg-paper caps-mono-sm text-yellow">
+        <div className="flex items-center gap-1.5 px-4 shrink-0 h-7 border-b border-border bg-paper label-mono-sm text-yellow">
           <span aria-hidden className="inline-block size-1.5 rounded-full bg-yellow" />
-          RECONNECTING
+          reconnecting
         </div>
       )}
 
       {frames.length > 0 && (
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0 bg-paper">
-          <span className="caps-mono-sm text-muted-foreground">L9 PROTOCOL</span>
+        <div className="flex h-8 items-center gap-3 px-4 border-b border-border shrink-0 bg-paper">
+          <span className="label-mono-sm text-faint">L9 protocol</span>
           <span className="h-3 w-px bg-border" aria-hidden />
-          <div className="flex flex-wrap items-center gap-1">
+          <div className="flex flex-wrap items-center gap-3">
             {kindsPresent.map((kind) => {
               const active = !hiddenKinds.has(kind);
               return (
@@ -483,18 +483,15 @@ export function L9Inspector({ roomName }: Props) {
                   aria-pressed={active}
                   aria-label={`Toggle ${kind} frames`}
                   onClick={() => toggleKind(kind)}
-                  className={`flex items-center gap-1.5 rounded-md px-2 py-1 caps-mono-sm transition-colors ${
-                    active
-                      ? "bg-elevated text-text shadow-sm ring-1 ring-border"
-                      : "text-muted-foreground hover:bg-hairline hover:text-text"
+                  className={`flex items-center gap-1.5 label-mono-sm transition-colors hover:text-text ${
+                    active ? "text-text" : "text-faint"
                   }`}
                 >
                   <span
                     aria-hidden
                     className="inline-block size-1.5 rounded-full"
-                    style={{ background: active ? kindTone(kind) : "var(--muted-foreground)" }}
+                    style={{ background: active ? kindTone(kind) : "var(--faint)" }}
                   />
-                  {/* Lowercase; caps-mono-sm uppercases visually. */}
                   {kind}
                 </button>
               );
@@ -505,7 +502,7 @@ export function L9Inspector({ roomName }: Props) {
               aria-label="Filter by episode"
               value={effectiveEpisodeFilter}
               onChange={(e) => setEpisodeFilter(e.target.value)}
-              className="ml-auto rounded-md border border-border bg-surface px-2 py-1 font-mono text-micro text-muted-foreground focus:border-accent focus:text-text focus:outline-none"
+              className="ml-auto h-6 rounded bg-transparent px-1 label-mono-sm text-muted-foreground hover:bg-hairline focus:text-text focus:outline-none"
             >
               <option value="all">All episodes</option>
               {episodesPresent.map((ep) => (

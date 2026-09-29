@@ -11,7 +11,7 @@ export default function Home() {
   return (
     <AppShell
       activeRoom={null}
-      statusLeft={<span>Command center</span>}
+      statusLeft={<span>Home</span>}
       statusRight={<GlobalStatusItems />}
     >
       <HomeDashboard />

@@ -17,7 +17,6 @@ import {
   Network,
   Pencil,
   Eye,
-  Filter,
   X,
   Search,
   Loader2,
@@ -62,6 +61,11 @@ interface Props {
   /** Select and reveal a memory by key (e.g. a chat `[[wikilink]]` was clicked).
    *  The nonce lets the same key re-open after the reader has browsed elsewhere. */
   focusMemory?: { key: string; nonce: number } | null;
+  /** Open a memory in the room's tabs. Given, a memory opens there rather than
+   *  in this panel's drawer, and `focusMemory` only reveals it in the tree. */
+  onOpenMemory?: (key: string) => void;
+  /** The memory open in the room's tabs, marked in the tree. */
+  activeKey?: string | null;
 }
 
 function buildTree(memories: Memory[]): TreeNode[] {
@@ -143,7 +147,7 @@ interface TreeRowsProps {
   collapsed: Set<string>;
   onToggle: (path: string) => void;
   onSelect: (mem: Memory) => void;
-  selected: Memory | null;
+  selectedKey: string | null;
   onPeek: (mem: Memory, row: HTMLElement) => void;
   onPeekEnd: () => void;
   /** Paths on the way to a find-file match. When set, anything not in it is
@@ -157,7 +161,7 @@ function TreeRows({
   collapsed,
   onToggle,
   onSelect,
-  selected,
+  selectedKey,
   onPeek,
   onPeekEnd,
   activePaths,
@@ -167,7 +171,7 @@ function TreeRows({
       {nodes.map(node => {
         const isFolder = node.children.length > 0;
         const isOpen = isFolder && !collapsed.has(node.path);
-        const isSelected = selected?.key === node.path;
+        const isSelected = selectedKey === node.path;
         const dimmed = activePaths !== null && !activePaths.has(node.path);
         const paddingLeft = 8 + depth * INDENT;
 
@@ -247,7 +251,7 @@ function TreeRows({
                 collapsed={collapsed}
                 onToggle={onToggle}
                 onSelect={onSelect}
-                selected={selected}
+                selectedKey={selectedKey}
                 onPeek={onPeek}
                 onPeekEnd={onPeekEnd}
                 activePaths={activePaths}
@@ -260,7 +264,14 @@ function TreeRows({
   );
 }
 
-export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusMemory }: Props) {
+export function MemoryPanel({
+  roomName,
+  focusKey = null,
+  onFocusConsumed,
+  focusMemory,
+  onOpenMemory,
+  activeKey = null,
+}: Props) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   // Find-file: a live, client-side filter on the key path — the plain "I know the
@@ -322,9 +333,13 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
   const selectMemory = useCallback(
     (m: Memory | null) => {
       endPeek();
+      if (onOpenMemory) {
+        if (m) onOpenMemory(m.key);
+        return;
+      }
       guard(() => setSelected(m));
     },
-    [endPeek, guard],
+    [endPeek, guard, onOpenMemory],
   );
 
   // The tree revalidates when a memory write reaches the room, so it needs no
@@ -378,6 +393,12 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
 
   const openMemoryByKey = useCallback(
     async (key: string) => {
+      // The room's tab says for itself when a key names no memory.
+      if (onOpenMemory) {
+        revealKeyInTree(key, true);
+        onOpenMemory(key);
+        return;
+      }
       const nav = await resolveMemoryPeekNavigation(
         roomName,
         key,
@@ -391,7 +412,7 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
       }
       router.push(nav.href);
     },
-    [roomName, revealKeyInTree, router, selectMemory],
+    [roomName, revealKeyInTree, router, selectMemory, onOpenMemory],
   );
 
   // Arriving from search: open the named memory and reveal its folder. The tree
@@ -400,7 +421,9 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
   useEffect(() => {
     if (!focusKey) return;
     // Consumed only once the memory is in hand: clearing the request first would
-    // unmount the effect that is still fetching what it asked for.
+    // unmount the effect that is still fetching what it asked for. A one-shot
+    // request from outside, so acting on it here is the point.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void openMemoryByKey(focusKey).finally(() => onFocusConsumed?.());
   }, [roomName, focusKey, onFocusConsumed, openMemoryByKey]);
 
@@ -463,9 +486,14 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
 
   // A chat `[[wikilink]]` (or any external focus request) selects that memory.
   // The nonce re-fires the same key on a repeat click.
+  // With the room's tabs, the room already opened it: the tree only reveals it.
   useEffect(() => {
-    if (focusMemory?.key) void openMemoryByKey(focusMemory.key);
-  }, [focusMemory, openMemoryByKey]);
+    if (!focusMemory?.key) return;
+    // A one-shot request from outside (the nonce): revealing is the response.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (onOpenMemory) revealKeyInTree(focusMemory.key, true);
+    else void openMemoryByKey(focusMemory.key);
+  }, [focusMemory, openMemoryByKey, onOpenMemory, revealKeyInTree]);
 
   const hasDiscussion =
     Boolean(selected?.episode) && !isLiveEpisode(roomName, selected?.episode ?? "");
@@ -479,57 +507,78 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
 
   return (
     <div ref={paneRef} className="flex flex-col h-full overflow-hidden">
-      {/* Stats row */}
-      <div className="px-4 py-3 border-b border-border bg-paper">
-        <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-label text-muted-foreground">
-          <span className="text-text font-semibold tabular">{memories.length}</span>
-          <span>memories</span>
-          <span className="text-faint px-1">·</span>
-          <span className="text-text font-semibold tabular">{contributors.length}</span>
-          <span>contributors</span>
-          <Tooltip content="Open the memory link graph">
-            <Link
-              href={memoryGraphHref(roomName)}
-              className="ml-auto inline-flex flex-shrink-0 items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-            >
-              <Network className="size-3.5" />
-              Graph
-            </Link>
-          </Tooltip>
-        </div>
+      <div className="flex h-8 flex-shrink-0 items-center gap-1 px-3 text-micro tabular text-muted-foreground">
+        <span>
+          {memories.length} {memories.length === 1 ? "memory" : "memories"} · {contributors.length}{" "}
+          {contributors.length === 1 ? "contributor" : "contributors"}
+        </span>
+        <Tooltip content="Open the memory link graph">
+          <Link
+            href={memoryGraphHref(roomName)}
+            className="ml-auto inline-flex h-6 flex-shrink-0 items-center gap-1 rounded px-1.5 transition-colors hover:bg-hairline hover:text-text"
+          >
+            <Network className="size-3.5" />
+            Graph
+          </Link>
+        </Tooltip>
       </div>
 
-      <div className="flex-1 overflow-y-auto" onScroll={endPeek}>
-        {/* Semantic search — one quiet field, run on Enter. The leading glyph
-            turns to a spinner while it queries; a ↵ hint appears once there's
-            something to submit. */}
-        <div className="px-4 py-3 border-b border-border bg-paper">
-          <div className="group flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 transition-colors focus-within:border-accent focus-within:bg-bg">
-            {searching ? (
-              <Loader2 className="size-4 flex-shrink-0 animate-spin text-accent" />
-            ) : (
-              <Search className="size-4 flex-shrink-0 text-faint transition-colors group-focus-within:text-accent" />
-            )}
-            <input
-              className="min-w-0 flex-1 bg-transparent text-label text-text placeholder:text-muted-foreground focus:outline-none"
-              placeholder="Search by meaning…"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && handleSearch()}
-            />
-            {searchQuery.trim() && !searching && (
-              <kbd className="flex-shrink-0 rounded border border-border bg-bg px-1 text-micro leading-tight text-faint">
-                ↵
-              </kbd>
-            )}
-          </div>
-          {searchError && (
-            <p role="alert" className="mt-2 flex items-center gap-1.5 text-micro text-red">
-              <AlertCircle className="size-3.5 flex-shrink-0" />
-              {searchError}
-            </p>
+      {/* One field for both ways of finding a memory: typing narrows the tree
+          by name as you go, Enter searches by meaning. */}
+      <div className="px-2 pb-1">
+        <div className="flex h-7 items-center gap-2 rounded px-1.5 transition-colors focus-within:bg-bg hover:bg-hairline">
+          {searching ? (
+            <Loader2 className="size-3.5 flex-shrink-0 animate-spin text-accent" />
+          ) : (
+            <Search className="size-3.5 flex-shrink-0 text-faint" />
+          )}
+          <input
+            id="memory-find-file"
+            aria-label="Filter memories by name, or press Enter to search by meaning"
+            className="min-w-0 flex-1 bg-transparent text-label text-text placeholder:text-faint focus:outline-none"
+            placeholder="Filter, or ↵ to search by meaning"
+            value={searchQuery}
+            onChange={e => {
+              setSearchQuery(e.target.value);
+              setNameFilter(e.target.value);
+            }}
+            onKeyDown={e => {
+              if (e.key === "Enter") void handleSearch();
+              if (e.key === "Escape") {
+                setSearchQuery("");
+                setNameFilter("");
+                setSearchResults(null);
+              }
+            }}
+          />
+          {trimmedFilter && !searchResults && (
+            <span className="flex-shrink-0 text-micro tabular text-faint">
+              {matchCount} {matchCount === 1 ? "match" : "matches"}
+            </span>
+          )}
+          {searchQuery && (
+            <button
+              onClick={() => {
+                setSearchQuery("");
+                setNameFilter("");
+                setSearchResults(null);
+              }}
+              aria-label="Clear"
+              className="flex-shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+            >
+              <X className="size-3" />
+            </button>
           )}
         </div>
+        {searchError && (
+          <p role="alert" className="mt-1 flex items-center gap-1.5 px-1.5 text-micro text-red">
+            <AlertCircle className="size-3.5 flex-shrink-0" />
+            {searchError}
+          </p>
+        )}
+      </div>
+
+      <div className="flex-1 overflow-y-auto border-t border-border" onScroll={endPeek}>
 
         {/* Search results — flat list with similarity scores */}
         {searchResults && (
@@ -565,37 +614,6 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
           </div>
         )}
 
-        {/* Find file — a live filter on the key path, distinct from the semantic
-            search above. Hidden while semantic results are showing (they replace
-            the tree) and while the room is empty. */}
-        {!searchResults && !loading && memories.length > 0 && (
-          <div className="flex items-center gap-2 border-b border-border px-4 py-1.5">
-            <Filter className="size-3.5 flex-shrink-0 text-faint" />
-            <input
-              id="memory-find-file"
-              className="min-w-0 flex-1 bg-transparent text-label text-text placeholder:text-muted-foreground focus:outline-none"
-              placeholder="Find a file by name…"
-              value={nameFilter}
-              onChange={e => setNameFilter(e.target.value)}
-              onKeyDown={e => e.key === "Escape" && setNameFilter("")}
-            />
-            {trimmedFilter && (
-              <>
-                <span className="flex-shrink-0 text-micro tabular text-faint">
-                  {matchCount} {matchCount === 1 ? "match" : "matches"}
-                </span>
-                <button
-                  onClick={() => setNameFilter("")}
-                  aria-label="Clear file filter"
-                  className="flex-shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-                >
-                  <X className="size-3.5" />
-                </button>
-              </>
-            )}
-          </div>
-        )}
-
         {/* File tree */}
         {!searchResults && (
           <div className="py-1">
@@ -620,7 +638,7 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
                 collapsed={filterCollapsed ?? collapsed}
                 onToggle={toggleNs}
                 onSelect={selectMemory}
-                selected={selected}
+                selectedKey={onOpenMemory ? activeKey : (selected?.key ?? null)}
                 onPeek={startPeek}
                 onPeekEnd={endPeek}
                 activePaths={activePaths}

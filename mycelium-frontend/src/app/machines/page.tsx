@@ -9,7 +9,7 @@ import { GlobalStatusItems } from "@/components/status-items";
 
 export default function MachinesPage() {
   return (
-    <AppShell activeRoom={null} statusLeft={<span>Machines</span>} statusRight={<GlobalStatusItems />}>
+    <AppShell activeRoom={null} title="Machines" statusLeft={<span>Machines</span>} statusRight={<GlobalStatusItems />}>
       <MachinesScreen />
     </AppShell>
   );

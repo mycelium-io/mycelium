@@ -548,26 +548,22 @@ function BoardHeader(props: {
   };
 
   return (
-    <header className={cn("shrink-0 border-b border-border px-3 pt-4 sm:px-5", !showOptions && "pb-2.5")}>
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h2 className="truncate font-serif text-display italic leading-tight text-text">{props.title}</h2>
-          <p className="mt-0.5 font-mono text-micro text-muted-foreground">{props.summary}</p>
-        </div>
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-        {/* Four segments that are read as one control, so they scroll together
-            rather than wrapping: a segment broken across two lines stops
-            reading as a segment, and "Needs you" is two words. */}
-        <div className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg bg-surface p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    // One toolbar, as an editor draws one: the room's name is already in the
+    // title bar, so this is the board's state, its filters and its views.
+    <header className={cn("shrink-0 border-b border-border px-3 sm:px-5", showOptions ? "pb-2" : "")}>
+      <p className="sr-only">{props.title}</p>
+      <div className="flex min-h-9 flex-wrap items-center gap-x-4 gap-y-1 py-1">
+        {/* The filters scroll together rather than wrapping, so they keep
+            reading as one control ("Needs you" is two words). */}
+        <div className="flex max-w-full items-center gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {attentionFilters.map(attentionFilter => (
             <button
               key={attentionFilter}
               onClick={() => props.onAttentionFilter(attentionFilter)}
+              aria-pressed={props.attentionFilter === attentionFilter}
               className={cn(
-                "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1 text-label transition-colors",
-                props.attentionFilter === attentionFilter ? "bg-elevated text-text shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-text",
+                "flex shrink-0 items-center gap-1.5 whitespace-nowrap text-label transition-colors",
+                props.attentionFilter === attentionFilter ? "text-text" : "text-muted-foreground hover:text-text",
               )}
             >
               {label[attentionFilter]}
@@ -583,7 +579,9 @@ function BoardHeader(props: {
           ))}
         </div>
 
-        <div className="flex items-center gap-0.5 rounded-lg bg-surface p-0.5">
+        <span aria-hidden className="h-3 w-px shrink-0 bg-border" />
+
+        <div className="flex items-center gap-0.5">
           {MODES.map(mode => {
             const Icon = mode.icon;
             return (
@@ -591,20 +589,22 @@ function BoardHeader(props: {
                 key={mode.id}
                 onClick={() => props.onMode(mode.id)}
                 title={mode.label}
+                aria-label={mode.label}
+                aria-pressed={props.mode === mode.id}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-md px-2 py-1 text-label transition-colors",
-                  props.mode === mode.id ? "bg-elevated text-text shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-text",
+                  "flex h-6 items-center gap-1.5 rounded px-1.5 text-micro transition-colors",
+                  props.mode === mode.id ? "bg-hairline text-text" : "text-muted-foreground hover:bg-hairline hover:text-text",
                 )}
               >
                 <Icon className="size-3.5" strokeWidth={1.8} />
-                <span className="hidden @[46rem]:inline">{mode.label}</span>
+                <span className="hidden @[56rem]:inline">{mode.label}</span>
               </button>
             );
           })}
         </div>
 
         <div className="flex min-w-[140px] flex-1 items-center gap-2">
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-border px-2 py-1">
+          <div className="flex h-6 min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 transition-colors focus-within:bg-bg hover:bg-hairline">
             <Search className="size-3 shrink-0 text-faint" />
             <input
               value={props.query}
@@ -614,7 +614,8 @@ function BoardHeader(props: {
             />
           </div>
 
-            <button
+          <span className="hidden shrink-0 font-mono text-micro text-faint @[64rem]:inline">{props.summary}</span>
+          <button
             onClick={props.onOptions}
             title="Saved views, grouping, and the inferred schema"
             className={cn(
@@ -628,7 +629,7 @@ function BoardHeader(props: {
         </div>
       </div>
 
-      <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5", showOptions ? "mt-2 pb-2.5" : "hidden")}>
+      <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5", showOptions ? "" : "hidden")}>
         <span className="font-mono text-micro text-faint">saved views</span>
         {SAVED_VIEWS.map(saved => (
           <button

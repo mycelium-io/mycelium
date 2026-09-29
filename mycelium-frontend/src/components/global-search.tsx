@@ -56,6 +56,11 @@ export function GlobalSearch({ children }: { children?: ReactNode }) {
   );
 }
 
+/** Opens search; null outside a GlobalSearch. */
+export function useOpenSearch(): (() => void) | null {
+  return useContext(OpenSearchContext);
+}
+
 /** The status-bar affordance that makes `/` findable without knowing it, next
  *  to the palette's and the cheatsheet's. */
 export function GlobalSearchButton() {
