@@ -508,3 +508,66 @@ async def test_persister_members_provider_excludes_lease_only_handles(
     # The persister's delivery source must not.
     fake_persister = cast(_FakeRoomPersister, managed.persister)
     assert fake_persister.members_provider() == {"slim-agent"}
+
+
+# ── joins are announced once per member ──────────────────────────────────────
+
+
+def _joins(room: str) -> list[str]:
+    import json
+
+    from app.services import in_memory_store
+
+    return [
+        json.loads(m.content)["handle"]
+        for m in in_memory_store.list_messages(room)
+        if m.message_type == "coordination_join"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_member_is_announced_once_not_on_every_return(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    from app.services.filesystem import get_room_dir
+
+    get_room_dir("room-j")  # the room exists on disk, as a real one does
+    manager.refresh_lease("room-j", "claude")
+    # Between turns: the lease lapses, then the next await comes back.
+    manager.refresh_lease("room-j", "claude", ttl_s=-1.0)
+    manager.members("room-j")
+    manager.refresh_lease("room-j", "claude")
+    assert _joins("room-j") == ["claude"]
+
+    # A restart forgets nothing: a fresh manager reads who was announced.
+    restarted = room_channels.RoomChannelManager(endpoint="http://node", default_workspace="ws")
+    restarted.refresh_lease("room-j", "claude")
+    assert _joins("room-j") == ["claude"]
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_connection_is_not_a_new_arrival(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    from app.services.filesystem import get_room_dir
+
+    get_room_dir("room-k")
+    await manager.provision("room-k")
+    await manager.invite("room-k", "codex")
+    manager._drop_member("room-k", "codex")
+    await manager.invite("room-k", "codex")
+    assert _joins("room-k") == ["codex"]
+
+
+@pytest.mark.asyncio
+async def test_a_member_removed_and_added_again_is_announced_again(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    from app.services.filesystem import get_room_dir
+
+    get_room_dir("room-r")
+    await manager.provision("room-r")
+    await manager.invite("room-r", "codex")
+    assert await manager.remove("room-r", "codex")
+    await manager.invite("room-r", "codex")
+    assert _joins("room-r") == ["codex", "codex"]
