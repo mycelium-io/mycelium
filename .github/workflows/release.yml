@@ -209,7 +209,7 @@ jobs:
   # Pi inside (mycelium-desktop/scripts/stage-sidecars.sh). Attached to the
   # release under a fixed name, so the docs' download link
   # (releases/latest/download/Mycelium-macos-arm64.dmg) always resolves.
-  # Unsigned until an Apple Developer ID is set up.
+  # Signed with the project's Developer ID and notarized by Apple.
   build-desktop:
     needs: build-binaries
     name: Build Mycelium for Mac
@@ -251,6 +251,50 @@ jobs:
           npm install --no-audit --no-fund
           bash scripts/stage-sidecars.sh
 
+      # The Developer ID certificate goes into a keychain that lives only for
+      # this job, beside Apple's intermediate, and the notarization key into a
+      # file. Without the secrets (a fork) the app is signed ad hoc as before.
+      - name: Set up signing and notarization
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "no Developer ID certificate; the app will be signed ad hoc"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(openssl rand -base64 24)"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          curl -fsSL -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -f pkcs12 \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/developer-id.p12"
+          identity="$(security find-identity -v -p codesigning "$keychain" \
+            | awk '/Developer ID Application/ { print $2; exit }')"
+          if [ -z "$identity" ]; then
+            echo "the certificate didn't import as a valid signing identity" >&2
+            exit 1
+          fi
+          echo "SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+          if [ -n "$APPLE_API_KEY" ]; then
+            printf '%s' "$APPLE_API_KEY" > "$RUNNER_TEMP/notary.p8"
+            {
+              echo "APPLE_API_KEY=$RUNNER_TEMP/notary.p8"
+              echo "APPLE_API_KEY_ID=$APPLE_API_KEY_ID"
+              echo "APPLE_API_ISSUER=$APPLE_API_ISSUER"
+            } >> "$GITHUB_ENV"
+          fi
+
       - name: Build the app and its disk image
         working-directory: mycelium-desktop
         env:
@@ -259,8 +303,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           npx tauri build --bundles app --config src-tauri/tauri.bundle.conf.json
-          # Signs the app as a whole (else macOS calls it damaged) and makes
-          # the disk image with its layout written directly, no Finder.
+          # Signs every program and the app with the Developer ID (SIGN_IDENTITY),
+          # notarizes the app and the disk image, and makes the disk image with
+          # its layout written directly, no Finder.
           bash scripts/package-mac.sh "$GITHUB_WORKSPACE/dist/desktop/Mycelium-macos-arm64.dmg"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -340,7 +385,7 @@ jobs:
           body: |
             ## Install
 
-            **On a Mac:** download [Mycelium for Mac](https://github.com/mycelium-io/mycelium/releases/download/${{ github.ref_name }}/Mycelium-macos-arm64.dmg) (Apple silicon), drag it into Applications and open it. It isn't signed by Apple yet: the first time, open System Settings, Privacy & Security, and choose Open Anyway.
+            **On a Mac:** download [Mycelium for Mac](https://github.com/mycelium-io/mycelium/releases/download/${{ github.ref_name }}/Mycelium-macos-arm64.dmg) (Apple silicon), drag it into Applications and open it. Already have it? It offers the update itself, or use Check for Updates… in its menu.
 
             **On Linux, a server, or from a terminal:**
 

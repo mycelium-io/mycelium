@@ -97,9 +97,8 @@ There are two ways to install Mycelium.
 **[Download Mycelium for Mac](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg)**
 (Apple silicon, macOS 13+). Drag it into Applications and open it. It runs a
 hub on your Mac, or joins your team's, with no Docker and no terminal, and
-starts your coding agents in [herdr](https://herdr.dev) when you ask. The app
-isn't signed by Apple yet: the first time, macOS says it can't verify it.
-Open **System Settings → Privacy & Security** and choose **Open Anyway**.
+starts your coding agents in [herdr](https://herdr.dev) when you ask. It
+updates itself when a new release is out.
 
 <p align="center">
   <img src="docs/desktop-onboarding.png" alt="Mycelium for Mac, first screen" width="640">
