@@ -131,7 +131,7 @@ shot url https://staging.example.com/dashboard --storage-state ~/.shotkit/stagin
 
 `--storage-state` works on `app`, `url`, `open` and `video`, and
 `SHOTKIT_STORAGE_STATE` sets a default. The file is Playwright's storage state
-— cookies and localStorage per origin — loaded when the context is created;
+(cookies and localStorage per origin), loaded when the context is created.
 shotkit never reads, prints or copies it. Re-saving it (the session expired, the
 shots show the login page again) takes effect on the next shot, since contexts
 are pooled per file *and* its modification time.
