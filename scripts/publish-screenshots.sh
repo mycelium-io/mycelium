@@ -52,22 +52,19 @@ done
 # Actions → "Allow GitHub Actions to create and approve pull requests"). The
 # branch is pushed either way, so say where to open it rather than failing the
 # run, which would also skip the splash half after this one.
-if ! gh pr create \
-  --base "$base" \
-  --head "$branch" \
-  --title "Refresh app screenshots" \
-  --body "$(
-    cat <<EOF
+body=$(
+  cat <<EOF
 Captured from the frontend in mock mode by the \`Screenshots\` workflow
 ([run](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})),
-which regenerates $label's committed assets the same way \`pnpm screenshots\`
-does locally.
+which regenerates the committed assets of $label the same way
+\`pnpm screenshots\` does locally.
 
 Worth an eye on the rendered diff before merging: a runner and a laptop do not
 rasterize identically, so a small visual delta here is expected and a large one
 means the UI actually changed.
 EOF
-  )"; then
+)
+if ! gh pr create --base "$base" --head "$branch" --title "Refresh app screenshots" --body "$body"; then
   repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
   echo "::warning::$label: pushed $branch but could not open its pull request; open it at ${GITHUB_SERVER_URL:-https://github.com}/$repo/compare/$base...$branch?expand=1"
 fi
