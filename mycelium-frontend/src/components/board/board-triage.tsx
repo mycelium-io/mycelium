@@ -50,15 +50,13 @@ interface Props {
  */
 export function BoardTriage({ groups, now, selectedId, onSelect, onVerb, onAnswer, onOpenThread }: Props) {
   return (
-    <div className="flex flex-col gap-6 px-5 py-4">
+    <div className="flex flex-col gap-3 px-3 py-2 sm:px-4">
       {groups.map(group => (
         <section key={group.key}>
-          <header className="mb-1.5 flex items-baseline gap-2 px-1">
-            <h3 className="font-mono text-micro text-muted-foreground">
-              {group.label}
-            </h3>
+          {/* A quiet label over its rows, the way every list here groups. */}
+          <header className="flex h-7 items-end gap-1.5 px-2 pb-1">
+            <h3 className="text-micro font-medium text-faint">{group.label}</h3>
             <span className="tabular text-micro text-faint">{group.items.length}</span>
-            <span className="h-px flex-1 bg-hairline" />
           </header>
           <div className="flex flex-col">
             {group.items.map(item => (
@@ -124,32 +122,30 @@ function TriageRow({
       }}
       data-board-row={item.id}
       className={cn(
-        "group relative flex cursor-pointer items-start gap-2.5 rounded-lg px-2.5 py-2 transition-colors",
-        selected ? "bg-elevated ring-1 ring-border" : "hover:bg-hairline",
+        "group relative flex cursor-pointer items-start gap-2.5 rounded px-2 py-1.5 transition-colors",
+        selected ? "bg-hairline" : "hover:bg-hairline",
         resolved && "opacity-60",
       )}
     >
-      {/* The selected row wears an accent edge; the eye keeps its place through a action. */}
-      {selected && <span className="absolute inset-y-1 left-0 w-[2px] rounded-full bg-accent" />}
+      {/* The selected row wears an accent edge; the eye keeps its place through an action. */}
+      {selected && <span className="absolute inset-y-1.5 left-0 w-[2px] rounded-full bg-accent" />}
 
-      <KindIcon item={item} className="mt-[3px]" />
+      <KindIcon item={item} className="mt-[2px]" />
 
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           <span
             className={cn(
-              "min-w-0 flex-1 truncate text-body",
+              "min-w-0 flex-1 truncate text-label",
               resolved ? "text-muted-foreground line-through decoration-border2" : "text-text",
             )}
           >
             {item.title}
           </span>
-          {urgent && (
-            <span className="shrink-0 rounded bg-red/10 px-1.5 font-mono text-micro text-red">urgent</span>
-          )}
+          {urgent && <span className="shrink-0 text-micro text-red">urgent</span>}
         </div>
 
-        <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-micro">
           <SourceTag item={item} />
           <span className="text-faint">·</span>
           <AssignmentChip item={item} now={now} />
@@ -163,7 +159,7 @@ function TriageRow({
 
         {/* A decision the room can settle from the row: the answer is the gesture. */}
         {choices.length > 0 && statusOf(item) === "open" && (
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <div className="mt-1 flex flex-wrap items-center gap-1">
             {choices.map(choice => (
               <button
                 key={choice}
@@ -171,7 +167,7 @@ function TriageRow({
                   e.stopPropagation();
                   onAnswer(choice);
                 }}
-                className="rounded-md border border-accent/30 bg-accent-soft px-2 py-0.5 font-mono text-micro text-accent transition-colors hover:bg-accent hover:text-accent-fg"
+                className="h-6 rounded border border-accent/30 px-1.5 text-micro text-accent transition-colors hover:bg-accent-soft"
               >
                 {choice}
               </button>
@@ -199,7 +195,7 @@ function TriageRow({
         )}
       </div>
 
-      <div className="flex shrink-0 flex-col items-end gap-1.5 pt-[2px]">
+      <div className="flex shrink-0 flex-col items-end gap-1 pt-[2px]">
         <div className="flex items-center gap-2">
           <PriorityMeter item={item} />
           <AgeTag item={item} now={now} />
@@ -211,7 +207,7 @@ function TriageRow({
           long list reads as text rather than as a wall of buttons. */}
       <div
         className={cn(
-          "absolute right-2 top-1.5 flex items-center gap-0.5 rounded-md border border-border bg-paper/95 p-0.5 shadow-sm backdrop-blur transition-opacity",
+          "absolute right-1.5 top-1 flex items-center gap-0.5 rounded bg-surface p-0.5 transition-opacity",
           selected ? "opacity-100" : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100",
         )}
       >
