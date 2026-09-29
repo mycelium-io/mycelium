@@ -13,6 +13,9 @@ import { useCurrentUser } from "@/components/current-user";
 import { Kbd } from "@/components/ui/kbd";
 import { Monogram } from "@/components/ui/monogram";
 
+const FIELD =
+  "w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-label text-text placeholder:text-faint focus:border-accent/60 focus:outline-none focus:ring-1 focus:ring-accent/30";
+
 const ICONS: Record<IntentId, LucideIcon> = {
   task: SquarePlus,
   review: CheckCheck,
@@ -141,40 +144,40 @@ export function IntentDialog({
           })}
         </div>
 
-        {/* What it is: a title and details, written like a new issue. */}
-        <div className="px-4 pt-3">
+        {/* What it is: plain labeled fields. */}
+        <div className="space-y-3 px-4 py-3">
           {needsTitle && (
-            <input
-              autoFocus
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              aria-label="Task title"
-              placeholder="Task title"
-              className="w-full bg-transparent text-[15px] font-medium text-text placeholder:text-faint focus:outline-none"
-            />
+            <label className="block">
+              <span className="mb-1 block text-micro text-muted-foreground">Title</span>
+              <input
+                autoFocus
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                placeholder="e.g. Fix the flaky login test"
+                className={FIELD}
+              />
+            </label>
           )}
-          <TextareaAutosize
-            autoFocus={!needsTitle}
-            value={note}
-            onChange={e => setNote(e.target.value)}
-            minRows={2}
-            maxRows={6}
-            aria-label="Details"
-            placeholder={
-              intent.id === "settle"
-                ? "What do they disagree about?"
-                : plainTask
-                  ? "Add details (optional)"
-                  : "Anything they should know (optional)"
-            }
-            className="mt-1.5 w-full resize-none bg-transparent text-label leading-relaxed text-text placeholder:text-faint focus:outline-none"
-          />
+          <label className="block">
+            <span className="mb-1 block text-micro text-muted-foreground">
+              {intent.id === "settle" ? "What they disagree about" : "Details"}{" "}
+              <span className="text-faint">(optional)</span>
+            </span>
+            <TextareaAutosize
+              autoFocus={!needsTitle}
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              minRows={2}
+              maxRows={6}
+              className={`${FIELD} resize-none leading-relaxed`}
+            />
+          </label>
         </div>
 
         {/* Who: one row per pick, labeled on the left. */}
-        <div className="space-y-1 border-t border-border px-4 py-2.5">
+        <div className="space-y-3 px-4 pb-3">
           {plainTask && (
-            <Row label="For">
+            <Row label="For" hint="optional">
               <AgentChips
                 agents={workers}
                 selected={assignee ? [assignee] : []}
@@ -197,7 +200,6 @@ export function IntentDialog({
               <AgentChips agents={workers} selected={group} onPick={toggleGroup} />
             </Row>
           )}
-          {intent.id === "catch-up" && <Row label="Who">The synthesizer</Row>}
           <p className="pt-1 text-micro text-faint">{intent.then}</p>
           {error && <p role="alert" className="text-micro text-red">{error}</p>}
         </div>
@@ -227,12 +229,11 @@ export function IntentDialog({
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-3">
-      <div className="w-20 flex-shrink-0 pt-1.5 text-micro text-muted-foreground">
-        {label}
-        {hint && <span className="block text-faint">{hint}</span>}
+    <div>
+      <div className="mb-1 text-micro text-muted-foreground">
+        {label} {hint && <span className="text-faint">({hint})</span>}
       </div>
-      <div className="min-w-0 flex-1 pt-0.5 text-label text-muted-foreground">{children}</div>
+      <div className="-ml-1.5 text-label text-muted-foreground">{children}</div>
     </div>
   );
 }
