@@ -374,10 +374,12 @@ function AgentPicker({
                     onClick={() => pick(h)}
                     className="flex h-7 w-full items-center gap-2 px-2.5 text-left text-label text-muted-foreground transition-colors hover:bg-hairline hover:text-text disabled:opacity-40 disabled:hover:bg-transparent"
                   >
+                    <span className="flex w-3.5 flex-shrink-0 justify-center">
+                      {on && <Check className="size-3.5 text-accent" />}
+                    </span>
                     <Monogram handle={h} className="size-4 text-[7px]" />
                     <span className="min-w-0 flex-1 truncate font-mono">{h}</span>
                     {live && <span className="text-micro text-green">here</span>}
-                    {on && <Check className="size-3.5 text-accent" />}
                   </button>
                 </li>
               );
