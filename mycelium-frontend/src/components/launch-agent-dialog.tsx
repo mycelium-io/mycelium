@@ -493,69 +493,82 @@ function RunsOn({
   children: React.ReactNode;
 }) {
   const startable = launchable(runner);
+  const roots = runner.roots.map(tildePath);
   return (
     <MemberFooter
       action={children}
       above={
-        !runner.herdr ? (
-          <HerdrMissing runner={runner} />
-        ) : startable.length === 0 ? (
-          <p className="text-micro text-muted-foreground">
-            No agent CLI on this machine that herdr can start. Install one, then rescan.
-          </p>
-        ) : null
+        <>
+          {!runner.herdr ? (
+            <HerdrMissing runner={runner} />
+          ) : startable.length === 0 ? (
+            <p className="text-micro text-muted-foreground">
+              No agent CLI on this machine that herdr can start. Install one, then rescan.
+            </p>
+          ) : null}
+          {/* First line: which machine, and which agent CLI on it. */}
+          <div className="flex min-w-0 items-center gap-2 text-label text-muted-foreground">
+            <Laptop className="size-4 flex-shrink-0" aria-hidden />
+            {runners.length > 1 ? (
+              <select
+                aria-label="Machine"
+                value={runner.id}
+                onChange={(e) => onRunner(e.target.value)}
+                className={cn(selectClass, "max-w-48")}
+              >
+                {runners.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {runnerName(r)}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="max-w-48 truncate text-text" title={runnerName(runner)}>
+                {runnerName(runner)}
+              </span>
+            )}
+            {startable.length > 0 && (
+              <>
+                <span className="flex-shrink-0 text-micro text-faint">with</span>
+                <select
+                  aria-label="Agent CLI"
+                  value={frameworkId ?? ""}
+                  onChange={(e) => onFramework(e.target.value)}
+                  className={cn(selectClass, "flex-shrink-0")}
+                >
+                  {startable.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                      {shortVersion(f.version) ? ` ${shortVersion(f.version)}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+            <RescanButton runner={runner} iconOnly />
+          </div>
+        </>
       }
     >
-      <Laptop className="size-4 flex-shrink-0" aria-hidden />
-      {runners.length > 1 ? (
-        <select
-          aria-label="Machine"
-          value={runner.id}
-          onChange={(e) => onRunner(e.target.value)}
-          className={cn(selectClass, "max-w-40")}
-        >
-          {runners.map((r) => (
-            <option key={r.id} value={r.id}>
-              {runnerName(r)}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <span className="max-w-40 truncate text-text" title={runnerName(runner)}>
-          {runnerName(runner)}
-        </span>
-      )}
-      {startable.length > 0 && (
-        <select
-          aria-label="Agent CLI"
-          value={frameworkId ?? ""}
-          onChange={(e) => onFramework(e.target.value)}
-          className={cn(selectClass, "flex-shrink-0")}
-        >
-          {startable.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.name}
-              {shortVersion(f.version) ? ` ${shortVersion(f.version)}` : ""}
-            </option>
-          ))}
-        </select>
-      )}
-      <span className="flex-shrink-0 text-micro text-faint">in</span>
+      {/* Second line: the folder it works in, with the room to read the path. */}
+      <label htmlFor="launch-folder" className="flex-shrink-0 text-micro text-faint">
+        Folder
+      </label>
       <input
-        aria-label="Folder"
+        id="launch-folder"
         list="launch-folder-roots"
         value={folder}
         onChange={(e) => onFolder(e.target.value)}
         spellCheck={false}
-        title={`Inside ${runner.roots.map(tildePath).join(" or ")}`}
-        className={cn(selectClass, "min-w-24 flex-1 font-mono text-micro")}
+        placeholder={roots[0] ?? "~/code/project"}
+        title={roots.length ? `Inside ${roots.join(" or ")}` : undefined}
+        className={cn(selectClass, "min-w-0 flex-1 py-1.5 font-mono")}
       />
       <datalist id="launch-folder-roots">
-        {runner.roots.map((r) => (
-          <option key={r} value={tildePath(r)} />
+        {roots.map((r) => (
+          <option key={r} value={r} />
         ))}
       </datalist>
-      <RescanButton runner={runner} iconOnly />
     </MemberFooter>
   );
 }
