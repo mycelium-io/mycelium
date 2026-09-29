@@ -68,7 +68,7 @@ function structuredValue(mem: Memory): Record<string, unknown> | null {
  * `document.body`, bypassing any overflow/z-index constraints on the editor's
  * ancestor elements.
  */
-function WikilinkDropdown({
+export function WikilinkDropdown({
   match,
   candidates,
   onSelect,
