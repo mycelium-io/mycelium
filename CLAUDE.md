@@ -468,11 +468,15 @@ is no litellm dependency.
   popover; `[[` is matched before `/` and `@` since a memory key can contain
   slashes. Skills insert a reference token — the resident agent/engine interprets
   it; the composer never runs the skill. **Commands** are the one `/` that runs:
-  `/task` and `/swarm`, only as a message's first word, listed ahead of the
-  skills. `/task` files a task with the board capture's grammar through the same
-  `lib/board/file-capture.ts` the board's File button uses (the tasks route,
-  then ordinary fields); `/swarm` opens the swarm dialog, since a swarm spends
-  model turns. A skill that shares a command's name is still reachable by
+  `/task`, `/swarm` and `/memory`, only as a message's first word, listed ahead
+  of the skills. `/task` files a task with the board capture's grammar through
+  the same `lib/board/file-capture.ts` the board's File button uses (the tasks
+  route, then ordinary fields); `/swarm` opens the swarm dialog, since a swarm
+  spends model turns; `/memory` opens the new-memory dialog
+  (`new-memory-dialog.tsx`, also behind the memory pane's Add and the
+  composer's +), which draws where the key lands in the room's tree
+  (`lib/memory-location.ts`) and replaces a taken key only at the version it
+  saw. A skill that shares a command's name is still reachable by
   picking it from the list.
 - **One keycap, sized by where it sits.** Every surface that names a key draws it
   through `ui/kbd.tsx` — `Kbd` for a literal, `KbdChord` for a chord the keymap
