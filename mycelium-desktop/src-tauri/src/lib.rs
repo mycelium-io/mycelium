@@ -48,6 +48,21 @@ struct TrayItems {
     slim: MenuItem<Wry>,
     runner: MenuItem<Wry>,
     autostart: CheckMenuItem<Wry>,
+    /// "Check for Updates…", which says how a download is going while one is.
+    updates: MenuItem<Wry>,
+    /// The tray menu itself, so a row can come and go with the mode.
+    menu: Menu<Wry>,
+    /// Whether the SLIM row is in the menu: only a hub on this Mac runs one.
+    slim_shown: bool,
+}
+
+/// What the menu bar's update item says: `Some` while an update downloads
+/// (and the item can't start another), `None` to put it back.
+pub(crate) fn set_update_status(app: &AppHandle, status: Option<&str>) {
+    if let Some(items) = app.state::<Shell>().tray.lock().unwrap().as_ref() {
+        let _ = items.updates.set_text(status.unwrap_or("Check for Updates…"));
+        let _ = items.updates.set_enabled(status.is_none());
+    }
 }
 
 // ── pages ───────────────────────────────────────────────────────────────────
@@ -203,10 +218,35 @@ fn update_tray(app: &AppHandle, status: &Value) {
             .to_string()
     };
     let shell = app.state::<Shell>();
-    let guard = shell.tray.lock().unwrap();
-    let Some(items) = guard.as_ref() else { return };
-    let _ = items.hub.set_text(tray_line("Hub", &state("hub")));
-    let _ = items.slim.set_text(tray_line("SLIM", &state("slim")));
+    let mut guard = shell.tray.lock().unwrap();
+    let Some(items) = guard.as_mut() else { return };
+    let client = status.get("mode").and_then(Value::as_str) == Some("client");
+    if client {
+        // Joined someone else's hub: its hub and SLIM node aren't this Mac's
+        // to run, so they aren't reported as stopped. The first row names the
+        // hub instead, lit while the runner is connected to it.
+        let host = status
+            .get("api_url")
+            .and_then(Value::as_str)
+            .and_then(|u| Url::parse(u).ok())
+            .and_then(|u| u.host_str().map(str::to_string))
+            .unwrap_or_else(|| "a hub".into());
+        let connected = state("runner") == "running";
+        let _ = items.hub.set_text(if connected {
+            format!("● Joined {host}")
+        } else {
+            format!("○ Joining {host}")
+        });
+        if items.slim_shown && items.menu.remove(&items.slim).is_ok() {
+            items.slim_shown = false;
+        }
+    } else {
+        let _ = items.hub.set_text(tray_line("Hub", &state("hub")));
+        if !items.slim_shown && items.menu.insert(&items.slim, 1).is_ok() {
+            items.slim_shown = true;
+        }
+        let _ = items.slim.set_text(tray_line("SLIM", &state("slim")));
+    }
     let _ = items.runner.set_text(tray_line("Runner", &state("runner")));
 }
 
@@ -260,7 +300,15 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let template = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-template.png"))?;
     tray = tray.icon(template).icon_as_template(true);
     tray.build(app)?;
-    *app.state::<Shell>().tray.lock().unwrap() = Some(TrayItems { hub, slim, runner, autostart });
+    *app.state::<Shell>().tray.lock().unwrap() = Some(TrayItems {
+        hub,
+        slim,
+        runner,
+        autostart,
+        updates,
+        menu,
+        slim_shown: true,
+    });
     Ok(())
 }
 

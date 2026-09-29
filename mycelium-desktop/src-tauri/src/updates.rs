@@ -7,15 +7,30 @@
 //! version and a signed archive of the app. The updater checks it, verifies
 //! the archive against the public key built into this app (so only an update
 //! we signed installs), replaces the app, and restarts it.
+//!
+//! The archive is a few hundred megabytes, so the download is said out loud:
+//! a note when it starts, and its progress on the menu bar's update item until
+//! the app restarts. Only one runs at a time.
+
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::AppHandle;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
+/// Set while an update downloads, so a second check doesn't start another.
+static UPDATING: AtomicBool = AtomicBool::new(false);
+
 /// Look for an update. `asked`: the person chose "Check for Updates…", so
 /// being up to date, or not being able to check, is said too; a check at
 /// launch speaks only when there is something to install.
 pub fn check(app: AppHandle, asked: bool) {
+    if UPDATING.load(Ordering::SeqCst) {
+        if asked {
+            say(&app, "An update is already downloading. Mycelium restarts itself when it's ready.".into());
+        }
+        return;
+    }
     tauri::async_runtime::spawn(async move {
         let found = match app.updater() {
             Ok(updater) => updater.check().await,
@@ -52,15 +67,45 @@ async fn offer(app: AppHandle, update: Update) {
     })
     .await
     .unwrap_or(false);
-    if !yes {
+    if !yes || UPDATING.swap(true, Ordering::SeqCst) {
         return;
     }
-    match update.download_and_install(|_, _| {}, || {}).await {
+
+    say(
+        &app,
+        format!(
+            "Downloading Mycelium {}. It restarts itself when it's ready; the menu bar icon shows how far along it is.",
+            update.version
+        ),
+    );
+    crate::set_update_status(&app, Some("Downloading update…"));
+
+    // Progress on the menu bar item, rewritten only when the percentage moves.
+    let progress = app.clone();
+    let mut received: u64 = 0;
+    let mut shown: Option<u64> = None;
+    let on_chunk = move |chunk: usize, total: Option<u64>| {
+        received += chunk as u64;
+        let Some(total) = total.filter(|t| *t > 0) else { return };
+        let percent = (received * 100 / total).min(100);
+        if shown != Some(percent) {
+            shown = Some(percent);
+            crate::set_update_status(&progress, Some(&format!("Downloading update… {percent}%")));
+        }
+    };
+    let installing = app.clone();
+    let on_done = move || crate::set_update_status(&installing, Some("Installing update…"));
+
+    match update.download_and_install(on_chunk, on_done).await {
         Ok(()) => {
             crate::shut_down(&app);
             app.restart();
         }
-        Err(e) => say(&app, format!("The update didn't install: {e}")),
+        Err(e) => {
+            UPDATING.store(false, Ordering::SeqCst);
+            crate::set_update_status(&app, None);
+            say(&app, format!("The update didn't install: {e}"));
+        }
     }
 }
 
