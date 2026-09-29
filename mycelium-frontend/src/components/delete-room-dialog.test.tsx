@@ -32,8 +32,11 @@ describe("<DeleteRoomDialog />", () => {
       />,
     );
 
-    expect(deleteRoom).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "Delete room" }));
+    const button = screen.getByRole("button", { name: "Delete room" });
+    expect(button).toBeDisabled();
+    await user.type(screen.getByLabelText("Type the room name to confirm"), "design review");
+    expect(button).toBeEnabled();
+    await user.click(button);
 
     expect(deleteRoom).toHaveBeenCalledWith("design review");
     expect(onDeleted).toHaveBeenCalledOnce();
@@ -54,9 +57,28 @@ describe("<DeleteRoomDialog />", () => {
       />,
     );
 
+    await user.type(screen.getByLabelText("Type the room name to confirm"), "design review");
     await user.click(screen.getByRole("button", { name: "Delete room" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent("Room is unavailable");
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("stays disabled until the name typed is the room's, and Enter can't get around it", async () => {
+    const user = userEvent.setup();
+    vi.mocked(deleteRoom).mockResolvedValue(undefined);
+
+    renderWithSWR(
+      <DeleteRoomDialog roomName="design review" open onClose={vi.fn()} onDeleted={vi.fn()} />,
+    );
+
+    const field = screen.getByLabelText("Type the room name to confirm");
+    await user.type(field, "design reviw{Enter}");
+    expect(screen.getByRole("button", { name: "Delete room" })).toBeDisabled();
+    expect(deleteRoom).not.toHaveBeenCalled();
+
+    await user.clear(field);
+    await user.type(field, "design review{Enter}");
+    expect(deleteRoom).toHaveBeenCalledWith("design review");
   });
 });
