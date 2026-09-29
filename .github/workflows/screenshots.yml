@@ -115,7 +115,9 @@ jobs:
           # a dispatch input is untrusted text.
           SHOTS: ${{ inputs.shots }}
         run: |
-          if ! printf '%s' "$SHOTS" | grep -qE '^[a-z0-9 _-]*$'; then
+          # Empty captures every shot. grep reads no line from an empty input
+          # and fails, so only a value that is there is checked.
+          if [ -n "$SHOTS" ] && ! printf '%s\n' "$SHOTS" | grep -qE '^[a-z0-9 _-]*$'; then
             echo "::error::shot ids may only contain lowercase letters, digits, '-', '_' and spaces"
             exit 1
           fi
