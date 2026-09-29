@@ -50,6 +50,12 @@ export interface Shot {
    * inspector rail (Memory) rather than a distinct route.
    */
   steps?: string[];
+  /**
+   * shotkit actions run after `steps`, verbatim (`click:<selector>`,
+   * `typekeys:<text>`, ...), for a state a click by name can't reach: a
+   * dialog filled in, a list opened.
+   */
+  actions?: string[];
   /** One-line note on what this shot is meant to show. */
   caption: string;
 }
@@ -68,7 +74,29 @@ export const SHOTS: Shot[] = [
     theme: "dark",
     viewport: "desktop",
     steps: ["Board"],
+    // The pull requests' states arrive after the rows; shoot them answered.
+    actions: ["wait-text:changes requested"],
     caption: "The board is the surface: task rows grouped by attention, each a row and a thread, with owners, CI and thread activity.",
+  },
+  {
+    id: "room-start",
+    route: "/room/atlas-migration",
+    theme: "dark",
+    viewport: "desktop",
+    actions: [
+      'click:button[aria-label="Start a task or flow"]',
+      'click:[role="dialog"] button[aria-pressed]:has-text("Review")',
+      'click:[role="dialog"] input',
+      "typekeys:Verify the backfill against the old store",
+      'click:[role="dialog"] textarea',
+      "typekeys:Row counts and checksums for the 2019 partition first.",
+      "click:text=Choose one agent",
+      'click:[role="dialog"] li button:has-text("backfill")',
+      "click:text=Choose one agent",
+      'click:[role="dialog"] li button:has-text("reads")',
+      "sleep:400",
+    ],
+    caption: "Starting work from the room: a task, and the flow to run on it, picked by what you want.",
   },
   {
     id: "room-empty",
