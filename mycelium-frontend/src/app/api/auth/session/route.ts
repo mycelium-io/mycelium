@@ -12,7 +12,18 @@ import { isMockMode } from "@/mocks";
 
 export const dynamic = "force-dynamic";
 
+// The mock app has no identity provider, so `MYCELIUM_UI_MOCK_AUTH` stands in
+// for each state the browser can meet: a gated hub signed in or not, and an
+// open hub that offers sign-in.
+const MOCK_AUTH: Record<string, object> = {
+  "signed-in": { authRequired: true, oidcConfigured: true, signedIn: true, handle: "operator" },
+  "signed-out": { authRequired: true, oidcConfigured: true, signedIn: false, handle: null },
+  optional: { authRequired: false, oidcConfigured: true, signedIn: false, handle: null },
+};
+
 export async function GET(): Promise<Response> {
+  const mock = isMockMode() ? MOCK_AUTH[process.env.MYCELIUM_UI_MOCK_AUTH ?? ""] : undefined;
+  if (mock) return NextResponse.json(mock);
   const session = await getSession();
   return NextResponse.json({
     // `authRequired` comes from the backend's own /health auth block — the gate
