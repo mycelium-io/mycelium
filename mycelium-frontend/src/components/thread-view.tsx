@@ -114,9 +114,9 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
       // long metadata value pushes the whole section past its right edge.
       className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-bg"
     >
-      <header className="flex h-[48px] shrink-0 items-center gap-2 border-b border-border bg-paper px-4">
+      <header className="flex h-8 shrink-0 items-center gap-2 border-b border-border bg-surface px-3">
         <MessageSquare className="size-3.5 shrink-0 text-accent" strokeWidth={1.9} />
-        <span className="min-w-0 truncate text-label font-semibold text-text">
+        <span className="min-w-0 truncate text-label text-text">
           {target.title || `Thread ${shortId}`}
         </span>
         {/* The short id only where a task's name is what the header says —
@@ -147,18 +147,32 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
               </button>
             </Tooltip>
           )}
-          {/* Full screen: leave the split and open the task on its own page —
-              the same memory, room to work. Only where the pane is a task (a
-              negotiation thread has no page of its own to open). */}
+          {/* Room to work: leave the split and open the task as a tab of the
+              room, where the rest of its memories open. Only where the pane is
+              a task (a negotiation thread is no memory to open). */}
           {task && (
-            <Tooltip content="Open full screen">
-              <Link
-                href={memoryHref(roomName, task.key)}
-                aria-label="Open task full screen"
-                className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-              >
-                <Maximize2 className="size-3.5" strokeWidth={1.9} />
-              </Link>
+            <Tooltip content="Open as a tab">
+              {onOpenMemory ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenMemory(task.key);
+                    onClose();
+                  }}
+                  aria-label="Open task as a tab"
+                  className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+                >
+                  <Maximize2 className="size-3.5" strokeWidth={1.9} />
+                </button>
+              ) : (
+                <Link
+                  href={memoryHref(roomName, task.key)}
+                  aria-label="Open task full screen"
+                  className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+                >
+                  <Maximize2 className="size-3.5" strokeWidth={1.9} />
+                </Link>
+              )}
             </Tooltip>
           )}
           {/* The key that does what the ✕ beside it does — worth the width on a

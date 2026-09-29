@@ -162,7 +162,7 @@ export function MemoryTab({
             {hasDiscussion && memory.episode && (
               <section className="border-t border-border px-6 py-3 md:px-8">
                 <h2 className="mb-2 text-micro font-medium text-faint">Discussion</h2>
-                <div className="max-w-prose overflow-hidden rounded-lg border border-border">
+                <div className="max-w-prose [&_[data-testid=thread-conversation]_p]:px-0">
                   <TaskConversation
                     roomName={roomName}
                     episode={memory.episode}

@@ -88,7 +88,7 @@ export function FlowPanel({
   return (
     <div className="px-4 py-3" data-testid="flow-panel">
       <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="text-micro uppercase tracking-wide text-faint">Flow</span>
+        <span className="text-micro font-medium text-faint">Flow</span>
         <span className="font-mono text-micro text-text">{flow.name}</span>
         <span className="text-micro capitalize" style={{ color: outcomeTone(episode.outcome) }}>
           {open ? `at ${episode.current_step ?? flow.steps[0]?.id ?? "start"}` : episode.outcome}
