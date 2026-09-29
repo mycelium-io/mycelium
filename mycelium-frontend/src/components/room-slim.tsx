@@ -341,13 +341,13 @@ function StateDot({ color, pulse = false }: { color: string; pulse?: boolean }) 
   );
 }
 
-/** One labeled line of the rail: a caps label in its own column, then the
+/** One labeled line of the rail: a small label in its own column, then the
  *  group's stats. The label column is fixed by the parent grid, so all three
  *  groups' stats start at the same x. */
 function RailGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <>
-      <span className="caps-mono-sm text-faint">{label}</span>
+      <span className="label-mono-sm text-faint">{label}</span>
       <span className="flex flex-wrap items-center gap-x-3 gap-y-1">{children}</span>
     </>
   );

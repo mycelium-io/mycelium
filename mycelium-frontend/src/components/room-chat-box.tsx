@@ -11,6 +11,11 @@ import { useRoomMemories, useRoomRoster, useRoomSkills } from "@/lib/room-data";
 import { useKeyAction } from "@/components/keymap-provider";
 import { useCurrentUser } from "@/components/current-user";
 import { Kbd } from "@/components/ui/kbd";
+import { StartSwarmDialog } from "@/components/start-swarm-dialog";
+import { IntentDialog } from "@/components/intent-dialog";
+import { Plus } from "lucide-react";
+import { parseCapture } from "@/lib/board/capture";
+import { fileCapture } from "@/lib/board/file-capture";
 
 interface Props {
   roomName: string;
@@ -80,16 +85,46 @@ function memoryKey(m: Memory): string {
   return m.key;
 }
 
+// Commands are the one kind of `/` that runs rather than inserts a reference,
+// and only as the first word of the message: `/task fix it` files a task, while
+// a `/name` anywhere else is a skill for an agent to read. They are listed
+// ahead of the room's skills, and a skill with the same name is still reachable
+// by picking it from the list.
+const COMMANDS = [
+  {
+    name: "task",
+    usage: "/task <what> @owner !urgent #tag",
+    description: "add it to the board for someone to pick up",
+  },
+  {
+    name: "swarm",
+    usage: "/swarm <what>",
+    description: "have a team of agents work on it now",
+  },
+] as const;
+
+type CommandName = (typeof COMMANDS)[number]["name"];
+
+/** The command a message runs, and what follows it, or `null` for a message. */
+export function commandOf(body: string): { name: CommandName; rest: string } | null {
+  const match = body.match(/^\/(task|swarm)(?:\s+([\s\S]*))?$/);
+  if (!match) return null;
+  return { name: match[1] as CommandName, rest: (match[2] ?? "").trim() };
+}
+
 export function RoomChatBox({ roomName, onSent, className, episode = null, threadLabel = null }: Props) {
   const [content, setContent] = useState("");
   // A human message is sent as the acting-as principal — the single source of
-  // "who am I" (the ActingAsPicker), not a per-composer handle. Anonymous falls
+  // "who am I" (the account menu), not a per-composer handle. Anonymous falls
   // back to "user" so the room still has a sender to attribute the message to.
   const { principal } = useCurrentUser();
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [trigger, setTrigger] = useState<Trigger | null>(null);
   const [highlight, setHighlight] = useState(0);
+  // The task a `/swarm` is being started on, while its dialog is open.
+  const [swarmTask, setSwarmTask] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   // `@` reaches everyone in the room, off the same roster the Members rail
@@ -160,16 +195,27 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
         tertiary: `v${m.version} · ${m.created_by}`,
       }));
     }
-    // skill
+    // `/`: the commands first (only as the message's first word, the one place
+    // they run), then the room's skills.
     const q = trigger.query;
+    const commands = trigger.start === 0 ? COMMANDS.filter((c) => c.name.startsWith(q)) : [];
     const pool = q ? skills.filter((s) => s.name.toLowerCase().startsWith(q)) : skills;
-    return pool.slice(0, 6).map((s) => ({
-      id: s.name,
-      insert: `/${s.name}`,
-      primary: `/${s.name}`,
-      secondary: "skill",
-      tertiary: s.description || undefined,
-    }));
+    return [
+      ...commands.map((c) => ({
+        id: `command:${c.name}`,
+        insert: `/${c.name}`,
+        primary: `/${c.name}`,
+        secondary: "command",
+        tertiary: c.description,
+      })),
+      ...pool.slice(0, 6).map((s) => ({
+        id: s.name,
+        insert: `/${s.name}`,
+        primary: `/${s.name}`,
+        secondary: "skill",
+        tertiary: s.description || undefined,
+      })),
+    ];
   }, [mentionRoster, memories, skills, trigger]);
 
   const accept = useCallback(
@@ -197,10 +243,26 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
     const body = content.trim();
     if (!body || sending) return;
     const handle = principal.trim() || "user";
+    const command = commandOf(body);
+    if (command && !command.rest) {
+      setError(`Say what it is: ${COMMANDS.find((c) => c.name === command.name)?.usage}`);
+      return;
+    }
+    if (command?.name === "swarm") {
+      // A swarm spends model turns, so it asks first: the dialog takes it from here.
+      setSwarmTask(command.rest);
+      setContent("");
+      setTrigger(null);
+      return;
+    }
     setSending(true);
     setError(null);
     try {
-      await sendRoomMessage(roomName, { sender_handle: handle, content: body, episode });
+      if (command?.name === "task") {
+        await fileCapture(roomName, parseCapture(command.rest, handle, new Date().toISOString()), handle);
+      } else {
+        await sendRoomMessage(roomName, { sender_handle: handle, content: body, episode });
+      }
       setContent("");
       setTrigger(null);
       onSent?.();
@@ -290,7 +352,22 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
           </div>
         )}
 
-        <div className="flex flex-col rounded-2xl border border-border bg-surface transition-colors focus-within:border-accent focus-within:bg-bg">
+        {/* One line when empty, growing with what is typed: the send button
+            sits beside the text rather than on a row of its own. */}
+        <div className="flex items-end gap-1 rounded-lg border border-border bg-surface transition-colors focus-within:border-border2 focus-within:bg-bg">
+          {/* In the room's own composer: start a task or a flow in one click,
+              without knowing which engine runs it. */}
+          {!episode && (
+            <button
+              type="button"
+              onClick={() => setStarting(true)}
+              aria-label="Start a task or flow"
+              title="Start a task or flow"
+              className="m-1 mr-0 flex size-8 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-accent/50 hover:bg-accent-soft hover:text-accent"
+            >
+              <Plus className="size-4" />
+            </button>
+          )}
           <TextareaAutosize
             ref={inputRef}
             value={content}
@@ -299,17 +376,17 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
             placeholder={placeholder}
             minRows={1}
             maxRows={10}
-            className="w-full resize-none bg-transparent px-4 pt-3 pb-1.5 text-body text-text leading-relaxed focus:outline-none placeholder:text-muted-foreground"
+            className="min-w-0 flex-1 resize-none bg-transparent px-3 py-2 text-body text-text leading-relaxed focus:outline-none placeholder:text-faint"
             disabled={sending}
           />
-          <div className="flex items-center gap-2 px-3 pb-2.5 pt-0.5">
-            {error && <span className="text-micro text-red truncate">{error}</span>}
+          <div className="flex shrink-0 items-center gap-2 p-1">
+            {error && <span className="max-w-48 truncate text-micro text-red">{error}</span>}
             <button
               type="button"
               onClick={submit}
               disabled={!armed}
               aria-label="Send message"
-              className={`group ml-auto grid size-8 place-items-center rounded-xl transition-colors ${
+              className={`group grid size-8 place-items-center rounded-md transition-colors ${
                 armed ? "text-accent hover:bg-accent-soft" : "cursor-not-allowed text-faint"
               }`}
             >
@@ -327,15 +404,23 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
             Measured against the composer rather than the window: the box is
             this narrow on a phone and again in a room with both rails open,
             and the row has to fit the box either way. */}
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 px-1 text-micro text-muted-foreground">
-          <span className="text-faint">@ mention · [[ memory · / skill</span>
-          <span className="hidden flex-wrap items-center gap-x-1.5 gap-y-1 @[34rem]:flex">
-            <Kbd size="xs" tone="muted">Enter</Kbd> to send ·
-            <Kbd size="xs" tone="muted">Shift+Enter</Kbd> for newline ·
-            <Kbd size="xs" tone="muted">Esc</Kbd> for command mode
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-micro text-faint">
+          <span>@ mention · [[ memory · / command</span>
+          <span className="ml-auto hidden items-center gap-1.5 @[34rem]:flex">
+            <Kbd size="xs" tone="muted">⇧↵</Kbd> newline
+            <Kbd size="xs" tone="muted">esc</Kbd> commands
           </span>
         </div>
       </div>
+      {starting && <IntentDialog roomName={roomName} initial="task" onClose={() => setStarting(false)} />}
+      {swarmTask !== null && (
+        <StartSwarmDialog
+          open
+          onClose={() => setSwarmTask(null)}
+          roomName={roomName}
+          initialTask={swarmTask}
+        />
+      )}
     </div>
   );
 }

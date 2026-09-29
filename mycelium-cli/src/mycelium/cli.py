@@ -14,6 +14,7 @@ from mycelium.commands import (
     board,
     config,
     demo,
+    desktop,
     docs,
     doctor,
     engine,
@@ -27,7 +28,9 @@ from mycelium.commands import (
     openshell,
     participate,
     room,
+    runner,
     skill,
+    swarm,
     ui,
     user,
     wire,
@@ -101,6 +104,9 @@ app.command(name="connect")(hub.connect)
 app.command(name="await")(participate.await_room)
 app.command(name="respond")(participate.respond)
 
+# A team on one task: the quickest way to watch agents coordinate.
+app.command(name="swarm")(swarm.swarm)
+
 # Convenience alias: `mycelium ls` is `mycelium room ls`; rooms are the entry
 # point, so listing them shouldn't need the `room` prefix.
 app.command(name="ls")(room.list_rooms)
@@ -118,6 +124,8 @@ app.add_typer(agent.app, name="agent")
 app.add_typer(user.app, name="user")
 app.add_typer(engine.app, name="engine")
 app.add_typer(herdr.app, name="herdr")
+app.add_typer(runner.app, name="runner")
+app.add_typer(desktop.app, name="desktop")
 app.add_typer(openshell.app, name="openshell")
 app.add_typer(demo.app, name="demo")
 app.add_typer(hub.app, name="hub")

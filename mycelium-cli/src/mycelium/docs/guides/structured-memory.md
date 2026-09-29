@@ -1,91 +1,90 @@
 # Structured Memory Guide
 
-This guide shows how to use Mycelium's structured memory conventions to give
-agents continuity across separate runs.
+When an agent finishes a stretch of work and goes away, the next agent (or
+person) to pick it up starts from nothing unless the work was written down.
+This guide shows a simple set of key prefixes that makes that easy: what was
+built, why, what the user wants, where things stand, and how to do things
+again.
 
-## The Problem
-
-An agent helps build something over a long stretch of work, then goes away.
-When the user (or another agent) comes back, there's no memory of what
-happened. The next agent starts from scratch.
-
-## The Solution: Category Conventions
-
-Instead of writing memories with arbitrary keys, use structured prefixes:
+## The prefixes
 
 ```
 work/        What was built or changed
 decisions/   Why choices were made
 context/     User preferences and background
 status/      Current state of ongoing work
-procedures/  Reusable how-to steps (do this again later)
+procedures/  Steps you'll want to repeat later
 ```
 
-`memory set` validates these automatically: when the key starts with a known
-category prefix, it checks the slug format and auto-timestamps the content.
+When a key starts with one of these, `memory set` checks the rest of the key
+and adds a timestamp to the content.
 
-## Workflow
+`work/`, `decisions/` and `status/` are also [board](#board) namespaces, so
+memories there show up on the room's board too.
 
-### 1. Set up a room
+## Using them
+
+### 1. Pick a room
 
 ```bash
 mycelium room create project-x
 mycelium room use project-x
 ```
 
-### 2. Write structured memories as you work
+### 2. Write things down as you go
 
 ```bash
-# Record what you built
+# What you built
 mycelium memory set work/api-server "Set up FastAPI with auth endpoints"
 mycelium memory set work/database "Created PostgreSQL schema, 3 tables"
 
-# Record why you made choices
+# Why you made the choices you did
 mycelium memory set decisions/framework "FastAPI over Flask: async + type hints"
 mycelium memory set decisions/auth "JWT tokens, 1hr expiry, refresh via cookie"
 
-# Record user context
+# What the user wants
 mycelium memory set context/goal "Build MVP for investor demo by Friday"
 mycelium memory set context/constraints "Must run on single $20/mo VPS"
 
-# Track current state
+# Where things stand
 mycelium memory set status/api "PASSING: all 12 endpoints tested"
 mycelium memory set status/deploy "BLOCKED: waiting on DNS propagation"
 
-# Save reusable procedures
+# Steps to repeat later
 mycelium memory set procedures/deploy-vps "1. ssh vps  2. cd /app && git pull  3. systemctl restart app  4. curl healthcheck"
 mycelium memory set procedures/db-migrate "1. uv run alembic upgrade head  2. Verify with psql -c 'SELECT version()'"
 ```
 
-### 3. Check status at a glance
+### 3. Read them back
 
 ```bash
-mycelium memory status     # Table of all status/* memories
-mycelium memory work       # What's been built
-mycelium memory decisions  # Why things are the way they are
-mycelium memory procedures # How to do things again
+mycelium memory status      # everything under status/
+mycelium memory work        # what's been built
+mycelium memory decisions   # why things are the way they are
+mycelium memory context     # background and preferences
+mycelium memory procedures  # how to do things again
 ```
 
-### 4. Update status as things change
+### 4. Update as things change
+
+`memory set` replaces the old value, so just set the new one:
 
 ```bash
-# memory set always upserts, so just set the new value
 mycelium memory set status/deploy "ACTIVE: deployed to vps.example.com"
 ```
 
-## Type Safety
+## Key rules
 
-`memory set` validates category keys against the `MemoryLogEntry` type
-(defined in `mycelium.protocol`). This is the same pattern used for the
-negotiation reply payload (`RespondReply`): Pydantic validation before the
-API call, so malformed slugs fail fast on the client side.
+After the prefix, a key can use lowercase letters, numbers, hyphens, dots and
+underscores, and must start with a letter or number. Uppercase letters are
+lowercased for you. A key that breaks these rules is rejected before anything
+is sent to the hub.
 
-Valid slugs: lowercase alphanumeric, hyphens, dots, underscores.
-- `work/api-server` (valid)
-- `status/v2.deploy` (valid)
-- `decisions/Why We Chose X` (invalid: uppercase, spaces)
+- `work/api-server` works
+- `status/v2.deploy` works
+- `decisions/Why We Chose X` is rejected (spaces)
 
-Keys without a known category prefix skip validation entirely:
-- `custom/anything` (passes through, no slug check)
-- `research/index-perf` (passes through)
+Keys with any other prefix aren't checked:
 
+- `custom/anything`
+- `research/index-perf`

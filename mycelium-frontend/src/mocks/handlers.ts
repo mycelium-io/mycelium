@@ -11,6 +11,15 @@
  */
 
 import { BACKEND_METRICS, ROOMS, ROOM_FIXTURES, getRoomFixture } from "./fixtures";
+import {
+  getJob,
+  getRunner,
+  launchedHandles,
+  listJobs,
+  listRunners,
+  queueJob,
+  runnerAgentOf,
+} from "./runners";
 import type { MockMemory } from "./fixtures";
 import type { A2aBridgeState, MemoryGraph, MemoryGraphEdge, MemoryLink } from "@/lib/api";
 import type { SearchHit, SearchResultType } from "@/lib/search";
@@ -133,6 +142,51 @@ async function readJson(req: Request): Promise<Record<string, unknown>> {
   }
 }
 
+/** `/api/runners/...`, answered from `./runners`. */
+async function handleRunners(req: Request, method: string, rest: string[]): Promise<Response | null> {
+  if (rest.length === 0) return method === "GET" ? json(listRunners()) : null;
+  const runner = getRunner(decodeURIComponent(rest[0]));
+  if (!runner) return notFound("Runner not found");
+  const [, sub, a, b, c] = rest;
+  if (sub === undefined) return method === "GET" ? json(runner) : null;
+  if (sub === "jobs" && method === "GET") {
+    if (a === undefined) return json(listJobs(runner.id));
+    const job = getJob(runner.id, decodeURIComponent(a));
+    return job ? json(job) : notFound("Job not found");
+  }
+  if (sub === "scan" && method === "POST") return json(queueJob(runner.id, "scan", {}), 201);
+  if (sub === "agents" && method === "POST") {
+    if (a !== undefined && b !== undefined && c === "stop") {
+      const spec = { room: decodeURIComponent(a), handle: decodeURIComponent(b) };
+      return json(queueJob(runner.id, "stop", spec), 201);
+    }
+    if (a !== undefined) return null;
+    const body = await readJson(req);
+    const handle = String(body.handle ?? "");
+    if (!/^[a-z0-9][a-z0-9_-]*$/.test(handle)) {
+      return json({ detail: "Handle must be a lowercase slug (a-z, 0-9, '-', '_') starting alphanumeric." }, 422);
+    }
+    if (!runner.herdr) {
+      return json({ detail: `herdr isn't running on ${runner.label}, so it can't start agents.` }, 422);
+    }
+    const framework = runner.frameworks.find((f) => f.id === body.framework);
+    if (!framework?.installed || !framework.launchable) {
+      return json({ detail: `${String(body.framework)} isn't an agent CLI ${runner.label} can start.` }, 422);
+    }
+    const spec = {
+      room: String(body.room ?? ""),
+      handle,
+      framework: framework.id,
+      cwd: typeof body.cwd === "string" ? body.cwd : runner.roots[0],
+    };
+    return json(
+      queueJob(runner.id, "launch", spec, typeof body.created_by === "string" ? body.created_by : null),
+      201,
+    );
+  }
+  return null;
+}
+
 export async function handleMock(req: Request): Promise<Response | null> {
   const { pathname, searchParams } = new URL(req.url);
   const method = req.method.toUpperCase();
@@ -146,6 +200,9 @@ export async function handleMock(req: Request): Promise<Response | null> {
     if (rest.length === 1) return json(BACKEND_METRICS);
     return notFound("unknown observability route (mock)");
   }
+
+  // ── /api/runners ────────────────────────────────────────────────────────────
+  if (rest[0] === "runners") return handleRunners(req, method, rest.slice(1));
 
   // ── /health ─────────────────────────────────────────────────────────────────
   if (rest[0] === "health")
@@ -413,8 +470,31 @@ export async function handleMock(req: Request): Promise<Response | null> {
                 .split(",")
                 .map((s) => s.trim())
                 .filter(Boolean) ?? [],
+            runner: runnerAgentOf(roomName, m.key.slice(7))?.runner ?? null,
+            framework: runnerAgentOf(roomName, m.key.slice(7))?.framework ?? null,
           };
         });
+      // An agent started from the app is registered by the hub; the fixtures
+      // don't carry its manifest, so it is listed from the machine instead.
+      const listed = new Set(agents.map((a) => a.handle));
+      for (const l of launchedHandles(roomName)) {
+        if (listed.has(l.handle)) continue;
+        agents.push({
+          handle: l.handle,
+          adapter: "claude_code",
+          kind: null,
+          description: "",
+          cwd: null,
+          owner: "julia",
+          team: null,
+          allow_from: [],
+          a2a_card: null,
+          a2a_endpoint: null,
+          a2a_skills: [],
+          runner: l.runner,
+          framework: l.framework,
+        });
+      }
       return json(agents);
     }
 
@@ -511,7 +591,9 @@ export async function handleMock(req: Request): Promise<Response | null> {
     case "sessions": {
       // Presence: a room's fixture may name resident members (there is no SLIM
       // node here to report them), which the board projects into resident rows.
-      if (sub[1] === "members" && method === "GET") return json({ members: fx.presence ?? [] });
+      if (sub[1] === "members" && method === "GET") {
+        return json({ members: fx.presence ?? [], floors: fx.floors ?? [] });
+      }
       return null;
     }
 

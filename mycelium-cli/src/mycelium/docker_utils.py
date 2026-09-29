@@ -73,6 +73,7 @@ LOCAL_ONLY_FIELDS: dict[str, str] = {
     "rooms.active": "the room this shell is scoped to",
     "herdr.autowake": "CLI-side wake layer; the backend is herdr-blind",
     "herdr.wake_timeout_ms": "CLI-side wake layer; the backend is herdr-blind",
+    "swarm.agent": "the agent CLI this machine's `swarm` starts in herdr",
     "adapters": "registered agent-framework adapters, launched by the CLI",
     "login.issuer": "client half of auth: who this machine logs in against",
     "login.client_id": "client half of auth",

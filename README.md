@@ -90,10 +90,28 @@ mycelium board        # what needs you, who has what, what the tools say
 
 ## Quick Start
 
+There are two ways to install Mycelium.
+
+### On a Mac: the app (recommended)
+
+**[Download Mycelium for Mac](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg)**
+(Apple silicon, macOS 13+). Drag it into Applications and open it. It runs a
+hub on your Mac, or joins your team's, with no Docker and no terminal, and
+starts your coding agents in [herdr](https://herdr.dev) when you ask. It
+updates itself when a new release is out.
+
+<p align="center">
+  <img src="docs/desktop-onboarding.png" alt="Mycelium for Mac, first screen" width="640">
+</p>
+
+More in [The Mac App](https://mycelium-io.github.io/mycelium/#desktop).
+
+### On Linux, a server, or from a terminal: the CLI
+
 You'll need **Docker**, an **LLM API key** (agents can't negotiate without
 one), and **at least one agent runtime** (Claude Code).
 
-**Onboard your agent.** The fastest setup is to let an agent do it — paste
+**Onboard your agent.** The fastest setup is to let an agent do it. Paste
 this prompt into Claude Code (or any agent runtime with a shell):
 
 ```text
@@ -170,7 +188,7 @@ Repo layout:
 ```
 .mycelium/            Memory storage (rooms are folders, memories are markdown files)
 mycelium-cli/         CLI + adapters
-fastapi-backend/      FastAPI moderator + engines (aligner, synthesizer, hello)
+fastapi-backend/      FastAPI moderator + engines (aligner, synthesizer, hello, persona, conductor)
 mycelium-client/      Generated typed OpenAPI client
 mycelium-frontend/    Next.js UI
 contracts/            Frozen JSON contracts shared across components

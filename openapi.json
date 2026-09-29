@@ -1520,6 +1520,579 @@
         }
       }
     },
+    "/api/rooms/{room_name}/swarms": {
+      "post": {
+        "tags": [
+          "swarms"
+        ],
+        "summary": "Start Swarm",
+        "description": "Start a team of workers on a task in this room and return where to watch it.",
+        "operationId": "start_swarm_api_rooms__room_name__swarms_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwarmCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwarmRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runners": {
+      "get": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "List Runners",
+        "description": "Every machine heard from recently, connected ones first (a verified caller's own only).",
+        "operationId": "list_runners_api_runners_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RunnerRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Runners Api Runners Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Runner Hello",
+        "description": "A runner dialing in, or its heartbeat: what it found on its machine, and what it runs.",
+        "operationId": "runner_hello_api_runners_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerHello"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runners/{runner_id}": {
+      "delete": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Runner Goodbye",
+        "description": "A runner going away; its agents stay defined in their rooms.",
+        "operationId": "runner_goodbye_api_runners__runner_id__delete",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Get Runner",
+        "operationId": "get_runner_api_runners__runner_id__get",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runners/{runner_id}/jobs/next": {
+      "get": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Next Job",
+        "description": "The runner's long-poll: the next job to do, or 204 when none arrived in time.",
+        "operationId": "next_job_api_runners__runner_id__jobs_next_get",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          },
+          {
+            "name": "timeout",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 30.0,
+              "minimum": 0.0,
+              "default": 25.0,
+              "title": "Timeout"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RunnerJobRead"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Next Job Api Runners  Runner Id  Jobs Next Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runners/{runner_id}/jobs/{job_id}": {
+      "patch": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Report Job",
+        "description": "The runner saying how a job went.",
+        "operationId": "report_job_api_runners__runner_id__jobs__job_id__patch",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerJobReport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerJobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Get Job",
+        "operationId": "get_job_api_runners__runner_id__jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerJobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runners/{runner_id}/jobs": {
+      "get": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "List Jobs",
+        "description": "A runner's recent jobs, newest first.",
+        "operationId": "list_jobs_api_runners__runner_id__jobs_get",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RunnerJobRead"
+                  },
+                  "title": "Response List Jobs Api Runners  Runner Id  Jobs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runners/{runner_id}/scan": {
+      "post": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Rescan",
+        "description": "Ask a runner to look for agent CLIs again; its next heartbeat carries what it found.",
+        "operationId": "rescan_api_runners__runner_id__scan_post",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerJobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runners/{runner_id}/agents": {
+      "post": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Launch Agent",
+        "description": "Define an agent in a room and start it on this runner's machine.\n\nAn agent this runner started before is started again (with new notes when\ninstructions are given); a handle that names any other agent is refused.\nThe runner asks the person at its machine before it starts it.",
+        "operationId": "launch_agent_api_runners__runner_id__agents_post",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerAgentLaunch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerJobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runners/{runner_id}/agents/{room_name}/{handle}/stop": {
+      "post": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Stop Agent",
+        "description": "Stop an agent this runner started. It stays defined in the room, to start again.",
+        "operationId": "stop_agent_api_runners__runner_id__agents__room_name___handle__stop_post",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          },
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Handle"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerJobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/episodes": {
       "get": {
         "tags": [
@@ -4086,6 +4659,28 @@
             },
             "type": "array",
             "title": "A2A Skills"
+          },
+          "runner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runner"
+          },
+          "framework": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Framework"
           }
         },
         "type": "object",
@@ -4114,6 +4709,12 @@
             "title": "Ttl Minutes",
             "description": "Minutes the claim holds without a renewal before it drains",
             "default": 30
+          },
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "description": "Take the row even while it waits on an unresolved dependency (only refused when the room's dependency gate is on)",
+            "default": false
           }
         },
         "type": "object",
@@ -4398,6 +4999,48 @@
             "title": "Updated By",
             "default": ""
           },
+          "within": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Within"
+          },
+          "flow": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow"
+          },
+          "trace": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Trace"
+          },
+          "current_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Step"
+          },
           "messages": {
             "items": {
               "$ref": "#/components/schemas/L9EnvelopeRead"
@@ -4549,6 +5192,48 @@
             "type": "string",
             "title": "Updated By",
             "default": ""
+          },
+          "within": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Within"
+          },
+          "flow": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow"
+          },
+          "trace": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Trace"
+          },
+          "current_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Step"
           }
         },
         "type": "object",
@@ -4688,6 +5373,74 @@
         ],
         "title": "EventStatusUpdate",
         "description": "Body for PATCH /rooms/{name}/messages/{id} \u2014 transition an event's status."
+      },
+      "FrameworkRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "command": {
+            "type": "string",
+            "title": "Command"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "installed": {
+            "type": "boolean",
+            "title": "Installed",
+            "default": false
+          },
+          "launchable": {
+            "type": "boolean",
+            "title": "Launchable",
+            "description": "herdr can start it in a pane",
+            "default": false
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "command"
+        ],
+        "title": "FrameworkRead",
+        "description": "One agent CLI a runner knows about, found on its machine or not."
       },
       "HTTPValidationError": {
         "properties": {
@@ -6038,6 +6791,448 @@
         "title": "RoomUpdate",
         "description": "What a caller may change about a room after it exists."
       },
+      "RunnerAgentLaunch": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Room"
+          },
+          "handle": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Handle"
+          },
+          "framework": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Framework",
+            "description": "A framework id from the runner's scan"
+          },
+          "instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions",
+            "description": "How the agent should work; saved as its notes, which it reads first"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "cwd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cwd",
+            "description": "Folder to start it in; inside one of the roots"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "handle",
+          "framework"
+        ],
+        "title": "RunnerAgentLaunch",
+        "description": "Start an agent on a runner's machine, as a member of a room."
+      },
+      "RunnerAgentRead": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "framework": {
+            "type": "string",
+            "title": "Framework"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "starting",
+              "running",
+              "idle",
+              "working",
+              "blocked",
+              "stopped",
+              "failed"
+            ],
+            "title": "Status",
+            "default": "starting"
+          },
+          "pane": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pane"
+          },
+          "cwd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cwd"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle",
+          "room",
+          "framework",
+          "started_at"
+        ],
+        "title": "RunnerAgentRead",
+        "description": "An agent a runner started in a herdr pane and is keeping track of."
+      },
+      "RunnerHello": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          },
+          "platform": {
+            "type": "string",
+            "title": "Platform",
+            "default": ""
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "default": ""
+          },
+          "herdr": {
+            "type": "boolean",
+            "title": "Herdr",
+            "default": false
+          },
+          "roots": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roots"
+          },
+          "frameworks": {
+            "items": {
+              "$ref": "#/components/schemas/FrameworkRead"
+            },
+            "type": "array",
+            "title": "Frameworks"
+          },
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/RunnerAgentRead"
+            },
+            "type": "array",
+            "title": "Agents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "RunnerHello",
+        "description": "What a runner says about itself when it dials in, and on every heartbeat."
+      },
+      "RunnerJobRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "runner": {
+            "type": "string",
+            "title": "Runner"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "launch",
+              "stop",
+              "scan",
+              "swarm"
+            ],
+            "title": "Kind"
+          },
+          "spec": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Spec"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "waiting",
+              "done",
+              "failed"
+            ],
+            "title": "Status",
+            "default": "queued"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "runner",
+          "kind",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RunnerJobRead",
+        "description": "Something the hub asked a runner to do, and how it went."
+      },
+      "RunnerJobReport": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "waiting",
+              "done",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "RunnerJobReport",
+        "description": "A runner reporting on a job it took."
+      },
+      "RunnerRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          },
+          "platform": {
+            "type": "string",
+            "title": "Platform",
+            "default": ""
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "default": ""
+          },
+          "herdr": {
+            "type": "boolean",
+            "title": "Herdr",
+            "default": false
+          },
+          "roots": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roots"
+          },
+          "frameworks": {
+            "items": {
+              "$ref": "#/components/schemas/FrameworkRead"
+            },
+            "type": "array",
+            "title": "Frameworks"
+          },
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/RunnerAgentRead"
+            },
+            "type": "array",
+            "title": "Agents"
+          },
+          "connected": {
+            "type": "boolean",
+            "title": "Connected"
+          },
+          "last_seen": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Seen"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "connected",
+          "last_seen",
+          "started_at"
+        ],
+        "title": "RunnerRead",
+        "description": "A runner as the app sees it."
+      },
       "SearchHitRead": {
         "properties": {
           "type": {
@@ -6394,6 +7589,148 @@
           "created_at"
         ],
         "title": "SubscriptionRead"
+      },
+      "SwarmCreate": {
+        "properties": {
+          "task": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Task",
+            "description": "What the team works on"
+          },
+          "size": {
+            "type": "integer",
+            "maximum": 8.0,
+            "minimum": 2.0,
+            "title": "Size",
+            "description": "How many workers",
+            "default": 3
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo",
+            "description": "Repository the team works on, cloned on the hub: an https, ssh or git@ URL, or an absolute path on the hub (default: a new, empty one)"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By",
+            "description": "Who is starting it"
+          },
+          "kickoff": {
+            "type": "boolean",
+            "title": "Kickoff",
+            "description": "Post the kickoff now. A caller that wants to be listening first (the CLI's live view) sets this false and posts it itself",
+            "default": true
+          },
+          "runner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runner",
+            "description": "Run the members on this runner's machine, in a herdr workspace, instead of as workers on the hub. The runner posts the kickoff once they are up"
+          },
+          "framework": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Framework",
+            "description": "With runner: the agent CLI each member runs (default: the first found)"
+          },
+          "cwd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cwd",
+            "description": "With runner: the folder the members start in"
+          },
+          "worktree": {
+            "type": "boolean",
+            "title": "Worktree",
+            "description": "With runner: a git worktree per member",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "task"
+        ],
+        "title": "SwarmCreate",
+        "description": "What a team should work on, and how big the team is."
+      },
+      "SwarmRead": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "episode": {
+            "type": "string",
+            "title": "Episode"
+          },
+          "members": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Members"
+          },
+          "job": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job",
+            "description": "With a runner: the job starting the members"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "key",
+          "episode",
+          "members"
+        ],
+        "title": "SwarmRead",
+        "description": "Where the swarm is running: its room, its task, and the task's thread."
       },
       "TaskCreate": {
         "properties": {

@@ -979,7 +979,10 @@ def doctor(
     mode: str = typer.Option(
         "auto",
         "--mode",
-        help="Check scope: auto (detect from api_url), hub (all checks), or spoke (skip local-only checks)",
+        help=(
+            "Check scope: auto (detect from api_url), hub (all checks), spoke (skip "
+            "local-only checks), or desktop (what the desktop app runs)"
+        ),
     ),
 ) -> None:
     """
@@ -1016,15 +1019,17 @@ def doctor(
 
         if mode == "auto":
             local = _is_local_backend(api_url)
-        elif mode == "hub":
+        elif mode in ("hub", "desktop"):
             local = True
         elif mode == "spoke":
             local = False
         else:
-            typer.secho(f"Unknown --mode '{mode}'. Use auto, hub, or spoke.", fg=typer.colors.RED)
+            typer.secho(
+                f"Unknown --mode '{mode}'. Use auto, hub, spoke, or desktop.", fg=typer.colors.RED
+            )
             raise typer.Exit(1)
 
-        detected_mode = "hub" if local else "spoke"
+        detected_mode = mode if mode == "desktop" else "hub" if local else "spoke"
 
         # ── Build check list ──────────────────────────────────────────
         # Checks are grouped into sections for display but we collect
@@ -1065,6 +1070,14 @@ def doctor(
                 ],
             ),
         ]
+        if mode == "desktop":
+            # The desktop app runs no containers and needs no .env: check
+            # what it does run instead.
+            from mycelium.desktop.checks import desktop_checks, pi, settings
+
+            sections = desktop_checks()
+            if (settings() or {}).get("mode") != "client":
+                sections.append(("Models", [pi(), _check_llm_connectivity()]))
         results = [r for _, checks in sections for r in checks]
 
         if json_output:
@@ -1075,13 +1088,15 @@ def doctor(
                 "api_url": api_url,
                 "checks": [
                     {
+                        "section": title,
                         "name": r.name,
                         "status": r.status,
                         "message": r.message,
                         "details": r.details,
                         "fixable": r.fix_fn is not None,
                     }
-                    for r in results
+                    for title, checks in sections
+                    for r in checks
                 ],
             }
             typer.echo(json.dumps(output, indent=2))

@@ -2,7 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { describe, expect, it } from "vitest";
-import { classify, DEFAULT_SETTINGS, isAdmitted, isAlert, roomLevel } from "@/lib/notifications";
+import { classify, DEFAULT_SETTINGS, isAdmitted, isAlert, roomLevel, roomOfPath } from "@/lib/notifications";
 
 const CREATED = "2026-08-15T10:00:00.000000+00:00";
 
@@ -39,7 +39,7 @@ describe("classify", () => {
     expect(n).toMatchObject({ kind: "direct", needsMe: true });
   });
 
-  it("classifies a converged l9_commit as a needs-me consensus notification", () => {
+  it("rings a converged l9_commit only for the people who were in it", () => {
     const raw = {
       room_name: "sprint",
       sender_handle: "aligner",
@@ -47,14 +47,19 @@ describe("classify", () => {
       created_at: CREATED,
       content: JSON.stringify({
         content: "consensus reached",
-        l9: { header: { subkind: "converged" } },
+        l9: {
+          header: {
+            subkind: "converged",
+            participants: { actors: [{ id: "aligner" }, { id: "urn:agent:bob" }] },
+          },
+        },
       }),
     };
-    const n = classify(raw, "bob");
-    expect(n).toMatchObject({ kind: "consensus", needsMe: true, summary: "consensus reached" });
+    expect(classify(raw, "bob")).toMatchObject({ kind: "consensus", needsMe: true, summary: "consensus reached" });
+    expect(classify(raw, "carol")).toMatchObject({ kind: "consensus", needsMe: false });
   });
 
-  it("classifies l9_knowledge as a needs-me knowledge notification", () => {
+  it("badges a room for an l9_knowledge update but never rings", () => {
     const raw = {
       room_name: "sprint",
       sender_handle: "system",
@@ -63,7 +68,13 @@ describe("classify", () => {
       content: JSON.stringify({ content: "plan updated → plan/tasks.md" }),
     };
     const n = classify(raw, "bob");
-    expect(n).toMatchObject({ kind: "knowledge", needsMe: true });
+    expect(n).toMatchObject({ kind: "knowledge", needsMe: false });
+  });
+
+  it("names the room a path shows", () => {
+    expect(roomOfPath("/room/atlas-migration")).toBe("atlas-migration");
+    expect(roomOfPath("/room/a%20b/board")).toBe("a b");
+    expect(roomOfPath("/machines")).toBeNull();
   });
 
   it("classifies a coordination_join as ambient (not needs-me)", () => {

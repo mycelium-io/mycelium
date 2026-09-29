@@ -53,6 +53,7 @@ from mycelium.board.model import (
     PRIORITIES,
     STATUSES,
     THREAD_REFUSALS,
+    WAITING_FIELD,
     format_age,
 )
 from mycelium.board.schema import groupable_fields
@@ -316,6 +317,9 @@ def _row_lines(item: LiveItem, now: datetime) -> Text:
         meta.append(f"  {pr}", style="dim")
     if blocked_by := item.strings("blocked_by"):
         meta.append(f"  waiting on {', '.join(blocked_by)}", style="red")
+    if waiting := item.strings(WAITING_FIELD):
+        # What the board itself still has to finish first, read off those rows.
+        meta.append(f"  after {', '.join(waiting)}", style="yellow")
     if choices := item.strings("choices"):
         meta.append(f"  [{'] ['.join(choices)}]", style="cyan")
     meta.append(f"  {format_age(item.age_minutes(now))}", style="dim")
@@ -534,9 +538,19 @@ def board_claim(
     ttl: int = typer.Option(
         assignment.DEFAULT_TTL_MINUTES, "--ttl", help="Minutes the claim holds without a renewal"
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Take the row even while it waits on an unresolved dependency",
+    ),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
 ) -> None:
-    """Claim a row, as a lease rather than a fact."""
+    """Claim a row, as a lease rather than a fact.
+
+    A row that depends on rows not yet resolved is shown waiting on them, and a
+    room whose dependency gate is on refuses the claim until they are; ``--force``
+    takes it anyway.
+    """
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
     item = _row(name, row_id)
@@ -550,7 +564,15 @@ def board_claim(
         console.print(f"[yellow]·[/yellow] {row_id} can't be claimed — {refusal}")
         raise typer.Exit(1)
     handle = (to or cfg.get_current_identity()).lstrip("@")
-    _write_assignment(cfg, name, "claim", key=_assignment_key(item), handle=handle, ttl_minutes=ttl)
+    _write_assignment(
+        cfg,
+        name,
+        "claim",
+        key=_assignment_key(item),
+        handle=handle,
+        ttl_minutes=ttl,
+        force=force or None,
+    )
 
 
 @doc_ref(
@@ -714,6 +736,13 @@ def _write_assignment(cfg: MyceliumConfig, room: str, action: str, **body: Any) 
         raise typer.Exit(1) from e
     if resp.status_code == 409:
         detail = resp.json().get("detail", {})
+        waiting = detail.get(WAITING_FIELD) if isinstance(detail, dict) else None
+        if waiting:
+            console.print(
+                f"[yellow]·[/yellow] {payload.get('key')} still waits on {', '.join(waiting)}. "
+                "[dim]Resolve those first, or pass --force to take it anyway.[/dim]"
+            )
+            raise typer.Exit(1)
         held_by = detail.get("owner") if isinstance(detail, dict) else None
         console.print(
             f"[yellow]·[/yellow] {payload.get('key')} is already held by @{held_by}. "

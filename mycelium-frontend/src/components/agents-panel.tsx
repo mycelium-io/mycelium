@@ -3,28 +3,20 @@
 
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Check, ChevronDown, ChevronRight, Users } from "lucide-react";
-import { createEngine, registerA2aAgent, type EngineKind, type PresenceMember } from "@/lib/api";
-import { useNetworkStatus, useRoomRoster } from "@/lib/room-data";
-import { agentHandoffPrompt } from "@/lib/install";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, Plus, UserPlus, Users } from "lucide-react";
+import { inviteLink } from "@/lib/desktop";
+import { type PresenceMember, type RoomFloor } from "@/lib/api";
+import { floorLabel } from "@/lib/floors";
+import { useRoomRoster } from "@/lib/room-data";
+import { runnerName, useRunners } from "@/lib/runners";
+import { AddMemberDialog, type MemberKind } from "@/components/add-member-dialog";
 import { Button } from "@/components/ui/button";
-import { CopyAction } from "@/components/ui/copy-field";
-import { Input } from "@/components/ui/input";
 import { Monogram } from "@/components/ui/monogram";
 import { HerdrRam } from "@/components/ui/herdr-ram";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
-import { useCurrentUser } from "@/components/current-user";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 interface Props {
   roomName: string;
@@ -161,8 +153,10 @@ function MemberTooltipCard({
  * (muted for people, accent for agents).
  *
  * Engines (aligner / synthesizer / hello) are backend-owned, so their separate
- * invitation action is a pure manifest write. Coding-agent registration stays
- * CLI-driven because it has spoke-local side effects the hub cannot perform.
+ * invitation action is a pure manifest write. A coding agent needs something on
+ * the user's machine to start it: with a runner connected (`mycelium runner`)
+ * the app queues that start through the hub; without one, the setup is copied
+ * into an agent the user already has open.
  */
 export function AgentsPanel({
   roomName,
@@ -171,32 +165,23 @@ export function AgentsPanel({
   focusHandle = null,
   onFocusConsumed,
 }: Props) {
-  // People collapse to a facepile and the idle swarm folds away — both by default.
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(["people", "idle"]));
-  const [agentOpen, setAgentOpen] = useState(false);
-  const [engineOpen, setEngineOpen] = useState(false);
-  const [a2aOpen, setA2aOpen] = useState(false);
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const { principal } = useCurrentUser();
-  const { network } = useNetworkStatus();
-  const noSubscribe = () => () => {};
-  const hubUrl = useSyncExternalStore(
-    noSubscribe,
-    () => window.location.origin,
-    () => "<this-hub-url>",
-  );
+  const [addOpen, setAddOpen] = useState(false);
+  const [addKind, setAddKind] = useState<MemberKind>("machine");
 
   // Who's here, shared with the composer's `@` popover: agents from the room's
   // manifests, people from agent owners ∪ posters ∪ live presence ∪ you, and a
   // presence entry for whoever holds a SLIM socket or an `await` lease.
-  const { agents, people, presence, loading, refresh } = useRoomRoster(roomName);
+  const { agents, people, presence, floors, loading, refresh } = useRoomRoster(roomName);
+  const { runners } = useRunners();
+  const runnersById = useMemo(() => new Map(runners.map((r) => [r.id, r])), [runners]);
 
   useEffect(() => {
     if (!engineInvite) return;
     // One-shot: the parent asks specifically for an engine, rather than opening
     // the coding-agent handoff first.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setEngineOpen(true);
+    setAddKind("engine");
+    setAddOpen(true);
     onEngineInviteShown?.();
   }, [engineInvite, onEngineInviteShown]);
 
@@ -212,17 +197,10 @@ export function AgentsPanel({
     setHighlight(focusHandle);
     onFocusConsumed?.();
   }, [focusHandle, onFocusConsumed]);
-  // A highlighted row can live in a folded group (the idle swarm), so reveal
-  // every group first, then scroll once it has mounted.
-  useEffect(() => {
-    if (!highlight) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setCollapsedGroups(new Set());
-  }, [highlight]);
   useEffect(() => {
     if (!highlight) return;
     highlightRow.current?.scrollIntoView({ block: "center" });
-  }, [highlight, loading, collapsedGroups]);
+  }, [highlight, loading]);
 
   // Re-tick once a minute so the minute-granular "seen Xm ago" labels advance
   // without a refetch (matches the label resolution — no sub-minute churn).
@@ -261,110 +239,30 @@ export function AgentsPanel({
     ].filter((g) => g.agents.length > 0);
   }, [agents, presence]);
 
-  const toggleGroup = (id: string) =>
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-border bg-paper px-4 py-3">
-        <span className="text-label font-semibold text-text">Members</span>
+      <div className="flex h-8 flex-shrink-0 items-center gap-1 px-3">
         <span className="text-micro tabular text-muted-foreground">
-          {people.length + agents.length}
+          {people.length + agents.length} {people.length + agents.length === 1 ? "member" : "members"}
         </span>
-        <Popover open={inviteOpen} onOpenChange={setInviteOpen}>
-          <PopoverTrigger render={<Button variant="secondary" size="sm" className="ml-auto" />}>
-            Invite <ChevronDown className="size-3" />
-          </PopoverTrigger>
-          <PopoverContent className="w-64 p-1">
-            <InviteOption
-              label="Coding agent"
-              hint="Copy room-aware setup"
-              onClick={() => {
-                setInviteOpen(false);
-                setAgentOpen(true);
-              }}
-            />
-            <InviteOption
-              label="Engine"
-              hint="Add a room capability"
-              onClick={() => {
-                setInviteOpen(false);
-                setEngineOpen(true);
-              }}
-            />
-            <InviteOption
-              label="A2A agent"
-              hint="Connect an external agent service"
-              onClick={() => {
-                setInviteOpen(false);
-                setA2aOpen(true);
-              }}
-            />
-          </PopoverContent>
-        </Popover>
-        <Dialog open={agentOpen} onOpenChange={setAgentOpen}>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="text-ui font-semibold text-text">
-                Invite a coding agent
-              </DialogTitle>
-              <DialogDescription className="text-label text-muted-foreground leading-relaxed">
-                Paste this into the coding agent you already have open. It connects to this
-                hub, registers in this room, and starts by reading the board.
-              </DialogDescription>
-            </DialogHeader>
-            <CopyAction
-              value={agentHandoffPrompt({
-                hubUrl,
-                roomName,
-                principal,
-                authRequired: network?.auth?.enabled ?? null,
-              })}
-              label="Copy setup"
-              className="mt-4 w-fit"
-            />
-          </DialogContent>
-        </Dialog>
-        <Dialog open={engineOpen} onOpenChange={setEngineOpen}>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="text-ui font-semibold text-text">Invite an engine</DialogTitle>
-              <DialogDescription className="text-label text-muted-foreground leading-relaxed">
-                Engines are backend-owned room capabilities, not local coding-agent sessions.
-              </DialogDescription>
-            </DialogHeader>
-            <EngineInviteForm
-              roomName={roomName}
-              createdBy={principal}
-              onCreated={() => {
-                refresh();
-                setEngineOpen(false);
-              }}
-            />
-          </DialogContent>
-        </Dialog>
-        <Dialog open={a2aOpen} onOpenChange={setA2aOpen}>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="text-ui font-semibold text-text">Connect an A2A agent</DialogTitle>
-              <DialogDescription className="text-label text-muted-foreground leading-relaxed">
-                Connect an external Agent2Agent service to this room.
-              </DialogDescription>
-            </DialogHeader>
-            <A2aAgentForm
-              roomName={roomName}
-              onCreated={() => {
-                refresh();
-                setA2aOpen(false);
-              }}
-            />
-          </DialogContent>
-        </Dialog>
+        <InviteButton roomName={roomName} />
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={() => {
+            setAddKind("machine");
+            setAddOpen(true);
+          }}
+        >
+          <Plus className="size-3" /> Add
+        </Button>
+        <AddMemberDialog
+          open={addOpen}
+          onOpenChange={setAddOpen}
+          roomName={roomName}
+          initialKind={addKind}
+          onAdded={refresh}
+        />
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -383,7 +281,7 @@ export function AgentsPanel({
             size="sm"
             icon={Users}
             title="No members yet"
-            description="Agents are registered from the CLI; people appear once they own an agent or post."
+            description="Start an agent on your machine from Invite, or register one from the CLI. People appear once they own an agent or post."
             action={
               <code className="font-mono text-micro bg-surface px-1.5 py-0.5 text-accent border border-border rounded whitespace-nowrap">
                 mycelium agent create
@@ -392,64 +290,54 @@ export function AgentsPanel({
           />
         )}
 
-        {people.length > 0 && (() => {
-          const collapsed = collapsedGroups.has("people");
-          return (
-            <>
-              <SectionLabel
-                collapsible
-                collapsed={collapsed}
-                onToggle={() => toggleGroup("people")}
-                count={people.length}
-              >
-                People
-              </SectionLabel>
-              {collapsed ? (
-                <Facepile people={people} presence={presence} />
-              ) : (
-                people.map((p) => {
-                  const marked = highlight === p.handle;
-                  return (
-                    <PersonRow
-                      key={`person-${p.handle}`}
-                      person={p}
-                      memberPresence={presence.get(p.handle)}
-                      marked={marked}
-                      rowRef={marked ? highlightRow : undefined}
-                    />
-                  );
-                })
-              )}
-            </>
-          );
-        })()}
+        {/* One plain list under quiet labels: nothing folds, so every member
+            is where you look for them. */}
+        {people.length > 0 && (
+          <>
+            <SectionLabel count={people.length}>People</SectionLabel>
+            {people.map((p) => {
+              const marked = highlight === p.handle;
+              return (
+                <PersonRow
+                  key={`person-${p.handle}`}
+                  person={p}
+                  memberPresence={presence.get(p.handle)}
+                  floor={floors.get(p.handle)}
+                  marked={marked}
+                  rowRef={marked ? highlightRow : undefined}
+                />
+              );
+            })}
+          </>
+        )}
 
         {agentGroups.map((group) => {
-          const collapsed = collapsedGroups.has(group.id);
           // The owner the whole group shares, shown once in the header instead of
           // repeated down every row. Null when the group's owners differ.
           const owners = new Set(group.agents.map((a) => a.owner).filter(Boolean));
           const groupOwner = owners.size === 1 ? [...owners][0]! : null;
           return (
-            <div key={group.id}>
-              <SectionLabel
-                collapsible
-                collapsed={collapsed}
-                onToggle={() => toggleGroup(group.id)}
-                count={group.agents.length}
-                hint={groupOwner ? `@${groupOwner}` : undefined}
-              >
+            // The idle swarm stays listed, dimmed, rather than folded away.
+            <div key={group.id} className={group.id === "idle" ? "opacity-60" : undefined}>
+              <SectionLabel count={group.agents.length} hint={groupOwner ? `@${groupOwner}` : undefined}>
                 {group.label}
               </SectionLabel>
-              {!collapsed &&
-                group.agents.map((a) => {
+              {group.agents.map((a) => {
                   const marked = highlight === a.handle;
                   return (
                     <AgentRow
                       key={`agent-${a.handle}`}
                       agent={a}
                       groupOwner={groupOwner}
+                      // Named only on your own machines: another person's
+                      // computer isn't listed here, even by its id.
+                      machine={
+                        a.runner && runnersById.has(a.runner)
+                          ? runnerName(runnersById.get(a.runner), a.runner)
+                          : null
+                      }
                       memberPresence={presence.get(a.handle.toLowerCase())}
+                      floor={floors.get(a.handle.toLowerCase())}
                       marked={marked}
                       rowRef={marked ? highlightRow : undefined}
                     />
@@ -463,122 +351,77 @@ export function AgentsPanel({
   );
 }
 
-function InviteOption({ label, hint, onClick }: { label: string; hint: string; onClick: () => void }) {
+/** Copy a link that invites a person into this room: it opens the desktop app
+ *  when they have it, and offers the download or the browser when they don't. */
+function InviteButton({ roomName }: { roomName: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(inviteLink(window.location.origin, roomName));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Clipboard blocked: nothing to undo, the button just doesn't confirm.
+    }
+  };
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors hover:bg-hairline"
-    >
-      <span className="text-label font-medium text-text">{label}</span>
-      <span className="text-micro text-muted-foreground">{hint}</span>
-    </button>
+    <Tooltip content="Copy a link that invites someone to this room">
+      <Button variant="ghost" size="xs" className="ml-auto" onClick={copy}>
+        {copied ? <Check className="size-3 text-green" /> : <UserPlus className="size-3" />}
+        {copied ? "Copied" : "Invite"}
+      </Button>
+    </Tooltip>
   );
 }
 
-/** Small uppercase divider between roster groups, with a count. When `onToggle`
- *  is given it becomes a collapse control with a chevron — how the idle swarm is
- *  folded away by default. */
+/** A quiet label over a roster group, as an editor's panel draws one: sentence
+ *  case and a count, nothing to fold. */
 function SectionLabel({
   children,
   count,
   hint,
-  collapsible = false,
-  collapsed = false,
-  onToggle,
 }: {
   children: React.ReactNode;
   count?: number;
-  /** A normal-case aside after the count, e.g. the owner a whole group shares. */
+  /** An aside after the count, e.g. the owner a whole group shares. */
   hint?: string;
-  collapsible?: boolean;
-  collapsed?: boolean;
-  onToggle?: () => void;
 }) {
-  const inner = (
-    <>
-      {collapsible && (
-        <ChevronRight
-          className={`size-3 transition-transform ${collapsed ? "" : "rotate-90"}`}
-        />
-      )}
-      <span>{children}</span>
-      {count !== undefined && <span className="font-normal tabular">{count}</span>}
+  return (
+    <div className="flex h-7 w-full items-end gap-1.5 px-3 pb-1 text-micro font-medium text-faint">
+      <span className="flex-shrink-0 whitespace-nowrap">{children}</span>
+      {count !== undefined && <span className="flex-shrink-0 font-normal tabular">{count}</span>}
       {hint && (
-        <span className="ml-auto min-w-0 truncate font-mono text-micro font-normal normal-case tracking-normal text-faint">
+        <span className="ml-auto min-w-0 truncate font-mono text-micro font-normal text-faint">
           {hint}
         </span>
       )}
-    </>
-  );
-  const cls =
-    "flex w-full items-center gap-2 px-3 pt-4 pb-1 text-micro font-semibold uppercase tracking-wide text-faint";
-  return collapsible ? (
-    <button type="button" onClick={onToggle} className={`${cls} text-left hover:text-muted-foreground`}>
-      {inner}
-    </button>
-  ) : (
-    <div className={cls}>{inner}</div>
+    </div>
   );
 }
 
 type AgentSummary = ReturnType<typeof useRoomRoster>["agents"][number];
 type RosterPerson = ReturnType<typeof useRoomRoster>["people"][number];
 
-/** People as an overlapping avatar stack: who's around, at a glance, in one row
- *  instead of a dozen. Live/awaiting rides each face as its halo; the rest is a
- *  hover tooltip. Overflow past `max` collapses to a `+N` disc. */
-function Facepile({
-  people,
-  presence,
-  max = 16,
-}: {
-  people: RosterPerson[];
-  presence: Map<string, PresenceMember>;
-  max?: number;
-}) {
-  const shown = people.slice(0, max);
-  const extra = people.length - shown.length;
-  return (
-    <div className="flex flex-wrap items-center gap-y-1.5 px-3 py-2">
-      {shown.map((p) => (
-        <Tooltip key={p.handle} content={`@${p.handle}${p.you ? " (you)" : ""}${p.owns ? " · owner" : ""}`}>
-          <div className="-ml-1.5 first:ml-0">
-            <Monogram
-              handle={p.handle}
-              color={p.you ? "var(--accent)" : "var(--avatar-neutral)"}
-              className="size-6 text-[9px] ring-2 ring-paper"
-              presence={presence.get(p.handle)?.kind}
-              status={presence.get(p.handle)?.status}
-              wakePending={presence.get(p.handle)?.wake_pending}
-            />
-          </div>
-        </Tooltip>
-      ))}
-      {extra > 0 && (
-        <div className="-ml-1.5 flex size-6 items-center justify-center rounded-full border border-border bg-surface text-[9px] font-medium text-muted-foreground ring-2 ring-paper">
-          +{extra}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** One person, one line — the expanded form of the facepile, matching the agent
- *  rows' density. Owns/posted/teams live in the hover tooltip. */
+/** One person, one line, at the agent rows' density. Owns/posted/teams live in
+ *  the hover tooltip. */
 function PersonRow({
   person: p,
   memberPresence,
+  floor,
   marked,
   rowRef,
 }: {
   person: RosterPerson;
   memberPresence?: PresenceMember;
+  floor?: RoomFloor;
   marked: boolean;
   rowRef?: React.Ref<HTMLDivElement>;
 }) {
-  const meta =
-    memberPresence && isHerdr(memberPresence)
+  // Whose turn it is beats how they are hosted: a person the floor was given to
+  // is being waited on, which is the one thing the room needs to know.
+  const meta = floor
+    ? floorLabel(p.handle, floor)
+    : memberPresence && isHerdr(memberPresence)
       ? (memberPresence.status ?? "alive")
       : memberPresence?.kind === "slim"
         ? "live"
@@ -591,6 +434,7 @@ function PersonRow({
       className="w-72 max-w-72 p-3"
       content={
         <MemberTooltipCard handle={p.handle} color="var(--avatar-neutral)" presence={memberPresence}>
+          <DetailRow label="floor" value={floor ? floorLabel(p.handle, floor) : undefined} color="var(--accent)" />
           <DetailRow label="role" value={p.owns ? "owner" : "posted here"} />
           <DetailRow label="teams" value={p.teams.length > 0 ? p.teams.join(", ") : undefined} />
           {p.you && <DetailRow label="you" value="acting as this handle" color="var(--accent)" />}
@@ -604,9 +448,11 @@ function PersonRow({
         }`}
       >
         <Monogram handle={p.handle} color="var(--avatar-neutral)" className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence />
-        <span className="truncate font-mono text-label text-text">@{p.handle}</span>
+        <span className="shrink-0 font-mono text-label text-text">@{p.handle}</span>
         {p.you && <span className="flex-shrink-0 text-micro font-medium text-accent">you</span>}
-        {meta && <span className="ml-auto flex-shrink-0 text-micro text-faint">{meta}</span>}
+        {/* The floor's label names a task, which can be long: it is what gives
+            way, never the handle it is about (the tooltip carries it whole). */}
+        {meta && <span className="ml-auto min-w-0 truncate text-micro text-faint">{meta}</span>}
       </div>
     </Tooltip>
   );
@@ -615,12 +461,21 @@ function PersonRow({
 /** The one terse thing to show at the end of a compact row: what an engine is,
  *  or how present a worker is. The avatar halo already carries live/awaiting, so
  *  this stays short — the full story is in the row's hover tooltip. */
-function rowMeta(a: AgentSummary, presence?: PresenceMember): string | null {
+function rowMeta(
+  a: AgentSummary,
+  presence?: PresenceMember,
+  floor?: RoomFloor,
+  machine?: string | null,
+): string | null {
+  // Whose turn it is beats what the row is: a member the floor was given to is
+  // being waited on, and that reads the same for a persona as for a session.
+  if (floor) return floorLabel(a.handle, floor);
   if (a.adapter === "engine") return a.kind ?? "engine";
   if (a.adapter === "a2a") return null; // the a2a badge already labels it
   if (presence && isHerdr(presence)) return presence.status ?? "alive";
   if (presence?.kind === "slim") return "live";
   if (presence?.kind === "lease") return "awaiting";
+  if (machine) return `on ${machine}`;
   return null;
 }
 
@@ -636,17 +491,22 @@ function AgentRow({
   agent: a,
   groupOwner,
   memberPresence,
+  floor,
   marked,
   rowRef,
+  machine = null,
 }: {
   agent: AgentSummary;
   /** The owner shared by the row's group, if any — omitted from the row itself. */
   groupOwner: string | null;
   memberPresence?: PresenceMember;
+  floor?: RoomFloor;
   marked: boolean;
   rowRef?: React.Ref<HTMLDivElement>;
+  /** The machine the app started this agent on, by name. */
+  machine?: string | null;
 }) {
-  const meta = rowMeta(a, memberPresence);
+  const meta = rowMeta(a, memberPresence, floor, machine);
   const oddOwner = a.owner && a.owner !== groupOwner ? a.owner : null;
   const adapter = a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter;
   return (
@@ -655,9 +515,14 @@ function AgentRow({
       className="w-72 max-w-72 p-3"
       content={
         <MemberTooltipCard handle={a.handle} presence={memberPresence}>
+          <DetailRow label="floor" value={floor ? floorLabel(a.handle, floor) : undefined} color="var(--accent)" />
           <DetailRow label="owner" value={a.owner ? `@${a.owner}` : undefined} />
           <DetailRow label="team" value={a.team ?? undefined} />
           <DetailRow label="adapter" value={adapter} />
+          <DetailRow
+            label="machine"
+            value={machine ? `${machine}${a.framework ? ` · ${a.framework}` : ""}` : undefined}
+          />
           <DetailRow
             label="skills"
             value={a.adapter === "a2a" && a.a2a_skills?.length ? a.a2a_skills.join(", ") : undefined}
@@ -673,7 +538,7 @@ function AgentRow({
         }`}
       >
         <Monogram handle={a.handle} className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence />
-        <span className="truncate font-mono text-label text-text">{a.handle}</span>
+        <span className="shrink-0 font-mono text-label text-text">{a.handle}</span>
         {a.adapter === "a2a" && (
           <span className="inline-flex flex-shrink-0 items-center rounded border border-accent/30 bg-accent-soft/40 px-1 text-[9px] font-medium leading-tight text-accent">
             a2a
@@ -682,217 +547,9 @@ function AgentRow({
         {oddOwner && (
           <span className="truncate font-mono text-micro text-faint">@{oddOwner}</span>
         )}
-        {meta && <span className="ml-auto flex-shrink-0 text-micro text-faint">{meta}</span>}
+        {meta && <span className="ml-auto min-w-0 truncate text-micro text-faint">{meta}</span>}
       </div>
     </Tooltip>
   );
 }
 
-const ENGINE_KINDS: { kind: EngineKind; blurb: string }[] = [
-  { kind: "aligner", blurb: "Mediates negotiation to consensus." },
-  { kind: "synthesizer", blurb: "Distills the room to memory." },
-  { kind: "hello", blurb: "Answers once, writes nothing, and proves the path." },
-];
-
-/** Invite a first-party cognition engine into the room — a native manifest
- *  write over the backend (no CLI, no machine-local side effects). */
-function EngineInviteForm({
-  roomName,
-  createdBy,
-  onCreated,
-}: {
-  roomName: string;
-  createdBy: string | null;
-  onCreated: () => void;
-}) {
-  const [kind, setKind] = useState<EngineKind>("aligner");
-  // The handle defaults to the kind name (the common case: one aligner named
-  // "aligner"). It tracks the kind until the user edits it, then it's theirs.
-  const [handle, setHandle] = useState<EngineKind | string>("aligner");
-  const [handleTouched, setHandleTouched] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const trimmed = handle.trim().replace(/^@/, "");
-  const canSubmit = trimmed.length > 0 && !submitting;
-
-  const submit = async () => {
-    if (!canSubmit) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await createEngine(roomName, {
-        handle: trimmed,
-        kind,
-        description: "",
-        created_by: createdBy || "web-ui",
-      });
-      onCreated();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to register engine");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="mt-2 space-y-4">
-      <div className="space-y-1.5" role="radiogroup" aria-label="Engine kind">
-        {ENGINE_KINDS.map(({ kind: k, blurb }) => (
-          <button
-            key={k}
-            type="button"
-            role="radio"
-            aria-checked={kind === k}
-            onClick={() => {
-              setKind(k);
-              if (!handleTouched) setHandle(k);
-            }}
-            className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
-              kind === k ? "border-accent bg-accent/10" : "border-border hover:bg-hairline"
-            }`}
-          >
-            <span className="min-w-0 flex-1">
-              <span className={`block text-label font-medium ${kind === k ? "text-text" : "text-muted-foreground"}`}>
-                {k}
-              </span>
-              <span className="block text-micro leading-snug text-muted-foreground">{blurb}</span>
-            </span>
-            {kind === k && <Check className="size-4 flex-shrink-0 text-accent" />}
-          </button>
-        ))}
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-label font-medium text-text">Handle</label>
-        <Input
-          value={handle}
-          onChange={(e) => {
-            setHandle(e.target.value);
-            setHandleTouched(true);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") submit();
-          }}
-          placeholder={kind}
-          autoCapitalize="none"
-          spellCheck={false}
-          aria-invalid={!!error}
-        />
-        <p className="text-micro text-muted-foreground leading-snug">
-          Summon it in the channel with{" "}
-          <code className="font-mono text-accent">@{trimmed || kind}</code>. Lowercase slug.
-        </p>
-      </div>
-
-      {error && <p className="text-micro text-[#f87171] leading-snug">{error}</p>}
-
-      <div className="flex items-center gap-2">
-        <Button variant="default" size="sm" onClick={submit} disabled={!canSubmit}>
-          {submitting ? "Inviting…" : `Invite ${kind}`}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-/** Register an external A2A agent by its agent-card base URL — the backend
- *  resolves the card to discover the endpoint + skills, so a bad/unreachable
- *  card comes back as a 502 whose detail we surface verbatim. */
-function A2aAgentForm({
-  roomName,
-  onCreated,
-}: {
-  roomName: string;
-  onCreated: () => void;
-}) {
-  const [handle, setHandle] = useState("");
-  const [card, setCard] = useState("");
-  const [description, setDescription] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const trimmedHandle = handle.trim().replace(/^@/, "");
-  const trimmedCard = card.trim();
-  const canSubmit = trimmedHandle.length > 0 && trimmedCard.length > 0 && !submitting;
-
-  const submit = async () => {
-    if (!canSubmit) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await registerA2aAgent(roomName, {
-        handle: trimmedHandle,
-        card: trimmedCard,
-        description: description.trim(),
-      });
-      onCreated();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to register A2A agent");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="space-y-4 mt-2">
-      <div className="space-y-1.5">
-        <label className="text-label font-medium text-text">Handle</label>
-        <Input
-          value={handle}
-          onChange={(e) => setHandle(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") submit();
-          }}
-          placeholder="researcher"
-          autoCapitalize="none"
-          spellCheck={false}
-          aria-invalid={!!error}
-        />
-        <p className="text-micro text-muted-foreground leading-snug">
-          Address it in the channel with{" "}
-          <code className="font-mono text-accent">@{trimmedHandle || "handle"}</code>.
-          Lowercase slug.
-        </p>
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-label font-medium text-text">Agent card URL</label>
-        <Input
-          value={card}
-          onChange={(e) => setCard(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") submit();
-          }}
-          placeholder="https://agent.example.com"
-          autoCapitalize="none"
-          spellCheck={false}
-          aria-invalid={!!error}
-        />
-        <p className="text-micro text-muted-foreground leading-snug">
-          The base URL of the agent&apos;s A2A agent card. The hub resolves it to
-          discover the endpoint and advertised skills.
-        </p>
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-label font-medium text-text">
-          Description <span className="text-faint">(optional)</span>
-        </label>
-        <Input
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="What this agent does in the room"
-        />
-      </div>
-
-      {error && <p className="text-micro text-[#f87171] leading-snug">{error}</p>}
-
-      <div className="flex items-center gap-2">
-        <Button variant="default" size="sm" onClick={submit} disabled={!canSubmit}>
-          {submitting ? "Registering…" : "Register A2A agent"}
-        </Button>
-      </div>
-    </div>
-  );
-}

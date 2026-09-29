@@ -11,7 +11,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { REPO_ROOT } from "./engine.mjs";
 
@@ -82,7 +82,23 @@ export function mockStatus() {
 const ALREADY_RUNNING = /Another next dev server is already running[\s\S]*?(http:\/\/localhost:\d+)/;
 
 /**
- * Boot `pnpm dev:mock`, or attach to the one that is already up.
+ * How to run `dev:mock`, by the package manager that installed the frontend.
+ * A checkout is a pnpm tree (`node_modules/.pnpm`); CI installs from the npm
+ * lockfile, and pnpm handed an npm tree reinstalls it first, which its
+ * build-script approval then refuses. Each runs the tree it made.
+ *
+ * @param {number} port
+ * @returns {[string, string[]]}
+ */
+export function mockCommand(port, frontendDir = FRONTEND_DIR) {
+  if (existsSync(`${frontendDir}/node_modules/.pnpm`)) {
+    return ["pnpm", ["dev:mock", "--port", String(port)]];
+  }
+  return ["npm", ["run", "dev:mock", "--", "--port", String(port)]];
+}
+
+/**
+ * Boot `dev:mock`, or attach to the one that is already up.
  *
  * Attaching matters more than it looks: a dev server that outlived a previous
  * daemon still holds the directory, and Next will refuse to start a second one
@@ -108,7 +124,8 @@ export async function ensureMockServer({ log = () => {} } = {}) {
 
   const port = await freePort();
   log(`booting dev:mock on :${port}`);
-  const proc = spawn("pnpm", ["dev:mock", "--port", String(port)], {
+  const [bin, args] = mockCommand(port);
+  const proc = spawn(bin, args, {
     cwd: FRONTEND_DIR,
     env: { ...process.env, MYCELIUM_UI_MOCK: "1", PORT: String(port) },
     stdio: ["ignore", "pipe", "pipe"],

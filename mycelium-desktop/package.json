@@ -1,0 +1,24 @@
+{
+  "name": "mycelium-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "tauri": "tauri",
+    "app:dev": "tauri dev",
+    "app:build": "tauri build --bundles app --config src-tauri/tauri.bundle.conf.json",
+    "sidecars": "bash scripts/stage-sidecars.sh"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
+  }
+}

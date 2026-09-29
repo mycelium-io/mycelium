@@ -57,6 +57,7 @@ from app.services.filesystem import (
 
 if TYPE_CHECKING:
     from app.schemas import MemoryRead
+    from app.services.floor import Floor
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +162,22 @@ def carry_thread(room: str, key: str) -> dict[str, str]:
     return {EPISODE_META: episode_of(room, key) or mint_episode_urn(room)}
 
 
+def row_of_episode(room: str, episode: str) -> tuple[str, str] | None:
+    """The ``(key, title)`` of the memory bound to ``episode``, or ``None``.
+
+    A thread is a task's when a row carries its URN; this is the reverse
+    lookup, so a notice or a badge about a thread can say the task's name
+    rather than the thread's id. One scan of the room's files, for events that
+    happen a few times per protocol step rather than per message.
+    """
+    for key, meta, content in list_memory_files(get_room_dir(room), limit=None):
+        if system_meta(meta).get(EPISODE_META) != episode:
+            continue
+        first = next((ln.strip() for ln in (content or "").splitlines() if ln.strip()), key)
+        return key, first.lstrip("# ").strip()
+    return None
+
+
 def bound_episodes(room: str) -> set[str]:
     """Every episode URN some row in the room already carries.
 
@@ -207,10 +224,11 @@ def episode_write_rejection(
     frozen_episode: str | None = None,
     frozen_members: Iterable[str] = (),
     transcript: Iterable[str] = (),
+    floor: Floor | None = None,
 ) -> ThreadRefusal | None:
     """Why ``handle`` may not write into ``episode``, or ``None`` if it may.
 
-    Two refusals, and the difference between them is the whole model:
+    Three refusals, and the difference between them is the whole model:
 
     A thread the room does not have is refused (404) — naming a URN must not be
     how one comes into being, or the transcript grows threads nobody opened.
@@ -220,15 +238,23 @@ def episode_write_rejection(
     offer/counter exchange scored across a set of participants means nothing if
     an outsider can drop a position into it.
 
-    A **container** — a task's thread — refuses neither, and that is
-    deliberate rather than unfinished. Freezing membership is a negotiation's
+    A thread whose **floor** is held (409) is refused to anyone the holder has
+    not given it to. That is a protocol saying whose turn it is
+    (:mod:`app.services.floor`); the refusal names who holds the floor and who
+    may speak, so a handle that tried early knows to keep awaiting rather than
+    to give up. A floor is held by a run of backend code, never chosen by a
+    writer, and it narrows one thread — the room itself never holds one.
+
+    A **container** — a task's thread — refuses none of these on its own, and
+    that is deliberate rather than unfinished. Freezing membership is a negotiation's
     policy, not an episode's (:class:`~app.services.l9_slim.EpisodeLifecycle`):
     a task outlives what happens inside it, so an agent that claims a row after
     the thread opened must be able to speak in it.  The honest boundary: a task's
     thread is scoped to the room, not narrower.  Everyone who may write in the
     room may write in its threads — threads separate *attention*, not access, and
     the room's own guards (membership, principal, delegation) are what a write
-    still has to pass.
+    still has to pass.  The two narrowings above are the only exceptions, and
+    both are held by a run of backend code for as long as it runs.
     """
     if episode is None or l9.is_live_episode(room, episode):
         return None
@@ -238,6 +264,12 @@ def episode_write_rejection(
         return ThreadRefusal(
             403,
             f"@{handle} is not a member of the negotiation in thread {short_id_of(episode)!r}",
+        )
+    if floor is not None and floor.episode == episode and not floor.admits(handle):
+        return ThreadRefusal(
+            409,
+            f"@{handle} does not have the floor in thread {short_id_of(episode)!r}: "
+            f"{floor.describe()}",
         )
     return None
 
@@ -272,6 +304,7 @@ def thread_write_refusal(room: str, handle: str, episode: str | None) -> ThreadR
         frozen_episode=(lifecycle.episode if lifecycle is not None and lifecycle.frozen else None),
         frozen_members=lifecycle.members if lifecycle is not None else (),
         transcript=spoken,
+        floor=manager.floor(room, episode),
     )
 
 

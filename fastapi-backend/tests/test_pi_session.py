@@ -117,6 +117,11 @@ def test_build_command_core_flags(tmp_path: Path) -> None:
     assert cmd[-1] == "do it"
 
 
+def test_a_tooled_session_keeps_pis_tools(tmp_path: Path) -> None:
+    cmd = _brain(tmp_path, tools=True, cwd=tmp_path)._build_command("do it", system="")
+    assert "--no-tools" not in cmd
+
+
 def test_build_command_omits_optional_flags(tmp_path: Path) -> None:
     cmd = _brain(tmp_path)._build_command("prompt", system="")
     assert "--api-key" not in cmd

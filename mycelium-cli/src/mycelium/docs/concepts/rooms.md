@@ -1,19 +1,38 @@
 # Rooms
 
-A room is a persistent coordination namespace. All memory, all messages and all
-[work](#board) are scoped to a room. A room IS its namespace; there's no
-separation between the two.
+A room is where a team works: the people and agents in it share its memory,
+its chat and its [board](#board). Everything in Mycelium belongs to a room.
 
-Under the hood a room is a **SLIM group channel**: agents (and the human, by
-proxy) are members of one MLS-encrypted channel per room, and the backend is
-its always-on moderator. See [SLIM](#slim) for what that encryption actually
-covers. There's no database: a room's durable state is files on the hub,
-which every other machine reads and writes over HTTP.
+```bash
+mycelium room create design-review     # create a room
+mycelium room use design-review        # make it the room this shell works in
+mycelium room ls                       # list rooms
+mycelium room watch                    # follow what's happening, live
+mycelium room delete design-review     # delete a room and everything in it
+mycelium room clone design-review --from http://hub-ip:8000  # copy a room from another hub
+```
 
-## Rooms are Directories on the Hub
+Rooms last until you delete them. Tasks come and go, but what the room has
+learned stays in its memory.
 
-Each room maps to a directory at `~/.mycelium/rooms/{room_name}/` **on the hub**.
-Standard subdirectories are created automatically:
+## Room names
+
+A room's name can be up to 100 characters, and can include spaces, accents and
+ordinary punctuation. Put quotes around a name with spaces in the shell:
+
+```bash
+mycelium room create "CE-Area Team"
+mycelium room use "CE-Area Team"
+```
+
+A name can't be blank, `.` or `..`, and can't contain slashes, control
+characters or `:session:`. The name is also the room's folder on disk and its
+channel name, so it can't be changed later.
+
+## What a room is on disk
+
+Each room is a folder on the hub, at `~/.mycelium/rooms/<room>/`, with these
+subfolders created for you:
 
 ```
 ~/.mycelium/rooms/design-review/
@@ -21,117 +40,100 @@ Standard subdirectories are created automatically:
   procedures/  log/          failed/
 ```
 
-The `work/` subdir holds what the room is doing: one markdown file per task,
-each carrying its own frontmatter, so a task can say who it is for, what stage
-it is at, and who is holding it. That is what makes it a row on the
-[board](#board). The room's display title is the room's own, not a memory —
-set it with `mycelium room title`.
+Every memory is a markdown file in there. `work/` holds the room's tasks, one
+file per task, with fields such as who it's for and who's working on it. Those
+files are the rows on the [board](#board).
 
-An operator on the hub can browse, edit, or git-track these directories
-directly; the backend keeps its search index in sync via startup scans and file
-watching. From anywhere else, reach the same state through `mycelium room` and
-`mycelium memory`; a spoke keeps no copy of it.
+If you run the hub, you can read, edit or back up these files directly. The
+hub notices changes to them and updates search on its own. If search ever
+seems out of date, `mycelium memory reindex` rebuilds it. From any other
+machine, use
+`mycelium room` and `mycelium memory`, which talk to the hub. Other machines
+don't keep a copy.
 
-## Commands
+A room's display title is set on the room itself, not stored as a memory. You
+can change it in the app.
+
+Behind the scenes, each room is also an encrypted group channel on a
+[SLIM](#slim) node, which the hub looks after.
+
+## Reading history
+
+`mycelium room messages` shows a room's messages, newest first:
 
 ```bash
-mycelium room create design-review     # create a room (its folder + channel)
-mycelium room use design-review        # make it the active room
-mycelium room ls                       # list rooms
-mycelium room watch                    # stream live room activity
-mycelium room delete design-review     # delete a room and its data
-mycelium room clone design-review --from http://hub-ip:8000  # pull a room from a remote backend
+mycelium room messages design-review --limit 50
 ```
 
-## Room Names
-
-A room name is its stable filesystem and SLIM namespace identifier. Names are
-1–100 printable characters long. Unicode, spaces and ordinary punctuation are
-supported.
-
-Quote a spaced name when using a shell:
+If there are older messages, the output ends with a `--before` value. Pass it
+to get the page before:
 
 ```bash
-mycelium room create "CE-Area Team"
-mycelium room use "CE-Area Team"
+mycelium room messages design-review --limit 50 --before 2026-09-03T16:40:00Z
 ```
 
-Creation rejects blank names, `.` and `..`, path separators, control characters
-and the reserved `:session:` marker.
-
-## Reading History
-
-`mycelium room messages` is a point-in-time read, newest first. History is
-paged by content rather than position: when older messages exist, the footer
-names the `--before` cursor that reads the next page back, so a walk through a
-busy room does not shift under messages arriving live. A stamp is ISO 8601 as
-printed, or an age like `2h`, `30m`, `1d`.
+Paging by time means new messages arriving while you read don't shift your
+pages around. `--before` and `--since` take a timestamp as printed, or an age
+like `2h`, `30m` or `1d`:
 
 ```bash
-mycelium room messages design-review --limit 50          # the latest page …
-mycelium room messages design-review --limit 50 --before 2026-09-03T16:40:00Z  # … and the one before it
-mycelium room messages design-review --since 1d --before 2h   # a window
-mycelium board messages t3 --before 1h                    # one thread pages the same way
+mycelium room messages design-review --since 1d --before 2h   # a window of time
+mycelium board messages t3 --before 1h                        # a task's thread pages the same way
 ```
 
-With `--json` the same cursor comes back as `older_before` (null when the page
-is the whole history), for a script that walks a room to its start.
+With `--json`, the next page's cursor is in `older_before`. It's `null` when
+there's nothing older.
 
-## Editing a Message
+## Editing a message
 
-An agent that got something wrong has an alternative to posting a correction
-thread: amend the message.
+If you posted something wrong, you can edit it instead of posting a
+correction:
 
 ```bash
-mycelium room messages                  # each line carries the message's short id
+mycelium room messages                  # each message shows a short id
 mycelium room amend a1b2c3d4 "the cache TTL is 300s, not 30s"
 ```
 
-Editing is **additive, never destructive**. The amendment is posted as its own
-message pointing at the one it revises (an L9 `exchange:amend` whose causal
-parents name the target), so the room's append-only transcript keeps every
-version — nothing is rewritten. What readers get is the folded result: one
-message carrying the newest text, marked *edited*. Only a message's own sender
-can amend it, and an amendment that folds into nothing stays visible as its own
-message rather than disappearing.
+Readers see one message with the new text, marked as edited. The original is
+kept in the room's history, so nothing is lost. You can only edit your own
+messages.
 
-## Coordination
+## Working in a room
 
-Work in a room happens on its [board](#board). You put a task on the board and
-an agent picks it up:
+Work goes on the [board](#board). Add a task, and someone picks it up:
 
 ```bash
-mycelium board new "Ship passkey login"     # a task, with its own thread
+mycelium board new "Ship passkey login"
 mycelium board claim work/ship-passkey-login
 mycelium board send work/ship-passkey-login "@sec keychain, or WebCrypto?"
 mycelium board resolve work/ship-passkey-login
 ```
 
-Every task is also a thread, so the conversation about a piece of work happens
-inside that piece of work. The room's channel is its timeline: what people and
-agents said, plus a line each time a task is filed, claimed, handed back or
-resolved. That is what keeps it readable while several agents are busy.
+Each task has its own thread, so the discussion about a task stays with that
+task. The room's chat shows what people post there, plus a short line whenever
+a task is added, claimed, handed back or finished. That keeps the chat readable
+even with several agents busy.
 
-When agents disagree on a trade-off and talking is not settling it, someone puts
-the [aligner](#aligner) on the task and it mediates to one answer. That is a
-coordination phase inside the task, not the reason the task exists, and it is
-the other kind of [episode](#episodes) a room holds. An agreement can refine the
-task or add new ones.
+If agents disagree and talking isn't settling it, put the [aligner](#aligner)
+on the task to help them agree. The agreement can update the task or add new
+ones. See [episodes](#episodes).
 
-The room outlives all of it. Tasks resolve and drop off the board; what the room
-learned stays in its memory.
+## Events
 
-## Typed events
+Some things shouldn't scroll away in chat: a pull request opening, a job
+someone needs to pick up, a risk nobody should forget. Post these as events,
+which agents can look up later without rereading the chat.
 
-Chat messages disappear into scrollback. Some things that happen in a team shouldn't: a PR opening, a task someone needs to pick up, a worry that shouldn't be forgotten until it's resolved. **Events** are how a room carries those: structured happenings agents can query, instead of prose they'd have to re-read.
+There are three kinds:
 
-Three kinds, matching three ways teams use them:
+- **`source_event`**: something changed outside the room, such as a new pull
+  request, a CI result or an alert. Give it a `ttl_seconds` and it expires, like
+  an item in a feed.
+- **`action`**: something someone should do. It stays until it's resolved, and
+  has a status: `open`, `in_progress` or `resolved`.
+- **`concern`**: a risk or worry. It stays open until someone resolves it.
 
-- **`source_event`** signals "the world changed." Wire external sources (GitHub, CI, monitoring) into the room so every agent shares one live picture. Transient: give it a `ttl_seconds` and it expires like a feed item should.
-- **`action`** signals "someone should do this." Durable, with a lifecycle (`open`, `in_progress`, `resolved`). The room's open actions are its working ledger. Any agent can ask "what's still open?" and get an answer, no scrollback archaeology.
-- **`concern`** signals "this is worrying." Like an action, but for risks rather than work. Stays open until someone explicitly resolves it.
-
-Post one like any message, with a `metadata.kind`:
+Post an event like a message, with a `metadata.kind`:
 
 ```json
 POST /api/rooms/{name}/messages
@@ -148,14 +150,20 @@ POST /api/rooms/{name}/messages
 }
 ```
 
-`content` is the human-readable line (what renders if a client doesn't know the kind). `payload` carries the structured details. `provenance` cites where it came from (`pr | commit | issue | page | message`) so agents can follow the trail back to the source.
+- `content` is the line people see.
+- `payload` holds the details.
+- `provenance` says where it came from (`pr`, `commit`, `issue`, `page` or
+  `message`), so an agent can follow it back to the source.
 
-Then query the room the way you would query a database:
+Then look events up by kind and status:
 
 ```
-GET .../messages?kind=source_event&since=<ts>   # the feed: what happened lately
-GET .../messages?kind=action&status=open        # the ledger: what's still open
-PATCH .../messages/{id}  {"status": "resolved"}  # close it out (broadcast over SSE)
+GET .../messages?kind=source_event&since=<ts>   # what happened recently
+GET .../messages?kind=action&status=open        # what's still open
+PATCH .../messages/{id}  {"status": "resolved"}  # close one
 ```
 
-The kind vocabulary is open. Post your own (`note`, `decision`, `ci_result`, ...) and it works today: stateless and durable unless you set a TTL. Events arrive on the room's SSE stream like any message; clients that don't know a kind just show the `content` line.
+You can use your own kinds too, such as `note`, `decision` or `ci_result`.
+They're kept until you delete them, unless you set a TTL. Events arrive on the
+room's live stream like any message, and a client that doesn't know the kind
+just shows the `content` line.

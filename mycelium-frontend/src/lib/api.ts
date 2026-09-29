@@ -168,7 +168,57 @@ export async function createRoom(data: { name: string; is_persistent?: boolean }
 }
 
 export async function deleteRoom(roomName: string): Promise<void> {
-  await apiFetch<void>(`/api/rooms/${encodeURIComponent(roomName)}`, { method: "DELETE" });
+  await apiFetch<void>(roomApiPath(roomName), { method: "DELETE" });
+}
+
+/** Put a task on a room's board, with its thread minted (the app's `board new`). */
+export async function createTask(
+  roomName: string,
+  data: { title: string; handle: string; assignee?: string; key?: string; parent?: string },
+): Promise<Memory> {
+  return apiFetch<Memory>(`${roomApiPath(roomName)}/tasks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+/** Where a swarm is running: its room, its task's key, and the task's thread. */
+export interface Swarm {
+  room: string;
+  key: string;
+  episode: string;
+  members: string[];
+  /** The runner job starting the members, when they run on a machine. */
+  job?: string | null;
+}
+
+/** Put a team of agents on a task in a room: a conductor, the members, the
+ *  task and the kickoff, in one write. The members are workers on the hub, or
+ *  with `runner` set, agent CLIs on that machine in a herdr workspace. */
+export async function startSwarm(
+  room: string,
+  data: {
+    task: string;
+    size?: number;
+    /** A repository for the hub to clone; each agent works on its own branch of it. */
+    repo?: string;
+    created_by?: string;
+    /** The machine whose agent CLIs are the members (`mycelium runner`). */
+    runner?: string;
+    /** Which of that machine's frameworks to start. */
+    framework?: string;
+    /** The folder on that machine the members work in. */
+    cwd?: string;
+    /** Give each member its own git worktree of `cwd`. */
+    worktree?: boolean;
+  },
+): Promise<Swarm> {
+  return apiFetch<Swarm>(`${roomApiPath(room)}/swarms`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
 }
 
 // ── Memory ───────────────────────────────────────────────────────────────────
@@ -584,6 +634,10 @@ export interface AgentSummary {
   a2a_card?: string | null;
   a2a_endpoint?: string | null;
   a2a_skills?: string[];
+  /** The machine (runner id) this agent was started on from the app. */
+  runner?: string | null;
+  /** Which agent CLI it runs there (a runner framework id). */
+  framework?: string | null;
 }
 
 /** List addressable agents in a room. Used to drive `@`-mention autocomplete. */
@@ -595,7 +649,13 @@ export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]>
   });
 }
 
-export type EngineKind = "aligner" | "synthesizer" | "hello";
+export type EngineKind =
+  | "aligner"
+  | "synthesizer"
+  | "hello"
+  | "conductor"
+  | "persona"
+  | "worker";
 
 /** Invite a first-party cognition engine (aligner / synthesizer / hello) into a room.
  *  Engines are backend-owned — registration is just a manifest write with no
@@ -623,6 +683,150 @@ export async function registerA2aAgent(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+}
+
+// ── Runners (the machines agents run on) ─────────────────────────────────────
+//
+// A runner is `mycelium runner` on someone's computer. It dials out to the hub,
+// reports which agent CLIs it found, and takes the jobs queued here. The
+// browser never talks to the machine: every call below goes through the hub.
+
+/** One agent CLI the runner knows about, found on the machine or not. */
+export interface Framework {
+  id: string;
+  name: string;
+  command: string;
+  path: string | null;
+  version: string | null;
+  /** False for a known framework the scan did not find. */
+  installed: boolean;
+  /** herdr can start it in a terminal pane. A runner starts agents no other way. */
+  launchable: boolean;
+  /** Why an installed framework can't be started, or anything else worth saying. */
+  note: string | null;
+}
+
+export type RunnerAgentStatus =
+  | "starting"
+  | "running"
+  | "idle"
+  | "working"
+  | "blocked"
+  | "stopped"
+  | "failed";
+
+/** An agent the runner started in a herdr pane and is keeping track of. */
+export interface RunnerAgent {
+  handle: string;
+  room: string;
+  framework: string;
+  status: RunnerAgentStatus;
+  /** The herdr pane it runs in. */
+  pane: string | null;
+  cwd: string | null;
+  started_at: string;
+  detail: string | null;
+}
+
+export interface Runner {
+  id: string;
+  label: string;
+  owner: string | null;
+  platform: string;
+  version: string;
+  /** herdr is running there. Without it the machine can start nothing. */
+  herdr: boolean;
+  /** Folders agents may be started in. The first is the default. */
+  roots: string[];
+  frameworks: Framework[];
+  agents: RunnerAgent[];
+  /** False once the machine's heartbeat is stale. */
+  connected: boolean;
+  last_seen: string;
+  started_at: string;
+}
+
+export type RunnerJobKind = "launch" | "stop" | "scan" | "swarm";
+/** `waiting`: the machine's runner is asking the person there before it starts anything. */
+export type RunnerJobStatus = "queued" | "running" | "waiting" | "done" | "failed";
+
+export interface RunnerJob {
+  id: string;
+  runner: string;
+  kind: RunnerJobKind;
+  spec: Record<string, unknown>;
+  status: RunnerJobStatus;
+  result: Record<string, unknown> | null;
+  /** A sentence saying what went wrong, when `status` is failed. */
+  error: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function runnerApiPath(id: string): string {
+  return `/api/runners/${encodeURIComponent(id)}`;
+}
+
+/** The machines that have checked in with this hub recently. */
+export async function fetchRunners(): Promise<Runner[]> {
+  return apiFetch<Runner[]>(`/api/runners`, {
+    cache: "no-store",
+    fallback: [],
+    guard: isArray as (d: unknown) => d is Runner[],
+  });
+}
+
+export async function fetchRunner(id: string): Promise<Runner> {
+  return apiFetch<Runner>(runnerApiPath(id), { cache: "no-store" });
+}
+
+/** A machine's recent jobs, newest first. */
+export async function fetchRunnerJobs(id: string): Promise<RunnerJob[]> {
+  return apiFetch<RunnerJob[]>(`${runnerApiPath(id)}/jobs`, {
+    cache: "no-store",
+    fallback: [],
+    guard: isArray as (d: unknown) => d is RunnerJob[],
+  });
+}
+
+export async function fetchRunnerJob(id: string, jobId: string): Promise<RunnerJob> {
+  return apiFetch<RunnerJob>(`${runnerApiPath(id)}/jobs/${encodeURIComponent(jobId)}`, {
+    cache: "no-store",
+  });
+}
+
+/** Ask the machine to look for agent CLIs again. */
+export async function rescanRunner(id: string): Promise<RunnerJob> {
+  return apiFetch<RunnerJob>(`${runnerApiPath(id)}/scan`, { method: "POST" });
+}
+
+export interface RunnerAgentLaunch {
+  room: string;
+  handle: string;
+  framework: string;
+  /** Saved as the agent's notes (`agents/<handle>/notes`), which it reads first. */
+  instructions?: string;
+  description?: string;
+  cwd?: string;
+  created_by?: string;
+}
+
+/** Register an agent in a room and start it in a herdr pane on a machine. Throws `ApiError`. */
+export async function launchRunnerAgent(id: string, data: RunnerAgentLaunch): Promise<RunnerJob> {
+  return apiFetch<RunnerJob>(`${runnerApiPath(id)}/agents`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+/** Stop an agent a machine started. Its registration in the room stays. */
+export async function stopRunnerAgent(id: string, room: string, handle: string): Promise<RunnerJob> {
+  return apiFetch<RunnerJob>(
+    `${runnerApiPath(id)}/agents/${encodeURIComponent(room)}/${encodeURIComponent(handle)}/stop`,
+    { method: "POST" },
+  );
 }
 
 // ── A2A bridge (the Network pane's off-channel half) ─────────────────────────
@@ -712,13 +916,37 @@ export interface PresenceMember {
   title?: string | null;
 }
 
-/** Live presence set for a room: SLIM-connected + server-held lease members. */
-export async function fetchRoomMembers(roomName: string): Promise<PresenceMember[]> {
-  const data = await apiFetch<{ members?: PresenceMember[] }>(`${roomApiPath(roomName)}/sessions/members`, {
-    cache: "no-store",
-    fallback: {},
-  });
-  return Array.isArray(data.members) ? data.members : [];
+/** A thread whose floor a run of backend code holds: who holds it and who it
+ *  was given to. A thread fact, not a presence one — a member the floor was
+ *  given to may not be present at all (a persona engine never is). */
+export interface RoomFloor {
+  /** The thread's short id, as the board prints it. */
+  thread: string;
+  episode: string;
+  /** The task the thread belongs to, when a row carries it; null for a thread
+   *  no row does. A badge names the task, and falls back to the thread id. */
+  key: string | null;
+  title: string | null;
+  holder: string;
+  speakers: string[];
+}
+
+export interface RoomPresence {
+  members: PresenceMember[];
+  floors: RoomFloor[];
+}
+
+/** Live presence set for a room: SLIM-connected + server-held lease members,
+ *  and the floors held in its threads right now. */
+export async function fetchRoomMembers(roomName: string): Promise<RoomPresence> {
+  const data = await apiFetch<{ members?: PresenceMember[]; floors?: RoomFloor[] }>(
+    `${roomApiPath(roomName)}/sessions/members`,
+    { cache: "no-store", fallback: {} },
+  );
+  return {
+    members: Array.isArray(data.members) ? data.members : [],
+    floors: Array.isArray(data.floors) ? data.floors : [],
+  };
 }
 
 // ── Principals (self-asserted user store) ─────────────────────────────────────
@@ -828,6 +1056,52 @@ export interface EpisodeSummary {
   message_count: number;
   updated_at: string;
   updated_by: string;
+  /** The thread this episode was opened from, when it runs inside a task. */
+  within?: string | null;
+  /** The interaction flow this episode runs; null for a negotiation or a thread. */
+  flow?: EpisodeFlow | null;
+  /** The steps taken so far, in order. */
+  trace?: FlowTraceEntry[];
+  /** Where an open run stands, read off the trace. */
+  current_step?: string | null;
+}
+
+/** One step of an episode's interaction flow, as the record carries it. */
+export interface FlowStep {
+  id: string;
+  /** A role, or each / all / workers. Absent on an end step. */
+  to?: string | null;
+  prompt?: string;
+  wait?: "reply" | "none";
+  rounds?: number;
+  /** One step id, or a branch by stance (accept / reject / silent / default). */
+  next?: string | Record<string, string> | null;
+  end?: "resolved" | "rejected" | null;
+}
+
+/** The interaction flow an episode runs: the graph the conductor walks, plus
+ *  who was bound to each role and what was asked. */
+export interface EpisodeFlow {
+  name: string;
+  description?: string;
+  roles?: string[];
+  steps: FlowStep[];
+  max_steps?: number;
+  bound?: Record<string, string>;
+  /** Everyone the run was summoned with, in order: the pool a group step asks. */
+  cast?: string[];
+  ask?: string;
+}
+
+/** One step taken in a flow episode. */
+export interface FlowTraceEntry {
+  step: string;
+  turn: number;
+  asked?: string[];
+  stances?: Record<string, string | null>;
+  stance?: string | null;
+  next: string;
+  at?: string;
 }
 
 export interface EpisodeDetail extends EpisodeSummary {

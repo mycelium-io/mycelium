@@ -1,288 +1,177 @@
 # Metrics and observability
 
-Mycelium's observability stack has two tracks that work independently and
-complement each other:
+A hub keeps three kinds of numbers:
 
-| Track | What it measures | Who controls it |
+| What | What it answers | Where it goes |
 |---|---|---|
-| **Operational telemetry** | Every coordinated path the backend runs (HTTP RED, aligner rounds, SLIM channel timing, await long-poll, LLM calls, embeddings, memory) | Always-on in-process store + optional OTel SDK export |
-| **Product analytics** | Anonymous adoption signals (install, first session, repeat session) | Explicit opt-in only; off by default |
+| **Usage** | What the hub is used for: tasks filed and resolved, flows and negotiations finished, agents joined | Recorded on the hub, always. Sent on only if the hub shares usage stats |
+| **Backend metrics** | What the backend is doing: memory, embeddings, model calls, messaging, latency | Kept in the running backend. Exported over OpenTelemetry if you turn that on |
+| **Agent telemetry** | What your agents report over OpenTelemetry | The optional collector |
 
----
+The app's **Metrics** page (open it from the status bar) shows the first two.
 
-## Operational telemetry
+## Usage
 
-### In-process metrics (always-on)
+Every piece of work a room does is a task, so usage follows tasks. The hub
+records one event each time:
 
-The backend records what it does as it runs.  No configuration required.  The
-metrics store (`app/services/metrics.py`) tracks:
+| Event | When | Carries |
+|---|---|---|
+| `mycelium.hub_started` | The hub starts | how it runs (`desktop`, `docker`, `server`), OS |
+| `mycelium.task_filed` | A row lands on a board | its kind, who filed it (`person`, `agent`, `engine`), whether it was for someone |
+| `mycelium.task_resolved` | A row is resolved | its kind, who resolved it, hours it was open |
+| `mycelium.flow_completed` | A conductor flow finishes | the flow (`review`, `swarm`, `gated`, ... or `custom`), outcome, steps |
+| `mycelium.negotiation_completed` | The aligner reaches an outcome | outcome, rounds |
+| `mycelium.agent_joined` | An agent is added to a room | its adapter (`claude_code`, `cursor`, `worker`, ...) |
 
-| Namespace | Signals |
+Each of the app's ways to start work maps onto these. A plain task is filed
+and resolved. Review, Split and Settle finish as a flow or a negotiation
+inside a task.
+
+Every event also carries the release, the time, and the hub's id: a random
+UUID (the one `mycelium install` saves in `config.toml`, or one the hub
+creates for itself). Resolved tasks, finished flows and finished
+negotiations carry `work_count`, how much work this hub has finished so far,
+so first use (`1`) and repeat use (`2` and up) can be told apart.
+
+**Never recorded:** names, handles, emails, rooms, task titles or text,
+prompts, replies, IPs or hostnames. A room's own flow is counted as `custom`,
+since its name is the room's.
+
+### Where to see it
+
+The **Usage** section at the top of the Metrics page shows the last 30 days:
+tasks filed and resolved, how long tasks stay open, active days, a bar per
+day, flows and negotiations by outcome, and agents joined by adapter. The same
+figures are at `GET /api/observability/usage?days=30`. The events themselves
+are in `$MYCELIUM_DATA_DIR/usage/events.jsonl`, one JSON object per line.
+
+### Sharing usage stats
+
+Sharing sends each event to `telemetry.analytics_destination` as it happens,
+so the people building Mycelium can see what's working. It's off unless you
+turn it on. You're asked in two places:
+
+- **The Mac app**, on its first screen (and again under Settings), when it
+  runs a hub. The app's answer is the one that counts for the hub it starts.
+- **`mycelium install`**, as its last question.
+
+To change it by hand:
+
+```bash
+mycelium config set telemetry.send_product_analytics true   # or false
+mycelium config apply
+```
+
+Events are POSTed as JSON, or in Loki's push format when the address contains
+`/loki/`. The destination must be HTTPS, or plain HTTP to this machine
+(`localhost`, `127.0.0.1`, `host.docker.internal`).
+
+## Backend metrics
+
+**What the backend records.** Memory writes and searches, embeddings, index
+runs, and model calls (by operation and model), with how long each took. Model
+calls go through `pi`, which doesn't report token usage, so calls, failures
+and timings are recorded but cost isn't. Read them as JSON at
+`GET /api/observability`.
+
+**Health.** `GET /health` tells you whether messaging is working: channels set
+up and failed, failed invites, and per-room counts of messages re-sent and
+dropped, plus the state of storage, embeddings and the model. This is what
+`mycelium doctor` checks.
+
+When a latency p95 passes its threshold, `/health` reports `degraded` and
+`mycelium doctor` says so:
+
+| Signal | Default threshold |
 |---|---|
-| `embeddings` | computed, by source, estimated tokens, cost-avoided |
-| `llm` | calls, by operation, by model, tokens, cost, errors, **latency histograms** |
-| `aligner` | runs, rounds, by room, outcomes (converged/rejected/stalled), **round_ms histogram** |
-| `slim` | provision latency, provision errors, receive errors |
-| `participate` | await polls, delivered, timeouts, **await_ms histogram** |
-| `memory` | writes, searches, hits, **search_latency_ms histogram** |
-| `indexer` | runs, files indexed/skipped/pruned, errors |
-| `http` | requests, by method/route/status, errors, **request_ms histogram** |
-
-All histograms include count, sum, min, max, and **p95** (exposed at
-`GET /api/observability` → `p95` key).  p95 is computed from a rolling
-window of the last 1000 samples.
-
-### Viewing metrics
+| Model call p95 | 30 000 ms |
+| `await` p95, for calls that delivered a message | 60 000 ms |
+| Memory search p95 | 500 ms |
 
 ```bash
-mycelium metrics status       # health of collector, backend, and config
-mycelium metrics show         # render backend counters + collector data as tables
-mycelium metrics show --json  # raw JSON for scripting
-mycelium metrics reset        # clear locally collected metrics
-```
-
-The app draws the same two surfaces on its **Metrics** page (status bar →
-Metrics), alongside per-room episode records.
-
-### /health latency degradation (#453)
-
-`GET /health` includes a `latency` key.  When p95 of a key histogram exceeds
-its threshold, `status` flips to `degraded` and `mycelium doctor` surfaces the
-signal:
-
-| Signal | Histogram | Default threshold |
-|---|---|---|
-| LLM p95 | `llm.latency_ms` | 30 000 ms |
-| Await p95 (delivered only) | `participate.await_delivered_ms` | 60 000 ms |
-| Search p95 | `memory.search_latency_ms` | 500 ms |
-
-Timed-out long-polls (the default 3 600 s window) are recorded in
-`participate.await_ms` for throughput accounting but are **excluded** from the
-degradation threshold — only polls that actually returned a message are measured,
-so the threshold reflects genuine channel slowness rather than idle wait time.
-
-Override defaults in ``config.toml``:
-
-```toml
-[health]
-llm_p95_threshold_ms   = 60000
-await_p95_threshold_ms = 120000
-search_p95_threshold_ms = 1000
-```
-
-```bash
-mycelium config set health.llm_p95_threshold_ms 60000
+mycelium config set health.llm_p95_threshold_ms 60000   # 0 turns a check off
 mycelium config apply
 ```
 
-Set any threshold to `0` to disable that check.
+### Viewing them
 
----
-
-## OTel SDK in the backend (opt-in)
-
-When `telemetry.enabled = true`, the backend initialises the OpenTelemetry SDK
-at startup and exports traces + metrics over OTLP.  Three options for where
-the data goes:
-
-### Option A — remote collector only
-
-Send directly to a third-party or Cisco-hosted OTLP backend.  No local
-infrastructure needed; the remote backend provides retention, dashboards,
-and alerting.
-
-```toml
-[telemetry]
-enabled       = true
-otlp_endpoint = "https://otlp-gateway-prod-us-east-0.grafana.net/otlp"
+```bash
+mycelium metrics status         # is the collector running, and is the config right
+mycelium metrics show           # an overview
+mycelium metrics show mycelium  # the backend's activity in detail
+mycelium metrics show cost      # estimated cost of the backend's model calls, by room
+mycelium metrics show --json    # everything collected, as JSON
+mycelium metrics reset          # clear the metrics collected on this machine
 ```
+
+### Exporting them over OpenTelemetry (optional)
+
+With `telemetry.enabled`, the backend also exports traces and metrics over
+OTLP: a span per HTTP route, and timings for aligner rounds, SLIM channels,
+`await` and model calls. Off by default, and when it's off none of that code
+runs.
 
 ```bash
 mycelium config set telemetry.enabled true
-mycelium config set telemetry.otlp_endpoint <remote-url>
-mycelium config apply
-docker restart mycelium-backend
-
-# Auth headers (vendor-specific) — add to ~/.mycelium/.env directly:
-#   Grafana Cloud:  OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <base64(instanceId:key)>
-#   Honeycomb:      OTEL_EXPORTER_OTLP_HEADERS=x-honeycomb-team=<api-key>
-#   Datadog agent:  OTEL_EXPORTER_OTLP_HEADERS=dd-api-key=<key>
-```
-
-No local dashboard.  Data goes straight to the remote backend.
-
-### Option B — local Grafana LGTM only
-
-Starts `grafana/otel-lgtm` locally — OTel Collector + Prometheus + Tempo +
-Loki + Grafana UI.  Full visibility on your own machine; nothing leaves your
-network.  Good for development, debugging, and evaluating what telemetry
-exposes before committing to a remote.
-
-```toml
-[telemetry]
-enabled          = true
-otlp_endpoint    = "http://mycelium-grafana:4318"  # ← must set for Grafana
-```
-
-```bash
-mycelium config set telemetry.enabled true
-mycelium config set telemetry.otlp_endpoint http://mycelium-grafana:4318
-mycelium config apply
-mycelium up --grafana   # imports the dashboard automatically
-docker restart mycelium-backend
-```
-
-Grafana opens at `http://localhost:3001` (admin / admin).
-
-### Option C — local Grafana + forward to remote
-
-Local Grafana gives you real-time visibility while the same telemetry is also
-forwarded to a team-wide remote backend.  `grafana/otel-lgtm`'s internal OTel
-Collector supports fan-out natively: set `OTEL_EXPORTER_OTLP_ENDPOINT` in
-`~/.mycelium/.env` and it forwards everything upstream with no extra
-infrastructure.
-
-```toml
-[telemetry]
-enabled       = true
-otlp_endpoint = "http://mycelium-grafana:4318"   # backend → local Grafana
-```
-
-```bash
-mycelium config set telemetry.enabled true
-mycelium config set telemetry.otlp_endpoint http://mycelium-grafana:4318
-mycelium config apply
-
-# Add forwarding config to ~/.mycelium/.env (not config.toml — operator-managed):
-echo 'OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp-gateway-prod-us-east-0.grafana.net/otlp' >> ~/.mycelium/.env
-echo 'OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <base64(instanceId:key)>'          >> ~/.mycelium/.env
-
-mycelium up --grafana
-docker restart mycelium-backend
-```
-
-The `mycelium-grafana` container reads `~/.mycelium/.env` and picks up
-`OTEL_EXPORTER_OTLP_ENDPOINT` automatically — no compose file edit needed.
-
-**Signal routing summary:**
-
-| Signal | Option A | Option B | Option C |
-|---|---|---|---|
-| OTel traces | Remote only | Local Tempo | Local + remote |
-| OTel metrics | Remote only | Local Prometheus + dashboard | Local + remote |
-| Product analytics | Loki destination (separate) | Loki destination (separate) | Loki destination (separate) |
-
-**Note:** if `mycelium-grafana` is restarted (e.g. by `mycelium up --build`),
-restart the backend too — the OTel SDK HTTP connection does not auto-reconnect:
-
-```bash
-docker restart mycelium-backend
-```
-
-When `telemetry.enabled = false` (the default), **no OTel code runs** — not even an
-import.  The in-process store is always-on regardless.
-
-### What the SDK adds
-
-- **Per-route HTTP spans** (`FastAPIInstrumentor` — stable OTel HTTP conventions)
-- **OTLP trace export** to the collector (`BatchSpanProcessor`, async flush)
-- **OTLP metric export** to the collector (`PeriodicExportingMetricReader`, 5 s)
-- **Resource attributes** on every span: `service.name=mycelium-backend`,
-  `service.version`, `deployment.environment`
-
-### gen_ai.* conventions — version pin (Sep 2026)
-
-The `gen_ai.*` semantic conventions moved to the dedicated
-[`open-telemetry/semantic-conventions-genai`](https://github.com/open-telemetry/semantic-conventions-genai)
-repository in June 2026 and remain in **Development** status (0 of 63
-attributes are stable as of Sep 2026).  The OTel packages pinned in
-`fastapi-backend/pyproject.toml` (`opentelemetry-sdk>=1.29.0`) are the
-versions tested against — update the pin comment when you bump the version.
-
-### Collector
-
-The **collector** is an opt-in OTLP receiver on `:4318` that receives traces
-and metrics from the backend (when `telemetry.enabled=true`), polls
-`/api/observability`, and aggregates everything into
-`$MYCELIUM_DATA_DIR/metrics/`.
-
-```bash
-mycelium up --metrics          # start the collector
-mycelium metrics status        # verify it is reachable
-mycelium metrics traces summary
-mycelium metrics traces by-agent
-```
-
----
-
-## Agent telemetry over OTLP (external sources)
-
-Point any OTLP exporter at `http://<host>:4318` to feed the collector.  The
-intended source is an agent-side observability plugin such as
-[InsightClaw](https://github.com/outshift-open/InsightClaw), which emits
-per-request LLM cost/token telemetry.  Third-party spans and metrics land in
-the same `metrics.json` + `traces.db` the CLI and app read.
-
----
-
-## Product analytics (opt-in, off by default)
-
-Separate from operational telemetry.  Fires only when the user explicitly
-enables it at interactive install (or via `mycelium config set`).
-
-### Events
-
-| Event | When | Fields |
-|---|---|---|
-| `mycelium.install` | First interactive install | `install_id`, `release`, `platform` |
-| `mycelium.session` | Each coordinated session that reaches a terminal outcome | `install_id`, `release`, `adapter_class`, `outcome`, `session_count` |
-
-`session_count` is the cumulative number of completed sessions on this installation (1 = first,
-2+ = repeat). Use it to compute time-to-first-session and retention curves without separate event types.
-
-### Privacy contract
-
-- Every event is identified only by a random `install_id` (UUID4, generated at
-  first install, stored in `config.toml`).
-- **Never included**: room names, task content, prompts, replies, handles, IP
-  addresses, hostnames, or any content from a coordinated session.
-- `adapter_class` is the *kind* string (`claude_code`, `cursor`), never a name.
-- `outcome` is a status word (`converged`, `resolved`, `rejected`).
-
-### Enabling / disabling
-
-```bash
-# Enable (interactive install shows this disclosure before asking)
-mycelium config set telemetry.send_product_analytics true
-
-# Disable at any time
-mycelium config set telemetry.send_product_analytics false
+mycelium config set telemetry.otlp_endpoint <url>
 mycelium config apply
 ```
 
-Non-interactive installs (`mycelium install --non-interactive`) stay off
-unconditionally.  The destination (`telemetry.analytics_destination`) is not
-yet configured — events are no-ops until the go/no-go decision in #937 is
-made.
+Where to point it:
 
----
+- **A hosted OTLP backend**, such as Grafana Cloud or Honeycomb. Put its auth
+  header in `~/.mycelium/.env` as `OTEL_EXPORTER_OTLP_HEADERS`.
+- **A local Grafana**, with the Docker stack: set the endpoint to
+  `http://mycelium-grafana:4318` and run `mycelium up --grafana`. That starts
+  Grafana's all-in-one image and imports Mycelium's dashboard. It opens at
+  `http://localhost:3001` (admin / admin). To also forward to a hosted
+  backend, set `OTEL_EXPORTER_OTLP_ENDPOINT` and its headers in
+  `~/.mycelium/.env`.
+- **The Mac app** runs no collector or Grafana, so set the endpoint to one you
+  run yourself, for example `http://127.0.0.1:4318` for a collector on the
+  same Mac.
+
+If the Grafana container restarts, restart the backend too
+(`docker restart mycelium-backend`): its OTLP connection doesn't reconnect.
+
+The spans follow OpenTelemetry's `gen_ai.*` conventions, which are still
+marked Development. The versions tested against are pinned in
+`fastapi-backend/pyproject.toml`.
+
+## Agent telemetry over OTLP (optional)
+
+The collector receives OpenTelemetry data. Start it with
+`mycelium up --metrics`, and it listens for OTLP metrics and traces on
+`localhost:4318`, and also reads the backend's `/api/observability`. It saves
+a combined snapshot to `$MYCELIUM_DATA_DIR/metrics/`, which is what
+`mycelium metrics` reads.
+
+Point any OTLP exporter at `http://<host>:4318` to send data to it. Traces are
+stored in full. Spans that carry OpenTelemetry's GenAI attributes
+(`gen_ai.agent.name`, `gen_ai.request.model`, `gen_ai.tool.name`,
+`gen_ai.usage.*`) can be grouped by agent, model and tool. For metrics, the
+collector only counts how many data points each host has sent.
+
+```bash
+mycelium metrics traces summary    # totals over a time window
+mycelium metrics traces by-agent   # spans grouped by agent, room, model, tool and more
+```
 
 ## Files
 
-All metrics data lives under `$MYCELIUM_DATA_DIR/metrics/` (default
-`~/.mycelium/metrics/`): `metrics.json` (the aggregated snapshot) and
-`traces.db` (the OTLP span store).
+Under `$MYCELIUM_DATA_DIR` (`~/.mycelium/` by default):
 
-### config.toml telemetry section
+- `usage/events.jsonl`: the hub's usage events (rotated at 5 MB, keeping one
+  previous file), and `usage/hub_id` when the hub made its own id.
+- `metrics/metrics.json`: the collector's combined snapshot.
+- `metrics/traces.db`: the OTLP traces the collector received.
 
 ```toml
 [telemetry]
-# OTel SDK — off by default; zero cost when disabled
-enabled                  = false
-otlp_endpoint            = ""     # defaults to http://mycelium-collector:4318
-
-# Product analytics — off by default, never enabled non-interactively
-send_product_analytics   = false
-analytics_destination    = ""     # set once #937 go/no-go is decided
-install_id               = ""     # auto-generated at first interactive install
+enabled                = false  # export backend traces and metrics over OTLP
+otlp_endpoint          = ""     # where to; the Docker stack's collector if unset
+send_product_analytics = false  # share usage stats
+analytics_destination  = ""     # where shared usage events go
+install_id             = ""     # set by `mycelium install`; a hub without one makes its own
 ```

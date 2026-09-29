@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { CurrentUserProvider } from "@/components/current-user";
+import { MachineFromUrl } from "@/components/machine-from-url";
 import { AuthSessionProvider } from "@/components/auth-session";
 import { LoginGate } from "@/components/login-gate";
 import { KeymapProvider } from "@/components/keymap-provider";
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               survives navigation between rooms. */}
           <SWRProvider>
             <CurrentUserProvider>
+              <MachineFromUrl />
               <AuthSessionProvider>
                 {/* Gate the whole app: when the backend requires auth and
                     there's no session, this renders the sign-in screen instead

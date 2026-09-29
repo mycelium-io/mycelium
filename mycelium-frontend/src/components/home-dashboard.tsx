@@ -4,18 +4,28 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
-import { AlertTriangle, Boxes, Plus, Sparkles, Terminal } from "lucide-react";
-import { EmptyState } from "@/components/empty-state";
-import { Button } from "@/components/ui/button";
+import {
+  AlertTriangle,
+  Command,
+  Laptop,
+  Plus,
+  Search,
+  Sparkles,
+  Terminal,
+  type LucideIcon,
+} from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RoomAvatar } from "@/components/ui/room-avatar";
-import { Monogram } from "@/components/ui/monogram";
+import { KbdChord } from "@/components/ui/kbd";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
 import { useOpenInstallModal } from "@/components/install-modal";
+import { useOpenSearch } from "@/components/global-search";
+import { useOpenPalette } from "@/components/keymap-provider";
 import { type EpisodeSummary, type Room } from "@/lib/api";
-import { avatarTint } from "@/lib/avatar-color";
-import { useRoomAgents, useRoomEpisodes, useRoomLatest, useRooms, type RoomQueryOptions } from "@/lib/room-data";
+import { useIsDesktop } from "@/lib/desktop";
+import { useRoomEpisodes, useRoomLatest, useRooms, type RoomQueryOptions } from "@/lib/room-data";
 import { useBackendHealth } from "@/lib/use-status";
 
 /** The rows read the shared caches but don't drive them: a list of rooms is a
@@ -24,35 +34,6 @@ const NO_POLL: RoomQueryOptions = { refreshInterval: 0 };
 
 // The seeded sample room the "Run a sample coordination" onboarding routes into.
 const SAMPLE_TOUR_HREF = "/room/pricing-model?tour=1";
-
-/** Secondary onboarding CTA: see it work before building anything. */
-function RunSampleLink({ className = "" }: { className?: string }) {
-  return (
-    <Link
-      href={SAMPLE_TOUR_HREF}
-      className={`inline-flex h-8 items-center gap-2 rounded-md border border-border px-3.5 text-label font-medium text-text transition-colors hover:border-border2 hover:bg-surface ${className}`}
-    >
-      <Sparkles className="size-4 text-accent" />
-      Run a sample
-    </Link>
-  );
-}
-
-/** Onboarding escape hatch from a connected workspace: the install flow, for a
- *  second machine or an agent that still needs the CLI. */
-function InstallLink() {
-  const openInstallModal = useOpenInstallModal();
-  return (
-    <button
-      type="button"
-      onClick={openInstallModal}
-      className="inline-flex items-center gap-1.5 text-label font-medium text-muted-foreground transition-colors hover:text-text"
-    >
-      <Terminal className="size-3.5" />
-      Install the CLI
-    </button>
-  );
-}
 
 function relativeTime(iso: string): string {
   if (!iso) return "";
@@ -65,7 +46,12 @@ function relativeTime(iso: string): string {
   if (hr < 24) return `${hr}h`;
   const d = Math.floor(hr / 24);
   if (d < 7) return `${d}d`;
-  return new Date(iso).toISOString().slice(5, 10);
+  const when = new Date(iso);
+  return when.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(when.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }),
+  });
 }
 
 function episodeState(ep: EpisodeSummary): { label: string; color: string; live: boolean } {
@@ -75,12 +61,53 @@ function episodeState(ep: EpisodeSummary): { label: string; color: string; live:
   return { label: "negotiating", color: "var(--accent)", live: true };
 }
 
-/** The landing view: every room as a conversation.
- *
- *  A room *is* a conversation — with agents rather than people, but the shape
- *  is the same — so this reads like an inbox: who is in it, what was last
- *  said, how long ago. */
+/** One line of the welcome list: what it does, and the key that does it too. */
+function ActionRow({
+  icon: Icon,
+  label,
+  action,
+  onClick,
+  href,
+}: {
+  icon: LucideIcon;
+  label: string;
+  action?: string;
+  onClick?: () => void;
+  href?: string;
+}) {
+  const cls =
+    "flex h-8 w-full items-center gap-2.5 rounded px-2 text-label text-muted-foreground transition-colors hover:bg-hairline hover:text-text";
+  const inner = (
+    <>
+      <Icon className="size-4 flex-shrink-0 text-faint" />
+      <span className="flex-1 text-left">{label}</span>
+      {action && <KbdChord size="xs" tone="muted" action={action} />}
+    </>
+  );
+  return href ? (
+    <Link href={href} className={cls}>
+      {inner}
+    </Link>
+  ) : (
+    <button type="button" onClick={onClick} className={cls}>
+      {inner}
+    </button>
+  );
+}
+
+/** A small label over a list, as the rest of the app draws one. */
+function ListLabel({ children }: { children: React.ReactNode }) {
+  return <h2 className="mb-1 px-2 text-micro font-medium text-faint">{children}</h2>;
+}
+
+/** The landing view, the way an editor opens: what you can start, then where
+ *  things moved. The rooms themselves are in the sidebar; this lists them by
+ *  what was last said in each, newest first, which the sidebar can't. */
 export function HomeDashboard() {
+  const openSearch = useOpenSearch();
+  const openPalette = useOpenPalette();
+  const desktop = useIsDesktop();
+  const openInstallModal = useOpenInstallModal();
   const [showCreate, setShowCreate] = useState(false);
   const { rooms, loading, refresh } = useRooms();
   // Newest first, the way an inbox is read. The hub serves the list in its own
@@ -103,65 +130,58 @@ export function HomeDashboard() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-3xl px-8 py-8">
-        <header className="mb-5 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-semibold text-text">Command center</h1>
-            <p className="mt-1 text-label text-muted-foreground">
-              {disconnected ? "Hub unreachable." : "Your rooms. Open one to coordinate."}
-            </p>
-          </div>
-          {!disconnected && (
-            <div className="mt-1 flex flex-shrink-0 items-center gap-2">
-              <RunSampleLink />
-              <Button onClick={() => setShowCreate(true)}>
-                <Plus className="size-4" />
-                New room
-              </Button>
-            </div>
-          )}
+      <div className="mx-auto max-w-xl px-6 pt-16 pb-10">
+        {/* The mark, the name, one line: stacked and centered, the way an
+            editor greets you, above lists that read left to right. */}
+        <header className="mb-10 flex flex-col items-center text-center">
+          <Image src="/logo.png" alt="" width={40} height={40} className="opacity-90" />
+          <h1
+            className="mt-3 text-[40px] leading-none text-text"
+            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontStyle: "italic", fontWeight: 600 }}
+          >
+            mycelium
+          </h1>
+          <p className="mt-2 text-label text-muted-foreground">
+            {disconnected ? "The hub isn't answering." : "Rooms where people and agents work together."}
+          </p>
         </header>
 
+        {!disconnected && (
+          <section className="mb-8">
+            <ListLabel>Start</ListLabel>
+            <ActionRow icon={Plus} label="New room" onClick={() => setShowCreate(true)} />
+            <ActionRow icon={Search} label="Search everything" action="search.open" onClick={() => openSearch?.()} />
+            <ActionRow icon={Command} label="All commands" action="palette.open" onClick={openPalette} />
+            <ActionRow icon={Laptop} label={desktop ? "This Mac's agents" : "Machines"} href="/machines" />
+            <ActionRow icon={Sparkles} label="Run a sample" href={SAMPLE_TOUR_HREF} />
+            {!desktop && <ActionRow icon={Terminal} label="Install the CLI" onClick={openInstallModal} />}
+          </section>
+        )}
+
         {disconnected ? (
-          <div className="rounded-xl border border-dashed border-border2">
-            <EmptyState
-              icon={AlertTriangle}
-              title="Hub unreachable"
-              description="The hub isn't answering right now, so the CLI may not be able to connect."
-            />
-          </div>
+          <p className="flex items-start gap-2 px-2 text-label text-muted-foreground">
+            <AlertTriangle className="mt-0.5 size-4 flex-shrink-0 text-yellow" />
+            Nothing here can load until the hub answers again. It may be restarting; this page
+            picks up on its own when it&apos;s back.
+          </p>
         ) : loading ? (
-          <div className="flex flex-col gap-1.5">
+          <section>
+            <ListLabel>Recent</ListLabel>
             {Array.from({ length: 4 }, (_, i) => (
               <RoomRowSkeleton key={i} />
             ))}
-          </div>
+          </section>
         ) : rooms.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border2">
-            <EmptyState
-              icon={Boxes}
-              title="No rooms yet"
-              description="Create your first coordination room, or run a guided sample to see it work."
-              action={
-                <div className="flex flex-col items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <Button onClick={() => setShowCreate(true)}>
-                      <Plus className="size-4" />
-                      New room
-                    </Button>
-                    <RunSampleLink />
-                  </div>
-                  <InstallLink />
-                </div>
-              }
-            />
-          </div>
+          <p className="px-2 text-label text-muted-foreground">
+            No rooms yet. Make one, or run the sample to see a room at work.
+          </p>
         ) : (
-          <div className="flex flex-col gap-1.5">
+          <section>
+            <ListLabel>Recent</ListLabel>
             {ordered.map(room => (
               <RoomRow key={room.name} room={room} />
             ))}
-          </div>
+          </section>
         )}
       </div>
 
@@ -173,47 +193,15 @@ export function HomeDashboard() {
 /** Loading placeholder mirroring a row's shape, so the list doesn't jump. */
 function RoomRowSkeleton() {
   return (
-    <div className="flex items-center gap-3.5 rounded-xl border border-border bg-paper px-4 py-3.5">
-      <Skeleton className="size-10 flex-shrink-0 rounded-xl" />
-      <div className="min-w-0 flex-1">
-        <Skeleton className="h-3.5 w-40" />
-        <Skeleton className="mt-2 h-2.5 w-3/5" />
-      </div>
-      <Skeleton className="h-6 w-20 rounded-full" />
+    <div className="flex h-9 items-center gap-2.5 px-2">
+      <Skeleton className="size-[18px] flex-shrink-0 rounded" />
+      <Skeleton className="h-2.5 w-24" />
+      <Skeleton className="h-2.5 flex-1" />
     </div>
   );
 }
 
-/** How many faces the pile shows before it starts counting instead. */
-const FACES = 4;
-
-/** The room's agents as an overlapping pile of their own avatars. Says who is
- *  in the room, which is what a count of them never did. */
-function FacePile({ handles }: { handles: string[] }) {
-  if (handles.length === 0) return null;
-  const shown = handles.slice(0, FACES);
-  const rest = handles.length - shown.length;
-  return (
-    // Dropped on a phone, where it would squeeze the preview line to a few
-    // characters — what was said matters more there than who is in the room.
-    <span className="hidden flex-shrink-0 items-center sm:flex" aria-label={`${handles.length} agents`}>
-      {shown.map(handle => (
-        <span
-          key={handle}
-          // The ring cuts each face out of the one behind it, so it has to be
-          // the row's own background — including the color it hovers to.
-          className="-ml-1.5 inline-block rounded-full ring-2 ring-paper first:ml-0 group-hover:ring-elevated"
-        >
-          <Monogram handle={handle} className="size-6 text-[10px]" />
-        </span>
-      ))}
-      {rest > 0 && <span className="ml-1.5 text-micro tabular text-muted-foreground">+{rest}</span>}
-    </span>
-  );
-}
-
 function RoomRow({ room }: { room: Room }) {
-  const { agents } = useRoomAgents(room.name, NO_POLL);
   const { episodes } = useRoomEpisodes(room.name, NO_POLL);
   const { latest, loading: latestLoading } = useRoomLatest(room.name, NO_POLL);
 
@@ -226,52 +214,36 @@ function RoomRow({ room }: { room: Room }) {
   // standby for a room whose transcript has nothing readable in it.
   const stamp = relativeTime(latest?.at || room.last_activity || room.created_at);
 
+  // One line per room: its name, whether it is mid-negotiation, what was last
+  // said there, and when.
   return (
     <Link
       href={`/room/${encodeURIComponent(room.name)}`}
-      className="group flex items-center gap-3.5 rounded-xl border border-border bg-paper px-4 py-3.5 transition-colors hover:border-border2 hover:bg-elevated"
+      className="flex h-9 items-center gap-2.5 rounded px-2 text-label transition-colors hover:bg-hairline"
     >
-      <RoomAvatar name={room.name} className="size-10 rounded-xl text-label" />
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <span className="truncate text-ui font-medium text-text">{room.name}</span>
-          {state?.live && (
-            <span
-              className="flex flex-shrink-0 items-center gap-1.5 text-micro"
-              style={{ color: state.color }}
-            >
-              <span
-                className="inline-block size-1.5 animate-pulse rounded-full"
-                style={{ background: state.color }}
-              />
-              {state.label}
-            </span>
-          )}
-          <span className="ml-auto flex-shrink-0 text-micro tabular text-faint">{stamp}</span>
-        </div>
-
-        <div className="mt-1 flex items-center gap-2">
-          <span className="min-w-0 flex-1 truncate text-label text-muted-foreground">
-            {latestLoading ? (
-              <Skeleton className="inline-block h-2.5 w-48 align-middle" />
-            ) : latest ? (
-              <>
-                {latest.sender && (
-                  <span className="font-medium" style={{ color: avatarTint(latest.sender) }}>
-                    {latest.sender}
-                  </span>
-                )}
-                {latest.sender && <span className="text-faint"> · </span>}
-                {latest.text}
-              </>
-            ) : (
-              <span className="text-faint">No messages yet</span>
-            )}
-          </span>
-          <FacePile handles={agents.map(a => a.handle)} />
-        </div>
-      </div>
+      <RoomAvatar name={room.name} className="size-[18px] rounded-[4px] text-[8px]" />
+      <span className="flex-shrink-0 font-medium text-text">{room.name}</span>
+      {state?.live && (
+        <span
+          aria-label={state.label}
+          title={state.label}
+          className="inline-block size-1.5 flex-shrink-0 animate-pulse rounded-full"
+          style={{ background: state.color }}
+        />
+      )}
+      <span className="min-w-0 flex-1 truncate text-muted-foreground">
+        {latestLoading ? (
+          <Skeleton className="inline-block h-2.5 w-40 align-middle" />
+        ) : latest ? (
+          <>
+            {latest.sender && <span className="text-faint">{latest.sender}: </span>}
+            {latest.text}
+          </>
+        ) : (
+          <span className="text-faint">No messages yet</span>
+        )}
+      </span>
+      <span className="flex-shrink-0 text-micro tabular text-faint">{stamp}</span>
     </Link>
   );
 }

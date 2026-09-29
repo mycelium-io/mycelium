@@ -1,51 +1,25 @@
 # Hello
 
-The hello engine is the [engine](#engines) that does nothing on purpose. Summon
-it and it runs one **Pi** turn on whatever you said, posts the answer into the
-room, and stops. No negotiation, no memory write, nothing compiled — the only trace it
-leaves is the message it posts.
-
-That is what makes it useful. The [aligner](#aligner) opens a negotiation
-episode and the [synthesizer](#synthesizer) writes a memory back, so neither is
-something you want to fire into a live room just to check the wiring. Hello is,
-which makes it the first thing to try on a new hub.
+Hello replies to whatever you send it, and that's all it does. It doesn't
+write memories, start negotiations or change the board. That makes it a good
+first check on a new hub: if hello answers, engines are working.
 
 ```bash
-# Register it once in the room
 mycelium engine create hello --kind hello --room sprint-plan
-
-# Summon it
 mycelium engine invoke hello "say hello and name the model you are" -r sprint-plan
 ```
 
-A reply in the room means the whole engine path works.
+## If it doesn't answer
 
-## What a reply proves
+A reply means the hub can reach your model and post messages back to the room.
 
-`mycelium doctor` already checks that the hub can reach a model — but that
-probe stops at the completion. Every rung above it is untested until an engine
-actually runs. A hello reply walks all of them:
+If the model call fails or times out, hello posts the error in the room
+instead of staying quiet. So if you see nothing at all, the message probably
+never reached it. Check that the engine is registered in the room you're
+talking in (`mycelium engine ls`), then look at the backend logs.
 
-- the manifest gate that routes an `@`-mention to a registered engine of the
-  right `kind`, and to nothing else
-- the engine runtime branch that decides who owns the run
-- the guard that stops an engine firing on its own message
-- a one-shot Pi turn against the configured `llm.model` / key / base URL
-- the channel send, and the persister writing the message into the transcript
+## It doesn't remember
 
-If no reply appears, the failure is in exactly one of those, and the backend
-logs say which.
-
-## Fail-loud
-
-A probe that fails silently is worse than no probe, so hello never goes quiet:
-if its Pi turn times out or errors, it posts the reason into the room instead of
-an answer. Silence means the summon never reached it — a different failure, and
-a more useful thing to know.
-
-## Holding nothing
-
-Hello keeps no state between summons and answers each one from scratch, so it is
-not a chat partner — it is a probe with a personality. Ask it something twice
-and it will not remember the first time. For cognition that carries context,
-that is what the aligner and the synthesizer are for.
+Each message is answered on its own. Hello won't remember what you asked it
+before. If you want something that keeps a conversation going, use a
+[persona](#persona).

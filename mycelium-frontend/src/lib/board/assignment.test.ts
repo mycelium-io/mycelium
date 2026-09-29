@@ -35,6 +35,8 @@ import {
 } from "@/lib/board/assignment";
 import { attentionFilterOf, type LiveItem, type SourceKind } from "@/lib/board/item";
 import { projectItems } from "@/lib/board/projection";
+import { DEPENDENCY_RELATION, SETTLED_STATUSES, WAITING_FIELD, waitingOnRows } from "@/lib/board/assignment";
+import { waitingOn } from "@/lib/board/view";
 import type { AgentSummary, Memory, PresenceMember } from "@/lib/api";
 
 const CONTRACT = JSON.parse(
@@ -306,5 +308,72 @@ describe("the projection, once assignment is the axis", () => {
     // Nobody touched the row. It drained.
     expect(assignmentOf(item, NOW)).toBe("expired");
     expect(attentionFilterOf(item, NOW)).toBe("needs_you");
+  });
+});
+
+describe("what a row waits on", () => {
+  // Read off the other rows and stored nowhere: a dependency resolving changes
+  // what its dependents wait on with nobody writing a byte.
+  const contract = JSON.parse(
+    readFileSync(join(__dirname, "..", "..", "..", "..", "contracts", "board-vocabulary.json"), "utf8"),
+  ) as { task: { dependency_relation: string; waiting_field: string; settled_statuses: string[] } };
+
+  const memory = (key: string, meta: Record<string, unknown> = {}): Memory => ({
+    key,
+    value: "Spike the auth rewrite",
+    content_text: "Spike the auth rewrite",
+    version: 1,
+    created_by: "julia",
+    updated_by: "julia",
+    updated_at: new Date(NOW).toISOString(),
+    meta,
+  });
+
+  const project = (...memories: Memory[]) => {
+    const rows = projectItems({
+      room: "atlas",
+      episodes: [],
+      memories,
+      agents: [],
+      presence: new Map(),
+      now: new Date(NOW).toISOString(),
+    });
+    return new Map(rows.map(row => [row.source.label, row]));
+  };
+
+  it("uses the contracted words, as the CLI must too", () => {
+    expect(DEPENDENCY_RELATION).toBe(contract.task.dependency_relation);
+    expect(WAITING_FIELD).toBe(contract.task.waiting_field);
+    expect([...SETTLED_STATUSES]).toEqual(contract.task.settled_statuses);
+  });
+
+  it("waits on its open dependencies and not its settled ones", () => {
+    const rows = project(
+      memory("work/schema"),
+      memory("work/migrate", { status: "resolved" }),
+      memory("work/deploy", { assignment: "resolved" }),
+      memory("work/api", { "depends-on": ["work/schema", "work/migrate", "work/deploy"] }),
+    );
+    expect(waitingOnRows(rows.get("work/api")!)).toEqual(["work/schema"]);
+    expect(waitingOn(rows.get("work/api")!)).toBe("after work/schema");
+  });
+
+  it("does not wait on a reference", () => {
+    const rows = project(memory("work/api", { "depends-on": ["context/design", "work/never-filed"] }));
+    expect(waitingOnRows(rows.get("work/api")!)).toEqual([]);
+    expect(waitingOn(rows.get("work/api")!)).toBeNull();
+  });
+
+  it("carries no column where there is nothing to say", () => {
+    const rows = project(memory("work/api"));
+    expect(WAITING_FIELD in rows.get("work/api")!.fields).toBe(false);
+  });
+
+  it("a named blocker still reads first", () => {
+    const rows = project(
+      memory("work/schema"),
+      memory("work/api", { "depends-on": "work/schema", blocked_by: ["#502"] }),
+    );
+    expect(waitingOn(rows.get("work/api")!)).toBe("waiting on #502");
   });
 });

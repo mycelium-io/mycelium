@@ -88,7 +88,28 @@ describe("reading a notice", () => {
     const notice = noticeOf(
       noticeFrame({ subkind: "filed", key: "work/flip", title: "flip reads", episode: THREAD, by: "aligner", kind: "action", for: "@growth" }),
     );
-    expect(notice).toEqual({ subkind: "filed", key: "work/flip", title: "flip reads", episode: THREAD, by: "aligner", kind: "action", assignee: "@growth" });
+    expect(notice).toEqual({
+      subkind: "filed",
+      key: "work/flip",
+      title: "flip reads",
+      episode: THREAD,
+      by: "aligner",
+      kind: "action",
+      assignee: "@growth",
+      speakers: [],
+      released: false,
+    });
+  });
+
+  it("reads whose turn it is off a floor notice", () => {
+    // The one notice about a thread rather than a task: the holder, the handles
+    // it gave the floor to, and whether it just opened back up.
+    const given = noticeOf(noticeFrame({ subkind: "floor", key: "t3", episode: THREAD, by: "conductor", speakers: "api,sec" }));
+    expect(given).toMatchObject({ subkind: "floor", by: "conductor", speakers: ["api", "sec"], released: false });
+    const alone = noticeOf(noticeFrame({ subkind: "floor", key: "t3", episode: THREAD, by: "conductor" }));
+    expect(alone).toMatchObject({ speakers: [], released: false });
+    const opened = noticeOf(noticeFrame({ subkind: "floor", key: "t3", episode: THREAD, by: "conductor", released: "1" }));
+    expect(opened).toMatchObject({ speakers: [], released: true });
   });
 
   it("reads a lease event with no board kind", () => {

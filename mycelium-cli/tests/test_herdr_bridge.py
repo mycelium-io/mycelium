@@ -207,6 +207,24 @@ def test_wake_happy_path(monkeypatch: pytest.MonkeyPatch, isolated_home: Path) -
     assert prompt_calls and prompt_calls[0][2] == "w2:pV" and "--wait" in prompt_calls[0]
 
 
+def test_wake_without_waiting_hands_the_prompt_over_and_returns(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    # A swarm wakes several agents in one pass; waiting on each turn to settle
+    # would have them work one after another.
+    bridge, runner = _bridge_with(
+        monkeypatch,
+        {
+            "agent get": _proc(_ok({"agent": {"pane_id": "w2:pV", "agent_status": "idle"}})),
+            "agent prompt": _proc(_ok({})),
+        },
+    )
+    mapping = HerdrPaneMapping(room="design", handle="reviewer", pane="w2:pV")
+    assert bridge.wake(mapping, "wake up", timeout_ms=5000, wait=False).ok is True
+    [call] = [c for c in runner.calls if c[:2] == ["agent", "prompt"]]
+    assert "--wait" not in call and "--timeout" not in call
+
+
 def test_wake_holds_when_agent_busy(monkeypatch: pytest.MonkeyPatch, isolated_home: Path) -> None:
     bridge, runner = _bridge_with(
         monkeypatch,

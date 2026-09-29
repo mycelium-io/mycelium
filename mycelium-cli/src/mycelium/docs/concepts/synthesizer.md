@@ -1,75 +1,49 @@
 # Synthesizer
 
-The synthesizer is the distillation [engine](#engines): the `kind` that reads a
-room's **conversation** and writes what it learned into **memory**. Tasks
-resolve and drop off the [board](#board); the synthesizer is what moves the part
-worth keeping into the room's memory before they do.
-
-That direction is the whole point. Chat is the ephemeral half — where a decision
-gets argued, qualified and settled, and the half nothing indexes for meaning.
-Memory is the durable half. The synthesizer is the bridge between them.
-
-Like every engine, it is summoned. Nothing runs until you register it in a
-[room](#rooms) and invoke it, so there is no polling and no held connection.
+The synthesizer reads the room's conversation and writes a summary of it into
+the room's memory. Decisions often get made in chat and then scroll away. The
+synthesizer writes them down where they can be found later.
 
 ```bash
-# Register the synthesizer once per room
 mycelium engine create summarizer --kind synthesizer --room sprint-plan
 
-# Summon it to distill what has been said since last time
-mycelium engine invoke summarizer "brief the room on where we stand" -r sprint-plan
+# Summarize what's been said since the last time
+mycelium engine invoke summarizer "catch us up" -r sprint-plan
 
-# Re-distill the whole transcript instead of just the new tail
-mycelium engine invoke summarizer "--all" -r sprint-plan
-
-# Read the result back
+# Read the summary
 mycelium memory get context/synthesis -r sprint-plan
 ```
 
-## How it distills
+The summary covers what was decided, what changed, what's in progress and
+what's still open. It's saved as the memory `context/synthesis`, so you can
+search it, link to it and see its earlier versions like any other memory. The
+synthesizer also posts it in the room.
 
-On summon, the synthesizer reads the room's chat and runs one **Pi** turn to
-distill it into a single markdown briefing: what was decided, what changed, what
-is in flight, and what is still open. It upserts that briefing as a `knowledge`
-[memory](#memory) at `context/synthesis`, so it is versioned, searchable, linked
-and shared like any other memory.
+## Only what's new
 
-It reads the transcript **by message type**, so only real chat reaches the
-prompt. The room's feed also carries L9 frames and coordination messages whose
-content is a serialized envelope; those are excluded structurally, and a
-briefing never comes back with JSON quoted inside it.
+Each time you ask, it reads only the messages since the last summary and adds
+them to what it already has, so the summary grows over time. If nothing new has
+been said, it doesn't write anything.
 
-## Incremental by default
+To start over and summarize the whole conversation, include `--all` in your
+message:
 
-Each run covers only what has been said since the last one. The written memory
-carries the position it was distilled through in its own frontmatter, so the
-cursor advances exactly when the briefing lands — a failed Pi turn moves
-nothing, and re-summoning with no new messages writes nothing at all rather than
-producing a second copy of the same summary.
+```bash
+mycelium engine invoke summarizer "--all" -r sprint-plan
+```
 
-The standing briefing is carried into the next run as context, so a new slice is
-folded into what is already known rather than replacing it. Pass `--all` in the
-summon text to re-read the whole transcript from the start.
+## What it reads
 
-The synthesizer also speaks its briefing into the room, which means its own
-words are in its next input. Messages from any registered synthesizer handle are
-dropped from the corpus before the prompt is built, so it never feeds on itself.
+It reads the messages people and agents wrote, and skips the room's system
+messages. It also skips its own earlier summaries, so it doesn't end up
+summarizing itself.
 
-## Faithfulness
-
-The briefing reflects only what was actually said; the synthesizer does not
-invent facts. If its Pi turn fails, it writes nothing rather than a half-formed
-summary.
-
-The synthesizer holds no [episode](#episodes) and drives no negotiation. It
-reads the room, distills it, and writes the result back. It shares the rest of
-the engine model: the summon lifecycle and [where it runs](#engines)
-(backend-side), with every brain running a **Pi** turn.
+It only writes down what was actually said. If the model call fails, it
+leaves the existing summary as it was.
 
 ## Summarizing memory instead
 
-Summarizing the memory store — a briefing over what is already durable — is a
-different feature, not the default one. Set `SYNTHESIZER_SOURCE=memory` on the
-backend to get it: the engine then reads every memory namespace (minus agent
-manifests and its own prior output) and compiles those instead. That path is not
-incremental; there is no transcript position to hold.
+If you'd rather have a summary of the room's memories than of its
+conversation, set `SYNTHESIZER_SOURCE=memory` on the backend. In that mode it
+reads every memory in the room and summarizes them all each time, rather than
+only what's new.

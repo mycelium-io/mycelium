@@ -254,6 +254,75 @@ def test_enqueue_wakes_for_mentions_skips_self_and_non_herdr(
     assert manager.pending_herdr_wakes("room-a") == set()
 
 
+def test_members_named_beside_a_conductor_are_roles_not_doorbells(
+    manager: room_channels.RoomChannelManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The conductor addresses each role in its turn; waking them all at the
+    # summon would have every member reach for a turn nobody has put yet.
+    monkeypatch.setattr(
+        room_channels, "_registered_kind", lambda _r, h: "conductor" if h == "conductor" else None
+    )
+    manager.set_herdr_presence("room-a", {"agent-1": "idle", "agent-2": "idle"})
+    enq = manager.enqueue_herdr_wakes_for_mentions(
+        "room-a", "@conductor swarm @agent-1 @agent-2: fix the tests"
+    )
+    assert enq == []
+    assert manager.pending_herdr_wakes("room-a") == set()
+
+
+def test_an_addressed_turn_rings_a_herdr_member_as_a_turn(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    manager.set_herdr_presence("room-a", {"agent-1": "idle"})
+    assert manager.herdr_wake_addressed("room-a", "agent-1") is True
+    assert manager.herdr_wake_addressed("room-a", "ghost") is False
+    [wake] = manager.drain_herdr_wakes("room-a")
+    assert wake["handle"] == "agent-1"
+    assert wake["reason"] == "turn"
+
+
+def test_a_row_filed_for_a_herdr_member_rings_it_with_the_row(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    manager.set_herdr_presence("room-a", {"agent-2": "idle"})
+    filed = {"subkind": "filed", "key": "work/repro", "title": "Reproduce it", "for": "agent-2"}
+    assert manager.herdr_wake_assigned("room-a", {**filed, "subkind": "claimed"}) is False
+    assert manager.herdr_wake_assigned("room-a", {**filed, "for": "ghost"}) is False
+    assert manager.herdr_wake_assigned("room-a", filed) is True
+    [wake] = manager.drain_herdr_wakes("room-a")
+    assert wake == {**wake, "reason": "assigned", "key": "work/repro", "title": "Reproduce it"}
+
+
+def test_a_turn_outranks_a_pending_mention_but_not_the_other_way(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    # One doorbell per handle; the more specific reason is the one that rings.
+    manager.set_herdr_presence("room-a", {"agent-1": "working"})
+    manager.enqueue_herdr_wake("room-a", "agent-1")
+    manager.enqueue_herdr_wake("room-a", "agent-1", reason="turn")
+    manager.enqueue_herdr_wake("room-a", "agent-1")
+    manager.set_herdr_presence("room-a", {"agent-1": "idle"})
+    [wake] = manager.drain_herdr_wakes("room-a")
+    assert wake["reason"] == "turn"
+
+
+@pytest.mark.asyncio
+async def test_every_notice_reaches_the_notice_hook(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    heard: list[tuple[str, dict[str, str]]] = []
+    manager.on_notice = lambda room, notice: heard.append((room, notice))
+    await manager.raise_notice(
+        "room-a", subkind="filed", key="work/x", title="X", by="agent-1", **{"for": "agent-2"}
+    )
+    assert heard == [
+        (
+            "room-a",
+            {"subkind": "filed", "key": "work/x", "title": "X", "by": "agent-1", "for": "agent-2"},
+        )
+    ]
+
+
 def test_wake_pending_surfaces_on_presence(
     manager: room_channels.RoomChannelManager,
 ) -> None:

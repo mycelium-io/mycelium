@@ -31,7 +31,7 @@ export function DetailDrawer({ open, onClose, title, subtitle, actions, children
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-[1px] data-open:animate-in data-open:fade-in-0"
+        className="absolute inset-0 bg-black/30 data-open:animate-in data-open:fade-in-0"
         data-open
         onClick={onClose}
         aria-hidden

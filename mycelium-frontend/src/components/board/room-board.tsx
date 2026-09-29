@@ -35,6 +35,7 @@ import { EPISODE_FIELD, projectItems } from "@/lib/board/projection";
 import { attachUpstream } from "@/lib/board/upstream";
 import { localZone, projectActivity } from "@/lib/board/activity";
 import { captureToItem, type ParsedCapture } from "@/lib/board/capture";
+import { fileCapture } from "@/lib/board/file-capture";
 import { groupableFields, inferSchema } from "@/lib/board/schema";
 import { applyView, filterItems, attentionFilterCounts, SAVED_VIEWS, sortItems, UNGROUPED, type ViewConfig, type ViewMode } from "@/lib/board/view";
 import { BoardTriage, summarize } from "./board-triage";
@@ -42,6 +43,7 @@ import { BoardKanban } from "./board-kanban";
 import { BoardTable } from "./board-table";
 import { BoardTimeline } from "./board-timeline";
 import { BoardCapture } from "./board-capture";
+import { StartSwarmDialog } from "@/components/start-swarm-dialog";
 import { BoardDaily } from "./board-daily";
 import { playBoardSound, type BoardSound } from "@/lib/board/board-sounds";
 
@@ -90,6 +92,8 @@ export function RoomBoard({ roomName, onOpenThread }: Props) {
   const revalidate = useRoomRevalidate(roomName);
   const { principal } = useCurrentUser();
   const actor = principal.replace(/^@/, "") || "you";
+  // The task a swarm is being started on, while its dialog is open.
+  const [swarmTask, setSwarmTask] = useState<string | null>(null);
 
   // A day boundary is only meaningful in some zone, and which one is the
   // reader's business — so it is remembered per browser, not per room.
@@ -289,15 +293,27 @@ export function RoomBoard({ roomName, onOpenThread }: Props) {
     [patch, play],
   );
 
+  // A captured line is filed on the hub as a real task. It shows at once as a
+  // captured row, and gives way to the task itself once the board re-reads.
   const capture = useCallback(
     (parsed: ParsedCapture) => {
       const item = captureToItem(parsed, captured.length + 1, actor);
       setCaptured(prev => [item, ...prev]);
       setSelectedId(item.id);
-      setStatusMessage(`capture → ${item.title}`);
+      setStatusMessage(`filing → ${item.title}`);
       play("capture");
+      fileCapture(roomName, parsed, actor)
+        .then(task => {
+          setStatusMessage(`filed → ${item.title}`);
+          revalidate();
+          setSelectedId(`memory:${task.key}`);
+        })
+        .catch(err => {
+          setStatusMessage(`could not file “${item.title}”: ${err instanceof Error ? err.message : err}`);
+        })
+        .finally(() => setCaptured(prev => prev.filter(c => c.id !== item.id)));
     },
-    [actor, captured.length, play],
+    [actor, captured.length, play, revalidate, roomName],
   );
 
   const pick = useCallback(
@@ -405,7 +421,22 @@ export function RoomBoard({ roomName, onOpenThread }: Props) {
         onOptions={() => setOptionsOpen(o => !o)}
       />
 
-      <BoardCapture ref={captureRef} actor={actor} now={new Date(now).toISOString()} onCapture={capture} />
+      <BoardCapture
+        ref={captureRef}
+        actor={actor}
+        now={new Date(now).toISOString()}
+        onCapture={capture}
+        onSwarm={text => setSwarmTask(text)}
+      />
+      {/* Mounted only while open, so each opening starts from what was typed. */}
+      {swarmTask !== null && (
+        <StartSwarmDialog
+          open
+          onClose={() => setSwarmTask(null)}
+          roomName={roomName}
+          initialTask={swarmTask}
+        />
+      )}
 
       <div className="min-h-0 flex-1">
         {ordered.length === 0 && view.mode !== "daily" ? (
@@ -482,7 +513,7 @@ export function RoomBoard({ roomName, onOpenThread }: Props) {
         )}
       </div>
 
-      <BoardFooter statusMessage={statusMessage} rows={ordered.length} total={items.length} />
+      <BoardFooter statusMessage={statusMessage} keys={selectedId !== null} />
     </div>
   );
 }
@@ -517,26 +548,22 @@ function BoardHeader(props: {
   };
 
   return (
-    <header className={cn("shrink-0 border-b border-border px-3 pt-4 sm:px-5", !showOptions && "pb-2.5")}>
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h2 className="truncate font-serif text-display italic leading-tight text-text">{props.title}</h2>
-          <p className="mt-0.5 font-mono text-micro text-muted-foreground">{props.summary}</p>
-        </div>
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-        {/* Four segments that are read as one control, so they scroll together
-            rather than wrapping: a segment broken across two lines stops
-            reading as a segment, and "Needs you" is two words. */}
-        <div className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg bg-surface p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    // One toolbar, as an editor draws one: the room's name is already in the
+    // title bar, so this is the board's state, its filters and its views.
+    <header className={cn("shrink-0 border-b border-border px-3 sm:px-5", showOptions ? "pb-2" : "")}>
+      <p className="sr-only">{props.title}</p>
+      <div className="flex min-h-9 flex-wrap items-center gap-x-4 gap-y-1 py-1">
+        {/* The filters scroll together rather than wrapping, so they keep
+            reading as one control ("Needs you" is two words). */}
+        <div className="flex max-w-full items-center gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {attentionFilters.map(attentionFilter => (
             <button
               key={attentionFilter}
               onClick={() => props.onAttentionFilter(attentionFilter)}
+              aria-pressed={props.attentionFilter === attentionFilter}
               className={cn(
-                "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1 text-label transition-colors",
-                props.attentionFilter === attentionFilter ? "bg-elevated text-text shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-text",
+                "flex shrink-0 items-center gap-1.5 whitespace-nowrap text-label transition-colors",
+                props.attentionFilter === attentionFilter ? "text-text" : "text-muted-foreground hover:text-text",
               )}
             >
               {label[attentionFilter]}
@@ -552,7 +579,9 @@ function BoardHeader(props: {
           ))}
         </div>
 
-        <div className="flex items-center gap-0.5 rounded-lg bg-surface p-0.5">
+        <span aria-hidden className="h-3 w-px shrink-0 bg-border" />
+
+        <div className="flex items-center gap-0.5">
           {MODES.map(mode => {
             const Icon = mode.icon;
             return (
@@ -560,20 +589,22 @@ function BoardHeader(props: {
                 key={mode.id}
                 onClick={() => props.onMode(mode.id)}
                 title={mode.label}
+                aria-label={mode.label}
+                aria-pressed={props.mode === mode.id}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-md px-2 py-1 text-label transition-colors",
-                  props.mode === mode.id ? "bg-elevated text-text shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-text",
+                  "flex h-6 items-center gap-1.5 rounded px-1.5 text-micro transition-colors",
+                  props.mode === mode.id ? "bg-hairline text-text" : "text-muted-foreground hover:bg-hairline hover:text-text",
                 )}
               >
                 <Icon className="size-3.5" strokeWidth={1.8} />
-                <span className="hidden @[46rem]:inline">{mode.label}</span>
+                <span className="hidden @[56rem]:inline">{mode.label}</span>
               </button>
             );
           })}
         </div>
 
         <div className="flex min-w-[140px] flex-1 items-center gap-2">
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-border px-2 py-1">
+          <div className="flex h-6 min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 transition-colors focus-within:bg-bg hover:bg-hairline">
             <Search className="size-3 shrink-0 text-faint" />
             <input
               value={props.query}
@@ -583,21 +614,22 @@ function BoardHeader(props: {
             />
           </div>
 
-            <button
+          <span className="hidden shrink-0 font-mono text-micro text-faint @[64rem]:inline">{props.summary}</span>
+          <button
             onClick={props.onOptions}
             title="Saved views, grouping, and the inferred schema"
             className={cn(
-              "shrink-0 rounded-md px-2 py-1 font-mono text-micro transition-colors",
+              "shrink-0 rounded-md px-2 py-1 text-micro transition-colors",
               showOptions ? "text-accent" : "text-faint hover:text-muted-foreground",
             )}
           >
-            <span className="hidden @[40rem]:inline">views &amp; fields</span>
+            <span className="hidden @[40rem]:inline">View options</span>
             <SlidersHorizontal className="size-3.5 @[40rem]:hidden" strokeWidth={1.9} />
           </button>
         </div>
       </div>
 
-      <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5", showOptions ? "mt-2 pb-2.5" : "hidden")}>
+      <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5", showOptions ? "" : "hidden")}>
         <span className="font-mono text-micro text-faint">saved views</span>
         {SAVED_VIEWS.map(saved => (
           <button
@@ -641,35 +673,30 @@ function BoardHeader(props: {
   );
 }
 
-function BoardFooter({
-  statusMessage,
-  rows,
-  total,
-}: {
-  statusMessage: string | null;
-  rows: number;
-  total: number;
-}) {
+/**
+ * The board's keys, shown once a row is selected (you are using the keyboard,
+ * so they are worth the line), and what the last action did. Otherwise
+ * nothing: the tabs already count the rows.
+ */
+function BoardFooter({ statusMessage, keys }: { statusMessage: string | null; keys: boolean }) {
+  if (!keys && !statusMessage) return null;
   return (
     <footer className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-5 py-1.5">
-      <span className="hidden flex-wrap items-center gap-x-2 gap-y-1 font-mono text-micro text-faint @[34rem]:flex">
-        <Key k="j/k" /> move
-        <Key k="c" /> claim
-        <Key k="r" /> resolve
-        <Key k="b" /> block
-        <Key k="p" /> promote
-        <Key k="x" /> dismiss
-        <Key k="n" /> capture
-        <Key k="t" /> thread
-      </span>
-      <span className="ml-auto flex items-center gap-2 font-mono text-micro">
-        {statusMessage && (
-          <span className="truncate text-accent" title={statusMessage}>{statusMessage}</span>
-        )}
-        <span className="text-faint">
-          {rows}/{total} rows
+      {keys && (
+        <span className="hidden flex-wrap items-center gap-x-2 gap-y-1 text-micro text-faint @[34rem]:flex">
+          <Key k="j/k" /> move
+          <Key k="c" /> claim
+          <Key k="r" /> resolve
+          <Key k="b" /> block
+          <Key k="t" /> thread
+          <Key k="esc" /> done
         </span>
-      </span>
+      )}
+      {statusMessage && (
+        <span className="ml-auto truncate text-micro text-accent" title={statusMessage}>
+          {statusMessage}
+        </span>
+      )}
     </footer>
   );
 }

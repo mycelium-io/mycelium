@@ -1,28 +1,33 @@
 # Mycelium docs source
 
-The markdown here is the single source of truth for three surfaces: the
-published site at [mycelium-io.github.io/mycelium](https://mycelium-io.github.io/mycelium/),
-`mycelium docs` in the CLI, and `docs/llms-full.txt` for feeding the whole thing
-to a model. Edit the markdown; never edit the generated HTML.
+These markdown files are the source for three things: the docs site at
+[mycelium-io.github.io/mycelium](https://mycelium-io.github.io/mycelium/),
+`mycelium docs` in the CLI, and `docs/llms-full.txt`, the whole set in one
+file for giving to a model. Edit the markdown here, not the generated HTML.
 
-| Path | What lives here |
+| Path | What's in it |
 | --- | --- |
 | `index.md` | What `mycelium docs` prints with no arguments |
-| `overview.md` | The front door: what Mycelium is and why |
-| `concepts/` | The model — rooms, memory, the board, episodes, the engines, L9 |
-| `guides/` | Task-shaped walkthroughs, from quickstart to auth setup |
+| `overview.md` | What Mycelium is and why you'd use it |
+| `concepts/` | Rooms, memory, the board, episodes, the engines, L9 |
+| `guides/` | Step-by-step guides, from the quick start to setting up sign-in |
 | `reference/` | Architecture and metrics |
 
-A topic is addressed by its filename stem regardless of which folder holds it,
-so `mycelium docs rooms` reads `concepts/rooms.md`. Moving a file between these
-folders does not change its command.
+A page's CLI name is its filename without `.md`, whichever folder it's in. So
+`mycelium docs rooms` reads `concepts/rooms.md`, and moving a file to another
+folder doesn't change its name.
 
 ## Changing a page
 
 1. Edit the markdown.
 2. Regenerate the site: `cd mycelium-cli && uv run python ../docs/generate_docs.py`
-3. Commit both. CI fails if the generated output has drifted from the source.
+3. Commit both. CI fails if the generated site doesn't match the markdown.
 
-New pages need an entry in `SECTION_CONFIG` in `docs/generate_docs.py` (which
-page and sidebar group it belongs to) and in `SECTIONS` in
-`mycelium-cli/src/mycelium/commands/docs.py` (its CLI topic name).
+A new page also needs an entry in `SECTION_CONFIG` in `docs/generate_docs.py`
+(which page and sidebar group it goes in) and in `SECTIONS` in
+`mycelium-cli/src/mycelium/commands/docs.py` (its name in the CLI).
+
+Some sections of the site are written directly in HTML and kept as they are
+when the site is regenerated (they're marked `<!-- keep -->`), such as the
+overview at the top of `docs/index.html` and the adapter sections in
+`docs/adapters.html`. Edit those in the HTML.

@@ -26,6 +26,7 @@ import {
   loadSettings,
   openCrossTabChannel,
   roomLevel,
+  roomOfPath,
   saveNotifications,
   saveSettings,
   type NotificationSettings,
@@ -159,7 +160,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     // + sound/desktop) or badge-only.
     if (roomLevel(settingsRef.current, n.room) === "muted") return;
     const loud = isAlert(n, settingsRef.current);
-    setNotifications((prev) => [...prev, { ...n, read: false, alert: loud }]);
+    // Something said in the room you're looking at is read as it arrives: it
+    // shouldn't badge the room you're in or count on the bell.
+    const seeing = document.hasFocus() && roomOfPath(window.location.pathname) === n.room;
+    setNotifications((prev) => [...prev, { ...n, read: seeing, alert: loud }]);
     // Sound/desktop only for loud items, and only when this tab isn't the
     // one you're looking at. `hasFocus()` (not visibilityState) is the right
     // signal: it's false when you've switched to another tab, minimized, OR
@@ -240,13 +244,24 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     channelRef.current?.post({ type: "room-read", room });
   }, []);
 
+  // Coming back to the window reads the room it's showing: what arrived while
+  // you were away is on screen now.
+  useEffect(() => {
+    const onFocus = () => {
+      const room = roomOfPath(window.location.pathname);
+      if (room) markRoomRead(room);
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [markRoomRead]);
+
   const requestDesktopPermission = useCallback(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
     window.Notification.requestPermission().then((perm) => setDesktopPermission(perm));
   }, []);
 
   // The bell's badge + tab title count only "loud" unread — mentions, directs,
-  // consensus, knowledge. Badge-only room activity lives in the sidebar, not here.
+  // and a negotiation you were in. Badge-only room activity lives in the sidebar.
   const unreadCount = useMemo(
     () => notifications.filter((n) => n.alert !== false && !n.read).length,
     [notifications],

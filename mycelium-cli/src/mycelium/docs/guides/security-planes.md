@@ -1,82 +1,90 @@
 # Security Planes
 
-Mycelium has **two enforcement planes**. They protect different things, use
-different credentials, and apply to different machines. Conflating them is the
-most common hub-and-spoke misconfiguration.
+Mycelium has two separate things to secure, and it's easy to mix them up:
 
-## The two planes
+- **The HTTP API** on port `8000`. This is what spokes, people and agents use
+  for memory, `await` and `respond`. You protect it with
+  [authentication](#auth).
+- **SLIM** on port `46357`. This carries the rooms' encrypted messages between
+  SLIM members. On a normal setup, the only member is the hub's backend. You
+  protect it with the SLIM secret.
 
-| Plane | Port (default) | Who uses it | What it protects | Default | Upgrade |
-|-------|----------------|-------------|------------------|---------|---------|
-| **HTTP API** | 8000 | Spokes, humans, agents (`memory`, `await`, `respond`) | Memory, participation, handle attribution | Open (no token) | [Authentication](#auth) (`auth.enabled`) |
-| **SLIM / MLS** | 46357 | Hub backend (moderator); dev `slim send`; future native connectors | Native SLIM group membership on the coordination fabric | Shared-secret **PSK** (hub only) | SignerJwt (`slim.identity`) |
+Securing one doesn't secure the other. In particular, a private SLIM secret
+does nothing to stop someone on your network from using the API.
 
-**Spokes do not use the SLIM plane for normal work.** A spoke is a thin HTTP
-client: it points `server.api_url` at the hub backend and never needs
-`MYCELIUM_SLIM_MASTER_SECRET`.
+## Side by side
 
-The hub backend holds the room's SLIM/MLS session as **moderator**. Spoke agents
-participate over HTTP; the backend keeps them present via a **server-held lease**
-and delivers turns from the **durable transcript**. That path bypasses PSK
-entirely.
+| | HTTP API | SLIM |
+|-------|----------------|-------------|
+| Port | 8000 | 46357 |
+| Used by | Spokes, people and agents (`memory`, `await`, `respond`) | The hub's backend; `mycelium slim send` for testing; native SLIM clients |
+| Protects | Memory, taking part in rooms, who can post as which `@handle` | Who can join a room's encrypted SLIM group |
+| Default | Open, no token needed | A shared secret, on the hub only |
+| Stronger option | [Authentication](#auth) (`auth.enabled`) | Per-member identity (`slim.identity signerjwt`) |
 
-## What PSK actually protects
+Spokes don't use SLIM for normal work. A spoke points `server.api_url` at the
+hub's API and never needs `MYCELIUM_SLIM_MASTER_SECRET`. The hub's backend is
+the room's SLIM member. It keeps spoke agents listed as present while they're
+waiting on `await`, and hands them their turns from the room's saved
+transcript. None of that involves the SLIM secret.
 
-PSK (`MYCELIUM_SLIM_MASTER_SECRET` → HMAC per `workspace/room` →
-`create_app_with_secret`) is the **SLIM-plane room gate**:
+## What the SLIM secret does
 
-- It decides who may **authenticate as a SLIM app and join a room's MLS group**.
-- It is scoped per **room**, not per agent — every member with the secret is
-  cryptographically indistinguishable under the `psk` tier.
-- It does **not** encrypt message bodies; **MLS** performs group key agreement
-  once members are admitted.
-- It does **not** protect spokes, memory, or `@handle` impersonation over HTTP.
+The secret (`MYCELIUM_SLIM_MASTER_SECRET`) decides who can join a room's SLIM
+group. A key for each room is derived from it.
 
-With the public dev literal shipped in the repo, PSK protects nothing by itself.
-A fresh hub install generates a private `[slim].master_secret` in
-`config.toml` on first `mycelium config apply` (rendered to `.env` for Docker).
-Override with `mycelium config set slim.master_secret …` to rotate.
+- It works per room, not per agent. Everyone who has the secret looks the same
+  to SLIM.
+- It doesn't encrypt messages itself. Once members are in, SLIM's MLS
+  encryption handles that.
+- It doesn't protect the API, memory, or who can post as which `@handle`.
+
+The repository ships a public development value for the secret, which
+protects nothing. A new hub generates its own private secret
+(`slim.master_secret` in `config.toml`) the first time you run
+`mycelium config apply`, and passes it to the backend through `.env`. To
+change it, use `mycelium config set slim.master_secret …`.
 
 ## What protects spokes
 
-For hub-and-spoke, the urgent control is the **HTTP API gate**, not PSK:
+For a hub with spokes, the setting that matters is authentication on the API:
 
 ```bash
 mycelium config set auth.enabled true
 mycelium config set auth.audience mycelium
-# … configure [[auth.issuers]] …
+# … then set up [[auth.issuers]] …
 mycelium config apply
 ```
 
-See [Authentication](#auth) for humans and agent service accounts.
+See [Authentication](#auth) for setting it up for people and for agents.
 
-Without the gate, anyone who can reach `:8000` can read/write memory and post as
-any `@handle` — **even if the hub uses a private SLIM master secret.**
+Without it, anyone who can reach port `8000` can read and write memory and
+post as any `@handle`, **even if the hub has a private SLIM secret.**
 
-## Deployment profiles
+## Typical setups
 
-| Profile | HTTP API | SLIM (hub) | Spoke config |
+| Setup | HTTP API | SLIM (on the hub) | Spokes |
 |---------|----------|------------|--------------|
-| **Solo dev** | Open | Dev PSK literal (fallback if no config secret) | N/A (all-in-one) |
-| **LAN team** | JWT on | Auto-generated `[slim].master_secret` on hub | `server.api_url` → hub:8000 only |
-| **Hosted** | JWT required | Private hub secret + SignerJwt | Same; no master secret on spokes |
+| **Just you, one machine** | Open | The development secret, unless one is set in config | None |
+| **A team on a LAN** | Authentication on | The hub's generated `slim.master_secret` | `server.api_url` set to the hub's port 8000, nothing else |
+| **Hosted** | Authentication required | A private secret, plus per-member identity | Same as LAN; spokes never get the SLIM secret |
 
-`mycelium doctor` reports HTTP auth status from the hub's `/health` endpoint.
-In **hub** mode it also warns when `[slim].master_secret` is missing or still
-the public dev literal.
+`mycelium doctor` shows whether authentication is on, using the hub's
+`/health` endpoint. On the hub, it also warns if `slim.master_secret` is
+missing or still the public development value.
 
-## SLIM identity ladder (hub native clients)
+## SLIM identity options
 
-| Tier | Plane | Spoke needs it? |
+| Option | Applies to | Does a spoke need it? |
 |------|-------|-----------------|
-| `psk` | SLIM | No (hub backend only today) |
-| `signerjwt` | SLIM | Only if the spoke runs a native SLIM connector |
+| `psk` (the default) | SLIM | No. Only the hub's backend uses it. |
+| `signerjwt` | SLIM | Only if the spoke runs its own SLIM client. |
 
-`mycelium config set slim.identity signerjwt` changes **SLIM channel identity** on
-machines that open native SLIM connections. It does **not** turn on HTTP API auth.
-Configure `[auth]` separately.
+`mycelium config set slim.identity signerjwt` changes how machines identify
+themselves when they connect to SLIM directly. It doesn't turn on
+authentication for the API; set up `[auth]` for that separately.
 
 ## Related guides
 
-- [Hub & Spoke Setup](#hub-and-spoke) — topology and spoke checklist
-- [Authentication](#auth) — HTTP JWT gate (spokes and hub API)
+- [Hub & Spoke Setup](#hub-and-spoke): setting up a hub and its spokes
+- [Authentication](#auth): turning on authentication for the API

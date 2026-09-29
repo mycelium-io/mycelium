@@ -4,7 +4,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MessageSquare } from "lucide-react";
 import type { RoomMessage } from "@/lib/api";
 import {
   applyActivity,
@@ -17,8 +16,9 @@ import {
 import { useRoomAgents, useThreadMessages } from "@/lib/room-data";
 import { useRoomStream } from "@/lib/stream-hub";
 import { pingOf } from "@/lib/threads";
+import { conductorLineOf } from "@/lib/conductor-line";
 import { MessageBody } from "@/components/message-body";
-import { EmptyState } from "@/components/empty-state";
+import { ConductorRow } from "@/components/task/conductor-row";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Monogram } from "@/components/ui/monogram";
 
@@ -138,8 +138,8 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
   // lifecycle amounts to is the row's own state, which the board already draws.
   const ordered = [...messages]
     .reverse()
-    .map(message => ({ message, text: textOf(message) }))
-    .filter(({ text }) => text.trim().length > 0);
+    .map(message => ({ message, text: textOf(message), line: conductorLineOf(message) }))
+    .filter(({ text, line }) => line !== null || text.trim().length > 0);
 
   // A reply that lands while you are reading the bottom pulls you down with it;
   // one that lands while you are further up does not, and opening the task lands
@@ -161,19 +161,17 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
   }, [count]);
 
   return (
-    <div>
+    <div data-testid="thread-conversation">
       {loading && ordered.length === 0 ? (
         <div className="flex flex-col gap-4 px-5 py-4">
           <Skeleton className="h-3 w-2/5" />
           <Skeleton className="h-3 w-3/5" />
         </div>
       ) : ordered.length === 0 ? (
-        <EmptyState
-          className="py-14"
-          icon={MessageSquare}
-          title="No replies yet"
-          description="Reply below, or @-mention an agent — it lands in this task, not in the room."
-        />
+        // A quiet line, not a card: an empty thread is where every task starts.
+        <p className="px-5 py-3 text-micro text-faint">
+          No replies yet. Reply below, or @-mention an agent: it lands in this task, not in the room.
+        </p>
       ) : (
         <div className="py-3">
           {/* A control, not a scroll trigger. This conversation owns no scroll —
@@ -192,9 +190,22 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
               </button>
             </div>
           )}
-          {ordered.map(({ message, text }, i) => {
+          {ordered.map(({ message, text, line }, i) => {
             const sender = message.sender_handle ?? message.updated_by ?? "?";
-            const previous = ordered[i - 1]?.message;
+            if (line) {
+              return (
+                <ConductorRow
+                  key={message.id ?? `${sender}-${i}`}
+                  line={line}
+                  text={text}
+                  onOpenMemory={onOpenMemory}
+                />
+              );
+            }
+            // A conductor row between two of one member's messages breaks the
+            // run, so the second one names its sender again.
+            const prev = ordered[i - 1];
+            const previous = prev && !prev.line ? prev.message : undefined;
             const grouped = previous && (previous.sender_handle ?? previous.updated_by) === sender;
             const isAgent = agentHandles.has(sender);
             return (

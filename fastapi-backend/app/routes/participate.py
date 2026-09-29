@@ -33,13 +33,12 @@ commands, which is all a headless/allowlisted agent can safely issue.
 from __future__ import annotations
 
 import asyncio
-import re
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from app.services import activity, actor, l9, principals, room_channels, tasks
+from app.services import activity, actor, l9, markers, principals, room_channels, tasks
 from app.services.agent_registry import norm_handle
 from app.services.filesystem import room_exists
 from app.services.l9_models import Kind
@@ -60,10 +59,6 @@ _last_tick: dict[tuple[str, str], dict[str, Any]] = {}
 _POLL_INTERVAL_S = 0.4
 _MAX_WAIT_S = 3600.0
 
-# An agent may end a reply with a position marker like
-# ``[[mycelium: confidence=0.85 stance=accept]]``; those fields are lifted onto the
-# L9 payload so the aligner can score convergence, and stripped from the prose.
-_MARKER_RE = re.compile(r"\[\[\s*mycelium\s*:(.*?)\]\]", re.IGNORECASE | re.DOTALL)
 # Payloads that are never an addressed turn however they are actor-labeled:
 # presence/keepalive are liveness, a ``ping`` is the signal that a *thread* moved,
 # and a ``notice`` is the signal that the *board* moved (a task filed, claimed,
@@ -73,39 +68,15 @@ _UNADDRESSED_PAYLOADS = frozenset(
     {"presence", "keepalive", l9.PING_PAYLOAD_TYPE, l9.NOTICE_PAYLOAD_TYPE}
 )
 
-_STANCE_TO_ACTION = {
-    "accept": "accept",
-    "agree": "accept",
-    "yes": "accept",
-    "reject": "reject",
-    "block": "reject",
-    "no": "reject",
-}
-
 
 def _norm(handle: str) -> str:
     return norm_handle(handle) or ""
 
 
-def _parse_marker(text: str) -> tuple[dict[str, Any], str]:
-    """Lift ``confidence``/``stance`` out of any ``[[mycelium: …]]`` marker; strip it."""
-    payload: dict[str, Any] = {}
-    for match in _MARKER_RE.finditer(text):
-        for key, raw in re.findall(r"(\w+)\s*=\s*(\S+)", match.group(1)):
-            k = key.lower()
-            if k == "confidence":
-                try:
-                    val = float(raw)
-                except ValueError:
-                    continue
-                if 0.0 <= val <= 1.0:
-                    payload["confidence"] = val
-            elif k in ("stance", "action"):
-                action = _STANCE_TO_ACTION.get(raw.lower())
-                if action:
-                    payload["action"] = action
-    clean = _MARKER_RE.sub("", text).strip() or text.strip()
-    return payload, clean
+# An agent may end a reply with a position marker like
+# ``[[mycelium: confidence=0.85 stance=accept]]``; those fields are lifted onto the
+# L9 payload so the aligner can score convergence, and stripped from the prose.
+_parse_marker = markers.parse_marker
 
 
 def _addressed_to(content: dict[str, Any], handle: str) -> bool:

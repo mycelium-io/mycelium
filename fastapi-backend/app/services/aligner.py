@@ -51,7 +51,7 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
-from app.services import activity, l9, l9_episode
+from app.services import activity, l9, l9_episode, turns
 from app.services.agent_registry import norm_handle
 from app.services.room_channels import BACKEND_AGENT
 
@@ -77,15 +77,11 @@ def _read_release() -> str:
 # moderator, and the system actor the backend signs its own envelopes with.
 _NON_PARTICIPANTS = frozenset({BACKEND_AGENT, l9.SYSTEM_ACTOR_ID})
 
-# The mediator addresses exactly ONE agent per turn via the L9 ``recipients``
-# field. Its prompt *text*, though, embeds the broker's summary which names the
-# other participants — and the connector's ``should_wake`` also wakes on a raw
-# ``@handle`` token in the human-facing text. Left as-is, every turn would
-# spuriously wake *every* named agent, doubling cold-spawns and serializing the
-# connectors until the addressed agent's real reply misses the round window (the
-# turn then falls back to a reject). Neutralizing the ``@`` means only the
-# L9-addressed agent wakes; the names stay readable.
-_AT_MENTION = re.compile(r"@(?=\w)")
+# The mediator addresses exactly ONE agent per turn; the sigil-stripping that
+# keeps the other names in its prose from waking anyone lives with the turn
+# primitive (:mod:`app.services.turns`). Kept under this name for the engines
+# that strip a summon's ``@`` the same way.
+_AT_MENTION = turns.MENTION_SIGIL
 
 # Round number stamped on the pre-negotiation clarifying tick. SAO steps are
 # NEGMAS's own, counted from 1, so round 0 marks the turn that ran before the
@@ -376,7 +372,7 @@ class AlignerEngine:
             return None
         persister = managed.persister
         me = engine_handle or self._handle
-        participants = [m for m in self._manager.members(room) if _norm(m) != _norm(me)]
+        participants = self._roster(room, me)
         if scoped_participants:
             scoped = {_norm(h) for h in scoped_participants}
             participants = [m for m in participants if _norm(m) in scoped]
@@ -573,6 +569,41 @@ class AlignerEngine:
             room=room,
         )
 
+    def _roster(self, room: str, me: str) -> list[str]:
+        """The agents this run may broker between: ``room``'s registered roster.
+
+        The union of the room's **registered** agents and whoever is currently
+        connected — because each set alone misses real participants.
+
+        ``members()`` answers "who holds a live SLIM socket or presence lease
+        right now", which is connectivity, not membership: an agent parked in a
+        herdr pane, or simply between turns, is a full member of the room that
+        ``members()`` omits. Brokering is not delivery — a mention wakes a herdr
+        pane and otherwise waits on the durable cursor, and every round already
+        has its own turn window — so gating the run on who happened to be
+        connected at summon time rejected rooms well able to negotiate.
+
+        The registry alone is not enough either: ``await``/``respond`` let any
+        awake caller join without ``agent create``, so a connected participant
+        may have no manifest at all.
+
+        Engines are excluded — the aligner brokers between teammates, and an
+        engine (itself, the synthesizer) is never a party to the deal.
+        """
+        from app.services.agent_registry import room_agents
+
+        drop = {_norm(me), _norm(self._handle), *(_norm(h) for h in _NON_PARTICIPANTS)}
+        roster: dict[str, str] = {}
+        for agent in room_agents(room):
+            if _norm(agent.handle) in drop or agent.adapter == "engine":
+                continue
+            roster[_norm(agent.handle)] = agent.handle
+        for handle in self._manager.members(room):
+            if _norm(handle) in drop:
+                continue
+            roster.setdefault(_norm(handle), handle)
+        return [roster[k] for k in sorted(roster)]
+
     def _opening_positions(
         self, persister: RoomPersister, participants: list[str]
     ) -> dict[str, str]:
@@ -684,41 +715,19 @@ class AlignerEngine:
         what the tick asks for: an SAO ``position``, or a ``clarify`` definition on
         the pre-negotiation round.
         """
-        before = len(persister.log.records)
-        env = l9.build_envelope(
-            kind=l9.Kind.exchange,
-            episode=episode,
+        return await turns.addressed_turn(
+            managed,
+            persister,
             sender=sender,
-            recipients=[handle],
+            handle=handle,
+            episode=episode,
             topic=topic,
-            payload_type="tick",
+            prompt=prompt,
             payload_data={"round": round_n, "action": action},
+            is_reply=self._is_position,
+            timeout_s=self._round_timeout_s,
+            poll_interval_s=self._poll_interval_s,
         )
-        # Neutralize ``@`` tokens so the broker's summary (which names the other
-        # agents) doesn't spuriously wake them — only the L9 ``recipients=[handle]``
-        # above should wake, one agent per turn.
-        safe_prompt = _AT_MENTION.sub("", prompt)
-        # Record the mediator's turn-prompt into the room transcript + UI bus, the
-        # same way ``publish_human`` records a human's message. Without this the
-        # negotiation is invisible in the room (the prompt only rides SLIM), so
-        # humans can't follow along and debugging falls back to backend logs. The
-        # persister de-dupes by id, so a SLIM loop-back to the sender is harmless.
-        try:
-            await managed.post(env, safe_prompt, raise_on_send_failure=True)
-        except Exception:
-            logger.warning("mediator failed to prompt @%s (step %d)", handle, round_n)
-            return ""
-
-        pending = _norm(handle)
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + self._round_timeout_s
-        while True:
-            for record in persister.log.records[before:]:
-                if self._is_position(record) and _norm(record.sender) == pending:
-                    return record.content.get("content") or ""
-            if loop.time() >= deadline:
-                return ""
-            await asyncio.sleep(self._poll_interval_s)
 
     async def _explain_stall(
         self, managed: ManagedRoomChannel, room: str, sender: str, participants: list[str]
@@ -733,12 +742,12 @@ class AlignerEngine:
         roster = ", ".join(participants) if participants else "no other agents"
         prompt = (
             "You are this room's alignment mediator, just summoned to help it align, "
-            "but you cannot run a negotiation right now: it needs at least two agents "
-            "that are present in the room and holding opening positions, and the current "
-            f"roster is: {roster}. Write a short, friendly message to the room (2-3 "
-            "sentences) that explains you can't align yet and says what to do next — have "
-            "at least two agents join and post their opening positions (e.g. with "
-            "'mycelium respond'), then summon you again. Plain prose, no @-mentions."
+            "but you cannot run a negotiation right now: brokering needs at least two "
+            "agents registered in the room besides you, and the room's roster is: "
+            f"{roster}. Write a short, friendly message to the room (2-3 sentences) that "
+            "explains you can't align yet and says what to do next — register a second "
+            "agent in this room (e.g. with 'mycelium agent create <handle> --room "
+            "<room>'), then summon you again. Plain prose, no @-mentions."
         )
         text = ""
         try:
@@ -753,9 +762,9 @@ class AlignerEngine:
             )
         if not text:
             text = (
-                "I can't align the room yet — a negotiation needs at least two agents "
-                "present with opening positions to broker between. Have the agents join "
-                "and post their positions, then summon me again."
+                "I can't align the room yet — brokering needs at least two agents "
+                "registered here besides me. Add another agent to the room, then "
+                "summon me again."
             )
         await self._say(managed, room, sender, text)
 

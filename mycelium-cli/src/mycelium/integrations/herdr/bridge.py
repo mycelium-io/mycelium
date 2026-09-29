@@ -15,8 +15,9 @@ Design rules (mirrors the package docstring):
   :class:`HerdrUnavailableError`; callers on the wake path catch it and fall back
   to the pure-CLI ``await``/``respond`` behavior. Never let a herdr hiccup break
   ``agent invoke``.
-- **Drive, don't spawn.** We prompt agents the user already created. Spawning
-  panes/agents is deliberately out of scope.
+- **Interactive sessions only.** Agents started here (``swarm``, the runner)
+  are interactive sessions in panes the user can watch and type into; they
+  are driven by prompting the pane, never run one-shot.
 - **The reply channel is the room.** We never read agent stdout — herdr can't
   scrape alt-screen TUIs anyway. We supply the *wake*; the agent ``respond``s
   through mycelium on its own.
@@ -25,6 +26,7 @@ Design rules (mirrors the package docstring):
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -40,6 +42,9 @@ if TYPE_CHECKING:
 #: and will observe a fresh lifecycle change. ``working``/``blocked`` are held
 #: back to the durable cursor (see :meth:`HerdrBridge.wake`).
 _WAKEABLE_STATES = frozenset({"idle", "done", "unknown"})
+
+#: Where ``herdr agent start --help`` lists the kinds it can start.
+_POSSIBLE_KINDS = re.compile(r"\[possible values:\s*([^\]]+)\]")
 
 
 class HerdrError(RuntimeError):
@@ -102,6 +107,18 @@ def build_wake_prompt(room: str, handle: str) -> str:
         f"reason about the returned prompt using your full context, then post your reply "
         f'with `mycelium respond --room {room} --handle {h} "<your reply>"`. '
         f"Your reply flows through the room, not this terminal."
+    )
+
+
+def build_assigned_prompt(room: str, handle: str, key: str, title: str | None = None) -> str:
+    """The doorbell for a row just filed for this agent: go take it."""
+    h = handle.lstrip("@")
+    what = f"'{title}' ({key})" if title else key
+    return (
+        f"[mycelium] The task {what} in room '{room}' was given to you as '@{h}'. "
+        f"Claim it (`mycelium board claim {key} --room {room} --to @{h}`), read its thread "
+        f"(`mycelium board messages {key} --room {room}`), do the work, and post what you "
+        f'did there with `mycelium board send {key} "..." --room {room} --as {h}`.'
     )
 
 
@@ -366,15 +383,121 @@ class HerdrBridge:
             args += ["--timeout", str(timeout_ms)]
         return self._run_json(args).get("result", {})
 
+    # ── making panes ─────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _env_args(env: dict[str, str] | None) -> list[str]:
+        return [arg for k, v in (env or {}).items() for arg in ("--env", f"{k}={v}")]
+
+    def create_workspace(
+        self, label: str, *, cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> tuple[str, str]:
+        """Open a new workspace; ``(workspace id, its first pane id)``.
+
+        Opened without taking focus, so the terminal the caller runs in stays
+        where it is.
+        """
+        args = ["workspace", "create", "--label", label, "--no-focus"]
+        if cwd:
+            args += ["--cwd", cwd]
+        args += self._env_args(env)
+        result = self._run_json(args).get("result", {})
+        workspace = str((result.get("workspace") or {}).get("workspace_id") or "")
+        pane = str((result.get("root_pane") or {}).get("pane_id") or "")
+        if not workspace or not pane:
+            raise HerdrError("herdr created a workspace but named no workspace or pane")
+        return workspace, pane
+
+    def split_pane(
+        self,
+        pane: str,
+        *,
+        direction: str = "right",
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+    ) -> str:
+        """Split ``pane``; return the new pane's id."""
+        args = ["pane", "split", pane, "--direction", direction, "--no-focus"]
+        if cwd:
+            args += ["--cwd", cwd]
+        args += self._env_args(env)
+        result = self._run_json(args).get("result", {})
+        new = str((result.get("pane") or {}).get("pane_id") or "")
+        if not new:
+            raise HerdrError("herdr split a pane but named no new pane")
+        return new
+
+    def close_pane(self, pane: str) -> None:
+        """Close ``pane``, ending whatever runs in it."""
+        self._run_json(["pane", "close", pane])
+
+    def supported_kinds(self) -> set[str] | None:
+        """The agent kinds ``herdr agent start --kind`` accepts, read from its own help.
+
+        ``None`` when herdr is missing or its help no longer lists them, so a
+        caller can tell "herdr starts none of these" from "couldn't tell".
+        """
+        if not self.binary_present():
+            return None
+        try:
+            proc = self._runner(["agent", "start", "--help"])
+        except OSError:
+            return None
+        found = _POSSIBLE_KINDS.search(proc.stdout or "")
+        if not found:
+            return None
+        return {k.strip() for k in found.group(1).split(",") if k.strip()}
+
+    def version(self) -> str | None:
+        """herdr's version string, or ``None`` when it can't be read."""
+        if not self.binary_present():
+            return None
+        try:
+            proc = self._runner(["--version"])
+        except OSError:
+            return None
+        out = (proc.stdout or "").strip()
+        return out.removeprefix("herdr").strip() or None if proc.returncode == 0 else None
+
+    def start_agent(
+        self,
+        name: str,
+        kind: str,
+        pane: str,
+        *,
+        agent_args: list[str] | None = None,
+        timeout_ms: int = 60000,
+    ) -> dict:
+        """Start an interactive ``kind`` agent named ``name`` in ``pane``; wait until it is ready.
+
+        ``agent_args`` are passed through to the agent's own command line.
+        """
+        args = ["agent", "start", name, "--kind", kind, "--pane", pane]
+        args += ["--timeout", str(timeout_ms)]
+        if agent_args:
+            args += ["--", *agent_args]
+        return self._run_json(args).get("result", {})
+
     # ── the wake orchestration ───────────────────────────────────────────────
 
-    def wake(self, mapping: HerdrPaneMapping, prompt_text: str, *, timeout_ms: int) -> WakeResult:
+    def wake(
+        self,
+        mapping: HerdrPaneMapping,
+        prompt_text: str,
+        *,
+        timeout_ms: int,
+        wait: bool = True,
+    ) -> WakeResult:
         """Wake the agent bound to ``mapping`` for one coordination turn.
 
         Only wakes an ``idle``/``done`` agent: a ``working``/``blocked`` agent is
         left alone so its message holds on the durable cursor (waking mid-turn
         would race the current turn — see the design doc's "wake-while-working").
         A stale mapping (no agent at the pane) also fails soft.
+
+        ``wait=False`` hands the prompt over and returns at once, rather than
+        waiting for the turn it starts to settle, so one caller can wake several
+        agents that then work at the same time.
         """
         agent = self.get_agent(mapping.pane)
         if agent is None:
@@ -393,7 +516,9 @@ class HerdrBridge:
                 detail=f"agent is '{status}' — holding on the cursor rather than waking mid-turn",
             )
         try:
-            result = self.prompt(mapping.pane, prompt_text, wait=True, timeout_ms=timeout_ms)
+            result = self.prompt(
+                mapping.pane, prompt_text, wait=wait, timeout_ms=timeout_ms if wait else None
+            )
         except HerdrError as e:
             return WakeResult(
                 ok=False, pane=mapping.pane, status=status, detail=f"wake failed: {e}"

@@ -122,7 +122,7 @@ export function NotificationBell() {
                 size="sm"
                 icon={Bell}
                 title="No notifications"
-                description="Mentions, direct messages, and consensus show up here."
+                description="Mentions, messages to you, and negotiations you're in show up here."
                 className="py-8"
               />
             ) : (

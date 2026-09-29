@@ -14,6 +14,7 @@ const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
 vi.mock("@/lib/api", () => ({
+  createRoom: vi.fn(),
   deleteRoom: vi.fn(),
   fetchRooms: vi.fn(),
 }));
@@ -24,7 +25,7 @@ import { InstallModalProvider } from "@/components/install-modal";
 import { KeymapProvider } from "@/components/keymap-provider";
 import { NotificationsProvider } from "@/components/notifications-provider";
 import { RoomsSidebar } from "@/components/rooms-sidebar";
-import { deleteRoom, fetchRooms } from "@/lib/api";
+import { createRoom, deleteRoom, fetchRooms } from "@/lib/api";
 
 function rooms(...names: string[]) {
   return names.map(name => ({ name }));
@@ -85,8 +86,6 @@ describe("<RoomsSidebar /> keyboard navigation", () => {
     await user.keyboard("{Alt>}");
     const badges = [...document.querySelectorAll("nav [data-key-badge]")].map(el => el.textContent);
     expect(badges).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
-    // The brand wears its own key in the same hold.
-    expect(document.querySelector("a[href='/'] [data-key-badge]")).toHaveTextContent("H");
 
     await user.keyboard("2{/Alt}");
     expect(push).toHaveBeenCalledWith("/room/room-1");
@@ -229,5 +228,48 @@ describe("<RoomsSidebar /> room deletion", () => {
     await user.click(screen.getByRole("button", { name: "Delete room" }));
 
     expect(push).toHaveBeenCalledWith("/");
+  });
+});
+
+describe("<RoomsSidebar /> new room in the list", () => {
+  beforeEach(() => {
+    push.mockClear();
+    vi.mocked(createRoom).mockReset();
+    resetStreamHub();
+    FakeEventSource.reset();
+    vi.stubGlobal("EventSource", FakeEventSource);
+  });
+
+  it("types the name where the room will appear, then opens it", async () => {
+    vi.mocked(createRoom).mockResolvedValue({} as never);
+    const user = await renderSidebar(["alpha"]);
+
+    await user.click(screen.getByRole("button", { name: "New room" }));
+    await user.keyboard("design-review{Enter}");
+
+    expect(createRoom).toHaveBeenCalledWith({ name: "design-review", is_persistent: true });
+    expect(push).toHaveBeenCalledWith("/room/design-review");
+    expect(screen.queryByRole("textbox", { name: "New room name" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the name and says why when the hub refuses it", async () => {
+    vi.mocked(createRoom).mockRejectedValue(new Error("Room already exists"));
+    const user = await renderSidebar(["alpha"]);
+
+    await user.click(screen.getByRole("button", { name: "New room" }));
+    await user.keyboard("alpha{Enter}");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Room already exists");
+    expect(screen.getByRole("textbox", { name: "New room name" })).toHaveValue("alpha");
+  });
+
+  it("leaves on Esc without creating anything", async () => {
+    const user = await renderSidebar(["alpha"]);
+
+    await user.click(screen.getByRole("button", { name: "New room" }));
+    await user.keyboard("half{Escape}");
+
+    expect(createRoom).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: "New room name" })).not.toBeInTheDocument();
   });
 });

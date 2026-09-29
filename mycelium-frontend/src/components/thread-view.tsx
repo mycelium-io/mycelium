@@ -7,15 +7,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Eye, Maximize2, MessageSquare, Pencil, X } from "lucide-react";
 import { memoryHref } from "@/lib/memory-routes";
-import { useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
+import { useRoomEpisodes, useRoomMembers, useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
 import { threadShortId } from "@/lib/threads";
+import { FlowPanel } from "@/components/flow-panel";
 import { MemoryDetail } from "@/components/memory-detail";
 import { MemoryEditor } from "@/components/memory-editor";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { TaskConversation } from "@/components/task/task-conversation";
 import { useCurrentUser } from "@/components/current-user";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Kbd } from "@/components/ui/kbd";
 import { Tooltip } from "@/components/ui/tooltip";
 
 /** How tall a task body gets in the pane before it clamps. The pane is narrow,
@@ -66,6 +66,17 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
   // comments. Absent for a negotiation thread bound to no row.
   const { memories } = useRoomMemories(roomName);
   const task = memories.find(m => m.episode === target.episode) ?? null;
+  // A run the conductor walked in this thread left a record carrying its
+  // flow: the latest one is drawn at the top of the pane, the earlier ones are
+  // reachable from it. The floor held on the thread is a live fact off the
+  // roster. Nothing extra is drawn for a thread nobody has coordinated in.
+  const { episodes } = useRoomEpisodes(roomName);
+  const runs = episodes
+    .filter(e => e.flow && (e.within === target.episode || e.episode === target.episode))
+    .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""));
+  const run = runs[0] ?? null;
+  const { floors } = useRoomMembers(roomName);
+  const floor = floors.find(f => f.episode === target.episode) ?? null;
   const { principal } = useCurrentUser();
   const revalidate = useRoomRevalidate(roomName);
   const shortId = threadShortId(target.episode) ?? "thread";
@@ -102,23 +113,13 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
       // long metadata value pushes the whole section past its right edge.
       className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-bg"
     >
-      <header className="flex h-[48px] shrink-0 items-center gap-2 border-b border-border bg-paper px-4">
+      <header className="flex h-8 shrink-0 items-center gap-2 border-b border-border bg-surface px-3">
         <MessageSquare className="size-3.5 shrink-0 text-accent" strokeWidth={1.9} />
-        <span className="min-w-0 truncate text-label font-semibold text-text">
+        {/* The title gets the width; the thread's id is its tooltip, for the
+            rare reader who needs it. */}
+        <span className="min-w-0 truncate text-label text-text" title={target.title ? `${target.title} · ${shortId}` : undefined}>
           {target.title || `Thread ${shortId}`}
         </span>
-        {/* The short id only where a task's name is what the header says —
-            otherwise the header is already the id, and this would repeat it. */}
-        {target.title && (
-          <Tooltip content={target.episode}>
-            {/* And only where the header is not already down to four characters
-                of that name: on a phone the pane is the window, and the title
-                is what says which task the window is. */}
-            <span className="hidden shrink-0 rounded bg-hairline px-1.5 py-px font-mono text-micro text-muted-foreground sm:inline">
-              {shortId}
-            </span>
-          </Tooltip>
-        )}
         <span className="ml-auto flex items-center gap-2">
           {/* Edit the task in place, only where the pane is a task. A plain
               toggle with a revalidate on save: the pane is narrow and transient,
@@ -135,31 +136,44 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
               </button>
             </Tooltip>
           )}
-          {/* Full screen: leave the split and open the task on its own page —
-              the same memory, room to work. Only where the pane is a task (a
-              negotiation thread has no page of its own to open). */}
+          {/* Room to work: leave the split and open the task as a tab of the
+              room, where the rest of its memories open. Only where the pane is
+              a task (a negotiation thread is no memory to open). */}
           {task && (
-            <Tooltip content="Open full screen">
-              <Link
-                href={memoryHref(roomName, task.key)}
-                aria-label="Open task full screen"
-                className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-              >
-                <Maximize2 className="size-3.5" strokeWidth={1.9} />
-              </Link>
+            <Tooltip content="Open as a tab">
+              {onOpenMemory ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenMemory(task.key);
+                    onClose();
+                  }}
+                  aria-label="Open task as a tab"
+                  className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+                >
+                  <Maximize2 className="size-3.5" strokeWidth={1.9} />
+                </button>
+              ) : (
+                <Link
+                  href={memoryHref(roomName, task.key)}
+                  aria-label="Open task full screen"
+                  className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+                >
+                  <Maximize2 className="size-3.5" strokeWidth={1.9} />
+                </Link>
+              )}
             </Tooltip>
           )}
-          {/* The key that does what the ✕ beside it does — worth the width on a
-              keyboard, and worth none of it on a phone. */}
-          <Kbd size="xs" tone="muted" className="hidden sm:inline-flex">Esc</Kbd>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close thread"
-            className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-          >
-            <X className="size-3.5" strokeWidth={1.9} />
-          </button>
+          <Tooltip content="Close (Esc)">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close thread"
+              className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+            >
+              <X className="size-3.5" strokeWidth={1.9} />
+            </button>
+          </Tooltip>
         </span>
       </header>
 
@@ -186,6 +200,11 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
         // everywhere in the pane. A negotiation thread bound to no row is all
         // conversation.
         <ScrollArea className="min-h-0 flex-1">
+          {run && (
+            <div className="border-b border-border">
+              <FlowPanel episode={run} floor={floor} earlier={runs.slice(1)} onOpenMemory={onOpenMemory} />
+            </div>
+          )}
           {task && (
             <div className="border-b border-border">
               <MemoryDetail

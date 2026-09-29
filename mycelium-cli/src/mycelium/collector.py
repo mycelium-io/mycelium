@@ -2,10 +2,13 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Lightweight OTLP HTTP receiver for OpenClaw telemetry.
+The metrics collector: backend counters, Prometheus scrapes, and OTLP traces.
 
-Accepts protobuf-encoded OTLP data on /v1/traces and /v1/metrics,
-aggregates counters/histograms/sessions in memory, and persists to a JSON file.
+On the hub it polls the backend's ``/api/observability`` counters and any
+configured Prometheus targets every 30 seconds, and writes them to a JSON
+file. It also accepts OTLP data on ``/v1/traces`` and ``/v1/metrics`` from
+anything pointed at it: traces go to a SQLite store, and each sending host is
+tracked (spans, last seen, agent names).
 
 Hub mode (default):  run as a Docker container via ``mycelium up --metrics``.
 Spoke mode:          run via ``mycelium metrics collect``.  Stores OTLP data
@@ -76,8 +79,22 @@ def _ensure_shared_dir(path: Path) -> None:
         pass
 
 
-_MAX_SESSIONS = 200
 _MAX_TRACES = 500
+
+#: Span attributes that name the agent a span belongs to, most specific first
+#: (OpenTelemetry's GenAI semantic conventions).
+_AGENT_ATTRS = ("gen_ai.agent.name", "gen_ai.agent.id", "gen_ai.agent")
+
+
+def _agent_of(attrs: dict) -> str:
+    """The agent a span's attributes name, or ``""``."""
+    for key in _AGENT_ATTRS:
+        value = attrs.get(key)
+        if value:
+            return str(value)
+    return ""
+
+
 _MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MiB guard against oversized payloads
 
 
@@ -352,16 +369,9 @@ class TraceStore:
 
                 has_error = any(s["status"] == "error" for s in spans)
 
-                agent = ""
-                for s in spans:
-                    a = s.get("attributes", {})
-                    agent = (
-                        str(a.get("openclaw.channel", ""))
-                        or str(a.get("openclaw.agent", ""))
-                        or str(a.get("gen_ai.agent", ""))
-                    )
-                    if agent:
-                        break
+                agent = next(
+                    (a for a in (_agent_of(s.get("attributes", {})) for s in spans) if a), ""
+                )
 
                 hosts_in_trace = sorted({s["host"] for s in spans if s["host"]})
 
@@ -398,18 +408,22 @@ class TraceStore:
                 "FROM spans WHERE host != '' GROUP BY host ORDER BY last_seen DESC"
             ).fetchall()
 
+            agent_expr = (
+                "COALESCE("
+                + ", ".join(
+                    f"NULLIF(json_extract(attributes, '$.\"{key}\"'), '')" for key in _AGENT_ATTRS
+                )
+                + ")"
+            )
             agents_rows = conn.execute(
-                "SELECT host, json_extract(attributes, '$.\"openclaw.channel\"') AS agent "
-                "FROM spans "
-                "WHERE host != '' "
-                "AND json_extract(attributes, '$.\"openclaw.channel\"') IS NOT NULL "
-                "AND json_extract(attributes, '$.\"openclaw.channel\"') != '' "
+                f"SELECT host, {agent_expr} AS agent FROM spans "  # noqa: S608 - fixed keys
+                f"WHERE host != '' AND {agent_expr} IS NOT NULL "
                 "GROUP BY host, agent"
             ).fetchall()
 
             agents_by_host: dict[str, list[str]] = {}
             for row in agents_rows:
-                agents_by_host.setdefault(row[0], []).append(row[1])
+                agents_by_host.setdefault(row[0], []).append(str(row[1]))
 
             result = []
             for r in rows:
@@ -460,151 +474,18 @@ class TraceStore:
 
 
 class MetricsStore:
-    """In-memory aggregation of OTLP counters, histograms, and session records."""
+    """What the collector knows: backend counters, scrape results, and hosts sending OTLP."""
 
     def __init__(self) -> None:
         self.lock = threading.Lock()
-        # Per-host raw counter buckets. Each host pushes its own cumulative
-        # values via OTLP (overwriting per host is correct), but the
-        # cross-host rollup exposed as ``counters`` in ``to_dict()`` MUST be
-        # a sum across hosts (otherwise the host that pushed last clobbers
-        # everyone else's contribution). See ``_aggregate_counters_locked``.
-        self._counters_by_host: dict[str, dict] = {}
-        # Histograms are emitted by individual hosts as deltas on a
-        # cumulative count/sum; we just keep the latest per-host snapshot
-        # and merge at read time. Same overwriting concern applies.
-        self._histograms_by_host: dict[str, dict] = {}
-        self._sessions: dict[str, dict] = {}
         self._backend_metrics: dict | None = None
+        # One entry per host that has sent OTLP data: spans and metric
+        # points received, when it was last heard from, and the agents its
+        # spans named.
         self._by_host: dict[str, dict] = {}
         # Per-target Prometheus scrape state, keyed by config-supplied name.
         # Populated by `_fetch_scrape_targets` in the collector poller thread.
         self._scrape_targets: dict[str, dict] = {}
-
-    @staticmethod
-    def _empty_counter_bucket() -> dict:
-        """Empty counter bucket matching the public ``counters`` snapshot shape."""
-        return {
-            "tokens": {"by_agent": {}, "by_model": {}, "total": _zero_tokens()},
-            "cost_usd": {"by_agent": {}, "by_model": {}, "total": 0.0},
-            "messages": {"processed": 0, "queued": 0},
-            "webhooks": {"received": 0, "errors": 0},
-            "lanes": {"enqueue": 0, "dequeue": 0},
-            "sessions_state": {},
-            "sessions_stuck": 0,
-            "run_attempts": 0,
-        }
-
-    @staticmethod
-    def _empty_histogram_bucket() -> dict:
-        """Empty histogram bucket matching the public ``histograms`` snapshot shape."""
-        return {
-            "run_duration_ms": _zero_histogram(),
-            "message_duration_ms": _zero_histogram(),
-            "queue_depth": _zero_histogram(),
-            "queue_wait_ms": _zero_histogram(),
-            "context_tokens": _zero_histogram(),
-            "webhook_duration_ms": _zero_histogram(),
-            "session_stuck_age_ms": _zero_histogram(),
-            "by_agent": {},
-        }
-
-    def _ensure_counter_bucket(self, host: str) -> dict:
-        """Return (and lazily create) the per-host counter bucket.
-
-        ``host`` may be empty when the OTLP push has no usable
-        ``host.name``/``service.instance.id`` resource attribute and no
-        source IP. We bucket those under ``"unknown"`` so they still get
-        counted (rather than overwriting each other in a shared global).
-        """
-        key = host or "unknown"
-        if key not in self._counters_by_host:
-            self._counters_by_host[key] = self._empty_counter_bucket()
-        return self._counters_by_host[key]
-
-    def _ensure_histogram_bucket(self, host: str) -> dict:
-        """Return (and lazily create) the per-host histogram bucket."""
-        key = host or "unknown"
-        if key not in self._histograms_by_host:
-            self._histograms_by_host[key] = self._empty_histogram_bucket()
-        return self._histograms_by_host[key]
-
-    @staticmethod
-    def _merge_token_dict(dst: dict, src: dict) -> None:
-        """Sum ``src`` token counts into ``dst`` (input/output/cache_*/total)."""
-        for k, v in src.items():
-            dst[k] = dst.get(k, 0) + v
-
-    def _aggregate_counters_locked(self) -> dict:
-        """Sum the per-host counter buckets into a single rolled-up view.
-
-        Cumulative counters are reported as a running total per host, so
-        the correct cross-host value is the SUM of each host's latest
-        reported value.
-        """
-        if not self._counters_by_host:
-            return self._empty_counter_bucket()
-
-        agg = self._empty_counter_bucket()
-        for bucket in self._counters_by_host.values():
-            # tokens.total / tokens.by_agent / tokens.by_model
-            self._merge_token_dict(agg["tokens"]["total"], bucket["tokens"]["total"])
-            for agent, tk in bucket["tokens"]["by_agent"].items():
-                target = agg["tokens"]["by_agent"].setdefault(agent, _zero_tokens())
-                self._merge_token_dict(target, tk)
-            for model, tk in bucket["tokens"]["by_model"].items():
-                target = agg["tokens"]["by_model"].setdefault(model, _zero_tokens())
-                self._merge_token_dict(target, tk)
-
-            # cost_usd.total / by_agent / by_model
-            agg["cost_usd"]["total"] += bucket["cost_usd"]["total"]
-            for agent, v in bucket["cost_usd"]["by_agent"].items():
-                agg["cost_usd"]["by_agent"][agent] = agg["cost_usd"]["by_agent"].get(agent, 0.0) + v
-            for model, v in bucket["cost_usd"]["by_model"].items():
-                agg["cost_usd"]["by_model"][model] = agg["cost_usd"]["by_model"].get(model, 0.0) + v
-
-            # Simple integer/float gauges that should sum across hosts
-            for key in ("processed", "queued"):
-                agg["messages"][key] += bucket["messages"].get(key, 0)
-            for key in ("received", "errors"):
-                agg["webhooks"][key] += bucket["webhooks"].get(key, 0)
-            for key in ("enqueue", "dequeue"):
-                agg["lanes"][key] += bucket["lanes"].get(key, 0)
-            for state, v in bucket["sessions_state"].items():
-                agg["sessions_state"][state] = agg["sessions_state"].get(state, 0) + v
-            agg["sessions_stuck"] += bucket.get("sessions_stuck", 0)
-            agg["run_attempts"] += bucket.get("run_attempts", 0)
-
-        return agg
-
-    def _aggregate_histograms_locked(self) -> dict:
-        """Merge per-host histogram snapshots into a single rolled-up view.
-
-        Each (count, sum, min, max) is reported per-host; the cross-host
-        merge sums counts/sums and takes the min/max of mins/maxes.
-        """
-        if not self._histograms_by_host:
-            return self._empty_histogram_bucket()
-
-        agg = self._empty_histogram_bucket()
-        flat_keys = [
-            "run_duration_ms",
-            "message_duration_ms",
-            "queue_depth",
-            "queue_wait_ms",
-            "context_tokens",
-            "webhook_duration_ms",
-            "session_stuck_age_ms",
-        ]
-        for bucket in self._histograms_by_host.values():
-            for key in flat_keys:
-                _merge_histogram(agg[key], bucket.get(key) or {})
-            for agent, agent_h in bucket.get("by_agent", {}).items():
-                target = agg["by_agent"].setdefault(agent, {})
-                for key, val in agent_h.items():
-                    target.setdefault(key, _zero_histogram())
-                    _merge_histogram(target[key], val)
-        return agg
 
     def set_backend_metrics(self, data: dict | None) -> None:
         with self.lock:
@@ -627,32 +508,13 @@ class MetricsStore:
 
     def to_dict(self) -> dict:
         with self.lock:
-            sessions = sorted(
-                self._sessions.values(),
-                key=lambda s: s.get("timestamp", ""),
-                reverse=True,
-            )[:_MAX_SESSIONS]
-            result = {
-                "updated_at": datetime.now(UTC).isoformat(),
-                "counters": self._aggregate_counters_locked(),
-                "histograms": self._aggregate_histograms_locked(),
-                "sessions": copy.deepcopy(sessions),
-            }
+            result: dict = {"updated_at": datetime.now(UTC).isoformat()}
             if self._backend_metrics:
                 result["backend"] = copy.deepcopy(self._backend_metrics)
             if self._scrape_targets:
                 result["scrape"] = copy.deepcopy(self._scrape_targets)
             if self._by_host:
                 result["by_host"] = copy.deepcopy(self._by_host)
-            # Per-host counter/histogram buckets, persisted so that a
-            # collector restart can reload them without losing the
-            # cross-host disambiguation. Aggregating them back into a
-            # single ``counters`` view on reload would double-count once
-            # any host pushes its next cumulative sample.
-            if self._counters_by_host:
-                result["counters_by_host"] = copy.deepcopy(self._counters_by_host)
-            if self._histograms_by_host:
-                result["histograms_by_host"] = copy.deepcopy(self._histograms_by_host)
             return result
 
     def ingest_metrics(
@@ -678,19 +540,26 @@ class MetricsStore:
                     or str(resource_attrs.get("service.instance.id", ""))
                     or source_ip
                 )
-                for sm in rm.scope_metrics:
-                    for metric in sm.metrics:
-                        self._process_metric(metric, host)
-                        if host:
-                            self._track_host_metric(host, metric)
+                if not host:
+                    continue
+                points = sum(
+                    len(getattr(metric, kind).data_points)
+                    for sm in rm.scope_metrics
+                    for metric in sm.metrics
+                    for kind in ("sum", "gauge", "histogram")
+                    if metric.HasField(kind)
+                )
+                bucket = self._ensure_host_bucket(host)
+                bucket["metric_points"] += points
+                bucket["last_seen"] = max(bucket["last_seen"], datetime.now(UTC).isoformat())
 
     def ingest_traces(
         self, request_bytes: bytes, *, is_json: bool = False, source_ip: str = ""
     ) -> None:
-        """Process model.usage spans for session aggregation.
+        """Count each host's spans and note the agents they name.
 
-        The raw request_bytes are also forwarded to a TraceStore (if set)
-        for full trace capture; see ``trace_store`` attribute.
+        The spans themselves are stored by ``TraceStore``; this only keeps
+        the per-host summary.
         """
         from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
             ExportTraceServiceRequest,
@@ -712,210 +581,31 @@ class MetricsStore:
                     or str(resource_attrs.get("service.instance.id", ""))
                     or source_ip
                 )
+                if not host:
+                    continue
                 for ss in rs.scope_spans:
                     for span in ss.spans:
-                        self._process_span(span)
-                        if host:
-                            self._track_host_span(host, span)
-
-    def _process_metric(self, metric, host: str = "") -> None:  # noqa: C901
-        """Record a single OTLP metric.
-
-        The ``host`` arg is mandatory for correct cross-host rollups:
-        each host reports its own running cumulative counter, so they
-        must be kept in separate buckets and summed at read time. See
-        ``_aggregate_counters_locked``. If ``host`` is empty (no
-        resource attribute and no source IP), the data is bucketed
-        under ``"unknown"`` rather than silently overwriting other
-        hosts' values.
-        """
-        name = metric.name
-        counters = self._ensure_counter_bucket(host)
-        histograms = self._ensure_histogram_bucket(host)
-
-        if metric.HasField("sum"):
-            for dp in metric.sum.data_points:
-                attrs = _attrs_dict(dp.attributes)
-                value = dp.as_double if dp.HasField("as_double") else float(dp.as_int)
-
-                if name == "openclaw.tokens":
-                    token_type = attrs.get("openclaw.token", "total")
-                    agent = attrs.get("openclaw.channel", "")
-                    model = attrs.get("openclaw.model", "")
-
-                    if token_type in counters["tokens"]["total"]:
-                        counters["tokens"]["total"][token_type] = value
-
-                    if agent:
-                        bucket = counters["tokens"]["by_agent"].setdefault(agent, _zero_tokens())
-                        if token_type in bucket:
-                            bucket[token_type] = value
-
-                    if model:
-                        bucket = counters["tokens"]["by_model"].setdefault(model, _zero_tokens())
-                        if token_type in bucket:
-                            bucket[token_type] = value
-
-                elif name == "openclaw.cost.usd":
-                    agent = attrs.get("openclaw.channel", "")
-                    model = attrs.get("openclaw.model", "")
-                    counters["cost_usd"]["total"] = value
-                    if agent:
-                        counters["cost_usd"]["by_agent"][agent] = value
-                    if model:
-                        counters["cost_usd"]["by_model"][model] = value
-
-                elif name == "openclaw.message.processed":
-                    counters["messages"]["processed"] = value
-
-                elif name == "openclaw.message.queued":
-                    counters["messages"]["queued"] = value
-
-                elif name == "openclaw.webhook.received":
-                    counters["webhooks"]["received"] = value
-
-                elif name == "openclaw.webhook.error":
-                    counters["webhooks"]["errors"] = value
-
-                elif name == "openclaw.queue.lane.enqueue":
-                    counters["lanes"]["enqueue"] = value
-
-                elif name == "openclaw.queue.lane.dequeue":
-                    counters["lanes"]["dequeue"] = value
-
-                elif name == "openclaw.session.state":
-                    state = attrs.get("openclaw.state", "unknown")
-                    counters["sessions_state"][state] = value
-
-                elif name == "openclaw.session.stuck":
-                    counters["sessions_stuck"] = value
-
-                elif name == "openclaw.run.attempt":
-                    counters["run_attempts"] = value
-
-        elif metric.HasField("histogram"):
-            for dp in metric.histogram.data_points:
-                attrs = _attrs_dict(dp.attributes)
-                h_count = dp.count
-                h_sum = dp.sum
-                h_min = dp.min if dp.HasField("min") else None
-                h_max = dp.max if dp.HasField("max") else None
-                update = {"count": h_count, "sum": h_sum, "min": h_min, "max": h_max}
-
-                key = None
-                if name == "openclaw.run.duration_ms":
-                    key = "run_duration_ms"
-                elif name == "openclaw.message.duration_ms":
-                    key = "message_duration_ms"
-                elif name == "openclaw.queue.depth":
-                    key = "queue_depth"
-                elif name == "openclaw.queue.wait_ms":
-                    key = "queue_wait_ms"
-                elif name == "openclaw.context.tokens":
-                    key = "context_tokens"
-                elif name == "openclaw.webhook.duration_ms":
-                    key = "webhook_duration_ms"
-                elif name == "openclaw.session.stuck_age_ms":
-                    key = "session_stuck_age_ms"
-
-                if key:
-                    histograms[key] = update
-                    agent = attrs.get("openclaw.channel", "")
-                    if agent:
-                        agent_h = histograms["by_agent"].setdefault(agent, {})
-                        agent_h[key] = update
-
-    def _process_span(self, span) -> None:
-        if span.name != "openclaw.model.usage":
-            return
-
-        attrs = _attrs_dict(span.attributes)
-        session_id = str(attrs.get("openclaw.sessionId", ""))
-        if not session_id:
-            return
-
-        start_ns = span.start_time_unix_nano
-        end_ns = span.end_time_unix_nano
-        duration_ms = (end_ns - start_ns) / 1_000_000 if end_ns > start_ns else 0
-
-        ts = datetime.fromtimestamp(start_ns / 1_000_000_000, tz=UTC).isoformat()
-
-        session_key = str(attrs.get("openclaw.sessionKey", ""))
-        agent = _agent_from_session_key(session_key) or str(attrs.get("openclaw.channel", ""))
-
-        record = {
-            "session_id": session_id,
-            "agent": agent,
-            "model": attrs.get("openclaw.model", ""),
-            "provider": attrs.get("openclaw.provider", ""),
-            "tokens": {
-                "input": _safe_int(attrs.get("openclaw.tokens.input", 0)),
-                "output": _safe_int(attrs.get("openclaw.tokens.output", 0)),
-                "cache_read": _safe_int(attrs.get("openclaw.tokens.cache_read", 0)),
-                "cache_write": _safe_int(attrs.get("openclaw.tokens.cache_write", 0)),
-                "total": _safe_int(attrs.get("openclaw.tokens.total", 0)),
-            },
-            "duration_ms": round(duration_ms, 1),
-            "timestamp": ts,
-        }
-
-        existing = self._sessions.get(session_id)
-        if existing:
-            existing["turns"] = existing.get("turns", 1) + 1
-            existing["agent"] = record["agent"] or existing.get("agent", "")
-            existing["model"] = record["model"] or existing.get("model", "")
-            existing["provider"] = record["provider"] or existing.get("provider", "")
-            existing["duration_ms"] = round(existing.get("duration_ms", 0) + duration_ms, 1)
-            existing["timestamp"] = max(existing.get("timestamp", ""), ts)
-            et = existing.get("tokens", {})
-            rt = record["tokens"]
-            for k in ("input", "output", "cache_read", "cache_write", "total"):
-                et[k] = et.get(k, 0) + rt.get(k, 0)
-            existing["tokens"] = et
-        else:
-            record["turns"] = 1
-            self._sessions[session_id] = record
-            if len(self._sessions) > _MAX_SESSIONS:
-                oldest_key = min(
-                    self._sessions, key=lambda k: self._sessions[k].get("timestamp", "")
-                )
-                del self._sessions[oldest_key]
+                        self._track_host_span(host, span)
 
     def _ensure_host_bucket(self, host: str) -> dict:
         """Return (and lazily create) the by-host tracking dict."""
         if host not in self._by_host:
             self._by_host[host] = {
-                "tokens": _zero_tokens(),
-                "cost_usd": 0.0,
                 "spans": 0,
-                "messages_processed": 0,
+                "metric_points": 0,
                 "agents": [],
                 "last_seen": "",
             }
-        return self._by_host[host]
-
-    def _track_host_metric(self, host: str, metric) -> None:
-        """Accumulate per-host counters from a single OTLP metric."""
-        bucket = self._ensure_host_bucket(host)
-        name = metric.name
-        if metric.HasField("sum"):
-            for dp in metric.sum.data_points:
-                attrs = _attrs_dict(dp.attributes)
-                value = dp.as_double if dp.HasField("as_double") else float(dp.as_int)
-                if name == "openclaw.tokens":
-                    token_type = attrs.get("openclaw.token", "total")
-                    if token_type in bucket["tokens"]:
-                        bucket["tokens"][token_type] = value
-                    agent = attrs.get("openclaw.channel", "")
-                    if agent and agent not in bucket["agents"]:
-                        bucket["agents"].append(agent)
-                elif name == "openclaw.cost.usd":
-                    bucket["cost_usd"] = value
-                elif name == "openclaw.message.processed":
-                    bucket["messages_processed"] = value
+        bucket = self._by_host[host]
+        # A bucket reloaded from an older snapshot may lack newer fields.
+        bucket.setdefault("spans", 0)
+        bucket.setdefault("metric_points", 0)
+        bucket.setdefault("agents", [])
+        bucket.setdefault("last_seen", "")
+        return bucket
 
     def _track_host_span(self, host: str, span) -> None:
-        """Accumulate per-host span counts from trace data."""
+        """Count a span against its host, and note the agent it names."""
         bucket = self._ensure_host_bucket(host)
         bucket["spans"] += 1
         start_ns = span.start_time_unix_nano
@@ -923,52 +613,9 @@ class MetricsStore:
             ts = datetime.fromtimestamp(start_ns / 1_000_000_000, tz=UTC).isoformat()
             if ts > bucket["last_seen"]:
                 bucket["last_seen"] = ts
-        attrs = _attrs_dict(span.attributes)
-        agent = str(attrs.get("openclaw.channel", ""))
+        agent = _agent_of(_attrs_dict(span.attributes))
         if agent and agent not in bucket["agents"]:
             bucket["agents"].append(agent)
-
-
-def _agent_from_session_key(session_key: str) -> str:
-    """Extract agent name from a session key like 'agent:rowan-agent:mycelium-room:...'."""
-    if session_key.startswith("agent:"):
-        parts = session_key.split(":", 3)
-        if len(parts) >= 2:
-            return parts[1]
-    return ""
-
-
-def _safe_int(value: str | int | float) -> int:
-    """Convert a value to int, returning 0 on failure."""
-    try:
-        return int(value)
-    except (ValueError, TypeError):
-        return 0
-
-
-def _zero_tokens() -> dict:
-    return {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "total": 0}
-
-
-def _zero_histogram() -> dict:
-    return {"count": 0, "sum": 0, "min": None, "max": None}
-
-
-def _merge_histogram(dst: dict, src: dict) -> None:
-    """Merge ``src`` histogram into ``dst`` (sum counts/sums, min of mins,
-    max of maxes). ``dst`` is mutated in place; missing fields default to
-    a zero histogram so it is safe to call with sparse data.
-    """
-    if not src:
-        return
-    dst["count"] = dst.get("count", 0) + (src.get("count") or 0)
-    dst["sum"] = dst.get("sum", 0) + (src.get("sum") or 0)
-    src_min = src.get("min")
-    if src_min is not None:
-        dst["min"] = src_min if dst.get("min") is None else min(dst["min"], src_min)
-    src_max = src.get("max")
-    if src_max is not None:
-        dst["max"] = src_max if dst.get("max") is None else max(dst["max"], src_max)
 
 
 def _sanitize_for_json(obj: object) -> object:
@@ -1325,8 +972,8 @@ def run(
 
     When ``no_backend`` is True the collector skips backend polling and
     Prometheus scraping entirely; it only accepts OTLP pushes.  This is
-    the mode used on spoke nodes that run a lightweight local collector
-    for OpenClaw telemetry only.
+    the mode used on spoke nodes that run a local collector for their own
+    traces.
 
     ``hub_url``, when set, enables the agent-to-gateway forwarding pattern:
     every OTLP /v1/metrics and /v1/traces payload accepted locally is also
@@ -1352,39 +999,15 @@ def run(
     if output_path.exists():
         try:
             existing = json.loads(output_path.read_text())
-            # Prefer the per-host buckets when present (post-aggregation
-            # snapshots). Each host's bucket holds its own cumulative
-            # values, so reloading them as-is keeps the rollup honest
-            # even as live hosts push their next sample. Older snapshots
-            # only have the aggregated ``counters`` field; fall back to
-            # bucketing those under a synthetic ``"persisted"`` key so
-            # we don't lose data outright. This may cause a one-time
-            # over-count for hosts that immediately push again, but it
-            # is bounded to the contents of the prior aggregated total.
-            counters_by_host = existing.get("counters_by_host") or {}
-            if counters_by_host:
-                for host_key, bucket in counters_by_host.items():
-                    _deep_merge(store._ensure_counter_bucket(host_key), bucket)
-            elif existing.get("counters"):
+            for host_key, bucket in (existing.get("by_host") or {}).items():
                 _deep_merge(
-                    store._ensure_counter_bucket("persisted"),
-                    existing["counters"],
+                    store._ensure_host_bucket(host_key),
+                    {
+                        k: v
+                        for k, v in bucket.items()
+                        if k in ("spans", "metric_points", "agents", "last_seen")
+                    },
                 )
-
-            histograms_by_host = existing.get("histograms_by_host") or {}
-            if histograms_by_host:
-                for host_key, bucket in histograms_by_host.items():
-                    _deep_merge(store._ensure_histogram_bucket(host_key), bucket)
-            elif existing.get("histograms"):
-                _deep_merge(
-                    store._ensure_histogram_bucket("persisted"),
-                    existing["histograms"],
-                )
-
-            for s in existing.get("sessions", []):
-                sid = s.get("session_id", "")
-                if sid:
-                    store._sessions[sid] = s
             if existing.get("backend"):
                 store.set_backend_metrics(existing["backend"])
             # Preserve last-known scrape state across restarts so panels

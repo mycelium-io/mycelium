@@ -18,7 +18,8 @@ vi.mock("@/lib/api", () => ({
   fetchMessages: (...args: unknown[]) => fetchMessages(...args),
   sendRoomMessage: (...args: unknown[]) => sendRoomMessage(...args),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
-  fetchRoomMembers: vi.fn().mockResolvedValue([]),
+  fetchRoomMembers: vi.fn().mockResolvedValue({ members: [], floors: [] }),
+  fetchEpisodes: vi.fn().mockResolvedValue([]),
   fetchMemories: (...args: unknown[]) => fetchMemories(...args),
   fetchMemoryLinks: vi.fn().mockResolvedValue({ outbound: [], backlinks: [] }),
   fetchSkills: vi.fn().mockResolvedValue([]),
@@ -151,7 +152,7 @@ describe("<ThreadView />", () => {
     renderWithSWR(
       <ThreadView roomName="atlas" target={{ episode: THREAD }} onClose={vi.fn()} />,
     );
-    expect(await screen.findByText("No replies yet")).toBeInTheDocument();
+    expect(await screen.findByText(/^No replies yet/)).toBeInTheDocument();
   });
 
   it("re-reads when a write lands in its own thread, and not when one lands elsewhere", async () => {

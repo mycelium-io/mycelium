@@ -1,0 +1,11 @@
+{
+  "bundle": {
+    "externalBin": ["binaries/mycelium", "binaries/herdr", "binaries/slimctl", "binaries/node"],
+    "resources": {
+      "resources/hub/": "hub/",
+      "resources/ui/": "ui/",
+      "resources/models/": "models/",
+      "resources/pi/": "pi/"
+    }
+  }
+}

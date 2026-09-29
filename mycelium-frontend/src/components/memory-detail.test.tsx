@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { MemoryDetail, type MemoryLike } from "@/components/memory-detail";
@@ -44,14 +44,14 @@ describe("MemoryDetail", () => {
     });
   });
 
-  it("renders neighbors on the page variant", async () => {
+  it("lists each linked memory once, under the way it links", async () => {
     const onNavigate = vi.fn();
     render(<MemoryDetail memory={memory} roomName="demo" variant="page" onNavigate={onNavigate} />);
-    const relatedSection = (await screen.findByText("Related")).closest("div")?.parentElement;
-    expect(relatedSection).toBeTruthy();
-    const related = within(relatedSection!);
-    expect(related.getByRole("button", { name: "decisions/db" })).toBeInTheDocument();
-    expect(related.getByRole("button", { name: "plan/title" })).toBeInTheDocument();
+    await screen.findByText("Referenced by");
+    // Once in the Links list; the body's own [[decisions/db]] is the other.
+    expect(screen.getAllByRole("button", { name: /decisions\/db/ })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: /plan\/title/ })).toHaveLength(1);
+    expect(screen.queryByText("Related")).not.toBeInTheDocument();
   });
 
   it("draws no warning banner over a memory nothing links to", async () => {
@@ -64,7 +64,7 @@ describe("MemoryDetail", () => {
       backlinks: [],
     });
     render(<MemoryDetail memory={memory} roomName="demo" variant="page" />);
-    expect(await screen.findByText("Version")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Rendered" })).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 

@@ -5,7 +5,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   Bell,
@@ -21,15 +20,13 @@ import {
   Trash2,
   type LucideIcon,
 } from "lucide-react";
-import { type Room } from "@/lib/api";
+import { createRoom, type Room } from "@/lib/api";
 import { useAppStream } from "@/lib/stream-hub";
 import { useRooms } from "@/lib/room-data";
 import { roomLevel, type RoomLevel } from "@/lib/notifications";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
 import { DeleteRoomDialog } from "@/components/delete-room-dialog";
-import { NotificationBell } from "@/components/notification-bell";
-import { ActingAsPicker } from "@/components/acting-as-picker";
 import { useNotifications } from "@/components/notifications-provider";
 import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -60,6 +57,7 @@ interface Props {
 export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsedChange }: Props) {
   const [query, setQuery] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [creatingInline, setCreatingInline] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   // The rooms list is a shared cache entry that outlives this mount — the
@@ -170,6 +168,13 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
       },
       { id: "nav.metrics", title: "Metrics", group: "Navigate", run: () => router.push("/metrics") },
       {
+        id: "nav.machines",
+        title: "Machines",
+        group: "Navigate",
+        keywords: ["runner", "computer", "agents", "start", "herdr"],
+        run: () => router.push("/machines"),
+      },
+      {
         id: "nav.install",
         title: "Install the CLI",
         group: "Navigate",
@@ -188,23 +193,13 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
   if (collapsed) {
     return (
       <aside data-tour="rooms" className="flex w-full min-w-0 flex-col items-center overflow-hidden bg-surface/50">
-        <Tooltip content="Command center" side="right">
-          <Link
-            href="/"
-            className="relative flex h-[52px] w-full flex-shrink-0 items-center justify-center border-b border-border transition-colors hover:bg-hairline"
-          >
-            <Image src="/logo.png" alt="Mycelium" width={20} height={20} className="opacity-90" />
-            <KeyBadge action="nav.home" />
-          </Link>
-        </Tooltip>
-
         <Tooltip content={railToggleTitle(false)} side="right">
           <button
             onClick={() => onCollapsedChange?.(false)}
             aria-label={railToggleTitle(false)}
-            className="relative mt-2 flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+            className="relative mt-1 flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
           >
-            <PanelLeftOpen className="size-[18px]" />
+            <PanelLeftOpen className="size-3.5" />
             <KeyBadge action="rooms.toggle" overlay />
           </button>
         </Tooltip>
@@ -223,7 +218,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
                   >
                     <Link
                       href={`/room/${encodeURIComponent(room.name)}`}
-                      className="relative flex size-8 flex-shrink-0 items-center justify-center"
+                      className="relative flex size-6 flex-shrink-0 items-center justify-center"
                     >
                       {active && (
                         <span
@@ -233,7 +228,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
                       )}
                       <RoomAvatar
                         name={room.name}
-                        className="size-8 rounded-md hover:brightness-125"
+                        className="size-6 rounded text-[9px] hover:brightness-125"
                       />
                       <span className="sr-only">{room.name}</span>
                       {unread > 0 && (
@@ -263,15 +258,11 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
           <button
             onClick={() => setShowCreate(true)}
             aria-label="New room"
-            className="mb-1 flex size-8 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+            className="mb-1 flex size-6 flex-shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
           >
-            <Plus className="size-4" />
+            <Plus className="size-3.5" />
           </button>
         </Tooltip>
-        <div className="flex w-full flex-col items-center gap-1 border-t border-border py-2">
-          <ActingAsPicker compact />
-          <NotificationBell />
-        </div>
 
         <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={refresh} />
         {deleteTarget && (
@@ -288,30 +279,16 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
 
   return (
     <aside data-tour="rooms" className="flex min-w-0 flex-1 flex-col overflow-hidden bg-surface/50">
-      <Link
-        href="/"
-        className="relative flex h-[52px] flex-shrink-0 items-center gap-2.5 border-b border-border px-4 transition-colors hover:bg-hairline"
-      >
-        <Image src="/logo.png" alt="Mycelium" width={20} height={20} className="translate-y-[2px] opacity-90" />
-        {/* The badge pins to the wordmark, not the header row, so it has room
-            to sit above the baseline instead of clipping at the top edge. */}
-        <span className="relative">
-          <span
-            className="text-display leading-none text-text"
-            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontStyle: "italic", fontWeight: 600 }}
-          >
-            mycelium
-          </span>
-          <KeyBadge action="nav.home" />
-        </span>
-      </Link>
-
-      <div className="flex items-center gap-2 px-3 pt-3 pb-2">
-        <span className="text-micro font-semibold uppercase tracking-wide text-muted-foreground">Rooms</span>
+      {/* A dock, as an editor draws one: a small header, then the list. The
+          way home and who you are live in the title bar above it. */}
+      <div className="mb-1 flex h-8 flex-shrink-0 items-center gap-2 border-b border-border bg-surface px-3">
+        <span className="text-micro font-medium text-muted-foreground">Rooms</span>
         <span className="text-micro tabular text-muted-foreground">{rooms.length}</span>
         <Tooltip content="New room">
           <button
-            onClick={() => setShowCreate(true)}
+            // Here the name is typed where the room will appear, as an
+            // editor's file tree does; the palette and home ask in a prompt.
+            onClick={() => setCreatingInline(true)}
             aria-label="New room"
             className="ml-auto flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
           >
@@ -329,22 +306,32 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
           </button>
         </Tooltip>
       </div>
-      <div className="px-3 pb-2">
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-bg px-2.5 py-1.5 focus-within:border-accent">
+      <div className="px-2 pb-1">
+        <div className="flex h-7 items-center gap-2 rounded px-1.5 transition-colors focus-within:bg-bg hover:bg-hairline">
           <Search className="size-3.5 flex-shrink-0 text-faint" />
           <input
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="Filter rooms…"
-            className="w-full bg-transparent text-label text-text placeholder:text-muted-foreground focus:outline-none"
+            className="w-full bg-transparent text-label text-text placeholder:text-faint focus:outline-none"
           />
         </div>
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
         <nav className="px-2 pb-2">
+        {creatingInline && (
+          <InlineNewRoom
+            onCancel={() => setCreatingInline(false)}
+            onCreated={name => {
+              setCreatingInline(false);
+              refresh();
+              router.push(`/room/${encodeURIComponent(name)}`);
+            }}
+          />
+        )}
         {filtered.length === 0 ? (
-          rooms.length === 0 ? (
+          creatingInline ? null : rooms.length === 0 ? (
             <EmptyState size="sm" icon={Boxes} title="No rooms yet" description="Create one with the + above." />
           ) : (
             <EmptyState size="sm" icon={SearchX} title="No matches" />
@@ -360,11 +347,11 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
               <div key={room.name} className="group/room relative">
               <Link
                 href={`/room/${encodeURIComponent(room.name)}`}
-                className={`group flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors ${
-                  active ? "bg-elevated ring-1 ring-border" : "hover:bg-hairline"
+                className={`group flex h-7 items-center gap-2 rounded px-1.5 transition-colors ${
+                  active ? "bg-hairline" : "hover:bg-hairline"
                 }`}
               >
-                <RoomAvatar name={room.name} className="size-7 rounded-md">
+                <RoomAvatar name={room.name} className="size-[18px] rounded-[4px] text-[8px]">
                   {i < 9 && <KeyBadge chord={`alt+${i + 1}`} overlay />}
                 </RoomAvatar>
                 <span
@@ -408,16 +395,6 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
         </nav>
       </ScrollArea>
 
-      {/* The account corner: who you're acting as, with your unread activity
-          beside it — one place on every screen, rather than a picker riding
-          the room header. */}
-      <div className="flex items-center gap-1 border-t border-border px-2 py-2">
-        <ActingAsPicker />
-        <div className="flex flex-shrink-0 items-center">
-          <NotificationBell />
-        </div>
-      </div>
-
       <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={refresh} />
       {deleteTarget && (
         <DeleteRoomDialog
@@ -428,6 +405,59 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
         />
       )}
     </aside>
+  );
+}
+
+/**
+ * A new room's row, typed into the list where the room will appear: Enter
+ * creates it, Esc or clicking away leaves it. A name the hub refuses stays in
+ * the field with the reason under it.
+ */
+function InlineNewRoom({ onCancel, onCreated }: { onCancel: () => void; onCreated: (name: string) => void }) {
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const create = async () => {
+    const clean = name.trim();
+    if (!clean || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await createRoom({ name: clean, is_persistent: true });
+      onCreated(clean);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't create the room");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mb-0.5">
+      <div className="flex h-7 items-center gap-2 rounded bg-hairline px-1.5 ring-1 ring-border">
+        <RoomAvatar name={name.trim() || "?"} className="size-[18px] rounded-[4px] text-[8px]" />
+        <input
+          autoFocus
+          value={name}
+          onChange={e => {
+            setName(e.target.value);
+            if (error) setError(null);
+          }}
+          onKeyDown={e => {
+            if (e.key === "Enter") void create();
+            if (e.key === "Escape") onCancel();
+          }}
+          onBlur={() => {
+            if (!name.trim() && !busy) onCancel();
+          }}
+          placeholder="Room name"
+          aria-label="New room name"
+          spellCheck={false}
+          className="min-w-0 flex-1 bg-transparent text-label text-text placeholder:text-faint focus:outline-none"
+        />
+      </div>
+      {error && <p role="alert" className="px-1.5 pt-1 text-micro break-words text-red">{error}</p>}
+    </div>
   );
 }
 

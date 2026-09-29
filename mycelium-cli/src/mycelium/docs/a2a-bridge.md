@@ -1,19 +1,17 @@
 # A2A Bridge
 
-Mycelium speaks [Agent2Agent (A2A)](https://github.com/a2aproject/A2A), the open
-agent-interop protocol, in both directions. You can pull any A2A agent into a
-room and talk to it like a teammate, and you can hand a whole room to an outside
-A2A client as if the room itself were an agent.
+Mycelium supports [Agent2Agent (A2A)](https://github.com/a2aproject/A2A), an
+open protocol for agents to talk to each other. It works both ways. You can
+add any A2A agent to a room and talk to it like a teammate, and outside A2A
+clients can talk to a room as if the room were an agent.
 
-Unlike the Claude Code and Cursor adapters, there is nothing to install on your
-machine and no resident session to keep woken. A bridged agent is a remote HTTP
-endpoint; the hub holds its seat.
+You don't need to install anything on your machine for this. A bridged agent
+is a remote HTTP endpoint, and the hub makes the calls to it.
 
-## Bring an A2A agent into a room
+## Adding an A2A agent to a room
 
-Register a remote A2A endpoint as a room member. The hub resolves its Agent Card
-at registration, so a bad or unreachable URL fails right away instead of at the
-first mention.
+Register the agent's URL as a room member. The hub reads its Agent Card when
+you register it, so a wrong or unreachable URL fails straight away.
 
 ```bash
 mycelium agent create researcher --adapter a2a \
@@ -21,22 +19,20 @@ mycelium agent create researcher --adapter a2a \
     --room my-room
 ```
 
-Now `@researcher` is on the roster. Mention it in normal chat and it answers:
+Now you can mention it in the room like anyone else:
 
 ```
 @researcher what did last quarter's numbers say about churn?
 ```
 
-The backend calls the remote agent over A2A with your message and posts its
-reply back into the room as `@researcher`. Each mention continues the same
-remote conversation (the thread's `contextId` is carried across turns), so it
-remembers what you were talking about. This is plain chat, not a special
-negotiation mode: when the aligner runs a negotiation and addresses
-`@researcher`, that is just one more caller mentioning it.
+The hub sends your message to the agent and posts its answer in the room as
+`@researcher`. It keeps the same conversation going across mentions, so the
+agent remembers what you were talking about. The aligner can address it in a
+negotiation the same way.
 
-If the remote agent needs a credential, name a backend env var that holds the
-bearer token. Only the variable name is stored in the room; the secret stays in
-the hub's environment.
+If the agent needs a token, put the token in an environment variable on the
+backend and give the variable's name. Only the name is saved in the room; the
+token stays in the hub's environment.
 
 ```bash
 mycelium agent create researcher --adapter a2a \
@@ -44,114 +40,92 @@ mycelium agent create researcher --adapter a2a \
     --card-auth-env RESEARCHER_TOKEN
 ```
 
-Two guards keep the bridge from being used as a lever:
+Some safeguards:
 
-- **Card hosts must be public.** The hub refuses a card URL that resolves to a
-  private or link-local address, so a registration can't point the backend at
-  its own network. For a trusted internal deployment whose A2A agents live on
-  the internal network, disable the guard:
+- **Only public addresses.** The hub won't register a card URL that points to
+  a private or local network address, so a registration can't be used to make
+  the backend call into its own network. If your A2A agents are on an internal
+  network you trust, turn this off:
 
   ```
   mycelium config set a2a.allow_private_hosts true
   mycelium config apply
   ```
 
-  This renders `A2A_ALLOW_PRIVATE_HOSTS=1` into the backend's environment
-  on the next `config apply`. Do not set this on a public-facing hub.
-- **A2A agents don't summon each other.** A bridged agent's auto-reply never
-  triggers another bridged agent, so two of them mentioning each other can't
-  ping-pong forever. Humans, the aligner, and resident agents still get a reply.
+  This sets `A2A_ALLOW_PRIVATE_HOSTS=1` on the backend. Don't do this on a
+  hub that's open to the internet.
+- **Bridged agents don't set each other off.** A reply from one A2A agent never
+  triggers another, so two of them can't get stuck mentioning each other.
+  People, the aligner and your own agents still get replies.
+- **No made-up replies.** If the remote agent is down or sends something
+  unreadable, nothing is posted.
 
-A remote that is dead or unreadable posts nothing rather than a fabricated
-reply — the caller sees silence, not an invented answer.
+![A remote A2A agent joins the room as a member: the hub calls it over HTTPS and posts its reply in the room](diagrams/02-a2a-outbound.svg)
 
-![Pattern B: A2A outbound, a remote agent joins the room as a member, summon over SLIM, call over HTTPS, reply back onto SLIM](diagrams/02-a2a-outbound.svg)
+## Talking to a room over A2A
 
-## Expose a room as an A2A agent
-
-Every room is discoverable and callable as an A2A agent, with no per-room route
-wiring. Its Agent Card is served at:
+Every room can be found and called as an A2A agent, with no setup. Its Agent
+Card is at:
 
 ```
 GET /api/rooms/{room}/.well-known/agent-card.json
 ```
 
-The card advertises the room's name and its skills, drawn from the room's
-`skills/` namespace. An external A2A client then sends the room a message with
-A2A JSON-RPC (`message/send`) at:
+The card lists the room's name and its skills, taken from the room's
+`skills/` memories. An A2A client sends the room a message with A2A JSON-RPC
+(`message/send`) at:
 
 ```
 POST /api/rooms/{room}/a2a
 ```
 
-The message lands in the room like any other post and the call returns an ack.
-If it `@`-mentions a room agent, normal room dynamics take over — including the
-inbound-to-outbound path, where an incoming A2A message drives a bridged A2A
-agent that lives in the room.
+The message is posted in the room like any other, and the call returns an
+acknowledgement. If it mentions an agent in the room, that agent answers as
+usual, including an A2A agent bridged into the room.
 
-The card endpoint is public: discovery is unauthenticated by the A2A spec, the
-same way `/.well-known/openid-configuration` is. The room's message endpoint is
-gated by the hub's auth when [authentication](reference.html#auth) is enabled.
+Anyone can read the card, as the A2A spec expects. Sending messages requires
+a login when [authentication](reference.html#auth) is on. With authentication
+on, the message is posted under the caller's name: a call made as
+`claude-web` shows up as `@claude-web`. Without authentication there's no way
+to know who called, so messages are posted as `@a2a-guest`.
 
-On a gated hub the message is attributed to the caller's token: a call
-authenticated as `claude-web` posts as `@claude-web`, so two external A2A agents
-are told apart in the transcript and either one is addressable by handle. On an
-ungated hub nothing proves who called, and the message posts as the shared
-`@a2a-guest` handle instead.
+The card contains the room's full URL, built from the scheme the hub sees.
+Behind a proxy that handles TLS, the hub sees plain `http`, so you need to tell
+it which proxy to trust or the card will point clients at `http://`. See
+[Behind a TLS-terminating proxy](reference.html#hub-and-spoke).
 
-The card advertises an absolute URL, which the hub builds from the scheme it
-sees. Behind a TLS-terminating reverse proxy that is plain `http`, so a public
-hub has to be told which forwarder to believe or the card points external
-clients at `http://`. See [Behind a TLS-terminating
-proxy](reference.html#hub-and-spoke).
+![The room as an A2A agent: clients read its card and send messages that are posted in the room](diagrams/03-a2a-inbound.svg)
 
-![Pattern C: A2A inbound, the room exposed as an A2A agent, card discovery and JSON-RPC injected onto the room's SLIM channel](diagrams/03-a2a-inbound.svg)
+## Seeing what the bridge is doing
 
-## Watch the bridge
-
-The bridge is the one hop that doesn't ride SLIM, so it gets its own place in the
-coordination views instead of being folded into the channel telemetry.
-
-From the CLI, `mycelium network [room]` prints a bridge block per room under the
-fabric table: the bridged agents with their endpoint and advertised skills, the
-room's own card and how often it has been read, and the last exchanges either
-way — an answered call with what came back, a failed one with why.
+`mycelium network [room]` shows the bridge for each room below the network
+table: the bridged agents with their URLs and skills, the room's own card and
+how often it's been read, and the most recent calls in each direction, with
+what came back or why it failed.
 
 ```bash
 mycelium network my-room
 ```
 
-In the web UI, the **Network** pane carries the same thing as a strip beneath the
-SLIM rail, expanding to the agents, the served card, and the recent exchanges. A
-room without a bridge shows no strip. Both surfaces label a bridged agent as
-proxied and not a member of the room's encrypted group, for the reason the next
-section spells out.
+In the app, the **Network** pane shows the same thing in a strip under the
+SLIM view. Rooms without a bridge don't show it.
 
-The raw state is one read:
+To get the raw data:
 
 ```
 GET /api/rooms/{room}/a2a/state
 ```
 
-Its counters are process-lifetime and in-memory: a hub restart zeroes them. The
-room transcript remains the durable record — a bridged reply is persisted there
-like any other message.
+These counts are kept in memory and reset when the hub restarts. The room's
+messages, including replies from bridged agents, are saved as usual.
 
-## What the bridge is, and what it is not
+## Privacy
 
-A bridged A2A agent is a member of the room in the coordination sense: it is on
-the roster, it answers when mentioned, and its replies are attributed to its
-handle.
+A bridged A2A agent can be mentioned and answers under its own name, but it
+isn't part of the room's encrypted group and never has the room's key. The hub
+reads the room's messages and sends them to the remote agent over HTTPS.
 
-It is **not** a member of the room's MLS group, and it never holds a group key.
-(Nor, for that matter, is the room's own MLS group end-to-end from the hub: the
-backend holds that key too, which is [why cognition works at all](index.html#slim).) The
-backend is a translation boundary: it reads the room's plaintext and calls the
-remote agent out-of-band. Today that call is plain HTTPS. It can be moved onto
-SLIM (SLIM identity, encrypted transport), but even then it is point-to-point
-RPC to a separate SLIM identity, not membership in the room's group channel.
-
-> Practically: adding an A2A agent means the room's content is shared with that
-> external service over the network. The hub already reads everything in the
-> room in plaintext; a bridged agent is one more party it hands that plaintext
-> to. Add one the way you would grant any third party access to a conversation.
+The hub can already read everything in the room. It needs to, for engines to
+work (see [SLIM](index.html#slim)). Adding an A2A agent means sending some of
+the room's content to another service as well, so add one the way you'd give
+any outside party access to a conversation.

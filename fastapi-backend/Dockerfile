@@ -8,8 +8,9 @@ RUN useradd -r -u 1000 -g 0 -s /sbin/nologin -d /home/mycelium mycelium \
 
 WORKDIR /app
 
+# git: a worker's checkout is a git worktree of its room's repository.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc python3-dev curl \
+    gcc python3-dev curl git openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Node.js + the Pi coding agent — the aligner's SAO mediator runs on a persistent

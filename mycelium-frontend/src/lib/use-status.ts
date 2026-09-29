@@ -8,9 +8,12 @@ import { type EpisodeSummary } from "@/lib/api";
 import { useRoomAgents, useRoomEpisodes, useRoomMemories } from "@/lib/room-data";
 
 /** A `work/` row nobody has closed. The board's own definition of outstanding. */
-function isOpenWork(memory: { key: string; meta?: Record<string, unknown> | null }): boolean {
+export function isOpenWork(memory: { key: string; meta?: Record<string, unknown> | null }): boolean {
   if (!memory.key.startsWith("work/")) return false;
   const status = memory.meta?.status;
+  // Settled the way the hub reads it (`assignments.settled`): a status that
+  // says so, or a resolved assignment, which is what `board resolve` writes.
+  if (memory.meta?.assignment === "resolved") return false;
   return status !== "resolved" && status !== "dismissed";
 }
 
