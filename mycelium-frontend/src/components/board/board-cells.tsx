@@ -117,14 +117,8 @@ export function StatusPill({ item }: { item: LiveItem }) {
 
 /** An owner reads the same whether it's a person or an agent — peers on one board. */
 export function OwnerChip({ handle, live }: { handle: string | null; live?: boolean }) {
-  if (!handle) {
-    return (
-      <span className="inline-flex items-center gap-1 text-micro text-faint">
-        <UserRound className="size-3" strokeWidth={1.8} />
-        unowned
-      </span>
-    );
-  }
+  // Most rows are nobody's yet, so saying so on each one is noise.
+  if (!handle) return null;
   const isAgent = /agent|aligner|synthesizer|growth|risk|finance/i.test(handle);
   const Icon = isAgent ? Bot : UserRound;
   const color = isAgent ? "var(--accent)" : "var(--muted-foreground)";
@@ -342,8 +336,9 @@ export function AssignmentChip({ item, now }: { item: LiveItem; now: number }) {
       title={note ? `${note.text} · ${note.by}` : state}
     >
       <UserRound className="size-3" strokeWidth={1.8} />
-      {state}
-      {note && <span className="text-faint">— {note.text}</span>}
+      {/* The note already opens with what happened; don't say it twice. */}
+      {note && note.text.startsWith(state) ? note.text : state}
+      {note && !note.text.startsWith(state) && <span className="text-faint">· {note.text}</span>}
     </span>
   );
 }
@@ -371,11 +366,21 @@ export function SourceTag({ item }: { item: LiveItem }) {
   );
 }
 
-export function AgeTag({ item, now }: { item: LiveItem; now: number }) {
+/**
+ * How old the row is. With `drain`, the age also carries the row's TTL,
+ * warming to yellow and then red as it runs out, in place of a separate bar.
+ */
+export function AgeTag({ item, now, drain = false }: { item: LiveItem; now: number; drain?: boolean }) {
   const age = fieldAsString(item, "updated") ?? fieldAsString(item, "created");
   const minutes = age ? Math.max(0, Math.round((now - Date.parse(age)) / 60000)) : null;
+  const spent = drain ? ttlElapsedFraction(item, now) : null;
+  const draining = spent !== null && spent >= TTL_VISIBLE_FROM;
   return (
-    <span className="tabular text-micro text-faint" title={age ?? undefined}>
+    <span
+      className={cn("tabular text-micro", !draining && "text-faint")}
+      style={draining ? { color: spent > 0.75 ? "var(--red)" : "var(--yellow)" } : undefined}
+      title={draining ? `${Math.round(spent * 100)}% of its time on the board spent` : (age ?? undefined)}
+    >
       {formatAge(Number.isFinite(minutes as number) ? minutes : null)}
     </span>
   );

@@ -46,7 +46,12 @@ function relativeTime(iso: string): string {
   if (hr < 24) return `${hr}h`;
   const d = Math.floor(hr / 24);
   if (d < 7) return `${d}d`;
-  return new Date(iso).toISOString().slice(5, 10);
+  const when = new Date(iso);
+  return when.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(when.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }),
+  });
 }
 
 function episodeState(ep: EpisodeSummary): { label: string; color: string; live: boolean } {

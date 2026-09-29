@@ -201,7 +201,7 @@ export interface AssignmentNote {
 export function assignmentNote(item: LiveItem, now: number): AssignmentNote | null {
   if (assignmentOf(item, now) === "expired") {
     return {
-      text: `expired — @${ownerOf(item) ?? "its holder"} stopped renewing`,
+      text: `expired · @${ownerOf(item) ?? "its holder"} stopped renewing`,
       by: RUNTIME_AUTHOR,
     };
   }

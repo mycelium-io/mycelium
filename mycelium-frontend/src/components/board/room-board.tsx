@@ -513,7 +513,7 @@ export function RoomBoard({ roomName, onOpenThread }: Props) {
         )}
       </div>
 
-      <BoardFooter statusMessage={statusMessage} rows={ordered.length} total={items.length} />
+      <BoardFooter statusMessage={statusMessage} keys={selectedId !== null} />
     </div>
   );
 }
@@ -619,11 +619,11 @@ function BoardHeader(props: {
             onClick={props.onOptions}
             title="Saved views, grouping, and the inferred schema"
             className={cn(
-              "shrink-0 rounded-md px-2 py-1 font-mono text-micro transition-colors",
+              "shrink-0 rounded-md px-2 py-1 text-micro transition-colors",
               showOptions ? "text-accent" : "text-faint hover:text-muted-foreground",
             )}
           >
-            <span className="hidden @[40rem]:inline">views &amp; fields</span>
+            <span className="hidden @[40rem]:inline">View options</span>
             <SlidersHorizontal className="size-3.5 @[40rem]:hidden" strokeWidth={1.9} />
           </button>
         </div>
@@ -673,35 +673,30 @@ function BoardHeader(props: {
   );
 }
 
-function BoardFooter({
-  statusMessage,
-  rows,
-  total,
-}: {
-  statusMessage: string | null;
-  rows: number;
-  total: number;
-}) {
+/**
+ * The board's keys, shown once a row is selected (you are using the keyboard,
+ * so they are worth the line), and what the last action did. Otherwise
+ * nothing: the tabs already count the rows.
+ */
+function BoardFooter({ statusMessage, keys }: { statusMessage: string | null; keys: boolean }) {
+  if (!keys && !statusMessage) return null;
   return (
     <footer className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-5 py-1.5">
-      <span className="hidden flex-wrap items-center gap-x-2 gap-y-1 font-mono text-micro text-faint @[34rem]:flex">
-        <Key k="j/k" /> move
-        <Key k="c" /> claim
-        <Key k="r" /> resolve
-        <Key k="b" /> block
-        <Key k="p" /> promote
-        <Key k="x" /> dismiss
-        <Key k="n" /> capture
-        <Key k="t" /> thread
-      </span>
-      <span className="ml-auto flex items-center gap-2 font-mono text-micro">
-        {statusMessage && (
-          <span className="truncate text-accent" title={statusMessage}>{statusMessage}</span>
-        )}
-        <span className="text-faint">
-          {rows}/{total} rows
+      {keys && (
+        <span className="hidden flex-wrap items-center gap-x-2 gap-y-1 text-micro text-faint @[34rem]:flex">
+          <Key k="j/k" /> move
+          <Key k="c" /> claim
+          <Key k="r" /> resolve
+          <Key k="b" /> block
+          <Key k="t" /> thread
+          <Key k="esc" /> done
         </span>
-      </span>
+      )}
+      {statusMessage && (
+        <span className="ml-auto truncate text-micro text-accent" title={statusMessage}>
+          {statusMessage}
+        </span>
+      )}
     </footer>
   );
 }
