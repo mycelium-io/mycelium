@@ -89,6 +89,20 @@ function mentionsHandle(text: string, handle: string): boolean {
   return false;
 }
 
+/** Whether an L9 actor id names this handle: bare, `@`-prefixed, or as the
+ *  last segment of a URN. */
+function isHandle(id: string | undefined, handle: string): boolean {
+  if (!id || !handle) return false;
+  const bare = id.trim().replace(/^@/, "").toLowerCase();
+  return bare === handle || bare.endsWith(`:${handle}`);
+}
+
+/** The room a path shows, if it's a room page. */
+export function roomOfPath(pathname: string): string | null {
+  const m = /^\/room\/([^/?#]+)/.exec(pathname);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
 /**
  * Classify one raw frame off `/api/notifications/stream` (the same wire shape
  * as a room's SSE stream, tagged with `room_name`), or return null when it
@@ -135,11 +149,16 @@ export function classify(raw: Record<string, unknown>, principal: string): Class
       const converged = header.subkind === "converged";
       const fallback = converged ? "Consensus reached" : "Negotiation ended without agreement";
       const text = (content.content as string) || fallback;
-      return { id, room, sender, time, kind: "consensus", summary: text.slice(0, 160), needsMe: true };
+      // A negotiation ending is news to the people who were in it; to everyone
+      // else in the room it's activity, so it badges the room and stays quiet.
+      const participants = (header.participants as { actors?: { id?: string }[] } | undefined)?.actors ?? [];
+      const inIt = participants.some(a => isHandle(a.id, handle)) || mentionsHandle(text, handle);
+      return { id, room, sender, time, kind: "consensus", summary: text.slice(0, 160), needsMe: inIt };
     }
     case "l9_knowledge": {
+      // Memory changes all the time; it badges its room and never rings.
       const text = (content.content as string) || "Room memory updated";
-      return { id, room, sender, time, kind: "knowledge", summary: text.slice(0, 160), needsMe: true };
+      return { id, room, sender, time, kind: "knowledge", summary: text.slice(0, 160), needsMe: false };
     }
     case "coordination_join": {
       const joinedHandle = (content.handle as string) || sender;
