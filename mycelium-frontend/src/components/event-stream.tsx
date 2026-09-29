@@ -42,7 +42,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Monogram } from "@/components/ui/monogram";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { ArrowDown, AtSign, Bot, Copy, Link2, Loader2, MessageSquare, MessagesSquare } from "lucide-react";
+import { ArrowDown, AtSign, Copy, Link2, Loader2, MessageSquare, MessagesSquare } from "lucide-react";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { absoluteUrl, copyText } from "@/lib/clipboard";
 
@@ -531,6 +531,18 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // And what each row is called, so a notice, a ping and a memory push about one
   // task all print its name rather than three shapes of its key.
   const rowNames = useRoomRowNames(roomName);
+  // What each agent is, said beside its name: an engine by its kind (the rail's
+  // word for it), a bridged service as a2a, anything else just an agent.
+  const agentTags = useMemo(
+    () =>
+      new Map(
+        agents.map((a) => [
+          a.handle,
+          a.adapter === "engine" ? (a.kind ?? "engine") : a.adapter === "a2a" ? "a2a" : "agent",
+        ]),
+      ),
+    [agents],
+  );
   const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle)), [agents]);
   const agentOwners = useMemo(
     () => new Map(agents.filter((a) => a.owner).map((a) => [a.handle, a.owner as string])),
@@ -1287,7 +1299,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                       <div className="flex items-center gap-1.5 pr-12">
                         <SenderName handle={ev.sender} highlight={hit} />
                         {isAgent && (
-                          <Bot aria-label="agent" className="size-3 flex-shrink-0 text-accent" />
+                          <span className="flex-shrink-0 rounded bg-accent-soft px-1 py-px font-mono text-[10px] leading-none text-accent">
+                            {agentTags.get(ev.sender) ?? "agent"}
+                          </span>
                         )}
                         {ev.recipient && (
                           <span className="rounded bg-hairline px-1.5 py-px font-mono text-micro text-muted-foreground">
