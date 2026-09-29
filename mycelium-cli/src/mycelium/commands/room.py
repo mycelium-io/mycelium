@@ -22,6 +22,7 @@ import json as json_module
 import os
 
 import typer
+from rich.markup import escape
 
 from mycelium import chat
 from mycelium.client import hub_client
@@ -30,6 +31,7 @@ from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 from mycelium.exceptions import MyceliumError
+from mycelium.names import who
 from mycelium.slim.l9 import room_episode
 
 # The L9 "raise-up" whitelist: message types promoted onto the primary channel
@@ -710,12 +712,14 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
         if mtype == "delegate":
             recipient = msg.get("recipient_handle", "?")
             content = msg.get("content", "")
-            return f"  {ts()}  [magenta]{sender}[/]{own_tag(sender)} [dim]→[/] [cyan]{recipient}[/]: {content}"
+            return f"  {ts()}  [magenta]{escape(who(sender))}[/]{own_tag(sender)} [dim]→[/] [cyan]{recipient}[/]: {content}"
 
         if mtype in ("l9_exchange", "direct", "broadcast", "announce"):
             if in_a_thread(room_name, mtype, msg, data):
                 return None
-            return chat_line(mtype, msg, data, sender, ts(), own_tag(sender))
+            # The person's name beside their handle; escaped, since a name is
+            # free text and Rich would read brackets in it as markup.
+            return chat_line(mtype, msg, data, escape(who(sender)), ts(), own_tag(sender))
 
         return None
 

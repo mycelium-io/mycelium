@@ -19,6 +19,7 @@ import { fetchL9History, fetchMessages, fetchMemories } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
+  fetchUsers: vi.fn().mockResolvedValue([]),
   fetchL9History: vi.fn().mockResolvedValue([]),
   fetchMemories: vi.fn().mockResolvedValue([]),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),

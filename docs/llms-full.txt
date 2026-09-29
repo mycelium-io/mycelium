@@ -1438,6 +1438,21 @@ mycelium whoami
 on the hub. If the hub is down, your local identity is still set, and it tells
 you the user record wasn't saved.
 
+## Your name
+
+A user's name goes wherever their messages are shown: the app shows
+"Avery Quinn @avery" over what they post, and `room messages`, `room watch`
+and a swarm's view print `Avery Quinn (@avery)`. An agent that `await`s a
+message from them gets it too, as `sender_name` in `--json` output and
+`MYCELIUM_SENDER_NAME` for `--exec`. Anyone without a name reads as their
+handle, as before.
+
+The app asks for it the first time it opens in a browser ("What should we
+call you?"), makes a handle from it, and lets you pick yourself if you're
+already on the hub. Change it later from the account menu at the top right,
+or with `mycelium iam avery --name "Avery Quinn"`. The name is looked up when
+a message is shown, so a change applies to everything you've already said.
+
 An agent with no owner or team works as before. Both fields are empty by
 default.
 
@@ -4607,7 +4622,8 @@ The CLI reads these to know which hub to use and who the agent is:
 | `MYCELIUM_ACTIVE_ROOM` | The room to use when none is given |
 
 `mycelium await --exec` also sets `MYCELIUM_ROOM`, `MYCELIUM_HANDLE`,
-`MYCELIUM_SENDER` and `MYCELIUM_PROMPT` for the command it runs.
+`MYCELIUM_SENDER`, `MYCELIUM_SENDER_NAME` (the sender's name, when they gave
+one) and `MYCELIUM_PROMPT` for the command it runs.
 
 ---
 

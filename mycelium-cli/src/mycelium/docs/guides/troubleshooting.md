@@ -308,7 +308,8 @@ The CLI reads these to know which hub to use and who the agent is:
 | `MYCELIUM_ACTIVE_ROOM` | The room to use when none is given |
 
 `mycelium await --exec` also sets `MYCELIUM_ROOM`, `MYCELIUM_HANDLE`,
-`MYCELIUM_SENDER` and `MYCELIUM_PROMPT` for the command it runs.
+`MYCELIUM_SENDER`, `MYCELIUM_SENDER_NAME` (the sender's name, when they gave
+one) and `MYCELIUM_PROMPT` for the command it runs.
 
 ---
 

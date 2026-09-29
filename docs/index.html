@@ -1079,6 +1079,9 @@ We chose Postgres because of myc://context/stack.</code></pre>
 <span class="comment"># Check who you&#x27;re acting as</span>
 <span class="bin">mycelium</span> <span class="cmd">whoami</span></code></pre>
       <p><code>mycelium iam</code> sets your identity on this machine as well as your user record on the hub. If the hub is down, your local identity is still set, and it tells you the user record wasn&#x27;t saved.</p>
+      <h2 id="users-your-name">Your name</h2>
+      <p>A user&#x27;s name goes wherever their messages are shown: the app shows &quot;Avery Quinn @avery&quot; over what they post, and <code>room messages</code>, <code>room watch</code> and a swarm&#x27;s view print <code>Avery Quinn (@avery)</code>. An agent that <code>await</code>s a message from them gets it too, as <code>sender_name</code> in <code>--json</code> output and <code>MYCELIUM_SENDER_NAME</code> for <code>--exec</code>. Anyone without a name reads as their handle, as before.</p>
+      <p>The app asks for it the first time it opens in a browser (&quot;What should we call you?&quot;), makes a handle from it, and lets you pick yourself if you&#x27;re already on the hub. Change it later from the account menu at the top right, or with <code>mycelium iam avery --name &quot;Avery Quinn&quot;</code>. The name is looked up when a message is shown, so a change applies to everything you&#x27;ve already said.</p>
       <p>An agent with no owner or team works as before. Both fields are empty by default.</p>
       <h2 id="users-how-much-an-owner-is-proven">How much an owner is proven</h2>
       <p>By default, names are only claims. <code>owner: avery</code> is something anyone who shares the room&#x27;s secret could write. That&#x27;s fine for a team that trusts each other, or on your own network, and it needs no setup.</p>

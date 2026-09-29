@@ -17,6 +17,7 @@ import { HerdrRam } from "@/components/ui/herdr-ram";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
+import { nameOf, useNames } from "@/lib/people";
 
 interface Props {
   roomName: string;
@@ -417,6 +418,7 @@ function PersonRow({
   marked: boolean;
   rowRef?: React.Ref<HTMLDivElement>;
 }) {
+  const name = nameOf(useNames(), p.handle);
   // Whose turn it is beats how they are hosted: a person the floor was given to
   // is being waited on, which is the one thing the room needs to know.
   const meta = floor
@@ -448,7 +450,15 @@ function PersonRow({
         }`}
       >
         <Monogram handle={p.handle} color="var(--avatar-neutral)" className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence />
-        <span className="shrink-0 font-mono text-label text-text">@{p.handle}</span>
+        {/* Their name when they gave one, the handle quieter beside it. */}
+        {name ? (
+          <span className="flex min-w-0 shrink items-baseline gap-1.5">
+            <span className="truncate text-label text-text">{name}</span>
+            <span className="shrink-0 font-mono text-micro text-faint">@{p.handle}</span>
+          </span>
+        ) : (
+          <span className="shrink-0 font-mono text-label text-text">@{p.handle}</span>
+        )}
         {p.you && <span className="flex-shrink-0 text-micro font-medium text-accent">you</span>}
         {/* The floor's label names a task, which can be long: it is what gives
             way, never the handle it is about (the tooltip carries it whole). */}

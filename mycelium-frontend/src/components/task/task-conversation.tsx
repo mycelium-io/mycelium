@@ -21,6 +21,7 @@ import { MessageBody } from "@/components/message-body";
 import { ConductorRow } from "@/components/task/conductor-row";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Monogram } from "@/components/ui/monogram";
+import { SenderName } from "@/components/sender-name";
 
 interface Props {
   roomName: string;
@@ -223,9 +224,7 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
-                  {!grouped && (
-                    <span className="text-label font-semibold text-text">{sender}</span>
-                  )}
+                  {!grouped && <SenderName handle={sender} />}
                   <MessageBody content={text} onOpenMemory={onOpenMemory} />
                 </div>
               </div>

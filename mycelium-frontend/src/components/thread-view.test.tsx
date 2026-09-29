@@ -15,6 +15,7 @@ const fetchMemories = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   logFetchError: () => () => undefined,
+  fetchUsers: async () => [],
   fetchMessages: (...args: unknown[]) => fetchMessages(...args),
   sendRoomMessage: (...args: unknown[]) => sendRoomMessage(...args),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),

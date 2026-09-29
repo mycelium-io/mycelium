@@ -37,6 +37,7 @@ from mycelium.commands.room import _resolve_room
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
+from mycelium.names import name_of
 
 #: Statuses a resident loop stops on: the hub rejected the caller's identity
 #: (401) or refused it this handle (403). Everything else is treated as a blip.
@@ -149,6 +150,24 @@ def _lease_watch(
             return
 
 
+def _with_name(turn: dict) -> dict:
+    """The turn with ``sender_name`` added when its sender named themselves.
+
+    An agent reads who is talking to it from here, so a person reads as
+    themselves ("Julia Valenti") and not only as a handle.
+    """
+    sender = str(turn.get("sender") or "")
+    name = name_of(sender) if sender else None
+    return {**turn, "sender_name": name} if name else turn
+
+
+def _sender_label(turn: dict) -> str:
+    """``Julia Valenti (@julia)``, or the sender's handle when they have no name."""
+    sender = str(turn.get("sender") or "?")
+    name = turn.get("sender_name")
+    return f"{name} (@{sender})" if name else sender
+
+
 def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:
     """Hand a turn to the resident runtime: run ``exec_cmd`` with the turn on stdin.
 
@@ -163,6 +182,7 @@ def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:
         "MYCELIUM_ROOM": room_name,
         "MYCELIUM_HANDLE": handle,
         "MYCELIUM_SENDER": str(turn.get("sender") or ""),
+        "MYCELIUM_SENDER_NAME": str(turn.get("sender_name") or ""),
         "MYCELIUM_PROMPT": str(turn.get("prompt") or ""),
     }
     subprocess.run(  # noqa: S602 - user-supplied command, turn passed via stdin (no injection)
@@ -277,10 +297,11 @@ def await_room(
             else:
                 typer.secho(f"  ⟫  no message for @{handle} within timeout", fg=typer.colors.YELLOW)
             raise typer.Exit(1)
+        data = _with_name(data)
         if json_output:
             typer.echo(json_module.dumps(data))
         else:
-            typer.secho(f"  ⟫  {data.get('sender') or '?'} → @{handle}:", fg=typer.colors.CYAN)
+            typer.secho(f"  ⟫  {_sender_label(data)} → @{handle}:", fg=typer.colors.CYAN)
             typer.echo(data.get("prompt") or "")
     except typer.Exit:
         raise
@@ -351,10 +372,11 @@ def _await_loop(
         if data is None:
             continue  # timeout → nothing addressed yet; re-await, lease stays warm
         try:
+            data = _with_name(data)
             if json_output:
                 typer.echo(json_module.dumps(data))
             else:
-                typer.secho(f"  ⟫  {data.get('sender') or '?'} → @{handle}:", fg=typer.colors.CYAN)
+                typer.secho(f"  ⟫  {_sender_label(data)} → @{handle}:", fg=typer.colors.CYAN)
                 typer.echo(data.get("prompt") or "")
             if exec_cmd:
                 _run_exec(exec_cmd, data, room_name, handle)

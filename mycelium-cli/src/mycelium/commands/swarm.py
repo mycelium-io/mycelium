@@ -54,6 +54,7 @@ from rich.panel import Panel
 from mycelium.client import hub_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
+from mycelium.names import who
 from mycelium.slim.l9 import payload_data_of, payload_type_of
 
 console = Console()
@@ -585,10 +586,10 @@ class LiveView:
             )
             return f"  {stamp}  [magenta]{CONDUCTOR}[/] {where}[dim]{escape(said)}[/]"
         if f"@{CONDUCTOR} {FLOW}" in text:
-            return f"  {stamp}  [cyan]{escape(sender)}[/] {where}[dim]kicked off the team[/]"
+            return f"  {stamp}  [cyan]{escape(who(sender))}[/] {where}[dim]kicked off the team[/]"
         if episode == self.root_episode:
             self.last_root = (sender, text)
-        return f"  {stamp}  [yellow]{escape(sender)}[/] {where}{self._body(text, episode)}"
+        return f"  {stamp}  [yellow]{escape(who(sender))}[/] {where}{self._body(text, episode)}"
 
     def _body(self, text: str, episode: str | None) -> str:
         """A message as the view prints it: its first lines, and where to read the rest."""
