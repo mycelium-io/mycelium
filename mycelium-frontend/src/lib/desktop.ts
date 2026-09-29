@@ -47,3 +47,7 @@ export function inviteLink(hubUrl: string, room?: string | null): string {
 
 /** Where the app is downloaded from. */
 export const DOWNLOAD_URL = "https://github.com/mycelium-io/mycelium/releases/latest";
+
+/** The app's disk image itself, for a one-click download on a Mac. */
+export const DMG_URL =
+  "https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg";
