@@ -5,7 +5,30 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { MarkdownContent } from "@/components/markdown-content";
+import { MarkdownContent, isExternalHref } from "@/components/markdown-content";
+
+describe("<MarkdownContent /> links", () => {
+  it("opens a link to another site in a new tab", () => {
+    render(<MarkdownContent>{"see [the PR](https://github.com/coffee-shop/web/pull/504)"}</MarkdownContent>);
+    const link = screen.getByRole("link", { name: "the PR" });
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("keeps a link into this app in place", () => {
+    render(<MarkdownContent>{"open [the room](/room/checkout)"}</MarkdownContent>);
+    expect(screen.getByRole("link", { name: "the room" })).not.toHaveAttribute("target");
+  });
+
+  it("tells links out of the hub from links into it", () => {
+    const here = "https://hub.example.com";
+    expect(isExternalHref("https://github.com/x", here)).toBe(true);
+    expect(isExternalHref("mailto:team@example.com", here)).toBe(true);
+    expect(isExternalHref("https://hub.example.com/room/checkout", here)).toBe(false);
+    expect(isExternalHref("/room/checkout", here)).toBe(false);
+    expect(isExternalHref(undefined, here)).toBe(false);
+  });
+});
 
 describe("<MarkdownContent /> memory links", () => {
   it("renders a wikilink as a clickable chip carrying its target", async () => {

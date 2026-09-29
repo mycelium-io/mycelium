@@ -76,7 +76,9 @@ async def create_skill(room_name: str, payload: SkillCreate, request: Request) -
     from app.routes.memory import upsert_memories
 
     _require_room(room_name)
-    created_by = actor.bind_actor(request, payload.created_by, field="created_by")
+    created_by = actor.bind_delegated_actor(
+        request, room_name, payload.created_by, field="created_by"
+    )
 
     # Description rides in user-managed frontmatter (preserved on rewrites).
     item = MemoryCreate(

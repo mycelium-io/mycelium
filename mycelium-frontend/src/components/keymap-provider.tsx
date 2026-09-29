@@ -333,14 +333,17 @@ export function KeymapProvider({ children }: { children: ReactNode }) {
 }
 
 /** Run `handler` when the keymap fires `id`. Latest render's closure wins, so
- *  the handler can close over state without re-registering. */
-export function useKeyAction(id: string, handler: Handler): void {
+ *  the handler can close over state without re-registering.
+ *
+ *  `enabled: false` unregisters it, and an unclaimed binding leaves the key to
+ *  the browser: how ⌘F stays the page's own find wherever the app has none. */
+export function useKeyAction(id: string, handler: Handler, { enabled = true } = {}): void {
   const api = useKeymap("useKeyAction");
   const latest = useRef(handler);
   useEffect(() => {
     latest.current = handler;
   });
-  useEffect(() => api.register(id, chord => latest.current(chord)), [api, id]);
+  useEffect(() => (enabled ? api.register(id, chord => latest.current(chord)) : undefined), [api, id, enabled]);
 }
 
 /** Declare a scope live for as long as the component is mounted. */

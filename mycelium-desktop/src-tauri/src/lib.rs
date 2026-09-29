@@ -610,6 +610,15 @@ fn main_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
         // A dark title bar, to match the app, whatever the system appearance.
         .theme(Some(tauri::Theme::Dark))
         .user_agent(&ua)
+        // A link the UI opens in a new tab (one out of the app, from chat or a
+        // memory) goes to the default browser: the app never opens a second
+        // web window of its own, and only web and mail links are passed on.
+        .on_new_window(|url, _features| {
+            if matches!(url.scheme(), "http" | "https" | "mailto") {
+                let _ = Command::new("open").arg(url.as_str()).spawn();
+            }
+            tauri::webview::NewWindowResponse::Deny
+        })
         .build()
 }
 

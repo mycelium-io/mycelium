@@ -34,7 +34,7 @@ import { useBackendHealth } from "@/lib/use-status";
 const NO_POLL: RoomQueryOptions = { refreshInterval: 0 };
 
 // The seeded sample room the "Run a sample coordination" onboarding routes into.
-const SAMPLE_TOUR_HREF = "/room/pricing-model?tour=1";
+const SAMPLE_TOUR_HREF = "/room/subscription-pricing?tour=1";
 
 function relativeTime(iso: string): string {
   if (!iso) return "";

@@ -237,6 +237,28 @@ describe("<RoomChatBox /> commands", () => {
     expect(sendRoomMessage).not.toHaveBeenCalled();
   });
 
+  it("opens the new-memory dialog for /memory, with the title filled in", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "/memory Launch checklist{Enter}");
+
+    expect(await screen.findByRole("dialog", { name: /New memory in/ })).toBeInTheDocument();
+    expect(screen.getByLabelText("Title")).toHaveValue("Launch checklist");
+    expect(sendRoomMessage).not.toHaveBeenCalled();
+    expect((box as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("offers a task, a memory or an agent from the +", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Add to the room" }));
+
+    expect(await screen.findByRole("button", { name: /Task or flow…/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Agent…/ })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Memory…/ }));
+    expect(await screen.findByRole("dialog", { name: /New memory in/ })).toBeInTheDocument();
+  });
+
   it("asks what the task is when a command comes with nothing", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();

@@ -217,6 +217,7 @@ describe("<RoomsSidebar /> room deletion", () => {
     const user = await renderSidebar(["design review"], null);
 
     await user.click(screen.getByRole("button", { name: "Delete room design review" }));
+    await user.type(screen.getByLabelText("Type the room name to confirm"), "design review");
     await user.click(screen.getByRole("button", { name: "Delete room" }));
 
     expect(deleteRoom).toHaveBeenCalledWith("design review");
@@ -227,6 +228,7 @@ describe("<RoomsSidebar /> room deletion", () => {
     const user = await renderSidebar(["design review"], "design review");
 
     await user.click(screen.getByRole("button", { name: "Delete room design review" }));
+    await user.type(screen.getByLabelText("Type the room name to confirm"), "design review");
     await user.click(screen.getByRole("button", { name: "Delete room" }));
 
     expect(push).toHaveBeenCalledWith("/");

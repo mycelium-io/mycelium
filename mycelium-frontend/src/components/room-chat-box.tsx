@@ -13,9 +13,12 @@ import { useCurrentUser } from "@/components/current-user";
 import { Kbd } from "@/components/ui/kbd";
 import { StartSwarmDialog } from "@/components/start-swarm-dialog";
 import { IntentDialog } from "@/components/intent-dialog";
+import { NewMemoryDialog } from "@/components/new-memory-dialog";
+import { AddMemberDialog } from "@/components/add-member-dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { mentionRank, nameOf, useNames } from "@/lib/people";
 import { draftKey, loadDraft, saveDraft } from "@/lib/drafts";
-import { Plus } from "lucide-react";
+import { FileText, ListTodo, Plus, UserPlus } from "lucide-react";
 import { parseCapture } from "@/lib/board/capture";
 import { fileCapture } from "@/lib/board/file-capture";
 
@@ -32,7 +35,16 @@ interface Props {
   episode?: string | null;
   /** What to call that thread in the placeholder, e.g. a task's title. */
   threadLabel?: string | null;
+  /** Opens a memory by key, e.g. the one the + or `/memory` just wrote. */
+  onOpenMemory?: (key: string) => void;
 }
+
+/** What the composer's + adds to the room. */
+const ADD_ITEMS = [
+  { kind: "task", label: "Task or flow…", about: "work for someone to pick up", icon: ListTodo },
+  { kind: "memory", label: "Memory…", about: "something the room should keep", icon: FileText },
+  { kind: "member", label: "Agent…", about: "bring an agent or a person in", icon: UserPlus },
+] as const;
 
 // Three sigils, three vocabularies, one composer:
 //   @   → agents        → inserts `@handle`
@@ -105,18 +117,30 @@ const COMMANDS = [
     usage: "/swarm <what>",
     description: "have a team of agents work on it now",
   },
+  {
+    name: "memory",
+    usage: "/memory <title>",
+    description: "write something down for the room to keep",
+  },
 ] as const;
 
 type CommandName = (typeof COMMANDS)[number]["name"];
 
 /** The command a message runs, and what follows it, or `null` for a message. */
 export function commandOf(body: string): { name: CommandName; rest: string } | null {
-  const match = body.match(/^\/(task|swarm)(?:\s+([\s\S]*))?$/);
+  const match = body.match(/^\/(task|swarm|memory)(?:\s+([\s\S]*))?$/);
   if (!match) return null;
   return { name: match[1] as CommandName, rest: (match[2] ?? "").trim() };
 }
 
-export function RoomChatBox({ roomName, onSent, className, episode = null, threadLabel = null }: Props) {
+export function RoomChatBox({
+  roomName,
+  onSent,
+  className,
+  episode = null,
+  threadLabel = null,
+  onOpenMemory,
+}: Props) {
   const [content, setContent] = useState("");
   // What's typed is kept per room (and per thread) until it's sent, so moving
   // to another room and back finds it where it was. Read after mount, since the
@@ -143,6 +167,10 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
   // The task a `/swarm` is being started on, while its dialog is open.
   const [swarmTask, setSwarmTask] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  // What the + offers, and the title a `/memory` opened the memory dialog with.
+  const [adding, setAdding] = useState(false);
+  const [memoryTitle, setMemoryTitle] = useState<string | null>(null);
+  const [addingMember, setAddingMember] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const [scrolls, setScrolls] = useState(false);
 
@@ -271,6 +299,13 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
     if (!body || sending) return;
     const handle = principal.trim() || "user";
     const command = commandOf(body);
+    if (command?.name === "memory") {
+      // The dialog writes it, so a bare `/memory` is fine: it opens empty.
+      setMemoryTitle(command.rest);
+      setContent("");
+      setTrigger(null);
+      return;
+    }
     if (command && !command.rest) {
       setError(`Say what it is: ${COMMANDS.find((c) => c.name === command.name)?.usage}`);
       return;
@@ -383,22 +418,11 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
           </div>
         )}
 
-        {/* One line when empty, growing with what is typed: the send button
-            sits beside the text rather than on a row of its own. */}
-        <div className="flex items-end gap-1 rounded-lg border border-border bg-surface transition-colors focus-within:border-border2 focus-within:bg-bg">
-          {/* In the room's own composer: start a task or a flow in one click,
-              without knowing which engine runs it. */}
-          {!episode && (
-            <button
-              type="button"
-              onClick={() => setStarting(true)}
-              aria-label="Start a task or flow"
-              title="Start a task or flow"
-              className="m-1 mr-0 flex size-8 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-accent/50 hover:bg-accent-soft hover:text-accent"
-            >
-              <Plus className="size-4" />
-            </button>
-          )}
+        {/* The text gets the box's full width, and what acts on it sits on a
+            quiet row underneath, as a chat composer draws it rather than a
+            form field: nothing beside the text, so a wrapped line starts
+            where the first one did. */}
+        <div className="group/composer rounded-xl border border-border bg-surface transition-colors focus-within:border-border2 focus-within:bg-bg">
           <TextareaAutosize
             ref={inputRef}
             value={content}
@@ -415,10 +439,57 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
               if (el) setScrolls(el.scrollHeight > el.clientHeight + 1);
             }}
             style={{ overflowY: scrolls ? "auto" : "hidden" }}
-            className="min-w-0 flex-1 resize-none bg-transparent px-3 py-2 text-body text-text leading-relaxed focus:outline-none placeholder:text-faint"
+            className="block w-full resize-none bg-transparent px-3.5 pb-1 pt-3 text-body text-text leading-relaxed focus:outline-none placeholder:text-faint"
             disabled={sending}
           />
-          <div className="flex shrink-0 items-center gap-2 p-1">
+          <div className="flex items-center gap-2 px-1.5 pb-1.5">
+            {/* In the room's own composer: add what a room holds, a task or
+                flow, a memory or a member, without knowing which verb does it. */}
+            {!episode && (
+              <Popover open={adding} onOpenChange={setAdding}>
+                <PopoverTrigger
+                  aria-label="Add to the room"
+                  title="Add to the room"
+                  className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent-soft hover:text-accent data-[popup-open]:bg-accent-soft data-[popup-open]:text-accent"
+                >
+                  <Plus className="size-4" />
+                </PopoverTrigger>
+                <PopoverContent side="top" align="start" className="w-64 p-1">
+                  {ADD_ITEMS.map((item) => (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => {
+                        setAdding(false);
+                        if (item.kind === "task") setStarting(true);
+                        else if (item.kind === "memory") setMemoryTitle("");
+                        else setAddingMember(true);
+                      }}
+                      className="flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-hairline"
+                    >
+                      <item.icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0">
+                        <span className="block text-label text-text">{item.label}</span>
+                        <span className="block text-micro text-faint">{item.about}</span>
+                      </span>
+                    </button>
+                  ))}
+                </PopoverContent>
+              </Popover>
+            )}
+            {/* What the composer answers to, said only while you're in it. The
+                sigils are typed, so they hold at every width; the keycaps name
+                keys a phone does not have, so they appear only when the box
+                is wide enough (measured against the composer, not the window:
+                it is this narrow on a phone and in a room with both rails open). */}
+            <span className="min-w-0 truncate text-micro text-faint opacity-0 transition-opacity group-focus-within/composer:opacity-100">
+              @ mention · [[ memory · / command
+            </span>
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+            <span className="hidden items-center gap-1.5 text-micro text-faint opacity-0 transition-opacity group-focus-within/composer:opacity-100 @[34rem]:flex">
+              <Kbd size="xs" tone="muted">⇧↵</Kbd> newline
+              <Kbd size="xs" tone="muted">esc</Kbd> commands
+            </span>
             {error && <span className="max-w-48 truncate text-micro text-red">{error}</span>}
             <button
               type="button"
@@ -435,23 +506,20 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
                 } ${armed ? "group-hover:-translate-y-px group-hover:translate-x-px group-active:scale-90" : ""}`}
               />
             </button>
+            </div>
           </div>
-        </div>
-        {/* What the composer answers to, in two halves. The sigils are typed,
-            so they hold at every width; the keycaps name keys a phone does not
-            have, and three of them wrapped the row onto three lines to say so.
-            Measured against the composer rather than the window: the box is
-            this narrow on a phone and again in a room with both rails open,
-            and the row has to fit the box either way. */}
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-micro text-faint">
-          <span>@ mention · [[ memory · / command</span>
-          <span className="ml-auto hidden items-center gap-1.5 @[34rem]:flex">
-            <Kbd size="xs" tone="muted">⇧↵</Kbd> newline
-            <Kbd size="xs" tone="muted">esc</Kbd> commands
-          </span>
         </div>
       </div>
       {starting && <IntentDialog roomName={roomName} initial="task" onClose={() => setStarting(false)} />}
+      <NewMemoryDialog
+        open={memoryTitle !== null}
+        onOpenChange={(open) => !open && setMemoryTitle(null)}
+        roomName={roomName}
+        initialTitle={memoryTitle ?? ""}
+        onCreated={onOpenMemory}
+      />
+      {addingMember && <AddMemberDialog open onOpenChange={setAddingMember} roomName={roomName} />}
+
       {swarmTask !== null && (
         <StartSwarmDialog
           open

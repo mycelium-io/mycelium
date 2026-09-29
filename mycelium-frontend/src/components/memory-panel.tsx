@@ -20,7 +20,19 @@ import {
   X,
   Search,
   Loader2,
+  Copy,
+  Link2,
+  Maximize2,
+  Plus,
 } from "lucide-react";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { absoluteUrl, copyText } from "@/lib/clipboard";
 import {
   fetchMemory,
   fetchMemoryExpanded,
@@ -39,11 +51,19 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 import { MemoryDetail } from "@/components/memory-detail";
 import { MemoryEditor } from "@/components/memory-editor";
+import { NewMemoryDialog } from "@/components/new-memory-dialog";
+import { Button } from "@/components/ui/button";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { TaskConversation } from "@/components/task/task-conversation";
 import { isLiveEpisode } from "@/lib/threads";
 import { useCurrentUser } from "@/components/current-user";
 import { useUnsavedGuard } from "@/components/unsaved-changes";
+
+/** The folder a key sits in, so a new memory starts beside the one that's open. */
+function folderOf(key: string | null): string {
+  const slash = key?.lastIndexOf("/") ?? -1;
+  return key && slash > 0 ? key.slice(0, slash) : "context";
+}
 
 interface TreeNode {
   name: string;
@@ -141,7 +161,52 @@ const PEEK_DELAY = 350; // ms of hover intent before the preview card opens
  *  button — the drawer is narrower than the page, so it clamps sooner. */
 const BODY_CLAMP_PX = 480;
 
+/**
+ * A memory's right-click menu in the tree: open it, open its full page (a
+ * right-click replaces the browser's own "open in new tab"), and copy it as a
+ * key, a `[[link]]` or a page link.
+ */
+function MemoryRowMenu({
+  roomName,
+  memory,
+  onOpen,
+  children,
+}: {
+  roomName: string;
+  memory: Memory | null;
+  onOpen: (mem: Memory) => void;
+  children: React.ReactElement;
+}) {
+  const router = useRouter();
+  if (!memory) return children;
+  const href = memoryHref(roomName, memory.key);
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger>{children}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem icon={FileText} onClick={() => onOpen(memory)}>
+          Open
+        </ContextMenuItem>
+        <ContextMenuItem icon={Maximize2} onClick={() => router.push(href)}>
+          Open full page
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem icon={Copy} onClick={() => void copyText(memory.key)}>
+          Copy key
+        </ContextMenuItem>
+        <ContextMenuItem icon={Link2} onClick={() => void copyText(`[[${memory.key}]]`)}>
+          Copy as [[link]]
+        </ContextMenuItem>
+        <ContextMenuItem icon={Link2} onClick={() => void copyText(absoluteUrl(href))}>
+          Copy page link
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
+
 interface TreeRowsProps {
+  roomName: string;
   nodes: TreeNode[];
   depth: number;
   collapsed: Set<string>;
@@ -156,6 +221,7 @@ interface TreeRowsProps {
 }
 
 function TreeRows({
+  roomName,
   nodes,
   depth,
   collapsed,
@@ -177,6 +243,7 @@ function TreeRows({
 
         return (
           <div key={node.path}>
+            <MemoryRowMenu roomName={roomName} memory={node.memory ?? null} onOpen={onSelect}>
             <div
               style={{ paddingLeft, height: ROW_H }}
               onMouseEnter={e => node.memory && onPeek(node.memory, e.currentTarget)}
@@ -243,9 +310,11 @@ function TreeRows({
                 </span>
               )}
             </div>
+            </MemoryRowMenu>
 
             {isOpen && (
               <TreeRows
+                roomName={roomName}
                 nodes={node.children}
                 depth={depth + 1}
                 collapsed={collapsed}
@@ -285,6 +354,7 @@ export function MemoryPanel({
   const [renderedBody, setRenderedBody] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [peek, setPeek] = useState<{ memory: Memory; anchor: PreviewAnchor } | null>(null);
+  const [adding, setAdding] = useState(false);
   const paneRef = useRef<HTMLDivElement>(null);
   const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { principal } = useCurrentUser();
@@ -521,7 +591,19 @@ export function MemoryPanel({
             Graph
           </Link>
         </Tooltip>
+        <Tooltip content="Write a new memory">
+          <Button variant="ghost" size="xs" onClick={() => setAdding(true)}>
+            <Plus className="size-3" /> Add
+          </Button>
+        </Tooltip>
       </div>
+      <NewMemoryDialog
+        open={adding}
+        onOpenChange={setAdding}
+        roomName={roomName}
+        initialFolder={folderOf(activeKey ?? selected?.key ?? null)}
+        onCreated={key => void openMemoryByKey(key)}
+      />
 
       {/* One field for both ways of finding a memory: typing narrows the tree
           by name as you go, Enter searches by meaning. */}
@@ -633,6 +715,7 @@ export function MemoryPanel({
               />
             ) : (
               <TreeRows
+                roomName={roomName}
                 nodes={tree}
                 depth={0}
                 collapsed={filterCollapsed ?? collapsed}

@@ -20,7 +20,7 @@ const FRAMEWORKS: Framework[] = [
     id: "claude",
     name: "Claude Code",
     command: "claude",
-    path: "/Users/julia/.local/bin/claude",
+    path: "/Users/morgan/.local/bin/claude",
     version: "2.4.1",
     installed: true,
     launchable: true,
@@ -48,26 +48,26 @@ const FRAMEWORKS: Framework[] = [
   },
 ];
 
-export const MOCK_RUNNER_ID = "julias-mbp";
+export const MOCK_RUNNER_ID = "morgans-mbp";
 
 const runners: Runner[] = [
   {
     id: MOCK_RUNNER_ID,
-    label: "julias-mbp",
-    owner: "julia",
+    label: "morgans-mbp",
+    owner: "operator",
     platform: "darwin-arm64",
     version: "0.14.0",
     herdr: true,
-    roots: ["/Users/julia/code/atlas", "/Users/julia/code/mycelium"],
+    roots: ["/Users/morgan/code/shop", "/Users/morgan/code/website"],
     frameworks: FRAMEWORKS,
     agents: [
       {
-        handle: "backfill",
-        room: "atlas-migration",
+        handle: "builder",
+        room: "checkout",
         framework: "claude",
         status: "working",
         pane: "w3:p1",
-        cwd: "/Users/julia/code/atlas",
+        cwd: "/Users/morgan/code/shop",
         started_at: iso(42),
         detail: null,
       },
@@ -88,10 +88,10 @@ const jobs: StoredJob[] = [
     id: "job-0001",
     runner: MOCK_RUNNER_ID,
     kind: "launch",
-    spec: { room: "atlas-migration", handle: "backfill", framework: "claude", cwd: "/Users/julia/code/atlas" },
+    spec: { room: "checkout", handle: "builder", framework: "claude", cwd: "/Users/morgan/code/shop" },
     result: { pane: "w3:p1" },
     error: null,
-    created_by: "julia",
+    created_by: "operator",
     created_at: iso(42),
     failWith: null,
   },

@@ -238,7 +238,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
   // Normalize: drop a trailing slash, split into segments after `/api`.
   const segs = pathname.replace(/\/+$/, "").split("/").filter(Boolean);
   if (segs[0] !== "api") return null;
-  const rest = segs.slice(1); // e.g. ["rooms", "atlas-migration", "plan"]
+  const rest = segs.slice(1); // e.g. ["rooms", "checkout", "plan"]
 
   // ── /api/observability ──────────────────────────────────────────────────────
   if (rest[0] === "observability") {
@@ -270,10 +270,10 @@ export async function handleMock(req: Request): Promise<Response | null> {
         invite_failures: 0,
         rooms: [
           {
-            room: "atlas-migration",
+            room: "checkout",
             provisioned: true,
             persister_alive: true,
-            members: ["planner", "avery"],
+            members: ["builder", "reviewer"],
             deferred_invites: 1,
             episode_active: true,
             reserves: 3,
@@ -283,7 +283,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
             transient_errors: 0,
           },
           {
-            room: "design-review",
+            room: "subscription-pricing",
             provisioned: true,
             persister_alive: true,
             members: [],
@@ -558,7 +558,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
           kind: null,
           description: "",
           cwd: null,
-          owner: "julia",
+          owner: "operator",
           team: null,
           allow_from: [],
           a2a_card: null,

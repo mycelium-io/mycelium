@@ -53,4 +53,10 @@ export const TARGETS: Record<string, Target[]> = {
   "room-empty": [{ dir: DOCS_DIR, name: "app-room-empty", retina: true }],
   "room-memory": [{ dir: SPLASH_DIR, name: "app-memory", retina: true }],
   "room-network": [{ dir: SPLASH_DIR, name: "app-network", retina: true }],
+  // The docs walkthrough. It also uses app-room-empty and app-room-board.
+  "walk-name": [{ dir: DOCS_DIR, name: "walk-name", retina: true }],
+  "walk-add-agent": [{ dir: DOCS_DIR, name: "walk-add-agent", retina: true }],
+  "walk-task": [{ dir: DOCS_DIR, name: "walk-task", retina: true }],
+  "walk-thread": [{ dir: DOCS_DIR, name: "walk-thread", retina: true }],
+  "walk-aligner": [{ dir: DOCS_DIR, name: "walk-aligner", retina: true }],
 };

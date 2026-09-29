@@ -6,6 +6,7 @@
 import { cn } from "@/lib/utils";
 import { ageMinutes, attentionFilterOf, type LiveItem } from "@/lib/board/item";
 import { AgeTag, KindIcon, AssignmentChip, openableThread, SourceTag, ThreadChip, UpstreamChip, WorkLinks, kindColor } from "./board-cells";
+import { BoardRowMenu } from "./board-row-menu";
 
 interface Props {
   items: LiveItem[];
@@ -48,8 +49,8 @@ export function BoardTimeline({ items, now, selectedId, onSelect, onOpenThread }
             {/* The rail: one line the whole bucket hangs off. */}
             <span className="absolute inset-y-0 left-[5px] w-px bg-hairline" />
             {bucket.items.map(item => (
+              <BoardRowMenu key={item.id} item={item}>
               <button
-                key={item.id}
                 onClick={() => {
                   onSelect(item.id);
                   const episode = openableThread(item);
@@ -80,6 +81,7 @@ export function BoardTimeline({ items, now, selectedId, onSelect, onOpenThread }
                   </span>
                 </span>
               </button>
+              </BoardRowMenu>
             ))}
           </div>
         </section>

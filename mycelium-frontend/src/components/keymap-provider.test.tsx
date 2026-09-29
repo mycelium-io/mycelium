@@ -2,7 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { useState } from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { KeyBadge } from "@/components/key-badge";
@@ -72,6 +72,37 @@ describe("<KeymapProvider />", () => {
 
     await user.keyboard("]");
     expect(fired).toHaveBeenCalledWith("next");
+  });
+
+  it("hands a disabled action's key back to the browser", () => {
+    const find = vi.fn();
+
+    function Channel({ showing }: { showing: boolean }) {
+      useKeyScope("room");
+      useKeyAction("chat.find", find, { enabled: showing });
+      return null;
+    }
+
+    const { rerender } = render(
+      <KeymapProvider>
+        <Channel showing />
+      </KeymapProvider>,
+    );
+    // fireEvent says whether the default survived: false means it was taken.
+    // jsdom is not a Mac, so `mod` is Ctrl.
+    const press = () => fireEvent.keyDown(document.body, { key: "f", ctrlKey: true });
+
+    expect(press()).toBe(false);
+    expect(find).toHaveBeenCalledTimes(1);
+
+    // A memory is open instead: ⌘F is the page's own find again.
+    rerender(
+      <KeymapProvider>
+        <Channel showing={false} />
+      </KeymapProvider>,
+    );
+    expect(press()).toBe(true);
+    expect(find).toHaveBeenCalledTimes(1);
   });
 
   it("reveals each target's key while the modifier is held, and hides it on release", async () => {

@@ -11,8 +11,8 @@ async function mockGet(path: string): Promise<{ status: number; body: unknown }>
 }
 
 describe("mock links handlers", () => {
-  it("serves the atlas-migration room's whole link graph", async () => {
-    const { status, body } = await mockGet("/api/rooms/atlas-migration/links/graph");
+  it("serves the checkout room's whole link graph", async () => {
+    const { status, body } = await mockGet("/api/rooms/checkout/links/graph");
     expect(status).toBe(200);
     const graph = body as { nodes: { key: string; inbound: number; outbound: number }[]; edges: { resolved: boolean }[] };
 
@@ -34,22 +34,22 @@ describe("mock links handlers", () => {
 
   it("serves one memory's outbound links and backlinks by key", async () => {
     const { status, body } = await mockGet(
-      `/api/rooms/atlas-migration/links?key=${encodeURIComponent("decisions/cutover")}`,
+      `/api/rooms/checkout/links?key=${encodeURIComponent("decisions/apple-pay-launch")}`,
     );
     expect(status).toBe(200);
     const links = body as { outbound: { target: string; resolved: boolean }[]; backlinks: { source?: string | null }[] };
 
-    // decisions/cutover links out to context/goal (resolved) and a broken work/ link
+    // the launch decision links out to context/goal (resolved) and a broken work/ link
     expect(links.outbound.some((l) => l.target === "context/goal" && l.resolved)).toBe(true);
     expect(links.outbound.some((l) => l.resolved === false)).toBe(true);
-    // and is linked to by context/synthesis and status/sprint
-    expect(links.backlinks.map((l) => l.source).sort()).toEqual(["context/synthesis", "status/sprint"]);
+    // and is linked to by the briefing and the week's status
+    expect(links.backlinks.map((l) => l.source).sort()).toEqual(["context/briefing", "status/this-week"]);
   });
 
   it("derives the integrity report from the same edges the graph draws", async () => {
     // Hand-written integrity would let a fixture claim a clean room while its
     // graph plainly shows a break.
-    const { status, body } = await mockGet("/api/rooms/atlas-migration/links/integrity");
+    const { status, body } = await mockGet("/api/rooms/checkout/links/integrity");
     expect(status).toBe(200);
     const report = body as {
       broken: { source: string; target: string }[];
@@ -58,11 +58,11 @@ describe("mock links handlers", () => {
       leaves: string[];
       total_memories: number;
     };
-    expect(report.broken).toContainEqual(expect.objectContaining({ source: "decisions/cutover", target: "work/cutover-runbook" }));
+    expect(report.broken).toContainEqual(expect.objectContaining({ source: "decisions/apple-pay-launch", target: "work/launch-checklist" }));
     expect(report.total_memories).toBeGreaterThan(0);
 
     // Orphans must have no inbound AND no outbound edges.
-    const { body: graphBody } = await mockGet("/api/rooms/atlas-migration/links/graph");
+    const { body: graphBody } = await mockGet("/api/rooms/checkout/links/graph");
     const graph = graphBody as { nodes: { key: string; inbound: number; outbound: number }[]; edges: { source: string; target: string; resolved: boolean }[] };
     const nodeMap = new Map(graph.nodes.map((n) => [n.key, n]));
     for (const key of report.orphans) {
@@ -83,23 +83,23 @@ describe("mock links handlers", () => {
 
   it("expands a transclusion into the embedded memory's text", async () => {
     const { status, body } = await mockGet(
-      "/api/rooms/atlas-migration/links/expand?key=" + encodeURIComponent("context/synthesis"),
+      "/api/rooms/checkout/links/expand?key=" + encodeURIComponent("context/briefing"),
     );
     expect(status).toBe(200);
     const expanded = body as { rendered: string; found: boolean; expansions: { target: string; resolved: boolean }[] };
     expect(expanded.found).toBe(true);
     expect(expanded.rendered).not.toContain("![[context/goal]]");
-    expect(expanded.rendered).toContain("Move the catalog off the old store");
+    expect(expanded.rendered).toContain("stop double charges before the spring sale");
     expect(expanded.expansions).toContainEqual({ raw: "![[context/goal]]", target: "context/goal", resolved: true });
   });
 
   it("reports a memory it doesn't have as not found rather than empty-but-fine", async () => {
-    const { body } = await mockGet("/api/rooms/atlas-migration/links/expand?key=nope");
+    const { body } = await mockGet("/api/rooms/checkout/links/expand?key=nope");
     expect((body as { found: boolean }).found).toBe(false);
   });
 
   it("404s a key-scoped lookup with no key", async () => {
-    const { status } = await mockGet("/api/rooms/atlas-migration/links");
+    const { status } = await mockGet("/api/rooms/checkout/links");
     expect(status).toBe(404);
   });
 });
@@ -108,7 +108,7 @@ describe("mock skills handler", () => {
   it("projects the room's skills/ memories into the skills list shape", async () => {
     // `useRoomSkills` runs on every room page; without this route the request
     // fell through to a real backend and 502'd under `pnpm dev:mock`.
-    const { status, body } = await mockGet("/api/rooms/mycelium-general/skills");
+    const { status, body } = await mockGet("/api/rooms/storefront/skills");
     expect(status).toBe(200);
     const { skills, total } = body as {
       skills: { name: string; description: string; body: string; created_by: string; version: number }[];
@@ -146,10 +146,10 @@ describe("mock memory write handler", () => {
   }
 
   it("upserts a memory and bumps its version", async () => {
-    const before = await mockGet("/api/rooms/atlas-migration/memory");
+    const before = await mockGet("/api/rooms/checkout/memory");
     const first = (before.body as { key: string; version: number }[])[0];
 
-    const { status, body } = await post("atlas-migration", [
+    const { status, body } = await post("checkout", [
       { key: first.key, value: "rewritten", created_by: "alice" },
     ]);
     expect(status).toBe(201);
@@ -157,10 +157,10 @@ describe("mock memory write handler", () => {
   });
 
   it("rejects a stale base_version with 409", async () => {
-    const { body } = await mockGet("/api/rooms/atlas-migration/memory");
+    const { body } = await mockGet("/api/rooms/checkout/memory");
     const target = (body as { key: string; version: number }[])[0];
 
-    const res = await post("atlas-migration", [
+    const res = await post("checkout", [
       { key: target.key, value: "x", created_by: "alice", base_version: target.version + 99 },
     ]);
     expect(res.status).toBe(409);
@@ -168,7 +168,7 @@ describe("mock memory write handler", () => {
   });
 
   it("round-trips tags and the expandable flag", async () => {
-    await post("atlas-migration", [{
+    await post("checkout", [{
       key: "context/mock-write-probe",
       value: "body text",
       created_by: "alice",
@@ -176,23 +176,23 @@ describe("mock memory write handler", () => {
       meta: { expandable: true },
     }]);
 
-    const { body } = await mockGet("/api/rooms/atlas-migration/memory/context/mock-write-probe");
+    const { body } = await mockGet("/api/rooms/checkout/memory/context/mock-write-probe");
     const mem = body as { tags?: string[]; expandable?: boolean };
     expect(mem.tags).toEqual(["alpha", "beta"]);
     expect(mem.expandable).toBe(true);
   });
 
   it("clears the expandable flag when the write says false", async () => {
-    await post("atlas-migration", [{
+    await post("checkout", [{
       key: "context/mock-clear-probe", value: "b", created_by: "alice",
       meta: { expandable: true },
     }]);
-    await post("atlas-migration", [{
+    await post("checkout", [{
       key: "context/mock-clear-probe", value: "b", created_by: "alice",
       meta: { expandable: false },
     }]);
 
-    const { body } = await mockGet("/api/rooms/atlas-migration/memory/context/mock-clear-probe");
+    const { body } = await mockGet("/api/rooms/checkout/memory/context/mock-clear-probe");
     expect((body as { expandable?: boolean }).expandable).toBe(false);
   });
 });

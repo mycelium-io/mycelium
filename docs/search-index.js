@@ -10,56 +10,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#quickstart",
     "t": "Quick Start",
     "s": "Get Started",
-    "x": "There are two ways to install Mycelium. On a Mac, use the app. It's the quickest start: one download, no Docker, no terminal. It runs a hub on your Mac or joins your team's, and starts your coding agents when you ask. Download Mycelium for Mac, then see The Mac App. On Linux, a server, or from a terminal, use the CLI. It runs the hub with Docker. The rest of this page covers it.",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#quickstart-start-with-a-prompt",
-    "t": "Start with a prompt",
-    "s": "Get Started › Quick Start",
-    "x": "Mycelium runs on a server your team connects to. The easiest way to set one up from the command line is to ask your coding agent to do it. Paste this into any coding agent that can run shell commands: Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium It reads agents.md, a setup guide written for agents, and does the whole setup: starts the server with Docker, ",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#quickstart-start-the-server",
-    "t": "Start the server",
-    "s": "Get Started › Quick Start",
-    "x": "Mycelium runs as a few Docker containers. Start it on a machine you trust. Your laptop is fine to begin with. When your team wants a shared server, move it there. curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash mycelium install install sets up the CLI and starts the server: a SLIM messaging node, the backend, and the app. There's no database; rooms and memory are files. It asks for a model provide",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#quickstart-open-the-app",
-    "t": "Open the app",
-    "s": "Get Started › Quick Start",
-    "x": "Open the app early and keep it open. It's where you see what's happening: the chat, who's in each room, the board and the shared memory. mycelium ui open If a command says it can't reach the API at localhost:8000, the server isn't running. Run mycelium up.",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#quickstart-create-a-room",
-    "t": "Create a room",
-    "s": "Get Started › Quick Start",
-    "x": "A room is where people and agents work together and share memory. mycelium room create my-project mycelium room use my-project Open my-project in the app. It's empty for now.",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#quickstart-add-your-agents",
-    "t": "Add your agents",
-    "s": "Get Started › Quick Start",
-    "x": "Register an agent to add it to the room: mycelium agent create planner \\ --description \"Sprint planner, optimizes for shipping speed\" mycelium agent ls # see who's in the room The agent is your own coding agent session. Keep it listening with mycelium await --loop, and it picks up each @planner mention on its next turn. See the Adapters guide for the agents Mycelium supports. Keep agents awake with herdr. An agent on",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#quickstart-put-work-on-the-board",
-    "t": "Put work on the board",
-    "s": "Get Started › Quick Start",
-    "x": "The board holds the room's work. Add a task and say what you want. The agents work out how to do it: mycelium board new \"Ship passkey login\" mycelium board # what needs you right now Each task has its own thread, so the discussion about it stays with it: mycelium board send work/ship-passkey-login \"@planner what's the smallest slice here?\" mycelium board messages work/ship-passkey-login Agents claim tasks, split them",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#quickstart-share-memory",
-    "t": "Share memory",
-    "s": "Get Started › Quick Start",
-    "x": "Everything written to a room's memory can be read by everyone in the room, and found by searching for what it means, not only by its exact name: mycelium memory set \"decisions/scope\" \"One sprint, DB cutover deferred to sprint two\" mycelium memory set \"decisions/api\" \"REST with generated OpenAPI client\" # Search by meaning mycelium memory search \"what scope decisions were made\" # List memories mycelium memory ls mycel",
+    "x": "On a Mac, four steps: Download Mycelium for Mac, open it, and choose Run a hub on this Mac. Press + next to Rooms to create a room. Open Members, press Add, and add a coding agent from Your machine. Hand it a task: type /task Add a gift message to orders @builder into the message box. New to this? Walk through it step by step, with a screenshot at each step. On Linux or a server your team shares, use the CLI instead:",
     "p": "Guide"
   },
   {
@@ -143,7 +94,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board",
     "t": "Board",
     "s": "Concepts",
-    "x": "The board is a room's list of work. Each row is a task. You put tasks on it, agents pick them up and do them, and the board shows you the few things that need a person. mycelium board atlas-migration 3 need you · 4 in flight · 6 resolved today Decisions 1 ? d3f JWT access-token TTL: 15m or 60m? urgent @agent-y unowned [15m] [60m] 6m Blocked 1 ⊘ a91 Enable thin-spoke join without a local replica linked to #502 @julia ",
+    "x": "The board is a room's list of work. Each row is a task. You put tasks on it, agents pick them up and do them, and the board shows you the few things that need a person. mycelium board checkout 3 need you · 4 in flight · 6 resolved today Decisions 1 ? d3f Double charges: refund automatically, or send to support? urgent @reviewer unowned [refund automatically] [send to support] 6m Blocked 1 ⊘ a91 Test Apple Pay on a re",
     "p": "Guide"
   },
   {
@@ -262,7 +213,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board-live-pull-request-status-not-built-yet",
     "t": "Live pull request status (not built yet)",
     "s": "Concepts › Board",
-    "x": "This section describes planned behavior. The hub can already look up a pull request's state (see status providers), but rows don't show it yet. To link a pull request to a task, you'll just mention it in the task, a memory or a message: mycelium memory set work/custody \\ \"land the custody change: mycelium-io/mycelium#504\" mycelium memory set work/thin-spoke \\ \"Blocked behind https://github.com/mycelium-io/mycelium/pu",
+    "x": "This section describes planned behavior. The hub can already look up a pull request's state (see status providers), but rows don't show it yet. To link a pull request to a task, you'll just mention it in the task, a memory or a message: mycelium memory set work/double-charge-fix \\ \"land the double-charge fix: coffee-shop/web#504\" mycelium memory set work/apple-pay \\ \"Blocked behind https://github.com/coffee-shop/web/",
     "p": "Guide"
   },
   {
@@ -530,6 +481,103 @@ window.MYCELIUM_SEARCH_INDEX = [
     "s": "Concepts › L9 Protocol",
     "x": "For anyone reading the raw messages: a round is an exchange, an agreement is commit:converged, a failed negotiation is commit:rejected, and shared knowledge is knowledge. A message that edits an earlier one is an exchange:amend that points to the message it replaces. The backend builds these from what agents write, so agents never write L9 themselves. When a negotiation agrees, the agreed values are turned into tasks",
     "p": "Guide"
+  },
+  {
+    "u": "walkthrough.html#walkthrough",
+    "t": "Your First Room",
+    "x": "This walks through setting up Mycelium from nothing on a Mac, one step at a time: the app, a room, two coding agents, and a task they work on together. It takes about ten minutes. You'll need a Mac with Apple silicon, and a coding agent installed, such as Claude Code. The app finds it for you. On Linux, or on a server your team shares, skip to Run it on a server instead.",
+    "p": "Walkthrough"
+  },
+  {
+    "u": "walkthrough.html#walk-app",
+    "t": "1. Get the app",
+    "x": "Download Mycelium for Mac, open it, and drag Mycelium into Applications. Then open it from Applications. The first screen asks how this Mac takes part. Choose Run a hub on this Mac to keep your rooms and agents here, pick the folder your agents may work in, and press Start. The app opens on its home page and asks what to call you. Your name goes on what you post, and agents see it when you talk to them. If a teammate",
+    "p": "Walkthrough"
+  },
+  {
+    "u": "walkthrough.html#walk-room",
+    "t": "2. Create a room",
+    "x": "A room is where a team works: the people and agents in it share its chat, its board and its memory. Press + next to Rooms, type a name such as checkout, and press Enter. A new room is empty, and offers a few ways to start.",
+    "p": "Walkthrough"
+  },
+  {
+    "u": "walkthrough.html#walk-agents",
+    "t": "3. Add your agents",
+    "x": "Open Members and press Add, or pick Add an agent to this room. Choose Your machine, then: Start from a role, such as implementer. It fills in how the agent should work, which you can edit. Give it a handle, such as builder. That's how the room mentions it. Check the agent CLI and the folder it works in. Press Add. The agent starts in a terminal session on your Mac, already in the room, and shows up under Members. Add",
+    "p": "Walkthrough"
+  },
+  {
+    "u": "walkthrough.html#walk-task",
+    "t": "4. Hand it a task",
+    "x": "Type /task, what you want done, and who it's for, into the message box: /task Add a gift message to orders @builder Press Enter, and the task lands on the room's Board. The agent claims it and starts. The channel shows a short line when that happens, rather than every message about the task. The + beside the message box does the same without typing, and can start the task with a way of working, such as Review, where ",
+    "p": "Walkthrough"
+  },
+  {
+    "u": "walkthrough.html#walk-thread",
+    "t": "5. Watch it work",
+    "x": "Click a task to open its thread. Everything about that task happens there, so the room's chat stays readable while agents work. When a task runs a way of working, such as a review, the line at the top of the thread shows which step it's on and whose turn it is. You can reply in the thread at any point, and the agents read it. When the work is done, the agent resolves the task and it moves to Resolved on the board.",
+    "p": "Walkthrough"
+  },
+  {
+    "u": "walkthrough.html#walk-aligner",
+    "t": "6. When agents disagree",
+    "x": "Sometimes two agents want different things, and talking isn't settling it. Bring in the aligner: mention @aligner in the task's thread, or use + and choose Settle. It asks each side what they need, proposes terms, and stops as soon as they agree. The agreement is recorded, and it can update the task or add new ones. Review, Settle and the other ways of working are run by the room's engines, the conductor and the alig",
+    "p": "Walkthrough"
+  },
+  {
+    "u": "walkthrough.html#walk-next",
+    "t": "Where to go next",
+    "x": "Invite teammates. In Members, Invite copies a link to the room. Opening it offers the app or the browser. Keep what matters. Anything written to the room's memory can be read and searched by everyone in it, people and agents. Use the command line. Agents work in rooms through the mycelium CLI, which the app puts on your Mac. You can use it too; see the CLI reference. Learn the pieces. Rooms, the board and episodes ex",
+    "p": "Walkthrough"
+  },
+  {
+    "u": "walkthrough.html#walk-server",
+    "t": "On a server",
+    "s": "Other setups",
+    "x": "On Linux, on a server your team shares, or if you'd rather use a terminal, run Mycelium with the CLI. It starts the hub with Docker.",
+    "p": "Walkthrough"
+  },
+  {
+    "u": "walkthrough.html#walk-server-start-with-a-prompt",
+    "t": "Start with a prompt",
+    "s": "Other setups › On a server",
+    "x": "The easiest way is to ask your coding agent to do it. Paste this into any coding agent that can run shell commands: Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium It reads agents.md, a setup guide written for agents, and does the whole setup: starts the server with Docker, configures your model, creates a room and adds itself to it. When it's done, open the",
+    "p": "Walkthrough"
+  },
+  {
+    "u": "walkthrough.html#walk-server-start-the-server",
+    "t": "Start the server",
+    "s": "Other setups › On a server",
+    "x": "Start it on a machine you trust. Your laptop is fine to begin with. When your team wants a shared server, move it there. curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash mycelium install install sets up the CLI and starts the server: a SLIM messaging node, the backend, and the app. There's no database; rooms and memory are files. It asks for a model provider and API key along the way. Rooms and mem",
+    "p": "Walkthrough"
+  },
+  {
+    "u": "walkthrough.html#walk-server-open-the-app",
+    "t": "Open the app",
+    "s": "Other setups › On a server",
+    "x": "Open the app early and keep it open. It's where you see what's happening: the chat, who's in each room, the board and the shared memory. mycelium ui open If a command says it can't reach the API at localhost:8000, the server isn't running. Run mycelium up.",
+    "p": "Walkthrough"
+  },
+  {
+    "u": "walkthrough.html#walk-server-create-a-room-and-add-agents",
+    "t": "Create a room and add agents",
+    "s": "Other setups › On a server",
+    "x": "mycelium room create my-project mycelium room use my-project mycelium agent create planner \\ --description \"Sprint planner, optimizes for shipping speed\" mycelium agent ls # see who's in the room The agent is your own coding agent session. Keep it listening with mycelium await --loop, and it picks up each @planner mention on its next turn. See the Adapters guide for the agents Mycelium supports. Keep agents awake wit",
+    "p": "Walkthrough"
+  },
+  {
+    "u": "walkthrough.html#walk-server-put-work-on-the-board",
+    "t": "Put work on the board",
+    "s": "Other setups › On a server",
+    "x": "mycelium board new \"Ship passkey login\" mycelium board # what needs you right now mycelium board send work/ship-passkey-login \"@planner what's the smallest slice here?\" mycelium board messages work/ship-passkey-login Each task has its own thread, so the discussion about it stays with it. To put a whole team of agents on one task, see Swarm.",
+    "p": "Walkthrough"
+  },
+  {
+    "u": "walkthrough.html#walk-server-share-memory",
+    "t": "Share memory",
+    "s": "Other setups › On a server",
+    "x": "mycelium memory set \"decisions/scope\" \"One sprint, DB cutover deferred to sprint two\" mycelium memory search \"what scope decisions were made\" mycelium memory ls decisions/ See memory for how memories are stored and searched.",
+    "p": "Walkthrough"
   },
   {
     "u": "adapters.html#adapters",
@@ -1993,7 +2041,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#herdr-why-you-might-want-it",
     "t": "Why you might want it",
     "s": "Guides › Persistent Agents (herdr)",
-    "x": "Your agents take part in a room through their own live sessions. An agent only notices an @handle mention while its await loop is running (see Add your agents). Close the terminal and the agent is still a member of the room, but nobody is there to answer. Mentions wait until you start the loop again. herdr fills that gap. It keeps your agent sessions open in panes, and Mycelium links each pane to a handle in a room. ",
+    "x": "Your agents take part in a room through their own live sessions. An agent only notices an @handle mention while its await loop is running (see Run it on a server instead). Close the terminal and the agent is still a member of the room, but nobody is there to answer. Mentions wait until you start the loop again. herdr fills that gap. It keeps your agent sessions open in panes, and Mycelium links each pane to a handle ",
     "p": "Reference"
   },
   {
@@ -2091,7 +2139,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#desktop-the-command-line",
     "t": "The command line",
     "s": "Guides › The Mac App",
-    "x": "Everything the app does is also a command, for a Linux machine, a server, or if you'd rather use a terminal: mycelium desktop serve runs the same hub without the window. See Quick Start for the full CLI setup.",
+    "x": "Everything the app does is also a command, for a Linux machine, a server, or if you'd rather use a terminal: mycelium desktop serve runs the same hub without the window. See Run it on a server instead for the full CLI setup.",
     "p": "Reference"
   },
   {

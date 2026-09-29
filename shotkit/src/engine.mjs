@@ -20,6 +20,7 @@
  */
 
 import { createRequire } from "node:module";
+import { statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -109,8 +110,12 @@ export class Engine {
     return pending;
   }
 
-  contextOptions({ width, height, scale, theme, reducedMotion = true }) {
+  contextOptions({ width, height, scale, theme, reducedMotion = true, storageState }) {
     return {
+      // A saved login (cookies + localStorage per origin), loaded as the
+      // context is created. Playwright reads the file itself; shotkit never
+      // parses or logs it.
+      ...(storageState ? { storageState } : {}),
       viewport: { width, height },
       deviceScaleFactor: scale,
       colorScheme: theme,
@@ -125,7 +130,7 @@ export class Engine {
   /** A pooled context. Shared between one-shot captures; sessions get their own. */
   async context(frame, policy) {
     const browser = await this.start(policy);
-    const key = `${policyKey(policy)}:${frame.width}x${frame.height}@${frame.scale}:${frame.theme}:${frame.reducedMotion !== false}`;
+    const key = `${policyKey(policy)}:${frame.width}x${frame.height}@${frame.scale}:${frame.theme}:${frame.reducedMotion !== false}:${storageStateKey(frame.storageState)}`;
     let ctx = this.contexts.get(key);
     if (ctx) return ctx;
     ctx = await browser.newContext(this.contextOptions(frame));
@@ -284,7 +289,38 @@ export function frameOf(opts) {
     scale: opts.scale ?? 2,
     theme: opts.theme ?? "dark",
     reducedMotion: opts.reducedMotion !== false,
+    ...(opts.storageState ? { storageState: requireStorageState(opts.storageState) } : {}),
   };
+}
+
+/**
+ * A saved login must exist before a context is built from it; say how to
+ * make one rather than surfacing Playwright's bare ENOENT.
+ */
+export function requireStorageState(path) {
+  try {
+    statSync(path);
+  } catch {
+    throw new Error(
+      `no saved login at ${path}. Sign in once in a visible browser to create it:\n` +
+        `  npx playwright open --save-storage=${path} <url>`,
+    );
+  }
+  return path;
+}
+
+/**
+ * Pool key for a saved login: the path plus its modification time, so
+ * re-saving the file after a session expires takes effect on the next shot
+ * instead of reusing a pooled context that still holds the old cookies.
+ */
+export function storageStateKey(path) {
+  if (!path) return "anon";
+  try {
+    return `${path}@${statSync(path).mtimeMs}`;
+  } catch {
+    return `${path}@missing`;
+  }
 }
 
 export async function seedStorage(context, storage) {

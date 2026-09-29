@@ -46,10 +46,13 @@ shotkit/            The repo's camera: fast screenshots of the running app and o
                     the committed docs assets are still `pnpm screenshots`, which
                     now runs on this engine.
 mycelium-promo/     HyperFrames promo video, a code-defined HTML→MP4 walkthrough
-                    (CLI install → app install → room → adapter → post positions →
-                    summon the aligner → await/respond → consensus → work →
-                    distill the room to memory via the synthesizer). The app-screen
-                    mockups mirror the frontend's workspace shell + dark design tokens.
+                    of one coffee shop's checkout room (Mycelium for Mac asks
+                    your name → add agents → hand one a task → one builds,
+                    another reviews → two agents disagree on a decision and the
+                    aligner helps them agree → it all lands on the board). The
+                    app-screen mockups mirror the frontend's
+                    workspace shell + dark design tokens, and the story is the
+                    mock data's `checkout` room.
                     Renders 1920x1080 H.264. `cd mycelium-promo && npm run dev` to
                     preview, `npm run render` to export to renders/*.mp4. Its
                     backing track is synthesized from source too (`audio/`, see
@@ -97,7 +100,7 @@ cd mycelium-cli && uv run ruff check . && uv run ruff format --check . \
 cd mycelium-frontend && pnpm install && pnpm dev
 
 # Screenshots (see shotkit/README.md; `shot doctor` checks the machine)
-node shotkit/bin/shot.mjs app /room/atlas-migration --mock --offline
+node shotkit/bin/shot.mjs app /room/checkout --mock --offline
 node shotkit/bin/shot.mjs term --cols 84 -- mycelium memory --help
 ```
 
@@ -465,11 +468,15 @@ is no litellm dependency.
   popover; `[[` is matched before `/` and `@` since a memory key can contain
   slashes. Skills insert a reference token — the resident agent/engine interprets
   it; the composer never runs the skill. **Commands** are the one `/` that runs:
-  `/task` and `/swarm`, only as a message's first word, listed ahead of the
-  skills. `/task` files a task with the board capture's grammar through the same
-  `lib/board/file-capture.ts` the board's File button uses (the tasks route,
-  then ordinary fields); `/swarm` opens the swarm dialog, since a swarm spends
-  model turns. A skill that shares a command's name is still reachable by
+  `/task`, `/swarm` and `/memory`, only as a message's first word, listed ahead
+  of the skills. `/task` files a task with the board capture's grammar through
+  the same `lib/board/file-capture.ts` the board's File button uses (the tasks
+  route, then ordinary fields); `/swarm` opens the swarm dialog, since a swarm
+  spends model turns; `/memory` opens the new-memory dialog
+  (`new-memory-dialog.tsx`, also behind the memory pane's Add and the
+  composer's +), which draws where the key lands in the room's tree
+  (`lib/memory-location.ts`) and replaces a taken key only at the version it
+  saw. A skill that shares a command's name is still reachable by
   picking it from the list.
 - **One keycap, sized by where it sits.** Every surface that names a key draws it
   through `ui/kbd.tsx` — `Kbd` for a literal, `KbdChord` for a chord the keymap
@@ -667,9 +674,8 @@ is no litellm dependency.
   jobs that already run). Tier 1 is per-PR but path-filtered — the three image
   smoke builds, and the docs link check. Tier 2 is `nightly.yml`: the full
   install path and the live-LLM cognition slice, too slow and too paid for the
-  PR path, where a failure opens one issue rather than blocking a person. Tier 3
-  is manual dispatch (the screenshots workflow). Putting a good check in the
-  wrong tier is how the ~95s baseline gets spent.
+  PR path, where a failure opens one issue rather than blocking a person.
+  Putting a good check in the wrong tier is how the ~95s baseline gets spent.
 - **The checks are derivations, not lists.** Every gate added here recomputes
   something and fails on the drift, rather than asserting against a copy that
   has to be maintained: `openapi.json` vs the live app, `docs/*.html` vs its
@@ -686,14 +692,11 @@ is no litellm dependency.
   gated (`tests/test_config_env_coverage.py`): every config leaf renders or is
   declared local-only, and every `${VAR}` compose substitutes has something that
   writes it — otherwise `config apply` silently drops a hand-set value.
-- **Screenshots publish through a workflow, and it is additive.** The capture
-  pipeline (`pnpm screenshots`) is the same one that runs locally; the
-  `Screenshots` workflow runs it on a runner on manual dispatch and opens PRs
-  against `docs/` and the splash repo rather than pushing. The splash half needs
-  `SPLASH_REPO_TOKEN`, a PAT scoped to `mycelium-io/mycelium-io.github.io`
-  alone; without it the docs half still runs. Nothing on the PR path gets
-  slower, and a runner-rendered PNG differs subtly from a laptop-rendered one —
-  which is exactly why it lands as a reviewable diff.
+- **Screenshots are captured and committed by hand.** `pnpm screenshots`
+  (in `mycelium-frontend/`) shoots the mock app and writes the PNGs into
+  `docs/` and a sibling splash checkout (`MYCELIUM_SPLASH_DIR`); a person
+  looks at them and opens the PRs. There is no workflow that opens pull
+  requests on its own.
 
 ## Local development
 

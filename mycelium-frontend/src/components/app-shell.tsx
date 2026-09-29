@@ -6,7 +6,7 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Laptop, PanelLeft, Terminal } from "lucide-react";
+import { Download, Laptop, PanelLeft, Terminal } from "lucide-react";
 import { TitleBar } from "@/components/title-bar";
 import { Tooltip } from "@/components/ui/tooltip";
 import { KbdChord } from "@/components/ui/kbd";
@@ -16,7 +16,8 @@ import { GlobalSearch, GlobalSearchButton } from "@/components/global-search";
 import { CommandPaletteButton, KeymapHelpButton } from "@/components/keymap-provider";
 import { InstallModalProvider, useOpenInstallModal } from "@/components/install-modal";
 import { DocsLink } from "@/components/docs-link";
-import { useIsDesktop } from "@/lib/desktop";
+import { DMG_URL, useIsDesktop } from "@/lib/desktop";
+import { useIsMac } from "@/lib/client-hooks";
 import { MetricsStatusLink } from "@/components/status-items";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,28 @@ interface Props {
   statusLeft?: ReactNode;
   statusRight?: ReactNode;
   children: ReactNode;
+}
+
+/**
+ * In a browser on a Mac, says the app exists: someone sent a link lands here
+ * with no idea there is more, and the app is what starts agents on their own
+ * machine. Hidden inside the app, and on other systems, which it doesn't run on.
+ */
+function GetMacAppButton() {
+  const desktop = useIsDesktop();
+  const mac = useIsMac();
+  if (desktop || !mac) return null;
+  return (
+    <Tooltip content="Mycelium for Mac starts your coding agents on this computer and adds them to a room">
+      <a
+        href={DMG_URL}
+        className="flex h-7 items-center gap-1.5 rounded-md px-2 text-label text-accent transition-colors hover:bg-accent-soft"
+      >
+        <Download className="size-3.5" />
+        <span className="hidden sm:inline">Get the Mac app</span>
+      </a>
+    </Tooltip>
+  );
 }
 
 /** Hidden inside the Mac app, which puts the CLI on this Mac's PATH itself. */
@@ -178,6 +201,7 @@ export function AppShell({
             right={
               <>
                 {headerRight}
+                <GetMacAppButton />
                 <InstallCliButton />
                 <DocsLink />
                 <ThemeToggle />

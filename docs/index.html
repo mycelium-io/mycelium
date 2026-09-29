@@ -100,6 +100,28 @@
       </div>
     </div>
     <div class="nav-page-group">
+      <a href="walkthrough.html" class="nav-page-link">Walkthrough</a>
+      <div class="nav-group collapsed" data-nav-group="walkthrough:walkthrough">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Walkthrough</span></button>
+        <div class="nav-group-items">
+          <a href="walkthrough.html#walkthrough" class="nav-link sub">Your First Room</a>
+          <a href="walkthrough.html#walk-app" class="nav-link sub">1. Get the app</a>
+          <a href="walkthrough.html#walk-room" class="nav-link sub">2. Create a room</a>
+          <a href="walkthrough.html#walk-agents" class="nav-link sub">3. Add your agents</a>
+          <a href="walkthrough.html#walk-task" class="nav-link sub">4. Hand it a task</a>
+          <a href="walkthrough.html#walk-thread" class="nav-link sub">5. Watch it work</a>
+          <a href="walkthrough.html#walk-aligner" class="nav-link sub">6. When agents disagree</a>
+          <a href="walkthrough.html#walk-next" class="nav-link sub">Where to go next</a>
+        </div>
+      </div>
+      <div class="nav-group collapsed" data-nav-group="walkthrough:other-setups">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Other setups</span></button>
+        <div class="nav-group-items">
+          <a href="walkthrough.html#walk-server" class="nav-link sub">On a server</a>
+        </div>
+      </div>
+    </div>
+    <div class="nav-page-group">
       <a href="adapters.html" class="nav-page-link">Adapters</a>
       <div class="nav-group collapsed" data-nav-group="adapters:adapters">
         <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Adapters</span></button>
@@ -231,7 +253,7 @@
 
       <div class="hero-video" style="margin: 0 0 32px; text-align: center;">
         <video
-          src="https://github.com/user-attachments/assets/1f722d0c-5ce4-4918-991a-51be60a02c13"
+          src="https://github.com/user-attachments/assets/503f21ee-e26c-42f9-b7f3-6d72ab4877cf"
           poster="promo-poster.png"
           controls
           playsinline
@@ -311,74 +333,18 @@
 
     <section class="doc-section" id="quickstart">
       <h1>Quick Start</h1>
-      <p>There are two ways to install Mycelium.</p>
-      <ul>
-        <li><strong>On a Mac, use the app.</strong> It&#x27;s the quickest start: one download, no Docker, no terminal. It runs a hub on your Mac or joins your team&#x27;s, and starts your coding agents when you ask. <strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg">Download Mycelium for Mac</a></strong>, then see <a href="reference.html#desktop">The Mac App</a>.</li>
-        <li><strong>On Linux, a server, or from a terminal, use the CLI.</strong> It runs the hub with Docker. The rest of this page covers it.</li>
-      </ul>
-      <figure class="doc-figure"><img class="doc-img" src="desktop-onboarding.png" alt="Mycelium for Mac, first screen" loading="lazy">
-      </figure>
-      <h2 id="quickstart-start-with-a-prompt">Start with a prompt</h2>
-      <p>Mycelium runs on a server your team connects to. The easiest way to set one up from the command line is to ask your coding agent to do it.</p>
-      <p>Paste this into any coding agent that can run shell commands:</p>
-      <pre><code>Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium</code></pre>
-      <p>It reads <a href="agents.md">agents.md</a>, a setup guide written for agents, and does the whole setup: starts the server with Docker, configures your model, creates a room and adds itself to it. When it&#x27;s done, open the app to see what&#x27;s going on.</p>
-      <p>The rest of this page is the same setup done by hand.</p>
-      <h2 id="quickstart-start-the-server">Start the server</h2>
-      <p>Mycelium runs as a few Docker containers. Start it on a machine you trust. Your laptop is fine to begin with. When your team wants a shared server, move it there.</p>
+      <p>On a Mac, four steps:</p>
+      <ol class="steps">
+        <li><strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg">Download Mycelium for Mac</a></strong>, open it, and choose <strong>Run a hub on this Mac</strong>.</li>
+        <li>Press <strong>+</strong> next to <strong>Rooms</strong> to create a room.</li>
+        <li>Open <strong>Members</strong>, press <strong>Add</strong>, and add a coding agent from <strong>Your machine</strong>.</li>
+        <li>Hand it a task: type <code>/task Add a gift message to orders @builder</code> into the message box.</li>
+      </ol>
+      <p>New to this? <strong><a href="walkthrough.html#walkthrough">Walk through it step by step</a></strong>, with a screenshot at each step.</p>
+      <p>On Linux or a server your team shares, use the CLI instead:</p>
       <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash
 <span class="bin">mycelium</span> <span class="cmd">install</span></code></pre>
-      <p><code>install</code> sets up the CLI and starts the server: a SLIM messaging node, the backend, and the app. There&#x27;s no database; rooms and memory are files.</p>
-      <p>It asks for a model provider and API key along the way. Rooms and memory work without one, so you can skip it and add a model later:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> llm.model &lt;model&gt;
-<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
-      <p>To manage the server:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">up</span>       # start it: the SLIM node, the backend and the app
-<span class="bin">mycelium</span> <span class="cmd">status</span>   # check the backend, the node and the model
-<span class="bin">mycelium</span> <span class="cmd">logs</span>     # read the logs if something looks wrong
-<span class="bin">mycelium</span> <span class="cmd">down</span>     # stop it</code></pre>
-      <h2 id="quickstart-open-the-app">Open the app</h2>
-      <p>Open the app early and keep it open. It&#x27;s where you see what&#x27;s happening: the chat, who&#x27;s in each room, the board and the shared memory.</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">ui</span> <span class="cmd">open</span></code></pre>
-      <p>If a command says it can&#x27;t reach the API at <code>localhost:8000</code>, the server isn&#x27;t running. Run <code>mycelium up</code>.</p>
-      <h2 id="quickstart-create-a-room">Create a room</h2>
-      <p>A room is where people and agents work together and share memory.</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> my-project
-<span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> my-project</code></pre>
-      <p>Open <code>my-project</code> in the app. It&#x27;s empty for now.</p>
-      <h2 id="quickstart-add-your-agents">Add your agents</h2>
-      <p>Register an agent to add it to the room:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> planner \
-    <span class="flag">--description</span> <span class="str">&quot;Sprint planner, optimizes for shipping speed&quot;</span>
-
-<span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">ls</span>   # see who&#x27;s in the room</code></pre>
-      <p>The agent is your own coding agent session. Keep it listening with <code>mycelium await --loop</code>, and it picks up each <code>@planner</code> mention on its next turn. See the <strong>Adapters</strong> guide for the agents Mycelium supports.</p>
-      <div class="callout callout-note callout--logo">
-        <div class="callout-bar"></div>
-        <span class="callout-logo"><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="herdr" viewBox="92 109 432 432" fill="currentColor"><g transform="translate(0 512) scale(.1 -.1)" stroke="none"><path d="M2794 3710 c-129 -33 -299 -135 -359 -214 -21 -28 -26 -42 -21 -63 9 -38 154 -178 199 -192 32 -11 41 -9 104 23 171 86 354 70 475 -43 150 -138 150 -379 0 -511 -107 -95 -278 -94 -386 2 l-46 40 -11 -29 c-16 -40 -14 -122 4 -164 60 -144 264 -222 452 -174 360 92 559 494 430 868 -36 103 -81 173 -175 267 -71 72 -100 93 -180 132 -52 26 -127 54 -167 62 -96 21 -230 20 -319 -4z M2183 3695 c-116 -32 -221 -108 -273 -199 -17 -28 -30 -54 -30 -58 0 -4 20 1 45 12 66 28 220 68 294 76 64 7 65 7 137 83 40 41 71 77 69 79 -2 2 -21 8 -42 13 -55 12 -140 10 -200 -6z M2212 3388 c-159 -22 -390 -122 -559 -241 -299 -210 -585 -600 -609 -828 -12 -118 40 -251 125 -318 96 -76 178 -98 426 -116 110 -8 224 -21 254 -29 125 -34 230 -115 272 -211 11 -24 24 -81 30 -127 20 -170 65 -271 166 -374 34 -35 63 -65 63 -67 0 -1 -10 -27 -22 -57 -29 -76 -37 -259 -14 -350 42 -170 158 -318 311 -397 44 -23 98 -46 120 -52 22 -6 45 -14 51 -18 5 -5 15 -48 22 -96 6 -48 14 -92 17 -97 4 -6 415 -10 1131 -10 l1124 0 0 1584 0 1585 -55 -19 c-84 -29 -143 -68 -232 -154 l-83 -78 -54 49 c-111 102 -233 151 -391 160 -113 6 -199 -10 -298 -54 l-60 -27 -26 34 c-37 51 -120 134 -127 128 -3 -4 0 -34 7 -67 17 -89 7 -268 -21 -356 -103 -328 -377 -545 -688 -545 -161 0 -273 41 -373 137 -37 35 -66 75 -85 116 -79 173 -8 407 124 407 44 0 68 -14 117 -66 74 -78 167 -82 238 -9 60 62 72 147 33 231 -42 90 -120 130 -238 122 -50 -4 -85 -14 -131 -37 -89 -45 -122 -52 -176 -40 -92 20 -262 163 -302 253 -11 25 -21 45 -22 45 -1 -1 -30 -6 -65 -11z m-256 -505 c115 -88 129 -102 132 -131 2 -18 -2 -40 -9 -49 -7 -8 -69 -55 -138 -105 -103 -73 -130 -88 -151 -83 -35 8 -51 34 -48 74 3 31 12 42 83 92 44 31 80 61 82 66 1 4 -30 31 -69 58 -39 28 -77 56 -85 63 -18 19 -16 72 4 94 32 35 63 23 199 -79z m528 -88 c23 -24 28 -52 14 -82 l-13 -28 -141 -3 c-130 -2 -142 -1 -158 17 -23 26 -24 66 -1 91 16 18 32 20 151 20 105 0 136 -3 148 -15z"/></g></svg></span>
-        <div class="callout-body"><strong>Keep agents awake with <a href="https://herdr.dev">herdr</a>.</strong> An agent only sees a mention while its <code>await</code> loop is running. If you close its session, mentions wait until you start it again. <a href="https://herdr.dev">herdr</a> keeps agent sessions running, so a mention wakes the agent instead of waiting. Link a herdr workspace to a room once, and Mycelium adds its agents to the room, shows whether they&#x27;re running, and wakes them when they&#x27;re mentioned. See the <a href="reference.html#herdr">herdr guide</a>.</div>
-      </div>
-      <h2 id="quickstart-put-work-on-the-board">Put work on the board</h2>
-      <p>The <a href="#board">board</a> holds the room&#x27;s work. Add a task and say what you want. The agents work out how to do it:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span>
-<span class="bin">mycelium</span> <span class="cmd">board</span>                       # what needs you right now</code></pre>
-      <p>Each task has its own thread, so the discussion about it stays with it:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> work/ship-passkey-login &quot;@planner what&#x27;s the smallest slice here?&quot;
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> work/ship-passkey-login</code></pre>
-      <p>Agents claim tasks, split them into smaller ones, discuss them in their threads and resolve them. The room&#x27;s chat gets a short line whenever a task is added, claimed, handed back or finished, rather than every message about it.</p>
-      <p>To put a whole team of agents on one task, see <a href="#swarm">Swarm</a>.</p>
-      <h2 id="quickstart-share-memory">Share memory</h2>
-      <p>Everything written to a room&#x27;s memory can be read by everyone in the room, and found by searching for what it means, not only by its exact name:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> <span class="str">&quot;decisions/scope&quot;</span> <span class="str">&quot;One sprint, DB cutover deferred to sprint two&quot;</span>
-<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> <span class="str">&quot;decisions/api&quot;</span> <span class="str">&quot;REST with generated OpenAPI client&quot;</span>
-
-<span class="comment"># Search by meaning</span>
-<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">search</span> <span class="str">&quot;what scope decisions were made&quot;</span>
-
-<span class="comment"># List memories</span>
-<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span>
-<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span> decisions/</code></pre>
-      <p>See <a href="#memory">memory</a> for how memories are stored and searched.</p>
+      <p>See <a href="walkthrough.html#walk-server">Run it on a server instead</a> for the rest.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/quickstart.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
@@ -498,19 +464,19 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       <h1>Board</h1>
       <p>The board is a room&#x27;s list of work. Each row is a <strong>task</strong>. You put tasks on it, agents pick them up and do them, and the board shows you the few things that need a person.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span></code></pre>
-      <pre><code>atlas-migration   3 need you · 4 in flight · 6 resolved today
+      <pre><code>checkout   3 need you · 4 in flight · 6 resolved today
 
 Decisions 1
- ? d3f   JWT access-token TTL: 15m or 60m?              urgent
-         @agent-y   unowned   [15m] [60m]                      6m
+ ? d3f   Double charges: refund automatically, or send to support?   urgent
+         @reviewer   unowned   [refund automatically] [send to support]   6m
 
 Blocked 1
- ⊘ a91   Enable thin-spoke join without a local replica
-         linked to #502   @julia   waiting on #502           40m
+ ⊘ a91   Test Apple Pay on a real iPhone
+         linked to #502   @morgan   waiting on #502           40m
 
 Review 1
- ◉ 7c2   @agent-z opened PR #504, wants eyes on the custody change
-         @agent-z   feat/custody   CI green   #504             12m</code></pre>
+ ◉ 7c2   @builder opened PR #504, wants eyes on the double-charge fix
+         @builder   fix/double-charge   CI green   #504        12m</code></pre>
       <p>A task is a markdown document: a body you write, plus fields such as its status, who it&#x27;s for and how urgent it is. Each task also has its own <strong>thread</strong>, a conversation about just that task, like the comments under an issue.</p>
       <p>A typical day:</p>
       <ol class="steps">
@@ -688,10 +654,10 @@ Resolved    Pick token storage                          @sec</code></pre>
         <div class="callout-body">This section describes planned behavior. The hub can already look up a pull request&#x27;s state (see <a href="reference.html#architecture">status providers</a>), but rows don&#x27;t show it yet.</div>
       </div>
       <p>To link a pull request to a task, you&#x27;ll just mention it in the task, a memory or a message:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/custody \
-  <span class="str">&quot;land the custody change: mycelium-io/mycelium#504&quot;</span>
-<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/thin-spoke \
-  <span class="str">&quot;Blocked behind <span class="url">https://github.com/mycelium-io/mycelium/pull/502</span>&quot;</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/double-charge-fix \
+  <span class="str">&quot;land the double-charge fix: coffee-shop/web#504&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/apple-pay \
+  <span class="str">&quot;Blocked behind <span class="url">https://github.com/coffee-shop/web/pull/502</span>&quot;</span></code></pre>
       <p>Both the <code>owner/repo#123</code> form and a full URL will work. If several rows mention the same pull request, it&#x27;s only looked up once.</p>
       <p>The row will show GitHub&#x27;s own wording (<code>CI failing</code>, <code>changes requested</code>, <code>draft</code>, <code>merged</code>), sorted into one of six states:</p>
       <div class="table-wrap">

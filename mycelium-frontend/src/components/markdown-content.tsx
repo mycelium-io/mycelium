@@ -54,6 +54,22 @@ function slugify(text: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+/** Whether a link leads out of this hub: an absolute http(s) or mailto URL on
+ *  another origin. A relative link, or one to this hub, stays in the app. */
+export function isExternalHref(href: string | undefined, origin?: string): boolean {
+  if (!href) return false;
+  let url: URL;
+  try {
+    url = new URL(href);
+  } catch {
+    return false; // relative: a path in this app
+  }
+  if (url.protocol === "mailto:") return true;
+  if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+  const here = origin ?? (typeof window === "undefined" ? "" : window.location.origin);
+  return url.origin !== here;
+}
+
 /** Normalize a link target to a memory key — mirrors the backend resolver. */
 function normalizeKey(target: string): string {
   let key = target.trim();
@@ -238,7 +254,15 @@ export function MarkdownContent({ children, className, onLinkClick, brokenLinks,
           );
         }
       }
-      return <a href={href}>{processNode(children)}</a>;
+      // A link out of the app opens beside it rather than replacing it; one
+      // back into this hub (a room, a memory page) stays in place.
+      return isExternalHref(href) ? (
+        <a href={href} target="_blank" rel="noopener noreferrer">
+          {processNode(children)}
+        </a>
+      ) : (
+        <a href={href}>{processNode(children)}</a>
+      );
     },
     [processNode, onLinkClick, brokenLinks],
   );
