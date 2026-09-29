@@ -324,6 +324,7 @@ function RoomWorkspace() {
       <RoomChatBox
         roomName={roomName}
         className={editorView !== "channel" || activeMemory ? "hidden" : undefined}
+        onOpenMemory={openMemory}
       />
     </div>
   );

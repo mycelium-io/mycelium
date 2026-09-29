@@ -23,6 +23,7 @@ import {
   Copy,
   Link2,
   Maximize2,
+  Plus,
 } from "lucide-react";
 import {
   ContextMenu,
@@ -50,11 +51,19 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 import { MemoryDetail } from "@/components/memory-detail";
 import { MemoryEditor } from "@/components/memory-editor";
+import { NewMemoryDialog } from "@/components/new-memory-dialog";
+import { Button } from "@/components/ui/button";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { TaskConversation } from "@/components/task/task-conversation";
 import { isLiveEpisode } from "@/lib/threads";
 import { useCurrentUser } from "@/components/current-user";
 import { useUnsavedGuard } from "@/components/unsaved-changes";
+
+/** The folder a key sits in, so a new memory starts beside the one that's open. */
+function folderOf(key: string | null): string {
+  const slash = key?.lastIndexOf("/") ?? -1;
+  return key && slash > 0 ? key.slice(0, slash) : "context";
+}
 
 interface TreeNode {
   name: string;
@@ -345,6 +354,7 @@ export function MemoryPanel({
   const [renderedBody, setRenderedBody] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [peek, setPeek] = useState<{ memory: Memory; anchor: PreviewAnchor } | null>(null);
+  const [adding, setAdding] = useState(false);
   const paneRef = useRef<HTMLDivElement>(null);
   const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { principal } = useCurrentUser();
@@ -581,7 +591,19 @@ export function MemoryPanel({
             Graph
           </Link>
         </Tooltip>
+        <Tooltip content="Write a new memory">
+          <Button variant="ghost" size="xs" onClick={() => setAdding(true)}>
+            <Plus className="size-3" /> Add
+          </Button>
+        </Tooltip>
       </div>
+      <NewMemoryDialog
+        open={adding}
+        onOpenChange={setAdding}
+        roomName={roomName}
+        initialFolder={folderOf(activeKey ?? selected?.key ?? null)}
+        onCreated={key => void openMemoryByKey(key)}
+      />
 
       {/* One field for both ways of finding a memory: typing narrows the tree
           by name as you go, Enter searches by meaning. */}
