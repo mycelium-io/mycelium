@@ -12,11 +12,19 @@ pnpm dev:mock        # = MYCELIUM_UI_MOCK=1 next dev
 ```
 
 Then browse:
-- `/` — the rooms dashboard (three seeded rooms).
-- `/room/atlas-migration` — a rich, **converged** room: memories, agents, a
-  compiled plan with checked-off tasks, and a finished L9 episode in the inspector.
-- `/room/pricing-model` — an **in-progress** negotiation: no plan yet, and a
-  scripted live negotiation that resolves over SSE while you watch.
+- `/` — the rooms dashboard (four seeded rooms).
+
+Every room is a small online coffee shop at work, so what you see reads as
+something a real team does:
+
+- `/room/checkout` — a rich, **converged** room: adding Apple Pay and fixing
+  double charges. Memories, agents, board rows with pull requests and CI, flows
+  running in task threads, and a finished negotiation in the inspector.
+- `/room/subscription-pricing` — an **in-progress** negotiation over what the
+  coffee subscription costs, with a bridged A2A agent, and a scripted live
+  negotiation that resolves over SSE while you watch.
+- `/room/storefront` — the room **under load**: a dozen people and three dozen
+  agents, each working one website ticket.
 - `/room/scratch` — a brand-new **empty** room (every empty state).
 - `/metrics` — populated observability (tokens/cost by agent + model, hosts).
 

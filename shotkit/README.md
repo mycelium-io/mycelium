@@ -8,11 +8,11 @@ mid-thought. Built for coding agents first: one line in, an absolute PNG path
 out, ready to read back.
 
 ```bash
-shot term mycelium memory ls --room atlas     # a terminal card, real ANSI colors
-shot app /room/atlas-migration --mock         # the running frontend
+shot term mycelium memory ls --room checkout     # a terminal card, real ANSI colors
+shot app /room/checkout --mock         # the running frontend
 shot app / --responsive --sheet               # every breakpoint in one image
 shot code src/services/aligner.py --range 40:80
-shot video /room/atlas --click Negotiate --auto-zoom   # a short take, cursor and all
+shot video /room/checkout --click Negotiate --auto-zoom   # a short take, cursor and all
 ```
 
 Nothing here is on the install path or in the runtime. A user never executes it.
@@ -92,7 +92,7 @@ look at rather than four.
 A one-shot capture takes ordered steps:
 
 ```bash
-shot app /room/atlas --do click:Negotiate --do wait:.offer-grid --do scroll:bottom
+shot app /room/checkout --do click:Negotiate --do wait:.offer-grid --do scroll:bottom
 ```
 
 For anything longer, hold the page open. The daemon keeps it under a name, so
@@ -100,7 +100,7 @@ you can look, decide, and act, without replaying the flow from a cold load each
 time — and each shot is ~250ms.
 
 ```bash
-shot open /room/atlas --session r --viewport laptop
+shot open /room/checkout --session r --viewport laptop
 shot do click:Negotiate --session r
 shot shoot --session r --name negotiate
 shot shoot click:Plan sleep:300 --session r --name plan   # act and shoot in one call
@@ -122,7 +122,7 @@ only of tag names and spaces needs saying explicitly: `css=nav button`.
 a pointer in it:
 
 ```bash
-shot video /room/atlas --do click:Negotiate --do wait:.offer-grid --auto-zoom
+shot video /room/checkout --do click:Negotiate --do wait:.offer-grid --auto-zoom
 shot video / --mock --do 'fill:#search=aligner' --do press:Enter --format mp4
 shot video https://example.com --do 'zoom:.pricing@2' --do zoomout --fps 24
 ```
@@ -169,7 +169,7 @@ JPEG.
 cards use, with an address bar:
 
 ```bash
-shot app /room/atlas --chrome --backdrop dusk
+shot app /room/checkout --chrome --backdrop dusk
 shot app / --chrome --theme light                 # app and frame both light
 shot app / --chrome --theme dark --chrome-theme light
 ```
@@ -183,8 +183,8 @@ next-themes reads `localStorage` before first paint and would otherwise ignore i
 so a framed screenshot sits on the product's background rather than a gradient:
 
 ```bash
-shot app /room/atlas --chrome --backdrop mycelial --padding 90
-shot term --backdrop mycelial -- mycelium memory ls --room atlas
+shot app /room/checkout --chrome --backdrop mycelial --padding 90
+shot term --backdrop mycelial -- mycelium memory ls --room checkout
 ```
 
 It is the same network in both senses. The algorithm is the one the live site

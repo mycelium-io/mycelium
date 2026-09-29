@@ -97,7 +97,7 @@ cd mycelium-cli && uv run ruff check . && uv run ruff format --check . \
 cd mycelium-frontend && pnpm install && pnpm dev
 
 # Screenshots (see shotkit/README.md; `shot doctor` checks the machine)
-node shotkit/bin/shot.mjs app /room/atlas-migration --mock --offline
+node shotkit/bin/shot.mjs app /room/checkout --mock --offline
 node shotkit/bin/shot.mjs term --cols 84 -- mycelium memory --help
 ```
 

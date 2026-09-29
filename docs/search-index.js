@@ -136,7 +136,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board",
     "t": "Board",
     "s": "Concepts",
-    "x": "The board is a room's list of work. Each row is a task. You put tasks on it, agents pick them up and do them, and the board shows you the few things that need a person. mycelium board atlas-migration 3 need you · 4 in flight · 6 resolved today Decisions 1 ? d3f JWT access-token TTL: 15m or 60m? urgent @agent-y unowned [15m] [60m] 6m Blocked 1 ⊘ a91 Enable thin-spoke join without a local replica linked to #502 @julia ",
+    "x": "The board is a room's list of work. Each row is a task. You put tasks on it, agents pick them up and do them, and the board shows you the few things that need a person. mycelium board checkout 3 need you · 4 in flight · 6 resolved today Decisions 1 ? d3f Double charges: refund automatically, or send to support? urgent @reviewer unowned [refund automatically] [send to support] 6m Blocked 1 ⊘ a91 Test Apple Pay on a re",
     "p": "Guide"
   },
   {
@@ -255,7 +255,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board-live-pull-request-status-not-built-yet",
     "t": "Live pull request status (not built yet)",
     "s": "Concepts › Board",
-    "x": "This section describes planned behavior. The hub can already look up a pull request's state (see status providers), but rows don't show it yet. To link a pull request to a task, you'll just mention it in the task, a memory or a message: mycelium memory set work/custody \\ \"land the custody change: mycelium-io/mycelium#504\" mycelium memory set work/thin-spoke \\ \"Blocked behind https://github.com/mycelium-io/mycelium/pu",
+    "x": "This section describes planned behavior. The hub can already look up a pull request's state (see status providers), but rows don't show it yet. To link a pull request to a task, you'll just mention it in the task, a memory or a message: mycelium memory set work/double-charge-fix \\ \"land the double-charge fix: coffee-shop/web#504\" mycelium memory set work/apple-pay \\ \"Blocked behind https://github.com/coffee-shop/web/",
     "p": "Guide"
   },
   {

@@ -6,7 +6,7 @@
 import { Tooltip } from "@/components/ui/tooltip";
 
 interface Props {
-  /** The episode's full URN, e.g. `urn:ioc:mycelium:episode:atlas-migration:e4f1a2`. */
+  /** The episode's full URN, e.g. `urn:ioc:mycelium:episode:checkout:e4f1a2`. */
   urn?: string;
   shortId: string;
   /** Opens the episode's thread. Without it the tag is inert. */
