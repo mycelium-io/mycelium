@@ -41,8 +41,8 @@ export const INTENTS: Intent[] = [
   {
     id: "review",
     label: "Get it reviewed",
-    when: "One agent does the work and another checks it, for real.",
-    then: "The author builds it on a branch; the reviewer runs it and sends findings back until it holds up.",
+    when: "One agent does the work and another checks it.",
+    then: "The author works on a branch. The reviewer runs it and sends findings back until it passes.",
     roles: [
       { id: "author", label: "Who does it" },
       { id: "reviewer", label: "Who checks it" },
@@ -63,8 +63,8 @@ export const INTENTS: Intent[] = [
   {
     id: "settle",
     label: "Settle it",
-    when: "Two or more agents want different things and neither is simply wrong.",
-    then: "The aligner finds what they disagree on and brokers offers until they agree, or says they can't.",
+    when: "Agents want different things and need to agree on one.",
+    then: "The aligner finds where they differ and proposes terms until they agree, or reports that they can't.",
     roles: [],
     minGroup: 2,
     summon: ({ group }, note) => `@aligner ${handles(group)}${colon(note)}`,
@@ -72,8 +72,8 @@ export const INTENTS: Intent[] = [
   {
     id: "catch-up",
     label: "Catch me up",
-    when: "You've been away and want what happened, not the whole thread.",
-    then: "The synthesizer reads what was said since it last looked and writes a short briefing.",
+    when: "You want a summary of what happened instead of reading the thread.",
+    then: "The synthesizer reads what was said since its last summary and writes a short one.",
     roles: [],
     minGroup: 0,
     summon: (_picks, note) => `@synthesizer catch me up${colon(note)}`,

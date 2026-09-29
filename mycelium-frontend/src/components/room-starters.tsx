@@ -13,7 +13,7 @@ const STARTERS: { intent: IntentId; icon: LucideIcon; label: string; hint: strin
     intent: "review",
     icon: CheckCheck,
     label: "Have one agent build something and another check it",
-    hint: "The reviewer runs it and sends findings back until it holds up.",
+    hint: "The reviewer runs it and sends findings back until it passes.",
   },
   {
     intent: "split",
