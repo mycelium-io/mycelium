@@ -36,7 +36,7 @@ capture that takes more than a few seconds prints the same hint.
 
 ```bash
 # boot the mock frontend (no backend, SLIM or LLM needed) and shoot a route
-node shotkit/bin/shot.mjs app /room/atlas-migration --mock
+node shotkit/bin/shot.mjs app /room/checkout --mock
 
 # against an app you already have running
 node shotkit/bin/shot.mjs app / --base-url http://localhost:3000
@@ -67,7 +67,7 @@ responsive" in a single look. `--viewports phone,wide` picks a subset;
 For a state behind a click, either pass ordered steps to one capture:
 
 ```bash
-node shotkit/bin/shot.mjs app /room/atlas-migration --offline \
+node shotkit/bin/shot.mjs app /room/checkout --offline \
   --do click:Negotiate --do wait:.offer-grid
 ```
 
@@ -75,7 +75,7 @@ node shotkit/bin/shot.mjs app /room/atlas-migration --offline \
 need to see each step before deciding the next:
 
 ```bash
-node shotkit/bin/shot.mjs open /room/atlas-migration --session r --offline
+node shotkit/bin/shot.mjs open /room/checkout --session r --offline
 node shotkit/bin/shot.mjs do click:Negotiate --session r
 node shotkit/bin/shot.mjs shoot --session r --name negotiate   # ~250ms
 node shotkit/bin/shot.mjs close --session r
@@ -94,7 +94,7 @@ When the thing to show is a *flow* rather than a state — a demo clip for a PR 
 a doc, or checking that an interaction feels right:
 
 ```bash
-node shotkit/bin/shot.mjs video /room/atlas-migration --mock --offline \
+node shotkit/bin/shot.mjs video /room/checkout --mock --offline \
   --do click:Negotiate --do wait:.offer-grid --auto-zoom
 ```
 
@@ -128,7 +128,7 @@ and `shot code <file> --range 40:80` makes a syntax-highlighted code card.
 ## Framing for a PR or doc
 
 ```bash
-node shotkit/bin/shot.mjs app /room/atlas --chrome --offline          # browser window frame
+node shotkit/bin/shot.mjs app /room/checkout --chrome --offline          # browser window frame
 node shotkit/bin/shot.mjs app / --chrome --theme light --backdrop dusk
 node shotkit/bin/shot.mjs app / --chrome --backdrop mycelial --padding 90
 ```

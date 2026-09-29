@@ -176,7 +176,7 @@ responsive
   shot app / --viewports phone,wide   just these two
 
 navigation — a page held open, driven step by step
-  shot open /room/atlas --session r   open it and keep it
+  shot open /room/checkout --session r   open it and keep it
   shot do click:Negotiate --session r act on it
   shot shoot --session r              shoot it as it stands
   shot sessions | shot close --session r
@@ -186,7 +186,7 @@ daemon
   shot doctor | bench
 
 stdout carries the path and nothing else, so it composes:
-  open "$(shot app /room/atlas-migration --mock)"
+  open "$(shot app /room/checkout --mock)"
 ` + `
 actions (--do, and the arguments to \`shot do\` / \`shot shoot\`)${ACTION_HELP}
 `;
@@ -209,7 +209,7 @@ const COMMAND_HELP = {
   close: ["shot close [options]", { ...SESSION, ...DAEMON }],
 };
 
-/** `/room/atlas` is a route; anything with a scheme is a URL. */
+/** `/room/checkout` is a route; anything with a scheme is a URL. */
 const isUrl = (s) => /^[a-z][a-z0-9+.-]*:\/\//i.test(s);
 
 async function readStdin() {

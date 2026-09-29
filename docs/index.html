@@ -231,7 +231,7 @@
 
       <div class="hero-video" style="margin: 0 0 32px; text-align: center;">
         <video
-          src="https://github.com/user-attachments/assets/1f722d0c-5ce4-4918-991a-51be60a02c13"
+          src="https://github.com/user-attachments/assets/503f21ee-e26c-42f9-b7f3-6d72ab4877cf"
           poster="promo-poster.png"
           controls
           playsinline
@@ -492,19 +492,19 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       <h1>Board</h1>
       <p>The board is a room&#x27;s list of work. Each row is a <strong>task</strong>. You put tasks on it, agents pick them up and do them, and the board shows you the few things that need a person.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span></code></pre>
-      <pre><code>atlas-migration   3 need you · 4 in flight · 6 resolved today
+      <pre><code>checkout   3 need you · 4 in flight · 6 resolved today
 
 Decisions 1
- ? d3f   JWT access-token TTL: 15m or 60m?              urgent
-         @agent-y   unowned   [15m] [60m]                      6m
+ ? d3f   Double charges: refund automatically, or send to support?   urgent
+         @reviewer   unowned   [refund automatically] [send to support]   6m
 
 Blocked 1
- ⊘ a91   Enable thin-spoke join without a local replica
-         linked to #502   @julia   waiting on #502           40m
+ ⊘ a91   Test Apple Pay on a real iPhone
+         linked to #502   @morgan   waiting on #502           40m
 
 Review 1
- ◉ 7c2   @agent-z opened PR #504, wants eyes on the custody change
-         @agent-z   feat/custody   CI green   #504             12m</code></pre>
+ ◉ 7c2   @builder opened PR #504, wants eyes on the double-charge fix
+         @builder   fix/double-charge   CI green   #504        12m</code></pre>
       <p>A task is a markdown document: a body you write, plus fields such as its status, who it&#x27;s for and how urgent it is. Each task also has its own <strong>thread</strong>, a conversation about just that task, like the comments under an issue.</p>
       <p>A typical day:</p>
       <ol class="steps">
@@ -682,10 +682,10 @@ Resolved    Pick token storage                          @sec</code></pre>
         <div class="callout-body">This section describes planned behavior. The hub can already look up a pull request&#x27;s state (see <a href="reference.html#architecture">status providers</a>), but rows don&#x27;t show it yet.</div>
       </div>
       <p>To link a pull request to a task, you&#x27;ll just mention it in the task, a memory or a message:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/custody \
-  <span class="str">&quot;land the custody change: mycelium-io/mycelium#504&quot;</span>
-<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/thin-spoke \
-  <span class="str">&quot;Blocked behind <span class="url">https://github.com/mycelium-io/mycelium/pull/502</span>&quot;</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/double-charge-fix \
+  <span class="str">&quot;land the double-charge fix: coffee-shop/web#504&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/apple-pay \
+  <span class="str">&quot;Blocked behind <span class="url">https://github.com/coffee-shop/web/pull/502</span>&quot;</span></code></pre>
       <p>Both the <code>owner/repo#123</code> form and a full URL will work. If several rows mention the same pull request, it&#x27;s only looked up once.</p>
       <p>The row will show GitHub&#x27;s own wording (<code>CI failing</code>, <code>changes requested</code>, <code>draft</code>, <code>merged</code>), sorted into one of six states:</p>
       <div class="table-wrap">

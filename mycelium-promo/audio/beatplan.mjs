@@ -21,37 +21,37 @@ export const PLAN = [
   { id: 'hero', moments: [
     ['switch', 'in'], ['short', 'wordmark'], ['short', 'tagline'], ['resolve', 'hold'],
   ]},
-  { id: 'cli', moments: [
-    ['switch', 'term'], ['short', 'cmd'], ['short', 'ok1'], ['short', 'ok2'],
-    ['short', 'ok3'], ['bigger', 'done'], ['resolve', 'hold'],
+  // Mycelium for Mac opens and asks who you are.
+  { id: 'app', moments: [
+    ['switch', 'window'], ['short', 'ask'], ['short', 'type'], ['bigger', 'continue'],
+    ['resolve', 'hold'],
   ]},
-  { id: 'install', moments: [
-    ['switch', 'term'], ['short', 'cmd'], ['short', 'llm'], ['short', 'svc1'],
-    ['short', 'svc2'], ['short', 'svc3'], ['bigger', 'ready'], ['resolve', 'hold'],
+  // Start something → add an agent: builder arrives, then reviewer.
+  { id: 'agent', moments: [
+    ['switch', 'room'], ['short', 'picker'], ['short', 'dialog'], ['short', 'folder'],
+    ['bigger', 'builder'], ['short', 'reviewer'], ['resolve', 'hold'],
   ]},
-  { id: 'board', moments: [
-    ['switch', 'shell'], ['short', 'summary'], ['short', 'tabs'],
-    ['short', 'decisions'], ['short', 'blocked'], ['short', 'review'],
-    ['bigger', 'actions'], ['resolve', 'read'],
+  // /task in the composer: filed, then claimed.
+  { id: 'task', moments: [
+    ['switch', 'focus'], ['short', 'type'], ['bigger', 'filed'], ['short', 'claimed'],
+    ['resolve', 'hold'],
   ]},
-  { id: 'drop', moments: [
-    ['switch', 'focus'], ['short', 'type'], ['bigger', 'row'], ['resolve', 'hold'],
+  // Build and review in the task's thread: sent back once, then approved.
+  { id: 'review', moments: [
+    ['switch', 'open'], ['short', 'graph'], ['short', 'build1'], ['bigger', 'reject'],
+    ['short', 'build2'], ['bigger', 'approve'], ['short', 'done'], ['resolve', 'hold'],
   ]},
-  { id: 'decompose', moments: [
-    ['switch', 'claim'], ['short', 'child1'], ['short', 'child2'],
-    ['bigger', 'child3'], ['resolve', 'hold'],
-  ]},
-  { id: 'thread', moments: [
-    ['switch', 'open'], ['short', 'body'], ['short', 'claim'],
-    ['short', 'reply1'], ['bigger', 'reply2'], ['resolve', 'hold'],
-  ]},
+  // A decision the two agents disagree on: each says why, Morgan brings in the
+  // aligner, it proposes a middle, both accept. Every line gets time to read.
   { id: 'aligner', moments: [
-    ['switch', 'summon'], ['short', 'issues'], ['short', 'round1'],
-    ['short', 'round2'], ['bigger', 'round3'], ['short', 'round4'],
-    ['bigger', 'converge'], ['resolve', 'consensus'],
+    ['switch', 'open'], ['short', 'question'], ['bigger', 'pos1'], ['bigger', 'pos2'],
+    ['bigger', 'summon'], ['bigger', 'propose'], ['bigger', 'accept1'], ['short', 'accept2'],
+    ['bigger', 'agreed'], ['resolve', 'hold'],
   ]},
-  { id: 'compile', moments: [
-    ['switch', 'back'], ['short', 'row1'], ['bigger', 'row2'], ['resolve', 'hold'],
+  // Everything lands on the board: the fix done, the decision made.
+  { id: 'board', moments: [
+    ['switch', 'board'], ['short', 'row1'], ['short', 'row2'], ['bigger', 'settled'],
+    ['resolve', 'hold'],
   ]},
 ];
 

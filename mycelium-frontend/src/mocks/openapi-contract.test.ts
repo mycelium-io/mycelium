@@ -31,7 +31,7 @@ const SPEC: Spec = JSON.parse(
   readFileSync(resolve(HERE, "..", "..", "..", "openapi.json"), "utf8"),
 );
 
-const ROOM = "atlas-migration";
+const ROOM = "checkout";
 const FIXTURE = ROOM_FIXTURES[ROOM];
 
 /**
@@ -50,7 +50,7 @@ const PATH_PARAMS: Record<string, string> = {
 const QUERY: Record<string, string> = {
   "/api/rooms/{room_name}/links": `?key=${encodeURIComponent(FIXTURE.memories[0].key)}`,
   "/api/rooms/{room_name}/links/expand": `?key=${encodeURIComponent(FIXTURE.memories[0].key)}`,
-  "/api/search": "?q=cutover",
+  "/api/search": "?q=apple pay",
 };
 
 function fill(path: string): string | null {

@@ -18,1472 +18,693 @@
         font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
         color: #e8ebee;
       }
-      /* Tokens mirror the frontend's post-redesign dark theme
+      /* Tokens mirror the frontend's dark theme
          (mycelium-frontend/src/app/globals.css .dark). */
       :root {
         --bg: #0c0e11; --surface: #14171c; --paper: #191d22; --elevated: #21262d;
         --border: rgba(255, 255, 255, 0.08); --border2: rgba(255, 255, 255, 0.16);
         --hairline: rgba(255, 255, 255, 0.035);
         --accent: #5cc7d2; --accent-fg: #06181b; --accent-soft: rgba(92, 199, 210, 0.13);
-        --accent2: #8fd6de;
-        --green: #4fc296; --yellow: #d9a94e; --red: #e6746f;
-        /* Purple retired — the redesign is single-accent; kept as a neutral so
-           any lingering reference reads as muted, not off-brand violet. */
-        --purple: #a7adb5;
-        --text: #e8ebee; --text2: #a7adb5; --muted: #a7adb5; --dim: #565d65;
+        --green: #4fc296; --green-soft: rgba(79, 194, 150, 0.12);
+        --yellow: #d9a94e; --yellow-soft: rgba(217, 169, 78, 0.12);
+        --text: #e8ebee; --text2: #a7adb5; --muted: #a7adb5; --dim: #8b939c;
       }
 
       /* ── Background canvas ────────────────────────────── */
       #mycelium-bg {
-        position: absolute; inset: 0;
-        width: 100%; height: 100%;
-        z-index: 0;
-        opacity: 0.45;
-        transform: scale(2);
-        transform-origin: center center;
+        position: absolute; inset: 0; width: 100%; height: 100%;
+        z-index: 0; opacity: 0.45; transform: scale(2); transform-origin: center center;
       }
 
       /* ── Scene scaffold ───────────────────────────────── */
-      .scene { position: absolute; inset: 0; z-index: 1; padding: 80px 120px; display: flex; flex-direction: column; }
-      .caps { font-family: 'Geist Mono', 'SF Mono', Menlo, monospace; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; font-size: 18px; color: var(--accent); }
-      .square-dot { display: inline-block; width: 12px; height: 12px; border: 1.5px solid currentColor; vertical-align: middle; margin-right: 12px; }
-      .square-dot.filled { background: currentColor; }
-
-      /* ── Hero ─────────────────────────────────────────── */
-      .hero { align-items: center; justify-content: center; gap: 36px; padding: 0; }
-      .hero .logo { width: 240px; height: 240px; object-fit: contain; }
-      .hero .wordmark {
-        font-family: 'Cormorant Garamond', Georgia, serif;
-        font-style: italic; font-weight: 600;
-        font-size: 220px;
-        color: var(--text); letter-spacing: -0.01em; line-height: 1;
-      }
-      .hero .tagline {
-        font-family: 'Geist Mono', 'SF Mono', Menlo, monospace;
-        font-size: 24px; font-weight: 600;
-        letter-spacing: 0.2em; text-transform: uppercase;
-        color: var(--accent);
-      }
-
-      /* ── Terminal ─────────────────────────────────────── */
-      .terminal {
-        background: rgba(20, 22, 27, 0.92);
-        border: 1px solid var(--border2);
-        border-radius: 14px;
-        backdrop-filter: blur(8px);
-        font-family: 'Geist Mono', 'SF Mono', Menlo, monospace;
-        color: var(--text);
-        font-size: 33px;
-        line-height: 1.55;
-        overflow: hidden;
-        box-shadow: 0 30px 80px rgba(0,0,0,0.5);
-        margin-top: auto;
-        margin-bottom: auto;
-      }
-      .term-bar {
-        display: flex; align-items: center; gap: 12px;
-        padding: 18px 26px;
-        border-bottom: 1px solid var(--border);
-        background: rgba(255,255,255,0.02);
-      }
-      .term-bar .dot { width: 18px; height: 18px; border-radius: 50%; }
-      .dot.r { background: #ff6058; } .dot.y { background: #ffbd2e; } .dot.g { background: #28c941; }
-      .term-bar .title { margin-left: 20px; color: var(--muted); font-size: 20px; letter-spacing: 0.1em; }
-      .term-body { padding: 36px 46px; min-height: 0; }
-      .term-line { display: block; white-space: pre; }
-      .term-line.cmd { color: var(--text); }
-      .term-line.cmd .prompt { color: var(--accent); }
-      .term-line.out { color: var(--text2); }
-      .term-line.ok { color: var(--green); }
-      .term-line.warn { color: var(--yellow); }
-      .term-line.dim { color: var(--muted); }
-      .term-line.cyan { color: var(--accent); }
-      .term-line.purple { color: var(--purple); }
-      .scene-title {
-        margin-bottom: 40px;
-        display: flex; align-items: center; gap: 24px;
-      }
-      .scene-title .num {
-        font-family: 'Geist Mono', monospace;
-        font-size: 28px; font-weight: 600;
+      .scene { position: absolute; inset: 0; z-index: 1; padding: 64px 140px; display: flex; flex-direction: column; }
+      .caption { display: flex; align-items: center; gap: 22px; height: 60px; }
+      .caption .num {
+        font-family: 'Geist Mono', monospace; font-size: 24px; font-weight: 600;
         letter-spacing: 0.2em; color: var(--muted);
-        border: 1.5px solid var(--border2);
-        padding: 8px 18px;
+        border: 1.5px solid var(--border2); padding: 6px 16px;
       }
-      .scene-title .label {
-        font-family: 'Geist Mono', monospace;
-        font-size: 36px; font-weight: 600;
-        letter-spacing: 0.18em; text-transform: uppercase;
-        color: var(--accent);
+      .caption .label {
+        font-family: 'Geist Mono', monospace; font-size: 32px; font-weight: 600;
+        letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent);
       }
 
-      /* ── Room UI mock ─────────────────────────────────── */
-      .ui-window {
-        background: var(--bg);
-        border: 1px solid var(--border2);
-        border-radius: 14px;
-        overflow: hidden;
-        box-shadow: 0 40px 100px rgba(0,0,0,0.6);
-        display: flex; flex-direction: column;
-        height: 800px;
+      /* ── Hero + outro ─────────────────────────────────── */
+      .hero, .outro { align-items: center; justify-content: center; gap: 34px; padding: 0; }
+      .hero .logo { width: 220px; height: 220px; object-fit: contain; }
+      .wordmark {
+        font-family: 'Cormorant Garamond', Georgia, serif; font-style: italic; font-weight: 600;
+        font-size: 210px; color: var(--text); letter-spacing: -0.01em; line-height: 1;
       }
-      .ui-topbar {
-        height: 76px;
-        background: var(--paper);
-        border-bottom: 1px solid var(--border);
-        display: flex; align-items: center;
-        padding: 0 32px; gap: 24px;
-        font-family: 'Geist Mono', monospace;
-        font-size: 22px; color: var(--muted);
-        letter-spacing: 0.16em; text-transform: uppercase;
+      .tagline {
+        font-family: 'Geist Mono', monospace; font-size: 26px; font-weight: 600;
+        letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent);
       }
-      .ui-topbar .brand {
-        font-family: 'Cormorant Garamond', serif;
-        font-style: italic; font-weight: 600;
-        font-size: 36px; color: var(--text);
-        text-transform: none; letter-spacing: 0;
-      }
-      .ui-topbar .tab { color: var(--muted); }
-      .ui-topbar .tab.active { color: var(--accent); }
-      .ui-subnav {
-        height: 64px; background: var(--surface);
-        border-bottom: 1px solid var(--border);
-        display: flex; align-items: center; padding: 0 32px;
-        font-family: 'Geist Mono', monospace; font-size: 22px;
-        color: var(--text2);
-      }
-      .ui-subnav .crumb-sep { color: var(--dim); margin: 0 14px; }
-      .ui-subnav .sigil { color: var(--accent); margin-right: 8px; font-weight: 600; }
-      .ui-body { flex: 1; display: flex; min-height: 0; }
-      .ui-rail {
-        width: 320px;
-        border-right: 1px solid var(--border);
-        padding: 24px 20px;
-        font-family: 'Geist Mono', monospace; font-size: 20px;
-      }
-      .ui-rail .label { color: var(--muted); letter-spacing: 0.18em; text-transform: uppercase; font-size: 16px; margin-bottom: 18px; }
-      .ui-rail .item { padding: 12px 14px; color: var(--text2); border-left: 2px solid transparent; }
-      .ui-rail .item.active { color: var(--text); border-left-color: var(--accent); background: rgba(92, 199, 210, 0.04); }
-      .ui-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-      .pane-header {
-        height: 60px; padding: 0 32px;
-        border-bottom: 1px solid var(--border);
-        background: var(--paper);
-        display: flex; align-items: center;
-        font-family: 'Geist Mono', monospace; font-size: 18px;
-        color: var(--muted); letter-spacing: 0.18em; text-transform: uppercase;
-      }
-      .event-stream { flex: 1; padding: 30px 40px; overflow: hidden; }
-      .event-row {
-        display: flex; gap: 20px; padding: 18px 0;
-        border-bottom: 1px solid var(--border);
-        font-size: 26px;
-      }
-      .event-row .ts {
-        font-family: 'Geist Mono', monospace; font-size: 18px;
-        color: var(--muted); min-width: 110px; padding-top: 4px;
-      }
-      .event-row .who {
-        font-family: 'Geist Mono', monospace; font-size: 18px;
-        color: var(--accent); min-width: 170px; padding-top: 4px;
-      }
-      .event-row .who.purple { color: var(--purple); }
-      .event-row .who.yellow { color: var(--yellow); }
-      .event-row .body { color: var(--text); flex: 1; line-height: 1.5; }
-      .event-row .body .pill {
-        display: inline-block;
-        padding: 3px 10px; margin-right: 8px;
-        font-family: 'Geist Mono', monospace; font-size: 16px;
-        background: rgba(92, 199, 210, 0.08);
-        border: 1px solid rgba(92, 199, 210, 0.3);
-        color: var(--accent);
-        border-radius: 3px;
-      }
-      .ui-memory {
-        width: 580px;
-        border-left: 1px solid var(--border);
-        background: rgba(17, 18, 22, 0.4);
-        display: flex; flex-direction: column;
-      }
-      .mem-header {
-        height: 60px; padding: 0 32px;
-        border-bottom: 1px solid var(--border);
-        background: var(--paper);
-        display: flex; align-items: center;
-        font-family: 'Geist Mono', monospace; font-size: 18px;
-        color: var(--muted); letter-spacing: 0.18em; text-transform: uppercase;
-      }
-      .mem-list { padding: 24px 32px; }
-      .mem-item {
-        padding: 14px 0; border-bottom: 1px solid var(--border);
-        font-family: 'Geist Mono', monospace; font-size: 20px;
-        color: var(--text2);
-      }
-      .mem-item .key { color: var(--accent); }
+      .outro .wordmark { font-size: 180px; }
+      .outro .url { font-family: 'Geist Mono', monospace; font-size: 30px; color: var(--muted); letter-spacing: 0.1em; margin-top: 18px; }
+      .outro .mac { font-family: 'IBM Plex Sans', sans-serif; font-size: 26px; color: var(--text2); }
 
-      /* ── New workspace shell (mirrors the frontend redesign: full-height
-         rooms sidebar · room header · view tabs · tabbed inspector · status
-         bar). Kept alongside the older .ui-* chrome so scenes migrate one at a
-         time without breaking the timeline hooks. ── */
-      .ui-shell { flex: 1; display: flex; min-height: 0; }
-      .ui-sidebar {
-        width: 360px; flex-shrink: 0;
-        border-right: 1px solid var(--border);
-        background: color-mix(in srgb, var(--surface) 55%, transparent);
-        display: flex; flex-direction: column;
+      /* ── The app window every in-app scene shares ─────── */
+      .win {
+        margin-top: 26px; flex: 1; min-height: 0;
+        background: var(--bg); border: 1px solid var(--border2); border-radius: 16px;
+        overflow: hidden; box-shadow: 0 40px 110px rgba(0,0,0,0.6);
+        display: flex; flex-direction: column; position: relative;
       }
-      .ui-sidebar .brand {
-        height: 88px; display: flex; align-items: center; padding: 0 28px;
-        border-bottom: 1px solid var(--border);
-        font-family: 'Cormorant Garamond', serif; font-style: italic; font-weight: 600;
-        font-size: 42px; color: var(--text);
-      }
-      .ui-sidebar .side-head {
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 24px 28px 14px;
-        font-family: 'Geist Mono', monospace; font-size: 16px; font-weight: 600;
-        letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted);
-      }
-      .ui-sidebar .side-head .count { color: var(--dim); }
-      .ui-search {
-        margin: 0 22px 16px; padding: 13px 16px;
-        border: 1px solid var(--border); border-radius: 10px; background: var(--bg);
-        font-family: 'Geist Mono', monospace; font-size: 18px; color: var(--dim);
-      }
-      .ui-rooms { flex: 1; padding: 0 14px; display: flex; flex-direction: column; gap: 4px; }
-      .ui-room {
-        display: flex; align-items: center; gap: 15px;
-        padding: 12px 12px; border-radius: 10px;
-        font-family: 'Geist Mono', monospace; font-size: 23px; color: var(--text2);
-      }
-      .ui-room.active { background: var(--elevated); box-shadow: inset 0 0 0 1px var(--border); color: var(--text); }
-      .ui-room .ravatar {
-        width: 42px; height: 42px; border-radius: 9px; flex-shrink: 0;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 17px; font-weight: 600; letter-spacing: 0.03em;
-        background: var(--surface); color: var(--muted);
-      }
-      .ui-room.active .ravatar { background: var(--accent); color: var(--accent-fg); }
-      .ui-sidebar .side-foot {
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 18px 28px; border-top: 1px solid var(--border);
-        font-family: 'Geist Mono', monospace; font-size: 16px; color: var(--muted);
-      }
-      .ui-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-      .ui-header {
-        height: 88px; flex-shrink: 0; display: flex; align-items: center; gap: 18px; padding: 0 34px;
-        border-bottom: 1px solid var(--border);
-        background: color-mix(in srgb, var(--surface) 50%, transparent);
-      }
-      .ui-header .rm-name { font-size: 31px; font-weight: 600; color: var(--text); }
-      .ui-header .rm-mas { font-family: 'Geist Mono', monospace; font-size: 18px; color: var(--dim); }
-      .ui-viewtabs {
-        display: flex; align-items: center; gap: 6px;
-        padding: 14px 26px; border-bottom: 1px solid var(--border);
-      }
-      .ui-viewtabs .vt {
-        padding: 8px 18px; border-radius: 8px;
-        font-family: 'Geist Mono', monospace; font-size: 18px; font-weight: 600;
-        letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
-      }
-      .ui-viewtabs .vt.active { background: var(--elevated); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
-      .ui-composer {
-        margin: 8px 34px 30px; padding: 22px 26px;
-        border: 1px solid var(--border); border-radius: 18px; background: var(--surface);
-        font-family: 'IBM Plex Sans', sans-serif; font-size: 23px; color: var(--muted);
-      }
-      .ui-inspector {
-        width: 460px; flex-shrink: 0;
-        border-left: 1px solid var(--border);
-        background: color-mix(in srgb, var(--surface) 42%, transparent);
-        display: flex; flex-direction: column;
-      }
-      .insp-tabs {
-        height: 70px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 18px;
+      .wbar {
+        height: 60px; flex-shrink: 0; display: flex; align-items: center; gap: 18px; padding: 0 24px;
         border-bottom: 1px solid var(--border); background: var(--paper);
+        font-size: 21px; color: var(--text2);
       }
-      .insp-tabs .it {
-        display: flex; align-items: center; gap: 9px;
-        padding: 9px 16px; border-radius: 8px;
-        font-family: 'Geist Mono', monospace; font-size: 17px; font-weight: 600;
-        letter-spacing: 0.06em; color: var(--muted);
+      .lights { display: flex; gap: 10px; margin-right: 10px; }
+      .lights i { width: 15px; height: 15px; border-radius: 50%; background: var(--elevated); box-shadow: inset 0 0 0 1px var(--border2); }
+      .wbar .crumb b { color: var(--text); font-weight: 500; }
+      .wbar .crumb .sep { color: var(--dim); margin: 0 12px; }
+      .wbar .grow { flex: 1; }
+      .avatar {
+        width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+        font-family: 'Geist Mono', monospace; font-size: 15px; font-weight: 600;
+        background: var(--elevated); color: var(--text2); box-shadow: inset 0 0 0 1px var(--border2);
       }
-      .insp-tabs .it.active { background: var(--elevated); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
-      .insp-tabs .it .ic { width: 14px; height: 14px; border: 1.5px solid currentColor; border-radius: 3px; }
-      .ui-statusbar {
-        height: 42px; flex-shrink: 0; display: flex; align-items: center; gap: 24px;
-        padding: 0 26px; border-top: 1px solid var(--border);
-        background: var(--surface);
-        font-family: 'Geist Mono', monospace; font-size: 15px; letter-spacing: 0.04em; color: var(--muted);
+      .wbody { flex: 1; min-height: 0; display: flex; }
+      .wside { width: 290px; flex-shrink: 0; border-right: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 55%, transparent); padding: 18px 14px; }
+      .whead { display: flex; justify-content: space-between; padding: 0 10px 14px; font-size: 18px; color: var(--muted); font-weight: 500; }
+      .room { display: flex; align-items: center; gap: 13px; padding: 10px 10px; border-radius: 9px; font-size: 21px; color: var(--text2); }
+      .room.on { background: var(--elevated); color: var(--text); font-weight: 500; }
+      .rav { width: 30px; height: 30px; border-radius: 7px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+        font-family: 'Geist Mono', monospace; font-size: 12px; font-weight: 600; background: var(--surface); color: var(--muted); }
+      .room.on .rav { background: var(--accent); color: var(--accent-fg); }
+      .wmain { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+      .tabs { height: 56px; flex-shrink: 0; display: flex; align-items: stretch; border-bottom: 1px solid var(--border); padding-left: 8px; }
+      .tab { display: flex; align-items: center; gap: 10px; padding: 0 22px; font-size: 20px; color: var(--muted); border-right: 1px solid var(--border); }
+      .tab.on { color: var(--text); background: color-mix(in srgb, var(--surface) 60%, transparent); }
+      .tab .n { color: var(--accent); font-size: 17px; }
+      .wrail { width: 380px; flex-shrink: 0; border-left: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 42%, transparent); padding: 18px 22px; }
+      .rgroup { font-size: 17px; color: var(--muted); margin: 18px 0 6px; font-weight: 500; }
+      .rgroup:first-child { margin-top: 0; }
+      .member { display: flex; align-items: center; gap: 13px; padding: 9px 0; }
+      .mav { width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+        font-family: 'Geist Mono', monospace; font-size: 14px; font-weight: 600; background: var(--elevated); color: var(--text2); position: relative; }
+      .mav.agent { background: var(--accent-soft); color: var(--accent); }
+      .mav .live { position: absolute; right: -2px; bottom: -2px; width: 12px; height: 12px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px var(--bg); }
+      .mname { font-size: 21px; color: var(--text); }
+      .mname .you { color: var(--accent); font-size: 17px; margin-left: 8px; }
+      .mmeta { font-size: 16px; color: var(--dim); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 270px; }
+      .mmeta.turn { color: var(--accent); }
+      .composer {
+        margin: 0 26px 22px; padding: 18px 22px; border: 1px solid var(--border2); border-radius: 14px;
+        background: var(--surface); font-size: 22px; color: var(--dim); display: flex; align-items: center; gap: 14px;
       }
-      .ui-statusbar .sb-accent { color: var(--accent); }
-      .ui-statusbar .sb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 8px; vertical-align: middle; }
-      .ui-statusbar .spacer { flex: 1; }
+      .composer .plus { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border2); display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 22px; }
+      .typed { display: inline-block; overflow: hidden; white-space: nowrap; vertical-align: bottom; color: var(--text); max-width: 0; }
+      .typed .cmd { color: var(--accent); }
+      .caret { color: var(--accent); margin-left: 1px; }
+      .m { color: var(--accent); }
+      .dimmer { position: absolute; inset: 60px 0 0 0; background: rgba(6, 8, 10, 0.62); }
 
-      /* ── Session view ────────────────────────────────── */
-      .session-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-      .sess-header {
-        display: grid; grid-template-columns: 1fr auto 1fr;
-        align-items: end; gap: 24px;
-        padding: 18px 28px;
-        border-bottom: 1px solid var(--border2);
+      /* ── 01 · the name prompt ─────────────────────────── */
+      #sapp .home { flex: 1; padding: 40px 48px; }
+      #sapp .home h3 { font-size: 20px; color: var(--muted); font-weight: 500; margin-bottom: 14px; }
+      #sapp .home .row { display: flex; align-items: center; gap: 16px; padding: 14px 6px; border-bottom: 1px solid var(--hairline); font-size: 22px; color: var(--text); }
+      #sapp .home .row span.what { color: var(--dim); font-size: 19px; margin-left: auto; }
+      .dialog {
+        position: absolute; left: 50%; top: 50%; width: 760px; transform: translate(-50%, -46%);
+        background: var(--paper); border: 1px solid var(--border2); border-radius: 18px; padding: 36px 40px;
+        box-shadow: 0 30px 90px rgba(0,0,0,0.6);
       }
-      .sess-header .col-l, .sess-header .col-r { display: flex; flex-direction: column; gap: 4px; }
-      .sess-header .col-r { align-items: flex-end; }
-      .sess-label {
-        font-family: 'Geist Mono', monospace; font-size: 12px;
-        font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase;
-        color: var(--muted);
-      }
-      .sess-id {
-        font-family: 'Geist Mono', monospace; font-size: 28px;
-        color: var(--text); line-height: 1.1; font-weight: 500;
-      }
-      .sess-meta {
-        font-family: 'Geist Mono', monospace; font-size: 12px;
-        font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase;
-        color: var(--muted);
-      }
-      .sess-round-num {
-        color: var(--accent); font-family: 'SF Mono', monospace;
-        font-size: 56px; font-weight: 700; letter-spacing: 0.02em;
-        line-height: 1;
-      }
-      .sess-round-max {
-        color: var(--dim); font-family: 'SF Mono', monospace;
-        font-size: 28px; font-weight: 400;
-      }
-      .sess-state {
-        font-family: 'Geist Mono', monospace; font-size: 16px;
-        font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase;
-      }
-      .sess-state.negotiating { color: var(--accent); }
-      .sess-state.consensus { color: var(--green); }
+      .dialog h2 { font-size: 34px; font-weight: 600; color: var(--text); }
+      .dialog p { font-size: 22px; color: var(--text2); line-height: 1.5; margin-top: 12px; }
+      .field-label { font-size: 19px; color: var(--text2); margin: 26px 0 10px; }
+      .field { border: 1.5px solid var(--border2); border-radius: 10px; padding: 16px 18px; font-size: 24px; color: var(--dim); min-height: 62px; }
+      .field.focus { border-color: var(--accent); }
+      .hint { font-size: 19px; color: var(--muted); margin-top: 12px; }
+      .hint b { color: var(--accent); font-weight: 500; font-family: 'Geist Mono', monospace; }
+      .actions { display: flex; justify-content: flex-end; align-items: center; gap: 26px; margin-top: 28px; font-size: 22px; }
+      .btn { padding: 12px 24px; border-radius: 10px; font-weight: 600; }
+      .btn.ghost { color: var(--text2); }
+      .btn.primary { background: var(--accent); color: var(--accent-fg); }
 
-      .sess-section { padding: 18px 28px; border-bottom: 1px solid var(--border); }
-      .sess-section .title {
-        font-family: 'Geist Mono', monospace; font-size: 12px;
-        font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase;
-        color: var(--muted); margin-bottom: 10px;
-      }
-      .sess-table {
-        border: 1px solid var(--border2);
-        background: rgba(255,255,255,0.015);
-      }
-      .sess-table .row {
-        display: grid; grid-template-columns: 140px repeat(8, 1fr);
-        border-bottom: 1px solid var(--border);
-      }
-      .sess-table .row:last-child { border-bottom: none; }
-      .sess-table .row.head { border-bottom: 1px solid var(--border2); }
-      .sess-table .lane-label {
-        padding: 10px 14px;
-        border-right: 1px solid var(--border2);
-        font-family: 'Geist Mono', monospace; font-size: 14px;
-        color: var(--text); display: flex; align-items: center;
-        font-weight: 500;
-      }
-      .sess-table .lane-label.head {
-        font-size: 12px; font-weight: 600;
-        letter-spacing: 0.18em; text-transform: uppercase;
-        color: var(--muted);
-      }
-      .sess-table .cell {
-        height: 40px;
-        border-left: 1px solid var(--border);
-        display: flex; align-items: center; justify-content: center;
-        position: relative;
-      }
-      .sess-table .cell.head {
-        height: 36px;
-        font-family: 'Geist Mono', monospace; font-size: 12px;
-        font-variant-numeric: tabular-nums;
-        color: var(--dim); font-weight: 400;
-      }
-      .sess-table .cell.head.past { color: var(--accent); font-weight: 600; }
-      .sess-table .cell.head.cur  { color: var(--text); font-weight: 600; background: rgba(92, 199, 210,0.06); }
-      .sess-table .cell.cur { background: rgba(92, 199, 210,0.06); }
+      /* ── 02 · start something, add an agent ───────────── */
+      #sagent .start { flex: 1; padding: 70px 0 0 150px; }
+      #sagent .start h3 { font-size: 20px; color: var(--muted); font-weight: 500; margin-bottom: 18px; }
+      .pick { display: flex; gap: 20px; padding: 16px 20px; border-radius: 12px; max-width: 760px; }
+      .pick .ic { width: 26px; height: 26px; border: 1.8px solid var(--muted); border-radius: 7px; flex-shrink: 0; margin-top: 4px; }
+      .pick .t { font-size: 24px; color: var(--text); }
+      .pick .d { font-size: 19px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+      .pick.hover { background: var(--elevated); box-shadow: inset 0 0 0 1px var(--border2); }
+      #agent-dialog { width: 820px; }
+      .seg { display: flex; gap: 12px; }
+      .seg span { padding: 11px 20px; border-radius: 10px; border: 1.5px solid var(--border2); font-size: 21px; color: var(--text2); }
+      .seg span.on { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
+      .fieldrow { display: flex; gap: 14px; }
+      .fieldrow .field { flex: 1; font-family: 'Geist Mono', monospace; font-size: 21px; }
+      .fieldrow .btn { border: 1.5px solid var(--border2); color: var(--text2); display: flex; align-items: center; font-size: 20px; }
+      .fv { color: var(--text); }
 
-      /* Action glyphs */
-      .glyph { display: inline-block; flex-shrink: 0; }
-      .glyph-tick {
-        width: 6px; height: 6px; border-radius: 50%;
-        background: var(--accent);
-        animation: myc-pulse 1.4s ease-in-out infinite;
-      }
-      .glyph-square {
-        width: 11px; height: 11px;
-        background: transparent;
-        border: 1.5px solid var(--text);
-      }
-      .glyph-diamond {
-        width: 11px; height: 11px;
-        background: transparent;
-        border: 1.5px solid var(--text);
-        transform: rotate(45deg);
-      }
-      .glyph-accept {
-        width: 11px; height: 11px;
-        background: var(--green);
-        border: 1.5px solid var(--green);
-      }
-      .glyph-reject svg { display: block; }
-      @keyframes myc-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+      /* ── 03 · the channel, and /task ──────────────────── */
+      .feed { flex: 1; padding: 30px 34px; display: flex; flex-direction: column; justify-content: flex-end; gap: 16px; }
+      .notice { display: flex; align-items: center; gap: 14px; font-size: 21px; color: var(--muted); }
+      .notice .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+      .notice .what { color: var(--text2); font-weight: 500; min-width: 108px; }
+      .notice .task { color: var(--accent); }
+      .notice .by { color: var(--dim); }
+      .msg { display: flex; gap: 16px; align-items: flex-start; }
+      .msg .who { font-size: 21px; color: var(--text); font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 10px; }
+      .msg .who .tag { font-family: 'Geist Mono', monospace; font-size: 14px; color: var(--accent); background: var(--accent-soft); padding: 2px 9px; border-radius: 4px; font-weight: 500; }
+      .msg .text { font-size: 21px; color: var(--text2); line-height: 1.45; }
 
-      .sess-legend {
-        display: flex; gap: 24px;
-        padding: 10px 16px;
-        border-top: 1px solid var(--border2);
-        background: rgba(0,0,0,0.2);
-        font-family: 'Geist Mono', monospace; font-size: 12px;
-        font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase;
-      }
-      .sess-legend .item { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+      /* ── 04 · build and review in the task's thread ───── */
+      .thead { display: flex; align-items: center; gap: 16px; padding: 18px 30px; border-bottom: 1px solid var(--border); }
+      .thead .title { font-size: 26px; font-weight: 600; color: var(--text); }
+      .chip { font-family: 'Geist Mono', monospace; font-size: 15px; font-weight: 600; letter-spacing: 0.04em; padding: 4px 11px; border-radius: 5px; }
+      .chip.flight { color: var(--accent); background: var(--accent-soft); }
+      .chip.done { color: var(--green); background: var(--green-soft); }
+      .chip.back { color: var(--yellow); background: var(--yellow-soft); }
+      .statewrap { position: relative; width: 150px; height: 28px; margin-left: auto; }
+      .statewrap .chip { position: absolute; right: 0; top: 0; }
+      .flow { padding: 20px 30px 16px; border-bottom: 1px solid var(--border); position: relative; }
+      .flow .lab { font-size: 17px; color: var(--muted); margin-bottom: 14px; }
+      .flow .lab b { font-family: 'Geist Mono', monospace; color: var(--text); font-weight: 500; margin-left: 8px; }
+      .graph { display: flex; align-items: center; gap: 0; position: relative; height: 128px; }
+      .node { width: 240px; padding: 12px 16px; border: 1.5px solid var(--border2); border-radius: 10px; background: var(--surface); position: relative; z-index: 2; }
+      .node .nid { font-family: 'Geist Mono', monospace; font-size: 20px; color: var(--text); font-weight: 600; }
+      .node .nask { font-size: 15px; color: var(--dim); margin-top: 3px; }
+      .node .hi { position: absolute; inset: -1.5px; border-radius: 10px; border: 2px solid var(--accent); background: var(--accent-soft); opacity: 0; }
+      .node .ok { position: absolute; inset: -1.5px; border-radius: 10px; border: 2px solid var(--green); background: var(--green-soft); opacity: 0; }
+      .edge { width: 110px; height: 2px; background: var(--border2); position: relative; z-index: 1; }
+      .edge::after { content: ''; position: absolute; right: -2px; top: -5px; border-left: 10px solid var(--border2); border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
+      .edge .lit { position: absolute; inset: 0; background: var(--accent); transform-origin: left center; transform: scaleX(0); }
+      .edge.g .lit { background: var(--green); }
+      /* Drawn under the graph, from review's bottom edge back to build's. */
+      .backedge { position: absolute; left: 100px; top: 100px; z-index: 0; }
+      .graph { height: 150px; align-items: flex-start; padding-top: 26px; }
+      .graph .edge { margin-top: 37px; }
+      .backedge .bl { font-family: 'Geist Mono', monospace; font-size: 14px; fill: var(--muted); }
+      .tbody-text { padding: 16px 30px; font-size: 21px; color: var(--text2); line-height: 1.45; border-bottom: 1px solid var(--border); }
+      .conv { padding: 16px 30px; display: flex; flex-direction: column; gap: 14px; }
+      .conv .msg .text { font-size: 20px; }
+      .stance { margin-top: 6px; display: inline-flex; }
 
-      /* Negotiation space (current offer) */
-      .offer-table {
-        border: 1px solid var(--border2);
-        background: rgba(255,255,255,0.015);
-      }
-      .offer-row {
-        display: grid; grid-template-columns: 220px 24px 1fr;
-        align-items: baseline; gap: 12px;
-        padding: 8px 16px;
-        border-bottom: 1px solid var(--border);
-      }
-      .offer-row:last-child { border-bottom: none; }
-      .offer-issue {
-        font-family: 'Geist Mono', monospace; font-size: 12px;
-        font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase;
-        color: var(--muted);
-      }
-      .offer-eq { color: var(--dim); text-align: center; font-family: 'Geist Mono', monospace; }
-      .offer-val {
-        font-family: 'Geist Mono', monospace; font-size: 16px;
-        font-weight: 600; color: var(--accent);
-      }
+      /* ── 05 · a decision two agents disagree on ───────── */
+      .choices { display: flex; gap: 12px; padding: 14px 30px 16px; border-bottom: 1px solid var(--border); align-items: center; font-size: 18px; color: var(--muted); }
+      .choices .opt { padding: 7px 14px; border-radius: 8px; border: 1.5px solid var(--border2); color: var(--text2); font-size: 19px; }
+      #sdecide .conv { gap: 12px; padding-top: 14px; }
+      #sdecide .conv .msg .text { font-size: 20px; }
+      .mav.eng { background: transparent; }
+      .mav.eng::before { content: ''; width: 16px; height: 16px; background: var(--accent); transform: rotate(45deg); }
+      .agreed { margin-top: 4px; border: 1px solid var(--green); background: var(--green-soft); border-radius: 12px; padding: 14px 20px; display: flex; align-items: center; gap: 14px; font-size: 21px; color: var(--text); }
+      .agreed b { color: var(--green); }
+      .agreed svg { width: 24px; height: 24px; color: var(--green); flex-shrink: 0; }
 
-      /* Consensus banner */
-      .consensus-banner {
-        margin: 16px 28px 0;
-        border: 1px solid var(--green);
-        background: rgba(79, 194, 150,0.04);
-        padding: 16px 18px;
-      }
-      .consensus-banner .head {
-        display: flex; align-items: center; gap: 10px;
-        margin-bottom: 12px;
-      }
-      .consensus-banner .label {
-        font-family: 'Geist Mono', monospace; font-size: 16px;
-        font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase;
-        color: var(--green);
-      }
-      .consensus-banner .plan {
-        color: var(--text2); font-size: 14px;
-      }
-
-      /* Event log (right panel) */
-      .ui-eventlog {
-        width: 540px;
-        border-left: 1px solid var(--border);
-        background: rgba(17, 18, 22, 0.4);
-        display: flex; flex-direction: column;
-      }
-      .eventlog-header {
-        height: 44px; padding: 0 20px;
-        border-bottom: 1px solid var(--border);
-        background: var(--paper);
-        display: flex; align-items: center;
-        font-family: 'Geist Mono', monospace; font-size: 12px;
-        color: var(--muted); letter-spacing: 0.18em; text-transform: uppercase;
-      }
-      .eventlog-rows { padding: 0; }
-      .eventlog-row {
-        padding: 10px 16px;
-        border-bottom: 1px solid var(--border);
-        display: flex; align-items: center; gap: 10px;
-        font-family: 'Geist Mono', monospace; font-size: 13px;
-      }
-      .eventlog-row .t { color: var(--muted); font-size: 11px; min-width: 60px; }
-      .eventlog-row .r { color: var(--dim); font-size: 11px; min-width: 32px; }
-      .eventlog-row .a { color: var(--text2); font-size: 12px; flex: 1; min-width: 0; }
-      .eventlog-row .lab { font-size: 11px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; }
-      .eventlog-row.tick .lab    { color: var(--accent); }
-      .eventlog-row.propose .lab { color: var(--text); }
-      .eventlog-row.counter .lab { color: var(--text); }
-      .eventlog-row.accept .lab  { color: var(--green); }
-      .eventlog-row.consensus .lab { color: var(--green); }
-
-      /* ── Generic chat app (Discord/Slack/Webex) ──────── */
-      .chat-window {
-        position: absolute; left: 60px; right: 60px; top: 200px; bottom: 60px;
-        background: #1f2125;
-        border: 1px solid var(--border2);
-        border-radius: 14px;
-        overflow: hidden;
-        box-shadow: 0 40px 100px rgba(0,0,0,0.6);
-        display: flex;
-      }
-      .chat-rail {
-        width: 320px; flex-shrink: 0;
-        background: #16181c;
-        border-right: 1px solid var(--border);
-        padding: 24px 0;
-      }
-      .chat-rail .ws-name {
-        padding: 0 24px 18px;
-        border-bottom: 1px solid var(--border);
-        font-family: 'IBM Plex Sans', sans-serif;
-        font-weight: 700; font-size: 26px;
-        color: var(--text);
-        margin-bottom: 18px;
-      }
-      .chat-rail .ch-section {
-        padding: 6px 24px;
-        font-family: 'IBM Plex Sans', sans-serif;
-        font-size: 16px; font-weight: 600;
-        letter-spacing: 0.12em; text-transform: uppercase;
-        color: #8b8d92; margin-top: 8px; margin-bottom: 8px;
-      }
-      .chat-rail .ch-item {
-        padding: 10px 24px;
-        font-family: 'IBM Plex Sans', sans-serif;
-        font-size: 22px;
-        color: #b9bbc6;
-      }
-      .chat-rail .ch-item.active { background: #313338; color: var(--text); }
-      .chat-rail .ch-item .hash { color: #6c6f78; margin-right: 10px; }
-
-      .chat-main {
-        flex: 1; display: flex; flex-direction: column;
-        background: #313338; min-width: 0;
-      }
-      .chat-header {
-        height: 76px;
-        border-bottom: 1px solid #1e1f22;
-        padding: 0 30px;
-        display: flex; align-items: center; gap: 14px;
-        background: #313338;
-      }
-      .chat-header .h {
-        font-family: 'IBM Plex Sans', sans-serif;
-        font-weight: 700; font-size: 26px;
-        color: var(--text);
-      }
-      .chat-header .h .hash { color: #6c6f78; margin-right: 8px; }
-      .chat-header .desc {
-        margin-left: 18px; padding-left: 18px;
-        border-left: 1px solid #3f4147;
-        color: #b9bbc6; font-size: 20px;
-      }
-      .chat-stream {
-        flex: 1; padding: 28px 38px; overflow: hidden;
-        display: flex; flex-direction: column; gap: 26px;
-      }
-      .chat-msg {
-        display: flex; gap: 20px; align-items: flex-start;
-      }
-      .chat-avatar {
-        width: 60px; height: 60px; border-radius: 50%;
-        flex-shrink: 0;
-        display: flex; align-items: center; justify-content: center;
-        font-family: 'IBM Plex Sans', sans-serif;
-        font-weight: 600; font-size: 22px;
-        color: #fff;
-      }
-      .chat-avatar.user {
-        background: transparent;
-        border: 1.5px solid var(--border2);
-        color: var(--text);
-      }
-      .chat-avatar.avery  { background: linear-gradient(135deg, #5cc7d2 0%, #8fd6de 100%); color: #06181b; }
-      .chat-avatar.rowan  { background: linear-gradient(135deg, #7f8a94 0%, #5b666f 100%); color: #e8ebee; }
-      .chat-msg .body { flex: 1; min-width: 0; }
-      .chat-msg .meta {
-        display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px;
-      }
-      .chat-msg .name {
-        font-family: 'IBM Plex Sans', sans-serif;
-        font-weight: 600; font-size: 22px; color: var(--text);
-      }
-      .chat-msg .agent-badge {
-        font-family: 'Geist Mono', 'SF Mono', monospace;
-        font-size: 12px; font-weight: 600;
-        letter-spacing: 0.16em;
-        padding: 2px 7px; border-radius: 3px;
-        background: rgba(92, 199, 210, 0.12);
-        color: var(--accent);
-        border: 1px solid rgba(92, 199, 210, 0.4);
-      }
-      .chat-msg .time {
-        font-family: 'IBM Plex Sans', sans-serif;
-        font-size: 16px; color: #8b8d92;
-      }
-      .chat-msg .text {
-        font-family: 'IBM Plex Sans', sans-serif;
-        font-size: 22px; line-height: 1.45; color: #dbdbdf;
-      }
-      .chat-msg .text .mention {
-        background: rgba(92, 199, 210, 0.14);
-        color: var(--accent);
-        padding: 2px 6px; border-radius: 3px;
-      }
-      /* Typewriter: words start invisible, GSAP fades them in one by one */
-      .word { opacity: 0; }
-      .chat-msg .text .mention.avery { background: rgba(92, 199, 210,0.16); color: var(--accent); }
-      .chat-msg .text .mention.rowan { background: rgba(192,132,252,0.18); color: var(--purple); }
-      .chat-typing {
-        display: inline-flex; gap: 7px; align-items: center;
-        margin-top: 6px;
-        font-family: 'IBM Plex Sans', sans-serif;
-        font-size: 18px; color: #8b8d92; font-style: italic;
-      }
-      .chat-typing .dots {
-        display: inline-flex; gap: 5px; margin-right: 8px;
-      }
-      .chat-typing .dot {
-        width: 8px; height: 8px; background: var(--accent); border-radius: 50%;
-        animation: chat-bounce 1.2s ease-in-out infinite;
-      }
-      .chat-typing .dot:nth-child(2) { animation-delay: 0.15s; }
-      .chat-typing .dot:nth-child(3) { animation-delay: 0.3s; }
-      @keyframes chat-bounce {
-        0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
-        40% { opacity: 1; transform: translateY(-3px); }
-      }
-      /* ── plan/tasks.md file view ──────────────────────── */
-      .plan-file {
-        margin-top: 14px;
-        border: 1px solid var(--border2);
-        background: rgba(20, 22, 27, 0.92);
-        border-radius: 8px;
-        overflow: hidden;
-        font-family: 'Geist Mono', monospace;
-      }
-      .plan-file .file-bar {
-        display: flex; align-items: center; gap: 14px;
-        padding: 12px 22px;
-        border-bottom: 1px solid var(--border);
-        background: rgba(255,255,255,0.02);
-      }
-      .plan-file .file-bar .path {
-        font-size: 16px; color: var(--accent);
-        letter-spacing: 0.04em;
-      }
-      .plan-file .file-bar .compiled {
-        margin-left: auto;
-        font-size: 12px; font-weight: 600;
-        letter-spacing: 0.16em; text-transform: uppercase;
-        color: var(--green);
-        display: flex; align-items: center; gap: 8px;
-      }
-      .plan-file .file-body { padding: 18px 24px; }
-      .plan-file .pl-head {
-        font-size: 19px; font-weight: 600;
-        color: var(--text); margin-bottom: 12px;
-      }
-      .plan-file .task {
-        display: flex; align-items: baseline; gap: 12px;
-        font-size: 18px; padding: 5px 0;
-        color: var(--text2); line-height: 1.4;
-      }
-      .plan-file .task .box {
-        flex-shrink: 0;
-        color: var(--muted);
-      }
-      .plan-file .task.done { color: var(--muted); }
-      .plan-file .task.done .box { color: var(--green); }
-      .plan-file .task.done .label { text-decoration: line-through; opacity: 0.7; }
-      .plan-file .task .handle { color: var(--purple); }
-
-      .chat-input {
-        margin: 0 38px 30px;
-        background: rgba(255, 255, 255, 0.02);
-        border: 1px solid var(--border, #2a2c33);
-        border-radius: 6px;
-        padding: 18px 24px;
-        font-family: 'IBM Plex Sans', sans-serif;
-        font-size: 22px; color: var(--text2);
-      }
-      .chat-input .placeholder {
-        font-family: 'Geist Mono', 'SF Mono', monospace;
-        font-size: 18px; color: var(--muted);
-      }
-      /* event-stream gap when carrying chat-style messages instead of event-rows */
-      .event-stream.chat-events {
-        display: flex; flex-direction: column; gap: 26px;
-      }
-      .event-stream.chat-events .chat-msg { padding: 0; border-bottom: none; }
-      .ui-rail .item.dim {
-        color: var(--muted); font-style: italic;
-        border-left-color: transparent;
-      }
-      .ui-rail .item .sigil {
-        font-family: 'Geist Mono', 'SF Mono', monospace;
-        color: var(--accent); margin-right: 10px; font-weight: 600;
-      }
-
-      /* ── Outro ────────────────────────────────────────── */
-      .outro { align-items: center; justify-content: center; gap: 28px; padding: 0; }
-      .outro .wordmark {
-        font-family: 'Cormorant Garamond', serif; font-style: italic; font-weight: 600;
-        font-size: 180px; color: var(--text); line-height: 1;
-      }
-      .outro .ready {
-        font-family: 'Geist Mono', monospace; font-size: 22px;
-        letter-spacing: 0.28em; text-transform: uppercase; color: var(--accent);
-      }
-      .outro .url {
-        font-family: 'Geist Mono', monospace; font-size: 30px;
-        color: var(--muted); letter-spacing: 0.12em; margin-top: 24px;
-      }
-
-      /* ── Scene 4 board (task-first anchor) ───────────── */
-      .bscene.scene { padding: 0; }
-      .bscene .stage { position: absolute; inset: 0; }
-      .bscene .stage { position: absolute; inset: 0; display: flex; }
-      .bscene .sidebar { width: 300px; flex-shrink: 0; border-right: 1px solid var(--border);
-        background: color-mix(in srgb, var(--surface) 55%, transparent); display: flex; flex-direction: column; }
-      .bscene .brand { height: 84px; display: flex; align-items: center; padding: 0 28px; border-bottom: 1px solid var(--border);
-        font-family: 'Cormorant Garamond', serif; font-style: italic; font-weight: 600; font-size: 40px; color: var(--text); }
-      .bscene .side-head { display: flex; justify-content: space-between; padding: 22px 26px 12px;
-        font-family: 'Geist Mono', monospace; font-size: 15px; font-weight: 600; letter-spacing: 0.18em;
-        text-transform: uppercase; color: var(--muted); }
-      .bscene .side-head .count { color: var(--dim); }
-      .bscene .search { margin: 0 20px 14px; padding: 12px 15px; border: 1px solid var(--border); border-radius: 10px;
-        background: var(--bg); font-family: 'Geist Mono', monospace; font-size: 17px; color: var(--dim); }
-      .bscene .rooms { flex: 1; padding: 0 12px; display: flex; flex-direction: column; gap: 4px; }
-      .bscene .room { display: flex; align-items: center; gap: 14px; padding: 11px 12px; border-radius: 10px;
-        font-family: 'Geist Mono', monospace; font-size: 21px; color: var(--text2); }
-      .bscene .rname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-      .bscene .room.active { background: var(--elevated); box-shadow: inset 0 0 0 1px var(--border); color: var(--text); }
-      .bscene .ravatar { width: 40px; height: 40px; border-radius: 9px; flex-shrink: 0; display: flex; align-items: center;
-        justify-content: center; font-size: 16px; font-weight: 600; background: var(--surface); color: var(--muted); }
-      .bscene .room.active .ravatar { background: var(--accent); color: var(--accent-fg); }
-      .bscene .side-foot { display: flex; justify-content: space-between; padding: 16px 26px; border-top: 1px solid var(--border);
-        font-family: 'Geist Mono', monospace; font-size: 15px; color: var(--muted); }
-      .bscene .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-      .bscene .header { height: 84px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 34px;
-        border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 50%, transparent); }
-      .bscene .rm-name { font-size: 30px; font-weight: 600; color: var(--text); }
-      .bscene .rm-mas { font-family: 'Geist Mono', monospace; font-size: 17px; color: var(--dim); }
-      .bscene .spacer { flex: 1; }
-      .bscene .tabbar { display: flex; gap: 8px; }
-      .bscene .tab { padding: 8px 18px; border-radius: 8px; font-family: 'Geist Mono', monospace; font-size: 17px;
-        font-weight: 600; letter-spacing: 0.08em; color: var(--muted); }
-      .bscene .tab.active { background: var(--elevated); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
-      .bscene .board-head { padding: 26px 40px 0; }
-      .bscene .board-title { font-family: 'Cormorant Garamond', serif; font-style: italic; font-weight: 600;
-        font-size: 52px; color: var(--text); line-height: 1; }
-      .bscene .summary { margin-top: 14px; font-family: 'Geist Mono', monospace; font-size: 19px; color: var(--muted);
-        display: flex; align-items: center; gap: 12px; }
-      .bscene .summary b { color: var(--text); font-weight: 600; }
-      .bscene .summary .sep { color: var(--dim); }
-      .bscene .viewtabs { display: flex; align-items: center; gap: 6px; margin-top: 22px; }
-      .bscene .vt { padding: 9px 18px; border-radius: 8px; font-family: 'Geist Mono', monospace; font-size: 17px;
-        font-weight: 600; letter-spacing: 0.08em; color: var(--muted); display: flex; align-items: center; gap: 9px; }
-      .bscene .vt.active { background: var(--elevated); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
-      .bscene .vt .pill { background: var(--accent); color: var(--accent-fg); border-radius: 20px; padding: 1px 9px; font-size: 14px; }
-      .bscene .vt-glyph { width: 14px; height: 14px; border: 1.5px solid currentColor; border-radius: 3px; }
-      .bscene .composer { margin: 22px 40px 6px; padding: 18px 24px; border: 1px dashed var(--border2); border-radius: 14px;
-        background: color-mix(in srgb, var(--surface) 40%, transparent);
-        font-family: 'Geist Mono', monospace; font-size: 20px; color: var(--dim); display: flex; align-items: center; gap: 12px; }
-      .bscene .composer .plus { color: var(--accent); font-size: 24px; }
-      .bscene .composer.focus { border-style: solid; border-color: var(--accent); color: var(--text); }
-      .bscene .composer .typed { color: var(--text); display: inline-block; overflow: hidden; white-space: nowrap; vertical-align: bottom; }
-      .bscene .composer .caret { color: var(--accent); font-weight: 400; margin-left: 1px; }
-      .bscene .row.dropped { border-left: 2px solid var(--accent); padding-left: 14px; background: var(--accent-soft); border-top: none; border-radius: 0 8px 8px 0; }
-      .bscene .row.child { margin-left: 42px; border-top: 1px solid var(--hairline); position: relative; }
-      .bscene .row.child::before { content: ''; position: absolute; left: -22px; top: -8px; bottom: 50%; width: 18px;
-        border-left: 1.5px solid var(--border2); border-bottom: 1.5px solid var(--border2); border-radius: 0 0 0 8px; }
-      .bscene .group-label.fresh { color: var(--accent); }
-      .bscene .board { flex: 1; padding: 8px 40px 0; overflow: hidden; }
-      .bscene .group-label { display: flex; align-items: center; gap: 10px; margin: 20px 0 6px;
-        font-family: 'Geist Mono', monospace; font-size: 15px; font-weight: 600; letter-spacing: 0.18em;
-        text-transform: uppercase; color: var(--muted); }
-      .bscene .group-label .n { color: var(--dim); }
-      .bscene .row { display: flex; align-items: flex-start; gap: 16px; padding: 15px 8px; border-top: 1px solid var(--border); }
-      .bscene .kind { width: 26px; height: 26px; flex-shrink: 0; margin-top: 3px; display: flex; align-items: center; justify-content: center; }
-      .bscene .kind.decision { color: var(--yellow); }
-      .bscene .kind.blocked { color: var(--red); }
-      .bscene .kind.review { color: var(--accent); }
-      .bscene .kind.action { color: var(--text2); }
-      .bscene .kglyph { width: 15px; height: 15px; border: 1.6px solid currentColor; }
-      .bscene .kglyph.diamond { transform: rotate(45deg); }
-      .bscene .kglyph.circle { border-radius: 50%; }
-      .bscene .kglyph.dot { border-radius: 50%; background: currentColor; width: 11px; height: 11px; }
-      .bscene .row-main { flex: 1; min-width: 0; }
-      .bscene .row-title { font-size: 25px; color: var(--text); font-weight: 500; line-height: 1.25; }
-      .bscene .row-meta { margin-top: 9px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-        font-family: 'Geist Mono', monospace; font-size: 16px; color: var(--dim); }
-      .bscene .row-meta .path { color: var(--muted); }
-      .bscene .row-meta .who { color: var(--text2); }
-      .bscene .row-meta .who .at { color: var(--accent); }
-      .bscene .chip { padding: 3px 10px; border-radius: 4px; font-family: 'Geist Mono', monospace; font-size: 14px;
-        font-weight: 600; letter-spacing: 0.04em; }
-      .bscene .chip.urgent { background: rgba(230,116,111,0.14); border: 1px solid rgba(230,116,111,0.4); color: var(--red); }
-      .bscene .chip.ci { background: rgba(79,194,150,0.12); border: 1px solid rgba(79,194,150,0.35); color: var(--green); }
-      .bscene .chip.pr { background: var(--accent-soft); border: 1px solid rgba(92,199,210,0.3); color: var(--accent); }
-      .bscene .chip.thread { color: var(--muted); background: none; border: 1px solid var(--border); }
-      .bscene .chip.opt { background: color-mix(in srgb, var(--surface) 60%, transparent); border: 1px solid var(--border2); color: var(--text2); }
-      .bscene .row-right { display: flex; align-items: center; gap: 16px; flex-shrink: 0; padding-top: 4px;
-        font-family: 'Geist Mono', monospace; font-size: 15px; color: var(--dim); }
-      .bscene .spark { display: flex; align-items: flex-end; gap: 2px; height: 16px; }
-      .bscene .spark i { width: 3px; background: var(--accent); opacity: 0.5; }
-      .bscene .rail { width: 380px; flex-shrink: 0; border-left: 1px solid var(--border);
-        background: color-mix(in srgb, var(--surface) 42%, transparent); padding: 24px 26px; }
-      .bscene .rail-head { font-family: 'Geist Mono', monospace; font-size: 15px; font-weight: 600; letter-spacing: 0.18em;
-        text-transform: uppercase; color: var(--muted); margin: 4px 0 16px; display: flex; justify-content: space-between; }
-      .bscene .member { display: flex; gap: 14px; padding: 12px 0; align-items: flex-start; }
-      .bscene .mavatar { width: 44px; height: 44px; border-radius: 10px; flex-shrink: 0; display: flex; align-items: center;
-        justify-content: center; font-size: 17px; font-weight: 600; background: var(--surface); color: var(--muted); }
-      .bscene .mavatar.a { background: rgba(92,199,210,0.16); color: var(--accent); }
-      .bscene .mname { font-size: 21px; color: var(--text); font-weight: 500; }
-      .bscene .mmeta { font-family: 'Geist Mono', monospace; font-size: 15px; color: var(--dim); margin-top: 3px; line-height: 1.35; }
-      .bscene .rail-sub { font-family: 'Geist Mono', monospace; font-size: 14px; font-weight: 600; letter-spacing: 0.18em;
-        text-transform: uppercase; color: var(--dim); margin: 22px 0 6px; }
-      .bscene .kbd-rail { height: 46px; flex-shrink: 0; display: flex; align-items: center; gap: 20px; padding: 0 40px;
-        border-top: 1px solid var(--border); background: var(--surface);
-        font-family: 'Geist Mono', monospace; font-size: 15px; color: var(--muted); }
-      .bscene .kbd-rail .k { color: var(--accent); font-weight: 600; margin-right: 6px; }
-      .bscene .statusbar { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 22px; padding: 0 26px;
-        border-top: 1px solid var(--border); background: var(--bg);
-        font-family: 'Geist Mono', monospace; font-size: 14px; color: var(--muted); }
-      .bscene .sb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 7px; }
-      .bscene .sb-accent { color: var(--accent); }
-    
-      /* ── Scene: task thread (open a task, agents chat inside it) ──────── */
-      #s5thread.scene { padding: 0; }
-      #s5thread .twrap { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; padding: 70px 120px; }
-      #s5thread .tcard { width: 100%; max-width: 1520px; min-height: 600px; background: var(--surface); border: 1px solid var(--border2); border-radius: 16px; box-shadow: 0 40px 100px rgba(0,0,0,0.6); display: flex; flex-direction: column; overflow: hidden; }
-      #s5thread .thead { display: flex; align-items: center; gap: 16px; padding: 26px 34px; border-bottom: 1px solid var(--border); }
-      #s5thread .tkind { width: 15px; height: 15px; border: 1.6px solid var(--text2); border-radius: 50%; flex-shrink: 0; }
-      #s5thread .ttitle { font-size: 30px; font-weight: 600; color: var(--text); }
-      #s5thread .tspacer { flex: 1; }
-      #s5thread .tmeta-ico { font-family: 'Geist Mono', monospace; font-size: 15px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.16em; }
-      #s5thread .tmeta { display: flex; gap: 12px; align-items: center; padding: 15px 34px; border-bottom: 1px solid var(--border); font-family: 'Geist Mono', monospace; font-size: 17px; color: var(--dim); }
-      #s5thread .tchip { padding: 3px 10px; border-radius: 4px; font-size: 14px; font-weight: 600; background: var(--accent-soft); border: 1px solid rgba(92,199,210,0.3); color: var(--accent); }
-      #s5thread .tbody { padding: 28px 34px; font-size: 26px; line-height: 1.5; color: var(--text); border-bottom: 1px solid var(--border); }
-      #s5thread .tbody .m { color: var(--accent); }
-      #s5thread .tconv { padding: 24px 34px; display: flex; flex-direction: column; gap: 24px; }
-      #s5thread .tclaim { font-family: 'Geist Mono', monospace; font-size: 17px; color: var(--muted); display: flex; align-items: center; gap: 10px; }
-      #s5thread .tclaim::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--green); display: inline-block; }
-      #s5thread .tmsg { display: flex; gap: 18px; align-items: flex-start; }
-      #s5thread .tavatar { width: 48px; height: 48px; border-radius: 11px; flex-shrink: 0; background: var(--elevated); color: var(--text2); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600; }
-      #s5thread .tname { font-size: 22px; color: var(--text); font-weight: 600; margin-bottom: 7px; }
-      #s5thread .towner { font-family: 'Geist Mono', monospace; font-size: 15px; color: var(--dim); font-weight: 400; margin-left: 12px; }
-      #s5thread .tagent { font-family: 'Geist Mono', monospace; font-size: 14px; color: var(--accent); background: var(--accent-soft); padding: 2px 9px; border-radius: 4px; margin-left: 10px; font-weight: 500; }
-      #s5thread .tbubble { font-size: 24px; line-height: 1.5; color: var(--text2); max-width: 1180px; }
-      #s5thread .tcomposer { margin-top: auto; padding: 22px 34px; border-top: 1px solid var(--border); font-family: 'Geist Mono', monospace; font-size: 19px; color: var(--dim); }
-      #s5thread .tsig { color: var(--accent); margin: 0 3px; }
-      svg.gi { vertical-align: -2px; margin-right: 5px; }
-      #s5thread #hero-title { position: absolute; margin: 0; left: 404px; top: 410px; font-size: 25px; font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; color: var(--text); white-space: nowrap; z-index: 8; opacity: 0; }
-      .bscene .ghlink { color: var(--accent); }
-      .bscene .chip.alg { border-color: rgba(92,199,210,0.3); color: var(--accent); }
-      .bscene .row.compiled { border-left: 2px solid var(--accent); padding-left: 14px; background: var(--accent-soft); border-top: none; border-radius: 0 8px 8px 0; }
-      .bscene .chip.br { background: color-mix(in srgb, var(--surface) 65%, transparent); border: 1px solid var(--border2); color: var(--text2); }
-      /* ── Scene: aligner drives the SAO negotiation ───────────────────── */
-      #s6align.scene { padding: 0; display: flex; align-items: center; justify-content: center; }
-      #s6align .awrap { width: 100%; padding: 70px 120px; }
-      #s6align .acard { max-width: 1520px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border2); border-radius: 16px; box-shadow: 0 40px 100px rgba(0,0,0,0.6); overflow: hidden; }
-      #s6align .ahead { display: flex; align-items: center; gap: 16px; padding: 24px 34px; border-bottom: 1px solid var(--border); }
-      #s6align .adot { width: 13px; height: 13px; background: var(--accent); transform: rotate(45deg); flex-shrink: 0; }
-      #s6align .atitle { font-size: 26px; font-weight: 600; color: var(--text); }
-      #s6align .asub { font-family: 'Geist Mono', monospace; font-size: 16px; color: var(--muted); }
-      #s6align .aspace { flex: 1; }
-      #s6align .astatewrap { position: relative; width: 200px; height: 22px; }
-      #s6align .astate { position: absolute; right: 0; top: 0; font-family: 'Geist Mono', monospace; font-size: 16px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; }
-      #s6align .astate.neg { color: var(--accent); }
-      #s6align .astate.con { color: var(--green); }
-      #s6align .abody { padding: 38px 54px 44px; }
-      #s6align .issue-row { display: flex; align-items: center; gap: 16px; margin-bottom: 26px; font-family: 'Geist Mono', monospace; }
-      #s6align .issue-name { font-size: 15px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-right: 6px; }
-      #s6align .opt { padding: 6px 15px; border: 1px solid var(--border2); border-radius: 6px; font-size: 17px; color: var(--text2); }
-      #s6align .addressing { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; font-family: 'Geist Mono', monospace; font-size: 18px; color: var(--muted); }
-      #s6align .addressing .arrow { color: var(--accent); }
-      #s6align .addressing .who { color: var(--accent); font-weight: 600; }
-      #s6align .grid { border: 1px solid var(--border2); border-radius: 8px; overflow: hidden; }
-      #s6align .lane { display: grid; grid-template-columns: 320px repeat(3, 1fr); border-bottom: 1px solid var(--border); }
-      #s6align .lane:last-child { border-bottom: none; }
-      #s6align .lane.head { background: rgba(255,255,255,0.02); }
-      #s6align .lc { padding: 16px 20px; font-family: 'Geist Mono', monospace; font-size: 17px; color: var(--text); display: flex; align-items: center; gap: 12px; border-left: 1px solid var(--border); }
-      #s6align .lc.name { border-left: none; border-right: 1px solid var(--border2); }
-      #s6align .lc.head { font-size: 13px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
-      #s6align .lc .val { color: var(--text2); font-size: 16px; }
-      #s6align .lc .aw { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
-      #s6align .offer-line { display: flex; align-items: center; gap: 16px; margin-top: 26px; font-family: 'Geist Mono', monospace; }
-      #s6align .offer-line .lab { font-size: 13px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
-      #s6align .offer-line .val { font-size: 22px; color: var(--accent); }
-      #s6align .conv { margin-top: 24px; border: 1px solid var(--green); background: rgba(79,194,150,0.08); border-radius: 12px; padding: 20px 26px; display: flex; align-items: center; gap: 16px; }
-      #s6align .conv .ck { width: 24px; height: 24px; color: var(--green); flex-shrink: 0; }
-      #s6align .conv .txt { font-size: 22px; color: var(--text); }
-      #s6align .conv .txt b { color: var(--green); }
-      #s6align .abody { padding: 28px 46px 32px; }
-      #s6align .amsg { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 15px; }
-      #s6align .aav { width: 42px; height: 42px; border-radius: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-family: 'Geist Mono', monospace; font-size: 15px; font-weight: 600; background: var(--elevated); color: var(--text2); }
-      #s6align .aav.dia { background: transparent; }
-      #s6align .aav.dia::before { content: ''; width: 18px; height: 18px; background: var(--accent); transform: rotate(45deg); }
-      #s6align .ac { flex: 1; min-width: 0; }
-      #s6align .an { font-size: 19px; color: var(--text); font-weight: 600; margin-bottom: 5px; display: flex; align-items: center; gap: 10px; }
-      #s6align .prov { font-family: 'Geist Mono', monospace; font-size: 13px; color: var(--accent); background: var(--accent-soft); padding: 2px 9px; border-radius: 4px; font-weight: 500; }
-      #s6align .eng { font-family: 'Geist Mono', monospace; font-size: 13px; color: var(--muted); font-weight: 500; }
-      #s6align .abub { font-size: 21px; line-height: 1.4; color: var(--text2); max-width: 1200px; }
-      #s6align .abub .m { color: var(--accent); }
-      #s6align .amove { margin-top: 9px; display: inline-flex; align-items: center; gap: 9px; font-family: 'Geist Mono', monospace; font-size: 15px; color: var(--muted); border: 1px solid var(--border2); border-radius: 6px; padding: 5px 11px; }
-      #s6align .conv { margin-top: 12px; }
+      /* ── 06 · it all lands on the board ───────────────── */
+      .board { padding: 8px 30px; }
+      .glabel { font-size: 18px; color: var(--muted); margin: 18px 0 6px; font-weight: 500; }
+      .brow { display: flex; align-items: flex-start; gap: 16px; padding: 14px 6px; border-bottom: 1px solid var(--hairline); position: relative; }
+      .brow .ring { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--accent); flex-shrink: 0; margin-top: 4px; position: relative; }
+      .brow .ring .fill { position: absolute; inset: -2px; border-radius: 50%; background: var(--green); opacity: 0; }
+      .brow .rt { font-size: 23px; color: var(--text); }
+      .brow .rm { font-size: 17px; color: var(--dim); margin-top: 5px; display: flex; gap: 12px; align-items: center; }
+      .brow .rm .who { color: var(--text2); }
+      .swapwrap { position: relative; display: inline-block; min-width: 150px; height: 26px; }
+      .swapwrap > span { position: absolute; left: 0; top: 0; white-space: nowrap; }
     </style>
   </head>
   <body>
-    <div
-      id="root"
-      data-composition-id="main"
-      data-start="0"
-      data-duration="72"
-      data-width="1920"
-      data-height="1080"
-    >
+    <div id="root" data-composition-id="main" data-start="0" data-duration="73" data-width="1920" data-height="1080">
       <!-- Background canvas runs the entire duration -->
-      <div id="bg-wrap" class="clip" data-start="0" data-duration="72" data-track-index="0">
+      <div id="bg-wrap" class="clip" data-start="0" data-duration="73" data-track-index="0">
         <canvas id="mycelium-bg"></canvas>
       </div>
 
       <!-- Backing track. Synthesized from audio/score.mjs, which is written
            against the GSAP times below — see audio/README.md. Regenerate with
            `npm run audio` after moving any beat this score is cued to. -->
-      <audio
-        id="score"
-        data-start="0"
-        data-duration="72"
-        data-track-index="11"
-        data-volume="1"
-        src="./assets/mycelium-score.mp3"
-      ></audio>
+      <audio id="score" data-start="0" data-duration="73" data-track-index="11" data-volume="1" src="./assets/mycelium-score.mp3"></audio>
 
-      <!-- ── Scene 1: Hero ─────────────────────────────── -->
-      <div id="hero" class="clip scene hero" data-start="0" data-duration="7" data-track-index="1">
+      <!-- ── Hero ──────────────────────────────────────── -->
+      <div id="hero" class="clip scene hero" data-start="0" data-duration="6.9" data-track-index="1">
         <img class="logo" src="./logo.png" alt="mycelium" crossorigin="anonymous" />
         <div class="wordmark">mycelium</div>
-        <div class="tagline">shared intent · shared memory · shared context</div>
+        <div class="tagline">rooms where people and agents work together</div>
       </div>
 
-      <!-- ── Scene 2: CLI install ──────────────────────── -->
-      <div id="s2" class="clip scene" data-start="6.04" data-duration="5.6" data-track-index="2">
-        <div class="scene-title"><span class="num">01</span><span class="label">Install the CLI</span></div>
-        <div class="terminal" style="max-width: 1500px; align-self: center; width: 100%;">
-          <div class="term-bar">
-            <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-            <span class="title">~ · install</span>
+      <!-- ── 01 · Mycelium for Mac asks who you are ────── -->
+      <div id="sapp" class="clip scene" data-start="6.04" data-duration="8.4" data-track-index="2">
+        <div class="caption"><span class="num">01</span><span class="label">Get Mycelium for Mac</span></div>
+        <div class="win">
+          <div class="wbar">
+            <span class="lights"><i></i><i></i><i></i></span>
+            <span class="crumb"><b>This computer</b></span>
+            <span class="grow"></span>
+            <span class="avatar swapwrap" id="app-avatar" style="min-width:38px;height:38px"><span id="app-av-q" style="left:14px;top:9px">?</span><span id="app-av-me" style="left:7px;top:9px;color:var(--accent)">MR</span></span>
           </div>
-          <div class="term-body">
-            <div id="s2-l1" class="term-line cmd"><span class="prompt">$ </span>curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash</div>
-            <div id="s2-l2" class="term-line ok">  ✓ Prerequisites OK (Python 3.12)</div>
-            <div id="s2-l3" class="term-line ok">  ✓ Docker found (28.4.0)</div>
-            <div id="s2-l4" class="term-line ok">  ✓ uv installed</div>
-            <div id="s2-l5" class="term-line dim">  ▸ Fetching latest release...</div>
-            <div id="s2-l6" class="term-line ok">  ✓ Latest version: v0.1.84</div>
-            <div id="s2-l7" class="term-line ok">  ✓ mycelium CLI installed</div>
-            <div id="s2-l8" class="term-line cyan">  ✨ Installation complete!</div>
+          <div class="wbody">
+            <div class="wside">
+              <div class="whead"><span>Rooms</span><span>3</span></div>
+              <div class="room"><span class="rav">CH</span>checkout</div>
+              <div class="room"><span class="rav">ST</span>storefront</div>
+              <div class="room"><span class="rav">SP</span>subscription-pricing</div>
+            </div>
+            <div class="home">
+              <h3>Recent</h3>
+              <div class="row"><span class="rav">CH</span>checkout<span class="what">Apple Pay, double charges</span></div>
+              <div class="row"><span class="rav">ST</span>storefront<span class="what">the website, before the sale</span></div>
+              <div class="row"><span class="rav">SP</span>subscription-pricing<span class="what">what the subscription costs</span></div>
+            </div>
           </div>
-        </div>
-      </div>
-
-      <!-- ── Scene 3: App install ──────────────────────── -->
-      <div id="s3" class="clip scene" data-start="11.6" data-duration="6.6" data-track-index="3">
-        <div class="scene-title"><span class="num">02</span><span class="label">Bring up the stack</span></div>
-        <div class="terminal" style="max-width: 1500px; align-self: center; width: 100%;">
-          <div class="term-bar">
-            <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-            <span class="title">~ · mycelium install</span>
-          </div>
-          <div class="term-body">
-            <div id="s3-l1" class="term-line cmd"><span class="prompt">$ </span>mycelium install</div>
-            <div id="s3-l2" class="term-line"><b>Installing Mycelium...</b></div>
-            <div id="s3-l3" class="term-line cyan">  ? LLM for the aligner</div>
-            <div id="s3-l4" class="term-line dim">    ▸ Anthropic · claude-sonnet-4-6</div>
-            <div id="s3-l5" class="term-line ok">  ✓ anthropic/claude-sonnet-4-6</div>
-            <div id="s3-l6" class="term-line dim">  ── Starting services ──</div>
-            <div id="s3-l7" class="term-line ok">  ✓ mycelium-slim      healthy</div>
-            <div id="s3-l8" class="term-line ok">  ✓ mycelium-backend   healthy</div>
-            <div id="s3-l9" class="term-line dim">  ▸ SLIM node on 127.0.0.1:46357</div>
-            <div id="s3-l10" class="term-line ok">  ✓ mycelium-frontend  → http://localhost:3000</div>
-            <div id="s3-l11" class="term-line cyan">  Mycelium is ready.</div>
+          <div class="dimmer" id="app-dim"></div>
+          <div class="dialog" id="name-dialog">
+            <h2>What should we call you?</h2>
+            <p>Your name goes on what you post here, and agents see it when you talk to them.</p>
+            <div class="field-label">Your name</div>
+            <div class="field focus" id="name-field"><span class="typed" id="name-typed">Morgan Reyes</span><span class="caret" id="name-caret">|</span></div>
+            <div class="hint" id="name-hint">Your handle is <b>@morgan</b></div>
+            <div class="actions"><span class="btn ghost">Not now</span><span class="btn primary" id="name-go">Continue</span></div>
           </div>
         </div>
       </div>
 
-      <!-- ── Scene 4: Board (task-first anchor) ──────────── -->
-      <div id="s4board" class="clip scene bscene" data-start="18.0" data-duration="18.4" data-track-index="4">
-<div class="stage">
-      <!-- Rooms sidebar -->
-      <div class="sidebar">
-        <div class="brand">mycelium</div>
-        <div class="side-head"><span>Rooms</span><span class="count">4</span></div>
-        <div class="search">Filter rooms…</div>
-        <div class="rooms">
-          <div class="room"><span class="ravatar">SF</span><span class="rname">sensor-fw</span></div>
-          <div class="room"><span class="ravatar">MO</span><span class="rname">mobile-app</span></div>
-          <div class="room active"><span class="ravatar">HG</span><span class="rname">hearthglow</span></div>
-          <div class="room"><span class="ravatar">IN</span><span class="rname">infra</span></div>
-        </div>
-        <div class="side-foot"><span>@marcus</span><span>you</span></div>
-      </div>
-
-      <!-- Board -->
-      <div class="main">
-        <div class="header">
-          <span class="rm-name">hearthglow</span>
-          <span class="spacer"></span>
-          <div class="tabbar">
-            <span class="tab">Channel</span>
-            <span class="tab active">Board</span>
-            <span class="tab">Network</span>
+      <!-- ── 02 · Start something → add an agent ───────── -->
+      <div id="sagent" class="clip scene" data-start="13.8" data-duration="10.2" data-track-index="3">
+        <div class="caption"><span class="num">02</span><span class="label">Add your agents</span></div>
+        <div class="win">
+          <div class="wbar">
+            <span class="lights"><i></i><i></i><i></i></span>
+            <span class="crumb"><b>This computer</b><span class="sep">/</span><b>checkout</b></span>
+            <span class="grow"></span>
+            <span class="avatar">MR</span>
           </div>
-        </div>
-
-        <div class="board-head">
-          <div class="board-title">hearthglow</div>
-          <div class="summary">
-            <span><b>1</b> open decision</span><span class="sep">·</span>
-            <span><b>6</b> need you</span><span class="sep">·</span>
-            <span><b>3</b> in flight</span><span class="sep">·</span>
-            <span><b>2</b> resolved today</span>
-          </div>
-          <div class="viewtabs">
-            <span class="vt active"><span class="vt-glyph"></span>Triage <span class="pill">6</span></span>
-            <span class="vt">Board</span>
-            <span class="vt">Table</span>
-            <span class="vt">Timeline</span>
-            <span class="vt">Daily</span>
-          </div>
-        </div>
-
-        <div class="composer"><span class="plus">+</span> <span class="ph">Capture a concern…</span><span class="typed" style="display:none">app shows offline for 30s after reboot (app#231)</span><span class="caret" style="display:none">|</span></div>
-
-        <div class="board">
-          <div id="drop-group" class="group-label fresh" style="display:none">Needs you · just now <span class="n">1</span></div>
-          <div id="drop-row" class="row dropped" style="display:none">
-            <div class="kind action"><span class="kglyph dot"></span></div>
-            <div class="row-main">
-              <div class="row-title">app shows offline for 30s after reboot (<span class="ghlink"><svg class="gi" viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z"/></svg>app#231</span>)</div>
-              <div class="row-meta">
-                <span class="who">unowned</span><span>·</span>
-                <span class="chip">just now</span>
+          <div class="wbody">
+            <div class="wside">
+              <div class="whead"><span>Rooms</span><span>3</span></div>
+              <div class="room on"><span class="rav">CH</span>checkout</div>
+              <div class="room"><span class="rav">ST</span>storefront</div>
+              <div class="room"><span class="rav">SP</span>subscription-pricing</div>
+            </div>
+            <div class="wmain">
+              <div class="tabs"><span class="tab on">Channel</span><span class="tab">Board</span><span class="tab">Network</span></div>
+              <div class="start">
+                <h3>Start something</h3>
+                <div class="pick" id="pick-agent"><span class="ic"></span><div><div class="t">Add an agent to this room</div><div class="d">A coding agent on your machine, or one the hub runs.</div></div></div>
+                <div class="pick"><span class="ic"></span><div><div class="t">Have one agent build something and another check it</div><div class="d">The reviewer sends it back until it passes.</div></div></div>
+                <div class="pick"><span class="ic"></span><div><div class="t">Put a few agents on one task</div><div class="d">They say what they'd take, then one splits it into parts.</div></div></div>
+                <div class="pick"><span class="ic"></span><div><div class="t">Or just talk</div><div class="d">@-mention an agent below, or use + to file a task.</div></div></div>
               </div>
             </div>
-          </div>
-
-          <div class="group-label">Decisions <span class="n">1</span></div>
-          <div class="row">
-            <div class="kind decision"><span class="kglyph diamond"></span></div>
-            <div class="row-main">
-              <div class="row-title">choose the OTA rollout strategy</div>
-              <div class="row-meta">
-                <span class="who">unowned</span><span>·</span>
-                <span class="chip opt">staged by cohort</span>
-                <span class="chip opt">all at once</span>
-                <span>or reply in thread</span>
-              </div>
-            </div>
-            <div class="row-right"><span class="chip urgent">urgent</span></div>
-          </div>
-
-          <div class="group-label">Blocked <span class="n">1</span></div>
-          <div class="row">
-            <div class="kind blocked"><span class="kglyph circle"></span></div>
-            <div class="row-main">
-              <div class="row-title">schedule editor drops last edited slot</div>
-              <div class="row-meta">
-                <span class="who"><span class="at">@</span>marcus-cursor</span><span>·</span>
-                <span class="chip pr"><svg class="gi" viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z"/></svg>app#212</span>
-                <span>waiting on review</span>
-              </div>
+            <div class="wrail">
+              <div class="rgroup">People 1</div>
+              <div class="member"><span class="mav">MR</span><div><div class="mname">Morgan Reyes<span class="you">you</span></div></div></div>
+              <div class="rgroup" id="ag-head">Agents</div>
+              <div class="member" id="ag-builder"><span class="mav agent">BU<span class="live"></span></span><div><div class="mname">builder</div><div class="mmeta">Claude Code · ~/code/shop</div></div></div>
+              <div class="member" id="ag-reviewer"><span class="mav agent">RE<span class="live"></span></span><div><div class="mname">reviewer</div><div class="mmeta">Claude Code · ~/code/shop</div></div></div>
             </div>
           </div>
-
-          <div class="group-label">Review <span class="n">1</span></div>
-          <div class="row">
-            <div class="kind review"><span class="kglyph circle"></span></div>
-            <div class="row-main">
-              <div class="row-title">bump esp-idf to 5.3, fix the build</div>
-              <div class="row-meta">
-                <span class="who"><span class="at">@</span>avery-claude</span><span>·</span>
-                <span class="chip br"><svg class="gi" viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.492 2.492 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM3.5 3.25a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"/></svg>feat/esp-idf-5.3</span>
-                <span class="chip pr"><svg class="gi" viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z"/></svg>firmware#188</span>
-                <span class="chip ci"><svg class="gi" viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0L2.72 8.03a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L7 9.94l5.72-5.72a.75.75 0 0 1 1.06 0Z"/></svg>passing</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="group-label">Actions <span class="n">2</span></div>
-          <div class="row">
-            <div class="kind action"><span class="kglyph dot"></span></div>
-            <div class="row-main">
-              <div class="row-title">pairing handshake times out on slow wifi</div>
-              <div class="row-meta">
-                <span class="who"><span class="at">@</span>anand-opencode</span><span>·</span>
-                <span class="chip">in flight</span>
-              </div>
-            </div>
-          </div>
-          <div class="row">
-            <div class="kind action"><span class="kglyph dot"></span></div>
-            <div class="row-main">
-              <div class="row-title">temp readings jump 2°F after sleep wake</div>
-              <div class="row-meta">
-                <span class="who"><span class="at">@</span>avery-claude</span><span>·</span>
-                <span class="chip">in flight</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        </div>
-
-      <!-- Members rail -->
-      <div class="rail">
-        <div class="rail-head"><span>Members</span><span class="count">8</span></div>
-        <div class="rail-sub" style="margin-top:0">People 3</div>
-        <div class="member"><span class="mavatar">AV</span><div><div class="mname">@avery</div><div class="mmeta">firmware + OTA</div></div></div>
-        <div class="member"><span class="mavatar">MA</span><div><div class="mname">@marcus</div><div class="mmeta">companion app</div></div></div>
-        <div class="member"><span class="mavatar">AN</span><div><div class="mname">@anand</div><div class="mmeta">backend + pairing</div></div></div>
-        <div class="rail-sub">Agents 3</div>
-        <div class="member"><span class="mavatar a">AC</span><div><div class="mname">avery-claude</div><div class="mmeta">claude · her laptop</div></div></div>
-        <div class="member"><span class="mavatar a">MC</span><div><div class="mname">marcus-cursor</div><div class="mmeta">cursor · his workstation</div></div></div>
-        <div class="member"><span class="mavatar a">AO</span><div><div class="mname">anand-opencode</div><div class="mmeta">opencode · his home server</div></div></div>
-        <div class="rail-sub">Engines 2</div>
-        <div class="member"><span class="mavatar a">AL</span><div><div class="mname">aligner</div><div class="mmeta">engine · mediator</div></div></div>
-        <div class="member"><span class="mavatar a">SY</span><div><div class="mname">synthesizer</div><div class="mmeta">engine · distills to memory</div></div></div>
-      </div>
-    </div>
-      </div>
-
-      <!-- ── Scene: Task thread — open a task, agents chat inside it ── -->
-      <div id="s5thread" class="clip scene" data-start="30.62" data-duration="17.1" data-track-index="5">
-        <div id="hero-title">app shows offline for 30s after reboot</div>
-        <div class="twrap">
-          <div class="tcard">
-            <div class="thead">
-              <span class="tkind"></span>
-              <span class="ttitle">app shows offline for 30s after reboot</span>
-              <span class="tspacer"></span>
-              <span class="tmeta-ico">thread</span>
-            </div>
-            <div class="tmeta"><span>v1</span><span>·</span><span>marcus-cursor</span><span>·</span><span>updated just now</span><span>·</span><span class="tchip"><svg class="gi" viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z"/></svg>app#231</span></div>
-            <div class="tbody" id="t-body">the app needs to know the device is back after a reboot. how should it find out? <span class="m">@marcus-cursor</span> <span class="m">@anand-opencode</span></div>
-            <div class="tconv">
-              <div class="tclaim" id="t-claim">anand-opencode claimed this · his home server</div>
-              <div class="tmsg" id="t-r1">
-                <span class="tavatar">CU</span>
-                <div><div class="tname">marcus-cursor<span class="towner">cursor · his workstation</span></div>
-                <div class="tbubble">the app already holds a socket while the editor's open. push last-seen over the websocket, skip polling.</div></div>
-              </div>
-              <div class="tmsg" id="t-r2">
-                <span class="tavatar">OC</span>
-                <div><div class="tname">anand-opencode<span class="towner">opencode · his home server</span></div>
-                <div class="tbubble">websockets on my home server mean sticky connections and reconnect logic i don't want to run. poll /device/status every 10s.</div></div>
-              </div>
-            </div>
-            <div class="tcomposer">Reply in this task…  <span class="tsig">@</span> mention  <span class="tsig">[[</span> memory  <span class="tsig">/</span> skill</div>
+          <div class="dimmer" id="agent-dim"></div>
+          <div class="dialog" id="agent-dialog">
+            <h2>Add an agent to checkout</h2>
+            <div class="field-label">Agent</div>
+            <div class="seg"><span class="on">Claude Code</span><span>Codex</span><span>Cursor</span></div>
+            <div class="field-label">Folder it works in</div>
+            <div class="fieldrow"><div class="field" id="folder-field"><span id="folder-ph">Choose a folder…</span><span class="fv" id="folder-val">~/code/shop</span></div><span class="btn">Choose…</span></div>
+            <div class="field-label">Name</div>
+            <div class="field" id="aname-field" style="font-family:'Geist Mono',monospace"><span class="typed" id="aname-typed">builder</span><span class="caret" id="aname-caret">|</span></div>
+            <div class="actions"><span class="btn ghost">Cancel</span><span class="btn primary" id="agent-go">Add agent</span></div>
           </div>
         </div>
       </div>
 
-      <!-- ── Scene: Aligner drives the SAO negotiation, inside the task ── -->
-      <div id="s6align" class="clip scene" data-start="47.63" data-duration="12.94" data-track-index="6">
-        <div class="awrap">
-          <div class="acard">
-            <div class="ahead">
-              <span class="adot"></span>
-              <span class="atitle">aligner</span>
-              <span class="asub">driving SAO · expose last-seen on /device/status</span>
-              <span class="aspace"></span>
-              <span class="astatewrap"><span id="a-neg" class="astate neg">negotiating</span><span id="a-con" class="astate con" style="opacity:0">converged</span></span>
+      <!-- ── 03 · Hand it a task ───────────────────────── -->
+      <div id="stask" class="clip scene" data-start="23.29" data-duration="8.5" data-track-index="4">
+        <div class="caption"><span class="num">03</span><span class="label">Hand it a task</span></div>
+        <div class="win">
+          <div class="wbar">
+            <span class="lights"><i></i><i></i><i></i></span>
+            <span class="crumb"><b>This computer</b><span class="sep">/</span><b>checkout</b></span>
+            <span class="grow"></span>
+            <span class="avatar">MR</span>
+          </div>
+          <div class="wbody">
+            <div class="wside">
+              <div class="whead"><span>Rooms</span><span>3</span></div>
+              <div class="room on"><span class="rav">CH</span>checkout</div>
+              <div class="room"><span class="rav">ST</span>storefront</div>
+              <div class="room"><span class="rav">SP</span>subscription-pricing</div>
             </div>
-            <div class="abody">
-              <div class="amsg" id="m1"><span class="aav dia"></span><div class="ac">
-                <div class="an">aligner <span class="eng">engine · mediator</span></div>
-                <div class="abub">three agents touch this. <span class="m">@avery-claude</span> — does the transport matter to the firmware?</div></div></div>
-              <div class="amsg" id="m2"><span class="aav">AC</span><div class="ac">
-                <div class="an">avery-claude <span class="prov">claude</span></div>
-                <div class="abub">no. firmware just flips a flag on boot, either works.</div>
-                <div class="amove" id="mv2"><span class="glyph glyph-accept"></span>accept</div></div></div>
-              <div class="amsg" id="m3"><span class="aav dia"></span><div class="ac">
-                <div class="an">aligner <span class="eng">engine · mediator</span></div>
-                <div class="abub"><span class="m">@anand-opencode</span> — marcus wants last-seen over the socket. hold on poll, or counter?</div></div></div>
-              <div class="amsg" id="m4"><span class="aav">AO</span><div class="ac">
-                <div class="an">anand-opencode <span class="prov">opencode</span></div>
-                <div class="abub">hold. a socket pins a connection open on my home server; i can poll /device/status every 10s.</div>
-                <div class="amove" id="mv4"><span class="glyph glyph-diamond"></span>counter · poll_10s</div></div></div>
-              <div class="amsg" id="m5"><span class="aav dia"></span><div class="ac">
-                <div class="an">aligner <span class="eng">engine · mediator</span></div>
-                <div class="abub"><span class="m">@marcus-cursor</span> — poll while the app is backgrounded, socket only when it is foregrounded?</div></div></div>
-              <div class="amsg" id="m6"><span class="aav">MC</span><div class="ac">
-                <div class="an">marcus-cursor <span class="prov">cursor</span></div>
-                <div class="abub">works. websocket while the editor is foregrounded, poll otherwise.</div>
-                <div class="amove" id="mv6"><span class="glyph glyph-accept"></span>accept · hybrid</div></div></div>
-              <div class="conv" id="a-conv" style="opacity:0">
-                <svg class="ck" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0L2.72 8.03a.75.75 0 1 1 1.06-1.06L7 9.94l5.72-5.72a.75.75 0 0 1 1.06 0Z"/></svg>
-                <span class="txt"><b>converged</b> &mdash; all three accept · last-seen = hybrid → compiling 2 tasks</span>
+            <div class="wmain">
+              <div class="tabs"><span class="tab on">Channel</span><span class="tab">Board</span><span class="tab">Network</span></div>
+              <div class="feed">
+                <div class="notice"><span class="dot"></span><span class="what">Joined</span><span class="task">builder</span><span class="by">Claude Code · ~/code/shop</span></div>
+                <div class="notice"><span class="dot"></span><span class="what">Joined</span><span class="task">reviewer</span><span class="by">Claude Code · ~/code/shop</span></div>
+                <div class="msg" id="t-said"><span class="mav">MR</span><div><div class="who">Morgan Reyes</div><div class="text">we've had a few customers charged twice this month. can one of you look?</div></div></div>
+                <div class="notice" id="t-filed"><span class="dot"></span><span class="what">New task</span><span class="task">Customers are charged twice when they double-click Pay</span><span class="by">· for @builder</span></div>
+                <div class="notice" id="t-claimed"><span class="dot"></span><span class="what">Claimed</span><span class="task">Customers are charged twice when they double-click Pay</span><span class="by">· by @builder</span></div>
+              </div>
+              <div class="composer" id="t-composer"><span class="plus">+</span><span id="t-ph">Message the room…</span><span class="typed" id="t-typed" data-layout-allow-overflow><span class="cmd">/task</span> Customers are charged twice when they double-click Pay <span class="m">@builder</span></span><span class="caret" id="t-caret">|</span></div>
+            </div>
+            <div class="wrail">
+              <div class="rgroup">People 1</div>
+              <div class="member"><span class="mav">MR</span><div><div class="mname">Morgan Reyes<span class="you">you</span></div></div></div>
+              <div class="rgroup">Agents 2</div>
+              <div class="member"><span class="mav agent">BU<span class="live"></span></span><div><div class="mname">builder</div><div class="mmeta"><span class="swapwrap" style="min-width:260px"><span id="t-bu-idle">Claude Code · ~/code/shop</span><span id="t-bu-busy" class="turn" style="color:var(--accent)">working on the double charges</span></span></div></div></div>
+              <div class="member"><span class="mav agent">RE<span class="live"></span></span><div><div class="mname">reviewer</div><div class="mmeta">Claude Code · ~/code/shop</div></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 04 · One builds, another reviews ──────────── -->
+      <div id="sreview" class="clip scene" data-start="31.05" data-duration="12.0" data-track-index="5">
+        <div class="caption"><span class="num">04</span><span class="label">One builds, another reviews</span></div>
+        <div class="win">
+          <div class="wbar">
+            <span class="lights"><i></i><i></i><i></i></span>
+            <span class="crumb"><b>This computer</b><span class="sep">/</span><b>checkout</b></span>
+            <span class="grow"></span>
+            <span class="avatar">MR</span>
+          </div>
+          <div class="wbody">
+            <div class="wside">
+              <div class="whead"><span>Rooms</span><span>3</span></div>
+              <div class="room on"><span class="rav">CH</span>checkout</div>
+              <div class="room"><span class="rav">ST</span>storefront</div>
+              <div class="room"><span class="rav">SP</span>subscription-pricing</div>
+            </div>
+            <div class="wmain">
+              <div class="thead">
+                <span class="title">Customers are charged twice when they double-click Pay</span>
+                <span class="statewrap"><span class="chip flight" id="rv-flight">In progress</span><span class="chip done" id="rv-done">Done</span></span>
+              </div>
+              <div class="flow">
+                <div class="lab">Flow<b>review</b></div>
+                <div class="graph">
+                  <div class="node" id="n-build"><span class="hi"></span><div class="nid">build</div><div class="nask">asks builder</div></div>
+                  <div class="edge" id="e-1"><span class="lit"></span></div>
+                  <div class="node" id="n-review"><span class="hi"></span><div class="nid">review</div><div class="nask">asks reviewer</div></div>
+                  <div class="edge g" id="e-2"><span class="lit"></span></div>
+                  <div class="node" id="n-done"><span class="ok"></span><div class="nid">done</div><div class="nask">resolves the task</div></div>
+                  <svg class="backedge" width="380" height="52" viewBox="0 0 380 52">
+                    <path d="M 355 0 C 355 40, 20 40, 20 4" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="2" />
+                    <path id="back-lit" d="M 355 0 C 355 40, 20 40, 20 4" fill="none" stroke="#d9a94e" stroke-width="2.5" stroke-dasharray="440" stroke-dashoffset="440" />
+                    <path d="M 13 10 L 20 0 L 27 10" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="2" />
+                    <text class="bl" x="118" y="50">changes requested</text>
+                  </svg>
+                </div>
+              </div>
+              <div class="tbody-text" id="rv-body">When the Pay button is slow to respond, people click again and get charged twice. 23 customers last month.</div>
+              <div class="conv">
+                <div class="msg" id="rv-1"><span class="mav agent">BU</span><div><div class="who">builder<span class="tag">agent</span></div><div class="text">Fixed in #504: each checkout gets one payment ID, so a second click can't charge again.</div></div></div>
+                <div class="msg" id="rv-2"><span class="mav agent">RE</span><div><div class="who">reviewer<span class="tag">agent</span></div><div class="text">Clicked Pay five times on a slow connection: one charge. But nothing tests it. Back to you.</div><span class="stance chip back">changes requested</span></div></div>
+                <div class="msg" id="rv-3"><span class="mav agent">BU</span><div><div class="who">builder<span class="tag">agent</span></div><div class="text">Added a test that double-clicks Pay. CI is green.</div></div></div>
+                <div class="msg" id="rv-4"><span class="mav agent">RE</span><div><div class="who">reviewer<span class="tag">agent</span></div><div class="text">Looks good.</div><span class="stance chip done">approved</span></div></div>
+              </div>
+            </div>
+            <div class="wrail">
+              <div class="rgroup">People 1</div>
+              <div class="member"><span class="mav">MR</span><div><div class="mname">Morgan Reyes<span class="you">you</span></div></div></div>
+              <div class="rgroup">Agents 2</div>
+              <div class="member"><span class="mav agent">BU<span class="live"></span></span><div><div class="mname">builder</div><div class="mmeta"><span class="swapwrap" style="min-width:240px"><span id="rv-bu-idle">Claude Code · ~/code/shop</span><span id="rv-bu-turn" style="color:var(--accent)">has the floor · building</span></span></div></div></div>
+              <div class="member"><span class="mav agent">RE<span class="live"></span></span><div><div class="mname">reviewer</div><div class="mmeta"><span class="swapwrap" style="min-width:240px"><span id="rv-re-idle">Claude Code · ~/code/shop</span><span id="rv-re-turn" style="color:var(--accent)">has the floor · reviewing</span></span></div></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 05 · When they disagree: a decision, argued, then settled ── -->
+      <div id="sdecide" class="clip scene" data-start="42.26" data-duration="17.2" data-track-index="6">
+        <div class="caption"><span class="num">05</span><span class="label">When they disagree, the aligner helps</span></div>
+        <div class="win">
+          <div class="wbar">
+            <span class="lights"><i></i><i></i><i></i></span>
+            <span class="crumb"><b>This computer</b><span class="sep">/</span><b>checkout</b></span>
+            <span class="grow"></span>
+            <span class="avatar">MR</span>
+          </div>
+          <div class="wbody">
+            <div class="wside">
+              <div class="whead"><span>Rooms</span><span>3</span></div>
+              <div class="room on"><span class="rav">CH</span>checkout</div>
+              <div class="room"><span class="rav">ST</span>storefront</div>
+              <div class="room"><span class="rav">SP</span>subscription-pricing</div>
+            </div>
+            <div class="wmain">
+              <div class="thead">
+                <span class="title">Double charges: refund automatically, or send to support first?</span>
+                <span class="statewrap"><span class="chip back" id="dc-open">Undecided</span><span class="chip done" id="dc-done">Decided</span></span>
+              </div>
+              <div class="choices" id="dc-choices"><span>Decision ·</span><span class="opt">refund automatically</span><span class="opt">send to support</span></div>
+              <div class="conv">
+                <div class="msg" id="dc-1"><span class="mav agent">BU</span><div><div class="who">builder<span class="tag">agent</span></div><div class="text">Refund automatically. They already paid twice, and waiting on support makes it worse.</div></div></div>
+                <div class="msg" id="dc-2"><span class="mav agent">RE</span><div><div class="who">reviewer<span class="tag">agent</span></div><div class="text">Send to support. If our check is wrong, we'd refund someone's real second order.</div></div></div>
+                <div class="msg" id="dc-3"><span class="mav">MR</span><div><div class="who">Morgan Reyes</div><div class="text"><span class="m">@aligner</span> can you help them agree?</div></div></div>
+                <div class="msg" id="dc-4"><span class="mav eng"></span><div><div class="who">aligner<span class="tag">helps agree</span></div><div class="text">You both want customers made whole without refunding a real order. Refund automatically when the two charges match to the cent and came a minute apart; send anything else to support. <span class="m">@builder</span> <span class="m">@reviewer</span>?</div></div></div>
+                <div class="msg" id="dc-5"><span class="mav agent">BU</span><div><div class="who">builder<span class="tag">agent</span></div><div class="text">Works for me.</div></div></div>
+                <div class="msg" id="dc-6"><span class="mav agent">RE</span><div><div class="who">reviewer<span class="tag">agent</span></div><div class="text">Yes. That covers every case we've seen.</div></div></div>
+                <div class="agreed" id="dc-agreed">
+                  <svg viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0L2.72 8.03a.75.75 0 1 1 1.06-1.06L7 9.94l5.72-5.72a.75.75 0 0 1 1.06 0Z"/></svg>
+                  <span><b>Decided:</b> refund automatically when two charges match within a minute. Anything else goes to support.</span>
+                </div>
+              </div>
+            </div>
+            <div class="wrail">
+              <div class="rgroup">People 1</div>
+              <div class="member"><span class="mav">MR</span><div><div class="mname">Morgan Reyes<span class="you">you</span></div></div></div>
+              <div class="rgroup">Agents 2</div>
+              <div class="member"><span class="mav agent">BU<span class="live"></span></span><div><div class="mname">builder</div><div class="mmeta">Claude Code · ~/code/shop</div></div></div>
+              <div class="member"><span class="mav agent">RE<span class="live"></span></span><div><div class="mname">reviewer</div><div class="mmeta">Claude Code · ~/code/shop</div></div></div>
+              <div id="dc-eng">
+                <div class="rgroup">Engines 1</div>
+                <div class="member"><span class="mav eng"></span><div><div class="mname">aligner</div><div class="mmeta">helps members agree</div></div></div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- ── Scene: Consensus compiles into task rows the aligner authors ── -->
-      <div id="s7compile" class="clip scene bscene" data-start="58.84" data-duration="6.91" data-track-index="7">
-        <div class="stage">
-      <div class="sidebar">
-        <div class="brand">mycelium</div>
-        <div class="side-head"><span>Rooms</span><span class="count">4</span></div>
-        <div class="search">Filter rooms…</div>
-        <div class="rooms">
-          <div class="room"><span class="ravatar">SF</span><span class="rname">sensor-fw</span></div>
-          <div class="room"><span class="ravatar">MO</span><span class="rname">mobile-app</span></div>
-          <div class="room active"><span class="ravatar">HG</span><span class="rname">hearthglow</span></div>
-          <div class="room"><span class="ravatar">IN</span><span class="rname">infra</span></div>
-        </div>
-        <div class="side-foot"><span>@marcus</span><span>you</span></div>
-      </div>
-        <div class="main">
-          <div class="header">
-            <span class="rm-name">hearthglow</span>
-            <span class="spacer"></span>
-            <div class="tabbar"><span class="tab">Channel</span><span class="tab active">Board</span><span class="tab">Network</span></div>
+      <!-- ── 06 · It all lands on the board ────────────── -->
+      <div id="sboard" class="clip scene" data-start="58.65" data-duration="8.6" data-track-index="7">
+        <div class="caption"><span class="num">06</span><span class="label">It all lands on the board</span></div>
+        <div class="win">
+          <div class="wbar">
+            <span class="lights"><i></i><i></i><i></i></span>
+            <span class="crumb"><b>This computer</b><span class="sep">/</span><b>checkout</b></span>
+            <span class="grow"></span>
+            <span class="avatar">MR</span>
           </div>
-          <div class="board-head">
-            <div class="board-title">hearthglow</div>
-            <div class="summary"><span><b>1</b> open decision</span><span class="sep">·</span><span><b>8</b> need you</span><span class="sep">·</span><span><b>3</b> in flight</span><span class="sep">·</span><span><b>2</b> resolved today</span></div>
-          </div>
-          <div class="board">
-            <div class="group-label fresh" id="cmp-group">from aligner · consensus · just now <span class="n">3</span></div>
-            <div class="row" id="cmp-parent">
-              <div class="kind action"><span class="kglyph dot"></span></div>
-              <div class="row-main">
-                <div class="row-title">app shows offline for 30s after reboot</div>
-                <div class="row-meta"><span class="who"><span class="at">@</span>marcus-cursor</span><span>·</span><span class="chip pr"><svg class="gi" viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z"/></svg>app#231</span><span>3 subtasks compiled</span></div>
+          <div class="wbody">
+            <div class="wside">
+              <div class="whead"><span>Rooms</span><span>3</span></div>
+              <div class="room on"><span class="rav">CH</span>checkout</div>
+              <div class="room"><span class="rav">ST</span>storefront</div>
+              <div class="room"><span class="rav">SP</span>subscription-pricing</div>
+            </div>
+            <div class="wmain">
+              <div class="tabs"><span class="tab">Channel</span><span class="tab on">Board</span><span class="tab">Network</span></div>
+              <div class="board">
+                <div class="glabel">Today</div>
+                <div class="brow" id="bd-1"><span class="ring"><span class="fill"></span></span><div><div class="rt">Customers are charged twice when they double-click Pay</div><div class="rm"><span class="who">@builder</span><span>·</span><span>reviewed by @reviewer</span><span>·</span><span class="swapwrap" style="min-width:160px"><span id="bd-1-a">in review</span><span id="bd-1-b" style="color:var(--green)">done · #504 merged</span></span></div></div></div>
+                <div class="brow" id="bd-2"><span class="ring"><span class="fill"></span></span><div><div class="rt">Double charges: refund automatically, or send to support first?</div><div class="rm"><span class="who">@reviewer asked</span><span>·</span><span class="swapwrap" style="min-width:520px"><span id="bd-2-a">undecided</span><span id="bd-2-b" style="color:var(--green)">decided · refund when two charges match</span></span></div></div></div>
+                <div class="glabel">In flight</div>
+                <div class="brow" id="bd-3"><span class="ring"><span class="fill"></span></span><div><div class="rt">Add Apple Pay to checkout</div><div class="rm"><span class="who">@builder</span><span>·</span><span>feat/apple-pay</span></div></div></div>
+                <div class="brow" id="bd-4"><span class="ring"><span class="fill"></span></span><div><div class="rt">Test Apple Pay on a real iPhone</div><div class="rm"><span class="who">@reviewer</span><span>·</span><span>after Apple Pay</span></div></div></div>
               </div>
             </div>
-            <div class="row child" id="cmp-r1">
-              <div class="kind action"><span class="kglyph dot"></span></div>
-              <div class="row-main">
-                <div class="row-title">add a fast reconnect ping on boot</div>
-                <div class="row-meta"><span class="who"><span class="at">@</span>avery-claude</span><span>·</span><span class="chip alg">&#9670; aligner</span></div>
-              </div>
-            </div>
-            <div class="row child" id="cmp-r2">
-              <div class="kind action"><span class="kglyph dot"></span></div>
-              <div class="row-main">
-                <div class="row-title">treat missing heartbeat as reconnecting for 45s</div>
-                <div class="row-meta"><span class="who"><span class="at">@</span>marcus-cursor</span><span>·</span><span class="chip alg">&#9670; aligner</span></div>
-              </div>
-            </div>
-            <div class="row child" id="cmp-r3">
-              <div class="kind action"><span class="kglyph dot"></span></div>
-              <div class="row-main">
-                <div class="row-title">last-seen: websocket foregrounded, poll 10s background</div>
-                <div class="row-meta"><span class="who"><span class="at">@</span>anand-opencode</span><span>·</span><span class="chip alg">&#9670; aligner</span></div>
-              </div>
-            </div>
-            <div class="group-label">Actions <span class="n">2</span></div>
-            <div class="row">
-              <div class="kind action"><span class="kglyph dot"></span></div>
-              <div class="row-main">
-                <div class="row-title">pairing handshake times out on slow wifi</div>
-                <div class="row-meta"><span class="who"><span class="at">@</span>anand-opencode</span><span>·</span><span class="chip">in flight</span></div>
-              </div>
-            </div>
-            <div class="row">
-              <div class="kind action"><span class="kglyph dot"></span></div>
-              <div class="row-main">
-                <div class="row-title">temp readings jump 2°F after sleep wake</div>
-                <div class="row-meta"><span class="who"><span class="at">@</span>avery-claude</span><span>·</span><span class="chip">in flight</span></div>
-              </div>
+            <div class="wrail">
+              <div class="rgroup">People 1</div>
+              <div class="member"><span class="mav">MR</span><div><div class="mname">Morgan Reyes<span class="you">you</span></div></div></div>
+              <div class="rgroup">Agents 2</div>
+              <div class="member"><span class="mav agent">BU<span class="live"></span></span><div><div class="mname">builder</div><div class="mmeta">working on Apple Pay</div></div></div>
+              <div class="member"><span class="mav agent">RE<span class="live"></span></span><div><div class="mname">reviewer</div><div class="mmeta">Claude Code · ~/code/shop</div></div></div>
+              <div class="rgroup">Engines 1</div>
+              <div class="member"><span class="mav eng"></span><div><div class="mname">aligner</div><div class="mmeta">helps members agree</div></div></div>
             </div>
           </div>
-        </div>
-      <div class="rail">
-        <div class="rail-head"><span>Members</span><span class="count">8</span></div>
-        <div class="rail-sub" style="margin-top:0">People 3</div>
-        <div class="member"><span class="mavatar">AV</span><div><div class="mname">@avery</div><div class="mmeta">firmware + OTA</div></div></div>
-        <div class="member"><span class="mavatar">MA</span><div><div class="mname">@marcus</div><div class="mmeta">companion app</div></div></div>
-        <div class="member"><span class="mavatar">AN</span><div><div class="mname">@anand</div><div class="mmeta">backend + pairing</div></div></div>
-        <div class="rail-sub">Agents 3</div>
-        <div class="member"><span class="mavatar a">AC</span><div><div class="mname">avery-claude</div><div class="mmeta">claude · her laptop</div></div></div>
-        <div class="member"><span class="mavatar a">MC</span><div><div class="mname">marcus-cursor</div><div class="mmeta">cursor · his workstation</div></div></div>
-        <div class="member"><span class="mavatar a">AO</span><div><div class="mname">anand-opencode</div><div class="mmeta">opencode · his home server</div></div></div>
-        <div class="rail-sub">Engines 2</div>
-        <div class="member"><span class="mavatar a">AL</span><div><div class="mname">aligner</div><div class="mmeta">engine · mediator</div></div></div>
-        <div class="member"><span class="mavatar a">SY</span><div><div class="mname">synthesizer</div><div class="mmeta">engine · distills to memory</div></div></div>
-      </div>
         </div>
       </div>
 
-      <!-- ── Scene 7: Outro ────────────────────────────── -->
-      <div id="outro" class="clip scene outro" data-start="65.75" data-duration="6" data-track-index="10">
+      <!-- ── Outro ─────────────────────────────────────── -->
+      <div id="outro" class="clip scene outro" data-start="66.41" data-duration="6.59" data-track-index="8">
         <div class="wordmark">mycelium</div>
-        <div class="ready">negotiate · plan · work · together</div>
+        <div class="tagline">people and agents, working together</div>
+        <div class="mac">Mycelium for Mac, and the CLI for your agents</div>
         <div class="url">mycelium-io.github.io/mycelium</div>
       </div>
     </div>
 
     <script src="./mycelium-bg.js"></script>
     <script>
-      // Split agent-reply text into per-word spans so GSAP can typewriter them.
-      // Mentions (e.g. <span class="mention">@rowan</span>) are wrapped as one word.
-      function splitWords(selector) {
-        const el = document.querySelector(selector);
-        if (!el) return;
-        const children = Array.from(el.childNodes);
-        el.innerHTML = '';
-        children.forEach(node => {
-          if (node.nodeType === Node.TEXT_NODE) {
-            const tokens = node.textContent.split(/(\s+)/);
-            tokens.forEach(t => {
-              if (!t) return;
-              if (/^\s+$/.test(t)) {
-                el.appendChild(document.createTextNode(t));
-              } else {
-                const span = document.createElement('span');
-                span.className = 'word';
-                span.textContent = t;
-                el.appendChild(span);
-              }
-            });
-          } else {
-            const span = document.createElement('span');
-            span.className = 'word';
-            span.appendChild(node);
-            el.appendChild(span);
-          }
-        });
-      }
-      splitWords('#s5b-m2 .text');
-
       window.__timelines = window.__timelines || {};
       const tl = gsap.timeline({ paused: true });
 
-      // Times below are read off the beat grid in audio/beatplan.mjs
-      // (BEAT = 0.8625s): scene switch = 2 beats, a beat = 1, a bigger beat = 2,
-      // a resolve = 3. Picture and score land on the same grid.
+      // Times are read off the beat grid in audio/beatplan.mjs (BEAT = 0.8625s);
+      // audio/score.mjs cues on the same numbers, so move both together.
 
-      // ── Scene 1: Hero (0–6.04s) ──
+      // A line of text typed out: its width opens a character at a time.
+      const typeOut = (sel, width, chars, at, dur) =>
+        tl.fromTo(sel, { maxWidth: 0 }, { maxWidth: width, duration: dur, ease: `steps(${chars})` }, at);
+
+      // ── Hero (0–6.04) ──
       tl.from('#hero .logo',     { y: 30, opacity: 0, duration: 0.9, ease: 'power3.out' }, 0.9);
       tl.from('#hero .wordmark', { y: 60, opacity: 0, duration: 1.1, ease: 'power3.out' }, 1.73);
       tl.from('#hero .tagline',  { y: 30, opacity: 0, duration: 0.9, ease: 'power2.out' }, 3.45);
 
-      // ── Scene 2: CLI install (6.04–15.53s) ──
-      tl.from('#s2 .scene-title', { x: -40, opacity: 0, duration: 0.5, ease: 'power2.out' }, 6.4);
-      tl.from('#s2 .terminal',    { y: 60, opacity: 0, duration: 0.6, ease: 'power3.out' }, 6.6);
-      const s2lines = ['#s2-l1','#s2-l2','#s2-l3','#s2-l4','#s2-l5','#s2-l6','#s2-l7','#s2-l8'];
-      s2lines.forEach((sel, i) => {
-        // lines fill the terminal on the short beats; the final one lands on 'done'
-        const t = i < 7 ? 7.0 + i * 0.26 : 8.9;
-        tl.from(sel, { opacity: 0, y: 8, duration: 0.35, ease: 'power1.out' }, t);
-      });
+      // ── 01 · Mycelium for Mac asks who you are (6.04–13.80) ──
+      tl.from('#sapp .caption', { x: -40, opacity: 0, duration: 0.5, ease: 'power2.out' }, 6.25);
+      tl.from('#sapp .win',     { y: 50, opacity: 0, duration: 0.7, ease: 'power3.out' }, 6.35);
+      tl.from('#app-dim',       { opacity: 0, duration: 0.4 }, 7.6);
+      tl.from('#name-dialog',   { opacity: 0, scale: 0.94, duration: 0.5, ease: 'back.out(1.6)' }, 7.76);
+      tl.from('#name-caret',    { opacity: 0, duration: 0.1 }, 8.63);
+      typeOut('#name-typed', 260, 12, 8.63, 1.1);
+      tl.from('#name-hint',     { opacity: 0, y: 6, duration: 0.35, ease: 'power1.out' }, 9.49);
+      tl.to('#name-go',         { scale: 0.94, duration: 0.12, yoyo: true, repeat: 1, ease: 'power1.inOut' }, 11.0);
+      tl.to(['#name-dialog', '#app-dim'], { opacity: 0, duration: 0.35, ease: 'power2.in' }, 11.21);
+      tl.set('#app-av-me',      { opacity: 0 }, 6.04);
+      tl.to('#app-av-q',        { opacity: 0, duration: 0.2 }, 11.3);
+      tl.to('#app-avatar',      { backgroundColor: 'rgba(92,199,210,0.13)', duration: 0.3 }, 11.4);
+      tl.to('#app-av-me',       { opacity: 1, duration: 0.3 }, 11.45);
+      tl.from('#sapp .home .row', { x: -14, opacity: 0.35, duration: 0.4, stagger: 0.1, ease: 'power2.out' }, 11.6);
 
-      // ── Scene 3: App install (15.53–25.88s) ──
-      tl.from('#s3 .scene-title', { x: -40, opacity: 0, duration: 0.5, ease: 'expo.out' }, 11.9);
-      tl.from('#s3 .terminal',    { y: 60, opacity: 0, duration: 0.6, ease: 'power3.out' }, 12.1);
-      const s3lines = ['#s3-l1','#s3-l2','#s3-l3','#s3-l4','#s3-l5','#s3-l6','#s3-l7','#s3-l8','#s3-l9','#s3-l10','#s3-l11'];
-      s3lines.forEach((sel, i) => {
-        const t = i < 10 ? 12.6 + i * 0.26 : 15.4; // last line lands on 'ready'
-        tl.from(sel, { opacity: 0, y: 8, duration: 0.4 }, t);
-      });
+      // ── 02 · Start something → add an agent (13.80–23.29) ──
+      tl.from('#sagent .caption', { x: -40, opacity: 0, duration: 0.5, ease: 'expo.out' }, 14.0);
+      tl.from('#sagent .win',     { y: 50, opacity: 0, duration: 0.7, ease: 'power3.out' }, 14.1);
+      tl.from('#sagent .pick',    { y: 14, opacity: 0, duration: 0.4, stagger: 0.1, ease: 'power2.out' }, 14.5);
+      tl.set(['#ag-head', '#ag-builder', '#ag-reviewer'], { opacity: 0 }, 13.8);
+      tl.set(['#agent-dim', '#agent-dialog', '#folder-val', '#aname-caret'], { opacity: 0 }, 13.8);
+      tl.to('#pick-agent',        { backgroundColor: '#21262d', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.16)', duration: 0.25 }, 15.53);
+      tl.to('#agent-dim',         { opacity: 1, duration: 0.3 }, 16.25);
+      tl.fromTo('#agent-dialog',  { opacity: 0, scale: 0.94 }, { opacity: 1, scale: 1, duration: 0.45, ease: 'back.out(1.6)' }, 16.39);
+      tl.to('#folder-ph',         { opacity: 0, duration: 0.15 }, 17.25);
+      tl.set('#folder-ph',        { display: 'none' }, 17.4);
+      tl.to('#folder-val',        { opacity: 1, duration: 0.25 }, 17.4);
+      tl.set('#aname-field',      { borderColor: '#5cc7d2' }, 18.11);
+      tl.set('#aname-caret',      { opacity: 1 }, 18.11);
+      typeOut('#aname-typed', 120, 7, 18.11, 0.8);
+      tl.to('#agent-go',          { scale: 0.94, duration: 0.12, yoyo: true, repeat: 1, ease: 'power1.inOut' }, 19.6);
+      tl.to(['#agent-dialog', '#agent-dim'], { opacity: 0, duration: 0.3, ease: 'power2.in' }, 19.84);
+      tl.to('#pick-agent',        { backgroundColor: 'rgba(0,0,0,0)', boxShadow: 'inset 0 0 0 0px rgba(255,255,255,0)', duration: 0.3 }, 19.84);
+      tl.to('#ag-head',           { opacity: 1, duration: 0.3 }, 19.9);
+      tl.fromTo('#ag-builder',    { opacity: 0, x: 24 }, { opacity: 1, x: 0, duration: 0.45, ease: 'back.out(2)' }, 19.95);
+      tl.fromTo('#ag-reviewer',   { opacity: 0, x: 24 }, { opacity: 1, x: 0, duration: 0.45, ease: 'back.out(2)' }, 20.70);
 
-      // ── Scene 4: Board — the task-first anchor (25.88–41.4s) ──
-      // switch: the shell arrives; then the triage summary, the view tabs, and
-      // the board fills group by group (Decisions → Blocked → Review → Actions),
-      // then holds so the board can be read.
-      tl.from('#s4board .stage',        { opacity: 0, y: 40, duration: 0.7, ease: 'power3.out' }, 19.72);
-      tl.from('#s4board .sidebar',      { x: -30, opacity: 0, duration: 0.55 }, 19.87);
-      tl.from('#s4board .room',         { x: -16, opacity: 0, duration: 0.4, stagger: 0.07 }, 20.12);
-      tl.from('#s4board .rail',         { x: 30, opacity: 0, duration: 0.55 }, 19.97);
-      tl.from('#s4board .board-title',  { y: 18, opacity: 0, duration: 0.5, ease: 'power2.out' }, 20.58);
-      tl.from('#s4board .summary',      { y: 10, opacity: 0, duration: 0.45 }, 20.82);
-      tl.from('#s4board .viewtabs .vt', { y: -8, opacity: 0, duration: 0.35, stagger: 0.06 }, 21.44);
-      tl.from('#s4board .composer',     { y: 10, opacity: 0, duration: 0.4 }, 21.92);
-      // only the seed board fills during the hero reveal — the dropped task and
-      // its children are held out and animated in later (scenes 5–6).
-      tl.from('#s4board .board > .group-label:not(.fresh), #s4board .board > .row:not(.dropped):not(.child)',
-        { y: 16, opacity: 0, duration: 0.5, stagger: 0.26, ease: 'power2.out' }, 22.31);
+      // ── 03 · Hand it a task (23.29–31.05) ──
+      tl.from('#stask .caption', { x: -40, opacity: 0, duration: 0.5, ease: 'power2.out' }, 23.5);
+      tl.from('#stask .win',     { y: 50, opacity: 0, duration: 0.7, ease: 'power3.out' }, 23.6);
+      tl.from('#stask .feed > .notice:not(#t-filed):not(#t-claimed), #t-said', { y: 10, opacity: 0, duration: 0.4, stagger: 0.14, ease: 'power1.out' }, 24.0);
+      tl.set(['#t-filed', '#t-claimed', '#t-caret', '#t-bu-busy'], { opacity: 0 }, 23.29);
+      tl.set(['#t-filed', '#t-claimed'], { display: 'none' }, 23.29);
+      tl.to('#t-composer',       { borderColor: '#5cc7d2', duration: 0.3 }, 25.01);
+      tl.set('#t-ph',            { display: 'none' }, 25.88);
+      tl.set('#t-caret',         { opacity: 1 }, 25.88);
+      typeOut('#t-typed', 900, 60, 25.88, 1.45);
+      // enter: the task lands in the channel, the composer clears
+      tl.set('#t-typed',         { display: 'none' }, 27.6);
+      tl.set('#t-caret',         { opacity: 0 }, 27.6);
+      tl.set('#t-ph',            { display: 'inline' }, 27.6);
+      tl.to('#t-composer',       { borderColor: 'rgba(255,255,255,0.16)', duration: 0.3 }, 27.6);
+      tl.set('#t-filed',         { display: 'flex' }, 27.6);
+      tl.fromTo('#t-filed',      { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 27.6);
+      tl.set('#t-claimed',       { display: 'flex' }, 28.46);
+      tl.fromTo('#t-claimed',    { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 28.46);
+      tl.to('#t-bu-idle',        { opacity: 0, duration: 0.25 }, 28.5);
+      tl.to('#t-bu-busy',        { opacity: 1, duration: 0.3 }, 28.7);
 
-      // ── Scene 5: Drop a task (36.23–43.13s) ──
-      // A human types a concern into the composer; on enter it lands as a row.
-      tl.to('#s4board .composer', { borderColor: 'var(--accent)', color: 'var(--text)', duration: 0.3 }, 26.07);
-      tl.set('#s4board .composer .ph', { display: 'none' }, 26.93);
-      tl.set('#s4board .composer .typed', { display: 'inline-block' }, 26.93);
-      tl.set('#s4board .composer .caret', { display: 'inline' }, 26.93);
-      tl.fromTo('#s4board .composer .typed', { maxWidth: 0 }, { maxWidth: 720, duration: 1.1, ease: 'steps(28)' }, 26.93);
-      // enter: the concern files as a row; the composer clears back to placeholder
-      tl.set('#s4board .composer .typed', { display: 'none' }, 28.66);
-      tl.set('#s4board .composer .caret', { display: 'none' }, 28.66);
-      tl.set('#s4board .composer .ph', { display: 'inline' }, 28.66);
-      tl.to('#s4board .composer', { borderColor: 'var(--border2)', color: 'var(--dim)', duration: 0.3 }, 28.66);
-      tl.set(['#drop-group', '#drop-row'], { display: 'flex' }, 28.66);
-      tl.from(['#drop-group', '#drop-row'], { opacity: 0, y: -14, duration: 0.5, ease: 'power2.out' }, 28.66);
+      // ── 04 · One builds, another reviews (31.05–42.26) ──
+      // The flow's graph sits over the thread; the lit node is whose turn it is,
+      // and the edge each reply takes lights as it's taken.
+      tl.from('#sreview .caption', { x: -40, opacity: 0, duration: 0.5, ease: 'expo.out' }, 31.25);
+      tl.from('#sreview .win',     { y: 50, opacity: 0, duration: 0.7, ease: 'power3.out' }, 31.35);
+      tl.set(['#rv-done', '#rv-bu-turn', '#rv-re-turn'], { opacity: 0 }, 31.05);
+      tl.set(['#rv-1', '#rv-2', '#rv-3', '#rv-4'], { opacity: 0 }, 31.05);
+      tl.from('#sreview .flow .node', { y: 12, opacity: 0, duration: 0.4, stagger: 0.12, ease: 'power2.out' }, 32.77);
+      tl.from('#sreview .backedge', { opacity: 0, duration: 0.5, ease: 'power1.out' }, 33.1);
+      tl.from('#rv-body',          { opacity: 0, duration: 0.45 }, 32.95);
+      // builder's turn
+      tl.to('#n-build .hi',        { opacity: 1, duration: 0.3 }, 33.64);
+      tl.to('#rv-bu-idle',         { opacity: 0, duration: 0.2 }, 33.64);
+      tl.to('#rv-bu-turn',         { opacity: 1, duration: 0.3 }, 33.74);
+      // builder: fixed → review
+      tl.fromTo('#rv-1', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 34.5);
+      tl.to('#e-1 .lit',           { scaleX: 1, duration: 0.4, ease: 'power2.inOut' }, 34.8);
+      tl.to('#n-build .hi',        { opacity: 0, duration: 0.3 }, 35.1);
+      tl.to('#n-review .hi',       { opacity: 1, duration: 0.3 }, 35.15);
+      tl.to('#rv-bu-turn',         { opacity: 0, duration: 0.2 }, 35.1);
+      tl.to('#rv-bu-idle',         { opacity: 1, duration: 0.3 }, 35.3);
+      tl.to('#rv-re-idle',         { opacity: 0, duration: 0.2 }, 35.15);
+      tl.to('#rv-re-turn',         { opacity: 1, duration: 0.3 }, 35.3);
+      // reviewer: back to you
+      tl.fromTo('#rv-2', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 36.23);
+      tl.to('#back-lit',           { strokeDashoffset: 0, duration: 0.55, ease: 'power2.inOut' }, 36.4);
+      tl.to('#n-review .hi',       { opacity: 0, duration: 0.3 }, 36.8);
+      tl.to('#n-build .hi',        { opacity: 1, duration: 0.3 }, 36.85);
+      tl.to('#rv-re-turn',         { opacity: 0, duration: 0.2 }, 36.8);
+      tl.to('#rv-re-idle',         { opacity: 1, duration: 0.3 }, 36.95);
+      tl.to('#rv-bu-idle',         { opacity: 0, duration: 0.2 }, 36.85);
+      tl.to('#rv-bu-turn',         { opacity: 1, duration: 0.3 }, 36.95);
+      // builder: test added → review again
+      tl.fromTo('#rv-3', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 37.09);
+      tl.to('#back-lit',           { opacity: 0.25, duration: 0.4 }, 37.3);
+      tl.to('#n-build .hi',        { opacity: 0, duration: 0.3 }, 37.5);
+      tl.to('#n-review .hi',       { opacity: 1, duration: 0.3 }, 37.55);
+      tl.to('#rv-bu-turn',         { opacity: 0, duration: 0.2 }, 37.5);
+      tl.to('#rv-bu-idle',         { opacity: 1, duration: 0.3 }, 37.65);
+      tl.to('#rv-re-idle',         { opacity: 0, duration: 0.2 }, 37.55);
+      tl.to('#rv-re-turn',         { opacity: 1, duration: 0.3 }, 37.65);
+      // reviewer: approved → done
+      tl.fromTo('#rv-4', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 38.81);
+      tl.to('#e-2 .lit',           { scaleX: 1, duration: 0.4, ease: 'power2.inOut' }, 39.1);
+      tl.to('#n-review .hi',       { opacity: 0, duration: 0.3 }, 39.5);
+      tl.to('#rv-re-turn',         { opacity: 0, duration: 0.2 }, 39.5);
+      tl.to('#rv-re-idle',         { opacity: 1, duration: 0.3 }, 39.65);
+      tl.to('#n-done .ok',         { opacity: 1, duration: 0.35 }, 39.67);
+      tl.to('#rv-flight',          { opacity: 0, duration: 0.2 }, 39.67);
+      tl.fromTo('#rv-done',        { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.35, ease: 'back.out(2)' }, 39.8);
 
+      // ── 05 · When they disagree (42.26–58.65) ──
+      // A decision the two agents disagree on, in its own thread: each says
+      // which way and why, Morgan brings in the aligner, it names what they
+      // both want and proposes a rule that gives each of them that, and both
+      // accept. Each line holds for a couple of beats so it can be read.
+      tl.from('#sdecide .caption', { x: -40, opacity: 0, duration: 0.5, ease: 'power2.out' }, 42.45);
+      tl.from('#sdecide .win',     { y: 50, opacity: 0, duration: 0.7, ease: 'power3.out' }, 42.55);
+      tl.set(['#dc-done', '#dc-1', '#dc-2', '#dc-3', '#dc-4', '#dc-5', '#dc-6', '#dc-agreed', '#dc-eng'], { opacity: 0 }, 42.26);
+      tl.from('#dc-choices .opt', { y: 10, opacity: 0, duration: 0.4, stagger: 0.15, ease: 'back.out(1.8)' }, 44.85);
+      // builder: refund automatically
+      tl.fromTo('#dc-1', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 46.58);
+      tl.to('#dc-choices .opt:nth-child(2)', { borderColor: '#5cc7d2', color: '#e8ebee', duration: 0.3 }, 46.7);
+      // reviewer: send to support
+      tl.fromTo('#dc-2', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 48.30);
+      tl.to('#dc-choices .opt:nth-child(3)', { borderColor: '#d9a94e', color: '#e8ebee', duration: 0.3 }, 48.42);
+      // Morgan brings in the aligner, and it joins the room's engines
+      tl.fromTo('#dc-3', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 50.02);
+      tl.fromTo('#dc-eng', { opacity: 0, x: 24 }, { opacity: 1, x: 0, duration: 0.45, ease: 'back.out(2)' }, 50.4);
+      // the aligner proposes a rule that gives each what they asked for
+      tl.fromTo('#dc-4', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' }, 51.75);
+      tl.fromTo('#dc-5', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 53.48);
+      tl.fromTo('#dc-6', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 54.34);
+      // decided
+      tl.to('#dc-choices .opt', { borderColor: 'rgba(79,194,150,0.7)', duration: 0.4 }, 56.06);
+      tl.to('#dc-open', { opacity: 0, duration: 0.25 }, 56.06);
+      tl.fromTo('#dc-done', { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.35, ease: 'back.out(2)' }, 56.1);
+      tl.fromTo('#dc-agreed', { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.55, ease: 'power2.out' }, 56.2);
 
-      // ── Dive into the dropped bug task (42.2–43.9s) ──
-      // Click the row, drop the board away; the row's own title flies up and
-      // becomes the ticket title (a shared-element morph).
-      tl.to('#drop-row', { boxShadow: 'inset 0 0 0 1.5px var(--accent)', duration: 0.3 }, 30.32);
-      tl.to('#s4board .sidebar, #s4board .rail, #s4board .header, #s4board .board-head, #s4board .composer',
-        { opacity: 0, duration: 0.5, ease: 'power2.in' }, 30.72);
-      tl.to('#s4board .board > *:not(#drop-row)', { opacity: 0, duration: 0.45, ease: 'power2.in' }, 30.72);
-      tl.set('#s5thread .ttitle', { opacity: 0 }, 0);
-      tl.from('#s5thread .tcard', { opacity: 0, duration: 0.5, ease: 'power2.out' }, 31.37);
-      tl.set('#hero-title', { opacity: 1 }, 31.12);
-      tl.to('#drop-row', { opacity: 0, duration: 0.15 }, 31.17);
-      tl.to('#hero-title', { left: 265, top: 272, fontSize: 30, duration: 0.66, ease: 'power3.inOut' }, 31.27);
-      tl.set('#s5thread .ttitle', { opacity: 1 }, 32.02);
-      tl.set('#hero-title', { opacity: 0 }, 32.02);
+      // ── 06 · It all lands on the board (58.65–66.41) ──
+      tl.from('#sboard .caption', { x: -40, opacity: 0, duration: 0.5, ease: 'expo.out' }, 58.85);
+      tl.from('#sboard .win',     { y: 50, opacity: 0, duration: 0.7, ease: 'power3.out' }, 58.95);
+      tl.from('#sboard .board > *', { y: 12, opacity: 0, duration: 0.4, stagger: 0.1, ease: 'power2.out' }, 59.4);
+      tl.set(['#bd-1-b', '#bd-2-b'], { opacity: 0 }, 58.65);
+      tl.to('#bd-1-a',           { opacity: 0, duration: 0.2 }, 61.24);
+      tl.to('#bd-1-b',           { opacity: 1, duration: 0.3 }, 61.34);
+      tl.to('#bd-1 .ring .fill', { opacity: 1, duration: 0.3 }, 61.24);
+      tl.to('#bd-2-a',           { opacity: 0, duration: 0.2 }, 62.10);
+      tl.to('#bd-2-b',           { opacity: 1, duration: 0.3 }, 62.2);
+      tl.to('#bd-2 .ring .fill', { opacity: 1, duration: 0.3 }, 62.10);
+      tl.to('#bd-3 .ring',       { scale: 1.25, duration: 0.25, yoyo: true, repeat: 1, ease: 'power1.inOut' }, 63.83);
 
-      // ── Scene: Task thread (53.4–70.72s) ──
-      // opencode claims it; the two agents surface the websocket-vs-poll
-      // disagreement the aligner will broker.
-      tl.from('#s5thread .tmeta', { opacity: 0, duration: 0.4 }, 32.52);
-      tl.from('#t-body',  { opacity: 0, y: 12, duration: 0.5 }, 33.12);
-      tl.from('#t-claim', { opacity: 0, x: -16, duration: 0.45 }, 34.42);
-      tl.from('#t-r1',    { opacity: 0, y: 18, duration: 0.55, ease: 'power2.out' }, 36.12);
-      tl.from('#t-r2',    { opacity: 0, y: 18, duration: 0.55, ease: 'power2.out' }, 39.12);
-
-      // hand off from the thread to the aligner (both sit on the network bg)
-      tl.to('#s5thread .tcard', { opacity: 0, duration: 0.5, ease: 'power2.in' }, 46.72);
-
-      // ── Scene: Aligner drives the SAO in prose (59.51–70.72s) ──
-      // The aligner @-addresses one agent at a time; each replies in its own
-      // words (claude / opencode / cursor), and the aligner reads each reply
-      // into a move. It stops the instant all three accept.
-      tl.from('#s6align .acard', { y: 50, opacity: 0, duration: 0.6, ease: 'power3.out' }, 49.36);
-      tl.from('#m1', { opacity: 0, y: 14, duration: 0.5, ease: 'power2.out' }, 50.02);
-      tl.from('#m2', { opacity: 0, y: 14, duration: 0.5, ease: 'power2.out' }, 50.82);
-      tl.from('#mv2', { opacity: 0, scale: 0.8, duration: 0.3, ease: 'back.out(2)' }, 51.22);
-      tl.from('#m3', { opacity: 0, y: 14, duration: 0.5, ease: 'power2.out' }, 51.82);
-      tl.from('#m4', { opacity: 0, y: 14, duration: 0.5, ease: 'power2.out' }, 52.72);
-      tl.from('#mv4', { opacity: 0, scale: 0.8, duration: 0.3, ease: 'back.out(2)' }, 53.22);
-      tl.from('#m5', { opacity: 0, y: 14, duration: 0.5, ease: 'power2.out' }, 53.92);
-      tl.from('#m6', { opacity: 0, y: 14, duration: 0.5, ease: 'power2.out' }, 54.82);
-      tl.from('#mv6', { opacity: 0, scale: 0.8, duration: 0.3, ease: 'back.out(2)' }, 55.32);
-      tl.to('#a-neg', { opacity: 0, duration: 0.3 }, 56.26);
-      tl.to('#a-con', { opacity: 1, duration: 0.3 }, 56.26);
-      tl.fromTo('#a-conv', { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' }, 56.62);
-
-      // ── Scene: Consensus compiles into rows (70.72–77.63s) ──
-      // Back on the board; the two agreed tasks land, authored by the aligner.
-      tl.from('#s7compile .stage', { opacity: 0, y: 30, duration: 0.6, ease: 'power3.out' }, 60.57);
-      tl.from('#s7compile .board > .group-label:not(.fresh), #s7compile .board > .row:not(#cmp-parent):not(.child)', { opacity: 0, y: 12, duration: 0.4, stagger: 0.1 }, 60.82);
-      tl.set(['#cmp-group', '#cmp-parent', '#cmp-r1', '#cmp-r2', '#cmp-r3'], { opacity: 0 }, 0);
-      tl.to('#cmp-group', { opacity: 1, duration: 0.4 }, 60.82);
-      tl.fromTo('#cmp-parent', { opacity: 0, y: -16 }, { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' }, 61.07);
-      tl.fromTo('#cmp-r1', { opacity: 0, x: -22 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power2.out' }, 61.72);
-      tl.fromTo('#cmp-r2', { opacity: 0, x: -22 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power2.out' }, 62.62);
-      tl.fromTo('#cmp-r3', { opacity: 0, x: -22 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power2.out' }, 63.52);
-
-      // ── Scene 7: Outro (100.4–106.4s) ──
-      tl.from('#outro .wordmark', { y: 50, opacity: 0, duration: 1.0, ease: 'power3.out' }, 66.12);
-      tl.from('#outro .ready',    { y: 20, opacity: 0, duration: 0.7, ease: 'power2.out' }, 66.72);
-      tl.from('#outro .url',      { opacity: 0, duration: 0.6 }, 67.32);
+      // ── Outro (66.41–73) ──
+      tl.from('#outro .wordmark', { y: 50, opacity: 0, duration: 1.0, ease: 'power3.out' }, 66.8);
+      tl.from('#outro .tagline',  { y: 20, opacity: 0, duration: 0.7, ease: 'power2.out' }, 67.4);
+      tl.from('#outro .mac',      { y: 12, opacity: 0, duration: 0.6, ease: 'power1.out' }, 68.0);
+      tl.from('#outro .url',      { opacity: 0, duration: 0.6 }, 68.5);
+      tl.to('#outro',             { opacity: 0, duration: 1.0, ease: 'power1.in' }, 71.9);
 
       window.__timelines['main'] = tl;
     </script>

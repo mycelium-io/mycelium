@@ -29,7 +29,7 @@ export const VIEWPORTS: Record<string, Viewport> = {
 export interface Shot {
   /** Stable id; also the base filename (`<id>.png`, `<id>@2x.png`). */
   id: string;
-  /** Route under the mock server, e.g. `/room/atlas-migration`. */
+  /** Route under the mock server, e.g. `/room/checkout`. */
   route: string;
   theme: Theme;
   viewport: keyof typeof VIEWPORTS;
@@ -71,14 +71,14 @@ export const SHOTS: Shot[] = [
   },
   {
     id: "room-channel",
-    route: "/room/atlas-migration",
+    route: "/room/checkout",
     theme: "dark",
     viewport: "desktop",
     caption: "The room channel: people and agents in one conversation, with the work narrated as it happens.",
   },
   {
     id: "room-board",
-    route: "/room/atlas-migration",
+    route: "/room/checkout",
     theme: "dark",
     viewport: "desktop",
     steps: ["Board"],
@@ -88,20 +88,20 @@ export const SHOTS: Shot[] = [
   },
   {
     id: "room-start",
-    route: "/room/atlas-migration",
+    route: "/room/checkout",
     theme: "dark",
     viewport: "desktop",
     actions: [
       'click:button[aria-label="Start a task or flow"]',
       'click:[role="dialog"] button[aria-pressed]:has-text("Review")',
       'click:[role="dialog"] input',
-      "typekeys:Verify the backfill against the old store",
+      "typekeys:Add a gift message to orders",
       'click:[role="dialog"] textarea',
-      "typekeys:Row counts and checksums for the 2019 partition first.",
+      "typekeys:A box at checkout, 200 characters max, printed on the packing slip.",
       "click:text=Choose one agent",
-      'click:[role="dialog"] li button:has-text("backfill")',
+      'click:[role="dialog"] li button:has-text("builder")',
       "click:text=Choose one agent",
-      'click:[role="dialog"] li button:has-text("reads")',
+      'click:[role="dialog"] li button:has-text("reviewer")',
       "sleep:400",
     ],
     caption: "Starting work from the room: a task, and the flow to run on it, picked by what you want.",
@@ -115,7 +115,7 @@ export const SHOTS: Shot[] = [
   },
   {
     id: "room-memory",
-    route: "/room/atlas-migration",
+    route: "/room/checkout",
     theme: "dark",
     viewport: "desktop",
     steps: ["Memory"],
@@ -123,7 +123,7 @@ export const SHOTS: Shot[] = [
   },
   {
     id: "room-network",
-    route: "/room/atlas-migration",
+    route: "/room/checkout",
     theme: "dark",
     viewport: "desktop",
     steps: ["Network"],

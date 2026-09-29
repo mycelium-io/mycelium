@@ -9,19 +9,19 @@ mycelium board
 ```
 
 ```
-atlas-migration   3 need you · 4 in flight · 6 resolved today
+checkout   3 need you · 4 in flight · 6 resolved today
 
 Decisions 1
- ? d3f   JWT access-token TTL: 15m or 60m?              urgent
-         @agent-y   unowned   [15m] [60m]                      6m
+ ? d3f   Double charges: refund automatically, or send to support?   urgent
+         @reviewer   unowned   [refund automatically] [send to support]   6m
 
 Blocked 1
- ⊘ a91   Enable thin-spoke join without a local replica
-         linked to #502   @julia   waiting on #502           40m
+ ⊘ a91   Test Apple Pay on a real iPhone
+         linked to #502   @morgan   waiting on #502           40m
 
 Review 1
- ◉ 7c2   @agent-z opened PR #504, wants eyes on the custody change
-         @agent-z   feat/custody   CI green   #504             12m
+ ◉ 7c2   @builder opened PR #504, wants eyes on the double-charge fix
+         @builder   fix/double-charge   CI green   #504        12m
 ```
 
 A task is a markdown document: a body you write, plus fields such as its
@@ -399,10 +399,10 @@ To link a pull request to a task, you'll just mention it in the task, a
 memory or a message:
 
 ```bash
-mycelium memory set work/custody \
-  "land the custody change: mycelium-io/mycelium#504"
-mycelium memory set work/thin-spoke \
-  "Blocked behind https://github.com/mycelium-io/mycelium/pull/502"
+mycelium memory set work/double-charge-fix \
+  "land the double-charge fix: coffee-shop/web#504"
+mycelium memory set work/apple-pay \
+  "Blocked behind https://github.com/coffee-shop/web/pull/502"
 ```
 
 Both the `owner/repo#123` form and a full URL will work. If several rows
