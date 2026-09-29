@@ -4,7 +4,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CheckCheck, History, Loader2, Scale, Split, SquarePlus, type LucideIcon } from "lucide-react";
+import {
+  Check,
+  CheckCheck,
+  ChevronDown,
+  History,
+  Loader2,
+  Scale,
+  Split,
+  SquarePlus,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import TextareaAutosize from "react-textarea-autosize";
 import { createTask, sendRoomMessage } from "@/lib/api";
 import { INTENTS, intentById, ready, type IntentId } from "@/lib/intents";
@@ -56,9 +67,10 @@ export function IntentDialog({
   const [error, setError] = useState<string | null>(null);
   const { principal } = useCurrentUser();
   const revalidate = useRoomRevalidate(roomName);
-  const { agents } = useRoomRoster(roomName);
+  const { agents, presence } = useRoomRoster(roomName);
   // Engines do the coordinating; the picks are the agents doing the work.
   const workers = useMemo(() => agents.filter(a => a.adapter !== "engine").map(a => a.handle), [agents]);
+  const active = useMemo(() => new Set(presence.keys()), [presence]);
 
   const intent = intentById(intentId);
   const picks = { roles, group };
@@ -174,12 +186,15 @@ export function IntentDialog({
           </label>
         </div>
 
-        {/* Who: one row per pick, labeled on the left. */}
+        {/* Who: one picker per role, labeled like the fields above. */}
         <div className="space-y-3 px-4 pb-3">
           {plainTask && (
             <Row label="For" hint="optional">
-              <AgentChips
+              <AgentPicker
+                key={`${intent.id}-for`}
                 agents={workers}
+                active={active}
+                placeholder="Anyone can pick it up"
                 selected={assignee ? [assignee] : []}
                 onPick={h => setAssignee(a => (a === h ? "" : h))}
               />
@@ -187,8 +202,11 @@ export function IntentDialog({
           )}
           {intent.roles.map(role => (
             <Row key={role.id} label={role.label}>
-              <AgentChips
+              <AgentPicker
+                key={`${intent.id}-${role.id}`}
                 agents={workers}
+                active={active}
+                placeholder="Choose an agent"
                 selected={roles[role.id] ? [roles[role.id]] : []}
                 disabled={Object.entries(roles).filter(([k]) => k !== role.id).map(([, v]) => v)}
                 onPick={h => setRoles(r => ({ ...r, [role.id]: r[role.id] === h ? "" : h }))}
@@ -197,7 +215,15 @@ export function IntentDialog({
           ))}
           {intent.minGroup > 0 && (
             <Row label="Agents" hint={`${intent.minGroup} or more`}>
-              <AgentChips agents={workers} selected={group} onPick={toggleGroup} />
+              <AgentPicker
+                key={`${intent.id}-group`}
+                multiple
+                agents={workers}
+                active={active}
+                placeholder="Choose agents"
+                selected={group}
+                onPick={toggleGroup}
+              />
             </Row>
           )}
           <p className="pt-1 text-micro text-faint">{intent.then}</p>
@@ -233,46 +259,133 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
       <div className="mb-1 text-micro text-muted-foreground">
         {label} {hint && <span className="text-faint">({hint})</span>}
       </div>
-      <div className="-ml-1.5 text-label text-muted-foreground">{children}</div>
+      <div className="text-label text-muted-foreground">{children}</div>
     </div>
   );
 }
 
-function AgentChips({
+/**
+ * Who, picked from a list that stays one line tall until it's opened. A room
+ * can hold dozens of agents, so the list searches and scrolls, and the ones
+ * present right now come first.
+ */
+function AgentPicker({
   agents,
+  active,
   selected,
+  multiple = false,
   disabled = [],
+  placeholder,
   onPick,
 }: {
   agents: string[];
+  active: Set<string>;
   selected: string[];
+  multiple?: boolean;
   disabled?: string[];
+  placeholder: string;
   onPick: (handle: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return agents
+      .filter(h => !q || h.toLowerCase().includes(q))
+      .sort((a, b) => Number(active.has(b.toLowerCase())) - Number(active.has(a.toLowerCase())) || a.localeCompare(b));
+  }, [agents, active, query]);
+
   if (agents.length === 0) {
     return <p className="text-micro text-muted-foreground">No agents in this room yet. Add one from Members.</p>;
   }
+
+  const pick = (h: string) => {
+    onPick(h);
+    if (!multiple) {
+      setOpen(false);
+      setQuery("");
+    }
+  };
+
   return (
-    <div className="flex flex-wrap gap-1">
-      {agents.map(h => {
-        const on = selected.includes(h);
-        const off = disabled.includes(h);
-        return (
-          <button
-            key={h}
-            type="button"
-            aria-pressed={on}
-            disabled={off}
-            onClick={() => onPick(h)}
-            className={`flex h-7 items-center gap-1.5 rounded px-1.5 text-label transition-colors disabled:opacity-40 ${
-              on ? "bg-accent-soft text-text ring-1 ring-accent/40" : "text-muted-foreground hover:bg-hairline hover:text-text"
-            }`}
-          >
+    <div>
+      <div
+        onClick={() => setOpen(o => !o)}
+        className={`flex min-h-8 cursor-pointer flex-wrap items-center gap-1 rounded-md border bg-bg px-1.5 py-1 transition-colors ${
+          open ? "border-accent/60 ring-1 ring-accent/30" : "border-border hover:border-muted-foreground/40"
+        }`}
+      >
+        {selected.map(h => (
+          <span key={h} className="flex h-6 items-center gap-1.5 rounded bg-hairline pl-1 pr-1.5 text-label text-text">
             <Monogram handle={h} className="size-4 text-[7px]" />
             <span className="font-mono">{h}</span>
-          </button>
-        );
-      })}
+            <button
+              type="button"
+              aria-label={`Remove ${h}`}
+              onClick={e => {
+                e.stopPropagation();
+                onPick(h);
+              }}
+              className="text-faint hover:text-text"
+            >
+              <X className="size-3" />
+            </button>
+          </span>
+        ))}
+        <button
+          type="button"
+          aria-expanded={open}
+          className="flex h-6 flex-1 items-center justify-between gap-2 px-1 text-left text-label text-faint"
+        >
+          <span>{selected.length === 0 ? placeholder : multiple ? "Add another" : ""}</span>
+          <ChevronDown className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+
+      {open && (
+        <div className="mt-1 overflow-hidden rounded-md border border-border bg-bg">
+          <input
+            autoFocus
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Escape") {
+                e.stopPropagation();
+                setOpen(false);
+              }
+              if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && shown[0]) {
+                e.preventDefault();
+                pick(shown[0]);
+              }
+            }}
+            placeholder={`Search ${agents.length} agents`}
+            className="h-8 w-full border-b border-border bg-transparent px-2.5 text-label text-text placeholder:text-faint focus:outline-none"
+          />
+          <ul className="max-h-44 overflow-y-auto py-1">
+            {shown.map(h => {
+              const on = selected.includes(h);
+              const off = disabled.includes(h);
+              const live = active.has(h.toLowerCase());
+              return (
+                <li key={h}>
+                  <button
+                    type="button"
+                    disabled={off}
+                    onClick={() => pick(h)}
+                    className="flex h-7 w-full items-center gap-2 px-2.5 text-left text-label text-muted-foreground transition-colors hover:bg-hairline hover:text-text disabled:opacity-40 disabled:hover:bg-transparent"
+                  >
+                    <Monogram handle={h} className="size-4 text-[7px]" />
+                    <span className="min-w-0 flex-1 truncate font-mono">{h}</span>
+                    {live && <span className="text-micro text-green">here</span>}
+                    {on && <Check className="size-3.5 text-accent" />}
+                  </button>
+                </li>
+              );
+            })}
+            {shown.length === 0 && <li className="px-2.5 py-1.5 text-micro text-faint">No agent matches.</li>}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
