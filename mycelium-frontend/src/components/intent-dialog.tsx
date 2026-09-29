@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Check,
   CheckCheck,
@@ -61,6 +61,8 @@ export function IntentDialog({
   const [roles, setRoles] = useState<Record<string, string>>({});
   const [group, setGroup] = useState<string[]>([]);
   const [note, setNote] = useState("");
+  const detailsRef = useRef<HTMLTextAreaElement | null>(null);
+  const [detailsScroll, setDetailsScroll] = useState(false);
   const [title, setTitle] = useState("");
   const [assignee, setAssignee] = useState("");
   const [busy, setBusy] = useState(false);
@@ -192,6 +194,14 @@ export function IntentDialog({
               onChange={e => setNote(e.target.value)}
               minRows={2}
               maxRows={6}
+              // Scrolls only once it's grown to its cap (WebKit otherwise draws
+              // a scrollbar for a fraction of a pixel).
+              ref={detailsRef}
+              onHeightChange={() => {
+                const el = detailsRef.current;
+                if (el) setDetailsScroll(el.scrollHeight > el.clientHeight + 1);
+              }}
+              style={{ overflowY: detailsScroll ? "auto" : "hidden" }}
               className={`${FIELD} resize-none leading-relaxed`}
             />
           </label>
