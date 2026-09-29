@@ -17,7 +17,7 @@ dependencies = [
     "slim-bindings>=2.1,<2.2",
     "negmas>=0.15.7",
     "pyjwt[crypto]>=2.10,<3",
-    "a2a-sdk==1.1.2",
+    "a2a-sdk==1.1.5",
     "sse-starlette>=3.4.8",
     # Telemetry — OTel SDK (used only when TELEMETRY_ENABLED=true; all three are
     # conditional imports so they add no startup cost when telemetry is off).
