@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import { sendRoomMessage, type Memory } from "@/lib/api";
 import { SendPlaneIcon } from "@/components/send-plane-icon";
@@ -14,6 +14,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { StartSwarmDialog } from "@/components/start-swarm-dialog";
 import { IntentDialog } from "@/components/intent-dialog";
 import { mentionRank, nameOf, useNames } from "@/lib/people";
+import { draftKey, loadDraft, saveDraft } from "@/lib/drafts";
 import { Plus } from "lucide-react";
 import { parseCapture } from "@/lib/board/capture";
 import { fileCapture } from "@/lib/board/file-capture";
@@ -117,6 +118,20 @@ export function commandOf(body: string): { name: CommandName; rest: string } | n
 
 export function RoomChatBox({ roomName, onSent, className, episode = null, threadLabel = null }: Props) {
   const [content, setContent] = useState("");
+  // What's typed is kept per room (and per thread) until it's sent, so moving
+  // to another room and back finds it where it was. Read after mount, since the
+  // server render has no browser storage; `draftFor` says whose text `content`
+  // is, so a switch never writes one room's text under another's key.
+  const key = draftKey(roomName, episode);
+  const [draftFor, setDraftFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (draftFor === key) saveDraft(key, content);
+  }, [content, key, draftFor]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setContent(loadDraft(key));
+    setDraftFor(key);
+  }, [key]);
   // A human message is sent as the acting-as principal — the single source of
   // "who am I" (the account menu), not a per-composer handle. Anonymous falls
   // back to "user" so the room still has a sender to attribute the message to.
