@@ -194,7 +194,7 @@ export function IntentDialog({
                 key={`${intent.id}-for`}
                 agents={workers}
                 active={active}
-                placeholder="Anyone can pick it up"
+                placeholder="Choose one agent, or leave it for anyone"
                 selected={assignee ? [assignee] : []}
                 onPick={h => setAssignee(a => (a === h ? "" : h))}
               />
@@ -206,7 +206,7 @@ export function IntentDialog({
                 key={`${intent.id}-${role.id}`}
                 agents={workers}
                 active={active}
-                placeholder="Choose an agent"
+                placeholder="Choose one agent"
                 selected={roles[role.id] ? [roles[role.id]] : []}
                 disabled={Object.entries(roles).filter(([k]) => k !== role.id).map(([, v]) => v)}
                 onPick={h => setRoles(r => ({ ...r, [role.id]: r[role.id] === h ? "" : h }))}
@@ -214,13 +214,13 @@ export function IntentDialog({
             </Row>
           ))}
           {intent.minGroup > 0 && (
-            <Row label="Agents" hint={`${intent.minGroup} or more`}>
+            <Row label="Agents" hint={`pick ${intent.minGroup} or more`}>
               <AgentPicker
                 key={`${intent.id}-group`}
                 multiple
                 agents={workers}
                 active={active}
-                placeholder="Choose agents"
+                placeholder={`Choose ${intent.minGroup} or more agents`}
                 selected={group}
                 onPick={toggleGroup}
               />
@@ -315,7 +315,14 @@ function AgentPicker({
           open ? "border-accent/60 ring-1 ring-accent/30" : "border-border hover:border-muted-foreground/40"
         }`}
       >
-        {selected.map(h => (
+        {!multiple &&
+          selected.map(h => (
+            <span key={h} className="flex h-6 items-center gap-1.5 px-1 text-label text-text">
+              <Monogram handle={h} className="size-4 text-[7px]" />
+              <span className="font-mono">{h}</span>
+            </span>
+          ))}
+        {multiple && selected.map(h => (
           <span key={h} className="flex h-6 items-center gap-1.5 rounded bg-hairline pl-1 pr-1.5 text-label text-text">
             <Monogram handle={h} className="size-4 text-[7px]" />
             <span className="font-mono">{h}</span>
@@ -337,7 +344,7 @@ function AgentPicker({
           aria-expanded={open}
           className="flex h-6 flex-1 items-center justify-between gap-2 px-1 text-left text-label text-faint"
         >
-          <span>{selected.length === 0 ? placeholder : multiple ? "Add another" : ""}</span>
+          <span>{selected.length === 0 ? placeholder : multiple ? "Add more" : ""}</span>
           <ChevronDown className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
       </div>
@@ -374,8 +381,19 @@ function AgentPicker({
                     onClick={() => pick(h)}
                     className="flex h-7 w-full items-center gap-2 px-2.5 text-left text-label text-muted-foreground transition-colors hover:bg-hairline hover:text-text disabled:opacity-40 disabled:hover:bg-transparent"
                   >
-                    <span className="flex w-3.5 flex-shrink-0 justify-center">
-                      {on && <Check className="size-3.5 text-accent" />}
+                    {/* A box for pick-several, a circle for pick-one. */}
+                    <span
+                      aria-hidden
+                      className={`flex size-3.5 flex-shrink-0 items-center justify-center border transition-colors ${
+                        multiple ? "rounded-[3px]" : "rounded-full"
+                      } ${on ? "border-accent bg-accent" : "border-muted-foreground/50"}`}
+                    >
+                      {on &&
+                        (multiple ? (
+                          <Check className="size-2.5 text-bg" strokeWidth={3} />
+                        ) : (
+                          <span className="size-1.5 rounded-full bg-bg" />
+                        ))}
                     </span>
                     <Monogram handle={h} className="size-4 text-[7px]" />
                     <span className="min-w-0 flex-1 truncate font-mono">{h}</span>
