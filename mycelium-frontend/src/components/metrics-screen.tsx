@@ -58,20 +58,18 @@ const RECENT_EPISODES = 6;
 
 // ── Atoms ────────────────────────────────────────────────────────────────────
 
-function Caps({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return (
-    <div className={`text-micro font-medium uppercase tracking-wide text-muted-foreground ${className}`}>
-      {children}
-    </div>
-  );
+/** A small sentence-case label, as the rest of the app draws one. */
+function Label({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={`text-micro font-medium text-faint ${className}`}>{children}</div>;
 }
 
 function Dot({ color }: { color: string }) {
   return <span className="inline-block size-1.5 shrink-0 rounded-full" style={{ background: color }} />;
 }
 
-/** A titled card. Every section of the page is one of these, so a panel that has
- *  nothing to show still occupies its place and explains itself. */
+/** A titled section: a label over its figures, divided from the next by a
+ *  hairline rather than boxed in a card. Every section of the page is one, so
+ *  one with nothing to show still holds its place and explains itself. */
 function Panel({
   title,
   meta,
@@ -84,9 +82,9 @@ function Panel({
   className?: string;
 }) {
   return (
-    <section className={`min-w-0 overflow-hidden rounded-xl border border-border bg-surface/40 ${className}`}>
-      <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5">
-        <Caps>{title}</Caps>
+    <section className={`min-w-0 overflow-hidden border-t border-border ${className}`}>
+      <header className="flex h-8 items-center justify-between gap-3 px-4">
+        <Label>{title}</Label>
         {meta && <div className="flex items-center gap-1.5 text-micro text-muted-foreground">{meta}</div>}
       </header>
       {children}
@@ -113,23 +111,19 @@ function Figure({
   hint?: string;
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1 px-4 py-3" title={hint}>
-      <Caps>{label}</Caps>
-      <span className="font-mono text-ui font-semibold tabular" style={color ? { color } : undefined}>
+    <div className="flex min-w-0 flex-col gap-0.5 px-4 py-1.5" title={hint}>
+      <Label>{label}</Label>
+      <span className="font-mono text-label tabular text-text" style={color ? { color } : undefined}>
         {value}
       </span>
     </div>
   );
 }
 
-/** A responsive row of figures, hairlined into cells. */
+/** A responsive row of figures, spaced rather than boxed into cells. */
 function Figures({ children, cols = 4 }: { children: ReactNode; cols?: 3 | 4 | 5 }) {
   const wide = { 3: "sm:grid-cols-3", 4: "sm:grid-cols-4", 5: "sm:grid-cols-5" }[cols];
-  return (
-    <div className={`grid grid-cols-2 divide-x divide-y divide-border ${wide} sm:divide-y-0`}>
-      {children}
-    </div>
-  );
+  return <div className={`grid grid-cols-2 pb-2 ${wide}`}>{children}</div>;
 }
 
 /** count / avg / min / max for one backend histogram. */
@@ -137,14 +131,14 @@ function Latency({ label, h }: { label: string; h?: BackendHistogram }) {
   if (!h?.count) {
     return (
       <div className="flex items-baseline justify-between gap-3 border-t border-border px-4 py-2.5">
-        <Caps>{label}</Caps>
+        <Label>{label}</Label>
         <span className="text-micro text-muted-foreground">no samples yet</span>
       </div>
     );
   }
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-t border-border px-4 py-2.5">
-      <Caps>{label}</Caps>
+      <Label>{label}</Label>
       <div className="flex items-baseline gap-4 font-mono text-micro tabular">
         <span className="text-muted-foreground">
           n <span className="text-text">{fmtNum(h.count)}</span>
@@ -188,7 +182,7 @@ function HeaderBand({
   setCadence: (s: number) => void;
 }) {
   return (
-    <div className="flex min-h-11 shrink-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-border bg-paper px-5 py-1.5">
+    <div className="flex h-8 shrink-0 items-center gap-x-4 border-b border-border bg-surface px-4">
       <div className="flex items-center gap-2 font-mono text-micro text-muted-foreground">
         <Dot color={paused ? "var(--faint)" : "var(--green)"} />
         {metrics ? (
@@ -202,28 +196,24 @@ function HeaderBand({
         )}
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
-        <div className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
-          {CADENCES.map((s) => (
-            <button
-              key={s}
-              type="button"
-              aria-pressed={cadence === s}
-              onClick={() => setCadence(s)}
-              className={`rounded-md px-2 py-0.5 text-micro font-medium tabular transition-colors ${
-                cadence === s
-                  ? "bg-elevated text-text ring-1 ring-border"
-                  : "text-muted-foreground hover:text-text"
-              }`}
-            >
-              {s}s
-            </button>
-          ))}
-        </div>
+      <div className="ml-auto flex items-center gap-3 text-micro text-muted-foreground">
+        <span className="text-faint">every</span>
+        {CADENCES.map((s) => (
+          <button
+            key={s}
+            type="button"
+            aria-pressed={cadence === s}
+            onClick={() => setCadence(s)}
+            className={`tabular transition-colors hover:text-text ${cadence === s ? "text-text" : ""}`}
+          >
+            {s}s
+          </button>
+        ))}
+        <span aria-hidden className="h-3 w-px bg-border" />
         <button
           type="button"
           onClick={() => setPaused(!paused)}
-          className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-micro font-medium text-muted-foreground transition-colors hover:text-text"
+          className="flex items-center gap-1.5 transition-colors hover:text-text"
         >
           {paused ? <Play className="size-3" /> : <Pause className="size-3" />}
           {paused ? "Paused" : "Live"}
@@ -237,9 +227,9 @@ function HeaderBand({
 
 function Kpi({ label, value, sub }: { label: string; value: ReactNode; sub: ReactNode }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1.5 rounded-xl border border-border bg-surface/40 px-5 py-4">
-      <Caps>{label}</Caps>
-      <div className="font-mono text-[28px] font-semibold leading-none tabular text-text">{value}</div>
+    <div className="flex min-w-0 flex-col gap-1 px-4 py-3">
+      <Label>{label}</Label>
+      <div className="font-mono text-xl font-medium leading-none tabular text-text">{value}</div>
       <div className="text-micro leading-snug text-muted-foreground">{sub}</div>
     </div>
   );
@@ -312,14 +302,14 @@ function FabricPanel({
         <div className="overflow-x-auto border-t border-border">
           <table className="w-full min-w-[560px] border-collapse text-micro">
             <thead>
-              <tr className="border-b border-border text-left text-muted-foreground">
-                <th className="px-4 py-2 font-medium uppercase tracking-wide">Room</th>
-                <th className="px-4 py-2 font-medium uppercase tracking-wide">Channel</th>
-                <th className="px-4 py-2 font-medium uppercase tracking-wide">Members</th>
-                <th className="px-4 py-2 font-medium uppercase tracking-wide">Episode</th>
-                <th className="px-4 py-2 font-medium uppercase tracking-wide">Invites</th>
-                <th className="px-4 py-2 font-medium uppercase tracking-wide">Inbox</th>
-                <th className="px-4 py-2 text-right font-medium uppercase tracking-wide">Errors</th>
+              <tr className="border-b border-border text-left text-faint">
+                <th className="px-4 py-1.5font-medium">Room</th>
+                <th className="px-4 py-1.5font-medium">Channel</th>
+                <th className="px-4 py-1.5font-medium">Members</th>
+                <th className="px-4 py-1.5font-medium">Episode</th>
+                <th className="px-4 py-1.5font-medium">Invites</th>
+                <th className="px-4 py-1.5font-medium">Inbox</th>
+                <th className="px-4 py-1.5text-right font-medium">Errors</th>
               </tr>
             </thead>
             <tbody>
@@ -328,15 +318,15 @@ function FabricPanel({
                 const healthy = r.provisioned && r.persister_alive;
                 return (
                   <tr key={r.room} className="border-b border-border/50 last:border-b-0">
-                    <td className="px-4 py-2 font-medium text-text">{r.room}</td>
+                    <td className="px-4 py-1.5font-medium text-text">{r.room}</td>
                     <td className="px-4 py-2">
                       <span className="flex items-center gap-1.5 text-muted-foreground">
                         <Dot color={healthy ? "var(--green)" : "var(--yellow)"} />
                         {r.provisioned ? (r.persister_alive ? "live" : "no persister") : "pending"}
                       </span>
                     </td>
-                    <td className="px-4 py-2 text-muted-foreground">
-                      {r.members.length > 0 ? r.members.join(", ") : "—"}
+                    <td className="px-4 py-1.5text-muted-foreground">
+                      {r.members.length > 0 ? r.members.join(", ") : "-"}
                     </td>
                     <td className="px-4 py-2" style={{ color: r.episode_active ? "var(--accent)" : undefined }}>
                       <span className={r.episode_active ? "" : "text-muted-foreground"}>
@@ -344,16 +334,16 @@ function FabricPanel({
                       </span>
                     </td>
                     <td
-                      className="px-4 py-2 tabular text-muted-foreground"
+                      className="px-4 py-1.5tabular text-muted-foreground"
                       style={{ color: r.deferred_invites > 0 ? "var(--yellow)" : undefined }}
                     >
                       {r.deferred_invites}
                     </td>
-                    <td className="px-4 py-2 tabular text-muted-foreground">
+                    <td className="px-4 py-1.5tabular text-muted-foreground">
                       {r.reserves} held{r.reserve_skipped > 0 ? ` · ${r.reserve_skipped} skipped` : ""}
                     </td>
                     <td
-                      className="px-4 py-2 text-right tabular"
+                      className="px-4 py-1.5text-right tabular"
                       style={{ color: errors > 0 ? "var(--red)" : "var(--muted-foreground)" }}
                     >
                       {errors}
@@ -443,7 +433,7 @@ function EpisodesPanel({ rollup, rooms }: { rollup: EpisodeRollup; rooms: number
 function RecentEpisode({ episode }: { episode: FleetEpisode }) {
   const state = episodeState(episode);
   return (
-    <li className="flex items-baseline gap-3 border-b border-border/50 px-4 py-2 text-micro last:border-b-0">
+    <li className="flex h-7 items-center gap-3 px-4 text-micro">
       <Dot color={stateColor(state)} />
       <span className="shrink-0 font-mono text-muted-foreground">{episode.room}</span>
       <span className="min-w-0 flex-1 truncate text-text">{episode.topic || episode.short_id}</span>
@@ -618,8 +608,8 @@ function CognitionPanel({
 function BackendDown() {
   return (
     <div className="flex flex-1 items-center justify-center p-10">
-      <div className="max-w-lg rounded-xl border border-border bg-surface/40 px-7 py-6">
-        <Caps className="text-yellow">Backend unreachable</Caps>
+      <div className="max-w-lg">
+        <Label className="text-yellow">Backend unreachable</Label>
         <p className="mt-2 text-label leading-relaxed text-muted-foreground">
           Nothing answered <span className="font-mono text-text">GET /api/observability</span>. Bring
           the stack up with <span className="font-mono text-text">mycelium up</span>, or run{" "}
@@ -686,8 +676,8 @@ export function MetricsScreen() {
       />
 
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 p-5">
-          <div className="grid gap-4 md:grid-cols-3">
+        <div className="mx-auto flex max-w-5xl flex-col py-2">
+          <div className="grid md:grid-cols-3">
             <Kpi
               label="Memory"
               value={fmtNum(memory?.writes)}
@@ -731,7 +721,7 @@ export function MetricsScreen() {
 
           <EpisodesPanel rollup={rollup} rooms={roomNames.length} />
 
-          <div className="grid items-start gap-4 lg:grid-cols-2">
+          <div className="grid items-start lg:grid-cols-2">
             <MemoryPanel memory={memory} search={histograms["memory.search_latency_ms"]} />
             <EmbeddingPanel
               embeddings={counters.embeddings}
