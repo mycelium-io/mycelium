@@ -502,7 +502,7 @@ export function L9Inspector({ roomName }: Props) {
               aria-label="Filter by episode"
               value={effectiveEpisodeFilter}
               onChange={(e) => setEpisodeFilter(e.target.value)}
-              className="ml-auto h-6 rounded bg-transparent px-1 font-mono text-micro text-muted-foreground hover:bg-hairline focus:text-text focus:outline-none"
+              className="ml-auto h-6 rounded bg-transparent px-1 label-mono-sm text-muted-foreground hover:bg-hairline focus:text-text focus:outline-none"
             >
               <option value="all">All episodes</option>
               {episodesPresent.map((ep) => (

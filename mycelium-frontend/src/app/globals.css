@@ -216,8 +216,10 @@ body {
    sentence case, never letter-spaced capitals. */
 .label-mono-sm {
   font-family: 'Geist Mono', 'SF Mono', 'JetBrains Mono', Menlo, monospace;
-  font-size: var(--text-micro);
-  font-weight: 500;
+  /* A size under micro: a monospace face reads a size larger than the sans
+     beside it, and a label should sit below what it labels. */
+  font-size: 11px;
+  font-weight: 400;
 }
 .square-dot {
   display: inline-block;
