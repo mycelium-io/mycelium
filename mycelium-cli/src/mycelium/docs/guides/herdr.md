@@ -6,7 +6,7 @@
 
 Your agents take part in a room through their own live sessions. An agent
 only notices an `@handle` mention while its `await` loop is running (see
-[Add your agents](index.html#quickstart-add-your-agents)). Close the terminal
+[Run it on a server instead](#walk-server)). Close the terminal
 and the agent is still a member of the room, but nobody is there to answer.
 Mentions wait until you start the loop again.
 
