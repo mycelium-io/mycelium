@@ -49,14 +49,14 @@ export function AddMachineCode() {
   const [code, setCode] = useState("");
   return (
     <form
-      className="mt-3 flex flex-wrap items-center gap-2"
+      className="mt-2 flex flex-wrap items-center gap-2"
       onSubmit={(e) => {
         e.preventDefault();
         addMachine(code);
         setCode("");
       }}
     >
-      <label htmlFor="machine-code" className="text-label text-muted-foreground">
+      <label htmlFor="machine-code" className="text-micro text-muted-foreground">
         Then enter the code it prints:
       </label>
       <input
@@ -66,9 +66,9 @@ export function AddMachineCode() {
         placeholder="julias-mbp-3f2a"
         spellCheck={false}
         autoComplete="off"
-        className="h-8 min-w-0 flex-1 rounded-md border border-border bg-bg px-2 font-mono text-label text-text placeholder:text-faint focus:border-accent focus:outline-none"
+        className="h-7 min-w-0 flex-1 rounded bg-hairline px-2 font-mono text-micro text-text placeholder:text-faint focus:bg-bg focus:outline-none focus:ring-1 focus:ring-border"
       />
-      <Button type="submit" variant="secondary" size="sm" disabled={!code.trim()}>
+      <Button type="submit" variant="ghost" size="xs" disabled={!code.trim()}>
         Add
       </Button>
     </form>
@@ -78,7 +78,7 @@ export function AddMachineCode() {
 /** A machine without herdr can start nothing; say so, and where to get it. */
 export function HerdrMissing({ runner }: { runner: Pick<Runner, "id" | "label"> }) {
   return (
-    <p role="note" className="rounded-lg border border-border bg-bg px-3 py-2 text-label leading-relaxed text-muted-foreground">
+    <p role="note" className="text-micro leading-relaxed text-yellow">
       {herdrMissing(runner)}
     </p>
   );
@@ -237,7 +237,7 @@ export function RescanButton({
       <Button
         type="button"
         variant="ghost"
-        size={iconOnly ? "icon-sm" : "sm"}
+        size={iconOnly ? "icon-sm" : "xs"}
         onClick={scan}
         disabled={running || !runner.connected}
         aria-label={iconOnly ? (running ? "Scanning for agent CLIs" : "Rescan for agent CLIs") : undefined}
