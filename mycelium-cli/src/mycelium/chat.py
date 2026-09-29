@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 import typer
 
 from mycelium.client import typed_client as _typed_client
+from mycelium.names import who
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
@@ -177,7 +178,7 @@ def read(
         own = f" owned by @{owner}" if owner else ""
         edited = " (edited)" if getattr(m, "edited_at", None) else ""
         typer.echo(
-            f"  {stamp}  {m.sender_handle}{own} [{m.message_type}]"
+            f"  {stamp}  {who(m.sender_handle)}{own} [{m.message_type}]"
             f"  {str(m.id)[:8]}: {first}{edited}"
         )
         for line in rest:

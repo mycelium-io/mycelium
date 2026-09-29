@@ -14,6 +14,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 vi.mock("@/lib/api", () => ({
   logFetchError: () => () => undefined,
+  fetchUsers: async () => [],
   sendRoomMessage: (...args: unknown[]) => sendRoomMessage(...args),
   createTask: (...args: unknown[]) => createTask(...args),
   writeFields: (...args: unknown[]) => writeFields(...args),

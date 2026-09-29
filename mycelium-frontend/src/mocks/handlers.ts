@@ -194,6 +194,44 @@ async function handleRunners(req: Request, method: string, rest: string[]): Prom
   return null;
 }
 
+/**
+ * The hub's user records: the people in the fixtures, named, and anyone the
+ * app adds (the first-load "What should we call you?"), kept in memory until
+ * the mock restarts.
+ */
+const MOCK_USERS = new Map<string, { handle: string; display_name: string; teams: string[]; notify: string | null; owns: never[] }>(
+  [
+    ["operator", "Morgan Reyes"],
+    ["ada@example.com", "Ada Lindqvist"],
+    ["june@example.com", "June Park"],
+  ].map(([handle, display_name]) => [handle, { handle, display_name, teams: [], notify: null, owns: [] }]),
+);
+
+async function handleUsers(req: Request, method: string, rest: string[]): Promise<Response | null> {
+  if (rest.length === 0 && method === "GET") {
+    return json({ users: [...MOCK_USERS.values()], total: MOCK_USERS.size });
+  }
+  if (rest.length === 0 && method === "POST") {
+    const body = await readJson(req);
+    const handle = String(body.handle ?? "").trim().toLowerCase();
+    if (!handle) return json({ detail: "handle is required" }, 422);
+    const user = {
+      handle,
+      display_name: String(body.display_name ?? ""),
+      teams: Array.isArray(body.teams) ? (body.teams as string[]) : [],
+      notify: (body.notify as string | null) ?? null,
+      owns: [] as never[],
+    };
+    MOCK_USERS.set(handle, user);
+    return json(user, 201);
+  }
+  if (rest.length === 1 && method === "GET") {
+    const user = MOCK_USERS.get(decodeURIComponent(rest[0]).toLowerCase());
+    return user ? json(user) : notFound("no such user (mock)");
+  }
+  return notFound("unknown users route (mock)");
+}
+
 export async function handleMock(req: Request): Promise<Response | null> {
   const { pathname, searchParams } = new URL(req.url);
   const method = req.method.toUpperCase();
@@ -211,6 +249,9 @@ export async function handleMock(req: Request): Promise<Response | null> {
     }
     return notFound("unknown observability route (mock)");
   }
+
+  // ── /api/users ──────────────────────────────────────────────────────────────
+  if (rest[0] === "users") return handleUsers(req, method, rest.slice(1));
 
   // ── /api/runners ────────────────────────────────────────────────────────────
   if (rest[0] === "runners") return handleRunners(req, method, rest.slice(1));

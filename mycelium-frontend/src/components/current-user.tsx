@@ -19,6 +19,10 @@ interface CurrentUser {
   /** Bare user handle (lowercase), or "" when acting anonymously. */
   principal: string;
   setPrincipal: (handle: string) => void;
+  /** Whether this browser's saved choice has been read. Until it has, an empty
+   *  principal means "not known yet", not "nobody": nothing should ask who you
+   *  are before it's true that you haven't said. */
+  ready: boolean;
 }
 
 const CurrentUserContext = createContext<CurrentUser | null>(null);
@@ -29,6 +33,7 @@ function normalize(handle: string): string {
 
 export function CurrentUserProvider({ children }: { children: ReactNode }) {
   const [principal, setPrincipalState] = useState("");
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -39,11 +44,13 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setPrincipalState(saved);
     }
+    setReady(true);
   }, []);
 
   const value = useMemo<CurrentUser>(
     () => ({
       principal,
+      ready,
       setPrincipal: (handle: string) => {
         const next = normalize(handle);
         setPrincipalState(next);
@@ -53,7 +60,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
         }
       },
     }),
-    [principal],
+    [principal, ready],
   );
 
   return (

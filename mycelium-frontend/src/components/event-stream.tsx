@@ -26,7 +26,7 @@ import { MessageBody } from "@/components/message-body";
 import { ConductorRow } from "@/components/task/conductor-row";
 import { ChatFindBar } from "@/components/chat-find-bar";
 import { ChatMinimap, type MinimapTick } from "@/components/chat-minimap";
-import { HighlightText } from "@/components/ui/highlight-text";
+import { SenderName } from "@/components/sender-name";
 import { hasMatch, stepIndex } from "@/lib/chat-search";
 import { RoomBoard } from "@/components/board/room-board";
 import { ActivityRail, type ActivityItem } from "@/components/activity-rail";
@@ -1238,9 +1238,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                   <div className="min-w-0 flex-1">
                     {!grouped && (
                       <div className="flex items-center gap-1.5 pr-12">
-                        <span className="text-label font-semibold text-text truncate">
-                          <HighlightText text={ev.sender} highlight={hit} />
-                        </span>
+                        <SenderName handle={ev.sender} highlight={hit} />
                         {isAgent && (
                           <Bot aria-label="agent" className="size-3 flex-shrink-0 text-accent" />
                         )}

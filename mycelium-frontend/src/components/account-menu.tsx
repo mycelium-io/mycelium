@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, LogIn, LogOut, Pencil, Terminal, UserRound, Users } from "lucide-react";
 import { createUser, fetchTeams, fetchUsers, logFetchError, type Team, type User } from "@/lib/api";
 import { useCurrentUser } from "@/components/current-user";
+import { nameOf, useNames, useRefreshUsers } from "@/lib/people";
 import { useCommands } from "@/components/keymap-provider";
 import type { PaletteCommand } from "@/lib/commands";
 import { useAuthSession } from "@/components/auth-session";
@@ -62,6 +63,10 @@ export function AccountMenu() {
 
   const me = signedIn ? (sessionHandle ?? principal) : principal;
   const record = users.find(u => u.handle === me);
+  const myName = nameOf(useNames(), me);
+  // A name saved here is the one every message shows, so the shared copy is
+  // re-read too, not only this menu's.
+  const refreshShared = useRefreshUsers();
 
   const refresh = useCallback(() => {
     fetchUsers()
@@ -71,6 +76,8 @@ export function AccountMenu() {
         setUsers([]);
       });
     fetchTeams().then(setTeams).catch(logFetchError("fetchTeams"));
+    refreshShared();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const show = (next: boolean, at: View = me ? "menu" : "switch") => {
@@ -97,7 +104,7 @@ export function AccountMenu() {
   );
   useCommands(commands);
 
-  const label = me ? `You are @${me}` : "Choose your name";
+  const label = me ? `You are ${myName ? `${myName} (@${me})` : `@${me}`}` : "Choose your name";
 
   return (
     <Popover open={open} onOpenChange={o => show(o)}>
@@ -212,7 +219,7 @@ function MenuView({
       )}
       <div className="border-t border-border py-1">
         <Item icon={Pencil} onClick={() => onGo("profile")} more>
-          Edit profile
+          Edit your name
         </Item>
         {!signedIn && (
           <Item icon={Users} onClick={() => onGo("switch")} more>
@@ -413,7 +420,7 @@ function ProfileView({
 
   return (
     <div>
-      <Header title="Edit profile" onBack={onBack} />
+      <Header title="Your name" onBack={onBack} />
       <div className="space-y-3 px-3 pb-3">
         <Field label="Name">
           <Input

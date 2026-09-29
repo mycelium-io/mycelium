@@ -8,6 +8,7 @@ import { CurrentUserProvider } from "@/components/current-user";
 import { MachineFromUrl } from "@/components/machine-from-url";
 import { AuthSessionProvider } from "@/components/auth-session";
 import { LoginGate } from "@/components/login-gate";
+import { NamePrompt } from "@/components/name-prompt";
 import { KeymapProvider } from "@/components/keymap-provider";
 import { NotificationsProvider } from "@/components/notifications-provider";
 import { SWRProvider } from "@/components/swr-provider";
@@ -50,7 +51,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       {/* Above the pages, not inside a page's shell: a page
                           registers its own bindings, so it has to sit under
                           the provider. */}
-                      <KeymapProvider>{children}</KeymapProvider>
+                      <KeymapProvider>
+                        {children}
+                        {/* Asks a browser that hasn't said who it is, once. */}
+                        <NamePrompt />
+                      </KeymapProvider>
                     </TooltipProvider>
                   </NotificationsProvider>
                 </LoginGate>

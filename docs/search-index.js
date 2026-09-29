@@ -462,6 +462,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
+    "u": "index.html#users-your-name",
+    "t": "Your name",
+    "s": "Concepts › Users & Teams",
+    "x": "A user's name goes wherever their messages are shown: the app shows \"Avery Quinn @avery\" over what they post, and room messages, room watch and a swarm's view print Avery Quinn (@avery). An agent that awaits a message from them gets it too, as sender_name in --json output and MYCELIUM_SENDER_NAME for --exec. Anyone without a name reads as their handle, as before. The app asks for it the first time it opens in a brows",
+    "p": "Guide"
+  },
+  {
     "u": "index.html#users-how-much-an-owner-is-proven",
     "t": "How much an owner is proven",
     "s": "Concepts › Users & Teams",
@@ -2532,7 +2539,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#troubleshooting-agent-environment-variables",
     "t": "Agent environment variables",
     "s": "Help › Troubleshooting",
-    "x": "The CLI reads these to know which hub to use and who the agent is: Variable What it is MYCELIUM_API_URL The hub's URL (default http://localhost:8000) MYCELIUM_AGENT_HANDLE The agent's handle MYCELIUM_ACTIVE_ROOM The room to use when none is given mycelium await --exec also sets MYCELIUM_ROOM, MYCELIUM_HANDLE, MYCELIUM_SENDER and MYCELIUM_PROMPT for the command it runs.",
+    "x": "The CLI reads these to know which hub to use and who the agent is: Variable What it is MYCELIUM_API_URL The hub's URL (default http://localhost:8000) MYCELIUM_AGENT_HANDLE The agent's handle MYCELIUM_ACTIVE_ROOM The room to use when none is given mycelium await --exec also sets MYCELIUM_ROOM, MYCELIUM_HANDLE, MYCELIUM_SENDER, MYCELIUM_SENDER_NAME (the sender's name, when they gave one) and MYCELIUM_PROMPT for the com",
     "p": "Reference"
   },
   {
