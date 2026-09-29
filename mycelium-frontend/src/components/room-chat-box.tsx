@@ -12,6 +12,8 @@ import { useKeyAction } from "@/components/keymap-provider";
 import { useCurrentUser } from "@/components/current-user";
 import { Kbd } from "@/components/ui/kbd";
 import { StartSwarmDialog } from "@/components/start-swarm-dialog";
+import { IntentDialog } from "@/components/intent-dialog";
+import { Plus } from "lucide-react";
 import { parseCapture } from "@/lib/board/capture";
 import { fileCapture } from "@/lib/board/file-capture";
 
@@ -122,6 +124,7 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
   const [highlight, setHighlight] = useState(0);
   // The task a `/swarm` is being started on, while its dialog is open.
   const [swarmTask, setSwarmTask] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   // `@` reaches everyone in the room, off the same roster the Members rail
@@ -352,6 +355,19 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
         {/* One line when empty, growing with what is typed: the send button
             sits beside the text rather than on a row of its own. */}
         <div className="flex items-end gap-1 rounded-lg border border-border bg-surface transition-colors focus-within:border-border2 focus-within:bg-bg">
+          {/* In the room's own composer: start a task or a flow in one click,
+              without knowing which engine runs it. */}
+          {!episode && (
+            <button
+              type="button"
+              onClick={() => setStarting(true)}
+              aria-label="Start a task or flow"
+              title="Start a task or flow"
+              className="m-1 mr-0 flex size-8 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-accent/50 hover:bg-accent-soft hover:text-accent"
+            >
+              <Plus className="size-4" />
+            </button>
+          )}
           <TextareaAutosize
             ref={inputRef}
             value={content}
@@ -396,6 +412,7 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
           </span>
         </div>
       </div>
+      {starting && <IntentDialog roomName={roomName} initial="task" onClose={() => setStarting(false)} />}
       {swarmTask !== null && (
         <StartSwarmDialog
           open

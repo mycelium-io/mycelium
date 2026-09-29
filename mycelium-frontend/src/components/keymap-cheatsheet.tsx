@@ -58,7 +58,7 @@ export function KeymapCheatsheet({ open, onClose, scopes, mac }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
       <div
-        className="absolute inset-0 bg-black/30 motion-safe:animate-in motion-safe:fade-in-0"
+        className="absolute inset-0 bg-black/30 backdrop-blur-[2px] motion-safe:animate-in motion-safe:fade-in-0"
         onClick={onClose}
         aria-hidden
       />
