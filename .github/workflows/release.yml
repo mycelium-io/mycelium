@@ -275,7 +275,10 @@ jobs:
           security unlock-keychain -p "$password" "$keychain"
           security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -f pkcs12 \
             -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$keychain"
+          # The .p12 usually carries Apple's intermediate already; importing it
+          # again is refused as a duplicate, which is fine.
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$keychain" 2>/dev/null \
+            || echo "Apple's intermediate is already in the keychain"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" >/dev/null
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
           rm -f "$RUNNER_TEMP/developer-id.p12"
