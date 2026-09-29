@@ -46,10 +46,12 @@ shotkit/            The repo's camera: fast screenshots of the running app and o
                     the committed docs assets are still `pnpm screenshots`, which
                     now runs on this engine.
 mycelium-promo/     HyperFrames promo video, a code-defined HTML→MP4 walkthrough
-                    (CLI install → app install → room → adapter → post positions →
-                    summon the aligner → await/respond → consensus → work →
-                    distill the room to memory via the synthesizer). The app-screen
-                    mockups mirror the frontend's workspace shell + dark design tokens.
+                    of one coffee shop's checkout room (Mycelium for Mac asks
+                    your name → add agents → hand one a task → one builds,
+                    another reviews → put a team on it → the aligner settles a
+                    disagreement). The app-screen mockups mirror the frontend's
+                    workspace shell + dark design tokens, and the story is the
+                    mock data's `checkout` room.
                     Renders 1920x1080 H.264. `cd mycelium-promo && npm run dev` to
                     preview, `npm run render` to export to renders/*.mp4. Its
                     backing track is synthesized from source too (`audio/`, see

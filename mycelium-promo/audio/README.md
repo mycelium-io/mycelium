@@ -1,6 +1,6 @@
 # The backing track
 
-A 107-second synthetic score for `../index.html`, generated from source rather
+A 68-second synthetic score for `../index.html`, generated from source rather
 than dropped in as a sample. `npm run audio` renders it to
 `../assets/mycelium-score.mp3`, which the composition loads as an `<audio>`
 clip on track 11.
@@ -25,20 +25,24 @@ either file.
 One organism, not nine cues: a drone bed and a filtered-noise substrate run
 unbroken for the full duration, and everything else grows out of them. Two
 tables drive it. `SECTIONS` gives each of the video's scenes a chord, a
-brightness and a pitch pool. `CUES` places motifs on individual frames — a
-terminal line, a service coming up healthy, an agent registering, a round
-advancing.
+brightness and a pitch pool. `CUES` places motifs on individual frames: a key
+typed, an agent joining, a task filed, a review sent back or approved.
 
 The argument is carried in the third of the chord:
 
 | | harmony | what is on screen |
 | --- | --- | --- |
-| 0–13.8s | D and A, no third | the hero card; a bell, and a long way down |
-| 13.8–52.2s | the third arrives as **F** — D minor | install, room, agents |
-| 61.6–81.4s | the chord drops its third entirely; @rowan's figure lands on **F**, @avery's on **F#** | the five NEGMAS rounds |
-| 81.4s | rowan takes F# and a sustained voice glides the semitone | the offer table locks green |
-| 81.4–100.4s | D–F#–A–E, major | the plan compiles, the room is distilled |
-| 100.4–107s | back to bare D and A, an octave wider | the outro |
+| 0–6s | D and A, no third | the hero card; a bell, and a long way down |
+| 6–13.8s | the third arrives as **C/F**, D minor building | the Mac app asks your name |
+| 13.8–52.6s | D minor, the third (**F**) present | agents join, a task is built and reviewed, a team splits one |
+| 52.6–58.65s | the chord drops its third; two figures land a semitone apart, on **F** and **F#** | the aligner hears both sides |
+| 58.65s | the low figure takes F# and a sustained voice glides the semitone | they agree |
+| 58.65–61.2s | D–F#–A–E, major | the agreement lands |
+| 61.2–68s | back to bare D and A, an octave wider | the outro |
+
+The two agents in the review scene get the same two voices: the builder is
+the gate pluck on the right, the reviewer the woody saw on the left, and the
+send-back is the same gesture bent flat and cut short.
 
 The generative layer is the one that carries the name. A pluck that fires may
 fork — a child a fifth or an octave away, which may fork again — so the

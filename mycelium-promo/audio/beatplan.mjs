@@ -21,37 +21,35 @@ export const PLAN = [
   { id: 'hero', moments: [
     ['switch', 'in'], ['short', 'wordmark'], ['short', 'tagline'], ['resolve', 'hold'],
   ]},
-  { id: 'cli', moments: [
-    ['switch', 'term'], ['short', 'cmd'], ['short', 'ok1'], ['short', 'ok2'],
-    ['short', 'ok3'], ['bigger', 'done'], ['resolve', 'hold'],
+  // Mycelium for Mac opens and asks who you are.
+  { id: 'app', moments: [
+    ['switch', 'window'], ['short', 'ask'], ['short', 'type'], ['bigger', 'continue'],
+    ['resolve', 'hold'],
   ]},
-  { id: 'install', moments: [
-    ['switch', 'term'], ['short', 'cmd'], ['short', 'llm'], ['short', 'svc1'],
-    ['short', 'svc2'], ['short', 'svc3'], ['bigger', 'ready'], ['resolve', 'hold'],
+  // Start something → add an agent: builder arrives, then reviewer.
+  { id: 'agent', moments: [
+    ['switch', 'room'], ['short', 'picker'], ['short', 'dialog'], ['short', 'folder'],
+    ['bigger', 'builder'], ['short', 'reviewer'], ['resolve', 'hold'],
   ]},
-  { id: 'board', moments: [
-    ['switch', 'shell'], ['short', 'summary'], ['short', 'tabs'],
-    ['short', 'decisions'], ['short', 'blocked'], ['short', 'review'],
-    ['bigger', 'actions'], ['resolve', 'read'],
+  // /task in the composer: filed, then claimed.
+  { id: 'task', moments: [
+    ['switch', 'focus'], ['short', 'type'], ['bigger', 'filed'], ['short', 'claimed'],
+    ['resolve', 'hold'],
   ]},
-  { id: 'drop', moments: [
-    ['switch', 'focus'], ['short', 'type'], ['bigger', 'row'], ['resolve', 'hold'],
+  // Build and review in the task's thread: sent back once, then approved.
+  { id: 'review', moments: [
+    ['switch', 'open'], ['short', 'graph'], ['short', 'build1'], ['bigger', 'reject'],
+    ['short', 'build2'], ['bigger', 'approve'], ['short', 'done'], ['resolve', 'hold'],
   ]},
-  { id: 'decompose', moments: [
-    ['switch', 'claim'], ['short', 'child1'], ['short', 'child2'],
-    ['bigger', 'child3'], ['resolve', 'hold'],
+  // Put a team on it: the lead splits the task, each part lands and resolves.
+  { id: 'swarm', moments: [
+    ['switch', 'board'], ['short', 'parent'], ['short', 'split'], ['short', 'child1'],
+    ['short', 'child2'], ['short', 'child3'], ['bigger', 'resolved'], ['resolve', 'hold'],
   ]},
-  { id: 'thread', moments: [
-    ['switch', 'open'], ['short', 'body'], ['short', 'claim'],
-    ['short', 'reply1'], ['bigger', 'reply2'], ['resolve', 'hold'],
-  ]},
+  // When they disagree: the aligner asks each side and they settle.
   { id: 'aligner', moments: [
-    ['switch', 'summon'], ['short', 'issues'], ['short', 'round1'],
-    ['short', 'round2'], ['bigger', 'round3'], ['short', 'round4'],
-    ['bigger', 'converge'], ['resolve', 'consensus'],
-  ]},
-  { id: 'compile', moments: [
-    ['switch', 'back'], ['short', 'row1'], ['bigger', 'row2'], ['resolve', 'hold'],
+    ['switch', 'summon'], ['short', 'ask'], ['short', 'reply1'], ['short', 'reply2'],
+    ['bigger', 'converge'], ['resolve', 'hold'],
   ]},
 ];
 
