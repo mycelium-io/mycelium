@@ -4,7 +4,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Eye, FileQuestion, Pencil } from "lucide-react";
+import { Eye, FileQuestion, Pencil, Sparkles } from "lucide-react";
+import { IntentDialog } from "@/components/intent-dialog";
 import { fetchMemory, fetchMemoryExpanded, type Memory } from "@/lib/api";
 import { useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
 import { isLiveEpisode } from "@/lib/threads";
@@ -45,6 +46,7 @@ export function MemoryTab({
   const [memory, setMemory] = useState<Memory | null | undefined>(undefined);
   const [renderedBody, setRenderedBody] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [asking, setAsking] = useState(false);
   const { principal } = useCurrentUser();
   const revalidate = useRoomRevalidate(roomName);
   const { setDirty, guard, dialog: unsavedDialog } = useUnsavedGuard();
@@ -104,10 +106,21 @@ export function MemoryTab({
   const hasDiscussion = Boolean(memory.episode) && !isLiveEpisode(roomName, memory.episode ?? "");
 
   // Edit, at the end of its one meta line. The tab is the memory's page: there
-  // is no other to send it to.
+  // is no other to send it to. A task (a row with a thread) also takes the
+  // room's verbs: get it reviewed, split it, settle it, catch up on it.
   const actions = (
     <>
       <span aria-hidden className="h-3 w-px bg-border" />
+      {hasDiscussion && (
+        <button
+          type="button"
+          onClick={() => setAsking(true)}
+          className="inline-flex items-center gap-1 text-accent transition-colors hover:text-text"
+        >
+          <Sparkles className="size-3.5" />
+          Ask agents
+        </button>
+      )}
       <Tooltip content={editing ? "Back to the rendered memory" : "Edit this memory"}>
         <button
           type="button"
@@ -181,6 +194,9 @@ export function MemoryTab({
         )}
       </div>
       {unsavedDialog}
+      {asking && memory.episode && (
+        <IntentDialog roomName={roomName} episode={memory.episode} onClose={() => setAsking(false)} />
+      )}
     </div>
   );
 }

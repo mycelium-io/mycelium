@@ -35,6 +35,7 @@ import { L9Inspector } from "@/components/l9-inspector";
 import { RoomA2aView } from "@/components/room-a2a";
 import { RoomSlimView } from "@/components/room-slim";
 import { EmptyState } from "@/components/empty-state";
+import { RoomStarters } from "@/components/room-starters";
 import { KeyBadge } from "@/components/key-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -970,16 +971,18 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
           // A room whose every message is task-scoped has a full rail and an
           // empty feed, and "no messages yet" is then a false statement about a
           // room with hundreds of them. Say where the talking went instead.
-          <EmptyState
-            className="h-full"
-            icon={MessagesSquare}
-            title={activity.length ? "The talking is inside the tasks" : "No messages yet"}
-            description={
-              activity.length
-                ? "Every message here belongs to a task. Open one from the rail above to read it."
-                : "Post a position or @-mention an agent to get the room talking."
-            }
-          />
+          activity.length ? (
+            <EmptyState
+              className="h-full"
+              icon={MessagesSquare}
+              title="The talking is inside the tasks"
+              description="Every message here belongs to a task. Open one from the rail above to read it."
+            />
+          ) : (
+            // A new room says what it is for by what it can start, not by
+            // an empty card: each starter is one sentence and one click.
+            <RoomStarters roomName={roomName} onStarted={onOpenThread} />
+          )
         ) : (
         <div className="py-3">
         {/* The head of the walk back. Says which of the two it is — still

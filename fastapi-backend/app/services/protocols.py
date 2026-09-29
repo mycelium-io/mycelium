@@ -249,6 +249,52 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
             {"id": "done", "end": "resolved"},
         ],
     },
+    "review": {
+        "name": "review",
+        "description": (
+            "An author does the work, a reviewer checks it against evidence; "
+            "findings go back until the reviewer approves."
+        ),
+        "roles": ["author", "reviewer"],
+        "max_steps": 9,
+        "steps": [
+            {
+                "id": "build",
+                "to": "author",
+                "prompt": (
+                    "Task {task}: {ask}\n\nDo the work on your own branch. When it is "
+                    "done, say in a few lines what you changed, where (the branch and "
+                    "files), and exactly how to check it."
+                ),
+                "next": "review",
+            },
+            {
+                "id": "review",
+                "to": "reviewer",
+                "prompt": (
+                    "Review the work on {task}: {ask}\n\nThe author says:\n{reply}\n\n"
+                    "Check it yourself: check out the branch, run the tests and whatever "
+                    "the change touches. Every finding names its evidence: the command "
+                    "you ran and what came back. Approve only what you ran and saw hold; "
+                    "do not approve on reading alone. End with "
+                    "[[mycelium: stance=accept]] to approve or "
+                    "[[mycelium: stance=reject]] with the findings to send it back."
+                ),
+                "next": {"accept": "approved", "reject": "fix", "default": "fix"},
+            },
+            {
+                "id": "fix",
+                "to": "author",
+                "prompt": (
+                    "The reviewer sent {task} back:\n\n{reply}\n\nAnswer each finding: "
+                    "fix it and say how, or say why it is not a problem. Then say what "
+                    "changed and how to check it again."
+                ),
+                "next": "review",
+            },
+            {"id": "approved", "end": "resolved"},
+        ],
+    },
     "gated": {
         "name": "gated",
         "description": "A proposer proposes, a guardian approves or blocks; a block sends it back.",
