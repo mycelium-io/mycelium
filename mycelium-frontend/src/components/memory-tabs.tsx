@@ -3,7 +3,15 @@
 
 "use client";
 
-import { FileText, X } from "lucide-react";
+import { Copy, FileText, Link2, X } from "lucide-react";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { copyText } from "@/lib/clipboard";
 
 /** A memory's name on its tab: the last part of its key (`cutover` for `decisions/cutover`). */
 export function memoryTabLabel(key: string): string {
@@ -30,8 +38,9 @@ export function MemoryTabs({
       {keys.map(key => {
         const on = key === active;
         return (
+          <ContextMenu key={key}>
+          <ContextMenuTrigger>
           <div
-            key={key}
             role="tab"
             aria-selected={on}
             title={key}
@@ -60,6 +69,28 @@ export function MemoryTabs({
               <X className="size-3" />
             </button>
           </div>
+          </ContextMenuTrigger>
+          {/* The tab's right-click menu, as an editor's tabs have one. */}
+          <ContextMenuContent>
+            <ContextMenuItem icon={X} onClick={() => onClose(key)}>
+              Close
+            </ContextMenuItem>
+            <ContextMenuItem
+              disabled={keys.length < 2}
+              onClick={() => keys.filter(k => k !== key).forEach(onClose)}
+            >
+              Close others
+            </ContextMenuItem>
+            <ContextMenuItem onClick={() => keys.forEach(onClose)}>Close all</ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem icon={Copy} onClick={() => void copyText(key)}>
+              Copy key
+            </ContextMenuItem>
+            <ContextMenuItem icon={Link2} onClick={() => void copyText(`[[${key}]]`)}>
+              Copy as [[link]]
+            </ContextMenuItem>
+          </ContextMenuContent>
+          </ContextMenu>
         );
       })}
     </>

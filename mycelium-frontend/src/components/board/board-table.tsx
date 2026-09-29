@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { attentionFilterOf, type LiveItem } from "@/lib/board/item";
 import type { FieldSchema } from "@/lib/board/schema";
 import { KindIcon, openableThread } from "./board-cells";
+import { BoardRowMenu } from "./board-row-menu";
 
 interface Props {
   items: LiveItem[];
@@ -65,8 +66,8 @@ export function BoardTable({ items, schema, now, selectedId, onSelect, onEdit, s
         </thead>
         <tbody>
           {items.map(item => (
+            <BoardRowMenu key={item.id} item={item}>
             <tr
-              key={item.id}
               onClick={() => {
                 onSelect(item.id);
                 const episode = openableThread(item);
@@ -90,6 +91,7 @@ export function BoardTable({ items, schema, now, selectedId, onSelect, onEdit, s
                 </td>
               ))}
             </tr>
+            </BoardRowMenu>
           ))}
         </tbody>
       </table>

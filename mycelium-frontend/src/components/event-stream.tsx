@@ -42,7 +42,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Monogram } from "@/components/ui/monogram";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { ArrowDown, Bot, Loader2, MessageSquare, MessagesSquare } from "lucide-react";
+import { ArrowDown, AtSign, Bot, Copy, Link2, Loader2, MessageSquare, MessagesSquare } from "lucide-react";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { absoluteUrl, copyText } from "@/lib/clipboard";
 
 /** Stable empties: find writes these back on every close, and a fresh array
  *  each time would re-run the effects that read them. */
@@ -456,6 +458,51 @@ interface Props {
   /** What one of those tabs shows, in front of the room's own views. While
    *  it is set, none of Channel, Board or Network reads as the open tab. */
   override?: React.ReactNode;
+}
+
+/**
+ * A message's right-click menu: copy what it says, or a link that opens the
+ * room scrolled to it (the same `focus` link search results use). Selected
+ * text inside it keeps the browser's own menu.
+ */
+function MessageMenu({
+  roomName,
+  messageId,
+  content,
+  sender,
+  children,
+}: {
+  roomName: string;
+  messageId?: string | null;
+  content: string;
+  sender: string;
+  children: React.ReactElement;
+}) {
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger>{children}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem icon={Copy} onClick={() => void copyText(content)}>
+          Copy text
+        </ContextMenuItem>
+        {messageId && (
+          <ContextMenuItem
+            icon={Link2}
+            onClick={() =>
+              void copyText(
+                absoluteUrl(`/room/${encodeURIComponent(roomName)}?focus=${encodeURIComponent(`message:${messageId}`)}`),
+              )
+            }
+          >
+            Copy link to message
+          </ContextMenuItem>
+        )}
+        <ContextMenuItem icon={AtSign} onClick={() => void copyText(`@${sender}`)}>
+          Copy @{sender}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
 }
 
 export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onOpenMemory, onOpenThread, view: viewProp, onViewChange, focusMessageId = null, onFocusConsumed, openFind = 0, extraTabs, override }: Props) {
@@ -1213,8 +1260,8 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
               // at all, and whether it is the hit being stood on.
               const hit = needle && matchSet.has(ev.id) ? { query: needle, active: ev.id === activeId } : undefined;
               return (
+                <MessageMenu key={ev.id} roomName={roomName} messageId={ev.messageId} content={ev.content} sender={ev.sender}>
                 <div
-                  key={ev.id}
                   data-event-id={ev.id}
                   ref={marked ? highlightRow : undefined}
                   className={`group relative flex gap-3 px-5 hover:bg-hairline ${grouped ? "py-0.5" : "mt-3 pt-1 first:mt-0"} ${
@@ -1257,6 +1304,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                     )}
                   </div>
                 </div>
+                </MessageMenu>
               );
             })}
           {responding.length > 0 && (

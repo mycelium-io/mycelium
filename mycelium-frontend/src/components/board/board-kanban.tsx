@@ -9,6 +9,7 @@ import { attentionFilterOf, type LiveItem } from "@/lib/board/item";
 import type { ItemGroup } from "@/lib/board/view";
 import { humanize } from "@/lib/board/schema";
 import { AgeTag, KindIcon, AssignmentChip, openableThread, PriorityMeter, SourceTag, ThreadChip, TtlBar, UpstreamChip, WorkLinks } from "./board-cells";
+import { BoardRowMenu } from "./board-row-menu";
 
 interface Props {
   groups: ItemGroup[];
@@ -63,8 +64,8 @@ export function BoardKanban({ groups, groupBy, now, selectedId, onSelect, onMove
 
             <div className="flex min-h-[120px] flex-1 flex-col gap-2 overflow-y-auto p-2">
               {group.items.map(item => (
+                <BoardRowMenu key={item.id} item={item}>
                 <article
-                  key={item.id}
                   draggable
                   onDragStart={() => setDragging(item)}
                   onDragEnd={() => {
@@ -102,6 +103,7 @@ export function BoardKanban({ groups, groupBy, now, selectedId, onSelect, onMove
                     </span>
                   </div>
                 </article>
+                </BoardRowMenu>
               ))}
 
               {group.items.length === 0 && (

@@ -183,6 +183,7 @@ export function RoomInspector({
         {tab === "agents" && (
           <AgentsPanel
             roomName={roomName}
+            onOpenMemory={onOpenMemory}
             engineInvite={engineInvite}
             onEngineInviteShown={onEngineInviteShown}
             focusHandle={focused("agent")}

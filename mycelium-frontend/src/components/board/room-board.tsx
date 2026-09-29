@@ -45,6 +45,7 @@ import { BoardTimeline } from "./board-timeline";
 import { BoardCapture } from "./board-capture";
 import { StartSwarmDialog } from "@/components/start-swarm-dialog";
 import { BoardDaily } from "./board-daily";
+import { BoardRowActionsProvider } from "./board-row-menu";
 import { playBoardSound, type BoardSound } from "@/lib/board/board-sounds";
 
 const MODES: { id: ViewMode; label: string; icon: typeof Rows3 }[] = [
@@ -293,6 +294,13 @@ export function RoomBoard({ roomName, onOpenThread }: Props) {
     [patch, play],
   );
 
+  // What a row's right-click menu can do: the same handlers the row's own
+  // strip and the board's keys call.
+  const rowMenuActions = useMemo(
+    () => ({ now, onVerb: runRowAction, onAnswer: answer, onOpenThread }),
+    [now, runRowAction, answer, onOpenThread],
+  );
+
   // A captured line is filed on the hub as a real task. It shows at once as a
   // captured row, and gives way to the task itself once the board re-reads.
   const capture = useCallback(
@@ -438,6 +446,7 @@ export function RoomBoard({ roomName, onOpenThread }: Props) {
         />
       )}
 
+      <BoardRowActionsProvider value={rowMenuActions}>
       <div className="min-h-0 flex-1">
         {ordered.length === 0 && view.mode !== "daily" ? (
           <EmptyState
@@ -512,6 +521,7 @@ export function RoomBoard({ roomName, onOpenThread }: Props) {
           </ScrollArea>
         )}
       </div>
+      </BoardRowActionsProvider>
 
       <BoardFooter statusMessage={statusMessage} keys={selectedId !== null} />
     </div>

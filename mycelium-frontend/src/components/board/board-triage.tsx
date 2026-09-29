@@ -28,6 +28,7 @@ import {
   UpstreamChip,
   WorkLinks,
 } from "./board-cells";
+import { BoardRowMenu } from "./board-row-menu";
 
 interface Props {
   groups: ItemGroup[];
@@ -107,6 +108,7 @@ function TriageRow({
   const raised = !resolved && (priority === "urgent" || priority === "high") ? priority : null;
 
   return (
+    <BoardRowMenu item={item}>
     <div
       ref={ref}
       role="button"
@@ -225,6 +227,7 @@ function TriageRow({
         ))}
       </div>
     </div>
+    </BoardRowMenu>
   );
 }
 
