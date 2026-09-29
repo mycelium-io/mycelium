@@ -16,7 +16,6 @@ import { RoomChatBox } from "@/components/room-chat-box";
 import { TaskConversation } from "@/components/task/task-conversation";
 import { useCurrentUser } from "@/components/current-user";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Kbd } from "@/components/ui/kbd";
 import { Tooltip } from "@/components/ui/tooltip";
 
 /** How tall a task body gets in the pane before it clamps. The pane is narrow,
@@ -116,21 +115,11 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
     >
       <header className="flex h-8 shrink-0 items-center gap-2 border-b border-border bg-surface px-3">
         <MessageSquare className="size-3.5 shrink-0 text-accent" strokeWidth={1.9} />
-        <span className="min-w-0 truncate text-label text-text">
+        {/* The title gets the width; the thread's id is its tooltip, for the
+            rare reader who needs it. */}
+        <span className="min-w-0 truncate text-label text-text" title={target.title ? `${target.title} · ${shortId}` : undefined}>
           {target.title || `Thread ${shortId}`}
         </span>
-        {/* The short id only where a task's name is what the header says —
-            otherwise the header is already the id, and this would repeat it. */}
-        {target.title && (
-          <Tooltip content={target.episode}>
-            {/* And only where the header is not already down to four characters
-                of that name: on a phone the pane is the window, and the title
-                is what says which task the window is. */}
-            <span className="hidden shrink-0 rounded bg-hairline px-1.5 py-px font-mono text-micro text-muted-foreground sm:inline">
-              {shortId}
-            </span>
-          </Tooltip>
-        )}
         <span className="ml-auto flex items-center gap-2">
           {/* Edit the task in place, only where the pane is a task. A plain
               toggle with a revalidate on save: the pane is narrow and transient,
@@ -175,17 +164,16 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
               )}
             </Tooltip>
           )}
-          {/* The key that does what the ✕ beside it does — worth the width on a
-              keyboard, and worth none of it on a phone. */}
-          <Kbd size="xs" tone="muted" className="hidden sm:inline-flex">Esc</Kbd>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close thread"
-            className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-          >
-            <X className="size-3.5" strokeWidth={1.9} />
-          </button>
+          <Tooltip content="Close (Esc)">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close thread"
+              className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+            >
+              <X className="size-3.5" strokeWidth={1.9} />
+            </button>
+          </Tooltip>
         </span>
       </header>
 

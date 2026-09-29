@@ -13,8 +13,30 @@
  * roster. Shown only for an episode that carries a flow.
  */
 
+import { useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type { EpisodeSummary, FlowTraceEntry, RoomFloor } from "@/lib/api";
 import { FlowGraph } from "@/components/flow-graph";
+
+// The graph is tall, and a thread is opened to read the conversation, so the
+// flow starts as its one-line summary. Opening it is remembered per browser.
+const SHOWN_KEY = "mycelium.flow-panel.shown";
+
+function readShown(): boolean {
+  try {
+    return window.localStorage.getItem(SHOWN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeShown(shown: boolean): void {
+  try {
+    window.localStorage.setItem(SHOWN_KEY, shown ? "1" : "0");
+  } catch {
+    // Remembering is a convenience; the toggle still works without it.
+  }
+}
 
 function outcomeTone(outcome: string): string {
   if (outcome === "resolved") return "var(--green)";
@@ -80,17 +102,30 @@ export function FlowPanel({
   /** Opens a run's record, the `log/episodes/<id>` memory. */
   onOpenMemory?: (key: string) => void;
 }) {
+  const [shown, setShown] = useState(readShown);
   const flow = episode.flow;
   if (!flow) return null;
   const trace = episode.trace ?? [];
   const open = episode.outcome === "open";
   const speakers = floor?.speakers ?? [];
+  const toggle = () => {
+    setShown(s => !s);
+    writeShown(!shown);
+  };
+  const Chevron = shown ? ChevronDown : ChevronRight;
   return (
-    <div className="px-4 py-3" data-testid="flow-panel">
-      <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+    <div className={shown ? "px-4 py-3" : "border-b border-border px-4 py-2"} data-testid="flow-panel">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={shown}
+        title={shown ? "Hide the flow" : "Show the flow"}
+        className={`-mx-1 flex w-[calc(100%+0.5rem)] min-w-0 items-baseline gap-x-2 overflow-hidden whitespace-nowrap rounded px-1 text-left transition-colors hover:bg-hairline ${shown ? "mb-2" : ""}`}
+      >
+        <Chevron className="size-3 self-center text-faint" />
         <span className="text-micro font-medium text-faint">Flow</span>
         <span className="font-mono text-micro text-text">{flow.name}</span>
-        <span className="text-micro capitalize" style={{ color: outcomeTone(episode.outcome) }}>
+        <span className="text-micro" style={{ color: outcomeTone(episode.outcome) }}>
           {open ? `at ${episode.current_step ?? flow.steps[0]?.id ?? "start"}` : episode.outcome}
         </span>
         {open && speakers.length > 0 && (
@@ -101,7 +136,14 @@ export function FlowPanel({
         {open && floor && speakers.length === 0 && (
           <span className="text-micro text-muted-foreground">@{floor.holder} holds the floor</span>
         )}
-      </div>
+        {!shown && trace.length > 0 && (
+          <span className="ml-auto shrink-0 pl-2 text-micro text-faint">
+            {trace.length} {trace.length === 1 ? "step" : "steps"} taken
+          </span>
+        )}
+      </button>
+      {shown && (
+        <>
       {flow.ask && <div className="mb-2 text-label text-muted-foreground">{flow.ask}</div>}
       <div className="overflow-x-auto">
         <FlowGraph
@@ -130,6 +172,8 @@ export function FlowPanel({
           </span>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }
