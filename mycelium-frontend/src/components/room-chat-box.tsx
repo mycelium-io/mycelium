@@ -129,6 +129,7 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
   const [swarmTask, setSwarmTask] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const [scrolls, setScrolls] = useState(false);
 
   // `@` reaches everyone in the room, off the same roster the Members rail
   // renders; `[[` reads the room's memory keys and `/` its skills. All three
@@ -391,6 +392,14 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
             placeholder={placeholder}
             minRows={1}
             maxRows={10}
+            // Scrolls only once it's grown to its cap. Below that, WebKit (the
+            // Mac app) can measure the box a fraction short of its text and
+            // draws a scrollbar for nothing.
+            onHeightChange={() => {
+              const el = inputRef.current;
+              if (el) setScrolls(el.scrollHeight > el.clientHeight + 1);
+            }}
+            style={{ overflowY: scrolls ? "auto" : "hidden" }}
             className="min-w-0 flex-1 resize-none bg-transparent px-3 py-2 text-body text-text leading-relaxed focus:outline-none placeholder:text-faint"
             disabled={sending}
           />
