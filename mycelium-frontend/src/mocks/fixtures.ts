@@ -1730,6 +1730,58 @@ export function getRoomFixture(name: string): RoomFixture | undefined {
   return ROOM_FIXTURES[name];
 }
 
+// ── usage ─────────────────────────────────────────────────────────────────────
+
+// A hub in steady, growing use: what `/api/observability/usage` adds up from
+// the usage events the hub records. The month repeats back in time, a little
+// quieter each month, so the 90-day view has a shape to it.
+const USAGE_MONTH = [
+  [2, 1], [0, 0], [3, 2], [4, 3], [1, 2], [0, 0], [0, 1], [5, 3], [3, 4], [2, 2],
+  [6, 4], [2, 3], [0, 0], [0, 0], [4, 2], [3, 3], [5, 4], [2, 3], [4, 3], [0, 1],
+  [0, 0], [6, 5], [4, 4], [3, 4], [5, 3], [2, 3], [0, 0], [1, 0], [7, 5], [4, 3],
+] as const;
+
+export function usageKpis(days: number) {
+  const daily = Array.from({ length: days }, (_, i) => {
+    const back = days - 1 - i;
+    const [f, r] = USAGE_MONTH[(USAGE_MONTH.length - 1 - (back % 30) + 30) % 30];
+    const damp = 1 - Math.floor(back / 30) * 0.25;
+    return {
+      day: iso(back * 1440).slice(0, 10),
+      filed: Math.round(f * damp),
+      resolved: Math.round(r * damp),
+    };
+  });
+  const filed = daily.reduce((n, d) => n + d.filed, 0);
+  const resolved = daily.reduce((n, d) => n + d.resolved, 0);
+  const k = resolved / 68;
+  const n = (x: number) => Math.max(0, Math.round(x * k));
+  return {
+    days,
+    sharing: false,
+    tasks: {
+      filed,
+      resolved,
+      filed_by: { person: Math.round(filed * 0.53), agent: filed - Math.round(filed * 0.53) },
+      median_hours_open: 5.4,
+      median_hours_open_by: { person: 9.1, agent: 2.4 },
+    },
+    flows: {
+      review: { resolved: n(14), rejected: n(2) },
+      swarm: { resolved: n(5), rejected: n(1) },
+      gated: { resolved: n(3), rejected: n(1) },
+    },
+    negotiations: { converged: n(6), rejected: n(1) },
+    agents_joined: { claude_code: n(9), cursor: n(2), worker: n(3) },
+    active_days: daily.filter(d => d.filed + d.resolved > 0).length,
+    daily,
+    work_total: 142,
+    first_value_hours: 0.8,
+  };
+}
+
+export const USAGE_KPIS = usageKpis(30);
+
 // ── observability / metrics ───────────────────────────────────────────────────
 
 // The shape `/api/observability` actually returns: the four counter namespaces

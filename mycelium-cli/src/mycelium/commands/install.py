@@ -613,10 +613,11 @@ def _recreate_backend(compose_path: Path, env_path: Path) -> bool:
 
 
 def _run_telemetry_disclosure(api_url: str, *, compose_path: Path) -> None:  # noqa: ARG001
-    """Interactive opt-in disclosure for product analytics.
+    """Ask whether this hub shares its usage stats, after saying what they are.
 
-    Shows what would be collected (event categories, destination, retention) and
-    asks for consent before enabling. Defaults to *No*.
+    The hub records its usage either way (the app's Metrics page reads it);
+    this only decides whether the events are also sent. Defaults to *No*. The
+    Mac app asks the same question on its first-run screen.
 
     Non-interactive installs never reach this path; they stay off unconditionally
     as required by #938.
@@ -626,28 +627,24 @@ def _run_telemetry_disclosure(api_url: str, *, compose_path: Path) -> None:  # n
     from mycelium.config import MyceliumConfig, TelemetryConfig
 
     print()
-    typer.secho("  ── Optional: product analytics ─────────────────────────", bold=True)
+    typer.secho("  ── Optional: share usage stats ─────────────────────────", bold=True)
     print()
-    typer.echo("  Help improve Mycelium by sending anonymous adoption metrics.")
+    typer.echo("  Your hub counts what it's used for: tasks filed and resolved, flows and")
+    typer.echo("  negotiations finished, agents joined. You can see these on the app's")
+    typer.echo("  Metrics page either way. Sharing sends the same counts to Mycelium's")
+    typer.echo("  developers, so we know what's working.")
     typer.echo("")
-    typer.echo("  What would be sent:")
-    typer.echo("    • Install event (OS kind, release version)")
-    typer.echo("    • Session outcome (coordinated vs not, aggregate result)")
+    typer.echo("  What is sent: event kinds, outcomes, counts, release and OS.")
+    typer.echo("  Never sent: names, handles, rooms, task text, prompts, replies, IPs.")
+    typer.echo("  Each hub is identified by a random id, not by who uses it.")
     typer.echo("")
-    typer.echo("  What is never sent:")
-    typer.echo("    • Room names, task content, prompts, replies, handles")
-    typer.echo("    • IP addresses, hostnames, or any identifying information")
-    typer.echo("")
-    typer.echo("  Each install is identified by a random UUID stored in config.toml.")
-    typer.echo("  Destination: not yet configured (pending #937 go/no-go decision).")
-    typer.echo("")
-    typer.echo("  Disable at any time:")
+    typer.echo("  Change it any time:")
     typer.echo("    mycelium config set telemetry.send_product_analytics false")
     print()
 
     try:
         consent = typer.confirm(
-            "  Enable anonymous product analytics?",
+            "  Share anonymous usage stats?",
             default=False,
         )
     except (EOFError, KeyboardInterrupt):
@@ -686,102 +683,11 @@ def _run_telemetry_disclosure(api_url: str, *, compose_path: Path) -> None:  # n
                 "`mycelium config apply && mycelium up` to pick up telemetry settings",
                 fg=typer.colors.YELLOW,
             )
-        typer.secho("  ✓ Analytics enabled — thank you!", fg=typer.colors.GREEN)
-        # Fire the install event. The destination is not yet set (#937) so this
-        # is a no-op until the destination URL is configured, but the opt-in is
-        # persisted for when it is.
-        try:
-            import json as _json
-            import platform
-            import urllib.request as _urllib
-            from datetime import UTC as _UTC
-            from datetime import datetime as _dt
-            from urllib.parse import urlparse as _urlparse
-
-            from mycelium.config import MyceliumConfig as _MC
-
-            def _release() -> str:
-                try:
-                    from importlib.metadata import version
-
-                    return version("mycelium")
-                except Exception:
-                    return "unknown"
-
-            _config = _MC.load() if _MC.get_global_config_path().exists() else _MC()
-            _dest = (_config.telemetry.analytics_destination or "").strip()
-            _install_id = config.telemetry.install_id or ""
-
-            if _dest and _install_id:
-                # Validate destination: must be HTTPS or a known-local address.
-                try:
-                    _host = _urlparse(_dest).hostname or ""
-                except Exception:
-                    _host = ""
-                _local = {"localhost", "127.0.0.1", "host.docker.internal"}
-                _is_https = _dest.startswith("https://")
-                _is_local = _dest.startswith("http://") and _host in _local
-                if _is_https or _is_local:
-                    # Prohibited fields — mirrors app/services/analytics.py PROHIBITED_FIELDS.
-                    _prohibited = frozenset(
-                        {
-                            "name",
-                            "handle",
-                            "email",
-                            "username",
-                            "room",
-                            "room_name",
-                            "task",
-                            "task_body",
-                            "prompt",
-                            "reply",
-                            "content",
-                            "ip",
-                            "ip_address",
-                            "hostname",
-                            "machine_id",
-                        }
-                    )
-                    _payload = {
-                        "event": "mycelium.install",
-                        "install_id": _install_id,
-                        "release": _release(),
-                        "ts": _dt.now(_UTC).isoformat(),
-                        "platform": platform.system() or "unknown",
-                    }
-                    _payload = {k: v for k, v in _payload.items() if k not in _prohibited}
-                    if "/loki/" in _dest:
-                        import time as _time
-
-                        _body = _json.dumps(
-                            {
-                                "streams": [
-                                    {
-                                        "stream": {
-                                            "service": "mycelium-analytics",
-                                            "event": "mycelium.install",
-                                        },
-                                        "values": [
-                                            [str(int(_time.time() * 1e9)), _json.dumps(_payload)]
-                                        ],
-                                    }
-                                ]
-                            }
-                        ).encode()
-                    else:
-                        _body = _json.dumps(_payload).encode()
-                    _req = _urllib.Request(
-                        _dest,
-                        data=_body,
-                        headers={"Content-Type": "application/json"},
-                        method="POST",
-                    )
-                    with _urllib.urlopen(_req, timeout=5) as _r:  # noqa: S310 — dest validated above
-                        pass
-        except Exception:
-            pass
+        # The recreated hub records its start and, now that it shares, sends it:
+        # that is this install's first event, so there's nothing to send here.
+        typer.secho("  ✓ Sharing usage stats. Thank you!", fg=typer.colors.GREEN)
     else:
-        typer.echo("  Analytics disabled (default).")
+        typer.echo("  Not sharing usage stats (the default).")
 
 
 def _write_mycelium_config(

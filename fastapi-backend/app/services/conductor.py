@@ -726,6 +726,9 @@ class ConductorEngine:
         except Exception:
             logger.warning("conductor failed to post the outcome for %s", run.episode)
         l9_episode.write_episode_record(ep, outcome=outcome, metrics=None, tasks=None)
+        from app.services import analytics as usage
+
+        await asyncio.to_thread(usage.flow_completed, run.protocol.name, outcome, run.steps_taken)
 
     async def _say(
         self,

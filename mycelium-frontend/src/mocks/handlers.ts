@@ -10,7 +10,14 @@
  * The SSE stream is handled separately in `stream.ts`.
  */
 
-import { BACKEND_METRICS, ROOMS, ROOM_FIXTURES, getRoomFixture } from "./fixtures";
+import {
+  BACKEND_METRICS,
+  ROOMS,
+  ROOM_FIXTURES,
+  USAGE_KPIS,
+  getRoomFixture,
+  usageKpis,
+} from "./fixtures";
 import {
   getJob,
   getRunner,
@@ -198,6 +205,10 @@ export async function handleMock(req: Request): Promise<Response | null> {
   // ── /api/observability ──────────────────────────────────────────────────────
   if (rest[0] === "observability") {
     if (rest.length === 1) return json(BACKEND_METRICS);
+    if (rest[1] === "usage") {
+      const days = Number(searchParams.get("days")) || USAGE_KPIS.days;
+      return json(usageKpis(Math.min(Math.max(days, 1), 365)));
+    }
     return notFound("unknown observability route (mock)");
   }
 

@@ -95,6 +95,11 @@ async def lifespan(app: FastAPI):
 
     telemetry_service.setup()  # providers only — FastAPIInstrumentor wired at app-creation time
 
+    # Usage: the hub coming up is the first thing it counts.
+    from app.services import analytics as usage
+
+    await asyncio.to_thread(usage.hub_started)
+
     # Bind every pre-existing memory to a thread as a store annotation
     # (version, stamps, and board position are untouched). Runs before the
     # index scan so a rewrite is indexed once, not twice.
@@ -211,6 +216,10 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.exception("worker notice handler failed in %s", room)
         room_channel_manager.herdr_wake_assigned(room, notice)
+        try:
+            usage.on_notice(room, notice)
+        except Exception:
+            logger.exception("usage notice handler failed in %s", room)
 
     room_channel_manager.on_notice = _dispatch_notice
     logger.info(
@@ -483,6 +492,21 @@ async def get_metrics():
     from app.services.metrics import snapshot
 
     return snapshot()
+
+
+@app.get("/api/observability/usage", tags=["metrics"])
+async def get_usage(days: int = 30):
+    """What this hub is used for, as KPIs, from the usage events it records.
+
+    Tasks filed and resolved (and how long they stayed open), flows and
+    negotiations completed by outcome, agents joined by adapter, active days,
+    and hours from the hub's first start to its first finished work. Counts
+    only: the events carry no names or content. ``sharing`` says whether
+    this hub also forwards them to its analytics destination.
+    """
+    from app.services import analytics as usage
+
+    return await asyncio.to_thread(usage.kpis, max(1, min(days, 365)))
 
 
 @app.get("/api/observability/collector", tags=["metrics"])

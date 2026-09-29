@@ -14,19 +14,23 @@
  * counter reads `-`, and a panel with no data says what would put data in it.
  *
  *   <MetricsScreen />
- *     ├─ <HeaderBand />       uptime, cadence, pause
- *     ├─ <Kpi /> × 3          memory · fabric · cognition
- *     ├─ <FabricPanel />      SLIM node, posture, one row per live channel
- *     ├─ <EpisodesPanel />    negotiations across every room, and how they ended
- *     ├─ <MemoryPanel />      writes, retrieval hit rate, search latency
- *     ├─ <EmbeddingPanel />   the local model, and the spend it avoids
- *     ├─ <IndexerPanel />     filesystem → JSONL runs
- *     └─ <CognitionPanel />   Pi calls by operation and model
+ *     ├─ <HeaderBand />       the Usage | System tabs, uptime, cadence, pause
+ *     ├─ Usage tab            <UsageView />: what the hub is used for, its KPIs
+ *     └─ System tab
+ *         ├─ <Kpi /> × 3          memory · fabric · cognition
+ *         ├─ <FabricPanel />      SLIM node, posture, one row per live channel
+ *         ├─ <EpisodesPanel />    negotiations across every room, and how they ended
+ *         ├─ <MemoryPanel />      writes, retrieval hit rate, search latency
+ *         ├─ <EmbeddingPanel />   the local model, and the spend it avoids
+ *         ├─ <IndexerPanel />     filesystem → JSONL runs
+ *         └─ <CognitionPanel />   Pi calls by operation and model
  */
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Pause, Play } from "lucide-react";
 import type { AuthStatus, CoordinationStatus, IdentityStatus } from "@/lib/api";
+import { Dot, Figure, Figures, Label, Note, Nothing, Panel } from "@/components/metrics-parts";
+import { UsageView } from "@/components/usage-view";
 import { useNetworkStatus, useRooms } from "@/lib/room-data";
 import {
   episodeState,
@@ -57,74 +61,6 @@ const CADENCES = [5, 10, 30, 60] as const;
 const RECENT_EPISODES = 6;
 
 // ── Atoms ────────────────────────────────────────────────────────────────────
-
-/** A small sentence-case label, as the rest of the app draws one. */
-function Label({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`text-micro font-medium text-faint ${className}`}>{children}</div>;
-}
-
-function Dot({ color }: { color: string }) {
-  return <span className="inline-block size-1.5 shrink-0 rounded-full" style={{ background: color }} />;
-}
-
-/** A titled section: a label over its figures, divided from the next by a
- *  hairline rather than boxed in a card. Every section of the page is one, so
- *  one with nothing to show still holds its place and explains itself. */
-function Panel({
-  title,
-  meta,
-  children,
-  className = "",
-}: {
-  title: string;
-  meta?: ReactNode;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <section className={`min-w-0 overflow-hidden border-t border-border ${className}`}>
-      <header className="flex h-8 items-center justify-between gap-3 px-4">
-        <Label>{title}</Label>
-        {meta && <div className="flex items-center gap-1.5 text-micro text-muted-foreground">{meta}</div>}
-      </header>
-      {children}
-    </section>
-  );
-}
-
-/** The line a panel shows instead of a grid of dashes: what is missing, and the
- *  thing that would fill it. */
-function Nothing({ children }: { children: ReactNode }) {
-  return <p className="px-4 py-3 text-label leading-relaxed text-muted-foreground">{children}</p>;
-}
-
-/** One labeled figure inside a panel's grid. */
-function Figure({
-  label,
-  value,
-  color,
-  hint,
-}: {
-  label: string;
-  value: ReactNode;
-  color?: string;
-  hint?: string;
-}) {
-  return (
-    <div className="flex min-w-0 flex-col gap-0.5 px-4 py-1.5" title={hint}>
-      <Label>{label}</Label>
-      <span className="font-mono text-label tabular text-text" style={color ? { color } : undefined}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-/** A responsive row of figures, spaced rather than boxed into cells. */
-function Figures({ children, cols = 4 }: { children: ReactNode; cols?: 3 | 4 | 5 }) {
-  const wide = { 3: "sm:grid-cols-3", 4: "sm:grid-cols-4", 5: "sm:grid-cols-5" }[cols];
-  return <div className={`grid grid-cols-2 pb-2 ${wide}`}>{children}</div>;
-}
 
 /** count / avg / min / max for one backend histogram. */
 function Latency({ label, h }: { label: string; h?: BackendHistogram }) {
@@ -157,16 +93,15 @@ function Latency({ label, h }: { label: string; h?: BackendHistogram }) {
   );
 }
 
-/** A footnote under a panel — the caveat that keeps a figure honest. */
-function Note({ children }: { children: ReactNode }) {
-  return (
-    <p className="border-t border-border px-4 py-2 text-micro leading-relaxed text-muted-foreground">
-      {children}
-    </p>
-  );
-}
 
 // ── Header band ──────────────────────────────────────────────────────────────
+
+type Tab = "usage" | "system";
+const TABS: { id: Tab; label: string }[] = [
+  { id: "usage", label: "Usage" },
+  { id: "system", label: "System" },
+];
+const TAB_KEY = "mycelium.metrics.tab";
 
 function HeaderBand({
   metrics,
@@ -174,15 +109,36 @@ function HeaderBand({
   setPaused,
   cadence,
   setCadence,
+  tab,
+  setTab,
 }: {
   metrics: BackendMetrics | null;
   paused: boolean;
   setPaused: (b: boolean) => void;
   cadence: number;
   setCadence: (s: number) => void;
+  tab: Tab;
+  setTab: (t: Tab) => void;
 }) {
   return (
-    <div className="flex h-8 shrink-0 items-center gap-x-4 border-b border-border bg-surface px-4">
+    <div className="flex h-8 shrink-0 items-center gap-x-4 border-b border-border bg-surface pr-4">
+      {/* Flat tabs, as the room's Channel and Board are drawn. */}
+      <div role="tablist" aria-label="Metrics" className="flex h-full items-stretch">
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            onClick={() => setTab(t.id)}
+            className={`-mb-px flex items-center border-r border-border px-3 text-label transition-colors ${
+              tab === t.id ? "bg-paper text-text" : "text-muted-foreground hover:bg-hairline hover:text-text"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
       <div className="flex items-center gap-2 font-mono text-micro text-muted-foreground">
         <Dot color={paused ? "var(--faint)" : "var(--green)"} />
         {metrics ? (
@@ -635,6 +591,38 @@ export function MetricsScreen() {
   const roomNames = useMemo(() => rooms.map((r) => r.name), [rooms]);
   const { episodes } = useFleetEpisodes(roomNames, refreshInterval);
   const rollup = useMemo(() => rollupEpisodes(episodes), [episodes]);
+  // Which tab, remembered per browser; Usage first, since it's the question
+  // most people open this page with.
+  const [tab, setTabState] = useState<Tab>("usage");
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(TAB_KEY);
+      // localStorage is client-only; reading it at init would mismatch the SSR render.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (saved === "usage" || saved === "system") setTabState(saved);
+    } catch {
+      // Remembering the tab is a convenience; the page works without it.
+    }
+  }, []);
+  const setTab = (next: Tab) => {
+    setTabState(next);
+    try {
+      window.localStorage.setItem(TAB_KEY, next);
+    } catch {
+      // As above.
+    }
+  };
+  const header = (m: BackendMetrics | null) => (
+    <HeaderBand
+      metrics={m}
+      paused={paused}
+      setPaused={setPaused}
+      cadence={cadence}
+      setCadence={setCadence}
+      tab={tab}
+      setTab={setTab}
+    />
+  );
 
   const counters = metrics?.counters ?? {};
   const histograms = metrics?.histograms ?? {};
@@ -649,13 +637,7 @@ export function MetricsScreen() {
   if (!metrics && !loading) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
-        <HeaderBand
-          metrics={null}
-          paused={paused}
-          setPaused={setPaused}
-          cadence={cadence}
-          setCadence={setCadence}
-        />
+        {header(null)}
         <BackendDown />
       </div>
     );
@@ -667,15 +649,14 @@ export function MetricsScreen() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <HeaderBand
-        metrics={metrics}
-        paused={paused}
-        setPaused={setPaused}
-        cadence={cadence}
-        setCadence={setCadence}
-      />
+      {header(metrics)}
 
       <div className="flex-1 overflow-y-auto">
+        {tab === "usage" ? (
+          <div className="mx-auto flex max-w-5xl flex-col py-2">
+            <UsageView refreshInterval={refreshInterval} />
+          </div>
+        ) : (
         <div className="mx-auto flex max-w-5xl flex-col py-2">
           <div className="grid md:grid-cols-3">
             <Kpi
@@ -731,6 +712,7 @@ export function MetricsScreen() {
             <CognitionPanel llm={counters.llm} histograms={histograms} />
           </div>
         </div>
+        )}
       </div>
     </div>
   );

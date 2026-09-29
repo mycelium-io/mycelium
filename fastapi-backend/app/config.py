@@ -161,14 +161,14 @@ class Settings(BaseSettings):
     # OTLP HTTP endpoint the backend pushes spans and metrics to. Empty string
     # means "use the collector's in-container address": http://mycelium-collector:4318.
     TELEMETRY_OTLP_ENDPOINT: str = ""
-    # Product analytics — the backend propagates this flag when emitting its
-    # own install/session signals; the decision to send is the CLI's.
+    # Whether the hub shares its usage events (app/services/analytics.py). The
+    # hub records them either way; this sends them to the destination below.
+    # Asked at interactive install and on the Mac app's first-run screen.
     TELEMETRY_SEND_PRODUCT_ANALYTICS: bool = False
-    # Destination URL for product analytics events (resolved in #937).
+    # Where shared usage events are POSTed: HTTPS, or plain HTTP to this machine.
     TELEMETRY_ANALYTICS_DESTINATION: str = ""
-    # Installation identity rendered from config.toml telemetry.install_id.
-    # Used by the backend when emitting session analytics events so they carry
-    # the same install_id as CLI-side events (mycelium.install, etc.).
+    # config.toml's telemetry.install_id, when the CLI's install made one. A hub
+    # without one mints its own id and keeps it in its data directory.
     TELEMETRY_INSTALL_ID: str = ""
 
     # ── Health degradation thresholds (#453) ───────────────────────────────

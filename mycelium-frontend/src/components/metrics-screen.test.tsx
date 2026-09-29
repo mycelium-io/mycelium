@@ -10,15 +10,18 @@ vi.mock("@/lib/api", () => ({
   fetchNetworkStatus: vi.fn(),
   fetchRooms: vi.fn(),
   fetchEpisodes: vi.fn(),
+  fetchUsage: vi.fn(),
   logFetchError: () => () => undefined,
 }));
 
 import { MetricsScreen } from "@/components/metrics-screen";
+import { usageKpis } from "@/mocks/fixtures";
 import {
   fetchBackendMetrics,
   fetchEpisodes,
   fetchNetworkStatus,
   fetchRooms,
+  fetchUsage,
   type EpisodeSummary,
   type NetworkStatus,
   type Room,
@@ -109,6 +112,9 @@ function room(name: string): Room {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // These tests are about the System tab; the Usage tab has its own below.
+  window.localStorage.setItem("mycelium.metrics.tab", "system");
+  vi.mocked(fetchUsage).mockResolvedValue(usageKpis(30));
   metricsRead.mockResolvedValue(backend());
   networkRead.mockResolvedValue(network());
   roomsRead.mockResolvedValue([room("atlas-migration")]);
@@ -128,6 +134,19 @@ function panel(title: string): HTMLElement {
 }
 
 describe("<MetricsScreen />", () => {
+  it("opens on what the hub is used for, and keeps the system one tab away", async () => {
+    window.localStorage.removeItem("mycelium.metrics.tab");
+    renderWithSWR(<MetricsScreen />);
+
+    expect(await screen.findByText("Ways of working")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Usage" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByText("Memory & retrieval")).not.toBeInTheDocument();
+
+    screen.getByRole("tab", { name: "System" }).click();
+    expect(await screen.findByText("Memory & retrieval")).toBeInTheDocument();
+    expect(window.localStorage.getItem("mycelium.metrics.tab")).toBe("system");
+  });
+
   it("draws the counters the backend actually reports", async () => {
     renderWithSWR(<MetricsScreen />);
 

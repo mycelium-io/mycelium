@@ -19,7 +19,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
 use crate::paths;
-use crate::settings::Settings;
+use crate::settings::{Mode, Settings};
 
 /// Longest wait between restarts of a supervisor that keeps exiting.
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
@@ -145,6 +145,10 @@ fn command(settings: &Settings) -> Result<Command, String> {
     }
     for root in &settings.roots {
         cmd.args(["--root", root]);
+    }
+    // The app's answer wins over config.toml for the hub it runs.
+    if settings.mode == Mode::Hub {
+        cmd.arg(if settings.share_usage { "--share-usage" } else { "--no-share-usage" });
     }
     // The SLIM node's slimctl, pinned to the 2.1.x the hub's bindings speak.
     if let Some(slimctl) = paths::bundled("slimctl") {

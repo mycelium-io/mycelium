@@ -33,6 +33,11 @@ pub struct Settings {
     pub hub_url: Option<String>,
     #[serde(default)]
     pub roots: Vec<String>,
+    /// Whether a hub on this Mac shares its anonymous usage stats. Off unless
+    /// asked for on the first-run screen, and meaningless in client mode,
+    /// where the hub is someone else's.
+    #[serde(default)]
+    pub share_usage: bool,
 }
 
 impl Settings {
@@ -104,12 +109,18 @@ mod tests {
 
     #[test]
     fn a_client_needs_a_real_hub_address() {
-        let bad = Settings { mode: Mode::Client, hub_url: Some("hub".into()), roots: vec![] };
+        let bad = Settings {
+            mode: Mode::Client,
+            hub_url: Some("hub".into()),
+            roots: vec![],
+            share_usage: false,
+        };
         assert!(bad.validate().is_err());
         let ok = Settings {
             mode: Mode::Client,
             hub_url: Some(" https://hub.example.com/ ".into()),
             roots: vec!["~/code".into()],
+            share_usage: false,
         }
         .validate()
         .unwrap();
@@ -119,10 +130,23 @@ mod tests {
 
     #[test]
     fn a_hub_keeps_no_hub_address_and_always_has_a_folder() {
-        let s = Settings { mode: Mode::Hub, hub_url: Some("x".into()), roots: vec![" ".into()] }
-            .validate()
-            .unwrap();
+        let s = Settings {
+            mode: Mode::Hub,
+            hub_url: Some("x".into()),
+            roots: vec![" ".into()],
+            share_usage: true,
+        }
+        .validate()
+        .unwrap();
         assert_eq!(s.hub_url, None);
         assert_eq!(s.roots.len(), 1);
+    }
+
+    #[test]
+    fn settings_saved_before_usage_stats_existed_read_as_not_sharing() {
+        let old: Settings = serde_json::from_str(r#"{"mode":"hub","roots":["/tmp"]}"#).unwrap();
+        assert!(!old.share_usage);
+        let saved = serde_json::to_string(&old).unwrap();
+        assert!(saved.contains("\"shareUsage\":false"));
     }
 }

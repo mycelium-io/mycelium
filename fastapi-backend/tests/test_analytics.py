@@ -1,278 +1,243 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Unit tests for app/services/analytics.py (#937/#938).
+"""Usage events (app/services/analytics.py): recorded on the hub, forwarded only with consent.
 
-Two invariants from the #938 acceptance criteria:
-
-1. ``emit()`` never fires before opt-in — no HTTP call when
-   ``TELEMETRY_SEND_PRODUCT_ANALYTICS`` is false or destination is empty.
-2. ``PROHIBITED_FIELDS`` are enforced — no prohibited key ever reaches the
-   wire payload, even if passed via ``extra``.
-
-No network, no backend process, no SLIM node required.
+No network, no backend process, no SLIM node.
 """
 
 from __future__ import annotations
 
-import io
-from unittest.mock import patch
+import json
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.services.analytics import (
-    PROHIBITED_FIELDS,
-    AnalyticsEvent,
-    EventName,
-    emit,
-    increment_session_count,
-    install_event,
-    session_event,
-)
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
+from app.config import settings
+from app.routes.memory import _is_agent_manifest, _manifest_adapter
+from app.services import analytics as usage
 
 
-def _event(name: EventName = "mycelium.install") -> AnalyticsEvent:
-    return AnalyticsEvent(event=name, install_id="test-id", release="0.1.0")
+@pytest.fixture(autouse=True)
+def hub(tmp_path, monkeypatch):
+    """A hub with its own data dir, not sharing usage, and no install id."""
+    monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "TELEMETRY_SEND_PRODUCT_ANALYTICS", False)
+    monkeypatch.setattr(settings, "TELEMETRY_ANALYTICS_DESTINATION", "")
+    monkeypatch.setattr(settings, "TELEMETRY_INSTALL_ID", "")
+    return tmp_path
 
 
-# ── Invariant 1: no emit before opt-in ────────────────────────────────────────
+@pytest.fixture
+def posted(monkeypatch):
+    """What would have been POSTed, with forwarding run inline instead of on a thread."""
+    sent: list[tuple[str, dict]] = []
+    monkeypatch.setattr(usage, "_post", lambda url, payload: sent.append((url, payload)))
+
+    class InlineThread:
+        def __init__(self, target, args, daemon):
+            self._run = lambda: target(*args)
+
+        def start(self):
+            self._run()
+
+    monkeypatch.setattr(usage.threading, "Thread", InlineThread)
+    return sent
 
 
-class TestNoEmitBeforeOptIn:
-    """emit() must not make any HTTP call unless the user has opted in."""
-
-    def test_no_http_when_analytics_disabled(self):
-        """Consent off → _post is never called regardless of destination."""
-        with (
-            patch("app.services.analytics._post") as mock_post,
-            patch("app.config.settings") as mock_settings,
-        ):
-            mock_settings.TELEMETRY_SEND_PRODUCT_ANALYTICS = False
-            mock_settings.TELEMETRY_ANALYTICS_DESTINATION = "https://analytics.example.com"
-            emit(_event())
-        mock_post.assert_not_called()
-
-    def test_no_http_when_destination_empty(self):
-        """Consent on but no destination configured → _post is never called."""
-        with (
-            patch("app.services.analytics._post") as mock_post,
-            patch("app.config.settings") as mock_settings,
-        ):
-            mock_settings.TELEMETRY_SEND_PRODUCT_ANALYTICS = True
-            mock_settings.TELEMETRY_ANALYTICS_DESTINATION = ""
-            emit(_event())
-        mock_post.assert_not_called()
-
-    def test_no_http_when_destination_whitespace_only(self):
-        """Whitespace-only destination is treated as empty."""
-        with (
-            patch("app.services.analytics._post") as mock_post,
-            patch("app.config.settings") as mock_settings,
-        ):
-            mock_settings.TELEMETRY_SEND_PRODUCT_ANALYTICS = True
-            mock_settings.TELEMETRY_ANALYTICS_DESTINATION = "   "
-            emit(_event())
-        mock_post.assert_not_called()
-
-    def test_no_http_when_destination_not_https(self):
-        """Plain HTTP to a non-local destination is refused even when consent is on."""
-        with (
-            patch("app.services.analytics._post") as mock_post,
-            patch("app.config.settings") as mock_settings,
-        ):
-            mock_settings.TELEMETRY_SEND_PRODUCT_ANALYTICS = True
-            mock_settings.TELEMETRY_ANALYTICS_DESTINATION = "http://analytics.example.com"
-            emit(_event())
-        mock_post.assert_not_called()
-
-    def test_http_allowed_for_localhost(self):
-        """Plain HTTP is allowed for localhost (local-dev exception, Option A)."""
-        with (
-            patch("app.services.analytics._post") as mock_post,
-            patch("app.config.settings") as mock_settings,
-        ):
-            mock_settings.TELEMETRY_SEND_PRODUCT_ANALYTICS = True
-            mock_settings.TELEMETRY_ANALYTICS_DESTINATION = "http://localhost:3100/loki/api/v1/push"
-            emit(_event())
-        mock_post.assert_called_once()
-
-    def test_http_allowed_for_host_docker_internal(self):
-        """Plain HTTP is allowed for host.docker.internal (local-dev exception, Option A)."""
-        with (
-            patch("app.services.analytics._post") as mock_post,
-            patch("app.config.settings") as mock_settings,
-        ):
-            mock_settings.TELEMETRY_SEND_PRODUCT_ANALYTICS = True
-            mock_settings.TELEMETRY_ANALYTICS_DESTINATION = (
-                "http://host.docker.internal:3100/loki/api/v1/push"
-            )
-            emit(_event())
-        mock_post.assert_called_once()
-
-    def test_http_fires_when_opted_in_and_destination_set(self):
-        """Consent on + HTTPS destination → _post IS called exactly once."""
-        with (
-            patch("app.services.analytics._post") as mock_post,
-            patch("app.config.settings") as mock_settings,
-        ):
-            mock_settings.TELEMETRY_SEND_PRODUCT_ANALYTICS = True
-            mock_settings.TELEMETRY_ANALYTICS_DESTINATION = "https://analytics.example.com"
-            emit(_event())
-        mock_post.assert_called_once()
-
-    def test_emit_never_raises(self):
-        """emit() swallows all exceptions — analytics must never disrupt the caller."""
-        with patch("app.services.analytics._emit_inner", side_effect=RuntimeError("boom")):
-            emit(_event())  # must not raise
+def logged(hub) -> list[dict]:
+    path = hub / "usage" / "events.jsonl"
+    return [json.loads(line) for line in path.read_text().splitlines()]
 
 
-# ── Invariant 2: prohibited fields never reach the wire ───────────────────────
+class TestRecordedOnTheHub:
+    def test_every_event_lands_in_the_hubs_log(self, hub):
+        usage.flow_completed("review", "resolved", 4)
+        [event] = logged(hub)
+        assert event["event"] == "mycelium.flow_completed"
+        assert event["flow"] == "review"
+        assert event["hub_id"]
+        assert event["release"]
 
-
-class TestProhibitedFields:
-    """No key from PROHIBITED_FIELDS may appear in to_dict() output."""
-
-    def test_prohibited_fields_set_is_not_empty(self):
-        """Sanity: the set itself has not been accidentally cleared."""
-        assert len(PROHIBITED_FIELDS) >= 10
-
-    @pytest.mark.parametrize("bad_key", sorted(PROHIBITED_FIELDS))
-    def test_prohibited_key_stripped_from_extra(self, bad_key: str):
-        """A prohibited key passed via extra is silently stripped."""
-        ev = AnalyticsEvent(
-            event="mycelium.install",
-            install_id="x",
-            release="0.0.1",
-            extra={bad_key: "should-be-stripped"},
+    def test_prohibited_fields_never_reach_the_log(self, hub):
+        usage.record(
+            "mycelium.task_filed", room="atlas", handle="avery", title="Fix it", kind="action"
         )
-        payload = ev.to_dict()
-        assert bad_key not in payload, (
-            f"Prohibited field {bad_key!r} must never appear in the event payload"
+        [event] = logged(hub)
+        assert not set(event) & usage.PROHIBITED_FIELDS
+        assert event["kind"] == "action"
+
+    def test_the_prohibited_set_covers_names_rooms_and_content(self):
+        assert {
+            "handle",
+            "room",
+            "title",
+            "key",
+            "content",
+            "prompt",
+            "reply",
+            "email",
+            "hostname",
+        } <= (usage.PROHIBITED_FIELDS)
+
+    def test_a_rooms_own_flow_is_counted_as_custom(self, hub):
+        usage.flow_completed("our-secret-release-train", "resolved", 3)
+        assert logged(hub)[0]["flow"] == "custom"
+
+    def test_finished_work_carries_a_running_count(self, hub):
+        usage.record("mycelium.task_filed", kind="action")
+        usage.negotiation_completed("converged", 3)
+        usage.flow_completed("swarm", "resolved", 5)
+        counts = [e.get("work_count") for e in logged(hub)]
+        assert counts == [None, 1, 2]
+
+    def test_the_hub_keeps_one_id(self, hub):
+        first = usage.hub_id()
+        assert usage.hub_id() == first
+        assert (hub / "usage" / "hub_id").read_text() == first
+
+    def test_an_install_id_from_the_cli_wins(self, monkeypatch):
+        monkeypatch.setattr(settings, "TELEMETRY_INSTALL_ID", "from-install")
+        assert usage.hub_id() == "from-install"
+
+    def test_recording_never_raises(self, monkeypatch):
+        monkeypatch.setattr(
+            usage, "_append", lambda payload: (_ for _ in ()).throw(OSError("disk full"))
         )
+        assert usage.record("mycelium.hub_started", mode="desktop") is None
 
-    def test_clean_event_has_no_prohibited_keys(self):
-        """A normally-constructed event contains no prohibited keys."""
-        ev = install_event(install_id="abc", release="1.0.0", platform="Darwin")
-        payload = ev.to_dict()
-        leaks = set(payload) & PROHIBITED_FIELDS
-        assert not leaks, f"Prohibited fields leaked into install event: {leaks}"
 
-    def test_session_event_has_no_prohibited_keys(self):
-        ev = session_event(
-            install_id="abc",
-            release="1.0.0",
-            adapter_class="cursor",
-            outcome="converged",
-            session_count=1,
+class TestForwardedOnlyWithConsent:
+    def test_nothing_leaves_without_consent(self, posted, monkeypatch):
+        monkeypatch.setattr(
+            settings, "TELEMETRY_ANALYTICS_DESTINATION", "https://usage.example.com"
         )
-        payload = ev.to_dict()
-        leaks = set(payload) & PROHIBITED_FIELDS
-        assert not leaks, f"Prohibited fields leaked into session event: {leaks}"
+        usage.hub_started()
+        assert posted == []
 
-    def test_multiple_prohibited_keys_all_stripped(self):
-        """All prohibited keys are stripped, not just the first one found."""
-        ev = AnalyticsEvent(
-            event="mycelium.install",
-            install_id="x",
-            release="0.0.1",
-            extra={"handle": "alice", "room": "my-room", "hostname": "devbox"},
+    def test_nothing_leaves_without_a_destination(self, posted, monkeypatch):
+        monkeypatch.setattr(settings, "TELEMETRY_SEND_PRODUCT_ANALYTICS", True)
+        usage.hub_started()
+        assert posted == []
+
+    def test_with_consent_and_a_destination_each_event_is_sent(self, posted, monkeypatch):
+        monkeypatch.setattr(settings, "TELEMETRY_SEND_PRODUCT_ANALYTICS", True)
+        monkeypatch.setattr(
+            settings, "TELEMETRY_ANALYTICS_DESTINATION", "https://usage.example.com"
         )
-        payload = ev.to_dict()
-        assert "handle" not in payload
-        assert "room" not in payload
-        assert "hostname" not in payload
-
-
-class TestSessionCount:
-    """A failed persistence attempt still counts the session exactly once."""
-
-    def test_open_failure_uses_incrementing_memory_fallback(self):
-        with (
-            patch("app.services.analytics._session_count_path", return_value="/unavailable"),
-            patch("builtins.open", side_effect=OSError("unavailable")),
-            patch("app.services.analytics._in_memory_session_count", 0),
-        ):
-            assert increment_session_count() == 1
-            assert increment_session_count() == 2
-
-    def test_write_failure_advances_from_persisted_count_once(self):
-        class FailingWriteFile(io.StringIO):
-            def write(self, value: str) -> int:
-                raise OSError("disk full")
-
-        with (
-            patch("app.services.analytics._session_count_path", return_value="/sessions"),
-            patch("builtins.open", side_effect=lambda *_args: FailingWriteFile("5")),
-            patch("sys.platform", "win32"),
-            patch("app.services.analytics._in_memory_session_count", 0),
-        ):
-            assert increment_session_count() == 6
-            assert increment_session_count() == 7
-
-
-# ── Event shape sanity ────────────────────────────────────────────────────────
-
-
-class TestEventShape:
-    """The mandatory envelope fields are always present."""
+        usage.agent_joined("claude_code")
+        [(url, payload)] = posted
+        assert url == "https://usage.example.com"
+        assert payload["event"] == "mycelium.agent_joined"
+        assert payload["adapter"] == "claude_code"
 
     @pytest.mark.parametrize(
-        "factory,kwargs",
+        ("url", "allowed"),
         [
-            (install_event, {"install_id": "i", "release": "1.0", "platform": "Linux"}),
-            (
-                session_event,
-                {
-                    "install_id": "i",
-                    "release": "1.0",
-                    "adapter_class": "cursor",
-                    "outcome": "converged",
-                    "session_count": 1,
-                },
-            ),
-            (
-                session_event,
-                {
-                    "install_id": "i",
-                    "release": "1.0",
-                    "adapter_class": "cursor",
-                    "outcome": "rejected",
-                    "session_count": 5,
-                },
-            ),
+            ("https://usage.example.com", True),
+            ("http://localhost:3100/loki/api/v1/push", True),
+            ("http://127.0.0.1:9000", True),
+            ("http://usage.example.com", False),
+            ("http://evil.example/localhost", False),
         ],
     )
-    def test_mandatory_envelope_fields_present(self, factory, kwargs):
-        payload = factory(**kwargs).to_dict()
-        for required in ("event", "install_id", "release", "ts"):
-            assert required in payload, f"Missing required envelope field: {required!r}"
+    def test_plain_http_only_to_this_machine(self, monkeypatch, url, allowed):
+        monkeypatch.setattr(settings, "TELEMETRY_SEND_PRODUCT_ANALYTICS", True)
+        monkeypatch.setattr(settings, "TELEMETRY_ANALYTICS_DESTINATION", url)
+        assert (usage.destination() == url) is allowed
 
-    def test_install_event_name(self):
-        assert (
-            install_event(install_id="x", release="1.0", platform="Darwin").event
-            == "mycelium.install"
+
+class TestTheBoardAsUsage:
+    def test_a_filed_task_is_counted_by_kind_and_who_filed_it(self, hub):
+        usage.on_notice(
+            "atlas",
+            {
+                "subkind": "filed",
+                "key": "work/fix-login",
+                "kind": "action",
+                "by": "avery",
+                "for": "codex",
+            },
         )
+        [event] = logged(hub)
+        assert event["event"] == "mycelium.task_filed"
+        assert event == event | {"kind": "action", "by": "person", "assigned": True}
+        assert "avery" not in json.dumps(event)
+        assert "fix-login" not in json.dumps(event)
 
-    def test_session_event_name(self):
-        assert (
-            session_event(
-                install_id="x",
-                release="1.0",
-                adapter_class="c",
-                outcome="converged",
-                session_count=1,
-            ).event
-            == "mycelium.session"
+    def test_a_resolved_task_is_finished_work(self, hub):
+        usage.on_notice("atlas", {"subkind": "resolved", "key": "work/fix-login", "by": "codex"})
+        [event] = logged(hub)
+        assert event["event"] == "mycelium.task_resolved"
+        assert event["kind"] == "work"
+        assert event["work_count"] == 1
+
+    def test_other_board_moves_are_not_usage(self, hub):
+        usage.on_notice("atlas", {"subkind": "claimed", "key": "work/fix-login", "by": "codex"})
+        assert not (hub / "usage" / "events.jsonl").exists()
+
+
+class TestKpis:
+    def test_what_the_hub_adds_up_to(self, hub):
+        usage.hub_started()
+        usage.record("mycelium.task_filed", kind="action", by="person", assigned=True)
+        usage.record("mycelium.task_filed", kind="action", by="agent", assigned=False)
+        usage.record("mycelium.task_resolved", kind="action", by="agent", hours_open=2.0)
+        usage.record("mycelium.task_resolved", kind="action", by="agent", hours_open=6.0)
+        usage.flow_completed("review", "resolved", 4)
+        usage.flow_completed("review", "rejected", 9)
+        usage.negotiation_completed("converged", 3)
+        usage.agent_joined("claude_code")
+
+        k = usage.kpis(7)
+        assert k["tasks"] == {
+            "filed": 2,
+            "resolved": 2,
+            "filed_by": {"person": 1, "agent": 1},
+            "median_hours_open": 4.0,
+            "median_hours_open_by": {"agent": 4.0},
+        }
+        assert k["flows"] == {"review": {"resolved": 1, "rejected": 1}}
+        assert k["negotiations"] == {"converged": 1}
+        assert k["agents_joined"] == {"claude_code": 1}
+        assert k["work_total"] == 5
+        assert k["active_days"] == 1
+        assert len(k["daily"]) == 7
+        assert k["daily"][-1]["filed"] == 2
+        assert k["first_value_hours"] is not None
+        assert k["sharing"] is False
+
+    def test_the_window_leaves_older_events_out(self, hub):
+        old = (datetime.now(UTC) - timedelta(days=40)).isoformat()
+        (hub / "usage").mkdir(parents=True)
+        (hub / "usage" / "events.jsonl").write_text(
+            json.dumps({"event": "mycelium.task_filed", "ts": old, "kind": "action"}) + "\n"
         )
+        assert usage.kpis(30)["tasks"]["filed"] == 0
+        assert usage.kpis(60)["tasks"]["filed"] == 1
 
-    def test_session_count_in_payload(self):
-        payload = session_event(
-            install_id="x",
-            release="1.0",
-            adapter_class="cursor",
-            outcome="converged",
-            session_count=3,
-        ).to_dict()
-        assert payload["session_count"] == "3"
+    def test_an_empty_hub_has_nothing_to_report(self):
+        k = usage.kpis(30)
+        assert k["tasks"]["filed"] == 0
+        assert k["first_value_hours"] is None
+
+
+class TestAgentManifests:
+    @pytest.mark.parametrize(
+        ("key", "manifest"),
+        [
+            ("agents/codex", True),
+            ("agents/codex/notes", False),
+            ("work/agents", False),
+            ("agents/", False),
+        ],
+    )
+    def test_only_the_manifest_itself_is_an_agent_joining(self, key, manifest):
+        assert _is_agent_manifest(key) is manifest
+
+    def test_the_adapter_is_read_from_a_value_or_its_yaml(self):
+        assert _manifest_adapter({"adapter": "cursor"}, "") == "cursor"
+        assert (
+            _manifest_adapter({"text": "adapter: claude_code\nrole: builder"}, "") == "claude_code"
+        )
+        assert _manifest_adapter({"text": "not: [yaml"}, "") is None

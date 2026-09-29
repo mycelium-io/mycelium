@@ -66,13 +66,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _read_release() -> str:
-    """Best-effort release version — delegates to the shared version helper."""
-    from app.services.version import read_release
-
-    return read_release()
-
-
 # Handles that are never a participant position: the engine itself, the backend
 # moderator, and the system actor the backend signs its own envelopes with.
 _NON_PARTICIPANTS = frozenset({BACKEND_AGENT, l9.SYSTEM_ACTOR_ID})
@@ -298,43 +291,12 @@ class AlignerEngine:
             _metrics.record_aligner_run(
                 room=room, rounds=_rounds[0], duration_ms=_ms, outcome=_outcome
             )
-            # Emit a product analytics session event for terminal outcomes.
-            # Stalled (no participants) and error outcomes are excluded — they
-            # don't represent a coordinated session that reached any conclusion.
+            # Usage: a negotiation that reached a conclusion. A stalled one (no
+            # participants) or an error concluded nothing, so it isn't counted.
             if _outcome in ("converged", "rejected"):
-                try:
-                    from app.config import settings as _settings
+                from app.services import analytics as usage
 
-                    if _settings.TELEMETRY_SEND_PRODUCT_ANALYTICS:
-                        from app.services.analytics import (
-                            emit as _emit,
-                        )
-                        from app.services.analytics import (
-                            increment_session_count,
-                        )
-                        from app.services.analytics import (
-                            session_event as _session_event,
-                        )
-
-                        _install_id = _settings.TELEMETRY_INSTALL_ID or "unknown"
-                        _rel = _read_release()
-                        _oc = _outcome
-
-                        def _emit_session_event() -> None:
-                            """Blocking I/O — runs in the thread pool."""
-                            _count = increment_session_count()
-                            _ev = _session_event(
-                                install_id=_install_id,
-                                release=_rel,
-                                adapter_class="",
-                                outcome=_oc,
-                                session_count=_count,
-                            )
-                            _emit(_ev)
-
-                        asyncio.get_running_loop().run_in_executor(None, _emit_session_event)
-                except Exception:
-                    logger.debug("analytics session emit failed (non-fatal)", exc_info=True)
+                await asyncio.to_thread(usage.negotiation_completed, _outcome, _rounds[0])
 
     # -- mediator mode (drive a real NEGMAS SAO over SLIM) --
 

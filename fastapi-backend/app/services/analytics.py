@@ -2,169 +2,70 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Anonymous product analytics event emitter (#937/#938).
+Usage events: what a hub is used for, counted, as product KPIs.
 
-Purpose
--------
-Measure two adoption signals that tell us whether Mycelium's coordination
-value actually lands:
+The unit of work is a task, so the events follow it: a task filed and
+resolved, a flow run inside one, a negotiation inside one, an agent joining a
+room, and the hub itself starting. Every way the app starts work (a plain
+task, Review, Split, Settle, Catch up) lands as one of these, so the KPIs
+cover what people actually do rather than one engine.
 
-  - ``time-to-first-session`` — from install to a completed coordinated session
-  - ``repeat-session-rate``   — do teams come back for a second session
+Two halves, deliberately separate:
 
-Both signals are derived from three events emitted here.  Events fire only
-when ``TELEMETRY_SEND_PRODUCT_ANALYTICS=true`` (set by the user after seeing
-the install-path disclosure) **and** ``TELEMETRY_ANALYTICS_DESTINATION`` names
-a live endpoint.  Absent either, ``emit()`` is a documented no-op.
+* **Recorded on the hub, always.** Each event is appended to
+  ``$MYCELIUM_DATA_DIR/usage/events.jsonl``, beside the hub's other state,
+  and :func:`kpis` reads that file for ``GET /api/observability/usage`` and the app's
+  Metrics page. It is counts and outcome words, never content, and it does
+  not leave the machine.
+* **Forwarded only with consent.** With ``TELEMETRY_SEND_PRODUCT_ANALYTICS``
+  on and ``TELEMETRY_ANALYTICS_DESTINATION`` set, each event is also POSTed
+  there. That is how a hub's usage reaches the people who build Mycelium.
 
-Privacy contract (#937)
------------------------
-* Every event is identified by a random ``install_id`` (UUID4, generated at
-  first interactive install, stored in config.toml, never rotated).
-* **Prohibited fields** — never included in any event:
-    - names, usernames, handles, email addresses
-    - room names, task bodies, prompt text, reply text
-    - IP addresses, hostnames, machine identifiers
-    - any content from a coordinated session
-* ``adapter_class`` is the *kind* string ("claude_code", "cursor", etc.) —
-  never the agent's name or handle.
-* ``outcome`` is an aggregate status word ("converged", "resolved",
-  "rejected") — never session content.
-
-Event schema
-------------
-All events share a common envelope:
-
-    {
-      "event":        <event_name>,
-      "install_id":   "<uuid4>",
-      "release":      "<semver>",
-      "ts":           "<iso8601 UTC>",
-      ... event-specific fields ...
-    }
-
-``mycelium.install``
-    Fired once at the end of the first successful interactive install.
-    Fields: release, platform (os.uname sysname, no hostname).
-
-``mycelium.session``
-    Fired when a coordinated session (aligner episode with a terminal outcome
-    of ``converged`` or ``rejected``) completes.
-    Fields: release, adapter_class, outcome, session_count.
-    ``session_count`` is the cumulative number of sessions on this
-    installation — 1 means first session, 2+ means repeat. This lets callers
-    compute time-to-first (count=1), repeat rate (count>1), and retention
-    curves without separate event types per retention bucket.
-
-Destination (go/no-go: #937)
------------------------------
-The ``TELEMETRY_ANALYTICS_DESTINATION`` env var holds the destination URL.
-Until #937 is resolved this is an empty string and ``emit()`` silently skips
-all events.  A non-empty destination must be an HTTPS URL; plain HTTP is
-rejected so credentials-in-URL attacks can't redirect telemetry to a plain
-HTTP listener.
+Privacy contract
+----------------
+* An event names no person, agent, room or task. ``PROHIBITED_FIELDS`` is
+  stripped from every payload, and a test asserts the set.
+* Kinds, not names: ``adapter`` is ``claude_code``, never a handle; ``flow``
+  is a built-in flow's name or ``custom``, since a room can name its own.
+* Every event carries the hub's ``hub_id``: ``TELEMETRY_INSTALL_ID`` when the
+  CLI's install set one, else a random UUID the hub mints once and keeps in
+  its data directory. It identifies an installation, not a person.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import threading as _threading
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
-from typing import Literal
+import os
+import platform
+import threading
+import uuid
+from collections import Counter
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from statistics import median
+from typing import Any, Literal
+from urllib.parse import urlparse
 
 _log = logging.getLogger(__name__)
 
-# ── Session counter ───────────────────────────────────────────────────────────
-# Tracks how many coordinated sessions (aligner runs with a terminal outcome)
-# have completed in this backend process. Used to distinguish the first session
-# event from repeat ones. Persisted across backend restarts via a flat file in
-# MYCELIUM_DATA_DIR so the first/repeat distinction survives a container recreate.
-# Protected by a threading.Lock because _run_and_release runs in an asyncio
-# worker thread, not the event loop.
-
-_session_lock = _threading.Lock()
-_in_memory_session_count: int = 0  # fallback when MYCELIUM_DATA_DIR is unset
-
-
-def _session_count_path():
-    """Return the path to the session count file, or None if DATA_DIR is unset."""
-    import os
-    from pathlib import Path
-
-    data_dir = os.environ.get("MYCELIUM_DATA_DIR", "")
-    if not data_dir:
-        return None
-    return Path(data_dir) / ".analytics_sessions"
-
-
-def increment_session_count() -> int:
-    """Atomically increment and return the new session count.
-
-    Returns the count *after* this session, so 1 means this was the first
-    session (``first=True``), 2+ means repeat (``first=False``).
-    Writes through to a flat file in MYCELIUM_DATA_DIR for persistence across
-    restarts. Falls back to an in-memory counter if the file is unavailable.
-
-    Thread-safety: the in-process ``_session_lock`` prevents races between
-    concurrent async worker threads within a single process. On Unix, ``fcntl``
-    advisory locking prevents races across multiple worker processes (e.g.
-    gunicorn multi-worker). On Windows (unsupported for production), the
-    cross-process guard is omitted and only the in-process lock applies.
-    """
-    import sys
-
-    global _in_memory_session_count
-
-    with _session_lock:
-        path = _session_count_path()
-        if path is None:
-            # No DATA_DIR — use the module-level in-memory counter.
-            _in_memory_session_count += 1
-            return _in_memory_session_count
-        persisted_count = 0
-        lock_fd = None
-        try:
-            # Open (creating if needed) and acquire an exclusive advisory lock
-            # so concurrent processes don't interleave read-modify-write.
-            lock_fd = open(path, "a+")
-            if sys.platform != "win32":
-                import fcntl
-
-                fcntl.lockf(lock_fd, fcntl.LOCK_EX)
-            lock_fd.seek(0)
-            raw = lock_fd.read().strip()
-            persisted_count = int(raw) if raw.isdigit() else 0
-            count = max(persisted_count, _in_memory_session_count) + 1
-            lock_fd.seek(0)
-            lock_fd.truncate()
-            lock_fd.write(str(count))
-            lock_fd.flush()
-            _in_memory_session_count = count
-        except Exception:
-            _in_memory_session_count = max(persisted_count, _in_memory_session_count) + 1
-            count = _in_memory_session_count
-        finally:
-            if lock_fd is not None:
-                try:
-                    if sys.platform != "win32":
-                        import fcntl
-
-                        fcntl.lockf(lock_fd, fcntl.LOCK_UN)
-                    lock_fd.close()
-                except Exception:
-                    pass
-        return count
-
-
 EventName = Literal[
-    "mycelium.install",
-    "mycelium.session",
+    "mycelium.hub_started",
+    "mycelium.task_filed",
+    "mycelium.task_resolved",
+    "mycelium.flow_completed",
+    "mycelium.negotiation_completed",
+    "mycelium.agent_joined",
 ]
 
-# Fields that are NEVER allowed in any analytics event.
-# This set is asserted in tests so a future field addition can't silently slip through.
+# Events that finish a piece of work. Their running count, carried on each as
+# ``work_count``, is what first value (count 1) and repeat use (2+) read.
+WORK_EVENTS: frozenset[str] = frozenset(
+    {"mycelium.task_resolved", "mycelium.flow_completed", "mycelium.negotiation_completed"}
+)
+
+# Fields that never appear in an event. Asserted in tests, so a new field
+# can't slip through unnoticed.
 PROHIBITED_FIELDS: frozenset[str] = frozenset(
     {
         "name",
@@ -175,6 +76,8 @@ PROHIBITED_FIELDS: frozenset[str] = frozenset(
         "room_name",
         "task",
         "task_body",
+        "title",
+        "key",
         "prompt",
         "reply",
         "content",
@@ -185,228 +88,346 @@ PROHIBITED_FIELDS: frozenset[str] = frozenset(
     }
 )
 
+# Plain HTTP is only allowed to this machine, where nobody can listen in.
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "host.docker.internal"})
 
-@dataclass
-class AnalyticsEvent:
-    """A single anonymous adoption-metric event.
+# The log is rotated once at this size, keeping one previous file.
+_MAX_LOG_BYTES = 5 * 1024 * 1024
 
-    Construct with one of the factory helpers below; never pass prohibited
-    fields to the ``extra`` dict.
-    """
-
-    event: EventName
-    install_id: str
-    release: str
-    extra: dict[str, str] = field(default_factory=dict)
-
-    def to_dict(self) -> dict:
-        payload = {
-            "event": self.event,
-            "install_id": self.install_id,
-            "release": self.release,
-            "ts": datetime.now(UTC).isoformat(),
-            **self.extra,
-        }
-        # Safety: strip any prohibited field that slipped in via ``extra``.
-        stripped = {k: v for k, v in payload.items() if k not in PROHIBITED_FIELDS}
-        if len(stripped) != len(payload):
-            _log.warning(
-                "analytics: stripped prohibited field(s) %s from event %s",
-                set(payload) - set(stripped),
-                self.event,
-            )
-        return stripped
+_lock = threading.Lock()
 
 
-# ── Event factories ───────────────────────────────────────────────────────────
+def _usage_dir() -> Path:
+    from app.config import settings
+
+    return Path(settings.MYCELIUM_DATA_DIR) / "usage"
 
 
-def install_event(*, install_id: str, release: str, platform: str) -> AnalyticsEvent:
-    """``mycelium.install`` — fired once at the end of the first interactive install."""
-    return AnalyticsEvent(
-        event="mycelium.install",
-        install_id=install_id,
-        release=release,
-        extra={"platform": platform},
-    )
+def _log_path() -> Path:
+    return _usage_dir() / "events.jsonl"
 
 
-def session_event(
-    *,
-    install_id: str,
-    release: str,
-    adapter_class: str,
-    outcome: str,
-    session_count: int,
-) -> AnalyticsEvent:
-    """``mycelium.session`` — fired when an aligner run reaches a terminal outcome.
+def hub_id() -> str:
+    """This installation's id: the CLI's install id, else one the hub keeps."""
+    from app.config import settings
 
-    ``session_count`` is the cumulative number of coordinated sessions on this
-    installation (1 = first, 2+ = repeat). Keeping it as a field rather than
-    splitting into ``session.first`` / ``session.repeat`` event types lets
-    callers compute time-to-first (count=1), repeat rate (count>1), and any
-    deeper retention curve from the same event stream without a separate event
-    name per retention bucket.
-    """
-    return AnalyticsEvent(
-        event="mycelium.session",
-        install_id=install_id,
-        release=release,
-        extra={
-            "adapter_class": adapter_class,
-            "outcome": outcome,
-            "session_count": str(session_count),
-        },
-    )
+    if settings.TELEMETRY_INSTALL_ID:
+        return settings.TELEMETRY_INSTALL_ID
+    path = _usage_dir() / "hub_id"
+    try:
+        existing = path.read_text().strip()
+        if existing:
+            return existing
+    except OSError:
+        pass
+    minted = str(uuid.uuid4())
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(minted)
+    except OSError:
+        _log.debug("usage: could not persist hub_id", exc_info=True)
+    return minted
 
 
-# ── Emitter ───────────────────────────────────────────────────────────────────
+def _release() -> str:
+    from app.services.version import read_release
+
+    return read_release()
 
 
-def emit(event: AnalyticsEvent) -> None:
-    """Fire an analytics event if opt-in is active and a destination is configured.
+def scrub(payload: dict[str, Any]) -> dict[str, Any]:
+    """The payload with every prohibited field removed, warning if any were there."""
+    clean = {k: v for k, v in payload.items() if k not in PROHIBITED_FIELDS}
+    if len(clean) != len(payload):
+        _log.warning("usage: stripped prohibited field(s) %s", sorted(set(payload) - set(clean)))
+    return clean
 
-    Silently no-ops when:
-    - ``TELEMETRY_SEND_PRODUCT_ANALYTICS`` is false (the default)
-    - ``TELEMETRY_ANALYTICS_DESTINATION`` is empty (pending #937 go/no-go)
-    - The destination is not HTTPS (plain HTTP rejected as a safeguard)
 
-    Never raises — analytics failures are logged at DEBUG and swallowed so they
-    never disrupt coordination or the install flow.
+def _work_count() -> int:
+    """How many work events the log holds, before this one."""
+    count = 0
+    for event in _read_events():
+        if event.get("event") in WORK_EVENTS:
+            count += 1
+    return count
+
+
+def record(event: EventName, **fields: Any) -> dict[str, Any] | None:
+    """Record one usage event on the hub, and forward it if the hub shares usage.
+
+    Never raises: usage must never get in the way of the work it counts.
+    Returns the payload written, for tests.
     """
     try:
-        _emit_inner(event)
-    except Exception as exc:
-        _log.debug("analytics emit failed (non-fatal): %s", exc)
+        with _lock:
+            payload: dict[str, Any] = {
+                "event": event,
+                "hub_id": hub_id(),
+                "release": _release(),
+                "ts": datetime.now(UTC).isoformat(),
+                **fields,
+            }
+            if event in WORK_EVENTS:
+                payload["work_count"] = _work_count() + 1
+            payload = scrub(payload)
+            _append(payload)
+        _forward_in_background(payload)
+        return payload
+    except Exception:
+        _log.debug("usage: record failed (non-fatal)", exc_info=True)
+        return None
 
 
-def _emit_inner(event: AnalyticsEvent) -> None:
-    """Internal emitter; callers must use :func:`emit` for safe wrapping."""
+def _append(payload: dict[str, Any]) -> None:
+    path = _log_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        if path.stat().st_size > _MAX_LOG_BYTES:
+            path.replace(path.with_suffix(".1.jsonl"))
+    except FileNotFoundError:
+        pass
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(payload, separators=(",", ":")) + "\n")
+
+
+def _read_events() -> list[dict[str, Any]]:
+    """Every event the hub has recorded, oldest first, across the rotated file."""
+    events: list[dict[str, Any]] = []
+    current = _log_path()
+    for path in (current.with_suffix(".1.jsonl"), current):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            try:
+                events.append(json.loads(line))
+            except ValueError:
+                continue
+    return events
+
+
+# ── Forwarding ────────────────────────────────────────────────────────────────
+
+
+def destination() -> str | None:
+    """Where events go, or None when this hub doesn't share usage."""
     from app.config import settings
 
     if not settings.TELEMETRY_SEND_PRODUCT_ANALYTICS:
+        return None
+    url = settings.TELEMETRY_ANALYTICS_DESTINATION.strip()
+    if not url:
+        return None
+    if url.startswith("https://"):
+        return url
+    # Checked on the parsed host, so http://evil.example/localhost doesn't pass.
+    host = urlparse(url).hostname or ""
+    if url.startswith("http://") and host in _LOCAL_HOSTS:
+        return url
+    _log.warning("usage: destination %r is not HTTPS or local; not sending", url)
+    return None
+
+
+def _forward_in_background(payload: dict[str, Any]) -> None:
+    url = destination()
+    if url is None:
         return
-
-    destination = settings.TELEMETRY_ANALYTICS_DESTINATION.strip()
-    if not destination:
-        # #937 destination not yet decided — silent no-op.
-        _log.debug("analytics: destination not configured (pending #937); skipping %s", event.event)
-        return
-
-    if not destination.startswith("https://"):
-        # Security note: plain HTTP is refused for remote destinations because
-        # an event POST over plain HTTP could expose the install_id (a UUID,
-        # not a secret, but still a persistent identifier) to a network observer
-        # or be silently redirected to a different host.
-        #
-        # Local-address exception (Option A, documented): localhost,
-        # 127.0.0.1, and host.docker.internal are only reachable from the
-        # current machine, so the interception risk does not apply.  This lets
-        # developers point the destination at a local Loki/Grafana instance
-        # (e.g. http://host.docker.internal:3100/loki/api/v1/push) without
-        # needing a TLS terminator.  Production deployments MUST use HTTPS.
-        #
-        # Note: we validate the *hostname* (not a substring of the full URL)
-        # to prevent bypass via e.g. http://evil.com/localhost.
-        _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "host.docker.internal"})
-        try:
-            from urllib.parse import urlparse as _urlparse
-
-            _host = _urlparse(destination).hostname or ""
-        except Exception:
-            _host = ""
-        is_local = _host in _LOCAL_HOSTS
-        if not (destination.startswith("http://") and is_local):
-            _log.warning(
-                "analytics: destination %r is not HTTPS (and not a local address); "
-                "refusing to send event %s",
-                destination,
-                event.event,
-            )
-            return
-
-    payload = event.to_dict()
-    _post(destination, payload)
+    threading.Thread(target=_post_quietly, args=(url, payload), daemon=True).start()
 
 
-def _post(url: str, payload: dict) -> None:
-    """HTTP POST the event payload as JSON.  Uses the stdlib so no extra deps.
+def _post_quietly(url: str, payload: dict[str, Any]) -> None:
+    try:
+        _post(url, payload)
+    except Exception as exc:
+        _log.debug("usage: forward failed (non-fatal): %s", exc)
 
-    When the URL path contains ``/loki/`` (e.g. a local Grafana LGTM Loki push
-    endpoint), the payload is wrapped in the Loki push stream format so events
-    appear in Grafana Explore as structured log entries labelled by
-    ``{service="mycelium-analytics", event="<event_name>"}``.
 
-    All other destinations receive a plain ``application/json`` POST.
-    """
+def _post(url: str, payload: dict[str, Any]) -> None:
+    """POST one event as JSON; a Loki push URL gets Loki's stream format."""
     import time
     import urllib.request
 
     if "/loki/" in url:
-        # Loki push format: stream labels + a single log line (the JSON payload).
-        loki_body = {
+        body = {
             "streams": [
                 {
                     "stream": {
-                        "service": "mycelium-analytics",
+                        "service": "mycelium-usage",
                         "event": payload.get("event", "unknown"),
                     },
-                    "values": [
-                        [
-                            str(int(time.time() * 1e9)),  # nanosecond Unix timestamp
-                            json.dumps(payload),
-                        ]
-                    ],
+                    "values": [[str(int(time.time() * 1e9)), json.dumps(payload)]],
                 }
             ]
         }
-        data = json.dumps(loki_body).encode()
     else:
-        data = json.dumps(payload).encode()
-
-    req = urllib.request.Request(
+        body = payload
+    request = urllib.request.Request(
         url,
-        data=data,
+        data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=5) as resp:
-        status = resp.status
-    _log.debug("analytics: %s → %s (%d)", payload["event"], url, status)
+    with urllib.request.urlopen(request, timeout=5) as response:
+        _log.debug("usage: %s -> %s (%d)", payload.get("event"), url, response.status)
 
 
-# ── CLI-side helpers (called from install.py) ─────────────────────────────────
+# ── What happens on the hub, as events ───────────────────────────────────────
 
 
-def ensure_install_id(config) -> str:
-    """Return the install_id for this machine, generating + persisting one if absent.
-
-    ``config`` is a :class:`~mycelium.config.MyceliumConfig` instance.
-    Writes back to config if a new ID is generated.
-    """
-    if config.telemetry.install_id:
-        return config.telemetry.install_id
-
-    import uuid
-
-    new_id = str(uuid.uuid4())
-    config.telemetry.install_id = new_id
-    config.save()
-    return new_id
+def hub_mode() -> str:
+    """How this hub runs: the Mac app, a container, or a server someone started."""
+    return os.environ.get("MYCELIUM_HUB_MODE", "").strip() or "server"
 
 
-def _platform_token() -> str:
-    """A coarse, non-identifying OS kind (e.g. 'Darwin', 'Linux')."""
-    import platform
-
-    return platform.system() or "unknown"
+def hub_started() -> None:
+    record("mycelium.hub_started", mode=hub_mode(), platform=platform.system() or "unknown")
 
 
-def _release_token() -> str:
-    """Best-effort release version from the CLI package metadata."""
-    try:
-        from importlib.metadata import version
+def _actor_kind(room: str, handle: str | None) -> str:
+    """Who did it, as a kind: an engine, an agent, or a person."""
+    if not handle:
+        return "person"
+    from app.services.filesystem import get_room_dir, read_memory_file
 
-        return version("mycelium")
-    except Exception:
-        return "unknown"
+    found = read_memory_file(get_room_dir(room), f"agents/{handle.lstrip('@')}")
+    if not found:
+        return "person"
+    text = found[1] or ""
+    return "engine" if "adapter: engine" in text else "agent"
+
+
+def _hours_since_created(room: str, key: str) -> float | None:
+    from app.services.filesystem import get_room_dir, read_memory_file
+
+    found = read_memory_file(get_room_dir(room), key)
+    if not found:
+        return None
+    raw = found[0].get("created_at")
+    if not raw:
+        return None
+    created = raw if isinstance(raw, datetime) else datetime.fromisoformat(str(raw))
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=UTC)
+    return round((datetime.now(UTC) - created).total_seconds() / 3600, 2)
+
+
+def on_notice(room: str, notice: dict[str, str]) -> None:
+    """The board moving, as usage: a task filed, and a task resolved."""
+    subkind = notice.get("subkind")
+    key = notice.get("key") or ""
+    namespace = key.split("/", 1)[0]
+    kind = notice.get("kind") or namespace or "task"
+    if subkind == "filed":
+        record(
+            "mycelium.task_filed",
+            kind=kind,
+            by=_actor_kind(room, notice.get("by")),
+            assigned=bool(notice.get("for")),
+        )
+    elif subkind == "resolved":
+        record(
+            "mycelium.task_resolved",
+            kind=kind,
+            by=_actor_kind(room, notice.get("by")),
+            hours_open=_hours_since_created(room, key),
+        )
+
+
+def flow_completed(flow: str, outcome: str, steps: int) -> None:
+    from app.services.protocols import builtin_names
+
+    record(
+        "mycelium.flow_completed",
+        flow=flow if flow in builtin_names() else "custom",
+        outcome=outcome,
+        steps=steps,
+    )
+
+
+def negotiation_completed(outcome: str, rounds: int) -> None:
+    record("mycelium.negotiation_completed", outcome=outcome, rounds=rounds)
+
+
+def agent_joined(adapter: str | None) -> None:
+    record("mycelium.agent_joined", adapter=(adapter or "unknown").strip() or "unknown")
+
+
+# ── KPIs ──────────────────────────────────────────────────────────────────────
+
+
+def kpis(days: int = 30, *, now: datetime | None = None) -> dict[str, Any]:
+    """What this hub's usage adds up to, over the last ``days`` and overall."""
+    now = now or datetime.now(UTC)
+    since = now - timedelta(days=days)
+    events = _read_events()
+
+    def when(event: dict[str, Any]) -> datetime | None:
+        try:
+            return datetime.fromisoformat(event["ts"])
+        except (KeyError, ValueError):
+            return None
+
+    recent = [e for e in events if (t := when(e)) is not None and t >= since]
+    by_name: dict[str, list[dict[str, Any]]] = {}
+    for event in recent:
+        by_name.setdefault(event.get("event", ""), []).append(event)
+
+    filed = by_name.get("mycelium.task_filed", [])
+    resolved = by_name.get("mycelium.task_resolved", [])
+    flows = by_name.get("mycelium.flow_completed", [])
+    negotiations = by_name.get("mycelium.negotiation_completed", [])
+    joined = by_name.get("mycelium.agent_joined", [])
+    hours = [h for e in resolved if isinstance(h := e.get("hours_open"), int | float)]
+    # How long tasks stay open, by who closed them: a person's task and an
+    # agent's task are different clocks.
+    hours_by: dict[str, list[float]] = {}
+    for e in resolved:
+        if isinstance(h := e.get("hours_open"), int | float):
+            hours_by.setdefault(e.get("by", "person"), []).append(h)
+
+    flow_counts: dict[str, dict[str, int]] = {}
+    for e in flows:
+        row = flow_counts.setdefault(e.get("flow", "custom"), {})
+        row[e.get("outcome", "unknown")] = row.get(e.get("outcome", "unknown"), 0) + 1
+
+    active_days = sorted({t.date().isoformat() for e in recent if (t := when(e)) is not None})
+    daily: list[dict[str, Any]] = []
+    for offset in range(days - 1, -1, -1):
+        day = (now - timedelta(days=offset)).date().isoformat()
+        daily.append(
+            {
+                "day": day,
+                "filed": sum(1 for e in filed if e.get("ts", "").startswith(day)),
+                "resolved": sum(1 for e in resolved if e.get("ts", "").startswith(day)),
+            }
+        )
+
+    first_seen = next((when(e) for e in events if when(e) is not None), None)
+    first_work = next(
+        (when(e) for e in events if e.get("event") in WORK_EVENTS and when(e) is not None), None
+    )
+    first_value_hours = (
+        round((first_work - first_seen).total_seconds() / 3600, 2)
+        if first_seen is not None and first_work is not None
+        else None
+    )
+
+    return {
+        "days": days,
+        "sharing": destination() is not None,
+        "tasks": {
+            "filed": len(filed),
+            "resolved": len(resolved),
+            "filed_by": dict(Counter(e.get("by", "person") for e in filed)),
+            "median_hours_open": round(median(hours), 2) if hours else None,
+            "median_hours_open_by": {k: round(median(v), 2) for k, v in hours_by.items()},
+        },
+        "flows": flow_counts,
+        "negotiations": dict(Counter(e.get("outcome", "unknown") for e in negotiations)),
+        "agents_joined": dict(Counter(e.get("adapter", "unknown") for e in joined)),
+        "active_days": len(active_days),
+        "daily": daily,
+        "work_total": sum(1 for e in events if e.get("event") in WORK_EVENTS),
+        "first_value_hours": first_value_hours,
+    }

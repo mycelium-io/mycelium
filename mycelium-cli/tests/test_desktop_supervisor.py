@@ -251,6 +251,14 @@ def test_the_repo_checkout_is_found_from_this_code():
     assert (root / "fastapi-backend" / "app" / "main.py").exists()
 
 
+@pytest.mark.parametrize(("share", "sent"), [(True, "true"), (False, "false"), (None, None)])
+def test_the_apps_answer_on_usage_stats_reaches_the_hub(share: bool | None, sent: str | None):
+    sup = Supervisor("hub", emit=Events(), env={}, locator=Locator(None, None), share_usage=share)
+    [hub_component] = [c for c in sup._components() if c.name == "hub"]
+    assert hub_component.env["MYCELIUM_HUB_MODE"] == "desktop"
+    assert hub_component.env.get("TELEMETRY_SEND_PRODUCT_ANALYTICS") == sent
+
+
 def test_the_hubs_settings_come_from_config():
     from mycelium.config import MyceliumConfig
 

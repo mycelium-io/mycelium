@@ -250,6 +250,7 @@ class Supervisor:
         config: Any = None,
         env: dict[str, str] | None = None,
         start_runner: bool = True,
+        share_usage: bool | None = None,
     ) -> None:
         if mode == "client" and not hub_url:
             raise ValueError("client mode needs the hub's URL")
@@ -261,6 +262,9 @@ class Supervisor:
         self.config = config
         self.env = env if env is not None else hub_env(config)
         self.start_runner = start_runner
+        #: The Mac app's answer to "share usage stats", which wins over
+        #: config.toml for the hub it starts. None leaves config.toml's.
+        self.share_usage = share_usage
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self._last: str | None = None
@@ -313,7 +317,12 @@ class Supervisor:
             "SLIM_NODE_ENDPOINT": f"http://{HOST}:{SLIM_PORT}",
             "MYCELIUM_SLIM_ENDPOINT": f"http://{HOST}:{SLIM_PORT}",
             "FASTEMBED_CACHE_PATH": str(loc.models()),
+            "MYCELIUM_HUB_MODE": "desktop",
         }
+        if self.share_usage is not None:
+            hub_env_vars["TELEMETRY_SEND_PRODUCT_ANALYTICS"] = (
+                "true" if self.share_usage else "false"
+            )
         if pi := loc.pi():
             hub_env_vars["ALIGNER_PI_BINARY"] = pi
         ui_env = {

@@ -505,24 +505,21 @@ class A2aConfig(BaseModel):
 
 
 class TelemetryConfig(BaseModel):
-    """Telemetry configuration — OTel SDK and optional product analytics.
+    """Telemetry: the backend's OTel export, and whether the hub shares its usage stats.
 
     Two independent opt-ins kept deliberately separate:
 
     ``enabled`` activates the OpenTelemetry SDK in the backend: traces and
-    metrics are exported to the OTLP collector on every coordinated path
-    (HTTP RED, aligner rounds, SLIM channel timing, await long-poll). Off by
-    default; never required for coordination or storage to work.
+    metrics are exported over OTLP on every coordinated path (HTTP RED,
+    aligner rounds, SLIM channel timing, await long-poll). Off by default;
+    never required for coordination or storage to work.
 
-    ``send_product_analytics`` enables anonymous adoption-metric events
-    (install, first session, repeat session) sent to the configured destination
-    (resolved in #937). Off by default. Non-interactive installs stay off
-    unconditionally. No transcript, task, prompt, reply, or handle data is
-    ever included; events are identified only by a random ``install_id``.
-
-    ``install_id`` is a random UUID generated on the first interactive
-    ``mycelium install`` and stored in ``config.toml``. It never leaves this
-    machine unless ``send_product_analytics`` is on.
+    ``send_product_analytics`` shares the hub's usage events. The hub records
+    them either way (tasks filed and resolved, flows and negotiations finished,
+    agents joined, the hub starting) and the app's Metrics page reads them;
+    this sends the same events to ``analytics_destination``. Off by default,
+    asked at interactive install and on the Mac app's first-run screen. No
+    names, handles, rooms, task text, prompts or replies are ever included.
     """
 
     enabled: bool = Field(
@@ -537,30 +534,32 @@ class TelemetryConfig(BaseModel):
         description=(
             "OTLP HTTP endpoint the backend pushes spans and metrics to. "
             "When unset and telemetry.enabled is true, defaults to "
-            "http://mycelium-collector:4318 (the collector's in-container address)."
+            "http://mycelium-collector:4318, the collector's address in the Docker stack. "
+            "The Mac app runs no collector, so set this there (for example "
+            "http://127.0.0.1:4318 for a collector on the same Mac)."
         ),
     )
     send_product_analytics: bool = Field(
         default=False,
         description=(
-            "Send anonymous adoption-metric events (install, first session, repeat session) "
-            "to the configured analytics destination. Off by default. Non-interactive "
-            "installs stay off unconditionally."
+            "Share the hub's anonymous usage events (tasks filed and resolved, flows and "
+            "negotiations finished, agents joined) with the analytics destination. The hub "
+            "records them either way. Off by default; the Mac app's own setting wins there."
         ),
     )
     analytics_destination: str | None = Field(
         default=None,
         description=(
-            "Destination URL for anonymous product analytics events. "
-            "Set once the go/no-go destination decision is made (#937)."
+            "Where shared usage events are POSTed, as JSON (or Loki's push format for a "
+            "/loki/ URL). HTTPS, or plain HTTP to this machine only."
         ),
     )
     install_id: str | None = Field(
         default=None,
         description=(
             "Random UUID identifying this installation, generated on first interactive "
-            "`mycelium install`. Used only for product analytics events when "
-            "send_product_analytics is enabled. Never sent anywhere unless opt-in is active."
+            "`mycelium install`; a hub without one mints its own. Carried on usage events, "
+            "and sent nowhere unless the hub shares them."
         ),
     )
 

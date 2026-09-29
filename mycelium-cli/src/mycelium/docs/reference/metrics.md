@@ -8,7 +8,8 @@ A hub keeps three kinds of numbers:
 | **Backend metrics** | What the backend is doing: memory, embeddings, model calls, messaging, latency | Kept in the running backend. Exported over OpenTelemetry if you turn that on |
 | **Agent telemetry** | What your agents report over OpenTelemetry | The optional collector |
 
-The app's **Metrics** page (open it from the status bar) shows the first two.
+The app's **Metrics** page (open it from the status bar) shows the first two,
+as its Usage and System tabs.
 
 ## Usage
 
@@ -40,10 +41,13 @@ since its name is the room's.
 
 ### Where to see it
 
-The **Usage** section at the top of the Metrics page shows the last 30 days:
-tasks filed and resolved, how long tasks stay open, active days, a bar per
-day, flows and negotiations by outcome, and agents joined by adapter. The same
-figures are at `GET /api/observability/usage?days=30`. The events themselves
+The Metrics page opens on its **Usage** tab, over the last 30 or 90 days:
+tasks filed and resolved, how long tasks stay open, and active days; whether
+the board keeps up (filed against resolved, by day or by week); each way of
+starting work and how often it ends well; who files the work, and how long
+tasks stay open by who resolved them; and agents joined by adapter. Its
+**System** tab is the backend's own metrics, below. The same figures are at
+`GET /api/observability/usage?days=30`. The events themselves
 are in `$MYCELIUM_DATA_DIR/usage/events.jsonl`, one JSON object per line.
 
 ### Sharing usage stats
