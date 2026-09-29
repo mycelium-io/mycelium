@@ -84,6 +84,10 @@ function specFor(shot: Shot, baseUrl: string, offline: boolean) {
     // Reach a view/rail behind a tab (Negotiate, Network, Memory) before
     // shooting, then any state only actions can reach (a dialog filled in).
     do: [...(shot.steps ?? []).flatMap((name) => [`click:${name}`, "sleep:600"]), ...(shot.actions ?? [])],
+    // The capture boots a cold dev server: a view's first open compiles it and
+    // its routes on demand, so a wait for its data (the board's pull request
+    // states) can outlast shotkit's 15s default on a runner.
+    actionTimeout: 45_000,
     // next-themes reads the theme from localStorage before first paint; seed it
     // so there's no flash of the default theme in the capture. The shots are
     // taken as Morgan (@operator), the mock rooms' person, so a fresh browser
