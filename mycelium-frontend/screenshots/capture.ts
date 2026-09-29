@@ -81,8 +81,9 @@ function specFor(shot: Shot, baseUrl: string, offline: boolean) {
     settle: "full",
     waitFor: shot.waitFor,
     element: shot.clip,
-    // Reach a view/rail behind a tab (Negotiate, Network, Memory) before shooting.
-    do: (shot.steps ?? []).flatMap((name) => [`click:${name}`, "sleep:600"]),
+    // Reach a view/rail behind a tab (Negotiate, Network, Memory) before
+    // shooting, then any state only actions can reach (a dialog filled in).
+    do: [...(shot.steps ?? []).flatMap((name) => [`click:${name}`, "sleep:600"]), ...(shot.actions ?? [])],
     // next-themes reads the theme from localStorage before first paint; seed it
     // so there's no flash of the default theme in the capture.
     storage: { theme: shot.theme },

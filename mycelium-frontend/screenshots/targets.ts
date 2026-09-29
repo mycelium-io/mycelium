@@ -48,6 +48,7 @@ export const TARGETS: Record<string, Target[]> = {
     { dir: DOCS_DIR, name: "app-room-board", retina: true },
     { dir: SPLASH_DIR, name: "app-hero", retina: true },
   ],
+  "room-start": [{ dir: SPLASH_DIR, name: "app-start", retina: true }],
   "room-empty": [{ dir: DOCS_DIR, name: "app-room-empty", retina: true }],
   "room-memory": [{ dir: SPLASH_DIR, name: "app-memory", retina: true }],
   "room-network": [{ dir: SPLASH_DIR, name: "app-network", retina: true }],
