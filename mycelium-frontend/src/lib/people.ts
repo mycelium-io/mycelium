@@ -47,6 +47,30 @@ export function nameOf(names: Map<string, string>, handle: string): string | und
 }
 
 /**
+ * How well someone matches what was typed after `@`, lower is better, or null
+ * for no match. Tries the handle and the name: a handle that starts with it,
+ * then any word of the name that does, then either containing it, then its
+ * letters in order ("jv" finds Julia Valenti). So `@jul` finds Julia whether
+ * her handle is `julia` or `julia@example.com`.
+ */
+export function mentionRank(query: string, handle: string, name?: string): number | null {
+  const q = query.trim().toLowerCase().replace(/^@/, "");
+  if (!q) return 0;
+  const h = handle.toLowerCase();
+  const n = (name ?? "").toLowerCase();
+  if (h.startsWith(q)) return 0;
+  if (n && n.split(/\s+/).some(w => w.startsWith(q))) return 1;
+  if (h.includes(q) || n.includes(q)) return 2;
+  const inOrder = (s: string) => {
+    let i = 0;
+    for (const c of s) if (c === q[i]) i += 1;
+    return i === q.length;
+  };
+  if (inOrder(h) || (n && inOrder(n))) return 3;
+  return null;
+}
+
+/**
  * A handle made from a name: lowercase, letters and digits kept, anything
  * else folded into one dash. "Julia Valenti" → "julia-valenti".
  */

@@ -13,6 +13,7 @@ import { useCurrentUser } from "@/components/current-user";
 import { Kbd } from "@/components/ui/kbd";
 import { StartSwarmDialog } from "@/components/start-swarm-dialog";
 import { IntentDialog } from "@/components/intent-dialog";
+import { mentionRank, nameOf, useNames } from "@/lib/people";
 import { Plus } from "lucide-react";
 import { parseCapture } from "@/lib/board/capture";
 import { fileCapture } from "@/lib/board/file-capture";
@@ -55,8 +56,10 @@ interface Candidate {
   id: string;
   /** The full token written into the message on select, e.g. `@bob`, `[[decisions/db]]`, `/summarize`. */
   insert: string;
-  /** Monospace accent label (the token itself). */
+  /** Monospace accent label (the token itself), or a person's name. */
   primary: string;
+  /** The label is a person's name, set as text rather than as a token. */
+  named?: boolean;
   /** Dim qualifier (adapter, "memory", "skill"). */
   secondary: string;
   /** Optional trailing description. */
@@ -152,33 +155,41 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
   };
 
   // Agents first, then people — the roster's order, labeled for the popover.
+  // A person who gave a name is found by it and shown by it.
+  const names = useNames();
   const mentionRoster = useMemo(
     () => [
       ...agents.map((a) => ({
         handle: a.handle,
+        name: undefined as string | undefined,
         secondary: a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter,
         tertiary: a.description as string | undefined,
       })),
       ...people.map((p) => ({
         handle: p.handle,
+        name: nameOf(names, p.handle),
         secondary: p.you ? "you" : p.presence?.kind === "slim" ? "person · here" : "person",
         tertiary: undefined as string | undefined,
       })),
     ],
-    [agents, people],
+    [agents, people, names],
   );
 
   const candidates = useMemo<Candidate[]>(() => {
     if (trigger === null) return [];
     if (trigger.kind === "agent") {
-      const pool = trigger.query
-        ? mentionRoster.filter((r) => r.handle.toLowerCase().startsWith(trigger.query))
-        : mentionRoster;
+      // Best match first; the roster's own order breaks ties.
+      const pool = mentionRoster
+        .map((r, i) => ({ r, i, rank: mentionRank(trigger.query, r.handle, r.name) }))
+        .filter((x): x is typeof x & { rank: number } => x.rank !== null)
+        .sort((a, b) => a.rank - b.rank || a.i - b.i)
+        .map((x) => x.r);
       return pool.slice(0, 8).map((r) => ({
         id: r.handle,
         insert: `@${r.handle}`,
-        primary: `@${r.handle}`,
-        secondary: r.secondary,
+        primary: r.name ?? `@${r.handle}`,
+        named: Boolean(r.name),
+        secondary: r.name ? `@${r.handle} · ${r.secondary}` : r.secondary,
         tertiary: r.tertiary,
       }));
     }
@@ -336,7 +347,11 @@ export function RoomChatBox({ roomName, onSent, className, episode = null, threa
                   i === highlight ? "bg-surface" : "hover:bg-surface/60"
                 }`}
               >
-                <span className="font-mono text-label text-accent flex-shrink-0 truncate max-w-[60%]">
+                <span
+                  className={`text-label flex-shrink-0 truncate max-w-[60%] ${
+                    c.named ? "text-text" : "font-mono text-accent"
+                  }`}
+                >
                   {c.primary}
                 </span>
                 <span className="text-micro text-muted-foreground flex-shrink-0">

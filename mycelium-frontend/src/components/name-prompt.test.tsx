@@ -23,7 +23,7 @@ vi.mock("@/components/auth-session", () => ({
 import { NamePrompt } from "@/components/name-prompt";
 import { SenderName } from "@/components/sender-name";
 import { createUser, fetchUsers, type User } from "@/lib/api";
-import { handleFromName } from "@/lib/people";
+import { handleFromName, mentionRank } from "@/lib/people";
 
 const morgan: User = { handle: "operator", display_name: "Morgan Reyes", teams: [], notify: null, owns: [] };
 
@@ -41,6 +41,22 @@ describe("handleFromName", () => {
     expect(handleFromName("Julia Valenti")).toBe("julia-valenti");
     expect(handleFromName("  Zoë  O'Neil ")).toBe("zoe-o-neil");
     expect(handleFromName("!!!")).toBe("");
+  });
+});
+
+describe("mentionRank", () => {
+  it("finds a person by their name, not only their handle", () => {
+    expect(mentionRank("jul", "julia@example.com", "Julia Valenti")).toBe(0);
+    expect(mentionRank("val", "julia@example.com", "Julia Valenti")).toBe(1);
+    expect(mentionRank("lent", "j@example.com", "Julia Valenti")).toBe(2);
+    expect(mentionRank("jv", "j@example.com", "Julia Valenti")).toBe(3);
+    expect(mentionRank("zed", "j@example.com", "Julia Valenti")).toBeNull();
+  });
+
+  it("matches everyone on an empty query, and agents by handle as before", () => {
+    expect(mentionRank("", "backfill")).toBe(0);
+    expect(mentionRank("back", "backfill")).toBe(0);
+    expect(mentionRank("fill", "backfill")).toBe(2);
   });
 });
 
