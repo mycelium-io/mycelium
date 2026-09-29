@@ -10,7 +10,7 @@
  * nobody has to know an engine's name or its grammar to use it.
  */
 
-export type IntentId = "review" | "split" | "settle" | "catch-up";
+export type IntentId = "task" | "review" | "split" | "settle" | "catch-up";
 
 export interface IntentRole {
   /** The role's name in the summon, in order. */
@@ -39,8 +39,18 @@ const colon = (note: string) => (note.trim() ? `: ${note.trim()}` : "");
 
 export const INTENTS: Intent[] = [
   {
+    id: "task",
+    label: "Task",
+    when: "Put it on the board for someone to pick up.",
+    then: "It lands on the board, with its own thread. Pick someone and it's theirs.",
+    roles: [],
+    minGroup: 0,
+    // Filed, not summoned: nothing runs until someone takes it.
+    summon: () => "",
+  },
+  {
     id: "review",
-    label: "Get it reviewed",
+    label: "Review",
     when: "One agent does the work and another checks it.",
     then: "The author works on a branch. The reviewer runs it and sends findings back until it passes.",
     roles: [
@@ -53,7 +63,7 @@ export const INTENTS: Intent[] = [
   },
   {
     id: "split",
-    label: "Split it up",
+    label: "Split",
     when: "The task is big enough for several agents at once.",
     then: "Each agent says what it would take, then the first one splits the task into parts, one each.",
     roles: [],
@@ -62,7 +72,7 @@ export const INTENTS: Intent[] = [
   },
   {
     id: "settle",
-    label: "Settle it",
+    label: "Settle",
     when: "Agents want different things and need to agree on one.",
     then: "The aligner finds where they differ and proposes terms until they agree, or reports that they can't.",
     roles: [],
@@ -71,7 +81,7 @@ export const INTENTS: Intent[] = [
   },
   {
     id: "catch-up",
-    label: "Catch me up",
+    label: "Catch up",
     when: "You want a summary of what happened instead of reading the thread.",
     then: "The synthesizer reads what was said since its last summary and writes a short one.",
     roles: [],

@@ -27,4 +27,10 @@ describe("intents", () => {
     expect(ready(intentById("split"), { roles: {}, group: ["a", "b"] })).toBe(true);
     expect(ready(intentById("catch-up"), { roles: {}, group: [] })).toBe(true);
   });
+
+  it("files a plain task without summoning anything", () => {
+    const task = intentById("task");
+    expect(ready(task, { roles: {}, group: [] })).toBe(true);
+    expect(task.summon({ roles: {}, group: [] }, "anything")).toBe("");
+  });
 });

@@ -4,7 +4,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CheckCheck, History, Loader2, Scale, Split, type LucideIcon } from "lucide-react";
+import { CheckCheck, History, Loader2, Scale, Split, SquarePlus, type LucideIcon } from "lucide-react";
 import { createTask, sendRoomMessage } from "@/lib/api";
 import { INTENTS, intentById, ready, type IntentId } from "@/lib/intents";
 import { useRoomRevalidate, useRoomRoster } from "@/lib/room-data";
@@ -13,6 +13,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Monogram } from "@/components/ui/monogram";
 
 const ICONS: Record<IntentId, LucideIcon> = {
+  task: SquarePlus,
   review: CheckCheck,
   split: Split,
   settle: Scale,
@@ -46,6 +47,7 @@ export function IntentDialog({
   const [group, setGroup] = useState<string[]>([]);
   const [note, setNote] = useState("");
   const [title, setTitle] = useState("");
+  const [assignee, setAssignee] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { principal } = useCurrentUser();
@@ -57,6 +59,9 @@ export function IntentDialog({
   const intent = intentById(intentId);
   const picks = { roles, group };
   const needsTitle = episode === null;
+  // A plain task only makes sense where there isn't one yet.
+  const offered = INTENTS.filter(i => i.id !== "task" || needsTitle);
+  const plainTask = intent.id === "task";
   const canStart = ready(intent, picks) && (!needsTitle || title.trim().length > 0) && !busy;
   const preview = intent.summon(
     {
@@ -74,15 +79,19 @@ export function IntentDialog({
     try {
       let thread = episode;
       if (!thread) {
-        const task = await createTask(roomName, { title: title.trim(), handle: me });
+        const task = await createTask(roomName, {
+          title: title.trim(),
+          handle: me,
+          ...(plainTask && assignee ? { assignee } : {}),
+        });
         thread = task.episode ?? null;
         if (!thread) throw new Error("The task was filed but has no thread to start it in.");
       }
-      await sendRoomMessage(roomName, {
-        sender_handle: me,
-        content: intent.summon(picks, note || (needsTitle ? title : "")),
-        episode: thread,
-      });
+      // A plain task starts nothing; a note is its thread's first message.
+      const content = plainTask ? note.trim() : intent.summon(picks, note || (needsTitle ? title : ""));
+      if (content) {
+        await sendRoomMessage(roomName, { sender_handle: me, content, episode: thread });
+      }
       revalidate();
       onStarted?.(thread);
       onClose();
@@ -110,7 +119,7 @@ export function IntentDialog({
       >
         {/* What you want, as four plain choices. */}
         <div className="flex items-stretch border-b border-border">
-          {INTENTS.map(i => {
+          {offered.map(i => {
             const Icon = ICONS[i.id];
             const on = i.id === intentId;
             return (
@@ -119,7 +128,7 @@ export function IntentDialog({
                 type="button"
                 aria-pressed={on}
                 onClick={() => setIntentId(i.id)}
-                className={`flex flex-1 items-center justify-center gap-1.5 border-r border-border px-2 py-2 text-micro last:border-r-0 transition-colors ${
+                className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap border-r border-border px-2 py-2 text-micro last:border-r-0 transition-colors ${
                   on ? "bg-bg text-text" : "text-muted-foreground hover:bg-hairline hover:text-text"
                 }`}
               >
@@ -156,6 +165,16 @@ export function IntentDialog({
             </Field>
           ))}
 
+          {plainTask && (
+            <Field label="For (optional)">
+              <AgentChips
+                agents={workers}
+                selected={assignee ? [assignee] : []}
+                onPick={h => setAssignee(a => (a === h ? "" : h))}
+              />
+            </Field>
+          )}
+
           {intent.minGroup > 0 && (
             <Field label={`Which agents (${intent.minGroup} or more)`}>
               <AgentChips agents={workers} selected={group} onPick={toggleGroup} />
@@ -166,7 +185,9 @@ export function IntentDialog({
             <input
               value={note}
               onChange={e => setNote(e.target.value)}
-              placeholder={intent.id === "settle" ? "What they disagree about" : "Optional"}
+              placeholder={
+                intent.id === "settle" ? "What they disagree about" : plainTask ? "Optional, posted in its thread" : "Optional"
+              }
               className="h-8 w-full rounded bg-hairline px-2 text-label text-text placeholder:text-faint focus:bg-bg focus:outline-none focus:ring-1 focus:ring-border"
             />
           </Field>
@@ -177,7 +198,7 @@ export function IntentDialog({
 
         <div className="flex items-center gap-3 border-t border-border px-4 py-2">
           {/* The summon it sends: learnable, never required. */}
-          <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-faint" title={preview}>
+          <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-faint" title={preview || undefined}>
             {preview}
           </code>
           <span className="flex items-center gap-1 text-micro text-faint">
@@ -187,10 +208,10 @@ export function IntentDialog({
             type="button"
             disabled={!canStart}
             onClick={() => void start()}
-            className="flex h-7 items-center gap-1.5 rounded px-2.5 text-label text-accent transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:text-faint disabled:hover:bg-transparent"
+            className="flex h-7 items-center gap-1.5 rounded-md bg-accent px-3 text-label font-medium text-bg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:bg-hairline disabled:text-faint disabled:hover:opacity-100"
           >
             {busy && <Loader2 className="size-3.5 animate-spin" />}
-            Start
+            {plainTask ? "File it" : "Start"}
           </button>
         </div>
       </div>
