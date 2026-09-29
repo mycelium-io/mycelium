@@ -1,6 +1,6 @@
 # The backing track
 
-A 68-second synthetic score for `../index.html`, generated from source rather
+A 73-second synthetic score for `../index.html`, generated from source rather
 than dropped in as a sample. `npm run audio` renders it to
 `../assets/mycelium-score.mp3`, which the composition loads as an `<audio>`
 clip on track 11.
@@ -34,11 +34,11 @@ The argument is carried in the third of the chord:
 | --- | --- | --- |
 | 0–6s | D and A, no third | the hero card; a bell, and a long way down |
 | 6–13.8s | the third arrives as **C/F**, D minor building | the Mac app asks your name |
-| 13.8–52.6s | D minor, the third (**F**) present | agents join, a task is built and reviewed, a team splits one |
-| 52.6–58.65s | the chord drops its third; two figures land a semitone apart, on **F** and **F#** | the aligner hears both sides |
-| 58.65s | the low figure takes F# and a sustained voice glides the semitone | they agree |
-| 58.65–61.2s | D–F#–A–E, major | the agreement lands |
-| 61.2–68s | back to bare D and A, an octave wider | the outro |
+| 13.8–45.7s | D minor, the third (**F**) present | agents join, a task is built and reviewed |
+| 45.7–56.06s | the chord drops its third; two figures land a semitone apart, on **F** and **F#** | two agents disagree on refunds, and the aligner hears both |
+| 56.06s | the low figure takes F# and a sustained voice glides the semitone | decided |
+| 56.06–66.4s | D–F#–A–E, major | the decision lands, and the board fills in |
+| 66.4–73s | back to bare D and A, an octave wider | the outro |
 
 The two agents in the review scene get the same two voices: the builder is
 the gate pluck on the right, the reviewer the woody saw on the left, and the

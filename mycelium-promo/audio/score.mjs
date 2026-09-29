@@ -1,17 +1,17 @@
 // The backing track for index.html, written against that file's timeline.
 //
 // The piece is one continuous organism rather than a string of cues stitched
-// together: a drone bed and a noise substrate run unbroken for all 68
+// together: a drone bed and a noise substrate run unbroken for all 73
 // seconds, and everything else grows out of them. Two things move it —
 //
 //   the SECTIONS table, whose harmony follows the video's argument, and
 //   the CUES table, whose times are read straight out of index.html's GSAP
 //   calls, so a motif lands on the frame that earns it.
 //
-// The through-line is the third of the chord. While the aligner hears both
-// sides the chord has no third at all, and two voices supply competing ones a
-// semitone apart: one lands on F, the other on F#. At 58.65s — the frame where
-// they agree — the low figure takes F# instead, a sustained voice glides the
+// The through-line is the third of the chord. While the two agents disagree
+// the chord has no third at all, and two voices supply competing ones a
+// semitone apart: one lands on F, the other on F#. At 56.06s — the frame the
+// decision is made — the low figure takes F# instead, a sustained voice glides the
 // semitone under it, and the harmony resolves to D–F#–A–E. The disagreement
 // and its resolution are the same note.
 
@@ -22,7 +22,7 @@ import {
 } from './dsp.mjs';
 import { glue, limit, lra, lufs, truePeakDb } from './master.mjs';
 
-export const DURATION = 68;
+export const DURATION = 73;
 
 // ~69.6 BPM. index.html's scene changes land on multiples of 6.9s (13.8,
 // 27.6, 41.4), so an eight-beat phrase lines up with the cut without the
@@ -43,21 +43,22 @@ const SECTIONS = [
   { id: 'install', t0: 6.04, t1: 13.8, gain: 0.82, bright: 0.58,
     chord: ['D2', 'A2', 'D3', 'C4'], density: 0.12 },
 
-  // The room fills: agents join, a task is filed, built and reviewed, a team
-  // splits the work. D minor with the third (F) present: the work surface.
-  { id: 'board', t0: 13.8, t1: 52.61, gain: 0.9, bright: 0.7,
+  // The room fills: agents join, a task is filed, built and reviewed.
+  // D minor with the third (F) present: the work surface.
+  { id: 'board', t0: 13.8, t1: 45.7, gain: 0.9, bright: 0.7,
     chord: ['D2', 'A2', 'F3', 'C4', 'D4'], density: 0.09 },
 
-  // The open question: no third anywhere while the aligner hears both sides.
-  { id: 'negotiate', t0: 52.61, t1: 58.65, gain: 0.80, bright: 0.6,
+  // The open question: no third anywhere while the two agents disagree.
+  { id: 'negotiate', t0: 45.7, t1: 56.06, gain: 0.80, bright: 0.6,
     chord: ['D2', 'A2', 'D3', 'G3', 'E4'], density: 0.09 },
 
-  // Converged at 58.65: F# arrives and the piece turns major.
-  { id: 'consensus', t0: 58.65, t1: 61.24, gain: 1.0, bright: 0.86,
-    chord: ['D2', 'A2', 'F#3', 'A3', 'E4'], density: 0.22 },
+  // Decided at 56.06: F# arrives and the piece turns major, and stays there
+  // while the board fills in.
+  { id: 'consensus', t0: 56.06, t1: 66.41, gain: 1.0, bright: 0.86,
+    chord: ['D2', 'A2', 'F#3', 'A3', 'E4'], density: 0.16 },
 
   // Outro: back to bare D and A, an octave wider.
-  { id: 'outro', t0: 61.24, t1: 68.0, gain: 0.95, bright: 0.7,
+  { id: 'outro', t0: 66.41, t1: 73.0, gain: 0.95, bright: 0.7,
     chord: ['D1', 'D2', 'A2', 'D3', 'A3', 'D4'], density: 0.07 },
 ];
 
@@ -100,29 +101,28 @@ const CUES = [
   { t: 38.81, kind: 'accept', pitch: 'A5', gain: 0.18, actor: 'rowan' },  // reviewer: approved
   { t: 39.67, kind: 'done',   pitch: 'D6', gain: 0.16 },
 
-  // put a team on it: the parent, the split, three parts land, three resolve
+  // the decision: the two positions in the agents' own voices, the summon,
+  // the proposal, two accepts, decided
   { t: 42.55, kind: 'lift', gain: 0.32 },
-  { t: 43.99, kind: 'pluck', pitch: 'D4', gain: 0.16, decay: 1.8 },
-  { t: 45.71, kind: 'tick',  pitch: 'A5', gain: 0.07 },
-  { t: 46.58, kind: 'pluck', pitch: 'F5', gain: 0.16, decay: 2.0 },
-  { t: 47.44, kind: 'pluck', pitch: 'A5', gain: 0.16, decay: 2.0 },
-  { t: 48.30, kind: 'pluck', pitch: 'C6', gain: 0.15, decay: 2.0 },
-  { t: 50.02, kind: 'done',  pitch: 'D6', gain: 0.15 },
-  { t: 50.22, kind: 'done',  pitch: 'A5', gain: 0.14 },
-  { t: 50.42, kind: 'done',  pitch: 'F6', gain: 0.13 },
+  { t: 44.85, kind: 'tick',   pitch: 'D5', gain: 0.07 },                     // the two options
+  { t: 46.58, kind: 'move',   pitch: 'A4', gain: 0.18, actor: 'avery' },     // builder: refund
+  { t: 48.30, kind: 'move',   pitch: 'D4', gain: 0.18, actor: 'rowan' },     // reviewer: support
+  { t: 50.02, kind: 'voice',  pitch: 'C5', gain: 0.30, decay: 2.6 },         // @aligner
+  { t: 51.75, kind: 'tick',   pitch: 'A5', gain: 0.08 },                     // the proposal
+  { t: 53.48, kind: 'accept', pitch: 'A5', gain: 0.17, actor: 'avery' },     // builder accepts
+  { t: 54.34, kind: 'accept', pitch: 'F#5', gain: 0.17, actor: 'rowan' },    // reviewer accepts
+  { t: 56.06, kind: 'consensus', gain: 1.05 },
 
-  // the aligner: summon, then a sound on each message — ask = tick, reply = pluck
-  { t: 52.9,  kind: 'voice',  pitch: 'C5', gain: 0.30, decay: 2.6 },         // summon
-  { t: 54.34, kind: 'tick',   pitch: 'A5', gain: 0.07 },                     // aligner → builder
-  { t: 55.20, kind: 'move',   pitch: 'D4', gain: 0.18, actor: 'rowan' },     // builder counters
-  { t: 56.06, kind: 'tick',   pitch: 'A5', gain: 0.07 },                     // aligner → morgan
-  { t: 56.92, kind: 'accept', pitch: 'A5', gain: 0.18, actor: 'avery' },     // morgan accepts
-  { t: 58.65, kind: 'consensus', gain: 1.05 },
+  // the board: the fix done, the decision made, the next thing in flight
+  { t: 58.95, kind: 'lift', gain: 0.30 },
+  { t: 61.24, kind: 'done',  pitch: 'D6', gain: 0.15 },
+  { t: 62.10, kind: 'done',  pitch: 'A5', gain: 0.14 },
+  { t: 63.83, kind: 'pluck', pitch: 'F#5', gain: 0.14, decay: 2.2 },
 
   // outro: the bell returns an octave down and wide
-  { t: 61.6,  kind: 'spore', pitch: 'D4', gain: 0.22 },
-  { t: 61.62, kind: 'impact', gain: 0.30 },
-  { t: 62.8,  kind: 'spore', pitch: 'D5', gain: 0.08 },
+  { t: 66.8,  kind: 'spore', pitch: 'D4', gain: 0.22 },
+  { t: 66.82, kind: 'impact', gain: 0.30 },
+  { t: 68.0,  kind: 'spore', pitch: 'D5', gain: 0.08 },
 ];
 
 // ── Buses ──────────────────────────────────────────────────────────────
@@ -504,9 +504,9 @@ function renderHyphae(b) {
  * together on F#.
  */
 function renderCounterpoint(b) {
-  const CONSENSUS = 58.65;
-  const T0 = 52.9;
-  const T1 = 61.0;
+  const CONSENSUS = 56.06;
+  const T0 = 46.58;
+  const T1 = 59.0;
   const periodA = 3.1;
   // rowan starts slower and is in step with avery by the time they accept.
   const periodB = (t) => lerp(3.62, periodA, clamp((t - T0) / (CONSENSUS - T0), 0, 1));
@@ -533,10 +533,10 @@ function renderCounterpoint(b) {
  * the consensus beat. It is the only portamento in the piece.
  */
 function renderResolution(b) {
-  const t0 = 55.2;
-  const t1 = 63.2;
-  const glideStart = 58.41;
-  const glideEnd = 59.41;
+  const t0 = 51.75;
+  const t1 = 60.6;
+  const glideStart = 55.82;
+  const glideEnd = 56.82;
   const fFlat = hz('F4');
   const fSharp = hz('F#4');
   const i0 = idx(b, t0);
@@ -693,8 +693,8 @@ function renderConsensus(b, t, g) {
  * resolution is the F# underneath it.
  */
 function renderTension(b) {
-  const t0 = 53.0;
-  const t1 = 58.65;
+  const t0 = 46.4;
+  const t1 = 56.06;
   const i0 = idx(b, t0);
   const i1 = Math.min(b.n, idx(b, t1 + 0.45));
   const svf = new SVF(b.sr);

@@ -205,57 +205,41 @@
       .conv .msg .text { font-size: 20px; }
       .stance { margin-top: 6px; display: inline-flex; }
 
-      /* ── 05 · a team on one task ──────────────────────── */
-      .btool { height: 64px; flex-shrink: 0; display: flex; align-items: center; gap: 26px; padding: 0 30px; border-bottom: 1px solid var(--border); font-size: 20px; color: var(--muted); }
-      .btool .on { color: var(--text); }
-      .btool .grow { flex: 1; }
-      .btool .swarm { padding: 8px 16px; border-radius: 9px; color: var(--text2); border: 1px solid var(--border2); position: relative; }
-      .btool .swarm .press { position: absolute; inset: -1px; border-radius: 9px; border: 2px solid var(--accent); background: var(--accent-soft); opacity: 0; }
+      /* ── 05 · a decision two agents disagree on ───────── */
+      .choices { display: flex; gap: 12px; padding: 14px 30px 16px; border-bottom: 1px solid var(--border); align-items: center; font-size: 18px; color: var(--muted); }
+      .choices .opt { padding: 7px 14px; border-radius: 8px; border: 1.5px solid var(--border2); color: var(--text2); font-size: 19px; }
+      #sdecide .conv { gap: 12px; padding-top: 14px; }
+      #sdecide .conv .msg .text { font-size: 20px; }
+      .mav.eng { background: transparent; }
+      .mav.eng::before { content: ''; width: 16px; height: 16px; background: var(--accent); transform: rotate(45deg); }
+      .agreed { margin-top: 4px; border: 1px solid var(--green); background: var(--green-soft); border-radius: 12px; padding: 14px 20px; display: flex; align-items: center; gap: 14px; font-size: 21px; color: var(--text); }
+      .agreed b { color: var(--green); }
+      .agreed svg { width: 24px; height: 24px; color: var(--green); flex-shrink: 0; }
+
+      /* ── 06 · it all lands on the board ───────────────── */
       .board { padding: 8px 30px; }
       .glabel { font-size: 18px; color: var(--muted); margin: 18px 0 6px; font-weight: 500; }
       .brow { display: flex; align-items: flex-start; gap: 16px; padding: 14px 6px; border-bottom: 1px solid var(--hairline); position: relative; }
       .brow .ring { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--accent); flex-shrink: 0; margin-top: 4px; position: relative; }
       .brow .ring .fill { position: absolute; inset: -2px; border-radius: 50%; background: var(--green); opacity: 0; }
-      .brow .ring.decision { border-color: var(--yellow); border-radius: 4px; transform: rotate(45deg) scale(0.8); }
       .brow .rt { font-size: 23px; color: var(--text); }
       .brow .rm { font-size: 17px; color: var(--dim); margin-top: 5px; display: flex; gap: 12px; align-items: center; }
       .brow .rm .who { color: var(--text2); }
-      .brow.child { margin-left: 44px; }
-      .brow.child::before { content: ''; position: absolute; left: -26px; top: -6px; height: 32px; width: 20px; border-left: 1.5px solid var(--border2); border-bottom: 1.5px solid var(--border2); border-radius: 0 0 0 8px; }
       .swapwrap { position: relative; display: inline-block; min-width: 150px; height: 26px; }
       .swapwrap > span { position: absolute; left: 0; top: 0; white-space: nowrap; }
-
-      /* ── 06 · the aligner ─────────────────────────────── */
-      .acard { margin-top: 26px; background: var(--surface); border: 1px solid var(--border2); border-radius: 16px; box-shadow: 0 40px 100px rgba(0,0,0,0.6); overflow: hidden; }
-      .ahead { display: flex; align-items: center; gap: 16px; padding: 22px 34px; border-bottom: 1px solid var(--border); }
-      .adot { width: 14px; height: 14px; background: var(--accent); transform: rotate(45deg); flex-shrink: 0; }
-      .ahead .atitle { font-size: 26px; font-weight: 600; color: var(--text); }
-      .ahead .asub { font-size: 22px; color: var(--text2); }
-      .abody { padding: 28px 44px 34px; display: flex; flex-direction: column; gap: 18px; }
-      .amsg { display: flex; gap: 18px; align-items: flex-start; }
-      .aav { width: 46px; height: 46px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-family: 'Geist Mono', monospace; font-size: 15px; font-weight: 600; background: var(--elevated); color: var(--text2); }
-      .aav.agent { background: var(--accent-soft); color: var(--accent); }
-      .aav.dia { background: transparent; }
-      .aav.dia::before { content: ''; width: 18px; height: 18px; background: var(--accent); transform: rotate(45deg); }
-      .an { font-size: 21px; color: var(--text); font-weight: 600; margin-bottom: 5px; }
-      .an .eng { font-family: 'Geist Mono', monospace; font-size: 14px; color: var(--muted); font-weight: 500; margin-left: 10px; }
-      .abub { font-size: 23px; line-height: 1.45; color: var(--text2); max-width: 1300px; }
-      .agreed { border: 1px solid var(--green); background: var(--green-soft); border-radius: 12px; padding: 18px 24px; display: flex; align-items: center; gap: 16px; font-size: 23px; color: var(--text); }
-      .agreed b { color: var(--green); }
-      .agreed svg { width: 26px; height: 26px; color: var(--green); flex-shrink: 0; }
     </style>
   </head>
   <body>
-    <div id="root" data-composition-id="main" data-start="0" data-duration="68" data-width="1920" data-height="1080">
+    <div id="root" data-composition-id="main" data-start="0" data-duration="73" data-width="1920" data-height="1080">
       <!-- Background canvas runs the entire duration -->
-      <div id="bg-wrap" class="clip" data-start="0" data-duration="68" data-track-index="0">
+      <div id="bg-wrap" class="clip" data-start="0" data-duration="73" data-track-index="0">
         <canvas id="mycelium-bg"></canvas>
       </div>
 
       <!-- Backing track. Synthesized from audio/score.mjs, which is written
            against the GSAP times below — see audio/README.md. Regenerate with
            `npm run audio` after moving any beat this score is cued to. -->
-      <audio id="score" data-start="0" data-duration="68" data-track-index="11" data-volume="1" src="./assets/mycelium-score.mp3"></audio>
+      <audio id="score" data-start="0" data-duration="73" data-track-index="11" data-volume="1" src="./assets/mycelium-score.mp3"></audio>
 
       <!-- ── Hero ──────────────────────────────────────── -->
       <div id="hero" class="clip scene hero" data-start="0" data-duration="6.9" data-track-index="1">
@@ -445,9 +429,60 @@
         </div>
       </div>
 
-      <!-- ── 05 · Put a team on it ─────────────────────── -->
-      <div id="sswarm" class="clip scene" data-start="42.26" data-duration="11.1" data-track-index="6">
-        <div class="caption"><span class="num">05</span><span class="label">Or put a whole team on it</span></div>
+      <!-- ── 05 · When they disagree: a decision, argued, then settled ── -->
+      <div id="sdecide" class="clip scene" data-start="42.26" data-duration="17.2" data-track-index="6">
+        <div class="caption"><span class="num">05</span><span class="label">When they disagree, the aligner helps</span></div>
+        <div class="win">
+          <div class="wbar">
+            <span class="lights"><i></i><i></i><i></i></span>
+            <span class="crumb"><b>This computer</b><span class="sep">/</span><b>checkout</b></span>
+            <span class="grow"></span>
+            <span class="avatar">MR</span>
+          </div>
+          <div class="wbody">
+            <div class="wside">
+              <div class="whead"><span>Rooms</span><span>3</span></div>
+              <div class="room on"><span class="rav">CH</span>checkout</div>
+              <div class="room"><span class="rav">ST</span>storefront</div>
+              <div class="room"><span class="rav">SP</span>subscription-pricing</div>
+            </div>
+            <div class="wmain">
+              <div class="thead">
+                <span class="title">Double charges: refund automatically, or send to support first?</span>
+                <span class="statewrap"><span class="chip back" id="dc-open">Undecided</span><span class="chip done" id="dc-done">Decided</span></span>
+              </div>
+              <div class="choices" id="dc-choices"><span>Decision ·</span><span class="opt">refund automatically</span><span class="opt">send to support</span></div>
+              <div class="conv">
+                <div class="msg" id="dc-1"><span class="mav agent">BU</span><div><div class="who">builder<span class="tag">agent</span></div><div class="text">Refund automatically. They already paid twice, and waiting on support makes it worse.</div></div></div>
+                <div class="msg" id="dc-2"><span class="mav agent">RE</span><div><div class="who">reviewer<span class="tag">agent</span></div><div class="text">Send to support. If our check is wrong, we'd refund someone's real second order.</div></div></div>
+                <div class="msg" id="dc-3"><span class="mav">MR</span><div><div class="who">Morgan Reyes</div><div class="text"><span class="m">@aligner</span> can you help them agree?</div></div></div>
+                <div class="msg" id="dc-4"><span class="mav eng"></span><div><div class="who">aligner<span class="tag">helps agree</span></div><div class="text">You both want customers made whole without refunding a real order. Refund automatically when the two charges match to the cent and came a minute apart; send anything else to support. <span class="m">@builder</span> <span class="m">@reviewer</span>?</div></div></div>
+                <div class="msg" id="dc-5"><span class="mav agent">BU</span><div><div class="who">builder<span class="tag">agent</span></div><div class="text">Works for me.</div></div></div>
+                <div class="msg" id="dc-6"><span class="mav agent">RE</span><div><div class="who">reviewer<span class="tag">agent</span></div><div class="text">Yes. That covers every case we've seen.</div></div></div>
+                <div class="agreed" id="dc-agreed">
+                  <svg viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0L2.72 8.03a.75.75 0 1 1 1.06-1.06L7 9.94l5.72-5.72a.75.75 0 0 1 1.06 0Z"/></svg>
+                  <span><b>Decided:</b> refund automatically when two charges match within a minute. Anything else goes to support.</span>
+                </div>
+              </div>
+            </div>
+            <div class="wrail">
+              <div class="rgroup">People 1</div>
+              <div class="member"><span class="mav">MR</span><div><div class="mname">Morgan Reyes<span class="you">you</span></div></div></div>
+              <div class="rgroup">Agents 2</div>
+              <div class="member"><span class="mav agent">BU<span class="live"></span></span><div><div class="mname">builder</div><div class="mmeta">Claude Code · ~/code/shop</div></div></div>
+              <div class="member"><span class="mav agent">RE<span class="live"></span></span><div><div class="mname">reviewer</div><div class="mmeta">Claude Code · ~/code/shop</div></div></div>
+              <div id="dc-eng">
+                <div class="rgroup">Engines 1</div>
+                <div class="member"><span class="mav eng"></span><div><div class="mname">aligner</div><div class="mmeta">helps members agree</div></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 06 · It all lands on the board ────────────── -->
+      <div id="sboard" class="clip scene" data-start="58.65" data-duration="8.6" data-track-index="7">
+        <div class="caption"><span class="num">06</span><span class="label">It all lands on the board</span></div>
         <div class="win">
           <div class="wbar">
             <span class="lights"><i></i><i></i><i></i></span>
@@ -464,55 +499,30 @@
             </div>
             <div class="wmain">
               <div class="tabs"><span class="tab">Channel</span><span class="tab on">Board</span><span class="tab">Network</span></div>
-              <div class="btool"><span class="on">In flight</span><span>Needs you</span><span>Done</span><span class="grow"></span><span>+ Add a task…</span><span class="swarm" id="sw-btn"><span class="press"></span>Swarm</span></div>
               <div class="board">
+                <div class="glabel">Today</div>
+                <div class="brow" id="bd-1"><span class="ring"><span class="fill"></span></span><div><div class="rt">Customers are charged twice when they double-click Pay</div><div class="rm"><span class="who">@builder</span><span>·</span><span>reviewed by @reviewer</span><span>·</span><span class="swapwrap" style="min-width:160px"><span id="bd-1-a">in review</span><span id="bd-1-b" style="color:var(--green)">done · #504 merged</span></span></div></div></div>
+                <div class="brow" id="bd-2"><span class="ring"><span class="fill"></span></span><div><div class="rt">Double charges: refund automatically, or send to support first?</div><div class="rm"><span class="who">@reviewer asked</span><span>·</span><span class="swapwrap" style="min-width:520px"><span id="bd-2-a">undecided</span><span id="bd-2-b" style="color:var(--green)">decided · refund when two charges match</span></span></div></div></div>
                 <div class="glabel">In flight</div>
-                <div class="brow" id="sw-parent"><span class="ring"><span class="fill"></span></span><div><div class="rt">Get checkout ready for the spring sale</div><div class="rm"><span class="who">@morgan</span><span>·</span><span class="swapwrap" style="min-width:320px"><span id="sw-p-0">a team of 3</span><span id="sw-p-split">builder split it into 3 parts</span><span id="sw-p-done" style="color:var(--green)">3 of 3 done</span></span></div></div></div>
-                <div class="brow child" id="sw-c1"><span class="ring"><span class="fill"></span></span><div><div class="rt">Add Apple Pay to checkout</div><div class="rm"><span class="who">@builder</span><span>·</span><span>feat/apple-pay</span></div></div></div>
-                <div class="brow child" id="sw-c2"><span class="ring"><span class="fill"></span></span><div><div class="rt">Put a sale banner on the home page</div><div class="rm"><span class="who">@designer</span><span>·</span><span>feat/sale-banner</span></div></div></div>
-                <div class="brow child" id="sw-c3"><span class="ring"><span class="fill"></span></span><div><div class="rt">Write the email announcing the sale</div><div class="rm"><span class="who">@writer</span><span>·</span><span>draft in the thread</span></div></div></div>
-                <div class="glabel" id="sw-needs">Needs you</div>
-                <div class="brow" id="sw-dec"><span class="ring decision"></span><div><div class="rt">Double charges: refund automatically, or send to support?</div><div class="rm"><span class="who">@reviewer asks</span></div></div></div>
+                <div class="brow" id="bd-3"><span class="ring"><span class="fill"></span></span><div><div class="rt">Add Apple Pay to checkout</div><div class="rm"><span class="who">@builder</span><span>·</span><span>feat/apple-pay</span></div></div></div>
+                <div class="brow" id="bd-4"><span class="ring"><span class="fill"></span></span><div><div class="rt">Test Apple Pay on a real iPhone</div><div class="rm"><span class="who">@reviewer</span><span>·</span><span>after Apple Pay</span></div></div></div>
               </div>
             </div>
             <div class="wrail">
               <div class="rgroup">People 1</div>
               <div class="member"><span class="mav">MR</span><div><div class="mname">Morgan Reyes<span class="you">you</span></div></div></div>
-              <div class="rgroup">Agents 4</div>
-              <div class="member"><span class="mav agent">BU<span class="live"></span></span><div><div class="mname">builder</div><div class="mmeta">Claude Code · ~/code/shop</div></div></div>
+              <div class="rgroup">Agents 2</div>
+              <div class="member"><span class="mav agent">BU<span class="live"></span></span><div><div class="mname">builder</div><div class="mmeta">working on Apple Pay</div></div></div>
               <div class="member"><span class="mav agent">RE<span class="live"></span></span><div><div class="mname">reviewer</div><div class="mmeta">Claude Code · ~/code/shop</div></div></div>
-              <div class="member" id="sw-designer"><span class="mav agent">DE<span class="live"></span></span><div><div class="mname">designer</div><div class="mmeta">Claude Code · ~/code/shop</div></div></div>
-              <div class="member" id="sw-writer"><span class="mav agent">WR<span class="live"></span></span><div><div class="mname">writer</div><div class="mmeta">Claude Code · ~/code/newsletter</div></div></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── 06 · When they disagree ───────────────────── -->
-      <div id="salign" class="clip scene" data-start="52.61" data-duration="9.4" data-track-index="7">
-        <div class="caption"><span class="num">06</span><span class="label">When they disagree, they settle it</span></div>
-        <div class="acard">
-          <div class="ahead">
-            <span class="adot"></span>
-            <span class="atitle">aligner</span>
-            <span class="asub">When should Apple Pay go on?</span>
-            <span class="statewrap"><span class="chip flight" id="al-neg">Asking</span><span class="chip done" id="al-ok">Agreed</span></span>
-          </div>
-          <div class="abody">
-            <div class="amsg" id="al-1"><span class="aav dia"></span><div><div class="an">aligner<span class="eng">helps them agree</span></div><div class="abub"><span class="m">@morgan</span> wants it on thursday, before the sale starts. <span class="m">@builder</span>, can you make that?</div></div></div>
-            <div class="amsg" id="al-2"><span class="aav agent">BU</span><div><div class="an">builder</div><div class="abub">Thursday's tight. I want a day of test orders on real phones first. Friday morning.</div></div></div>
-            <div class="amsg" id="al-3"><span class="aav dia"></span><div><div class="an">aligner<span class="eng">helps them agree</span></div><div class="abub">Test orders on thursday, Apple Pay on friday morning, before the sale email goes out. <span class="m">@morgan</span>?</div></div></div>
-            <div class="amsg" id="al-4"><span class="aav">MR</span><div><div class="an">Morgan Reyes</div><div class="abub">Yes, as long as it's on before the email.</div></div></div>
-            <div class="agreed" id="al-agreed">
-              <svg viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0L2.72 8.03a.75.75 0 1 1 1.06-1.06L7 9.94l5.72-5.72a.75.75 0 0 1 1.06 0Z"/></svg>
-              <span><b>Agreed:</b> Apple Pay goes on friday morning. Two tasks filed on the board.</span>
+              <div class="rgroup">Engines 1</div>
+              <div class="member"><span class="mav eng"></span><div><div class="mname">aligner</div><div class="mmeta">helps members agree</div></div></div>
             </div>
           </div>
         </div>
       </div>
 
       <!-- ── Outro ─────────────────────────────────────── -->
-      <div id="outro" class="clip scene outro" data-start="61.24" data-duration="6.76" data-track-index="8">
+      <div id="outro" class="clip scene outro" data-start="66.41" data-duration="6.59" data-track-index="8">
         <div class="wordmark">mycelium</div>
         <div class="tagline">people and agents, working together</div>
         <div class="mac">Mycelium for Mac, and the CLI for your agents</div>
@@ -605,6 +615,7 @@
       tl.set(['#rv-done', '#rv-bu-turn', '#rv-re-turn'], { opacity: 0 }, 31.05);
       tl.set(['#rv-1', '#rv-2', '#rv-3', '#rv-4'], { opacity: 0 }, 31.05);
       tl.from('#sreview .flow .node', { y: 12, opacity: 0, duration: 0.4, stagger: 0.12, ease: 'power2.out' }, 32.77);
+      tl.from('#sreview .backedge', { opacity: 0, duration: 0.5, ease: 'power1.out' }, 33.1);
       tl.from('#rv-body',          { opacity: 0, duration: 0.45 }, 32.95);
       // builder's turn
       tl.to('#n-build .hi',        { opacity: 1, duration: 0.3 }, 33.64);
@@ -647,45 +658,53 @@
       tl.to('#rv-flight',          { opacity: 0, duration: 0.2 }, 39.67);
       tl.fromTo('#rv-done',        { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.35, ease: 'back.out(2)' }, 39.8);
 
-      // ── 05 · Put a team on it (42.26–52.61) ──
-      tl.from('#sswarm .caption', { x: -40, opacity: 0, duration: 0.5, ease: 'power2.out' }, 42.45);
-      tl.from('#sswarm .win',     { y: 50, opacity: 0, duration: 0.7, ease: 'power3.out' }, 42.55);
-      tl.set(['#sw-parent', '#sw-c1', '#sw-c2', '#sw-c3', '#sw-designer', '#sw-writer', '#sw-p-split', '#sw-p-done'], { opacity: 0 }, 42.26);
-      tl.from(['#sw-needs', '#sw-dec'], { y: 10, opacity: 0, duration: 0.4, stagger: 0.1 }, 43.0);
-      tl.to('#sw-btn .press',     { opacity: 1, duration: 0.2, yoyo: true, repeat: 1 }, 43.6);
-      tl.fromTo('#sw-parent',     { opacity: 0, y: -14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 43.99);
-      tl.fromTo('#sw-designer',   { opacity: 0, x: 24 }, { opacity: 1, x: 0, duration: 0.4, ease: 'back.out(2)' }, 44.85);
-      tl.fromTo('#sw-writer',     { opacity: 0, x: 24 }, { opacity: 1, x: 0, duration: 0.4, ease: 'back.out(2)' }, 45.05);
-      tl.to('#sw-p-0',            { opacity: 0, duration: 0.2 }, 45.71);
-      tl.to('#sw-p-split',        { opacity: 1, duration: 0.3 }, 45.85);
-      tl.fromTo('#sw-c1',         { opacity: 0, x: -22 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power2.out' }, 46.58);
-      tl.fromTo('#sw-c2',         { opacity: 0, x: -22 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power2.out' }, 47.44);
-      tl.fromTo('#sw-c3',         { opacity: 0, x: -22 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power2.out' }, 48.30);
-      tl.to('#sw-c1 .ring .fill', { opacity: 1, duration: 0.25 }, 50.02);
-      tl.to('#sw-c2 .ring .fill', { opacity: 1, duration: 0.25 }, 50.22);
-      tl.to('#sw-c3 .ring .fill', { opacity: 1, duration: 0.25 }, 50.42);
-      tl.to('#sw-p-split',        { opacity: 0, duration: 0.2 }, 50.6);
-      tl.to('#sw-p-done',         { opacity: 1, duration: 0.3 }, 50.75);
-      tl.to('#sw-parent .ring .fill', { opacity: 1, duration: 0.3 }, 50.75);
+      // ── 05 · When they disagree (42.26–58.65) ──
+      // A decision the two agents disagree on, in its own thread: each says
+      // which way and why, Morgan brings in the aligner, it names what they
+      // both want and proposes a rule that gives each of them that, and both
+      // accept. Each line holds for a couple of beats so it can be read.
+      tl.from('#sdecide .caption', { x: -40, opacity: 0, duration: 0.5, ease: 'power2.out' }, 42.45);
+      tl.from('#sdecide .win',     { y: 50, opacity: 0, duration: 0.7, ease: 'power3.out' }, 42.55);
+      tl.set(['#dc-done', '#dc-1', '#dc-2', '#dc-3', '#dc-4', '#dc-5', '#dc-6', '#dc-agreed', '#dc-eng'], { opacity: 0 }, 42.26);
+      tl.from('#dc-choices .opt', { y: 10, opacity: 0, duration: 0.4, stagger: 0.15, ease: 'back.out(1.8)' }, 44.85);
+      // builder: refund automatically
+      tl.fromTo('#dc-1', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 46.58);
+      tl.to('#dc-choices .opt:nth-child(2)', { borderColor: '#5cc7d2', color: '#e8ebee', duration: 0.3 }, 46.7);
+      // reviewer: send to support
+      tl.fromTo('#dc-2', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 48.30);
+      tl.to('#dc-choices .opt:nth-child(3)', { borderColor: '#d9a94e', color: '#e8ebee', duration: 0.3 }, 48.42);
+      // Morgan brings in the aligner, and it joins the room's engines
+      tl.fromTo('#dc-3', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 50.02);
+      tl.fromTo('#dc-eng', { opacity: 0, x: 24 }, { opacity: 1, x: 0, duration: 0.45, ease: 'back.out(2)' }, 50.4);
+      // the aligner proposes a rule that gives each what they asked for
+      tl.fromTo('#dc-4', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' }, 51.75);
+      tl.fromTo('#dc-5', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 53.48);
+      tl.fromTo('#dc-6', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 54.34);
+      // decided
+      tl.to('#dc-choices .opt', { borderColor: 'rgba(79,194,150,0.7)', duration: 0.4 }, 56.06);
+      tl.to('#dc-open', { opacity: 0, duration: 0.25 }, 56.06);
+      tl.fromTo('#dc-done', { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.35, ease: 'back.out(2)' }, 56.1);
+      tl.fromTo('#dc-agreed', { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.55, ease: 'power2.out' }, 56.2);
 
-      // ── 06 · When they disagree (52.61–61.24) ──
-      tl.from('#salign .caption', { x: -40, opacity: 0, duration: 0.5, ease: 'expo.out' }, 52.8);
-      tl.from('#salign .acard',   { y: 50, opacity: 0, duration: 0.6, ease: 'power3.out' }, 52.9);
-      tl.set(['#al-ok', '#al-1', '#al-2', '#al-3', '#al-4', '#al-agreed'], { opacity: 0 }, 52.61);
-      tl.fromTo('#al-1', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 54.34);
-      tl.fromTo('#al-2', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 55.2);
-      tl.fromTo('#al-3', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 56.06);
-      tl.fromTo('#al-4', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 56.92);
-      tl.to('#al-neg',   { opacity: 0, duration: 0.25 }, 58.65);
-      tl.fromTo('#al-ok', { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.35, ease: 'back.out(2)' }, 58.7);
-      tl.fromTo('#al-agreed', { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.55, ease: 'power2.out' }, 58.8);
+      // ── 06 · It all lands on the board (58.65–66.41) ──
+      tl.from('#sboard .caption', { x: -40, opacity: 0, duration: 0.5, ease: 'expo.out' }, 58.85);
+      tl.from('#sboard .win',     { y: 50, opacity: 0, duration: 0.7, ease: 'power3.out' }, 58.95);
+      tl.from('#sboard .board > *', { y: 12, opacity: 0, duration: 0.4, stagger: 0.1, ease: 'power2.out' }, 59.4);
+      tl.set(['#bd-1-b', '#bd-2-b'], { opacity: 0 }, 58.65);
+      tl.to('#bd-1-a',           { opacity: 0, duration: 0.2 }, 61.24);
+      tl.to('#bd-1-b',           { opacity: 1, duration: 0.3 }, 61.34);
+      tl.to('#bd-1 .ring .fill', { opacity: 1, duration: 0.3 }, 61.24);
+      tl.to('#bd-2-a',           { opacity: 0, duration: 0.2 }, 62.10);
+      tl.to('#bd-2-b',           { opacity: 1, duration: 0.3 }, 62.2);
+      tl.to('#bd-2 .ring .fill', { opacity: 1, duration: 0.3 }, 62.10);
+      tl.to('#bd-3 .ring',       { scale: 1.25, duration: 0.25, yoyo: true, repeat: 1, ease: 'power1.inOut' }, 63.83);
 
-      // ── Outro (61.24–68) ──
-      tl.from('#outro .wordmark', { y: 50, opacity: 0, duration: 1.0, ease: 'power3.out' }, 61.6);
-      tl.from('#outro .tagline',  { y: 20, opacity: 0, duration: 0.7, ease: 'power2.out' }, 62.2);
-      tl.from('#outro .mac',      { y: 12, opacity: 0, duration: 0.6, ease: 'power1.out' }, 62.8);
-      tl.from('#outro .url',      { opacity: 0, duration: 0.6 }, 63.3);
-      tl.to('#outro',             { opacity: 0, duration: 1.0, ease: 'power1.in' }, 66.9);
+      // ── Outro (66.41–73) ──
+      tl.from('#outro .wordmark', { y: 50, opacity: 0, duration: 1.0, ease: 'power3.out' }, 66.8);
+      tl.from('#outro .tagline',  { y: 20, opacity: 0, duration: 0.7, ease: 'power2.out' }, 67.4);
+      tl.from('#outro .mac',      { y: 12, opacity: 0, duration: 0.6, ease: 'power1.out' }, 68.0);
+      tl.from('#outro .url',      { opacity: 0, duration: 0.6 }, 68.5);
+      tl.to('#outro',             { opacity: 0, duration: 1.0, ease: 'power1.in' }, 71.9);
 
       window.__timelines['main'] = tl;
     </script>

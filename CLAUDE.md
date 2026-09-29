@@ -48,8 +48,9 @@ shotkit/            The repo's camera: fast screenshots of the running app and o
 mycelium-promo/     HyperFrames promo video, a code-defined HTML→MP4 walkthrough
                     of one coffee shop's checkout room (Mycelium for Mac asks
                     your name → add agents → hand one a task → one builds,
-                    another reviews → put a team on it → the aligner settles a
-                    disagreement). The app-screen mockups mirror the frontend's
+                    another reviews → two agents disagree on a decision and the
+                    aligner helps them agree → it all lands on the board). The
+                    app-screen mockups mirror the frontend's
                     workspace shell + dark design tokens, and the story is the
                     mock data's `checkout` room.
                     Renders 1920x1080 H.264. `cd mycelium-promo && npm run dev` to

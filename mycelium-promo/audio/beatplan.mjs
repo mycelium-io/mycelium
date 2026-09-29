@@ -41,15 +41,17 @@ export const PLAN = [
     ['switch', 'open'], ['short', 'graph'], ['short', 'build1'], ['bigger', 'reject'],
     ['short', 'build2'], ['bigger', 'approve'], ['short', 'done'], ['resolve', 'hold'],
   ]},
-  // Put a team on it: the lead splits the task, each part lands and resolves.
-  { id: 'swarm', moments: [
-    ['switch', 'board'], ['short', 'parent'], ['short', 'split'], ['short', 'child1'],
-    ['short', 'child2'], ['short', 'child3'], ['bigger', 'resolved'], ['resolve', 'hold'],
-  ]},
-  // When they disagree: the aligner asks each side and they settle.
+  // A decision the two agents disagree on: each says why, Morgan brings in the
+  // aligner, it proposes a middle, both accept. Every line gets time to read.
   { id: 'aligner', moments: [
-    ['switch', 'summon'], ['short', 'ask'], ['short', 'reply1'], ['short', 'reply2'],
-    ['bigger', 'converge'], ['resolve', 'hold'],
+    ['switch', 'open'], ['short', 'question'], ['bigger', 'pos1'], ['bigger', 'pos2'],
+    ['bigger', 'summon'], ['bigger', 'propose'], ['bigger', 'accept1'], ['short', 'accept2'],
+    ['bigger', 'agreed'], ['resolve', 'hold'],
+  ]},
+  // Everything lands on the board: the fix done, the decision made.
+  { id: 'board', moments: [
+    ['switch', 'board'], ['short', 'row1'], ['short', 'row2'], ['bigger', 'settled'],
+    ['resolve', 'hold'],
   ]},
 ];
 
