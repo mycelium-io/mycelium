@@ -62,6 +62,14 @@ export interface Shot {
 
 export const SHOTS: Shot[] = [
   {
+    id: "home",
+    route: "/",
+    theme: "dark",
+    viewport: "desktop",
+    waitFor: "text=Recent",
+    caption: "Home: where you start, and the rooms you were last in.",
+  },
+  {
     id: "room-channel",
     route: "/room/atlas-migration",
     theme: "dark",
