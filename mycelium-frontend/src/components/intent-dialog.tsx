@@ -5,6 +5,7 @@
 
 import { useMemo, useState } from "react";
 import { CheckCheck, History, Loader2, Scale, Split, SquarePlus, type LucideIcon } from "lucide-react";
+import TextareaAutosize from "react-textarea-autosize";
 import { createTask, sendRoomMessage } from "@/lib/api";
 import { INTENTS, intentById, ready, type IntentId } from "@/lib/intents";
 import { useRoomRevalidate, useRoomRoster } from "@/lib/room-data";
@@ -127,6 +128,7 @@ export function IntentDialog({
                 key={i.id}
                 type="button"
                 aria-pressed={on}
+                title={i.when}
                 onClick={() => setIntentId(i.id)}
                 className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap border-r border-border px-2 py-2 text-micro last:border-r-0 transition-colors ${
                   on ? "bg-bg text-text" : "text-muted-foreground hover:bg-hairline hover:text-text"
@@ -139,60 +141,64 @@ export function IntentDialog({
           })}
         </div>
 
-        <div className="space-y-3 px-4 py-3">
-          <p className="text-label text-muted-foreground">{intent.when}</p>
-
+        {/* What it is: a title and details, written like a new issue. */}
+        <div className="px-4 pt-3">
           {needsTitle && (
-            <Field label="The task">
-              <input
-                autoFocus
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                placeholder="Fix the flaky login test"
-                className="h-8 w-full rounded bg-hairline px-2 text-label text-text placeholder:text-faint focus:bg-bg focus:outline-none focus:ring-1 focus:ring-border"
-              />
-            </Field>
+            <input
+              autoFocus
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              aria-label="Task title"
+              placeholder="Task title"
+              className="w-full bg-transparent text-[15px] font-medium text-text placeholder:text-faint focus:outline-none"
+            />
           )}
+          <TextareaAutosize
+            autoFocus={!needsTitle}
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            minRows={2}
+            maxRows={6}
+            aria-label="Details"
+            placeholder={
+              intent.id === "settle"
+                ? "What do they disagree about?"
+                : plainTask
+                  ? "Add details (optional)"
+                  : "Anything they should know (optional)"
+            }
+            className="mt-1.5 w-full resize-none bg-transparent text-label leading-relaxed text-text placeholder:text-faint focus:outline-none"
+          />
+        </div>
 
+        {/* Who: one row per pick, labeled on the left. */}
+        <div className="space-y-1 border-t border-border px-4 py-2.5">
+          {plainTask && (
+            <Row label="For">
+              <AgentChips
+                agents={workers}
+                selected={assignee ? [assignee] : []}
+                onPick={h => setAssignee(a => (a === h ? "" : h))}
+              />
+            </Row>
+          )}
           {intent.roles.map(role => (
-            <Field key={role.id} label={role.label}>
+            <Row key={role.id} label={role.label}>
               <AgentChips
                 agents={workers}
                 selected={roles[role.id] ? [roles[role.id]] : []}
                 disabled={Object.entries(roles).filter(([k]) => k !== role.id).map(([, v]) => v)}
                 onPick={h => setRoles(r => ({ ...r, [role.id]: r[role.id] === h ? "" : h }))}
               />
-            </Field>
+            </Row>
           ))}
-
-          {plainTask && (
-            <Field label="For (optional)">
-              <AgentChips
-                agents={workers}
-                selected={assignee ? [assignee] : []}
-                onPick={h => setAssignee(a => (a === h ? "" : h))}
-              />
-            </Field>
-          )}
-
           {intent.minGroup > 0 && (
-            <Field label={`Which agents (${intent.minGroup} or more)`}>
+            <Row label="Agents" hint={`${intent.minGroup} or more`}>
               <AgentChips agents={workers} selected={group} onPick={toggleGroup} />
-            </Field>
+            </Row>
           )}
-
-          <Field label="Anything to add">
-            <input
-              value={note}
-              onChange={e => setNote(e.target.value)}
-              placeholder={
-                intent.id === "settle" ? "What they disagree about" : plainTask ? "Optional, posted in its thread" : "Optional"
-              }
-              className="h-8 w-full rounded bg-hairline px-2 text-label text-text placeholder:text-faint focus:bg-bg focus:outline-none focus:ring-1 focus:ring-border"
-            />
-          </Field>
-
-          <p className="text-micro text-faint">{intent.then}</p>
+          {intent.id === "catch-up" && <Row label="Who">The synthesizer</Row>}
+          <p className="pt-1 text-micro text-faint">{intent.then}</p>
           {error && <p role="alert" className="text-micro text-red">{error}</p>}
         </div>
 
@@ -219,11 +225,14 @@ export function IntentDialog({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div>
-      <div className="mb-1 text-micro font-medium text-faint">{label}</div>
-      {children}
+    <div className="flex items-start gap-3">
+      <div className="w-20 flex-shrink-0 pt-1.5 text-micro text-muted-foreground">
+        {label}
+        {hint && <span className="block text-faint">{hint}</span>}
+      </div>
+      <div className="min-w-0 flex-1 pt-0.5 text-label text-muted-foreground">{children}</div>
     </div>
   );
 }
