@@ -30,12 +30,15 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 # ── Page layout ──
-# 3 pages, each a long doc with a grouped sidebar.
+# 4 pages, each a long doc with a grouped sidebar.
 # (page_id, file_name, page_title, top_nav_label, sheet_no, plate_title, meta_description)
 PAGES: list[tuple[str, str, str, str, str, str, str]] = [
     ("start", "index.html", "mycelium Docs", "Guide",
      "GET-001", "OVERVIEW · QUICK START · CONCEPTS",
      "A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, the board, episodes, and the L9 protocol."),
+    ("walkthrough", "walkthrough.html", "Your First Room · mycelium", "Walkthrough",
+     "WLK-001", "YOUR FIRST ROOM · STEP BY STEP",
+     "Set up Mycelium from nothing, one step at a time with screenshots: the Mac app, a room, two coding agents, and a task they work on together."),
     ("adapters", "adapters.html", "Adapters · mycelium", "Adapters",
      "ADP-001", "ADAPTERS · CLAUDE CODE · CURSOR · A2A BRIDGE · REST API · ENGINES",
      "Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer, and summon the first-party engines: the aligner, the synthesizer, hello, a persona and the conductor."),
@@ -61,6 +64,16 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("concepts/memory.md",            "memory",             "start",       "Concepts",     "Memory"),
     ("concepts/principals.md",        "users",              "start",       "Concepts",     "Users & Teams"),
     ("concepts/l9-protocol.md",       "l9-protocol",        "start",       "Concepts",     "L9 Protocol"),
+    # ── walkthrough (walkthrough.html), setup from nothing, one step each ──
+    ("walkthrough/intro.md",          "walkthrough",        "walkthrough", "Walkthrough",  "Your First Room"),
+    ("walkthrough/app.md",            "walk-app",           "walkthrough", "Walkthrough",  "1. Get the app"),
+    ("walkthrough/room.md",           "walk-room",          "walkthrough", "Walkthrough",  "2. Create a room"),
+    ("walkthrough/agents.md",         "walk-agents",        "walkthrough", "Walkthrough",  "3. Add your agents"),
+    ("walkthrough/task.md",           "walk-task",          "walkthrough", "Walkthrough",  "4. Hand it a task"),
+    ("walkthrough/thread.md",         "walk-thread",        "walkthrough", "Walkthrough",  "5. Watch it work"),
+    ("walkthrough/aligner.md",        "walk-aligner",       "walkthrough", "Walkthrough",  "6. When agents disagree"),
+    ("walkthrough/next.md",           "walk-next",          "walkthrough", "Walkthrough",  "Where to go next"),
+    ("walkthrough/server.md",         "walk-server",        "walkthrough", "Other setups", "On a server"),
     # ── adapters (adapters.html), the adapter blocks hand-coded ──
     (None,                            "adapters",           "adapters",  "Adapters",     "Overview"),
     (None,                            "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),

@@ -56,6 +56,11 @@ export interface Shot {
    * dialog filled in, a list opened.
    */
   actions?: string[];
+  /**
+   * A first visit: nobody has said who they are, so the app asks. Every other
+   * shot is taken as Morgan (@operator), the person in the mock rooms.
+   */
+  fresh?: boolean;
   /** One-line note on what this shot is meant to show. */
   caption: string;
 }
@@ -128,5 +133,60 @@ export const SHOTS: Shot[] = [
     viewport: "desktop",
     steps: ["Network"],
     caption: "The network pane: SLIM channel diagnostics over a live L9 protocol feed.",
+  },
+
+  // ── The docs walkthrough ("Your first room"), one shot per step ──────────
+  {
+    id: "walk-name",
+    route: "/",
+    theme: "dark",
+    viewport: "desktop",
+    fresh: true,
+    waitFor: "text=What should we call you?",
+    actions: ['click:[role="dialog"] input', "typekeys:Morgan Reyes", "sleep:300"],
+    caption: "The first thing the app asks: your name.",
+  },
+  {
+    id: "walk-add-agent",
+    route: "/room/scratch",
+    theme: "dark",
+    viewport: "desktop",
+    actions: [
+      'click:role=button[name="Add"]',
+      'click:[role="dialog"] button:has-text("implementer")',
+      "fill:#member-handle=builder",
+      "sleep:400",
+    ],
+    caption: "Adding an agent: a coding agent on your machine, started from a role.",
+  },
+  {
+    id: "walk-task",
+    route: "/room/checkout",
+    theme: "dark",
+    viewport: "desktop",
+    actions: [
+      'click:role=textbox[name=/Message/]',
+      "typekeys:/task Add a gift message to orders @builder ",
+      "sleep:400",
+    ],
+    caption: "Handing an agent a task from the message box.",
+  },
+  {
+    id: "walk-thread",
+    route: "/room/checkout",
+    theme: "dark",
+    viewport: "desktop",
+    steps: ["Board"],
+    // By the row's key: its title also appears in another row's "blocks" note.
+    actions: ['click:[data-board-row="memory:work/turn-on-apple-pay"]', "sleep:1200"],
+    caption: "A task's own thread: the agents talk it through here, not in the room.",
+  },
+  {
+    id: "walk-aligner",
+    route: "/room/checkout?focus=message:neg-say-1",
+    theme: "dark",
+    viewport: "desktop",
+    actions: ["sleep:1200"],
+    caption: "The aligner asking each side in turn until they agree.",
   },
 ];

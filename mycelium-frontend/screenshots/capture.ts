@@ -92,7 +92,17 @@ function specFor(shot: Shot, baseUrl: string, offline: boolean) {
     // so there's no flash of the default theme in the capture. The shots are
     // taken as Morgan (@operator), the mock rooms' person, so a fresh browser
     // doesn't open on "What should we call you?" over the page.
-    storage: { theme: shot.theme, "mycelium.principal": "operator", "mycelium.name-asked": "1" },
+    // Shots share a browser's storage, so each says everything it depends on: a
+    // fresh one clears who's looking, and a shot that types into a room's
+    // message box would leave a draft behind (drafts are kept per room), so
+    // every shot starts those rooms empty.
+    storage: {
+      theme: shot.theme,
+      ...(shot.fresh
+        ? { "mycelium.principal": "", "mycelium.name-asked": "" }
+        : { "mycelium.principal": "operator", "mycelium.name-asked": "1" }),
+      ...Object.fromEntries(["checkout", "scratch", "storefront"].map((room) => [`mycelium.draft:${room}`, ""])),
+    },
     offline,
     stdout: true,
   };
