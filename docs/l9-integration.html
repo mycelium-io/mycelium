@@ -61,6 +61,9 @@
     padding: 20px 16px;
   }
   .mermaid svg { max-width: 100%; height: auto; }
+  /* The site's paragraph rule (theme text color, a bottom margin) must not
+     reach a label mermaid draws, or it lands off its box in the wrong color. */
+  .mermaid p { color: inherit; margin: 0; line-height: 1.4; max-width: none; }
   .take { margin: 22px 0 8px; }
   .take video {
     display: block; width: 100%; height: auto;
@@ -73,7 +76,11 @@
 </style>
 <script type="module">
   import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-  mermaid.initialize({ startOnLoad: true, theme: 'neutral', securityLevel: 'loose' });
+  mermaid.initialize({
+    startOnLoad: true, theme: 'neutral', securityLevel: 'loose',
+    // SVG text rather than HTML in a foreignObject, so page CSS can't restyle it.
+    flowchart: { htmlLabels: false },
+  });
 </script>
 </head>
 <body>
