@@ -566,6 +566,26 @@ class UserRead(BaseModel):
     owns: list[OwnedAgentRead] = Field(default_factory=list)
 
 
+class RoomFolder(BaseModel):
+    """One of a person's folders in their rooms list, and the rooms filed in it."""
+
+    id: str = Field(..., min_length=1, max_length=64)
+    name: str = Field(..., min_length=1, max_length=64)
+    rooms: list[str] = Field(default_factory=list, max_length=500)
+    #: Folded in the sidebar; remembered with the folder so it stays folded.
+    collapsed: bool = False
+
+
+class RoomFolders(BaseModel):
+    """How one person organizes their rooms list: theirs alone, not the room's.
+
+    A room sits in at most one folder; rooms in none are listed as before.
+    A name that no longer names a room is kept, and simply not drawn.
+    """
+
+    folders: list[RoomFolder] = Field(default_factory=list, max_length=100)
+
+
 class UserListResponse(BaseModel):
     users: list[UserRead]
     total: int

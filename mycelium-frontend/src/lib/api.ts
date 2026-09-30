@@ -9,6 +9,7 @@
 import type { SearchResponse } from "@/lib/search";
 import { encodeMemoryKeyPath } from "@/lib/memory-routes";
 import type { RoomStatus } from "@/lib/board/upstream";
+import type { RoomFolders } from "@/lib/room-folders";
 
 /**
  * Attach to a fetch `.catch` to surface network failures in the browser console.
@@ -999,6 +1000,24 @@ export interface Team {
 export async function fetchUsers(): Promise<User[]> {
   const data = await apiFetch<{ users?: User[] }>(`/api/users`, { cache: "no-store", fallback: {} });
   return Array.isArray(data.users) ? data.users : [];
+}
+
+/** How `handle` organizes their rooms list. None yet reads as no folders. */
+export async function fetchRoomFolders(handle: string): Promise<RoomFolders> {
+  const data = await apiFetch<RoomFolders | null>(`/api/users/${encodeURIComponent(handle)}/room-folders`, {
+    cache: "no-store",
+    fallback: null,
+  });
+  return data && Array.isArray(data.folders) ? data : { folders: [] };
+}
+
+/** Replace `handle`'s folders with `layout`. Throws `ApiError` on failure. */
+export async function saveRoomFolders(handle: string, layout: RoomFolders): Promise<RoomFolders> {
+  return apiFetch<RoomFolders>(`/api/users/${encodeURIComponent(handle)}/room-folders`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(layout),
+  });
 }
 
 /** Teams rolled up from agent manifests and user memberships. */

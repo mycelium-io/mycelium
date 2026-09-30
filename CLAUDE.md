@@ -630,6 +630,17 @@ is no litellm dependency.
   for the hub it starts (`desktop serve --share-usage`). This is separate
   from the OTel export (`telemetry.enabled`), which is the backend's own
   operational metrics.
+- **Room folders are a person's, not a room's.** How someone files their
+  rooms list is kept on the hub under their handle
+  (`GET`/`PUT /api/users/{handle}/room-folders`,
+  `app/services/room_folders.py`, one JSON file at
+  `preferences/<handle>/room-folders.json`), so it follows them across
+  browsers and into the app. It sits beside the user store rather than in it,
+  because `contracts/user-store.json` freezes the record the CLI mirrors, and a
+  preference is not identity. On a gated hub only your own is readable or
+  writable. A room knows nothing about the folders it is in; a room sits in at
+  most one of a person's folders; before a name is chosen, the layout lives in
+  the browser (`useRoomFolders`, `lib/room-folders.ts`).
 - **GUI server state is one SWR cache; client state stays local.** Every room
   read in the frontend goes through `mycelium-frontend/src/lib/room-data.ts` —
   typed SWR hooks keyed `["room", name, resource]`, so N panels reading the same

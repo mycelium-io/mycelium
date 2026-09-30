@@ -18,7 +18,8 @@
  * module is only for what the hub owns.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { EMPTY_LAYOUT, type RoomFolders } from "@/lib/room-folders";
 import type { RoomStatus } from "@/lib/board/upstream";
 import useSWR, { useSWRConfig, type SWRConfiguration } from "swr";
 import {
@@ -31,9 +32,11 @@ import {
   fetchRoomAgents,
   fetchRoomMembers,
   fetchRoomStatus,
+  fetchRoomFolders,
   fetchRooms,
   fetchSkills,
   logFetchError,
+  saveRoomFolders,
   type A2aBridgeState,
   type AgentSummary,
   type EpisodeSummary,
@@ -179,6 +182,57 @@ export function useRooms(opts: RoomQueryOptions = {}) {
     void mutate();
   }, [mutate]);
   return { rooms: data ?? NO_ROOMS, loading: isLoading, refresh };
+}
+
+const LOCAL_FOLDERS = "mycelium.room-folders";
+
+function readLocalFolders(): RoomFolders {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(LOCAL_FOLDERS) ?? "null");
+    return parsed && Array.isArray(parsed.folders) ? parsed : EMPTY_LAYOUT;
+  } catch {
+    return EMPTY_LAYOUT;
+  }
+}
+
+function writeLocalFolders(layout: RoomFolders): RoomFolders {
+  try {
+    window.localStorage.setItem(LOCAL_FOLDERS, JSON.stringify(layout));
+  } catch {
+    // Storage blocked: the folders last until the page does.
+  }
+  return layout;
+}
+
+/**
+ * How you organize your rooms list, and a way to change it. Kept on the hub
+ * under your handle, so it follows you to another browser and into the app;
+ * before you have a name, in this browser alone. A change shows at once and
+ * rolls back if the hub refuses it.
+ */
+export function useRoomFolders() {
+  const handle = usePrincipal();
+  const { data, mutate } = useSWR(["room-folders", handle], () =>
+    handle ? fetchRoomFolders(handle) : readLocalFolders(),
+  );
+  const layout = data ?? EMPTY_LAYOUT;
+  // Two quick changes in a row both start from the newest layout, not the render's.
+  const latest = useRef(layout);
+  useEffect(() => {
+    latest.current = layout;
+  }, [layout]);
+  const update = useCallback(
+    (change: (layout: RoomFolders) => RoomFolders) => {
+      const next = change(latest.current);
+      latest.current = next;
+      const save = handle ? saveRoomFolders(handle, next) : Promise.resolve(writeLocalFolders(next));
+      void mutate(save, { optimisticData: next, rollbackOnError: true, revalidate: false }).catch(
+        logFetchError("saveRoomFolders"),
+      );
+    },
+    [handle, mutate],
+  );
+  return { layout, update };
 }
 
 /** fetchRoom failure logged; returns null for caller to render. */

@@ -2,7 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { act, type ComponentProps } from "react";
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { renderWithSWR } from "@/test/swr";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,6 +17,9 @@ vi.mock("@/lib/api", () => ({
   createRoom: vi.fn(),
   deleteRoom: vi.fn(),
   fetchRooms: vi.fn(),
+  fetchRoomFolders: vi.fn(),
+  saveRoomFolders: vi.fn(),
+  logFetchError: () => () => undefined,
 }));
 
 import { AuthSessionProvider } from "@/components/auth-session";
@@ -25,7 +28,7 @@ import { InstallModalProvider } from "@/components/install-modal";
 import { KeymapProvider } from "@/components/keymap-provider";
 import { NotificationsProvider } from "@/components/notifications-provider";
 import { RoomsSidebar } from "@/components/rooms-sidebar";
-import { createRoom, deleteRoom, fetchRooms } from "@/lib/api";
+import { createRoom, deleteRoom, fetchRoomFolders, fetchRooms, saveRoomFolders } from "@/lib/api";
 
 type RoomArg = string | { name: string; is_public?: boolean; last_activity?: string };
 
@@ -39,6 +42,9 @@ async function renderSidebar(
   props: Partial<ComponentProps<typeof RoomsSidebar>> = {},
 ) {
   vi.mocked(fetchRooms).mockResolvedValue(rooms(...names) as never);
+  if (!vi.mocked(fetchRoomFolders).getMockImplementation()) {
+    vi.mocked(fetchRoomFolders).mockResolvedValue({ folders: [] });
+  }
   renderWithSWR(
     <CurrentUserProvider>
       <AuthSessionProvider>
@@ -248,7 +254,8 @@ describe("<RoomsSidebar /> new room in the list", () => {
     vi.mocked(createRoom).mockResolvedValue({} as never);
     const user = await renderSidebar(["alpha"]);
 
-    await user.click(screen.getByRole("button", { name: "New room" }));
+    await user.click(screen.getByRole("button", { name: "New room or folder" }));
+    await user.click(await screen.findByRole("button", { name: "New room" }));
     await user.keyboard("design-review{Enter}");
 
     expect(createRoom).toHaveBeenCalledWith({
@@ -265,7 +272,8 @@ describe("<RoomsSidebar /> new room in the list", () => {
     vi.mocked(createRoom).mockRejectedValue(new Error("Room already exists"));
     const user = await renderSidebar(["alpha"]);
 
-    await user.click(screen.getByRole("button", { name: "New room" }));
+    await user.click(screen.getByRole("button", { name: "New room or folder" }));
+    await user.click(await screen.findByRole("button", { name: "New room" }));
     await user.keyboard("alpha{Enter}");
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Room already exists");
@@ -275,7 +283,8 @@ describe("<RoomsSidebar /> new room in the list", () => {
   it("leaves on Esc without creating anything", async () => {
     const user = await renderSidebar(["alpha"]);
 
-    await user.click(screen.getByRole("button", { name: "New room" }));
+    await user.click(screen.getByRole("button", { name: "New room or folder" }));
+    await user.click(await screen.findByRole("button", { name: "New room" }));
     await user.keyboard("half{Escape}");
 
     expect(createRoom).not.toHaveBeenCalled();
@@ -330,9 +339,98 @@ describe("<RoomsSidebar /> private rooms", () => {
     const user = await renderSidebar(["alpha", scratch]);
 
     await user.click(screen.getByRole("radio", { name: "Private" }));
-    await user.click(screen.getByRole("button", { name: "New room" }));
+    await user.click(screen.getByRole("button", { name: "New room or folder" }));
+    await user.click(await screen.findByRole("button", { name: "New room" }));
     await user.keyboard("notes{Enter}");
 
     expect(createRoom).toHaveBeenCalledWith(expect.objectContaining({ name: "notes", private: true }));
+  });
+});
+
+describe("<RoomsSidebar /> folders", () => {
+  const payments = { id: "f1", name: "Payments", rooms: ["beta"] };
+
+  beforeEach(() => {
+    push.mockClear();
+    resetStreamHub();
+    FakeEventSource.reset();
+    vi.stubGlobal("EventSource", FakeEventSource);
+    window.localStorage.clear();
+    // Folders are kept under your name.
+    window.localStorage.setItem("mycelium.principal", "julia");
+    vi.mocked(fetchRoomFolders).mockReset().mockResolvedValue({ folders: [payments] });
+    vi.mocked(saveRoomFolders).mockReset().mockImplementation(async (_h, layout) => layout);
+  });
+
+  it("draws your folders first, with their rooms, and next/prev follows them", async () => {
+    const user = await renderSidebar(["alpha", "beta"], "alpha");
+
+    expect(fetchRoomFolders).toHaveBeenCalledWith("julia");
+    expect(screen.getByRole("button", { name: "Payments folder, 1 room" })).toBeInTheDocument();
+    const links = screen.getAllByRole("link").map(l => l.textContent);
+    expect(links[0]).toContain("beta");
+    expect(links[1]).toContain("alpha");
+
+    await user.keyboard("[[");
+    expect(push).toHaveBeenLastCalledWith("/room/beta");
+  });
+
+  it("folds a folder and remembers it", async () => {
+    const user = await renderSidebar(["alpha", "beta"]);
+
+    await user.click(screen.getByRole("button", { name: "Payments folder, 1 room" }));
+    expect(screen.queryByRole("link", { name: /beta/ })).not.toBeInTheDocument();
+    expect(saveRoomFolders).toHaveBeenCalledWith("julia", {
+      folders: [{ ...payments, collapsed: true }],
+    });
+  });
+
+  it("makes a folder from the + menu", async () => {
+    vi.mocked(fetchRoomFolders).mockResolvedValue({ folders: [] });
+    const user = await renderSidebar(["alpha"]);
+
+    await user.click(screen.getByRole("button", { name: "New room or folder" }));
+    await user.click(await screen.findByRole("button", { name: "New folder" }));
+    await user.keyboard("Side projects{Enter}");
+
+    expect(saveRoomFolders).toHaveBeenCalledWith("julia", {
+      folders: [expect.objectContaining({ name: "Side projects", rooms: [] })],
+    });
+    expect(await screen.findByRole("button", { name: "Side projects folder, 0 rooms" })).toBeInTheDocument();
+  });
+
+  it("deletes a folder and keeps its rooms", async () => {
+    const user = await renderSidebar(["alpha", "beta"]);
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Payments folder, 1 room" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Delete folder/ }));
+
+    expect(saveRoomFolders).toHaveBeenCalledWith("julia", { folders: [] });
+    expect(screen.queryByRole("button", { name: /Payments folder/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /beta/ })).toBeInTheDocument();
+  });
+
+  it("files a room by dropping it on a folder", async () => {
+    await renderSidebar(["alpha", "beta"]);
+
+    const data = new Map<string, string>();
+    const dataTransfer = {
+      types: [] as string[],
+      setData: (type: string, value: string) => {
+        data.set(type, value);
+        dataTransfer.types.push(type);
+      },
+      getData: (type: string) => data.get(type) ?? "",
+      effectAllowed: "",
+      dropEffect: "",
+    };
+    const folder = screen.getByRole("button", { name: "Payments folder, 1 room" });
+    fireEvent.dragStart(screen.getByRole("link", { name: /alpha/ }), { dataTransfer });
+    fireEvent.dragOver(folder, { dataTransfer });
+    fireEvent.drop(folder, { dataTransfer });
+
+    expect(saveRoomFolders).toHaveBeenCalledWith("julia", {
+      folders: [{ ...payments, rooms: ["beta", "alpha"] }],
+    });
   });
 });

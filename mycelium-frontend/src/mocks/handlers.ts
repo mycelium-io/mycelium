@@ -229,8 +229,22 @@ async function handleUsers(req: Request, method: string, rest: string[]): Promis
     const user = MOCK_USERS.get(decodeURIComponent(rest[0]).toLowerCase());
     return user ? json(user) : notFound("no such user (mock)");
   }
+  if (rest.length === 2 && rest[1] === "room-folders") {
+    const handle = decodeURIComponent(rest[0]).toLowerCase();
+    if (method === "GET") return json(MOCK_ROOM_FOLDERS.get(handle) ?? { folders: [] });
+    if (method === "PUT") {
+      const body = await readJson(req);
+      const layout = { folders: Array.isArray(body.folders) ? body.folders : [] };
+      MOCK_ROOM_FOLDERS.set(handle, layout);
+      return json(layout);
+    }
+  }
   return notFound("unknown users route (mock)");
 }
+
+/** Each person's room folders, kept until the mock restarts. Everyone starts
+ *  with none, so the rooms list looks as it always has until someone files one. */
+const MOCK_ROOM_FOLDERS = new Map<string, { folders: unknown[] }>();
 
 export async function handleMock(req: Request): Promise<Response | null> {
   const { pathname, searchParams } = new URL(req.url);
