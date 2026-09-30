@@ -23,6 +23,20 @@ describe("RoomMenu", () => {
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
+  it("copies a link to what's open, which the Mac app has no address bar for", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    window.history.pushState({}, "", "/room/atlas?task=work%2Fship-it");
+    render(<RoomMenu roomName="atlas" masId={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "atlas options" }));
+
+    fireEvent.click(await screen.findByText("Copy link"));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/room/atlas?task=work%2Fship-it`),
+    );
+    expect(await screen.findByText("Copied")).toBeInTheDocument();
+  });
+
   it("offers no id to copy for a room without one", async () => {
     render(<RoomMenu roomName="atlas" masId={null} />);
     fireEvent.click(screen.getByRole("button", { name: "atlas options" }));

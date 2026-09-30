@@ -5,7 +5,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Copy, Lock, MoreHorizontal, Trash2, Users } from "lucide-react";
+import { Check, Copy, Link2, Lock, MoreHorizontal, Trash2, Users } from "lucide-react";
 import { setRoomPrivate } from "@/lib/api";
 import { useRooms } from "@/lib/room-data";
 import { usePrincipal } from "@/components/current-user";
@@ -14,8 +14,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 
 /**
  * The room's `…` menu in the header: what you do to the room rather than in
- * it. The room's MAS id lives here to be copied, not beside the name, and
- * deleting sits behind a menu instead of an icon next to the title.
+ * it. The link to what you're looking at and the room's MAS id live here to be
+ * copied, not beside the name, and deleting sits behind a menu instead of an
+ * icon next to the title. The link matters most in the Mac app, which has no
+ * address bar to copy it from.
  */
 export function RoomMenu({
   roomName,
@@ -35,18 +37,19 @@ export function RoomMenu({
   const { refresh: refreshRooms } = useRooms();
   const [open, setOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"link" | "id" | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Read when the menu opens, so it names the task or view open right now.
+  const link = open && typeof window !== "undefined" ? window.location.href : "";
 
-  const copyId = async () => {
-    if (!masId) return;
+  const copy = async (what: "link" | "id", text: string) => {
     try {
-      await navigator.clipboard.writeText(masId);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
+      await navigator.clipboard.writeText(text);
+      setCopied(what);
+      window.setTimeout(() => setCopied(null), 1200);
     } catch {
-      // Clipboard blocked: the id is still shown to select by hand.
+      // Clipboard blocked: the text is still shown to select by hand.
     }
   };
 
@@ -85,15 +88,26 @@ export function RoomMenu({
           <MoreHorizontal className="size-4" />
         </PopoverTrigger>
         <PopoverContent align="end" className="w-60 p-1">
+          <button type="button" onClick={() => copy("link", link)} className={item}>
+            {copied === "link" ? (
+              <Check className="size-3.5 flex-shrink-0 text-accent" />
+            ) : (
+              <Link2 className="size-3.5 flex-shrink-0 text-muted-foreground" />
+            )}
+            <span className="min-w-0 flex-1">
+              <span className="block text-text">{copied === "link" ? "Copied" : "Copy link"}</span>
+              <span className="block truncate font-mono text-micro text-faint">{link}</span>
+            </span>
+          </button>
           {masId && (
-            <button type="button" onClick={copyId} className={item}>
-              {copied ? (
+            <button type="button" onClick={() => copy("id", masId)} className={item}>
+              {copied === "id" ? (
                 <Check className="size-3.5 flex-shrink-0 text-accent" />
               ) : (
                 <Copy className="size-3.5 flex-shrink-0 text-muted-foreground" />
               )}
               <span className="min-w-0 flex-1">
-                <span className="block text-text">{copied ? "Copied" : "Copy room id"}</span>
+                <span className="block text-text">{copied === "id" ? "Copied" : "Copy room id"}</span>
                 <span className="block truncate font-mono text-micro text-faint">{masId}</span>
               </span>
             </button>
