@@ -610,6 +610,11 @@ fn main_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
         // A dark title bar, to match the app, whatever the system appearance.
         .theme(Some(tauri::Theme::Dark))
         .user_agent(&ua)
+        // Tauri's own drop handler (for files dropped from Finder) takes every
+        // drag in the window, so the page's HTML5 drag and drop (board cards,
+        // room folders, panels) never sees a drop. The UI listens for none of
+        // Tauri's drop events, so the page gets them all.
+        .disable_drag_drop_handler()
         // A link the UI opens in a new tab (one out of the app, from chat or a
         // memory) goes to the default browser: the app never opens a second
         // web window of its own, and only web and mail links are passed on.
