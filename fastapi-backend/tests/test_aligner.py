@@ -391,3 +391,22 @@ def test_roster_excludes_engines_and_the_summoned_handle(tmp_path, monkeypatch) 
     engine = _engine(FakeManager(managed, []))
 
     assert engine._roster(room, "aligner") == ["reviewer"]
+
+
+def test_a_persona_or_worker_the_summon_names_is_a_party(tmp_path, monkeypatch) -> None:
+    """A persona or a worker plays a teammate: `@aligner @finance @sales` puts
+    them in the deal. Unnamed, they stay out, and a named non-teammate engine
+    is never a party."""
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    room = "teammate-room"
+    _register(room, "reviewer")
+    _register(room, "finance", adapter="engine", kind="persona")
+    _register(room, "builder", adapter="engine", kind="worker")
+    _register(room, "synthesizer", adapter="engine", kind="synthesizer")
+
+    managed = FakeManaged(room, "mycelium", FakeChannel(), FakePersister())
+    engine = _engine(FakeManager(managed, []))
+
+    named = ["finance", "builder", "synthesizer"]
+    assert engine._roster(room, "aligner", named=named) == ["builder", "finance", "reviewer"]
+    assert engine._roster(room, "aligner") == ["reviewer"]

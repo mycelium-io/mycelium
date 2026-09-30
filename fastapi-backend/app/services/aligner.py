@@ -70,6 +70,11 @@ logger = logging.getLogger(__name__)
 # moderator, and the system actor the backend signs its own envelopes with.
 _NON_PARTICIPANTS = frozenset({BACKEND_AGENT, l9.SYSTEM_ACTOR_ID})
 
+#: Engine kinds that play a teammate, and so can be a party to a deal when a
+#: summon names them. The rest (the aligner, the synthesizer, the conductor)
+#: never are.
+TEAMMATE_ENGINES = frozenset({"persona", "worker"})
+
 # The mediator addresses exactly ONE agent per turn; the sigil-stripping that
 # keeps the other names in its prose from waking anyone lives with the turn
 # primitive (:mod:`app.services.turns`). Kept under this name for the engines
@@ -334,7 +339,7 @@ class AlignerEngine:
             return None
         persister = managed.persister
         me = engine_handle or self._handle
-        participants = self._roster(room, me)
+        participants = self._roster(room, me, named=scoped_participants)
         if scoped_participants:
             scoped = {_norm(h) for h in scoped_participants}
             participants = [m for m in participants if _norm(m) in scoped]
@@ -531,7 +536,7 @@ class AlignerEngine:
             room=room,
         )
 
-    def _roster(self, room: str, me: str) -> list[str]:
+    def _roster(self, room: str, me: str, named: list[str] | None = None) -> list[str]:
         """The agents this run may broker between: ``room``'s registered roster.
 
         The union of the room's **registered** agents and whoever is currently
@@ -550,14 +555,21 @@ class AlignerEngine:
         may have no manifest at all.
 
         Engines are excluded — the aligner brokers between teammates, and an
-        engine (itself, the synthesizer) is never a party to the deal.
+        engine (itself, the synthesizer) is never a party to the deal — except
+        an engine that *is* a teammate, a persona or a worker, when the summon
+        names it (``@aligner @a @persona``): it answers the aligner's addressed
+        turns like any member, and naming it is how it joins the deal.
         """
         from app.services.agent_registry import room_agents
 
         drop = {_norm(me), _norm(self._handle), *(_norm(h) for h in _NON_PARTICIPANTS)}
+        asked = {_norm(h) for h in named or []}
         roster: dict[str, str] = {}
         for agent in room_agents(room):
-            if _norm(agent.handle) in drop or agent.adapter == "engine":
+            if _norm(agent.handle) in drop:
+                continue
+            teammate = agent.kind in TEAMMATE_ENGINES and _norm(agent.handle) in asked
+            if agent.adapter == "engine" and not teammate:
                 continue
             roster[_norm(agent.handle)] = agent.handle
         for handle in self._manager.members(room):
