@@ -28,6 +28,7 @@ export const HOTSPOT = { x: 5, y: 3 };
 /**
  * @typedef {object} OverlayOptions
  * @property {boolean} [cursor] draw the pointer at all
+ * @property {"bottom"|"top"} [captionAt] where a caption sits
  * @property {number} [startX] @property {number} [startY] where it starts
  * @property {number} [follow] 0-1, how hard the drawn cursor chases the real one
  * @property {string} [accent] ripple color
@@ -37,6 +38,9 @@ export const HOTSPOT = { x: 5, y: 3 };
 /** @type {Required<OverlayOptions> & {hotspotX:number, hotspotY:number}} */
 export const OVERLAY_DEFAULTS = {
   cursor: true,
+  /** Where a `caption:` sits: `bottom` (a lower third), or `top` for a page
+   *  whose bottom edge is where the action is, like a chat composer. */
+  captionAt: "bottom",
   startX: 40,
   startY: 40,
   follow: 0.42,
@@ -54,6 +58,7 @@ export const OVERLAY_DEFAULTS = {
  *   snap(x, y)              teleport, no easing
  *   camera(z, x, y, ms)     push in to `z` around viewport point (x, y)
  *   press(down) / show(on)  force the pressed look; hide the pointer
+ *   caption(text)           a lower-third caption; empty takes it down
  *   state()                 what the recorder asserts against
  *
  * @param {Required<OverlayOptions> & {hotspotX:number, hotspotY:number}} opts
@@ -73,9 +78,31 @@ export function installOverlay(opts) {
     visible: opts.cursor,
     cam: { z: 1, tx: 0, ty: 0 },
     mounted: false,
+    caption: "",
   };
   let root = null;
   let arrow = null;
+  let captionEl = null;
+
+  /**
+   * Put `text` up as the lower-third caption, or take it down when empty. A
+   * change of words fades the old ones out first, so two captions never read
+   * as one; a remount puts the current one back without the fade.
+   */
+  function showCaption(text, animate = true) {
+    st.caption = String(text ?? "");
+    if (!captionEl) return;
+    const apply = () => {
+      captionEl.textContent = st.caption;
+      captionEl.classList.toggle("__shotkit-on", Boolean(st.caption));
+    };
+    if (!animate || !captionEl.classList.contains("__shotkit-on") || !st.caption) {
+      apply();
+      return;
+    }
+    captionEl.classList.remove("__shotkit-on");
+    setTimeout(apply, 220);
+  }
 
   const CSS = `
     #__shotkit-overlay, #__shotkit-overlay * { pointer-events: none !important; }
@@ -100,6 +127,20 @@ export function installOverlay(opts) {
       background: ${opts.accent}33;
       box-shadow: 0 0 12px ${opts.accent}66;
     }
+    #__shotkit-caption {
+      position: absolute; left: 50%;
+      ${opts.captionAt === "top" ? "top: 9%;" : "bottom: 7%;"}
+      transform: translate(-50%, ${opts.captionAt === "top" ? "-8px" : "8px"});
+      max-width: min(72%, 900px);
+      padding: 12px 22px; border-radius: 12px;
+      background: rgba(12,14,17,.86); color: #f4f6f8;
+      border: 1px solid ${opts.accent}55;
+      box-shadow: 0 10px 34px rgba(0,0,0,.45);
+      font: 500 22px/1.35 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+      letter-spacing: .005em; text-align: center; text-wrap: balance;
+      opacity: 0; transition: opacity 260ms ease, transform 260ms ease;
+    }
+    #__shotkit-caption.__shotkit-on { opacity: 1; transform: translate(-50%, 0); }
   `;
 
   const ARROW = `<svg viewBox="0 0 26 30" xmlns="http://www.w3.org/2000/svg">
@@ -126,6 +167,12 @@ export function installOverlay(opts) {
     arrow.id = "__shotkit-cursor";
     arrow.innerHTML = ARROW;
     root.appendChild(arrow);
+    // A caption lives in the overlay too, so it rides the top layer: the camera
+    // can push in on the page without the words growing or sliding off.
+    captionEl = document.createElement("div");
+    captionEl.id = "__shotkit-caption";
+    root.appendChild(captionEl);
+    showCaption(st.caption, false);
     (document.body ?? document.documentElement).appendChild(root);
 
     // The top layer is the one place a fixed element ignores an ancestor
@@ -310,6 +357,10 @@ export function installOverlay(opts) {
       draw();
     },
     camera,
+    /** The lower-third caption: `caption("…")` to show it, `caption("")` to clear. */
+    caption(text) {
+      showCaption(text);
+    },
     state: () => ({ ...st, cam: { ...st.cam } }),
   };
 

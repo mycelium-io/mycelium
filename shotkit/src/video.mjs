@@ -27,7 +27,7 @@ import { OVERLAY_DEFAULTS, installOverlay } from "./cursor.mjs";
 import { defaultFormat, findEncoder, startEncoder } from "./encode.mjs";
 import { frameOf, policyOf, preparePage, seedStorage } from "./engine.mjs";
 import { runActions } from "./actions.mjs";
-import { frameSource, startPump } from "./pump.mjs";
+import { MAX_SPEED, frameSource, startPump } from "./pump.mjs";
 import { palette } from "./theme.mjs";
 
 /** Timing, in ms. Beats a viewer can follow rather than the fastest that works. */
@@ -143,6 +143,7 @@ export async function record(eng, spec, ctx) {
     startX: start.x,
     startY: start.y,
     ...(spec.cursorSize ? { size: spec.cursorSize } : {}),
+    ...(spec.captionAt === "top" ? { captionAt: "top" } : {}),
   });
   if (spec.storage) await seedStorage(context, spec.storage);
 
@@ -172,13 +173,15 @@ export async function record(eng, spec, ctx) {
       log,
     });
 
-    const cursor = makeCursor(page, { ...spec, log, timing, zoom: spec.zoom ?? VIDEO_DEFAULTS.zoom });
-    // Three ways a take ends: the flow finishes, the cap bites, or there is
-    // nothing left to record into. The cap is a timer this take can cancel —
-    // an outstanding one holds the process open long after the file is written,
-    // so it is cleared in the `finally` below, on the throwing path too.
+    const cursor = makeCursor(page, { ...spec, log, timing, zoom: spec.zoom ?? VIDEO_DEFAULTS.zoom, pump });
+    // Three ways a take ends: the flow finishes, the video reaches --max-seconds
+    // (the pump says so), or there is nothing left to record into. A sped-up
+    // take can run far longer than the video it makes, so the wall clock is
+    // only a runaway guard, at the top speed. It is a timer this take can
+    // cancel — an outstanding one holds the process open long after the file is
+    // written, so it is cleared in the `finally` below, on the throwing path too.
     const cap = new Promise((r) => {
-      capTimer = setTimeout(() => r("over"), pump.budgetMs);
+      capTimer = setTimeout(() => r("over"), pump.budgetMs * MAX_SPEED);
     });
     const flow = drive(page, spec, cursor, timing);
     // When the cap or a dead encoder wins the race the flow is still running,
@@ -370,6 +373,21 @@ export function makeCursor(page, opts) {
     /** A beat after an action, so the viewer sees the result of it. */
     dwell(ms) {
       return sleep(ms ?? timing.dwellMs);
+    },
+
+    /** Put a lower-third caption up, or take it down with an empty one. */
+    async caption(text) {
+      await page.evaluate((t) => window.__shotkit?.caption(t), text).catch(() => {});
+    },
+
+    /**
+     * Time-lapse from here: `speed:4` plays what follows four times faster,
+     * `speed:1` goes back to real time. For the stretches a viewer shouldn't
+     * sit through, like a model thinking, with the page still live throughout.
+     */
+    speed(n) {
+      opts.pump?.setSpeed(n);
+      opts.log?.(`speed ${opts.pump?.speed ?? 1}x`);
     },
   };
 }
