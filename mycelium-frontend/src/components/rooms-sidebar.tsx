@@ -7,16 +7,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  ArrowDown,
   ArrowRight,
+  ArrowUp,
   Bell,
   BellOff,
   BellRing,
   Boxes,
   Check,
+  ChevronRight,
   Copy,
   ExternalLink,
+  Folder,
+  FolderInput,
+  FolderMinus,
+  FolderOpen,
+  FolderPlus,
   Link2,
   Lock,
+  Pencil,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -27,7 +36,19 @@ import {
 } from "lucide-react";
 import { createRoom, type Room } from "@/lib/api";
 import { useAppStream } from "@/lib/stream-hub";
-import { useRooms } from "@/lib/room-data";
+import { useRoomFolders, useRooms } from "@/lib/room-data";
+import {
+  addFolder,
+  deleteFolder,
+  folderOf,
+  groupRooms,
+  moveFolder,
+  moveRoom,
+  newFolderId,
+  renameFolder,
+  toggleFolder,
+  type RoomFolder,
+} from "@/lib/room-folders";
 import { roomLevel, type RoomLevel } from "@/lib/notifications";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { usePrincipal } from "@/components/current-user";
@@ -128,29 +149,52 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
   const hasPrivate = rooms.some(isPrivateRoom);
   const activeScope: Scope = hasPrivate ? scope : "all";
 
+  // Your folders, yours alone: how you've filed rooms, not how the rooms are.
+  const { layout, update: updateFolders } = useRoomFolders();
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
+  const [newRoomIn, setNewRoomIn] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const searching = query.trim().length > 0;
+
   // Filter by the query and scope, then order by recency (last active first) so
   // rooms with fresh activity float up — the same ordering the command palette
-  // uses. Private rooms are drawn as their own group below the shared ones, and
-  // the list is that concatenation, so ⌥1..9 and next/prev follow the screen.
-  const { shared, mine } = useMemo(() => {
+  // uses. Your folders come first, in your order; the rooms filed in none
+  // follow, with the private ones as their own group below the shared ones.
+  // The list is that concatenation, so ⌥1..9 and next/prev follow the screen.
+  const { groups, shared, mine } = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const base = q ? rooms.filter(r => r.name.toLowerCase().includes(q)) : rooms;
+    const scoped = rooms.filter(r =>
+      activeScope === "private" ? isPrivateRoom(r) : activeScope === "shared" ? !isPrivateRoom(r) : true,
+    );
+    const base = q ? scoped.filter(r => r.name.toLowerCase().includes(q)) : scoped;
     const recency = (r: Room) => r.last_activity ?? r.created_at ?? "";
     const sorted = [...base].sort((a, b) => recency(b).localeCompare(recency(a)));
+    const { groups, loose } = groupRooms(sorted, layout);
     return {
-      shared: activeScope === "private" ? [] : sorted.filter(r => !isPrivateRoom(r)),
-      mine: activeScope === "shared" ? [] : sorted.filter(isPrivateRoom),
+      // While narrowing the list, a folder with nothing to show gets out of the way.
+      groups: q || activeScope !== "all" ? groups.filter(g => g.rooms.length > 0) : groups,
+      shared: loose.filter(r => !isPrivateRoom(r)),
+      mine: loose.filter(isPrivateRoom),
     };
-  }, [rooms, query, activeScope]);
-  const filtered = useMemo(() => [...shared, ...mine], [shared, mine]);
+  }, [rooms, query, activeScope, layout]);
+  // A folded folder hides its rooms, except from a search.
+  const filtered = useMemo(
+    () => [...groups.flatMap(g => (g.folder.collapsed && !searching ? [] : g.rooms)), ...shared, ...mine],
+    [groups, shared, mine, searching],
+  );
+  // The strip has no folds to hide behind, so every room in it is reachable.
+  const stripRooms = useMemo(() => [...groups.flatMap(g => g.rooms), ...shared, ...mine], [groups, shared, mine]);
+  const onScreen = collapsed ? stripRooms : filtered;
+  const indexOf = useMemo(() => new Map(onScreen.map((r, i) => [r.name, i])), [onScreen]);
 
   // ---- Keyboard navigation -------------------------------------------------
   // The rooms on screen are the switchable set, in the order they're listed, so
   // the digit fast path and next/prev agree with what the user is looking at.
   const router = useRouter();
-  const roomsRef = useRef(filtered);
+  const roomsRef = useRef(onScreen);
   useEffect(() => {
-    roomsRef.current = filtered;
+    roomsRef.current = onScreen;
   });
 
   const go = useCallback(
@@ -181,7 +225,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
 
   useKeyAction("rooms.next", () => cycle(1));
   useKeyAction("rooms.prev", () => cycle(-1));
-  useKeyAction("rooms.digit", chord => go(filtered[Number(chord.split("+").pop()) - 1]));
+  useKeyAction("rooms.digit", chord => go(onScreen[Number(chord.split("+").pop()) - 1]));
   useKeyAction("nav.home", () => router.push("/"));
 
   const openInstallModal = useOpenInstallModal();
@@ -211,6 +255,16 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
         keywords: ["new", "add"],
         run: () => setShowCreate(true),
       },
+      {
+        id: "room.folder",
+        title: "Create a folder for rooms",
+        group: "Rooms",
+        keywords: ["new", "group", "organize", "sidebar"],
+        run: () => {
+          onCollapsedChange?.(false);
+          setCreatingFolder(true);
+        },
+      },
       { id: "nav.metrics", title: "Metrics", group: "Navigate", run: () => router.push("/metrics") },
       {
         id: "nav.machines",
@@ -227,9 +281,99 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
         run: openInstallModal,
       },
     ],
-    [rooms, go, router, openInstallModal],
+    [rooms, go, router, openInstallModal, onCollapsedChange],
   );
   useCommands(commands);
+
+  // What a room row's menu needs to file it, shared by the list and the strip.
+  const fileRoom = {
+    folders: layout.folders,
+    onMove: (room: string, to: string | null) => updateFolders(l => moveRoom(l, room, to)),
+    onNewFolder: (room: string) => {
+      const id = newFolderId();
+      updateFolders(l => moveRoom(addFolder(l, "New folder", id), room, id));
+      onCollapsedChange?.(false);
+      setRenamingFolder(id);
+    },
+  };
+
+  /** One room's row in the list. `markPrivate` puts the lock on the row itself,
+   *  where no Private heading above it says so already. */
+  const row = (room: Room, markPrivate: boolean) => {
+    const active = room.name === activeRoom;
+    const i = indexOf.get(room.name) ?? -1;
+    // Don't badge the room you're already looking at — being here is
+    // reading it. Elsewhere, unread activity draws the name brighter too.
+    const unread = active ? 0 : unreadByRoom.get(room.name) ?? 0;
+    const level = roomLevel(settings, room.name);
+    return (
+      <RoomContextMenu
+        key={room.name}
+        room={room}
+        level={level}
+        onSetLevel={setRoomLevel}
+        onOpen={() => go(room)}
+        onDelete={() => setDeleteTarget(room.name)}
+        {...fileRoom}
+      >
+        <div className="group/room relative">
+          <Link
+            href={`/room/${encodeURIComponent(room.name)}`}
+            // Dragged onto a folder to file it there.
+            onDragStart={e => {
+              e.dataTransfer.setData(ROOM_DRAG, room.name);
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            onDragEnd={() => setDropTarget(null)}
+            className={`group flex h-7 items-center gap-2 rounded px-1.5 transition-colors ${
+              active ? "bg-hairline" : "hover:bg-hairline"
+            }`}
+          >
+            <RoomAvatar name={room.name} className="size-[18px] rounded-[4px] text-[8px]">
+              {i >= 0 && i < 9 && <KeyBadge chord={`alt+${i + 1}`} overlay />}
+            </RoomAvatar>
+            <span
+              className={`min-w-0 flex-1 truncate text-label ${
+                active || unread > 0 ? "font-medium text-text" : "text-muted-foreground group-hover:text-text"
+              }`}
+            >
+              {room.name}
+            </span>
+            {markPrivate && isPrivateRoom(room) && (
+              <Lock
+                aria-label="private"
+                className="size-3 flex-shrink-0 text-faint transition-opacity group-hover/room:opacity-0"
+              />
+            )}
+            {unread > 0 && (
+              <span
+                aria-label={`${unread} unread`}
+                className="flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold tabular leading-none text-accent-fg transition-opacity group-hover/room:opacity-0"
+              >
+                {unread > 9 ? "9+" : unread}
+              </span>
+            )}
+            {unread === 0 && level === "muted" && (
+              <BellOff aria-label="muted" className="size-3 flex-shrink-0 text-faint transition-opacity group-hover/room:opacity-0" />
+            )}
+          </Link>
+          {/* Discord-style per-room control, revealed on hover, overlaying the
+              badge slot. Outside the Link so it never navigates. */}
+          <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover/room:pointer-events-auto group-hover/room:opacity-100">
+            <RoomLevelMenu room={room.name} level={level} onSet={setRoomLevel} />
+          </div>
+          <button
+            type="button"
+            aria-label={`Delete room ${room.name}`}
+            onClick={() => setDeleteTarget(room.name)}
+            className="pointer-events-none absolute right-9 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:text-red group-hover/room:pointer-events-auto group-hover/room:opacity-100"
+          >
+            <Trash2 className="size-3.5" />
+          </button>
+        </div>
+      </RoomContextMenu>
+    );
+  };
 
   // Collapsed: the same rail as a strip of room monograms — every room still
   // one click away, the filter and the names traded for the 48px the window
@@ -252,21 +396,25 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
 
         <ScrollArea className="min-h-0 w-full flex-1">
           <nav className="flex flex-col items-center gap-1 py-2">
-            {filtered.map((room, i) => {
+            {stripRooms.map((room, i) => {
               const active = room.name === activeRoom;
               const unread = active ? 0 : unreadByRoom.get(room.name) ?? 0;
               const label = isPrivateRoom(room) ? `${room.name} (private)` : room.name;
+              // A rule where one group of the list ends and the next begins:
+              // a folder, the rooms filed nowhere, the private ones.
+              const section = (r: Room) =>
+                folderOf(layout, r.name)?.id ?? (isPrivateRoom(r) ? "private" : "shared");
+              const breaks = i > 0 && section(stripRooms[i - 1]) !== section(room);
               return (
                 <div key={room.name} className="flex flex-col items-center">
-                  {i === shared.length && shared.length > 0 && (
-                    <div aria-hidden className="mb-2 mt-1 h-px w-5 bg-border" />
-                  )}
+                  {breaks && <div aria-hidden className="mb-2 mt-1 h-px w-5 bg-border" />}
                   <RoomContextMenu
                     room={room}
                     level={roomLevel(settings, room.name)}
                     onSetLevel={setRoomLevel}
                     onOpen={() => go(room)}
                     onDelete={() => setDeleteTarget(room.name)}
+                    {...fileRoom}
                   >
                   <div className="group/room relative">
                   <Tooltip
@@ -343,17 +491,13 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
       <div className="mb-1 flex h-8 flex-shrink-0 items-center gap-2 border-b border-border bg-surface px-3">
         <span className="text-micro font-medium text-muted-foreground">Rooms</span>
         <span className="text-micro tabular text-muted-foreground">{rooms.length}</span>
-        <Tooltip content="New room">
-          <button
-            // Here the name is typed where the room will appear, as an
-            // editor's file tree does; the palette and home ask in a prompt.
-            onClick={() => setCreatingInline(true)}
-            aria-label="New room"
-            className="ml-auto flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
-          >
-            <Plus className="size-4" />
-          </button>
-        </Tooltip>
+        {/* A room or a folder. Either way the name is typed where it will
+            appear, as an editor's file tree does; the palette and home ask
+            in a prompt. */}
+        <AddMenu
+          onRoom={() => setCreatingInline(true)}
+          onFolder={() => setCreatingFolder(true)}
+        />
         <Tooltip content={railToggleTitle(true)}>
           <button
             onClick={() => onCollapsedChange?.(true)}
@@ -411,98 +555,98 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
             }}
           />
         )}
-        {filtered.length === 0 ? (
-          creatingInline ? null : rooms.length === 0 ? (
-            <EmptyState size="sm" icon={Boxes} title="No rooms yet" description="Create one with the + above." />
-          ) : activeScope === "private" && !query.trim() ? (
-            <EmptyState size="sm" icon={Lock} title="No private rooms" />
+        {creatingFolder && (
+          <InlineNewFolder
+            onCancel={() => setCreatingFolder(false)}
+            onCreate={name => {
+              setCreatingFolder(false);
+              updateFolders(l => addFolder(l, name));
+            }}
+          />
+        )}
+        {groups.map(({ folder, rooms: filed }) => {
+          const open = !folder.collapsed || searching;
+          return (
+            <DropZone
+              key={folder.id}
+              id={folder.id}
+              active={dropTarget === folder.id}
+              onHover={setDropTarget}
+              onDropRoom={room => updateFolders(l => moveRoom(l, room, folder.id))}
+              className="mb-0.5"
+            >
+              <FolderHeader
+                folder={folder}
+                count={filed.length}
+                open={open}
+                renaming={renamingFolder === folder.id}
+                onToggle={() => updateFolders(l => toggleFolder(l, folder.id))}
+                onRename={name => {
+                  setRenamingFolder(null);
+                  updateFolders(l => renameFolder(l, folder.id, name));
+                }}
+                onStartRename={() => setRenamingFolder(folder.id)}
+                onCancelRename={() => setRenamingFolder(null)}
+                onNewRoom={() => {
+                  if (folder.collapsed) updateFolders(l => toggleFolder(l, folder.id));
+                  setNewRoomIn(folder.id);
+                }}
+                onMove={delta => updateFolders(l => moveFolder(l, folder.id, delta))}
+                onDelete={() => updateFolders(l => deleteFolder(l, folder.id))}
+              />
+              {open && (
+                <div className="ml-3 border-l border-border pl-1">
+                  {newRoomIn === folder.id && (
+                    <InlineNewRoom
+                      private={activeScope === "private"}
+                      onCancel={() => setNewRoomIn(null)}
+                      onCreated={name => {
+                        setNewRoomIn(null);
+                        updateFolders(l => moveRoom(l, name, folder.id));
+                        refresh();
+                        router.push(`/room/${encodeURIComponent(name)}`);
+                      }}
+                    />
+                  )}
+                  {filed.map(room => row(room, true))}
+                  {filed.length === 0 && newRoomIn !== folder.id && (
+                    <p className="flex h-7 items-center px-1.5 text-micro text-faint">Drag rooms here</p>
+                  )}
+                </div>
+              )}
+            </DropZone>
+          );
+        })}
+        <DropZone
+          id=""
+          active={dropTarget === "" && layout.folders.length > 0}
+          onHover={setDropTarget}
+          onDropRoom={room => updateFolders(l => moveRoom(l, room, null))}
+          className={groups.length > 0 ? "mt-1 min-h-7" : ""}
+        >
+          {filtered.length === 0 && groups.length === 0 ? (
+            creatingInline || creatingFolder ? null : rooms.length === 0 ? (
+              <EmptyState size="sm" icon={Boxes} title="No rooms yet" description="Create one with the + above." />
+            ) : activeScope === "private" && !query.trim() ? (
+              <EmptyState size="sm" icon={Lock} title="No private rooms" />
+            ) : (
+              <EmptyState size="sm" icon={SearchX} title="No matches" />
+            )
           ) : (
-            <EmptyState size="sm" icon={SearchX} title="No matches" />
-          )
-        ) : (
-          filtered.map((room, i) => {
-            const active = room.name === activeRoom;
-            const priv = isPrivateRoom(room);
-            // The private group gets a heading where it starts, when it sits
-            // below the shared rooms rather than being the whole list.
-            const heading = priv && i === shared.length && shared.length > 0;
-            // Don't badge the room you're already looking at — being here is
-            // reading it. Elsewhere, unread activity draws the name brighter too.
-            const unread = active ? 0 : unreadByRoom.get(room.name) ?? 0;
-            const level = roomLevel(settings, room.name);
-            return (
-              <div key={room.name}>
-              {heading && (
+            <>
+              {shared.map(room => row(room, false))}
+              {mine.length > 0 && (shared.length > 0 || groups.length > 0) && (
                 <div className="mt-2 flex h-6 items-center gap-1.5 px-1.5 text-micro font-medium text-faint">
                   <Lock className="size-3" />
                   Private
                 </div>
               )}
-              <RoomContextMenu
-                room={room}
-                level={level}
-                onSetLevel={setRoomLevel}
-                onOpen={() => go(room)}
-                onDelete={() => setDeleteTarget(room.name)}
-              >
-              <div className="group/room relative">
-              <Link
-                href={`/room/${encodeURIComponent(room.name)}`}
-                className={`group flex h-7 items-center gap-2 rounded px-1.5 transition-colors ${
-                  active ? "bg-hairline" : "hover:bg-hairline"
-                }`}
-              >
-                <RoomAvatar name={room.name} className="size-[18px] rounded-[4px] text-[8px]">
-                  {i < 9 && <KeyBadge chord={`alt+${i + 1}`} overlay />}
-                </RoomAvatar>
-                <span
-                  className={`min-w-0 flex-1 truncate text-label ${
-                    active || unread > 0
-                      ? "font-medium text-text"
-                      : "text-muted-foreground group-hover:text-text"
-                  }`}
-                >
-                  {room.name}
-                </span>
-                {/* Every room here is private and nothing heads the group, so
-                    the row says it. */}
-                {priv && shared.length === 0 && activeScope === "all" && (
-                  <Lock
-                    aria-label="private"
-                    className="size-3 flex-shrink-0 text-faint transition-opacity group-hover/room:opacity-0"
-                  />
-                )}
-                {unread > 0 && (
-                  <span
-                    aria-label={`${unread} unread`}
-                    className="flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold tabular leading-none text-accent-fg transition-opacity group-hover/room:opacity-0"
-                  >
-                    {unread > 9 ? "9+" : unread}
-                  </span>
-                )}
-                {unread === 0 && level === "muted" && (
-                  <BellOff aria-label="muted" className="size-3 flex-shrink-0 text-faint transition-opacity group-hover/room:opacity-0" />
-                )}
-              </Link>
-              {/* Discord-style per-room control, revealed on hover, overlaying the
-                  badge slot. Outside the Link so it never navigates. */}
-              <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover/room:pointer-events-auto group-hover/room:opacity-100">
-                <RoomLevelMenu room={room.name} level={level} onSet={setRoomLevel} />
-              </div>
-              <button
-                type="button"
-                aria-label={`Delete room ${room.name}`}
-                onClick={() => setDeleteTarget(room.name)}
-                className="pointer-events-none absolute right-9 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:text-red group-hover/room:pointer-events-auto group-hover/room:opacity-100"
-              >
-                <Trash2 className="size-3.5" />
-              </button>
-              </div>
-              </RoomContextMenu>
-              </div>
-            );
-          })
-        )}
+              {/* A private room says so on its own row wherever no heading
+                  above it already does. */}
+              {mine.map(room => row(room, shared.length === 0 && groups.length === 0 && activeScope === "all"))}
+            </>
+          )}
+        </DropZone>
         </nav>
       </ScrollArea>
 
@@ -582,10 +726,221 @@ function InlineNewRoom({
   );
 }
 
+/** The drag payload a room row carries, so a drop knows it is a room. */
+const ROOM_DRAG = "application/x-mycelium-room";
+
+/** The header's +: a room, or a folder to put rooms in. */
+function AddMenu({ onRoom, onFolder }: { onRoom: () => void; onFolder: () => void }) {
+  const [open, setOpen] = useState(false);
+  const item =
+    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-label text-text transition-colors hover:bg-hairline";
+  const pick = (run: () => void) => () => {
+    setOpen(false);
+    run();
+  };
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <Tooltip content="New room or folder">
+        <PopoverTrigger
+          aria-label="New room or folder"
+          className="ml-auto flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text data-[popup-open]:bg-surface data-[popup-open]:text-text"
+        >
+          <Plus className="size-4" />
+        </PopoverTrigger>
+      </Tooltip>
+      <PopoverContent align="end" className="w-44 p-1">
+        <button type="button" onClick={pick(onRoom)} className={item}>
+          <Plus className="size-3.5 text-muted-foreground" />
+          New room
+        </button>
+        <button type="button" onClick={pick(onFolder)} className={item}>
+          <FolderPlus className="size-3.5 text-muted-foreground" />
+          New folder
+        </button>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** A name typed in place: Enter keeps it, Esc (or leaving it empty) doesn't. */
+function NameField({
+  initial = "",
+  placeholder,
+  label,
+  onSubmit,
+  onCancel,
+}: {
+  initial?: string;
+  placeholder: string;
+  label: string;
+  onSubmit: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(initial);
+  const submit = () => (name.trim() ? onSubmit(name.trim()) : onCancel());
+  return (
+    <input
+      autoFocus
+      value={name}
+      onChange={e => setName(e.target.value)}
+      onFocus={e => e.currentTarget.select()}
+      onKeyDown={e => {
+        if (e.key === "Enter") submit();
+        if (e.key === "Escape") onCancel();
+      }}
+      onBlur={submit}
+      placeholder={placeholder}
+      aria-label={label}
+      spellCheck={false}
+      className="min-w-0 flex-1 bg-transparent text-label text-text placeholder:text-faint focus:outline-none"
+    />
+  );
+}
+
+function InlineNewFolder({ onCreate, onCancel }: { onCreate: (name: string) => void; onCancel: () => void }) {
+  return (
+    <div className="mb-0.5 flex h-7 items-center gap-2 rounded bg-hairline px-1.5 ring-1 ring-border">
+      <Folder className="size-3.5 flex-shrink-0 text-muted-foreground" />
+      <NameField placeholder="Folder name" label="New folder name" onSubmit={onCreate} onCancel={onCancel} />
+    </div>
+  );
+}
+
+/**
+ * Where a dragged room can land: a folder, to file it there, or the rest of
+ * the list, to take it out of its folder. Only a room's drag is accepted.
+ */
+function DropZone({
+  id,
+  active,
+  onHover,
+  onDropRoom,
+  className = "",
+  children,
+}: {
+  id: string;
+  active: boolean;
+  onHover: (id: string | null) => void;
+  onDropRoom: (room: string) => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const carriesRoom = (e: React.DragEvent) => e.dataTransfer.types.includes(ROOM_DRAG);
+  return (
+    <div
+      onDragOver={e => {
+        if (!carriesRoom(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        onHover(id);
+      }}
+      onDragLeave={e => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onHover(null);
+      }}
+      onDrop={e => {
+        const room = e.dataTransfer.getData(ROOM_DRAG);
+        onHover(null);
+        if (!room) return;
+        e.preventDefault();
+        onDropRoom(room);
+      }}
+      className={`rounded transition-colors ${active ? "bg-accent-soft ring-1 ring-accent/40" : ""} ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** A folder's row: click to fold it, double-click (or its menu) to rename it. */
+function FolderHeader({
+  folder,
+  count,
+  open,
+  renaming,
+  onToggle,
+  onRename,
+  onStartRename,
+  onCancelRename,
+  onNewRoom,
+  onMove,
+  onDelete,
+}: {
+  folder: RoomFolder;
+  count: number;
+  open: boolean;
+  renaming: boolean;
+  onToggle: () => void;
+  onRename: (name: string) => void;
+  onStartRename: () => void;
+  onCancelRename: () => void;
+  onNewRoom: () => void;
+  onMove: (delta: -1 | 1) => void;
+  onDelete: () => void;
+}) {
+  if (renaming) {
+    return (
+      <div className="flex h-7 items-center gap-1.5 rounded bg-hairline px-1.5 ring-1 ring-border">
+        <Folder className="size-3.5 flex-shrink-0 text-muted-foreground" />
+        <NameField
+          initial={folder.name}
+          placeholder="Folder name"
+          label="Folder name"
+          onSubmit={onRename}
+          onCancel={onCancelRename}
+        />
+      </div>
+    );
+  }
+  const Icon = open ? FolderOpen : Folder;
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger>
+        <button
+          type="button"
+          onClick={onToggle}
+          onDoubleClick={onStartRename}
+          aria-expanded={open}
+          aria-label={`${folder.name} folder, ${count} ${count === 1 ? "room" : "rooms"}`}
+          className="group flex h-7 w-full items-center gap-1.5 rounded px-1.5 text-left transition-colors hover:bg-hairline"
+        >
+          <ChevronRight
+            className={`size-3 flex-shrink-0 text-faint transition-transform ${open ? "rotate-90" : ""}`}
+          />
+          <Icon className="size-3.5 flex-shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 truncate text-label font-medium text-muted-foreground group-hover:text-text">
+            {folder.name}
+          </span>
+          <span className="text-micro tabular text-faint">{count}</span>
+        </button>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem icon={Plus} onClick={onNewRoom}>
+          New room in this folder
+        </ContextMenuItem>
+        <ContextMenuItem icon={Pencil} onClick={onStartRename}>
+          Rename
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem icon={ArrowUp} onClick={() => onMove(-1)}>
+          Move up
+        </ContextMenuItem>
+        <ContextMenuItem icon={ArrowDown} onClick={() => onMove(1)}>
+          Move down
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem icon={FolderMinus} destructive onClick={onDelete}>
+          Delete folder (keeps its rooms)
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
+
 /**
  * A room's right-click menu: what its row's hover controls and the room's own
  * `…` menu already do, in one place. Right-clicking the row's link replaces the
- * browser's own menu, so opening in a new tab is offered here too.
+ * browser's own menu, so opening in a new tab is offered here too. Filing it
+ * in one of your folders is here as well.
  */
 function RoomContextMenu({
   room,
@@ -593,6 +948,9 @@ function RoomContextMenu({
   onSetLevel,
   onOpen,
   onDelete,
+  folders,
+  onMove,
+  onNewFolder,
   children,
 }: {
   room: Room;
@@ -600,10 +958,14 @@ function RoomContextMenu({
   onSetLevel: (room: string, level: RoomLevel) => void;
   onOpen: () => void;
   onDelete: () => void;
+  folders: RoomFolder[];
+  onMove: (room: string, to: string | null) => void;
+  onNewFolder: (room: string) => void;
   children: React.ReactElement;
 }) {
   const desktop = useIsDesktop();
   const path = `/room/${encodeURIComponent(room.name)}`;
+  const current = folders.find(f => f.rooms.includes(room.name))?.id ?? null;
   return (
     <ContextMenu>
       <ContextMenuTrigger>{children}</ContextMenuTrigger>
@@ -624,6 +986,27 @@ function RoomContextMenu({
               </ContextMenuRadioItem>
             ))}
           </ContextMenuRadioGroup>
+        </ContextMenuSub>
+        <ContextMenuSub label="Move to folder" icon={FolderInput}>
+          {folders.map(f => (
+            <ContextMenuItem
+              key={f.id}
+              icon={f.id === current ? Check : Folder}
+              disabled={f.id === current}
+              onClick={() => onMove(room.name, f.id)}
+            >
+              {f.name}
+            </ContextMenuItem>
+          ))}
+          {folders.length > 0 && <ContextMenuSeparator />}
+          <ContextMenuItem icon={FolderPlus} onClick={() => onNewFolder(room.name)}>
+            New folder…
+          </ContextMenuItem>
+          {current && (
+            <ContextMenuItem icon={FolderMinus} onClick={() => onMove(room.name, null)}>
+              Take out of folder
+            </ContextMenuItem>
+          )}
         </ContextMenuSub>
         <ContextMenuSeparator />
         <ContextMenuItem icon={Link2} onClick={() => void copyText(absoluteUrl(path))}>

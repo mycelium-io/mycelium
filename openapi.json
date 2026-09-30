@@ -3636,6 +3636,100 @@
         }
       }
     },
+    "/api/users/{handle}/room-folders": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Get Room Folders",
+        "description": "How this person has organized their rooms list. None yet reads as empty.",
+        "operationId": "get_room_folders_api_users__handle__room_folders_get",
+        "parameters": [
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Handle"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomFolders"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Put Room Folders",
+        "description": "Replace this person's folders with ``payload`` (the whole layout).",
+        "operationId": "put_room_folders_api_users__handle__room_folders_put",
+        "parameters": [
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Handle"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoomFolders"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomFolders"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/teams": {
       "get": {
         "tags": [
@@ -6754,6 +6848,57 @@
           "name"
         ],
         "title": "RoomCreate"
+      },
+      "RoomFolder": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "rooms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Rooms"
+          },
+          "collapsed": {
+            "type": "boolean",
+            "title": "Collapsed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "RoomFolder",
+        "description": "One of a person's folders in their rooms list, and the rooms filed in it."
+      },
+      "RoomFolders": {
+        "properties": {
+          "folders": {
+            "items": {
+              "$ref": "#/components/schemas/RoomFolder"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Folders"
+          }
+        },
+        "type": "object",
+        "title": "RoomFolders",
+        "description": "How one person organizes their rooms list: theirs alone, not the room's.\n\nA room sits in at most one folder; rooms in none are listed as before.\nA name that no longer names a room is kept, and simply not drawn."
       },
       "RoomRead": {
         "properties": {

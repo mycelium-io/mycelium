@@ -12,21 +12,24 @@ handles are consistent, not cryptographic.
 GET  /users            — list users, each with an owned-agent roll-up
 POST /users            — create/upsert a user record
 GET  /users/{handle}   — one user + the agents they own
+GET  /users/{handle}/room-folders — how they organize their rooms list
+PUT  /users/{handle}/room-folders — replace it
 GET  /teams            — teams rolled up from manifests + user memberships
 """
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from app.schemas import (
+    RoomFolders,
     TeamListResponse,
     TeamRead,
     UserCreate,
     UserListResponse,
     UserRead,
 )
-from app.services import principals
+from app.services import actor, principals, room_folders
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +60,27 @@ async def get_user(handle: str):
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return UserRead(**user)
+
+
+def _own_handle(request: Request, handle: str) -> str:
+    """The handle whose folders these are. On a gated hub, only your own: a
+    person's layout is theirs to read and write, like their queue."""
+    return actor.bind_actor(request, handle, field="handle")
+
+
+@router.get("/users/{handle}/room-folders", response_model=RoomFolders)
+async def get_room_folders(handle: str, request: Request) -> RoomFolders:
+    """How this person has organized their rooms list. None yet reads as empty."""
+    return room_folders.load(_own_handle(request, handle))
+
+
+@router.put("/users/{handle}/room-folders", response_model=RoomFolders)
+async def put_room_folders(handle: str, payload: RoomFolders, request: Request) -> RoomFolders:
+    """Replace this person's folders with ``payload`` (the whole layout)."""
+    try:
+        return room_folders.save(_own_handle(request, handle), payload)
+    except ValueError as err:
+        raise HTTPException(status_code=422, detail=str(err)) from err
 
 
 @router.get("/teams", response_model=TeamListResponse)
