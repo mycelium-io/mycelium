@@ -40,4 +40,57 @@ describe("ConductorRow", () => {
     expect(screen.getByTestId("conductor-row").textContent).toContain("gated rejected");
     expect(screen.getByTestId("conductor-row").textContent).toContain("hit the step cap (6)");
   });
+
+  it("draws a pick as a scorecard: who rated what, the pick, and who's short", () => {
+    render(
+      <ConductorRow
+        line={{
+          event: "select",
+          step: "pick",
+          next: "repair",
+          select: {
+            outcome: "infeasible",
+            pick: "B",
+            text: "10% off",
+            threshold: 70,
+            options: [
+              { label: "A", text: "20% off", authors: ["success"] },
+              { label: "B", text: "10% off", authors: ["finance"] },
+            ],
+            table: { A: { success: 95, finance: 30 }, B: { success: 55, finance: 90 } },
+            cast: ["success", "finance", "legal"],
+            ratings: { success: 55, finance: 90 },
+            lowest: 55,
+            missing: ["legal"],
+            least_happy: "success",
+          },
+        }}
+        text="| option | …"
+      />,
+    );
+    const table = screen.getByRole("table", { name: "Ratings, bar 70" });
+    const rows = table.querySelectorAll("tbody tr");
+    expect(rows[1].textContent).toBe("B 10% off5590?");
+    expect(screen.getByTestId("conductor-row").textContent).toContain("B, @success at 55; no rating from @legal");
+  });
+
+  it("draws an agreement as a success that says what it went with", () => {
+    render(
+      <ConductorRow
+        line={{
+          event: "close",
+          protocol: "concord",
+          outcome: "converged",
+          steps: 4,
+          reason: "reached `agreed`",
+          pick: "C",
+          text: "15% off for two years",
+        }}
+        text="✓ Everyone's on board: going with C"
+      />,
+    );
+    const row = screen.getByTestId("conductor-row").textContent;
+    expect(row).toContain("✓ Everyone's on board: going with C");
+    expect(row).toContain("15% off for two years");
+  });
 });

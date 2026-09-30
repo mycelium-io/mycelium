@@ -43,3 +43,36 @@ def test_stance_falls_back_to_a_marker_left_in_the_prose():
 def test_no_stance_is_none():
     assert markers.stance_of({"content": "thinking about it", "l9": {}}) is None
     assert markers.stance_of({}) is None
+
+
+# ── option ratings ────────────────────────────────────────────────────────────
+
+
+def test_a_capital_letter_is_an_options_rating():
+    payload, clean = markers.parse_marker("A is fine, B costs too much. [[mycelium: A=82 B=41]]")
+    assert payload == {"scores": {"A": 82, "B": 41}}
+    assert clean == "A is fine, B costs too much."
+
+
+def test_a_lowercase_letter_is_not_a_rating():
+    payload, _ = markers.parse_marker("[[mycelium: a=82 stance=accept]]")
+    assert payload == {"action": "accept"}
+
+
+def test_a_rating_out_of_range_or_not_whole_is_dropped_never_clamped():
+    payload, _ = markers.parse_marker("[[mycelium: A=101 B=-1 C=8.5 D=70]]")
+    assert payload == {"scores": {"D": 70}}
+
+
+def test_ratings_ride_beside_the_stance_and_a_list_comma_is_not_part_of_one():
+    payload, _ = markers.parse_marker("[[mycelium: A=82, B=41 stance=accept confidence=0.6]]")
+    assert payload == {"scores": {"A": 82, "B": 41}, "action": "accept", "confidence": 0.6}
+
+
+def test_scores_are_read_off_the_payload_first_then_the_prose():
+    lifted = {"l9": {"payload": {"data": {"scores": {"A": 90}}}}, "content": "[[mycelium: A=10]]"}
+    assert markers.scores_of(lifted) == {"A": 90}
+    left_in_prose = {"l9": {}, "content": "B works for me [[mycelium: B=75]]"}
+    assert markers.scores_of(left_in_prose) == {"B": 75}
+    assert markers.scores_of({"content": "I like B a lot", "l9": {}}) == {}
+    assert markers.scores_of({}) == {}

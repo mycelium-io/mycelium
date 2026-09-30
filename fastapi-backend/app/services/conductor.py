@@ -42,6 +42,7 @@ import yaml
 
 from app.config import settings
 from app.services import l9, l9_episode, markers, protocols, tasks, turns
+from app.services import select as choosing
 from app.services.agent_registry import norm_handle
 from app.services.aligner import _NON_PARTICIPANTS, _registered_engine_kind
 from app.services.episode_records import EPISODES_PREFIX
@@ -116,6 +117,24 @@ class Run:
     steps_taken: int = 0
     #: The key of the row whose thread the run walks, for prompts to name it.
     task: str = ""
+    #: What a step's replies were, by handle: the record each reply arrived
+    #: as, for reading ratings and stances off. Reset at every step.
+    answers: dict[str, dict[str, Any]] = field(default_factory=dict)
+    #: The options suggested so far, lettered in cast order.
+    options: list[choosing.Option] = field(default_factory=list)
+    #: ``{member: {letter: 0-100}}``, the ratings given so far; a later rating
+    #: of the same option replaces the earlier one.
+    ratings: dict[str, dict[str, int]] = field(default_factory=dict)
+    #: Options before this index have been put to a rating round already.
+    rated_upto: int = 0
+    #: The latest select step's result, and how many picks the run has made.
+    last_pick: dict[str, Any] | None = None
+    picks: int = 0
+    #: How many times each select step has sent it back for a fix.
+    repairs: dict[str, int] = field(default_factory=dict)
+    #: Who was least happy at the first sending back, and their rating then,
+    #: so an agreement can say how far a fix moved them.
+    first_short: tuple[str, int] | None = None
 
     def targets(self, step: Step) -> list[str]:
         to = step.to or ""
@@ -124,10 +143,18 @@ class Run:
             return [h for h in self.handles if h not in named]
         if to in protocols.GROUP_TARGETS:
             return list(self.handles)
+        if to == protocols.BOTTLENECK:
+            least = (self.last_pick or {}).get("least_happy")
+            return [least] if least else []
         return [self.bound[to]]
+
+    def new_options(self) -> list[choosing.Option]:
+        """Options no rating round has seen yet."""
+        return self.options[self.rated_upto :]
 
     def fields(self, *, round_n: int = 1, rounds: int = 1) -> _Fields:
         said = [(h, self.replies[h]) for h in self.handles if self.replies.get(h)]
+        fresh = self.new_options()
         return _Fields(
             ask=self.ask,
             reply=self.recent,
@@ -136,7 +163,22 @@ class Run:
             task=self.task or "this task",
             round=str(round_n),
             rounds=str(rounds),
+            options="\n".join(f"{o.label}. {o.text}" for o in self.options) or "(none yet)",
+            new_options="\n".join(f"{o.label}. {o.text}" for o in fresh) or "(none)",
+            new_labels=" ".join(f"{o.label}=.." for o in fresh),
+            scores=choosing.scorecard(self.last_pick) if self.last_pick else "",
+            threshold=str((self.last_pick or {}).get("threshold", 70)),
+            shortfall=self.shortfall(),
         )
+
+    def shortfall(self) -> str:
+        """What the least happy member is short by, said to them."""
+        pick = self.last_pick or {}
+        least = pick.get("least_happy")
+        if not least:
+            return ""
+        rating = (pick.get("ratings") or {}).get(least)
+        return f"You rated option {pick.get('pick')} {rating}; the bar is {pick.get('threshold')}"
 
     def flow(self) -> dict[str, Any]:
         """The flow as the episode record carries it: the graph plus the cast."""
@@ -202,13 +244,16 @@ def edge_event(step: Step, stance: str | None, who: str) -> dict[str, Any]:
 
 def close_line(run: Run, outcome: str, why: str) -> dict[str, Any]:
     """How the run ended."""
-    return {
+    line: dict[str, Any] = {
         "event": "close",
         "protocol": run.protocol.name,
         "outcome": outcome,
         "steps": run.steps_taken,
         "reason": why,
     }
+    if run.last_pick and run.last_pick.get("pick"):
+        line |= {"pick": run.last_pick["pick"], "text": run.last_pick["text"]}
+    return line
 
 
 def bind_roles(protocol: Protocol, handles: list[str]) -> dict[str, str] | None:
@@ -520,6 +565,18 @@ class ConductorEngine:
         while True:
             if step.end is not None:
                 return step.end, f"reached `{step.id}`"
+            if step.kind == "select":
+                # A pick asks nobody, so it costs no step; a graph that loops
+                # through picks alone is still bounded.
+                run.picks += 1
+                if run.picks > cap + 1:
+                    return "rejected", f"picked {run.picks - 1} times without asking anyone"
+                nxt = await self._select(managed, run, ep, me, step)
+                if nxt is None:
+                    outcome = (run.last_pick or {}).get("outcome")
+                    return "rejected", f"`{step.id}` came out {outcome} with no edge for it"
+                step = protocol.step(nxt)
+                continue
             if run.steps_taken >= cap:
                 return "rejected", f"hit the step cap ({cap}) at `{step.id}`"
             run.steps_taken += 1
@@ -547,7 +604,179 @@ class ConductorEngine:
                 await self._say(managed, run.episode, me, line, line=edge_event(step, stance, who))
             step = protocol.step(nxt)
 
+    async def _select(
+        self,
+        managed: ManagedRoomChannel,
+        run: Run,
+        ep: l9_episode.EpisodeState,
+        me: str,
+        step: Step,
+    ) -> str | None:
+        """Pick among the options by the ratings given; post the scorecard;
+        return the next step's id, or ``None`` when no edge takes the outcome."""
+        done = run.repairs.get(step.id, 0)
+        record = choosing.pick(
+            run.options,
+            run.handles,
+            run.ratings,
+            step.threshold if step.threshold is not None else protocols.DEFAULT_THRESHOLD,
+            repairs_done=done,
+            max_repairs=step.max_repairs
+            if step.max_repairs is not None
+            else protocols.DEFAULT_MAX_REPAIRS,
+        )
+        outcome = record["outcome"]
+        if outcome == "infeasible":
+            run.repairs[step.id] = done + 1
+            least = record["least_happy"]
+            if run.first_short is None and least:
+                run.first_short = (least, record["ratings"][least])
+        run.last_pick = record
+        edges = step.next if isinstance(step.next, dict) else {}
+        nxt = edges.get(outcome) or edges.get("default")
+        ep.trace.append(
+            {
+                "step": step.id,
+                "turn": run.steps_taken,
+                "select": {
+                    k: record[k] for k in ("outcome", "pick", "lowest", "missing", "least_happy")
+                },
+                "next": nxt,
+                "at": datetime.now(UTC).isoformat(),
+            }
+        )
+        l9_episode.write_episode_record(ep, outcome="open", metrics=None, tasks=None)
+        await self._say(
+            managed,
+            run.episode,
+            me,
+            choosing.scorecard(record),
+            line={"event": "select", "step": step.id, "next": nxt, "select": record},
+        )
+        return nxt
+
     async def _take(
+        self,
+        managed: ManagedRoomChannel,
+        run: Run,
+        ep: l9_episode.EpisodeState,
+        me: str,
+        step: Step,
+        cap: int,
+    ) -> list[tuple[str, str | None]]:
+        """Put one step to its targets; return each target's stance.
+
+        A step that collects adds what the replies carried to the run; one that
+        requires something asks, once, whoever replied without it.
+        """
+        stances = await self._ask(managed, run, ep, me, step, cap)
+        replied = set(run.answers)
+        self._collect(run, step, list(run.answers))
+        lacking = self._lacking(run, step, stances)
+        if lacking and run.steps_taken < cap:
+            stances = await self._reask(managed, run, ep, me, step, cap, lacking, stances)
+        if step.collect == "scores":
+            run.rated_upto = len(run.options)
+        if step.needs == "stance":
+            # Someone who wrote back but never marked a stance, even when asked
+            # again, objected: a written objection is never read as consent.
+            stances = [(h, "reject" if h in replied and s is None else s) for h, s in stances]
+        return stances
+
+    def _collect(self, run: Run, step: Step, answered: list[str]) -> None:
+        """Add what the replies of ``answered`` carried: options in cast order
+        (whatever order they arrived in), or ratings of the options on the table."""
+        order = [h for h in run.handles if h in answered]
+        if step.collect == "options":
+            for handle in order:
+                _found, prose = markers.parse_marker(run.replies.get(handle, ""))
+                choosing.add_option(run.options, prose, handle)
+        elif step.collect == "scores":
+            labels = {o.label for o in run.options}
+            for handle in order:
+                given = markers.scores_of(run.answers[handle])
+                kept = {k: v for k, v in given.items() if k in labels}
+                if kept:
+                    run.ratings.setdefault(handle, {}).update(kept)
+
+    @staticmethod
+    def _lacking(run: Run, step: Step, stances: list[tuple[str, str | None]]) -> list[str]:
+        """Who replied without what the step requires. Silence is not lacking:
+        a member who didn't answer isn't asked again."""
+        if step.needs == "scores":
+            wanted = {o.label for o in run.new_options()}
+            return [
+                h
+                for h in run.handles
+                if h in run.answers and not wanted <= set(run.ratings.get(h, {}))
+            ]
+        if step.needs == "stance":
+            return [h for h, s in stances if s is None and h in run.answers]
+        return []
+
+    async def _reask(
+        self,
+        managed: ManagedRoomChannel,
+        run: Run,
+        ep: l9_episode.EpisodeState,
+        me: str,
+        step: Step,
+        cap: int,
+        lacking: list[str],
+        stances: list[tuple[str, str | None]],
+    ) -> list[tuple[str, str | None]]:
+        """One more turn for just ``lacking``, at once, as its own step."""
+        run.steps_taken += 1
+        if step.needs == "scores":
+            labels = " ".join(f"{o.label}=.." for o in run.new_options())
+            ask = (
+                "I couldn't read your ratings. End your reply with "
+                f"[[mycelium: {labels}]], one number 0-100 per option."
+            )
+        else:
+            ask = (
+                "I couldn't tell whether you accept this. End your reply with "
+                "[[mycelium: stance=accept]] or [[mycelium: stance=reject]]."
+            )
+        head = f"{run.protocol.name} · {step.id} (again) · turn {run.steps_taken} of {cap}"
+        self._manager.hold_floor(managed.room, run.episode, holder=me, speakers=lacking)
+        run.answers = {}
+        again = dict(
+            await asyncio.gather(
+                *(
+                    self._turn(
+                        managed,
+                        ep,
+                        me,
+                        run,
+                        h,
+                        f"{head} · {h}\n\n{ask}",
+                        {
+                            "step": step.id,
+                            "protocol": run.protocol.name,
+                            LINE_KEY: turn_line(run, step, h, cap=cap, round_n=1) | {"again": True},
+                        },
+                    )
+                    for h in lacking
+                )
+            )
+        )
+        self._collect(run, step, list(run.answers))
+        ep.trace.append(
+            {
+                "step": step.id,
+                "turn": run.steps_taken,
+                "again": True,
+                "asked": lacking,
+                "stances": again,
+                "at": datetime.now(UTC).isoformat(),
+            }
+        )
+        # A re-asked member's answer is the one that counts; a silent one keeps
+        # what it said the first time.
+        return [(h, again[h] if again.get(h, "silent") != "silent" else s) for h, s in stances]
+
+    async def _ask(
         self,
         managed: ManagedRoomChannel,
         run: Run,
@@ -560,6 +789,7 @@ class ConductorEngine:
         room = managed.room
         targets = run.targets(step)
         stances: list[tuple[str, str | None]] = []
+        run.answers = {}
 
         def render(handle: str, round_n: int) -> str:
             # Every turn says which step of which flow it is, so the episode
@@ -660,6 +890,7 @@ class ConductorEngine:
             return handle, "silent"
         run.replies[handle] = prose
         run.recent = prose
+        run.answers[handle] = answered[-1].content
         return handle, markers.stance_of(answered[-1].content)
 
     async def _tell(
@@ -697,7 +928,35 @@ class ConductorEngine:
         outcome: str,
         why: str,
     ) -> None:
-        """Commit the outcome onto the thread and write the run's record."""
+        """Commit the outcome onto the thread and write the run's record.
+
+        A run that picked carries its last pick, and an agreement commits
+        ``converged`` with the decision and the task it came from, so the
+        compile seam files any follow-up work under that task.
+        """
+        pick = run.last_pick
+        data: dict[str, Any] = {
+            "protocol": run.protocol.name,
+            "steps": run.steps_taken,
+            "reason": why,
+            "roles": run.bound,
+            "record": f"{EPISODES_PREFIX}{ep.short_id}",
+            LINE_KEY: close_line(run, outcome, why),
+        }
+        metrics = None
+        if pick is not None:
+            data["select"] = pick
+            given: dict[str, int] = pick.get("ratings") or {}
+            if given:
+                metrics = {
+                    "satisfaction": {h: r / 100 for h, r in given.items()},
+                    "min_satisfaction": min(given.values()) / 100,
+                }
+                data["metrics"] = metrics
+        if outcome == "converged" and pick is not None:
+            data["assignments"] = {"decision": pick["text"]}
+            if run.task:
+                data["within"] = run.task
         commit = l9.build_envelope(
             kind=Kind.commit,
             subkind=outcome,
@@ -706,29 +965,40 @@ class ConductorEngine:
             recipients=run.handles,
             topic=ep.topic,
             payload_type="outcome",
-            payload_data={
-                "protocol": run.protocol.name,
-                "steps": run.steps_taken,
-                "reason": why,
-                "roles": run.bound,
-                "record": f"{EPISODES_PREFIX}{ep.short_id}",
-                LINE_KEY: close_line(run, outcome, why),
-            },
+            payload_data=data,
         )
         ep.messages.append(l9.envelope_to_dict(commit))
-        mark = "✓" if outcome == "resolved" else "✗"
-        text = (
-            f"{mark} {run.protocol.name}: {outcome} after {run.steps_taken} step(s), {why}. "
-            f"Record: {EPISODES_PREFIX}{ep.short_id}."
-        )
+        text = f"{self._result_line(run, outcome, why)} Record: {EPISODES_PREFIX}{ep.short_id}."
         try:
             await managed.post(commit, text, list_write=True)
         except Exception:
             logger.warning("conductor failed to post the outcome for %s", run.episode)
-        l9_episode.write_episode_record(ep, outcome=outcome, metrics=None, tasks=None)
+        l9_episode.write_episode_record(ep, outcome=outcome, metrics=metrics, tasks=None)
         from app.services import analytics as usage
 
         await asyncio.to_thread(usage.flow_completed, run.protocol.name, outcome, run.steps_taken)
+        if pick is not None:
+            # An agreement run is a negotiation too, so the negotiation count
+            # keeps counting whichever mechanism ran it.
+            await asyncio.to_thread(usage.negotiation_completed, outcome, run.picks)
+
+    @staticmethod
+    def _result_line(run: Run, outcome: str, why: str) -> str:
+        """The one line a person reads to know how the run ended."""
+        pick = run.last_pick
+        if pick is None or not pick.get("pick"):
+            mark = "✓" if outcome in protocols.SUCCESS else "✗"
+            return f"{mark} {run.protocol.name}: {outcome} after {run.steps_taken} step(s), {why}."
+        label, text = pick["pick"], pick["text"]
+        if outcome == "converged":
+            moved = ""
+            if run.first_short is not None:
+                who, before = run.first_short
+                after = (pick.get("ratings") or {}).get(who)
+                if after is not None:
+                    moved = f" @{who} went from {before} to {after}."
+            return f"✓ Everyone's on board: going with {label}: {text}.{moved}"
+        return f"✗ Couldn't get everyone there. Best was {label}: {text}. {choosing.summary(pick)}"
 
     async def _say(
         self,

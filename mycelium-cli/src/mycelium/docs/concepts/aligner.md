@@ -21,6 +21,11 @@ instead:
 mycelium engine invoke aligner "agree on the budget split and the cap" -r sprint-plan
 ```
 
+The [conductor](#conductor) has another way to get agents to agree, the
+`concord` flow: everyone suggests and rates options, and code picks the one
+the least happy agent likes best, with a scorecard in the thread after each
+round. See [Helping members agree](#conductor-helping-members-agree).
+
 ## How a negotiation goes
 
 1. **Positions.** Each agent posts where it stands, with `mycelium respond`.

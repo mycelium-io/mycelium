@@ -22,7 +22,9 @@ export interface FlowNode {
   what: string;
   /** The member bound to the step's role, when the flow says who. */
   who: string | null;
-  end: "resolved" | "rejected" | null;
+  end: "resolved" | "rejected" | "converged" | null;
+  /** A pick made in code, which asks nobody. */
+  select: boolean;
   x: number;
   y: number;
   w: number;
@@ -81,14 +83,18 @@ export function stepWho(step: FlowStep, flow: EpisodeFlow): string | null {
     const workers = cast.filter((h) => !named.has(h));
     return workers.length ? workers.join(", ") : "the workers";
   }
+  // Who the least happy member is is only known at run time; the step says so.
+  if (to === "bottleneck") return null;
   return to;
 }
 
 function stepWhat(step: FlowStep): string {
   if (step.end) return `ends ${step.end}`;
+  if (step.kind === "select") return `picks · bar ${Math.round((step.threshold ?? 0.7) * 100)}`;
   const verb = step.wait === "none" ? "tells" : "asks";
   const rounds = step.rounds && step.rounds > 1 ? ` ×${step.rounds}` : "";
-  return `${verb} ${step.to ?? "?"}${rounds}`;
+  const to = step.to === "bottleneck" ? "the least happy" : (step.to ?? "?");
+  return `${verb} ${to}${rounds}`;
 }
 
 /** The edges a flow declares, one per (from, to), with the stances that take
@@ -127,6 +133,7 @@ export function layoutFlow(flow: EpisodeFlow): FlowLayout {
     what: stepWhat(step),
     who: stepWho(step, flow),
     end: step.end ?? null,
+    select: step.kind === "select",
   });
 
   if (direction === "row") {
@@ -205,5 +212,6 @@ export function stepStates(
 
 /** The edges the run actually took, as "from→to" keys, so they draw solid. */
 export function takenEdges(trace: FlowTraceEntry[]): Set<string> {
-  return new Set(trace.map((t) => `${t.step}→${t.next}`));
+  // A second asking of a step takes no edge of its own.
+  return new Set(trace.filter((t) => t.next).map((t) => `${t.step}→${t.next}`));
 }

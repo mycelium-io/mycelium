@@ -36,50 +36,118 @@ PROTOCOLS_PREFIX = "protocols/"
 #: What a step may be put to besides a role.
 GROUP_TARGETS = frozenset({"each", "all", "workers"})
 
+#: The one member the latest ``select`` step found least happy with its pick.
+BOTTLENECK = "bottleneck"
+
 #: The stances an edge can branch on, plus the two fallbacks.
 EDGE_KEYS = frozenset({"accept", "reject", "silent", "default"})
 
-Outcome = Literal["resolved", "rejected"]
+#: How a ``select`` step's pick went: everyone's on board, someone can fix it,
+#: or a fix can't help.
+SELECT_EDGES = frozenset({"feasible", "infeasible", "stuck", "default"})
+
+#: ``converged`` is the one end that compiles work: an agreement a ``select``
+#: step certified. Every other flow ends ``resolved`` or ``rejected``.
+Outcome = Literal["resolved", "rejected", "converged"]
+
+#: The outcomes that read as success wherever a run's end is drawn.
+SUCCESS = frozenset({"resolved", "converged"})
+
+DEFAULT_THRESHOLD = 0.7
+DEFAULT_MAX_REPAIRS = 2
 
 
 class Step(BaseModel):
-    """One step: who is asked what, and where the reply leads."""
+    """One step: who is asked what, and where the reply leads.
+
+    A ``select`` step asks nobody: it picks among the options the members
+    suggested, by the ratings they gave (:mod:`app.services.select`), and
+    branches on whether everyone is on board.
+    """
 
     id: str = Field(..., min_length=1)
+    kind: Literal["ask", "select"] = "ask"
     to: str | None = Field(
-        None, description="A role, or each / all / workers. Absent on an end step."
+        None,
+        description="A role, or each / all / workers / bottleneck. Absent on an end or select step.",
     )
     prompt: str = ""
     wait: Literal["reply", "none"] = "reply"
     rounds: int = Field(1, ge=1, description="How many times an each/all step repeats.")
+    collect: Literal["options", "scores"] | None = Field(
+        None,
+        description=(
+            "What the replies add to the run: each reply becomes an option, or "
+            "each reply's ratings are recorded."
+        ),
+    )
+    require: Literal["stance", "scores"] | None = Field(
+        None,
+        description=(
+            "What every reply must carry. A reply without it is asked once more; "
+            "an unmarked stance after that counts as reject."
+        ),
+    )
+    threshold: float | None = Field(
+        None, ge=0, le=1, description="A select step's bar, 0-1 (0.7 = everyone rates it 70+)."
+    )
+    max_repairs: int | None = Field(
+        None, ge=0, description="How many fixes a select step sends for before it is stuck."
+    )
     next: str | dict[str, str] | None = Field(
         None,
         description=(
             "The step after this one: a step id, or a map of accept / reject / "
-            "silent / default to step ids."
+            "silent / default (a select: feasible / infeasible / stuck / default) "
+            "to step ids."
         ),
     )
     end: Outcome | None = Field(None, description="Set on a terminal step: how the run ends.")
 
+    @property
+    def needs(self) -> str | None:
+        """What a reply to this step must carry; collecting ratings requires them."""
+        return self.require or ("scores" if self.collect == "scores" else None)
+
     @model_validator(mode="after")
     def _terminal_or_addressed(self) -> Step:
         if self.end is not None:
-            if self.to is not None or self.next is not None:
-                msg = f"step {self.id!r} ends the run and cannot also address or continue"
+            if self.to is not None or self.next is not None or self.kind != "ask":
+                msg = f"step {self.id!r} ends the run and cannot also address, pick or continue"
                 raise ValueError(msg)
             return self
+        if self.kind == "select":
+            return self._a_select()
+        if self.threshold is not None or self.max_repairs is not None:
+            msg = f"step {self.id!r}: threshold and max_repairs belong to a select step"
+            raise ValueError(msg)
         if not self.to:
             msg = f"step {self.id!r} addresses nobody and ends nothing"
             raise ValueError(msg)
+        return self._branches(EDGE_KEYS)
+
+    def _a_select(self) -> Step:
+        if self.to is not None or self.prompt or self.collect or self.require:
+            msg = f"select step {self.id!r} asks nobody: it takes no to, prompt, collect or require"
+            raise ValueError(msg)
+        if not isinstance(self.next, dict):
+            msg = f"select step {self.id!r} branches by map: {sorted(SELECT_EDGES)}"
+            raise ValueError(msg)
+        # Written out, so the flow as the app reads it carries the bar.
+        if self.threshold is None:
+            self.threshold = DEFAULT_THRESHOLD
+        if self.max_repairs is None:
+            self.max_repairs = DEFAULT_MAX_REPAIRS
+        return self._branches(SELECT_EDGES)
+
+    def _branches(self, allowed: frozenset[str]) -> Step:
         if self.next is None:
             msg = f"step {self.id!r} names no next step"
             raise ValueError(msg)
         if isinstance(self.next, dict):
-            unknown = set(self.next) - EDGE_KEYS
+            unknown = set(self.next) - allowed
             if unknown:
-                msg = (
-                    f"step {self.id!r} branches on {sorted(unknown)}; edges are {sorted(EDGE_KEYS)}"
-                )
+                msg = f"step {self.id!r} branches on {sorted(unknown)}; edges are {sorted(allowed)}"
                 raise ValueError(msg)
             if not self.next:
                 msg = f"step {self.id!r} has an empty branch map"
@@ -120,8 +188,9 @@ class Protocol(BaseModel):
         if len(set(clean)) != len(clean):
             msg = "role names must be distinct"
             raise ValueError(msg)
-        if set(clean) & GROUP_TARGETS:
-            msg = f"a role cannot be named {sorted(set(clean) & GROUP_TARGETS)}"
+        reserved = set(clean) & (GROUP_TARGETS | {BOTTLENECK})
+        if reserved:
+            msg = f"a role cannot be named {sorted(reserved)}"
             raise ValueError(msg)
         return clean
 
@@ -133,20 +202,56 @@ class Protocol(BaseModel):
             raise ValueError(msg)
         known = set(ids)
         for step in self.steps:
-            if step.to is not None and step.to not in GROUP_TARGETS and step.to not in self.roles:
+            if (
+                step.to is not None
+                and step.to not in GROUP_TARGETS
+                and step.to != BOTTLENECK
+                and step.to not in self.roles
+            ):
                 msg = f"step {step.id!r} addresses {step.to!r}, which is neither a role nor a group"
                 raise ValueError(msg)
-            targets = (
-                [step.next] if isinstance(step.next, str) else list((step.next or {}).values())
-            )
-            for target in targets:
+            for target in _targets_of(step):
                 if target not in known:
                     msg = f"step {step.id!r} continues to {target!r}, which is not a step"
                     raise ValueError(msg)
         if not any(s.end for s in self.steps):
             msg = "a protocol needs at least one end step"
             raise ValueError(msg)
+        self._bottleneck_follows_a_select()
+        self._converged_is_certified()
         return self
+
+    def _bottleneck_follows_a_select(self) -> None:
+        """``to: bottleneck`` names whoever the latest pick found least happy, so
+        every path from the first step to it has to pass a ``select`` first."""
+        by_id = {s.id: s for s in self.steps}
+        seen: set[str] = set()
+        frontier = [self.first.id]
+        while frontier:
+            step = by_id[frontier.pop()]
+            if step.id in seen:
+                continue
+            seen.add(step.id)
+            if step.to == BOTTLENECK:
+                msg = (
+                    f"step {step.id!r} asks the bottleneck, but a path reaches it before any select"
+                )
+                raise ValueError(msg)
+            if step.kind == "select":
+                continue  # past a pick, a bottleneck is defined
+            frontier.extend(_targets_of(step))
+
+    def _converged_is_certified(self) -> None:
+        """An end of ``converged`` is reached only from a pick's ``feasible`` edge."""
+        for end in self.steps:
+            if end.end != "converged":
+                continue
+            ways_in = [
+                (s, key) for s in self.steps for key, target in _edges_of(s) if target == end.id
+            ]
+            if not ways_in or any(s.kind != "select" or key != "feasible" for s, key in ways_in):
+                msg = f"end {end.id!r} is converged, so only a select's feasible edge may reach it"
+                raise ValueError(msg)
 
     @property
     def first(self) -> Step:
@@ -157,6 +262,17 @@ class Protocol(BaseModel):
             if step.id == step_id:
                 return step
         raise KeyError(step_id)
+
+
+def _edges_of(step: Step) -> list[tuple[str, str]]:
+    """``(edge key, target)`` for each way out of a step; a plain edge is keyed ``""``."""
+    if isinstance(step.next, str):
+        return [("", step.next)]
+    return list((step.next or {}).items())
+
+
+def _targets_of(step: Step) -> list[str]:
+    return [target for _key, target in _edges_of(step)]
 
 
 # ── the built-ins ─────────────────────────────────────────────────────────────
@@ -325,6 +441,125 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
             {"id": "approved", "end": "resolved"},
         ],
     },
+    # IoC L9's Concord, cut down: suggest, rate, and a pick made in code, with
+    # the least happy member asked for a fix until everyone clears the bar.
+    "concord": {
+        "name": "concord",
+        "description": (
+            "Help them agree. Everyone suggests, everyone rates, the least happy agent "
+            "suggests a fix, until one option clears the bar for all."
+        ),
+        "roles": [],
+        # A safety net: suggest, rate, 2 x (fix, re-rate), plus up to 3 re-asks.
+        # max_repairs is what bounds the fixes.
+        "max_steps": 9,
+        "steps": [
+            {
+                "id": "propose",
+                "to": "all",
+                "collect": "options",
+                "prompt": (
+                    "{ask}\n\nSuggest the one option you think best serves your role for "
+                    "{task}, in one or two sentences. Don't hedge or pre-compromise."
+                ),
+                "next": "score",
+            },
+            {
+                "id": "score",
+                "to": "all",
+                "collect": "scores",
+                "prompt": (
+                    "The options for {task}:\n\n{options}\n\nRate each one 0-100 for your "
+                    "own role: 0 means unacceptable, 100 means ideal. Give one line on why "
+                    "for each, then end with [[mycelium: A=.. B=..]]."
+                ),
+                "next": "pick",
+            },
+            {
+                "id": "pick",
+                "kind": "select",
+                "threshold": DEFAULT_THRESHOLD,
+                "max_repairs": DEFAULT_MAX_REPAIRS,
+                "next": {"feasible": "agreed", "infeasible": "repair", "stuck": "no_deal"},
+            },
+            {
+                "id": "repair",
+                "to": BOTTLENECK,
+                "collect": "options",
+                "prompt": (
+                    "{scores}\n\n{shortfall}. Suggest ONE new option you'd rate highly that "
+                    "keeps what the others rated high. Say what you changed and why it "
+                    "should work for them."
+                ),
+                "next": "rescore",
+            },
+            {
+                "id": "rescore",
+                "to": "all",
+                "collect": "scores",
+                "prompt": (
+                    "A new option:\n\n{new_options}\n\nRate it 0-100 for your role, with "
+                    "one line on why, then end with [[mycelium: {new_labels}]]."
+                ),
+                "next": "pick",
+            },
+            {"id": "agreed", "end": "converged"},
+            {"id": "no_deal", "end": "rejected"},
+        ],
+    },
+    # IoC L9's Accord, cut down: everyone frames the task, one lead merges, and
+    # the frame locks once nobody objects.
+    "accord": {
+        "name": "accord",
+        "description": (
+            "Get on the same page. Agree what the task is, what's out of scope, what "
+            "done means and what the key words mean, before work starts."
+        ),
+        "roles": ["lead"],
+        # Frame, merge, lock, a re-ask, then one full revision with its re-ask.
+        "max_steps": 8,
+        "steps": [
+            {
+                "id": "frame",
+                "to": "all",
+                "prompt": (
+                    "Before we start on {task}: in a few lines, what is it asking, what's "
+                    "out of scope, and what does done look like? Name any word you're "
+                    "using in a specific sense and say what you mean by it."
+                ),
+                "next": "merge",
+            },
+            {
+                "id": "merge",
+                "to": "lead",
+                "prompt": (
+                    "Everyone's take:\n\n{replies}\n\nWrite ONE shared summary: Objective, "
+                    "Out of scope, Done when, Key words (word: meaning), Who checks what. "
+                    "Name anything you couldn't reconcile instead of papering over it."
+                ),
+                "next": "lock",
+            },
+            {
+                "id": "lock",
+                "to": "all",
+                "require": "stance",
+                "prompt": (
+                    "The shared summary:\n\n{reply}\n\nCan you work to this? End with "
+                    "[[mycelium: stance=accept]], or [[mycelium: stance=reject]] and the "
+                    "one change you need."
+                ),
+                # Only real silence is no objection: an unmarked reply was asked
+                # again, and still unmarked it counts as reject.
+                "next": {
+                    "accept": "locked",
+                    "reject": "merge",
+                    "silent": "merge",
+                    "default": "locked",
+                },
+            },
+            {"id": "locked", "end": "resolved"},
+        ],
+    },
 }
 
 
@@ -342,6 +577,14 @@ def describe(protocol: Protocol) -> str:
         if step.end is not None:
             lines.append(f"- {step.id}: ends {step.end}")
             continue
+        if step.kind == "select":
+            edges = ", ".join(f"{k}: {v}" for k, v in (step.next or {}).items())  # type: ignore[union-attr]
+            bar = round((step.threshold or DEFAULT_THRESHOLD) * 100)
+            lines.append(
+                f"- {step.id}: picks the option the least happy member likes best, bar {bar} "
+                f"(up to {step.max_repairs} fixes), then ({edges})"
+            )
+            continue
         who = step.to or ""
         turns = f", {step.rounds} rounds" if step.rounds > 1 else ""
         asks = "tells" if step.wait == "none" else "asks"
@@ -355,8 +598,9 @@ def describe(protocol: Protocol) -> str:
 
 
 def edge_line(step: Step, stance: str | None, who: str) -> str | None:
-    """One line saying which way a branching step went, or ``None`` for a plain edge."""
-    if not isinstance(step.next, dict):
+    """One line saying which way a branching step went, or ``None`` for a plain
+    edge. A select step says where it went in its scorecard instead."""
+    if not isinstance(step.next, dict) or step.kind == "select":
         return None
     target = step.edge(stance)
     said = {
@@ -378,6 +622,8 @@ def spec_of(protocol: Protocol) -> dict[str, Any]:
             step.pop("rounds", None)
         if step.get("prompt") == "":
             step.pop("prompt", None)
+        if step.get("kind") == "ask":
+            step.pop("kind", None)
     return data
 
 

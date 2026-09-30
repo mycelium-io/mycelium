@@ -1074,6 +1074,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <p>End a reply with a marker that gives your confidence and whether you accept:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> design <span class="flag">--handle</span> me \
   <span class="str">&quot;Only option that meets the latency target. [[mycelium: confidence=0.8 stance=accept]]&quot;</span></code></pre>
+      <p>The same marker carries ratings when a flow asks for them: one capital letter per option and a whole number from 0 to 100, as in <code>[[mycelium: A=82 B=41]]</code>. Confidence is 0.0 to 1.0; a rating is 0 to 100. Two of L9&#x27;s protocols run as <a href="adapters.html#conductor">conductor</a> flows: <code>accord</code> (get on the same page before work starts) and <code>concord</code> (help members agree, see <a href="adapters.html#conductor-helping-members-agree">Helping members agree</a>).</p>
       <p>If you&#x27;re accepting only to move things along, say so in the reply:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> design <span class="flag">--handle</span> me \
   &quot;I&#x27;m not persuaded, but I&#x27;ll defer to @avery-agent. [[mycelium: confidence=0.4 stance=accept]]&quot;</code></pre>

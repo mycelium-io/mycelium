@@ -196,3 +196,109 @@ def test_spec_of_round_trips_through_the_memory_body():
         body = yaml.safe_dump(protocols.spec_of(spec), sort_keys=False)
         again = protocols.parse_protocol(name, body)
         assert again == spec
+
+
+# ── picking: select steps, bottleneck, converged ──────────────────────────────
+
+
+def _spec(*steps: dict, roles: list[str] | None = None) -> protocols.Protocol:
+    return protocols.Protocol.model_validate(
+        {"name": "t", "roles": roles or [], "steps": list(steps)}
+    )
+
+
+ASK = {"id": "ask", "to": "all", "collect": "scores", "prompt": "rate", "next": "pick"}
+PICK = {
+    "id": "pick",
+    "kind": "select",
+    "next": {"feasible": "ok", "infeasible": "ask", "stuck": "no"},
+}
+ENDS = ({"id": "ok", "end": "converged"}, {"id": "no", "end": "rejected"})
+
+
+def test_a_select_step_validates_and_fills_its_bar():
+    spec = _spec(ASK, PICK, *ENDS)
+    pick = spec.step("pick")
+    assert pick.threshold == protocols.DEFAULT_THRESHOLD
+    assert pick.max_repairs == protocols.DEFAULT_MAX_REPAIRS
+    # Collecting ratings requires them.
+    assert spec.step("ask").needs == "scores"
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [{"to": "all"}, {"prompt": "hi"}, {"collect": "options"}, {"require": "stance"}],
+)
+def test_a_select_asks_nobody(extra: dict):
+    with pytest.raises(ValueError, match="asks nobody"):
+        _spec(ASK, PICK | extra, *ENDS)
+
+
+def test_a_select_branches_only_on_how_the_pick_went():
+    with pytest.raises(ValueError, match="branches on"):
+        _spec(ASK, PICK | {"next": {"feasible": "ok", "accept": "no"}}, *ENDS)
+    with pytest.raises(ValueError, match="branches by map"):
+        _spec(ASK, PICK | {"next": "ok"}, *ENDS)
+
+
+def test_a_bar_belongs_to_a_select_step():
+    with pytest.raises(ValueError, match="belong to a select"):
+        _spec(ASK | {"threshold": 0.5}, PICK, *ENDS)
+
+
+def test_the_bottleneck_is_asked_only_after_a_pick_on_every_path():
+    fix = {"id": "fix", "to": "bottleneck", "prompt": "fix it", "next": "ask"}
+    _spec(ASK, PICK | {"next": {"feasible": "ok", "infeasible": "fix", "stuck": "no"}}, fix, *ENDS)
+    with pytest.raises(ValueError, match="before any select"):
+        _spec(fix | {"next": "ask"}, ASK, PICK, *ENDS)
+    # A side path that skips the pick is refused too.
+    branch = {
+        "id": "vote",
+        "to": "all",
+        "prompt": "go?",
+        "next": {"accept": "ask", "reject": "fix"},
+    }
+    with pytest.raises(ValueError, match="before any select"):
+        _spec(branch, ASK, PICK, fix, *ENDS)
+
+
+def test_converged_is_reached_only_from_a_feasible_edge():
+    with pytest.raises(ValueError, match="only a select's feasible edge"):
+        _spec(
+            {"id": "ask", "to": "all", "prompt": "go", "next": "ok"},
+            {"id": "ok", "end": "converged"},
+        )
+    with pytest.raises(ValueError, match="only a select's feasible edge"):
+        _spec(ASK, PICK | {"next": {"feasible": "no", "infeasible": "ok"}}, *ENDS)
+
+
+def test_nobody_can_play_the_bottleneck():
+    with pytest.raises(ValueError, match="cannot be named"):
+        _spec(ASK, PICK, *ENDS, roles=["bottleneck"])
+
+
+def test_spec_of_carries_what_the_app_needs_to_draw_a_pick():
+    concord = protocols.builtin("concord")
+    assert concord is not None
+    steps = {s["id"]: s for s in protocols.spec_of(concord)["steps"]}
+    assert steps["pick"] == {
+        "id": "pick",
+        "kind": "select",
+        "threshold": 0.7,
+        "max_repairs": 2,
+        "next": {"feasible": "agreed", "infeasible": "repair", "stuck": "no_deal"},
+    }
+    assert steps["score"]["collect"] == "scores"
+    assert "kind" not in steps["score"], "an ask step's default is dropped"
+    accord = protocols.builtin("accord")
+    assert accord is not None
+    lock = {s["id"]: s for s in protocols.spec_of(accord)["steps"]}["lock"]
+    assert lock["require"] == "stance"
+
+
+def test_describe_says_what_a_pick_does():
+    concord = protocols.builtin("concord")
+    assert concord is not None
+    text = protocols.describe(concord)
+    assert "- pick: picks the option the least happy member likes best, bar 70" in text
+    assert "- agreed: ends converged" in text

@@ -615,3 +615,24 @@ def test_each_conductor_line_is_said_in_a_few_words():
         )
         == "swarm done · 2 steps"
     )
+    # An agreement is a success, and says what it went with.
+    close = {"event": "close", "protocol": "concord", "outcome": "converged", "steps": 4}
+    assert (
+        swarm.describe_line(close | {"pick": "C", "text": "15% off"})
+        == "Everyone's on board: going with C"
+    )
+    assert (
+        swarm.describe_line(close | {"outcome": "rejected", "pick": "B"})
+        == "Couldn't get everyone there · best was B"
+    )
+    pick = {
+        "outcome": "infeasible",
+        "pick": "B",
+        "threshold": 70,
+        "ratings": {"success": 55, "finance": 90},
+        "missing": ["legal"],
+    }
+    assert (
+        swarm.describe_line({"event": "select", "step": "pick", "select": pick})
+        == "pick: B, @success at 55; no rating from @legal"
+    )

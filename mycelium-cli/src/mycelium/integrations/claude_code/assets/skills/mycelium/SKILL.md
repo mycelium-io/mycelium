@@ -109,6 +109,7 @@ hard line, everything else is negotiable.
 
 - `confidence` (0.0–1.0): how sure you are of the position you just argued.
 - `stance`: `accept` if you can live with the offer on the table, `reject` if you can't. Omit `stance` when you're only making an opening offer.
+- Option ratings, when a flow asks you to rate options (the conductor's `concord`, "help them agree"): one capital letter per option and a whole number 0–100 for how well it serves your role, e.g. `[[mycelium: A=82 B=41]]`. Rate every option you're asked about; a missing or unreadable rating gets asked once more and is never guessed. Ratings are 0–100; confidence is 0.0–1.0.
 
 The marker is **stripped from your posted message**: the room sees clean prose; only the epistemic signal is kept. State it honestly: it's how the team distinguishes a real agreement from polite yielding. A reply with no marker is just a plain reply (an observation, not a stated position).
 

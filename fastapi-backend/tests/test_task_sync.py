@@ -24,8 +24,12 @@ from app.services.task_compiler import CompiledTask
 from tests.fakes import FakeManager
 
 
-def _converged(assignments: dict) -> L9:
-    """A ``commit:converged`` envelope carrying ``assignments`` (aligner output)."""
+def _converged(assignments: dict, within: str | None = None) -> L9:
+    """A ``commit:converged`` envelope carrying ``assignments`` (aligner output),
+    and the task it was reached in when one is named (a concord run's)."""
+    data: dict = {"assignments": assignments, "metrics": {"mpc": 0.82}}
+    if within:
+        data["within"] = within
     return l9.build_envelope(
         kind=Kind.commit,
         subkind="converged",
@@ -33,7 +37,7 @@ def _converged(assignments: dict) -> L9:
         recipients=["a", "b"],
         topic=l9.topic_urn("r"),
         payload_type="consensus",
-        payload_data={"assignments": assignments, "metrics": {"mpc": 0.82}},
+        payload_data=data,
     )
 
 
@@ -43,7 +47,12 @@ def _row(room: str, key: str):
     return found
 
 
-async def _run(room: str, tasks: list[CompiledTask] | Exception, assignments: dict) -> list[str]:
+async def _run(
+    room: str,
+    tasks: list[CompiledTask] | Exception,
+    assignments: dict,
+    within: str | None = None,
+) -> list[str]:
     mgr = FakeManager()
     engine = task_sync.TaskSyncEngine(mgr)  # type: ignore[arg-type]
     mock = (
@@ -56,7 +65,7 @@ async def _run(room: str, tasks: list[CompiledTask] | Exception, assignments: di
         # Writing a row embeds it; these tests run without a model.
         patch("app.routes.memory.embed_text", return_value=[0.0]),
     ):
-        return await engine.compile_and_write(room, _converged(assignments))
+        return await engine.compile_and_write(room, _converged(assignments, within))
 
 
 class TestSlugify:
@@ -206,3 +215,34 @@ class TestOpenWork:
 
     async def test_a_room_with_no_work_offers_nothing_to_the_prompt(self):
         assert task_sync.open_work_markdown("r9-empty") is None
+
+
+@pytest.mark.asyncio
+class TestFiledUnderTheTask:
+    """An agreement reached inside a task files its follow-up work under it."""
+
+    async def test_rows_are_sub_tasks_of_the_task_named_within(self):
+        await _run("r10", [CompiledTask(title="the parent", assignee=None)], {"x": "y"})
+        await _run(
+            "r10",
+            [CompiledTask(title="send the offer", assignee="a")],
+            {"decision": "15% off"},
+            within="work/the-parent",
+        )
+        meta, _ = _row("r10", "work/send-the-offer")
+        assert meta[task_sync.PARENT_RELATION] == "work/the-parent"
+
+    async def test_without_within_rows_are_filed_as_before(self):
+        await _run("r11", [CompiledTask(title="send the offer", assignee="a")], {"a": "x"})
+        meta, _ = _row("r11", "work/send-the-offer")
+        assert task_sync.PARENT_RELATION not in meta
+
+    async def test_a_task_deleted_mid_run_is_not_pointed_at(self):
+        await _run(
+            "r12",
+            [CompiledTask(title="send the offer", assignee="a")],
+            {"decision": "15% off"},
+            within="work/gone",
+        )
+        meta, _ = _row("r12", "work/send-the-offer")
+        assert task_sync.PARENT_RELATION not in meta

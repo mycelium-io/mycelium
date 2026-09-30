@@ -34,11 +34,46 @@ export type ConductorLine =
       round?: number;
       rounds?: number;
       tell?: boolean;
+      /** A second asking, of a member whose reply lacked what the step requires. */
+      again?: boolean;
     }
   | { event: "edge"; step: string; who: string; stance: string | null; next: string }
-  | { event: "close"; protocol: string; outcome: string; steps: number; reason: string };
+  | { event: "select"; step: string; next: string | null; select: PickRecord }
+  | {
+      event: "close";
+      protocol: string;
+      outcome: string;
+      steps: number;
+      reason: string;
+      /** The option a run that picked ended on. */
+      pick?: string;
+      text?: string;
+    };
 
-const EVENTS = new Set(["open", "turn", "edge", "close"]);
+/** One pick among the options, as a select step records it: the ratings
+ *  table, the pick, and who is short of the bar. */
+export interface PickRecord {
+  outcome: "feasible" | "infeasible" | "stuck";
+  pick: string | null;
+  text: string;
+  /** The bar, 0-100. */
+  threshold: number;
+  options: { label: string; text: string; authors: string[] }[];
+  /** `{letter: {member: rating}}`; a member who gave none is absent. */
+  table: Record<string, Record<string, number>>;
+  cast: string[];
+  ratings: Record<string, number>;
+  lowest: number | null;
+  missing: string[];
+  least_happy: string | null;
+}
+
+/** An agreement a pick certified reads as success, like a flow that resolved. */
+export function isSuccess(outcome: string): boolean {
+  return outcome === "resolved" || outcome === "converged";
+}
+
+const EVENTS = new Set(["open", "turn", "edge", "select", "close"]);
 
 function asLine(value: unknown): ConductorLine | null {
   if (!value || typeof value !== "object") return null;
@@ -92,9 +127,28 @@ export function describeConductorLine(line: ConductorLine): string {
               : "stated no stance";
       return `${line.step}: ${line.who} ${said}, on to ${line.next}`;
     }
+    case "select":
+      return `${line.step}: ${pickSummary(line.select)}`;
     case "close":
-      return line.outcome === "resolved"
+      if (line.pick) {
+        return line.outcome === "converged"
+          ? `Everyone's on board: going with ${line.pick}`
+          : `Couldn't get everyone there · best was ${line.pick}`;
+      }
+      return isSuccess(line.outcome)
         ? `${line.protocol} done · ${line.steps} step${line.steps === 1 ? "" : "s"}`
         : `${line.protocol} ${line.outcome} · ${line.reason}`;
   }
+}
+
+/** Where a pick stands, in plain words: "B, everyone at 70+" or "B, @finance at 55". */
+export function pickSummary(record: PickRecord): string {
+  if (!record.pick) return "nothing to pick yet";
+  if (record.outcome === "feasible") return `${record.pick}, everyone at ${record.threshold}+`;
+  const short = Object.entries(record.ratings)
+    .filter(([, r]) => r < record.threshold)
+    .sort((a, b) => a[1] - b[1])
+    .map(([h, r]) => `@${h} at ${r}`);
+  if (record.missing.length) short.push(`no rating from ${record.missing.map((h) => `@${h}`).join(", ")}`);
+  return `${record.pick}, ${short.join("; ") || "short of the bar"}`;
 }

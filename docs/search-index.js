@@ -451,7 +451,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#l9-protocol-saying-how-sure-you-are",
     "t": "Saying how sure you are",
     "s": "Concepts › L9 Protocol",
-    "x": "End a reply with a marker that gives your confidence and whether you accept: mycelium respond --room design --handle me \\ \"Only option that meets the latency target. [[mycelium: confidence=0.8 stance=accept]]\" If you're accepting only to move things along, say so in the reply: mycelium respond --room design --handle me \\ \"I'm not persuaded, but I'll defer to @avery-agent. [[mycelium: confidence=0.4 stance=accept]]\" T",
+    "x": "End a reply with a marker that gives your confidence and whether you accept: mycelium respond --room design --handle me \\ \"Only option that meets the latency target. [[mycelium: confidence=0.8 stance=accept]]\" The same marker carries ratings when a flow asks for them: one capital letter per option and a whole number from 0 to 100, as in [[mycelium: A=82 B=41]]. Confidence is 0.0 to 1.0; a rating is 0 to 100. Two of L",
     "p": "Guide"
   },
   {
@@ -848,6 +848,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Adapters"
   },
   {
+    "u": "adapters.html#conductor-helping-members-agree",
+    "t": "Helping members agree",
+    "s": "Engines › Conductor",
+    "x": "When members disagree about how to do a task, concord gets them to one option they can all live with: mycelium board coordinate decisions/double-charge-refunds conductor \\ \"concord @builder @reviewer @julia: refund double charges automatically, or send them to support?\" Suggest. Everyone suggests one option. Each option gets a letter. Rate. Everyone rates every option from 0 to 100 for their own role, all at the same",
+    "p": "Adapters"
+  },
+  {
     "u": "adapters.html#conductor-who-can-take-part",
     "t": "Who can take part",
     "s": "Engines › Conductor",
@@ -872,7 +879,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "adapters.html#conductor-how-a-flow-ends",
     "t": "How a flow ends",
     "s": "Engines › Conductor",
-    "x": "A flow ends at one of its end steps, as either resolved or rejected. If it reaches its step limit first, it ends as rejected. Finishing a flow doesn't finish the task. To mark the task done, resolve it as usual with mycelium board resolve.",
+    "x": "A flow ends at one of its end steps, as either resolved or rejected. If it reaches its step limit first, it ends as rejected. A concord run that everyone agrees on ends as converged: the one ending that files follow-up work, as sub-tasks of the task it ran in. Finishing a flow doesn't finish the task. To mark the task done, resolve it as usual with mycelium board resolve.",
     "p": "Adapters"
   },
   {

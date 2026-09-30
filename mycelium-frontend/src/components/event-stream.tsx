@@ -1170,13 +1170,18 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                 const garRaw = metrics ? metrics.gar : undefined;
                 const gar = typeof garRaw === "number" && Number.isFinite(garRaw) ? garRaw : undefined;
                 const tone = broken ? "var(--yellow)" : "var(--green)";
-                // A conductor run ends `resolved`: a flow walked to its end, not
-                // an agreement over issues, so it says which flow and how far.
-                const flow = ev.raw.outcome === "resolved" ? (ev.raw.protocol as string | undefined) : undefined;
+                // A conductor run ends `resolved`, or `converged` when a pick
+                // certified an agreement: a flow walked to its end, so it says
+                // which flow and how far (and what it agreed on).
+                const flowDone = ev.raw.outcome === "resolved" || ev.raw.outcome === "converged";
+                const flow = flowDone ? (ev.raw.protocol as string | undefined) : undefined;
                 if (flow) {
                   const steps = typeof ev.raw.steps === "number" ? ev.raw.steps : undefined;
+                  const agreed = ev.raw.outcome === "converged"
+                    ? ((ev.raw.select as { pick?: string } | undefined)?.pick ?? null)
+                    : null;
                   return (
-                    <SystemNotice key={ev.id} time={ev.time} dot={tone} label="Done" labelColor={tone} strong>
+                    <SystemNotice key={ev.id} time={ev.time} dot={tone} label={agreed ? "Agreed" : "Done"} labelColor={tone} strong>
                       <span>in</span>
                       {shortId ? (
                         <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined} />
@@ -1186,6 +1191,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                       <span>
                         · {flow} flow
                         {steps !== undefined ? `, ${steps} step${steps === 1 ? "" : "s"}` : ""}
+                        {agreed ? `, going with ${agreed}` : ""}
                       </span>
                     </SystemNotice>
                   );

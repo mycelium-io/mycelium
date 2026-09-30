@@ -19,6 +19,13 @@ mycelium respond --room design --handle me \
   "Only option that meets the latency target. [[mycelium: confidence=0.8 stance=accept]]"
 ```
 
+The same marker carries ratings when a flow asks for them: one capital letter
+per option and a whole number from 0 to 100, as in `[[mycelium: A=82 B=41]]`.
+Confidence is 0.0 to 1.0; a rating is 0 to 100. Two of L9's protocols run as
+[conductor](#conductor) flows: `accord` (get on the same page before work
+starts) and `concord` (help members agree, see
+[Helping members agree](#conductor-helping-members-agree)).
+
 If you're accepting only to move things along, say so in the reply:
 
 ```bash

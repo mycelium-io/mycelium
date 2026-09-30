@@ -39,7 +39,7 @@ function writeShown(shown: boolean): void {
 }
 
 function outcomeTone(outcome: string): string {
-  if (outcome === "resolved") return "var(--green)";
+  if (outcome === "resolved" || outcome === "converged") return "var(--green)";
   if (outcome === "rejected") return "var(--yellow)";
   return "var(--accent)";
 }
@@ -47,16 +47,23 @@ function outcomeTone(outcome: string): string {
 /** One step taken, as the trace line reads it. */
 function TraceRow({ entry }: { entry: FlowTraceEntry }) {
   const who = entry.asked?.join(", ") ?? "";
-  const stance = entry.stance ?? (entry.asked?.length ? "no stance" : "");
-  const stanceTone =
-    entry.stance === "accept" ? "var(--green)" : entry.stance === "reject" ? "var(--yellow)" : "var(--muted-foreground)";
+  // A pick says what it picked and how that went; a second asking says so.
+  const picked = entry.select;
+  const stance = picked
+    ? `${picked.pick ?? "nothing"} · ${picked.outcome}`
+    : entry.again
+      ? "asked again"
+      : (entry.stance ?? (entry.asked?.length ? "no stance" : ""));
+  const good = entry.stance === "accept" || picked?.outcome === "feasible";
+  const bad = entry.stance === "reject" || (picked && picked.outcome !== "feasible");
+  const stanceTone = good ? "var(--green)" : bad ? "var(--yellow)" : "var(--muted-foreground)";
   return (
     <div className="flex items-baseline gap-2 border-b border-border/60 py-1 last:border-b-0 font-mono text-micro">
       <span className="w-4 text-right tabular text-faint">{entry.turn}</span>
       <span className="text-text">{entry.step}</span>
       {who && <span className="truncate text-muted-foreground">{who}</span>}
       {stance && <span style={{ color: stanceTone }}>{stance}</span>}
-      <span className="text-faint">→ {entry.next}</span>
+      {entry.next && <span className="text-faint">→ {entry.next}</span>}
     </div>
   );
 }
