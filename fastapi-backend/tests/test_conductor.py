@@ -978,7 +978,15 @@ async def test_concord_asks_only_the_least_happy_for_a_fix_then_everyone_rates_i
     commit = channel.commit()
     assert commit.payload.data["assignments"] == {"decision": "15% off for a two-year term"}
     said = [(x or {}).get("content", "") for e, x in channel.sent if e.header.kind == Kind.commit]
-    assert "@success went from 50 to 85." in said[0]
+    assert "success went from 50 to 85." in said[0]
+    # The conductor talks about members, never to them: a mention in a post
+    # would summon them mid-run.
+    posted = [
+        (x or {}).get("content", "")
+        for e, x in channel.sent
+        if "step" not in (e.payload.data or {})
+    ]
+    assert not any("@" in text for text in posted)
     assert [c["outcome"] for c in _selects(channel)] == ["infeasible", "feasible"]
     # The fix step held the floor for the fixer alone.
     assert ["success"] in [sorted(f.speakers) for f in manager.floor_log]
@@ -1014,7 +1022,7 @@ async def test_concord_stops_after_two_fixes_and_says_who_is_still_short(in_a_ta
     assert "assignments" not in commit.payload.data, "only an agreement becomes work"
     said = [(x or {}).get("content", "") for e, x in channel.sent if e.header.kind == Kind.commit]
     assert said[0].startswith("✗ Couldn't get everyone there. Best was")
-    assert "@finance at 10" in said[0]
+    assert "finance at 10" in said[0]
 
 
 @pytest.mark.asyncio
@@ -1036,7 +1044,10 @@ async def test_concord_re_asks_a_reply_without_ratings_once_and_never_asks_the_s
     ticks = [(s, to) for s, to, _p in channel.ticks()]
     again = ticks[6:]
     assert again == [("score", "success")], "one re-ask, to the member who replied without ratings"
-    assert "I couldn't read your ratings" in channel.ticks()[6][2]
+    reask = channel.ticks()[6][2]
+    assert "I couldn't read your ratings" in reask
+    # The re-ask says what it wants rated, since it arrives on its own.
+    assert "A. A text" in reask and "[[mycelium: A=.. B=..]]" in reask
     assert ["success"] in [sorted(f.speakers) for f in manager.floor_log]
     # legal never rated: missing, not zero, and a fix can't reach it.
     (card,) = _selects(channel)
@@ -1045,7 +1056,50 @@ async def test_concord_re_asks_a_reply_without_ratings_once_and_never_asks_the_s
     assert card["outcome"] == "stuck"
     assert outcome == "rejected"
     said = [(x or {}).get("content", "") for e, x in channel.sent if e.header.kind == Kind.commit]
-    assert "no rating from @legal" in said[0]
+    assert "no rating from legal" in said[0]
+
+
+@pytest.mark.asyncio
+async def test_a_fix_that_adds_nothing_skips_the_rating_round(in_a_task):
+    """A silent fixer leaves nothing new to rate: nobody is asked to rate "(none)"."""
+    likes = ("[[mycelium: A=90 B=90]]", None)
+    (engine, _manager, channel), directive = _concord(
+        {
+            "success": [("A text", None), likes],
+            "finance": [("B text", None), ("[[mycelium: A=30 B=30]]", None)],  # then silent
+            "legal": [("A text", None), likes],
+        }
+    )
+
+    outcome = await engine.run(ROOM, episode=THREAD, directive=directive, named=CAST)
+
+    steps = [s for s, _to, _p in channel.ticks()]
+    assert "rescore" not in steps
+    assert steps.count("repair") == 2, "the fixes are still bounded"
+    assert outcome == "rejected"
+    assert not any("(none)" in p for _s, _to, p in channel.ticks())
+
+
+def test_a_reply_that_is_only_a_marker_is_not_an_option():
+    engine, _manager, _channel = _engine({})
+    concord = protocols.builtin("concord")
+    assert concord is not None
+    run = conductor.Run(protocol=concord, ask="", handles=CAST, bound={}, episode=THREAD)
+    run.answers = {"success": {}, "finance": {}}
+    run.replies = {"success": "[[mycelium: A=95]]", "finance": "Offer 10% off"}
+    engine._collect(run, concord.step("propose"), list(run.answers))
+    assert [o.text for o in run.options] == ["Offer 10% off"]
+
+
+@pytest.mark.asyncio
+async def test_prompts_say_the_tasks_title_not_its_key(in_a_task):
+    (engine, _manager, channel), directive = _concord(
+        {h: [("same idea", None), ("[[mycelium: A=90]]", None)] for h in CAST}
+    )
+    await engine.run(ROOM, episode=THREAD, directive=directive, named=CAST)
+    propose = channel.ticks()[0][2]
+    assert "Decide the renewal offer" in propose
+    assert TASK_KEY not in propose
 
 
 def test_options_are_lettered_in_cast_order_whatever_order_replies_arrive_in():
@@ -1121,6 +1175,39 @@ async def test_accord_locks_when_some_accept_and_the_rest_are_silent():
     assert outcome == "resolved"
     assert [s for s, _to, _p in channel.ticks()] == ["frame"] * 3 + ["merge"] + ["lock"] * 3
     assert "- a: a take" in channel.ticks()[3][2], "the merge sees everyone's take"
+
+
+@pytest.mark.asyncio
+async def test_accord_ends_when_the_lead_writes_no_summary():
+    """A silent lead leaves nothing to lock; no member's framing stands in for it."""
+    (engine, _manager, channel), directive = _accord(
+        {"lead": [("my take", None)], "a": [("a take", None)], "b": [("b take", None)]}
+    )
+
+    outcome = await engine.run(ROOM, episode=THREAD, directive=directive, named=["lead", "a", "b"])
+
+    assert outcome == "rejected"
+    assert "lock" not in [s for s, _to, _p in channel.ticks()]
+    said = [(x or {}).get("content", "") for e, x in channel.sent if e.header.kind == Kind.commit]
+    assert "reached `no_summary`" in said[0]
+    assert "No answer from lead." in said[0]
+
+
+@pytest.mark.asyncio
+async def test_accords_close_names_who_let_it_lock_by_silence():
+    (engine, _manager, channel), directive = _accord(
+        {
+            "lead": [("t", None), ("the summary", None), ("works", "accept")],
+            "a": [("t", None), ("fine", "accept")],
+            "b": [("t", None)],
+        }
+    )
+
+    await engine.run(ROOM, episode=THREAD, directive=directive, named=["lead", "a", "b"])
+
+    said = [(x or {}).get("content", "") for e, x in channel.sent if e.header.kind == Kind.commit]
+    assert said[0].startswith("✓ accord: resolved")
+    assert "No answer from b." in said[0]
 
 
 @pytest.mark.asyncio

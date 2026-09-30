@@ -29,4 +29,12 @@ describe("usage view", () => {
     const settle = ways.find(w => w.name === "Settle");
     expect(settle).toMatchObject({ from: "negotiation", wellWord: "converged" });
   });
+
+  it("counts an agreement as a flow that ended well", () => {
+    const usage = usageKpis(30);
+    const ways = waysOf({ ...usage, flows: { concord: { converged: 3, rejected: 1 } } });
+    const agree = ways.find(w => w.name === "Help them agree");
+    expect(agree).toMatchObject({ runs: 4, wellWord: "agreed" });
+    expect(agree?.well).toBeCloseTo(3 / 4);
+  });
 });

@@ -121,6 +121,9 @@ class Step(BaseModel):
         if self.threshold is not None or self.max_repairs is not None:
             msg = f"step {self.id!r}: threshold and max_repairs belong to a select step"
             raise ValueError(msg)
+        if self.collect == "scores" and self.require not in (None, "scores"):
+            msg = f"step {self.id!r} collects ratings, so it requires ratings, not a stance"
+            raise ValueError(msg)
         if not self.to:
             msg = f"step {self.id!r} addresses nobody and ends nothing"
             raise ValueError(msg)
@@ -240,6 +243,18 @@ class Protocol(BaseModel):
             if step.kind == "select":
                 continue  # past a pick, a bottleneck is defined
             frontier.extend(_targets_of(step))
+        # And only a pick that fell short names one: out of a feasible or stuck
+        # pick there is nobody least happy to ask.
+        for step in self.steps:
+            if step.kind != "select":
+                continue
+            for key, target in _edges_of(step):
+                if key != "infeasible" and by_id[target].to == BOTTLENECK:
+                    msg = (
+                        f"select {step.id!r} goes to the bottleneck on {key!r}; "
+                        "only its infeasible edge has one"
+                    )
+                    raise ValueError(msg)
 
     def _converged_is_certified(self) -> None:
         """An end of ``converged`` is reached only from a pick's ``feasible`` edge."""
@@ -458,9 +473,13 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
                 "id": "propose",
                 "to": "all",
                 "collect": "options",
+                # Each reply becomes an option on the table word for word, so
+                # the prompt asks for the option and nothing around it.
                 "prompt": (
-                    "{ask}\n\nSuggest the one option you think best serves your role for "
-                    "{task}, in one or two sentences. Don't hedge or pre-compromise."
+                    "{ask}\n\nReply with just the one option you think best serves "
+                    "your role for {title}: the concrete terms, in one or two "
+                    "sentences, with no preamble. Don't hedge or pre-compromise; "
+                    "everyone will rate everyone's option next."
                 ),
                 "next": "score",
             },
@@ -469,9 +488,10 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
                 "to": "all",
                 "collect": "scores",
                 "prompt": (
-                    "The options for {task}:\n\n{options}\n\nRate each one 0-100 for your "
-                    "own role: 0 means unacceptable, 100 means ideal. Give one line on why "
-                    "for each, then end with [[mycelium: A=.. B=..]]."
+                    "The options for {title}:\n\n{options}\n\nRate each one 0-100 for "
+                    "your own role: 0 means unacceptable, 100 means ideal. Give one "
+                    "line on why for each, then end with [[mycelium: {option_labels}]], "
+                    "one number per option."
                 ),
                 "next": "pick",
             },
@@ -486,10 +506,13 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
                 "id": "repair",
                 "to": BOTTLENECK,
                 "collect": "options",
+                # The ask first, the table after: a fix is a new option, and it
+                # goes on the table word for word, so it asks for nothing else.
                 "prompt": (
-                    "{scores}\n\n{shortfall}. Suggest ONE new option you'd rate highly that "
-                    "keeps what the others rated high. Say what you changed and why it "
-                    "should work for them."
+                    "{shortfall}. Reply with just ONE new option for {title} that you'd "
+                    "rate highly and that keeps what the others rated high: the concrete "
+                    "terms, in one or two sentences, with no preamble or analysis.\n\n"
+                    "Where the ratings stand:\n\n{scores}"
                 ),
                 "next": "rescore",
             },
@@ -498,8 +521,8 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
                 "to": "all",
                 "collect": "scores",
                 "prompt": (
-                    "A new option:\n\n{new_options}\n\nRate it 0-100 for your role, with "
-                    "one line on why, then end with [[mycelium: {new_labels}]]."
+                    "A new option for {title}:\n\n{new_options}\n\nRate it 0-100 for your "
+                    "role, with one line on why, then end with [[mycelium: {new_labels}]]."
                 ),
                 "next": "pick",
             },
@@ -523,9 +546,9 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
                 "id": "frame",
                 "to": "all",
                 "prompt": (
-                    "Before we start on {task}: in a few lines, what is it asking, what's "
-                    "out of scope, and what does done look like? Name any word you're "
-                    "using in a specific sense and say what you mean by it."
+                    "Before we start on {title}: in a few lines, what is it asking, "
+                    "what's out of scope, and what does done look like? Name any word "
+                    "you're using in a specific sense and say what you mean by it."
                 ),
                 "next": "merge",
             },
@@ -537,7 +560,9 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
                     "Out of scope, Done when, Key words (word: meaning), Who checks what. "
                     "Name anything you couldn't reconcile instead of papering over it."
                 ),
-                "next": "lock",
+                # With no summary from the lead there is nothing to lock: the
+                # lock would show whoever spoke last as "the shared summary".
+                "next": {"silent": "no_summary", "default": "lock"},
             },
             {
                 "id": "lock",
@@ -558,6 +583,7 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
                 },
             },
             {"id": "locked", "end": "resolved"},
+            {"id": "no_summary", "end": "rejected"},
         ],
     },
 }

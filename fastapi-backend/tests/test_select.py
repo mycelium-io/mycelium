@@ -119,4 +119,6 @@ def test_the_scorecard_marks_missing_ratings_and_the_pick():
     assert "| **A** ◀ | 90 | 50 | ? |" in card
     assert "| **B** | 40 | ? | ? |" in card
     assert "The bar is 70." in card
-    assert "@finance at 50" in card and "no rating from @legal" in card
+    assert "finance at 50" in card and "no rating from legal" in card
+    # Posted into the thread, so it names members without summoning them.
+    assert "@" not in card

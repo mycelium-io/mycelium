@@ -148,12 +148,16 @@ def pick(
 
 def scorecard(record: dict[str, Any]) -> str:
     """The rating table as the thread reads it: options down the side, members
-    across, ``?`` where a member gave no rating, then the pick and who's short."""
+    across, ``?`` where a member gave no rating, then the pick and who's short.
+
+    Members are named without ``@``: this is posted into the thread, and a
+    mention there would summon every member it names in the middle of the run.
+    """
     cast: list[str] = record.get("cast") or []
     options = record.get("options") or []
     table = record.get("table") or {}
     bar = record.get("threshold", 70)
-    header = "| option | " + " | ".join(f"@{h}" for h in cast) + " |"
+    header = "| option | " + " | ".join(cast) + " |"
     rule = "|---|" + "---|" * len(cast)
     rows = []
     for o in options:
@@ -168,14 +172,14 @@ def scorecard(record: dict[str, Any]) -> str:
 
 
 def summary(record: dict[str, Any]) -> str:
-    """One clause on where the pick stands."""
+    """One clause on where the pick stands. Names without ``@``, like the scorecard."""
     outcome = record.get("outcome")
     ratings: dict[str, int] = record.get("ratings") or {}
     missing: list[str] = record.get("missing") or []
     bar = record.get("threshold", 70)
     if outcome == "feasible":
         return f"everyone rated it {bar} or more."
-    parts = [f"@{h} at {r}" for h, r in sorted(ratings.items(), key=lambda kv: kv[1]) if r < bar]
+    parts = [f"{h} at {r}" for h, r in sorted(ratings.items(), key=lambda kv: kv[1]) if r < bar]
     if missing:
-        parts.append("no rating from " + ", ".join(f"@{h}" for h in missing))
+        parts.append("no rating from " + ", ".join(missing))
     return "; ".join(parts) + "." if parts else "short of the bar."

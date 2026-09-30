@@ -115,8 +115,10 @@ class Run:
     #: The most recent reply anyone gave.
     recent: str = ""
     steps_taken: int = 0
-    #: The key of the row whose thread the run walks, for prompts to name it.
+    #: The key of the row whose thread the run walks, for prompts to name it,
+    #: and its title, for prompts to say it.
     task: str = ""
+    title: str = ""
     #: What a step's replies were, by handle: the record each reply arrived
     #: as, for reading ratings and stances off. Reset at every step.
     answers: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -135,6 +137,8 @@ class Run:
     #: Who was least happy at the first sending back, and their rating then,
     #: so an agreement can say how far a fix moved them.
     first_short: tuple[str, int] | None = None
+    #: Who didn't answer the last step taken, for the close to name.
+    quiet: list[str] = field(default_factory=list)
 
     def targets(self, step: Step) -> list[str]:
         to = step.to or ""
@@ -161,6 +165,10 @@ class Run:
             replies="\n".join(f"- {h}: {p}" for h, p in said) or "(nothing yet)",
             handles=", ".join(self.handles),
             task=self.task or "this task",
+            # The row's title, for prompts a person or a model reads: a key like
+            # work/decide-the-renewal-offer-for-acme reads as a path, not a task.
+            title=self.title or self.task or "this task",
+            option_labels=" ".join(f"{o.label}=.." for o in self.options),
             round=str(round_n),
             rounds=str(rounds),
             options="\n".join(f"{o.label}. {o.text}" for o in self.options) or "(none yet)",
@@ -467,6 +475,7 @@ class ConductorEngine:
             bound=bound,
             episode=thread,
             task=row[0] if row else "",
+            title=row[1] if row else "",
         )
         ep = l9_episode.EpisodeState(
             episode=thread,
@@ -577,10 +586,26 @@ class ConductorEngine:
                     return "rejected", f"`{step.id}` came out {outcome} with no edge for it"
                 step = protocol.step(nxt)
                 continue
+            if step.needs == "scores" and run.options and not run.new_options():
+                # A fix that added nothing (the fixer was silent, or suggested an
+                # option already on the table) leaves nothing new to rate: go on
+                # without asking anyone to rate "(none)".
+                ep.trace.append(
+                    {
+                        "step": step.id,
+                        "turn": run.steps_taken,
+                        "skipped": "nothing new to rate",
+                        "next": step.edge(None),
+                        "at": datetime.now(UTC).isoformat(),
+                    }
+                )
+                step = protocol.step(step.edge(None))
+                continue
             if run.steps_taken >= cap:
                 return "rejected", f"hit the step cap ({cap}) at `{step.id}`"
             run.steps_taken += 1
             stances = await self._take(managed, run, ep, me, step, cap)
+            run.quiet = [h for h, s in stances if s == "silent"]
             stance = stance_of_step(stances)
             nxt = step.edge(stance)
             ep.trace.append(
@@ -675,7 +700,7 @@ class ConductorEngine:
         lacking = self._lacking(run, step, stances)
         if lacking and run.steps_taken < cap:
             stances = await self._reask(managed, run, ep, me, step, cap, lacking, stances)
-        if step.collect == "scores":
+        if step.needs == "scores":
             run.rated_upto = len(run.options)
         if step.needs == "stance":
             # Someone who wrote back but never marked a stance, even when asked
@@ -689,9 +714,12 @@ class ConductorEngine:
         order = [h for h in run.handles if h in answered]
         if step.collect == "options":
             for handle in order:
-                _found, prose = markers.parse_marker(run.replies.get(handle, ""))
-                choosing.add_option(run.options, prose, handle)
-        elif step.collect == "scores":
+                # The prose without any marker; a reply that was only a marker
+                # suggested nothing, so it puts nothing on the table.
+                prose = markers.MARKER_RE.sub("", run.replies.get(handle, "")).strip()
+                if prose:
+                    choosing.add_option(run.options, prose, handle)
+        elif step.needs == "scores":
             labels = {o.label for o in run.options}
             for handle in order:
                 given = markers.scores_of(run.answers[handle])
@@ -728,10 +756,15 @@ class ConductorEngine:
         """One more turn for just ``lacking``, at once, as its own step."""
         run.steps_taken += 1
         if step.needs == "scores":
-            labels = " ".join(f"{o.label}=.." for o in run.new_options())
+            # Restate what's being rated: the re-ask arrives on its own, and a
+            # member can't rate options it can't see.
+            fresh = run.new_options()
+            labels = " ".join(f"{o.label}=.." for o in fresh)
+            listed = "\n".join(f"{o.label}. {o.text}" for o in fresh)
             ask = (
-                "I couldn't read your ratings. End your reply with "
-                f"[[mycelium: {labels}]], one number 0-100 per option."
+                f"I couldn't read your ratings of these options:\n\n{listed}\n\n"
+                "Rate each 0-100 for your role and end your reply with "
+                f"[[mycelium: {labels}]], one number per option."
             )
         else:
             ask = (
@@ -970,7 +1003,9 @@ class ConductorEngine:
         ep.messages.append(l9.envelope_to_dict(commit))
         text = f"{self._result_line(run, outcome, why)} Record: {EPISODES_PREFIX}{ep.short_id}."
         try:
-            await managed.post(commit, text, list_write=True)
+            # A mention in a post would summon whoever it names; the close
+            # speaks about the members, never to them.
+            await managed.post(commit, turns.neutralize_mentions(text), list_write=True)
         except Exception:
             logger.warning("conductor failed to post the outcome for %s", run.episode)
         l9_episode.write_episode_record(ep, outcome=outcome, metrics=metrics, tasks=None)
@@ -988,7 +1023,13 @@ class ConductorEngine:
         pick = run.last_pick
         if pick is None or not pick.get("pick"):
             mark = "✓" if outcome in protocols.SUCCESS else "✗"
-            return f"{mark} {run.protocol.name}: {outcome} after {run.steps_taken} step(s), {why}."
+            # Silence counts as no objection in some flows (accord's lock), so
+            # the close says whose silence it was.
+            quiet = f" No answer from {', '.join(run.quiet)}." if run.quiet else ""
+            return (
+                f"{mark} {run.protocol.name}: {outcome} after {run.steps_taken} step(s), "
+                f"{why}.{quiet}"
+            )
         label, text = pick["pick"], pick["text"]
         if outcome == "converged":
             moved = ""
@@ -996,7 +1037,7 @@ class ConductorEngine:
                 who, before = run.first_short
                 after = (pick.get("ratings") or {}).get(who)
                 if after is not None:
-                    moved = f" @{who} went from {before} to {after}."
+                    moved = f" {who} went from {before} to {after}."
             return f"✓ Everyone's on board: going with {label}: {text}.{moved}"
         return f"✗ Couldn't get everyone there. Best was {label}: {text}. {choosing.summary(pick)}"
 
@@ -1019,6 +1060,9 @@ class ConductorEngine:
             payload_data={LINE_KEY: line} if line else None,
         )
         try:
-            await managed.post(env, text, list_write=True)
+            # The conductor talks about members, not to them: a mention here
+            # would summon them mid-run, and their answer could be read as the
+            # reply to the next turn.
+            await managed.post(env, turns.neutralize_mentions(text), list_write=True)
         except Exception:
             logger.warning("conductor failed to post on room %s", managed.room)

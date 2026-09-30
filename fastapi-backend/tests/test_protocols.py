@@ -272,6 +272,17 @@ def test_converged_is_reached_only_from_a_feasible_edge():
         _spec(ASK, PICK | {"next": {"feasible": "no", "infeasible": "ok"}}, *ENDS)
 
 
+def test_a_step_that_collects_ratings_cannot_require_a_stance():
+    with pytest.raises(ValueError, match="requires ratings, not a stance"):
+        _spec(ASK | {"require": "stance"}, PICK, *ENDS)
+
+
+def test_only_a_picks_infeasible_edge_leads_to_the_bottleneck():
+    fix = {"id": "fix", "to": "bottleneck", "prompt": "fix it", "next": "ask"}
+    with pytest.raises(ValueError, match="only its infeasible edge"):
+        _spec(ASK, PICK | {"next": {"feasible": "ok", "default": "fix"}}, fix, *ENDS)
+
+
 def test_nobody_can_play_the_bottleneck():
     with pytest.raises(ValueError, match="cannot be named"):
         _spec(ASK, PICK, *ENDS, roles=["bottleneck"])
