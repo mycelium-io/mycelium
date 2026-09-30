@@ -60,15 +60,71 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
+/**
+ * A conductor post's structured line, said as a row: which step, who it went
+ * to, what a pick chose. The conductor puts it on every post it makes (a turn,
+ * a pick, the close), so a flow reads as its steps rather than as "exchange".
+ */
+function conductorSummary(line: Record<string, unknown>): string | null {
+  const step = line.step != null ? String(line.step) : "";
+  switch (line.event) {
+    case "open":
+      return `start ${String(line.protocol ?? "flow")}`;
+    case "turn": {
+      const turn = line.turn != null && line.cap != null ? ` · turn ${line.turn} of ${line.cap}` : "";
+      return `${step} → ${String(line.to ?? "?")}${line.again ? " (asked again)" : ""}${turn}`;
+    }
+    case "edge":
+      return `${step}: ${String(line.who ?? "?")} ${String(line.stance ?? "no stance")} → ${String(line.next ?? "?")}`;
+    case "select": {
+      const pick = asRecord(line.select);
+      const chose = pick.pick ? `pick ${pick.pick}` : "no pick";
+      const lowest = pick.lowest != null ? ` · lowest ${pick.lowest}` : "";
+      const who = pick.least_happy ? ` (${pick.least_happy})` : "";
+      return `${chose}${lowest}${who} → ${String(line.next ?? pick.outcome ?? "?")}`;
+    }
+    case "close":
+      return `${String(line.outcome ?? "done")}${line.pick ? ` on ${line.pick}` : ""} after ${String(line.steps ?? "?")} steps`;
+    default:
+      return null;
+  }
+}
+
+/** A reply's marker fields, said as a row: its ratings, stance and confidence. */
+function replySummary(data: Record<string, unknown>): string | null {
+  const parts: string[] = [];
+  const scores = asRecord(data.scores);
+  const rated = Object.entries(scores).map(([option, value]) => `${option}=${value}`);
+  if (rated.length) parts.push(rated.join(" "));
+  if (data.action === "accept" || data.action === "reject") parts.push(String(data.action));
+  if (typeof data.confidence === "number") parts.push(`confidence ${data.confidence}`);
+  return parts.length ? parts.join(" · ") : null;
+}
+
 function frameSummary(
   kind: string,
   content: Record<string, unknown>,
   data: Record<string, unknown>,
+  payloadType: string | null,
 ): string {
+  const line = asRecord(data.conductor);
+  if (line.event) {
+    const said = conductorSummary(line);
+    if (said) return said;
+  }
   switch (kind) {
     case "exchange": {
+      if (payloadType === "ping") return "ping: a thread moved";
+      if (payloadType === "notice") {
+        const what = [data.subkind, data.key].filter(Boolean).join(" ");
+        return what ? `notice: ${what}` : "notice";
+      }
+      if (payloadType === "reply") {
+        const said = replySummary(data);
+        if (said) return said;
+      }
       const round = data.round ?? content.round;
-      const action = data.action ?? content.action ?? "exchange";
+      const action = data.action ?? content.action ?? payloadType ?? "exchange";
       return round != null ? `round ${round} · ${action}` : String(action);
     }
     case "commit": {
@@ -152,7 +208,7 @@ export function toL9Frame(msg: Record<string, unknown>): L9Frame | null {
     episode,
     parents,
     sender,
-    summary: frameSummary(kind, content, data),
+    summary: frameSummary(kind, content, data, env?.payload?.type ?? null),
     metrics,
     time,
     raw: msg,
@@ -265,12 +321,22 @@ export function KindBadge({ kind, subkind }: { kind: string; subkind?: string | 
   );
 }
 
+/**
+ * The numbers an episode recorded. The aligner scores MPC, GAR and SCR; a
+ * flow that picks (concord) records how satisfied the least happy member is.
+ * Only what the episode has is shown, so a flow never reads as a row of NaNs.
+ */
 export function MetricsRow({ metrics }: { metrics: EpisodeMetrics }) {
-  const items: [string, number, string][] = [
+  const candidates: [string, unknown, string][] = [
     ["MPC", metrics.mpc, "mean posterior confidence"],
     ["GAR", metrics.gar, "genuine agreement ratio"],
     ["SCR", metrics.scr, "social compliance ratio"],
+    ["lowest", metrics.min_satisfaction, "the least happy member's rating of the pick, out of 1"],
   ];
+  const items = candidates.filter((c): c is [string, number, string] =>
+    typeof c[1] === "number" && Number.isFinite(c[1]),
+  );
+  if (!items.length) return null;
   return (
     <span className="flex items-center gap-2 font-mono text-micro tabular">
       {items.map(([label, value, expansion]) => (

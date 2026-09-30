@@ -14,7 +14,7 @@ vi.mock("@/lib/api", () => ({
   logFetchError: () => () => undefined,
 }));
 
-import { envelopeJson, L9Inspector, toL9Frame } from "@/components/l9-inspector";
+import { envelopeJson, L9Inspector, MetricsRow, toL9Frame } from "@/components/l9-inspector";
 import { fetchL9History } from "@/lib/api";
 
 const CREATED = "2026-08-04T10:00:00.000000+00:00";
@@ -60,6 +60,88 @@ function knowledgeMessage() {
     }),
   };
 }
+
+/** A frame as a flow's run puts it on the wire: its kind, payload type and data. */
+function wire(sender: string, kind: string, type: string, data: Record<string, unknown>, subkind?: string) {
+  return {
+    message_type: `l9_${kind}`,
+    sender_handle: sender,
+    created_at: CREATED,
+    content: JSON.stringify({
+      header: { kind, subkind: subkind ?? null, message: { id: `${sender}-${type}-${Math.random()}` } },
+      payload: { type, data },
+    }),
+  };
+}
+
+describe("a flow's run reads as its steps, not as a column of exchanges", () => {
+  it("says which step a conductor turn is and who it went to", () => {
+    const frame = toL9Frame(
+      wire("conductor", "exchange", "message", {
+        conductor: { event: "turn", step: "propose", to: "success", turn: 1, cap: 9 },
+      }),
+    );
+    expect(frame?.summary).toBe("propose → success · turn 1 of 9");
+  });
+
+  it("says what a pick chose, how low it was, and where it went next", () => {
+    const frame = toL9Frame(
+      wire("conductor", "exchange", "message", {
+        conductor: {
+          event: "select",
+          next: "repair",
+          select: { outcome: "infeasible", pick: "B", lowest: 30, least_happy: "legal" },
+        },
+      }),
+    );
+    expect(frame?.summary).toBe("pick B · lowest 30 (legal) → repair");
+  });
+
+  it("says how a run ended on its commit", () => {
+    const frame = toL9Frame(
+      wire(
+        "conductor",
+        "commit",
+        "outcome",
+        {
+          conductor: { event: "close", outcome: "converged", pick: "F", steps: 6 },
+          assignments: { decision: "Renew at current rates" },
+          metrics: { satisfaction: { legal: 0.89, finance: 0.77 }, min_satisfaction: 0.77 },
+        },
+        "converged",
+      ),
+    );
+    expect(frame?.summary).toBe("converged on F after 6 steps");
+  });
+
+  it("shows a reply's ratings, stance and confidence", () => {
+    expect(toL9Frame(wire("legal", "exchange", "reply", { scores: { A: 25, B: 88 } }))?.summary).toBe(
+      "A=25 B=88",
+    );
+    expect(toL9Frame(wire("legal", "exchange", "reply", { confidence: 0.8 }))?.summary).toBe(
+      "confidence 0.8",
+    );
+    expect(
+      toL9Frame(wire("legal", "exchange", "reply", { action: "accept", confidence: 0.9 }))?.summary,
+    ).toBe("accept · confidence 0.9");
+  });
+
+  it("says what a ping or a notice is", () => {
+    expect(toL9Frame(wire("system", "exchange", "ping", { episode: "e" }))?.summary).toBe(
+      "ping: a thread moved",
+    );
+    expect(
+      toL9Frame(wire("system", "exchange", "notice", { subkind: "filed", key: "work/draft-terms" }))?.summary,
+    ).toBe("notice: filed work/draft-terms");
+  });
+
+  it("shows the numbers a concord commit has, and no NaN for the ones it doesn't", () => {
+    render(<MetricsRow metrics={{ satisfaction: { legal: 0.89 }, min_satisfaction: 0.77 } as never} />);
+    expect(screen.getByText("0.77")).toBeInTheDocument();
+    expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
+    expect(screen.queryByText("MPC")).not.toBeInTheDocument();
+  });
+});
 
 describe("toL9Frame", () => {
   it("reads kind/subkind/episode/parents from a bare persister envelope", () => {

@@ -1112,6 +1112,10 @@ export interface EpisodeMetrics {
   scr: number;
   provenance_weight: number;
   participants?: number;
+  /** A flow that picks (concord): each member's rating of the pick, out of 1. */
+  satisfaction?: Record<string, number>;
+  /** And the least happy member's. */
+  min_satisfaction?: number;
 }
 
 export interface EpisodeSummary {
