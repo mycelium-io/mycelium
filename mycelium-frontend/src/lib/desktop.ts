@@ -15,6 +15,11 @@ export function isDesktop(userAgent: string = globalThis.navigator?.userAgent ??
   return MARK.test(userAgent);
 }
 
+/** The Mac app's own version, off the same mark, or null in a browser. */
+export function desktopVersion(userAgent: string = globalThis.navigator?.userAgent ?? ""): string | null {
+  return /\bMyceliumDesktop\/([\w.+-]+)/.exec(userAgent)?.[1] ?? null;
+}
+
 const noSubscribe = () => () => {};
 
 /** Whether this page is inside the desktop app. Always false while rendering on the server. */

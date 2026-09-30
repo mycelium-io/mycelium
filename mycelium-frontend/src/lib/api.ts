@@ -1217,6 +1217,8 @@ export interface NetworkStatus {
   coordination: CoordinationStatus | null;
   identity: IdentityStatus | null;
   auth: AuthStatus | null;
+  /** The hub's release, stamped from the tag it was built from (About reads it). */
+  version?: string | null;
 }
 
 /** Read the network diagnostics blocks from the backend `/health` endpoint.
@@ -1227,6 +1229,7 @@ export async function fetchNetworkStatus(): Promise<NetworkStatus | null> {
     coordination?: CoordinationStatus;
     identity?: IdentityStatus;
     auth?: AuthStatus;
+    version?: string;
   } | null>(`/api/health`, {
     cache: "no-store",
     fallback: null,
@@ -1236,5 +1239,6 @@ export async function fetchNetworkStatus(): Promise<NetworkStatus | null> {
     coordination: data.coordination ?? null,
     identity: data.identity ?? null,
     auth: data.auth ?? null,
+    version: data.version ?? null,
   };
 }
