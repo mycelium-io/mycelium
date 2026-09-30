@@ -19,7 +19,7 @@ Load priority (highest to lowest):
 import os
 import warnings
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 import toml
 from pydantic import BaseModel, Field, field_validator
@@ -657,6 +657,13 @@ class MyceliumConfig(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
     _global_config_path: Path | None = None
     _project_config_path: Path | None = None
+    #: (section, key) -> (what the files said, what a joined folder's membership
+    #: put there). A membership belongs to its folder, so save() writes the
+    #: files' value back unless the key was changed after loading.
+    _membership_overrides: dict[tuple[str, str], tuple[Any, Any]] = {}  # noqa: RUF012 - per-instance, set by load()
+
+    #: Sections that live only in a project's .mycelium/config.toml.
+    PROJECT_ONLY_SECTIONS: ClassVar[frozenset[str]] = frozenset({"rooms"})
 
     @classmethod
     def get_global_config_dir(cls) -> Path:
@@ -712,6 +719,7 @@ class MyceliumConfig(BaseModel):
     def load(cls, config_path: Path | None = None) -> "MyceliumConfig":
         """Load configuration from global and project-local files."""
         config_dict: dict[str, Any] = {}
+        replaced: dict[tuple[str, str], tuple[Any, Any]] = {}
 
         if config_path is not None:
             if config_path.exists():
@@ -735,7 +743,13 @@ class MyceliumConfig(BaseModel):
             # room; that beats this machine's files and loses to the environment.
             from mycelium import caller
 
-            config_dict = cls._deep_merge(config_dict, caller.config_overlay())
+            overlay = caller.config_overlay()
+            replaced = {
+                (section, key): (config_dict.get(section, {}).get(key), value)
+                for section, keys in overlay.items()
+                for key, value in keys.items()
+            }
+            config_dict = cls._deep_merge(config_dict, overlay)
 
         env_overrides = cls._load_from_env()
         config_dict = cls._deep_merge(config_dict, env_overrides)
@@ -743,6 +757,7 @@ class MyceliumConfig(BaseModel):
         instance = cls(**config_dict)
         instance._global_config_path = global_path
         instance._project_config_path = project_path
+        instance._membership_overrides = replaced
         return instance
 
     @classmethod
@@ -857,6 +872,15 @@ class MyceliumConfig(BaseModel):
     def save(self, config_path: Path | None = None) -> None:
         """Save configuration to appropriate files and write JSON snapshot for JS consumers."""
         config_dict = self.model_dump(mode="json", exclude_none=True)
+        # A joined folder's hub and room are the folder's, not this machine's:
+        # write back what the files said unless the key was changed since.
+        for (section, key), (from_files, from_membership) in self._membership_overrides.items():
+            current = config_dict.get(section, {})
+            if current.get(key) == from_membership:
+                if from_files is None:
+                    current.pop(key, None)
+                else:
+                    current[key] = from_files
 
         if config_path is not None:
             config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -870,29 +894,18 @@ class MyceliumConfig(BaseModel):
         global_path = self._global_config_path or self.get_global_config_path()
         global_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Global sections: identity, server, llm, engine, runtime, metrics, a2a, adapters
-        _global_sections = (
-            "identity",
-            "server",
-            "slim",
-            "llm",
-            "engine",
-            "auth",
-            "login",
-            "agent_auth",
-            "runtime",
-            "herdr",
-            "swarm",
-            "metrics",
-            "telemetry",
-            "health",
-            "a2a",
-            "adapters",
-        )
+        # Every section is global except the project-only ones. Derived from the
+        # model, not listed, so a new section is saved without anyone
+        # remembering to add it here (runner.host was once set and dropped).
+        _global_sections = set(type(self).model_fields) - self.PROJECT_ONLY_SECTIONS
 
         if self._project_config_path:
             global_dict = {k: v for k, v in config_dict.items() if k in _global_sections}
-            project_dict = {k: v for k, v in config_dict.items() if k in ("identity", "rooms")}
+            project_dict = {
+                k: v
+                for k, v in config_dict.items()
+                if k in {"identity"} | self.PROJECT_ONLY_SECTIONS
+            }
             with open(self._project_config_path, "w") as f:
                 toml.dump(project_dict, f)
         else:

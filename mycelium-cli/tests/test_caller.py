@@ -222,3 +222,76 @@ def test_leave_forgets_the_membership(isolated_home: Path):
     result = runner.invoke(app, ["leave"])
     assert result.exit_code == 0, result.output
     assert caller.find_membership() is None
+
+
+# ── saving config next to a membership ───────────────────────────────────────
+
+
+def _global_toml(home: Path) -> dict:
+    import toml
+
+    return toml.load(home / ".mycelium" / "config.toml")
+
+
+def test_config_set_runner_host_is_saved(isolated_home: Path):
+    """`config set runner.host omnigent` said it was set and wrote nothing."""
+    result = runner.invoke(app, ["config", "set", "runner.host", "omnigent"])
+    assert result.exit_code == 0, result.output
+    assert _global_toml(isolated_home)["runner"]["host"] == "omnigent"
+    assert MyceliumConfig.load().runner.host == "omnigent"
+
+
+def test_beside_a_project_config_every_other_section_is_saved_globally(
+    isolated_home: Path, monkeypatch
+):
+    """With a project .mycelium/config.toml, only its own sections go there;
+    every other one, runner included, goes to the machine's config."""
+    project = isolated_home / "proj"
+    (project / ".mycelium").mkdir(parents=True)
+    (project / ".mycelium" / "config.toml").write_text('[rooms]\nactive = "design"\n')
+    monkeypatch.chdir(project)
+
+    config = MyceliumConfig.load()
+    config.runner.host = "omnigent"
+    config.save()
+
+    saved = set(_global_toml(isolated_home))
+    assert "runner" in saved
+    assert saved.isdisjoint(MyceliumConfig.PROJECT_ONLY_SECTIONS)
+    assert MyceliumConfig.load().runner.host == "omnigent"
+
+
+def test_saving_in_a_joined_folder_leaves_the_machines_hub_and_room_alone(
+    isolated_home: Path, monkeypatch
+):
+    config = MyceliumConfig.load()
+    config.server.api_url = "http://my-own-hub:8000"
+    config.rooms.active = None
+    config.save()
+
+    work = isolated_home / "work"
+    work.mkdir()
+    _join(work, hub="http://someone-elses-hub:8000", room="their-room")
+    monkeypatch.chdir(work)
+
+    joined = MyceliumConfig.load()
+    assert joined.server.api_url == "http://someone-elses-hub:8000"
+    joined.runner.host = "omnigent"
+    joined.save()
+
+    saved = _global_toml(isolated_home)
+    assert saved["server"]["api_url"] == "http://my-own-hub:8000"
+    assert saved["runner"]["host"] == "omnigent"
+    assert "active" not in saved.get("rooms", {})
+
+
+def test_a_hub_you_set_in_a_joined_folder_is_still_saved(isolated_home: Path, monkeypatch):
+    """Only what the membership put there is taken back out."""
+    work = isolated_home / "work"
+    work.mkdir()
+    _join(work, hub="http://someone-elses-hub:8000")
+    monkeypatch.chdir(work)
+    config = MyceliumConfig.load()
+    config.server.api_url = "http://chosen-on-purpose:8000"
+    config.save()
+    assert _global_toml(isolated_home)["server"]["api_url"] == "http://chosen-on-purpose:8000"
