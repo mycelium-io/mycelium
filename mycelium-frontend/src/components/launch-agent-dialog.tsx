@@ -148,7 +148,7 @@ export function LaunchAgentForm({
 
   if (!runner) {
     return (
-      <div className="px-6 py-5">
+      <div className="px-5 py-4">
         {loading ? (
           <p className="text-label text-muted-foreground">Looking for your machines…</p>
         ) : (
@@ -175,7 +175,7 @@ export function LaunchAgentForm({
 
   return (
     <>
-      <div className="space-y-5 px-6 py-5">
+      <div className="space-y-4 px-5 py-4">
         <RoleRow
           saved={saved}
           role={role}
@@ -312,7 +312,7 @@ export function MemberFooter({
   above?: React.ReactNode;
 }) {
   return (
-    <div className="space-y-2 border-t border-border bg-surface/60 px-6 py-3">
+    <div className="space-y-2 border-t border-border bg-surface/60 px-5 py-2.5">
       {above}
       <div className="flex items-center gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-2 text-label text-muted-foreground">
@@ -623,7 +623,7 @@ function LaunchProgress({
     },
   ];
   return (
-    <div className="px-6 py-5">
+    <div className="px-5 py-4">
       <div className="flex items-center gap-3">
         <Monogram handle={handle} className="size-10 text-label" />
         <div>

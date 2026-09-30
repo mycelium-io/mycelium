@@ -485,8 +485,10 @@ body {
   --color-input: var(--border2);
   --color-ring: var(--accent);
   --color-destructive: var(--red);
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.625rem;
-  --radius-xl: 0.875rem;
+  /* Tight on purpose: the app reads as an editor (flat tabs, hairlines), and
+     large radii made its floating surfaces look soft against it. */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.3125rem;
+  --radius-lg: 0.375rem;
+  --radius-xl: 0.5rem;
 }

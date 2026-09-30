@@ -193,7 +193,7 @@ function NewMemoryForm({
 
   return (
     <>
-      <div className="border-b border-border px-6 pt-5 pb-4">
+      <div className="border-b border-border px-5 pt-4 pb-3">
         <DialogTitle className="text-ui font-semibold text-text">
           New memory in <span className="font-mono">{roomName}</span>
         </DialogTitle>
@@ -204,7 +204,7 @@ function NewMemoryForm({
       </div>
 
       <div className="grid min-h-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_260px]">
-        <div className="flex min-w-0 flex-col gap-4 px-6 py-5">
+        <div className="flex min-w-0 flex-col gap-3 px-5 py-4">
           <input
             autoFocus
             value={title}
@@ -299,13 +299,13 @@ function NewMemoryForm({
           <TagInput value={tags} onChange={setTags} placeholder="Add tag…" ariaLabel="Tags" />
         </div>
 
-        <aside className="border-t border-border bg-surface/40 px-5 py-5 md:border-l md:border-t-0">
+        <aside className="border-t border-border bg-surface/40 px-4 py-4 md:border-l md:border-t-0">
           <p className="mb-3 text-micro font-medium text-faint">Where it goes</p>
           <TreePreview roomName={roomName} slice={slice} version={existing?.version ?? null} />
         </aside>
       </div>
 
-      <div className="flex items-center gap-3 border-t border-border px-6 py-3">
+      <div className="flex items-center gap-3 border-t border-border px-5 py-2.5">
         {error ? (
           <p role="alert" className="min-w-0 flex-1 truncate text-label text-red">
             {error}
