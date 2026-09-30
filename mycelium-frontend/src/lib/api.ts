@@ -758,8 +758,11 @@ export interface Runner {
   owner: string | null;
   platform: string;
   version: string;
-  /** herdr is running there. Without it the machine can start nothing. */
+  /** Its host is running there. Without it the machine can start nothing.
+   *  (Named for herdr, which was the only host when this field was added.) */
   herdr: boolean;
+  /** The host it starts agents on, by name (see `hostOf`). Absent means herdr. */
+  host?: string;
   /** Folders agents may be started in. The first is the default. */
   roots: string[];
   frameworks: Framework[];

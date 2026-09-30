@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { describeJob, herdrMissing, isMine, launchable, sortFrameworks } from "./runners";
+import {
+  describeJob,
+  hostMissing,
+  hostOf,
+  isMine,
+  launchable,
+  sortFrameworks,
+  startsInHerdr,
+} from "./runners";
 import { framework, runner } from "./runners.fixture";
 import type { RunnerJob } from "./api";
 
@@ -26,11 +34,22 @@ describe("runner helpers", () => {
     expect(sorted.map((f) => f.id)).toEqual(["claude", "opencode", "amp", "zed"]);
   });
 
-  it("starts nothing on a machine without herdr", () => {
+  it("starts nothing on a machine whose host isn't running", () => {
     expect(launchable(runner()).map((f) => f.id)).toEqual(["claude", "opencode"]);
     expect(launchable(runner({ herdr: false }))).toEqual([]);
-    expect(herdrMissing(runner())).toBe(
+    expect(hostMissing(runner())).toBe(
       "herdr isn't running on julias-mbp. Install it from https://herdr.dev and start it, then this machine can start agents.",
+    );
+  });
+
+  it("names a runner's own host, and herdr when it doesn't say", () => {
+    expect(hostOf(runner()).name).toBe("herdr");
+    expect(startsInHerdr(runner())).toBe(true);
+    const omni = runner({ host: "omnigent" });
+    expect(hostOf(omni).name).toBe("Omnigent");
+    expect(startsInHerdr(omni)).toBe(false);
+    expect(hostMissing(omni)).toBe(
+      "Omnigent isn't running on julias-mbp. Start it there with `omnigent start`, then this machine can start agents.",
     );
   });
 

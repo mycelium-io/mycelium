@@ -7,9 +7,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Circle, Laptop, Loader2, X } from "lucide-react";
 import { launchRunnerAgent, type Runner, type RunnerJob } from "@/lib/api";
 import {
+  hostOf,
   jobSettled,
   launchable,
   runnerName,
+  startsInHerdr,
   useRunnerJob,
   useRunners,
   useRunnersRevalidate,
@@ -27,7 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Monogram } from "@/components/ui/monogram";
 import {
   ConnectMachine,
-  HerdrMissing,
+  HostMissing,
   RescanButton,
   shortVersion,
 } from "@/components/runner-fields";
@@ -226,7 +228,9 @@ export function LaunchAgentForm({
         onFolder={setFolderTyped}
       >
         <Button onClick={submit} disabled={!canSubmit}>
-          {submitting ? "Adding…" : `Add ${trimmed && handleOk ? `@${trimmed}` : "agent"}`}
+          {/* A fixed label: the handle is in the field above, and a button that
+              grows with each keystroke moves under the pointer. */}
+          {submitting ? "Adding…" : "Add to room"}
         </Button>
       </RunsOn>
     </>
@@ -500,10 +504,10 @@ function RunsOn({
       above={
         <>
           {!runner.herdr ? (
-            <HerdrMissing runner={runner} />
+            <HostMissing runner={runner} />
           ) : startable.length === 0 ? (
             <p className="text-micro text-muted-foreground">
-              No agent CLI on this machine that herdr can start. Install one, then rescan.
+              No agent CLI on this machine that {hostOf(runner).name} can start. Install one, then rescan.
             </p>
           ) : null}
           {/* First line: which machine, and which agent CLI on it. */}
@@ -575,7 +579,7 @@ function RunsOn({
 
 type StepState = "done" | "active" | "waiting" | "failed";
 
-/** The start, step by step, from the hub's write to the agent running in herdr. */
+/** The start, step by step, from the hub's write to the agent running on the machine. */
 function LaunchProgress({
   job,
   runner,
@@ -614,7 +618,7 @@ function LaunchProgress({
         ]
       : []),
     {
-      label: `${frameworkName} running in herdr, reading its notes`,
+      label: `${frameworkName} running in ${hostOf(runner).name}, reading its notes`,
       state: status === "done" ? "done" : failed ? "failed" : status === "running" ? "active" : "waiting",
     },
   ];
@@ -626,7 +630,9 @@ function LaunchProgress({
           <p className="font-mono text-ui text-text">@{handle}</p>
           <p className="text-micro text-muted-foreground">
             {status === "done"
-              ? `Running on ${machine}, in herdr workspace ${room}.`
+              ? startsInHerdr(runner)
+                ? `Running on ${machine}, in herdr workspace ${room}.`
+                : `Running on ${machine}, in ${hostOf(runner).where}.`
               : failed
                 ? `Added to ${room}, but ${machine} could not start it.`
                 : status === "waiting"

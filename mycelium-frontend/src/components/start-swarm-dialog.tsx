@@ -6,12 +6,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { startSwarm } from "@/lib/api";
-import { launchable, useRunners } from "@/lib/runners";
+import { hostOf, launchable, startsInHerdr, useRunners } from "@/lib/runners";
 import { useCurrentUser } from "@/components/current-user";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CopyField } from "@/components/ui/copy-field";
-import { FolderField, FrameworkPicker, HerdrMissing } from "@/components/runner-fields";
+import { FolderField, FrameworkPicker, HostMissing } from "@/components/runner-fields";
 
 interface Props {
   open: boolean;
@@ -61,11 +61,12 @@ export function StartSwarmDialog({ open, onClose, roomName, initialTask = "" }: 
 
   if (!open) return null;
 
-  // A local team starts in herdr panes, so a machine without herdr is listed
-  // but can't be started on.
+  // A local team starts in herdr panes, so a machine whose runner starts agents
+  // elsewhere, or whose herdr isn't running, is listed but can't be started on.
   const machines = connected;
   const machine = machines.find(r => r.id === where) ?? null;
-  const startable = machine ? launchable(machine) : [];
+  const herdrHere = !!machine && startsInHerdr(machine);
+  const startable = machine && herdrHere ? launchable(machine) : [];
   const framework = startable.find(f => f.id === frameworkPick) ?? startable[0] ?? null;
   const folder = folderPick ?? machine?.roots[0] ?? "";
 
@@ -207,9 +208,15 @@ export function StartSwarmDialog({ open, onClose, roomName, initialTask = "" }: 
           </div>
         )}
 
-        {machine ? (
+        {machine && !herdrHere ? (
+          <p role="note" className="mt-4 text-micro leading-relaxed text-yellow">
+            {machine.label || machine.id} starts agents in {hostOf(machine).name}. A team starts in
+            herdr, so it can&apos;t start there yet. Start one on the hub instead, or on a machine
+            that uses herdr.
+          </p>
+        ) : machine ? (
           <div className="mt-4 space-y-4">
-            {!machine.herdr && <HerdrMissing runner={machine} />}
+            {!machine.herdr && <HostMissing runner={machine} />}
             <FrameworkPicker runner={machine} value={framework?.id ?? null} onChange={setFrameworkPick} />
             <FolderField runner={machine} value={folder} onChange={setFolderPick} id="swarm-folder" />
             <label className="flex items-center gap-2 text-label text-text">

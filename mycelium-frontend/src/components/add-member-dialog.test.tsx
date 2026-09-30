@@ -52,7 +52,7 @@ describe("AddMemberDialog", () => {
   it("offers every kind of member from one place", () => {
     open();
     expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
-      "Your machineStarted in herdr",
+      "Your machineStarted on your computer",
       "EngineRuns on this hub",
       "A2A serviceRuns elsewhere",
       "Open sessionAlready open",
@@ -65,7 +65,7 @@ describe("AddMemberDialog", () => {
     const { onAdded } = open("engine");
     fireEvent.click(screen.getByRole("radio", { name: "synthesizer" }));
     expect(screen.getByLabelText("Handle")).toHaveValue("synthesizer");
-    fireEvent.click(screen.getByRole("button", { name: "Add @synthesizer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
 
     await waitFor(() => expect(onAdded).toHaveBeenCalledWith("synthesizer"));
     expect(createEngine).toHaveBeenCalledWith("atlas", {
@@ -84,7 +84,7 @@ describe("AddMemberDialog", () => {
     fireEvent.change(screen.getByLabelText("Instructions"), {
       target: { value: "You doubt every estimate." },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Add @skeptic" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
 
     await waitFor(() => expect(onAdded).toHaveBeenCalledWith("skeptic"));
     expect(createMemories).toHaveBeenCalledWith("atlas", [
@@ -95,7 +95,7 @@ describe("AddMemberDialog", () => {
   it("shows why the hub refused, and adds nothing more", async () => {
     createEngine.mockRejectedValue(new Error("@aligner already exists in atlas"));
     const { onAdded } = open("engine");
-    fireEvent.click(screen.getByRole("button", { name: "Add @aligner" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("already exists");
     expect(onAdded).not.toHaveBeenCalled();
   });

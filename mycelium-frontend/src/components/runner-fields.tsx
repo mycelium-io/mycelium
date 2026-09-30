@@ -10,7 +10,8 @@ import { DMG_URL, useIsDesktop } from "@/lib/desktop";
 import { useIsMac } from "@/lib/client-hooks";
 import { rescanRunner, type Framework, type Runner } from "@/lib/api";
 import {
-  herdrMissing,
+  hostMissing,
+  hostOf,
   jobSettled,
   sortFrameworks,
   useRunnerJob,
@@ -97,11 +98,11 @@ export function AddMachineCode() {
   );
 }
 
-/** A machine without herdr can start nothing; say so, and where to get it. */
-export function HerdrMissing({ runner }: { runner: Pick<Runner, "id" | "label"> }) {
+/** A machine whose host isn't running can start nothing; say so, and what to do. */
+export function HostMissing({ runner }: { runner: Pick<Runner, "id" | "label" | "host"> }) {
   return (
     <p role="note" className="text-micro leading-relaxed text-yellow">
-      {herdrMissing(runner)}
+      {hostMissing(runner)}
     </p>
   );
 }
@@ -142,8 +143,9 @@ export function MachinePicker({
 
 /**
  * The agent CLIs this machine can start, as one row of choices. Only what can
- * be picked is shown; the rest of the scan (what isn't installed, or what herdr
- * can't start) is one line pointing at the Machines page, which lists it all.
+ * be picked is shown; the rest of the scan (what isn't installed, or what the
+ * machine's host can't start) is one line pointing at the Machines page, which
+ * lists it all.
  */
 export function FrameworkPicker({
   runner,
@@ -170,8 +172,8 @@ export function FrameworkPicker({
       {choices.length === 0 ? (
         <p className="text-label text-muted-foreground">
           {runner.herdr
-            ? "No agent CLI here that herdr can start. Install one, then rescan."
-            : "Nothing can start here until herdr is running."}
+            ? `No agent CLI here that ${hostOf(runner).name} can start. Install one, then rescan.`
+            : `Nothing can start here until ${hostOf(runner).name} is running.`}
         </p>
       ) : (
         <div role="radiogroup" aria-labelledby="runner-framework-label" className="flex flex-wrap gap-1.5">
