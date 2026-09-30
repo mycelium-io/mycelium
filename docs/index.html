@@ -365,6 +365,12 @@
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> <span class="str">&quot;CE-Area Team&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> <span class="str">&quot;CE-Area Team&quot;</span></code></pre>
       <p>A name can&#x27;t be blank, <code>.</code> or <code>..</code>, and can&#x27;t contain slashes, control characters or <code>:session:</code>. The name is also the room&#x27;s folder on disk and its channel name, so it can&#x27;t be changed later.</p>
+      <h2 id="rooms-private-rooms">Private rooms</h2>
+      <p>A private room is a room of your own on a shared hub. It&#x27;s listed only for you and the members you add, so it doesn&#x27;t crowd other people&#x27;s room lists, their notifications or their search.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> scratch <span class="flag">--private</span></code></pre>
+      <p>In the app, tick <strong>Private</strong> when you create a room, or use <strong>Make private</strong> in the room&#x27;s <code>…</code> menu. The rooms list shows private rooms in their own group, and lets you show just the shared or just the private ones.</p>
+      <p>The hub needs to know who you are to list a room for you. With sign-in turned on, that&#x27;s who you signed in as. Otherwise it&#x27;s the name you gave this machine (<code>mycelium iam</code>) or the app.</p>
+      <p>Private hides a room; it doesn&#x27;t lock it. Anyone who knows its name can still open it, read it and post in it. Keep secrets out of a hub other people can reach.</p>
       <h2 id="rooms-what-a-room-is-on-disk">What a room is on disk</h2>
       <p>Each room is a folder on the hub, at <code>~/.mycelium/rooms/&lt;room&gt;/</code>, with these subfolders created for you:</p>
       <pre><code>~/.mycelium/rooms/design-review/

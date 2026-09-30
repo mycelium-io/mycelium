@@ -28,6 +28,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
+    "u": "index.html#rooms-private-rooms",
+    "t": "Private rooms",
+    "s": "Concepts › Rooms",
+    "x": "A private room is a room of your own on a shared hub. It's listed only for you and the members you add, so it doesn't crowd other people's room lists, their notifications or their search. mycelium room create scratch --private In the app, tick Private when you create a room, or use Make private in the room's … menu. The rooms list shows private rooms in their own group, and lets you show just the shared or just the p",
+    "p": "Guide"
+  },
+  {
     "u": "index.html#rooms-what-a-room-is-on-disk",
     "t": "What a room is on disk",
     "s": "Concepts › Rooms",
@@ -1188,15 +1195,15 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#cli-room",
     "t": "mycelium room ls",
     "s": "CLI Reference",
-    "x": "List all rooms with state and member count.",
+    "x": "List the shared rooms and your private ones.",
     "k": "cmd",
     "p": "Reference"
   },
   {
     "u": "reference.html#cli-room",
-    "t": "mycelium room create <name>",
+    "t": "mycelium room create <name> [--private]",
     "s": "CLI Reference",
-    "x": "Create a new persistent coordination room.",
+    "x": "Create a new persistent coordination room. --private lists it only for you (and members you add); anyone who knows its name can still open it.",
     "k": "cmd",
     "p": "Reference"
   },

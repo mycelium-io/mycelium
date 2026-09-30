@@ -58,6 +58,10 @@ interface Connection {
 
 const GLOBAL_URL = "/api/stream";
 
+/** Who the global feeds are for, so the notification feed carries their
+ *  private rooms. Set by the notifications provider; a change re-dials. */
+let viewer = "";
+
 const subscriptions = new Set<Subscription>();
 const healthListeners = new Set<() => void>();
 const connections = new Map<string, Connection>();
@@ -71,7 +75,7 @@ function desiredUrls(): Set<string> {
   const rooms = new Set<string>();
   for (const sub of subscriptions) {
     if (sub.room) rooms.add(sub.room);
-    else urls.add(GLOBAL_URL);
+    else urls.add(viewer ? `${GLOBAL_URL}?${new URLSearchParams({ viewer })}` : GLOBAL_URL);
   }
   if (rooms.size > 0) {
     const params = new URLSearchParams();
@@ -191,6 +195,13 @@ function isFeedUp(channel: StreamChannel, room: string | null): boolean {
     if (conn.health.get(key)) return true;
   }
   return false;
+}
+
+/** Say who the global feeds are for; a change re-dials them with the new name. */
+export function setStreamViewer(next: string): void {
+  if (next === viewer) return;
+  viewer = next;
+  sync();
 }
 
 /** Drop every connection and subscription. For tests. */

@@ -27,12 +27,14 @@ import { NotificationsProvider } from "@/components/notifications-provider";
 import { RoomsSidebar } from "@/components/rooms-sidebar";
 import { createRoom, deleteRoom, fetchRooms } from "@/lib/api";
 
-function rooms(...names: string[]) {
-  return names.map(name => ({ name }));
+type RoomArg = string | { name: string; is_public?: boolean; last_activity?: string };
+
+function rooms(...names: RoomArg[]) {
+  return names.map(r => (typeof r === "string" ? { name: r } : r));
 }
 
 async function renderSidebar(
-  names: string[],
+  names: RoomArg[],
   activeRoom: string | null = null,
   props: Partial<ComponentProps<typeof RoomsSidebar>> = {},
 ) {
@@ -249,7 +251,12 @@ describe("<RoomsSidebar /> new room in the list", () => {
     await user.click(screen.getByRole("button", { name: "New room" }));
     await user.keyboard("design-review{Enter}");
 
-    expect(createRoom).toHaveBeenCalledWith({ name: "design-review", is_persistent: true });
+    expect(createRoom).toHaveBeenCalledWith({
+      name: "design-review",
+      is_persistent: true,
+      private: false,
+      owner: "",
+    });
     expect(push).toHaveBeenCalledWith("/room/design-review");
     expect(screen.queryByRole("textbox", { name: "New room name" })).not.toBeInTheDocument();
   });
@@ -273,5 +280,59 @@ describe("<RoomsSidebar /> new room in the list", () => {
 
     expect(createRoom).not.toHaveBeenCalled();
     expect(screen.queryByRole("textbox", { name: "New room name" })).not.toBeInTheDocument();
+  });
+});
+
+describe("<RoomsSidebar /> private rooms", () => {
+  const scratch = { name: "scratch", is_public: false, last_activity: "2026-09-02" };
+
+  beforeEach(() => {
+    push.mockClear();
+    vi.mocked(createRoom).mockReset();
+    resetStreamHub();
+    FakeEventSource.reset();
+    vi.stubGlobal("EventSource", FakeEventSource);
+  });
+
+  it("offers no filter until there is a private room", async () => {
+    await renderSidebar(["alpha", "beta"]);
+    expect(screen.queryByRole("radiogroup", { name: "Show rooms" })).not.toBeInTheDocument();
+  });
+
+  it("draws private rooms under their own heading, after the shared ones", async () => {
+    // The private room is the most recent, and still comes after the shared.
+    const user = await renderSidebar(["alpha", scratch], "alpha");
+    const links = screen.getAllByRole("link").map(l => l.textContent);
+    expect(links[0]).toContain("alpha");
+    expect(links[1]).toContain("scratch");
+    expect(screen.getByText("Private", { selector: "div" })).toBeInTheDocument();
+
+    // Next/prev follows the list as drawn.
+    await user.keyboard("]");
+    expect(push).toHaveBeenLastCalledWith("/room/scratch");
+  });
+
+  it("filters to the shared or the private rooms", async () => {
+    const user = await renderSidebar(["alpha", scratch]);
+    const filter = screen.getByRole("radiogroup", { name: "Show rooms" });
+
+    await user.click(within(filter).getByRole("radio", { name: "Private" }));
+    expect(screen.queryByRole("link", { name: /alpha/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /scratch/ })).toBeInTheDocument();
+
+    await user.click(within(filter).getByRole("radio", { name: "Shared" }));
+    expect(screen.getByRole("link", { name: /alpha/ })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /scratch/ })).not.toBeInTheDocument();
+  });
+
+  it("makes a private room when one is typed in the Private view", async () => {
+    vi.mocked(createRoom).mockResolvedValue({} as never);
+    const user = await renderSidebar(["alpha", scratch]);
+
+    await user.click(screen.getByRole("radio", { name: "Private" }));
+    await user.click(screen.getByRole("button", { name: "New room" }));
+    await user.keyboard("notes{Enter}");
+
+    expect(createRoom).toHaveBeenCalledWith(expect.objectContaining({ name: "notes", private: true }));
   });
 });

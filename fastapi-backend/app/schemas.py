@@ -36,7 +36,16 @@ class RoomCreate(BaseModel):
     )
     description: str | None = Field(None, max_length=500)
     title: str | None = Field(None, max_length=200)
-    is_public: bool = True
+    is_public: bool = Field(
+        True,
+        description="Shared (listed for everyone) or private (listed for its owner and members)",
+    )
+    owner: str | None = Field(
+        None, description="Who created it; a private room is always listed for its owner"
+    )
+    members: list[str] = Field(
+        default_factory=list, description="Who else a private room is listed for"
+    )
     mas_id: str | None = None
     workspace_id: str | None = None
 
@@ -66,6 +75,10 @@ class RoomRead(BaseModel):
     #: it, and nothing projects it as a row.
     title: str | None = None
     is_public: bool
+    #: Who created it. A private room (``is_public`` false) is listed only for
+    #: its owner and ``members``; see ``services/room_access.py``.
+    owner: str | None = None
+    members: list[str] = Field(default_factory=list)
     created_at: datetime
     #: When the room was last active (its transcript's mtime), or ``created_at``
     #: for a room with no messages yet. Populated by ``GET /rooms``.

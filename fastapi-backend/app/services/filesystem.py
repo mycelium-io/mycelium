@@ -468,6 +468,8 @@ def read_room_meta(room_name: str) -> dict[str, Any] | None:
         "name": room_name,
         "description": stored.get("description"),
         "is_public": stored.get("is_public", True),
+        "owner": stored.get("owner"),
+        "members": [m for m in stored.get("members") or [] if isinstance(m, str)],
         "is_persistent": stored.get("is_persistent", True),
         "mas_id": stored.get("mas_id"),
         "workspace_id": stored.get("workspace_id"),

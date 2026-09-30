@@ -29,6 +29,28 @@ A name can't be blank, `.` or `..`, and can't contain slashes, control
 characters or `:session:`. The name is also the room's folder on disk and its
 channel name, so it can't be changed later.
 
+## Private rooms
+
+A private room is a room of your own on a shared hub. It's listed only for you
+and the members you add, so it doesn't crowd other people's room lists, their
+notifications or their search.
+
+```bash
+mycelium room create scratch --private
+```
+
+In the app, tick **Private** when you create a room, or use **Make private** in
+the room's `…` menu. The rooms list shows private rooms in their own group, and
+lets you show just the shared or just the private ones.
+
+The hub needs to know who you are to list a room for you. With sign-in turned
+on, that's who you signed in as. Otherwise it's the name you gave this machine
+(`mycelium iam`) or the app.
+
+Private hides a room; it doesn't lock it. Anyone who knows its name can still
+open it, read it and post in it. Keep secrets out of a hub other people can
+reach.
+
 ## What a room is on disk
 
 Each room is a folder on the hub, at `~/.mycelium/rooms/<room>/`, with these
