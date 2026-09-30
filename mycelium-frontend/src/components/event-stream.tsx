@@ -309,6 +309,20 @@ function nameActivity(
   };
 }
 
+/** Who made one event: a notice's mover, a ping's last writer, a memory's
+ *  last editor. Null when the event says nobody. */
+function actorOf(ev: Event): string | null {
+  const who =
+    ev.type === PING_TYPE
+      ? ev.pingSenders[ev.pingSenders.length - 1]
+      : ev.type === NOTICE_TYPE
+        ? (ev.raw.by as string | undefined)
+        : ev.type === "l9_knowledge"
+          ? (ev.raw.updated_by as string | undefined)
+          : ev.sender;
+  return who || null;
+}
+
 /** Who moved a subject, in the order they first did. A ping's own sender is the
  *  system that raised it, which is nobody, so its writers come off the payload. */
 function actorsOf(members: Event[]): string[] {
@@ -725,11 +739,20 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
           // conversation is the whole of what the room knows about it.
           memoryKey: subject.startsWith("urn:") ? null : subject,
           actors: actorsOf(members),
+          lastActor: actorOf(latest),
           time: latest.time,
           standing: standing ?? null,
+          note: subject.startsWith("urn:") ? null : (rowNames.get(subject)?.note ?? null),
           updates: members.map((member) => {
             const { label, detail } = activityLine(member);
-            return { id: member.id, time: member.time, label, detail };
+            return {
+              id: member.id,
+              time: member.time,
+              at: Date.parse(member.at) || 0,
+              label,
+              detail,
+              subkind: member.type === NOTICE_TYPE ? ((member.raw.subkind as string) || "filed") : null,
+            };
           }),
           at: Date.parse(latest.at) || 0,
         };

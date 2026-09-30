@@ -139,10 +139,11 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     ]);
 
     expect(await screen.findByRole("button", { name: `Show 5 updates to ${TITLE}` })).toBeInTheDocument();
-    expect(screen.getByText("@claude-web, @growth, @risk")).toBeInTheDocument();
+    // The row names who moved it last, the one to ask; everyone is in its history.
+    expect(screen.getByText("@risk")).toBeInTheDocument();
   });
 
-  it("opens a row to the individual updates, each with its own clock", async () => {
+  it("opens a row to the individual updates, each with its own time", async () => {
     // The count is a way in, not a dead end: a row that says "4 updates" and
     // cannot say which four leaves the reader where they started.
     await stream([
@@ -160,10 +161,10 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     const rows = within(rail()).getAllByRole("listitem");
     const opened = rows.map(r => r.textContent);
     expect(opened.join("\n")).toMatch(/New task[\s\S]*Knowledge[\s\S]*Activity[\s\S]*Resolved/);
-    // Each update carries its own clock, so "when" is answerable per line
-    // rather than only for the run as a whole.
-    expect(within(rail()).getAllByText("10:00")).not.toHaveLength(0);
-    expect(within(rail()).getAllByText("10:02")).not.toHaveLength(0);
+    // Each update carries its own time (its age, with the clock on hover), so
+    // "when" is answerable per line rather than only for the run as a whole.
+    expect(within(rail()).getAllByTitle("10:00")).not.toHaveLength(0);
+    expect(within(rail()).getAllByTitle("10:02")).not.toHaveLength(0);
   });
 
   it("keeps every one of those out of the conversation", async () => {
@@ -178,7 +179,9 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     expect(await screen.findByText("so where did we land on the flag?")).toBeInTheDocument();
     expect(screen.queryByText("Knowledge")).not.toBeInTheDocument();
     expect(screen.queryByText("Activity")).not.toBeInTheDocument();
-    expect(screen.queryByText("Claimed")).not.toBeInTheDocument();
+    // The claim is the state the row stands in, said on the rail and only there.
+    expect(screen.getAllByText("Claimed")).toHaveLength(1);
+    expect(within(rail()).getByText("Claimed")).toBeInTheDocument();
   });
 
   it("says a new task in the chat, and keeps the rest of its life on its row", async () => {
@@ -230,16 +233,33 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
   });
 
   it("holds the rail to a fixed height however many tasks are moving", async () => {
-    const keys = ["a", "b", "c", "d", "e"];
+    const keys = ["a", "b", "c", "d", "e", "f"];
     vi.mocked(fetchMemories).mockResolvedValue(keys.map(k => row(`work/${k}`, `task ${k}`, null)));
     await stream(keys.map((k, i) => knowledge(1, "claude-web", i * 100, `work/${k}`)));
 
-    expect(await screen.findByText("5 tasks")).toBeInTheDocument();
-    // Three rows stand open and the rest are behind one control, so a busy hour
-    // costs the same height as a quiet one.
-    expect(within(rail()).getAllByRole("button", { name: /^Open task task / })).toHaveLength(3);
-    await userEvent.click(screen.getByRole("button", { name: "Show all 5" }));
-    expect(within(rail()).getAllByRole("button", { name: /^Open task task / })).toHaveLength(5);
+    expect(await screen.findByText("6 tasks")).toBeInTheDocument();
+    // Four rows stand open and the rest are behind one line that says how
+    // many, so a busy hour costs the same height as a quiet one.
+    expect(within(rail()).getAllByRole("button", { name: /^Open task task / })).toHaveLength(4);
+    expect(within(rail()).getByText("Show 2 more")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Show all 6" }));
+    expect(within(rail()).getAllByRole("button", { name: /^Open task task / })).toHaveLength(6);
+  });
+
+  it("says a blocked task's reason and counts what's live in the header", async () => {
+    vi.mocked(fetchMemories).mockResolvedValue([
+      { ...row(TASK, TITLE, THREAD), meta: { assignment_note: "waiting on the merchant ID" } },
+      row(OTHER_TASK, OTHER_TITLE, null),
+    ]);
+    await stream([
+      notice("claimed", "growth", 0, OTHER_TASK, OTHER_TITLE),
+      notice("blocked", "risk", 400, TASK, TITLE),
+    ]);
+
+    expect(await within(rail()).findByText("waiting on the merchant ID")).toBeInTheDocument();
+    expect(within(rail()).getByText("Blocked")).toBeInTheDocument();
+    expect(within(rail()).getByText(/1 blocked/)).toBeInTheDocument();
+    expect(within(rail()).getByText(/1 claimed/)).toBeInTheDocument();
   });
 
   it("opens the task's own details from its name", async () => {

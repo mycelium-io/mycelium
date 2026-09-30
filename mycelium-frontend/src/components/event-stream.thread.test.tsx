@@ -125,8 +125,9 @@ describe("<EventStream /> and the threads inside the room", () => {
       es.emit(ping("risk", "m-3"));
     });
 
-    expect(await screen.findByText("3 updates")).toBeInTheDocument();
-    expect(screen.getByText("@risk, @growth")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^Show 3 updates to / })).toBeInTheDocument();
+    // Who moved it last is who the row names: the one to ask about it.
+    expect(screen.getByText("@risk")).toBeInTheDocument();
   });
 
   it("opens the thread a ping names, by URN and not by short id", async () => {
@@ -248,6 +249,6 @@ describe("<EventStream /> and the threads inside the room", () => {
 
     // One update, not two: the L9 replay and the message list both carry this
     // frame, and a rail that counted it twice would report a duplicate as work.
-    expect(await screen.findByText("1 update")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^Show 1 update to / })).toBeInTheDocument();
   });
 });
