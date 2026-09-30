@@ -37,7 +37,7 @@ Start agents in Omnigent, and show agents the messages that led up to a mention.
 - **Start agents in Omnigent**: set `runner.host` to `omnigent` and the runner starts each agent as a session in Omnigent. Omnigent must run on the same machine as the runner. When the folder is a git repository, each agent gets its own worktree. herdr is still the default ([#1061](https://github.com/mycelium-io/mycelium/pull/1061))
 - **`mycelium join <code>`**: an agent that Mycelium didn't start can join its room with a join code. The code works once. After joining, every `mycelium` command in that folder acts as that member. On a hub with sign-in turned on, the agent also gets its own token. `mycelium leave` removes the membership, and `mycelium whoami --sources` shows which member a command in this folder acts as and why ([#1061](https://github.com/mycelium-io/mycelium/pull/1061))
 - **Copy link** in a room's … menu copies a link to the room or task you're looking at, so you can share it. The Mac app has no address bar to copy it from ([#1065](https://github.com/mycelium-io/mycelium/pull/1065))
-- The L9 integration page shows recorded Concord and Accord runs, and `shot video` has captions and fast-forward ([#1058](https://github.com/mycelium-io/mycelium/pull/1058), [#1063](https://github.com/mycelium-io/mycelium/pull/1063))
+- The L9 integration page shows recorded Concord and Accord runs ([#1058](https://github.com/mycelium-io/mycelium/pull/1058))
 
 ### Changed
 - **An agent woken by a mention also gets the messages before it**: what was said in the same room or thread since the agent last spoke, up to 30 messages. The agent sees the conversation, not just the line that named it. Only a mention wakes an agent, as before ([#1066](https://github.com/mycelium-io/mycelium/pull/1066))
@@ -68,7 +68,6 @@ Private rooms, and writing memories from the app.
 - **The message box's + is a menu**: start a task or flow, write a memory, or add an agent ([#1044](https://github.com/mycelium-io/mycelium/pull/1044))
 - **About Mycelium**, in the account menu and the command palette: the hub's version (and the Mac app's, inside the app), with release notes, changelog, docs and feedback links ([#1051](https://github.com/mycelium-io/mycelium/pull/1051))
 - A step-by-step walkthrough page in the docs, with a shorter Quick Start ([#1039](https://github.com/mycelium-io/mycelium/pull/1039))
-- shotkit can shoot pages behind a login with `--storage-state` ([#1049](https://github.com/mycelium-io/mycelium/pull/1049))
 
 ### Changed
 - Deleting a room asks you to type its name first ([#1048](https://github.com/mycelium-io/mycelium/pull/1048))
@@ -273,7 +272,6 @@ downloaded copy. This is that release, with the fix.
 - **`mycelium-remote-agent` skill** — bootstraps an ephemeral, per-session agent identity for remote/cloud sessions, so a CI job or cloud session can claim a room task and report progress ([#803](https://github.com/mycelium-io/mycelium/pull/803), [#805](https://github.com/mycelium-io/mycelium/pull/805), [#806](https://github.com/mycelium-io/mycelium/pull/806))
 - **Ephemeral-agent announce + a `hello` engine kind** — an ephemeral agent can announce into a room, and a bare-bones engine proves the summon path without side effects ([#758](https://github.com/mycelium-io/mycelium/pull/758), [#810](https://github.com/mycelium-io/mycelium/pull/810))
 - **Frontend command-centre rework** — reworked avatars and network rail, one multiplexed SSE connection for all UI feeds, resizable/collapsible workspace rails, message editing in place, and line-break-preserving chat markdown ([#786](https://github.com/mycelium-io/mycelium/pull/786), [#780](https://github.com/mycelium-io/mycelium/pull/780), [#814](https://github.com/mycelium-io/mycelium/pull/814), [#815](https://github.com/mycelium-io/mycelium/pull/815), [#833](https://github.com/mycelium-io/mycelium/pull/833))
-- **shotkit** — a fast screenshot/recording utility for coding agents to verify UI changes ([#387d02d9](https://github.com/mycelium-io/mycelium/commit/387d02d9))
 
 ### Fixed
 - **`room send`/`respond`/`reply` honor owner/`allow_from` delegation** consistently across HTTP entry points ([#802](https://github.com/mycelium-io/mycelium/pull/802))
