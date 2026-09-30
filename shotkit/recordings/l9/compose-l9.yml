@@ -1,0 +1,14 @@
+# Layered over compose.yml and compose-dev.yml for the L9 recordings. Its own
+# container names let it run beside your everyday stack, the alias keeps the
+# backend's SLIM address working under the new name, and a longer step timeout
+# gives a slow model reply time to arrive.
+services:
+  slim:
+    container_name: mycelium-l9-slim
+    networks:
+      mycelium:
+        aliases: [mycelium-slim]
+  mycelium-backend:
+    container_name: mycelium-l9-backend
+    environment:
+      CONDUCTOR_STEP_TIMEOUT_S: "240"
