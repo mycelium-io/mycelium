@@ -186,11 +186,12 @@ Prompts can use these placeholders:
 |---|---|
 | `{ask}` | The question from the message that started the flow. |
 | `{task}` | The task's key, such as `work/rotate-signing-key`. |
+| `{title}` | The task's title, such as "Rotate the signing key". Reads better in a prompt than the key. |
 | `{reply}` | The last answer. |
 | `{replies}` | Every member's latest answer, one per line. |
 | `{handles}` | The members taking part. |
 | `{round}`, `{rounds}` | The current round and the total. |
-| `{options}` | Every option suggested so far, as `A. …` lines. |
+| `{options}`, `{option_labels}` | Every option suggested so far, as `A. …` lines, and the marker to rate them all with, such as `A=.. B=..`. |
 | `{new_options}`, `{new_labels}` | The options no one has rated yet, and the marker to rate them with, such as `C=..`. |
 | `{scores}` | The last pick's scorecard. |
 | `{shortfall}` | What the least happy member is short by, such as "You rated option B 38; the bar is 70". |

@@ -914,6 +914,10 @@ steps:
               <td>The task&#x27;s key, such as <code>work/rotate-signing-key</code>.</td>
             </tr>
             <tr>
+              <td><code>{title}</code></td>
+              <td>The task&#x27;s title, such as &quot;Rotate the signing key&quot;. Reads better in a prompt than the key.</td>
+            </tr>
+            <tr>
               <td><code>{reply}</code></td>
               <td>The last answer.</td>
             </tr>
@@ -930,8 +934,8 @@ steps:
               <td>The current round and the total.</td>
             </tr>
             <tr>
-              <td><code>{options}</code></td>
-              <td>Every option suggested so far, as <code>A. …</code> lines.</td>
+              <td><code>{options}</code>, <code>{option_labels}</code></td>
+              <td>Every option suggested so far, as <code>A. …</code> lines, and the marker to rate them all with, such as <code>A=.. B=..</code>.</td>
             </tr>
             <tr>
               <td><code>{new_options}</code>, <code>{new_labels}</code></td>
