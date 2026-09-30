@@ -171,6 +171,125 @@ async def test_a_served_turn_says_the_handle_is_responding(wired):
     assert len(log.records) == 1  # nothing was written to the transcript
 
 
+def _said(
+    message_id: str,
+    text: str,
+    *,
+    sender: str = "julia",
+    to: list[str] | None = None,
+    thread: str = "live",
+    payload_type: str = "message",
+):
+    """A message said in the room (or ``thread``), addressed to ``to`` if given."""
+    env = l9.build_envelope(
+        kind=Kind.exchange,
+        episode=l9.episode_urn("r", thread),
+        sender=sender,
+        sender_role="human",
+        recipients=to or [],
+        topic=l9.topic_urn("r"),
+        message_id=message_id,
+        payload_type=payload_type,
+    )
+    return persister.record_from(env, serialize_content(env, extra={"content": text}))
+
+
+def _add(log: persister.DeliveryLog, record) -> None:
+    """Record as the send path does: a mention names its handle as a recipient,
+    which is what anchors a fresh handle's cursor at it."""
+    text = record.content.get("content") or ""
+    mentioned = ["agent"] if "@agent" in text else []
+    log.record(record, delivered_to=set(), recipients=mentioned)
+
+
+def _log(*records) -> persister.DeliveryLog:
+    log = persister.DeliveryLog()
+    for record in records:
+        _add(log, record)
+    return log
+
+
+@pytest.mark.asyncio
+async def test_a_turn_comes_with_what_was_said_before_the_mention(wired):
+    """The report: an agent woken by "@agent foo bar" also sees the three
+    messages that led up to it, oldest first, though none of them woke it."""
+    wired(
+        _log(
+            _said("m1", "I guess we could ship Friday"),
+            _said("m2", "Maybe not, the migration isn't tested"),
+            _said("m3", "That's the real risk"),
+            _said("m4", "@agent foo bar"),
+        )
+    )
+    result = await participate.await_message("r", _REQUEST, handle="agent", timeout=0)
+    assert result["message_id"] == "m4"
+    assert result["prompt"] == "@agent foo bar"
+    assert [e["text"] for e in result["earlier"]] == [
+        "I guess we could ship Friday",
+        "Maybe not, the migration isn't tested",
+        "That's the real risk",
+    ]
+    assert result["earlier"][0]["sender"] == "julia"
+
+
+@pytest.mark.asyncio
+async def test_earlier_starts_after_the_agents_own_last_message(wired):
+    """What the agent already took part in isn't handed back to it."""
+    wired(
+        _log(
+            _said("m1", "old news"),
+            _said("m2", "my last reply", sender="agent"),
+            _said("m3", "new since then"),
+            _said("m4", "@agent and?"),
+        )
+    )
+    result = await participate.await_message("r", _REQUEST, handle="agent", timeout=0)
+    assert [e["text"] for e in result["earlier"]] == ["new since then"]
+
+
+@pytest.mark.asyncio
+async def test_earlier_is_what_was_said_in_the_same_place(wired):
+    """A mention in the room brings the room's messages, not a thread's."""
+    wired(
+        _log(
+            _said("m1", "in the room"),
+            _said("m2", "in a task's thread", thread="task-1"),
+            _said("m3", "@agent over here"),
+        )
+    )
+    result = await participate.await_message("r", _REQUEST, handle="agent", timeout=0)
+    assert [e["text"] for e in result["earlier"]] == ["in the room"]
+
+
+@pytest.mark.asyncio
+async def test_earlier_survives_awaiting_in_short_loops(wired):
+    """An agent awaiting with a short timeout consumes the chatter on each empty
+    poll; the turn that finally comes still carries it."""
+    log = _log(_said("m1", "first thought"), _said("m2", "second thought"))
+    wired(log)
+    empty = await participate.await_message("r", _REQUEST, handle="agent", timeout=1)
+    assert empty["message"] is None
+
+    _add(log, _said("m3", "@agent your call"))
+    result = await participate.await_message("r", _REQUEST, handle="agent", timeout=0)
+    assert result["message_id"] == "m3"
+    assert [e["text"] for e in result["earlier"]] == ["first thought", "second thought"]
+
+
+@pytest.mark.asyncio
+async def test_earlier_carries_only_what_was_said(wired):
+    """A ping or a notice is a nudge, not something said; it isn't handed over."""
+    wired(
+        _log(
+            _said("m1", "a real message"),
+            _said("m2", "", payload_type=l9.PING_PAYLOAD_TYPE),
+            _said("m3", "@agent see above"),
+        )
+    )
+    result = await participate.await_message("r", _REQUEST, handle="agent", timeout=0)
+    assert [e["text"] for e in result["earlier"]] == ["a real message"]
+
+
 @pytest.mark.asyncio
 async def test_an_empty_poll_says_nothing(wired):
     """No turn, no signal: a handle polling an idle room is not responding."""

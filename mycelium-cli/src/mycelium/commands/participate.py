@@ -168,6 +168,20 @@ def _sender_label(turn: dict) -> str:
     return f"{name} (@{sender})" if name else sender
 
 
+def _print_turn(turn: dict, handle: str) -> None:
+    """A turn as a person or an agent reads it: what was said before it, then it."""
+    earlier = [e for e in turn.get("earlier") or [] if isinstance(e, dict)]
+    if earlier:
+        typer.secho("  ⟫  earlier here:", fg=typer.colors.BRIGHT_BLACK)
+        for e in earlier:
+            sender = str(e.get("sender") or "?")
+            name = name_of(sender) if sender != "?" else None
+            who = f"{name} (@{sender})" if name else sender
+            typer.echo(f"  {who}: {e.get('text') or ''}")
+    typer.secho(f"  ⟫  {_sender_label(turn)} → @{handle}:", fg=typer.colors.CYAN)
+    typer.echo(turn.get("prompt") or "")
+
+
 def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:
     """Hand a turn to the resident runtime: run ``exec_cmd`` with the turn on stdin.
 
@@ -301,8 +315,7 @@ def await_room(
         if json_output:
             typer.echo(json_module.dumps(data))
         else:
-            typer.secho(f"  ⟫  {_sender_label(data)} → @{handle}:", fg=typer.colors.CYAN)
-            typer.echo(data.get("prompt") or "")
+            _print_turn(data, handle)
     except typer.Exit:
         raise
     except KeyboardInterrupt:
@@ -376,8 +389,7 @@ def _await_loop(
             if json_output:
                 typer.echo(json_module.dumps(data))
             else:
-                typer.secho(f"  ⟫  {_sender_label(data)} → @{handle}:", fg=typer.colors.CYAN)
-                typer.echo(data.get("prompt") or "")
+                _print_turn(data, handle)
             if exec_cmd:
                 _run_exec(exec_cmd, data, room_name, handle)
         except KeyboardInterrupt:
