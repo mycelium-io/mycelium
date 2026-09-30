@@ -443,6 +443,41 @@ await (async () => {
     assert.equal(pump.truncated, true);
   });
 
+  await atest("a sped-up stretch writes one frame per n beats", async () => {
+    const real = fakeEncoder();
+    const pump = startPump({ source: heldSource(), fps: 50, maxFrames: 1000, encoder: () => real });
+    await wait(300);
+    const { frames: atOne } = await pump.stop();
+
+    const fast = fakeEncoder();
+    const lapse = startPump({ source: heldSource(), fps: 50, maxFrames: 1000, encoder: () => fast });
+    lapse.setSpeed(4);
+    await wait(300);
+    const { frames: atFour } = await lapse.stop();
+    // The same stretch, a quarter of the frames: it plays four times faster.
+    assert.ok(atFour <= Math.ceil(atOne / 4) + 1, `4x wrote ${atFour} of ${atOne}`);
+    assert.ok(atFour >= 2, `4x still writes frames, got ${atFour}`);
+  });
+
+  await atest("the cap counts the video, and reaching it ends the take", async () => {
+    const enc = fakeEncoder();
+    const pump = startPump({ source: heldSource(), fps: 50, maxFrames: 3, encoder: () => enc });
+    pump.setSpeed(2);
+    const why = await Promise.race([pump.trouble, wait(2000).then(() => "timeout")]);
+    assert.equal(why, "over");
+    await pump.stop();
+    assert.equal(pump.truncated, true);
+  });
+
+  test("speed is clamped between real time and the top speed", () => {
+    const pump = startPump({ source: heldSource(), fps: 50, maxFrames: 10, encoder: () => fakeEncoder() });
+    pump.setSpeed(0.2);
+    assert.equal(pump.speed, 1);
+    pump.setSpeed(1000);
+    assert.equal(pump.speed, 16);
+    void pump.abort();
+  });
+
   await atest("a beat that fails raises at the end rather than on the timer", async () => {
     // Thrown from a setTimeout callback this would be an uncaught exception in
     // whatever process is hosting the daemon.

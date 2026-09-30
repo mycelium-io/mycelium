@@ -160,12 +160,23 @@ second script format. What changes is how each verb is performed:
 | **The camera pushes in.** | `zoom:<sel>` frames an element; `--auto-zoom` does it for every click and pulls back after. It is a transform on the page, so the type is re-rasterized sharper, not scaled up. |
 | **Typing is typed.** | `fill:` clicks the field and enters the text a character at a time. |
 
-Two extra verbs, ignored outside a recording, so one action list can serve both
-a take and the stills pulled from the same flow:
+A few extra verbs, ignored outside a recording, so one action list can serve
+both a take and the stills pulled from the same flow:
 
 ```
 zoom:<sel>  zoom:<sel>@2.2  zoom:2  zoomout   hold:<ms>
+caption:<text>   caption:   speed:<n>
 ```
+
+**Captions.** `caption:<text>` puts a line of text over the take and cross-fades
+to the next one; an empty `caption:` clears it. It sits at the bottom, or at the
+top with `--caption-at top` when the bottom is where the flow types.
+
+**Fast-forward.** `speed:<n>` plays what follows at n times (up to 16) by keeping
+one frame in n, and `speed:1` returns to real time. It is for waits on something
+live, like a model answering: `speed:5` before a `wait:` and `speed:1` after it
+turns a two-minute wait into a watchable half-minute. `--max-seconds` counts the
+clip, not the wall clock, so a fast-forwarded stretch can run longer than it.
 
 The camera crops into the frame as it stands, so it never asks the page for
 content it has not painted; a push-in near an edge slides back inside instead of

@@ -99,10 +99,15 @@ const splitPair = (arg) => {
  * @property {(arg:string, o?:any) => Promise<any>} zoom push in
  * @property {() => Promise<any>} zoomOut pull back to 1x
  * @property {(ms?:number) => Promise<void>} dwell a beat, so the result reads
+ * @property {(text:string) => Promise<void>} caption a lower-third caption
+ * @property {(n:number) => void} speed time-lapse what follows
  */
 
-/** Verbs that are already a wait; a recording must not pad them further. */
-const SELF_PACED = new Set(["sleep", "hold", "wait", "wait-hidden", "wait-text", "wait-url"]);
+/** Verbs that are already a wait, or take no screen time, so a recording must
+ *  not pad them with a beat. */
+const SELF_PACED = new Set([
+  "sleep", "hold", "wait", "wait-hidden", "wait-text", "wait-url", "caption", "speed",
+]);
 
 /**
  * @param {import("playwright").Page} page
@@ -214,6 +219,17 @@ export async function runActions(page, actions, ctx = {}) {
       case "zoomout":
         await cursor?.zoomOut();
         break;
+      case "caption":
+        // `caption:<text>` puts words on screen for what follows; `caption:`
+        // takes them down. A recording's business, like the camera.
+        await cursor?.caption(arg.trim());
+        break;
+      case "speed": {
+        const n = Number(arg);
+        if (!Number.isFinite(n) || n < 1) throw new Error(`speed wants a factor of 1 or more, got "${arg}"`);
+        cursor?.speed(n);
+        break;
+      }
       case "eval":
         await page.evaluate(arg);
         break;
@@ -250,6 +266,8 @@ export const ACTION_HELP = `
   Recording only (\`shot video\`), and ignored elsewhere:
   zoom:<sel>           push in on it        zoom:2             push in on the cursor
   zoom:<sel>@2.2       both                 zoomout            pull back out
+  caption:<text>       lower-third caption  caption:           take it down
+  speed:<n>            time-lapse from here speed:1            real time again
 
   Selectors take any Playwright engine: text=Save, role=button[name="Save"],
   #id, .class, //xpath. Anything without CSS punctuation is matched by

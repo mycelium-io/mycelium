@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>L9 Integration (internal) · mycelium</title>
-<meta name="description" content="Internal reference: how mycelium rides the IOC L9 protocol over SLIM. The backend synthesizes reply envelopes, computes the epistemic quality layer, and records episodes.">
+<meta name="description" content="Internal reference: how mycelium rides the IOC L9 protocol over SLIM. Two ways a room reaches agreement (the aligner, and the Accord and Concord flows), the envelopes each one emits, and where the numbers come from.">
 <meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="mycelium.css">
@@ -42,6 +42,7 @@
   table.l9 th, table.l9 td { border: 1px solid var(--border); padding: 7px 10px; text-align: left; vertical-align: top; }
   table.l9 th { background: var(--surface); font-weight: 600; }
   table.l9 code { white-space: nowrap; }
+  table.l9 td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .pill {
     display: inline-block; padding: 1px 7px; border-radius: 999px;
     font-size: var(--text-micro); border: 1px solid var(--border);
@@ -60,6 +61,15 @@
     padding: 20px 16px;
   }
   .mermaid svg { max-width: 100%; height: auto; }
+  .take { margin: 22px 0 8px; }
+  .take video {
+    display: block; width: 100%; height: auto;
+    border: 1px solid var(--border); border-radius: var(--radius-lg);
+    background: #0b0d10;
+  }
+  .take figcaption {
+    margin-top: 8px; font-size: var(--text-label); color: var(--muted-foreground);
+  }
 </style>
 <script type="module">
   import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
@@ -96,9 +106,13 @@
     <div class="nav-section">
       <div class="nav-section-label">L9 Integration</div>
       <a href="#model" class="nav-link sub">The model</a>
+      <a href="#watch" class="nav-link sub">Watch one run</a>
+      <a href="#concord" class="nav-link sub">Concord</a>
+      <a href="#accord" class="nav-link sub">Accord</a>
+      <a href="#two-ways" class="nav-link sub">Aligner or Concord</a>
       <a href="#components" class="nav-link sub">Component map</a>
       <a href="#responsibility" class="nav-link sub">Who computes what</a>
-      <a href="#flow" class="nav-link sub">Envelope flow</a>
+      <a href="#flow" class="nav-link sub">Aligner envelope flow</a>
       <a href="#commands" class="nav-link sub">Command → payload</a>
       <a href="#mycelium-adds" class="nav-link sub">The epistemic layer</a>
       <a href="#self-reported" class="nav-link sub">Where the numbers come from</a>
@@ -111,8 +125,8 @@
     <section class="doc-section" id="model">
       <div class="ghost-banner">
         <strong>INTERNAL / UNLINKED.</strong> This page is not in the docs nav; it exists to be
-        shared by URL. It documents how mycelium rides the IOC L9 protocol over SLIM and where the
-        epistemic numbers come from.
+        shared by URL. It documents how mycelium rides the IOC L9 protocol over SLIM, the two ways a
+        room reaches agreement, and where the numbers come from.
       </div>
 
       <h1>How mycelium integrates L9</h1>
@@ -126,14 +140,188 @@
       <ul>
         <li><strong>ioc-protocols-models</strong>: the L9 spec plus the generated language bindings. The <em>grammar</em>. Mycelium vendors the python binding as <code>l9_models.py</code>.</li>
         <li><strong>AGNTCY SLIM</strong>: the transport, one MLS-encrypted group channel per room. L9 envelopes ride SLIM as additive JSON. The <em>wire</em>.</li>
-        <li><strong>the aligner</strong>: the first-party mediator (NEGMAS Stacked Alternating Offers, with a persistent Pi coding-agent brain) registered in each room. It drives negotiation and emits the <code>exchange</code> and <code>commit</code> envelopes. The <em>compute</em>.</li>
-        <li><strong>mycelium backend</strong>: the room's moderator. It <em>synthesizes</em> every L9 envelope from the parsed agent replies and computes the epistemic quality layer. Agents never speak L9 themselves.</li>
+        <li><strong>the aligner</strong>: a first-party mediator (NEGMAS Stacked Alternating Offers, with a persistent Pi session as its brain). It negotiates issue by issue and emits <code>exchange</code> and <code>commit</code> envelopes.</li>
+        <li><strong>the conductor</strong>: a first-party engine with no model of its own that walks a flow inside a task's thread. Two of its built-in flows are cut-down versions of L9's own protocols: <strong>Concord</strong> (help members agree) and <strong>Accord</strong> (get on the same page before work starts).</li>
+        <li><strong>mycelium backend</strong>: the room's moderator. It synthesizes the envelopes from the parsed replies, records every episode, and computes the numbers. Agents never speak L9 themselves.</li>
       </ul>
       <p>
         The load-bearing fact: <strong>mycelium&#x27;s L9 envelopes are additive and never required of agents.</strong>
-        A negotiation runs identically with or without them; agents post plain-prose positions with
-        <code>mycelium respond</code>, and the backend synthesizes the envelope. The epistemic reply
-        fields are all optional.
+        Agents post plain prose, optionally ending with one marker
+        (<code>[[mycelium: confidence=0.8 stance=accept]]</code>, or <code>[[mycelium: A=82 B=41]]</code>
+        when a flow asks for ratings), and the backend lifts that onto the envelope it synthesizes.
+      </p>
+      <p>
+        Both ways to agree run <em>inside a task</em>. A task is a board row and a thread; an
+        agreement is one episode nested in that thread, recorded at
+        <code>log/episodes/{id}.md</code>. When it converges, the follow-up work lands on the board
+        as sub-tasks of the task it ran in.
+      </p>
+    </section>
+
+    <section class="doc-section" id="watch">
+      <h1>Watch one run</h1>
+      <p>
+        A live Concord run in the app, unedited apart from fast-forwarding the waits. Four persona
+        teammates (customer success, finance, sales, legal) share one task and disagree about
+        Acme&#x27;s renewal offer. One message starts the flow; the conductor asks, code picks, and the
+        agreement files its follow-up work on the board.
+      </p>
+      <figure class="take">
+        <video src="l9-concord.mp4" poster="l9-concord-poster.jpg" controls playsinline muted preload="metadata"></video>
+        <figcaption>Recorded with <code>shot video</code> against a local stack. The personas run on <code>anthropic/claude-haiku-4-5</code>; waits for model replies play at 4 to 5x.</figcaption>
+      </figure>
+      <p>What happened in this run, from its record:</p>
+      <table class="l9">
+        <thead><tr><th>Step</th><th>What the room saw</th></tr></thead>
+        <tbody>
+          <tr><td>propose, score</td><td>Four options, A to D, one per member, and everyone&#x27;s ratings. The pick is finance&#x27;s B (list price with escalation, or at most 10% off for five years); legal rated it 50.</td></tr>
+          <tr><td>repair, rescore</td><td>Legal, least happy, revises B into E: the same pricing, plus liability capped at 12 months of fees and no uncapped indemnity. E is the new pick; customer success rates it 68.</td></tr>
+          <tr><td>repair, rescore</td><td>Customer success revises E into F, adding dedicated support and quarterly reviews. Everyone rates F 75 or more.</td></tr>
+          <tr><td>close</td><td>Converged on F after six steps. The compiler files eight sub-tasks under the task (draft the proposal, the liability cap language, the indemnity clause, and so on).</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="doc-section" id="concord">
+      <h1>Concord: help members agree</h1>
+      <p>
+        L9&#x27;s Concord, cut down to what a room needs to settle one decision. Everyone suggests one
+        option, everyone rates every option, and <strong>code</strong> picks. A model is in each node
+        (a member writing an option or a rating); the edges are code.
+      </p>
+      <pre><code>mycelium board coordinate work/acme-renewal-offer conductor \
+  "concord @success @finance @sales @legal: Decide the renewal offer for Acme."</code></pre>
+      <p>or, in the task&#x27;s thread in the app: <code>@conductor concord @success @finance @sales @legal: …</code></p>
+
+      <pre class="mermaid">
+flowchart LR
+    propose["propose<br/>everyone suggests one option"] --> score["score<br/>everyone rates every option 0-100"]
+    score --> pick{"pick<br/>(code, no model)"}
+    pick -- feasible --> agreed(["converged"])
+    pick -- infeasible --> repair["repair<br/>the least happy member suggests a fix"]
+    repair --> rescore["rescore<br/>everyone rates the fix"]
+    rescore --> pick
+    pick -- stuck --> no_deal(["rejected"])
+      </pre>
+
+      <h2>The pick</h2>
+      <ul>
+        <li><strong>Leximin.</strong> Each option&#x27;s ratings are sorted lowest first and compared option against option; the larger vector wins, ties go to the earlier letter. The pick is the option the least happy member likes best, so nobody gets steamrolled.</li>
+        <li><strong>Feasible</strong> when every member rated the pick at or above the bar (70 by default).</li>
+        <li><strong>Infeasible</strong> when someone rated it below. The lowest rater is asked for a fix: a revision of the pick, with every option and every rating in front of them. The fix goes on the table as a new letter and everyone rates it.</li>
+        <li><strong>Stuck</strong> when the pick fails only because ratings are missing, or after two fixes. A missing rating counts as 0 for ranking, so an option never wins because the people who dislike it went quiet; it is never guessed from prose.</li>
+      </ul>
+      <p>
+        A reply without readable ratings is asked once more, with the options restated, and only
+        the members who lack them hold the floor for that re-ask. After each rating round the thread
+        shows a scorecard: every option, every rating, and who is under the bar.
+      </p>
+
+      <h2>On the wire</h2>
+      <p>A rating rides the same marker as a stance, one capital letter per option:</p>
+      <pre><code>mycelium respond --handle finance --room acme \
+  "A gives away margin. B holds it. [[mycelium: A=8 B=82]]"
+// lifted onto the reply payload, stripped from the prose:
+{"scores": {"A": 8, "B": 82}}</code></pre>
+      <p>
+        The run&#x27;s own episode is nested in the task&#x27;s thread (its record names it as
+        <code>within</code>). Every conductor post is an <code>exchange</code> carrying a structured
+        line under <code>conductor</code> (<code>open</code>, <code>turn</code>, <code>select</code>,
+        <code>edge</code>, <code>close</code>), which is what the app draws the scorecard and the flow
+        graph from. The run ends with one <code>commit</code>:
+      </p>
+      <pre><code>// commit:converged from the run in the video (abridged):
+{
+  "header": {"kind": "commit", "subkind": "converged",
+    "participants": {"actors": [{"id": "conductor", "role": "coordinator"},
+                                {"id": "success", "role": "agent"}, …]},
+    "message": {"episode": "urn:ioc:mycelium:episode:acme-renewal-q4:b42ca429",
+                "parents": []}},
+  "payload": {"type": "outcome", "data": {
+    "protocol": "concord", "steps": 6, "reason": "reached `agreed`",
+    "record": "log/episodes/7b464c6c",
+    "select": {"outcome": "feasible", "pick": "F", "threshold": 70, "lowest": 75,
+               "ratings": {"success": 75, "finance": 99, "sales": 90, "legal": 78},
+               "options": [ …A to F, with authors… ], "table": { …every rating… }},
+    "metrics": {"satisfaction": {"success": 0.75, "finance": 0.99, "sales": 0.9, "legal": 0.78},
+                "min_satisfaction": 0.75},
+    "assignments": {"decision": "Renew Acme at current list pricing with 3% annual
+      escalation over a 3-year term, or a maximum 10% discount for a 5-year
+      commitment, with liability capped at 12 months of fees, no uncapped
+      indemnity, and dedicated support with quarterly business reviews. …"},
+    "within": "work/acme-renewal-offer"
+  }}
+}</code></pre>
+      <p>
+        <code>commit:converged</code> is the compile trigger: the decision goes to the task
+        compiler, which files follow-up work as <code>work/</code> rows with a <code>part-of</code>
+        relation to <code>within</code> (filed loose if that task is gone). A run that doesn&#x27;t
+        get there commits <code>rejected</code> with its best pick and who was short, and files
+        nothing.
+      </p>
+    </section>
+
+    <section class="doc-section" id="accord">
+      <h1>Accord: get on the same page</h1>
+      <p>
+        L9&#x27;s Accord, cut down: before work starts, agree what the task is, what&#x27;s out of
+        scope, what done means, and what the key words mean. The first member named is the lead.
+      </p>
+      <pre><code>mycelium board coordinate work/acme-renewal-handoff conductor \
+  "accord @success @finance @sales @legal: Plan the Acme renewal handoff."</code></pre>
+
+      <pre class="mermaid">
+flowchart LR
+    frame["frame<br/>everyone: objective, out of scope,<br/>done when, key words"] --> merge["merge<br/>the lead writes one shared summary"]
+    merge --> lock{"lock<br/>everyone: stance"}
+    lock -- accept --> locked(["resolved"])
+    lock -- "reject / silent" --> merge
+    merge -- silent --> no_summary(["rejected"])
+      </pre>
+      <ul>
+        <li><strong>Lock</strong> requires a stance. An unmarked reply is asked once more; still unmarked, it counts as a reject, since a written objection is never read as consent. Only real silence is no objection, and the close names whose silence it was.</li>
+        <li><strong>A silent lead</strong> ends the run <code>rejected</code>: with no summary there is nothing to lock.</li>
+        <li><strong>Accord commits <code>resolved</code></strong>, not <code>converged</code>. The shared summary is in the thread; nothing compiles into rows.</li>
+      </ul>
+    </section>
+
+    <section class="doc-section" id="two-ways">
+      <h1>Aligner or Concord</h1>
+      <p>
+        Both settle a disagreement inside a task and both commit an L9 episode. They differ in what
+        decides.
+      </p>
+      <table class="l9">
+        <thead><tr><th></th><th>the aligner</th><th>Concord</th></tr></thead>
+        <tbody>
+          <tr><td>Shape of the answer</td><td>An <code>{issue: value}</code> map over issues it discovers from the positions</td><td>One option, in the members&#x27; own words</td></tr>
+          <tr><td>Who moves</td><td>NEGMAS Stacked Alternating Offers; the Pi session interprets each reply into an offer</td><td>The members suggest and rate; code picks by leximin</td></tr>
+          <tr><td>Agreement means</td><td>Unanimity in the mechanism, then MPC (mean confidence) at or above 0.6</td><td>Every member rates the pick at or above the bar (70)</td></tr>
+          <tr><td>Model in the loop</td><td>Yes, between every round</td><td>No; only in the members&#x27; replies</td></tr>
+          <tr><td>Commit</td><td><code>converged</code> with <code>assignments</code> = the map, MPC/GAR/SCR</td><td><code>converged</code> with <code>assignments.decision</code>, per-member satisfaction</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Measured</h2>
+      <p>
+        Five runs each on the same task and the same four personas, on a local install, personas on
+        <code>claude-haiku-4-5</code> (September 2026). The aligner was summoned after every member
+        had stated a position, which is how it finds issues.
+      </p>
+      <table class="l9">
+        <thead><tr><th></th><th>the aligner</th><th>Concord</th></tr></thead>
+        <tbody>
+          <tr><td>Reached agreement</td><td class="num">5 / 5</td><td class="num">5 / 5</td></tr>
+          <tr><td>Median wall time</td><td class="num">156 s</td><td class="num">60 s</td></tr>
+          <tr><td>Messages in the room</td><td class="num">26 to 36</td><td class="num">42 to 53</td></tr>
+        </tbody>
+      </table>
+      <p>
+        Two honest readings. In those five runs Concord&#x27;s agreements landed right at the bar (a
+        least-happy member at 70), so "agreed" means everyone can live with it, not that anyone is delighted. And a fix is
+        only as good as the fixer: a member who resubmits an existing option word for word adds
+        nothing to the table, which spends a repair; a run that does it twice ends
+        <code>rejected</code>.
       </p>
     </section>
 
@@ -149,18 +337,23 @@
           </tr>
           <tr>
             <td><strong>SLIM</strong> (AGNTCY)</td>
-            <td>Transport. One MLS-encrypted group channel per room carries the L9 envelopes as additive JSON. No routing fabric between mycelium and a remote engine, because the aligner is in-process.</td>
+            <td>Transport. One MLS-encrypted group channel per room carries the L9 envelopes as additive JSON. No routing fabric between mycelium and a remote engine, because the engines are in-process.</td>
             <td>The SLIM node stood up by the backend / hub. Coordination messages ride it; agents reach it via <code>mycelium await</code> / <code>respond</code>.</td>
           </tr>
           <tr>
             <td><strong>the aligner</strong></td>
-            <td>The negotiation engine: NEGMAS Stacked Alternating Offers with a persistent Pi coding-agent brain. Emits the <code>exchange</code> ticks and the <code>commit</code> at convergence.</td>
-            <td>First-party, registered in the room and summoned by <code>@</code>-mention. Its subkind vocabulary lives in <code>app/services/l9.py:VALID_SUBKINDS</code>.</td>
+            <td>Negotiation engine: NEGMAS Stacked Alternating Offers with a persistent Pi session. Emits the <code>exchange</code> ticks and the <code>commit</code> at the end.</td>
+            <td><code>app/services/aligner.py</code>, <code>mediator.py</code>, <code>offer_snap.py</code>. Registered in the room and summoned by <code>@</code>-mention.</td>
+          </tr>
+          <tr>
+            <td><strong>the conductor</strong></td>
+            <td>Flow engine: walks a protocol graph in a task&#x27;s thread, holds the thread&#x27;s floor for whoever each step asks, and commits the outcome. Runs Concord and Accord.</td>
+            <td><code>app/services/conductor.py</code> (the walk), <code>protocols.py</code> (the flows), <code>select.py</code> (the pick), <code>markers.py</code> (stance and ratings).</td>
           </tr>
           <tr>
             <td><strong>mycelium backend</strong></td>
-            <td>Moderator + envelope synthesizer. Parses agent replies, synthesizes the L9 envelopes, tracks episodes, and computes the epistemic quality metrics.</td>
-            <td><code>app/services/l9.py</code> (envelopes) &middot; <code>l9_episode.py</code> (episodes + metrics).</td>
+            <td>Moderator + envelope synthesizer. Parses replies, synthesizes the L9 envelopes, tracks episodes, computes the numbers, and compiles a converged commit into rows.</td>
+            <td><code>app/services/l9.py</code> (envelopes, <code>VALID_SUBKINDS</code>) &middot; <code>l9_episode.py</code> (episodes + metrics) &middot; <code>task_compiler.py</code>, <code>task_sync.py</code> (rows).</td>
           </tr>
         </tbody>
       </table>
@@ -168,36 +361,41 @@
 
     <section class="doc-section" id="responsibility">
       <h1>Who computes what</h1>
-      <p>The single most useful thing to internalize: mycelium computes the epistemic quality metrics itself, from the optional fields agents volunteer.</p>
+      <p>The single most useful thing to internalize: mycelium computes every number itself, from what agents put in their markers.</p>
       <table class="l9">
         <thead><tr><th>Layer</th><th>Owns</th><th>Does not do</th></tr></thead>
         <tbody>
           <tr>
             <td><span class="pill cfn">SLIM</span> transport</td>
             <td>Delivery of the L9 envelopes over one MLS-encrypted group channel per room. That&#x27;s it.</td>
-            <td>No belief model, no MPC/GAR/SCR, no grounding, no ToM. It moves bytes.</td>
+            <td>No belief model, no metrics, no grounding, no ToM. It moves bytes.</td>
           </tr>
           <tr>
-            <td><span class="pill cfn">aligner</span> NEGMAS + Pi</td>
-            <td>The agreement itself: discovers the issues, runs Stacked Alternating Offers, brokers each round, owns termination (stops on agreement).</td>
-            <td>The aligner produces the converged <code>{issue: value}</code> map, not the epistemic convergence metrics.</td>
+            <td><span class="pill ours">aligner</span> NEGMAS + Pi</td>
+            <td>Discovers the issues, runs Stacked Alternating Offers, brokers each round, owns termination (stops on agreement).</td>
+            <td>Produces the <code>{issue: value}</code> map, not the quality metrics.</td>
+          </tr>
+          <tr>
+            <td><span class="pill ours">conductor</span> code</td>
+            <td>Concord&#x27;s pick (leximin over the ratings, the bar, who fixes, when to stop) and Accord&#x27;s lock. Every edge is code.</td>
+            <td>Never writes an option, a rating or a summary; those come from the members.</td>
           </tr>
           <tr>
             <td><span class="pill ours">mycelium</span></td>
-            <td><strong>All of the L9 epistemic quality layer:</strong> MPC, genuine GAR, genuine SCR, provenance_weight; contingency/grounding; <code>revision_cause</code> derivation; episode records (<code>log/episodes/*.md</code>); the local <code>team_prior</code> writeback loop.</td>
+            <td>The quality layer: MPC, GAR, SCR, provenance_weight for the aligner; per-member satisfaction for Concord; episode records (<code>log/episodes/*.md</code>); compiling a converged commit into board rows.</td>
             <td></td>
           </tr>
           <tr>
             <td><span class="pill gap">deferred</span></td>
-            <td colspan="2">Theory-of-Mind / drift detection from a <em>real</em> belief model, inferring compliance from behavior across the trace rather than trusting a declared <code>revision_cause</code>. Deliberately not built here; consumed from the upstream Drift Detection CE once released.</td>
+            <td colspan="2">Theory-of-Mind / drift detection from a <em>real</em> belief model, inferring compliance from behavior across the trace rather than trusting what an agent declares. Deliberately not built here; consumed from the upstream Drift Detection CE once released.</td>
           </tr>
         </tbody>
       </table>
     </section>
 
     <section class="doc-section" id="flow">
-      <h1>Envelope flow</h1>
-      <p>Every negotiation is one L9 <strong>episode</strong>, keyed by <code>urn:ioc:mycelium:episode:{room}:{episode_short_id}</code>. Each round loops between the agent, the backend, and the aligner over the room&#x27;s SLIM channel:</p>
+      <h1>Aligner envelope flow</h1>
+      <p>Every aligner negotiation is one L9 <strong>episode</strong>, keyed by <code>urn:ioc:mycelium:episode:{room}:{episode_short_id}</code>. Each round loops between the agent, the backend, and the aligner over the room&#x27;s SLIM channel:</p>
 
       <pre class="mermaid">
 sequenceDiagram
@@ -206,39 +404,42 @@ sequenceDiagram
     participant MY as mycelium backend
     participant AL as the aligner (NEGMAS + Pi)
 
-    AG->>MY: mycelium respond (opening position)
+    AG->>MY: positions in the task's thread
     Note over MY: @-mention summons the aligner<br/>open L9 episode (intent:mission)
     MY->>AL: positions
     Note over AL: discover issues · start SAO
 
     loop each round · NEGMAS owns termination
         AL->>MY: offer for one agent
-        MY->>AG: tick (L9 exchange) + team_prior<br/>@-addressed over SLIM
+        MY->>AG: tick (L9 exchange)<br/>@-addressed over SLIM
         Note over AG: mycelium await → decide
-        AG->>MY: mycelium respond: accept / reject / counter<br/>+ confidence, evidence, revision_cause
-        Note over MY: synthesize reply envelope (exchange)<br/>fold epistemic fields into episode
+        AG->>MY: mycelium respond: prose<br/>+ [[mycelium: confidence stance]]
+        Note over MY: synthesize reply envelope (exchange)<br/>fold the marker into the episode
         MY->>AL: parsed reply
         Note over AL: interpret → next offer OR agreement
     end
 
-    Note over MY: compute MPC / GAR / SCR / provenance_weight<br/>commit:converged envelope · write l9/rule_update<br/>compile plan/tasks.md
-    MY->>AG: consensus (L9 commit) + metrics, plan_file
+    Note over MY: compute MPC / GAR / SCR / provenance_weight<br/>commit:converged envelope<br/>compile follow-up work into rows
+    MY->>AG: consensus (L9 commit) + metrics
       </pre>
 
       <p>The same episode as <strong>causal nesting</strong> (which envelope parents which):</p>
       <pre><code>intent:mission          episode opens (opening positions)
   └─ exchange (tick)    aligner → agent: the offer + can_counter_offer
-       └─ exchange (reply)   agent → server: accept/reject/counter + epistemic fields
+       └─ exchange (reply)   agent → server: accept/reject/counter + marker fields
             └─ ...             one tick/reply pair per agent per round
   └─ commit:converged   agreement   (or commit:rejected on failure)</code></pre>
       <p>
         Each envelope cites its <code>parents</code>: a tick parents the agent&#x27;s prior reply,
-        a reply parents the tick it answers, the commit parents every final reply. Reply envelopes
-        are <strong>synthesized backend-side</strong> from the parsed reply; agents never write L9.
+        a reply parents the tick it answers, the commit parents every final reply in the episode
+        record (on the wire it goes out with empty parents, so no receiver holds it waiting for a
+        message it never got). Reply envelopes are <strong>synthesized backend-side</strong>;
+        agents never write L9.
       </p>
       <p>
         The subkind vocabulary is SLIM-native: <code>commit: converged | resolved | rejected</code>.
-        A failed negotiation commits as <code>rejected</code>. The table lives in
+        The aligner and Concord commit <code>converged</code> or <code>rejected</code>; Accord and the
+        other conductor flows commit <code>resolved</code> or <code>rejected</code>. The table lives in
         <code>app/services/l9.py:VALID_SUBKINDS</code>.
       </p>
     </section>
@@ -248,7 +449,7 @@ sequenceDiagram
       <p>What the CLI a person or agent runs actually produces on the wire. IDs are abbreviated <code>&hellip;</code>; envelopes are serialized with <code>exclude_none</code>.</p>
 
       <h2>Position &rarr; the episode opens</h2>
-      <p>Each participant posts an opening position with <code>mycelium respond</code>. When a human summons the aligner (<code>mycelium engine invoke aligner …</code>), mycelium mints the episode and synthesizes the opening <code>intent:mission</code> envelope.</p>
+      <p>Each participant states a position in the task&#x27;s thread. When someone summons the aligner there (<code>mycelium board coordinate &lt;row&gt; aligner "…"</code>), mycelium mints the episode and synthesizes the opening <code>intent:mission</code> envelope.</p>
       <pre><code>mycelium respond --handle avery-agent --room api-design \
   "REST primary; GraphQL internal only"</code></pre>
       <pre><code>// mycelium synthesizes (recorded into the episode):
@@ -272,20 +473,9 @@ sequenceDiagram
 }</code></pre>
 
       <h2>Respond &rarr; a reply envelope (exchange)</h2>
-      <p>On a tick, the agent answers with a prose reply and optional epistemic flags; mycelium parses it and folds it into a synthesized <code>exchange</code> envelope parented on the tick it answers.</p>
+      <p>On a tick, the agent answers in prose and may end with the marker; mycelium lifts the marker off, reads the move from the prose, and folds both into a synthesized <code>exchange</code> envelope parented on the tick it answers.</p>
       <pre><code>mycelium respond --handle avery-agent --room api-design \
-  "counter: transport=rest, meets the latency target" \
-  --confidence 0.8 \
-  --supporting-evidence "staging p99 data" \
-  --against-evidence "vendor lock-in risk"</code></pre>
-      <pre><code>// mycelium parses the reply into:
-{
-  "offer": {"transport": "rest"},
-  "confidence": 0.8,
-  "supporting_evidence": ["staging p99 data"],
-  "against_evidence": ["vendor lock-in risk"],
-  "reasoning": "meets the latency target"
-}</code></pre>
+  "counter: transport=rest, it meets the latency target [[mycelium: confidence=0.8 stance=reject]]"</code></pre>
       <pre><code>// mycelium synthesizes the reply envelope:
 {
   "header": {
@@ -298,100 +488,79 @@ sequenceDiagram
   },
   "payload": {"type": "reply", "data": {
     "round": 2, "action": "counter_offer", "offer": {"transport": "rest"},
-    "confidence": 0.8, "supporting_evidence": ["staging p99 data"],
-    "against_evidence": ["vendor lock-in risk"], "reasoning": "meets the latency target"
+    "confidence": 0.8
   }}
 }</code></pre>
-      <p><strong>What reaches the aligner from this:</strong> the parsed action + offer. The epistemic fields stay mycelium-side, folded into the episode for the metrics.</p>
+      <p><strong>What reaches the aligner from this:</strong> the action and the offer. The confidence stays mycelium-side, folded into the episode for the metrics.</p>
 
-      <h2>Grounding + revision_cause</h2>
-      <pre><code>mycelium respond --handle avery-agent --room api-design "accept" \
-  --confidence 0.9 --addresses "staging p99 data" --revision-cause grounded_argument</code></pre>
-      <pre><code>// mycelium parses:
-{"action": "accept", "confidence": 0.9,
- "addresses": ["staging p99 data"], "revision_cause": "grounded_argument"}</code></pre>
-      <p>
-        On fold-in, <code>addresses</code> is scored against the episode&#x27;s evidence pool
-        (<code>contingency_score = |addresses &cap; prior evidence| / |addresses|</code>); here it
-        overlaps, so the turn is grounded and the explicit <code>grounded_argument</code> stands.
-        The recorded <code>revision_cause</code> feeds SCR. (Omit <code>--revision-cause</code> and
-        mycelium derives it: a move that engages evidence &rarr; grounded; a move with no engagement
-        &rarr; benefit of the doubt; a <code>--defer-to</code> &rarr; <code>social_compliance</code>.)
-      </p>
-
-      <h2>Consensus &rarr; commit + metrics + rule writeback</h2>
-      <p>On convergence mycelium closes the episode with a <code>commit:converged</code> envelope, attaches the quality metrics to the consensus message, and writes the rule back to room memory for the next episode&#x27;s <code>team_prior</code>.</p>
-      <pre><code>// commit envelope (parents every final reply):
+      <h2>Consensus &rarr; commit + metrics + rows</h2>
+      <p>On convergence mycelium closes the episode with a <code>commit:converged</code> envelope, attaches the metrics, and hands the agreed map to the task compiler, which files the follow-up work as <code>work/</code> rows before the consensus is announced.</p>
+      <pre><code>// commit envelope (parents every final reply in the record):
 {
   "header": {"kind": "commit", "subkind": "converged",
     "message": {"id": "e71…", "parents": ["9d2…", "a04…"],
                 "episode": "urn:ioc:mycelium:episode:api-design:7c1a"}},
-  "payload": {"type": "utterance", "data": {"assignments": {"transport": "rest"}}}
-}
-
-// consensus message content (what agents/UI see):
-{"plan_file": "plan/tasks.md",
- "metrics": {"mpc": 0.85, "gar": 1.0, "scr": 0.0,
-             "provenance_weight": 1.0, "participants": 2}}
-
-// written to room memory → next episode's team_prior:
-.mycelium/rooms/api-design/l9/rule_update/topic.md
-  l9: {posterior: 0.85, gar: 1.0, scr: 0.0, provenance_weight: 1.0,
-       revision_cause: converged_episode, episode_count: 1}</code></pre>
+  "payload": {"type": "consensus", "data": {"assignments": {"transport": "rest"},
+    "metrics": {"mpc": 0.85, "gar": 1.0, "scr": 0.0,
+                "provenance_weight": 1.0, "participants": 2}}}
+}</code></pre>
+      <p>The message beside it, which agents and the app read, is the verdict with the digest: MPC, GAR and SCR over the number of participants.</p>
     </section>
 
     <section class="doc-section" id="mycelium-adds">
-      <h1>What mycelium adds on top</h1>
+      <h1>The epistemic layer</h1>
       <p>
-        On top of the transport, mycelium computes the SIEP-style agreement-quality layer from the
-        optional epistemic reply fields agents volunteer (<code>confidence</code>,
-        <code>supporting_evidence</code>/<code>against_evidence</code>, <code>addresses</code>,
-        <code>revision_cause</code>, <code>deferred_to</code>). All in <code>app/services/l9_episode.py</code>:
+        For the aligner, mycelium computes a SIEP-style agreement-quality layer over the episode.
+        All in <code>app/services/l9_episode.py</code>:
       </p>
       <ul>
-        <li><strong>MPC</strong>: mean final confidence at convergence.</li>
-        <li><strong>GAR</strong>, genuine agreement ratio: whose posterior moved toward the outcome (guarded at the MPC=0.5 degeneracy).</li>
-        <li><strong>SCR</strong>, social compliance ratio: fraction of belief <em>revisions</em> caused by compliance (a deferral, or a move that engages evidence too weakly) rather than grounded argument. Movement with no grounding flags is given the benefit of the doubt (genuine), so non-adopters are never penalized.</li>
-        <li><strong>provenance_weight</strong> = <code>(1 − SCR) × GAR</code>, the single trust score. Surfaced live via <code>negotiate status</code>; <code>--contested</code> exits 2 below 0.60.</li>
-        <li><strong>Grounding</strong>: <code>contingency_score = |addresses ∩ prior evidence| / |addresses|</code>; ≥ 0.40 counts as grounded.</li>
-        <li><strong>team_prior loop</strong>: a converged episode writes its rule to the room&#x27;s own memory at <code>l9/rule_update/topic</code>; the next episode reads it back as the tick <code>team_prior</code>. Fully local (markdown + frontmatter), like every other memory.</li>
+        <li><strong>MPC</strong>: mean final confidence at convergence. The aligner&#x27;s verdict is converged when MPC is at or above <code>ALIGNER_THRESHOLD</code> (0.6).</li>
+        <li><strong>GAR</strong>, genuine agreement ratio: whose confidence moved toward the outcome (guarded at the MPC=0.5 degeneracy).</li>
+        <li><strong>SCR</strong>, social compliance ratio: the fraction of belief revisions caused by compliance rather than argument. A move with no stated cause gets the benefit of the doubt (genuine), so an agent that says nothing about why is never penalized.</li>
+        <li><strong>provenance_weight</strong> = <code>(1 − SCR) × GAR</code>, the single trust score.</li>
       </ul>
-      <p>These are mycelium-side telemetry, computed from the parsed replies. The aligner only ever needs the action + offer to advance the negotiation.</p>
+      <p>
+        For Concord the number is simpler and needs no model: each member&#x27;s <strong>satisfaction</strong>
+        is their rating of the pick over 100, and <strong>min_satisfaction</strong> is the least happy
+        member&#x27;s. Both ride the commit and the episode record.
+      </p>
+      <p>
+        The episode fold still understands SIEP&#x27;s richer reply fields (<code>supporting_evidence</code>,
+        <code>addresses</code>, <code>revision_cause</code>, <code>deferred_to</code>) and scores grounding
+        from them, but no command writes them today: the marker carries confidence, stance and
+        ratings only. The <code>team_prior</code> writeback (a converged rule saved to
+        <code>l9/rule_update/topic</code> and read back by the next episode) is written in
+        <code>l9_episode.py</code> but not called. Both are in the code, not in the product.
+      </p>
     </section>
 
     <section class="doc-section" id="self-reported">
       <h1>Where the numbers come from</h1>
 
       <div class="caveat-banner">
-        <strong>These are self-reported epistemics, not measurements.</strong> The metrics are exact,
-        deterministic arithmetic, computed over inputs the agents make up. mycelium enforces the
-        <em>shape</em> of those inputs, never their truth or calibration.
+        <strong>These are self-reported, not measured.</strong> The arithmetic is exact and
+        deterministic, over inputs the agents make up. mycelium enforces the <em>shape</em> of those
+        inputs, never their truth or calibration.
       </div>
 
       <p>The chain bottoms out at a language model typing a number:</p>
       <ul>
-        <li><strong>The inputs are agent-generated.</strong> <code>--confidence 0.8</code> is whatever float the LLM chose. There is no calibration, no logprob extraction, no ground truth behind it. Same for which strings it cites as <code>supporting_evidence</code>/<code>addresses</code> and whether it sets <code>revision_cause</code> or <code>--defer-to</code>.</li>
-        <li><strong>Validation is structural only.</strong> mycelium checks the <code>0–1</code> range, non-empty evidence strings, and that <code>revision_cause</code> is one of the five enum values. A high confidence with garbage reasoning passes every check.</li>
-        <li><strong>No fallback source.</strong> Omit <code>--confidence</code> and that agent simply doesn&#x27;t count toward MPC/GAR. Nothing derives it from token probabilities, the aligner&#x27;s scoring, or anything else.</li>
-        <li><strong>The one cross-agent check is shallow.</strong> Grounding (<code>contingency_score</code>) compares the strings one agent put in <code>addresses</code> against the strings another put in <code>supporting_evidence</code>, a set overlap of tokens both agents chose. It is semantically blind and gameable: echo an evidence key verbatim without engaging the point and you &quot;ground&quot; for free.</li>
+        <li><strong>The inputs are agent-generated.</strong> <code>confidence=0.8</code> is whatever float the model chose, and <code>A=82</code> is whatever integer it chose. There is no calibration, no logprob extraction, no ground truth behind either.</li>
+        <li><strong>Validation is structural only.</strong> Confidence must be 0 to 1; a rating must be a whole number 0 to 100 on a letter that names an option on the table. Out of range is dropped, never clamped. A confident answer with poor reasoning passes every check.</li>
+        <li><strong>No fallback source.</strong> Omit <code>confidence</code> and that agent doesn&#x27;t count toward MPC/GAR. Omit a rating and it counts as 0 for ranking, and the flow asks once more rather than inferring it from the prose.</li>
       </ul>
-
       <p>
-        So the metrics are only as meaningful as the agents are honest and calibrated. The SKILL.md
-        <em>instructs</em> agents to state confidence honestly and defer honestly, but that is a
-        prompt-level nudge, not an enforced guarantee. Well-prompted frontier models are decently
-        calibrated, so in practice this is signal rather than noise; even so, read <code>provenance_weight</code>
-        as <em>&quot;how the team described its own reasoning,&quot;</em> not a verified trust score.
+        What Concord changes is where judgment sits, not whether the inputs are honest. A member can
+        still rate strategically. What it removes is a model deciding the outcome: the pick, the bar
+        and the stop are code over the ratings, so the same ratings always give the same result, and
+        the scorecard shows every number the result was computed from.
       </p>
-
       <p>
-        The thing that would make this <em>observed</em> rather than <em>reported</em> is exactly the
-        piece mycelium deliberately doesn&#x27;t build: <strong>Theory-of-Mind / drift detection</strong>,
-        inferring that an agent complied from its behavior across the trace (its belief moved while its
-        evidence stayed thin), instead of trusting the <code>revision_cause</code> it declared. That&#x27;s
-        the upstream home of the ToM / social-compliance layer, which mycelium would <em>consume</em>
-        once released. Until then, the epistemic layer measures what agents <em>say</em> about their
-        reasoning, not the reasoning itself.
+        The thing that would make this <em>observed</em> rather than <em>reported</em> is the piece
+        mycelium deliberately doesn&#x27;t build: <strong>Theory-of-Mind / drift detection</strong>,
+        inferring that an agent complied from its behavior across the trace, instead of trusting what
+        it declared. mycelium would <em>consume</em> that once released. Until then, read the numbers
+        as how the team described its own positions, not a verified trust score.
       </p>
     </section>
 
@@ -403,7 +572,8 @@ sequenceDiagram
         <tbody>
           <tr><td>mycelium L9 layer</td><td><code>VERSION="0.0.6"</code>, subprotocol <code>mycelium</code></td><td><code>app/services/l9.py</code>: envelope construction plus the <code>VALID_SUBKINDS</code> table.</td></tr>
           <tr><td>mycelium vendored python binding</td><td>spec commit <code>93773a5</code></td><td><code>l9_models.py</code>, vendored from <code>ioc-protocols-models</code> (the PyPI package pulls a conflicting litellm). Regenerate from the upstream <code>src/l9.py</code>.</td></tr>
-          <tr><td>episode records</td><td></td><td><code>l9_episode.py</code>: episode tracking plus the MPC/GAR/SCR quality metrics; records at <code>log/episodes/{short_id}.md</code>.</td></tr>
+          <tr><td>episode records</td><td></td><td><code>l9_episode.py</code>: episode tracking, the aligner&#x27;s metrics, and the conductor&#x27;s <code>flow</code> and <code>trace</code>; records at <code>log/episodes/{short_id}.md</code>.</td></tr>
+          <tr><td>Concord and Accord</td><td>built-in flows</td><td><code>protocols.py</code>. <code>@conductor show concord</code> prints one as YAML; a room&#x27;s <code>protocols/&lt;name&gt;</code> memory overrides it.</td></tr>
         </tbody>
       </table>
       <p>

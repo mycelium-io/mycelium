@@ -71,6 +71,11 @@ const VIDEO = {
   "auto-zoom": { type: "boolean", help: "push in on every click, and back out after" },
   cursor: { type: "boolean", help: "draw the pointer (default on)" },
   "cursor-size": { type: "number", help: "pointer height in px (default 30)" },
+  "caption-at": {
+    type: "string",
+    value: "bottom|top",
+    help: "where caption: text sits (default bottom; top when the bottom is where the action is)",
+  },
   accent: { type: "string", value: "<css>", help: "click-ring color (default: the theme's accent)" },
   "move-ms": { type: "number", help: "how long the pointer takes to travel (default 620)" },
   dwell: { type: "number", value: "<ms>", help: "beat after each action (default 620)" },

@@ -24,6 +24,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** How long a giving-up take waits for ffmpeg before killing it. */
 const ABORT_FLUSH_MS = 5_000;
 
+/** The fastest a take can be sped up: past this, a UI is a blur, not a demo. */
+export const MAX_SPEED = 16;
+
 /**
  * @typedef {object} FrameSource
  * @property {string} mode how frames are being taken: `screencast` or `shots`
@@ -124,6 +127,11 @@ export function startPump(opts) {
   let timer = null;
   let failure = null;
   let warnedSaturated = false;
+  // Time-lapse: at speed n a frame is written on every nth beat, so a stretch
+  // of waiting plays n times faster. The credit carries fractions over, so 1.5x
+  // writes two frames in three beats rather than rounding to one or two.
+  let speed = 1;
+  let credit = 0;
 
   /** Resolves the moment the take is no longer worth continuing. */
   let onTrouble = () => {};
@@ -145,8 +153,16 @@ export function startPump(opts) {
           encoder = opts.encoder(size);
           log(`encoding ${size.width}x${size.height} @ ${opts.fps}fps`);
         }
-        if (encoder.frames >= opts.maxFrames) truncated = true;
-        else encoder.write(frame);
+        credit += 1 / speed;
+        if (credit >= 1 - 1e-9) {
+          credit -= 1;
+          if (encoder.frames >= opts.maxFrames) {
+            // The cap is on the video, not the wall clock: a sped-up stretch
+            // takes longer to fill it. Reaching it ends the take.
+            truncated = true;
+            onTrouble("over");
+          } else encoder.write(frame);
+        }
         if (encoder.saturated && !warnedSaturated) {
           warnedSaturated = true;
           log("the encoder is behind; frames are buffering in node until it catches up");
@@ -182,8 +198,17 @@ export function startPump(opts) {
     get failure() {
       return failure;
     },
-    /** How long the take may run before the frame cap bites. */
+    /** How long the take may run before the frame cap bites, at 1x. */
     budgetMs: (opts.maxFrames / opts.fps) * 1000,
+
+    /** Play what happens from now on `n` times faster (1 is real time). */
+    setSpeed(n) {
+      speed = Math.min(MAX_SPEED, Math.max(1, Number(n) || 1));
+      credit = 0;
+    },
+    get speed() {
+      return speed;
+    },
 
     async stop() {
       await halt();
