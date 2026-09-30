@@ -47,6 +47,8 @@ export interface MockRoom {
   is_public: boolean;
   is_persistent: boolean;
   mas_id?: string | null;
+  owner?: string | null;
+  members?: string[];
 }
 
 export interface MockMemory {
@@ -1142,7 +1144,17 @@ const pricing: RoomFixture = {
 // ── scratch: a brand-new empty room ───────────────────────────────────────────
 
 const scratch: RoomFixture = {
-  room: { id: 3, name: "scratch", created_at: iso(4), is_public: true, is_persistent: true, mas_id: null },
+  // Someone's own room: listed only for its owner.
+  room: {
+    id: 3,
+    name: "scratch",
+    created_at: iso(4),
+    is_public: false,
+    is_persistent: true,
+    mas_id: null,
+    owner: "operator",
+    members: [],
+  },
   memories: [],
   messages: [],
   episodes: [],

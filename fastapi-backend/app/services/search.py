@@ -193,11 +193,17 @@ def _memory_records(room: str) -> list[dict]:
 # ── per-type candidate collection ─────────────────────────────────────────────
 
 
-def _rooms_in_scope(query: ParsedQuery) -> list[str]:
-    """The rooms to search. A named room that doesn't exist searches nothing."""
+def _rooms_in_scope(query: ParsedQuery, viewer: str | None = None) -> list[str]:
+    """The rooms to search: the ones named, else every room listed for ``viewer``.
+
+    A named room that doesn't exist searches nothing. Naming a private room
+    (``#room``) searches it: knowing its name is what opens it anywhere else.
+    """
     if query.rooms:
         return [r for r in query.rooms if room_exists(r)]
-    return list_room_names()
+    from app.services.room_access import visible_to
+
+    return [r for r in list_room_names() if visible_to(read_room_meta(r), viewer)]
 
 
 def _matches_actor(query: ParsedQuery, *handles: str | None) -> bool:
@@ -417,12 +423,12 @@ class SearchResult:
     counts: dict[str, int]
 
 
-async def search(query: ParsedQuery, *, limit: int = 20) -> SearchResult:
+async def search(query: ParsedQuery, *, limit: int = 20, viewer: str | None = None) -> SearchResult:
     """Run ``query`` across every entity type in scope and rank the results."""
     if query.is_empty:
         return SearchResult(hits=[], counts={})
 
-    rooms = _rooms_in_scope(query)
+    rooms = _rooms_in_scope(query, viewer)
     by_type: dict[str, list[Hit]] = {}
 
     if query.wants("room"):

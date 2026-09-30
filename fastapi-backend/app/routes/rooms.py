@@ -6,12 +6,13 @@
 import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.bus import app_channel, bus
 from app.schemas import RoomCreate, RoomRead
-from app.services import room_channels
+from app.services import actor, room_access, room_channels
+from app.services.agent_registry import norm_handle
 from app.services.filesystem import (
     ensure_room_structure,
     get_room_dir,
@@ -54,8 +55,19 @@ def _last_activity(room: RoomRead) -> datetime:
 
 
 @router.post("", response_model=RoomRead, status_code=201)
-async def create_room(room: RoomCreate):
-    """Create a new room (directory + metadata sidecar)."""
+async def create_room(room: RoomCreate, request: Request):
+    """Create a new room (directory + metadata sidecar).
+
+    A private room (``is_public: false``) is listed only for its ``owner`` and
+    ``members``, so it needs an owner: the verified caller, or the one named.
+    """
+    owner = norm_handle(actor.bind_optional_actor(request, room.owner, field="owner"))
+    if not room.is_public and not owner:
+        raise HTTPException(
+            status_code=422,
+            detail="A private room needs an owner: who it's listed for. Say who you are first.",
+        )
+    members = sorted({h for h in (norm_handle(m) for m in room.members) if h and h != owner})
     if room.name in RESERVED_ROOMS:
         raise HTTPException(status_code=400, detail=f"'{room.name}' is a reserved system name")
     if room_exists(room.name):
@@ -76,6 +88,8 @@ async def create_room(room: RoomCreate):
             "name": room.name,
             "description": room.description,
             "is_public": room.is_public,
+            "owner": owner,
+            "members": members,
             "is_persistent": True,
             "mas_id": room.mas_id,
             "workspace_id": room.workspace_id,
@@ -108,15 +122,27 @@ async def create_room(room: RoomCreate):
 
 @router.get("", response_model=list[RoomRead])
 async def list_rooms(
+    request: Request,
     skip: int = 0,
     limit: int = 1000,
     name: str | None = None,
     include_sessions: bool = False,
+    viewer: str | None = Query(
+        None,
+        description=(
+            "Who is asking, so their private rooms are listed too. The verified "
+            "principal wins when the hub's sign-in is on."
+        ),
+    ),
 ):
-    """List rooms. ``include_sessions`` is accepted for compat but is a no-op."""
+    """List the rooms listed for the caller: every shared room, and their private ones.
+
+    ``include_sessions`` is accepted for compat but is a no-op.
+    """
     _ = include_sessions
+    who = room_access.viewer_for(request, viewer)
     rooms = [_room_read(n) for n in list_room_names()]
-    visible = [r for r in rooms if r is not None and r.is_public]
+    visible = [r for r in rooms if r is not None and room_access.visible_to(r.model_dump(), who)]
     if name:
         visible = [r for r in visible if name.lower() in r.name.lower()]
     # Stamp last-activity once, then sort + surface it (the UI shows this, not
@@ -140,15 +166,24 @@ class RoomUpdate(BaseModel):
     """What a caller may change about a room after it exists."""
 
     title: str | None = Field(None, max_length=200, description="The room's display title")
+    is_public: bool | None = Field(
+        None, description="Make the room shared (true) or private (false)"
+    )
+    members: list[str] | None = Field(None, description="Who else a private room is listed for")
+    by: str | None = Field(
+        None, description="Who is making the change; becomes the owner of a room made private"
+    )
 
 
 @router.patch("/{room_name}", response_model=RoomRead)
-async def update_room(room_name: str, payload: RoomUpdate):
-    """Change a room's own attributes.
+async def update_room(room_name: str, payload: RoomUpdate, request: Request):
+    """Change a room's own attributes: its title, and whether it's private.
 
     The title lives here rather than in a memory because it names the room
     instead of describing work in it: nothing projects it as a row, nothing
-    claims it, and it has no lifecycle of its own.
+    claims it, and it has no lifecycle of its own. A room made private without
+    an owner takes whoever made it private as its owner, so it never becomes
+    listed for nobody.
     """
     meta = read_room_meta(room_name)
     if meta is None:
@@ -156,13 +191,33 @@ async def update_room(room_name: str, payload: RoomUpdate):
     stored = {k: v for k, v in meta.items() if k != "id"}
     if payload.title is not None:
         stored["title"] = payload.title.strip() or None
+    if payload.is_public is not None:
+        if not payload.is_public and not stored.get("owner"):
+            by = norm_handle(actor.bind_optional_actor(request, payload.by, field="by"))
+            if not by:
+                raise HTTPException(
+                    status_code=422,
+                    detail="A private room needs an owner: who it's listed for. Say who you are first.",
+                )
+            stored["owner"] = by
+        stored["is_public"] = payload.is_public
+    if payload.members is not None:
+        owner = stored.get("owner")
+        stored["members"] = sorted(
+            {h for h in (norm_handle(m) for m in payload.members) if h and h != owner}
+        )
     write_room_meta(room_name, stored)
     result = _room_read(room_name)
     if result is None:
         raise HTTPException(status_code=404, detail="Room not found")
     bus.publish(
         app_channel(),
-        {"type": "room_updated", "room_name": room_name, "title": stored.get("title")},
+        {
+            "type": "room_updated",
+            "room_name": room_name,
+            "title": stored.get("title"),
+            "is_public": stored.get("is_public", True),
+        },
     )
     return result
 

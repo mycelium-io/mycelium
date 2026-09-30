@@ -132,6 +132,9 @@ export interface Room {
   name: string;
   description?: string | null;
   is_public?: boolean;
+  /** Who created it; a private room is listed only for its owner and members. */
+  owner?: string | null;
+  members?: string[];
   created_at: string;
   /** When the room was last active (transcript mtime); falls back to created_at. */
   last_activity?: string | null;
@@ -151,19 +154,37 @@ export async function setRoomTitle(roomName: string, title: string): Promise<Roo
   });
 }
 
-export async function fetchRooms(): Promise<Room[]> {
-  return apiFetch<Room[]>(`/api/rooms`, { cache: "no-store", fallback: [], guard: isArray as (d: unknown) => d is Room[] });
+/** The rooms listed for `viewer`: every shared room, and their private ones. */
+export async function fetchRooms(viewer = ""): Promise<Room[]> {
+  const path = viewer ? `/api/rooms?${new URLSearchParams({ viewer })}` : "/api/rooms";
+  return apiFetch<Room[]>(path, { cache: "no-store", fallback: [], guard: isArray as (d: unknown) => d is Room[] });
+}
+
+/** Make a room private (listed only for its owner and members) or shared again. */
+export async function setRoomPrivate(roomName: string, isPrivate: boolean, by: string): Promise<Room> {
+  return apiFetch<Room>(roomApiPath(roomName), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ is_public: !isPrivate, by: by || undefined }),
+  });
 }
 
 export async function fetchRoom(name: string): Promise<Room> {
   return apiFetch<Room>(roomApiPath(name), { cache: "no-store" });
 }
 
-export async function createRoom(data: { name: string; is_persistent?: boolean }): Promise<Room> {
+export async function createRoom(data: {
+  name: string;
+  is_persistent?: boolean;
+  /** Private rooms are listed only for their owner (and members). */
+  private?: boolean;
+  owner?: string;
+}): Promise<Room> {
+  const { private: isPrivate = false, ...rest } = data;
   return apiFetch<Room>(`/api/rooms`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...data, is_public: true }),
+    body: JSON.stringify({ ...rest, owner: rest.owner || undefined, is_public: !isPrivate }),
   });
 }
 
@@ -379,8 +400,10 @@ export async function searchMemories(roomName: string, query: string): Promise<M
  *
  *  Throws (rather than falling back to empty) so the search surface can tell
  *  "nothing matched" from "the hub is unreachable" and say which. */
-export async function searchEverything(query: string, limit = 20): Promise<SearchResponse> {
+export async function searchEverything(query: string, limit = 20, viewer = ""): Promise<SearchResponse> {
   const params = new URLSearchParams({ q: query, limit: String(limit) });
+  // Who is asking, so their private rooms are searched too.
+  if (viewer) params.set("viewer", viewer);
   return apiFetch<SearchResponse>(`/api/search?${params}`, { cache: "no-store" });
 }
 

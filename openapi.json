@@ -299,7 +299,7 @@
           "rooms"
         ],
         "summary": "Create Room",
-        "description": "Create a new room (directory + metadata sidecar).",
+        "description": "Create a new room (directory + metadata sidecar).\n\nA private room (``is_public: false``) is listed only for its ``owner`` and\n``members``, so it needs an owner: the verified caller, or the one named.",
         "operationId": "create_room_api_rooms_post",
         "requestBody": {
           "required": true,
@@ -339,7 +339,7 @@
           "rooms"
         ],
         "summary": "List Rooms",
-        "description": "List rooms. ``include_sessions`` is accepted for compat but is a no-op.",
+        "description": "List the rooms listed for the caller: every shared room, and their private ones.\n\n``include_sessions`` is accepted for compat but is a no-op.",
         "operationId": "list_rooms_api_rooms_get",
         "parameters": [
           {
@@ -387,6 +387,24 @@
               "default": false,
               "title": "Include Sessions"
             }
+          },
+          {
+            "name": "viewer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Who is asking, so their private rooms are listed too. The verified principal wins when the hub's sign-in is on.",
+              "title": "Viewer"
+            },
+            "description": "Who is asking, so their private rooms are listed too. The verified principal wins when the hub's sign-in is on."
           }
         ],
         "responses": {
@@ -464,7 +482,7 @@
           "rooms"
         ],
         "summary": "Update Room",
-        "description": "Change a room's own attributes.\n\nThe title lives here rather than in a memory because it names the room\ninstead of describing work in it: nothing projects it as a row, nothing\nclaims it, and it has no lifecycle of its own.",
+        "description": "Change a room's own attributes: its title, and whether it's private.\n\nThe title lives here rather than in a memory because it names the room\ninstead of describing work in it: nothing projects it as a row, nothing\nclaims it, and it has no lifecycle of its own. A room made private without\nan owner takes whoever made it private as its owner, so it never becomes\nlisted for nobody.",
         "operationId": "update_room_api_rooms__room_name__patch",
         "parameters": [
           {
@@ -2795,14 +2813,42 @@
           "stream"
         ],
         "summary": "Stream Notifications",
-        "description": "Server-Sent Events stream aggregating activity across every room.\n\nPowers the notification center: a single connection, independent of which\nroom (if any) is open, instead of the per-room stream that only carries\nactivity for whatever room is currently on screen.",
+        "description": "Server-Sent Events stream aggregating activity across every room listed for the caller.\n\nPowers the notification center: a single connection, independent of which\nroom (if any) is open, instead of the per-room stream that only carries\nactivity for whatever room is currently on screen. ``viewer`` is who is\nasking, so their private rooms are included (the verified principal wins\nwhen the hub's sign-in is on); anyone else's are left out.",
         "operationId": "stream_notifications_api_notifications_stream_get",
+        "parameters": [
+          {
+            "name": "viewer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Viewer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -3618,7 +3664,7 @@
           "search"
         ],
         "summary": "Search Everything",
-        "description": "Search every entity type in scope and return them on one ranked list.\n\nAn empty query is a valid request with no results \u2014 a typeahead calls this\non the first keystroke and shouldn't have to special-case a 422.",
+        "description": "Search every entity type in scope and return them on one ranked list.\n\nAn empty query is a valid request with no results \u2014 a typeahead calls this\non the first keystroke and shouldn't have to special-case a 422. Someone\nelse's private room is searched only when it's named with ``#room``.",
         "operationId": "search_everything_api_search_get",
         "parameters": [
           {
@@ -3644,6 +3690,24 @@
               "default": 20,
               "title": "Limit"
             }
+          },
+          {
+            "name": "viewer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Who is asking, so their private rooms are searched too",
+              "title": "Viewer"
+            },
+            "description": "Who is asking, so their private rooms are searched too"
           }
         ],
         "responses": {
@@ -6639,7 +6703,28 @@
           "is_public": {
             "type": "boolean",
             "title": "Is Public",
+            "description": "Shared (listed for everyone) or private (listed for its owner and members)",
             "default": true
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner",
+            "description": "Who created it; a private room is always listed for its owner"
+          },
+          "members": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Members",
+            "description": "Who else a private room is listed for"
           },
           "mas_id": {
             "anyOf": [
@@ -6705,6 +6790,24 @@
           "is_public": {
             "type": "boolean",
             "title": "Is Public"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          },
+          "members": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Members"
           },
           "created_at": {
             "type": "string",
@@ -6827,6 +6930,45 @@
             ],
             "title": "Title",
             "description": "The room's display title"
+          },
+          "is_public": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Public",
+            "description": "Make the room shared (true) or private (false)"
+          },
+          "members": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Members",
+            "description": "Who else a private room is listed for"
+          },
+          "by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By",
+            "description": "Who is making the change; becomes the owner of a room made private"
           }
         },
         "type": "object",

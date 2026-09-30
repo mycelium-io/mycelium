@@ -49,7 +49,7 @@ import {
 import { floorsByHandle } from "@/lib/floors";
 import { latestPreview } from "@/lib/room-preview";
 import { memoryTitle } from "@/lib/memory-preview";
-import { useCurrentUser } from "@/components/current-user";
+import { useCurrentUser, usePrincipal } from "@/components/current-user";
 
 /**
  * One cadence per resource rather than one per component, picked from how fast
@@ -170,7 +170,9 @@ function useRoomQuery<T>(
 // ── Rooms ────────────────────────────────────────────────────────────────────
 
 export function useRooms(opts: RoomQueryOptions = {}) {
-  const { data, isLoading, mutate } = useSWR("rooms", fetchRooms, {
+  // Keyed by who is looking: the list includes their private rooms.
+  const viewer = usePrincipal();
+  const { data, isLoading, mutate } = useSWR(["rooms", viewer], () => fetchRooms(viewer), {
     refreshInterval: opts.refreshInterval ?? POLL.rooms,
   });
   const refresh = useCallback(() => {

@@ -16,6 +16,7 @@ import {
   Copy,
   ExternalLink,
   Link2,
+  Lock,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -29,6 +30,7 @@ import { useAppStream } from "@/lib/stream-hub";
 import { useRooms } from "@/lib/room-data";
 import { roomLevel, type RoomLevel } from "@/lib/notifications";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { usePrincipal } from "@/components/current-user";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -62,6 +64,21 @@ function railToggleTitle(expanded: boolean): string {
   return `${expanded ? "Collapse" : "Expand"} the rooms rail${suffix}`;
 }
 
+/** Which rooms the rail lists: all of them, or only the shared or private ones. */
+type Scope = "all" | "shared" | "private";
+
+const SCOPES: { scope: Scope; label: string }[] = [
+  { scope: "all", label: "All" },
+  { scope: "shared", label: "Shared" },
+  { scope: "private", label: "Private" },
+];
+
+/** A private room is listed only for its owner and members; the hub has
+ *  already filtered the list, so here it only decides where a room is drawn. */
+export function isPrivateRoom(room: Room): boolean {
+  return room.is_public === false;
+}
+
 interface Props {
   /** The room currently open, so its row is highlighted. Null on the home view. */
   activeRoom?: string | null;
@@ -72,6 +89,7 @@ interface Props {
 
 export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsedChange }: Props) {
   const [query, setQuery] = useState("");
+  const [scope, setScope] = useState<Scope>("all");
   const [showCreate, setShowCreate] = useState(false);
   const [creatingInline, setCreatingInline] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -85,7 +103,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
   // for a dropped connection.
   useAppStream((data) => {
     const msg = data as { type?: string };
-    if (msg.type === "room_created" || msg.type === "room_deleted") refresh();
+    if (msg.type === "room_created" || msg.type === "room_deleted" || msg.type === "room_updated") refresh();
   });
 
   // Unread activity per room, from the same client-side notification store the
@@ -106,14 +124,25 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
     if (activeRoom) markRoomRead(activeRoom);
   }, [activeRoom, markRoomRead]);
 
-  // Filter by the query, then order by recency (last active first) so rooms with
-  // fresh activity float up — the same ordering the command palette uses.
-  const filtered = useMemo(() => {
+  // The filter only earns its row once there is something private to filter.
+  const hasPrivate = rooms.some(isPrivateRoom);
+  const activeScope: Scope = hasPrivate ? scope : "all";
+
+  // Filter by the query and scope, then order by recency (last active first) so
+  // rooms with fresh activity float up — the same ordering the command palette
+  // uses. Private rooms are drawn as their own group below the shared ones, and
+  // the list is that concatenation, so ⌥1..9 and next/prev follow the screen.
+  const { shared, mine } = useMemo(() => {
     const q = query.trim().toLowerCase();
     const base = q ? rooms.filter(r => r.name.toLowerCase().includes(q)) : rooms;
     const recency = (r: Room) => r.last_activity ?? r.created_at ?? "";
-    return [...base].sort((a, b) => recency(b).localeCompare(recency(a)));
-  }, [rooms, query]);
+    const sorted = [...base].sort((a, b) => recency(b).localeCompare(recency(a)));
+    return {
+      shared: activeScope === "private" ? [] : sorted.filter(r => !isPrivateRoom(r)),
+      mine: activeScope === "shared" ? [] : sorted.filter(isPrivateRoom),
+    };
+  }, [rooms, query, activeScope]);
+  const filtered = useMemo(() => [...shared, ...mine], [shared, mine]);
 
   // ---- Keyboard navigation -------------------------------------------------
   // The rooms on screen are the switchable set, in the order they're listed, so
@@ -226,18 +255,22 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
             {filtered.map((room, i) => {
               const active = room.name === activeRoom;
               const unread = active ? 0 : unreadByRoom.get(room.name) ?? 0;
+              const label = isPrivateRoom(room) ? `${room.name} (private)` : room.name;
               return (
-                <RoomContextMenu
-                  key={room.name}
-                  room={room}
-                  level={roomLevel(settings, room.name)}
-                  onSetLevel={setRoomLevel}
-                  onOpen={() => go(room)}
-                  onDelete={() => setDeleteTarget(room.name)}
-                >
-                <div className="group/room relative">
+                <div key={room.name} className="flex flex-col items-center">
+                  {i === shared.length && shared.length > 0 && (
+                    <div aria-hidden className="mb-2 mt-1 h-px w-5 bg-border" />
+                  )}
+                  <RoomContextMenu
+                    room={room}
+                    level={roomLevel(settings, room.name)}
+                    onSetLevel={setRoomLevel}
+                    onOpen={() => go(room)}
+                    onDelete={() => setDeleteTarget(room.name)}
+                  >
+                  <div className="group/room relative">
                   <Tooltip
-                    content={unread > 0 ? `${room.name} — ${unread} unread` : room.name}
+                    content={unread > 0 ? `${label} — ${unread} unread` : label}
                     side="right"
                   >
                     <Link
@@ -272,8 +305,9 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
                   >
                     <Trash2 className="size-2.5" />
                   </button>
+                  </div>
+                  </RoomContextMenu>
                 </div>
-                </RoomContextMenu>
               );
             })}
           </nav>
@@ -341,12 +375,34 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
             className="w-full bg-transparent text-label text-text placeholder:text-faint focus:outline-none"
           />
         </div>
+        {hasPrivate && (
+          <div role="radiogroup" aria-label="Show rooms" className="mt-1 flex gap-0.5 px-0.5">
+            {SCOPES.map(({ scope: s, label }) => (
+              <button
+                key={s}
+                type="button"
+                role="radio"
+                aria-checked={activeScope === s}
+                onClick={() => setScope(s)}
+                className={`flex h-5 items-center gap-1 rounded px-1.5 text-micro transition-colors ${
+                  activeScope === s
+                    ? "bg-hairline font-medium text-text"
+                    : "text-muted-foreground hover:text-text"
+                }`}
+              >
+                {s === "private" && <Lock className="size-2.5" />}
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
         <nav className="px-2 pb-2">
         {creatingInline && (
           <InlineNewRoom
+            private={activeScope === "private"}
             onCancel={() => setCreatingInline(false)}
             onCreated={name => {
               setCreatingInline(false);
@@ -358,19 +414,31 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
         {filtered.length === 0 ? (
           creatingInline ? null : rooms.length === 0 ? (
             <EmptyState size="sm" icon={Boxes} title="No rooms yet" description="Create one with the + above." />
+          ) : activeScope === "private" && !query.trim() ? (
+            <EmptyState size="sm" icon={Lock} title="No private rooms" />
           ) : (
             <EmptyState size="sm" icon={SearchX} title="No matches" />
           )
         ) : (
           filtered.map((room, i) => {
             const active = room.name === activeRoom;
+            const priv = isPrivateRoom(room);
+            // The private group gets a heading where it starts, when it sits
+            // below the shared rooms rather than being the whole list.
+            const heading = priv && i === shared.length && shared.length > 0;
             // Don't badge the room you're already looking at — being here is
             // reading it. Elsewhere, unread activity draws the name brighter too.
             const unread = active ? 0 : unreadByRoom.get(room.name) ?? 0;
             const level = roomLevel(settings, room.name);
             return (
+              <div key={room.name}>
+              {heading && (
+                <div className="mt-2 flex h-6 items-center gap-1.5 px-1.5 text-micro font-medium text-faint">
+                  <Lock className="size-3" />
+                  Private
+                </div>
+              )}
               <RoomContextMenu
-                key={room.name}
                 room={room}
                 level={level}
                 onSetLevel={setRoomLevel}
@@ -396,6 +464,14 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
                 >
                   {room.name}
                 </span>
+                {/* Every room here is private and nothing heads the group, so
+                    the row says it. */}
+                {priv && shared.length === 0 && activeScope === "all" && (
+                  <Lock
+                    aria-label="private"
+                    className="size-3 flex-shrink-0 text-faint transition-opacity group-hover/room:opacity-0"
+                  />
+                )}
                 {unread > 0 && (
                   <span
                     aria-label={`${unread} unread`}
@@ -423,6 +499,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
               </button>
               </div>
               </RoomContextMenu>
+              </div>
             );
           })
         )}
@@ -447,10 +524,20 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
  * creates it, Esc or clicking away leaves it. A name the hub refuses stays in
  * the field with the reason under it.
  */
-function InlineNewRoom({ onCancel, onCreated }: { onCancel: () => void; onCreated: (name: string) => void }) {
+function InlineNewRoom({
+  private: isPrivate = false,
+  onCancel,
+  onCreated,
+}: {
+  /** Typed while the rail shows only private rooms, so that is what it makes. */
+  private?: boolean;
+  onCancel: () => void;
+  onCreated: (name: string) => void;
+}) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const principal = usePrincipal();
 
   const create = async () => {
     const clean = name.trim();
@@ -458,7 +545,7 @@ function InlineNewRoom({ onCancel, onCreated }: { onCancel: () => void; onCreate
     setBusy(true);
     setError(null);
     try {
-      await createRoom({ name: clean, is_persistent: true });
+      await createRoom({ name: clean, is_persistent: true, private: isPrivate, owner: principal });
       onCreated(clean);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't create the room");
@@ -484,7 +571,7 @@ function InlineNewRoom({ onCancel, onCreated }: { onCancel: () => void; onCreate
           onBlur={() => {
             if (!name.trim() && !busy) onCancel();
           }}
-          placeholder="Room name"
+          placeholder={isPrivate ? "Private room name" : "Room name"}
           aria-label="New room name"
           spellCheck={false}
           className="min-w-0 flex-1 bg-transparent text-label text-text placeholder:text-faint focus:outline-none"

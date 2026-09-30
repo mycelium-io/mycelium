@@ -16,10 +16,10 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
 from app.schemas import SearchHitRead, SearchResponse, SearchScopeRead
-from app.services import search, search_query
+from app.services import room_access, search, search_query
 
 logger = logging.getLogger(__name__)
 
@@ -28,16 +28,23 @@ router = APIRouter(prefix="/search", tags=["search"])
 
 @router.get("", response_model=SearchResponse)
 async def search_everything(
+    request: Request,
     q: str = Query("", description="Query text with optional #room / @agent / type: tokens"),
     limit: int = Query(20, ge=1, le=100),
+    viewer: str | None = Query(
+        None, description="Who is asking, so their private rooms are searched too"
+    ),
 ) -> SearchResponse:
     """Search every entity type in scope and return them on one ranked list.
 
     An empty query is a valid request with no results — a typeahead calls this
-    on the first keystroke and shouldn't have to special-case a 422.
+    on the first keystroke and shouldn't have to special-case a 422. Someone
+    else's private room is searched only when it's named with ``#room``.
     """
     parsed = search_query.parse(q)
-    result = await search.search(parsed, limit=limit)
+    result = await search.search(
+        parsed, limit=limit, viewer=room_access.viewer_for(request, viewer)
+    )
     return SearchResponse(
         query=q,
         scope=SearchScopeRead(

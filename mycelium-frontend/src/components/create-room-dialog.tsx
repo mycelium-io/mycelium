@@ -4,9 +4,10 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Lock, Plus } from "lucide-react";
 import { createRoom } from "@/lib/api";
 import { Kbd } from "@/components/ui/kbd";
+import { usePrincipal } from "@/components/current-user";
 
 interface Props {
   open: boolean;
@@ -21,8 +22,10 @@ interface Props {
  */
 export function CreateRoomDialog({ open, onClose, onCreated }: Props) {
   const [name, setName] = useState("");
+  const [isPrivate, setIsPrivate] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const principal = usePrincipal();
 
   if (!open) return null;
 
@@ -36,10 +39,11 @@ export function CreateRoomDialog({ open, onClose, onCreated }: Props) {
     setLoading(true);
     setError(null);
     try {
-      await createRoom({ name: name.trim(), is_persistent: true });
+      await createRoom({ name: name.trim(), is_persistent: true, private: isPrivate, owner: principal });
       onCreated();
       onClose();
       setName("");
+      setIsPrivate(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create room");
     } finally {
@@ -88,8 +92,30 @@ export function CreateRoomDialog({ open, onClose, onCreated }: Props) {
             {error}
           </p>
         )}
+        {isPrivate && (
+          <p className="border-t border-border px-3 py-2 text-micro text-muted-foreground">
+            Only you see it in the room list. Anyone who knows its name can still open it.
+          </p>
+        )}
         <div className="flex items-center gap-3 border-t border-border px-3 py-1.5 text-micro text-faint">
-          <span>New room</span>
+          <label
+            className="flex cursor-pointer items-center gap-1.5 text-muted-foreground transition-colors hover:text-text"
+            title={principal ? undefined : "Say who you are first: a private room is listed for its owner"}
+          >
+            <input
+              type="checkbox"
+              checked={isPrivate}
+              disabled={!principal}
+              onChange={e => setIsPrivate(e.target.checked)}
+              onKeyDown={e => {
+                if (e.key === "Enter") void handleCreate();
+                if (e.key === "Escape") handleClose();
+              }}
+              className="size-3 accent-[var(--accent)]"
+            />
+            <Lock className="size-3" />
+            Private
+          </label>
           <span className="ml-auto flex items-center gap-1">
             <Kbd size="xs" tone="muted">↵</Kbd> create
           </span>

@@ -20,8 +20,8 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.bus import agent_channel, app_channel, bus, room_channel
-from app.services import in_memory_store
-from app.services.filesystem import list_room_names, room_exists
+from app.services import in_memory_store, room_access
+from app.services.filesystem import read_room_meta, room_exists
 
 logger = logging.getLogger(__name__)
 
@@ -93,19 +93,21 @@ async def stream_app_events(request: Request):
     )
 
 
-async def _sse_notifications(request: Request):
-    """Yield SSE frames merging the app channel with every room's channel.
+async def _sse_notifications(request: Request, viewer: str | None = None):
+    """Yield SSE frames merging the app channel with every room listed for ``viewer``.
 
     One subscription in place of the UI opening a per-room stream for every
     room the user participates in — the notification center's source feed.
     Frames are byte-identical to the per-room stream's (``l9_*``,
     ``coordination_join``, each carrying ``room_name``), plus
-    the app channel's ``room_created``/``room_deleted``, which this generator
-    also uses to grow/shrink its own room subscription set live.
+    the app channel's ``room_created``/``room_deleted``/``room_updated``, which
+    this generator also uses to grow/shrink its own room subscription set live.
+    Someone else's private room is left out, and a room made private or
+    shared is picked up or dropped as it changes.
     """
     app_queue = bus.subscribe(app_channel())
     room_queues: dict[str, asyncio.Queue] = {
-        name: bus.subscribe(room_channel(name)) for name in list_room_names()
+        name: bus.subscribe(room_channel(name)) for name in room_access.visible_rooms(viewer)
     }
     pending: set[asyncio.Task] = set()
     try:
@@ -128,12 +130,23 @@ async def _sse_notifications(request: Request):
                 payload = task.result()
                 kind = payload.get("type")
                 name = payload.get("room_name")
-                if kind == "room_created" and isinstance(name, str) and name not in room_queues:
-                    room_queues[name] = bus.subscribe(room_channel(name))
+                if kind in ("room_created", "room_updated") and isinstance(name, str):
+                    listed = room_access.visible_to(read_room_meta(name), viewer)
+                    if listed and name not in room_queues:
+                        room_queues[name] = bus.subscribe(room_channel(name))
+                    elif not listed:
+                        stale = room_queues.pop(name, None)
+                        if stale is not None:
+                            bus.unsubscribe(room_channel(name), stale)
+                        # Someone else's private room isn't this viewer's
+                        # business; they hear it's gone only if they had it.
+                        if stale is None:
+                            continue
                 elif kind == "room_deleted" and isinstance(name, str):
                     stale = room_queues.pop(name, None)
-                    if stale is not None:
-                        bus.unsubscribe(room_channel(name), stale)
+                    if stale is None:
+                        continue
+                    bus.unsubscribe(room_channel(name), stale)
                 yield f"data: {json.dumps(payload, default=str)}\n\n"
     finally:
         for task in pending:
@@ -144,15 +157,17 @@ async def _sse_notifications(request: Request):
 
 
 @router.get("/notifications/stream")
-async def stream_notifications(request: Request):
-    """Server-Sent Events stream aggregating activity across every room.
+async def stream_notifications(request: Request, viewer: str | None = None):
+    """Server-Sent Events stream aggregating activity across every room listed for the caller.
 
     Powers the notification center: a single connection, independent of which
     room (if any) is open, instead of the per-room stream that only carries
-    activity for whatever room is currently on screen.
+    activity for whatever room is currently on screen. ``viewer`` is who is
+    asking, so their private rooms are included (the verified principal wins
+    when the hub's sign-in is on); anyone else's are left out.
     """
     return StreamingResponse(
-        _sse_notifications(request),
+        _sse_notifications(request, room_access.viewer_for(request, viewer)),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

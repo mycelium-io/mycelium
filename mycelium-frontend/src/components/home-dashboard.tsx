@@ -12,6 +12,7 @@ import {
   Laptop,
   Plus,
   Search,
+  Lock,
   Sparkles,
   Terminal,
   type LucideIcon,
@@ -223,6 +224,7 @@ function RoomRow({ room }: { room: Room }) {
     >
       <RoomAvatar name={room.name} className="size-[18px] rounded-[4px] text-[8px]" />
       <span className="flex-shrink-0 font-medium text-text">{room.name}</span>
+      {room.is_public === false && <Lock aria-label="private" className="size-3 flex-shrink-0 text-faint" />}
       {state?.live && (
         <span
           aria-label={state.label}
