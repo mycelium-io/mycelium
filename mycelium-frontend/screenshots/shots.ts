@@ -97,7 +97,9 @@ export const SHOTS: Shot[] = [
     theme: "dark",
     viewport: "desktop",
     actions: [
-      'click:button[aria-label="Start a task or flow"]',
+      // The composer's + opens a menu of what a room holds (#1044).
+      'click:button[aria-label="Add to the room"]',
+      'click:css=button:has-text("Task or flow…")',
       'click:[role="dialog"] button[aria-pressed]:has-text("Review")',
       'click:[role="dialog"] input',
       "typekeys:Add a gift message to orders",
