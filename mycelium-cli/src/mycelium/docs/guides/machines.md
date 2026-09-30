@@ -84,48 +84,65 @@ mycelium config set runner.host omnigent
 mycelium runner
 ```
 
-The runner uses the Omnigent server on this machine (`runner.omnigent_url`,
-`http://127.0.0.1:6767` by default; start it with `omnigent start`). The
-agents you can start are the ones Omnigent has ready on this machine. Each
-agent is an Omnigent session, so you watch and talk to it in Omnigent's app.
-When the folder is a git repository, each agent gets its own worktree on a
-`mycelium/<room>/<handle>` branch.
+This only works when Omnigent runs on the same machine as the runner. The
+runner talks to the Omnigent server on this machine, at
+`http://127.0.0.1:6767` by default. Start that server with `omnigent start`.
+To use a different local address, set `runner.omnigent_url`.
 
-An Omnigent session isn't told who it is the way a herdr pane is, so the
-runner gives it a join code instead. Its first message tells it to run
-`mycelium join <code>` in its folder; see
+The agents you can start are the ones Omnigent has ready on this machine.
+Each agent runs as an Omnigent session, and you watch it and talk to it in
+Omnigent's app. If the folder is a git repository, each agent gets its own
+worktree, on a branch named `mycelium/<room>/<handle>`.
+
+An agent needs to know which room it is in and which member it is. When the
+runner starts an agent in herdr, it puts both in the agent's environment
+variables. An Omnigent session is started by Omnigent, and the runner can't
+set its environment. Instead, the runner gets a join code from the hub and
+puts it in the agent's first message, which tells the agent to run
+`mycelium join <code>` in its folder. See
 [Joining a room from anywhere](#machines-joining-a-room-from-anywhere).
 
-A swarm still starts in herdr.
+A swarm still starts in herdr, even with this setting.
 
 ## Joining a room from anywhere
 
-A join code is how an agent learns which room it's in and who it is, when
-nothing about the machine it runs on says so. Whoever starts the agent asks the
-hub for a code, and the agent runs:
+When Mycelium starts an agent itself, it tells the agent which room it is in
+and which member it is. An agent started some other way has no way to know
+that. A join code gives it that information.
+
+Whoever starts the agent asks the hub for a code. (The runner does this for
+you when it starts agents in Omnigent.) The agent then runs:
 
 ```bash
 mycelium join abcd-efgh-jkmn --hub http://your-hub:8000
 ```
 
-From then on, every `mycelium` command run in that folder, or any folder below
-it, acts as that member of that room. A code works once and expires after ten
-minutes. On a hub with sign-in turned on, joining also gives the agent a
-token of its own. What joining saves is readable only by you and ignored by
-git.
+A code works only once, and it expires after ten minutes.
 
-Each member needs its own folder; `join` refuses a folder that already belongs
-to another member unless you pass `--replace`. `mycelium leave` forgets it.
+Joining saves the membership in the current folder. The saved file is
+readable only by you, and git ignores it. From then on, every `mycelium`
+command run in that folder, or in any folder below it, acts as that member of
+that room. If the hub has sign-in turned on, joining also gives the agent its
+own token.
 
-To see what a command in the current folder will act as, and why:
+A folder holds one member. If the folder already belongs to another member,
+`join` refuses unless you pass `--replace`. To remove the membership from a
+folder, run `mycelium leave`.
+
+To check which member a command in the current folder will act as, and why:
 
 ```bash
 mycelium whoami --sources
 ```
 
-It shows the hub, handle, room and credential, and where each came from: a
-flag, the environment, this folder's `mycelium join`, or this machine's setup,
-in that order.
+It shows the hub, handle, room and credential in use, and where each one came
+from. Mycelium checks these sources in order, and the first one that has a
+value wins:
+
+1. a flag on the command
+2. the environment
+3. this folder's `mycelium join`
+4. this machine's setup
 
 ## Which folders
 

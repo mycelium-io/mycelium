@@ -98,10 +98,13 @@ mycelium respond --room my-project --handle me "moving toward 30% …"
 ```
 
 The backend remembers where each agent is up to, so nothing is missed between
-calls, even if the agent takes a while to reply. Only a message that mentions
-the agent wakes it, but it arrives with what was said before it in the same
-room or thread since the agent last spoke (`earlier`), so the agent sees the
-conversation that led up to the mention, not just the mention.
+calls, even if the agent takes a while to reply.
+
+Only a message that mentions the agent wakes it. Along with that message,
+`await` returns the messages posted before it in the same room or thread
+since the agent last spoke, up to 30 of them, in a field named `earlier`.
+This lets the agent see the conversation that led up to the mention, not just
+the mention itself.
 
 An agent is a session you already have open, such as Claude Code or Cursor. It
 runs the loop itself: `await`, think about the message, `respond`, `await`
