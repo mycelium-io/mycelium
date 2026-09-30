@@ -175,6 +175,13 @@ class Run:
             new_options="\n".join(f"{o.label}. {o.text}" for o in fresh) or "(none)",
             new_labels=" ".join(f"{o.label}=.." for o in fresh),
             scores=choosing.scorecard(self.last_pick) if self.last_pick else "",
+            # The best option so far in full: a fix revises it, so it has to
+            # see what earlier fixes put in.
+            pick=(
+                f"{self.last_pick['pick']}. {self.last_pick['text']}"
+                if self.last_pick and self.last_pick.get("pick")
+                else ""
+            ),
             threshold=str((self.last_pick or {}).get("threshold", 70)),
             shortfall=self.shortfall(),
         )
@@ -269,6 +276,11 @@ def bind_roles(protocol: Protocol, handles: list[str]) -> dict[str, str] | None:
     if len(handles) < len(protocol.roles):
         return None
     return dict(zip(protocol.roles, handles, strict=False))
+
+
+def _sentence(text: str) -> str:
+    """``text`` ending in exactly one full stop, however it ended before."""
+    return text.rstrip().rstrip(".") + "."
 
 
 def stance_of_step(replies: list[tuple[str, str | None]]) -> str | None:
@@ -1038,8 +1050,11 @@ class ConductorEngine:
                 after = (pick.get("ratings") or {}).get(who)
                 if after is not None:
                     moved = f" {who} went from {before} to {after}."
-            return f"✓ Everyone's on board: going with {label}: {text}.{moved}"
-        return f"✗ Couldn't get everyone there. Best was {label}: {text}. {choosing.summary(pick)}"
+            return f"✓ Everyone's on board: going with {label}: {_sentence(text)}{moved}"
+        return (
+            f"✗ Couldn't get everyone there. Best was {label}: {_sentence(text)} "
+            f"{choosing.summary(pick)}"
+        )
 
     async def _say(
         self,

@@ -971,6 +971,10 @@ async def test_concord_asks_only_the_least_happy_for_a_fix_then_everyone_rates_i
     assert [to for s, to in steps if s == "rescore"] == CAST
     fix_prompt = channel.ticks()[6][2]
     assert "You rated option B 50; the bar is 70" in fix_prompt
+    # The fixer revises the pick, so it sees the pick and every option in full,
+    # not just their letters in the table.
+    assert "The best option so far for Decide the renewal offer is:\n\nB. 10% off" in fix_prompt
+    assert "A. 20% off" in fix_prompt
     rescore_prompt = channel.ticks()[7][2]
     assert "C. 15% off for a two-year term" in rescore_prompt
     assert "A. 20% off" not in rescore_prompt, "only the new option is put to a rating"
@@ -1100,6 +1104,11 @@ async def test_prompts_say_the_tasks_title_not_its_key(in_a_task):
     propose = channel.ticks()[0][2]
     assert "Decide the renewal offer" in propose
     assert TASK_KEY not in propose
+
+
+def test_an_option_ending_in_a_full_stop_is_not_given_another():
+    assert conductor._sentence("Renew for three years.") == "Renew for three years."
+    assert conductor._sentence("Renew for three years") == "Renew for three years."
 
 
 def test_options_are_lettered_in_cast_order_whatever_order_replies_arrive_in():

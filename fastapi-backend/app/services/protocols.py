@@ -506,13 +506,17 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
                 "id": "repair",
                 "to": BOTTLENECK,
                 "collect": "options",
-                # The ask first, the table after: a fix is a new option, and it
-                # goes on the table word for word, so it asks for nothing else.
+                # A fix revises the best option rather than starting over, so it
+                # keeps what earlier fixes added; it shows the pick's full text
+                # and every option's, since the fixer can only keep what it sees.
+                # It goes on the table word for word, so it asks for nothing else.
                 "prompt": (
-                    "{shortfall}. Reply with just ONE new option for {title} that you'd "
-                    "rate highly and that keeps what the others rated high: the concrete "
-                    "terms, in one or two sentences, with no preamble or analysis.\n\n"
-                    "Where the ratings stand:\n\n{scores}"
+                    "The best option so far for {title} is:\n\n{pick}\n\n{shortfall}. "
+                    "Reply with just a revised version of it that you'd rate {threshold} "
+                    "or more: change as little as you can and keep what the others rated "
+                    "high. The full terms, in one or two sentences, with no preamble or "
+                    "analysis.\n\nEvery option so far:\n\n{options}\n\nHow they were "
+                    "rated:\n\n{scores}"
                 ),
                 "next": "rescore",
             },

@@ -193,7 +193,7 @@ Prompts can use these placeholders:
 | `{round}`, `{rounds}` | The current round and the total. |
 | `{options}`, `{option_labels}` | Every option suggested so far, as `A. …` lines, and the marker to rate them all with, such as `A=.. B=..`. |
 | `{new_options}`, `{new_labels}` | The options no one has rated yet, and the marker to rate them with, such as `C=..`. |
-| `{scores}` | The last pick's scorecard. |
+| `{pick}`, `{scores}` | The best option so far in full, and the last pick's scorecard. |
 | `{shortfall}` | What the least happy member is short by, such as "You rated option B 38; the bar is 70". |
 
 If a flow doesn't make sense, for example a step leads nowhere or there's no
