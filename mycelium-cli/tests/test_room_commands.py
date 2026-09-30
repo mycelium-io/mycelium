@@ -50,13 +50,13 @@ def _isolate(isolated_home, monkeypatch: pytest.MonkeyPatch) -> None:
 _ids = iter(range(1, 1000))
 
 
-def _room(name: str) -> object:
+def _room(name: str, *, is_public: bool = True) -> object:
     from mycelium_backend_client.models import RoomRead
 
     return RoomRead(
         id=next(_ids),
         name=name,
-        is_public=True,
+        is_public=is_public,
         created_at=datetime.datetime(2026, 6, 1),  # noqa: DTZ001
     )
 
@@ -116,8 +116,7 @@ def test_room_list_names_the_viewer_and_marks_private(monkeypatch: pytest.Monkey
     """The hub lists a private room only for its owner, so `ls` says who is asking."""
     monkeypatch.setenv("MYCELIUM_AGENT_HANDLE", "julia")
     captured: dict = {}
-    mine = _room("scratch")
-    mine.is_public = False
+    mine = _room("scratch", is_public=False)
 
     def fake_sync(**kwargs):
         captured.update(kwargs)
