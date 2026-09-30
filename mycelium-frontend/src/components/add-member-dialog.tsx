@@ -110,7 +110,7 @@ export function AddMemberDialog({ open, onOpenChange, roomName, initialKind = "m
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="grid-cols-1 gap-0 overflow-hidden p-0 sm:max-w-2xl [&>*]:min-w-0">
-        <div className="border-b border-border px-6 pt-5 pb-4">
+        <div className="border-b border-border px-5 pt-4 pb-3">
           <DialogTitle className="text-ui font-semibold text-text">
             Add a member to <span className="font-mono">{roomName}</span>
           </DialogTitle>
@@ -212,7 +212,7 @@ function EngineMember({ roomName, onAdded }: { roomName: string; onAdded: (handl
 
   return (
     <>
-      <div className="space-y-5 px-6 py-5">
+      <div className="space-y-4 px-5 py-4">
         <div>
           <p id="engine-kind-label" className="mb-2 text-micro font-medium text-muted-foreground">
             What it does
@@ -308,7 +308,7 @@ function A2aMember({ roomName, onAdded }: { roomName: string; onAdded: (handle: 
 
   return (
     <>
-      <div className="space-y-5 px-6 py-5">
+      <div className="space-y-4 px-5 py-4">
         <IdentityRow
           value={handle}
           onChange={(v) => {
@@ -382,7 +382,7 @@ function SessionMember({ roomName, onDone }: { roomName: string; onDone: () => v
   });
   return (
     <>
-      <div className="space-y-3 px-6 py-5">
+      <div className="space-y-3 px-5 py-4">
         <div className="rounded-lg border border-border bg-bg">
           <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap px-4 py-3 font-mono text-micro leading-relaxed text-muted-foreground">
             {prompt}
