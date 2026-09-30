@@ -52,7 +52,7 @@ describe("AddMemberDialog", () => {
   it("offers every kind of member from one place", () => {
     open();
     expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
-      "Your machineStarted on your computer",
+      "Your machineOn your computer",
       "EngineRuns on this hub",
       "A2A serviceRuns elsewhere",
       "Open sessionAlready open",

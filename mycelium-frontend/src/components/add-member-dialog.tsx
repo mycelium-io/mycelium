@@ -30,7 +30,7 @@ const KINDS: { kind: MemberKind; icon: LucideIcon; label: string; hint: string; 
     kind: "machine",
     icon: Laptop,
     label: "Your machine",
-    hint: "Started on your computer",
+    hint: "On your computer",
     about:
       "A coding agent on your machine that joins this room as a member, working the way you describe here.",
   },
