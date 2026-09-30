@@ -5,7 +5,7 @@
 
 import { useState } from "react";
 import { ChevronRight, Workflow } from "lucide-react";
-import type { ConductorLine } from "@/lib/conductor-line";
+import { isSuccess, pickSummary, type ConductorLine, type PickRecord } from "@/lib/conductor-line";
 import { MessageBody } from "@/components/message-body";
 
 interface Props {
@@ -63,6 +63,7 @@ export function ConductorRow({ line, text, onOpenMemory }: Props) {
           <span className="font-medium text-accent">{line.step}</span>
           <span> {line.tell ? "told" : "→"} </span>
           <Handle>{line.to}</Handle>
+          {line.again && <span className="text-faint"> (asked again)</span>}
           <span className="text-faint">
             {" · "}turn {line.turn} of {line.cap}
             {line.rounds ? ` · round ${line.round} of ${line.rounds}` : ""}
@@ -90,18 +91,37 @@ export function ConductorRow({ line, text, onOpenMemory }: Props) {
       );
       break;
     }
+    case "select":
+      body = (
+        <>
+          <span className="font-medium text-accent">{line.step}</span>
+          <span>: </span>
+          <span>{pickSummary(line.select)}</span>
+        </>
+      );
+      break;
     case "close": {
-      const good = line.outcome === "resolved";
+      const good = isSuccess(line.outcome);
+      // A run that picked says what it went with, or that it couldn't get there.
+      const said = line.pick
+        ? good
+          ? `Everyone's on board: going with ${line.pick}`
+          : `Couldn't get everyone there. Best was ${line.pick}`
+        : `${line.protocol} ${good ? "done" : line.outcome}`;
       body = (
         <>
           <span className="font-medium" style={{ color: good ? "var(--green)" : "var(--yellow)" }}>
-            {good ? "✓" : "✗"} {line.protocol} {good ? "done" : line.outcome}
+            {good ? "✓" : "✗"} {said}
           </span>
-          <span className="text-faint">
-            {" · "}
-            {line.steps} step{line.steps === 1 ? "" : "s"}
-            {!good && line.reason ? ` · ${line.reason}` : ""}
-          </span>
+          {line.pick && line.text ? (
+            <span className="text-text">: {line.text}</span>
+          ) : (
+            <span className="text-faint">
+              {" · "}
+              {line.steps} step{line.steps === 1 ? "" : "s"}
+              {!good && line.reason ? ` · ${line.reason}` : ""}
+            </span>
+          )}
         </>
       );
       break;
@@ -132,6 +152,64 @@ export function ConductorRow({ line, text, onOpenMemory }: Props) {
           <MessageBody content={text} onOpenMemory={onOpenMemory} />
         </div>
       )}
+      {line.event === "select" && <Scorecard record={line.select} />}
+    </div>
+  );
+}
+
+/**
+ * A pick's ratings: options down the side, members across, `?` where a member
+ * gave none, the pick marked, and anything under the bar drawn so it shows.
+ */
+export function Scorecard({ record }: { record: PickRecord }) {
+  const bar = record.threshold;
+  return (
+    <div className="ml-9 mt-1 overflow-x-auto">
+      <table className="text-micro tabular" aria-label={`Ratings, bar ${bar}`}>
+        <thead>
+          <tr className="text-faint">
+            <th className="py-0.5 pr-3 text-left font-normal">option</th>
+            {record.cast.map((h) => (
+              <th key={h} className="px-2 py-0.5 text-right font-normal">
+                @{h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {record.options.map((o) => {
+            const picked = o.label === record.pick;
+            return (
+              <tr key={o.label} className={picked ? "bg-accent-soft" : undefined}>
+                <th
+                  scope="row"
+                  title={o.text}
+                  // The thread pane is narrow and every member needs a column,
+                  // so an option's text gives way; the whole of it is the tooltip.
+                  className="max-w-[9rem] truncate py-0.5 pr-3 text-left font-normal text-muted-foreground"
+                >
+                  <span className={`font-mono ${picked ? "font-semibold text-accent" : "text-text"}`}>{o.label}</span>{" "}
+                  {o.text}
+                </th>
+                {record.cast.map((h) => {
+                  const r = record.table[o.label]?.[h];
+                  const short = r !== undefined && r < bar;
+                  return (
+                    <td
+                      key={h}
+                      className="px-2 py-0.5 text-right"
+                      style={{ color: r === undefined ? "var(--faint)" : short ? "var(--yellow)" : "var(--text)" }}
+                    >
+                      {r ?? "?"}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p className="mt-0.5 text-micro text-faint">The bar is {bar}.</p>
     </div>
   );
 }

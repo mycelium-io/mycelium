@@ -16,7 +16,7 @@ import {
   NODE_W,
   PAD,
 } from "@/lib/flow-graph";
-import type { EpisodeFlow } from "@/lib/api";
+import type { EpisodeFlow, FlowTraceEntry } from "@/lib/api";
 
 const gated: EpisodeFlow = {
   name: "gated",
@@ -131,5 +131,67 @@ describe("where a run stands", () => {
 
   it("knows which edges were taken", () => {
     expect([...takenEdges(trace)]).toEqual(["propose→review", "review→propose"]);
+  });
+});
+
+// The concord built-in as the hub's `protocols.spec_of` hands it over (prompts
+// left out): a pick node, three ways out of it, and the loop back to the pick.
+const concord: EpisodeFlow = {
+  name: "concord",
+  roles: [],
+  cast: ["success", "finance", "legal"],
+  steps: [
+    { id: "propose", to: "all", collect: "options", next: "score" },
+    { id: "score", to: "all", collect: "scores", next: "pick" },
+    {
+      id: "pick",
+      kind: "select",
+      threshold: 0.7,
+      max_repairs: 2,
+      next: { feasible: "agreed", infeasible: "repair", stuck: "no_deal" },
+    },
+    { id: "repair", to: "bottleneck", collect: "options", next: "rescore" },
+    { id: "rescore", to: "all", collect: "scores", next: "pick" },
+    { id: "agreed", end: "converged" },
+    { id: "no_deal", end: "rejected" },
+  ],
+};
+
+describe("laying out an agreement flow", () => {
+  it("draws the pick as a pick, and the fix as the least happy member's", () => {
+    const layout = layoutFlow(concord);
+    const node = (id: string) => layout.nodes.find((n) => n.id === id)!;
+    expect(node("pick").select).toBe(true);
+    expect(node("pick").what).toBe("picks · bar 70");
+    expect(node("pick").who).toBeNull();
+    expect(node("score").select).toBe(false);
+    expect(node("repair").what).toBe("asks the least happy");
+    expect(node("repair").who).toBeNull();
+    expect(node("agreed").end).toBe("converged");
+  });
+
+  it("labels the three ways out of a pick and loops the re-rating back to it", () => {
+    const layout = layoutFlow(concord);
+    const edge = (from: string, to: string) => layout.edges.find((e) => e.from === from && e.to === to);
+    expect(edge("pick", "agreed")?.label).toBe("feasible");
+    expect(edge("pick", "repair")?.label).toBe("infeasible");
+    expect(edge("pick", "no_deal")?.label).toBe("stuck");
+    expect(edge("rescore", "pick")?.back).toBe(true);
+  });
+
+  it("reaches the converged end, and a second asking takes no edge", () => {
+    const run = [
+      { step: "propose", turn: 1, next: "score" },
+      { step: "score", turn: 3, again: true, asked: ["legal"] } as unknown as FlowTraceEntry,
+      { step: "score", turn: 2, next: "pick" },
+      {
+        step: "pick",
+        turn: 3,
+        next: "agreed",
+        select: { outcome: "feasible" as const, pick: "B", lowest: 72, missing: [], least_happy: null },
+      },
+    ];
+    expect(stepStates(concord, run, null, "converged").get("agreed")).toBe("reached");
+    expect([...takenEdges(run)]).toEqual(["propose→score", "score→pick", "pick→agreed"]);
   });
 });

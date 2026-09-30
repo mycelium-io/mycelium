@@ -26,6 +26,7 @@ import type {
   A2aBridgeState,
   EpisodeDetail,
   EpisodeSummary,
+  FlowStep,
   L9Envelope,
   MemoryGraph,
   MemoryGraphEdge,
@@ -85,6 +86,8 @@ export interface MockMessage {
   created_at: string;
   recipient_handle?: string | null;
   episode?: string | null;
+  /** A structured line a surface draws instead of the prose (a conductor post's). */
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface RoomFixture {
@@ -541,6 +544,179 @@ const checkoutReleaseEpisode: EpisodeSummary = {
   ],
 };
 
+// "Help them agree" (concord) run on the double-charge decision: reviewer
+// wants refunds automatic, builder wants support to check first, and Morgan
+// is least happy with the first pick. Morgan's fix clears the bar for all
+// three, and the run ends agreed. Scorecards and the close carry structured
+// lines, so the thread draws them as tables and a result line.
+const REFUND_THREAD = checkoutEpisode("a1c3e5");
+const REFUND_CAST = ["builder", "reviewer", "operator"];
+const refundOptions = [
+  { label: "A", text: "Refund the second charge automatically, right away.", authors: ["reviewer"] },
+  { label: "B", text: "Send every double charge to support to check before refunding.", authors: ["builder"] },
+  {
+    label: "C",
+    text: "Refund automatically when the second charge is under $50; support checks anything larger within a day.",
+    authors: ["operator"],
+  },
+];
+const refundFirstPick = {
+  outcome: "infeasible" as const,
+  pick: "A",
+  text: refundOptions[0].text,
+  threshold: 70,
+  options: refundOptions.slice(0, 2),
+  table: {
+    A: { builder: 60, reviewer: 90, operator: 40 },
+    B: { builder: 80, reviewer: 35, operator: 75 },
+  },
+  cast: REFUND_CAST,
+  ratings: { builder: 60, reviewer: 90, operator: 40 },
+  lowest: 40,
+  missing: [],
+  least_happy: "operator",
+};
+const refundAgreed = {
+  outcome: "feasible" as const,
+  pick: "C",
+  text: refundOptions[2].text,
+  threshold: 70,
+  options: refundOptions,
+  table: { ...refundFirstPick.table, C: { builder: 78, reviewer: 85, operator: 88 } },
+  cast: REFUND_CAST,
+  ratings: { builder: 78, reviewer: 85, operator: 88 },
+  lowest: 78,
+  missing: [],
+  least_happy: null,
+};
+const concordSteps: FlowStep[] = [
+  { id: "propose", to: "all", collect: "options", next: "score" },
+  { id: "score", to: "all", collect: "scores", next: "pick" },
+  {
+    id: "pick",
+    kind: "select",
+    threshold: 0.7,
+    max_repairs: 2,
+    next: { feasible: "agreed", infeasible: "repair", stuck: "no_deal" },
+  },
+  { id: "repair", to: "bottleneck", collect: "options", next: "rescore" },
+  { id: "rescore", to: "all", collect: "scores", next: "pick" },
+  { id: "agreed", end: "converged" },
+  { id: "no_deal", end: "rejected" },
+];
+const checkoutConcordEpisode: EpisodeSummary = {
+  short_id: "b9c1d3",
+  episode: REFUND_THREAD,
+  topic: "urn:concept:mycelium:checkout",
+  outcome: "converged",
+  subkind: "converged",
+  participants: [...REFUND_CAST, "conductor"],
+  // The summary carries the aligner's quality numbers only; a run's
+  // satisfaction is in its record and on its close.
+  metrics: null,
+  assignments: { decision: refundOptions[2].text },
+  tasks: [],
+  message_count: 16,
+  updated_at: iso(2.6),
+  updated_by: "conductor",
+  within: REFUND_THREAD,
+  current_step: null,
+  flow: {
+    name: "concord",
+    description:
+      "Help them agree. Everyone suggests, everyone rates, the least happy agent suggests a fix, until one option clears the bar for all.",
+    roles: [],
+    max_steps: 9,
+    bound: {},
+    cast: REFUND_CAST,
+    ask: "when someone is charged twice, refund it automatically or send it to support first?",
+    steps: concordSteps,
+  },
+  trace: [
+    { step: "propose", turn: 1, asked: REFUND_CAST, stances: {}, stance: null, next: "score", at: iso(5.2) },
+    { step: "score", turn: 2, asked: REFUND_CAST, stances: {}, stance: null, next: "pick", at: iso(4.6) },
+    {
+      step: "pick",
+      turn: 2,
+      select: { outcome: "infeasible", pick: "A", lowest: 40, missing: [], least_happy: "operator" },
+      next: "repair",
+      at: iso(4.5),
+    },
+    { step: "repair", turn: 3, asked: ["operator"], stances: {}, stance: null, next: "rescore", at: iso(3.8) },
+    { step: "rescore", turn: 4, asked: REFUND_CAST, stances: {}, stance: null, next: "pick", at: iso(2.8) },
+    {
+      step: "pick",
+      turn: 4,
+      select: { outcome: "feasible", pick: "C", lowest: 78, missing: [], least_happy: null },
+      next: "agreed",
+      at: iso(2.7),
+    },
+  ],
+};
+
+/** The run's posts in the decision's thread: the conductor's lines and what
+ *  each member answered, oldest first. */
+function refundThread(): MockMessage[] {
+  let n = 0;
+  const at = (mins: number) => iso(mins);
+  const post = (sender: string, content: string, mins: number, conductor?: Record<string, unknown>): MockMessage => ({
+    id: `cc${++n}`,
+    sender_handle: sender,
+    message_type: "broadcast",
+    content,
+    created_at: at(mins),
+    episode: REFUND_THREAD,
+    ...(conductor ? { metadata: { conductor } } : {}),
+  });
+  const turn = (step: string, to: string, turnNo: number, mins: number) =>
+    post("conductor", `concord · ${step} · turn ${turnNo} of 9 · ${to}`, mins, {
+      event: "turn",
+      protocol: "concord",
+      step,
+      to,
+      turn: turnNo,
+      cap: 9,
+    });
+  return [
+    post("conductor", "Running concord with builder, reviewer, operator as members.", 5.5, {
+      event: "open",
+      protocol: "concord",
+      roles: {},
+      members: REFUND_CAST,
+      steps: concordSteps,
+    }),
+    ...REFUND_CAST.map((h) => turn("propose", h, 1, 5.4)),
+    post("builder", "Send them to support first. Some double charges are two real orders, and refunding those loses money.", 5.3),
+    post("reviewer", "Refund automatically, right away. The customer did nothing wrong and shouldn't have to wait.", 5.3),
+    post("operator", "Refund automatically, right away.", 5.2),
+    ...REFUND_CAST.map((h) => turn("score", h, 2, 5.0)),
+    post("builder", "A risks refunding real repeat orders; B is safe but slow for the customer.", 4.8),
+    post("reviewer", "B makes a customer wait on something that's our fault.", 4.7),
+    post("operator", "A is right for small amounts but I'm not comfortable refunding big orders blind. B is slow.", 4.6),
+    post("conductor", "pick: A, @operator at 40", 4.5, { event: "select", step: "pick", next: "repair", select: refundFirstPick }),
+    turn("repair", "operator", 3, 4.4),
+    post(
+      "operator",
+      "Refund automatically when the second charge is under $50; support checks anything larger within a day. Small ones are nearly always the button bug, and big ones are worth a look.",
+      3.8,
+    ),
+    ...REFUND_CAST.map((h) => turn("rescore", h, 4, 3.6)),
+    post("builder", "Most real repeat orders are over $50, so this covers my worry.", 3.2),
+    post("reviewer", "Fast for nearly everyone, and a day is fine for the rest.", 3.0),
+    post("operator", "This is what I'd sign off on.", 2.9),
+    post("conductor", "pick: C, everyone at 70+", 2.7, { event: "select", step: "pick", next: "agreed", select: refundAgreed }),
+    post("conductor", "✓ Everyone's on board: going with C.", 2.6, {
+      event: "close",
+      protocol: "concord",
+      outcome: "converged",
+      steps: 4,
+      reason: "reached `agreed`",
+      pick: "C",
+      text: refundOptions[2].text,
+    }),
+  ];
+}
+
 // Coordination-state memories the board projects into rows. Every one is what
 // the docs promise a task is: a markdown file with frontmatter — prose in the
 // body (`value`), the row's typed fields in `meta`. The board reads status,
@@ -857,6 +1033,8 @@ const checkout: RoomFixture = {
     // The old card form's own thread: a leftover chased down.
     { id: "r1", sender_handle: "builder", message_type: "broadcast", content: "12 orders last week still used the old card form after stripe went live. all from one cached page.", created_at: iso(16), episode: OLD_FORM_THREAD },
     { id: "r2", sender_handle: "builder", message_type: "broadcast", content: "cleared the cache. every order today went through stripe.", created_at: iso(15), episode: OLD_FORM_THREAD },
+    // The double-charge decision's thread: a "help them agree" run, start to finish.
+    ...refundThread(),
     // Two deliberately long, multi-paragraph messages — the wall-of-text case the
     // channel has to handle without swallowing everything around it.
     {
@@ -883,8 +1061,16 @@ const checkout: RoomFixture = {
         "Decision: the fix goes out thursday, before Apple Pay, like builder said. If it isn't reviewed by thursday afternoon, Apple Pay waits for it. I'd rather launch a day late than launch with a known double-charge bug. Filing both follow-ups now.",
     },
   ],
-  episodes: [checkoutReleaseEpisode, checkoutGatedEpisode, checkoutFanOutEpisode, checkoutEpisodeSummary, checkoutRoundRobinEpisode],
+  episodes: [
+    checkoutReleaseEpisode,
+    checkoutGatedEpisode,
+    checkoutConcordEpisode,
+    checkoutFanOutEpisode,
+    checkoutEpisodeSummary,
+    checkoutRoundRobinEpisode,
+  ],
   episodeDetails: {
+    b9c1d3: { ...checkoutConcordEpisode, messages: [] },
     e4f1a2: { ...checkoutEpisodeSummary, messages: checkoutL9Chain },
     f10a2c: { ...checkoutGatedEpisode, messages: [] },
     a2b3c4: { ...checkoutFanOutEpisode, messages: [] },

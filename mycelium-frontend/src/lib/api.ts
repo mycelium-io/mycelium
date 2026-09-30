@@ -1141,14 +1141,26 @@ export interface EpisodeSummary {
 /** One step of an episode's interaction flow, as the record carries it. */
 export interface FlowStep {
   id: string;
-  /** A role, or each / all / workers. Absent on an end step. */
+  /** `select` picks among the options by the ratings given, asking nobody.
+   *  Absent means an ordinary step that asks someone. */
+  kind?: "ask" | "select";
+  /** A role, or each / all / workers / bottleneck. Absent on an end or select step. */
   to?: string | null;
   prompt?: string;
   wait?: "reply" | "none";
   rounds?: number;
-  /** One step id, or a branch by stance (accept / reject / silent / default). */
+  /** What the replies add to the run: suggestions, or ratings of them. */
+  collect?: "options" | "scores" | null;
+  /** What every reply must carry; a reply without it is asked once more. */
+  require?: "stance" | "scores" | null;
+  /** A select step's bar, 0-1, and how many fixes it sends for. */
+  threshold?: number | null;
+  max_repairs?: number | null;
+  /** One step id, or a branch by stance (accept / reject / silent / default),
+   *  or, on a select, by how the pick went (feasible / infeasible / stuck). */
   next?: string | Record<string, string> | null;
-  end?: "resolved" | "rejected" | null;
+  /** `converged` is an agreement a select step certified. */
+  end?: "resolved" | "rejected" | "converged" | null;
 }
 
 /** The interaction flow an episode runs: the graph the conductor walks, plus
@@ -1172,6 +1184,16 @@ export interface FlowTraceEntry {
   asked?: string[];
   stances?: Record<string, string | null>;
   stance?: string | null;
+  /** A select step's pick: how it went, and who is short. */
+  select?: {
+    outcome: "feasible" | "infeasible" | "stuck";
+    pick: string | null;
+    lowest: number | null;
+    missing: string[];
+    least_happy: string | null;
+  };
+  /** A second asking of the members who replied without what the step requires. */
+  again?: boolean;
   next: string;
   at?: string;
 }

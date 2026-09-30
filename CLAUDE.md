@@ -243,8 +243,9 @@ is no litellm dependency.
 - **The conductor walks a flow inside a task's thread, in code.** A fourth
   engine kind (`app/services/conductor.py`) with no model of its own.
   Summoned as `board coordinate <row> conductor "gated @a @b: …"`, it walks
-  a `protocols.Protocol` (four built in: `gated`, `fan-out`, `round-robin`,
-  `swarm`; a step's prompt can name the row as `{task}`;
+  a `protocols.Protocol` (seven built in: `gated`, `fan-out`, `round-robin`,
+  `swarm`, `review`, and IoC L9's `concord` and `accord`; a step's prompt can
+  name the row as `{task}`;
   a room's `protocols/<name>` memory overrides or adds one; `show <name>`
   prints one as YAML to save there) **in the thread it was summoned in**,
   holding that thread's floor for whoever each step addresses, asking through
@@ -266,10 +267,21 @@ is no litellm dependency.
   synchronously in `handle_summon`; the members named beside the conductor
   are role bindings, so a persona there does not answer the summon and a
   resident agent that replies early is refused. An `@`-mention of any engine
-  is a summon, never a SLIM invite. A run opens no negotiation and never
-  commits `converged`, so nothing it does compiles into rows. A model in the
-  nodes, code on the edges. Every post it makes carries a structured line in
-  its payload under `conductor` (`open`, `turn`, `edge`, `close`) beside the
+  is a summon, never a SLIM invite. A run opens no negotiation. A model in the
+  nodes, code on the edges, and on the picks: a `kind: select` step asks
+  nobody, and `app/services/select.py` picks among the options members
+  suggested (`collect: options`) by the 0-100 ratings they gave in the marker
+  (`[[mycelium: A=82 B=41]]`, `collect: scores`), leximin with a missing
+  rating counted as 0 for ranking and never recorded as 0; the least happy
+  rater is `to: bottleneck` for a fix, bounded by `max_repairs`, and the
+  step branches `feasible` / `infeasible` / `stuck`. A step's `require`
+  (stance or scores) re-asks a reply that lacks it once; an unmarked stance
+  after that counts as reject. **A run ending on a pick's `feasible` edge is
+  the one conductor path that commits `converged`**, with the decision as
+  `assignments` and the task as `within`, so `task_sync` compiles rows filed
+  `part-of` that task; every other flow ends `resolved` / `rejected` and
+  compiles nothing. Every post it makes carries a structured line in
+  its payload under `conductor` (`open`, `turn`, `edge`, `select`, `close`) beside the
   prose its members read; the history read copies it into the message's
   `metadata`, and the app (`task/conductor-row.tsx`) and `swarm`'s view draw
   the line, keeping the prompt behind a toggle. A run ending `resolved` is a
@@ -504,8 +516,11 @@ is no litellm dependency.
   a row arrives, not the way. On convergence the aligner hands the agreed
   `{issue: value}` map to `task_compiler.py`, an LLM stage that turns it into
   tasks, and `task_sync.py` writes each one as a `work/` memory through the
-  canonical upsert *before* the consensus is announced (so the work exists once
-  `await` returns). The model still writes `- [ ] text @handle` lines because
+  canonical upsert. It runs off `on_converged`, which fires once the commit is
+  recorded, in the background: the rows land just after the consensus is
+  announced, and each raises its own `filed` notice, which is what wakes the
+  agent it is for. A converged commit that names a task in `within` files its
+  rows `part-of` it (and loose if that row is gone). The model still writes `- [ ] text @handle` lines because
   that is the shape it is good at; parsing them into rows is the compiler's job
   and the line format never leaves it. A task carries `assignee`, never `owner`
   — `assignee` is who the task is *for*, the `assignment` field is who is

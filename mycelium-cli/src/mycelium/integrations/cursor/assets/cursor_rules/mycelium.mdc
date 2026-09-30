@@ -93,6 +93,10 @@ mycelium await --room <room-name> --handle cursor-agent --json
 - `stance`: `accept` if you can live with the offer on the table, `reject` if
   you can't. Omit `stance` on an opening offer. Mark it **honestly**; it's how
   the team distinguishes real agreement from polite yielding.
+- Option ratings, when a flow asks you to rate options (the conductor's
+  `concord`): one capital letter per option and a whole number 0–100, e.g.
+  `[[mycelium: A=82 B=41]]`. Rate every option you're asked about. Ratings are
+  0–100; confidence is 0.0–1.0.
 
 ### Converge
 

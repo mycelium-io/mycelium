@@ -223,7 +223,16 @@ export function FlowGraph({ flow, trace, currentStep, outcome, floor, className 
         return (
           <g key={node.id} transform={`translate(${node.x} ${node.y})`}>
             <title>{`${node.id}: ${line}`}</title>
-            <rect width={node.w} height={NODE_H} rx={8} fill={t.fill} stroke={t.stroke} strokeWidth={state === "current" ? 2 : 1.2} />
+            {/* A pick is made in code and asks nobody, so its box is dashed. */}
+            <rect
+              width={node.w}
+              height={NODE_H}
+              rx={8}
+              fill={t.fill}
+              stroke={t.stroke}
+              strokeWidth={state === "current" ? 2 : 1.2}
+              strokeDasharray={node.select ? "4 3" : undefined}
+            />
             <clipPath id={`flow-clip-${node.id}`}>
               <rect x={0} y={0} width={node.w - 6} height={NODE_H} />
             </clipPath>

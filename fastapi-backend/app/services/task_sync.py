@@ -60,6 +60,25 @@ def _assignments_from(envelope: L9) -> dict[str, str]:
     return {str(k): v if isinstance(v, str) else str(v) for k, v in raw.items()}
 
 
+#: The relation a sub-task names its task by (``routes/tasks.PARENT_RELATION``).
+PARENT_RELATION = "part-of"
+
+
+def _parent_from(room: str, envelope: L9) -> str | None:
+    """The task an agreement was reached in (``within`` on the envelope), when
+    that row still exists. A row deleted mid-run is not pointed at, the same
+    refusal ``board new --parent`` gives a missing parent."""
+    payload = envelope.payload
+    data = payload.data if payload is not None and isinstance(payload.data, dict) else {}
+    within = data.get("within")
+    if not isinstance(within, str) or not within:
+        return None
+    if read_memory_file(get_room_dir(room), within) is None:
+        logger.info("room %s: %s is gone, so its compiled work is filed loose", room, within)
+        return None
+    return within
+
+
 def open_work(room: str) -> list[tuple[str, str]]:
     """``(key, title)`` for every unfinished ``work/`` row in the room.
 
@@ -124,7 +143,8 @@ class TaskSyncEngine:
         """Compile the verdict into ``work/`` rows and return the keys written."""
         assignments = _assignments_from(envelope)
         tasks = await self._compile(room, assignments)
-        written = [await self._write_task(room, t) for t in tasks]
+        parent = _parent_from(room, envelope)
+        written = [await self._write_task(room, t, parent=parent) for t in tasks]
         logger.info("compiled %d task row(s) for room %s", len(written), room)
         return written
 
@@ -149,7 +169,7 @@ class TaskSyncEngine:
             )
             return task_compiler.fallback_tasks(assignments)
 
-    async def _write_task(self, room: str, task: CompiledTask) -> str:
+    async def _write_task(self, room: str, task: CompiledTask, *, parent: str | None = None) -> str:
         """Put one task in the room as a ``work/`` row, with its own thread.
 
         An unchanged task re-compiles to the same key, so this is an upsert onto
@@ -173,6 +193,10 @@ class TaskSyncEngine:
             meta[ASSIGNEE_FIELD] = f"@{task.assignee}"
         if existing is None:
             meta["status"] = "open"
+        if parent and parent != key:
+            # A sub-task of the task the agreement was reached in, the same
+            # relation `board new --parent` writes.
+            meta[PARENT_RELATION] = parent
 
         await upsert_memories(
             room,
