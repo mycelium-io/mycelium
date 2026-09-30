@@ -28,7 +28,7 @@ import {
   runnerAgentOf,
 } from "./runners";
 import type { MockMemory } from "./fixtures";
-import type { A2aBridgeState, MemoryGraph, MemoryGraphEdge, MemoryLink } from "@/lib/api";
+import type { A2aBridgeState, MemoryGraph, MemoryGraphEdge, MemoryLink, Protocol } from "@/lib/api";
 import type { SearchHit, SearchResultType } from "@/lib/search";
 
 /** One item of a POST /memory batch, as the editor sends it. */
@@ -55,6 +55,40 @@ const memText = (m: MockMemory): string =>
 const statusWarmed = new Set<string>();
 
 const manifestText = (m: MockMemory): string => (typeof m.value === "string" ? m.value : "");
+
+/** The backend's built-in flows (`protocols.BUILTIN_PROTOCOLS`), as its route lists them. */
+const MOCK_PROTOCOLS: Protocol[] = [
+  {
+    name: "accord",
+    description:
+      "Get on the same page. Agree what the task is, what's out of scope, what done means and what the key words mean, before work starts.",
+    roles: ["lead"],
+  },
+  {
+    name: "concord",
+    description:
+      "Help them agree. Everyone suggests, everyone rates, the least happy agent suggests a fix, until one option clears the bar for all.",
+    roles: [],
+  },
+  { name: "fan-out", description: "A lead asks every worker at once, then combines what came back.", roles: ["lead"] },
+  {
+    name: "gated",
+    description: "A proposer proposes, a guardian approves or blocks; a block sends it back.",
+    roles: ["proposer", "guardian"],
+  },
+  {
+    name: "review",
+    description:
+      "An author does the work, a reviewer checks it against evidence; findings go back until the reviewer approves.",
+    roles: ["author", "reviewer"],
+  },
+  { name: "round-robin", description: "Every member speaks in turn, for a fixed number of rounds.", roles: [] },
+  {
+    name: "swarm",
+    description: "A team kicks off a task: each member checks in, then the lead splits the work.",
+    roles: ["lead"],
+  },
+].map((p) => ({ ...p, source: "builtin" as const }));
 
 /** A graph edge's `raw` markdown, synthesized for display — the fixtures only
  *  need to carry the parsed shape (source/target/kind), not the literal text. */
@@ -584,6 +618,13 @@ export async function handleMock(req: Request): Promise<Response | null> {
         });
       }
       return json(agents);
+    }
+
+    case "protocols": {
+      // GET /protocols — the flows a conductor summon can name, as the
+      // backend's built-ins describe them. Mock rooms write no protocols/.
+      if (sub.length !== 1 || method !== "GET") return null;
+      return json(MOCK_PROTOCOLS);
     }
 
     case "skills": {

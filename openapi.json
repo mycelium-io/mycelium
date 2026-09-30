@@ -4112,6 +4112,53 @@
         }
       }
     },
+    "/api/rooms/{room_name}/protocols": {
+      "get": {
+        "tags": [
+          "protocols"
+        ],
+        "summary": "List Protocols",
+        "description": "The flows a summon in this room can name.",
+        "operationId": "list_protocols_api_rooms__room_name__protocols_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProtocolSummary"
+                  },
+                  "title": "Response List Protocols Api Rooms  Room Name  Protocols Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/status": {
       "get": {
         "tags": [
@@ -6861,6 +6908,43 @@
           "joined_at"
         ],
         "title": "ParticipantRead"
+      },
+      "ProtocolSummary": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles",
+            "description": "Bound in order to the members a summon names; empty means everyone who is named."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "builtin",
+              "room"
+            ],
+            "title": "Source",
+            "description": "`room` when the room's protocols/<name> memory defines or reshapes it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "source"
+        ],
+        "title": "ProtocolSummary",
+        "description": "A flow the room's conductor can run, as a summon needs to know it."
       },
       "ReleaseBody": {
         "properties": {

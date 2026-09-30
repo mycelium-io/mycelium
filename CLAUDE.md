@@ -504,16 +504,26 @@ is no litellm dependency.
   popover; `[[` is matched before `/` and `@` since a memory key can contain
   slashes. Skills insert a reference token — the resident agent/engine interprets
   it; the composer never runs the skill. **Commands** are the one `/` that runs:
-  `/task`, `/swarm` and `/memory`, only as a message's first word, listed ahead
-  of the skills. `/task` files a task with the board capture's grammar through
-  the same `lib/board/file-capture.ts` the board's File button uses (the tasks
-  route, then ordinary fields); `/swarm` opens the swarm dialog, since a swarm
-  spends model turns; `/memory` opens the new-memory dialog
-  (`new-memory-dialog.tsx`, also behind the memory pane's Add and the
-  composer's +), which draws where the key lands in the room's tree
-  (`lib/memory-location.ts`) and replaces a taken key only at the version it
-  saw. A skill that shares a command's name is still reachable by
-  picking it from the list.
+  `/task`, `/swarm`, `/memory`, `/agent` and `/engine`, only as a message's
+  first word, listed ahead of the skills. Each declares its arguments in
+  `lib/composer-commands.ts` (one parser for all of them), so the composer
+  draws the signature over the box with the argument under the cursor lit,
+  offers that argument's values (a machine's harnesses and folders, engine
+  kinds, memory folders and keys) and Tab completes them; a missing argument
+  is named before anything runs. `/task` files a task with the board capture's
+  grammar through the same `lib/board/file-capture.ts` the board's File button
+  uses (the tasks route, then ordinary fields); `/swarm` opens the swarm
+  dialog, since a swarm spends model turns; `/agent` queues the same runner
+  launch the Add member dialog does; `/memory <key> <text>` writes inline,
+  replacing a taken key only at the version it saw, and with no text opens
+  the new-memory dialog (`new-memory-dialog.tsx`, also behind the memory
+  pane's Add and the composer's +) where the key points. A message that
+  starts by mentioning a conductor gets the same help without being a
+  command: its flow completes from `GET /rooms/{room}/protocols` (the room's
+  own flows, then the built-ins it leaves alone) and the flow's roles fill
+  the member slots in the order they bind (`parseSummon`); it is still sent
+  as the message typed. A skill that shares a command's name is still
+  reachable by picking it from the list.
 - **One keycap, sized by where it sits.** Every surface that names a key draws it
   through `ui/kbd.tsx` — `Kbd` for a literal, `KbdChord` for a chord the keymap
   owns (platform-spelled, and silent when nothing binds the action). Three sizes,

@@ -531,6 +531,26 @@ export async function fetchSkills(roomName: string): Promise<Skill[]> {
   return data.skills ?? [];
 }
 
+/** A flow the room's conductor can run: `@conductor <name> @a @b: …`. */
+export interface Protocol {
+  name: string;
+  description: string;
+  /** Bound in order to the members a summon names; empty means everyone named. */
+  roles: string[];
+  /** `room` when the room's `protocols/<name>` memory defines or reshapes it. */
+  source: "builtin" | "room";
+}
+
+/** The flows a summon in this room can name, for the composer's help while
+ *  writing one. Degrades to empty on failure. */
+export async function fetchProtocols(roomName: string): Promise<Protocol[]> {
+  return apiFetch<Protocol[]>(`${roomApiPath(roomName)}/protocols`, {
+    cache: "no-store",
+    fallback: [],
+    guard: isArray as (d: unknown) => d is Protocol[],
+  });
+}
+
 /** What the tools a room points at say about the work its rows mention.
  *  A read is answered from the hub's cache and never fetches, so polling this
  *  costs a cache lookup rather than a round trip to GitHub. */

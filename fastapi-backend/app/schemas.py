@@ -533,6 +533,20 @@ class SkillListResponse(BaseModel):
     total: int
 
 
+class ProtocolSummary(BaseModel):
+    """A flow the room's conductor can run, as a summon needs to know it."""
+
+    name: str
+    description: str = ""
+    roles: list[str] = Field(
+        default_factory=list,
+        description="Bound in order to the members a summon names; empty means everyone who is named.",
+    )
+    source: Literal["builtin", "room"] = Field(
+        ..., description="`room` when the room's protocols/<name> memory defines or reshapes it."
+    )
+
+
 # ── Principal (self-asserted user store) ──────────────────────────────────────
 # The human made first-class, symmetric with agents/<handle>. An agent's owner
 # points at a users/<handle>; a team groups these handles. Trust is self-asserted
