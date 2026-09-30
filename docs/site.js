@@ -597,8 +597,7 @@
 // agents) drifting up the page, reaching for each other with thin hyphae that
 // carry message pulses. Now and then two drift together and pool into one
 // (the outcome), with a ripple where they meet; later a large drop buds a
-// small one off again, so the room never empties. Under the cursor, in the
-// gutters only, a bead condenses and threads itself to the nearest drop.
+// small one off again, so the room never empties.
 //
 // Readability comes first: the reading pane and rails are near-opaque and sit
 // above this canvas, the scene renders at 1x and ~30fps, it pauses when the
@@ -615,7 +614,7 @@
   const gl = canvas.getContext('webgl', { antialias: false, alpha: false, premultipliedAlpha: false });
   if (!gl) { document.documentElement.classList.add('no-webgl'); return; }
 
-  const MAX_B = 12;   // droplet slots (the bead takes the last one when present)
+  const MAX_B = 12;   // droplet slots
   const MAX_L = 24;   // hypha segments: two per link, grown from both ends
   const MAX_P = 8;    // message pulses
 
@@ -844,7 +843,6 @@
   const links = new Map();      // "a-b" → { a, b, g }
   const pulses = [];
   let ring = null;
-  const bead = { x: 0, y: 0, tx: 0, ty: 0, r: 0, on: false, id: 0 };
 
   let t = 0;
   let nextMerge = rand(5, 8);
@@ -872,17 +870,6 @@
     wake();
   }
   window.addEventListener('scroll', onScroll, { passive: true });
-
-  // The bead lives in the gutters only: over prose or chrome, it lets go.
-  window.addEventListener('pointermove', e => {
-    if (e.pointerType !== 'mouse') return;
-    const over = e.target && e.target.closest &&
-      e.target.closest('.main-inner, .sidebar, .topnav, .docs-footer, .lightbox-overlay');
-    bead.on = !over;
-    bead.tx = e.clientX; bead.ty = e.clientY;
-    if (bead.r < 0.5) { bead.x = bead.tx; bead.y = bead.ty; }
-  }, { passive: true });
-  document.addEventListener('pointerleave', () => { bead.on = false; });
 
   function startMerge() {
     let best = null, bd = Infinity;
@@ -1007,11 +994,6 @@
       nextBud = Infinity;
     }
 
-    // Bead: condenses under the cursor, in the gutters.
-    bead.x += (bead.tx - bead.x) * Math.min(1, dt * 9);
-    bead.y += (bead.ty - bead.y) * Math.min(1, dt * 9);
-    bead.r += ((bead.on ? 7 : 0) - bead.r) * Math.min(1, dt * 4);
-
     updateLinks(dt);
     updatePulses(dt);
     if (ring) { ring.t += dt; if (ring.t > 1.8) ring = null; }
@@ -1089,7 +1071,7 @@
     const slots = [];
     for (const d of drops) if (d.r > 0.4) slots.push(d);
     slots.sort((a, b) => b.r - a.r);
-    slots.length = Math.min(slots.length, MAX_B - 1);
+    slots.length = Math.min(slots.length, MAX_B);
     let nb = 0;
     const put = (x, y, r, s) => {
       bArr[nb * 4] = x; bArr[nb * 4 + 1] = H - y; bArr[nb * 4 + 2] = r; bArr[nb * 4 + 3] = s; nb++;
@@ -1113,18 +1095,6 @@
       const g = ease(Math.max(0, l.g)) * 0.5;
       seg(ax, ay, ax + (bx - ax) * g, ay + (by - ay) * g);
       seg(bx, by, bx - (bx - ax) * g, by - (by - ay) * g);
-    }
-    if (bead.r > 0.4 && nb < MAX_B) {
-      put(bead.x, bead.y, bead.r, 0.62);
-      let near = null, nd = 240;
-      for (const d of slots) {
-        const dd = Math.hypot(d.x - bead.x, d.y - bead.y) - d.r;
-        if (dd < nd) { nd = dd; near = d; }
-      }
-      if (near) {
-        const g = Math.min(1, bead.r / 7);
-        seg(bead.x, bead.y, bead.x + (near.x - bead.x) * g, bead.y + (near.y - bead.y) * g);
-      }
     }
 
     pArr.fill(0);
