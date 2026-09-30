@@ -43,11 +43,13 @@ In the app, tick **Private** when you create a room, or use **Make private** in
 the room's `…` menu. The rooms list shows private rooms in their own group, and
 lets you show just the shared or just the private ones.
 
-You can also sort the rooms list into folders. Use **New folder** under the +
-next to Rooms, then drag rooms onto a folder or use **Move to folder** in a
-room's right-click menu. Folders are yours alone: they change how the list
-looks for you, not the rooms, and they follow you to another browser and the
-Mac app.
+You can also sort the rooms list into folders. To make a folder, click the +
+next to Rooms and choose **New folder**. To put a room in it, drag the room
+onto the folder, or right-click the room and choose **Move to folder**.
+
+Folders only change how your own rooms list looks. Other people don't see
+them, and the rooms themselves don't change. Your folders follow you when you
+open Mycelium in another browser or in the Mac app.
 
 The hub needs to know who you are to list a room for you. With sign-in turned
 on, that's who you signed in as. Otherwise it's the name you gave this machine

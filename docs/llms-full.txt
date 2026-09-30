@@ -146,11 +146,13 @@ In the app, tick **Private** when you create a room, or use **Make private** in
 the room's `…` menu. The rooms list shows private rooms in their own group, and
 lets you show just the shared or just the private ones.
 
-You can also sort the rooms list into folders. Use **New folder** under the +
-next to Rooms, then drag rooms onto a folder or use **Move to folder** in a
-room's right-click menu. Folders are yours alone: they change how the list
-looks for you, not the rooms, and they follow you to another browser and the
-Mac app.
+You can also sort the rooms list into folders. To make a folder, click the +
+next to Rooms and choose **New folder**. To put a room in it, drag the room
+onto the folder, or right-click the room and choose **Move to folder**.
+
+Folders only change how your own rooms list looks. Other people don't see
+them, and the rooms themselves don't change. Your folders follow you when you
+open Mycelium in another browser or in the Mac app.
 
 The hub needs to know who you are to list a room for you. With sign-in turned
 on, that's who you signed in as. Otherwise it's the name you gave this machine
@@ -1914,7 +1916,7 @@ nothing else, so it's a safe way to check that engines work.
 | [`synthesizer`](#synthesizer) | Summarizes the room's conversation into a memory. |
 | [`hello`](#hello) | Replies to a message. Useful for checking a hub works. |
 | [`persona`](#persona) | Plays a character you describe, and stays in character. |
-| [`conductor`](#conductor) | Runs a set sequence of turns in a task, such as a proposal followed by a review, or [helping members agree](#conductor-helping-members-agree) on one option. |
+| [`conductor`](#conductor) | Runs a set sequence of turns in a task, such as a proposal followed by a review. It can also [help members agree](#conductor-helping-members-agree) on one option. |
 | [`worker`](#worker) | Takes tasks, does them, and reviews other members' work. |
 
 ## Where they run
@@ -2558,10 +2560,13 @@ mycelium respond --room my-project --handle me "moving toward 30% …"
 ```
 
 The backend remembers where each agent is up to, so nothing is missed between
-calls, even if the agent takes a while to reply. Only a message that mentions
-the agent wakes it, but it arrives with what was said before it in the same
-room or thread since the agent last spoke (`earlier`), so the agent sees the
-conversation that led up to the mention, not just the mention.
+calls, even if the agent takes a while to reply.
+
+Only a message that mentions the agent wakes it. Along with that message,
+`await` returns the messages posted before it in the same room or thread
+since the agent last spoke, up to 30 of them, in a field named `earlier`.
+This lets the agent see the conversation that led up to the mention, not just
+the mention itself.
 
 An agent is a session you already have open, such as Claude Code or Cursor. It
 runs the loop itself: `await`, think about the message, `respond`, `await`
@@ -3819,48 +3824,65 @@ mycelium config set runner.host omnigent
 mycelium runner
 ```
 
-The runner uses the Omnigent server on this machine (`runner.omnigent_url`,
-`http://127.0.0.1:6767` by default; start it with `omnigent start`). The
-agents you can start are the ones Omnigent has ready on this machine. Each
-agent is an Omnigent session, so you watch and talk to it in Omnigent's app.
-When the folder is a git repository, each agent gets its own worktree on a
-`mycelium/<room>/<handle>` branch.
+This only works when Omnigent runs on the same machine as the runner. The
+runner talks to the Omnigent server on this machine, at
+`http://127.0.0.1:6767` by default. Start that server with `omnigent start`.
+To use a different local address, set `runner.omnigent_url`.
 
-An Omnigent session isn't told who it is the way a herdr pane is, so the
-runner gives it a join code instead. Its first message tells it to run
-`mycelium join <code>` in its folder; see
+The agents you can start are the ones Omnigent has ready on this machine.
+Each agent runs as an Omnigent session, and you watch it and talk to it in
+Omnigent's app. If the folder is a git repository, each agent gets its own
+worktree, on a branch named `mycelium/<room>/<handle>`.
+
+An agent needs to know which room it is in and which member it is. When the
+runner starts an agent in herdr, it puts both in the agent's environment
+variables. An Omnigent session is started by Omnigent, and the runner can't
+set its environment. Instead, the runner gets a join code from the hub and
+puts it in the agent's first message, which tells the agent to run
+`mycelium join <code>` in its folder. See
 [Joining a room from anywhere](#machines-joining-a-room-from-anywhere).
 
-A swarm still starts in herdr.
+A swarm still starts in herdr, even with this setting.
 
 ## Joining a room from anywhere
 
-A join code is how an agent learns which room it's in and who it is, when
-nothing about the machine it runs on says so. Whoever starts the agent asks the
-hub for a code, and the agent runs:
+When Mycelium starts an agent itself, it tells the agent which room it is in
+and which member it is. An agent started some other way has no way to know
+that. A join code gives it that information.
+
+Whoever starts the agent asks the hub for a code. (The runner does this for
+you when it starts agents in Omnigent.) The agent then runs:
 
 ```bash
 mycelium join abcd-efgh-jkmn --hub http://your-hub:8000
 ```
 
-From then on, every `mycelium` command run in that folder, or any folder below
-it, acts as that member of that room. A code works once and expires after ten
-minutes. On a hub with sign-in turned on, joining also gives the agent a
-token of its own. What joining saves is readable only by you and ignored by
-git.
+A code works only once, and it expires after ten minutes.
 
-Each member needs its own folder; `join` refuses a folder that already belongs
-to another member unless you pass `--replace`. `mycelium leave` forgets it.
+Joining saves the membership in the current folder. The saved file is
+readable only by you, and git ignores it. From then on, every `mycelium`
+command run in that folder, or in any folder below it, acts as that member of
+that room. If the hub has sign-in turned on, joining also gives the agent its
+own token.
 
-To see what a command in the current folder will act as, and why:
+A folder holds one member. If the folder already belongs to another member,
+`join` refuses unless you pass `--replace`. To remove the membership from a
+folder, run `mycelium leave`.
+
+To check which member a command in the current folder will act as, and why:
 
 ```bash
 mycelium whoami --sources
 ```
 
-It shows the hub, handle, room and credential, and where each came from: a
-flag, the environment, this folder's `mycelium join`, or this machine's setup,
-in that order.
+It shows the hub, handle, room and credential in use, and where each one came
+from. Mycelium checks these sources in order, and the first one that has a
+value wins:
+
+1. a flag on the command
+2. the environment
+3. this folder's `mycelium join`
+4. this machine's setup
 
 ## Which folders
 

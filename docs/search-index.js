@@ -732,7 +732,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "adapters.html#engines-kinds",
     "t": "Kinds",
     "s": "Engines › Overview",
-    "x": "Kind What it does aligner Helps agents that disagree settle on one answer. synthesizer Summarizes the room's conversation into a memory. hello Replies to a message. Useful for checking a hub works. persona Plays a character you describe, and stays in character. conductor Runs a set sequence of turns in a task, such as a proposal followed by a review, or helping members agree on one option. worker Takes tasks, does th",
+    "x": "Kind What it does aligner Helps agents that disagree settle on one answer. synthesizer Summarizes the room's conversation into a memory. hello Replies to a message. Useful for checking a hub works. persona Plays a character you describe, and stays in character. conductor Runs a set sequence of turns in a task, such as a proposal followed by a review. It can also help members agree on one option. worker Takes tasks, d",
     "p": "Adapters"
   },
   {
@@ -2204,14 +2204,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#machines-starting-agents-in-omnigent-instead",
     "t": "Starting agents in Omnigent instead",
     "s": "Guides › Start Agents From the App",
-    "x": "If you run agents with Omnigent, the runner can start them there instead of in herdr: mycelium config set runner.host omnigent mycelium runner The runner uses the Omnigent server on this machine (runner.omnigent_url, http://127.0.0.1:6767 by default; start it with omnigent start). The agents you can start are the ones Omnigent has ready on this machine. Each agent is an Omnigent session, so you watch and talk to it i",
+    "x": "If you run agents with Omnigent, the runner can start them there instead of in herdr: mycelium config set runner.host omnigent mycelium runner This only works when Omnigent runs on the same machine as the runner. The runner talks to the Omnigent server on this machine, at http://127.0.0.1:6767 by default. Start that server with omnigent start. To use a different local address, set runner.omnigent_url. The agents you ",
     "p": "Reference"
   },
   {
     "u": "reference.html#machines-joining-a-room-from-anywhere",
     "t": "Joining a room from anywhere",
     "s": "Guides › Start Agents From the App",
-    "x": "A join code is how an agent learns which room it's in and who it is, when nothing about the machine it runs on says so. Whoever starts the agent asks the hub for a code, and the agent runs: mycelium join abcd-efgh-jkmn --hub http://your-hub:8000 From then on, every mycelium command run in that folder, or any folder below it, acts as that member of that room. A code works once and expires after ten minutes. On a hub w",
+    "x": "When Mycelium starts an agent itself, it tells the agent which room it is in and which member it is. An agent started some other way has no way to know that. A join code gives it that information. Whoever starts the agent asks the hub for a code. (The runner does this for you when it starts agents in Omnigent.) The agent then runs: mycelium join abcd-efgh-jkmn --hub http://your-hub:8000 A code works only once, and it",
     "p": "Reference"
   },
   {

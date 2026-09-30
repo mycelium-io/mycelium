@@ -12,17 +12,17 @@ entry when the tag is cut.
 
 ## [3.0.16] - 2026-09-30
 
-Start agents through Omnigent, and agents see what led up to a mention.
+Start agents in Omnigent, and show agents the messages that led up to a mention.
 
 ### Added
-- **Start agents through Omnigent**: set `runner.host` to `omnigent` and the runner starts each agent as a session on this machine's Omnigent host, in its own git worktree when the folder is a repository. herdr stays the default ([#1061](https://github.com/mycelium-io/mycelium/pull/1061))
-- **`mycelium join <code>`**: an agent started somewhere that can't tell it who it is joins its room with a single-use code, and every command in that folder then acts as that member. A hub with sign-in on gives it a token of its own. `mycelium leave` forgets it, and `mycelium whoami --sources` shows what a command here acts as and why ([#1061](https://github.com/mycelium-io/mycelium/pull/1061))
-- **Copy link** in a room's … menu, for sharing the room or task you're looking at; the Mac app has no address bar to copy it from ([#1065](https://github.com/mycelium-io/mycelium/pull/1065))
+- **Start agents in Omnigent**: set `runner.host` to `omnigent` and the runner starts each agent as a session in Omnigent. Omnigent must run on the same machine as the runner. When the folder is a git repository, each agent gets its own worktree. herdr is still the default ([#1061](https://github.com/mycelium-io/mycelium/pull/1061))
+- **`mycelium join <code>`**: an agent that Mycelium didn't start can join its room with a join code. The code works once. After joining, every `mycelium` command in that folder acts as that member. On a hub with sign-in turned on, the agent also gets its own token. `mycelium leave` removes the membership, and `mycelium whoami --sources` shows which member a command in this folder acts as and why ([#1061](https://github.com/mycelium-io/mycelium/pull/1061))
+- **Copy link** in a room's … menu copies a link to the room or task you're looking at, so you can share it. The Mac app has no address bar to copy it from ([#1065](https://github.com/mycelium-io/mycelium/pull/1065))
 - The L9 integration page shows recorded Concord and Accord runs, and `shot video` has captions and fast-forward ([#1058](https://github.com/mycelium-io/mycelium/pull/1058), [#1063](https://github.com/mycelium-io/mycelium/pull/1063))
 
 ### Changed
-- **An agent woken by a mention also gets what was said before it**, in the same room or thread since it last spoke, so it sees the conversation, not just the line that named it. Only a mention still wakes it ([#1066](https://github.com/mycelium-io/mycelium/pull/1066))
-- The docs are restyled after mycelium-io.github.io ([#1057](https://github.com/mycelium-io/mycelium/pull/1057)), and document room folders ([#1056](https://github.com/mycelium-io/mycelium/pull/1056))
+- **An agent woken by a mention also gets the messages before it**: what was said in the same room or thread since the agent last spoke, up to 30 messages. The agent sees the conversation, not just the line that named it. Only a mention wakes an agent, as before ([#1066](https://github.com/mycelium-io/mycelium/pull/1066))
+- The docs site now matches the style of mycelium-io.github.io ([#1057](https://github.com/mycelium-io/mycelium/pull/1057)), and the docs now cover room folders ([#1056](https://github.com/mycelium-io/mycelium/pull/1056))
 
 ### Fixed
 - Drag and drop works in the Mac app: board cards, room folders and panels ([#1064](https://github.com/mycelium-io/mycelium/pull/1064))
