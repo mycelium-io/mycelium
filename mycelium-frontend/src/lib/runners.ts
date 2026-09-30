@@ -41,9 +41,10 @@ export function isMine(runner: Runner, mine: string[], principal: string): boole
   return mine.includes(runner.id) || (!!principal && runner.owner?.toLowerCase() === principal);
 }
 
-/** Your machines: never anyone else's, even when the hub lists them (see `my-machines.ts`). */
-export function useRunners() {
-  const { data, isLoading, mutate } = useSWR(RUNNERS_KEY, fetchRunners, {
+/** Your machines: never anyone else's, even when the hub lists them (see `my-machines.ts`).
+ *  `enabled: false` reads nothing, for a surface that needs them only sometimes. */
+export function useRunners({ enabled = true }: { enabled?: boolean } = {}) {
+  const { data, isLoading, mutate } = useSWR(enabled ? RUNNERS_KEY : null, fetchRunners, {
     refreshInterval: RUNNERS_POLL,
   });
   const refresh = useCallback(() => {

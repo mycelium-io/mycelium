@@ -19,6 +19,8 @@ vi.mock("@/lib/api", () => ({
   fetchMessages: (...args: unknown[]) => fetchMessages(...args),
   sendRoomMessage: (...args: unknown[]) => sendRoomMessage(...args),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
+  fetchRunners: vi.fn().mockResolvedValue([]),
+  fetchProtocols: vi.fn().mockResolvedValue([]),
   fetchRoomMembers: vi.fn().mockResolvedValue({ members: [], floors: [] }),
   fetchEpisodes: vi.fn().mockResolvedValue([]),
   fetchMemories: (...args: unknown[]) => fetchMemories(...args),
@@ -28,6 +30,7 @@ vi.mock("@/lib/api", () => ({
 
 vi.mock("@/components/current-user", () => ({
   useCurrentUser: () => ({ principal: "julia" }),
+  usePrincipal: () => "julia",
 }));
 
 vi.mock("@/components/keymap-provider", () => ({

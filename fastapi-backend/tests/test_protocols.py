@@ -145,6 +145,49 @@ def test_a_spec_that_does_not_parse_is_absent_not_half_read():
     assert protocols.load_protocol(ROOM, "loose") is None
 
 
+def test_the_catalogue_puts_the_rooms_own_first_and_leaves_out_what_does_not_parse():
+    room = "catalogue-room"
+    one_step = {
+        "roles": ["author"],
+        "steps": [
+            {"id": "ask", "to": "author", "prompt": "go", "next": "done"},
+            {"id": "done", "end": "resolved"},
+        ],
+    }
+    write_memory_file(
+        get_room_dir(room), "protocols/gated", yaml.safe_dump(one_step), created_by="julia"
+    )
+    write_memory_file(
+        get_room_dir(room), "protocols/pair", yaml.safe_dump(one_step), created_by="julia"
+    )
+    write_memory_file(
+        get_room_dir(room), "protocols/broken", "steps: [nonsense", created_by="julia"
+    )
+
+    listed = [(p.name, source, p.roles) for p, source in protocols.catalogue(room)]
+    assert listed[:2] == [("gated", "room", ["author"]), ("pair", "room", ["author"])]
+    names = [name for name, _, _ in listed]
+    # The room's gated stands in for the built-in rather than beside it.
+    assert names.count("gated") == 1
+    assert "broken" not in names
+    assert set(protocols.builtin_names()) - {"gated"} <= set(names)
+
+
+@pytest.mark.asyncio
+async def test_the_protocols_route_lists_each_flow_with_its_roles(client):
+    await client.post("/api/rooms", json={"name": "flows"})
+    resp = await client.get("/api/rooms/flows/protocols")
+    assert resp.status_code == 200
+    by_name = {p["name"]: p for p in resp.json()}
+    assert by_name["gated"]["roles"] == ["proposer", "guardian"]
+    assert by_name["gated"]["source"] == "builtin"
+    assert by_name["concord"]["roles"] == []
+    assert by_name["accord"]["description"]
+
+    missing = await client.get("/api/rooms/no-such-room/protocols")
+    assert missing.status_code == 404
+
+
 def test_describe_reads_as_a_person_would():
     gated = protocols.builtin("gated")
     assert gated is not None

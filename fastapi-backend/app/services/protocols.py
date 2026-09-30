@@ -669,6 +669,25 @@ def room_protocol_names(room: str) -> list[str]:
     )
 
 
+def catalogue(room: str) -> list[tuple[Protocol, Literal["builtin", "room"]]]:
+    """Every flow a summon in ``room`` can name, as ``load_protocol`` resolves it.
+
+    The room's own specs first (one that reshapes a built-in stands in for it),
+    then the built-ins it leaves alone. A spec that does not parse is left out,
+    as ``load_protocol`` would refuse to run it.
+    """
+    own: list[tuple[Protocol, Literal["builtin", "room"]]] = []
+    for name in room_protocol_names(room):
+        protocol = load_protocol(room, name)
+        if protocol is not None:
+            own.append((protocol, "room"))
+    taken = {p.name for p, _ in own}
+    rest: list[tuple[Protocol, Literal["builtin", "room"]]] = [
+        (p, "builtin") for n in builtin_names() if n not in taken and (p := builtin(n)) is not None
+    ]
+    return own + rest
+
+
 def builtin(name: str) -> Protocol | None:
     spec = BUILTIN_PROTOCOLS.get(name)
     return Protocol.model_validate(spec) if spec else None

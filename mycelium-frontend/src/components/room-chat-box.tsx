@@ -5,22 +5,61 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
-import { sendRoomMessage, type Memory } from "@/lib/api";
+import {
+  createEngine,
+  createMemories,
+  launchRunnerAgent,
+  sendRoomMessage,
+  type EngineKind,
+  type Memory,
+  type Runner,
+} from "@/lib/api";
 import { SendPlaneIcon } from "@/components/send-plane-icon";
-import { useRoomMemories, useRoomRoster, useRoomSkills } from "@/lib/room-data";
+import {
+  useRoomMemories,
+  useRoomProtocols,
+  useRoomRevalidate,
+  useRoomRoster,
+  useRoomSkills,
+} from "@/lib/room-data";
 import { useKeyAction } from "@/components/keymap-provider";
 import { useCurrentUser } from "@/components/current-user";
 import { Kbd, KbdChord } from "@/components/ui/kbd";
 import { StartSwarmDialog } from "@/components/start-swarm-dialog";
 import { IntentDialog } from "@/components/intent-dialog";
 import { NewMemoryDialog } from "@/components/new-memory-dialog";
-import { AddMemberDialog } from "@/components/add-member-dialog";
+import { AddMemberDialog, ENGINE_KINDS } from "@/components/add-member-dialog";
+import { expandPath, handleValid, normHandle, tildePath } from "@/components/launch-agent-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { mentionRank, nameOf, useNames } from "@/lib/people";
 import { draftKey, loadDraft, saveDraft } from "@/lib/drafts";
-import { FileText, ListTodo, Plus, UserPlus } from "lucide-react";
+import { FileText, ListTodo, Plus, UserPlus, X } from "lucide-react";
 import { parseCapture } from "@/lib/board/capture";
 import { fileCapture } from "@/lib/board/file-capture";
+import {
+  COMPOSER_COMMANDS,
+  argValue,
+  matchChoices,
+  memoryKeyChoices,
+  missingArg,
+  parseCommand,
+  parseSummon,
+  type ParsedSummon,
+  type Choice,
+  type ChoiceSource,
+  type ParsedCommand,
+} from "@/lib/composer-commands";
+import {
+  JOB_STATUS_LABEL,
+  hostMissing,
+  hostOf,
+  launchable,
+  runnerName,
+  useRunnerJob,
+  useRunners,
+} from "@/lib/runners";
+import { STANDARD_FOLDERS, keyProblem } from "@/lib/memory-location";
+import { cn } from "@/lib/utils";
 
 interface Props {
   roomName: string;
@@ -52,7 +91,9 @@ const ADD_ITEMS = [
 //   /   → skills        → inserts `/name`
 // Each detects an in-flight token by the cursor's prefix, offers a candidate
 // popover, and inserts on select — the same machinery the `@` mention always had.
-type TriggerKind = "agent" | "memory" | "skill";
+// A command's argument with a known set of values (`arg`) completes the same way.
+// A conductor summon's flow name (`flow`) completes the same way again.
+type TriggerKind = "agent" | "memory" | "skill" | "arg" | "flow";
 
 interface Trigger {
   kind: TriggerKind;
@@ -69,6 +110,8 @@ interface Candidate {
   id: string;
   /** The full token written into the message on select, e.g. `@bob`, `[[decisions/db]]`, `/summarize`. */
   insert: string;
+  /** Part of a word (a folder): inserted without the trailing space, so completing goes on. */
+  open?: boolean;
   /** Monospace accent label (the token itself), or a person's name. */
   primary: string;
   /** The label is a person's name, set as text rather than as a token. */
@@ -105,32 +148,55 @@ function memoryKey(m: Memory): string {
 // and only as the first word of the message: `/task fix it` files a task, while
 // a `/name` anywhere else is a skill for an agent to read. They are listed
 // ahead of the room's skills, and a skill with the same name is still reachable
-// by picking it from the list.
-const COMMANDS = [
-  {
-    name: "task",
-    usage: "/task <what> @owner !urgent #tag",
-    description: "add it to the board for someone to pick up",
-  },
-  {
-    name: "swarm",
-    usage: "/swarm <what>",
-    description: "have a team of agents work on it now",
-  },
-  {
-    name: "memory",
-    usage: "/memory <title>",
-    description: "write something down for the room to keep",
-  },
-] as const;
+// by picking it from the list. What each takes is `lib/composer-commands.ts`.
 
-type CommandName = (typeof COMMANDS)[number]["name"];
+/** The trigger at `cursor` in `text`: a command argument's values or a summon's
+ *  flow first, then the sigils. `conductors` are the handles a summon can start with. */
+function triggerAt(text: string, cursor: number, conductors: readonly string[]): Trigger | null {
+  const summon = parseSummon(text, cursor, conductors, []);
+  if (summon?.active === "flow" && summon.word) {
+    const { start, end, value } = summon.word;
+    return { kind: "flow", start, end, query: value.slice(0, cursor - start) };
+  }
+  const parsed = parseCommand(text, cursor);
+  if (parsed && parsed.active !== null && parsed.word) {
+    const arg = parsed.command.args[parsed.active];
+    const { start, end, value } = parsed.word;
+    if (arg.choices) return { kind: "arg", start, end, query: value.slice(0, cursor - start) };
+    // A new handle is a name being made up, not a member to mention.
+    if (arg.names) return null;
+  }
+  return detectTrigger(text.slice(0, cursor), cursor);
+}
 
-/** The command a message runs, and what follows it, or `null` for a message. */
-export function commandOf(body: string): { name: CommandName; rest: string } | null {
-  const match = body.match(/^\/(task|swarm|memory)(?:\s+([\s\S]*))?$/);
-  if (!match) return null;
-  return { name: match[1] as CommandName, rest: (match[2] ?? "").trim() };
+/** Which row a new list opens on. An optional argument not yet started opens
+ *  on none, so Enter still sends what's there; ↓ or Tab picks from it. */
+function openingHighlight(text: string, cursor: number, trigger: Trigger | null): number {
+  if (trigger?.kind !== "arg" || trigger.query !== "") return 0;
+  const parsed = parseCommand(text, cursor);
+  const arg = parsed?.active != null ? parsed.command.args[parsed.active] : undefined;
+  return arg?.optional ? -1 : 0;
+}
+
+/** The machine an `/agent` starts on: the one named, else the first of yours that can start the harness. */
+function pickMachine(machines: Runner[], named: string, harness: string): Runner | undefined {
+  if (named) {
+    const n = named.toLowerCase();
+    return machines.find((r) => r.id.toLowerCase() === n || r.label.toLowerCase() === n);
+  }
+  const h = harness.toLowerCase();
+  return (
+    machines.find((r) => launchable(r).some((f) => f.id === h || f.name.toLowerCase() === h)) ??
+    machines.find((r) => r.herdr) ??
+    machines[0]
+  );
+}
+
+/** An agent a `/agent` asked a machine to start, followed until it has. */
+interface Launch {
+  runner: string;
+  job: string;
+  handle: string;
 }
 
 export function RoomChatBox({
@@ -170,9 +236,25 @@ export function RoomChatBox({
   // What the + offers, and the title a `/memory` opened the memory dialog with.
   const [adding, setAdding] = useState(false);
   const [memoryTitle, setMemoryTitle] = useState<string | null>(null);
+  const [memoryFolder, setMemoryFolder] = useState("context");
   const [addingMember, setAddingMember] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const [scrolls, setScrolls] = useState(false);
+  // Where the cursor is, so a command being typed knows which argument it is on.
+  const [cursor, setCursor] = useState(0);
+  const parsed = useMemo(() => parseCommand(content, cursor), [content, cursor]);
+  // What a command that ran says afterwards (an engine added), and an agent
+  // being started on a machine, followed until it is in the room.
+  const [notice, setNotice] = useState<string | null>(null);
+  // The memory a notice is about, so it can offer to open it.
+  const [noticeKey, setNoticeKey] = useState<string | null>(null);
+  const [launch, setLaunch] = useState<Launch | null>(null);
+  const dismissLaunch = useCallback(() => setLaunch(null), []);
+  const revalidateRoom = useRoomRevalidate(roomName);
+  // Your machines are read only while an `/agent` is being typed.
+  const { connected: machines, loading: machinesLoading } = useRunners({
+    enabled: parsed?.command.name === "agent",
+  });
 
   // `@` reaches everyone in the room, off the same roster the Members rail
   // renders; `[[` reads the room's memory keys and `/` its skills. All three
@@ -180,7 +262,21 @@ export function RoomChatBox({
   // panels are looking.
   const { agents, people } = useRoomRoster(roomName);
   const { memories } = useRoomMemories(roomName);
+  const memoryKeys = useMemo(() => memories.map(memoryKey), [memories]);
   const { skills } = useRoomSkills(roomName);
+
+  // A message that starts by mentioning a conductor is a summon, with a
+  // grammar of its own. The room's flows are read only once one is started.
+  const conductors = useMemo(
+    () => agents.filter((a) => a.adapter === "engine" && a.kind === "conductor").map((a) => a.handle.toLowerCase()),
+    [agents],
+  );
+  const summoning = parseSummon(content, content.length, conductors, []) !== null;
+  const { protocols } = useRoomProtocols(summoning ? roomName : "");
+  const summon = useMemo(
+    () => parseSummon(content, cursor, conductors, protocols),
+    [content, cursor, conductors, protocols],
+  );
 
   // The composer is a keybind target. Focus lands on the next frame because the
   // same keypress may be switching the channel pane back into view, and a
@@ -192,11 +288,51 @@ export function RoomChatBox({
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const next = e.target.value;
     setContent(next);
-    const cursor = e.target.selectionStart ?? next.length;
-    const found = detectTrigger(next.slice(0, cursor), cursor);
+    const at = e.target.selectionStart ?? next.length;
+    setCursor(at);
+    const found = triggerAt(next, at, conductors);
     setTrigger(found);
-    if (found) setHighlight(0);
+    if (found) setHighlight(openingHighlight(next, at, found));
+    setError(null);
+    setNotice(null);
   };
+
+  // The values an argument can take, as they stand now.
+  const choicesFor = useCallback(
+    (source: ChoiceSource, p: ParsedCommand): Choice[] => {
+      switch (source) {
+        case "engine":
+          return ENGINE_KINDS.map((e) => ({ value: e.kind, about: e.blurb }));
+        case "memory-key":
+          return memoryKeyChoices(memoryKeys, STANDARD_FOLDERS, p.word?.value ?? "");
+        case "machine":
+          return machines.map((r) => ({
+            value: r.id,
+            about: [r.label !== r.id ? r.label : "", hostOf(r).name].filter(Boolean).join(" · "),
+          }));
+        case "harness": {
+          const named = argValue(p, "machine");
+          const pool = named ? machines.filter((r) => r === pickMachine(machines, named, "")) : machines;
+          const seen = new Map<string, Choice>();
+          for (const r of pool) {
+            for (const f of launchable(r)) {
+              if (!seen.has(f.id)) {
+                // A CLI's version often says its own name again: "2.1.2 (Claude Code)".
+                const version = f.version ? ` ${f.version.replace(/\s*\([^)]*\)\s*$/, "")}` : "";
+                seen.set(f.id, { value: f.id, about: `${f.name}${version} on ${runnerName(r)}` });
+              }
+            }
+          }
+          return [...seen.values()];
+        }
+        case "folder": {
+          const r = pickMachine(machines, argValue(p, "machine"), argValue(p, "harness"));
+          return (r?.roots ?? []).map((root) => ({ value: tildePath(root), about: runnerName(r) }));
+        }
+      }
+    },
+    [machines, memoryKeys],
+  );
 
   // Agents first, then people — the roster's order, labeled for the popover.
   // A person who gave a name is found by it and shown by it.
@@ -221,6 +357,40 @@ export function RoomChatBox({
 
   const candidates = useMemo<Candidate[]>(() => {
     if (trigger === null) return [];
+    if (trigger.kind === "flow") {
+      const all = protocols.map((p) => ({ value: p.name, about: p.description }));
+      if (all.some((c) => c.value === summon?.flow?.value.toLowerCase())) return [];
+      return matchChoices(all, trigger.query)
+        .slice(0, 8)
+        .map((c) => {
+          const roles = protocols.find((p) => p.name === c.value)?.roles ?? [];
+          return {
+            id: `flow:${c.value}`,
+            insert: c.value,
+            primary: c.value,
+            // Who it asks for, which is what tells two flows apart at a glance.
+            secondary: roles.length ? roles.map((r) => `@${r}`).join(" ") : "anyone",
+            tertiary: c.about,
+          };
+        });
+    }
+    if (trigger.kind === "arg") {
+      const arg = parsed?.active != null ? parsed.command.args[parsed.active] : undefined;
+      if (!parsed || !arg?.choices) return [];
+      const all = choicesFor(arg.choices, parsed);
+      // Typed out in full: nothing left to complete, so Enter sends.
+      if (all.some((c) => !c.open && c.value === parsed.word?.value)) return [];
+      return matchChoices(all, trigger.query)
+        .slice(0, 8)
+        .map((c) => ({
+          id: `arg:${c.value}`,
+          insert: c.value,
+          open: c.open,
+          primary: c.value,
+          secondary: arg.name,
+          tertiary: c.about,
+        }));
+    }
     if (trigger.kind === "agent") {
       // Best match first; the roster's own order breaks ties.
       const pool = mentionRoster
@@ -253,7 +423,7 @@ export function RoomChatBox({
     // `/`: the commands first (only as the message's first word, the one place
     // they run), then the room's skills.
     const q = trigger.query;
-    const commands = trigger.start === 0 ? COMMANDS.filter((c) => c.name.startsWith(q)) : [];
+    const commands = trigger.start === 0 ? COMPOSER_COMMANDS.filter((c) => c.name.startsWith(q)) : [];
     const pool = q ? skills.filter((s) => s.name.toLowerCase().startsWith(q)) : skills;
     return [
       ...commands.map((c) => ({
@@ -261,7 +431,7 @@ export function RoomChatBox({
         insert: `/${c.name}`,
         primary: `/${c.name}`,
         secondary: "command",
-        tertiary: c.description,
+        tertiary: c.about,
       })),
       ...pool.slice(0, 6).map((s) => ({
         id: s.name,
@@ -271,62 +441,179 @@ export function RoomChatBox({
         tertiary: s.description || undefined,
       })),
     ];
-  }, [mentionRoster, memories, skills, trigger]);
+  }, [choicesFor, mentionRoster, memories, parsed, protocols, skills, summon, trigger]);
 
   const accept = useCallback(
     (candidate: Candidate) => {
       if (trigger === null) return;
       const before = content.slice(0, trigger.start);
       const after = content.slice(trigger.end);
-      const insertion = `${candidate.insert} `;
+      const insertion = candidate.open ? candidate.insert : `${candidate.insert} `;
       const next = `${before}${insertion}${after}`;
+      const pos = before.length + insertion.length;
       setContent(next);
-      setTrigger(null);
-      // Restore the cursor after the inserted token.
+      setCursor(pos);
+      // A command's next argument offers its values straight away.
+      const following = triggerAt(next, pos, conductors);
+      setTrigger(following);
+      setHighlight(openingHighlight(next, pos, following));
+      // Restore the cursor after the inserted token, unless typing already
+      // moved on (a completion is often followed straight away by more).
       requestAnimationFrame(() => {
         const node = inputRef.current;
-        if (!node) return;
-        const pos = before.length + insertion.length;
+        if (!node || node.value !== next) return;
         node.focus();
         node.setSelectionRange(pos, pos);
       });
     },
-    [content, trigger],
+    [conductors, content, trigger],
+  );
+
+  // `/agent <handle> <harness> [folder] [machine]`: the same launch the Add
+  // member dialog queues, with what it asks for typed instead. Says what is
+  // wrong and returns null rather than queuing a start that cannot work.
+  const startAgent = useCallback(
+    async (command: ParsedCommand, me: string): Promise<Launch | null> => {
+      const handle = normHandle(argValue(command, "handle"));
+      if (!handleValid(handle)) {
+        setError(`@${handle} can't be a handle: use lowercase letters, digits, - and _.`);
+        return null;
+      }
+      const harness = argValue(command, "harness");
+      const named = argValue(command, "machine");
+      const runner = pickMachine(machines, named, harness);
+      if (!runner) {
+        setError(
+          machinesLoading
+            ? "Still looking for your machines. Try again in a moment."
+            : named
+              ? `None of your machines is called ${named}.`
+              : "None of your machines is connected. Start `mycelium runner` on one, then add it from Machines.",
+        );
+        return null;
+      }
+      if (!runner.herdr) {
+        setError(hostMissing(runner));
+        return null;
+      }
+      const h = harness.toLowerCase();
+      const framework = launchable(runner).find((f) => f.id === h || f.name.toLowerCase() === h);
+      if (!framework) {
+        const can = launchable(runner).map((f) => f.id);
+        setError(
+          `${runnerName(runner)} can't start ${harness}.` + (can.length ? ` It can start ${can.join(", ")}.` : ""),
+        );
+        return null;
+      }
+      const folder = argValue(command, "folder");
+      const job = await launchRunnerAgent(runner.id, {
+        room: roomName,
+        handle,
+        framework: framework.id,
+        cwd: folder ? expandPath(folder, runner.roots) : undefined,
+        created_by: me,
+      });
+      return { runner: runner.id, job: job.id, handle };
+    },
+    [machines, machinesLoading, roomName],
   );
 
   const submit = useCallback(async () => {
     const body = content.trim();
     if (!body || sending) return;
     const handle = principal.trim() || "user";
-    const command = commandOf(body);
-    if (command?.name === "memory") {
-      // The dialog writes it, so a bare `/memory` is fine: it opens empty.
-      setMemoryTitle(command.rest);
+    const command = parseCommand(body);
+    const cleared = () => {
       setContent("");
+      setCursor(0);
       setTrigger(null);
+    };
+    if (command) {
+      const missing = missingArg(command);
+      if (missing) {
+        setError(missing);
+        return;
+      }
+    }
+    const memoryAt = command?.command.name === "memory" ? argValue(command, "key").replace(/\/+$/, "") : "";
+    const memoryText = command?.command.name === "memory" ? argValue(command, "text") : "";
+    if (command?.command.name === "memory" && !memoryText) {
+      // Nothing to write yet: the editor takes it from there, opened where the key points.
+      const cut = memoryAt.lastIndexOf("/");
+      setMemoryFolder(cut >= 0 ? memoryAt.slice(0, cut) : "context");
+      setMemoryTitle(memoryAt.slice(cut + 1).replace(/[-_]+/g, " "));
+      cleared();
       return;
     }
-    if (command && !command.rest) {
-      setError(`Say what it is: ${COMMANDS.find((c) => c.name === command.name)?.usage}`);
-      return;
+    if (command?.command.name === "memory") {
+      const problem = keyProblem(memoryAt);
+      if (problem) {
+        setError(`${problem} The key is folder/name, as in context/launch-plan.`);
+        return;
+      }
     }
-    if (command?.name === "swarm") {
+    if (command?.command.name === "swarm") {
       // A swarm spends model turns, so it asks first: the dialog takes it from here.
-      setSwarmTask(command.rest);
-      setContent("");
-      setTrigger(null);
+      setSwarmTask(argValue(command, "what"));
+      cleared();
       return;
     }
     setSending(true);
     setError(null);
+    setNotice(null);
     try {
-      if (command?.name === "task") {
-        await fileCapture(roomName, parseCapture(command.rest, handle, new Date().toISOString()), handle);
-      } else {
-        await sendRoomMessage(roomName, { sender_handle: handle, content: body, episode });
+      switch (command?.command.name) {
+        case "task":
+          await fileCapture(
+            roomName,
+            parseCapture(argValue(command, "what"), handle, new Date().toISOString()),
+            handle,
+          );
+          break;
+        case "agent": {
+          const started = await startAgent(command, handle);
+          if (!started) return;
+          setLaunch(started);
+          break;
+        }
+        case "memory": {
+          // Replacing one is on purpose (the list said so), and only the version seen.
+          const existing = memories.find((m) => m.key === memoryAt);
+          await createMemories(roomName, [
+            {
+              key: memoryAt,
+              value: memoryText,
+              content_text: memoryText,
+              created_by: handle,
+              ...(existing && { base_version: existing.version }),
+            },
+          ]);
+          revalidateRoom();
+          setNotice(existing ? `Updated ${memoryAt}.` : `Saved ${memoryAt}.`);
+          setNoticeKey(memoryAt);
+          break;
+        }
+        case "engine": {
+          const kind = argValue(command, "kind").toLowerCase();
+          if (!ENGINE_KINDS.some((e) => e.kind === kind)) {
+            setError(`There's no ${kind} engine. It can be ${ENGINE_KINDS.map((e) => e.kind).join(", ")}.`);
+            return;
+          }
+          const name = normHandle(argValue(command, "handle") || kind);
+          if (!handleValid(name)) {
+            setError(`@${name} can't be a handle: use lowercase letters, digits, - and _.`);
+            return;
+          }
+          await createEngine(roomName, { handle: name, kind: kind as EngineKind, description: "", created_by: handle });
+          revalidateRoom();
+          setNotice(`Added @${name}. Mention it to put it to work.`);
+          setNoticeKey(null);
+          break;
+        }
+        default:
+          await sendRoomMessage(roomName, { sender_handle: handle, content: body, episode });
       }
-      setContent("");
-      setTrigger(null);
+      cleared();
       onSent?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -336,7 +623,7 @@ export function RoomChatBox({
       // render, so refocus after that commit lands to keep the user typing.
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [content, episode, onSent, roomName, principal, sending]);
+  }, [content, episode, onSent, roomName, principal, sending, startAgent, revalidateRoom, memories]);
 
   // Where this lands is the one thing the composer must never be coy about: the
   // same box writes to the room and into a thread, and the difference is whether
@@ -359,12 +646,14 @@ export function RoomChatBox({
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        setHighlight((h) => (h - 1 + candidates.length) % candidates.length);
+        setHighlight((h) => (h <= 0 ? candidates.length - 1 : h - 1));
         return;
       }
-      if (e.key === "Enter" || e.key === "Tab") {
+      // Enter picks the lit row; with none lit (an optional argument offering
+      // itself) it sends. Tab always completes, to the first row if none is lit.
+      if (e.key === "Tab" || (e.key === "Enter" && highlight >= 0)) {
         e.preventDefault();
-        accept(candidates[highlight]);
+        accept(candidates[Math.max(0, highlight)]);
         return;
       }
       if (e.key === "Escape") {
@@ -379,11 +668,51 @@ export function RoomChatBox({
     }
   };
 
+  const showCandidates = trigger !== null && candidates.length > 0;
+  // The kind column says something only when the rows differ: commands beside
+  // skills, agents beside people. Five rows all saying "command" is noise.
+  const mixedKinds = new Set(candidates.map((c) => c.secondary)).size > 1;
+  const status = error ? (
+    <StatusLine tone="error" onDismiss={() => setError(null)}>
+      {error}
+    </StatusLine>
+  ) : launch ? (
+    <LaunchStatus launch={launch} roomName={roomName} onDismiss={dismissLaunch} />
+  ) : notice ? (
+    <StatusLine onDismiss={() => setNotice(null)}>
+      {notice}
+      {noticeKey && onOpenMemory && (
+        <>
+          {" "}
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              onOpenMemory(noticeKey);
+              setNotice(null);
+            }}
+            className="text-accent hover:underline"
+          >
+            Open it
+          </button>
+        </>
+      )}
+    </StatusLine>
+  ) : null;
+
   return (
     <div data-tour="composer" className={`@container border-t border-border bg-bg px-4 py-3 flex-shrink-0${className ? ` ${className}` : ""}`}>
       <div className="relative">
-        {trigger !== null && candidates.length > 0 && (
-          <div className="absolute bottom-full left-0 mb-2 z-20 w-full max-w-md bg-elevated border border-border rounded-xl shadow-xl overflow-hidden p-1">
+        {/* Over the box, nearest it last: what the word being typed can be,
+            the command's signature with that argument lit, then what the
+            last command said. None of it moves the box. */}
+        {(showCandidates || parsed || summon || status) && (
+        <div className="absolute bottom-full left-0 z-20 mb-2 flex w-full max-w-md flex-col gap-1.5">
+        {showCandidates && (
+          // One grid for every row, so the names share a column and what each
+          // does starts at the same place whatever the name's length; the kind
+          // (command, skill, the argument) sits quietly at the right edge.
+          <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-xl border border-border bg-elevated p-1 shadow-xl">
             {candidates.map((c, i) => (
               <button
                 key={c.id}
@@ -394,28 +723,31 @@ export function RoomChatBox({
                   accept(c);
                 }}
                 onMouseEnter={() => setHighlight(i)}
-                className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-baseline gap-2 transition-colors ${
-                  i === highlight ? "bg-surface" : "hover:bg-surface/60"
-                }`}
+                className={cn(
+                  "col-span-full grid grid-cols-subgrid items-baseline gap-x-3 rounded-lg px-2.5 py-1.5 text-left transition-colors",
+                  i === highlight ? "bg-surface" : "hover:bg-surface/60",
+                )}
               >
                 <span
-                  className={`text-label flex-shrink-0 truncate max-w-[60%] ${
-                    c.named ? "text-text" : "font-mono text-accent"
-                  }`}
+                  className={cn(
+                    "max-w-56 truncate text-label",
+                    c.named ? "text-text" : "font-mono text-accent",
+                  )}
                 >
                   {c.primary}
                 </span>
-                <span className="text-micro text-muted-foreground flex-shrink-0">
-                  {c.secondary}
+                <span className="min-w-0 truncate text-micro text-muted-foreground">{c.tertiary}</span>
+                <span className="max-w-40 truncate text-right text-micro text-muted-foreground/70">
+                  {mixedKinds && c.secondary}
                 </span>
-                {c.tertiary && (
-                  <span className="text-micro text-muted-foreground truncate min-w-0">
-                    · {c.tertiary}
-                  </span>
-                )}
               </button>
             ))}
           </div>
+        )}
+        {parsed && <CommandSignature parsed={parsed} completes={showCandidates} />}
+        {summon && <SummonSignature summon={summon} completes={showCandidates} inTask={Boolean(episode)} />}
+        {status}
+        </div>
         )}
 
         {/* The text gets the box's full width, and what acts on it sits on a
@@ -428,6 +760,7 @@ export function RoomChatBox({
             value={content}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            onSelect={(e) => setCursor(e.currentTarget.selectionStart ?? 0)}
             placeholder={placeholder}
             minRows={1}
             maxRows={10}
@@ -462,7 +795,10 @@ export function RoomChatBox({
                       onClick={() => {
                         setAdding(false);
                         if (item.kind === "task") setStarting(true);
-                        else if (item.kind === "memory") setMemoryTitle("");
+                        else if (item.kind === "memory") {
+                          setMemoryFolder("context");
+                          setMemoryTitle("");
+                        }
                         else setAddingMember(true);
                       }}
                       className="flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-hairline"
@@ -490,7 +826,6 @@ export function RoomChatBox({
               <Kbd size="xs" tone="muted">⇧↵</Kbd> newline
               <KbdChord size="xs" tone="muted" action="palette.open" /> commands
             </span>
-            {error && <span className="max-w-48 truncate text-micro text-red">{error}</span>}
             <button
               type="button"
               onClick={submit}
@@ -516,6 +851,7 @@ export function RoomChatBox({
         onOpenChange={(open) => !open && setMemoryTitle(null)}
         roomName={roomName}
         initialTitle={memoryTitle ?? ""}
+        initialFolder={memoryFolder}
         onCreated={onOpenMemory}
       />
       {addingMember && <AddMemberDialog open onOpenChange={setAddingMember} roomName={roomName} />}
@@ -529,5 +865,197 @@ export function RoomChatBox({
         />
       )}
     </div>
+  );
+}
+
+/** One part of a signature: how it's drawn, and whether something fills it yet. */
+interface Slot {
+  label: string;
+  filled: boolean;
+}
+
+/**
+ * What's being written, drawn over the box: its head (`/agent`, `@conductor`),
+ * then each part, the one the cursor is in lit, and a line saying what that
+ * part is. A warning says what will happen that the writer may not expect.
+ */
+function Signature({
+  label,
+  head,
+  slots,
+  active,
+  about,
+  completes,
+  warning,
+}: {
+  label: string;
+  head: string;
+  slots: Slot[];
+  active: number | null;
+  about: string;
+  completes: boolean;
+  warning?: string | null;
+}) {
+  return (
+    <div aria-label={label} className="rounded-lg border border-border bg-elevated px-2.5 py-1.5 shadow-lg">
+      <div className="flex flex-wrap items-baseline gap-x-1 font-mono text-label">
+        <span className="text-accent">{head}</span>
+        {slots.map((s, i) => (
+          <span
+            key={`${s.label}-${i}`}
+            aria-current={i === active || undefined}
+            className={cn(
+              "rounded px-1 transition-colors",
+              i === active ? "bg-accent-soft text-accent" : s.filled ? "text-text" : "text-muted-foreground",
+            )}
+          >
+            {s.label}
+          </span>
+        ))}
+      </div>
+      <p className="mt-0.5 flex items-center gap-1.5 text-micro text-muted-foreground">
+        <span className="min-w-0">{about}</span>
+        {completes && (
+          <span className="ml-auto flex shrink-0 items-center gap-1">
+            <Kbd size="xs" tone="muted">tab</Kbd> completes
+          </span>
+        )}
+      </p>
+      {warning && <p className="mt-1 text-micro text-yellow">{warning}</p>}
+    </div>
+  );
+}
+
+/** `/agent <handle> <harness> [folder] [machine]`, with the argument being typed lit and said. */
+function CommandSignature({ parsed, completes }: { parsed: ParsedCommand; completes: boolean }) {
+  const { command, active, args } = parsed;
+  const arg = active !== null ? command.args[active] : null;
+  const slots = command.args.map((a, i) => {
+    const name = a.rest ? `${a.name}…` : a.name;
+    return { label: a.optional ? `[${name}]` : `<${name}>`, filled: Boolean(args[i]?.value) };
+  });
+  return (
+    <Signature
+      label={`/${command.name} usage`}
+      head={`/${command.name}`}
+      slots={slots}
+      active={active}
+      about={arg ? arg.about : command.about}
+      completes={completes}
+    />
+  );
+}
+
+/**
+ * `@conductor gated @proposer @guardian <what…>`: once a flow is named, its
+ * own roles are the member slots, lit one at a time as each is filled, so the
+ * order they bind in is on screen rather than in a doc.
+ */
+function SummonSignature({
+  summon,
+  completes,
+  inTask,
+}: {
+  summon: ParsedSummon;
+  completes: boolean;
+  inTask: boolean;
+}) {
+  const { protocol, members, active, slot } = summon;
+  const roles = protocol?.roles ?? [];
+  const memberSlots: Slot[] = roles.length
+    ? roles.map((r, i) => ({ label: `@${r}`, filled: i < members.length }))
+    : [{ label: protocol ? "[@member…]" : "@member…", filled: members.length > 0 }];
+  const slots: Slot[] = [
+    { label: summon.flow?.value.replace(/[:,;]+$/, "") || "<flow>", filled: Boolean(protocol) },
+    ...memberSlots,
+    { label: "<what…>", filled: summon.asked },
+  ];
+  const at =
+    active === "flow" ? 0 : active === "member" ? 1 + Math.min(slot, memberSlots.length - 1) : active === "ask" ? slots.length - 1 : null;
+
+  let about: string;
+  if (active === "flow") {
+    about = protocol?.description ?? "Which flow to run.";
+  } else if (active === "member") {
+    const role = roles[slot];
+    about = role
+      ? `Who plays ${role}. Type @ to pick them${roles.length > 1 ? `; members take the roles in order` : ""}.`
+      : roles.length
+        ? "Every role has someone. Say what it's about next."
+        : "Who takes part. Name nobody and everyone in the room does.";
+  } else if (active === "ask") {
+    about = "What it's about. Every step's prompt carries it.";
+  } else {
+    about = "Runs a flow in this task, giving each member the floor in turn.";
+  }
+  const unknown = summon.flow && !protocol && active !== "flow" ? `There's no ${summon.flow.value} flow in this room.` : null;
+  const warning = unknown ?? (inTask ? null : "A flow runs inside a task. Open one and summon it there; here the conductor can only list flows.");
+
+  return (
+    <Signature
+      label={`@${summon.engine} usage`}
+      head={`@${summon.engine}`}
+      slots={slots}
+      active={at}
+      about={about}
+      completes={completes}
+      warning={warning}
+    />
+  );
+}
+
+function StatusLine({
+  children,
+  tone = "info",
+  onDismiss,
+}: {
+  children: React.ReactNode;
+  tone?: "info" | "error";
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      role={tone === "error" ? "alert" : "status"}
+      className={cn(
+        "flex items-start gap-2 rounded-lg border bg-elevated px-2.5 py-1.5 text-micro shadow-lg",
+        tone === "error" ? "border-red/40 text-red" : "border-border text-muted-foreground",
+      )}
+    >
+      <span className="min-w-0 flex-1 break-words">{children}</span>
+      <button
+        type="button"
+        aria-label="Dismiss"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onDismiss}
+        className="shrink-0 rounded text-muted-foreground hover:text-text"
+      >
+        <X className="size-3.5" />
+      </button>
+    </div>
+  );
+}
+
+/** An `/agent` start, followed on its machine until the agent is in the room. */
+function LaunchStatus({ launch, roomName, onDismiss }: { launch: Launch; roomName: string; onDismiss: () => void }) {
+  const { job } = useRunnerJob(launch.runner, launch.job);
+  const revalidate = useRoomRevalidate(roomName);
+  const status = job?.status ?? "queued";
+  useEffect(() => {
+    if (status !== "done") return;
+    revalidate();
+    const t = setTimeout(onDismiss, 6000);
+    return () => clearTimeout(t);
+  }, [status, revalidate, onDismiss]);
+  if (status === "failed") {
+    return (
+      <StatusLine tone="error" onDismiss={onDismiss}>
+        @{launch.handle} didn&apos;t start: {job?.error ?? "the machine said no more"}
+      </StatusLine>
+    );
+  }
+  return (
+    <StatusLine onDismiss={onDismiss}>
+      {status === "done" ? `@${launch.handle} is starting. It joins once it has read its notes.` : `@${launch.handle}: ${JOB_STATUS_LABEL[status]}`}
+    </StatusLine>
   );
 }

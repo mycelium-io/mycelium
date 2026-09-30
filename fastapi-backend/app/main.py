@@ -43,6 +43,7 @@ from app.routes.links import router as links_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
 from app.routes.participate import router as participate_router
+from app.routes.protocols import router as protocols_router
 from app.routes.rooms import router as rooms_router
 from app.routes.runners import router as runners_router
 from app.routes.search import router as search_router
@@ -360,6 +361,7 @@ app.include_router(briefing_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
+app.include_router(protocols_router, prefix="/api")
 app.include_router(status_router, prefix="/api")
 
 

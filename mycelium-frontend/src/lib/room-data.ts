@@ -33,6 +33,7 @@ import {
   fetchRoomMembers,
   fetchRoomStatus,
   fetchRoomFolders,
+  fetchProtocols,
   fetchRooms,
   fetchSkills,
   logFetchError,
@@ -43,6 +44,7 @@ import {
   type Memory,
   type NetworkStatus,
   type PresenceMember,
+  type Protocol,
   type Room,
   type RoomFloor,
   type RoomPresence,
@@ -68,6 +70,9 @@ const POLL = {
   messages: 30_000,
   memories: 30_000,
   skills: 30_000,
+  // Read only while a conductor summon is being written; a room's own flows
+  // change about as often as its skills.
+  protocols: 60_000,
   episodes: 5_000,
   coordination: 20_000,
   // The hub answers a status read from cache and refreshes behind it, so this
@@ -121,6 +126,7 @@ const NO_MESSAGES: RoomMessage[] = [];
 const NO_POSTERS: string[] = [];
 const NO_MEMORIES: Memory[] = [];
 const NO_SKILLS: Skill[] = [];
+const NO_PROTOCOLS: Protocol[] = [];
 const NO_EPISODES: EpisodeSummary[] = [];
 
 type RoomResource =
@@ -130,6 +136,7 @@ type RoomResource =
   | "messages"
   | "memories"
   | "skills"
+  | "protocols"
   | "episodes"
   | "status"
   | "a2a";
@@ -456,6 +463,13 @@ export function useRoomSkills(room: string, opts: RoomQueryOptions = {}) {
     room, "skills", fetchSkills, NO_SKILLS, POLL.skills, opts,
   );
   return { skills: data, loading, refresh };
+}
+
+/** The flows the room's conductor can run. Pass `""` as the room to read nothing,
+ *  for a surface that needs them only while a summon is being written. */
+export function useRoomProtocols(room: string, opts: RoomQueryOptions = {}) {
+  const { data, loading } = useRoomQuery(room, "protocols", fetchProtocols, NO_PROTOCOLS, POLL.protocols, opts);
+  return { protocols: data, loading };
 }
 
 export function useRoomEpisodes(room: string, opts: RoomQueryOptions = {}) {
