@@ -30,7 +30,7 @@ const KINDS: { kind: MemberKind; icon: LucideIcon; label: string; hint: string; 
     kind: "machine",
     icon: Laptop,
     label: "Your machine",
-    hint: "Started in herdr",
+    hint: "Started on your computer",
     about:
       "A coding agent on your machine that joins this room as a member, working the way you describe here.",
   },
@@ -260,7 +260,9 @@ function EngineMember({ roomName, onAdded }: { roomName: string; onAdded: (handl
       <MemberFooter
         action={
           <Button onClick={submit} disabled={!canSubmit}>
-            {submitting ? "Adding…" : `Add @${trimmed || engine}`}
+            {/* A fixed label: the handle is in the field above, and a button that
+                grows with each keystroke moves under the pointer. */}
+            {submitting ? "Adding…" : "Add to room"}
           </Button>
         }
       >

@@ -107,7 +107,7 @@ describe("LaunchAgentForm", () => {
       target: { value: "  Review every change for correctness.  " },
     });
     fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "~/code/atlas/api" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add @reviewer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
 
     await waitFor(() => expect(onLaunched).toHaveBeenCalledWith("reviewer"));
     expect(launchRunnerAgent).toHaveBeenCalledWith("julias-mbp", {
@@ -131,7 +131,7 @@ describe("LaunchAgentForm", () => {
     renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
 
     fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add @scout" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("outside the folders");
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
@@ -147,7 +147,7 @@ describe("LaunchAgentForm", () => {
     );
     expect(screen.queryByLabelText("Agent CLI")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
-    expect(screen.getByRole("button", { name: "Add @scout" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add to room" })).toBeDisabled();
   });
 });
 

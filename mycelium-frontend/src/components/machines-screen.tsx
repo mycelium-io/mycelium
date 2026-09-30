@@ -22,8 +22,10 @@ import { stopRunnerAgent, type Runner, type RunnerAgent } from "@/lib/api";
 import { terminalLink, useIsDesktop } from "@/lib/desktop";
 import {
   describeJob,
+  hostOf,
   JOB_STATUS_LABEL,
   sortFrameworks,
+  startsInHerdr,
   useRunnerJobs,
   useRunners,
   useRunnersRevalidate,
@@ -31,7 +33,7 @@ import {
 import { fmtAgo } from "@/lib/metrics-format";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AddMachineCode, ConnectMachine, HerdrMissing, RescanButton } from "@/components/runner-fields";
+import { AddMachineCode, ConnectMachine, HostMissing, RescanButton } from "@/components/runner-fields";
 
 /** How many of a machine's jobs are listed. */
 const RECENT_JOBS = 8;
@@ -52,7 +54,7 @@ export function MachinesScreen() {
             <>Your computers connected to this hub with </>
           )}
           <code className="font-mono text-text">mycelium runner</code>. Each starts the agents you ask
-          for in a herdr terminal there, where you can watch and type to them. Only yours are listed.
+          for on that computer, where you can watch and type to them. Only yours are listed.
         </p>
 
         <div className="mt-4 space-y-6">
@@ -127,7 +129,7 @@ function MachineCard({ runner }: { runner: Runner }) {
 
       {!runner.herdr && (
         <div className="mt-3">
-          <HerdrMissing runner={runner} />
+          <HostMissing runner={runner} />
         </div>
       )}
 
@@ -162,7 +164,7 @@ function MachineCard({ runner }: { runner: Runner }) {
                       {f.path ?? f.command}
                     </td>
                     <td className="text-right text-micro text-muted-foreground">
-                      {f.installed && f.launchable ? (runner.herdr ? "Can start" : "Needs herdr") : (f.note ?? "")}
+                      {f.installed && f.launchable ? (runner.herdr ? "Can start" : `Needs ${hostOf(runner).name}`) : (f.note ?? "")}
                     </td>
                   </tr>
                 ))}
@@ -253,11 +255,16 @@ function AgentLine({ runner, agent }: { runner: Runner; agent: RunnerAgent }) {
       </Link>
       <span className="text-micro text-faint">{agent.framework}</span>
       <span className={`text-micro ${STATUS_TONE[agent.status]}`}>{agent.status}</span>
-      {agent.pane && <span className="font-mono text-micro text-faint">pane {agent.pane}</span>}
+      {agent.pane && (
+        <span className="font-mono text-micro text-faint">
+          {startsInHerdr(runner) ? "pane" : "session"} {agent.pane}
+        </span>
+      )}
       {agent.cwd && <span className="hidden truncate font-mono text-micro text-faint md:inline">{agent.cwd}</span>}
       <span className="ml-auto flex items-center gap-2">
         {error && <span className="text-micro text-red">{error}</span>}
-        {desktop && !gone && agent.pane && (
+        {/* The app's agents terminal opens herdr panes; an agent elsewhere is watched there. */}
+        {desktop && !gone && agent.pane && startsInHerdr(runner) && (
           <a
             href={terminalLink(agent.pane)}
             className="inline-flex h-6 items-center gap-1.5 rounded px-1.5 text-micro text-muted-foreground hover:bg-hairline hover:text-text"

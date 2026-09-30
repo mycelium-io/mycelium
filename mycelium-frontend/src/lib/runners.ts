@@ -99,16 +99,54 @@ export function sortFrameworks(frameworks: Framework[]): Framework[] {
   return [...frameworks].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
 
-/** Frameworks a machine can start right now: installed, startable by herdr,
- *  and herdr running there. Empty on a machine without herdr. */
+/** Frameworks a machine can start right now: installed, startable by its host,
+ *  and its host running there. Empty on a machine whose host isn't running. */
 export function launchable(runner: Runner): Framework[] {
   if (!runner.herdr) return [];
   return runner.frameworks.filter((f) => f.installed && f.launchable);
 }
 
-/** What a machine without herdr is told. herdr is the only way it starts agents. */
-export function herdrMissing(runner: Pick<Runner, "id" | "label">): string {
-  return `herdr isn't running on ${runnerName(runner)}. Install it from https://herdr.dev and start it, then this machine can start agents.`;
+/**
+ * What the app says about a runner's host: its name, where the agents it
+ * starts show up, and what to do when it isn't running. Every screen asks
+ * here rather than naming a host, so a new host is one entry.
+ */
+interface HostCopy {
+  name: string;
+  /** Where you watch and type to an agent it started. */
+  where: string;
+  /** The next step when it isn't running on a machine. */
+  start: string;
+}
+
+const HOSTS: Record<string, HostCopy> = {
+  herdr: {
+    name: "herdr",
+    where: "a herdr terminal",
+    start: "Install it from https://herdr.dev and start it",
+  },
+  omnigent: {
+    name: "Omnigent",
+    where: "an Omnigent session",
+    start: "Start it there with `omnigent start`",
+  },
+};
+
+/** The host a runner starts agents on. A runner that doesn't say is herdr's. */
+export function hostOf(runner: Pick<Runner, "host">): HostCopy {
+  const id = runner.host || "herdr";
+  return HOSTS[id] ?? { name: id, where: `${id}`, start: `Start ${id} there` };
+}
+
+/** Whether a runner starts agents in herdr, which is what a swarm needs. */
+export function startsInHerdr(runner: Pick<Runner, "host">): boolean {
+  return (runner.host || "herdr") === "herdr";
+}
+
+/** What a machine whose host isn't running is told. */
+export function hostMissing(runner: Pick<Runner, "id" | "label" | "host">): string {
+  const host = hostOf(runner);
+  return `${host.name} isn't running on ${runnerName(runner)}. ${host.start}, then this machine can start agents.`;
 }
 
 /** A job said in a few words, for status lines. */
