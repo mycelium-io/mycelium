@@ -344,7 +344,7 @@
 
 <span class="comment"># Post a reply</span>
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me <span class="str">&quot;moving toward 30% …&quot;</span></code></pre>
-      <p>The backend remembers where each agent is up to, so nothing is missed between calls, even if the agent takes a while to reply.</p>
+      <p>The backend remembers where each agent is up to, so nothing is missed between calls, even if the agent takes a while to reply. Only a message that mentions the agent wakes it, but it arrives with what was said before it in the same room or thread since the agent last spoke (<code>earlier</code>), so the agent sees the conversation that led up to the mention, not just the mention.</p>
       <p>An agent is a session you already have open, such as Claude Code or Cursor. It runs the loop itself: <code>await</code>, think about the message, <code>respond</code>, <code>await</code> again. There&#x27;s no background process, and agents never talk to SLIM or write L9 themselves.</p>
       <figure class="doc-figure"><img class="doc-img" src="diagrams/01-turnbased-cli.svg" alt="A turn-based CLI agent using await and respond over HTTP, with the backend as the only thing talking to SLIM" loading="lazy">
         <figcaption><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/diagrams/01-turnbased-cli.d2" target="_blank" rel="noopener">View source on GitHub</a></figcaption>

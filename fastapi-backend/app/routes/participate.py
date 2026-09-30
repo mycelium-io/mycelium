@@ -43,7 +43,7 @@ from app.services.agent_registry import norm_handle
 from app.services.filesystem import room_exists
 from app.services.l9_models import Kind
 from app.services.l9_slim import serialize_content, serialize_envelope
-from app.services.persister import record_episode
+from app.services.persister import _conversational_text, record_episode
 
 router = APIRouter(prefix="/rooms/{room_name}", tags=["participate"])
 
@@ -121,7 +121,56 @@ def _refuse_thread_write(refusal: tasks.ThreadRefusal | None) -> None:
         raise HTTPException(status_code=refusal.status, detail=refusal.detail)
 
 
-def _describe(room: str, handle: str, record: Any) -> dict[str, Any]:
+#: The most earlier messages a turn is handed with, and how far back to look.
+_EARLIER_MAX = 30
+_EARLIER_SCAN = 500
+
+
+def _said_earlier(room: str, handle: str, records: list[Any], at: int) -> list[dict[str, Any]]:
+    """What was said where ``records[at]`` was said, since ``handle`` last took part.
+
+    Only a mention wakes a handle, but what led up to it is usually said in the
+    messages before it ("I guess...", "maybe...", then "@agent, thoughts?").
+    Walking back from the mention, in the same place (the room, or the thread it
+    was said in), this collects the prose until the handle's own last message or
+    the last turn it was handed, oldest first. It reads the transcript rather
+    than what one ``await`` saw, so an agent that awaits in short loops still
+    gets everything said between them.
+    """
+
+    def place(record: Any) -> str | None:
+        ep = record_episode(record)
+        return None if not ep or l9.is_live_episode(room, ep) else ep
+
+    here = place(records[at])
+    earlier: list[dict[str, Any]] = []
+    for record in reversed(records[max(0, at - _EARLIER_SCAN) : at]):
+        if place(record) != here:
+            continue
+        if record.sender and _norm(record.sender) == _norm(handle):
+            break
+        if _addressed_to(record.content, handle):
+            break
+        text = _conversational_text(record.content)
+        if text is None:
+            continue
+        earlier.append(
+            {
+                "sender": record.sender,
+                "text": text,
+                "message_id": record.message_id,
+                "at": record.recorded_at,
+            }
+        )
+        if len(earlier) >= _EARLIER_MAX:
+            break
+    earlier.reverse()
+    return earlier
+
+
+def _describe(
+    room: str, handle: str, record: Any, *, earlier: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
     content = record.content
     header = (content.get("l9") or {}).get("header") or {}
     message = header.get("message") or {}
@@ -134,6 +183,8 @@ def _describe(room: str, handle: str, record: Any) -> dict[str, Any]:
         "episode": message.get("episode"),
         "topic": context.get("topic"),
         "message_id": record.message_id,
+        # What was said here before the message that addressed the handle.
+        "earlier": earlier or [],
     }
 
 
@@ -241,7 +292,8 @@ async def await_message(
                     duration_ms=(_time.monotonic() - _t0) * 1000.0,
                     delivered=True,
                 )
-                return _describe(room_name, handle, record)
+                earlier = _said_earlier(room_name, handle, records, i - 1)
+                return _describe(room_name, handle, record, earlier=earlier)
         # Nothing addressed in the scanned range: consume it (advance past the
         # observer/broadcast turns this handle doesn't await) and keep polling.
         _commit(len(records))
