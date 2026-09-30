@@ -10,7 +10,7 @@ import { SendPlaneIcon } from "@/components/send-plane-icon";
 import { useRoomMemories, useRoomRoster, useRoomSkills } from "@/lib/room-data";
 import { useKeyAction } from "@/components/keymap-provider";
 import { useCurrentUser } from "@/components/current-user";
-import { Kbd } from "@/components/ui/kbd";
+import { Kbd, KbdChord } from "@/components/ui/kbd";
 import { StartSwarmDialog } from "@/components/start-swarm-dialog";
 import { IntentDialog } from "@/components/intent-dialog";
 import { NewMemoryDialog } from "@/components/new-memory-dialog";
@@ -488,7 +488,7 @@ export function RoomChatBox({
             <div className="ml-auto flex shrink-0 items-center gap-2">
             <span className="hidden items-center gap-1.5 text-micro text-faint opacity-0 transition-opacity group-focus-within/composer:opacity-100 @[34rem]:flex">
               <Kbd size="xs" tone="muted">⇧↵</Kbd> newline
-              <Kbd size="xs" tone="muted">esc</Kbd> commands
+              <KbdChord size="xs" tone="muted" action="palette.open" /> commands
             </span>
             {error && <span className="max-w-48 truncate text-micro text-red">{error}</span>}
             <button
