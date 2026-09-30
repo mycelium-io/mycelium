@@ -332,6 +332,36 @@ def user_show(
         raise typer.Exit(1) from None
 
 
+#: How each source reads in `whoami --sources`.
+_SOURCE_LABELS = {
+    "flag": "a flag",
+    "environment": "the environment",
+    "membership": "this folder's `mycelium join`",
+    "machine": "this machine's setup",
+    "default": "nothing set",
+}
+
+
+def _print_sources(ctx: typer.Context) -> None:
+    from mycelium import caller
+
+    config = MyceliumConfig.load()
+    rows = caller.explain(config)
+    if ctx.obj and ctx.obj.get("json"):
+        typer.echo(json_module.dumps({q: {"value": v, "source": s} for q, v, s in rows}, indent=2))
+        return
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    table.add_column("")
+    table.add_column("value")
+    table.add_column("from", style="dim")
+    for question, value, source in rows:
+        table.add_row(question, value or "[dim]none[/dim]", _SOURCE_LABELS.get(source, source))
+    console.print(table)
+    member = caller.find_membership()
+    if member is not None:
+        console.print(f"[dim]Membership: {member.path}[/dim]")
+
+
 def _principal_view(handle: str) -> tuple[UserManifest | None, list[tuple[str, str, str]]] | None:
     """A principal's hub record and owned-agent roll-up, or ``None`` if the hub is down.
 
@@ -354,18 +384,32 @@ def _principal_view(handle: str) -> tuple[UserManifest | None, list[tuple[str, s
 
 
 @doc_ref(
-    usage="mycelium whoami",
+    usage="mycelium whoami [--sources]",
     desc="Print the user you're acting as, plus the agents you own.",
     group="user",
 )
-def whoami(ctx: typer.Context) -> None:
+def whoami(
+    ctx: typer.Context,
+    sources: bool = typer.Option(
+        False,
+        "--sources",
+        help="Show the hub, handle, room and credential commands here use, and where each came from.",
+    ),
+) -> None:
     """Resolve the current identity to a user handle and roll up owned agents.
 
     Logged in (``mycelium login``), the token is the answer: the principal is the
     handle it asserts, which is also the handle a gated hub will attribute writes
     to. Logged out (the default), this is the self-asserted ``identity.name``
     exactly as before.
+
+    ``--sources`` answers a narrower question: what every command run here acts
+    as (a flag, the environment, this folder's `mycelium join`, or this machine's
+    setup), which is what to check when something is recorded as the wrong person.
     """
+    if sources:
+        _print_sources(ctx)
+        return
     try:
         config = MyceliumConfig.load()
         # The attribution handle can be session-qualified (``avery#a8f3``); the
@@ -489,7 +533,7 @@ def iam(
         mycelium iam
     """
     if handle is None:
-        whoami(ctx)
+        whoami(ctx, sources=False)
         return
 
     try:

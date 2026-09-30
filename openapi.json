@@ -2111,6 +2111,101 @@
         }
       }
     },
+    "/api/rooms/{room_name}/joins": {
+      "post": {
+        "tags": [
+          "joins"
+        ],
+        "summary": "Create Join",
+        "description": "A single-use code an agent redeems with ``mycelium join`` to become ``handle`` here.",
+        "operationId": "create_join_api_rooms__room_name__joins_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JoinRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/joins/redeem": {
+      "post": {
+        "tags": [
+          "joins"
+        ],
+        "summary": "Redeem Join",
+        "description": "Trade a join code for membership: the room, the handle, and a token when the hub needs one.",
+        "operationId": "redeem_join_api_joins_redeem_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinRedeem"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/episodes": {
       "get": {
         "tags": [
@@ -5720,6 +5815,67 @@
         "title": "HerdrPresenceBody",
         "description": "The host-side ``mycelium herdr sync`` push: handle \u2192 herdr agent state.\n\nEach value may be a bare status string (simple form) or a\n:class:`HerdrAgentState` object carrying the status + current task title."
       },
+      "JoinCreate": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Handle"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle"
+        ],
+        "title": "JoinCreate",
+        "description": "Ask for a code an agent can redeem to become ``handle`` in the room."
+      },
+      "JoinRead": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "room",
+          "handle",
+          "expires_at"
+        ],
+        "title": "JoinRead",
+        "description": "A new join code. Single-use; show it only to the agent it is for."
+      },
+      "JoinRedeem": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 4,
+            "title": "Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "title": "JoinRedeem"
+      },
       "L9ActorRead": {
         "properties": {
           "id": {
@@ -5947,6 +6103,49 @@
         },
         "type": "object",
         "title": "L9PayloadRead"
+      },
+      "MembershipRead": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token",
+            "description": "A token the hub signed for this member; null when the hub's auth is off"
+          },
+          "token_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "handle"
+        ],
+        "title": "MembershipRead",
+        "description": "What a redeemed code makes the caller: a member of a room, with a token when the hub needs one."
       },
       "MemoryBatchCreate": {
         "properties": {
@@ -7307,6 +7506,11 @@
             "title": "Herdr",
             "default": false
           },
+          "host": {
+            "type": "string",
+            "title": "Host",
+            "default": "herdr"
+          },
           "roots": {
             "items": {
               "type": "string"
@@ -7514,6 +7718,11 @@
             "type": "boolean",
             "title": "Herdr",
             "default": false
+          },
+          "host": {
+            "type": "string",
+            "title": "Host",
+            "default": "herdr"
           },
           "roots": {
             "items": {

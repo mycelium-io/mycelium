@@ -90,11 +90,12 @@ def by_id(framework_id: str) -> Known | None:
     return next((k for k in KNOWN if k.id == framework_id), None)
 
 
-def scan(herdr_kinds: set[str] | None) -> list[Found]:
+def scan(kinds: set[str] | None, *, host: str = "herdr") -> list[Found]:
     """Every known framework, installed ones first.
 
-    ``herdr_kinds`` is what herdr says it can start (``None`` when herdr is not
-    here); a framework is launchable when it is installed and herdr has its kind.
+    ``kinds`` is what the runner's host (named ``host``) says it can start, or
+    ``None`` when the host is not here; a framework is launchable when it is
+    installed and the host has its kind.
     """
     located = {k.id: next((p for b in k.binaries if (p := shutil.which(b))), None) for k in KNOWN}
     with ThreadPoolExecutor(max_workers=8) as pool:
@@ -109,15 +110,15 @@ def scan(herdr_kinds: set[str] | None) -> list[Found]:
     out: list[Found] = []
     for k in KNOWN:
         path = located[k.id]
-        herdr_can = bool(k.herdr_kind and herdr_kinds is not None and k.herdr_kind in herdr_kinds)
+        host_can = bool(k.herdr_kind and kinds is not None and k.herdr_kind in kinds)
         note = None
-        if path and not herdr_can:
-            if herdr_kinds is None:
-                note = "herdr isn't running here"
+        if path and not host_can:
+            if kinds is None:
+                note = f"{host} isn't running here"
             elif k.herdr_kind is None:
-                note = f"herdr has no {k.id} kind yet"
+                note = f"{host} has no {k.id} kind yet"
             else:
-                note = f"this herdr can't start {k.herdr_kind}; update herdr"
+                note = f"this {host} can't start {k.herdr_kind}; it may need updating"
         out.append(
             Found(
                 id=k.id,
@@ -126,7 +127,7 @@ def scan(herdr_kinds: set[str] | None) -> list[Found]:
                 path=path,
                 version=versions.get(k.id),
                 installed=path is not None,
-                launchable=path is not None and herdr_can,
+                launchable=path is not None and host_can,
                 note=note,
             )
         )

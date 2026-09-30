@@ -19,7 +19,7 @@ Load priority (highest to lowest):
 import os
 import warnings
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import toml
 from pydantic import BaseModel, Field, field_validator
@@ -438,6 +438,19 @@ class SwarmConfig(BaseModel):
     )
 
 
+class RunnerConfig(BaseModel):
+    """Where this machine's runner starts the agents the app asks for."""
+
+    host: Literal["herdr", "omnigent"] = Field(
+        default="herdr",
+        description="The host this machine's runner starts agents on.",
+    )
+    omnigent_url: str = Field(
+        default="http://127.0.0.1:6767",
+        description="The Omnigent server the runner starts sessions on.",
+    )
+
+
 class RoomConfig(BaseModel):
     """Room management configuration."""
 
@@ -630,6 +643,7 @@ class MyceliumConfig(BaseModel):
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     herdr: HerdrConfig = Field(default_factory=HerdrConfig)
     swarm: SwarmConfig = Field(default_factory=SwarmConfig)
+    runner: RunnerConfig = Field(default_factory=RunnerConfig)
     rooms: RoomConfig = Field(default_factory=RoomConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
@@ -716,6 +730,12 @@ class MyceliumConfig(BaseModel):
                 with open(project_path) as f:
                     project_dict = toml.load(f)
                 config_dict = cls._deep_merge(config_dict, project_dict)
+
+            # A folder that joined a room (`mycelium join`) names its hub and
+            # room; that beats this machine's files and loses to the environment.
+            from mycelium import caller
+
+            config_dict = cls._deep_merge(config_dict, caller.config_overlay())
 
         env_overrides = cls._load_from_env()
         config_dict = cls._deep_merge(config_dict, env_overrides)

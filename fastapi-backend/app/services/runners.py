@@ -213,18 +213,18 @@ def check_ready(runner: RunnerRead) -> None:
 
 
 def check_framework(runner: RunnerRead, framework_id: str) -> None:
-    """Refuse ``framework_id`` when ``runner`` cannot start it in a herdr pane."""
+    """Refuse ``framework_id`` when ``runner`` cannot start it on its host."""
+    host = runner.host
     if not runner.herdr:
         raise RunnerError(
-            f"herdr isn't running on {runner.label}, so it can't start agents. "
-            "Install it from https://herdr.dev and start it there."
+            f"{host} isn't running on {runner.label}, so it can't start agents. Start it there."
         )
     fw = framework_of(runner, framework_id)
     if fw is None or not fw.installed:
         raise RunnerError(f"{framework_id} is not installed on {runner.label}.")
     if not fw.launchable:
         raise RunnerError(
-            f"{fw.name} was found on {runner.label}, but herdr can't start it"
+            f"{fw.name} was found on {runner.label}, but {host} can't start it"
             + (f": {fw.note}" if fw.note else ".")
         )
 

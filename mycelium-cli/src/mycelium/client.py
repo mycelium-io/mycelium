@@ -140,15 +140,12 @@ def auth_headers(
     ``handle`` names the agent the call is being made *as*. Its own credential
     wins over the human session when it has one: a resident agent driven from a
     developer's logged-in shell must still write as itself, not as the developer.
+    Which credential that is, in which order, is ``caller.credential``'s call.
     """
-    from mycelium import agent_credentials
+    from mycelium import caller
 
-    cfg = _resolve_config(config)
-    agent_token = agent_credentials.access_token(cfg, handle)
-    if agent_token:
-        return {"Authorization": f"Bearer {agent_token}"}
-    token = current_token(cfg)
-    return {"Authorization": f"Bearer {token.access_token}"} if token else {}
+    token = caller.credential(_resolve_config(config), handle).value
+    return {"Authorization": f"Bearer {token}"} if token else {}
 
 
 def typed_client(config: MyceliumConfig | None = None, *, handle: str | None = None) -> Client:

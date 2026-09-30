@@ -582,6 +582,26 @@ def wake_prompt_for(room: str, wake: dict) -> str:
     return build_mention_prompt(room, handle)
 
 
+def fetch_wakes(config: MyceliumConfig, room: str) -> list[dict]:
+    """Take a room's queued wakes off the backend; ``[]`` when it can't be reached.
+
+    Taking them drains the queue, so whoever fetches delivers. Any runner host
+    delivers from here: the queue is about handles, not panes.
+    """
+    import httpx
+
+    from mycelium.client import auth_headers
+
+    try:
+        url = f"{config.server.api_url}/api/rooms/{room}/sessions/herdr-wakes"
+        resp = httpx.get(url, timeout=5.0, headers=auth_headers(config))
+        resp.raise_for_status()
+        wakes = resp.json().get("wakes", [])
+    except Exception:
+        return []
+    return [w for w in wakes if isinstance(w, dict)]
+
+
 def _drain_wakes(
     config: MyceliumConfig,
     bridge: HerdrBridge,
@@ -600,20 +620,8 @@ def _drain_wakes(
     pass work at the same time. Returns the number of agents actually woken.
     """
     out = log if log is not None else console
-    import httpx
-
-    from mycelium.client import auth_headers
-
-    try:
-        url = f"{config.server.api_url}/api/rooms/{room}/sessions/herdr-wakes"
-        resp = httpx.get(url, timeout=5.0, headers=auth_headers(config))
-        resp.raise_for_status()
-        wakes = resp.json().get("wakes", [])
-    except Exception:
-        return 0
-
     woke = 0
-    for w in wakes:
+    for w in fetch_wakes(config, room):
         handle = str(w.get("handle") or "")
         mapping = bridge.registry.get(room, handle)
         if mapping is None:

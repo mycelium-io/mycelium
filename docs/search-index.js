@@ -1469,6 +1469,22 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Reference"
   },
   {
+    "u": "reference.html#cli-agent",
+    "t": "mycelium join <code> [--hub <url>] [--replace]",
+    "s": "CLI Reference",
+    "x": "Join a room as the member a join code names; commands in this folder then act as it.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-agent",
+    "t": "mycelium leave",
+    "s": "CLI Reference",
+    "x": "Forget this folder's membership, so commands here act as this machine again.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
     "u": "reference.html#cli-memory",
     "t": "memory",
     "s": "CLI Reference",
@@ -2182,6 +2198,20 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "A swarm on your machine",
     "s": "Guides › Start Agents From the App",
     "x": "The Start a swarm dialog has a Where choice. Pick a connected machine instead of the hub, and the team is your own agent CLI in a new herdr workspace on that machine, started in the folder you choose (optionally with a git worktree per member). It is the same as running mycelium swarm in that folder, without the terminal.",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#machines-starting-agents-in-omnigent-instead",
+    "t": "Starting agents in Omnigent instead",
+    "s": "Guides › Start Agents From the App",
+    "x": "If you run agents with Omnigent, the runner can start them there instead of in herdr: mycelium config set runner.host omnigent mycelium runner The runner uses the Omnigent server on this machine (runner.omnigent_url, http://127.0.0.1:6767 by default; start it with omnigent start). The agents you can start are the ones Omnigent has ready on this machine. Each agent is an Omnigent session, so you watch and talk to it i",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#machines-joining-a-room-from-anywhere",
+    "t": "Joining a room from anywhere",
+    "s": "Guides › Start Agents From the App",
+    "x": "A join code is how an agent learns which room it's in and who it is, when nothing about the machine it runs on says so. Whoever starts the agent asks the hub for a code, and the agent runs: mycelium join abcd-efgh-jkmn --hub http://your-hub:8000 From then on, every mycelium command run in that folder, or any folder below it, acts as that member of that room. A code works once and expires after ten minutes. On a hub w",
     "p": "Reference"
   },
   {
