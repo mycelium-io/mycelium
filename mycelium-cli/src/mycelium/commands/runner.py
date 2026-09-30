@@ -153,6 +153,13 @@ def runner(
     signal.signal(signal.SIGTERM, _terminate)
     found = daemon.scan()
     console.print(f"[bold]{daemon.label}[/bold] · runner [cyan]{daemon.id}[/cyan]")
+    # Say which host it uses, so `config set runner.host` visibly took effect.
+    where = getattr(daemon.host, "url", None)
+    console.print(
+        f"[dim]Starts agents in[/dim] {daemon.host.name}"
+        + (f" [dim]at {where}[/dim]" if where else "")
+        + ("" if daemon.herdr else " [yellow](not running)[/yellow]")
+    )
     console.print(_scan_table(found, herdr=daemon.herdr))
     console.print(f"[dim]Agents may be started in: {', '.join(str(r) for r in daemon.roots)}[/dim]")
     console.print(
