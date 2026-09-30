@@ -23,6 +23,45 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    # Whether a PR touches anything besides docs. A docs-only PR skips the jobs
+    # that build or test code, and keeps the ones about docs (links, and the
+    # generated site matching its markdown, in the CLI job). A skipped job reads
+    # as passed for a required check, so nothing waits on it. Pushes to main
+    # always run everything: those runs are the record of what landed.
+    name: Changed files
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.changed.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Is anything besides docs changing?
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # When the list can't be read, run everything: skipping is only ever
+          # the result of reading a list that is all docs.
+          if ! changed=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD") || [ -z "$changed" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Docs: the built site, its markdown sources, and README-style
+          # markdown at the top of the repo or a top-level folder.
+          # docs/ also holds the installer and the generators; those are code.
+          if echo "$changed" | grep -vE '^(docs/|mycelium-cli/src/mycelium/docs/|[^/]+\.md$|[^/]+/README\.md$)' > /dev/null \
+            || echo "$changed" | grep -E '^docs/.*\.(py|sh)$' > /dev/null; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "Only docs changed; skipping the jobs that build and test code."
+          fi
+
   hygiene:
     # Repo-level contracts that have no other home: actions pinned to SHAs,
     # workflows declaring their permissions, budgets that still name real jobs.
@@ -38,6 +77,8 @@ jobs:
 
   test-backend:
     name: Backend tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
 
     # No database service: the SLIM-native rebuild removed Postgres/AgensGraph
@@ -99,6 +140,9 @@ jobs:
 
   test-cli:
     name: CLI lint + tests
+    # Runs for docs-only PRs too, since it owns the "docs site is current" check;
+    # on those it skips the lint, type and test steps.
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -120,20 +164,24 @@ jobs:
         run: uv sync --group dev --extra engine
 
       - name: Lint
+        if: needs.changes.outputs.code == 'true'
         working-directory: mycelium-cli
         run: uv run ruff check src/
 
       - name: Format check
+        if: needs.changes.outputs.code == 'true'
         working-directory: mycelium-cli
         run: uv run ruff format --check src/
 
       - name: Type check (ty)
+        if: needs.changes.outputs.code == 'true'
         working-directory: mycelium-cli
         run: uv run ty check .
 
       # Unit suite (guarded live-node slices skip without a node; those run in
       # the integration-slim job). Previously the CLI had no test step in CI.
       - name: Unit tests
+        if: needs.changes.outputs.code == 'true'
         working-directory: mycelium-cli
         run: uv run pytest tests/ -q
 
@@ -143,6 +191,7 @@ jobs:
       # depend on which optional extras that project pulls in (`--extra engine`
       # brings Pillow in transitively).
       - name: Lint maintainer scripts
+        if: needs.changes.outputs.code == 'true'
         run: |
           uv run --no-project --with ruff ruff check --config ruff.toml scripts
           uv run --no-project --with ruff ruff format --check --config ruff.toml scripts
@@ -172,6 +221,8 @@ jobs:
     # still runs on push to main (where path filters are less reliable
     # across rebases).
     name: Collector docker build
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -222,6 +273,8 @@ jobs:
     # `slim-bindings` and the embedding model. Path-filtered, so it costs
     # nothing on a PR that doesn't touch its inputs.
     name: Backend docker build
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -279,6 +332,8 @@ jobs:
 
   build-frontend:
     name: Frontend typecheck + lint + build
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -312,6 +367,8 @@ jobs:
 
   build-frontend-image:
     name: Frontend docker build
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -393,6 +450,8 @@ jobs:
     # them per-PR — by file, since running a whole suite against a live node would
     # also re-run no-node unit tests that assume the fabric is down.
     name: Live-node integration slices (SLIM)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -470,6 +529,7 @@ jobs:
     # worth timing, and shouldn't spend a runner saying so.
     if: ${{ !cancelled() }}
     needs:
+      - changes
       - hygiene
       - docs-links
       - test-backend

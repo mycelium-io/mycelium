@@ -21,6 +21,7 @@
   ],
   "wall_clock_seconds": 150,
   "jobs": {
+    "Changed files": 30,
     "Repo hygiene": 60,
     "Docs links": 60,
     "Backend tests": 75,
