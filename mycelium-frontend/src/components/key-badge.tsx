@@ -3,6 +3,8 @@
 
 "use client";
 
+import { useCallback, useState } from "react";
+import { createPortal } from "react-dom";
 import { chordFor, chordKey, isRevealChord } from "@/lib/keymap";
 import { useKeyReveal } from "@/components/keymap-provider";
 
@@ -17,16 +19,30 @@ interface Props {
   overlay?: boolean;
 }
 
+/** How far the corner badge stands proud of its target, in px. */
+const PROUD = 6;
+
 /** The key for an action, drawn on the thing it selects while the reveal
  *  modifier is held. This is the whole discoverability story: hold ⌥ and every
  *  navigable target wears its own key, so the scheme teaches itself.
  *
  *  Both variants are positioned out of flow, so holding the modifier never
  *  reflows the row it sits in (a tab strip would otherwise widen and clip).
- *  The target needs `relative`. */
+ *  The overlay covers its target, which needs `relative`. The corner badge
+ *  stands proud of its target's top-right corner, so it is drawn over the
+ *  page at that corner rather than inside the target: a tab strip that
+ *  scrolls sideways clips everything above its own top edge. */
 export function KeyBadge({ action, chord: chordProp, overlay = false }: Props) {
   const revealed = useKeyReveal();
   const chord = chordProp ?? (action ? chordFor(action) : undefined);
+  // Where the target's corner is on screen, read once the anchor mounts.
+  // The badge shows only while the modifier is held, so nothing scrolls under it.
+  const [corner, setCorner] = useState<{ top: number; right: number } | null>(null);
+  const anchor = useCallback((el: HTMLSpanElement | null) => {
+    const box = el?.parentElement?.getBoundingClientRect();
+    setCorner(box ? { top: box.top - PROUD, right: window.innerWidth - box.right - PROUD } : null);
+  }, []);
+
   // Only a reveal chord can be badged: the badge is read with that modifier
   // already held, so drawing a plain key there would be a lie.
   if (!revealed || !chord || !isRevealChord(chord)) return null;
@@ -44,12 +60,20 @@ export function KeyBadge({ action, chord: chordProp, overlay = false }: Props) {
     );
   }
   return (
-    <span
-      data-key-badge={key}
-      aria-hidden
-      className="absolute -right-1.5 -top-1.5 z-10 rounded bg-yellow px-1 font-mono text-[10px] font-bold leading-[1.4] text-bg shadow-sm motion-safe:animate-in motion-safe:fade-in-0"
-    >
-      {key}
-    </span>
+    <>
+      <span ref={anchor} hidden />
+      {corner &&
+        createPortal(
+          <span
+            data-key-badge={key}
+            aria-hidden
+            style={{ top: Math.max(0, corner.top), right: Math.max(0, corner.right) }}
+            className="pointer-events-none fixed z-[100] rounded bg-yellow px-1 font-mono text-[10px] font-bold leading-[1.4] text-bg shadow-sm motion-safe:animate-in motion-safe:fade-in-0"
+          >
+            {key}
+          </span>,
+          document.body,
+        )}
+    </>
   );
 }
