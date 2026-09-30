@@ -1,12 +1,18 @@
 /* ── mycelium docs · design system ──
  *
- * The webapp is the source of truth. This file mirrors
- * mycelium-frontend/src/app/globals.css: same token contract, same type scale,
- * same radii, same register discipline. When the app's palette moves, move this
- * with it rather than inventing a docs-only variant.
+ * The docs dress like mycelium-io.github.io: the cobalt field of the glass
+ * plates at the top of the page, the product's night surface beneath it,
+ * iridescent glass for decoration and plain, quiet boxes for reading. The
+ * token contract still mirrors mycelium-frontend/src/app/globals.css (same
+ * names, same type roles, same register discipline), so a component written
+ * against the app's tokens reads right here too.
+ *
+ * Type: IBM Plex Sans carries the voice; Cormorant Garamond italic is the
+ * brand's second voice (the wordmark, the emphasised half of a title); Geist
+ * Mono for anything a machine would say.
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,600&family=Geist+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,500;1,600&family=Geist+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap');
 
 /* ── Palette ─────────────────────────────────────────────────────────────
  * Two themes, one contract. Raw values live in :root (light) and .dark.
@@ -30,26 +36,26 @@
  * reserved for true semantic state, never general emphasis.
  * ──────────────────────────────────────────────────────────────────────── */
 :root {
-  /* surfaces */
-  --bg: #f4ecda;
-  --surface: #eee4cd;
-  --paper: #fbf5e6;
-  --elevated: #fdf9ed;
-  --muted-bg: #e9dfc8;
-  --hairline: rgba(58, 46, 22, 0.05);
-  /* text (warm ink, legible on the cream surfaces) */
-  --text: #2a2419;
-  --muted-foreground: #6a6250;
-  --faint: #a99f88;
+  /* surfaces: a pale sky under the glass, white paper to read on */
+  --bg: #eef3fb;
+  --surface: #e6edf8;
+  --paper: #fbfcff;
+  --elevated: #ffffff;
+  --muted-bg: #e3eaf6;
+  --hairline: rgba(11, 26, 60, 0.045);
+  /* text (the site's ink on white, #0b1a3c) */
+  --text: #0e1a33;
+  --muted-foreground: #4b5872;
+  --faint: #9aa6bd;
   /* lines */
-  --border: rgba(58, 46, 22, 0.12);
-  --border2: rgba(58, 46, 22, 0.20);
-  /* accent (one job) */
-  --accent: #0c7d8f;
+  --border: rgba(11, 26, 60, 0.11);
+  --border2: rgba(11, 26, 60, 0.19);
+  /* accent (one job): the plates' cobalt */
+  --accent: #1650d2;
   --accent-fg: #ffffff;
-  --accent-soft: rgba(12, 125, 143, 0.10);
+  --accent-soft: rgba(22, 80, 210, 0.09);
   /* secondary accent: decoration/labels only, never a link signal */
-  --accent2: #7a4fd0;
+  --accent2: #6a45c7;
   /* semantic state */
   --green: #0d8a63;
   --yellow: #8a6410;
@@ -57,71 +63,62 @@
 
   /* Code blocks are the one place worth using several syntax colors.
    * Tuned to sit on --paper without competing with prose. */
-  --code-comment: #6b7480;
-  --code-cmd: #0c7d8f;
-  --code-flag: #3f6ea8;
+  --code-comment: #66728a;
+  --code-cmd: #1650d2;
+  --code-flag: #0f7a8c;
   --code-str: #0d8a63;
-  --code-arg: #7a4fa3;
+  --code-arg: #6a45c7;
   --code-kw: #a33f6e;
 
   /* Diagram ramp. Reserved for the dataflow/story plates, where distinct hues
    * carry real meaning (different subsystems). Never used in chrome or prose. */
-  --viz-1: #0c7d8f;
-  --viz-2: #3f6ea8;
-  --viz-3: #7a4fa3;
+  --viz-1: #0f7a8c;
+  --viz-2: #1650d2;
+  --viz-3: #6a45c7;
   --viz-4: #0d8a63;
   --viz-5: #8a6410;
 
-  /* Mycelial background canvas reads these (see site.js). */
-  --canvas-bg: #f4ecda;
-  --canvas-ink: 12, 125, 143;
-  /* Dark ink on a light ground reads heavier at equal alpha, so light runs
-   * quieter than dark rather than matching it. */
-  --canvas-alpha: 0.72;
 }
 
 .dark {
-  /* surfaces */
-  --bg: #0c0e11;
-  --surface: #14171c;
-  --paper: #191d22;
-  --elevated: #21262d;
-  --muted-bg: #21262d;
-  --hairline: rgba(255, 255, 255, 0.035);
-  /* text (audited legible on #0c0e11, #14171c and #21262d) */
-  --text: #e8ebee;
-  --muted-foreground: #a7adb5;
-  --faint: #565d65;
+  /* surfaces: the site's night */
+  --bg: #0b0d12;
+  --surface: #11141a;
+  --paper: #13171e;
+  --elevated: #1b2029;
+  --muted-bg: #1b2029;
+  --hairline: rgba(255, 255, 255, 0.04);
+  /* text (audited legible on #0b0d12, #13171e and #1b2029) */
+  --text: #eaecef;
+  --muted-foreground: #a9afb7;
+  --faint: #545b66;
   /* lines */
   --border: rgba(255, 255, 255, 0.08);
-  --border2: rgba(255, 255, 255, 0.16);
-  /* accent (one job) */
-  --accent: #5cc7d2;
+  --border2: rgba(255, 255, 255, 0.15);
+  /* accent (one job): the site's cyan */
+  --accent: #5dd4e0;
   --accent-fg: #06181b;
-  --accent-soft: rgba(92, 199, 210, 0.13);
+  --accent-soft: rgba(93, 212, 224, 0.12);
   /* secondary accent: decoration/labels only, never a link signal */
-  --accent2: #b295ec;
+  --accent2: #b99af0;
   /* semantic state */
   --green: #4fc296;
-  --yellow: #d9a94e;
+  --yellow: #e0b25a;
   --red: #e6746f;
 
   --code-comment: #7c848d;
-  --code-cmd: #5cc7d2;
-  --code-flag: #8fb8e8;
+  --code-cmd: #5dd4e0;
+  --code-flag: #8fb4ff;
   --code-str: #4fc296;
-  --code-arg: #c3a2e0;
+  --code-arg: #c7a4ff;
   --code-kw: #e08fb0;
 
-  --viz-1: #5cc7d2;
-  --viz-2: #8fb8e8;
-  --viz-3: #c3a2e0;
+  --viz-1: #5dd4e0;
+  --viz-2: #8fb4ff;
+  --viz-3: #c7a4ff;
   --viz-4: #4fc296;
-  --viz-5: #d9a94e;
+  --viz-5: #e0b25a;
 
-  --canvas-bg: #0c0e11;
-  --canvas-ink: 92, 199, 210;
-  --canvas-alpha: 1;
 }
 
 /* Back-compat aliases. Legacy docs markup and the standalone plate pages
@@ -233,15 +230,24 @@ html { scrollbar-color: var(--border2) transparent; scrollbar-width: thin; }
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 8px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--faint); }
 
-/* ── MYCELIUM CANVAS BG ──
- * Kept, and now theme-aware (site.js repaints it off --canvas-*). It shows
- * through the workspace gutters; the reading pane sits on near-solid paper. */
+/* ── GLASS BACKGROUND ──
+ * Droplets of iridescent glass, drawn live in WebGL (site.js). They run free
+ * in the gutters and show only as a soft glow through the reading pane, which
+ * sits on near-solid paper. Without WebGL the page keeps the ground alone. */
 #mycelium-bg {
   position: fixed;
   inset: 0;
   z-index: -1;
   width: 100%;
   height: 100%;
+  pointer-events: none;
+}
+.no-webgl #mycelium-bg { display: none; }
+.no-webgl body {
+  background:
+    radial-gradient(ellipse 70% 45% at 80% -8%, rgba(22, 80, 210, 0.22), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
 }
 
 /* ── SHELL ──
@@ -258,9 +264,9 @@ html { scrollbar-color: var(--border2) transparent; scrollbar-width: thin; }
   height: var(--topbar-height);
   padding-left: var(--safe-left);
   padding-right: var(--safe-right);
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: stretch;
@@ -384,9 +390,9 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
   gap: 10px;
   padding: 0 calc(12px + var(--safe-right)) var(--safe-bottom) calc(12px + var(--safe-left));
   border-top: 1px solid var(--border);
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
   font-size: var(--text-micro);
   color: var(--muted-foreground);
   z-index: 100;
@@ -424,9 +430,9 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
   overflow-y: auto;
   padding: 18px 0 28px;
   border-right: 1px solid var(--border);
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
 }
 .sidebar::-webkit-scrollbar { width: 6px; }
 
@@ -549,11 +555,12 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
 /* The reading pane. Near-solid so prose stays crisp; the mycelial network
  * reads as faint texture beneath it and runs free in the gutters. */
 .main-inner {
+  position: relative;
   max-width: 92ch;
   margin: 0 auto;
-  background: color-mix(in srgb, var(--paper) 93%, transparent);
-  backdrop-filter: blur(20px) saturate(115%);
-  -webkit-backdrop-filter: blur(20px) saturate(115%);
+  background: color-mix(in srgb, var(--paper) 94%, transparent);
+  backdrop-filter: blur(24px) saturate(120%);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   padding: 44px 48px 52px;
@@ -600,7 +607,6 @@ h1 {
   font-family: var(--font-serif);
   margin-bottom: var(--space-3);
 }
-
 h2 {
   font-size: 1.55rem;
   font-weight: 600;
