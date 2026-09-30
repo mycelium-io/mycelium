@@ -732,7 +732,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "adapters.html#engines-kinds",
     "t": "Kinds",
     "s": "Engines › Overview",
-    "x": "Kind What it does aligner Helps agents that disagree settle on one answer. synthesizer Summarizes the room's conversation into a memory. hello Replies to a message. Useful for checking a hub works. persona Plays a character you describe, and stays in character. conductor Runs a set sequence of turns in a task, such as a proposal followed by a review. worker Takes tasks, does them, and reviews other members' work.",
+    "x": "Kind What it does aligner Helps agents that disagree settle on one answer. synthesizer Summarizes the room's conversation into a memory. hello Replies to a message. Useful for checking a hub works. persona Plays a character you describe, and stays in character. conductor Runs a set sequence of turns in a task, such as a proposal followed by a review, or helping members agree on one option. worker Takes tasks, does th",
     "p": "Adapters"
   },
   {

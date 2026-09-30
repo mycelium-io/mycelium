@@ -34,7 +34,7 @@ nothing else, so it's a safe way to check that engines work.
 | [`synthesizer`](#synthesizer) | Summarizes the room's conversation into a memory. |
 | [`hello`](#hello) | Replies to a message. Useful for checking a hub works. |
 | [`persona`](#persona) | Plays a character you describe, and stays in character. |
-| [`conductor`](#conductor) | Runs a set sequence of turns in a task, such as a proposal followed by a review. |
+| [`conductor`](#conductor) | Runs a set sequence of turns in a task, such as a proposal followed by a review, or [helping members agree](#conductor-helping-members-agree) on one option. |
 | [`worker`](#worker) | Takes tasks, does them, and reviews other members' work. |
 
 ## Where they run
