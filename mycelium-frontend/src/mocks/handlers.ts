@@ -261,6 +261,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
     return json({
       status: "ok",
       mock: true,
+      version: "3.0.13",
       coordination: {
         endpoint: "http://mycelium-slim:46357",
         slim_enabled: true,

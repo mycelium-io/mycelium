@@ -3,8 +3,22 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, LogIn, LogOut, Pencil, Terminal, UserRound, Users } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  Info,
+  LogIn,
+  LogOut,
+  Pencil,
+  Terminal,
+  UserRound,
+  Users,
+} from "lucide-react";
+import { useNetworkStatus } from "@/lib/room-data";
+import { desktopVersion } from "@/lib/desktop";
+import { DOCS_URL } from "@/lib/install";
 import { createUser, fetchTeams, fetchUsers, logFetchError, type Team, type User } from "@/lib/api";
 import { useCurrentUser } from "@/components/current-user";
 import { nameOf, useNames, useRefreshUsers } from "@/lib/people";
@@ -25,7 +39,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 const HANDLE = /^[a-z0-9][a-z0-9._@-]*$/;
 const normHandle = (s: string) => s.trim().replace(/^@/, "").toLowerCase();
 
-type View = "menu" | "switch" | "profile" | "terminal";
+type View = "menu" | "switch" | "profile" | "terminal" | "about";
+
+const REPO_URL = "https://github.com/mycelium-io/mycelium";
+const FEEDBACK_URL = `${REPO_URL}/discussions/1040`;
+/** What an unreleased build reports: the placeholder every package starts at,
+ *  which the release workflow overwrites from the tag. */
+const UNRELEASED = "0.1.0";
 
 interface Profile {
   displayName: string;
@@ -96,6 +116,13 @@ export function AccountMenu() {
         group: "Preferences",
         keywords: ["user", "identity", "principal", "handle", "acting as", "account", "profile"],
         run: () => show(true, signedIn ? "menu" : "switch"),
+      },
+      {
+        id: "app.about",
+        title: "About Mycelium",
+        group: "Help",
+        keywords: ["version", "release", "changelog", "update"],
+        run: () => show(true, "about"),
       },
     ],
     // `show` only closes over state setters and `me`, which the view choice reads fresh.
@@ -177,6 +204,7 @@ export function AccountMenu() {
         {view === "terminal" && me && (
           <TerminalView command={iamCommand(me, record)} onBack={() => setView("menu")} />
         )}
+        {view === "about" && <AboutView onBack={me ? () => setView("menu") : undefined} />}
       </PopoverContent>
     </Popover>
   );
@@ -228,6 +256,9 @@ function MenuView({
         )}
         <Item icon={Terminal} onClick={() => onGo("terminal")} more>
           Use in a terminal
+        </Item>
+        <Item icon={Info} onClick={() => onGo("about")} more>
+          About Mycelium
         </Item>
       </div>
       {(signedIn || canSignIn) && (
@@ -475,6 +506,62 @@ function TerminalView({ command, onBack }: { command: string; onBack: () => void
         <CopyField value={command} />
       </div>
     </div>
+  );
+}
+
+/**
+ * Which Mycelium this is: the hub's release (what the UI and every agent here
+ * run against) and, inside the Mac app, the app's own, with where to read what
+ * changed. An unreleased build says so rather than printing a placeholder.
+ */
+export function AboutView({ onBack }: { onBack?: () => void }) {
+  const { network, loading } = useNetworkStatus();
+  const hub = network?.version ?? null;
+  const app = useSyncExternalStore(noSubscribe, () => desktopVersion(), () => null);
+  const released = (v: string | null) => (v && v !== UNRELEASED ? v : null);
+  const hubRelease = released(hub);
+
+  const version = (v: string | null) =>
+    released(v) ? `v${v}` : v ? "development build" : loading ? "…" : "unreachable";
+
+  return (
+    <div>
+      <Header title="About Mycelium" onBack={onBack} />
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-3 pb-3 pt-1 text-label">
+        <dt className="text-muted-foreground">Hub</dt>
+        <dd className="font-mono text-text">{version(hub)}</dd>
+        {app && (
+          <>
+            <dt className="text-muted-foreground">Mac app</dt>
+            <dd className="font-mono text-text">{version(app)}</dd>
+          </>
+        )}
+      </dl>
+      <div className="border-t border-border py-1">
+        <LinkItem href={hubRelease ? `${REPO_URL}/releases/tag/v${hubRelease}` : `${REPO_URL}/releases`}>
+          {hubRelease ? "Release notes" : "Releases"}
+        </LinkItem>
+        <LinkItem href={`${REPO_URL}/blob/main/CHANGELOG.md`}>Changelog</LinkItem>
+        <LinkItem href={DOCS_URL}>Docs</LinkItem>
+        <LinkItem href={FEEDBACK_URL}>Send feedback</LinkItem>
+      </div>
+    </div>
+  );
+}
+
+const noSubscribe = () => () => {};
+
+function LinkItem({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex h-8 w-full items-center gap-2.5 px-3 text-left text-label text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+    >
+      <span className="flex-1">{children}</span>
+      <ExternalLink className="size-3.5 text-faint" />
+    </a>
   );
 }
 
