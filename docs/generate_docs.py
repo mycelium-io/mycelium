@@ -99,6 +99,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("guides/herdr.md",               "herdr",              "reference", "Guides",       "Persistent Agents (herdr)"),
     ("guides/desktop.md",             "desktop",            "reference", "Guides",       "The Mac App"),
     ("guides/machines.md",            "machines",           "reference", "Guides",       "Start Agents From the App"),
+    ("guides/omnigent.md",            "omnigent",           "reference", "Guides",       "Run Agents in Omnigent"),
     ("guides/security-planes.md",     "security-planes",    "reference", "Guides",       "Security Planes"),
     ("guides/auth.md",                "auth",               "reference", "Guides",       "Authentication"),
     ("guides/keycloak-oidc.md",       "keycloak-oidc",      "reference", "Guides",       "Keycloak / OIDC Setup"),

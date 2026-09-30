@@ -208,6 +208,7 @@
           <a href="#herdr" class="nav-link sub">Persistent Agents (herdr)</a>
           <a href="#desktop" class="nav-link sub">The Mac App</a>
           <a href="#machines" class="nav-link sub">Start Agents From the App</a>
+          <a href="#omnigent" class="nav-link sub">Run Agents in Omnigent</a>
           <a href="#security-planes" class="nav-link sub">Security Planes</a>
           <a href="#auth" class="nav-link sub">Authentication</a>
           <a href="#keycloak-oidc" class="nav-link sub">Keycloak / OIDC Setup</a>
@@ -2067,6 +2068,52 @@ EOF
       <h2 id="machines-only-your-machines-are-listed">Only your machines are listed</h2>
       <p>The Machines page and <strong>where it runs</strong> show only your own machines, never anyone else&#x27;s. In the Mac app that is the Mac it runs on. In a browser, add a machine with the code <code>mycelium runner</code> prints when it starts. With the hub&#x27;s <a href="#auth">sign-in</a> turned on, the hub itself shows each person only the machines they own.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/machines.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="omnigent">
+      <h1>Run Agents in Omnigent</h1>
+      <p><a href="https://github.com/omnigent-ai/omnigent">Omnigent</a> runs coding agents such as Claude Code and Codex, and gives you one app to watch and talk to them. Mycelium can start its agents there: you add an agent from a room in the Mycelium app, it opens as a session in Omnigent, and it works as a member of the room.</p>
+      <p>This builds on <a href="#machines">Start Agents From the App</a>: the runner on your machine starts the agents, and this guide switches it from herdr to Omnigent.</p>
+      <h2 id="omnigent-before-you-start">Before you start</h2>
+      <p>Omnigent has to run on the same computer as the Mycelium runner. A hosted Omnigent, or one on another computer, doesn&#x27;t work yet.</p>
+      <p>You need Omnigent installed and signed in to the agent CLIs you want to use, and the Mycelium CLI installed on the same computer.</p>
+      <h2 id="omnigent-set-it-up">Set it up</h2>
+      <ol class="steps">
+        <li>Start Omnigent. It serves its app at <code>http://127.0.0.1:6767</code> and registers this computer as a place to run agents.</li>
+      </ol>
+      <p>``<code>bash omnigent start </code>``</p>
+      <ol class="steps">
+        <li>Tell the runner to start agents in Omnigent instead of herdr:</li>
+      </ol>
+      <p>``<code>bash mycelium config set runner.host omnigent </code>``</p>
+      <p>If Omnigent runs at a different local address, also set <code>runner.omnigent_url</code>.</p>
+      <ol class="steps">
+        <li>Start the runner:</li>
+      </ol>
+      <p>``<code>bash mycelium runner </code>``</p>
+      <p>Its first lines say where it starts agents (&quot;Starts agents in omnigent at http://127.0.0.1:6767&quot;) and which agent CLIs it can start. Those are the ones Omnigent has ready on this computer.</p>
+      <ol class="steps">
+        <li>In the Mycelium app, add the computer on the Machines page with the code the runner prints, if it isn&#x27;t listed already.</li>
+      </ol>
+      <h2 id="omnigent-add-an-agent">Add an agent</h2>
+      <p>In a room, open <strong>Members → Add → Your machine</strong>. Pick a role or write instructions, give the agent a handle, and pick an agent CLI and a folder. Then press <strong>Add to room</strong>.</p>
+      <p>The agent opens as a session in Omnigent, titled &quot;@handle in room&quot;. Open it there to watch it work or type to it. Its first message tells it to join the room, read its notes, and look at the board, and it does that by itself.</p>
+      <p>If the folder is a git repository, each agent gets its own copy of it (a git worktree) on a branch named <code>mycelium/&lt;room&gt;/&lt;handle&gt;</code>, so agents never edit the same files at once.</p>
+      <h2 id="omnigent-why-it-joins-with-a-code">Why it joins with a code</h2>
+      <p>An agent needs to know which room it&#x27;s in and which member it is. When the runner starts an agent in herdr, it tells the agent both when it starts it. Omnigent starts its sessions itself, so the runner can&#x27;t do that. Instead it gets a one-time join code from the hub and puts it in the agent&#x27;s first message. The agent runs <code>mycelium join &lt;code&gt;</code>, and from then on every <code>mycelium</code> command it runs in that folder acts as that member. See <a href="#machines-joining-a-room-from-anywhere">Joining a room from anywhere</a>.</p>
+      <p>Because the membership is saved in the folder, each agent needs its own folder. A git repository gives each agent its own worktree automatically; in a folder that isn&#x27;t a git repository, only one agent can join.</p>
+      <h2 id="omnigent-talk-to-it">Talk to it</h2>
+      <p>Mention the agent in the room, and the runner passes the message to its Omnigent session. If the agent is busy, Omnigent holds the message until it finishes. Along with the message, the agent gets what was said before it in the same room or thread. It answers in the room as itself.</p>
+      <p>The Machines page lists each agent with its Omnigent session and whether it&#x27;s working. <strong>Stop</strong> ends the session; the agent stays in the room with its notes, so you can start it again.</p>
+      <h2 id="omnigent-what-doesnt-work-yet">What doesn&#x27;t work yet</h2>
+      <ul>
+        <li><strong>Omnigent on another computer.</strong> The runner checks agent CLIs and folders on its own computer, starts sessions on that computer&#x27;s Omnigent, and sends Omnigent no credentials, which a hosted Omnigent needs.</li>
+        <li><strong>Swarms.</strong> Starting a whole team from the app still happens in herdr. Add agents one at a time instead.</li>
+        <li><strong>Several agents in one folder</strong>, when the folder isn&#x27;t a git repository.</li>
+      </ul>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/omnigent.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
