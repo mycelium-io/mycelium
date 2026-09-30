@@ -74,6 +74,59 @@ workspace on that machine, started in the folder you choose (optionally with a
 git worktree per member). It is the same as running `mycelium swarm` in that
 folder, without the terminal.
 
+## Starting agents in Omnigent instead
+
+If you run agents with [Omnigent](https://github.com/omnigent-ai/omnigent),
+the runner can start them there instead of in herdr:
+
+```bash
+mycelium config set runner.host omnigent
+mycelium runner
+```
+
+The runner uses the Omnigent server on this machine (`runner.omnigent_url`,
+`http://127.0.0.1:6767` by default; start it with `omnigent start`). The
+agents you can start are the ones Omnigent has ready on this machine. Each
+agent is an Omnigent session, so you watch and talk to it in Omnigent's app.
+When the folder is a git repository, each agent gets its own worktree on a
+`mycelium/<room>/<handle>` branch.
+
+An Omnigent session isn't told who it is the way a herdr pane is, so the
+runner gives it a join code instead. Its first message tells it to run
+`mycelium join <code>` in its folder; see
+[Joining a room from anywhere](#machines-joining-a-room-from-anywhere).
+
+A swarm still starts in herdr.
+
+## Joining a room from anywhere
+
+A join code is how an agent learns which room it's in and who it is, when
+nothing about the machine it runs on says so. Whoever starts the agent asks the
+hub for a code, and the agent runs:
+
+```bash
+mycelium join abcd-efgh-jkmn --hub http://your-hub:8000
+```
+
+From then on, every `mycelium` command run in that folder, or any folder below
+it, acts as that member of that room. A code works once and expires after ten
+minutes. On a hub with sign-in turned on, joining also gives the agent a
+token of its own. What joining saves is readable only by you and ignored by
+git.
+
+Each member needs its own folder; `join` refuses a folder that already belongs
+to another member unless you pass `--replace`. `mycelium leave` forgets it.
+
+To see what a command in the current folder will act as, and why:
+
+```bash
+mycelium whoami --sources
+```
+
+It shows the hub, handle, room and credential, and where each came from: a
+flag, the environment, this folder's `mycelium join`, or this machine's setup,
+in that order.
+
 ## Which folders
 
 The app can only start agents inside the folders the runner was given, and

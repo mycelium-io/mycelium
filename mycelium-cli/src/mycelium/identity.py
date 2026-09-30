@@ -8,7 +8,6 @@ Generates and manages handles for agent identification.
 Format: DisplayName#session (e.g., "julvalen#a8f3")
 """
 
-import os
 import secrets
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -108,33 +107,25 @@ def resolve_actor(
 ) -> str:
     """The one seam every command uses to answer "who am I acting as".
 
-    Precedence:
-
-    1. an explicit ``--as`` override (acting-as, when the hub authorizes it),
-    2. ``MYCELIUM_AGENT_HANDLE`` — the identity a resident runtime declares for
-       itself (set by an adapter or the remote-agent bootstrap),
-    3. the principal the hub resolves our token to (``/api/whoami``) — exactly the
-       value a gated hub enforces ``created_by`` against,
-    4. the locally-configured identity (``mycelium iam``), for an ungated hub,
-    5. ``fallback`` (the ``cli-user`` sentinel for a write's author, ``"unknown"``
-       for a sender), so a zero-config local hub keeps working — *unless* the hub
-       is gated and we're not signed in, where ``require`` raises a clear "log in"
-       error rather than stamping a placeholder the gate is guaranteed to reject.
+    The order is ``caller.handle``'s: an explicit ``--as`` override,
+    ``MYCELIUM_AGENT_HANDLE``, this folder's membership (``mycelium join``), the
+    principal the hub resolves our token to (``/api/whoami``, exactly the value a
+    gated hub enforces ``created_by`` against), the locally configured identity
+    (``mycelium iam``), and last ``fallback`` (the ``cli-user`` sentinel for a
+    write's author, ``"unknown"`` for a sender), so a zero-config local hub keeps
+    working. The exception is a gated hub we're not signed in to, where
+    ``require`` raises a clear "log in" error rather than stamping a placeholder
+    the gate is guaranteed to reject.
 
     The ``cli-user`` sentinel is also treated as "unset" if passed as ``override``,
     so an old script resolves to the real caller.
     """
-    if override and override != LEGACY_ACTOR_SENTINEL:
-        return override
-    env_handle = os.environ.get("MYCELIUM_AGENT_HANDLE", "").strip()
-    if env_handle:
-        return env_handle
+    from mycelium import caller
+
+    answer = caller.handle(config, override)
+    if answer.value:
+        return answer.value
     who = _hub_whoami(config)
-    if who and who.get("handle"):
-        return who["handle"]
-    local = get_current_handle(config) or config.identity.name
-    if local:
-        return local
     if require and who and who.get("gated"):
         import typer
 

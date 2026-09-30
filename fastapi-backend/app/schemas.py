@@ -679,7 +679,10 @@ class RunnerHello(BaseModel):
     owner: str | None = None
     platform: str = ""
     version: str = ""
+    #: Whether the runner's host is up. Named ``herdr``, which predates hosts.
     herdr: bool = False
+    #: The host the runner starts agents on, by name. A runner that doesn't say is herdr's.
+    host: str = "herdr"
     roots: list[str] = Field(default_factory=list)
     frameworks: list[FrameworkRead] = Field(default_factory=list)
     agents: list[RunnerAgentRead] = Field(default_factory=list)
@@ -728,6 +731,39 @@ class RunnerAgentLaunch(BaseModel):
     description: str = ""
     cwd: str | None = Field(None, description="Folder to start it in; inside one of the roots")
     created_by: str | None = None
+
+
+# ── Join codes ───────────────────────────────────────────────────────────────
+
+
+class JoinCreate(BaseModel):
+    """Ask for a code an agent can redeem to become ``handle`` in the room."""
+
+    handle: str = Field(..., min_length=1, max_length=64)
+
+
+class JoinRead(BaseModel):
+    """A new join code. Single-use; show it only to the agent it is for."""
+
+    code: str
+    room: str
+    handle: str
+    expires_at: datetime
+
+
+class JoinRedeem(BaseModel):
+    code: str = Field(..., min_length=4, max_length=64)
+
+
+class MembershipRead(BaseModel):
+    """What a redeemed code makes the caller: a member of a room, with a token when the hub needs one."""
+
+    room: str
+    handle: str
+    token: str | None = Field(
+        None, description="A token the hub signed for this member; null when the hub's auth is off"
+    )
+    token_expires_at: datetime | None = None
 
 
 # ── A2A bridge state (the Network views) ─────────────────────────────────────

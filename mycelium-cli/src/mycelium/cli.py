@@ -22,6 +22,7 @@ from mycelium.commands import (
     hub,
     install,
     instance,
+    join,
     memory,
     metrics,
     network,
@@ -96,6 +97,8 @@ app.command(name="login")(login_cmd.login)
 app.command(name="logout")(login_cmd.logout)
 app.command(name="whoami")(user.whoami)
 app.command(name="iam")(user.iam)
+app.command(name="join")(join.join)
+app.command(name="leave")(join.leave)
 app.command(name="watch")(room.watch)
 app.command(name="sync")(memory.memory_sync)
 app.command(name="connect")(hub.connect)

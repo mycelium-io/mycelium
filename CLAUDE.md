@@ -342,10 +342,10 @@ is no litellm dependency.
   result printed in full) and, locally, runs the herdr sync pass on a thread
   (`commands/herdr.sync_pass`) with `wait=False`, so woken members work at
   once rather than one turn after another.
-- **The app starts agents on a machine through its runner, and only in
-  herdr.** `mycelium runner` (`mycelium/runner/`) runs on the user's machine
+- **The app starts agents on a machine through its runner, on the runner's
+  host.** `mycelium runner` (`mycelium/runner/`) runs on the user's machine
   and only dials out: it says hello with its scan (agent CLIs found on `PATH`,
-  launchable when herdr's own `agent start --help` lists their kind), its
+  launchable when its host says it can start their kind), its
   roots and its agents, heartbeats, and long-polls `GET
   /api/runners/{id}/jobs/next` for `launch`, `stop`, `scan` and `swarm` jobs
   (`app/services/runners.py`, in memory like presence; `routes/runners.py`).
@@ -354,15 +354,39 @@ is no litellm dependency.
   framework id from the runner's scan and a folder inside its roots, never a
   command. The hub writes the agent (manifest with `runner` and `framework`,
   instructions as its notes) before queuing the launch, so a failed start
-  leaves an agent that can be started again. Every agent a runner starts is an
-  interactive session in a herdr pane, prompted to read its notes; there is
-  no headless or one-shot mode, and a machine without herdr starts nothing. A
-  runner-started agent's pane mapping is not `managed`, so a closed pane stops
-  it without deleting it from the room. A swarm with `runner` set has the hub
+  leaves an agent that can be started again. Where it runs is an `AgentHost`
+  (`runner/hosts.py`, picked by `runner.host`): the runner decides what to
+  start and asks first, the host opens somewhere for it, starts it, reports
+  its status, delivers its wakes and stops it. Every agent a runner starts is
+  an interactive session, prompted to read its notes; there is no headless or
+  one-shot mode, and a machine whose host isn't up starts nothing. herdr is
+  the default host: a runner-started agent's pane mapping is not `managed`,
+  so a closed pane stops it without deleting it from the room. A host that
+  can't pass an agent an environment (`joins`) gets a join code in the
+  agent's introduction instead; see the next point. A swarm with `runner` set has the hub
   register the conductor, write the members and file the task, and the runner
   runs `swarm.start_local`/`brief_local`/`kick_off` exactly as the CLI does.
-  The runner also runs the `herdr sync` loop, over the workspaces it opened
-  only; any other binding is the user's own `herdr sync`'s.
+  A swarm starts in herdr whatever the runner's host. The runner also runs
+  its host's sync pass; for herdr that is `herdr sync` over the workspaces it
+  opened only, and any other binding is the user's own `herdr sync`'s.
+- **"Who am I" has one answer, from ordered sources, and a folder can join a
+  room.** Every command needs the hub, the handle, the room and a credential;
+  `mycelium/caller.py` answers all four from the same order: a flag, the
+  environment, this folder's membership, this machine's setup, a default.
+  `resolve_actor`, `_resolve_room`, `client.auth_headers` and
+  `MyceliumConfig.load` call into it, so a new way of running agents adds a
+  source there, once; `mycelium whoami --sources` shows each answer and where
+  it came from. A membership is what `mycelium join <code>` saved in
+  `.mycelium/member.json` (0600, git-ignored beside it), found by walking up
+  from the cwd; it is how an agent on a machine that says nothing about it
+  (no environment, no login) acts as its member. Codes come from `POST
+  /api/rooms/{room}/joins`, which needs the right to act as the handle
+  (owner/allow_from), and are redeemed at `POST /api/joins/redeem`, the one
+  `/api` path open when the gate is on (`app/services/joins.py`: single-use,
+  ten minutes, in memory, stored hashed). A gated hub signs the member its own
+  token (`app/services/member_tokens.py`: ES256, key in the data dir, 30
+  days) and trusts its own issuer beside the configured ones with no key
+  fetch; with auth off the membership carries no token. One member per folder.
 - **A runner starts nothing a hub sent it without a yes on its machine.**
   Anyone who can reach a hub can queue a job for any runner on it, and the
   hub can't prove who asked, so the machine is the only place the check can

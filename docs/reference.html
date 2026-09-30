@@ -183,6 +183,7 @@
           <a href="#config-agent-auth" class="nav-link sub">agent_auth</a>
           <a href="#config-herdr" class="nav-link sub">herdr</a>
           <a href="#config-swarm" class="nav-link sub">swarm</a>
+          <a href="#config-runner" class="nav-link sub">runner</a>
           <a href="#config-metrics" class="nav-link sub">metrics</a>
           <a href="#config-telemetry" class="nav-link sub">telemetry</a>
           <a href="#config-health" class="nav-link sub">health</a>
@@ -890,6 +891,20 @@
         <div class="cmd-ref-body">Mint an agent's SignerJwt SLIM channel identity: a local ES256 keypair (0600) whose public JWK is registered on the room roster. The floor for <code>slim.identity = signerjwt</code> (#476); the PSK default needs none.</div>
       </div>
 
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">join</span> <span class="arg">&lt;code&gt;</span> [<span class="flag">--hub</span> <span class="arg">&lt;url&gt;</span>] [<span class="flag">--replace</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Join a room as the member a join code names; commands in this folder then act as it.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">leave</span></code>
+        </div>
+        <div class="cmd-ref-body">Forget this folder's membership, so commands here act as this machine again.</div>
+      </div>
+
       <h2 id="cli-memory">memory</h2>
 
       <div class="cmd-ref">
@@ -1265,6 +1280,15 @@
 
 <span class="comment"># The agent CLI a local swarm starts in herdr, as the command herdr runs. Asked for, and saved here, the first time you swarm without one.</span>
 <span class="arg">agent</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># Where this machine&#x27;s runner starts the agents the app asks for.</span>
+<span class="cmd" id="config-runner">[runner]</span>
+
+<span class="comment"># The host this machine&#x27;s runner starts agents on.</span>
+<span class="arg">host</span> = <span class="str">&quot;herdr&quot;</span>
+
+<span class="comment"># The Omnigent server the runner starts sessions on.</span>
+<span class="arg">omnigent_url</span> = <span class="str">&quot;http://127.0.0.1:6767&quot;</span>
 
 <span class="comment"># Configuration for the metrics collector + display.</span>
 <span class="cmd" id="config-metrics">[metrics]</span>
@@ -1996,6 +2020,21 @@ EOF
       <p>Closing the pane, or pressing <strong>Stop</strong> on the Machines page, stops the agent but leaves it in the room with its notes. Starting it again from the app picks up where its notes leave off.</p>
       <h2 id="machines-a-swarm-on-your-machine">A swarm on your machine</h2>
       <p>The <strong>Start a swarm</strong> dialog has a <strong>Where</strong> choice. Pick a connected machine instead of the hub, and the team is your own agent CLI in a new herdr workspace on that machine, started in the folder you choose (optionally with a git worktree per member). It is the same as running <code>mycelium swarm</code> in that folder, without the terminal.</p>
+      <h2 id="machines-starting-agents-in-omnigent-instead">Starting agents in Omnigent instead</h2>
+      <p>If you run agents with <a href="https://github.com/omnigent-ai/omnigent">Omnigent</a>, the runner can start them there instead of in herdr:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> runner.host omnigent
+<span class="bin">mycelium</span> <span class="cmd">runner</span></code></pre>
+      <p>The runner uses the Omnigent server on this machine (<code>runner.omnigent_url</code>, <code>http://127.0.0.1:6767</code> by default; start it with <code>omnigent start</code>). The agents you can start are the ones Omnigent has ready on this machine. Each agent is an Omnigent session, so you watch and talk to it in Omnigent&#x27;s app. When the folder is a git repository, each agent gets its own worktree on a <code>mycelium/&lt;room&gt;/&lt;handle&gt;</code> branch.</p>
+      <p>An Omnigent session isn&#x27;t told who it is the way a herdr pane is, so the runner gives it a join code instead. Its first message tells it to run <code>mycelium join &lt;code&gt;</code> in its folder; see <a href="#machines-joining-a-room-from-anywhere">Joining a room from anywhere</a>.</p>
+      <p>A swarm still starts in herdr.</p>
+      <h2 id="machines-joining-a-room-from-anywhere">Joining a room from anywhere</h2>
+      <p>A join code is how an agent learns which room it&#x27;s in and who it is, when nothing about the machine it runs on says so. Whoever starts the agent asks the hub for a code, and the agent runs:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">join</span> <span class="cmd">abcd-efgh-jkmn</span> <span class="flag">--hub</span> <span class="url">http://your-hub:8000</span></code></pre>
+      <p>From then on, every <code>mycelium</code> command run in that folder, or any folder below it, acts as that member of that room. A code works once and expires after ten minutes. On a hub with sign-in turned on, joining also gives the agent a token of its own. What joining saves is readable only by you and ignored by git.</p>
+      <p>Each member needs its own folder; <code>join</code> refuses a folder that already belongs to another member unless you pass <code>--replace</code>. <code>mycelium leave</code> forgets it.</p>
+      <p>To see what a command in the current folder will act as, and why:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">whoami</span> <span class="flag">--sources</span></code></pre>
+      <p>It shows the hub, handle, room and credential, and where each came from: a flag, the environment, this folder&#x27;s <code>mycelium join</code>, or this machine&#x27;s setup, in that order.</p>
       <h2 id="machines-which-folders">Which folders</h2>
       <p>The app can only start agents inside the folders the runner was given, and only with an agent CLI the scan found. It never sends a command to run. By default the allowed folder is the one you ran <code>mycelium runner</code> from; name others with <code>--root</code>:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="flag">--root</span> ~/code <span class="flag">--root</span> ~/work/api</code></pre>

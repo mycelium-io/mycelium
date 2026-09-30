@@ -34,6 +34,7 @@ import jwt
 from fastapi import HTTPException, Request
 
 from app.config import PrincipalRole, TrustedIssuer, settings
+from app.services import member_tokens
 from app.services.agent_registry import norm_handle
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,19 @@ ALLOWED_ALGORITHMS = frozenset(
 #: orchestrator probes (the compose healthcheck, `mycelium doctor`) are
 #: unauthenticated by nature and reveal no room content; the schema/docs routes
 #: describe the API rather than exposing any of it.
-PUBLIC_PATHS = frozenset({"/", "/health", "/healthz", "/docs", "/redoc", "/openapi.json"})
+PUBLIC_PATHS = frozenset(
+    {
+        "/",
+        "/health",
+        "/healthz",
+        "/docs",
+        "/redoc",
+        "/openapi.json",
+        # Redeeming a join code takes nothing but the code: the agent redeeming
+        # it has no token yet, which is what it's asking for (routes/joins.py).
+        "/api/joins/redeem",
+    }
+)
 
 #: The A2A Agent Card is per-room, so it can't be a fixed PUBLIC_PATHS entry; it's
 #: matched by suffix. The A2A spec serves the card to unauthenticated GET (like
@@ -294,10 +307,16 @@ async def verify_token(token: str) -> Principal:
         raise AuthError(f"malformed token: {exc}")
 
     entry = _issuer_entry(unverified.get("iss"))
-    if entry is None:
+    key: Any
+    if entry is not None:
+        key = await jwks_cache.get_key(entry, header.get("kid"), alg)
+    elif unverified.get("iss") == member_tokens.ISSUER and alg == member_tokens.ALGORITHM:
+        # A token this hub signed for a member that joined with a code. Its key
+        # is the one the hub holds, so there is nothing to fetch.
+        entry = TrustedIssuer(issuer=member_tokens.ISSUER, role="agent")
+        key = member_tokens.verification_key()
+    else:
         raise AuthError(f"untrusted issuer: {unverified.get('iss')!r}")
-
-    key = await jwks_cache.get_key(entry, header.get("kid"), alg)
 
     audience = entry.audience or settings.AUTH_AUDIENCE
     try:

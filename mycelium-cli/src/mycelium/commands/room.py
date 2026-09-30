@@ -19,7 +19,6 @@ Commands:
 """
 
 import json as json_module
-import os
 
 import typer
 from rich.markup import escape
@@ -449,19 +448,15 @@ def _resolve_room(config: MyceliumConfig, channel: str | None = None) -> str:
     """
     Resolve the coordination room name.
 
-    Priority:
-      1. --room flag (explicit override, used as-is)
-      2. MYCELIUM_ROOM_ID env var (used as-is)
-      3. config.rooms.active (set via 'mycelium room use')
-      4. Error
+    The order is ``caller.room``'s: the --room flag, MYCELIUM_ROOM_ID, this
+    folder's membership (``mycelium join``), then the active room ('mycelium
+    room use'). With none of them it's an error.
     """
-    if channel:
-        return channel
-    room_id = os.getenv("MYCELIUM_ROOM_ID") or os.getenv("MYCELIUM_CHANNEL_ID")
-    if room_id:
-        return room_id
-    if config.rooms.active:
-        return config.rooms.active
+    from mycelium import caller
+
+    answer = caller.room(config, channel)
+    if answer.value:
+        return answer.value
     raise MyceliumError(
         "No room context found",
         suggestion=(
