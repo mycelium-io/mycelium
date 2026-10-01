@@ -31,9 +31,6 @@ if TYPE_CHECKING:
 
     from mycelium.config import MyceliumConfig
 
-#: A Claude Code session id (a UUID).
-SESSION = "0b1d5c3e-4a6f-4c2d-9e8b-1f2a3b4c5d6e"
-
 
 def _proc(stdout: str = "", stderr: str = "", returncode: int = 0) -> subprocess.CompletedProcess:
     return subprocess.CompletedProcess(
@@ -555,13 +552,13 @@ def test_reconcile_keeps_a_member_whose_pane_is_open_but_empty(
 ) -> None:
     """After herdr's server restarts, every pane comes back at a bare shell. Those
     agents stopped; they didn't leave. Retiring them would delete them from the room
-    and lose the session that resumes them."""
+    and lose the folder that restarts them."""
     from mycelium.commands import herdr as herdr_cmd
 
     reg = HerdrRegistry()
     reg.set(
         HerdrPaneMapping(
-            room="r", handle="builder", pane="w2:p1", kind="claude", managed=True, session=SESSION
+            room="r", handle="builder", pane="w2:p1", kind="claude", managed=True, cwd="/work"
         )
     )
     deleted: list[str] = []
@@ -590,22 +587,18 @@ def test_reconcile_keeps_a_member_whose_pane_is_open_but_empty(
 
     assert retired == [] and deleted == []
     kept = bridge.registry.get("r", "builder")
-    assert kept is not None and kept.session == SESSION
+    assert kept is not None and kept.cwd == "/work"
 
 
-def test_rewriting_a_mapping_keeps_its_saved_session(isolated_home: Path) -> None:
-    """The workspace sync re-writes a pane's mapping without knowing its session;
-    that must not lose the session Mycelium saved when it started the agent."""
+def test_rewriting_a_mapping_keeps_its_folder(isolated_home: Path) -> None:
+    """The workspace sync re-writes a pane's mapping without knowing its folder;
+    that must not lose the folder a restart starts it in."""
     reg = HerdrRegistry()
-    reg.set(
-        HerdrPaneMapping(
-            room="r", handle="a", pane="w2:p1", kind="claude", session=SESSION, cwd="/work"
-        )
-    )
+    reg.set(HerdrPaneMapping(room="r", handle="a", pane="w2:p1", kind="claude", cwd="/work"))
     reg.set(HerdrPaneMapping(room="r", handle="a", pane="w2:p1", kind="claude", managed=True))
     kept = reg.get("r", "a")
     assert kept is not None
-    assert (kept.session, kept.cwd, kept.kind, kept.managed) == (SESSION, "/work", "claude", True)
+    assert (kept.cwd, kept.kind, kept.managed) == ("/work", "claude", True)
 
 
 @pytest.mark.parametrize(
@@ -616,20 +609,39 @@ def test_rewriting_a_mapping_keeps_its_saved_session(isolated_home: Path) -> Non
     ],
     ids=["another pane", "another kind"],
 )
-def test_a_remapped_handle_forgets_the_old_agents_session(
+def test_a_remapped_handle_forgets_the_old_agents_folder(
     isolated_home: Path, remap: HerdrPaneMapping
 ) -> None:
-    """Another pane or another kind is another agent: resuming it in the old
-    one's session would pick up the wrong conversation."""
+    """Another pane or another kind is another agent, in a folder of its own."""
     reg = HerdrRegistry()
-    reg.set(
-        HerdrPaneMapping(
-            room="r", handle="a", pane="w2:p1", kind="claude", session=SESSION, cwd="/work"
-        )
-    )
+    reg.set(HerdrPaneMapping(room="r", handle="a", pane="w2:p1", kind="claude", cwd="/work"))
     reg.set(remap)
     kept = reg.get("r", "a")
-    assert kept is not None and (kept.session, kept.cwd) == (None, None)
+    assert kept is not None and kept.cwd is None
+
+
+def test_herdrs_integrations_read_current_only_as_current(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    status = (
+        "pi: not installed (/h/.pi/agent/extensions/herdr-agent-state.ts)\n"
+        "claude: current (v10) (/h/.claude/hooks/herdr-agent-state.sh)\n"
+        "codex: outdated (v4 < v5) (/h/.codex/herdr-agent-state.sh)\n"
+        "kimi: needs repair (v3) (/h/.kimi-code/hooks/herdr-agent-state.sh)\n"
+    )
+    bridge = HerdrBridge(runner=ScriptedRunner({"integration status": _proc(status)}))
+    assert bridge.integrations() == {"pi": False, "claude": True, "codex": False, "kimi": False}
+
+
+@pytest.mark.parametrize(
+    ("version", "old"),
+    [("0.8.0", True), ("0.9.2", True), ("0.9.3", False), ("herdr 0.10.0", False), (None, False)],
+)
+def test_herdr_older_than_the_minimum_is_too_old(version: str | None, old: bool) -> None:
+    from mycelium.integrations.herdr.bridge import too_old
+
+    assert too_old(version) is old
 
 
 # ── sync presence collection ────────────────────────────────────────────────────

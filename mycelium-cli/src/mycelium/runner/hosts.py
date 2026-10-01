@@ -169,17 +169,15 @@ class HerdrHost:
 
         workspace, pane = self._open_pane(state, room, cwd, env)
         try:
-            session = _start_when_ready(self.bridge, handle, kind, pane)
+            _start_when_ready(self.bridge, handle, kind, pane)
         except HerdrError as e:
             self._close_quietly(pane)
             raise HostError(str(e)) from e
         # Not ``managed``: a closed pane stops the agent, it does not delete it
         # from the room, so the app can start it again with its notes intact.
-        # Its session and folder are kept so it can be resumed after a restart.
+        # Its folder is kept so it can be restarted there.
         self.bridge.registry.set(
-            HerdrPaneMapping(
-                room=room, handle=handle, pane=pane, kind=kind, session=session, cwd=str(cwd)
-            )
+            HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=kind, cwd=str(cwd))
         )
         self.bridge.registry.bind(workspace, room)
         self.bridge.prompt(pane, intro, wait=False)

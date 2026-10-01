@@ -136,6 +136,24 @@ async function onboarding() {
       "Counts of tasks, flows and agents, so we know what's working. Never names, rooms or what anyone wrote. You can see them on the Metrics page either way.",
     ),
   );
+  // Asked once, here; existing installs are asked once when Mycelium starts.
+  let restore = true;
+  const restoreBox = el("input", { type: "checkbox", class: "toggle", id: "restore-agents" });
+  restoreBox.checked = restore;
+  restoreBox.addEventListener("change", () => {
+    restore = restoreBox.checked;
+    renderSetsUp();
+  });
+  const restoreRow = el(
+    "div",
+    { class: "share" },
+    el("label", { class: "share-label", for: "restore-agents" }, restoreBox, "Bring agents back after herdr restarts"),
+    el(
+      "p",
+      { class: "hint" },
+      "Installs herdr's integration for each agent CLI here, which adds a hook to that CLI's own settings. With it, herdr reopens each agent in its own conversation.",
+    ),
+  );
   const hubField = el("input", {
     class: "field mono",
     placeholder: "https://hub.example.com",
@@ -166,6 +184,9 @@ async function onboarding() {
       mode === "hub"
         ? ["A hub on this Mac, while Mycelium is open", "SLIM, the hub and its UI, reachable only from this Mac (127.0.0.1)."]
         : ["The runner, while Mycelium is open", "It tells the hub which agents this Mac can start, and starts them in herdr."],
+      ...(restore
+        ? ([["herdr's integrations", "A hook in each agent CLI's own settings, so herdr can reopen its agents after a restart."]] as [string, string][])
+        : []),
       ["Start at login", "Only if you turn it on, from the menu bar icon."],
     ];
     setsUpList.replaceChildren(
@@ -253,6 +274,12 @@ async function onboarding() {
     };
     try {
       const setup = inApp ? await invoke<PathSetup>("start", { settings }) : null;
+      // The answer is remembered either way, so the app doesn't ask again.
+      if (inApp) {
+        void invoke("herdr_integrations", { install: restore }).catch((e) =>
+          console.warn("herdr's integrations:", e),
+        );
+      }
       loading(setup);
     } catch (e) {
       error.textContent = String(e);
@@ -278,6 +305,7 @@ async function onboarding() {
           rootField,
           el("p", { class: "hint" }, "Agents you start from Mycelium work inside this folder."),
         ),
+        restoreRow,
         shareRow,
         setsUp,
         error,

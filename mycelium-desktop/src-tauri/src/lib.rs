@@ -16,6 +16,7 @@ mod terminal;
 mod updates;
 
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -154,6 +155,7 @@ pub(crate) fn on_status(app: &AppHandle, generation: u64, status: &Value) {
     if !supervisor::ready(status) {
         return;
     }
+    check_herdr(app);
     let sup = app.state::<Supervisor>();
     let Some(path) = sup.take_ready(generation) else { return };
     let Some(ui) = status.get("ui_url").and_then(Value::as_str) else { return };
@@ -200,6 +202,109 @@ pub(crate) fn on_request(app: &AppHandle, event: &Value) {
         let answer = folder.join(format!("{id}.{}", if yes { "yes" } else { "no" }));
         if let Err(e) = std::fs::write(&answer, "") {
             eprintln!("[mycelium] couldn't answer {id}: {e}");
+        }
+    });
+}
+
+// ── herdr ───────────────────────────────────────────────────────────────────
+
+/// `mycelium machine integrations` with `args`: herdr's version and integrations.
+fn machine_integrations(args: &[&str]) -> Option<std::process::Output> {
+    let bin = paths::resolve("mycelium")?;
+    Command::new(bin)
+        .args(["machine", "integrations"])
+        .args(args)
+        .env("PATH", paths::shell_path())
+        .output()
+        .ok()
+}
+
+/// Once a launch, when Mycelium is up: ask about herdr's integrations if
+/// nobody has yet, then say so if herdr is older than Mycelium needs.
+///
+/// The integrations come first: with them installed, herdr brings agents back
+/// in their own session when its server restarts, and updating an old server
+/// means restarting it.
+fn check_herdr(app: &AppHandle) {
+    static CHECKED: AtomicBool = AtomicBool::new(false);
+    if CHECKED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let Some(out) = machine_integrations(&["--json"]) else { return };
+        let Ok(state) = serde_json::from_slice::<Value>(&out.stdout) else { return };
+        let text = |key: &str| state.get(key).and_then(Value::as_str).unwrap_or("").to_string();
+        let flag = |key: &str| state.get(key).and_then(Value::as_bool).unwrap_or(false);
+        let missing: Vec<String> = state
+            .get("missing")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+            .unwrap_or_default();
+        let (minimum, server, client) = (text("minimum"), text("herdr_server"), text("herdr_client"));
+
+        if state.get("answer").is_some_and(Value::is_null) && !missing.is_empty() {
+            let names = missing.join(", ");
+            let install = app
+                .dialog()
+                .message(format!(
+                    "When herdr restarts, the agents running in it stop. With herdr's \
+                     integration for {names} installed, herdr brings each one back in its \
+                     own conversation.\n\nInstalling adds a hook to that agent CLI's own \
+                     settings. You can change this later with `mycelium machine integrations`."
+                ))
+                .title("Bring your agents back after herdr restarts?")
+                .buttons(MessageDialogButtons::OkCancelCustom("Install".into(), "No thanks".into()))
+                .blocking_show();
+            let answer: &[&str] = if install { &["--install", "--yes"] } else { &["--decline"] };
+            match machine_integrations(answer) {
+                Some(done) if done.status.success() => {}
+                Some(done) => eprintln!(
+                    "[mycelium] herdr's integrations: {}",
+                    String::from_utf8_lossy(&done.stdout).trim()
+                ),
+                None => eprintln!("[mycelium] couldn't run mycelium to install herdr's integrations"),
+            }
+        }
+
+        if flag("client_out_of_date") {
+            // The person's own herdr, on their PATH: theirs to update.
+            let _ = app
+                .dialog()
+                .message(format!(
+                    "The herdr on your PATH is {client}, and Mycelium needs {minimum} or newer. \
+                     Update it with `herdr update`, then restart herdr's server."
+                ))
+                .title("herdr is out of date")
+                .kind(MessageDialogKind::Warning)
+                .blocking_show();
+        } else if flag("server_out_of_date") {
+            let restart = app
+                .dialog()
+                .message(format!(
+                    "herdr's server is {server}, and Mycelium needs {minimum} or newer. \
+                     Restarting it starts the herdr that came with Mycelium.\n\nThe agents \
+                     running in it stop. Those \
+                     with herdr's integration come back on their own; restart the rest from \
+                     Your agents… in the menu bar."
+                ))
+                .title("herdr is out of date")
+                .kind(MessageDialogKind::Warning)
+                .buttons(MessageDialogButtons::OkCancelCustom("Restart herdr".into(), "Later".into()))
+                .blocking_show();
+            if restart {
+                // The supervisor sees the old server go and starts the app's own.
+                let stopped = paths::resolve("herdr").and_then(|herdr| {
+                    Command::new(herdr)
+                        .args(["server", "stop"])
+                        .env("PATH", paths::shell_path())
+                        .status()
+                        .ok()
+                });
+                if !stopped.is_some_and(|s| s.success()) {
+                    eprintln!("[mycelium] couldn't stop herdr's server");
+                }
+            }
         }
     });
 }
@@ -515,6 +620,23 @@ async fn run_doctor(app: AppHandle, webview: Webview) -> Result<Value, String> {
     })
 }
 
+/// The first run's answer about herdr's integrations: install them, or don't
+/// and don't ask again. Either way it's remembered, so the app asks only once.
+#[tauri::command]
+async fn herdr_integrations(app: AppHandle, webview: Webview, install: bool) -> Result<(), String> {
+    local_only(&app, &webview)?;
+    let args: &'static [&'static str] = if install { &["--install", "--yes"] } else { &["--decline"] };
+    let out = tauri::async_runtime::spawn_blocking(move || machine_integrations(args))
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("The mycelium program isn't available.")?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    }
+}
+
 /// Open the supervisor's log (`~/.mycelium/logs/desktop.log`) in Console.
 #[tauri::command]
 fn open_log(app: AppHandle, webview: Webview) -> Result<(), String> {
@@ -669,6 +791,7 @@ pub fn run() {
             scan_agents,
             pick_folder,
             run_doctor,
+            herdr_integrations,
             open_room,
             open_log,
             start,

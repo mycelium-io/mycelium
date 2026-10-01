@@ -21,7 +21,12 @@ for the agent as they normally would.
 
 ## Before you start
 
-- Install herdr and start its local server. See [herdr.dev](https://herdr.dev).
+- Install herdr 0.9.3 or newer and start its local server. See
+  [herdr.dev](https://herdr.dev). (The Mac app includes it.)
+- Install herdr's integration for your agent CLI (`herdr integration install
+  claude`, or `mycelium machine integrations --install` for every one here),
+  so herdr brings your agents back in their own conversations when its server
+  restarts. See [Your agents on a machine](#machines-your-agents-on-a-machine).
 - Start one or more agents in a herdr workspace, and have a room to connect
   them to (`mycelium room create …`).
 

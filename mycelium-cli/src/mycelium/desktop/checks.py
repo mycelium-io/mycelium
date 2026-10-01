@@ -134,10 +134,19 @@ def herdr(here: Report | None = None) -> CheckResult:
         )
     update = next((p for p in here.problems if p.kind == "herdr_update"), None) if here else None
     if update and here:
+        from mycelium.integrations.herdr.bridge import too_old as below_minimum
+
+        # Below the minimum, agents can't be brought back after a restart:
+        # that's an error, where a server merely behind its client is a warning.
+        too_old = below_minimum(here.herdr_server) or below_minimum(here.herdr_client)
         return CheckResult(
             name="herdr",
-            status="warning",
-            message=f"server {here.herdr_server}, client {here.herdr_client}",
+            status="error" if too_old else "warning",
+            message=(
+                f"out of date (needs {here.herdr_minimum} or newer)"
+                if too_old
+                else f"server {here.herdr_server}, client {here.herdr_client}"
+            ),
             details=[update.text, f"Fix: {update.fix}"],
         )
     version = bridge.version()

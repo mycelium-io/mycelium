@@ -9,7 +9,7 @@ Omnigent session) and however it got there (started by the runner or
 places that each know part of it:
 
 - herdr's registry (``~/.mycelium/herdr/``): which handle in which room is
-  which pane, and since agents are started with a chosen session, which session.
+  which pane, of which kind, working in which folder.
 - the runner's state: the agents it started, and the workspaces it opened.
 - the host itself: which panes are open, and which have an agent running.
 
@@ -23,6 +23,11 @@ Who syncs a workspace is the person's choice (:func:`set_runner_sync`), and
 only one thing does at a time: each sync loop leaves a heartbeat per workspace
 (:func:`mark_syncing`), and a terminal ``herdr sync`` leaves alone a workspace
 the runner is keeping.
+
+An agent's own session is herdr's to keep, not Mycelium's: with herdr's
+integration for its CLI installed (:func:`install_integrations`), herdr brings
+it back in that session after herdr restarts. What Mycelium does for any agent
+that stopped is restart it as itself, to catch up from the room.
 """
 
 from __future__ import annotations
@@ -38,7 +43,12 @@ from urllib.parse import quote
 
 from mycelium.filesystem import get_mycelium_dir
 from mycelium.integrations.herdr import HerdrBridge, HerdrError, HerdrPaneMapping
-from mycelium.integrations.herdr.agents import FoundSession, agent_kind
+from mycelium.integrations.herdr.bridge import (
+    MIN_VERSION,
+    integration_for,
+    too_old,
+    version_tuple,
+)
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
@@ -167,28 +177,24 @@ class Agent:
     state: State_
     #: The folder it works in, when known.
     folder: str | None = None
-    #: The agent CLI's session, which resuming picks up. ``None`` when nothing saved it.
-    session: str | None = None
     #: The agent CLI, as herdr names its kind, when known.
     kind: str | None = None
     #: The herdr workspace its pane is (or was) in.
     workspace: str | None = None
     #: Who put it here: the runner (or ``swarm``), or a person binding a pane.
     started_by: Literal["runner", "you"] = "you"
+    #: Whether herdr brings it back in its own session after herdr's server
+    #: restarts (its kind's herdr integration is current); ``None`` if unknown.
+    restores: bool | None = None
 
     @property
-    def resumes(self) -> bool:
-        """Whether its agent CLI can ever be resumed, saved session or not."""
-        return self.host == "herdr" and agent_kind(self.kind).resumes
-
-    @property
-    def resumable(self) -> bool:
-        """Whether it can be resumed now: stopped, with a session saved."""
+    def restartable(self) -> bool:
+        """Whether Mycelium can start it again: stopped or gone, with a folder and kind."""
         return (
             self.host == "herdr"
             and self.state in ("stopped", "gone")
             and bool(self.folder)
-            and agent_kind(self.kind).valid_session(self.session) is not None
+            and bool(self.kind)
         )
 
 
@@ -211,7 +217,7 @@ class Workspace:
 class Problem:
     """Something wrong here, and the command that fixes it."""
 
-    kind: Literal["stopped", "unresumable", "unsynced", "herdr_update", "herdr_down"]
+    kind: Literal["stopped", "lost", "unsynced", "no_restore", "herdr_update", "herdr_down"]
     text: str
     #: The ``mycelium machine`` command that fixes it, when one does.
     fix: str | None = None
@@ -228,6 +234,11 @@ class Report:
     omnigent_url: str | None
     workspaces: list[Workspace]
     problems: list[Problem]
+    #: The oldest herdr Mycelium works with.
+    herdr_minimum: str = MIN_VERSION
+    #: herdr's integrations for the agent kinds in use here that aren't current,
+    #: so herdr can't bring those agents back after its server restarts.
+    missing_integrations: list[str] = field(default_factory=list)
 
     @property
     def agents(self) -> list[Agent]:
@@ -255,37 +266,17 @@ class Report:
             "herdr_server": self.herdr_server,
             "herdr_client": self.herdr_client,
             "omnigent_url": self.omnigent_url,
+            "herdr_minimum": self.herdr_minimum,
+            "missing_integrations": self.missing_integrations,
             "workspaces": [
                 {
                     **{k: v for k, v in asdict(w).items() if k != "agents"},
-                    # The command each resumable one would run, built here by
-                    # its kind, so whoever shows it needn't know any CLI.
-                    "agents": [
-                        {
-                            **asdict(a),
-                            "resumes": a.resumes,
-                            "resumable": a.resumable,
-                            "resume_command": resume_line(a) if a.resumable else None,
-                        }
-                        for a in w.agents
-                    ],
+                    "agents": [{**asdict(a), "restartable": a.restartable} for a in w.agents],
                 }
                 for w in self.workspaces
             ],
             "problems": [asdict(p) for p in self.problems],
         }
-
-
-def _major_minor(version: str | None) -> tuple[int, ...] | None:
-    if not version:
-        return None
-    parts = []
-    for piece in version.strip().lstrip("v").split(".")[:2]:
-        digits = "".join(c for c in piece if c.isdigit())
-        if not digits:
-            return None
-        parts.append(int(digits))
-    return tuple(parts)
 
 
 def report(
@@ -364,7 +355,8 @@ def report(
     ordered = sorted(workspaces.values(), key=lambda w: (w.host != "herdr", w.label))
     for w in ordered:
         w.agents.sort(key=lambda a: a.handle)
-    problems = _problems(ordered, herdr_up, server_version, client_version, machine)
+    missing = _restores(bridge, [a for w in ordered for a in w.agents if a.host == "herdr"])
+    problems = _problems(ordered, herdr_up, server_version, client_version, machine, missing)
     return Report(
         machine=machine,
         herdr=herdr_up,
@@ -373,7 +365,32 @@ def report(
         omnigent_url=config.runner.omnigent_url if config.runner.host == "omnigent" else None,
         workspaces=ordered,
         problems=problems,
+        missing_integrations=missing,
     )
+
+
+def _restores(bridge: HerdrBridge, agents: list[Agent]) -> list[str]:
+    """Mark whether herdr restores each agent; return the integrations it lacks.
+
+    herdr restores an agent after its server restarts when that agent's kind
+    has a current herdr integration. Only the integrations for agents with a
+    pane open are named: a gone pane has nothing for herdr to restore, and an
+    integration for a CLI nobody runs is nothing to fix.
+    """
+    current = bridge.integrations()
+    if current is None:
+        return []
+    missing: set[str] = set()
+    for agent in agents:
+        if not agent.kind or agent.state in ("gone", "unknown"):
+            continue
+        name = integration_for(agent.kind)
+        if name not in current:
+            continue  # herdr has no integration for this kind at all
+        agent.restores = current[name]
+        if not current[name]:
+            missing.add(name)
+    return sorted(missing)
 
 
 def _bound_workspace(bindings: dict[str, str], room: str) -> str | None:
@@ -413,7 +430,6 @@ def _herdr_agent(
         ref=mapping.pane,
         state=state,
         folder=folder,
-        session=mapping.session,
         kind=mapping.kind or (running or {}).get("agent"),
         workspace=str((pane or running or {}).get("workspace_id") or "")
         or (tracked.workspace if tracked else None),
@@ -449,7 +465,6 @@ def _add_omnigent(workspaces: dict[str, Workspace], omnigent: Any, state: State)
                 ref=tracked.pane,
                 state=agent_state,
                 folder=tracked.cwd,
-                session=tracked.pane,
                 kind=tracked.framework,
                 started_by="runner",
             )
@@ -464,6 +479,7 @@ def _problems(
     server: str | None,
     client: str | None,
     machine: str,
+    missing: list[str],
 ) -> list[Problem]:
     problems: list[Problem] = []
     herdr_agents = [a for w in workspaces if w.host == "herdr" for a in w.agents]
@@ -476,66 +492,51 @@ def _problems(
             )
         )
     stopped = [a for a in herdr_agents if a.state in ("stopped", "gone")]
-    resumable = [a for a in stopped if a.resumable]
-    if resumable:
-        whose = "Their sessions are" if len(resumable) > 1 else "Its session is"
+    restartable = [a for a in stopped if a.restartable]
+    if restartable:
+        one = len(restartable) == 1
         problems.append(
             Problem(
                 kind="stopped",
                 text=(
-                    f"{_names(resumable)} stopped. {whose} saved, so they can pick up "
-                    "where they left off."
+                    f"{_names(restartable)} stopped. Restarting starts "
+                    f"{'it' if one else 'each'} again in its folder, as itself, to catch up "
+                    "from the room."
                 ),
-                fix="mycelium machine resume --all",
-                handles=[a.handle for a in resumable],
+                fix="mycelium machine restart --all",
+                handles=[a.handle for a in restartable],
             )
         )
-    # The ones that can't be resumed, said once per kind rather than once each:
+    # The ones there's nothing to restart from, said once rather than once each:
     # a machine that has run a lot of agents has a lot of old panes.
-    lost = [a for a in stopped if not a.resumable and a.state == "gone"]
+    lost = [a for a in stopped if not a.restartable]
     if lost:
         have, stay = ("has", "It stays") if len(lost) == 1 else ("have", "They stay")
         problems.append(
             Problem(
-                kind="unresumable",
+                kind="lost",
                 text=(
-                    f"{_names(lost)} {have} no pane any more and no saved session, so there's "
-                    f"nothing to resume. Unbinding forgets the pane. {stay} in the room."
+                    f"{_names(lost)} {have} no pane any more and no folder on record, so "
+                    f"there's nothing to restart. Unbinding forgets the pane. {stay} in the room."
                 ),
                 fix="mycelium machine unbind --gone",
                 handles=[a.handle for a in lost],
             )
         )
-    # Stopped with nothing saved: a session worth looking for, or none to find.
-    unsaved = [a for a in stopped if not a.resumable and a.state == "stopped" and a.resumes]
-    cannot = [a for a in stopped if a.state == "stopped" and not a.resumes]
-    if cannot:
-        one = len(cannot) == 1
-        its, it = ("its agent CLI", "it") if one else ("their agent CLIs", "they")
-        again = "Start it again in its pane" if one else "Start each again in its pane"
+    if missing:
+        names = ", ".join(missing)
+        without = [a for a in herdr_agents if a.restores is False]
         problems.append(
             Problem(
-                kind="unresumable",
+                kind="no_restore",
                 text=(
-                    f"{_names(cannot)} stopped, and Mycelium can't resume {its}, so {it} "
-                    f"can't pick up where {it} left off. {again}; the room keeps "
-                    f"{'its' if one else 'their'} place."
+                    f"If herdr restarts, {_names(without)} won't come back on "
+                    f"{'its' if len(without) == 1 else 'their'} own: "
+                    f"herdr's integration for {names} isn't installed (or is out of date). "
+                    "Installing it adds a hook to that agent CLI's own settings."
                 ),
-                fix=None,
-                handles=[a.handle for a in cannot],
-            )
-        )
-    if unsaved:
-        first = unsaved[0]
-        problems.append(
-            Problem(
-                kind="unresumable",
-                text=(
-                    f"{_names(unsaved)} stopped with no saved session. Mycelium can look for "
-                    "the conversation in each one's folder; check it's the right one, then resume."
-                ),
-                fix=f"mycelium machine session {first.handle} --room {first.room} --find",
-                handles=[a.handle for a in unsaved],
+                fix="mycelium machine integrations --install",
+                handles=[a.handle for a in without],
             )
         )
     for w in workspaces:
@@ -552,19 +553,44 @@ def _problems(
                     workspace=w.id,
                 )
             )
-    s, c = _major_minor(server), _major_minor(client)
-    if herdr_up and s and c and s < c:
-        problems.append(
-            Problem(
-                kind="herdr_update",
-                text=(
-                    f"herdr's server ({server}) is older than its client ({client}). Updating "
-                    "restarts the server, which stops every agent in it; resume them after."
-                ),
-                fix="herdr server stop  (then: mycelium machine resume --all)",
-            )
-        )
+    update = _herdr_update(server if herdr_up else None, client)
+    if update is not None:
+        problems.append(update)
     return problems
+
+
+def _herdr_update(server: str | None, client: str | None) -> Problem | None:
+    """What's out of date about herdr here, and how to bring it up to date, if anything.
+
+    The server is what agents run in; the client is the ``herdr`` that runs
+    commands. A newer client starts a newer server once the old one stops.
+    """
+    s, c = version_tuple(server), version_tuple(client)
+    restart = (
+        "Restarting herdr's server stops the agents in it; those with herdr's "
+        "integration come back on their own, and the rest can be restarted from here."
+    )
+    if c is not None and too_old(client):
+        return Problem(
+            kind="herdr_update",
+            text=f"herdr {client} is out of date. Mycelium needs {MIN_VERSION} or newer. {restart}",
+            fix="herdr update",
+        )
+    if s is not None and (too_old(server) or (c is not None and s < c)):
+        why = (
+            f"out of date: Mycelium needs {MIN_VERSION} or newer"
+            if too_old(server)
+            else "older than its client"
+        )
+        return Problem(
+            kind="herdr_update",
+            text=(
+                f"herdr's server is {server}, {why}. This machine has {client}, which "
+                f"starts when the old server stops. {restart}"
+            ),
+            fix="herdr server stop",
+        )
+    return None
 
 
 #: How many handles a problem names before it counts the rest.
@@ -583,45 +609,46 @@ def _names(agents: list[Agent]) -> str:
 # ── actions ──────────────────────────────────────────────────────────────────
 
 
-def resume_line(agent: Agent) -> str | None:
-    """The command line resuming ``agent`` runs in its pane, or ``None`` if it can't be."""
-    kind = agent_kind(agent.kind)
-    session = kind.valid_session(agent.session)
-    if session is None:
-        return None
-    line = shlex.join([kind.kind, *kind.resume_args(session)])
-    return f"cd {shlex.quote(_tilde(agent.folder or '.'))} && {line}"
+def restart_prompt(agent: Agent) -> str:
+    """What a restarted agent is told: who it is, and to catch up from the room."""
+    h, room = agent.handle, agent.room
+    return (
+        f"[mycelium] You are @{h}, a member of the Mycelium room '{room}'. You were "
+        "restarted, so you don't remember what you were doing. If you have notes, "
+        f"`mycelium memory get agents/{h}/notes` says how to work. Then run `mycelium "
+        f"await --room {room} --handle {h} --json --timeout 5` to catch up on what happened "
+        f"since your last turn, and `mycelium board --room {room}` for your tasks. When a line "
+        "starting with [mycelium] appears here later, do what it says."
+    )
 
 
-def resume_command(agent: Agent) -> str:
-    """What resuming ``agent`` runs, said for a person to read before saying yes."""
-    line = resume_line(agent)
-    if line is None:
-        msg = f"@{agent.handle} has no session to resume"
-        raise MachineError(msg)
-    return f"{line}   (as @{agent.handle} in {agent.room})"
+def restart_command(agent: Agent) -> str:
+    """What restarting ``agent`` does, said for a person to read before saying yes."""
+    where = f"pane {agent.ref}" if agent.state == "stopped" else "a new pane beside its room's"
+    return (
+        f"{agent.kind or 'its agent CLI'} in {_tilde(agent.folder or '.')}, {where}, "
+        f"as @{agent.handle} in {agent.room}"
+    )
 
 
-def resume(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None = None) -> str:
-    """Start ``agent`` again in its pane (or a new one beside it), in its saved session.
+def restart(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None = None) -> str:
+    """Start ``agent`` again in its pane (or a new one beside it), in its folder, as itself.
 
     Returns the pane it's running in. The pane gets the agent's handle, room
-    and hub in its environment first, as a pane the runner opens would.
+    and hub in its environment first, as a pane the runner opens would, and the
+    agent is told to catch up from the room: it starts with no memory of its
+    last session, whose place the room's record takes.
     """
     from mycelium.commands.swarm import _start_when_ready
 
-    kind = agent_kind(agent.kind)
-    if not agent.resumable:
+    if not agent.restartable:
         if agent.state not in ("stopped", "gone"):
-            raise MachineError(f"@{agent.handle} is running ({agent.state}); nothing to resume.")
-        if not kind.resumes:
-            raise MachineError(
-                f"@{agent.handle} runs {kind.name or 'an agent CLI'}, which Mycelium can't resume."
-            )
+            raise MachineError(f"@{agent.handle} is running ({agent.state}); nothing to restart.")
         raise MachineError(
-            f"@{agent.handle} can't be resumed: no session was saved for it. "
-            f"Find it with `mycelium machine session {agent.handle} --room {agent.room} --find`."
+            f"@{agent.handle} can't be restarted: nothing says which agent CLI it ran or "
+            "in which folder."
         )
+    kind = str(agent.kind)
     bridge = bridge or HerdrBridge()
     env = {
         "MYCELIUM_API_URL": config.server.api_url,
@@ -636,17 +663,17 @@ def resume(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None =
             bridge.run_in_pane(pane, f"cd {shlex.quote(folder)} && export {exports}")
         else:
             pane = _new_pane(bridge, agent, folder, env)
-        _start_when_ready(bridge, agent.handle, kind.kind, pane, resume=agent.session)
+        _start_when_ready(bridge, agent.handle, kind, pane)
+        bridge.prompt(pane, restart_prompt(agent), wait=False)
     except HerdrError as e:
-        raise MachineError(f"herdr couldn't resume @{agent.handle}: {e}") from e
+        raise MachineError(f"herdr couldn't restart @{agent.handle}: {e}") from e
     bridge.registry.set(
         HerdrPaneMapping(
             room=agent.room,
             handle=agent.handle,
             pane=pane,
-            kind=kind.kind,
+            kind=kind,
             managed=_was_managed(bridge, agent),
-            session=agent.session,
             cwd=folder,
         )
     )
@@ -662,7 +689,7 @@ def _new_pane(bridge: HerdrBridge, agent: Agent, folder: str, env: dict[str, str
     """A pane for an agent whose own is gone: beside another of its room's, or a new one.
 
     Its own workspace when it still has panes, else any workspace bound to its
-    room that does. A new workspace is bound to the room, so resuming several
+    room that does. A new workspace is bound to the room, so restarting several
     gone agents of one room opens one workspace for them all, not one each.
     """
     try:
@@ -684,7 +711,7 @@ def _new_pane(bridge: HerdrBridge, agent: Agent, folder: str, env: dict[str, str
 
 
 def stop(agent: Agent, *, bridge: HerdrBridge | None = None) -> None:
-    """End ``agent``'s session; its pane stays open, so it can be resumed."""
+    """End ``agent``'s session; its pane stays open, so it can be restarted."""
     if agent.host != "herdr":
         raise MachineError(f"@{agent.handle} runs in {agent.host}; stop it from the app.")
     if agent.state not in ("working", "idle", "blocked"):
@@ -717,44 +744,111 @@ def unbind(agent: Agent, *, bridge: HerdrBridge | None = None) -> None:
     bridge.registry.remove(agent.room, agent.handle)
 
 
-def find_session(agent: Agent) -> FoundSession | None:
-    """The newest session ``agent``'s CLI started in its folder, if it keeps them where we look.
+# ── herdr's integrations ─────────────────────────────────────────────────────
+#
+# herdr brings an agent back in its own session after herdr's server restarts
+# when that agent CLI has herdr's integration installed. Installing one writes a
+# hook into the CLI's own settings, so Mycelium asks once and remembers the
+# answer; nothing installs one without a yes.
 
-    A guess, for an agent nothing saved a session for: shown to the person
-    before it's kept, never kept on its own.
-    """
-    if not agent.folder:
+
+@dataclass
+class Integrations:
+    """herdr's version and integrations here, and the person's answer about them."""
+
+    herdr_server: str | None
+    herdr_client: str | None
+    #: The running server is older than Mycelium needs: restarting it starts the client's.
+    server_out_of_date: bool
+    #: The ``herdr`` command is older than Mycelium needs: it has to be updated.
+    client_out_of_date: bool
+    #: For each agent CLI installed here that herdr has an integration for,
+    #: whether that integration is current.
+    current: dict[str, bool]
+    #: The person's answer to installing them: ``yes``, ``no``, or not asked yet.
+    answer: Literal["yes", "no"] | None
+    minimum: str = MIN_VERSION
+
+    @property
+    def missing(self) -> list[str]:
+        return sorted(name for name, ok in self.current.items() if not ok)
+
+    @property
+    def out_of_date(self) -> bool:
+        return self.server_out_of_date or self.client_out_of_date
+
+    def wire(self) -> dict[str, Any]:
+        return {**asdict(self), "missing": self.missing, "out_of_date": self.out_of_date}
+
+
+def _answer_path() -> Path:
+    return _herdr_dir() / "restore.json"
+
+
+def _answer() -> Literal["yes", "no"] | None:
+    try:
+        said = json.loads(_answer_path().read_text()).get("answer")
+    except (OSError, ValueError, AttributeError):
         return None
-    return agent_kind(agent.kind).find_session(Path(agent.folder))
+    return said if said in ("yes", "no") else None
 
 
-def save_session(agent: Agent, session: str, *, bridge: HerdrBridge | None = None) -> None:
-    """Keep ``session`` as ``agent``'s, so it can be resumed."""
-    if agent.host != "herdr":
-        raise MachineError(f"@{agent.handle} runs in {agent.host}, which keeps its own sessions.")
+def _remember(answer: Literal["yes", "no"]) -> None:
+    path = _answer_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"answer": answer, "at": time.time()}) + "\n")
+
+
+def _installed_kinds() -> set[str]:
+    """The herdr kinds of the agent CLIs found on PATH here."""
+    import shutil
+
+    from mycelium.runner.frameworks import KNOWN
+
+    return {
+        k.herdr_kind for k in KNOWN if k.herdr_kind and any(shutil.which(b) for b in k.binaries)
+    }
+
+
+def integrations(*, bridge: HerdrBridge | None = None) -> Integrations:
+    """herdr's version and the state of its integrations for the agent CLIs here."""
     bridge = bridge or HerdrBridge()
-    before = bridge.registry.get(agent.room, agent.handle)
-    if before is None:
-        raise MachineError(f"@{agent.handle} isn't bound to a pane here.")
-    kind = agent_kind(before.kind or agent.kind)
-    if not kind.resumes:
-        raise MachineError(
-            f"@{agent.handle} runs {kind.name or 'an agent CLI'}, which Mycelium can't resume."
-        )
-    valid = kind.valid_session(session)
-    if valid is None:
-        raise MachineError(f"{session!r} isn't a {kind.name} session id.")
-    bridge.registry.set(
-        HerdrPaneMapping(
-            room=before.room,
-            handle=before.handle,
-            pane=before.pane,
-            kind=kind.kind,
-            managed=before.managed,
-            session=valid,
-            cwd=before.cwd or agent.folder,
-        )
+    client = bridge.version()
+    server = bridge.server_version() if bridge.available() else None
+    status = bridge.integrations() or {}
+    wanted = {integration_for(k) for k in _installed_kinds()}
+    return Integrations(
+        herdr_server=server,
+        herdr_client=client,
+        server_out_of_date=too_old(server),
+        client_out_of_date=too_old(client),
+        current={name: ok for name, ok in status.items() if name in wanted},
+        answer=_answer(),
     )
+
+
+def install_integrations(*, bridge: HerdrBridge | None = None) -> list[str]:
+    """Install herdr's integration for every agent CLI here that lacks a current one.
+
+    The person said yes to get here, so the answer is remembered; returns the
+    integrations installed. One that fails to install raises, after the ones
+    before it are in.
+    """
+    bridge = bridge or HerdrBridge()
+    _remember("yes")
+    done: list[str] = []
+    for name in integrations(bridge=bridge).missing:
+        try:
+            bridge.install_integration(name)
+        except HerdrError as e:
+            raise MachineError(f"herdr couldn't install its {name} integration: {e}") from e
+        done.append(name)
+    return done
+
+
+def decline_integrations() -> None:
+    """Remember that the person doesn't want herdr's integrations, so they aren't asked again."""
+    _remember("no")
 
 
 def _tilde(path: str) -> str:

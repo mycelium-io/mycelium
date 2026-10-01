@@ -163,10 +163,10 @@ export function describeJob(job: RunnerJob): string {
       return "Scan for agent CLIs";
     case "swarm":
       return typeof spec.room === "string" ? `Start a swarm in ${spec.room}` : "Start a swarm";
-    case "resume": {
-      if (spec.all) return "Resume every stopped agent";
+    case "restart": {
+      if (spec.all) return "Restart every stopped agent";
       const agents = Array.isArray(spec.agents) ? (spec.agents as { handle?: string }[]) : [];
-      return agents.length === 1 ? `Resume @${agents[0].handle}` : `Resume ${agents.length} agents`;
+      return agents.length === 1 ? `Restart @${agents[0].handle}` : `Restart ${agents.length} agents`;
     }
     case "rename":
       return `Rename ${handle ?? "an agent"} to ${String(spec.name ?? "")}`;
@@ -174,8 +174,8 @@ export function describeJob(job: RunnerJob): string {
       return spec.gone ? "Forget panes that are gone" : `Unbind ${handle ?? "an agent"}`;
     case "sync":
       return `${spec.on ? "Keep" : "Stop keeping"} ${String(spec.workspace ?? "a workspace")} synced`;
-    case "session":
-      return spec.find ? `Find ${handle ?? "an agent"}'s session` : `Save ${handle ?? "an agent"}'s session`;
+    case "integrations":
+      return "Install herdr's integrations";
   }
 }
 

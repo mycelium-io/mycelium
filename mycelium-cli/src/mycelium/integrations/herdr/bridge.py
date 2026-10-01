@@ -33,7 +33,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from mycelium.filesystem import get_mycelium_dir
-from mycelium.integrations.herdr.agents import agent_kind
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -46,6 +45,31 @@ _WAKEABLE_STATES = frozenset({"idle", "done", "unknown"})
 
 #: Where ``herdr agent start --help`` lists the kinds it can start.
 _POSSIBLE_KINDS = re.compile(r"\[possible values:\s*([^\]]+)\]")
+
+#: The oldest herdr Mycelium works with. 0.9.2 is where herdr learned to
+#: restart each agent in its own session after its server restarts, which is
+#: what keeps a room's agents alive across one; 0.9.3 fixes its key handling.
+MIN_VERSION = "0.9.3"
+
+#: herdr's integration for an agent kind, where the two names differ.
+_INTEGRATION_FOR = {"agy": "antigravity-cli"}
+
+
+def integration_for(kind: str) -> str:
+    """The herdr integration that lets herdr restore an agent of ``kind``."""
+    return _INTEGRATION_FOR.get(kind, kind)
+
+
+def version_tuple(version: str | None) -> tuple[int, ...] | None:
+    """``"0.9.3"`` (or ``"v0.9.3"``, ``"herdr 0.9.3"``) as ``(0, 9, 3)``; ``None`` if unreadable."""
+    found = re.search(r"\d+(?:\.\d+)+", version or "")
+    return tuple(int(p) for p in found.group(0).split(".")) if found else None
+
+
+def too_old(version: str | None) -> bool:
+    """Whether ``version`` is older than :data:`MIN_VERSION` (unknown is not too old)."""
+    have, need = version_tuple(version), version_tuple(MIN_VERSION)
+    return bool(have and need and have < need)
 
 
 class HerdrError(RuntimeError):
@@ -76,10 +100,7 @@ class HerdrPaneMapping:
     pane: str
     kind: str | None = None
     managed: bool = False
-    #: The agent CLI's own session id, so a stopped agent can be resumed where it
-    #: left off. Known when Mycelium started it (or a person said which one it is).
-    session: str | None = None
-    #: The folder it works in, which is where a resume has to start it again.
+    #: The folder it works in, which is where a restart has to start it again.
     cwd: str | None = None
 
     @property
@@ -189,8 +210,6 @@ class HerdrRegistry:
             pane=entry["pane"],
             kind=entry.get("kind"),
             managed=bool(entry.get("managed", False)),
-            # Only a session its kind could have made: it becomes an argument.
-            session=agent_kind(entry.get("kind")).valid_session(entry.get("session")),
             cwd=entry.get("cwd") or None,
         )
 
@@ -211,13 +230,13 @@ class HerdrRegistry:
         return self._mapping(room, h, entry)
 
     def set(self, mapping: HerdrPaneMapping) -> None:
-        """Write ``mapping``. A session or folder it doesn't say is kept from before,
-        when it is the same pane and the same kind of agent.
+        """Write ``mapping``. A folder it doesn't say is kept from before, when it
+        is the same pane and the same kind of agent.
 
         Most writers (the workspace sync re-enrolling a pane, a hand-run ``map``)
-        know the pane but not the agent's session, and writing over what was
-        saved would lose the one thing that lets it be resumed. A different pane
-        or kind is a different agent, so what was saved for the old one goes.
+        know the pane but not the folder the agent was started in, which is
+        where a restart starts it again. A different pane or kind is a
+        different agent, so the old one's folder goes.
         """
         data = self._load()
         raw = data.get(mapping.key)
@@ -226,11 +245,7 @@ class HerdrRegistry:
         if not same:
             before = {}
         entry: dict = {"pane": mapping.pane, "kind": mapping.kind, "managed": mapping.managed}
-        kind = agent_kind(mapping.kind or before.get("kind"))
-        session = kind.valid_session(mapping.session) or kind.valid_session(before.get("session"))
         cwd = mapping.cwd or before.get("cwd")
-        if session:
-            entry["session"] = session
         if cwd:
             entry["cwd"] = cwd
         data[mapping.key] = entry
@@ -389,6 +404,36 @@ class HerdrBridge:
             if label.strip() == "version" and value.strip():
                 return value.strip()
         return None
+
+    def integrations(self) -> dict[str, bool] | None:
+        """Each herdr integration, and whether it's current; ``None`` if herdr can't say.
+
+        A current integration tells herdr which session its agent is in, so
+        herdr restarts the agent in that session after its server restarts. One
+        not installed, outdated or needing repair doesn't.
+        """
+        if not self.binary_present():
+            return None
+        try:
+            proc = self._runner(["integration", "status"])
+        except OSError:
+            return None
+        if proc.returncode != 0:
+            return None
+        out: dict[str, bool] = {}
+        for line in (proc.stdout or "").splitlines():
+            name, sep, state = line.partition(":")
+            if sep and name.strip():
+                out[name.strip()] = state.strip().startswith("current")
+        return out or None
+
+    def install_integration(self, name: str) -> None:
+        """Install (or bring up to date) herdr's integration ``name``.
+
+        It writes a hook into that agent CLI's own configuration, so it is only
+        ever run when the person said yes.
+        """
+        self._run_quiet(["integration", "install", name])
 
     def _run_quiet(self, args: list[str]) -> None:
         """A herdr call that prints nothing when it works; raise if it didn't."""

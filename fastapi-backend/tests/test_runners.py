@@ -416,22 +416,30 @@ MACHINE = {
                     "ref": "w2:p2",
                     "state": "stopped",
                     "folder": "/Users/julia/code/shop",
-                    "session": "9b07-44c0",
                     "kind": "claude",
                     "workspace": "w2",
                     "started_by": "runner",
-                    "resumable": True,
+                    "restartable": True,
+                    "restores": False,
                 }
             ],
         }
     ],
+    "herdr_minimum": "0.9.3",
+    "missing_integrations": ["claude"],
     "problems": [
         {
             "kind": "stopped",
             "text": "@reviewer stopped.",
-            "fix": "mycelium machine resume --all",
+            "fix": "mycelium machine restart --all",
             "handles": ["reviewer"],
-        }
+        },
+        {
+            "kind": "no_restore",
+            "text": "If herdr restarts, @reviewer won't come back on its own.",
+            "fix": "mycelium machine integrations --install",
+            "handles": ["reviewer"],
+        },
     ],
 }
 
@@ -441,8 +449,17 @@ async def test_a_runner_s_heartbeat_carries_every_agent_on_its_machine(client):
     await client.post("/api/runners", json=hello(machine=MACHINE))
     got = (await client.get(f"/api/runners/{RUNNER}")).json()["machine"]
     agent = got["workspaces"][0]["agents"][0]
-    assert (agent["handle"], agent["state"], agent["resumable"]) == ("reviewer", "stopped", True)
-    assert got["problems"][0]["fix"] == "mycelium machine resume --all"
+    assert (agent["handle"], agent["state"], agent["restartable"], agent["restores"]) == (
+        "reviewer",
+        "stopped",
+        True,
+        False,
+    )
+    assert [p["fix"] for p in got["problems"]] == [
+        "mycelium machine restart --all",
+        "mycelium machine integrations --install",
+    ]
+    assert (got["herdr_minimum"], got["missing_integrations"]) == ("0.9.3", ["claude"])
 
 
 @pytest.mark.asyncio
@@ -455,11 +472,12 @@ async def test_a_runner_from_before_the_machines_page_sends_no_report(client, ru
     ("action", "kind", "spec"),
     [
         (
-            {"kind": "resume", "agents": [{"handle": "@Reviewer", "room": ROOM}]},
-            "resume",
+            {"kind": "restart", "agents": [{"handle": "@Reviewer", "room": ROOM}]},
+            "restart",
             {"all": False, "agents": [{"handle": "reviewer", "room": ROOM}]},
         ),
-        ({"kind": "resume", "all": True}, "resume", {"all": True, "agents": []}),
+        ({"kind": "restart", "all": True}, "restart", {"all": True, "agents": []}),
+        ({"kind": "integrations"}, "integrations", {}),
         (
             {"kind": "rename", "handle": "reviewer", "room": ROOM, "name": " Reviewer "},
             "rename",
@@ -470,11 +488,6 @@ async def test_a_runner_from_before_the_machines_page_sends_no_report(client, ru
             {"kind": "sync", "workspace": "w2", "on": True},
             "sync",
             {"workspace": "w2", "on": True},
-        ),
-        (
-            {"kind": "session", "handle": "reviewer", "room": ROOM, "find": True},
-            "session",
-            {"handle": "reviewer", "room": ROOM, "find": True, "session": None},
         ),
         (
             {"kind": "stop", "handle": "docs", "room": "myroom"},
@@ -494,10 +507,9 @@ async def test_a_machine_action_is_queued_as_that_machine_s_job(client, runner, 
 @pytest.mark.parametrize(
     ("action", "said"),
     [
-        ({"kind": "resume"}, "agents, or all"),
+        ({"kind": "restart"}, "agents, or all"),
         ({"kind": "rename", "handle": "reviewer"}, "a name"),
         ({"kind": "sync", "workspace": "w2"}, "on"),
-        ({"kind": "session", "handle": "reviewer"}, "a session, or find"),
         ({"kind": "stop"}, "a handle"),
     ],
 )
@@ -509,18 +521,10 @@ async def test_a_machine_action_missing_what_it_needs_is_refused(client, runner,
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("session", ["--settings=x.json", "a b", "a;b", "$(x)", "-x"])
-async def test_a_session_that_isnt_a_plain_token_is_refused(client, runner, session):
-    # It becomes an argument to the agent CLI, so nothing flag- or shell-shaped.
-    action = {"kind": "session", "handle": "reviewer", "room": ROOM, "session": session}
-    resp = await client.post(f"/api/runners/{RUNNER}/machine", json=action)
-    assert resp.status_code == 422
-    assert (await client.get(f"/api/runners/{RUNNER}/jobs")).json() == []
-
-
-@pytest.mark.asyncio
 async def test_a_machine_that_isnt_connected_is_asked_nothing(client, runner):
     runners.registry._runners[RUNNER].last_seen -= runners.STALE_AFTER * 2
-    resp = await client.post(f"/api/runners/{RUNNER}/machine", json={"kind": "resume", "all": True})
+    resp = await client.post(
+        f"/api/runners/{RUNNER}/machine", json={"kind": "restart", "all": True}
+    )
     assert resp.status_code == 422
     assert "not connected" in resp.json()["detail"]

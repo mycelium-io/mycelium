@@ -185,37 +185,46 @@ for the same fixes. In the Mac app, **Your agents…** in the menu bar opens it.
 An agent can be:
 
 - **working**, **idle** or **blocked**: running, in its pane.
-- **stopped**: its pane is open, but nothing is running in it. This is what
-  every agent looks like after herdr's server restarts: herdr brings the
-  panes back, but not the programs that were running in them.
+- **stopped**: its pane is open, but nothing is running in it.
 - **pane gone**: the pane was closed.
 
-### Resuming agents
+### When herdr restarts
 
-When Mycelium starts an agent whose CLI lets it name the conversation, it
-saves that conversation (its session id) with the agent. Today that is
-Claude Code. A stopped agent with a saved session can be resumed: it starts
-again in its own folder, as the same member, and picks up the conversation
-where it stopped. An agent in another CLI can still be seen, stopped and
-unbound here, but not resumed.
+Restarting herdr's server (to update it, say) stops every agent running in
+it. herdr brings each one back in its own conversation if herdr's
+integration for that agent CLI is installed. herdr has one for most agent
+CLIs, including Claude Code, Codex, OpenCode and Pi. Without it, the panes
+come back empty and the agents show as stopped.
 
 ```bash
-mycelium machine resume --all          # every stopped agent that can be
-mycelium machine resume reviewer       # one
+mycelium machine integrations             # which are installed
+mycelium machine integrations --install   # install them for the agent CLIs here
 ```
 
-On the Machines page, **Resume** shows the command each agent will run before
-anything starts. The runner then asks you on the machine, as it does before
+Installing one adds a hook to that agent CLI's own settings (for Claude Code,
+`~/.claude/settings.json`), so Mycelium only does it when you say so. The Mac
+app asks once, and remembers the answer. `mycelium machine` shows, for each
+agent, whether it comes back or stops if herdr restarts.
+
+Mycelium needs herdr 0.9.3 or newer, and says so when herdr is older. A
+herdr server older than the `herdr` command is updated by restarting it
+(`herdr server stop`); the Mac app offers to do it for you.
+
+### Restarting agents
+
+An agent that stopped and didn't come back can be restarted. It starts again
+in its own folder, as the same member, with no memory of what it was doing:
+it reads its notes, then catches up from the room, which tells it what
+happened since its last turn. This works the same for every agent CLI.
+
+```bash
+mycelium machine restart --all         # every stopped agent
+mycelium machine restart reviewer      # one
+```
+
+On the Machines page, **Restart** says where each agent will start before
+anything does. The runner then asks you on the machine, as it does before
 starting any agent.
-
-An agent started before Mycelium saved sessions has none. Mycelium can look
-for the newest conversation in the agent's folder. Check that it's the right
-one before saving it, since two agents in one folder share that list:
-
-```bash
-mycelium machine session reviewer --find      # show what it finds
-mycelium machine session reviewer <id>        # save the one you mean
-```
 
 ### Keeping a workspace synced
 
@@ -243,11 +252,10 @@ mycelium machine unbind --gone             # forget every pane that's gone
 
 Add `--json` to `mycelium machine` for the list as data.
 
-Only resuming asks you on the machine first, because it starts something.
-Stopping, renaming, unbinding, saving a session and turning sync on or off
-don't ask, so anyone who can reach the hub can ask your runner for them.
-None of them starts a program, and a saved session must be one your agent
-CLI could have made.
+Restarting and installing herdr's integrations ask you on the machine first:
+one starts a program, the other changes an agent CLI's settings. Stopping,
+renaming, unbinding and turning sync on or off don't ask, so anyone who can
+reach the hub can ask your runner for them. None of them starts anything.
 
 ## You say yes on the machine
 

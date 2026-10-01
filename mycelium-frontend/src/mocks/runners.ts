@@ -52,18 +52,20 @@ export const MOCK_RUNNER_ID = "morgans-mbp";
 
 /**
  * Every agent on the mock machine, the morning after herdr's server restarted:
- * @builder came back in its own pane and is working, @reviewer's pane is open
- * but empty (its session saved, so it can be resumed), the storefront
+ * @builder is working again, @reviewer's and @scribe's panes are open but
+ * empty (herdr had no integration to bring them back with), the storefront
  * workspace has nothing syncing it, one old pane is gone, and herdr's server
- * is behind its client.
+ * is older than Mycelium needs.
  */
 function machineReport(): MachineReport {
   return {
     machine: "morgans-mbp",
     herdr: true,
     herdr_server: "0.8.0",
-    herdr_client: "0.9.1",
+    herdr_client: "0.9.3",
     omnigent_url: null,
+    herdr_minimum: "0.9.3",
+    missing_integrations: ["claude", "opencode"],
     workspaces: [
       {
         id: "w3",
@@ -80,11 +82,11 @@ function machineReport(): MachineReport {
             ref: "w3:p1",
             state: "working",
             folder: "/Users/morgan/code/shop",
-            session: "5f3c9e10-7b2a-4c11-9d8e-2b6a1fe0a1e2",
             kind: "claude",
             workspace: "w3",
             started_by: "runner",
-            resumable: false,
+            restartable: false,
+            restores: false,
           },
           {
             handle: "reviewer",
@@ -93,12 +95,11 @@ function machineReport(): MachineReport {
             ref: "w3:p2",
             state: "stopped",
             folder: "/Users/morgan/code/shop",
-            session: "9b07c2d4-1e5f-4a8b-b3c6-7d9e0f1a44c0",
             kind: "claude",
             workspace: "w3",
             started_by: "runner",
-            resumable: true,
-            resume_command: "cd ~/code/shop && claude --resume 9b07c2d4-1e5f-4a8b-b3c6-7d9e0f1a44c0",
+            restartable: true,
+            restores: false,
           },
         ],
       },
@@ -117,26 +118,25 @@ function machineReport(): MachineReport {
             ref: "w5:p1",
             state: "idle",
             folder: "/Users/morgan/code/website",
-            session: null,
             kind: "claude",
             workspace: "w5",
             started_by: "you",
-            resumable: false,
+            restartable: false,
+            restores: false,
           },
           {
-            // A CLI Mycelium can't resume: seen, stopped, unbound, never resumed.
+            // Another agent CLI: restarted, and brought back by herdr, the same way.
             handle: "scribe",
             room: "storefront",
             host: "herdr",
             ref: "w5:p2",
             state: "stopped",
             folder: "/Users/morgan/code/website",
-            session: null,
-            kind: "codex",
+            kind: "opencode",
             workspace: "w5",
             started_by: "you",
-            resumes: false,
-            resumable: false,
+            restartable: true,
+            restores: false,
           },
         ],
       },
@@ -155,11 +155,11 @@ function machineReport(): MachineReport {
             ref: "w2:pV",
             state: "gone",
             folder: null,
-            session: null,
             kind: "claude",
             workspace: null,
             started_by: "you",
-            resumable: false,
+            restartable: false,
+            restores: null,
           },
         ],
       },
@@ -172,13 +172,34 @@ function machineReport(): MachineReport {
 function problemsOf(report: MachineReport): MachineReport["problems"] {
   const agents = report.workspaces.flatMap((w) => w.agents);
   const out: MachineReport["problems"] = [];
-  const resumable = agents.filter((a) => a.resumable);
-  if (resumable.length > 0) {
+  const names = (list: typeof agents) => list.map((a) => `@${a.handle}`).join(" and ");
+  const restartable = agents.filter((a) => a.restartable);
+  if (restartable.length > 0) {
     out.push({
       kind: "stopped",
-      text: `${resumable.map((a) => `@${a.handle}`).join(" and ")} stopped. ${resumable.length > 1 ? "Their sessions are" : "Its session is"} saved, so they can pick up where they left off.`,
-      fix: "mycelium machine resume --all",
-      handles: resumable.map((a) => a.handle),
+      text: `${names(restartable)} stopped. Restarting starts ${restartable.length === 1 ? "it" : "each"} again in its folder, as itself, to catch up from the room.`,
+      fix: "mycelium machine restart --all",
+      handles: restartable.map((a) => a.handle),
+      workspace: null,
+    });
+  }
+  const lost = agents.filter((a) => a.state === "gone" && !a.restartable);
+  if (lost.length > 0) {
+    out.push({
+      kind: "lost",
+      text: `${names(lost)} ${lost.length === 1 ? "has" : "have"} no pane any more and no folder on record, so there's nothing to restart. Unbinding forgets the pane. ${lost.length === 1 ? "It stays" : "They stay"} in the room.`,
+      fix: "mycelium machine unbind --gone",
+      handles: lost.map((a) => a.handle),
+      workspace: null,
+    });
+  }
+  if (report.missing_integrations.length > 0) {
+    const without = agents.filter((a) => a.restores === false);
+    out.push({
+      kind: "no_restore",
+      text: `If herdr restarts, ${names(without)} won't come back on ${without.length === 1 ? "its" : "their"} own: herdr's integration for ${report.missing_integrations.join(", ")} isn't installed (or is out of date). Installing it adds a hook to that agent CLI's own settings.`,
+      fix: "mycelium machine integrations --install",
+      handles: without.map((a) => a.handle),
       workspace: null,
     });
   }
@@ -194,32 +215,11 @@ function problemsOf(report: MachineReport): MachineReport["problems"] {
       });
     }
   }
-  const cannot = agents.filter((a) => a.state === "stopped" && a.resumes === false);
-  if (cannot.length > 0) {
-    const one = cannot.length === 1;
-    out.push({
-      kind: "unresumable",
-      text: `${cannot.map((a) => `@${a.handle}`).join(" and ")} stopped, and Mycelium can't resume ${one ? "its agent CLI, so it" : "their agent CLIs, so they"} can't pick up where ${one ? "it" : "they"} left off. ${one ? "Start it again in its pane" : "Start each again in its pane"}; the room keeps ${one ? "its" : "their"} place.`,
-      fix: null,
-      handles: cannot.map((a) => a.handle),
-      workspace: null,
-    });
-  }
-  const lost = agents.filter((a) => a.state === "gone" && !a.resumable);
-  if (lost.length > 0) {
-    out.push({
-      kind: "unresumable",
-      text: `${lost.map((a) => `@${a.handle}`).join(" and ")} ${lost.length === 1 ? "has" : "have"} no pane any more and no saved session, so there's nothing to resume. Unbinding forgets the pane. ${lost.length === 1 ? "It stays" : "They stay"} in the room.`,
-      fix: "mycelium machine unbind --gone",
-      handles: lost.map((a) => a.handle),
-      workspace: null,
-    });
-  }
-  if (report.herdr_server && report.herdr_client && report.herdr_server < report.herdr_client) {
+  if (report.herdr_server && report.herdr_server !== report.herdr_client) {
     out.push({
       kind: "herdr_update",
-      text: `herdr's server (${report.herdr_server}) is older than its client (${report.herdr_client}). Updating restarts the server, which stops every agent in it; resume them after.`,
-      fix: "herdr server stop  (then: mycelium machine resume --all)",
+      text: `herdr's server is ${report.herdr_server}, out of date: Mycelium needs ${report.herdr_minimum} or newer. This machine has ${report.herdr_client}, which starts when the old server stops. Restarting herdr's server stops the agents in it; those with herdr's integration come back on their own, and the rest can be restarted from here.`,
+      fix: "herdr server stop",
       handles: [],
       workspace: null,
     });
@@ -323,12 +323,12 @@ function settle(job: StoredJob): void {
     if (agent) agent.status = "stopped";
     const onMachine = machineAgent(spec.handle, spec.room);
     if (onMachine) onMachine.state = "stopped";
-  } else if (job.kind === "resume") {
+  } else if (job.kind === "restart") {
     const raw = job.spec as { all?: boolean; agents?: { handle: string; room: string | null }[] };
     const all = machine.workspaces.flatMap((w) => w.agents);
-    const picked = raw.all ? all.filter((a) => a.resumable) : (raw.agents ?? []).map((a) => machineAgent(a.handle, a.room));
+    const picked = raw.all ? all.filter((a) => a.restartable) : (raw.agents ?? []).map((a) => machineAgent(a.handle, a.room));
     for (const agent of picked) {
-      if (agent) Object.assign(agent, { state: "idle", resumable: false });
+      if (agent) Object.assign(agent, { state: "idle", restartable: false });
     }
   } else if (job.kind === "sync") {
     const w = machine.workspaces.find((x) => x.id === spec.workspace);
@@ -339,18 +339,15 @@ function settle(job: StoredJob): void {
   } else if (job.kind === "unbind") {
     for (const w of machine.workspaces) {
       w.agents = (job.spec as { gone?: boolean }).gone
-        ? w.agents.filter((a) => !(a.state === "gone" && !a.resumable))
+        ? w.agents.filter((a) => !(a.state === "gone" && !a.restartable))
         : w.agents.filter((a) => !(a.handle === spec.handle && (!spec.room || a.room === spec.room)));
     }
-  } else if (job.kind === "session") {
-    const agent = machineAgent(spec.handle, spec.room);
-    if ((job.spec as { find?: boolean }).find) {
-      job.result = {
-        found: { id: "4d2a77e1-0c3b-4f9e-8a51-6e2b9c7d3f10", path: "~/.claude/projects/…", modified: iso(18) },
-      };
-    } else if (agent) {
-      agent.session = String((job.spec as { session?: string }).session ?? "");
+  } else if (job.kind === "integrations") {
+    // herdr can now bring back every agent whose pane is open.
+    for (const agent of machine.workspaces.flatMap((w) => w.agents)) {
+      if (agent.restores === false) agent.restores = true;
     }
+    machine.missing_integrations = [];
   }
   machine.problems = problemsOf(machine);
 }

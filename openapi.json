@@ -2117,7 +2117,7 @@
           "runners"
         ],
         "summary": "Machine Action",
-        "description": "Do something to an agent on this machine, from the Machines page.\n\nAny agent on the machine, not only one this runner started: resume a\nstopped one in its saved session (the runner asks the person there first,\nas it does for a launch), stop, rename or unbind one, find or save the\nsession one resumes in, or choose whether the runner keeps a workspace\nsynced. ``mycelium machine`` does the same on the machine itself.",
+        "description": "Do something to an agent on this machine, from the Machines page.\n\nAny agent on the machine, not only one this runner started: restart a\nstopped one, stop, rename or unbind one, or choose whether the runner keeps\na workspace synced; or install herdr's integrations, so herdr brings agents\nback after it restarts. Restarting and installing ask the person at the\nmachine first, as a launch does. ``mycelium machine`` does the same there.",
         "operationId": "machine_action_api_runners__runner_id__machine_post",
         "parameters": [
           {
@@ -6209,12 +6209,12 @@
           "kind": {
             "type": "string",
             "enum": [
-              "resume",
+              "restart",
               "stop",
               "rename",
               "unbind",
               "sync",
-              "session"
+              "integrations"
             ],
             "title": "Kind"
           },
@@ -6290,24 +6290,6 @@
               }
             ],
             "title": "On"
-          },
-          "session": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 128,
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Session"
-          },
-          "find": {
-            "type": "boolean",
-            "title": "Find",
-            "default": false
           }
         },
         "type": "object",
@@ -6315,7 +6297,7 @@
           "kind"
         ],
         "title": "MachineAction",
-        "description": "Something to do to a machine's agents, from the Machines page; queued as a job.\n\nEach kind reads the fields it needs: ``resume`` takes ``agents`` or ``all``;\n``stop``, ``rename`` (with ``name``), ``unbind`` and ``session`` (with\n``session`` to save one, or ``find``) take ``handle`` and ``room``;\n``unbind`` may take ``gone`` instead; ``sync`` takes ``workspace`` and ``on``."
+        "description": "Something to do to a machine's agents, from the Machines page; queued as a job.\n\nEach kind reads the fields it needs: ``restart`` takes ``agents`` or ``all``;\n``stop``, ``rename`` (with ``name``) and ``unbind`` take ``handle`` and\n``room``; ``unbind`` may take ``gone`` instead; ``sync`` takes ``workspace``\nand ``on``; ``integrations`` (install herdr's) takes nothing."
       },
       "MachineAgentRead": {
         "properties": {
@@ -6360,18 +6342,6 @@
             ],
             "title": "Folder"
           },
-          "session": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Session",
-            "description": "The agent CLI's saved session, which resuming picks up"
-          },
           "kind": {
             "anyOf": [
               {
@@ -6403,28 +6373,23 @@
             "title": "Started By",
             "default": "you"
           },
-          "resumes": {
+          "restartable": {
             "type": "boolean",
-            "title": "Resumes",
-            "description": "Whether its agent CLI can ever be resumed, saved session or not",
+            "title": "Restartable",
+            "description": "Stopped or gone, with the folder and kind to start it again",
             "default": false
           },
-          "resumable": {
-            "type": "boolean",
-            "title": "Resumable",
-            "default": false
-          },
-          "resume_command": {
+          "restores": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "boolean"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Resume Command",
-            "description": "The command resuming it runs, as its machine builds it"
+            "title": "Restores",
+            "description": "Whether herdr brings it back in its own session after herdr restarts (its CLI's herdr integration is current); null when unknown"
           }
         },
         "type": "object",
@@ -6470,8 +6435,9 @@
             "type": "string",
             "enum": [
               "stopped",
-              "unresumable",
+              "lost",
               "unsynced",
+              "no_restore",
               "herdr_update",
               "herdr_down"
             ],
@@ -6563,6 +6529,26 @@
             ],
             "title": "Omnigent Url"
           },
+          "herdr_minimum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Herdr Minimum",
+            "description": "The oldest herdr Mycelium works with"
+          },
+          "missing_integrations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Integrations",
+            "description": "herdr integrations not current for agent CLIs with agents running here"
+          },
           "workspaces": {
             "items": {
               "$ref": "#/components/schemas/MachineWorkspaceRead"
@@ -6628,6 +6614,26 @@
               }
             ],
             "title": "Omnigent Url"
+          },
+          "herdr_minimum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Herdr Minimum",
+            "description": "The oldest herdr Mycelium works with"
+          },
+          "missing_integrations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Integrations",
+            "description": "herdr integrations not current for agent CLIs with agents running here"
           },
           "workspaces": {
             "items": {
@@ -8216,11 +8222,11 @@
               "stop",
               "scan",
               "swarm",
-              "resume",
+              "restart",
               "rename",
               "unbind",
               "sync",
-              "session"
+              "integrations"
             ],
             "title": "Kind"
           },

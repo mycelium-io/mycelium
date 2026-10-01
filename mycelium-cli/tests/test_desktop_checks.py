@@ -114,38 +114,48 @@ def test_a_hub_reached_at_its_ui_answers_under_api(monkeypatch: pytest.MonkeyPat
     assert tried == ["https://hub.example.com/health", "https://hub.example.com/api/health"]
 
 
-def _here(*problems: Problem) -> Report:
+def _here(*problems: Problem, server: str = "0.9.3", client: str = "0.9.4") -> Report:
     return Report(
         machine="mac",
         herdr=True,
-        herdr_server="0.8.0",
-        herdr_client="0.9.1",
+        herdr_server=server,
+        herdr_client=client,
         omnigent_url=None,
         workspaces=[],
         problems=list(problems),
     )
 
 
-def test_an_old_herdr_server_is_a_warning_with_its_fix(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(checks.shutil, "which", lambda _name: "/x")
+@pytest.fixture
+def herdr_up(monkeypatch: pytest.MonkeyPatch) -> None:
     from mycelium.integrations.herdr import HerdrBridge
 
     monkeypatch.setattr(HerdrBridge, "binary_present", lambda _self: True)
     monkeypatch.setattr(HerdrBridge, "available", lambda _self: True)
+
+
+def test_a_herdr_server_behind_its_client_is_a_warning(herdr_up: None):
     update = Problem(kind="herdr_update", text="older", fix="herdr server stop")
     result = checks.herdr(_here(update))
     assert result.status == "warning"
-    assert result.message == "server 0.8.0, client 0.9.1"
+    assert result.message == "server 0.9.3, client 0.9.4"
     assert "Fix: herdr server stop" in result.details
 
 
+def test_a_herdr_older_than_mycelium_needs_is_an_error(herdr_up: None):
+    update = Problem(kind="herdr_update", text="out of date", fix="herdr server stop")
+    result = checks.herdr(_here(update, server="0.8.0", client="0.9.3"))
+    assert result.status == "error"
+    assert result.message == "out of date (needs 0.9.3 or newer)"
+
+
 def test_the_agents_here_name_each_problem_and_its_fix():
-    stopped = Problem(kind="stopped", text="@a stopped.", fix="mycelium machine resume --all")
+    stopped = Problem(kind="stopped", text="@a stopped.", fix="mycelium machine restart --all")
     update = Problem(kind="herdr_update", text="older", fix="herdr server stop")
     result = checks.agents_here(_here(stopped, update))
     assert result.status == "warning"
     assert result.message == "1 problem"
     assert "@a stopped." in result.details
-    assert "  Fix: mycelium machine resume --all" in result.details
+    assert "  Fix: mycelium machine restart --all" in result.details
     assert all("older" not in d for d in result.details)
     assert checks.agents_here(_here()).status == "ok"

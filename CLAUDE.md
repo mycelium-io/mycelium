@@ -381,24 +381,31 @@ is no litellm dependency.
   it.** `mycelium/machine.py` reads the herdr registry, herdr's panes and
   agents, and the runner's state (and Omnigent's sessions under that host)
   into one report: per agent a state (`working|idle|blocked`, `stopped` = pane
-  open with no agent, `gone` = pane closed), folder and saved session; per
-  workspace who syncs it; and problems, each with the command that fixes it.
-  The runner sends the report with every heartbeat (`RunnerHello.machine`),
-  and the Machines page acts on it through `POST /api/runners/{id}/machine`,
-  which queues a `resume`/`stop`/`rename`/`unbind`/`sync`/`session` job;
-  `resume` asks on the machine like a launch. Resume is possible because an
-  agent whose CLI can name its session is started in one and the id is saved
-  on its mapping; a rewrite of the same pane and kind keeps it, a remap drops
-  it. **What Mycelium knows about each agent CLI lives in
-  `integrations/herdr/agents/`, one module per kind behind `AgentKind`**
-  (`claude.py` is the only one): launch args, starting in and resuming a
-  session, the session id's format (checked on every read and write, since it
-  becomes an argument) and where it keeps sessions on disk. Nothing outside
-  that package names a CLI; a kind without a module starts with no extra
-  args and can't be resumed. The hub only checks a session is a plain token.
-  A herdr server restart leaves every pane a bare shell, so sync
-  retires a managed member only when its pane is closed, never because no
-  agent is running in it, and retires nothing when the pane list can't be read.
+  open with no agent, `gone` = pane closed), kind, folder and whether herdr
+  restores it; per workspace who syncs it; and problems, each with the command
+  that fixes it. The runner sends the report with every heartbeat
+  (`RunnerHello.machine`), and the Machines page acts on it through `POST
+  /api/runners/{id}/machine`, which queues a `restart`/`stop`/`rename`/
+  `unbind`/`sync`/`integrations` job; `restart` and `integrations` ask on the
+  machine like a launch. **An agent's own session is herdr's, never
+  Mycelium's.** With herdr's integration for its CLI installed (herdr has one
+  for most CLIs), herdr reopens each agent in its own conversation after its
+  server restarts; installing one edits that CLI's settings, so it happens
+  only on a yes (`mycelium machine integrations --install`; the Mac app asks
+  once, first run or first launch, and the answer is kept in
+  `~/.mycelium/herdr/restore.json`). What Mycelium does is **restart** a
+  stopped agent: the same kind in its folder and pane, as itself, told to
+  catch up from the room, which is the same for every CLI. Mycelium needs
+  herdr `MIN_VERSION` (0.9.3, `integrations/herdr/bridge.py`) or newer and
+  reports an older server or client as a problem; the Mac app ships that
+  herdr (`stage-sidecars.sh`), offers to restart an older server once a
+  launch, and its supervisor starts its own herdr when an adopted one goes
+  away (`Component.rechecks`). What Mycelium adds to an agent CLI's command
+  line lives in `integrations/herdr/agents/`, one module per kind (only
+  `claude.py`, for `--allowedTools`). A herdr server restart leaves every
+  pane a bare shell, so sync retires a managed member only when its pane is
+  closed, never because no agent is running in it, and retires nothing when
+  the pane list can't be read.
 - **"Who am I" has one answer, from ordered sources, and a folder can join a
   room.** Every command needs the hub, the handle, the room and a credential;
   `mycelium/caller.py` answers all four from the same order: a flag, the

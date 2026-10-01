@@ -299,31 +299,16 @@ START_ATTEMPTS = 3
 START_RETRY_S = 1.5
 
 
-def _start_when_ready(
-    bridge: Any, handle: str, kind: str, pane: str, *, resume: str | None = None
-) -> str | None:
+def _start_when_ready(bridge: Any, handle: str, kind: str, pane: str) -> None:
     """Start ``kind`` in ``pane``, giving a just-opened pane's shell time to come up.
 
     herdr starts an agent only in a pane sitting at its shell prompt, and a
     pane split a moment ago may still be starting its shell.
-
-    For a kind that can be resumed, the agent starts in a fresh session (or
-    ``resume``\\ s that one), and its id is returned so it can be saved with
-    the agent and picked up again after a restart. ``None`` for a kind that
-    can't.
     """
     from mycelium.integrations.herdr import HerdrError
     from mycelium.integrations.herdr.agents import agent_kind
 
-    known = agent_kind(kind)
-    args = known.launch_args()
-    session: str | None = None
-    if resume:
-        args = [*known.resume_args(resume), *args]
-        session = resume
-    elif (fresh := known.new_session()) is not None:
-        session_args, session = fresh
-        args = [*session_args, *args]
+    args = agent_kind(kind).launch_args()
     # herdr names the agent after the handle, so its list says who each one is.
     for attempt in range(1, START_ATTEMPTS + 1):
         try:
@@ -333,8 +318,7 @@ def _start_when_ready(
                 raise
             time.sleep(START_RETRY_S)
         else:
-            return session
-    return session
+            return
 
 
 def start_local(
@@ -381,15 +365,9 @@ def start_local(
         local.panes[handle] = last
 
     for handle, pane in local.panes.items():
-        session = _start_when_ready(bridge, handle, kind, pane)
+        _start_when_ready(bridge, handle, kind, pane)
         mapping = HerdrPaneMapping(
-            room=room,
-            handle=handle,
-            pane=pane,
-            kind=kind,
-            managed=True,
-            session=session,
-            cwd=str(dirs[handle]),
+            room=room, handle=handle, pane=pane, kind=kind, managed=True, cwd=str(dirs[handle])
         )
         if not write_manifests:
             bridge.registry.set(mapping)

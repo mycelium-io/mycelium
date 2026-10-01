@@ -126,6 +126,35 @@ def test_something_already_on_the_port_counts_as_running():
     assert "not started by the app" in (outside.detail or "")
 
 
+def test_one_from_outside_that_goes_away_is_started_here(monkeypatch: pytest.MonkeyPatch):
+    # An old herdr server the app adopted is stopped to update it: the app
+    # starts its own in its place, rather than leaving agents nowhere to run.
+    monkeypatch.setattr(sv, "RECHECK_S", 0.0)
+    events = Events()
+    there = threading.Event()
+    there.set()
+    herdr = comp("herdr", SLEEP, external=there.is_set, rechecks=True)
+
+    def check() -> bool:
+        if herdr.state == "running" and herdr.proc is None:
+            there.clear()  # the outside server stops
+        return herdr.proc is not None and herdr.state == "running"
+
+    run_until(hub(events, [herdr]), check)
+    details = [s["components"]["herdr"]["detail"] or "" for s in events.statuses()]
+    assert any("not started by the app" in d for d in details)
+    assert any("stopped outside the app" in d for d in details)
+
+
+def test_one_from_outside_is_left_alone_unless_it_rechecks():
+    events = Events()
+    outside = comp("hub", EXIT, external=lambda: False)
+    outside.state, outside.detail = "running", "already running (not started by the app)"
+    sup = hub(events, [outside])
+    assert sup._tick(outside) is True
+    assert outside.proc is None
+
+
 def test_the_runner_trusts_only_a_hub_the_app_started():
     # A hub the app started listens on 127.0.0.1 alone, so a launch from it
     # needs no question. One that was already there (Docker publishes to the

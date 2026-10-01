@@ -431,7 +431,7 @@ def _reconcile_workspace(
     ]
     # Retire on the pane closing, not on its agent stopping. After herdr's server
     # restarts, every pane comes back at a bare shell: those agents stopped, they
-    # didn't leave, and retiring them would throw away what resumes them.
+    # didn't leave, and retiring them would throw away what restarts them.
     try:
         open_panes = {
             str(p["pane_id"])

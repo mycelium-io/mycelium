@@ -302,11 +302,11 @@ async def stop_agent(
 async def machine_action(runner_id: str, payload: MachineAction, request: Request) -> RunnerJobRead:
     """Do something to an agent on this machine, from the Machines page.
 
-    Any agent on the machine, not only one this runner started: resume a
-    stopped one in its saved session (the runner asks the person there first,
-    as it does for a launch), stop, rename or unbind one, find or save the
-    session one resumes in, or choose whether the runner keeps a workspace
-    synced. ``mycelium machine`` does the same on the machine itself.
+    Any agent on the machine, not only one this runner started: restart a
+    stopped one, stop, rename or unbind one, or choose whether the runner keeps
+    a workspace synced; or install herdr's integrations, so herdr brings agents
+    back after it restarts. Restarting and installing ask the person at the
+    machine first, as a launch does. ``mycelium machine`` does the same there.
     """
     runner = _runner_or_404(runner_id, request)
     try:
@@ -328,7 +328,9 @@ def _machine_spec(payload: MachineAction) -> dict:
             raise HTTPException(status_code=422, detail=f"{payload.kind} needs {what}.")
 
     one = {"handle": norm_handle(payload.handle or "") or "", "room": payload.room}
-    if payload.kind == "resume":
+    if payload.kind == "integrations":
+        return {}
+    if payload.kind == "restart":
         if not payload.all:
             need(payload.agents, "agents, or all")
         return {
@@ -347,8 +349,4 @@ def _machine_spec(payload: MachineAction) -> dict:
     if payload.kind == "rename":
         need((payload.name or "").strip(), "a name")
         return one | {"name": (payload.name or "").strip()}
-    if payload.kind == "session":
-        if not payload.find:
-            need((payload.session or "").strip(), "a session, or find")
-        return one | {"find": payload.find, "session": (payload.session or "").strip() or None}
     return one

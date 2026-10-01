@@ -655,10 +655,10 @@ RunnerAgentStatus = Literal[
     "starting", "running", "idle", "working", "blocked", "stopped", "failed"
 ]
 RunnerJobKind = Literal[
-    "launch", "stop", "scan", "swarm", "resume", "rename", "unbind", "sync", "session"
+    "launch", "stop", "scan", "swarm", "restart", "rename", "unbind", "sync", "integrations"
 ]
 #: The actions the Machines page can take on a machine's agents (each queued as a job).
-MachineActionKind = Literal["resume", "stop", "rename", "unbind", "sync", "session"]
+MachineActionKind = Literal["restart", "stop", "rename", "unbind", "sync", "integrations"]
 #: ``waiting``: the runner took it and is asking the person at that machine first.
 RunnerJobStatus = Literal["queued", "running", "waiting", "done", "failed"]
 
@@ -698,18 +698,18 @@ class MachineAgentRead(BaseModel):
     ref: str = Field(..., description="Where the host runs it: a herdr pane, an Omnigent session")
     state: Literal["working", "idle", "blocked", "stopped", "gone", "unknown"]
     folder: str | None = None
-    session: str | None = Field(
-        None, description="The agent CLI's saved session, which resuming picks up"
-    )
     kind: str | None = None
     workspace: str | None = None
     started_by: Literal["runner", "you"] = "you"
-    resumes: bool = Field(
-        False, description="Whether its agent CLI can ever be resumed, saved session or not"
+    restartable: bool = Field(
+        False, description="Stopped or gone, with the folder and kind to start it again"
     )
-    resumable: bool = False
-    resume_command: str | None = Field(
-        None, description="The command resuming it runs, as its machine builds it"
+    restores: bool | None = Field(
+        None,
+        description=(
+            "Whether herdr brings it back in its own session after herdr restarts "
+            "(its CLI's herdr integration is current); null when unknown"
+        ),
     )
 
 
@@ -732,7 +732,7 @@ class MachineWorkspaceRead(BaseModel):
 class MachineProblemRead(BaseModel):
     """Something wrong on a machine, and the CLI command that fixes it."""
 
-    kind: Literal["stopped", "unresumable", "unsynced", "herdr_update", "herdr_down"]
+    kind: Literal["stopped", "lost", "unsynced", "no_restore", "herdr_update", "herdr_down"]
     text: str
     fix: str | None = None
     handles: list[str] = Field(default_factory=list)
@@ -747,6 +747,11 @@ class MachineReportRead(BaseModel):
     herdr_server: str | None = None
     herdr_client: str | None = None
     omnigent_url: str | None = None
+    herdr_minimum: str | None = Field(None, description="The oldest herdr Mycelium works with")
+    missing_integrations: list[str] = Field(
+        default_factory=list,
+        description="herdr integrations not current for agent CLIs with agents running here",
+    )
     workspaces: list[MachineWorkspaceRead] = Field(default_factory=list)
     problems: list[MachineProblemRead] = Field(default_factory=list)
 
@@ -759,10 +764,10 @@ class MachineAgentRef(BaseModel):
 class MachineAction(BaseModel):
     """Something to do to a machine's agents, from the Machines page; queued as a job.
 
-    Each kind reads the fields it needs: ``resume`` takes ``agents`` or ``all``;
-    ``stop``, ``rename`` (with ``name``), ``unbind`` and ``session`` (with
-    ``session`` to save one, or ``find``) take ``handle`` and ``room``;
-    ``unbind`` may take ``gone`` instead; ``sync`` takes ``workspace`` and ``on``.
+    Each kind reads the fields it needs: ``restart`` takes ``agents`` or ``all``;
+    ``stop``, ``rename`` (with ``name``) and ``unbind`` take ``handle`` and
+    ``room``; ``unbind`` may take ``gone`` instead; ``sync`` takes ``workspace``
+    and ``on``; ``integrations`` (install herdr's) takes nothing.
     """
 
     kind: MachineActionKind
@@ -774,11 +779,6 @@ class MachineAction(BaseModel):
     gone: bool = False
     workspace: str | None = None
     on: bool | None = None
-    #: A session id, whatever the agent CLI's format, as an opaque token. It
-    #: ends up as an argument to that CLI, so it can't start with ``-`` or carry
-    #: anything a shell reads. The machine checks it against its CLI's own format.
-    session: str | None = Field(None, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-    find: bool = False
 
 
 class RunnerHello(BaseModel):

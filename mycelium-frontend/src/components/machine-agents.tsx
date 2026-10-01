@@ -10,12 +10,17 @@
  *   <MachineAgents runner />
  *     ├─ problems     what's wrong, each with the action that fixes it
  *     ├─ workspaces   where agents run together, each with "Kept synced"
- *     │    └─ rows    state, folder, saved session, and Resume/Stop/Rename/Unbind
- *     └─ <ResumeDialog />  what resuming runs, asked here and then on the machine
+ *     │    └─ rows    state, agent CLI, folder, whether herdr brings it back,
+ *     │               and Restart/Stop/Rename/Unbind
+ *     └─ <RestartDialog />  what restarting does, asked here and then on the machine
  *
  * The report is the runner's (it sends it with every heartbeat), so it shows
  * agents the runner never started too: a pane someone bound to a room by hand.
  * Every action is a job for that runner; nothing here reaches the machine.
+ *
+ * An agent's own session is herdr's to keep: with herdr's integration for its
+ * CLI, herdr brings it back in that session after herdr restarts. Restart here
+ * starts a stopped agent again as itself, to catch up from the room.
  */
 
 import { useState } from "react";
@@ -52,10 +57,6 @@ function tilde(path: string | null): string {
   return path.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, "~");
 }
 
-function shortId(id: string): string {
-  return id.length > 12 ? `${id.slice(0, 4)}…${id.slice(-4)}` : id;
-}
-
 /** A job queued from this page, followed until the machine says how it went. */
 function useAction(runner: Runner) {
   const revalidate = useRunnersRevalidate();
@@ -78,7 +79,7 @@ function useAction(runner: Runner) {
       setBusy(false);
     }
   };
-  return { run, job, error, busy, clear: () => setJobId(null) };
+  return { run, job, error, busy };
 }
 
 /** How a queued action is going, said in a line (nothing once it's done). */
@@ -96,10 +97,9 @@ function JobLine({ job, error }: { job: RunnerJob | null; error: string | null }
 
 export function MachineAgents({ runner }: { runner: Runner }) {
   const report = runner.machine;
-  const [resuming, setResuming] = useState<MachineAgent[] | null>(null);
+  const [restarting, setRestarting] = useState<MachineAgent[] | null>(null);
   if (!report) return null;
-  const agents = report.workspaces.flatMap((w) => w.agents);
-  const resumable = agents.filter((a) => a.resumable);
+  const restartable = report.workspaces.flatMap((w) => w.agents).filter((a) => a.restartable);
 
   return (
     <div className="space-y-4">
@@ -107,7 +107,7 @@ export function MachineAgents({ runner }: { runner: Runner }) {
         <Problems
           runner={runner}
           problems={report.problems}
-          onResume={(handles) => setResuming(resumable.filter((a) => handles.includes(a.handle)))}
+          onRestart={(handles) => setRestarting(restartable.filter((a) => handles.includes(a.handle)))}
         />
       )}
       {report.workspaces.length === 0 ? (
@@ -116,11 +116,11 @@ export function MachineAgents({ runner }: { runner: Runner }) {
         </p>
       ) : (
         report.workspaces.map((w) => (
-          <WorkspaceGroup key={w.id} runner={runner} workspace={w} onResume={(a) => setResuming([a])} />
+          <WorkspaceGroup key={w.id} runner={runner} workspace={w} onRestart={(a) => setRestarting([a])} />
         ))
       )}
-      {resuming && (
-        <ResumeDialog runner={runner} agents={resuming} onClose={() => setResuming(null)} />
+      {restarting && (
+        <RestartDialog runner={runner} agents={restarting} onClose={() => setRestarting(null)} />
       )}
     </div>
   );
@@ -129,11 +129,11 @@ export function MachineAgents({ runner }: { runner: Runner }) {
 function Problems({
   runner,
   problems,
-  onResume,
+  onRestart,
 }: {
   runner: Runner;
   problems: MachineProblem[];
-  onResume: (handles: string[]) => void;
+  onRestart: (handles: string[]) => void;
 }) {
   return (
     <div className="rounded-md border border-border">
@@ -142,7 +142,7 @@ function Problems({
       </div>
       <ul>
         {problems.map((p, i) => (
-          <ProblemRow key={`${p.kind}-${i}`} runner={runner} problem={p} onResume={onResume} />
+          <ProblemRow key={`${p.kind}-${i}`} runner={runner} problem={p} onRestart={onRestart} />
         ))}
       </ul>
     </div>
@@ -152,48 +152,47 @@ function Problems({
 const PROBLEM_TONE: Record<MachineProblem["kind"], string> = {
   stopped: "var(--red)",
   herdr_down: "var(--red)",
-  herdr_update: "var(--yellow)",
+  herdr_update: "var(--red)",
+  no_restore: "var(--yellow)",
   unsynced: "var(--yellow)",
-  unresumable: "var(--faint)",
+  lost: "var(--faint)",
 };
 
 function ProblemRow({
   runner,
   problem,
-  onResume,
+  onRestart,
 }: {
   runner: Runner;
   problem: MachineProblem;
-  onResume: (handles: string[]) => void;
+  onRestart: (handles: string[]) => void;
 }) {
   const action = useAction(runner);
+  const off = !runner.connected || action.busy;
   let button: React.ReactNode = null;
   if (problem.kind === "stopped") {
     button = (
-      <Button size="xs" onClick={() => onResume(problem.handles)} disabled={!runner.connected}>
-        Resume {problem.handles.length}…
+      <Button size="xs" onClick={() => onRestart(problem.handles)} disabled={!runner.connected}>
+        Restart {problem.handles.length}…
+      </Button>
+    );
+  } else if (problem.kind === "no_restore") {
+    // It changes each agent CLI's own settings, so the machine asks first.
+    button = (
+      <Button size="xs" variant="outline" disabled={off} onClick={() => action.run({ kind: "integrations" })}>
+        Install integrations
       </Button>
     );
   } else if (problem.kind === "unsynced" && problem.workspace) {
     const workspace = problem.workspace;
     button = (
-      <Button
-        size="xs"
-        variant="outline"
-        disabled={!runner.connected || action.busy}
-        onClick={() => action.run({ kind: "sync", workspace, on: true })}
-      >
+      <Button size="xs" variant="outline" disabled={off} onClick={() => action.run({ kind: "sync", workspace, on: true })}>
         Keep it synced
       </Button>
     );
-  } else if (problem.kind === "unresumable" && problem.fix?.includes("--gone")) {
+  } else if (problem.kind === "lost") {
     button = (
-      <Button
-        size="xs"
-        variant="outline"
-        disabled={!runner.connected || action.busy}
-        onClick={() => action.run({ kind: "unbind", gone: true })}
-      >
+      <Button size="xs" variant="outline" disabled={off} onClick={() => action.run({ kind: "unbind", gone: true })}>
         Unbind
       </Button>
     );
@@ -255,11 +254,11 @@ function SyncSwitch({ runner, workspace }: { runner: Runner; workspace: MachineW
 function WorkspaceGroup({
   runner,
   workspace,
-  onResume,
+  onRestart,
 }: {
   runner: Runner;
   workspace: MachineWorkspace;
-  onResume: (agent: MachineAgent) => void;
+  onRestart: (agent: MachineAgent) => void;
 }) {
   // A herdr workspace bound to a room can be synced; the gone panes and
   // Omnigent's sessions are kept by the runner or not at all.
@@ -290,13 +289,13 @@ function WorkspaceGroup({
                 <th className="px-2.5 py-1.5 font-medium">Agent</th>
                 <th className="px-2.5 py-1.5 font-medium">State</th>
                 <th className="hidden px-2.5 py-1.5 font-medium md:table-cell">Folder</th>
-                <th className="px-2.5 py-1.5 font-medium">Session</th>
+                <th className="px-2.5 py-1.5 font-medium">If herdr restarts</th>
                 <th className="px-2.5 py-1.5" />
               </tr>
             </thead>
             <tbody>
               {workspace.agents.map((a) => (
-                <AgentRow key={`${a.room}/${a.handle}`} runner={runner} agent={a} onResume={onResume} />
+                <AgentRow key={`${a.room}/${a.handle}`} runner={runner} agent={a} onRestart={onRestart} />
               ))}
             </tbody>
           </table>
@@ -306,14 +305,28 @@ function WorkspaceGroup({
   );
 }
 
+/** What happens to an agent if herdr's server restarts. */
+function Restores({ agent }: { agent: MachineAgent }) {
+  if (agent.host !== "herdr" || agent.restores === null) return <span className="text-faint">–</span>;
+  return agent.restores ? (
+    <span className="text-muted-foreground" title="herdr's integration for its agent CLI is installed">
+      Comes back
+    </span>
+  ) : (
+    <span className="text-yellow" title="herdr's integration for its agent CLI isn't installed">
+      Stops
+    </span>
+  );
+}
+
 function AgentRow({
   runner,
   agent,
-  onResume,
+  onRestart,
 }: {
   runner: Runner;
   agent: MachineAgent;
-  onResume: (agent: MachineAgent) => void;
+  onRestart: (agent: MachineAgent) => void;
 }) {
   const action = useAction(runner);
   const [renaming, setRenaming] = useState(false);
@@ -328,7 +341,10 @@ function AgentRow({
     <tr className={cn("border-b border-hairline last:border-b-0 align-top", agent.state === "stopped" && "bg-red/[0.04]")}>
       <td className="px-2.5 py-1.5">
         <span className="font-mono text-text">@{agent.handle}</span>
-        <span className="block text-micro text-faint">{agent.room}</span>
+        <span className="block text-micro text-faint">
+          {agent.room}
+          {agent.kind ? ` · ${agent.kind}` : ""}
+        </span>
       </td>
       <td className="px-2.5 py-1.5">
         <span className="inline-flex items-center gap-1.5 text-micro text-text">
@@ -340,20 +356,7 @@ function AgentRow({
         {tilde(agent.folder)}
       </td>
       <td className="px-2.5 py-1.5 text-micro">
-        {agent.session ? (
-          <span className="font-mono text-faint" title={agent.session}>
-            {shortId(agent.session)}
-          </span>
-        ) : herdr && agent.resumes !== false ? (
-          <FindSession runner={runner} agent={agent} />
-        ) : herdr ? (
-          // Its agent CLI can't be resumed, so there is no session to find.
-          <span className="text-faint" title="Mycelium can't resume this agent CLI">
-            can&apos;t resume
-          </span>
-        ) : (
-          <span className="text-faint">not saved</span>
-        )}
+        <Restores agent={agent} />
       </td>
       <td className="px-2.5 py-1.5">
         <div className="flex flex-wrap items-center justify-end gap-1.5">
@@ -383,9 +386,9 @@ function AgentRow({
             </form>
           ) : (
             <>
-              {agent.resumable && (
-                <Button size="xs" disabled={off} onClick={() => onResume(agent)}>
-                  Resume
+              {agent.restartable && (
+                <Button size="xs" disabled={off} onClick={() => onRestart(agent)}>
+                  Restart
                 </Button>
               )}
               {running && herdr && (
@@ -411,48 +414,8 @@ function AgentRow({
   );
 }
 
-/**
- * For an agent nothing saved a session for: find the newest conversation in
- * its folder, show it, and save it only once the person says it's the one.
- */
-function FindSession({ runner, agent }: { runner: Runner; agent: MachineAgent }) {
-  const finding = useAction(runner);
-  const saving = useAction(runner);
-  const found = finding.job?.status === "done" ? (finding.job.result?.found as { id: string; modified: string } | undefined) : undefined;
-  const ref = { handle: agent.handle, room: agent.room };
-
-  if (saving.job?.status === "done") return <span className="font-mono text-faint">saved</span>;
-  if (found) {
-    return (
-      <span className="inline-flex flex-wrap items-center gap-1.5">
-        <span className="font-mono text-text" title={`${found.id}, last written ${found.modified}`}>
-          {shortId(found.id)}
-        </span>
-        <Button size="xs" variant="outline" onClick={() => saving.run({ kind: "session", ...ref, session: found.id })}>
-          It&apos;s this one
-        </Button>
-        <JobLine job={saving.job} error={saving.error} />
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex flex-wrap items-center gap-1.5 text-faint">
-      not saved ·
-      <button
-        type="button"
-        disabled={!runner.connected || finding.busy}
-        onClick={() => finding.run({ kind: "session", ...ref, find: true })}
-        className="text-accent hover:underline disabled:opacity-40"
-      >
-        find it
-      </button>
-      <JobLine job={finding.job} error={finding.error} />
-    </span>
-  );
-}
-
-/** What resuming runs, shown before anything starts. The machine asks once more. */
-function ResumeDialog({
+/** What restarting does, shown before anything starts. The machine asks once more. */
+function RestartDialog({
   runner,
   agents,
   onClose,
@@ -471,10 +434,11 @@ function ResumeDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-xl">
         <DialogTitle>
-          Resume {agents.length} {agents.length === 1 ? "agent" : "agents"} on {runner.label || runner.id}?
+          Restart {agents.length} {agents.length === 1 ? "agent" : "agents"} on {runner.label || runner.id}?
         </DialogTitle>
         <DialogDescription>
-          Each starts in its own pane and folder, as itself, and picks up its conversation where it stopped.
+          Each starts again in its own folder, as itself. It won&apos;t remember what it was doing, so it reads its
+          notes and catches up from the room.
         </DialogDescription>
         <ul className="space-y-2">
           {agents.map((a) => {
@@ -492,22 +456,19 @@ function ResumeDialog({
                       return next;
                     })
                   }
-                  aria-label={`Resume @${a.handle}`}
+                  aria-label={`Restart @${a.handle}`}
                   className="mt-1"
                 />
                 <div className="min-w-0">
                   <p className="text-label">
                     <span className="font-mono text-text">@{a.handle}</span>{" "}
                     <span className="text-muted-foreground">
-                      in {a.room} · {a.host} {a.workspace ?? ""}, pane {a.ref}
+                      in {a.room} · {a.kind ?? "agent"} in {tilde(a.folder)}
                     </span>
                   </p>
-                  {/* Built on the machine, by its agent CLI's own rules. */}
-                  {a.resume_command && (
-                    <p className="mt-1 break-all font-mono text-micro text-muted-foreground">
-                      {a.resume_command}
-                    </p>
-                  )}
+                  <p className="mt-0.5 text-micro text-faint">
+                    {a.state === "stopped" ? `In its pane, ${a.ref}` : "In a new pane beside its room's"}
+                  </p>
                 </div>
               </li>
             );
@@ -530,10 +491,10 @@ function ResumeDialog({
               <Button
                 disabled={n === 0 || action.busy || Boolean(action.job && !jobSettled(action.job))}
                 onClick={() =>
-                  action.run({ kind: "resume", agents: chosen.map((a) => ({ handle: a.handle, room: a.room })) })
+                  action.run({ kind: "restart", agents: chosen.map((a) => ({ handle: a.handle, room: a.room })) })
                 }
               >
-                Resume {n}
+                Restart {n}
               </Button>
             )}
           </span>

@@ -62,6 +62,8 @@ BACKOFF_S = (1.0, 2.0, 4.0, 8.0, 16.0)
 MAX_RESTARTS = len(BACKOFF_S)
 #: How often the supervisor looks at its processes.
 TICK_S = 0.5
+#: How often a component that rechecks looks at the one provided from outside.
+RECHECK_S = 5.0
 #: How many lines of each component's output are kept to explain a crash.
 TAIL_LINES = 40
 #: Everything the supervisor says, for when something goes wrong.
@@ -214,6 +216,9 @@ class Component:
     env: dict[str, str] = field(default_factory=dict)
     #: A check that something outside the supervisor already provides this.
     external: Callable[[], bool] | None = None
+    #: Keep checking one provided from outside, and start this one when it goes
+    #: (herdr: a server stopped to update it is replaced by the app's own).
+    rechecks: bool = False
     #: Left running when the supervisor stops (herdr: agents live in it).
     outlives: bool = False
     state: State = "stopped"
@@ -222,6 +227,8 @@ class Component:
     restarts: int = 0
     started_at: float = 0.0
     retry_at: float = 0.0
+    #: When one provided from outside was last checked (with ``rechecks``).
+    checked_at: float = 0.0
     #: Its last lines of output, so a crash can say why.
     tail: deque[str] = field(default_factory=lambda: deque(maxlen=TAIL_LINES))
 
@@ -307,6 +314,7 @@ class Supervisor:
             argv=lambda: (self.locator.herdr(), None),
             ready=up,
             external=up,
+            rechecks=True,
             outlives=True,
         )
 
@@ -428,7 +436,18 @@ class Supervisor:
         if c.state in ("failed", "disabled") and c.retry_at == 0.0:
             return False
         if c.state == "running" and c.proc is None:
-            return True  # provided from outside
+            # Provided from outside. One that rechecks is looked at now and
+            # then, and started here once it's gone.
+            if not c.rechecks or c.external is None:
+                return True
+            if time.monotonic() - c.checked_at < RECHECK_S:
+                return True
+            c.checked_at = time.monotonic()
+            if c.external():
+                return True
+            c.restarts = 1  # start this one, rather than look outside again
+            self._set(c, "starting", f"{c.name} stopped outside the app; starting it")
+            return False
         if c.proc is None:
             if c.retry_at and time.monotonic() < c.retry_at:
                 return False

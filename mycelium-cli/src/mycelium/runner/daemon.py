@@ -10,8 +10,8 @@ Three loops, each on its own thread:
   on the machine (``mycelium.machine``'s report, for the Machines page),
   re-sent as a heartbeat.
 - **jobs**: a long-poll for what the app asked for (``launch``, ``stop``,
-  ``scan``, ``swarm``, and the Machines page's ``resume``, ``rename``,
-  ``unbind``, ``sync`` and ``session``), done one at a time and reported back.
+  ``scan``, ``swarm``, and the Machines page's ``restart``, ``rename``,
+  ``unbind``, ``sync`` and ``integrations``), done one at a time and reported back.
 - **sync**: presence up and doorbells down for the agents it started, so they
   hear their turns.
 
@@ -58,8 +58,9 @@ from mycelium.integrations.herdr import HerdrBridge, HerdrError
 from mycelium.runner import approvals, frameworks
 from mycelium.runner.hosts import AgentHost, HerdrHost, HostError, OmnigentHost
 
-#: Jobs that start something on this machine, and so wait for a yes here.
-ASK_FIRST = frozenset({"launch", "swarm", "resume"})
+#: Jobs that start something on this machine, or change an agent CLI's own
+#: settings, and so wait for a yes here.
+ASK_FIRST = frozenset({"launch", "swarm", "restart", "integrations"})
 #: How much of an agent's instructions the question shows.
 NOTES_PREVIEW = 400
 
@@ -546,12 +547,12 @@ class Runner:
         except this_machine.MachineError as e:
             raise JobError(str(e)) from e
 
-    def _resumable(self, spec: dict[str, Any]) -> list[this_machine.Agent]:
+    def _restartable(self, spec: dict[str, Any]) -> list[this_machine.Agent]:
         r = this_machine.report(
             self.config, bridge=self.bridge, state=self.state, machine=self.label
         )
         if spec.get("all"):
-            agents = [a for a in r.agents if a.resumable]
+            agents = [a for a in r.agents if a.restartable]
         else:
             try:
                 agents = [
@@ -561,25 +562,27 @@ class Runner:
             except this_machine.MachineError as e:
                 raise JobError(str(e)) from e
         if not agents:
-            raise JobError(f"No stopped agent on {self.label} has a session to resume.")
-        if not_ready := [a for a in agents if not a.resumable]:
+            raise JobError(f"No agent on {self.label} has stopped.")
+        if not_ready := [a for a in agents if not a.restartable]:
             names = ", ".join(f"@{a.handle}" for a in not_ready)
-            raise JobError(f"{names} can't be resumed: no session was saved, or it's running.")
+            raise JobError(f"{names} can't be restarted: it's running, or nothing says how.")
         return agents
 
-    def resume_agents(self, spec: dict[str, Any]) -> dict[str, Any]:
-        """Start stopped agents again in their saved sessions (``mycelium machine resume``)."""
-        resumed: dict[str, str] = {}
+    def restart_agents(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Start stopped agents again, as themselves (``mycelium machine restart``)."""
+        restarted: dict[str, str] = {}
         failed: dict[str, str] = {}
-        for agent in self._resumable(spec):
+        for agent in self._restartable(spec):
             try:
-                resumed[agent.handle] = this_machine.resume(self.config, agent, bridge=self.bridge)
+                restarted[agent.handle] = this_machine.restart(
+                    self.config, agent, bridge=self.bridge
+                )
             except this_machine.MachineError as e:
                 failed[agent.handle] = str(e)
-        if failed and not resumed:
+        if failed and not restarted:
             raise JobError("; ".join(failed.values()))
-        self.log.print(f"[green]resumed[/green] {', '.join('@' + h for h in resumed)}")
-        return {"resumed": resumed, "failed": failed}
+        self.log.print(f"[green]restarted[/green] {', '.join('@' + h for h in restarted)}")
+        return {"restarted": restarted, "failed": failed}
 
     def rename_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
         agent = self._machine_agent(spec)
@@ -594,7 +597,7 @@ class Runner:
             r = this_machine.report(
                 self.config, bridge=self.bridge, state=self.state, machine=self.label
             )
-            gone = [a for a in r.agents if a.state == "gone" and not a.resumable]
+            gone = [a for a in r.agents if a.state == "gone" and not a.restartable]
             for agent in gone:
                 this_machine.unbind(agent, bridge=self.bridge)
             return {"unbound": [a.handle for a in gone]}
@@ -612,26 +615,15 @@ class Runner:
         this_machine.set_runner_sync(workspace, bool(spec.get("on")))
         return {"workspace": workspace, "on": bool(spec.get("on"))}
 
-    def agent_session(self, spec: dict[str, Any]) -> dict[str, Any]:
-        """Find (``find``) or save (``session``) the session an agent resumes in.
-
-        Finding only says what it found: a guess is shown to a person, who
-        saves it with a second job, never kept on its own.
-        """
-        agent = self._machine_agent(spec)
-        if spec.get("find"):
-            found = this_machine.find_session(agent)
-            if found is None:
-                raise JobError(f"No session found in {agent.folder or 'its folder'}.")
-            return {"found": {"id": found.id, "path": found.path, "modified": found.modified}}
-        session = str(spec.get("session") or "")
-        if not session:
-            raise JobError("Say which session, or find one.")
+    def install_integrations(self, _spec: dict[str, Any]) -> dict[str, Any]:
+        """Install herdr's integrations for the agent CLIs here (asked about first)."""
         try:
-            this_machine.save_session(agent, session, bridge=self.bridge)
+            done = this_machine.install_integrations(bridge=self.bridge)
         except this_machine.MachineError as e:
             raise JobError(str(e)) from e
-        return {"session": session}
+        if done:
+            self.log.print(f"[green]installed[/green] herdr's integration for {', '.join(done)}")
+        return {"installed": done}
 
     def swarm(self, spec: dict[str, Any], created_by: str | None) -> dict[str, Any]:
         """Open a herdr workspace for a team the hub set up, brief it, and start the kickoff.
@@ -704,11 +696,11 @@ class Runner:
         if kind == "swarm":
             return self.swarm(spec, job.get("created_by"))
         machine_jobs: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
-            "resume": self.resume_agents,
+            "restart": self.restart_agents,
             "rename": self.rename_agent,
             "unbind": self.unbind_agent,
             "sync": self.sync_workspace,
-            "session": self.agent_session,
+            "integrations": self.install_integrations,
         }
         if kind in machine_jobs:
             return machine_jobs[kind](spec)
@@ -724,15 +716,30 @@ class Runner:
         kind, spec = job.get("kind"), job.get("spec") or {}
         hub = urlparse(self.config.server.api_url).netloc or self.config.server.api_url
         asked_by = job.get("created_by")
-        if kind == "resume":
-            agents = self._resumable(spec)
-            who = f"Asked for by {'@' + asked_by if asked_by else 'someone'} on {hub}."
-            lines = "\n".join(this_machine.resume_command(a) for a in agents)
+        who = f"Asked for by {'@' + asked_by if asked_by else 'someone'} on {hub}."
+        if kind == "restart":
+            agents = self._restartable(spec)
+            lines = "\n".join(this_machine.restart_command(a) for a in agents)
             n = len(agents)
             return {
                 "kind": kind,
-                "title": f"Resume {n} agent{'s' if n != 1 else ''} on {self.label}?",
-                "message": f"Each picks up its saved conversation, as itself:\n{lines}\n\n{who}",
+                "title": f"Restart {n} agent{'s' if n != 1 else ''} on {self.label}?",
+                "message": f"Each starts again as itself and catches up from the room:\n{lines}\n\n{who}",
+                "hub": hub,
+                "asked_by": asked_by,
+            }
+        if kind == "integrations":
+            missing = this_machine.integrations(bridge=self.bridge).missing
+            if not missing:
+                raise JobError(f"herdr's integrations are already current on {self.label}.")
+            return {
+                "kind": kind,
+                "title": f"Install herdr's integrations on {self.label}?",
+                "message": (
+                    f"For {', '.join(missing)}. Each adds a hook to that agent CLI's own "
+                    "settings, so herdr can bring its agents back in their own session "
+                    f"after herdr restarts.\n\n{who}"
+                ),
                 "hub": hub,
                 "asked_by": asked_by,
             }

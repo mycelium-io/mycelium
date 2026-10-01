@@ -783,16 +783,14 @@ export interface MachineAgent {
   /** `stopped`: its pane is open but nothing runs in it. `gone`: the pane closed. */
   state: "working" | "idle" | "blocked" | "stopped" | "gone" | "unknown";
   folder: string | null;
-  /** The agent CLI's saved session, which resuming picks up. */
-  session: string | null;
+  /** The agent CLI, as herdr names its kind. */
   kind: string | null;
   workspace: string | null;
   started_by: "runner" | "you";
-  /** Whether its agent CLI can ever be resumed; a session is worth finding only then. */
-  resumes?: boolean;
-  resumable: boolean;
-  /** The command resuming it runs, as its machine builds it for its agent CLI. */
-  resume_command?: string | null;
+  /** Stopped or gone, with the folder and kind to start it again. */
+  restartable: boolean;
+  /** Whether herdr brings it back in its own session after herdr restarts; null when unknown. */
+  restores: boolean | null;
 }
 
 export interface MachineWorkspace {
@@ -808,7 +806,7 @@ export interface MachineWorkspace {
 }
 
 export interface MachineProblem {
-  kind: "stopped" | "unresumable" | "unsynced" | "herdr_update" | "herdr_down";
+  kind: "stopped" | "lost" | "unsynced" | "no_restore" | "herdr_update" | "herdr_down";
   text: string;
   /** The `mycelium machine` command that fixes it, when one does. */
   fix: string | null;
@@ -822,11 +820,15 @@ export interface MachineReport {
   herdr_server: string | null;
   herdr_client: string | null;
   omnigent_url: string | null;
+  /** The oldest herdr Mycelium works with. */
+  herdr_minimum: string | null;
+  /** herdr integrations not current for agent CLIs with agents running here. */
+  missing_integrations: string[];
   workspaces: MachineWorkspace[];
   problems: MachineProblem[];
 }
 
-export type MachineActionKind = "resume" | "stop" | "rename" | "unbind" | "sync" | "session";
+export type MachineActionKind = "restart" | "stop" | "rename" | "unbind" | "sync" | "integrations";
 
 /** Something to do to a machine's agents; queued as a job for its runner. */
 export interface MachineAction {
@@ -839,8 +841,6 @@ export interface MachineAction {
   gone?: boolean;
   workspace?: string;
   on?: boolean;
-  session?: string;
-  find?: boolean;
 }
 
 export interface Runner {
@@ -950,7 +950,7 @@ export async function stopRunnerAgent(id: string, room: string, handle: string):
   );
 }
 
-/** Ask a machine to do something to its agents (resume, stop, rename…). Throws `ApiError`. */
+/** Ask a machine to do something to its agents (restart, stop, rename…). Throws `ApiError`. */
 export async function machineAction(id: string, action: MachineAction): Promise<RunnerJob> {
   return apiFetch<RunnerJob>(`${runnerApiPath(id)}/machine`, {
     method: "POST",
