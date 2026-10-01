@@ -14,15 +14,13 @@ places that each know part of it:
 - the host itself: which panes are open, and which have an agent running.
 
 From those, :func:`report` says each agent's state (working, idle, stopped
-with its pane still open, or gone), who keeps each workspace synced, and the
-problems with the command that fixes each. ``mycelium machine`` prints it, the
-runner sends it to the hub with every heartbeat for the Machines page, and both
-do the same actions through the functions at the bottom.
+with its pane still open, or gone) and the problems, with the command that
+fixes each. ``mycelium machine`` prints it, the runner sends it to the hub with
+every heartbeat for the Machines page, and both do the same actions through the
+functions at the bottom.
 
-Who syncs a workspace is the person's choice (:func:`set_runner_sync`), and
-only one thing does at a time: each sync loop leaves a heartbeat per workspace
-(:func:`mark_syncing`), and a terminal ``herdr sync`` leaves alone a workspace
-the runner is keeping.
+The runner keeps every bound workspace synced (presence up, wakes down), so
+the one thing to say about syncing is whether the runner is running.
 
 An agent's own session is herdr's to keep, not Mycelium's: with herdr's
 integration for its CLI installed (:func:`install_integrations`), herdr brings
@@ -33,13 +31,11 @@ that stopped is restart it as itself, to catch up from the room.
 from __future__ import annotations
 
 import json
-import os
 import shlex
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
-from urllib.parse import quote
 
 from mycelium.filesystem import get_mycelium_dir
 from mycelium.integrations.herdr import HerdrBridge, HerdrError, HerdrPaneMapping
@@ -55,7 +51,6 @@ if TYPE_CHECKING:
     from mycelium.runner.daemon import State
 
 State_ = Literal["working", "idle", "blocked", "stopped", "gone", "unknown"]
-SyncedBy = Literal["runner", "terminal"]
 
 #: herdr's agent states, as this report says them.
 _HERDR_STATE: dict[str, State_] = {
@@ -64,8 +59,6 @@ _HERDR_STATE: dict[str, State_] = {
     "done": "idle",
     "blocked": "blocked",
 }
-#: A sync heartbeat older than this means nothing is syncing that workspace.
-FRESH_S = 30.0
 #: Where agents whose pane is gone, with no workspace to say, are grouped.
 NOWHERE = "gone"
 
@@ -74,91 +67,8 @@ class MachineError(Exception):
     """An action that couldn't be done, said for a person."""
 
 
-# ── who syncs what ───────────────────────────────────────────────────────────
-
-
 def _herdr_dir() -> Path:
     return get_mycelium_dir() / "herdr"
-
-
-def _chosen_path() -> Path:
-    return _herdr_dir() / "runner-sync.json"
-
-
-def _heartbeat_dir() -> Path:
-    return _herdr_dir() / "syncing"
-
-
-def runner_sync_choices() -> set[str]:
-    """Workspaces the person asked the runner to keep synced (besides the ones it opened)."""
-    try:
-        raw = json.loads(_chosen_path().read_text())
-    except (OSError, ValueError):
-        return set()
-    return {str(w) for w in raw} if isinstance(raw, list) else set()
-
-
-def set_runner_sync(workspace: str, on: bool) -> None:
-    """Ask the runner to keep ``workspace`` synced, or to stop."""
-    chosen = runner_sync_choices()
-    chosen = chosen | {workspace} if on else chosen - {workspace}
-    path = _chosen_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(sorted(chosen), indent=2) + "\n")
-
-
-def mark_syncing(workspaces: list[str], by: SyncedBy) -> None:
-    """Leave a heartbeat saying ``by`` is syncing each of ``workspaces`` right now."""
-    folder = _heartbeat_dir()
-    folder.mkdir(parents=True, exist_ok=True)
-    beat = {"by": by, "pid": os.getpid(), "at": time.time()}
-    for workspace in workspaces:
-        try:
-            body = json.dumps({**beat, "workspace": workspace})
-            (folder / f"{_safe(workspace)}.json").write_text(body)
-        except OSError:
-            continue
-
-
-def syncing() -> dict[str, SyncedBy]:
-    """Which workspaces something is syncing now, and what: runner or a terminal loop.
-
-    Keyed by the workspace's own id, which the heartbeat carries; its file name
-    is only a safe spelling of it.
-    """
-    out: dict[str, SyncedBy] = {}
-    folder = _heartbeat_dir()
-    if not folder.is_dir():
-        return out
-    now = time.time()
-    for path in folder.glob("*.json"):
-        try:
-            beat = json.loads(path.read_text())
-        except (OSError, ValueError):
-            continue
-        if now - float(beat.get("at", 0)) > FRESH_S or not _alive(int(beat.get("pid", 0))):
-            continue
-        workspace = beat.get("workspace")
-        if beat.get("by") in ("runner", "terminal") and isinstance(workspace, str):
-            out[workspace] = beat["by"]
-    return out
-
-
-def _safe(workspace: str) -> str:
-    """A file name for ``workspace``'s heartbeat: escaped, so no two ids share one."""
-    return quote(workspace, safe="")
-
-
-def _alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
 
 
 # ── the report ───────────────────────────────────────────────────────────────
@@ -206,10 +116,6 @@ class Workspace:
     label: str
     host: str
     room: str | None
-    #: What is syncing it right now (from the heartbeats), if anything.
-    synced_by: SyncedBy | None
-    #: Whether the runner is meant to keep it synced (it opened it, or the person chose so).
-    runner_keeps: bool
     agents: list[Agent] = field(default_factory=list)
 
 
@@ -217,12 +123,11 @@ class Workspace:
 class Problem:
     """Something wrong here, and the command that fixes it."""
 
-    kind: Literal["stopped", "lost", "unsynced", "no_restore", "herdr_update", "herdr_down"]
+    kind: Literal["stopped", "lost", "runner_down", "no_restore", "herdr_update", "herdr_down"]
     text: str
     #: The ``mycelium machine`` command that fixes it, when one does.
     fix: str | None = None
     handles: list[str] = field(default_factory=list)
-    workspace: str | None = None
 
 
 @dataclass
@@ -234,6 +139,9 @@ class Report:
     omnigent_url: str | None
     workspaces: list[Workspace]
     problems: list[Problem]
+    #: Whether this machine's runner is running, which is what keeps every bound
+    #: workspace synced: agents hear their mentions, and the room sees them busy.
+    runner: bool = True
     #: The oldest herdr Mycelium works with.
     herdr_minimum: str = MIN_VERSION
     #: herdr's integrations for the agent kinds in use here that aren't current,
@@ -266,6 +174,7 @@ class Report:
             "herdr_server": self.herdr_server,
             "herdr_client": self.herdr_client,
             "omnigent_url": self.omnigent_url,
+            "runner": self.runner,
             "herdr_minimum": self.herdr_minimum,
             "missing_integrations": self.missing_integrations,
             "workspaces": [
@@ -286,8 +195,13 @@ def report(
     state: State | None = None,
     omnigent: Any = None,
     machine: str | None = None,
+    runner: bool | None = None,
 ) -> Report:
-    """Everything on this machine, read now. Never raises for a host that's down."""
+    """Everything on this machine, read now. Never raises for a host that's down.
+
+    ``runner`` says whether this machine's runner is running; the runner
+    building its own report says so, anything else finds out.
+    """
     from mycelium.runner.daemon import State as RunnerState
     from mycelium.runner.daemon import machine_label, runner_dir
 
@@ -295,6 +209,10 @@ def report(
     if state is None:
         state = RunnerState.load(runner_dir() / "state.json")
     machine = machine or machine_label()
+    if runner is None:
+        from mycelium.commands.runner import running_pid
+
+        runner = running_pid() is not None
 
     herdr_up = bridge.available()
     client_version = bridge.version()
@@ -315,8 +233,6 @@ def report(
         }
 
     bindings = bridge.registry.bindings()
-    chosen = runner_sync_choices()
-    now_syncing = syncing()
     runner_panes = {a.pane: a for a in state.agents.values()}
     workspaces: dict[str, Workspace] = {}
 
@@ -328,8 +244,6 @@ def report(
                 label="Panes that are gone" if nowhere else labels.get(wid) or wid,
                 host="herdr",
                 room=None if nowhere else room or bindings.get(wid),
-                synced_by=None if nowhere else now_syncing.get(wid),
-                runner_keeps=wid in state.owned or wid in chosen,
             )
         return workspaces[wid]
 
@@ -341,7 +255,7 @@ def report(
         wid = wid or NOWHERE
         agent.workspace = None if wid == NOWHERE else wid
         workspace(wid, None if wid == NOWHERE else mapping.room).agents.append(agent)
-    # A bound workspace with no agents mapped yet still shows, so it can be synced.
+    # A bound workspace with no agents mapped yet still shows: it's synced all the same.
     for wid, room in bindings.items():
         workspace(wid, room)
 
@@ -356,7 +270,9 @@ def report(
     for w in ordered:
         w.agents.sort(key=lambda a: a.handle)
     missing = _restores(bridge, [a for w in ordered for a in w.agents if a.host == "herdr"])
-    problems = _problems(ordered, herdr_up, server_version, client_version, machine, missing)
+    problems = _problems(
+        ordered, herdr_up, server_version, client_version, machine, missing, runner=runner
+    )
     return Report(
         machine=machine,
         herdr=herdr_up,
@@ -365,6 +281,7 @@ def report(
         omnigent_url=config.runner.omnigent_url if config.runner.host == "omnigent" else None,
         workspaces=ordered,
         problems=problems,
+        runner=runner,
         missing_integrations=missing,
     )
 
@@ -439,14 +356,7 @@ def _herdr_agent(
 
 def _add_omnigent(workspaces: dict[str, Workspace], omnigent: Any, state: State) -> None:
     statuses = omnigent.statuses()
-    host = Workspace(
-        id="omnigent",
-        label="Omnigent",
-        host="omnigent",
-        room=None,
-        synced_by="runner" if syncing().get("omnigent") == "runner" else None,
-        runner_keeps=True,
-    )
+    host = Workspace(id="omnigent", label="Omnigent", host="omnigent", room=None)
     for tracked in state.agents.values():
         if not tracked.live and tracked.status != "stopped":
             continue
@@ -480,6 +390,8 @@ def _problems(
     client: str | None,
     machine: str,
     missing: list[str],
+    *,
+    runner: bool,
 ) -> list[Problem]:
     problems: list[Problem] = []
     herdr_agents = [a for w in workspaces if w.host == "herdr" for a in w.agents]
@@ -539,20 +451,25 @@ def _problems(
                 handles=[a.handle for a in without],
             )
         )
-    for w in workspaces:
-        live = [a for a in w.agents if a.state in ("working", "idle", "blocked")]
-        if w.host == "herdr" and w.room and live and w.synced_by is None and not w.runner_keeps:
-            problems.append(
-                Problem(
-                    kind="unsynced",
-                    text=(
-                        f"Nothing keeps {w.label} synced, so {_names(live)} won't be woken by "
-                        "mentions and the room can't see whether they're busy."
-                    ),
-                    fix=f"mycelium machine sync {w.id} on",
-                    workspace=w.id,
-                )
+    live = [
+        a
+        for w in workspaces
+        if w.host == "herdr" and w.room
+        for a in w.agents
+        if a.state in ("working", "idle", "blocked")
+    ]
+    if not runner and live:
+        problems.append(
+            Problem(
+                kind="runner_down",
+                text=(
+                    f"The runner isn't running on {machine}, so {_names(live)} won't be woken "
+                    "by mentions and the room can't see whether they're busy."
+                ),
+                fix="mycelium runner --detach",
+                handles=[a.handle for a in live],
             )
+        )
     update = _herdr_update(server if herdr_up else None, client)
     if update is not None:
         problems.append(update)

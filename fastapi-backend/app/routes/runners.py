@@ -303,9 +303,8 @@ async def machine_action(runner_id: str, payload: MachineAction, request: Reques
     """Do something to an agent on this machine, from the Machines page.
 
     Any agent on the machine, not only one this runner started: restart a
-    stopped one, stop, rename or unbind one, or choose whether the runner keeps
-    a workspace synced; or install herdr's integrations, so herdr brings agents
-    back after it restarts. Restarting and installing ask the person at the
+    stopped one, stop, rename or unbind one; or install herdr's integrations,
+    so herdr brings agents back after it restarts. Restarting and installing ask the person at the
     machine first, as a launch does. ``mycelium machine`` does the same there.
     """
     runner = _runner_or_404(runner_id, request)
@@ -339,10 +338,6 @@ def _machine_spec(payload: MachineAction) -> dict:
                 {"handle": norm_handle(a.handle) or "", "room": a.room} for a in payload.agents
             ],
         }
-    if payload.kind == "sync":
-        need(payload.workspace, "a workspace")
-        need(payload.on, "on")
-        return {"workspace": payload.workspace, "on": bool(payload.on)}
     if payload.kind == "unbind" and payload.gone:
         return {"gone": True}
     need(one["handle"], "a handle")

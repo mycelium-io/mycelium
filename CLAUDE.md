@@ -371,22 +371,24 @@ is no litellm dependency.
   agent's introduction instead; see the next point. A swarm with `runner` set has the hub
   register the conductor, write the members and file the task, and the runner
   runs `swarm.start_local`/`brief_local`/`kick_off` exactly as the CLI does.
-  A swarm starts in herdr whatever the runner's host. The runner also runs
-  its host's sync pass; for herdr that is `herdr sync` over the workspaces it
-  opened plus the ones the person chose (`mycelium machine sync <ws> on`,
-  `~/.mycelium/herdr/runner-sync.json`). One syncer per workspace: each
-  pass leaves a heartbeat under `~/.mycelium/herdr/syncing/`, and a terminal
-  `herdr sync` skips a workspace the runner kept fresh.
+  A swarm starts in herdr whatever the runner's host. **The runner is what
+  keeps a machine's agents synced**: its host's sync pass, for herdr a
+  `herdr sync` pass over every workspace bound to a room on this machine (the
+  ones it opened and any a person bound). Binding a workspace
+  (`mycelium herdr sync --workspace w --room r`) is the choice to sync it;
+  that command runs one pass and says whether the runner is up, and there is
+  no terminal loop. `mycelium swarm` syncs its own workspace while its view
+  is open only when no runner is running.
 - **`mycelium machine` is every agent on this machine, and what to do about
   it.** `mycelium/machine.py` reads the herdr registry, herdr's panes and
   agents, and the runner's state (and Omnigent's sessions under that host)
   into one report: per agent a state (`working|idle|blocked`, `stopped` = pane
   open with no agent, `gone` = pane closed), kind, folder and whether herdr
-  restores it; per workspace who syncs it; and problems, each with the command
-  that fixes it. The runner sends the report with every heartbeat
-  (`RunnerHello.machine`), and the Machines page acts on it through `POST
-  /api/runners/{id}/machine`, which queues a `restart`/`stop`/`rename`/
-  `unbind`/`sync`/`integrations` job; `restart` and `integrations` ask on the
+  restores it; whether the runner is running (`runner_down` when it isn't);
+  and problems, each with the command that fixes it. The runner sends the
+  report with every heartbeat (`RunnerHello.machine`), and the Machines page
+  acts on it through `POST /api/runners/{id}/machine`, which queues a
+  `restart`/`stop`/`rename`/`unbind`/`integrations` job; `restart` and `integrations` ask on the
   machine like a launch. **An agent's own session is herdr's, never
   Mycelium's.** With herdr's integration for its CLI installed (herdr has one
   for most CLIs), herdr reopens each agent in its own conversation after its

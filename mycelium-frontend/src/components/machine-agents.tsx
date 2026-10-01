@@ -9,7 +9,7 @@
  *
  *   <MachineAgents runner />
  *     ├─ problems     what's wrong, each with the action that fixes it
- *     ├─ workspaces   where agents run together, each with "Kept synced"
+ *     ├─ workspaces   where agents run together, and the room each is bound to
  *     │    └─ rows    state, agent CLI, folder, whether herdr brings it back,
  *     │               and Restart/Stop/Rename/Unbind
  *     └─ <RestartDialog />  what restarting does, asked here and then on the machine
@@ -154,7 +154,7 @@ const PROBLEM_TONE: Record<MachineProblem["kind"], string> = {
   herdr_down: "var(--red)",
   herdr_update: "var(--red)",
   no_restore: "var(--yellow)",
-  unsynced: "var(--yellow)",
+  runner_down: "var(--red)",
   lost: "var(--faint)",
 };
 
@@ -183,13 +183,6 @@ function ProblemRow({
         Install integrations
       </Button>
     );
-  } else if (problem.kind === "unsynced" && problem.workspace) {
-    const workspace = problem.workspace;
-    button = (
-      <Button size="xs" variant="outline" disabled={off} onClick={() => action.run({ kind: "sync", workspace, on: true })}>
-        Keep it synced
-      </Button>
-    );
   } else if (problem.kind === "lost") {
     button = (
       <Button size="xs" variant="outline" disabled={off} onClick={() => action.run({ kind: "unbind", gone: true })}>
@@ -211,46 +204,6 @@ function ProblemRow({
   );
 }
 
-function SyncSwitch({ runner, workspace }: { runner: Runner; workspace: MachineWorkspace }) {
-  const action = useAction(runner);
-  const pending = action.job && !jobSettled(action.job) ? action.job : null;
-  const on = pending ? Boolean(pending.spec.on) : workspace.runner_keeps;
-  const label =
-    workspace.synced_by === "terminal"
-      ? "Synced by a herdr sync loop"
-      : on
-        ? workspace.synced_by === "runner" || !runner.connected
-          ? "Kept synced by this machine"
-          : "Kept synced (runner starting)"
-        : "Not synced";
-  return (
-    <span className="ml-auto flex items-center gap-2 text-micro text-muted-foreground">
-      <JobLine job={null} error={action.error} />
-      {label}
-      <button
-        type="button"
-        role="switch"
-        aria-checked={on}
-        aria-label={`Keep ${workspace.label} synced`}
-        disabled={!runner.connected || action.busy}
-        onClick={() => action.run({ kind: "sync", workspace: workspace.id, on: !on })}
-        className={cn(
-          "relative h-4 w-7 rounded-full transition-colors disabled:opacity-40",
-          on ? "bg-accent" : "bg-border2",
-        )}
-      >
-        <span
-          aria-hidden
-          className={cn(
-            "absolute top-0.5 size-3 rounded-full transition-[left]",
-            on ? "left-3.5 bg-bg" : "left-0.5 bg-muted-foreground",
-          )}
-        />
-      </button>
-    </span>
-  );
-}
-
 function WorkspaceGroup({
   runner,
   workspace,
@@ -260,9 +213,6 @@ function WorkspaceGroup({
   workspace: MachineWorkspace;
   onRestart: (agent: MachineAgent) => void;
 }) {
-  // A herdr workspace bound to a room can be synced; the gone panes and
-  // Omnigent's sessions are kept by the runner or not at all.
-  const syncable = workspace.host === "herdr" && Boolean(workspace.room);
   return (
     <section>
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 py-1">
@@ -277,7 +227,6 @@ function WorkspaceGroup({
             </Link>
           </span>
         )}
-        {syncable && <SyncSwitch runner={runner} workspace={workspace} />}
       </div>
       {workspace.agents.length === 0 ? (
         <p className="px-1 text-micro text-muted-foreground">No agents bound here yet.</p>

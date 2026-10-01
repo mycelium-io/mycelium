@@ -395,6 +395,23 @@ def test_no_sync_pass_runs_while_a_job_opens_panes(make_runner, herdr: Herdr, hu
     assert r.state.owned == {"w9": "eng"}
 
 
+def test_the_runner_syncs_every_bound_workspace_not_only_its_own(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    # A workspace a person bound by hand hears its mentions as soon as the
+    # runner is running: binding it is the choice to sync it.
+    r = make_runner()
+    r.state.owned = {"w9": "eng"}
+    r.bridge.registry.bind("w5", "tome")
+    synced: list[list[tuple[str, str]]] = []
+    monkeypatch.setattr(
+        "mycelium.commands.herdr.sync_pass",
+        lambda _config, _bridge, targets, **_kw: synced.append(sorted(targets)),
+    )
+    r.host.sync(r.config, r.state, r.log)
+    assert synced == [[("w5", "tome"), ("w9", "eng")]]
+
+
 def test_a_swarm_job_starts_the_team_briefs_it_and_kicks_it_off(
     make_runner, herdr: Herdr, hub: Hub, tmp_path: Path
 ):

@@ -2078,7 +2078,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#herdr-connecting-a-workspace-sync",
     "t": "Connecting a workspace: sync",
     "s": "Guides › Persistent Agents (herdr)",
-    "x": "Connect a herdr workspace to a room once, and Mycelium keeps them in step: # Connect herdr workspace w2 to the room my-project, then keep watching. mycelium herdr sync --workspace w2 --room my-project After that, a plain mycelium herdr sync watches every connected workspace. On each pass it: adds and removes members. Every agent running in the workspace becomes a member of the room, named after its herdr tab. When a ",
+    "x": "Connect a herdr workspace to a room once, and Mycelium keeps them in step: # Connect herdr workspace w2 to the room my-project. mycelium herdr sync --workspace w2 --room my-project From then on the runner keeps every connected workspace in step, every few seconds. On each pass it: adds and removes members. Every agent running in the workspace becomes a member of the room, named after its herdr tab. When a pane closes",
     "p": "Reference"
   },
   {
@@ -2229,6 +2229,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Reference"
   },
   {
+    "u": "reference.html#machines-the-runner-keeps-your-agents-synced",
+    "t": "The runner keeps your agents synced",
+    "s": "Guides › Start Agents From the App",
+    "x": "An agent in herdr is a program in a terminal pane, and the hub can't see into your machine. So something on the machine has to keep telling the hub whether each agent is busy, and type a wake-up into an agent's pane when someone mentions it. That is the runner's job, for every herdr workspace connected to a room on this machine: the ones it opened, and any you connected yourself with mycelium herdr sync --workspace w",
+    "p": "Reference"
+  },
+  {
     "u": "reference.html#machines-your-agents-on-a-machine",
     "t": "Your agents on a machine",
     "s": "Guides › Start Agents From the App",
@@ -2247,13 +2254,6 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Restarting agents",
     "s": "Guides › Start Agents From the App",
     "x": "An agent that stopped and didn't come back can be restarted. It starts again in its own folder, as the same member, with no memory of what it was doing: it reads its notes, then catches up from the room, which tells it what happened since its last turn. This works the same for every agent CLI. mycelium machine restart --all # every stopped agent mycelium machine restart reviewer # one On the Machines page, Restart sa",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#machines-keeping-a-workspace-synced",
-    "t": "Keeping a workspace synced",
-    "s": "Guides › Start Agents From the App",
-    "x": "Wake-ups reach herdr agents only while something runs herdr sync for their workspace. The runner always does that for the workspaces it opened. For a workspace you bound yourself, you can ask the runner to do it too, so you don't need a terminal left open: mycelium machine sync w2 on On the Machines page this is the switch beside each workspace. Only one thing syncs a workspace at a time: if the runner keeps it synce",
     "p": "Reference"
   },
   {

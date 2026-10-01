@@ -11,9 +11,9 @@ Three loops, each on its own thread:
   re-sent as a heartbeat.
 - **jobs**: a long-poll for what the app asked for (``launch``, ``stop``,
   ``scan``, ``swarm``, and the Machines page's ``restart``, ``rename``,
-  ``unbind``, ``sync`` and ``integrations``), done one at a time and reported back.
-- **sync**: presence up and doorbells down for the agents it started, so they
-  hear their turns.
+  ``unbind`` and ``integrations``), done one at a time and reported back.
+- **sync**: presence up and doorbells down for every agent in a workspace
+  bound to a room on this machine, so they hear their turns.
 
 Where an agent runs is the host's business (``hosts.py``, picked by
 ``runner.host``). Everything else here is the same whichever host it is.
@@ -304,17 +304,22 @@ class Runner:
             "machine": self.machine_report(),
         }
 
+    def report(self) -> this_machine.Report:
+        """``mycelium machine``'s report, as this runner sees the machine it runs on."""
+        return this_machine.report(
+            self.config,
+            bridge=self.bridge,
+            state=self.state,
+            omnigent=self.host if self.host.name == "omnigent" else None,
+            machine=self.label,
+            runner=True,
+        )
+
     def machine_report(self) -> dict[str, Any] | None:
         """Every agent on this machine, for the Machines page (``mycelium machine``'s report)."""
         try:
             with self._lock:
-                r = this_machine.report(
-                    self.config,
-                    bridge=self.bridge,
-                    state=self.state,
-                    omnigent=self.host if self.host.name == "omnigent" else None,
-                    machine=self.label,
-                )
+                r = self.report()
         except Exception as e:  # noqa: BLE001 - a heartbeat must not fail on its report
             self.log.print(f"[dim]couldn't read this machine's agents: {e}[/dim]")
             return None
@@ -539,18 +544,14 @@ class Runner:
 
     def _machine_agent(self, spec: dict[str, Any]) -> this_machine.Agent:
         """The agent a job names, read now from this machine."""
-        r = this_machine.report(
-            self.config, bridge=self.bridge, state=self.state, machine=self.label
-        )
+        r = self.report()
         try:
             return r.find(str(spec.get("handle") or ""), spec.get("room"))
         except this_machine.MachineError as e:
             raise JobError(str(e)) from e
 
     def _restartable(self, spec: dict[str, Any]) -> list[this_machine.Agent]:
-        r = this_machine.report(
-            self.config, bridge=self.bridge, state=self.state, machine=self.label
-        )
+        r = self.report()
         if spec.get("all"):
             agents = [a for a in r.agents if a.restartable]
         else:
@@ -594,10 +595,7 @@ class Runner:
 
     def unbind_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
         if spec.get("gone"):
-            r = this_machine.report(
-                self.config, bridge=self.bridge, state=self.state, machine=self.label
-            )
-            gone = [a for a in r.agents if a.state == "gone" and not a.restartable]
+            gone = [a for a in self.report().agents if a.state == "gone" and not a.restartable]
             for agent in gone:
                 this_machine.unbind(agent, bridge=self.bridge)
             return {"unbound": [a.handle for a in gone]}
@@ -607,13 +605,6 @@ class Runner:
         except this_machine.MachineError as e:
             raise JobError(str(e)) from e
         return {"unbound": [agent.handle]}
-
-    def sync_workspace(self, spec: dict[str, Any]) -> dict[str, Any]:
-        workspace = str(spec.get("workspace") or "")
-        if not workspace:
-            raise JobError("Say which workspace.")
-        this_machine.set_runner_sync(workspace, bool(spec.get("on")))
-        return {"workspace": workspace, "on": bool(spec.get("on"))}
 
     def install_integrations(self, _spec: dict[str, Any]) -> dict[str, Any]:
         """Install herdr's integrations for the agent CLIs here (asked about first)."""
@@ -699,7 +690,6 @@ class Runner:
             "restart": self.restart_agents,
             "rename": self.rename_agent,
             "unbind": self.unbind_agent,
-            "sync": self.sync_workspace,
             "integrations": self.install_integrations,
         }
         if kind in machine_jobs:

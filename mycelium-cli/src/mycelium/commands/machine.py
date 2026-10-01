@@ -4,8 +4,8 @@
 """``mycelium machine``: the agents on this machine, and what to do about them.
 
 Every agent here, wherever it runs (a herdr pane, an Omnigent session) and
-however it got there, with its state, its folder, whether herdr brings it back
-after a restart and who keeps its workspace synced, then the problems found and
+however it got there, with its state, its folder and whether herdr brings it
+back after a restart, then the problems found and
 the command that fixes each. The same report and actions as the app's
 Machines page; see ``mycelium.machine``.
 """
@@ -32,13 +32,12 @@ from mycelium.machine import (
     report,
     restart,
     restart_command,
-    set_runner_sync,
     stop,
     unbind,
 )
 
 app = typer.Typer(
-    help="The agents on this machine: their state, sync and herdr's integrations, and actions on them.",
+    help="The agents on this machine: their state and herdr's integrations, and actions on them.",
     invoke_without_command=True,
 )
 console = Console()
@@ -63,16 +62,6 @@ def _fail(e: Exception) -> None:
     raise typer.Exit(1)
 
 
-def _synced(w) -> str:  # noqa: ANN001 - a machine.Workspace
-    if w.synced_by == "runner":
-        return "kept synced by this machine's runner"
-    if w.synced_by == "terminal":
-        return "synced by a `herdr sync` loop"
-    if w.runner_keeps:
-        return "kept synced by the runner (not running)"
-    return "[yellow]not synced[/yellow]"
-
-
 def _print(r: Report) -> None:
     herdr = (
         f"herdr {r.herdr_server}"
@@ -81,13 +70,17 @@ def _print(r: Report) -> None:
         else "herdr not running"
     )
     extra = f" · Omnigent at {r.omnigent_url}" if r.omnigent_url else ""
-    console.print(f"[bold]{escape(r.machine)}[/bold] [dim]· {escape(herdr)}{escape(extra)}[/dim]\n")
+    runner = "runner running" if r.runner else "[yellow]runner not running[/yellow]"
+    console.print(
+        f"[bold]{escape(r.machine)}[/bold] [dim]· {escape(herdr)}{escape(extra)} ·[/dim] "
+        f"[dim]{runner}[/dim]\n"
+    )
     if not r.workspaces:
         console.print("[dim]No agents on this machine yet.[/dim]")
     for w in r.workspaces:
         where = f"{w.host} · {w.label}" if w.host == "herdr" else w.label
         room = f" → {w.room}" if w.room else ""
-        console.print(f"[bold]{escape(where)}[/bold][dim]{escape(room)} · {_synced(w)}[/dim]")
+        console.print(f"[bold]{escape(where)}[/bold][dim]{escape(room)}[/dim]")
         if not w.agents:
             console.print("  [dim]no agents bound[/dim]\n")
             continue
@@ -139,7 +132,7 @@ def _short_path(path: str | None) -> str:
 
 @doc_ref(
     usage="mycelium machine [--json]",
-    desc="Show every agent on this machine: its state, folder, whether herdr brings it back after a restart, and who keeps it synced, then the problems found and how to fix each.",
+    desc="Show every agent on this machine: its state, folder and whether herdr brings it back after a restart, then the problems found and how to fix each.",
     group="agent",
 )
 @app.callback()
@@ -389,33 +382,3 @@ def integrations_cmd(
         console.print(f"  {escape(name)}: {mark}")
     if state.missing:
         console.print("Install them with `mycelium machine integrations --install`.")
-
-
-@doc_ref(
-    usage="mycelium machine sync <workspace> on|off",
-    desc="Choose whether this machine's runner keeps a herdr workspace synced (presence up, wakes down).",
-    group="agent",
-)
-@app.command("sync")
-def sync_cmd(
-    workspace: str = typer.Argument(..., help="The herdr workspace id (from `mycelium machine`)."),
-    state: str = typer.Argument(..., help="on or off."),
-) -> None:
-    """Have the runner keep a workspace synced, or stop.
-
-    Kept synced, its agents hear their mentions and the room sees whether
-    they're busy, without a `herdr sync` loop open in a terminal. Only one
-    thing syncs a workspace: a terminal loop leaves alone one the runner keeps.
-    """
-    if state not in ("on", "off"):
-        _fail(MachineError("Say on or off."))
-    set_runner_sync(workspace, state == "on")
-    from mycelium.commands.runner import running_pid
-
-    if state == "on":
-        tail = (
-            "" if running_pid() else " Start the runner (`mycelium runner`) for it to take effect."
-        )
-        console.print(f"The runner will keep {escape(workspace)} synced.{tail}")
-    else:
-        console.print(f"The runner won't sync {escape(workspace)} any more.")

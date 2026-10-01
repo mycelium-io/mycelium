@@ -798,20 +798,15 @@ export interface MachineWorkspace {
   label: string;
   host: string;
   room: string | null;
-  /** What is syncing it now, if anything. */
-  synced_by: "runner" | "terminal" | null;
-  /** The runner is meant to keep it synced (it opened it, or was asked to). */
-  runner_keeps: boolean;
   agents: MachineAgent[];
 }
 
 export interface MachineProblem {
-  kind: "stopped" | "lost" | "unsynced" | "no_restore" | "herdr_update" | "herdr_down";
+  kind: "stopped" | "lost" | "runner_down" | "no_restore" | "herdr_update" | "herdr_down";
   text: string;
   /** The `mycelium machine` command that fixes it, when one does. */
   fix: string | null;
   handles: string[];
-  workspace: string | null;
 }
 
 export interface MachineReport {
@@ -820,6 +815,8 @@ export interface MachineReport {
   herdr_server: string | null;
   herdr_client: string | null;
   omnigent_url: string | null;
+  /** Whether its runner is running, which keeps every bound workspace synced. */
+  runner: boolean;
   /** The oldest herdr Mycelium works with. */
   herdr_minimum: string | null;
   /** herdr integrations not current for agent CLIs with agents running here. */
@@ -828,7 +825,7 @@ export interface MachineReport {
   problems: MachineProblem[];
 }
 
-export type MachineActionKind = "restart" | "stop" | "rename" | "unbind" | "sync" | "integrations";
+export type MachineActionKind = "restart" | "stop" | "rename" | "unbind" | "integrations";
 
 /** Something to do to a machine's agents; queued as a job for its runner. */
 export interface MachineAction {
@@ -839,8 +836,6 @@ export interface MachineAction {
   room?: string | null;
   name?: string;
   gone?: boolean;
-  workspace?: string;
-  on?: boolean;
 }
 
 export interface Runner {

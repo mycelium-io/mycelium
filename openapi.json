@@ -2117,7 +2117,7 @@
           "runners"
         ],
         "summary": "Machine Action",
-        "description": "Do something to an agent on this machine, from the Machines page.\n\nAny agent on the machine, not only one this runner started: restart a\nstopped one, stop, rename or unbind one, or choose whether the runner keeps\na workspace synced; or install herdr's integrations, so herdr brings agents\nback after it restarts. Restarting and installing ask the person at the\nmachine first, as a launch does. ``mycelium machine`` does the same there.",
+        "description": "Do something to an agent on this machine, from the Machines page.\n\nAny agent on the machine, not only one this runner started: restart a\nstopped one, stop, rename or unbind one; or install herdr's integrations,\nso herdr brings agents back after it restarts. Restarting and installing ask the person at the\nmachine first, as a launch does. ``mycelium machine`` does the same there.",
         "operationId": "machine_action_api_runners__runner_id__machine_post",
         "parameters": [
           {
@@ -6213,7 +6213,6 @@
               "stop",
               "rename",
               "unbind",
-              "sync",
               "integrations"
             ],
             "title": "Kind"
@@ -6268,28 +6267,6 @@
             "type": "boolean",
             "title": "Gone",
             "default": false
-          },
-          "workspace": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Workspace"
-          },
-          "on": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "On"
           }
         },
         "type": "object",
@@ -6297,7 +6274,7 @@
           "kind"
         ],
         "title": "MachineAction",
-        "description": "Something to do to a machine's agents, from the Machines page; queued as a job.\n\nEach kind reads the fields it needs: ``restart`` takes ``agents`` or ``all``;\n``stop``, ``rename`` (with ``name``) and ``unbind`` take ``handle`` and\n``room``; ``unbind`` may take ``gone`` instead; ``sync`` takes ``workspace``\nand ``on``; ``integrations`` (install herdr's) takes nothing."
+        "description": "Something to do to a machine's agents, from the Machines page; queued as a job.\n\nEach kind reads the fields it needs: ``restart`` takes ``agents`` or ``all``;\n``stop``, ``rename`` (with ``name``) and ``unbind`` take ``handle`` and\n``room``; ``unbind`` may take ``gone`` instead; ``integrations`` (install\nherdr's) takes nothing."
       },
       "MachineAgentRead": {
         "properties": {
@@ -6436,7 +6413,7 @@
             "enum": [
               "stopped",
               "lost",
-              "unsynced",
+              "runner_down",
               "no_restore",
               "herdr_update",
               "herdr_down"
@@ -6464,17 +6441,6 @@
             },
             "type": "array",
             "title": "Handles"
-          },
-          "workspace": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Workspace"
           }
         },
         "type": "object",
@@ -6528,6 +6494,12 @@
               }
             ],
             "title": "Omnigent Url"
+          },
+          "runner": {
+            "type": "boolean",
+            "title": "Runner",
+            "description": "Whether its runner is running, which keeps every bound workspace synced",
+            "default": true
           },
           "herdr_minimum": {
             "anyOf": [
@@ -6615,6 +6587,12 @@
             ],
             "title": "Omnigent Url"
           },
+          "runner": {
+            "type": "boolean",
+            "title": "Runner",
+            "description": "Whether its runner is running, which keeps every bound workspace synced",
+            "default": true
+          },
           "herdr_minimum": {
             "anyOf": [
               {
@@ -6681,28 +6659,6 @@
               }
             ],
             "title": "Room"
-          },
-          "synced_by": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "runner",
-                  "terminal"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Synced By",
-            "description": "What is syncing it now, if anything"
-          },
-          "runner_keeps": {
-            "type": "boolean",
-            "title": "Runner Keeps",
-            "description": "The runner is meant to keep it synced (it opened it, or was asked to)",
-            "default": false
           },
           "agents": {
             "items": {
@@ -8225,7 +8181,6 @@
               "restart",
               "rename",
               "unbind",
-              "sync",
               "integrations"
             ],
             "title": "Kind"

@@ -231,17 +231,13 @@ class HerdrHost:
 
     def sync(self, config: MyceliumConfig, state: State, log: Console) -> None:
         from mycelium.commands.herdr import sync_pass
-        from mycelium.machine import mark_syncing, runner_sync_choices
 
-        # The workspaces this runner opened, and any other bound workspace the
-        # person asked it to keep (`mycelium machine sync <workspace> on`, or the
-        # Machines page). The rest are left to a `herdr sync` of their own.
-        bindings = self.bridge.registry.bindings()
-        targets = dict(state.owned)
-        targets |= {w: bindings[w] for w in runner_sync_choices() if w in bindings}
+        # Every workspace bound to a room on this machine: the ones this runner
+        # opened and any a person bound (`mycelium herdr sync --workspace …`).
+        # Binding one is the choice to sync it, and the runner is what does.
+        targets = dict(state.owned) | self.bridge.registry.bindings()
         if not targets:
             return
-        mark_syncing(list(targets), "runner")
         sync_pass(
             config,
             self.bridge,
@@ -450,12 +446,10 @@ class OmnigentHost:
         over whatever the agent is doing.
         """
         from mycelium.commands.herdr import _push_presence, fetch_wakes, wake_prompt_for
-        from mycelium.machine import mark_syncing
 
         live = [a for a in state.agents.values() if a.live]
         if not live:
             return
-        mark_syncing(["omnigent"], "runner")
         by_room: dict[str, dict[str, Tracked]] = {}
         for agent in live:
             by_room.setdefault(agent.room, {})[agent.handle] = agent

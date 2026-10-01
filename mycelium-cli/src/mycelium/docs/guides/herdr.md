@@ -38,12 +38,12 @@ of agents in it, and connects them to a room you already work in.
 Connect a herdr workspace to a room once, and Mycelium keeps them in step:
 
 ```bash
-# Connect herdr workspace w2 to the room my-project, then keep watching.
+# Connect herdr workspace w2 to the room my-project.
 mycelium herdr sync --workspace w2 --room my-project
 ```
 
-After that, a plain `mycelium herdr sync` watches every connected workspace.
-On each pass it:
+From then on the [runner](#machines) keeps every connected workspace in step,
+every few seconds. On each pass it:
 
 - **adds and removes members.** Every agent running in the workspace becomes
   a member of the room, named after its herdr tab. When a pane closes, that
@@ -55,18 +55,13 @@ On each pass it:
   a turn the [conductor](#conductor) or aligner gave it, or to pick up a task
   assigned to it.
 
-`sync` needs to keep running for wake-ups to be delivered. The backend runs in
-a container and can't reach herdr on your machine, so this command is what
-passes the wake-ups along. Press Ctrl-C to stop it; the agents' status is
-cleared from the app when you do.
-
-If you run the [runner](#machines), it can keep a workspace synced instead,
-with no terminal left open: `mycelium machine sync w2 on`. A `sync` loop
-skips any workspace the runner keeps.
+The hub can't reach herdr on your machine, so the runner is what passes the
+wake-ups along: run `mycelium runner --detach` (the Mac app runs it for you).
+`mycelium herdr sync` runs one pass straight away, so a workspace's agents
+join the room at once, and says whether the runner is running.
 
 ```bash
-mycelium herdr sync --once                 # run one pass, then exit
-mycelium herdr sync --interval 10          # check every 10 seconds
+mycelium herdr sync                        # one pass over every connected workspace
 mycelium herdr sync --kind <kind>          # only add agents of one kind
 ```
 

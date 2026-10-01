@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import time
 from pathlib import Path
 
 import pytest
@@ -99,8 +98,12 @@ def _config() -> MyceliumConfig:
     return config
 
 
-def _report(bridge: HerdrBridge, state: State | None = None) -> machine.Report:
-    return machine.report(_config(), bridge=bridge, state=state or State(), machine="mac")
+def _report(
+    bridge: HerdrBridge, state: State | None = None, *, runner: bool = True
+) -> machine.Report:
+    return machine.report(
+        _config(), bridge=bridge, state=state or State(), machine="mac", runner=runner
+    )
 
 
 def _setup(fake: FakeHerdr) -> HerdrBridge:
@@ -155,12 +158,12 @@ def test_each_agent_says_whether_it_runs_stopped_with_its_pane_or_lost_its_pane(
 
 
 def test_the_problems_each_come_with_the_command_that_fixes_them(herdr: FakeHerdr):
-    r = _report(_setup(herdr))
+    r = _report(_setup(herdr), runner=False)
 
     fixes = {p.kind: p.fix for p in r.problems}
     assert fixes["stopped"] == "mycelium machine restart --all"
     assert fixes["lost"] == "mycelium machine unbind --gone"
-    assert fixes["unsynced"] == "mycelium machine sync w2 on"
+    assert fixes["runner_down"] == "mycelium runner --detach"
     assert fixes["no_restore"] == "mycelium machine integrations --install"
     assert next(p for p in r.problems if p.kind == "stopped").handles == ["reviewer"]
 
@@ -183,15 +186,13 @@ def test_without_it_the_report_names_the_integration_missing(herdr: FakeHerdr):
     assert problem.handles == ["builder", "reviewer"]  # not the gone one
 
 
-def test_choosing_the_runner_to_sync_a_workspace_clears_the_unsynced_problem(herdr: FakeHerdr):
+def test_with_the_runner_running_every_bound_workspace_is_synced(herdr: FakeHerdr):
+    # The runner syncs every bound workspace, so it running is all there is to say.
     bridge = _setup(herdr)
-    machine.set_runner_sync("w2", True)
-    r = _report(bridge)
-    assert "unsynced" not in {p.kind for p in r.problems}
-    assert next(w for w in r.workspaces if w.id == "w2").runner_keeps
-
-    machine.set_runner_sync("w2", False)
-    assert "unsynced" in {p.kind for p in _report(bridge).problems}
+    assert "runner_down" not in {p.kind for p in _report(bridge).problems}
+    down = next(p for p in _report(bridge, runner=False).problems if p.kind == "runner_down")
+    assert down.handles == ["builder"]  # the one running; stopped agents hear nothing anyway
+    assert "won't be woken by mentions" in down.text
 
 
 # ── herdr's version ──────────────────────────────────────────────────────────
@@ -336,21 +337,3 @@ def test_an_out_of_date_herdr_shows_in_the_integrations_state(herdr: FakeHerdr):
     herdr.server = "0.8.0"
     state = machine.integrations(bridge=_bridge(herdr))
     assert state.out_of_date and state.wire()["minimum"] == "0.9.3"
-
-
-# ── sync heartbeats ──────────────────────────────────────────────────────────
-
-
-def test_a_sync_heartbeat_says_who_syncs_until_it_goes_stale(isolated_home: Path):
-    machine.mark_syncing(["w2"], "terminal")
-    assert machine.syncing() == {"w2": "terminal"}
-
-    beat = machine._heartbeat_dir() / "w2.json"
-    stale = json.loads(beat.read_text()) | {"at": time.time() - machine.FRESH_S - 5}
-    beat.write_text(json.dumps(stale))
-    assert machine.syncing() == {}
-
-
-def test_a_heartbeat_names_its_workspace_whatever_its_file_is_called(isolated_home: Path):
-    machine.mark_syncing(["w2:main", "w2.main"], "runner")
-    assert machine.syncing() == {"w2:main": "runner", "w2.main": "runner"}

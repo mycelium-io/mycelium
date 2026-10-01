@@ -172,8 +172,6 @@ export function describeJob(job: RunnerJob): string {
       return `Rename ${handle ?? "an agent"} to ${String(spec.name ?? "")}`;
     case "unbind":
       return spec.gone ? "Forget panes that are gone" : `Unbind ${handle ?? "an agent"}`;
-    case "sync":
-      return `${spec.on ? "Keep" : "Stop keeping"} ${String(spec.workspace ?? "a workspace")} synced`;
     case "integrations":
       return "Install herdr's integrations";
   }

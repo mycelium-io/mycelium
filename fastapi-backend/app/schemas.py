@@ -655,10 +655,10 @@ RunnerAgentStatus = Literal[
     "starting", "running", "idle", "working", "blocked", "stopped", "failed"
 ]
 RunnerJobKind = Literal[
-    "launch", "stop", "scan", "swarm", "restart", "rename", "unbind", "sync", "integrations"
+    "launch", "stop", "scan", "swarm", "restart", "rename", "unbind", "integrations"
 ]
 #: The actions the Machines page can take on a machine's agents (each queued as a job).
-MachineActionKind = Literal["restart", "stop", "rename", "unbind", "sync", "integrations"]
+MachineActionKind = Literal["restart", "stop", "rename", "unbind", "integrations"]
 #: ``waiting``: the runner took it and is asking the person at that machine first.
 RunnerJobStatus = Literal["queued", "running", "waiting", "done", "failed"]
 
@@ -720,23 +720,16 @@ class MachineWorkspaceRead(BaseModel):
     label: str
     host: str
     room: str | None = None
-    synced_by: Literal["runner", "terminal"] | None = Field(
-        None, description="What is syncing it now, if anything"
-    )
-    runner_keeps: bool = Field(
-        False, description="The runner is meant to keep it synced (it opened it, or was asked to)"
-    )
     agents: list[MachineAgentRead] = Field(default_factory=list)
 
 
 class MachineProblemRead(BaseModel):
     """Something wrong on a machine, and the CLI command that fixes it."""
 
-    kind: Literal["stopped", "lost", "unsynced", "no_restore", "herdr_update", "herdr_down"]
+    kind: Literal["stopped", "lost", "runner_down", "no_restore", "herdr_update", "herdr_down"]
     text: str
     fix: str | None = None
     handles: list[str] = Field(default_factory=list)
-    workspace: str | None = None
 
 
 class MachineReportRead(BaseModel):
@@ -747,6 +740,10 @@ class MachineReportRead(BaseModel):
     herdr_server: str | None = None
     herdr_client: str | None = None
     omnigent_url: str | None = None
+    runner: bool = Field(
+        True,
+        description="Whether its runner is running, which keeps every bound workspace synced",
+    )
     herdr_minimum: str | None = Field(None, description="The oldest herdr Mycelium works with")
     missing_integrations: list[str] = Field(
         default_factory=list,
@@ -766,8 +763,8 @@ class MachineAction(BaseModel):
 
     Each kind reads the fields it needs: ``restart`` takes ``agents`` or ``all``;
     ``stop``, ``rename`` (with ``name``) and ``unbind`` take ``handle`` and
-    ``room``; ``unbind`` may take ``gone`` instead; ``sync`` takes ``workspace``
-    and ``on``; ``integrations`` (install herdr's) takes nothing.
+    ``room``; ``unbind`` may take ``gone`` instead; ``integrations`` (install
+    herdr's) takes nothing.
     """
 
     kind: MachineActionKind
@@ -777,8 +774,6 @@ class MachineAction(BaseModel):
     room: str | None = None
     name: str | None = Field(None, max_length=80)
     gone: bool = False
-    workspace: str | None = None
-    on: bool | None = None
 
 
 class RunnerHello(BaseModel):

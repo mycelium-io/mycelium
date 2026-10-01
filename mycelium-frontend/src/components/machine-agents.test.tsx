@@ -69,7 +69,8 @@ describe("MachineAgents", () => {
     expect(screen.getByText("mycelium machine restart --all")).toBeInTheDocument();
     expect(screen.getByText("mycelium machine integrations --install")).toBeInTheDocument();
     expect(screen.getByText(/Mycelium needs 0\.9\.3 or newer/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Keep it synced" })).toBeInTheDocument();
+    // The runner syncs every bound workspace; there's nothing to switch on.
+    expect(screen.queryByRole("switch")).toBeNull();
   });
 
   it("says what restarting does, and asks the machine for the ones picked", async () => {
@@ -107,14 +108,5 @@ describe("MachineAgents", () => {
     renderWithSWR(<MachineAgents runner={machine()} />);
     fireEvent.click(screen.getByRole("button", { name: "Install integrations" }));
     await waitFor(() => expect(machineAction).toHaveBeenCalledWith("morgans-mbp", { kind: "integrations" }));
-  });
-
-  it("turns a workspace's sync on", async () => {
-    machineAction.mockResolvedValue(job({ kind: "sync" }));
-    renderWithSWR(<MachineAgents runner={machine()} />);
-    fireEvent.click(screen.getByRole("switch", { name: "Keep storefront synced" }));
-    await waitFor(() =>
-      expect(machineAction).toHaveBeenCalledWith("morgans-mbp", { kind: "sync", workspace: "w5", on: true }),
-    );
   });
 });

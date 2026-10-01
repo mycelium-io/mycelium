@@ -58,9 +58,8 @@ coding agent you already have open. For an agent on your machine, pick:
 
 The agent is added to the room first, then started. It opens in a herdr
 pane, reads its notes, and looks at the board. From then on it hears
-mentions and turns the same way any herdr agent does. The runner keeps
-`herdr sync` running for the agents it started, so you don't need a separate
-terminal for that.
+mentions and turns the same way any herdr agent does, because the runner keeps
+it synced (see [The runner keeps your agents synced](#machines-the-runner-keeps-your-agents-synced)).
 
 Closing the pane, or pressing **Stop** on the Machines page, stops the agent
 but leaves it in the room with its notes. Starting it again from the app picks
@@ -167,6 +166,19 @@ The Machines page (the laptop icon beside the notification bell) lists your
 connected runners, what each found, the agents on it, and its recent
 requests.
 
+## The runner keeps your agents synced
+
+An agent in herdr is a program in a terminal pane, and the hub can't see into
+your machine. So something on the machine has to keep telling the hub whether
+each agent is busy, and type a wake-up into an agent's pane when someone
+mentions it. That is the runner's job, for every herdr workspace connected to
+a room on this machine: the ones it opened, and any you connected yourself
+with `mycelium herdr sync --workspace w2 --room my-project`.
+
+While the runner isn't running, your agents keep working but don't hear their
+mentions. `mycelium machine` says so, with `mycelium runner --detach` as the
+fix. The Mac app runs the runner for you.
+
 ## Your agents on a machine
 
 Every agent on a machine is listed in one place, whoever started it: the ones
@@ -226,21 +238,6 @@ On the Machines page, **Restart** says where each agent will start before
 anything does. The runner then asks you on the machine, as it does before
 starting any agent.
 
-### Keeping a workspace synced
-
-Wake-ups reach herdr agents only while something runs `herdr sync` for their
-workspace. The runner always does that for the workspaces it opened. For a
-workspace you bound yourself, you can ask the runner to do it too, so you
-don't need a terminal left open:
-
-```bash
-mycelium machine sync w2 on
-```
-
-On the Machines page this is the switch beside each workspace. Only one
-thing syncs a workspace at a time: if the runner keeps it synced, a
-`mycelium herdr sync` loop in a terminal leaves it alone.
-
 ### Other fixes
 
 ```bash
@@ -254,8 +251,8 @@ Add `--json` to `mycelium machine` for the list as data.
 
 Restarting and installing herdr's integrations ask you on the machine first:
 one starts a program, the other changes an agent CLI's settings. Stopping,
-renaming, unbinding and turning sync on or off don't ask, so anyone who can
-reach the hub can ask your runner for them. None of them starts anything.
+renaming and unbinding don't ask, so anyone who can reach the hub can ask your
+runner for them. None of them starts anything.
 
 ## You say yes on the machine
 

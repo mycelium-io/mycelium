@@ -421,7 +421,10 @@ def brief_local(
 
 
 class HerdrSync:
-    """``herdr sync`` for one swarm, on a background thread while the room is shown."""
+    """A sync pass for one swarm, on a background thread while the room is shown.
+
+    Only when no runner is running: the runner syncs every bound workspace.
+    """
 
     def __init__(self, config: MyceliumConfig, bridge: Any, workspace: str, room: str) -> None:
         self._config = config
@@ -770,7 +773,12 @@ def swarm(
                 brief_local(client, bridge, room_name, local, key, task, me)
             sync = HerdrSync(config, bridge, local.workspace, room_name)
             sync.once()
-            sync.start()
+            # The workspace is bound, so a running runner keeps it synced; with
+            # none, this view does while it's open.
+            from mycelium.commands.runner import running_pid
+
+            if not running_pid():
+                sync.start()
     except (SwarmError, HerdrError) as e:
         console.print(f"[red]✗[/red] {e}")
         raise typer.Exit(1) from None

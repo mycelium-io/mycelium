@@ -406,8 +406,6 @@ MACHINE = {
             "label": "tome-dev",
             "host": "herdr",
             "room": ROOM,
-            "synced_by": None,
-            "runner_keeps": False,
             "agents": [
                 {
                     "handle": "reviewer",
@@ -460,6 +458,16 @@ async def test_a_runner_s_heartbeat_carries_every_agent_on_its_machine(client):
         "mycelium machine integrations --install",
     ]
     assert (got["herdr_minimum"], got["missing_integrations"]) == ("0.9.3", ["claude"])
+    assert got["runner"] is True  # the runner sends it, so it's running, and syncing
+
+
+@pytest.mark.asyncio
+async def test_syncing_a_workspace_is_not_something_to_ask_a_machine_for(client, runner):
+    # The runner syncs every bound workspace; there's no switch for it.
+    resp = await client.post(
+        f"/api/runners/{RUNNER}/machine", json={"kind": "sync", "workspace": "w2", "on": True}
+    )
+    assert resp.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -485,11 +493,6 @@ async def test_a_runner_from_before_the_machines_page_sends_no_report(client, ru
         ),
         ({"kind": "unbind", "gone": True}, "unbind", {"gone": True}),
         (
-            {"kind": "sync", "workspace": "w2", "on": True},
-            "sync",
-            {"workspace": "w2", "on": True},
-        ),
-        (
             {"kind": "stop", "handle": "docs", "room": "myroom"},
             "stop",
             {"handle": "docs", "room": "myroom"},
@@ -509,7 +512,6 @@ async def test_a_machine_action_is_queued_as_that_machine_s_job(client, runner, 
     [
         ({"kind": "restart"}, "agents, or all"),
         ({"kind": "rename", "handle": "reviewer"}, "a name"),
-        ({"kind": "sync", "workspace": "w2"}, "on"),
         ({"kind": "stop"}, "a handle"),
     ],
 )
