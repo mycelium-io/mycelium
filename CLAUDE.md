@@ -373,7 +373,25 @@ is no litellm dependency.
   runs `swarm.start_local`/`brief_local`/`kick_off` exactly as the CLI does.
   A swarm starts in herdr whatever the runner's host. The runner also runs
   its host's sync pass; for herdr that is `herdr sync` over the workspaces it
-  opened only, and any other binding is the user's own `herdr sync`'s.
+  opened plus the ones the person chose (`mycelium machine sync <ws> on`,
+  `~/.mycelium/herdr/runner-sync.json`). One syncer per workspace: each
+  pass leaves a heartbeat under `~/.mycelium/herdr/syncing/`, and a terminal
+  `herdr sync` skips a workspace the runner kept fresh.
+- **`mycelium machine` is every agent on this machine, and what to do about
+  it.** `mycelium/machine.py` reads the herdr registry, herdr's panes and
+  agents, and the runner's state (and Omnigent's sessions under that host)
+  into one report: per agent a state (`working|idle|blocked`, `stopped` = pane
+  open with no agent, `gone` = pane closed), folder and saved session; per
+  workspace who syncs it; and problems, each with the command that fixes it.
+  The runner sends the report with every heartbeat (`RunnerHello.machine`),
+  and the Machines page acts on it through `POST /api/runners/{id}/machine`,
+  which queues a `resume`/`stop`/`rename`/`unbind`/`sync`/`session` job;
+  `resume` asks on the machine like a launch. Resume is possible because a
+  Claude Code agent is started with `--session-id <uuid>` and the id is saved
+  on its mapping (`SESSION_ARGS` in `commands/swarm.py`); a mapping rewrite
+  keeps it. A herdr server restart leaves every pane a bare shell, so sync
+  retires a managed member only when its pane is closed, never because no
+  agent is running in it, and retires nothing when the pane list can't be read.
 - **"Who am I" has one answer, from ordered sources, and a folder can join a
   room.** Every command needs the hub, the handle, the room and a credential;
   `mycelium/caller.py` answers all four from the same order: a flag, the

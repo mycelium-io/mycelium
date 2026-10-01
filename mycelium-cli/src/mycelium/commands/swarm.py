@@ -40,6 +40,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -304,23 +305,43 @@ START_ATTEMPTS = 3
 START_RETRY_S = 1.5
 
 
-def _start_when_ready(bridge: Any, handle: str, kind: str, pane: str) -> None:
+#: Agent kinds whose session Mycelium can choose at start and resume later, and
+#: the flags that do each. Only Claude Code's are known.
+SESSION_ARGS: dict[str, tuple[str, str]] = {"claude": ("--session-id", "--resume")}
+
+
+def _start_when_ready(
+    bridge: Any, handle: str, kind: str, pane: str, *, resume: str | None = None
+) -> str | None:
     """Start ``kind`` in ``pane``, giving a just-opened pane's shell time to come up.
 
     herdr starts an agent only in a pane sitting at its shell prompt, and a
     pane split a moment ago may still be starting its shell.
+
+    For a kind whose session Mycelium can name, the agent starts in a session
+    chosen here (or ``resume``\\ s that one), and its id is returned so it can
+    be saved with the agent and picked up again after a restart. ``None`` for
+    a kind that can't.
     """
     from mycelium.integrations.herdr import HerdrError
 
+    args = list(AGENT_ARGS.get(kind) or [])
+    session: str | None = None
+    if kind in SESSION_ARGS:
+        start_flag, resume_flag = SESSION_ARGS[kind]
+        session = resume or str(uuid.uuid4())
+        args = [resume_flag if resume else start_flag, session, *args]
+    # herdr names the agent after the handle, so its list says who each one is.
     for attempt in range(1, START_ATTEMPTS + 1):
         try:
-            bridge.start_agent(handle, kind, pane, agent_args=AGENT_ARGS.get(kind))
+            bridge.start_agent(handle, kind, pane, agent_args=args or None)
         except HerdrError:
             if attempt == START_ATTEMPTS:
                 raise
             time.sleep(START_RETRY_S)
         else:
-            return
+            return session
+    return session
 
 
 def start_local(
@@ -367,11 +388,18 @@ def start_local(
         local.panes[handle] = last
 
     for handle, pane in local.panes.items():
-        _start_when_ready(bridge, handle, kind, pane)
+        session = _start_when_ready(bridge, handle, kind, pane)
+        mapping = HerdrPaneMapping(
+            room=room,
+            handle=handle,
+            pane=pane,
+            kind=kind,
+            managed=True,
+            session=session,
+            cwd=str(dirs[handle]),
+        )
         if not write_manifests:
-            bridge.registry.set(
-                HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=kind, managed=True)
-            )
+            bridge.registry.set(mapping)
             continue
         manifest = get_integration("claude_code", cwd=str(dirs[handle])).build_manifest(
             handle=handle,
@@ -381,9 +409,7 @@ def start_local(
             owner=me,
         )
         _write_manifest(config, room, manifest, created_by=me)
-        bridge.registry.set(
-            HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=kind, managed=True)
-        )
+        bridge.registry.set(mapping)
     bridge.registry.bind(workspace, room)
     return local
 

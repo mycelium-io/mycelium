@@ -163,6 +163,19 @@ export function describeJob(job: RunnerJob): string {
       return "Scan for agent CLIs";
     case "swarm":
       return typeof spec.room === "string" ? `Start a swarm in ${spec.room}` : "Start a swarm";
+    case "resume": {
+      if (spec.all) return "Resume every stopped agent";
+      const agents = Array.isArray(spec.agents) ? (spec.agents as { handle?: string }[]) : [];
+      return agents.length === 1 ? `Resume @${agents[0].handle}` : `Resume ${agents.length} agents`;
+    }
+    case "rename":
+      return `Rename ${handle ?? "an agent"} to ${String(spec.name ?? "")}`;
+    case "unbind":
+      return spec.gone ? "Forget panes that are gone" : `Unbind ${handle ?? "an agent"}`;
+    case "sync":
+      return `${spec.on ? "Keep" : "Stop keeping"} ${String(spec.workspace ?? "a workspace")} synced`;
+    case "session":
+      return spec.find ? `Find ${handle ?? "an agent"}'s session` : `Save ${handle ?? "an agent"}'s session`;
   }
 }
 

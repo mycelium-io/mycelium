@@ -75,6 +75,11 @@ class HerdrPaneMapping:
     pane: str
     kind: str | None = None
     managed: bool = False
+    #: The agent CLI's own session id, so a stopped agent can be resumed where it
+    #: left off. Known when Mycelium started it (or a person said which one it is).
+    session: str | None = None
+    #: The folder it works in, which is where a resume has to start it again.
+    cwd: str | None = None
 
     @property
     def key(self) -> str:
@@ -175,24 +180,25 @@ class HerdrRegistry:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
+    @staticmethod
+    def _mapping(room: str, handle: str, entry: dict) -> HerdrPaneMapping:
+        return HerdrPaneMapping(
+            room=room,
+            handle=handle,
+            pane=entry["pane"],
+            kind=entry.get("kind"),
+            managed=bool(entry.get("managed", False)),
+            session=entry.get("session") or None,
+            cwd=entry.get("cwd") or None,
+        )
+
     def all(self) -> list[HerdrPaneMapping]:
         out: list[HerdrPaneMapping] = []
         for key, entry in self._load().items():
             room, _, handle = key.partition("/")
-            if not room or not handle or not isinstance(entry, dict):
+            if not room or not handle or not isinstance(entry, dict) or not entry.get("pane"):
                 continue
-            pane = entry.get("pane")
-            if not pane:
-                continue
-            out.append(
-                HerdrPaneMapping(
-                    room=room,
-                    handle=handle,
-                    pane=pane,
-                    kind=entry.get("kind"),
-                    managed=bool(entry.get("managed", False)),
-                )
-            )
+            out.append(self._mapping(room, handle, entry))
         return sorted(out, key=lambda m: m.key)
 
     def get(self, room: str, handle: str) -> HerdrPaneMapping | None:
@@ -200,21 +206,26 @@ class HerdrRegistry:
         entry = self._load().get(f"{room}/{h}")
         if not isinstance(entry, dict) or not entry.get("pane"):
             return None
-        return HerdrPaneMapping(
-            room=room,
-            handle=h,
-            pane=entry["pane"],
-            kind=entry.get("kind"),
-            managed=bool(entry.get("managed", False)),
-        )
+        return self._mapping(room, h, entry)
 
     def set(self, mapping: HerdrPaneMapping) -> None:
+        """Write ``mapping``. A session or folder it doesn't say is kept from before.
+
+        Most writers (the workspace sync re-enrolling a pane, a hand-run ``map``)
+        know the pane but not the agent's session, and writing over what was
+        saved would lose the one thing that lets it be resumed.
+        """
         data = self._load()
-        data[mapping.key] = {
-            "pane": mapping.pane,
-            "kind": mapping.kind,
-            "managed": mapping.managed,
-        }
+        raw = data.get(mapping.key)
+        before: dict = raw if isinstance(raw, dict) else {}
+        entry: dict = {"pane": mapping.pane, "kind": mapping.kind, "managed": mapping.managed}
+        session = mapping.session or before.get("session")
+        cwd = mapping.cwd or before.get("cwd")
+        if session:
+            entry["session"] = session
+        if cwd:
+            entry["cwd"] = cwd
+        data[mapping.key] = entry
         self._save(data)
 
     def remove(self, room: str, handle: str) -> bool:
@@ -334,6 +345,67 @@ class HerdrBridge:
         result = self._run_json(["agent", "list"]).get("result", {})
         agents = result.get("agents", [])
         return agents if isinstance(agents, list) else []
+
+    def list_panes(self) -> list[dict]:
+        """Every open pane (``pane_id``, ``workspace_id``, ``cwd``, ``agent_status``…).
+
+        A pane is listed whether or not an agent runs in it, which is how a pane
+        left at a bare shell (after herdr's server restarted) is told from one
+        that's gone.
+        """
+        result = self._run_json(["pane", "list"]).get("result", {})
+        panes = result.get("panes", result) if isinstance(result, dict) else result
+        return panes if isinstance(panes, list) else []
+
+    def list_workspaces(self) -> list[dict]:
+        """Every workspace (``workspace_id``, ``label``…); empty on a herdr error."""
+        try:
+            result = self._run_json(["workspace", "list"]).get("result", {})
+        except HerdrError:
+            return []
+        workspaces = result.get("workspaces", []) if isinstance(result, dict) else []
+        return workspaces if isinstance(workspaces, list) else []
+
+    def server_version(self) -> str | None:
+        """The running server's version (the client's is :meth:`version`), or ``None``."""
+        if not self.binary_present():
+            return None
+        try:
+            proc = self._runner(["status", "server"])
+        except OSError:
+            return None
+        if proc.returncode != 0:
+            return None
+        for line in (proc.stdout or "").splitlines():
+            label, _, value = line.partition(":")
+            if label.strip() == "version" and value.strip():
+                return value.strip()
+        return None
+
+    def _run_quiet(self, args: list[str]) -> None:
+        """A herdr call that prints nothing when it works; raise if it didn't."""
+        if not self.binary_present():
+            raise HerdrUnavailableError("herdr binary not found on PATH")
+        try:
+            proc = self._runner(args)
+        except OSError as e:
+            raise HerdrUnavailableError(str(e)) from e
+        if proc.returncode != 0:
+            raise HerdrError(
+                _extract_error(proc.stderr) or _extract_error(proc.stdout) or "herdr call failed"
+            )
+
+    def run_in_pane(self, pane: str, command: str) -> None:
+        """Run ``command`` at the shell in ``pane`` (herdr types it and presses Enter)."""
+        self._run_quiet(["pane", "run", pane, command])
+
+    def rename_agent(self, pane: str, name: str) -> None:
+        """Set the name herdr shows for the agent in ``pane`` (only where one is running)."""
+        self._run_quiet(["agent", "rename", pane, name])
+
+    def send_keys(self, pane: str, *keys: str) -> None:
+        """Press ``keys`` in ``pane``, in order (``esc``, ``ctrl+c``…)."""
+        self._run_quiet(["pane", "send-keys", pane, *keys])
 
     def tab_labels(self, workspace: str | None = None) -> dict[str, str]:
         """Map ``tab_id -> label`` (the user-set tab name), optionally scoped.

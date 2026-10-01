@@ -11,7 +11,7 @@
  * stopped.
  */
 
-import type { Framework, Runner, RunnerAgent, RunnerJob, RunnerJobKind } from "@/lib/api";
+import type { Framework, MachineReport, Runner, RunnerAgent, RunnerJob, RunnerJobKind } from "@/lib/api";
 
 const iso = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
 
@@ -49,6 +49,158 @@ const FRAMEWORKS: Framework[] = [
 ];
 
 export const MOCK_RUNNER_ID = "morgans-mbp";
+
+/**
+ * Every agent on the mock machine, the morning after herdr's server restarted:
+ * @builder came back in its own pane and is working, @reviewer's pane is open
+ * but empty (its session saved, so it can be resumed), the storefront
+ * workspace has nothing syncing it, one old pane is gone, and herdr's server
+ * is behind its client.
+ */
+function machineReport(): MachineReport {
+  return {
+    machine: "morgans-mbp",
+    herdr: true,
+    herdr_server: "0.8.0",
+    herdr_client: "0.9.1",
+    omnigent_url: null,
+    workspaces: [
+      {
+        id: "w3",
+        label: "checkout",
+        host: "herdr",
+        room: "checkout",
+        synced_by: "runner",
+        runner_keeps: true,
+        agents: [
+          {
+            handle: "builder",
+            room: "checkout",
+            host: "herdr",
+            ref: "w3:p1",
+            state: "working",
+            folder: "/Users/morgan/code/shop",
+            session: "5f3c9e10-7b2a-4c11-9d8e-2b6a1fe0a1e2",
+            kind: "claude",
+            workspace: "w3",
+            started_by: "runner",
+            resumable: false,
+          },
+          {
+            handle: "reviewer",
+            room: "checkout",
+            host: "herdr",
+            ref: "w3:p2",
+            state: "stopped",
+            folder: "/Users/morgan/code/shop",
+            session: "9b07c2d4-1e5f-4a8b-b3c6-7d9e0f1a44c0",
+            kind: "claude",
+            workspace: "w3",
+            started_by: "runner",
+            resumable: true,
+          },
+        ],
+      },
+      {
+        id: "w5",
+        label: "storefront",
+        host: "herdr",
+        room: "storefront",
+        synced_by: null,
+        runner_keeps: false,
+        agents: [
+          {
+            handle: "copywriter",
+            room: "storefront",
+            host: "herdr",
+            ref: "w5:p1",
+            state: "idle",
+            folder: "/Users/morgan/code/website",
+            session: null,
+            kind: "claude",
+            workspace: "w5",
+            started_by: "you",
+            resumable: false,
+          },
+        ],
+      },
+      {
+        id: "gone",
+        label: "Panes that are gone",
+        host: "herdr",
+        room: null,
+        synced_by: null,
+        runner_keeps: false,
+        agents: [
+          {
+            handle: "poc-review",
+            room: "checkout",
+            host: "herdr",
+            ref: "w2:pV",
+            state: "gone",
+            folder: null,
+            session: null,
+            kind: "claude",
+            workspace: null,
+            started_by: "you",
+            resumable: false,
+          },
+        ],
+      },
+    ],
+    problems: [],
+  };
+}
+
+/** The problems a report shows, worked out as the runner would from its agents. */
+function problemsOf(report: MachineReport): MachineReport["problems"] {
+  const agents = report.workspaces.flatMap((w) => w.agents);
+  const out: MachineReport["problems"] = [];
+  const resumable = agents.filter((a) => a.resumable);
+  if (resumable.length > 0) {
+    out.push({
+      kind: "stopped",
+      text: `${resumable.map((a) => `@${a.handle}`).join(" and ")} stopped. ${resumable.length > 1 ? "Their sessions are" : "Its session is"} saved, so they can pick up where they left off.`,
+      fix: "mycelium machine resume --all",
+      handles: resumable.map((a) => a.handle),
+      workspace: null,
+    });
+  }
+  for (const w of report.workspaces) {
+    const live = w.agents.filter((a) => ["working", "idle", "blocked"].includes(a.state));
+    if (w.host === "herdr" && w.room && live.length > 0 && !w.synced_by && !w.runner_keeps) {
+      out.push({
+        kind: "unsynced",
+        text: `Nothing keeps ${w.label} synced, so ${live.map((a) => `@${a.handle}`).join(" and ")} won't be woken by mentions and the room can't see whether they're busy.`,
+        fix: `mycelium machine sync ${w.id} on`,
+        handles: [],
+        workspace: w.id,
+      });
+    }
+  }
+  const lost = agents.filter((a) => a.state === "gone" && !a.resumable);
+  if (lost.length > 0) {
+    out.push({
+      kind: "unresumable",
+      text: `${lost.map((a) => `@${a.handle}`).join(" and ")} ${lost.length === 1 ? "has" : "have"} no pane any more and no saved session, so there's nothing to resume. Unbinding forgets the pane. ${lost.length === 1 ? "It stays" : "They stay"} in the room.`,
+      fix: "mycelium machine unbind --gone",
+      handles: lost.map((a) => a.handle),
+      workspace: null,
+    });
+  }
+  if (report.herdr_server && report.herdr_client && report.herdr_server < report.herdr_client) {
+    out.push({
+      kind: "herdr_update",
+      text: `herdr's server (${report.herdr_server}) is older than its client (${report.herdr_client}). Updating restarts the server, which stops every agent in it; resume them after.`,
+      fix: "herdr server stop  (then: mycelium machine resume --all)",
+      handles: [],
+      workspace: null,
+    });
+  }
+  return out;
+}
+
+const machine = machineReport();
 
 const runners: Runner[] = [
   {
@@ -142,7 +294,44 @@ function settle(job: StoredJob): void {
   } else if (job.kind === "stop") {
     const agent = runner.agents.find((a) => a.room === spec.room && a.handle === spec.handle);
     if (agent) agent.status = "stopped";
+    const onMachine = machineAgent(spec.handle, spec.room);
+    if (onMachine) onMachine.state = "stopped";
+  } else if (job.kind === "resume") {
+    const raw = job.spec as { all?: boolean; agents?: { handle: string; room: string | null }[] };
+    const all = machine.workspaces.flatMap((w) => w.agents);
+    const picked = raw.all ? all.filter((a) => a.resumable) : (raw.agents ?? []).map((a) => machineAgent(a.handle, a.room));
+    for (const agent of picked) {
+      if (agent) Object.assign(agent, { state: "idle", resumable: false });
+    }
+  } else if (job.kind === "sync") {
+    const w = machine.workspaces.find((x) => x.id === spec.workspace);
+    if (w) {
+      const on = Boolean((job.spec as { on?: boolean }).on);
+      Object.assign(w, { runner_keeps: on, synced_by: on ? "runner" : null });
+    }
+  } else if (job.kind === "unbind") {
+    for (const w of machine.workspaces) {
+      w.agents = (job.spec as { gone?: boolean }).gone
+        ? w.agents.filter((a) => !(a.state === "gone" && !a.resumable))
+        : w.agents.filter((a) => !(a.handle === spec.handle && (!spec.room || a.room === spec.room)));
+    }
+  } else if (job.kind === "session") {
+    const agent = machineAgent(spec.handle, spec.room);
+    if ((job.spec as { find?: boolean }).find) {
+      job.result = {
+        found: { id: "4d2a77e1-0c3b-4f9e-8a51-6e2b9c7d3f10", path: "~/.claude/projects/…", modified: iso(18) },
+      };
+    } else if (agent) {
+      agent.session = String((job.spec as { session?: string }).session ?? "");
+    }
   }
+  machine.problems = problemsOf(machine);
+}
+
+function machineAgent(handle: string, room: string | null | undefined) {
+  return machine.workspaces
+    .flatMap((w) => w.agents)
+    .find((a) => a.handle === handle && (!room || a.room === room));
 }
 
 function view(job: StoredJob): RunnerJob {
@@ -159,7 +348,12 @@ function view(job: StoredJob): RunnerJob {
 
 export function listRunners(): Runner[] {
   for (const j of jobs) settle(j);
-  return runners.map((r) => ({ ...r, last_seen: new Date().toISOString() }));
+  machine.problems = problemsOf(machine);
+  return runners.map((r) => ({
+    ...r,
+    last_seen: new Date().toISOString(),
+    ...(r.id === MOCK_RUNNER_ID ? { machine } : {}),
+  }));
 }
 
 export function getRunner(id: string): Runner | undefined {

@@ -772,6 +772,73 @@ export interface RunnerAgent {
   detail: string | null;
 }
 
+/** One agent on a machine, wherever it runs and however it got there (`mycelium machine`). */
+export interface MachineAgent {
+  handle: string;
+  room: string;
+  /** `herdr` or `omnigent`. */
+  host: string;
+  /** Where the host runs it: a herdr pane, an Omnigent session. */
+  ref: string;
+  /** `stopped`: its pane is open but nothing runs in it. `gone`: the pane closed. */
+  state: "working" | "idle" | "blocked" | "stopped" | "gone" | "unknown";
+  folder: string | null;
+  /** The agent CLI's saved session, which resuming picks up. */
+  session: string | null;
+  kind: string | null;
+  workspace: string | null;
+  started_by: "runner" | "you";
+  resumable: boolean;
+}
+
+export interface MachineWorkspace {
+  id: string;
+  label: string;
+  host: string;
+  room: string | null;
+  /** What is syncing it now, if anything. */
+  synced_by: "runner" | "terminal" | null;
+  /** The runner is meant to keep it synced (it opened it, or was asked to). */
+  runner_keeps: boolean;
+  agents: MachineAgent[];
+}
+
+export interface MachineProblem {
+  kind: "stopped" | "unresumable" | "unsynced" | "herdr_update" | "herdr_down";
+  text: string;
+  /** The `mycelium machine` command that fixes it, when one does. */
+  fix: string | null;
+  handles: string[];
+  workspace: string | null;
+}
+
+export interface MachineReport {
+  machine: string;
+  herdr: boolean;
+  herdr_server: string | null;
+  herdr_client: string | null;
+  omnigent_url: string | null;
+  workspaces: MachineWorkspace[];
+  problems: MachineProblem[];
+}
+
+export type MachineActionKind = "resume" | "stop" | "rename" | "unbind" | "sync" | "session";
+
+/** Something to do to a machine's agents; queued as a job for its runner. */
+export interface MachineAction {
+  kind: MachineActionKind;
+  agents?: { handle: string; room: string | null }[];
+  all?: boolean;
+  handle?: string;
+  room?: string | null;
+  name?: string;
+  gone?: boolean;
+  workspace?: string;
+  on?: boolean;
+  session?: string;
+  find?: boolean;
+}
+
 export interface Runner {
   id: string;
   label: string;
@@ -787,13 +854,16 @@ export interface Runner {
   roots: string[];
   frameworks: Framework[];
   agents: RunnerAgent[];
+  /** Every agent on the machine, not only the ones its runner started. Null
+   *  from a runner from before the Machines page could show them. */
+  machine?: MachineReport | null;
   /** False once the machine's heartbeat is stale. */
   connected: boolean;
   last_seen: string;
   started_at: string;
 }
 
-export type RunnerJobKind = "launch" | "stop" | "scan" | "swarm";
+export type RunnerJobKind = "launch" | "stop" | "scan" | "swarm" | MachineActionKind;
 /** `waiting`: the machine's runner is asking the person there before it starts anything. */
 export type RunnerJobStatus = "queued" | "running" | "waiting" | "done" | "failed";
 
@@ -874,6 +944,15 @@ export async function stopRunnerAgent(id: string, room: string, handle: string):
     `${runnerApiPath(id)}/agents/${encodeURIComponent(room)}/${encodeURIComponent(handle)}/stop`,
     { method: "POST" },
   );
+}
+
+/** Ask a machine to do something to its agents (resume, stop, rename…). Throws `ApiError`. */
+export async function machineAction(id: string, action: MachineAction): Promise<RunnerJob> {
+  return apiFetch<RunnerJob>(`${runnerApiPath(id)}/machine`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(action),
+  });
 }
 
 // ── A2A bridge (the Network pane's off-channel half) ─────────────────────────

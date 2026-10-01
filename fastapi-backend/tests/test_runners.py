@@ -391,3 +391,126 @@ async def test_a_swarm_on_a_runner_refuses_a_repository(client, room, runner):
     )
     assert resp.status_code == 422
     assert "folder" in resp.json()["detail"]
+
+
+# ── the Machines page: every agent on a machine, and actions on them ─────────
+
+MACHINE = {
+    "machine": "Julia's MacBook",
+    "herdr": True,
+    "herdr_server": "0.8.0",
+    "herdr_client": "0.9.1",
+    "workspaces": [
+        {
+            "id": "w2",
+            "label": "tome-dev",
+            "host": "herdr",
+            "room": ROOM,
+            "synced_by": None,
+            "runner_keeps": False,
+            "agents": [
+                {
+                    "handle": "reviewer",
+                    "room": ROOM,
+                    "host": "herdr",
+                    "ref": "w2:p2",
+                    "state": "stopped",
+                    "folder": "/Users/julia/code/shop",
+                    "session": "9b07-44c0",
+                    "kind": "claude",
+                    "workspace": "w2",
+                    "started_by": "runner",
+                    "resumable": True,
+                }
+            ],
+        }
+    ],
+    "problems": [
+        {
+            "kind": "stopped",
+            "text": "@reviewer stopped.",
+            "fix": "mycelium machine resume --all",
+            "handles": ["reviewer"],
+        }
+    ],
+}
+
+
+@pytest.mark.asyncio
+async def test_a_runner_s_heartbeat_carries_every_agent_on_its_machine(client):
+    await client.post("/api/runners", json=hello(machine=MACHINE))
+    got = (await client.get(f"/api/runners/{RUNNER}")).json()["machine"]
+    agent = got["workspaces"][0]["agents"][0]
+    assert (agent["handle"], agent["state"], agent["resumable"]) == ("reviewer", "stopped", True)
+    assert got["problems"][0]["fix"] == "mycelium machine resume --all"
+
+
+@pytest.mark.asyncio
+async def test_a_runner_from_before_the_machines_page_sends_no_report(client, runner):
+    assert (await client.get(f"/api/runners/{RUNNER}")).json()["machine"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("action", "kind", "spec"),
+    [
+        (
+            {"kind": "resume", "agents": [{"handle": "@Reviewer", "room": ROOM}]},
+            "resume",
+            {"all": False, "agents": [{"handle": "reviewer", "room": ROOM}]},
+        ),
+        ({"kind": "resume", "all": True}, "resume", {"all": True, "agents": []}),
+        (
+            {"kind": "rename", "handle": "reviewer", "room": ROOM, "name": " Reviewer "},
+            "rename",
+            {"handle": "reviewer", "room": ROOM, "name": "Reviewer"},
+        ),
+        ({"kind": "unbind", "gone": True}, "unbind", {"gone": True}),
+        (
+            {"kind": "sync", "workspace": "w2", "on": True},
+            "sync",
+            {"workspace": "w2", "on": True},
+        ),
+        (
+            {"kind": "session", "handle": "reviewer", "room": ROOM, "find": True},
+            "session",
+            {"handle": "reviewer", "room": ROOM, "find": True, "session": None},
+        ),
+        (
+            {"kind": "stop", "handle": "docs", "room": "myroom"},
+            "stop",
+            {"handle": "docs", "room": "myroom"},
+        ),
+    ],
+)
+async def test_a_machine_action_is_queued_as_that_machine_s_job(client, runner, action, kind, spec):
+    resp = await client.post(f"/api/runners/{RUNNER}/machine", json=action)
+    assert resp.status_code == 201, resp.text
+    job = resp.json()
+    assert (job["kind"], job["spec"]) == (kind, spec)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("action", "said"),
+    [
+        ({"kind": "resume"}, "agents, or all"),
+        ({"kind": "rename", "handle": "reviewer"}, "a name"),
+        ({"kind": "sync", "workspace": "w2"}, "on"),
+        ({"kind": "session", "handle": "reviewer"}, "a session, or find"),
+        ({"kind": "stop"}, "a handle"),
+    ],
+)
+async def test_a_machine_action_missing_what_it_needs_is_refused(client, runner, action, said):
+    resp = await client.post(f"/api/runners/{RUNNER}/machine", json=action)
+    assert resp.status_code == 422
+    assert said in resp.json()["detail"]
+    assert (await client.get(f"/api/runners/{RUNNER}/jobs")).json() == []
+
+
+@pytest.mark.asyncio
+async def test_a_machine_that_isnt_connected_is_asked_nothing(client, runner):
+    runners.registry._runners[RUNNER].last_seen -= runners.STALE_AFTER * 2
+    resp = await client.post(f"/api/runners/{RUNNER}/machine", json={"kind": "resume", "all": True})
+    assert resp.status_code == 422
+    assert "not connected" in resp.json()["detail"]

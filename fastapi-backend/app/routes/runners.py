@@ -30,6 +30,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from app.schemas import (
     HANDLE_PATTERN,
+    MachineAction,
     MemoryBatchCreate,
     MemoryCreate,
     RunnerAgentLaunch,
@@ -295,3 +296,59 @@ async def stop_agent(
         )
     me = actor.bind_optional_actor(request, None, field="created_by")
     return registry.enqueue(runner_id, "stop", {"room": room_name, "handle": h}, created_by=me)
+
+
+@router.post("/{runner_id}/machine", response_model=RunnerJobRead, status_code=201)
+async def machine_action(runner_id: str, payload: MachineAction, request: Request) -> RunnerJobRead:
+    """Do something to an agent on this machine, from the Machines page.
+
+    Any agent on the machine, not only one this runner started: resume a
+    stopped one in its saved session (the runner asks the person there first,
+    as it does for a launch), stop, rename or unbind one, find or save the
+    session one resumes in, or choose whether the runner keeps a workspace
+    synced. ``mycelium machine`` does the same on the machine itself.
+    """
+    runner = _runner_or_404(runner_id, request)
+    try:
+        check_ready(runner)
+    except RunnerError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    spec = _machine_spec(payload)
+    me = actor.bind_optional_actor(request, None, field="created_by")
+    job = registry.enqueue(runner_id, payload.kind, spec, created_by=me)
+    logger.info("runner %s: %s %s", runner_id, payload.kind, spec)
+    return job
+
+
+def _machine_spec(payload: MachineAction) -> dict:
+    """The job's spec for ``payload``, or 422 naming what it's missing."""
+
+    def need(value: object, what: str) -> None:
+        if value in (None, "", []):
+            raise HTTPException(status_code=422, detail=f"{payload.kind} needs {what}.")
+
+    one = {"handle": norm_handle(payload.handle or "") or "", "room": payload.room}
+    if payload.kind == "resume":
+        if not payload.all:
+            need(payload.agents, "agents, or all")
+        return {
+            "all": payload.all,
+            "agents": [
+                {"handle": norm_handle(a.handle) or "", "room": a.room} for a in payload.agents
+            ],
+        }
+    if payload.kind == "sync":
+        need(payload.workspace, "a workspace")
+        need(payload.on, "on")
+        return {"workspace": payload.workspace, "on": bool(payload.on)}
+    if payload.kind == "unbind" and payload.gone:
+        return {"gone": True}
+    need(one["handle"], "a handle")
+    if payload.kind == "rename":
+        need((payload.name or "").strip(), "a name")
+        return one | {"name": (payload.name or "").strip()}
+    if payload.kind == "session":
+        if not payload.find:
+            need((payload.session or "").strip(), "a session, or find")
+        return one | {"find": payload.find, "session": (payload.session or "").strip() or None}
+    return one

@@ -100,6 +100,23 @@ fn navigate_main(app: &AppHandle, url: Url) {
     show_main(app);
 }
 
+/// A page of the app's UI, for this Mac, once the supervisor says where it is.
+fn show_page(app: &AppHandle, path: &str) {
+    let Some(status) = app.state::<Supervisor>().status() else {
+        show_main(app);
+        return;
+    };
+    let Some(ui) = status.get("ui_url").and_then(Value::as_str) else {
+        show_main(app);
+        return;
+    };
+    let Ok(mut url) = Url::parse(&format!("{}{path}", ui.trim_end_matches('/'))) else { return };
+    if let Some(runner) = status.get("runner_id").and_then(Value::as_str) {
+        url.query_pairs_mut().append_pair("machine", runner);
+    }
+    navigate_main(app, url);
+}
+
 fn show_local(app: &AppHandle, view: &str) {
     if let Some(url) = local_url(app, &format!("index.html?view={view}")) {
         navigate_main(app, url);
@@ -257,6 +274,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         MenuItem::with_id(app, "status-runner", tray_line("Runner", ""), false, None::<&str>)?;
     let open = MenuItem::with_id(app, "open", "Open Mycelium", true, None::<&str>)?;
     let agents = MenuItem::with_id(app, "terminal", "Agents terminal", true, None::<&str>)?;
+    let yours = MenuItem::with_id(app, "machines", "Your agents…", true, None::<&str>)?;
     let at_login = app.autolaunch().is_enabled().unwrap_or(false);
     let autostart =
         CheckMenuItem::with_id(app, "autostart", "Start at login", true, at_login, None::<&str>)?;
@@ -273,6 +291,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             &PredefinedMenuItem::separator(app)?,
             &open,
             &agents,
+            &yours,
             &autostart,
             &health,
             &switch,
@@ -288,6 +307,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id().as_ref() {
             "open" => show_main(app),
             "terminal" => open_terminal_window(app, None),
+            "machines" => show_page(app, "/machines"),
             "switch" => show_local(app, "onboarding"),
             "doctor" => show_local(app, "doctor"),
             "updates" => updates::check(app.clone(), true),

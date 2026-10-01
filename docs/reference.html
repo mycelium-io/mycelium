@@ -1897,6 +1897,7 @@ EOF
         <li><strong>delivers wake-ups.</strong> Waiting wake-ups are sent to the right pane. Each one tells the agent why it was woken: to read a mention in the room, to answer a turn the <a href="adapters.html#conductor">conductor</a> or aligner gave it, or to pick up a task assigned to it.</li>
       </ul>
       <p><code>sync</code> needs to keep running for wake-ups to be delivered. The backend runs in a container and can&#x27;t reach herdr on your machine, so this command is what passes the wake-ups along. Press Ctrl-C to stop it; the agents&#x27; status is cleared from the app when you do.</p>
+      <p>If you run the <a href="#machines">runner</a>, it can keep a workspace synced instead, with no terminal left open: <code>mycelium machine sync w2 on</code>. A <code>sync</code> loop skips any workspace the runner keeps.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--once</span>                 # run one pass, then exit
 <span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--interval</span> 10          # check every 10 seconds
 <span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--kind</span> &lt;kind&gt;          # only add agents of one kind</code></pre>
@@ -2053,7 +2054,35 @@ EOF
       <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="flag">--detach</span>     # start in the background
 <span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">status</span>       # is it running, and does the hub see it?
 <span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">stop</span>         # stop it; agents it started keep running</code></pre>
-      <p>The Machines page (the laptop icon beside the notification bell) lists your connected runners, what each found, the agents it is running, and its recent requests.</p>
+      <p>The Machines page (the laptop icon beside the notification bell) lists your connected runners, what each found, the agents on it, and its recent requests.</p>
+      <h2 id="machines-your-agents-on-a-machine">Your agents on a machine</h2>
+      <p>Every agent on a machine is listed in one place, whoever started it: the ones the runner started, the ones <code>mycelium swarm</code> started, and panes you bound to a room yourself. From a terminal on that machine:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">machine</span></code></pre>
+      <p>It groups the agents by the herdr workspace (or Omnigent) they run in, says what each is doing, and lists what&#x27;s wrong with the fix for each. The Machines page shows the same list for each connected machine, with buttons for the same fixes. In the Mac app, <strong>Your agents…</strong> in the menu bar opens it.</p>
+      <p>An agent can be:</p>
+      <ul>
+        <li><strong>working</strong>, <strong>idle</strong> or <strong>blocked</strong>: running, in its pane.</li>
+        <li><strong>stopped</strong>: its pane is open, but nothing is running in it. This is what every agent looks like after herdr&#x27;s server restarts: herdr brings the panes back, but not the programs that were running in them.</li>
+        <li><strong>pane gone</strong>: the pane was closed.</li>
+      </ul>
+      <h3 id="machines-resuming-agents">Resuming agents</h3>
+      <p>When Mycelium starts a Claude Code agent, it saves the agent&#x27;s conversation (its session id) with the agent. A stopped agent with a saved session can be resumed: it starts again in its own folder, as the same member, and picks up the conversation where it stopped.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">machine</span> <span class="cmd">resume</span> <span class="flag">--all</span>          # every stopped agent that can be
+<span class="bin">mycelium</span> <span class="cmd">machine</span> <span class="cmd">resume</span> reviewer       # one</code></pre>
+      <p>On the Machines page, <strong>Resume</strong> shows the command each agent will run before anything starts. The runner then asks you on the machine, as it does before starting any agent.</p>
+      <p>An agent started before Mycelium saved sessions has none. Mycelium can look for the newest conversation in the agent&#x27;s folder. Check that it&#x27;s the right one before saving it, since two agents in one folder share that list:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">machine</span> <span class="cmd">session</span> reviewer <span class="flag">--find</span>      # show what it finds
+<span class="bin">mycelium</span> <span class="cmd">machine</span> <span class="cmd">session</span> reviewer &lt;id&gt;        # save the one you mean</code></pre>
+      <h3 id="machines-keeping-a-workspace-synced">Keeping a workspace synced</h3>
+      <p>Wake-ups reach herdr agents only while something runs <code>herdr sync</code> for their workspace. The runner always does that for the workspaces it opened. For a workspace you bound yourself, you can ask the runner to do it too, so you don&#x27;t need a terminal left open:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">machine</span> <span class="cmd">sync</span> w2 on</code></pre>
+      <p>On the Machines page this is the switch beside each workspace. Only one thing syncs a workspace at a time: if the runner keeps it synced, a <code>mycelium herdr sync</code> loop in a terminal leaves it alone.</p>
+      <h3 id="machines-other-fixes">Other fixes</h3>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">machine</span> <span class="cmd">stop</span> reviewer             # stop it; it stays in the room
+<span class="bin">mycelium</span> <span class="cmd">machine</span> <span class="cmd">rename</span> reviewer <span class="str">&quot;review&quot;</span>  # its name in herdr
+<span class="bin">mycelium</span> <span class="cmd">machine</span> <span class="cmd">unbind</span> reviewer           # forget its pane; it stays in the room
+<span class="bin">mycelium</span> <span class="cmd">machine</span> <span class="cmd">unbind</span> <span class="flag">--gone</span>             # forget every pane that&#x27;s gone</code></pre>
+      <p>Add <code>--json</code> to <code>mycelium machine</code> for the list as data.</p>
       <h2 id="machines-you-say-yes-on-the-machine">You say yes on the machine</h2>
       <p>Anyone who can reach a hub can ask it for an agent on any machine connected to it, and the hub can&#x27;t prove who asked. So the runner asks you before it starts anything. It shows who the hub says asked, the agent CLI, the folder, and the start of the agent&#x27;s instructions:</p>
       <ul>

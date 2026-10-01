@@ -169,13 +169,18 @@ class HerdrHost:
 
         workspace, pane = self._open_pane(state, room, cwd, env)
         try:
-            _start_when_ready(self.bridge, handle, kind, pane)
+            session = _start_when_ready(self.bridge, handle, kind, pane)
         except HerdrError as e:
             self._close_quietly(pane)
             raise HostError(str(e)) from e
         # Not ``managed``: a closed pane stops the agent, it does not delete it
         # from the room, so the app can start it again with its notes intact.
-        self.bridge.registry.set(HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=kind))
+        # Its session and folder are kept so it can be resumed after a restart.
+        self.bridge.registry.set(
+            HerdrPaneMapping(
+                room=room, handle=handle, pane=pane, kind=kind, session=session, cwd=str(cwd)
+            )
+        )
         self.bridge.registry.bind(workspace, room)
         self.bridge.prompt(pane, intro, wait=False)
         state.owned[workspace] = room
@@ -228,16 +233,21 @@ class HerdrHost:
 
     def sync(self, config: MyceliumConfig, state: State, log: Console) -> None:
         from mycelium.commands.herdr import sync_pass
+        from mycelium.machine import mark_syncing, runner_sync_choices
 
-        # Only the workspaces this runner opened: any other binding is the
-        # user's own `herdr sync`'s to keep.
-        targets = list(state.owned.items())
+        # The workspaces this runner opened, and any other bound workspace the
+        # person asked it to keep (`mycelium machine sync <workspace> on`, or the
+        # Machines page). The rest are left to a `herdr sync` of their own.
+        bindings = self.bridge.registry.bindings()
+        targets = dict(state.owned)
+        targets |= {w: bindings[w] for w in runner_sync_choices() if w in bindings}
         if not targets:
             return
+        mark_syncing(list(targets), "runner")
         sync_pass(
             config,
             self.bridge,
-            targets,
+            list(targets.items()),
             room_filter=None,
             ttl_s=self._ttl_s,
             log=log,
@@ -442,10 +452,12 @@ class OmnigentHost:
         over whatever the agent is doing.
         """
         from mycelium.commands.herdr import _push_presence, fetch_wakes, wake_prompt_for
+        from mycelium.machine import mark_syncing
 
         live = [a for a in state.agents.values() if a.live]
         if not live:
             return
+        mark_syncing(["omnigent"], "runner")
         by_room: dict[str, dict[str, Tracked]] = {}
         for agent in live:
             by_room.setdefault(agent.room, {})[agent.handle] = agent

@@ -2225,7 +2225,35 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#machines-running-it-in-the-background",
     "t": "Running it in the background",
     "s": "Guides › Start Agents From the App",
-    "x": "mycelium runner --detach # start in the background mycelium runner status # is it running, and does the hub see it? mycelium runner stop # stop it; agents it started keep running The Machines page (the laptop icon beside the notification bell) lists your connected runners, what each found, the agents it is running, and its recent requests.",
+    "x": "mycelium runner --detach # start in the background mycelium runner status # is it running, and does the hub see it? mycelium runner stop # stop it; agents it started keep running The Machines page (the laptop icon beside the notification bell) lists your connected runners, what each found, the agents on it, and its recent requests.",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#machines-your-agents-on-a-machine",
+    "t": "Your agents on a machine",
+    "s": "Guides › Start Agents From the App",
+    "x": "Every agent on a machine is listed in one place, whoever started it: the ones the runner started, the ones mycelium swarm started, and panes you bound to a room yourself. From a terminal on that machine: mycelium machine It groups the agents by the herdr workspace (or Omnigent) they run in, says what each is doing, and lists what's wrong with the fix for each. The Machines page shows the same list for each connected ",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#machines-resuming-agents",
+    "t": "Resuming agents",
+    "s": "Guides › Start Agents From the App",
+    "x": "When Mycelium starts a Claude Code agent, it saves the agent's conversation (its session id) with the agent. A stopped agent with a saved session can be resumed: it starts again in its own folder, as the same member, and picks up the conversation where it stopped. mycelium machine resume --all # every stopped agent that can be mycelium machine resume reviewer # one On the Machines page, Resume shows the command each ",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#machines-keeping-a-workspace-synced",
+    "t": "Keeping a workspace synced",
+    "s": "Guides › Start Agents From the App",
+    "x": "Wake-ups reach herdr agents only while something runs herdr sync for their workspace. The runner always does that for the workspaces it opened. For a workspace you bound yourself, you can ask the runner to do it too, so you don't need a terminal left open: mycelium machine sync w2 on On the Machines page this is the switch beside each workspace. Only one thing syncs a workspace at a time: if the runner keeps it synce",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#machines-other-fixes",
+    "t": "Other fixes",
+    "s": "Guides › Start Agents From the App",
+    "x": "mycelium machine stop reviewer # stop it; it stays in the room mycelium machine rename reviewer \"review\" # its name in herdr mycelium machine unbind reviewer # forget its pane; it stays in the room mycelium machine unbind --gone # forget every pane that's gone Add --json to mycelium machine for the list as data.",
     "p": "Reference"
   },
   {

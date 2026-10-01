@@ -291,13 +291,15 @@ def test_each_member_gets_a_pane_an_agent_and_its_own_identity(
     ]
     # Each Claude session may run mycelium without a prompt, and only this one:
     # the grant rides the command line, not the user's settings.
-    assert all(
-        c[-3:] == ["--", "--allowedTools", "Bash(mycelium:*)"] for c in herdr.of("agent start")
-    )
+    assert all(c[-2:] == ["--allowedTools", "Bash(mycelium:*)"] for c in herdr.of("agent start"))
+    # Each starts in its own chosen session, saved with its pane for resuming.
+    sessions = [c[c.index("--session-id") + 1] for c in herdr.of("agent start")]
+    assert len(set(sessions)) == 3
     assert written == ["agent-1", "agent-2", "agent-3"]
     mapping = bridge.registry.get("fix-tests", "agent-2")
     assert mapping is not None
     assert (mapping.pane, mapping.managed) == ("w9:p2", True)
+    assert mapping.session == sessions[1]
     assert bridge.registry.bindings() == {"w9": "fix-tests"}
 
 

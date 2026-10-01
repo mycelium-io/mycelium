@@ -6,10 +6,12 @@
 Three loops, each on its own thread:
 
 - **hello**: what this machine has (the scan, whether its host is up, the
-  folders agents may be started in) and the agents it is running, re-sent as a
-  heartbeat.
+  folders agents may be started in), the agents it is running, and every agent
+  on the machine (``mycelium.machine``'s report, for the Machines page),
+  re-sent as a heartbeat.
 - **jobs**: a long-poll for what the app asked for (``launch``, ``stop``,
-  ``scan``, ``swarm``), done one at a time and reported back.
+  ``scan``, ``swarm``, and the Machines page's ``resume``, ``rename``,
+  ``unbind``, ``sync`` and ``session``), done one at a time and reported back.
 - **sync**: presence up and doorbells down for the agents it started, so they
   hear their turns.
 
@@ -48,6 +50,7 @@ import httpx
 from rich.console import Console
 
 from mycelium import __version__
+from mycelium import machine as this_machine
 from mycelium.client import hub_client
 from mycelium.config import MyceliumConfig
 from mycelium.filesystem import get_mycelium_dir
@@ -56,7 +59,7 @@ from mycelium.runner import approvals, frameworks
 from mycelium.runner.hosts import AgentHost, HerdrHost, HostError, OmnigentHost
 
 #: Jobs that start something on this machine, and so wait for a yes here.
-ASK_FIRST = frozenset({"launch", "swarm"})
+ASK_FIRST = frozenset({"launch", "swarm", "resume"})
 #: How much of an agent's instructions the question shows.
 NOTES_PREVIEW = 400
 
@@ -297,7 +300,24 @@ class Runner:
             "roots": [str(r) for r in self.roots],
             "frameworks": [f.wire() for f in self.found],
             "agents": agents,
+            "machine": self.machine_report(),
         }
+
+    def machine_report(self) -> dict[str, Any] | None:
+        """Every agent on this machine, for the Machines page (``mycelium machine``'s report)."""
+        try:
+            with self._lock:
+                r = this_machine.report(
+                    self.config,
+                    bridge=self.bridge,
+                    state=self.state,
+                    omnigent=self.host if self.host.name == "omnigent" else None,
+                    machine=self.label,
+                )
+        except Exception as e:  # noqa: BLE001 - a heartbeat must not fail on its report
+            self.log.print(f"[dim]couldn't read this machine's agents: {e}[/dim]")
+            return None
+        return r.wire()
 
     def owner(self) -> str | None:
         """Whose agents these are: this machine's identity when it reads as a handle.
@@ -497,7 +517,14 @@ class Runner:
         with self._lock:
             agent = self.state.agents.get(key)
             if agent is None:
-                raise JobError(f"{self.label} isn't running @{spec['handle']} in {spec['room']}.")
+                # Not one this runner started: a pane someone bound. Stop its
+                # session and leave the pane, as `mycelium machine stop` does.
+                found = self._machine_agent(spec)
+                try:
+                    this_machine.stop(found, bridge=self.bridge)
+                except this_machine.MachineError as e:
+                    raise JobError(str(e)) from e
+                return {"pane": found.ref}
             self.host.stop(agent)
             agent.status = "stopped"
             agent.detail = "stopped from the app"
@@ -506,6 +533,107 @@ class Runner:
             self.state.save(self._state_path)
         self.log.print(f"[yellow]stopped[/yellow] @{agent.handle} in {agent.room}")
         return {"pane": agent.pane}
+
+    # ── this machine's agents (the Machines page's actions) ──────────────────
+
+    def _machine_agent(self, spec: dict[str, Any]) -> this_machine.Agent:
+        """The agent a job names, read now from this machine."""
+        r = this_machine.report(
+            self.config, bridge=self.bridge, state=self.state, machine=self.label
+        )
+        try:
+            return r.find(str(spec.get("handle") or ""), spec.get("room"))
+        except this_machine.MachineError as e:
+            raise JobError(str(e)) from e
+
+    def _resumable(self, spec: dict[str, Any]) -> list[this_machine.Agent]:
+        r = this_machine.report(
+            self.config, bridge=self.bridge, state=self.state, machine=self.label
+        )
+        if spec.get("all"):
+            agents = [a for a in r.agents if a.resumable]
+        else:
+            try:
+                agents = [
+                    r.find(str(a.get("handle") or ""), a.get("room"))
+                    for a in spec.get("agents") or []
+                ]
+            except this_machine.MachineError as e:
+                raise JobError(str(e)) from e
+        if not agents:
+            raise JobError(f"No stopped agent on {self.label} has a session to resume.")
+        if not_ready := [a for a in agents if not a.resumable]:
+            names = ", ".join(f"@{a.handle}" for a in not_ready)
+            raise JobError(f"{names} can't be resumed: no session was saved, or it's running.")
+        return agents
+
+    def resume_agents(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Start stopped agents again in their saved sessions (``mycelium machine resume``)."""
+        resumed: dict[str, str] = {}
+        failed: dict[str, str] = {}
+        for agent in self._resumable(spec):
+            try:
+                resumed[agent.handle] = this_machine.resume(self.config, agent, bridge=self.bridge)
+            except this_machine.MachineError as e:
+                failed[agent.handle] = str(e)
+        if failed and not resumed:
+            raise JobError("; ".join(failed.values()))
+        self.log.print(f"[green]resumed[/green] {', '.join('@' + h for h in resumed)}")
+        return {"resumed": resumed, "failed": failed}
+
+    def rename_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
+        agent = self._machine_agent(spec)
+        try:
+            this_machine.rename(agent, str(spec["name"]), bridge=self.bridge)
+        except this_machine.MachineError as e:
+            raise JobError(str(e)) from e
+        return {"pane": agent.ref, "name": spec["name"]}
+
+    def unbind_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
+        if spec.get("gone"):
+            r = this_machine.report(
+                self.config, bridge=self.bridge, state=self.state, machine=self.label
+            )
+            gone = [a for a in r.agents if a.state == "gone" and not a.resumable]
+            for agent in gone:
+                this_machine.unbind(agent, bridge=self.bridge)
+            return {"unbound": [a.handle for a in gone]}
+        agent = self._machine_agent(spec)
+        try:
+            this_machine.unbind(agent, bridge=self.bridge)
+        except this_machine.MachineError as e:
+            raise JobError(str(e)) from e
+        return {"unbound": [agent.handle]}
+
+    def sync_workspace(self, spec: dict[str, Any]) -> dict[str, Any]:
+        workspace = str(spec.get("workspace") or "")
+        if not workspace:
+            raise JobError("Say which workspace.")
+        this_machine.set_runner_sync(workspace, bool(spec.get("on")))
+        return {"workspace": workspace, "on": bool(spec.get("on"))}
+
+    def agent_session(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Find (``find``) or save (``session``) the session an agent resumes in.
+
+        Finding only says what it found: a guess is shown to a person, who
+        saves it with a second job, never kept on its own.
+        """
+        agent = self._machine_agent(spec)
+        if spec.get("find"):
+            found = this_machine.find_session(agent)
+            if found is None:
+                raise JobError(
+                    f"No Claude Code conversation found in {agent.folder or 'its folder'}."
+                )
+            return {"found": {"id": found.id, "path": found.path, "modified": found.modified}}
+        session = str(spec.get("session") or "")
+        if not session:
+            raise JobError("Say which session, or find one.")
+        try:
+            this_machine.save_session(agent, session, bridge=self.bridge)
+        except this_machine.MachineError as e:
+            raise JobError(str(e)) from e
+        return {"session": session}
 
     def swarm(self, spec: dict[str, Any], created_by: str | None) -> dict[str, Any]:
         """Open a herdr workspace for a team the hub set up, brief it, and start the kickoff.
@@ -577,6 +705,15 @@ class Runner:
             return {"installed": [f.id for f in found if f.installed]}
         if kind == "swarm":
             return self.swarm(spec, job.get("created_by"))
+        machine_jobs: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
+            "resume": self.resume_agents,
+            "rename": self.rename_agent,
+            "unbind": self.unbind_agent,
+            "sync": self.sync_workspace,
+            "session": self.agent_session,
+        }
+        if kind in machine_jobs:
+            return machine_jobs[kind](spec)
         raise JobError(f"this runner doesn't know how to do '{kind}'; update mycelium here.")
 
     def question(self, job: dict[str, Any]) -> dict[str, Any]:
@@ -587,11 +724,23 @@ class Runner:
         the question says so.
         """
         kind, spec = job.get("kind"), job.get("spec") or {}
+        hub = urlparse(self.config.server.api_url).netloc or self.config.server.api_url
+        asked_by = job.get("created_by")
+        if kind == "resume":
+            agents = self._resumable(spec)
+            who = f"Asked for by {'@' + asked_by if asked_by else 'someone'} on {hub}."
+            lines = "\n".join(this_machine.resume_command(a) for a in agents)
+            n = len(agents)
+            return {
+                "kind": kind,
+                "title": f"Resume {n} agent{'s' if n != 1 else ''} on {self.label}?",
+                "message": f"Each picks up its saved conversation, as itself:\n{lines}\n\n{who}",
+                "hub": hub,
+                "asked_by": asked_by,
+            }
         known = self.framework(str(spec.get("framework")))
         cwd = self.folder(spec.get("cwd"))
         room = str(spec.get("room"))
-        hub = urlparse(self.config.server.api_url).netloc or self.config.server.api_url
-        asked_by = job.get("created_by")
         where = f"Room {room} on {hub}. Asked for by {'@' + asked_by if asked_by else 'someone on that hub'}."
         if kind == "launch":
             handle = str(spec.get("handle"))

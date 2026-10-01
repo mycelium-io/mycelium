@@ -654,7 +654,11 @@ class AgentRead(BaseModel):
 RunnerAgentStatus = Literal[
     "starting", "running", "idle", "working", "blocked", "stopped", "failed"
 ]
-RunnerJobKind = Literal["launch", "stop", "scan", "swarm"]
+RunnerJobKind = Literal[
+    "launch", "stop", "scan", "swarm", "resume", "rename", "unbind", "sync", "session"
+]
+#: The actions the Machines page can take on a machine's agents (each queued as a job).
+MachineActionKind = Literal["resume", "stop", "rename", "unbind", "sync", "session"]
 #: ``waiting``: the runner took it and is asking the person at that machine first.
 RunnerJobStatus = Literal["queued", "running", "waiting", "done", "failed"]
 
@@ -685,6 +689,89 @@ class RunnerAgentRead(BaseModel):
     detail: str | None = None
 
 
+class MachineAgentRead(BaseModel):
+    """One agent on a machine, wherever it runs and however it got there."""
+
+    handle: str
+    room: str
+    host: str = Field(..., description="herdr or omnigent")
+    ref: str = Field(..., description="Where the host runs it: a herdr pane, an Omnigent session")
+    state: Literal["working", "idle", "blocked", "stopped", "gone", "unknown"]
+    folder: str | None = None
+    session: str | None = Field(
+        None, description="The agent CLI's saved session, which resuming picks up"
+    )
+    kind: str | None = None
+    workspace: str | None = None
+    started_by: Literal["runner", "you"] = "you"
+    resumable: bool = False
+
+
+class MachineWorkspaceRead(BaseModel):
+    """Where agents run together on a machine: a herdr workspace, or the Omnigent host."""
+
+    id: str
+    label: str
+    host: str
+    room: str | None = None
+    synced_by: Literal["runner", "terminal"] | None = Field(
+        None, description="What is syncing it now, if anything"
+    )
+    runner_keeps: bool = Field(
+        False, description="The runner is meant to keep it synced (it opened it, or was asked to)"
+    )
+    agents: list[MachineAgentRead] = Field(default_factory=list)
+
+
+class MachineProblemRead(BaseModel):
+    """Something wrong on a machine, and the CLI command that fixes it."""
+
+    kind: Literal["stopped", "unresumable", "unsynced", "herdr_update", "herdr_down"]
+    text: str
+    fix: str | None = None
+    handles: list[str] = Field(default_factory=list)
+    workspace: str | None = None
+
+
+class MachineReportRead(BaseModel):
+    """Every agent on a machine and what's wrong (``mycelium machine``'s report)."""
+
+    machine: str
+    herdr: bool = False
+    herdr_server: str | None = None
+    herdr_client: str | None = None
+    omnigent_url: str | None = None
+    workspaces: list[MachineWorkspaceRead] = Field(default_factory=list)
+    problems: list[MachineProblemRead] = Field(default_factory=list)
+
+
+class MachineAgentRef(BaseModel):
+    handle: str = Field(..., min_length=1, max_length=64)
+    room: str | None = None
+
+
+class MachineAction(BaseModel):
+    """Something to do to a machine's agents, from the Machines page; queued as a job.
+
+    Each kind reads the fields it needs: ``resume`` takes ``agents`` or ``all``;
+    ``stop``, ``rename`` (with ``name``), ``unbind`` and ``session`` (with
+    ``session`` to save one, or ``find``) take ``handle`` and ``room``;
+    ``unbind`` may take ``gone`` instead; ``sync`` takes ``workspace`` and ``on``.
+    """
+
+    kind: MachineActionKind
+    agents: list[MachineAgentRef] = Field(default_factory=list)
+    all: bool = False
+    handle: str | None = None
+    room: str | None = None
+    name: str | None = Field(None, max_length=80)
+    gone: bool = False
+    workspace: str | None = None
+    on: bool | None = None
+    session: str | None = Field(None, max_length=200)
+    find: bool = False
+
+
 class RunnerHello(BaseModel):
     """What a runner says about itself when it dials in, and on every heartbeat."""
 
@@ -700,6 +787,9 @@ class RunnerHello(BaseModel):
     roots: list[str] = Field(default_factory=list)
     frameworks: list[FrameworkRead] = Field(default_factory=list)
     agents: list[RunnerAgentRead] = Field(default_factory=list)
+    #: Every agent on the machine, not only the ones this runner started. A
+    #: runner from before the Machines page sends none.
+    machine: MachineReportRead | None = None
 
 
 class RunnerRead(RunnerHello):

@@ -237,7 +237,11 @@ def test_a_launch_opens_a_pane_starts_the_agent_and_tells_it_who_it_is(
     assert "MYCELIUM_API_URL=http://hub:8000" in create
     start = herdr.of("agent start")[0]
     assert start[2:6] == ["scout", "--kind", "claude", "--pane"]
-    assert start[-3:] == ["--", "--allowedTools", "Bash(mycelium:*)"]
+    # Started in a session chosen here, so it can be resumed after a restart.
+    agent_args = start[start.index("--") + 1 :]
+    assert agent_args[0] == "--session-id"
+    session = agent_args[1]
+    assert agent_args[2:] == ["--allowedTools", "Bash(mycelium:*)"]
     prompt = herdr.of("agent prompt")[0][3]
     assert "You are @scout" in prompt
     assert "mycelium memory get agents/scout/notes" in prompt
@@ -245,6 +249,9 @@ def test_a_launch_opens_a_pane_starts_the_agent_and_tells_it_who_it_is(
     mapping = r.bridge.registry.get("eng", "scout")
     assert mapping is not None
     assert (mapping.pane, mapping.managed) == ("w9:p1", False)
+    # Its session and folder are kept with the pane, for resuming.
+    assert mapping.session == session
+    assert mapping.cwd == str((tmp_path / "api").resolve())
     assert r.bridge.registry.bindings() == {"w9": "eng"}
     assert r.hello_body()["agents"][0]["status"] == "running"
     r.refresh()

@@ -2111,6 +2111,59 @@
         }
       }
     },
+    "/api/runners/{runner_id}/machine": {
+      "post": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Machine Action",
+        "description": "Do something to an agent on this machine, from the Machines page.\n\nAny agent on the machine, not only one this runner started: resume a\nstopped one in its saved session (the runner asks the person there first,\nas it does for a launch), stop, rename or unbind one, find or save the\nsession one resumes in, or choose whether the runner keeps a workspace\nsynced. ``mycelium machine`` does the same on the machine itself.",
+        "operationId": "machine_action_api_runners__runner_id__machine_post",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MachineAction"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerJobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/joins": {
       "post": {
         "tags": [
@@ -6151,6 +6204,498 @@
         "type": "object",
         "title": "L9PayloadRead"
       },
+      "MachineAction": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "resume",
+              "stop",
+              "rename",
+              "unbind",
+              "sync",
+              "session"
+            ],
+            "title": "Kind"
+          },
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/MachineAgentRef"
+            },
+            "type": "array",
+            "title": "Agents"
+          },
+          "all": {
+            "type": "boolean",
+            "title": "All",
+            "default": false
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "room": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "gone": {
+            "type": "boolean",
+            "title": "Gone",
+            "default": false
+          },
+          "workspace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace"
+          },
+          "on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "On"
+          },
+          "session": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session"
+          },
+          "find": {
+            "type": "boolean",
+            "title": "Find",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "MachineAction",
+        "description": "Something to do to a machine's agents, from the Machines page; queued as a job.\n\nEach kind reads the fields it needs: ``resume`` takes ``agents`` or ``all``;\n``stop``, ``rename`` (with ``name``), ``unbind`` and ``session`` (with\n``session`` to save one, or ``find``) take ``handle`` and ``room``;\n``unbind`` may take ``gone`` instead; ``sync`` takes ``workspace`` and ``on``."
+      },
+      "MachineAgentRead": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host",
+            "description": "herdr or omnigent"
+          },
+          "ref": {
+            "type": "string",
+            "title": "Ref",
+            "description": "Where the host runs it: a herdr pane, an Omnigent session"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "working",
+              "idle",
+              "blocked",
+              "stopped",
+              "gone",
+              "unknown"
+            ],
+            "title": "State"
+          },
+          "folder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder"
+          },
+          "session": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session",
+            "description": "The agent CLI's saved session, which resuming picks up"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "workspace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace"
+          },
+          "started_by": {
+            "type": "string",
+            "enum": [
+              "runner",
+              "you"
+            ],
+            "title": "Started By",
+            "default": "you"
+          },
+          "resumable": {
+            "type": "boolean",
+            "title": "Resumable",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle",
+          "room",
+          "host",
+          "ref",
+          "state"
+        ],
+        "title": "MachineAgentRead",
+        "description": "One agent on a machine, wherever it runs and however it got there."
+      },
+      "MachineAgentRef": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Handle"
+          },
+          "room": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle"
+        ],
+        "title": "MachineAgentRef"
+      },
+      "MachineProblemRead": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "stopped",
+              "unresumable",
+              "unsynced",
+              "herdr_update",
+              "herdr_down"
+            ],
+            "title": "Kind"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "fix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fix"
+          },
+          "handles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Handles"
+          },
+          "workspace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "text"
+        ],
+        "title": "MachineProblemRead",
+        "description": "Something wrong on a machine, and the CLI command that fixes it."
+      },
+      "MachineReportRead-Input": {
+        "properties": {
+          "machine": {
+            "type": "string",
+            "title": "Machine"
+          },
+          "herdr": {
+            "type": "boolean",
+            "title": "Herdr",
+            "default": false
+          },
+          "herdr_server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Herdr Server"
+          },
+          "herdr_client": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Herdr Client"
+          },
+          "omnigent_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Omnigent Url"
+          },
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/MachineWorkspaceRead"
+            },
+            "type": "array",
+            "title": "Workspaces"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/MachineProblemRead"
+            },
+            "type": "array",
+            "title": "Problems"
+          }
+        },
+        "type": "object",
+        "required": [
+          "machine"
+        ],
+        "title": "MachineReportRead",
+        "description": "Every agent on a machine and what's wrong (``mycelium machine``'s report)."
+      },
+      "MachineReportRead-Output": {
+        "properties": {
+          "machine": {
+            "type": "string",
+            "title": "Machine"
+          },
+          "herdr": {
+            "type": "boolean",
+            "title": "Herdr",
+            "default": false
+          },
+          "herdr_server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Herdr Server"
+          },
+          "herdr_client": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Herdr Client"
+          },
+          "omnigent_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Omnigent Url"
+          },
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/MachineWorkspaceRead"
+            },
+            "type": "array",
+            "title": "Workspaces"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/MachineProblemRead"
+            },
+            "type": "array",
+            "title": "Problems"
+          }
+        },
+        "type": "object",
+        "required": [
+          "machine"
+        ],
+        "title": "MachineReportRead",
+        "description": "Every agent on a machine and what's wrong (``mycelium machine``'s report)."
+      },
+      "MachineWorkspaceRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "room": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room"
+          },
+          "synced_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "runner",
+                  "terminal"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synced By",
+            "description": "What is syncing it now, if anything"
+          },
+          "runner_keeps": {
+            "type": "boolean",
+            "title": "Runner Keeps",
+            "description": "The runner is meant to keep it synced (it opened it, or was asked to)",
+            "default": false
+          },
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/MachineAgentRead"
+            },
+            "type": "array",
+            "title": "Agents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "host"
+        ],
+        "title": "MachineWorkspaceRead",
+        "description": "Where agents run together on a machine: a herdr workspace, or the Omnigent host."
+      },
       "MembershipRead": {
         "properties": {
           "room": {
@@ -7615,6 +8160,16 @@
             },
             "type": "array",
             "title": "Agents"
+          },
+          "machine": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MachineReportRead-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -7641,7 +8196,12 @@
               "launch",
               "stop",
               "scan",
-              "swarm"
+              "swarm",
+              "resume",
+              "rename",
+              "unbind",
+              "sync",
+              "session"
             ],
             "title": "Kind"
           },
@@ -7828,6 +8388,16 @@
             },
             "type": "array",
             "title": "Agents"
+          },
+          "machine": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MachineReportRead-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "connected": {
             "type": "boolean",

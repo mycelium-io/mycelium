@@ -28,7 +28,14 @@ import {
   runnerAgentOf,
 } from "./runners";
 import type { MockMemory } from "./fixtures";
-import type { A2aBridgeState, MemoryGraph, MemoryGraphEdge, MemoryLink, Protocol } from "@/lib/api";
+import type {
+  A2aBridgeState,
+  MemoryGraph,
+  MemoryGraphEdge,
+  MemoryLink,
+  Protocol,
+  RunnerJobKind,
+} from "@/lib/api";
 import type { SearchHit, SearchResultType } from "@/lib/search";
 
 /** One item of a POST /memory batch, as the editor sends it. */
@@ -196,6 +203,13 @@ async function handleRunners(req: Request, method: string, rest: string[]): Prom
     return job ? json(job) : notFound("Job not found");
   }
   if (sub === "scan" && method === "POST") return json(queueJob(runner.id, "scan", {}), 201);
+  if (sub === "machine" && method === "POST") {
+    // The Machines page's actions, queued as the hub queues them.
+    const body = await readJson(req);
+    const kind = String(body.kind ?? "") as RunnerJobKind;
+    const spec = Object.fromEntries(Object.entries(body).filter(([k]) => k !== "kind"));
+    return json(queueJob(runner.id, kind, spec, null), 201);
+  }
   if (sub === "agents" && method === "POST") {
     if (a !== undefined && b !== undefined && c === "stop") {
       const spec = { room: decodeURIComponent(a), handle: decodeURIComponent(b) };

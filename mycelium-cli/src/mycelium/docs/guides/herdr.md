@@ -55,6 +55,10 @@ a container and can't reach herdr on your machine, so this command is what
 passes the wake-ups along. Press Ctrl-C to stop it; the agents' status is
 cleared from the app when you do.
 
+If you run the [runner](#machines), it can keep a workspace synced instead,
+with no terminal left open: `mycelium machine sync w2 on`. A `sync` loop
+skips any workspace the runner keeps.
+
 ```bash
 mycelium herdr sync --once                 # run one pass, then exit
 mycelium herdr sync --interval 10          # check every 10 seconds

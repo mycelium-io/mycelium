@@ -358,7 +358,14 @@ def _enroll_one(
     )
     _write_manifest(config, room, manifest, created_by=sender)
     bridge.registry.set(
-        HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=agent.get("agent"), managed=True)
+        HerdrPaneMapping(
+            room=room,
+            handle=handle,
+            pane=pane,
+            kind=agent.get("agent"),
+            managed=True,
+            cwd=agent.get("foreground_cwd") or agent.get("cwd"),
+        )
     )
     return handle
 
@@ -422,9 +429,20 @@ def _reconcile_workspace(
         )
         is not None
     ]
+    # Retire on the pane closing, not on its agent stopping. After herdr's server
+    # restarts, every pane comes back at a bare shell: those agents stopped, they
+    # didn't leave, and retiring them would throw away what resumes them.
+    try:
+        open_panes = {
+            str(p["pane_id"])
+            for p in bridge.list_panes()
+            if p.get("workspace_id") == workspace and p.get("pane_id")
+        }
+    except HerdrError:
+        return enrolled, []
     retired: list[str] = []
     for m in bridge.registry.all():
-        if m.room == room and m.managed and m.pane not in live_panes:
+        if m.room == room and m.managed and m.pane not in live_panes | open_panes:
             _retire_one(config, bridge, m)
             retired.append(m.handle)
     return enrolled, retired
@@ -774,11 +792,26 @@ def herdr_sync(
 
         ttl_s = max(90.0, interval * 4.0)
 
+        from mycelium.machine import mark_syncing, syncing
+
+        said_yielded: set[str] = set()
+
         def reconcile_and_push() -> tuple[int, int, int]:
+            # One thing syncs a workspace at a time: a workspace this machine's
+            # runner is keeping is left to it.
+            by_runner = {w for w, by in syncing().items() if by == "runner"}
+            mine = [(w, r) for w, r in targets if w not in by_runner]
+            for w, _r in targets:
+                if w in by_runner and w not in said_yielded:
+                    said_yielded.add(w)
+                    console.print(
+                        f"[dim]{w} is kept synced by this machine's runner; leaving it to it.[/dim]"
+                    )
+            mark_syncing([w for w, _r in mine], "terminal")
             return sync_pass(
                 config,
                 bridge,
-                targets,
+                mine,
                 room_filter=room_name,
                 ttl_s=ttl_s,
                 name_from=name_from,

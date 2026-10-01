@@ -6,8 +6,8 @@
 The app runs no containers, so the Docker-shaped checks don't apply. These
 look at what it does run, in the order a problem would show: the SLIM node,
 the hub, the UI, the runner and herdr under it, the agent CLIs herdr can
-start, and whether ``mycelium`` and ``herdr`` are on PATH for the agents that
-call them. Which of them apply depends on the app's own setting: a Mac that
+start, whether ``mycelium`` and ``herdr`` are on PATH for the agents that
+call them, and what ``mycelium machine`` finds wrong with the agents here. Which of them apply depends on the app's own setting: a Mac that
 joins a hub elsewhere runs no SLIM node, hub or UI.
 """
 
@@ -16,12 +16,15 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from mycelium.desktop.supervisor import HOST, HUB_PORT, SLIM_PORT, UI_PORT, Locator, port_open
 from mycelium.ui_status import CheckResult
+
+if TYPE_CHECKING:
+    from mycelium.machine import Report
 
 SETTINGS = Path.home() / ".mycelium" / "desktop.json"
 
@@ -70,7 +73,12 @@ def _get(url: str, timeout: float = 3.0) -> httpx.Response | None:
 
 
 def hub(api_url: str) -> CheckResult:
-    resp = _get(f"{api_url.rstrip('/')}/health")
+    base = api_url.rstrip("/")
+    resp = _get(f"{base}/health")
+    # A hub reached at its UI's address answers only under /api, where the UI
+    # maps /api/health onto the hub's /health.
+    if resp is not None and resp.status_code == 404:
+        resp = _get(f"{base}/api/health")
     if resp is not None and resp.status_code == 200:
         return CheckResult(name="Hub", status="ok", message=f"answering at {api_url}")
     return CheckResult(
@@ -106,7 +114,7 @@ def runner(api_url: str) -> CheckResult:
     return CheckResult(name="Runner", status="ok", message=f"connected as {rid}")
 
 
-def herdr() -> CheckResult:
+def herdr(here: Report | None = None) -> CheckResult:
     from mycelium.integrations.herdr import HerdrBridge
 
     bridge = HerdrBridge()
@@ -124,10 +132,51 @@ def herdr() -> CheckResult:
             message="installed, but its server isn't running",
             details=["Open herdr once (run `herdr` in a terminal), then check again."],
         )
+    update = next((p for p in here.problems if p.kind == "herdr_update"), None) if here else None
+    if update and here:
+        return CheckResult(
+            name="herdr",
+            status="warning",
+            message=f"server {here.herdr_server}, client {here.herdr_client}",
+            details=[update.text, f"Fix: {update.fix}"],
+        )
     version = bridge.version()
     return CheckResult(
         name="herdr", status="ok", message=f"running{f' ({version})' if version else ''}"
     )
+
+
+def agents_here(here: Report) -> CheckResult:
+    """The machine's agents: stopped ones, lost panes, workspaces nothing syncs."""
+    problems = [p for p in here.problems if p.kind not in ("herdr_update", "herdr_down")]
+    count = len(here.agents)
+    if not problems:
+        return CheckResult(
+            name="Agents here",
+            status="ok",
+            message=f"{count} agent{'' if count == 1 else 's'}, nothing to fix",
+        )
+    details = []
+    for p in problems:
+        details.append(p.text)
+        if p.fix:
+            details.append(f"  Fix: {p.fix}")
+    return CheckResult(
+        name="Agents here",
+        status="warning",
+        message=f"{len(problems)} problem{'' if len(problems) == 1 else 's'}",
+        details=[*details, "See them all with `mycelium machine`."],
+    )
+
+
+def _report() -> Report | None:
+    from mycelium.config import MyceliumConfig
+    from mycelium.machine import report
+
+    try:
+        return report(MyceliumConfig.load())
+    except Exception:  # noqa: BLE001 - a check that can't read the machine reports nothing
+        return None
 
 
 def agent_clis() -> CheckResult:
@@ -208,7 +257,10 @@ def desktop_checks() -> list[tuple[str, list[CheckResult]]]:
         services.append(ui())
     if api_url:
         services.append(runner(api_url))
-    agents = [herdr(), agent_clis(), on_path()]
+    here = _report()
+    agents = [herdr(here), agent_clis(), on_path()]
+    if here is not None:
+        agents.append(agents_here(here))
     if not client:
         agents.append(embedding_model())
     return [("This Mac", services), ("Agents", agents)]

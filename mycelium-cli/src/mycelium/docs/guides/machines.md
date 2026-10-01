@@ -164,8 +164,82 @@ mycelium runner stop         # stop it; agents it started keep running
 ```
 
 The Machines page (the laptop icon beside the notification bell) lists your
-connected runners, what each found, the agents it is running, and its recent
+connected runners, what each found, the agents on it, and its recent
 requests.
+
+## Your agents on a machine
+
+Every agent on a machine is listed in one place, whoever started it: the ones
+the runner started, the ones `mycelium swarm` started, and panes you bound to
+a room yourself. From a terminal on that machine:
+
+```bash
+mycelium machine
+```
+
+It groups the agents by the herdr workspace (or Omnigent) they run in, says
+what each is doing, and lists what's wrong with the fix for each. The
+Machines page shows the same list for each connected machine, with buttons
+for the same fixes. In the Mac app, **Your agents…** in the menu bar opens it.
+
+An agent can be:
+
+- **working**, **idle** or **blocked**: running, in its pane.
+- **stopped**: its pane is open, but nothing is running in it. This is what
+  every agent looks like after herdr's server restarts: herdr brings the
+  panes back, but not the programs that were running in them.
+- **pane gone**: the pane was closed.
+
+### Resuming agents
+
+When Mycelium starts a Claude Code agent, it saves the agent's conversation
+(its session id) with the agent. A stopped agent with a saved session can be
+resumed: it starts again in its own folder, as the same member, and picks up
+the conversation where it stopped.
+
+```bash
+mycelium machine resume --all          # every stopped agent that can be
+mycelium machine resume reviewer       # one
+```
+
+On the Machines page, **Resume** shows the command each agent will run before
+anything starts. The runner then asks you on the machine, as it does before
+starting any agent.
+
+An agent started before Mycelium saved sessions has none. Mycelium can look
+for the newest conversation in the agent's folder. Check that it's the right
+one before saving it, since two agents in one folder share that list:
+
+```bash
+mycelium machine session reviewer --find      # show what it finds
+mycelium machine session reviewer <id>        # save the one you mean
+```
+
+### Keeping a workspace synced
+
+Wake-ups reach herdr agents only while something runs `herdr sync` for their
+workspace. The runner always does that for the workspaces it opened. For a
+workspace you bound yourself, you can ask the runner to do it too, so you
+don't need a terminal left open:
+
+```bash
+mycelium machine sync w2 on
+```
+
+On the Machines page this is the switch beside each workspace. Only one
+thing syncs a workspace at a time: if the runner keeps it synced, a
+`mycelium herdr sync` loop in a terminal leaves it alone.
+
+### Other fixes
+
+```bash
+mycelium machine stop reviewer             # stop it; it stays in the room
+mycelium machine rename reviewer "review"  # its name in herdr
+mycelium machine unbind reviewer           # forget its pane; it stays in the room
+mycelium machine unbind --gone             # forget every pane that's gone
+```
+
+Add `--json` to `mycelium machine` for the list as data.
 
 ## You say yes on the machine
 
