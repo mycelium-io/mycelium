@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-// The app's own screen: the first-run choice, and the wait while Mycelium
-// starts. Once the supervisor says the room UI is up, the app points this
-// window at it and this page is gone.
+// The app's own screens: the first-run wizard, Settings, the wait while
+// Mycelium starts, and the health check. Once the supervisor says the room UI
+// is up, the app points this window at it and these pages are gone.
 
 import "./style.css";
 import { invoke } from "@tauri-apps/api/core";
@@ -65,6 +65,14 @@ interface ModelView {
   key_hint: string | null;
 }
 
+interface Check {
+  section: string;
+  name: string;
+  status: string;
+  message: string;
+  details: string[];
+}
+
 type ProviderId = "anthropic" | "openai" | "openrouter" | "ollama" | "custom";
 
 interface Provider {
@@ -74,6 +82,8 @@ interface Provider {
   models: string[];
   /** The key field's placeholder; null for a provider that needs no key. */
   key: string | null;
+  /** Where to get a key, said in the field's hint. */
+  keyFrom?: string;
   /** Where it answers, for a provider the hub can't find on its own. */
   baseUrl?: string;
 }
@@ -84,9 +94,22 @@ const PROVIDERS: Provider[] = [
     name: "Anthropic",
     models: ["anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4-6", "anthropic/claude-haiku-4-5"],
     key: "sk-ant-…",
+    keyFrom: "console.anthropic.com, under API keys",
   },
-  { id: "openai", name: "OpenAI", models: ["openai/gpt-4.1", "openai/gpt-4o", "openai/gpt-4o-mini", "openai/o3"], key: "sk-…" },
-  { id: "openrouter", name: "OpenRouter", models: ["openrouter/anthropic/claude-sonnet-4-6"], key: "sk-or-…" },
+  {
+    id: "openai",
+    name: "OpenAI",
+    models: ["openai/gpt-4.1", "openai/gpt-4o", "openai/gpt-4o-mini", "openai/o3"],
+    key: "sk-…",
+    keyFrom: "platform.openai.com, under API keys",
+  },
+  {
+    id: "openrouter",
+    name: "OpenRouter",
+    models: ["openrouter/anthropic/claude-sonnet-4-6"],
+    key: "sk-or-…",
+    keyFrom: "openrouter.ai, under Keys",
+  },
   {
     id: "ollama",
     name: "Ollama",
@@ -94,22 +117,25 @@ const PROVIDERS: Provider[] = [
     key: null,
     baseUrl: "http://localhost:11434",
   },
-  { id: "custom", name: "Other", models: [], key: "API key, if it needs one", baseUrl: "" },
+  { id: "custom", name: "Other", models: [], key: "If it needs one", baseUrl: "" },
 ];
+
+/** What the model is for, in our own docs: which of Mycelium's agents use it. */
+const MODELS_DOC = "https://mycelium-io.github.io/mycelium/reference.html#models";
 
 function providerOf(model: string | null): Provider {
   const prefix = (model ?? "").split("/")[0];
   return PROVIDERS.find((p) => p.id === prefix) ?? (model ? PROVIDERS[PROVIDERS.length - 1] : PROVIDERS[0]);
 }
 
-const PREVIEW_MODEL: ModelView = { model: null, base_url: null, has_key: false, key_hint: null };
-
 const inApp = "__TAURI_INTERNALS__" in window;
 const app = document.getElementById("app")!;
 
-/** Outside the app (a browser preview), a made-up machine so the page still draws. */
+// ── outside the app (a browser preview): a made-up machine so pages still draw ──
+
+const previewSetUp = new URLSearchParams(location.search).get("preview") === "settings";
 const PREVIEW: Snapshot = {
-  settings: null,
+  settings: previewSetUp ? { mode: "hub", hubUrl: null, roots: ["/Users/you/code"], shareUsage: false } : null,
   status: null,
   lastError: null,
   mycelium: { name: "mycelium", path: "/Applications/Mycelium.app/Contents/MacOS/mycelium", bundled: true },
@@ -120,10 +146,26 @@ const PREVIEW_AGENTS: Framework[] = [
   { id: "claude", name: "Claude Code", version: "2.1.280", installed: true, launchable: true },
   { id: "opencode", name: "OpenCode", version: "1.18.23", installed: true, launchable: true },
 ];
+const PREVIEW_MODEL: ModelView = previewSetUp
+  ? { model: "anthropic/claude-sonnet-4-6", base_url: null, has_key: true, key_hint: "a1b2" }
+  : { model: null, base_url: null, has_key: false, key_hint: null };
+const PREVIEW_CHECKS: Check[] = [
+  { section: "This Mac", name: "Hub", status: "ok", message: "answering at http://127.0.0.1:8000", details: [] },
+  { section: "Agents", name: "herdr", status: "ok", message: "running (0.9.1)", details: [] },
+  {
+    section: "Models",
+    name: "LLM connectivity",
+    status: previewSetUp ? "ok" : "warning",
+    message: previewSetUp ? "anthropic/claude-sonnet-4-6: completion probe succeeded" : "Not configured",
+    details: previewSetUp ? [] : ["Choose a model and add its key in Settings (⌘,)"],
+  },
+];
 
 async function snapshot(): Promise<Snapshot> {
   return inApp ? invoke<Snapshot>("get_state") : PREVIEW;
 }
+
+// ── small helpers ───────────────────────────────────────────────────────────
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -147,6 +189,11 @@ function shortVersion(v: string | null): string {
   return v?.match(/\d+(?:\.\d+)+/)?.[0] ?? "";
 }
 
+/** A link out of the app: opened in a new tab, which the app hands to the default browser. */
+function outLink(href: string, text: string): HTMLAnchorElement {
+  return el("a", { href, target: "_blank", rel: "noreferrer" }, text);
+}
+
 function head(sub: string): HTMLElement {
   return el(
     "div",
@@ -156,15 +203,103 @@ function head(sub: string): HTMLElement {
   );
 }
 
-// ── the model ───────────────────────────────────────────────────────────────
+function checkbox(id: string, checked: boolean, onChange: (on: boolean) => void): HTMLInputElement {
+  const box = el("input", { type: "checkbox", class: "toggle", id });
+  box.checked = checked;
+  box.addEventListener("change", () => onChange(box.checked));
+  return box;
+}
+
+/** What the person has chosen so far: the wizard fills it in, Settings starts from what's saved. */
+interface Choices {
+  mode: Mode;
+  hubUrl: string;
+  root: string;
+  shareUsage: boolean;
+}
+
+function choicesFrom(snap: Snapshot): Choices {
+  return {
+    mode: snap.settings?.mode ?? "hub",
+    hubUrl: snap.settings?.hubUrl ?? "",
+    root: tilde(snap.settings?.roots[0] ?? snap.home, snap.home),
+    shareUsage: snap.settings?.shareUsage ?? false,
+  };
+}
+
+function settingsOf(c: Choices): Settings {
+  return {
+    mode: c.mode,
+    hubUrl: c.mode === "client" ? c.hubUrl.trim() : null,
+    roots: [c.root.trim()],
+    shareUsage: c.mode === "hub" && c.shareUsage,
+  };
+}
+
+/** Save and (re)start what the app runs, then show it starting. */
+async function startWith(c: Choices, model: Record<string, string> | null): Promise<void> {
+  if (!inApp) return;
+  // Saved first, so the hub that starts reads it.
+  if (model && c.mode === "hub") await invoke<ModelView>("save_model", { model });
+  const setup = await invoke<PathSetup>("start", { settings: settingsOf(c) });
+  await loading(setup);
+}
+
+// ── the pieces: each written once, shown by the wizard a step at a time and
+// by Settings a section at a time ─────────────────────────────────────────────
+
+/** Where rooms live: on this Mac, or on a team's hub at an address. */
+function placePiece(c: Choices, onChange: () => void): { el: HTMLElement; problem: () => string | null } {
+  const hubField = el("input", {
+    class: "field mono",
+    placeholder: "https://hub.example.com",
+    spellcheck: "false",
+    autocapitalize: "none",
+    "aria-label": "Hub address",
+  });
+  hubField.value = c.hubUrl;
+  hubField.addEventListener("input", () => {
+    c.hubUrl = hubField.value;
+    onChange();
+  });
+  const hubRow = el("div", { class: "indent" }, el("div", { class: "label" }, "The hub's address"), hubField);
+
+  const choice = (value: Mode, title: string, sub: string) => {
+    const b = el(
+      "button",
+      { class: "choice stacked", type: "button", role: "radio" },
+      el("strong", {}, title),
+      el("span", {}, sub),
+      el("i", { class: "radio", "aria-hidden": "true" }),
+    );
+    b.addEventListener("click", () => {
+      c.mode = value;
+      render();
+      onChange();
+    });
+    return b;
+  };
+  const here = choice("hub", "On this Mac", "Your rooms, notes and agents, all here. Best for trying it out or giving a demo.");
+  const team = choice("client", "On my team's hub", "Join rooms someone else runs. You'll need its address.");
+  const render = () => {
+    here.setAttribute("aria-checked", String(c.mode === "hub"));
+    team.setAttribute("aria-checked", String(c.mode === "client"));
+    hubRow.hidden = c.mode !== "client";
+  };
+  render();
+  return {
+    el: el("div", { class: "piece" }, el("div", { class: "choices column", role: "radiogroup", "aria-label": "Where rooms live" }, here, team), hubRow),
+    problem: () => (c.mode === "client" && !c.hubUrl.trim() ? "Enter the hub's address." : null),
+  };
+}
 
 /**
- * The model the hub's own agents (personas, the aligner) think with: a
- * provider, a model, a key, and an address for one the hub can't find on its
- * own. The saved key is never shown, only its last four characters; leaving
- * the key field empty keeps it.
+ * The model Mycelium's own agents (the mediator, personas, the note-taker)
+ * think with. The saved key is never shown, only its last four characters;
+ * leaving the field empty keeps it. In the wizard the model name stays out of
+ * the way behind a Change link; in Settings it's a field.
  */
-async function modelSection(): Promise<{ section: HTMLElement; value: () => Record<string, string> }> {
+async function modelPiece(variant: "wizard" | "settings"): Promise<{ el: HTMLElement; value: () => Record<string, string>; summary: () => string }> {
   let saved = PREVIEW_MODEL;
   try {
     if (inApp) saved = await invoke<ModelView>("get_model");
@@ -172,22 +307,21 @@ async function modelSection(): Promise<{ section: HTMLElement; value: () => Reco
     // Unread settings start from the defaults; saving still writes them.
   }
   let provider = providerOf(saved.model);
+  let typedKey = "";
 
-  const providerField = el("select", { class: "field", "aria-label": "Provider" });
-  for (const p of PROVIDERS) {
-    const option = el("option", { value: p.id }, p.name);
-    if (p.id === provider.id) option.setAttribute("selected", "");
-    providerField.append(option);
-  }
-  const suggestions = el("datalist", { id: "model-suggestions" });
-  const modelField = el("input", {
-    class: "field mono",
-    list: "model-suggestions",
-    spellcheck: "false",
-    autocapitalize: "none",
-    "aria-label": "Model",
+  const seg = el("div", { class: "seg", role: "radiogroup", "aria-label": "Provider" });
+  const segButtons = PROVIDERS.map((p) => {
+    const b = el("button", { type: "button", role: "radio" }, p.name);
+    b.addEventListener("click", () => {
+      provider = p;
+      modelField.value = p.models[0] ?? "";
+      baseField.value = p.baseUrl ?? "";
+      render();
+    });
+    seg.append(b);
+    return { p, b };
   });
-  modelField.value = saved.model ?? provider.models[0] ?? "";
+
   const keyField = el("input", {
     class: "field mono",
     type: "password",
@@ -195,6 +329,12 @@ async function modelSection(): Promise<{ section: HTMLElement; value: () => Reco
     spellcheck: "false",
     "aria-label": "API key",
   });
+  keyField.addEventListener("input", () => {
+    typedKey = keyField.value.trim();
+  });
+  const keyHint = el("p", { class: "hint" });
+  const keyRow = el("div", {}, el("div", { class: "label" }, "API key"), keyField, keyHint);
+
   const baseField = el("input", {
     class: "field mono",
     spellcheck: "false",
@@ -203,175 +343,109 @@ async function modelSection(): Promise<{ section: HTMLElement; value: () => Reco
     "aria-label": "Address",
   });
   baseField.value = saved.base_url ?? provider.baseUrl ?? "";
-  const keyRow = el("div", {}, keyField);
-  const baseRow = el("div", {}, baseField);
+  const baseRow = el("div", {}, el("div", { class: "label" }, "Address"), baseField, el("p", { class: "hint" }, "Where the model answers."));
 
-  const render = () => {
-    suggestions.replaceChildren(...provider.models.map((m) => el("option", { value: m })));
-    keyRow.hidden = provider.key === null;
-    const ask =
-      provider.id === "custom" ? "Paste the API key, if it needs one" : `Paste your ${provider.name} API key (${provider.key})`;
-    const kept = saved.key_hint ? `Saved key ending ${saved.key_hint}` : "A key is saved";
-    keyField.placeholder = saved.has_key ? `${kept}. Paste a new one to replace it.` : ask;
-    baseRow.hidden = provider.baseUrl === undefined;
-  };
-  providerField.addEventListener("change", () => {
-    provider = PROVIDERS.find((p) => p.id === providerField.value) ?? PROVIDERS[0];
-    modelField.value = provider.models[0] ?? "";
-    baseField.value = provider.baseUrl ?? "";
-    render();
+  const suggestions = el("datalist", { id: `model-suggestions-${variant}` });
+  const modelField = el("input", {
+    class: "field mono",
+    list: `model-suggestions-${variant}`,
+    spellcheck: "false",
+    autocapitalize: "none",
+    "aria-label": "Model",
   });
-  render();
+  modelField.value = saved.model ?? provider.models[0] ?? "";
 
-  const section = el(
+  // The wizard tucks the model name away: most people never change it.
+  const modelName = el("code", {});
+  const change = el("button", { type: "button", class: "link" }, "Change");
+  const quiet = el("div", { class: "quiet" }, el("span", {}, "Model ", modelName), change);
+  const modelRow = el(
     "div",
     {},
     el("div", { class: "label" }, "Model"),
-    el("div", { class: "model-row" }, providerField, modelField, suggestions),
-    keyRow,
-    baseRow,
-    el(
-      "p",
-      { class: "hint" },
-      "What the agents this hub runs, like personas and the aligner, think with. Agents you bring, like Claude Code, use their own login. ",
-      // Opened in a new tab, which the app hands to the default browser.
-      el("a", { href: "https://pi.dev/models", target: "_blank", rel: "noreferrer" }, "Browse models"),
-    ),
+    modelField,
+    suggestions,
+    el("p", { class: "hint" }, "Any model your provider offers. ", outLink(MODELS_DOC, "Learn more about models")),
   );
-  keyRow.style.marginTop = "8px";
-  baseRow.style.marginTop = "8px";
+  change.addEventListener("click", () => {
+    quiet.hidden = true;
+    modelRow.hidden = false;
+    modelField.focus();
+  });
+  modelField.addEventListener("input", () => {
+    modelName.textContent = modelField.value.replace(/^[^/]+\//, "");
+  });
+
+  const render = () => {
+    for (const { p, b } of segButtons) b.setAttribute("aria-checked", String(p.id === provider.id));
+    suggestions.replaceChildren(...provider.models.map((m) => el("option", { value: m })));
+    keyRow.hidden = provider.key === null;
+    const kept = saved.key_hint ? `Saved key ending ${saved.key_hint}` : "A key is saved";
+    keyField.placeholder = saved.has_key ? `${kept}. Paste a new one to replace it.` : (provider.key ?? "");
+    keyHint.replaceChildren(
+      provider.keyFrom ? `Get one at ${provider.keyFrom}. ` : "",
+      "It stays on this Mac. ",
+      variant === "wizard" ? outLink(MODELS_DOC, "What uses this?") : "",
+    );
+    baseRow.hidden = provider.baseUrl === undefined;
+    modelName.textContent = modelField.value.replace(/^[^/]+\//, "") || "none";
+  };
+  render();
+
+  const parts: (Node | null)[] = [el("div", {}, el("div", { class: "label" }, "Provider"), seg), keyRow, baseRow];
+  if (variant === "wizard") {
+    modelRow.hidden = true;
+    parts.push(quiet, modelRow);
+  } else {
+    parts.push(modelRow, await modelStatus());
+  }
 
   return {
-    section,
+    el: el("div", { class: "piece" }, ...parts),
     value: () => {
       const body: Record<string, string> = {
         model: modelField.value.trim(),
         base_url: provider.baseUrl === undefined ? "" : baseField.value.trim(),
       };
       // Left empty, the saved key stays: the page never had it to send back.
-      if (provider.key !== null && keyField.value.trim()) body.api_key = keyField.value.trim();
+      if (provider.key !== null && typedKey) body.api_key = typedKey;
       return body;
+    },
+    summary: () => {
+      if (provider.key === null) return `${provider.name}, ${modelField.value.trim() || "no model"}`;
+      if (typedKey) return `${provider.name}, key ending ${typedKey.slice(-4)}`;
+      if (saved.has_key) return `${provider.name}, key ending ${saved.key_hint ?? "…"}`;
+      return `${provider.name}, no key yet`;
     },
   };
 }
 
-// ── first run, and Settings ─────────────────────────────────────────────────
-
-async function onboarding() {
-  const snap = await snapshot();
-  // The same page is the first run and, after it, Settings.
-  const firstRun = !snap.settings;
-  let mode: Mode = snap.settings?.mode ?? "hub";
-  let hubUrl = snap.settings?.hubUrl ?? "";
-  let root = tilde(snap.settings?.roots[0] ?? snap.home, snap.home);
-  let shareUsage = snap.settings?.shareUsage ?? false;
-
-  const error = el("p", { class: "error", role: "alert", hidden: "" });
-  // Asked here, where a Mac's hub starts, and nowhere else: off unless ticked.
-  // Only for a hub on this Mac; in client mode the hub is someone else's.
-  const shareBox = el("input", { type: "checkbox", class: "toggle", id: "share-usage" });
-  shareBox.checked = shareUsage;
-  shareBox.addEventListener("change", () => {
-    shareUsage = shareBox.checked;
-  });
-  const shareRow = el(
-    "div",
-    { class: "share" },
-    el("label", { class: "share-label", for: "share-usage" }, shareBox, "Share anonymous usage stats"),
-    el(
-      "p",
-      { class: "hint" },
-      "Counts of tasks, flows and agents, so we know what's working. Never names, rooms or what anyone wrote. You can see them on the Metrics page either way.",
-    ),
-  );
-  const model = await modelSection();
-  const hubField = el("input", {
-    class: "field mono",
-    placeholder: "https://hub.example.com",
-    spellcheck: "false",
-    autocapitalize: "none",
-    "aria-label": "Hub address",
-  });
-  hubField.value = hubUrl;
-  const hubRow = el("div", {}, hubField);
-  const rootPath = el("span", { class: "folder-path mono", title: "" }, root);
-  const rootButton = el("button", { class: "button ghost", type: "button" }, "Choose…");
-  const rootField = el("div", { class: "folder" }, el("span", { class: "folder-icon", "aria-hidden": "true" }), rootPath, rootButton);
-  const button = el("button", { class: "button", type: "button" });
-  // Settings is opened from a running app, so it can be left unchanged. The
-  // first run has nowhere to go back to.
-  const cancel = firstRun ? null : el("button", { class: "button ghost", type: "button" }, "Cancel");
-  cancel?.addEventListener("click", async () => {
-    if (!inApp) return;
+/** Whether the model is answering, from the health check. Filled in when it comes back. */
+async function modelStatus(): Promise<HTMLElement> {
+  const line = el("div", { class: "status-line" }, el("span", { class: "dot" }), "Checking the model…");
+  void (async () => {
     try {
-      await invoke("open_room");
+      const result = inApp ? await invoke<{ checks: Check[] }>("run_doctor") : { checks: PREVIEW_CHECKS };
+      const check = result.checks.find((c) => c.name === "LLM connectivity");
+      if (!check) {
+        line.replaceChildren(el("span", { class: "dot" }), "Start Mycelium to check the model.");
+        return;
+      }
+      const ok = check.status === "ok";
+      line.className = ok ? "status-line ok" : "status-line bad";
+      line.replaceChildren(
+        el("span", { class: ok ? "dot on" : "dot bad" }),
+        ok ? "Working: the model answered." : `Not working: ${check.message}. ${check.details[check.details.length - 1] ?? ""}`,
+      );
     } catch {
-      // Not up yet (or stopped): show how starting is going instead.
-      await loading();
+      line.replaceChildren(el("span", { class: "dot" }), "Couldn't check the model.");
     }
-  });
-  const where = el("div", { class: "where" });
-  // Said before anything happens: everything Start changes on this Mac.
-  const setsUpList = el("ul", { class: "sets-up" });
-  const setsUp = el(
-    "details",
-    { class: "sets-up-box" },
-    el("summary", {}, "What this sets up on your Mac"),
-    setsUpList,
-    el("p", { class: "hint" }, "No admin password, and nothing outside your home folder."),
-  );
-  const renderSetsUp = () => {
-    const items: [string, string][] = [
-      ["mycelium and herdr on your PATH", "Links in ~/.local/bin, so agents can run them. A file you already have there is left alone."],
-      ["~/.mycelium", "Your settings, and this choice. Running a hub keeps your rooms and memories here too."],
-      mode === "hub"
-        ? ["A hub on this Mac, while Mycelium is open", "SLIM, the hub and its UI, reachable only from this Mac (127.0.0.1)."]
-        : ["The runner, while Mycelium is open", "It tells the hub which agents this Mac can start, and starts them in herdr."],
-      ["Start at login", "Only if you turn it on, from the menu bar icon."],
-    ];
-    setsUpList.replaceChildren(
-      ...items.map(([what, why]) => el("li", {}, el("strong", {}, what), el("span", {}, why))),
-    );
-  };
+  })();
+  return line;
+}
 
-  const choice = (value: Mode, title: string, sub: string) => {
-    const b = el("button", { class: "choice", type: "button", role: "radio" }, el("strong", {}, title), el("span", {}, sub));
-    b.addEventListener("click", () => {
-      mode = value;
-      render();
-    });
-    return b;
-  };
-  const hubChoice = choice("hub", "Run a hub on this Mac", "Rooms, memory and agents, all here");
-  const clientChoice = choice("client", "Connect to a hub", "Join rooms someone else runs");
-
-  const render = () => {
-    hubChoice.setAttribute("aria-checked", String(mode === "hub"));
-    clientChoice.setAttribute("aria-checked", String(mode === "client"));
-    hubRow.hidden = mode !== "client";
-    shareRow.hidden = mode !== "hub";
-    // The model is the hub's, so it's set where the hub runs: here, or not at all.
-    model.section.hidden = mode !== "hub";
-    button.textContent = !firstRun ? "Save and restart" : mode === "hub" ? "Start" : "Connect";
-    renderSetsUp();
-    where.textContent =
-      mode === "hub" ? "Runs on this Mac, at 127.0.0.1" : hubUrl.trim() ? `Joins ${hubUrl.trim()}` : "Enter the hub's address";
-    error.hidden = true;
-  };
-  hubField.addEventListener("input", () => {
-    hubUrl = hubField.value;
-    render();
-  });
-  rootButton.addEventListener("click", async () => {
-    if (!inApp) return;
-    const start = root.startsWith("~") ? snap.home + root.slice(1) : root;
-    const picked = await invoke<string | null>("pick_folder", { start });
-    if (picked) {
-      root = tilde(picked, snap.home);
-      rootPath.textContent = root;
-    }
-  });
-
+/** The agent programs found on this Mac, and the folder they may start in. */
+function agentsPiece(c: Choices, snap: Snapshot): HTMLElement {
   const agents = el("div", { class: "agents" }, el("span", { class: "hint" }, "Looking…"));
   const herdr = snap.herdr;
   const herdrPill = el(
@@ -380,13 +454,12 @@ async function onboarding() {
     el("span", { class: herdr.path ? "dot on" : "dot bad" }),
     herdr.bundled ? "herdr included" : herdr.path ? "herdr" : "herdr missing",
   );
-  const scan = async () => {
+  void (async () => {
     try {
       const found = inApp ? await invoke<{ frameworks?: Framework[] } | Framework[]>("scan_agents") : PREVIEW_AGENTS;
       const list = Array.isArray(found) ? found : (found.frameworks ?? []);
       const installed = list.filter((f) => f.installed);
       agents.replaceChildren(
-        herdrPill,
         ...installed.map((f) =>
           el(
             "span",
@@ -396,68 +469,296 @@ async function onboarding() {
             shortVersion(f.version) ? el("span", { class: "v" }, shortVersion(f.version)) : null,
           ),
         ),
+        herdrPill,
       );
       if (installed.length === 0) {
-        agents.append(el("span", { class: "hint" }, "No agent CLIs found. Install one, like Claude Code, to start agents here."));
+        agents.append(el("span", { class: "hint" }, "No agent programs found yet. Install one, like Claude Code, to start agents from Mycelium."));
       }
     } catch (e) {
       agents.replaceChildren(herdrPill, el("span", { class: "hint" }, String(e)));
     }
-  };
+  })();
 
-  button.addEventListener("click", async () => {
-    button.disabled = true;
-    error.hidden = true;
-    const settings: Settings = {
-      mode,
-      hubUrl: mode === "client" ? hubUrl.trim() : null,
-      roots: [root.trim()],
-      shareUsage: mode === "hub" && shareUsage,
-    };
-    try {
-      // Saved first, so the hub that Start (re)starts reads it.
-      if (mode === "hub" && inApp) await invoke<ModelView>("save_model", { model: model.value() });
-      const setup = inApp ? await invoke<PathSetup>("start", { settings }) : null;
-      loading(setup);
-    } catch (e) {
-      error.textContent = String(e);
-      error.hidden = false;
-      button.disabled = false;
+  const rootPath = el("span", { class: "folder-path mono" }, c.root);
+  const rootButton = el("button", { class: "button ghost", type: "button" }, "Choose…");
+  rootButton.addEventListener("click", async () => {
+    if (!inApp) return;
+    const start = c.root.startsWith("~") ? snap.home + c.root.slice(1) : c.root;
+    const picked = await invoke<string | null>("pick_folder", { start });
+    if (picked) {
+      c.root = tilde(picked, snap.home);
+      rootPath.textContent = c.root;
     }
   });
-
-  app.replaceChildren(
+  return el(
+    "div",
+    { class: "piece" },
+    agents,
     el(
-      "section",
-      { class: "card" },
-      head(
-        firstRun
-          ? "Rooms where you and your agents work together. Choose how this Mac takes part."
-          : "Settings: how this Mac takes part, the model its agents use, and where they work. Saving restarts Mycelium.",
-      ),
-      el(
-        "div",
-        { class: "card-body" },
-        el("div", {}, el("div", { class: "choices", role: "radiogroup", "aria-label": "How this Mac takes part" }, hubChoice, clientChoice), hubRow),
-        model.section,
-        el("div", {}, el("div", { class: "label" }, "Agents on this Mac"), agents),
-        el(
-          "div",
-          {},
-          el("div", { class: "label" }, "Folder agents may start in"),
-          rootField,
-          el("p", { class: "hint" }, "Agents you start from Mycelium work inside this folder."),
-        ),
-        shareRow,
-        setsUp,
-        error,
-      ),
-      el("div", { class: "card-foot" }, where, el("div", { class: "actions" }, cancel, button)),
+      "div",
+      {},
+      el("div", { class: "label" }, "Where they work"),
+      el("div", { class: "folder" }, el("span", { class: "folder-icon", "aria-hidden": "true" }), rootPath, rootButton),
+      el("p", { class: "hint" }, "Agents you start from Mycelium only work inside this folder."),
     ),
   );
-  hubRow.style.marginTop = "8px";
-  render();
-  void scan();
+}
+
+/** Usage stats, off unless ticked, and only for a hub on this Mac. */
+function privacyPiece(c: Choices): HTMLElement {
+  return el(
+    "div",
+    { class: "share" },
+    el(
+      "label",
+      { class: "share-label", for: "share-usage" },
+      checkbox("share-usage", c.shareUsage, (on) => (c.shareUsage = on)),
+      "Share anonymous usage stats",
+    ),
+    el(
+      "p",
+      { class: "hint" },
+      "Counts of tasks, flows and agents, so we know what's working. Never names, rooms or what anyone wrote. You can see them on the Metrics page either way.",
+    ),
+  );
+}
+
+/** Everything Start changes on this Mac, said before anything happens. */
+function setsUpPiece(c: Choices): HTMLElement {
+  const items: [string, string][] = [
+    ["mycelium and herdr on your PATH", "Links in ~/.local/bin, so agents can run them. A file you already have there is left alone."],
+    ["~/.mycelium", "Your settings, and these choices. Rooms on this Mac keep their notes here too."],
+    c.mode === "hub"
+      ? ["Rooms on this Mac, while Mycelium is open", "SLIM, the hub and its UI, reachable only from this Mac (127.0.0.1)."]
+      : ["The runner, while Mycelium is open", "It tells the hub which agents this Mac can start, and starts them in herdr."],
+    ["Start at login", "Only if you turn it on, in Settings or from the menu bar icon."],
+  ];
+  return el(
+    "details",
+    { class: "sets-up-box" },
+    el("summary", {}, "What this sets up on your Mac"),
+    el("ul", { class: "sets-up" }, ...items.map(([what, why]) => el("li", {}, el("strong", {}, what), el("span", {}, why)))),
+    el("p", { class: "hint" }, "No admin password, and nothing outside your home folder."),
+  );
+}
+
+// ── first run: a short wizard ───────────────────────────────────────────────
+
+type Step = "place" | "model" | "agents" | "ready";
+
+async function wizard() {
+  const snap = await snapshot();
+  const c = choicesFrom(snap);
+  let at: Step = "place";
+  let skippedModel = false;
+  // Built once, so what's typed survives going Back and forth.
+  const model = await modelPiece("wizard");
+  const place = placePiece(c, () => void 0);
+  const agents = agentsPiece(c, snap);
+
+  const steps = (): Step[] => (c.mode === "hub" ? ["place", "model", "agents", "ready"] : ["place", "agents", "ready"]);
+
+  const show = () => {
+    const order = steps();
+    const i = order.indexOf(at);
+    const error = el("p", { class: "error", role: "alert", hidden: "" });
+    const fail = (msg: string) => {
+      error.textContent = msg;
+      error.hidden = false;
+    };
+
+    let title: string;
+    let lede: string | null = null;
+    let body: Node;
+    if (at === "place") {
+      title = "Rooms where you and your agents work together";
+      lede = "First, where should your rooms live?";
+      body = place.el;
+    } else if (at === "model") {
+      title = "Give Mycelium's own agents a model";
+      lede =
+        "Mycelium comes with agents of its own: one helps your agents agree, others play a role in a scenario, another keeps notes. They need a model to think with. Agents you bring, like Claude Code, sign in on their own.";
+      body = model.el;
+    } else if (at === "agents") {
+      title = "Agents on this Mac";
+      lede = "Mycelium can start these for you and bring them into a room.";
+      body = agents;
+    } else {
+      title = "Ready to start";
+      const summary: [string, string][] = [
+        ["Rooms", c.mode === "hub" ? "On this Mac, reachable only from it" : `On ${c.hubUrl.trim()}`],
+      ];
+      if (c.mode === "hub") summary.push(["Model", skippedModel ? "Not set yet. Add one in Settings (⌘,)." : model.summary()]);
+      summary.push(["Agents work in", c.root]);
+      body = el(
+        "div",
+        { class: "piece" },
+        el("dl", { class: "summary" }, ...summary.flatMap(([k, v]) => [el("dt", {}, k), el("dd", {}, v)])),
+        c.mode === "hub" ? privacyPiece(c) : null,
+        setsUpPiece(c),
+      );
+    }
+
+    const back = i > 0 ? el("button", { class: "button ghost", type: "button" }, "Back") : null;
+    back?.addEventListener("click", () => {
+      at = order[i - 1];
+      show();
+    });
+    const skip = at === "model" ? el("button", { class: "button text", type: "button" }, "Skip for now") : null;
+    skip?.addEventListener("click", () => {
+      skippedModel = true;
+      at = order[i + 1];
+      show();
+    });
+    const last = at === "ready";
+    const next = el("button", { class: "button", type: "button" }, last ? (c.mode === "hub" ? "Start Mycelium" : "Connect") : "Continue");
+    next.addEventListener("click", async () => {
+      if (at === "place") {
+        const problem = place.problem();
+        if (problem) return fail(problem);
+      }
+      if (at === "model") skippedModel = false;
+      if (!last) {
+        at = steps()[steps().indexOf(at) + 1];
+        return show();
+      }
+      next.disabled = true;
+      try {
+        await startWith(c, skippedModel ? null : model.value());
+      } catch (e) {
+        fail(String(e));
+        next.disabled = false;
+      }
+    });
+
+    app.replaceChildren(
+      el(
+        "section",
+        { class: "card" },
+        el("div", { class: "steps", "aria-label": `Step ${i + 1} of ${order.length}` }, ...order.map((_, n) => el("span", { class: n < i ? "done" : n === i ? "on" : "" }))),
+        el(
+          "div",
+          { class: "card-body" },
+          at === "place" ? el("div", { class: "brand" }, el("img", { class: "brand-mark", src: "/mark.png", alt: "" }), "Mycelium") : null,
+          el("div", {}, el("h1", { class: "title" }, title), lede ? el("p", { class: "lede" }, lede) : null),
+          body,
+          error,
+        ),
+        el(
+          "div",
+          { class: "card-foot" },
+          back,
+          el("div", { class: "where" }, at === "place" ? "You can change any of this later in Settings." : ""),
+          el("div", { class: "actions" }, skip, next),
+        ),
+      ),
+    );
+  };
+  show();
+}
+
+// ── Settings: the same pieces, one section at a time ─────────────────────────
+
+type Section = "mac" | "model" | "agents" | "privacy";
+
+async function settingsWindow(open: Section = "mac") {
+  const snap = await snapshot();
+  const c = choicesFrom(snap);
+  const sections = (): [Section, string][] =>
+    c.mode === "hub"
+      ? [["mac", "This Mac"], ["model", "Model"], ["agents", "Agents"], ["privacy", "Privacy"]]
+      : [["mac", "This Mac"], ["agents", "Agents"]];
+  let at: Section = sections().some(([s]) => s === open) ? open : "mac";
+
+  const show = async () => {
+    const error = el("p", { class: "error", role: "alert", hidden: "" });
+    let save: () => Promise<void> = () => startWith(c, null);
+    let note = "Saving restarts Mycelium.";
+    let body: Node;
+    if (at === "mac") {
+      const place = placePiece(c, () => void 0);
+      const autostart = el("label", { class: "share-label", for: "autostart" }, checkbox("autostart", false, (on) => {
+        if (inApp) void invoke<boolean>("set_autostart", { on });
+      }), "Start Mycelium when I log in");
+      if (inApp) void invoke<boolean>("get_autostart").then((on) => ((autostart.querySelector("input") as HTMLInputElement).checked = on));
+      body = el(
+        "div",
+        { class: "piece" },
+        place.el,
+        el("div", { class: "share" }, autostart, el("p", { class: "hint" }, "Applies right away, without saving.")),
+      );
+      save = async () => {
+        const problem = place.problem();
+        if (problem) throw new Error(problem);
+        await startWith(c, null);
+      };
+    } else if (at === "model") {
+      const model = await modelPiece("settings");
+      body = el("div", { class: "piece" }, el("p", { class: "lede" }, "What Mycelium's own agents think with. Agents you bring sign in on their own."), model.el);
+      save = () => startWith(c, model.value());
+      note = "Saving restarts Mycelium's own agents.";
+    } else if (at === "agents") {
+      body = agentsPiece(c, snap);
+    } else {
+      body = privacyPiece(c);
+    }
+
+    const nav = el(
+      "nav",
+      { class: "nav", "aria-label": "Settings" },
+      ...sections().map(([s, label]) => {
+        const b = el("button", { type: "button", class: s === at ? "on" : "", "aria-current": s === at ? "page" : "false" }, label);
+        b.addEventListener("click", () => {
+          at = s;
+          void show();
+        });
+        return b;
+      }),
+    );
+    const cancel = el("button", { class: "button ghost", type: "button" }, "Cancel");
+    cancel.addEventListener("click", async () => {
+      if (!inApp) return;
+      try {
+        await invoke("open_room");
+      } catch {
+        // Not up yet (or stopped): show how starting is going instead.
+        await loading();
+      }
+    });
+    const saveButton = el("button", { class: "button", type: "button" }, "Save");
+    saveButton.addEventListener("click", async () => {
+      saveButton.disabled = true;
+      error.hidden = true;
+      try {
+        await save();
+      } catch (e) {
+        error.textContent = e instanceof Error ? e.message : String(e);
+        error.hidden = false;
+        saveButton.disabled = false;
+      }
+    });
+
+    app.replaceChildren(
+      el(
+        "section",
+        { class: "card wide" },
+        el(
+          "div",
+          { class: "settings" },
+          nav,
+          el(
+            "div",
+            { class: "pane" },
+            el("h2", { class: "pane-title" }, sections().find(([s]) => s === at)?.[1] ?? ""),
+            body,
+            error,
+          ),
+        ),
+        el("div", { class: "card-foot" }, el("div", { class: "where" }, note), el("div", { class: "actions" }, cancel, saveButton)),
+      ),
+    );
+  };
+  await show();
 }
 
 // ── starting ────────────────────────────────────────────────────────────────
@@ -493,8 +794,8 @@ async function loading(setup: PathSetup | null = null) {
   }
   const error = el("p", { class: "error", role: "alert", hidden: "" });
   const log = el("div", { class: "log" });
-  const change = el("button", { class: "button ghost", type: "button" }, "Change");
-  change.addEventListener("click", () => void onboarding());
+  const change = el("button", { class: "button ghost", type: "button" }, "Settings");
+  change.addEventListener("click", () => void settingsWindow());
   const showLog = el("button", { class: "button ghost", type: "button" }, "Show log");
   showLog.addEventListener("click", () => {
     if (inApp) void invoke("open_log").catch((e) => ((error.textContent = String(e)), (error.hidden = false)));
@@ -567,26 +868,6 @@ async function loading(setup: PathSetup | null = null) {
 }
 
 // ── health check ────────────────────────────────────────────────────────────
-
-interface Check {
-  section: string;
-  name: string;
-  status: string;
-  message: string;
-  details: string[];
-}
-
-const PREVIEW_CHECKS: Check[] = [
-  { section: "This Mac", name: "Hub", status: "ok", message: "answering at http://127.0.0.1:8000", details: [] },
-  { section: "Agents", name: "herdr", status: "ok", message: "running (0.9.1)", details: [] },
-  {
-    section: "Models",
-    name: "LLM connectivity",
-    status: "error",
-    message: "no model key set",
-    details: ["Set one: mycelium config set llm.api_key <key>"],
-  },
-];
 
 const MARK: Record<string, { glyph: string; cls: string }> = {
   ok: { glyph: "✓", cls: "ok" },
@@ -669,11 +950,15 @@ async function doctor() {
 }
 
 async function boot() {
-  const view = new URLSearchParams(location.search).get("view");
+  const params = new URLSearchParams(location.search);
+  const view = params.get("view");
   if (view === "doctor") return doctor();
   const snap = await snapshot();
-  if (view === "onboarding" || !snap.settings) await onboarding();
-  else await loading();
+  // The menu's Settings… opens view=onboarding: the wizard until the first
+  // run is done, Settings after.
+  if (!snap.settings) return wizard();
+  if (view === "onboarding" || view === "settings") return settingsWindow((params.get("section") as Section) || "mac");
+  await loading();
 }
 
 void boot();

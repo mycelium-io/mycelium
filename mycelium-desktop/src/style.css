@@ -24,6 +24,11 @@
   box-sizing: border-box;
 }
 
+/* Hidden means hidden, whatever display a class gives the element. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -475,6 +480,229 @@ select.field {
   overflow: hidden;
   text-overflow: ellipsis;
   min-height: 1em;
+}
+
+/* ── the first-run wizard ─────────────────────────────────────────────── */
+
+/* Where you are: one bar per step. */
+.steps {
+  display: flex;
+  gap: 6px;
+  padding: 18px 24px 0;
+}
+
+.steps span {
+  height: 3px;
+  flex: 1;
+  border-radius: 2px;
+  background: var(--border2);
+}
+
+.steps span.done {
+  background: rgba(92, 199, 210, 0.45);
+}
+
+.steps span.on {
+  background: var(--accent);
+}
+
+.title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+
+.lede {
+  margin: 6px 0 0;
+  color: var(--muted-foreground);
+  line-height: 1.5;
+}
+
+.piece {
+  display: grid;
+  gap: 16px;
+}
+
+.indent {
+  margin-top: 4px;
+}
+
+.choices.column {
+  grid-template-columns: 1fr;
+}
+
+/* A choice with its explanation beside a radio mark. */
+.choice.stacked {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 12px;
+}
+
+.choice.stacked .radio {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border2);
+}
+
+.choice.stacked[aria-checked="true"] .radio {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 3px var(--paper), inset 0 0 0 8px var(--accent);
+}
+
+/* The provider, as a row of buttons. */
+.seg {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.seg button {
+  flex: 1;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted-foreground);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 0;
+  cursor: pointer;
+}
+
+.seg button[aria-checked="true"] {
+  background: var(--elevated);
+  color: var(--text);
+}
+
+/* The model's name, out of the way until someone wants to change it. */
+.quiet {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+  border: 1px dashed var(--border2);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.quiet code {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.link {
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.button.text {
+  color: var(--muted-foreground);
+  background: transparent;
+  padding: 8px 10px;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px 12px;
+  margin: 0;
+  padding: 12px 14px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.summary dt {
+  color: var(--faint);
+}
+
+.summary dd {
+  margin: 0;
+}
+
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+}
+
+.status-line.ok {
+  color: var(--green);
+}
+
+.status-line.bad {
+  color: var(--red);
+}
+
+/* ── Settings: a sidebar of sections ──────────────────────────────────── */
+
+.card.wide {
+  max-width: 760px;
+}
+
+.settings {
+  display: grid;
+  grid-template-columns: 170px 1fr;
+  min-height: 420px;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 8px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+.nav button {
+  font: inherit;
+  text-align: left;
+  color: var(--muted-foreground);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+.nav button:hover {
+  color: var(--text);
+}
+
+.nav button.on {
+  background: var(--elevated);
+  color: var(--text);
+}
+
+.pane {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  padding: 20px 24px;
+  min-width: 0;
+}
+
+.pane-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 /* The agents terminal. */

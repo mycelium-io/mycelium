@@ -12,17 +12,22 @@ your coding agents for you when you ask.
 1. Open the download and drag **Mycelium** into **Applications**.
 2. Open Mycelium from Applications. The first time, macOS asks whether to
    open an app downloaded from the internet; choose **Open**.
-3. Choose how this Mac takes part:
-   - **Run a hub on this Mac** keeps your rooms, memory and agents here.
-     Pick this to try Mycelium on your own.
-   - **Connect to a hub** joins rooms someone else runs. Paste the hub's
-     address, or open an invite link a teammate sent you.
-4. Pick the folder your agents may work in, and press **Start**.
+3. A few short steps set it up:
+   - **Where should your rooms live?** **On this Mac** keeps your rooms,
+     notes and agents here; pick it to try Mycelium on your own or to give a
+     demo. **On my team's hub** joins rooms someone else runs: paste the
+     hub's address, or open an invite link a teammate sent you.
+   - **A model**, for rooms on this Mac: pick a provider and paste its key.
+     Mycelium's own agents think with it; see [Models](#models). You can skip
+     this and add it later.
+   - **Agents on this Mac**: the agent programs it found, and the folder they
+     may work in.
+   - **Ready to start**: what you chose, then **Start Mycelium**.
 
-![The first screen: run a hub here, or connect to one](desktop-onboarding.png)
+![The first step: where your rooms live](desktop-onboarding.png)
 
-Before you press Start, **What this sets up on your Mac** lists every change
-it makes. In short: `mycelium` and `herdr` are linked into `~/.local/bin` so
+Before you start, **What this sets up on your Mac** lists every change it
+makes. In short: `mycelium` and `herdr` are linked into `~/.local/bin` so
 agents can run them, your settings and rooms live in `~/.mycelium`, and the
 hub runs only while the app is open, reachable only from this Mac. It needs
 no admin password and writes nothing outside your home folder.
@@ -68,8 +73,10 @@ herdr either way.
 - **Open Mycelium** and **Agents terminal**;
 - **Start at login**;
 - **Health check…**, below;
-- **Settings…** (also **Mycelium → Settings…**, ⌘,), to change how this Mac
-  takes part;
+- **Settings…** (also **Mycelium → Settings…**, ⌘,): where rooms live and
+  starting at login, the [model](#models), the agents' folder, and usage
+  stats, one section at a time. **Cancel** goes back to your rooms;
+  **Save** restarts Mycelium with the change;
 - **Check for Updates…**.
 
 ## Updates

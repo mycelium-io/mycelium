@@ -313,13 +313,33 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 }
 
 fn toggle_autostart(app: &AppHandle) {
+    let enabled = app.autolaunch().is_enabled().unwrap_or(false);
+    set_autostart_to(app, !enabled);
+}
+
+/// Start at login on or off, with the menu bar's tick kept in step. Returns
+/// what it ended up as.
+fn set_autostart_to(app: &AppHandle, on: bool) -> bool {
     let launcher = app.autolaunch();
-    let enabled = launcher.is_enabled().unwrap_or(false);
-    let _ = if enabled { launcher.disable() } else { launcher.enable() };
-    let now = launcher.is_enabled().unwrap_or(!enabled);
+    let _ = if on { launcher.enable() } else { launcher.disable() };
+    let now = launcher.is_enabled().unwrap_or(on);
     if let Some(items) = app.state::<Shell>().tray.lock().unwrap().as_ref() {
         let _ = items.autostart.set_checked(now);
     }
+    now
+}
+
+/// Whether Mycelium starts at login, for Settings' This Mac section.
+#[tauri::command]
+fn get_autostart(app: AppHandle, webview: Webview) -> Result<bool, String> {
+    local_only(&app, &webview)?;
+    Ok(app.autolaunch().is_enabled().unwrap_or(false))
+}
+
+#[tauri::command]
+fn set_autostart(app: AppHandle, webview: Webview, on: bool) -> Result<bool, String> {
+    local_only(&app, &webview)?;
+    Ok(set_autostart_to(&app, on))
 }
 
 /// Stop what the app runs (herdr and its agents carry on).
@@ -702,6 +722,8 @@ pub fn run() {
             run_doctor,
             get_model,
             save_model,
+            get_autostart,
+            set_autostart,
             open_room,
             open_log,
             start,
