@@ -23,6 +23,7 @@ from mycelium.commands import swarm
 from mycelium.commands.herdr import wake_prompt_for
 from mycelium.config import SwarmConfig
 from mycelium.integrations.herdr import HerdrBridge, HerdrError
+from mycelium.protocol import AgentManifest
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -240,20 +241,10 @@ def test_each_member_gets_a_pane_an_agent_and_its_own_identity(
     monkeypatch: pytest.MonkeyPatch, isolated_home: Path
 ):
     monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
-    written: list[str] = []
-
-    class _Manifest:
-        def __init__(self, handle: str) -> None:
-            self.handle = handle
-
-    class _Impl:
-        def build_manifest(self, *, handle: str, **_: object) -> _Manifest:
-            return _Manifest(handle)
-
-    monkeypatch.setattr("mycelium.integrations.get_integration", lambda *_a, **_k: _Impl())
+    written: list[AgentManifest] = []
     monkeypatch.setattr(
         "mycelium.commands.agent._write_manifest",
-        lambda config, room, manifest, created_by: written.append(manifest.handle),
+        lambda config, room, manifest, created_by: written.append(manifest),
     )
     monkeypatch.setenv("MYCELIUM_API_URL", "http://127.0.0.1:8000")
     herdr = Herdr()
@@ -294,7 +285,9 @@ def test_each_member_gets_a_pane_an_agent_and_its_own_identity(
     assert all(
         c[-3:] == ["--", "--allowedTools", "Bash(mycelium:*)"] for c in herdr.of("agent start")
     )
-    assert written == ["agent-1", "agent-2", "agent-3"]
+    assert [m.handle for m in written] == ["agent-1", "agent-2", "agent-3"]
+    # Each says which agent CLI it is, beside how it takes part.
+    assert {(m.adapter, m.framework) for m in written} == {("claude_code", "claude")}
     mapping = bridge.registry.get("fix-tests", "agent-2")
     assert mapping is not None
     assert (mapping.pane, mapping.managed) == ("w9:p2", True)

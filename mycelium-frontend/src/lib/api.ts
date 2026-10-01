@@ -680,7 +680,7 @@ export interface AgentSummary {
   a2a_skills?: string[];
   /** The machine (runner id) this agent was started on from the app. */
   runner?: string | null;
-  /** Which agent CLI it runs there (a runner framework id). */
+  /** Which agent CLI it runs (a runner framework id, or herdr's kind for it). */
   framework?: string | null;
 }
 

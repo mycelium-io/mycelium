@@ -31,6 +31,7 @@ __all__ = [
     "AddOptions",
     "AgentAdapter",
     "Integration",
+    "adapter_for",
     "get_adapter",
     "get_integration",
     "normalize_family_id",
@@ -53,6 +54,17 @@ def normalize_family_id(name: str) -> str:
     original string.
     """
     return _FAMILY_ALIASES.get(name, name)
+
+
+def adapter_for(framework: str | None) -> str:
+    """The adapter an agent CLI's agents are recorded under.
+
+    Every resident agent takes part the same way (``await``/``respond``), so the
+    adapter only matters where a family has install-time assets; the agent CLI
+    itself is recorded beside it, as the manifest's ``framework``. The hub's
+    ``routes/runners.adapter_for`` answers the same for the agents it writes.
+    """
+    return "cursor" if framework == "cursor" else "claude_code"
 
 
 def get_integration(

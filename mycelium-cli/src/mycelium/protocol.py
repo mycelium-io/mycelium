@@ -383,6 +383,17 @@ class AgentManifest(BaseModel):
         default_factory=list,
         description="a2a: skill ids advertised by the remote card (for the roster).",
     )
+    framework: str | None = Field(
+        default=None,
+        description=(
+            "The agent CLI it runs, as herdr names its kind (claude, codex, pi…), "
+            "when known. The adapter is how it takes part in a room; this is what it is."
+        ),
+    )
+    runner: str | None = Field(
+        default=None,
+        description="The machine whose runner started it, for an agent a runner started.",
+    )
 
     @model_validator(mode="before")
     @classmethod
