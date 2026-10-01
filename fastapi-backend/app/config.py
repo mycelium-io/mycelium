@@ -242,6 +242,20 @@ class Settings(BaseSettings):
     WORKER_PI_TIMEOUT_S: float = 600.0
     WORKER_MAX_TURNS_PER_ROOM: int = 60
 
+    # Pattern packs (routes/patterns.py) — scenarios a visitor can load as a room.
+    # Set in config.toml under [patterns] (dir, allow_inline, personas_only); `.env`
+    # carries them here, and compose mounts the folder and points PATTERNS_DIR at it.
+    # The hub never fetches a pack a caller names: PATTERNS_DIR is a folder the
+    # operator provides (baked into the image, mounted, or pulled), holding
+    # ``scenarios/<pattern>/scenario.yaml``. Empty means the hub offers none.
+    # PATTERNS_ALLOW_INLINE lets a caller send a scenario in the request (what
+    # ``mycelium pattern use --from`` does); a public explorer turns it off.
+    # PATTERNS_PERSONAS_ONLY refuses any scenario with a member that is not a
+    # persona or a person, so a visitor cannot start a worker (Pi with tools).
+    PATTERNS_DIR: str = ""
+    PATTERNS_ALLOW_INLINE: bool = True
+    PATTERNS_PERSONAS_ONLY: bool = False
+
     # Conductor engine (kind ``conductor``) — runs a protocol's steps over a
     # thread in code, holding the floor for whoever each step addresses. No
     # model of its own, so no Pi settings: only its handle default, how long

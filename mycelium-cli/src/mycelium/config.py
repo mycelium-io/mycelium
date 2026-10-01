@@ -517,6 +517,40 @@ class A2aConfig(BaseModel):
     )
 
 
+class PatternsConfig(BaseModel):
+    """Design-pattern packs this hub offers (``/api/patterns``).
+
+    A pattern is a scenario a caller loads as a room: a cast, some context, a
+    task and the flow that sets them working. The hub offers only the pack its
+    operator provides here and never fetches a location a caller names, so
+    these settings are what a public hub tunes. They default to a private,
+    trusting setup: no pack, scenarios accepted in the request, any member kind.
+    """
+
+    dir: str | None = Field(
+        default=None,
+        description=(
+            "A folder holding scenarios/<pattern>/scenario.yaml, which the hub offers as its "
+            "patterns. A path on this machine: in Docker it is mounted read-only into the "
+            "backend. Unset means the hub offers none."
+        ),
+    )
+    allow_inline: bool = Field(
+        default=True,
+        description=(
+            "Let a caller send a scenario in the request (what `mycelium pattern use --from` "
+            "does). Turn this off on a hub that should load only the patterns in its own pack."
+        ),
+    )
+    personas_only: bool = Field(
+        default=False,
+        description=(
+            "Refuse any scenario with a member that is not a persona or a person, so this hub "
+            "never starts a worker (Pi with tools) for a caller."
+        ),
+    )
+
+
 class TelemetryConfig(BaseModel):
     """Telemetry: the backend's OTel export, and whether the hub shares its usage stats.
 
@@ -649,6 +683,7 @@ class MyceliumConfig(BaseModel):
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
     health: HealthConfig = Field(default_factory=HealthConfig)
     a2a: A2aConfig = Field(default_factory=A2aConfig)
+    patterns: PatternsConfig = Field(default_factory=PatternsConfig)
     adapters: dict[str, Any] = Field(
         default_factory=dict,
         description="Registered agent framework adapters (claude-code, cursor, …)",

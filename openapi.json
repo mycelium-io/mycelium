@@ -4112,6 +4112,166 @@
         }
       }
     },
+    "/api/patterns": {
+      "get": {
+        "tags": [
+          "patterns"
+        ],
+        "summary": "List Patterns",
+        "description": "The scenarios in the hub's pack.",
+        "operationId": "list_patterns_api_patterns_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatternList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/patterns/{name}": {
+      "get": {
+        "tags": [
+          "patterns"
+        ],
+        "summary": "Get Pattern",
+        "description": "One scenario in full.",
+        "operationId": "get_pattern_api_patterns__name__get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatternRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/patterns/load": {
+      "post": {
+        "tags": [
+          "patterns"
+        ],
+        "summary": "Load Inline",
+        "description": "Load a scenario the request carries, as a new room.",
+        "operationId": "load_inline_api_patterns_load_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatternLoadInline"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatternLoaded"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/patterns/{name}/load": {
+      "post": {
+        "tags": [
+          "patterns"
+        ],
+        "summary": "Load Pattern",
+        "description": "Load a pattern from the hub's pack as a new room.",
+        "operationId": "load_pattern_api_patterns__name__load_post",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatternLoad"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatternLoaded"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/protocols": {
       "get": {
         "tags": [
@@ -6908,6 +7068,374 @@
           "joined_at"
         ],
         "title": "ParticipantRead"
+      },
+      "PatternList": {
+        "properties": {
+          "patterns": {
+            "items": {
+              "$ref": "#/components/schemas/PatternSummary"
+            },
+            "type": "array",
+            "title": "Patterns"
+          },
+          "skipped": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Skipped",
+            "description": "Scenarios in the pack that did not load, and why"
+          }
+        },
+        "type": "object",
+        "required": [
+          "patterns"
+        ],
+        "title": "PatternList"
+      },
+      "PatternLoad": {
+        "properties": {
+          "room": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room",
+            "description": "Name for the new room. Default: the pattern's name, counted past if taken."
+          },
+          "private": {
+            "type": "boolean",
+            "title": "Private",
+            "description": "List the room only for you",
+            "default": false
+          },
+          "run": {
+            "type": "boolean",
+            "title": "Run",
+            "description": "Start the flow once the room is loaded",
+            "default": false
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "description": "Say what would be written and write nothing",
+            "default": false
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By",
+            "description": "Who is loading it"
+          }
+        },
+        "type": "object",
+        "title": "PatternLoad"
+      },
+      "PatternLoadInline": {
+        "properties": {
+          "room": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room",
+            "description": "Name for the new room. Default: the pattern's name, counted past if taken."
+          },
+          "private": {
+            "type": "boolean",
+            "title": "Private",
+            "description": "List the room only for you",
+            "default": false
+          },
+          "run": {
+            "type": "boolean",
+            "title": "Run",
+            "description": "Start the flow once the room is loaded",
+            "default": false
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "description": "Say what would be written and write nothing",
+            "default": false
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By",
+            "description": "Who is loading it"
+          },
+          "scenario": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Scenario",
+            "description": "A scenario.yaml, parsed"
+          },
+          "flow": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow",
+            "description": "The YAML of the flow flow_file names"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scenario"
+        ],
+        "title": "PatternLoadInline"
+      },
+      "PatternLoaded": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "members": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Members",
+            "description": "Every handle registered in the room"
+          },
+          "memories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Memories",
+            "description": "Keys written, in order"
+          },
+          "summon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summon",
+            "description": "What starts the flow"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key",
+            "description": "The task row (absent on a dry run)"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode",
+            "description": "The task's thread"
+          },
+          "ran": {
+            "type": "boolean",
+            "title": "Ran",
+            "default": false
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "title",
+          "members",
+          "memories"
+        ],
+        "title": "PatternLoaded"
+      },
+      "PatternMember": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle",
+          "kind"
+        ],
+        "title": "PatternMember"
+      },
+      "PatternRead": {
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "title": "Pattern"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "flow": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow",
+            "description": "The flow it runs, if it runs one"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles",
+            "description": "The flow's roles, in order"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/PatternMember"
+            },
+            "type": "array",
+            "title": "Members"
+          },
+          "scenario": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Scenario"
+          },
+          "flow_body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow Body",
+            "description": "The flow's YAML, when it brings its own"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pattern",
+          "title",
+          "summary",
+          "members",
+          "scenario"
+        ],
+        "title": "PatternRead",
+        "description": "A scenario in full: everything loading it would write."
+      },
+      "PatternSummary": {
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "title": "Pattern"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "flow": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow",
+            "description": "The flow it runs, if it runs one"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles",
+            "description": "The flow's roles, in order"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/PatternMember"
+            },
+            "type": "array",
+            "title": "Members"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pattern",
+          "title",
+          "summary",
+          "members"
+        ],
+        "title": "PatternSummary",
+        "description": "A scenario as a list shows it."
       },
       "ProtocolSummary": {
         "properties": {

@@ -502,6 +502,25 @@ is no litellm dependency.
   "skill" tag in the detail view (`memory-detail.tsx`); the frontend's only
   skill-specific call is the composer's `/` autocomplete. The surface keeps prose;
   it does not execute skills — that's the participation/engine layer's concern.
+- **Patterns are scenarios the hub loads, from a pack the operator provides.** A
+  scenario (`app/services/patterns.py`, `routes/patterns.py`) is a room ready to
+  run: a cast, some context, a task and the flow that sets them working, loaded
+  by `POST /api/patterns/{name}/load` as the writes any client can already make
+  (room, engines, memories, task), through the routes that own them. It loads
+  **paused**; `run` posts the summon. The room name is claimed atomically (a
+  directory made exclusively, since creating a room that exists is otherwise a
+  quiet no-op that would put two callers in one room), and a failed step removes
+  the room. A pack is data (`yaml.safe_load` into strict models, never run), and
+  **the hub never fetches what a caller names**: `patterns.dir` is a folder the
+  operator provides (`PATTERNS_DIR` in `.env`; compose mounts it read-only and
+  points the backend at the mount), and a caller names a pattern in it, never a
+  location. A trusted caller may send a scenario in the request
+  (`patterns.allow_inline`, what `mycelium pattern use --from` does; the CLI
+  clones a URL itself, with the caller's git credentials), and
+  `patterns.personas_only` refuses any member that is not a persona or a person,
+  so a public hub never starts a worker (Pi with tools). The flow is parsed with the hub's own `Protocol` model before anything
+  is written, because the hub does not check a `protocols/<name>` memory on save:
+  a bad one is silently left out of the room's flows.
 - **Three composer sigils, one mechanism.** The chat composer
   (`room-chat-box.tsx`) autocompletes `@` → agents, `[[` → room memories (inserts
   `[[key]]`, which resolves to `myc://` and is clickable in chat), and `/` → the

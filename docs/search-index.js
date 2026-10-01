@@ -1271,6 +1271,22 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Reference"
   },
   {
+    "u": "reference.html#cli-room",
+    "t": "mycelium pattern ls [--from <url|folder>]",
+    "s": "CLI Reference",
+    "x": "List the design patterns the hub offers, or those in a pack of your own.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-room",
+    "t": "mycelium pattern use <pattern> [--from <url|folder>] [--room <name>] [--run]",
+    "s": "CLI Reference",
+    "x": "Load a design pattern as a new room: its members, context, task and flow. It loads paused; --run starts it.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
     "u": "reference.html#cli-board",
     "t": "board",
     "s": "CLI Reference",

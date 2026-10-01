@@ -80,6 +80,16 @@ async def create_room(room: RoomCreate, request: Request):
             raise HTTPException(status_code=404, detail="Room not found")
         return existing
 
+    return await make_room(room, owner, members)
+
+
+async def make_room(room: RoomCreate, owner: str | None, members: list[str]) -> RoomRead:
+    """Write a room that is not there yet: its directory, metadata and channel.
+
+    The part of creating a room that comes after "is the name taken". A caller
+    that has claimed the name itself (``routes/patterns.py``, which must not
+    race another caller for it) comes straight here.
+    """
     room_dir = get_room_dir(room.name)
     ensure_room_structure(room_dir)
     write_room_meta(
