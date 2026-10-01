@@ -41,7 +41,10 @@ const LAPTOP = {
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
-vi.mock("@/lib/api", () => ({
+// The real module underneath, so a read the composer starts making later
+// falls through to it rather than failing every test here.
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
   logFetchError: () => () => undefined,
   fetchUsers: async () => [],
   sendRoomMessage: (...args: unknown[]) => sendRoomMessage(...args),
@@ -83,7 +86,8 @@ vi.mock("@/lib/api", () => ({
   ]),
 }));
 
-vi.mock("@/components/current-user", () => ({
+vi.mock("@/components/current-user", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/components/current-user")>()),
   useCurrentUser: () => ({ principal: "julia" }),
   usePrincipal: () => "julia",
 }));

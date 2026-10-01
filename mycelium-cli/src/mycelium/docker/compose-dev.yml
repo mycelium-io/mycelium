@@ -10,6 +10,8 @@
 #
 # Build contexts use MYCELIUM_REPO_ROOT (absolute) so that Docker BuildKit
 # resolves them correctly regardless of CWD or the bake-stdin transport.
+# Unset, compose stops with the message below rather than building from
+# "/fastapi-backend", which fails as a path that isn't found.
 services:
   # The `slim` node service is defined in compose.yml with a pulled upstream
   # image (ghcr.io/agntcy/slim) and inline node config. compose-dev.yml is an
@@ -19,7 +21,7 @@ services:
 
   mycelium-backend:
     build:
-      context: ${MYCELIUM_REPO_ROOT}/fastapi-backend
+      context: ${MYCELIUM_REPO_ROOT:?export MYCELIUM_REPO_ROOT=<the repo root> first}/fastapi-backend
       dockerfile: Dockerfile
     pull_policy: never
     image: mycelium-backend:dev
@@ -35,14 +37,14 @@ services:
   # `--build` on the next `up` — so pin it to the dev tag and never pull here.
   mycelium-frontend:
     build:
-      context: ${MYCELIUM_REPO_ROOT}/mycelium-frontend
+      context: ${MYCELIUM_REPO_ROOT:?export MYCELIUM_REPO_ROOT=<the repo root> first}/mycelium-frontend
       dockerfile: Dockerfile
     pull_policy: never
     image: mycelium-frontend:dev
 
   mycelium-collector:
     build:
-      context: ${MYCELIUM_REPO_ROOT}/mycelium-cli
+      context: ${MYCELIUM_REPO_ROOT:?export MYCELIUM_REPO_ROOT=<the repo root> first}/mycelium-cli
       dockerfile: Dockerfile.collector
     pull_policy: never
     image: mycelium-collector:dev
