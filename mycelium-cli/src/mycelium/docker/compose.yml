@@ -84,8 +84,15 @@ services:
       # env var is read separately by docker compose to resolve the volume
       # source path; the two values are different by design.)
       MYCELIUM_DATA_DIR: /home/mycelium/.mycelium
+      # IN-CONTAINER path of the design-pattern pack (patterns.dir in config.toml,
+      # a host path rendered to PATTERNS_DIR in .env and mounted below). Empty when
+      # none is set, which is how the backend knows it has no pack.
+      PATTERNS_DIR: ${PATTERNS_DIR:+/patterns}
     volumes:
       - ${MYCELIUM_DATA_DIR:-~/.mycelium}:/home/mycelium/.mycelium
+      # Read-only, and only read when PATTERNS_DIR is set. With no pack it mounts
+      # the data dir again, which nothing reads, rather than a path that may not exist.
+      - ${PATTERNS_DIR:-${MYCELIUM_DATA_DIR:-~/.mycelium}}:/patterns:ro
     networks:
       - mycelium
     ports:

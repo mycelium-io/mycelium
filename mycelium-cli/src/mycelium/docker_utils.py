@@ -254,6 +254,12 @@ def _render_auth_issuers(config: MyceliumConfig) -> str:
     )
 
 
+def _patterns_dir(config: MyceliumConfig) -> str:
+    """The pattern pack's folder as an absolute path, or empty when none is set."""
+    raw = (config.patterns.dir or "").strip()
+    return str(Path(raw).expanduser().resolve()) if raw else ""
+
+
 def generate_env_file(
     config: MyceliumConfig,
     *,
@@ -350,6 +356,15 @@ def generate_env_file(
         # config.toml (mycelium config set a2a.allow_private_hosts true) to disable
         # this guard for deployments where A2A agents live on an internal network.
         f"A2A_ALLOW_PRIVATE_HOSTS={'1' if config.a2a.allow_private_hosts else ''}",
+        "",
+        "# ── Design patterns ───────────────────────────────────────────────────────",
+        # The pack the hub offers at /api/patterns. PATTERNS_DIR is a path on this
+        # machine: compose mounts it read-only into the backend and points the
+        # backend at the mount (compose.yml), and the Mac app's hub reads it as it
+        # is. Empty means the hub offers no pack.
+        f"PATTERNS_DIR={_patterns_dir(config)}",
+        f"PATTERNS_ALLOW_INLINE={'true' if config.patterns.allow_inline else 'false'}",
+        f"PATTERNS_PERSONAS_ONLY={'true' if config.patterns.personas_only else 'false'}",
         "",
         "# ── Telemetry (OTel SDK + optional product analytics) ─────────────────────",
         # TELEMETRY_ENABLED activates the OTel SDK in the backend (BatchSpanProcessor

@@ -74,3 +74,54 @@ def test_env_materializes_engine_runtime_legacy_host_coerced() -> None:
     cfg = MyceliumConfig(engine=EngineConfig(runtime="host"))  # ty: ignore[invalid-argument-type]
     env = _parse_env(generate_env_file(cfg))
     assert env["ENGINE_RUNTIME"] == "backend"
+
+
+# ── design-pattern packs ─────────────────────────────────────────────────────
+
+
+def test_env_offers_no_pattern_pack_by_default() -> None:
+    """Out of the box the hub has no pack, accepts a scenario in the request, and
+    takes any member kind: a private, trusting setup."""
+    env = _parse_env(generate_env_file(MyceliumConfig()))
+    assert env["PATTERNS_DIR"] == ""
+    assert env["PATTERNS_ALLOW_INLINE"] == "true"
+    assert env["PATTERNS_PERSONAS_ONLY"] == "false"
+
+
+def test_env_materializes_the_pattern_pack_as_an_absolute_path(tmp_path) -> None:
+    """``patterns.dir`` is a host path: compose mounts it, so ``~`` and relative
+    paths are resolved before they reach .env."""
+    from mycelium.config import PatternsConfig
+
+    cfg = MyceliumConfig(patterns=PatternsConfig(dir=str(tmp_path / "pack")))
+    env = _parse_env(generate_env_file(cfg))
+    assert env["PATTERNS_DIR"] == str((tmp_path / "pack").resolve())
+
+    cfg.patterns.dir = "~/packs/mine"
+    env = _parse_env(generate_env_file(cfg))
+    assert env["PATTERNS_DIR"].endswith("/packs/mine")
+    assert "~" not in env["PATTERNS_DIR"]
+
+
+def test_env_materializes_a_public_hubs_pattern_limits() -> None:
+    from mycelium.config import PatternsConfig
+
+    cfg = MyceliumConfig(patterns=PatternsConfig(allow_inline=False, personas_only=True))
+    env = _parse_env(generate_env_file(cfg))
+    assert env["PATTERNS_ALLOW_INLINE"] == "false"
+    assert env["PATTERNS_PERSONAS_ONLY"] == "true"
+
+
+def test_the_backend_reads_the_names_the_env_renders() -> None:
+    """The names ``.env`` carries are the ones the backend's settings read."""
+    import re
+    from pathlib import Path
+
+    backend = Path(__file__).parents[2] / "fastapi-backend" / "app" / "config.py"
+    if not backend.exists():
+        return  # an installed CLI without the backend checkout beside it
+    declared = set(re.findall(r"^    (PATTERNS_[A-Z_]+):", backend.read_text(), re.M))
+    rendered = {
+        k for k in _parse_env(generate_env_file(MyceliumConfig())) if k.startswith("PATTERNS_")
+    }
+    assert rendered == declared

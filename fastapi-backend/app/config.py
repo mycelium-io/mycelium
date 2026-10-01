@@ -243,6 +243,8 @@ class Settings(BaseSettings):
     WORKER_MAX_TURNS_PER_ROOM: int = 60
 
     # Pattern packs (routes/patterns.py) — scenarios a visitor can load as a room.
+    # Set in config.toml under [patterns] (dir, allow_inline, personas_only); `.env`
+    # carries them here, and compose mounts the folder and points PATTERNS_DIR at it.
     # The hub never fetches a pack a caller names: PATTERNS_DIR is a folder the
     # operator provides (baked into the image, mounted, or pulled), holding
     # ``scenarios/<pattern>/scenario.yaml``. Empty means the hub offers none.

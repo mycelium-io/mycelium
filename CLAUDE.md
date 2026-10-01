@@ -511,13 +511,14 @@ is no litellm dependency.
   directory made exclusively, since creating a room that exists is otherwise a
   quiet no-op that would put two callers in one room), and a failed step removes
   the room. A pack is data (`yaml.safe_load` into strict models, never run), and
-  **the hub never fetches what a caller names**: `PATTERNS_DIR` is a folder the
-  operator provides, and a caller names a pattern in it, never a location. A
-  trusted caller may send a scenario in the request (`PATTERNS_ALLOW_INLINE`,
-  what `mycelium pattern use --from` does; the CLI clones a URL itself, with the
-  caller's git credentials), and `PATTERNS_PERSONAS_ONLY` refuses any member that
-  is not a persona or a person, so a public hub never starts a worker (Pi with
-  tools). The flow is parsed with the hub's own `Protocol` model before anything
+  **the hub never fetches what a caller names**: `patterns.dir` is a folder the
+  operator provides (`PATTERNS_DIR` in `.env`; compose mounts it read-only and
+  points the backend at the mount), and a caller names a pattern in it, never a
+  location. A trusted caller may send a scenario in the request
+  (`patterns.allow_inline`, what `mycelium pattern use --from` does; the CLI
+  clones a URL itself, with the caller's git credentials), and
+  `patterns.personas_only` refuses any member that is not a persona or a person,
+  so a public hub never starts a worker (Pi with tools). The flow is parsed with the hub's own `Protocol` model before anything
   is written, because the hub does not check a `protocols/<name>` memory on save:
   a bad one is silently left out of the room's flows.
 - **Three composer sigils, one mechanism.** The chat composer
