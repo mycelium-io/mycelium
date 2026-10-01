@@ -566,13 +566,17 @@ def _push_presence(
 
 
 def wake_prompt_for(room: str, wake: dict) -> str:
-    """The prompt a queued wake turns into, worded by why it was queued.
+    """The prompt a queued wake turns into.
 
-    A ``turn`` (the conductor or the aligner put a question to this handle) is
-    answered through ``await`` so the reply lands in the thread it was asked
-    in; an ``assigned`` row names the row to take; a plain mention says read
-    the room.
+    The hub's digest when it sent one. Otherwise worded by why it was queued:
+    a ``turn`` or a mention is read through ``await``, so the reply lands
+    where it was asked and the room sees the agent responding; an
+    ``assigned`` row names the row to take.
     """
+    # The hub builds the digest the agent is told (why it woke, what changed,
+    # the messages that asked for it); a hub from before that sends none.
+    if isinstance(wake.get("prompt"), str) and wake["prompt"].strip():
+        return wake["prompt"]
     handle = str(wake.get("handle") or "")
     reason = wake.get("reason")
     if reason == "turn":

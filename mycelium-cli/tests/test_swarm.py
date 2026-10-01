@@ -333,8 +333,17 @@ def test_a_wake_is_worded_by_why_it_was_queued():
     )
     assert "'Do X' (work/x)" in assigned
     assert "board claim work/x --room r --to @agent-2" in assigned
+    # A mention is read through await too, so the room sees the agent
+    # responding and the reply lands where it was asked.
     mention = wake_prompt_for("r", {"handle": "agent-3"})
-    assert "room messages --room r" in mention
+    assert "mycelium await --room r --handle agent-3" in mention
+
+
+def test_a_wake_types_the_hubs_digest_when_it_sends_one():
+    digest = "mycelium wake for @agent-3 in r\n\nWhy:     @hay mentioned you in the room (r)"
+    assert wake_prompt_for("r", {"handle": "agent-3", "prompt": digest}) == digest
+    # A blank one is no digest: the wording by reason stands in.
+    assert "mycelium await" in wake_prompt_for("r", {"handle": "agent-3", "prompt": "  "})
 
 
 # ── the live view ─────────────────────────────────────────────────────────────

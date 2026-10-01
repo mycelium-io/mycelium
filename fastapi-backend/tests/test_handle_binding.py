@@ -261,7 +261,7 @@ async def test_reply_as_an_owned_agent_is_allowed(client: AsyncClient, as_princi
             return None
 
         def enqueue_herdr_wakes_for_mentions(
-            self, room: str, text: str, *, exclude: str | None = None
+            self, room: str, text: str, *, exclude: str | None = None, **_: Any
         ) -> None:
             # herdr wake-on-mention hook the reply route fires; the fake only has
             # to accept the call.
@@ -322,7 +322,7 @@ async def test_reply_stamps_the_token_handle_on_the_l9_actor(
             return None
 
         def enqueue_herdr_wakes_for_mentions(
-            self, room: str, text: str, *, exclude: str | None = None
+            self, room: str, text: str, *, exclude: str | None = None, **_: Any
         ) -> None:
             # herdr wake-on-mention hook the reply route fires; the fake only has
             # to accept the call.

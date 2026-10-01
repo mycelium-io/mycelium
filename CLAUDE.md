@@ -143,7 +143,12 @@ wake; there is no cold-spawn. Cold-start-on-demand, waking a handle when nothing
 resident, is served by herdr plus per-agent identity (`mycelium herdr sync`).
 A herdr doorbell rings on a text mention, on a turn put to the handle as an L9
 recipient (`herdr_wake_addressed`), and on a row filed for it
-(`herdr_wake_assigned`), each carrying a `reason` the bridge words its prompt by.
+(`herdr_wake_assigned`), each carrying a `reason`. What the agent is told is a
+digest the hub builds when the wake is delivered (`app/services/wake_digest.py`):
+why it woke, what changed since its last turn, its tasks and the board, the
+messages that asked for it (cut, with the rest counted), then `await` first and
+a reply line that names the task's thread. Delivering a wake raises
+`responding`, so the room sees the agent on it whatever host typed the prompt.
 
 **Tasks are the surface.** A board row is a markdown memory (body + frontmatter)
 and, through a store-owned episode binding, a thread on the room's channel

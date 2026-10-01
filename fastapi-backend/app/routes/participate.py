@@ -414,7 +414,9 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
     # should wake it the same as a human's tag does. Shares the one hook the
     # human POST /messages path uses; ``exclude`` skips a self-mention so a reply
     # naming its own handle doesn't enqueue a self-wake.
-    room_channels.manager.enqueue_herdr_wakes_for_mentions(room_name, clean, exclude=handle)
+    room_channels.manager.enqueue_herdr_wakes_for_mentions(
+        room_name, clean, exclude=handle, episode=episode
+    )
     return {
         "room": room_name,
         "handle": handle,

@@ -31,7 +31,7 @@ from app.schemas import (
     ParticipantListResponse,
     ParticipantRead,
 )
-from app.services import actor, in_memory_store, l9, room_channels, tasks
+from app.services import activity, actor, in_memory_store, l9, room_channels, tasks, wake_digest
 from app.services.filesystem import (
     ensure_room_structure,
     get_room_dir,
@@ -270,7 +270,21 @@ async def drain_herdr_wakes(room_name: str):
     """
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
-    return {"wakes": room_channels.manager.drain_herdr_wakes(room_name)}
+    wakes = room_channels.manager.drain_herdr_wakes(room_name)
+    # Each carries the digest its agent is told (``prompt``), built now rather
+    # than when it was queued, so what it says is current when it's typed.
+    managed = room_channels.manager.get(room_name)
+    records = managed.persister.log.records if managed and managed.persister else []
+    for wake in wakes:
+        try:
+            wake["prompt"] = wake_digest.build(room_name, wake, records)
+        except Exception:
+            logger.exception("wake digest failed for @%s in %s", wake.get("handle"), room_name)
+        # Handed to its host to type now, so the room hears it's being worked
+        # on whether or not the agent reads through ``await``. Its reply, or
+        # the TTL, settles it.
+        activity.signal(room_name, wake["handle"], "responding", episode=wake.get("episode"))
+    return {"wakes": wakes}
 
 
 @router.delete("/{session_id}", status_code=204)

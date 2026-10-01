@@ -41,10 +41,13 @@ class _Manager(FakeManager):
         self.pings: list[str] = []
 
     def enqueue_herdr_wakes_for_mentions(
-        self, room: str, content: str, *, exclude: str | None = None
+        self, room: str, content: str, *, exclude: str | None = None, **_: Any
     ) -> list[str]:
         self.rung.append(content)
         return []
+
+    def herdr_status(self, room: str, handle: str) -> str | None:
+        return None
 
     async def raise_ping(self, room: str, *, episode: str | None, sender: str, message_id: Any):
         self.pings.append(sender)
