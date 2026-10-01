@@ -509,6 +509,16 @@ async def test_a_machine_action_missing_what_it_needs_is_refused(client, runner,
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("session", ["--settings=x.json", "a b", "a;b", "$(x)", "-x"])
+async def test_a_session_that_isnt_a_plain_token_is_refused(client, runner, session):
+    # It becomes an argument to the agent CLI, so nothing flag- or shell-shaped.
+    action = {"kind": "session", "handle": "reviewer", "room": ROOM, "session": session}
+    resp = await client.post(f"/api/runners/{RUNNER}/machine", json=action)
+    assert resp.status_code == 422
+    assert (await client.get(f"/api/runners/{RUNNER}/jobs")).json() == []
+
+
+@pytest.mark.asyncio
 async def test_a_machine_that_isnt_connected_is_asked_nothing(client, runner):
     runners.registry._runners[RUNNER].last_seen -= runners.STALE_AFTER * 2
     resp = await client.post(f"/api/runners/{RUNNER}/machine", json={"kind": "resume", "all": True})

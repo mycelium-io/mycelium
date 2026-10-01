@@ -622,9 +622,7 @@ class Runner:
         if spec.get("find"):
             found = this_machine.find_session(agent)
             if found is None:
-                raise JobError(
-                    f"No Claude Code conversation found in {agent.folder or 'its folder'}."
-                )
+                raise JobError(f"No session found in {agent.folder or 'its folder'}.")
             return {"found": {"id": found.id, "path": found.path, "modified": found.modified}}
         session = str(spec.get("session") or "")
         if not session:

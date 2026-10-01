@@ -789,6 +789,8 @@ export interface MachineAgent {
   workspace: string | null;
   started_by: "runner" | "you";
   resumable: boolean;
+  /** The command resuming it runs, as its machine builds it for its agent CLI. */
+  resume_command?: string | null;
 }
 
 export interface MachineWorkspace {

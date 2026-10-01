@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import subprocess
@@ -17,6 +18,12 @@ from mycelium import machine
 from mycelium.config import MyceliumConfig
 from mycelium.integrations.herdr import HerdrBridge, HerdrPaneMapping
 from mycelium.runner.daemon import State
+
+#: Claude Code session ids, which are UUIDs.
+S_BUILDER = "0b1d5c3e-4a6f-4c2d-9e8b-1f2a3b4c5d6e"
+S_REVIEWER = "9b07c2d4-1e5f-4a8b-b3c6-7d9e0f1a44c0"
+S_OLD = "5d1c2f0e-aaaa-4bbb-8ccc-0123456789ab"
+S_OTHER = "7e6d5c4b-3a29-4180-9f7e-6d5c4b3a2918"
 
 
 class FakeHerdr:
@@ -56,7 +63,16 @@ class FakeHerdr:
         elif args == ["--version"]:
             return subprocess.CompletedProcess(args, 0, f"herdr {self.client}\n", "")
         elif head == "pane split":
-            out = {"result": {"pane": {"pane_id": "w2:pNEW"}}}
+            workspace = args[2].split(":")[0]
+            splits = sum(1 for c in self.calls if " ".join(c[:2]) == "pane split")
+            pane = f"{workspace}:pNEW{'' if splits == 1 else splits}"
+            self.panes.append({"pane_id": pane, "workspace_id": workspace})
+            out = {"result": {"pane": {"pane_id": pane}}}
+        elif head == "workspace create":
+            self.panes.append({"pane_id": "w7:p1", "workspace_id": "w7"})
+            out = {
+                "result": {"workspace": {"workspace_id": "w7"}, "root_pane": {"pane_id": "w7:p1"}}
+            }
         elif head in ("pane run", "pane send-keys", "agent rename"):
             return subprocess.CompletedProcess(args, 0, "", "")
         elif head == "agent start":
@@ -97,7 +113,7 @@ def _setup(fake: FakeHerdr) -> HerdrBridge:
             pane="w2:p1",
             kind="claude",
             managed=True,
-            session="s-builder",
+            session=S_BUILDER,
             cwd="/work/shop",
         )
     )
@@ -108,7 +124,7 @@ def _setup(fake: FakeHerdr) -> HerdrBridge:
             pane="w2:p2",
             kind="claude",
             managed=True,
-            session="s-reviewer",
+            session=S_REVIEWER,
             cwd="/work/shop",
         )
     )
@@ -179,11 +195,11 @@ def test_resuming_into_the_open_pane_sets_who_it_is_then_picks_up_its_session(he
     assert "MYCELIUM_AGENT_HANDLE=reviewer" in run[3] and "MYCELIUM_ROOM_ID=checkout" in run[3]
     start = herdr.of("agent start")[0]
     assert start[2] == "reviewer"
-    assert start[start.index("--") + 1 : start.index("--") + 3] == ["--resume", "s-reviewer"]
+    assert start[start.index("--") + 1 : start.index("--") + 3] == ["--resume", S_REVIEWER]
     kept = bridge.registry.get("checkout", "reviewer")
     assert kept is not None and (kept.pane, kept.session, kept.managed) == (
         "w2:p2",
-        "s-reviewer",
+        S_REVIEWER,
         True,
     )
 
@@ -196,7 +212,7 @@ def test_resuming_an_agent_whose_pane_is_gone_opens_one_beside_its_workspace(her
             handle="old",
             pane="w2:p9",
             kind="claude",
-            session="s-old",
+            session=S_OLD,
             cwd="/work/shop",
         )
     )
@@ -225,7 +241,7 @@ def test_resuming_an_agent_whose_pane_is_gone_opens_one_beside_its_workspace(her
     assert pane == "w2:pNEW"
     assert herdr.of("pane split")[0][2] == "w2:p2"  # beside a pane still in w2
     kept = bridge.registry.get("checkout", "old")
-    assert kept is not None and kept.pane == "w2:pNEW" and kept.session == "s-old"
+    assert kept is not None and kept.pane == "w2:pNEW" and kept.session == S_OLD
 
 
 def test_an_agent_with_no_saved_session_isnt_resumed(herdr: FakeHerdr):
@@ -251,13 +267,96 @@ def test_finding_a_session_reads_the_newest_conversation_in_the_agents_folder(is
     slug = "".join(c if c.isalnum() or c == "-" else "-" for c in str(folder.resolve()))
     project = isolated_home / ".claude" / "projects" / slug
     project.mkdir(parents=True)
-    (project / "older.jsonl").write_text("{}\n")
-    (project / "newer.jsonl").write_text("{}\n")
+    (project / f"{S_OLD}.jsonl").write_text("{}\n")
+    (project / f"{S_REVIEWER}.jsonl").write_text("{}\n")
+    # A file that isn't named for a session is never offered, however new.
+    (project / "--settings=x.jsonl").write_text("{}\n")
     past = time.time() - 3600
-    os.utime(project / "older.jsonl", (past, past))
+    os.utime(project / f"{S_OLD}.jsonl", (past, past))
 
     agent = machine.Agent(
-        handle="a", room="r", host="herdr", ref="w2:p1", state="stopped", folder=str(folder)
+        handle="a",
+        room="r",
+        host="herdr",
+        ref="w2:p1",
+        state="stopped",
+        folder=str(folder),
+        kind="claude",
     )
     found = machine.find_session(agent)
-    assert found is not None and found.id == "newer"
+    assert found is not None and found.id == S_REVIEWER
+    # A kind Mycelium knows nothing about has nowhere to look.
+    assert machine.find_session(dataclasses.replace(agent, kind="codex")) is None
+
+
+def test_resuming_gone_agents_of_one_room_opens_one_workspace_for_them_all(herdr: FakeHerdr):
+    bridge = _bridge(herdr)
+    for handle, session in (("a", S_OLD), ("b", S_OTHER)):
+        bridge.registry.set(
+            HerdrPaneMapping(
+                room="checkout",
+                handle=handle,
+                pane=f"w9:{handle}",
+                kind="claude",
+                session=session,
+                cwd="/work/shop",
+            )
+        )
+    r = machine.report(_config(), bridge=bridge, state=State(), machine="mac")
+    assert {a.state for a in r.agents} == {"gone"}
+
+    first = machine.resume(_config(), r.find("a"), bridge=bridge)
+    second = machine.resume(_config(), r.find("b"), bridge=bridge)
+
+    assert len(herdr.of("workspace create")) == 1
+    assert first == "w7:p1"
+    assert second.startswith("w7:")
+    assert bridge.registry.bindings() == {"w7": "checkout"}
+
+
+def test_a_session_that_isnt_one_is_never_saved_or_passed_on(herdr: FakeHerdr):
+    bridge = _setup(herdr)
+    r = machine.report(_config(), bridge=bridge, state=State(), machine="mac")
+    for bad in ("--settings=x.json", "a;b", "$(x)", "s-1"):
+        with pytest.raises(machine.MachineError, match="isn't a Claude Code session id"):
+            machine.save_session(r.find("reviewer"), bad, bridge=bridge)
+    kept = bridge.registry.get("checkout", "reviewer")
+    assert kept is not None and kept.session == S_REVIEWER
+
+    # One written into the file by hand is dropped on read, so it can't be resumed.
+    data = json.loads(bridge.registry.path.read_text())
+    data["checkout/reviewer"]["session"] = "--settings=x.json"
+    bridge.registry.path.write_text(json.dumps(data))
+    reviewer = machine.report(_config(), bridge=bridge, state=State(), machine="mac").find(
+        "reviewer"
+    )
+    assert reviewer.session is None and not reviewer.resumable
+
+
+def test_the_resume_command_shown_is_the_one_run(herdr: FakeHerdr):
+    bridge = _setup(herdr)
+    reviewer = machine.report(_config(), bridge=bridge, state=State(), machine="mac").find(
+        "reviewer"
+    )
+    assert machine.resume_command(reviewer).startswith(
+        f"cd /work/shop && claude --resume {S_REVIEWER}"
+    )
+
+
+def test_a_kind_mycelium_knows_nothing_of_is_never_resumable(herdr: FakeHerdr):
+    bridge = _bridge(herdr)
+    bridge.registry.set(
+        HerdrPaneMapping(
+            room="r", handle="c", pane="w2:p1", kind="codex", session=S_OLD, cwd="/work"
+        )
+    )
+    herdr.panes = [{"pane_id": "w2:p1", "workspace_id": "w2"}]
+    c = machine.report(_config(), bridge=bridge, state=State(), machine="mac").find("c")
+    assert c.state == "stopped" and not c.resumable
+    with pytest.raises(machine.MachineError, match="can't resume"):
+        machine.resume(_config(), c, bridge=bridge)
+
+
+def test_a_heartbeat_names_its_workspace_whatever_its_file_is_called(isolated_home: Path):
+    machine.mark_syncing(["w2:main", "w2.main"], "runner")
+    assert machine.syncing() == {"w2:main": "runner", "w2.main": "runner"}

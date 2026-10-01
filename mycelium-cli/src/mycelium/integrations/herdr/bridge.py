@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from mycelium.filesystem import get_mycelium_dir
+from mycelium.integrations.herdr.agents import agent_kind
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -188,7 +189,8 @@ class HerdrRegistry:
             pane=entry["pane"],
             kind=entry.get("kind"),
             managed=bool(entry.get("managed", False)),
-            session=entry.get("session") or None,
+            # Only a session its kind could have made: it becomes an argument.
+            session=agent_kind(entry.get("kind")).valid_session(entry.get("session")),
             cwd=entry.get("cwd") or None,
         )
 
@@ -209,17 +211,23 @@ class HerdrRegistry:
         return self._mapping(room, h, entry)
 
     def set(self, mapping: HerdrPaneMapping) -> None:
-        """Write ``mapping``. A session or folder it doesn't say is kept from before.
+        """Write ``mapping``. A session or folder it doesn't say is kept from before,
+        when it is the same pane and the same kind of agent.
 
         Most writers (the workspace sync re-enrolling a pane, a hand-run ``map``)
         know the pane but not the agent's session, and writing over what was
-        saved would lose the one thing that lets it be resumed.
+        saved would lose the one thing that lets it be resumed. A different pane
+        or kind is a different agent, so what was saved for the old one goes.
         """
         data = self._load()
         raw = data.get(mapping.key)
         before: dict = raw if isinstance(raw, dict) else {}
+        same = before.get("pane") == mapping.pane and mapping.kind in (None, before.get("kind"))
+        if not same:
+            before = {}
         entry: dict = {"pane": mapping.pane, "kind": mapping.kind, "managed": mapping.managed}
-        session = mapping.session or before.get("session")
+        kind = agent_kind(mapping.kind or before.get("kind"))
+        session = kind.valid_session(mapping.session) or kind.valid_session(before.get("session"))
         cwd = mapping.cwd or before.get("cwd")
         if session:
             entry["session"] = session

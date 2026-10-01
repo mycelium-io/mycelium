@@ -40,7 +40,6 @@ import subprocess
 import sys
 import threading
 import time
-import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -62,11 +61,6 @@ console = Console()
 
 #: How many members a swarm starts with.
 DEFAULT_SIZE = 3
-#: Arguments each local agent kind is started with. Claude Code asks before
-#: every shell command it has not been allowed; a member that stops at a
-#: prompt on its first ``mycelium await`` never takes its turn, so the one
-#: command it needs is allowed for this session only, not in the user's settings.
-AGENT_ARGS: dict[str, list[str]] = {"claude": ["--allowedTools", "Bash(mycelium:*)"]}
 #: Variables passed on to each member's pane when set where swarm runs.
 CARRIED_ENV = ("MYCELIUM_API_URL",)
 #: The conductor engine's handle in a swarm room, and the flow it runs.
@@ -305,11 +299,6 @@ START_ATTEMPTS = 3
 START_RETRY_S = 1.5
 
 
-#: Agent kinds whose session Mycelium can choose at start and resume later, and
-#: the flags that do each. Only Claude Code's are known.
-SESSION_ARGS: dict[str, tuple[str, str]] = {"claude": ("--session-id", "--resume")}
-
-
 def _start_when_ready(
     bridge: Any, handle: str, kind: str, pane: str, *, resume: str | None = None
 ) -> str | None:
@@ -318,19 +307,23 @@ def _start_when_ready(
     herdr starts an agent only in a pane sitting at its shell prompt, and a
     pane split a moment ago may still be starting its shell.
 
-    For a kind whose session Mycelium can name, the agent starts in a session
-    chosen here (or ``resume``\\ s that one), and its id is returned so it can
-    be saved with the agent and picked up again after a restart. ``None`` for
-    a kind that can't.
+    For a kind that can be resumed, the agent starts in a fresh session (or
+    ``resume``\\ s that one), and its id is returned so it can be saved with
+    the agent and picked up again after a restart. ``None`` for a kind that
+    can't.
     """
     from mycelium.integrations.herdr import HerdrError
+    from mycelium.integrations.herdr.agents import agent_kind
 
-    args = list(AGENT_ARGS.get(kind) or [])
+    known = agent_kind(kind)
+    args = known.launch_args()
     session: str | None = None
-    if kind in SESSION_ARGS:
-        start_flag, resume_flag = SESSION_ARGS[kind]
-        session = resume or str(uuid.uuid4())
-        args = [resume_flag if resume else start_flag, session, *args]
+    if resume:
+        args = [*known.resume_args(resume), *args]
+        session = resume
+    elif (fresh := known.new_session()) is not None:
+        session_args, session = fresh
+        args = [*session_args, *args]
     # herdr names the agent after the handle, so its list says who each one is.
     for attempt in range(1, START_ATTEMPTS + 1):
         try:

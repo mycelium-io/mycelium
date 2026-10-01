@@ -705,6 +705,9 @@ class MachineAgentRead(BaseModel):
     workspace: str | None = None
     started_by: Literal["runner", "you"] = "you"
     resumable: bool = False
+    resume_command: str | None = Field(
+        None, description="The command resuming it runs, as its machine builds it"
+    )
 
 
 class MachineWorkspaceRead(BaseModel):
@@ -768,7 +771,10 @@ class MachineAction(BaseModel):
     gone: bool = False
     workspace: str | None = None
     on: bool | None = None
-    session: str | None = Field(None, max_length=200)
+    #: A session id, whatever the agent CLI's format, as an opaque token. It
+    #: ends up as an argument to that CLI, so it can't start with ``-`` or carry
+    #: anything a shell reads. The machine checks it against its CLI's own format.
+    session: str | None = Field(None, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
     find: bool = False
 
 

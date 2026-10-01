@@ -386,10 +386,17 @@ is no litellm dependency.
   The runner sends the report with every heartbeat (`RunnerHello.machine`),
   and the Machines page acts on it through `POST /api/runners/{id}/machine`,
   which queues a `resume`/`stop`/`rename`/`unbind`/`sync`/`session` job;
-  `resume` asks on the machine like a launch. Resume is possible because a
-  Claude Code agent is started with `--session-id <uuid>` and the id is saved
-  on its mapping (`SESSION_ARGS` in `commands/swarm.py`); a mapping rewrite
-  keeps it. A herdr server restart leaves every pane a bare shell, so sync
+  `resume` asks on the machine like a launch. Resume is possible because an
+  agent whose CLI can name its session is started in one and the id is saved
+  on its mapping; a rewrite of the same pane and kind keeps it, a remap drops
+  it. **What Mycelium knows about each agent CLI lives in
+  `integrations/herdr/agents/`, one module per kind behind `AgentKind`**
+  (`claude.py` is the only one): launch args, starting in and resuming a
+  session, the session id's format (checked on every read and write, since it
+  becomes an argument) and where it keeps sessions on disk. Nothing outside
+  that package names a CLI; a kind without a module starts with no extra
+  args and can't be resumed. The hub only checks a session is a plain token.
+  A herdr server restart leaves every pane a bare shell, so sync
   retires a managed member only when its pane is closed, never because no
   agent is running in it, and retires nothing when the pane list can't be read.
 - **"Who am I" has one answer, from ordered sources, and a folder can join a

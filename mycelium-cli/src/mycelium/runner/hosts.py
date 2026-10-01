@@ -371,7 +371,7 @@ class OmnigentHost:
         env: dict[str, str],  # noqa: ARG002 - a session takes no environment; the join code carries it
         intro: str,
     ) -> Started:
-        from mycelium.commands.swarm import AGENT_ARGS
+        from mycelium.integrations.herdr.agents import agent_kind
 
         if kind not in self._agents:
             self.kinds()
@@ -389,8 +389,8 @@ class OmnigentHost:
         if (cwd / ".git").exists():
             # Its own worktree, so its own folder, so its own membership.
             body["git"] = {"branch_name": branch_for(room, handle)}
-        if args := AGENT_ARGS.get(kind):
-            body["terminal_launch_args"] = list(args)
+        if args := agent_kind(kind).launch_args():
+            body["terminal_launch_args"] = args
         session = self._post("/v1/sessions", body)
         ref = str(session.get("id") or session.get("session_id") or "")
         if not ref:

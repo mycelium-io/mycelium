@@ -2239,7 +2239,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#machines-resuming-agents",
     "t": "Resuming agents",
     "s": "Guides › Start Agents From the App",
-    "x": "When Mycelium starts a Claude Code agent, it saves the agent's conversation (its session id) with the agent. A stopped agent with a saved session can be resumed: it starts again in its own folder, as the same member, and picks up the conversation where it stopped. mycelium machine resume --all # every stopped agent that can be mycelium machine resume reviewer # one On the Machines page, Resume shows the command each ",
+    "x": "When Mycelium starts an agent whose CLI lets it name the conversation, it saves that conversation (its session id) with the agent. Today that is Claude Code. A stopped agent with a saved session can be resumed: it starts again in its own folder, as the same member, and picks up the conversation where it stopped. An agent in another CLI can still be seen, stopped and unbound here, but not resumed. mycelium machine res",
     "p": "Reference"
   },
   {
@@ -2253,7 +2253,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#machines-other-fixes",
     "t": "Other fixes",
     "s": "Guides › Start Agents From the App",
-    "x": "mycelium machine stop reviewer # stop it; it stays in the room mycelium machine rename reviewer \"review\" # its name in herdr mycelium machine unbind reviewer # forget its pane; it stays in the room mycelium machine unbind --gone # forget every pane that's gone Add --json to mycelium machine for the list as data.",
+    "x": "mycelium machine stop reviewer # stop it; it stays in the room mycelium machine rename reviewer \"review\" # its name in herdr mycelium machine unbind reviewer # forget its pane; it stays in the room mycelium machine unbind --gone # forget every pane that's gone Add --json to mycelium machine for the list as data. Only resuming asks you on the machine first, because it starts something. Stopping, renaming, unbinding, s",
     "p": "Reference"
   },
   {

@@ -497,9 +497,12 @@ function ResumeDialog({
                       in {a.room} · {a.host} {a.workspace ?? ""}, pane {a.ref}
                     </span>
                   </p>
-                  <p className="mt-1 break-all font-mono text-micro text-muted-foreground">
-                    cd {tilde(a.folder)} &amp;&amp; {a.kind ?? "claude"} --resume {a.session}
-                  </p>
+                  {/* Built on the machine, by its agent CLI's own rules. */}
+                  {a.resume_command && (
+                    <p className="mt-1 break-all font-mono text-micro text-muted-foreground">
+                      {a.resume_command}
+                    </p>
+                  )}
                 </div>
               </li>
             );

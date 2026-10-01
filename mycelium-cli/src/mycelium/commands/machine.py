@@ -335,16 +335,14 @@ def session_cmd(
     """The session an agent resumes in.
 
     Mycelium saves it when it starts an agent. For a pane you started yourself,
-    ``--find`` looks for the newest Claude Code conversation in its folder and
-    shows it before saving.
+    ``--find`` looks for the newest session its agent CLI keeps for its folder
+    and shows it before saving.
     """
     _config, agent = _agent(handle, room)
     if find:
         found = find_session(agent)
         if found is None:
-            _fail(
-                MachineError(f"No Claude Code conversation found in {_short_path(agent.folder)}.")
-            )
+            _fail(MachineError(f"No session found in {_short_path(agent.folder)}."))
             return
         console.print(
             f"Newest conversation in {escape(_short_path(agent.folder))}: "

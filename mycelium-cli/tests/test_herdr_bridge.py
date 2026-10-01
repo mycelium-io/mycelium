@@ -31,6 +31,9 @@ if TYPE_CHECKING:
 
     from mycelium.config import MyceliumConfig
 
+#: A Claude Code session id (a UUID).
+SESSION = "0b1d5c3e-4a6f-4c2d-9e8b-1f2a3b4c5d6e"
+
 
 def _proc(stdout: str = "", stderr: str = "", returncode: int = 0) -> subprocess.CompletedProcess:
     return subprocess.CompletedProcess(
@@ -558,7 +561,7 @@ def test_reconcile_keeps_a_member_whose_pane_is_open_but_empty(
     reg = HerdrRegistry()
     reg.set(
         HerdrPaneMapping(
-            room="r", handle="builder", pane="w2:p1", kind="claude", managed=True, session="s-1"
+            room="r", handle="builder", pane="w2:p1", kind="claude", managed=True, session=SESSION
         )
     )
     deleted: list[str] = []
@@ -587,18 +590,46 @@ def test_reconcile_keeps_a_member_whose_pane_is_open_but_empty(
 
     assert retired == [] and deleted == []
     kept = bridge.registry.get("r", "builder")
-    assert kept is not None and kept.session == "s-1"
+    assert kept is not None and kept.session == SESSION
 
 
 def test_rewriting_a_mapping_keeps_its_saved_session(isolated_home: Path) -> None:
     """The workspace sync re-writes a pane's mapping without knowing its session;
     that must not lose the session Mycelium saved when it started the agent."""
     reg = HerdrRegistry()
-    reg.set(HerdrPaneMapping(room="r", handle="a", pane="w2:p1", session="s-1", cwd="/work"))
+    reg.set(
+        HerdrPaneMapping(
+            room="r", handle="a", pane="w2:p1", kind="claude", session=SESSION, cwd="/work"
+        )
+    )
     reg.set(HerdrPaneMapping(room="r", handle="a", pane="w2:p1", kind="claude", managed=True))
     kept = reg.get("r", "a")
     assert kept is not None
-    assert (kept.session, kept.cwd, kept.kind, kept.managed) == ("s-1", "/work", "claude", True)
+    assert (kept.session, kept.cwd, kept.kind, kept.managed) == (SESSION, "/work", "claude", True)
+
+
+@pytest.mark.parametrize(
+    "remap",
+    [
+        HerdrPaneMapping(room="r", handle="a", pane="w3:p4", kind="claude"),
+        HerdrPaneMapping(room="r", handle="a", pane="w2:p1", kind="codex"),
+    ],
+    ids=["another pane", "another kind"],
+)
+def test_a_remapped_handle_forgets_the_old_agents_session(
+    isolated_home: Path, remap: HerdrPaneMapping
+) -> None:
+    """Another pane or another kind is another agent: resuming it in the old
+    one's session would pick up the wrong conversation."""
+    reg = HerdrRegistry()
+    reg.set(
+        HerdrPaneMapping(
+            room="r", handle="a", pane="w2:p1", kind="claude", session=SESSION, cwd="/work"
+        )
+    )
+    reg.set(remap)
+    kept = reg.get("r", "a")
+    assert kept is not None and (kept.session, kept.cwd) == (None, None)
 
 
 # ── sync presence collection ────────────────────────────────────────────────────

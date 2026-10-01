@@ -32,12 +32,13 @@ import os
 import shlex
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
+from urllib.parse import quote
 
 from mycelium.filesystem import get_mycelium_dir
 from mycelium.integrations.herdr import HerdrBridge, HerdrError, HerdrPaneMapping
+from mycelium.integrations.herdr.agents import FoundSession, agent_kind
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
@@ -100,16 +101,21 @@ def mark_syncing(workspaces: list[str], by: SyncedBy) -> None:
     """Leave a heartbeat saying ``by`` is syncing each of ``workspaces`` right now."""
     folder = _heartbeat_dir()
     folder.mkdir(parents=True, exist_ok=True)
-    body = json.dumps({"by": by, "pid": os.getpid(), "at": time.time()})
+    beat = {"by": by, "pid": os.getpid(), "at": time.time()}
     for workspace in workspaces:
         try:
+            body = json.dumps({**beat, "workspace": workspace})
             (folder / f"{_safe(workspace)}.json").write_text(body)
         except OSError:
             continue
 
 
 def syncing() -> dict[str, SyncedBy]:
-    """Which workspaces something is syncing now, and what: runner or a terminal loop."""
+    """Which workspaces something is syncing now, and what: runner or a terminal loop.
+
+    Keyed by the workspace's own id, which the heartbeat carries; its file name
+    is only a safe spelling of it.
+    """
     out: dict[str, SyncedBy] = {}
     folder = _heartbeat_dir()
     if not folder.is_dir():
@@ -122,13 +128,15 @@ def syncing() -> dict[str, SyncedBy]:
             continue
         if now - float(beat.get("at", 0)) > FRESH_S or not _alive(int(beat.get("pid", 0))):
             continue
-        if beat.get("by") in ("runner", "terminal"):
-            out[path.stem] = beat["by"]
+        workspace = beat.get("workspace")
+        if beat.get("by") in ("runner", "terminal") and isinstance(workspace, str):
+            out[workspace] = beat["by"]
     return out
 
 
 def _safe(workspace: str) -> str:
-    return "".join(c if c.isalnum() or c in "-_" else "_" for c in workspace)
+    """A file name for ``workspace``'s heartbeat: escaped, so no two ids share one."""
+    return quote(workspace, safe="")
 
 
 def _alive(pid: int) -> bool:
@@ -161,7 +169,7 @@ class Agent:
     folder: str | None = None
     #: The agent CLI's session, which resuming picks up. ``None`` when nothing saved it.
     session: str | None = None
-    #: The agent CLI (``claude``…), when known.
+    #: The agent CLI, as herdr names its kind, when known.
     kind: str | None = None
     #: The herdr workspace its pane is (or was) in.
     workspace: str | None = None
@@ -170,14 +178,11 @@ class Agent:
 
     @property
     def resumable(self) -> bool:
-        from mycelium.commands.swarm import SESSION_ARGS
-
         return (
             self.host == "herdr"
             and self.state in ("stopped", "gone")
-            and bool(self.session)
             and bool(self.folder)
-            and (self.kind or "claude") in SESSION_ARGS
+            and agent_kind(self.kind).valid_session(self.session) is not None
         )
 
 
@@ -247,7 +252,16 @@ class Report:
             "workspaces": [
                 {
                     **{k: v for k, v in asdict(w).items() if k != "agents"},
-                    "agents": [{**asdict(a), "resumable": a.resumable} for a in w.agents],
+                    # The command each resumable one would run, built here by
+                    # its kind, so whoever shows it needn't know any CLI.
+                    "agents": [
+                        {
+                            **asdict(a),
+                            "resumable": a.resumable,
+                            "resume_command": resume_line(a) if a.resumable else None,
+                        }
+                        for a in w.agents
+                    ],
                 }
                 for w in self.workspaces
             ],
@@ -316,7 +330,7 @@ def report(
                 label="Panes that are gone" if nowhere else labels.get(wid) or wid,
                 host="herdr",
                 room=None if nowhere else room or bindings.get(wid),
-                synced_by=None if nowhere else now_syncing.get(_safe(wid)),
+                synced_by=None if nowhere else now_syncing.get(wid),
                 runner_keeps=wid in state.owned or wid in chosen,
             )
         return workspaces[wid]
@@ -544,16 +558,23 @@ def _names(agents: list[Agent]) -> str:
 # ── actions ──────────────────────────────────────────────────────────────────
 
 
+def resume_line(agent: Agent) -> str | None:
+    """The command line resuming ``agent`` runs in its pane, or ``None`` if it can't be."""
+    kind = agent_kind(agent.kind)
+    session = kind.valid_session(agent.session)
+    if session is None:
+        return None
+    line = shlex.join([kind.kind, *kind.resume_args(session)])
+    return f"cd {shlex.quote(_tilde(agent.folder or '.'))} && {line}"
+
+
 def resume_command(agent: Agent) -> str:
     """What resuming ``agent`` runs, said for a person to read before saying yes."""
-    from mycelium.commands.swarm import SESSION_ARGS
-
-    _start, resume_flag = SESSION_ARGS.get(agent.kind or "claude", ("", "--resume"))
-    return (
-        f"cd {shlex.quote(_tilde(agent.folder or '.'))} && "
-        f"{agent.kind or 'claude'} {resume_flag} {agent.session}"
-        f"   (as @{agent.handle} in {agent.room})"
-    )
+    line = resume_line(agent)
+    if line is None:
+        msg = f"@{agent.handle} has no session to resume"
+        raise MachineError(msg)
+    return f"{line}   (as @{agent.handle} in {agent.room})"
 
 
 def resume(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None = None) -> str:
@@ -564,9 +585,14 @@ def resume(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None =
     """
     from mycelium.commands.swarm import _start_when_ready
 
+    kind = agent_kind(agent.kind)
     if not agent.resumable:
         if agent.state not in ("stopped", "gone"):
             raise MachineError(f"@{agent.handle} is running ({agent.state}); nothing to resume.")
+        if not kind.resumes:
+            raise MachineError(
+                f"@{agent.handle} runs {kind.name or 'an agent CLI'}, which Mycelium can't resume."
+            )
         raise MachineError(
             f"@{agent.handle} can't be resumed: no session was saved for it. "
             f"Find it with `mycelium machine session {agent.handle} --room {agent.room} --find`."
@@ -585,7 +611,7 @@ def resume(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None =
             bridge.run_in_pane(pane, f"cd {shlex.quote(folder)} && export {exports}")
         else:
             pane = _new_pane(bridge, agent, folder, env)
-        _start_when_ready(bridge, agent.handle, agent.kind or "claude", pane, resume=agent.session)
+        _start_when_ready(bridge, agent.handle, kind.kind, pane, resume=agent.session)
     except HerdrError as e:
         raise MachineError(f"herdr couldn't resume @{agent.handle}: {e}") from e
     bridge.registry.set(
@@ -593,7 +619,7 @@ def resume(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None =
             room=agent.room,
             handle=agent.handle,
             pane=pane,
-            kind=agent.kind or "claude",
+            kind=kind.kind,
             managed=_was_managed(bridge, agent),
             session=agent.session,
             cwd=folder,
@@ -608,16 +634,23 @@ def _was_managed(bridge: HerdrBridge, agent: Agent) -> bool:
 
 
 def _new_pane(bridge: HerdrBridge, agent: Agent, folder: str, env: dict[str, str]) -> str:
-    """A pane for an agent whose own is gone: beside another in its workspace, or a new one."""
-    if agent.workspace:
-        try:
-            siblings = [
-                str(p["pane_id"])
-                for p in bridge.list_panes()
-                if p.get("workspace_id") == agent.workspace and p.get("pane_id")
-            ]
-        except HerdrError:
-            siblings = []
+    """A pane for an agent whose own is gone: beside another of its room's, or a new one.
+
+    Its own workspace when it still has panes, else any workspace bound to its
+    room that does. A new workspace is bound to the room, so resuming several
+    gone agents of one room opens one workspace for them all, not one each.
+    """
+    try:
+        panes = bridge.list_panes()
+    except HerdrError:
+        panes = []
+    room_workspaces = [w for w, r in bridge.registry.bindings().items() if r == agent.room]
+    for workspace in [agent.workspace, *room_workspaces]:
+        siblings = [
+            str(p["pane_id"])
+            for p in panes
+            if workspace and p.get("workspace_id") == workspace and p.get("pane_id")
+        ]
         if siblings:
             return bridge.split_pane(siblings[-1], direction="right", cwd=folder, env=env)
     workspace, pane = bridge.create_workspace(agent.room, cwd=folder, env=env)
@@ -659,32 +692,15 @@ def unbind(agent: Agent, *, bridge: HerdrBridge | None = None) -> None:
     bridge.registry.remove(agent.room, agent.handle)
 
 
-@dataclass
-class FoundSession:
-    id: str
-    path: str
-    modified: str
-
-
 def find_session(agent: Agent) -> FoundSession | None:
-    """The newest Claude Code conversation started in ``agent``'s folder, if any.
+    """The newest session ``agent``'s CLI started in its folder, if it keeps them where we look.
 
     A guess, for an agent nothing saved a session for: shown to the person
     before it's kept, never kept on its own.
     """
     if not agent.folder:
         return None
-    folder = Path(agent.folder).expanduser().resolve()
-    slug = "".join(c if c.isalnum() or c == "-" else "-" for c in str(folder))
-    project = Path.home() / ".claude" / "projects" / slug
-    if not project.is_dir():
-        return None
-    transcripts = sorted(project.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
-    if not transcripts:
-        return None
-    newest = transcripts[0]
-    when = datetime.fromtimestamp(newest.stat().st_mtime, tz=UTC).isoformat()
-    return FoundSession(id=newest.stem, path=_tilde(str(newest)), modified=when)
+    return agent_kind(agent.kind).find_session(Path(agent.folder))
 
 
 def save_session(agent: Agent, session: str, *, bridge: HerdrBridge | None = None) -> None:
@@ -695,14 +711,22 @@ def save_session(agent: Agent, session: str, *, bridge: HerdrBridge | None = Non
     before = bridge.registry.get(agent.room, agent.handle)
     if before is None:
         raise MachineError(f"@{agent.handle} isn't bound to a pane here.")
+    kind = agent_kind(before.kind or agent.kind)
+    if not kind.resumes:
+        raise MachineError(
+            f"@{agent.handle} runs {kind.name or 'an agent CLI'}, which Mycelium can't resume."
+        )
+    valid = kind.valid_session(session)
+    if valid is None:
+        raise MachineError(f"{session!r} isn't a {kind.name} session id.")
     bridge.registry.set(
         HerdrPaneMapping(
             room=before.room,
             handle=before.handle,
             pane=before.pane,
-            kind=before.kind,
+            kind=kind.kind,
             managed=before.managed,
-            session=session,
+            session=valid,
             cwd=before.cwd or agent.folder,
         )
     )

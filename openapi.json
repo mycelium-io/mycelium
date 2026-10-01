@@ -6295,7 +6295,8 @@
             "anyOf": [
               {
                 "type": "string",
-                "maxLength": 200
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
               },
               {
                 "type": "null"
@@ -6406,6 +6407,18 @@
             "type": "boolean",
             "title": "Resumable",
             "default": false
+          },
+          "resume_command": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Command",
+            "description": "The command resuming it runs, as its machine builds it"
           }
         },
         "type": "object",

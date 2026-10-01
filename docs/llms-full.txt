@@ -3936,10 +3936,12 @@ An agent can be:
 
 ### Resuming agents
 
-When Mycelium starts a Claude Code agent, it saves the agent's conversation
-(its session id) with the agent. A stopped agent with a saved session can be
-resumed: it starts again in its own folder, as the same member, and picks up
-the conversation where it stopped.
+When Mycelium starts an agent whose CLI lets it name the conversation, it
+saves that conversation (its session id) with the agent. Today that is
+Claude Code. A stopped agent with a saved session can be resumed: it starts
+again in its own folder, as the same member, and picks up the conversation
+where it stopped. An agent in another CLI can still be seen, stopped and
+unbound here, but not resumed.
 
 ```bash
 mycelium machine resume --all          # every stopped agent that can be
@@ -3984,6 +3986,12 @@ mycelium machine unbind --gone             # forget every pane that's gone
 ```
 
 Add `--json` to `mycelium machine` for the list as data.
+
+Only resuming asks you on the machine first, because it starts something.
+Stopping, renaming, unbinding, saving a session and turning sync on or off
+don't ask, so anyone who can reach the hub can ask your runner for them.
+None of them starts a program, and a saved session must be one your agent
+CLI could have made.
 
 ## You say yes on the machine
 

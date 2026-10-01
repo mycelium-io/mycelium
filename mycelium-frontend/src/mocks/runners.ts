@@ -98,6 +98,7 @@ function machineReport(): MachineReport {
             workspace: "w3",
             started_by: "runner",
             resumable: true,
+            resume_command: "cd ~/code/shop && claude --resume 9b07c2d4-1e5f-4a8b-b3c6-7d9e0f1a44c0",
           },
         ],
       },
