@@ -28,6 +28,7 @@ from mycelium.commands import (
     network,
     openshell,
     participate,
+    pattern,
     room,
     runner,
     skill,
@@ -126,6 +127,7 @@ app.add_typer(ui.app, name="ui")
 app.add_typer(agent.app, name="agent")
 app.add_typer(user.app, name="user")
 app.add_typer(engine.app, name="engine")
+app.add_typer(pattern.app, name="pattern")
 app.add_typer(herdr.app, name="herdr")
 app.add_typer(runner.app, name="runner")
 app.add_typer(desktop.app, name="desktop")
