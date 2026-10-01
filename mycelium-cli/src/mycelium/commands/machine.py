@@ -100,7 +100,11 @@ def _print(r: Report) -> None:
                 escape(a.room),
                 f"[{color}]{word}[/{color}]",
                 escape(_short_path(a.folder)),
-                escape(_short_id(a.session)) if a.session else "[dim]not saved[/dim]",
+                escape(_short_id(a.session))
+                if a.session
+                else "[dim]not saved[/dim]"
+                if a.resumes
+                else "[dim]can't resume[/dim]",
                 f"[dim]{escape(a.ref)}[/dim]",
             )
         console.print(table)
@@ -203,9 +207,15 @@ def resume_cmd(
         return
     not_ready = [a for a in agents if not a.resumable]
     for a in not_ready:
+        why = (
+            "its agent CLI can't be resumed"
+            if not a.resumes
+            else "session saved"
+            if a.session
+            else "no session saved"
+        )
         console.print(
-            f"[yellow]skip[/yellow] @{escape(a.handle)}: can't be resumed ({a.state}, "
-            f"{'session saved' if a.session else 'no session saved'})"
+            f"[yellow]skip[/yellow] @{escape(a.handle)}: can't be resumed ({a.state}, {why})"
         )
     agents = [a for a in agents if a.resumable]
     if not agents:

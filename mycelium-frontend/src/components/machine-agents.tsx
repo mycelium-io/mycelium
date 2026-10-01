@@ -344,8 +344,13 @@ function AgentRow({
           <span className="font-mono text-faint" title={agent.session}>
             {shortId(agent.session)}
           </span>
-        ) : herdr ? (
+        ) : herdr && agent.resumes !== false ? (
           <FindSession runner={runner} agent={agent} />
+        ) : herdr ? (
+          // Its agent CLI can't be resumed, so there is no session to find.
+          <span className="text-faint" title="Mycelium can't resume this agent CLI">
+            can&apos;t resume
+          </span>
         ) : (
           <span className="text-faint">not saved</span>
         )}

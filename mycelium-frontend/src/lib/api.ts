@@ -788,6 +788,8 @@ export interface MachineAgent {
   kind: string | null;
   workspace: string | null;
   started_by: "runner" | "you";
+  /** Whether its agent CLI can ever be resumed; a session is worth finding only then. */
+  resumes?: boolean;
   resumable: boolean;
   /** The command resuming it runs, as its machine builds it for its agent CLI. */
   resume_command?: string | null;

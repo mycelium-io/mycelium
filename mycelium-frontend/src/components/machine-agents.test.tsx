@@ -54,6 +54,17 @@ describe("MachineAgents", () => {
     expect(within(reviewer).queryByRole("button", { name: "Stop" })).toBeNull();
   });
 
+  it("offers nothing to find or resume for a CLI Mycelium can't resume", () => {
+    renderWithSWR(<MachineAgents runner={machine()} />);
+    const scribe = screen.getByText("@scribe").closest("tr") as HTMLElement;
+    expect(within(scribe).getByText("Stopped, pane open")).toBeInTheDocument();
+    expect(within(scribe).getByText("can't resume")).toBeInTheDocument();
+    expect(within(scribe).queryByRole("button", { name: "find it" })).toBeNull();
+    expect(within(scribe).queryByRole("button", { name: "Resume" })).toBeNull();
+    expect(within(scribe).getByRole("button", { name: "Unbind" })).toBeInTheDocument();
+    expect(screen.getByText(/@scribe stopped, and Mycelium can't resume its agent CLI/)).toBeInTheDocument();
+  });
+
   it("shows each problem with its fix from a terminal", () => {
     renderWithSWR(<MachineAgents runner={machine()} />);
     expect(screen.getByText("mycelium machine resume --all")).toBeInTheDocument();

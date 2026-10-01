@@ -6403,6 +6403,12 @@
             "title": "Started By",
             "default": "you"
           },
+          "resumes": {
+            "type": "boolean",
+            "title": "Resumes",
+            "description": "Whether its agent CLI can ever be resumed, saved session or not",
+            "default": false
+          },
           "resumable": {
             "type": "boolean",
             "title": "Resumable",

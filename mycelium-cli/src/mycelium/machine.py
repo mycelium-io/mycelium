@@ -177,7 +177,13 @@ class Agent:
     started_by: Literal["runner", "you"] = "you"
 
     @property
+    def resumes(self) -> bool:
+        """Whether its agent CLI can ever be resumed, saved session or not."""
+        return self.host == "herdr" and agent_kind(self.kind).resumes
+
+    @property
     def resumable(self) -> bool:
+        """Whether it can be resumed now: stopped, with a session saved."""
         return (
             self.host == "herdr"
             and self.state in ("stopped", "gone")
@@ -257,6 +263,7 @@ class Report:
                     "agents": [
                         {
                             **asdict(a),
+                            "resumes": a.resumes,
                             "resumable": a.resumable,
                             "resume_command": resume_line(a) if a.resumable else None,
                         }
@@ -499,7 +506,25 @@ def _problems(
                 handles=[a.handle for a in lost],
             )
         )
-    unsaved = [a for a in stopped if not a.resumable and a.state == "stopped"]
+    # Stopped with nothing saved: a session worth looking for, or none to find.
+    unsaved = [a for a in stopped if not a.resumable and a.state == "stopped" and a.resumes]
+    cannot = [a for a in stopped if a.state == "stopped" and not a.resumes]
+    if cannot:
+        one = len(cannot) == 1
+        its, it = ("its agent CLI", "it") if one else ("their agent CLIs", "they")
+        again = "Start it again in its pane" if one else "Start each again in its pane"
+        problems.append(
+            Problem(
+                kind="unresumable",
+                text=(
+                    f"{_names(cannot)} stopped, and Mycelium can't resume {its}, so {it} "
+                    f"can't pick up where {it} left off. {again}; the room keeps "
+                    f"{'its' if one else 'their'} place."
+                ),
+                fix=None,
+                handles=[a.handle for a in cannot],
+            )
+        )
     if unsaved:
         first = unsaved[0]
         problems.append(

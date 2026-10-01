@@ -123,6 +123,21 @@ function machineReport(): MachineReport {
             started_by: "you",
             resumable: false,
           },
+          {
+            // A CLI Mycelium can't resume: seen, stopped, unbound, never resumed.
+            handle: "scribe",
+            room: "storefront",
+            host: "herdr",
+            ref: "w5:p2",
+            state: "stopped",
+            folder: "/Users/morgan/code/website",
+            session: null,
+            kind: "codex",
+            workspace: "w5",
+            started_by: "you",
+            resumes: false,
+            resumable: false,
+          },
         ],
       },
       {
@@ -178,6 +193,17 @@ function problemsOf(report: MachineReport): MachineReport["problems"] {
         workspace: w.id,
       });
     }
+  }
+  const cannot = agents.filter((a) => a.state === "stopped" && a.resumes === false);
+  if (cannot.length > 0) {
+    const one = cannot.length === 1;
+    out.push({
+      kind: "unresumable",
+      text: `${cannot.map((a) => `@${a.handle}`).join(" and ")} stopped, and Mycelium can't resume ${one ? "its agent CLI, so it" : "their agent CLIs, so they"} can't pick up where ${one ? "it" : "they"} left off. ${one ? "Start it again in its pane" : "Start each again in its pane"}; the room keeps ${one ? "its" : "their"} place.`,
+      fix: null,
+      handles: cannot.map((a) => a.handle),
+      workspace: null,
+    });
   }
   const lost = agents.filter((a) => a.state === "gone" && !a.resumable);
   if (lost.length > 0) {

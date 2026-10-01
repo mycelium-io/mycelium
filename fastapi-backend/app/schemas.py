@@ -704,6 +704,9 @@ class MachineAgentRead(BaseModel):
     kind: str | None = None
     workspace: str | None = None
     started_by: Literal["runner", "you"] = "you"
+    resumes: bool = Field(
+        False, description="Whether its agent CLI can ever be resumed, saved session or not"
+    )
     resumable: bool = False
     resume_command: str | None = Field(
         None, description="The command resuming it runs, as its machine builds it"

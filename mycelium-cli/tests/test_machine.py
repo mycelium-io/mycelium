@@ -351,8 +351,15 @@ def test_a_kind_mycelium_knows_nothing_of_is_never_resumable(herdr: FakeHerdr):
         )
     )
     herdr.panes = [{"pane_id": "w2:p1", "workspace_id": "w2"}]
-    c = machine.report(_config(), bridge=bridge, state=State(), machine="mac").find("c")
-    assert c.state == "stopped" and not c.resumable
+    r = machine.report(_config(), bridge=bridge, state=State(), machine="mac")
+    c = r.find("c")
+    assert c.state == "stopped" and not c.resumable and not c.resumes
+    # Its problem says to start it again, never to go looking for a session.
+    (problem,) = [p for p in r.problems if "c" in p.handles]
+    assert "can't resume its agent CLI" in problem.text
+    assert problem.fix is None
+    wired = r.wire()["workspaces"][0]["agents"][0]
+    assert (wired["resumes"], wired["resumable"], wired["resume_command"]) == (False, False, None)
     with pytest.raises(machine.MachineError, match="can't resume"):
         machine.resume(_config(), c, bridge=bridge)
 
