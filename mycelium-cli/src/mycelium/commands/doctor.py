@@ -152,7 +152,11 @@ def _check_mycelium_dir_ownership() -> CheckResult:
     )
 
 
-def _check_llm_connectivity() -> CheckResult:
+def _check_llm_connectivity(
+    *,
+    set_up: str = "Run: mycelium install --force",
+    replace_key: str | None = None,
+) -> CheckResult:
     """Probe the backend's LLM with a real one-shot ``pi`` turn.
 
     Exercises the same runtime as inference and surfaces problems that only
@@ -163,6 +167,10 @@ def _check_llm_connectivity() -> CheckResult:
     Runs via ``GET /health?check_llm=true&llm_probe=completion`` so the probe
     executes inside the backend container, which is where LLM calls will
     actually run in production.
+
+    ``set_up`` is what to do when no model is set, and ``replace_key`` what to do
+    when the provider refuses the key, in the words of wherever this is read:
+    the terminal's ``install``, or the Mac app's Settings.
     """
     # Skip entirely if the LLM isn't configured at all; _check_llm_config
     # already reported that and running the probe would be redundant noise.
@@ -247,7 +255,7 @@ def _check_llm_connectivity() -> CheckResult:
             name="LLM connectivity",
             status="warning",
             message="Not configured",
-            details=["Run: mycelium install --force"],
+            details=[set_up],
         )
     if status == "missing_extras":
         return CheckResult(
@@ -268,7 +276,7 @@ def _check_llm_connectivity() -> CheckResult:
             name="LLM connectivity",
             status="warning",
             message=f"{model}: authentication failed",
-            details=details,
+            details=[*details, replace_key] if replace_key else details,
         )
     if status == "unreachable":
         return CheckResult(
@@ -1077,7 +1085,11 @@ def doctor(
 
             sections = desktop_checks()
             if (settings() or {}).get("mode") != "client":
-                sections.append(("Models", [pi(), _check_llm_connectivity()]))
+                in_settings = _check_llm_connectivity(
+                    set_up="Choose a model and add its key in Settings (⌘,)",
+                    replace_key="Paste a working key in Settings (⌘,)",
+                )
+                sections.append(("Models", [pi(), in_settings]))
         results = [r for _, checks in sections for r in checks]
 
         if json_output:

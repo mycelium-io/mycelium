@@ -313,13 +313,33 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 }
 
 fn toggle_autostart(app: &AppHandle) {
+    let enabled = app.autolaunch().is_enabled().unwrap_or(false);
+    set_autostart_to(app, !enabled);
+}
+
+/// Start at login on or off, with the menu bar's tick kept in step. Returns
+/// what it ended up as.
+fn set_autostart_to(app: &AppHandle, on: bool) -> bool {
     let launcher = app.autolaunch();
-    let enabled = launcher.is_enabled().unwrap_or(false);
-    let _ = if enabled { launcher.disable() } else { launcher.enable() };
-    let now = launcher.is_enabled().unwrap_or(!enabled);
+    let _ = if on { launcher.enable() } else { launcher.disable() };
+    let now = launcher.is_enabled().unwrap_or(on);
     if let Some(items) = app.state::<Shell>().tray.lock().unwrap().as_ref() {
         let _ = items.autostart.set_checked(now);
     }
+    now
+}
+
+/// Whether Mycelium starts at login, for Settings' This Mac section.
+#[tauri::command]
+fn get_autostart(app: AppHandle, webview: Webview) -> Result<bool, String> {
+    local_only(&app, &webview)?;
+    Ok(app.autolaunch().is_enabled().unwrap_or(false))
+}
+
+#[tauri::command]
+fn set_autostart(app: AppHandle, webview: Webview, on: bool) -> Result<bool, String> {
+    local_only(&app, &webview)?;
+    Ok(set_autostart_to(&app, on))
 }
 
 /// Stop what the app runs (herdr and its agents carry on).
@@ -495,6 +515,57 @@ async fn run_doctor(app: AppHandle, webview: Webview) -> Result<Value, String> {
     })
 }
 
+/// `mycelium desktop model`: the model the hub's own agents use. The key is
+/// never in the answer, only whether one is saved and its last four characters.
+#[tauri::command]
+async fn get_model(app: AppHandle, webview: Webview) -> Result<Value, String> {
+    local_only(&app, &webview)?;
+    model_cli(None).await
+}
+
+/// `mycelium desktop model --set`, with the new settings on its stdin: a key
+/// passed as an argument would show in the process list. A field left out
+/// keeps its saved value.
+#[tauri::command]
+async fn save_model(app: AppHandle, webview: Webview, model: Value) -> Result<Value, String> {
+    local_only(&app, &webview)?;
+    if !model.is_object() {
+        return Err("The model settings must be an object.".into());
+    }
+    model_cli(Some(model.to_string())).await
+}
+
+async fn model_cli(input: Option<String>) -> Result<Value, String> {
+    use std::io::Write as _;
+    use std::process::Stdio;
+
+    let bin = paths::resolve("mycelium").ok_or("The mycelium program isn't available.")?;
+    let out = tauri::async_runtime::spawn_blocking(move || {
+        let mut cmd = Command::new(bin);
+        cmd.args(["desktop", "model"])
+            .env("PATH", paths::shell_path())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        if input.is_some() {
+            cmd.arg("--set");
+        }
+        let mut child = cmd.spawn()?;
+        if let (Some(text), Some(mut stdin)) = (input, child.stdin.take()) {
+            stdin.write_all(text.as_bytes())?;
+        }
+        child.wait_with_output()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        return Err(err.lines().last().unwrap_or("Couldn't save the model settings.").trim().to_string());
+    }
+    serde_json::from_slice(&out.stdout).map_err(|_| "The model settings came back unreadable.".into())
+}
+
 /// Open the supervisor's log (`~/.mycelium/logs/desktop.log`) in Console.
 #[tauri::command]
 fn open_log(app: AppHandle, webview: Webview) -> Result<(), String> {
@@ -649,6 +720,10 @@ pub fn run() {
             scan_agents,
             pick_folder,
             run_doctor,
+            get_model,
+            save_model,
+            get_autostart,
+            set_autostart,
             open_room,
             open_log,
             start,

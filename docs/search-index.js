@@ -2129,7 +2129,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#desktop-install",
     "t": "Install",
     "s": "Guides › The Mac App",
-    "x": "Open the download and drag Mycelium into Applications. Open Mycelium from Applications. The first time, macOS asks whether to open an app downloaded from the internet; choose Open. Choose how this Mac takes part: - Run a hub on this Mac keeps your rooms, memory and agents here. Pick this to try Mycelium on your own. - Connect to a hub joins rooms someone else runs. Paste the hub's address, or open an invite link a te",
+    "x": "Open the download and drag Mycelium into Applications. Open Mycelium from Applications. The first time, macOS asks whether to open an app downloaded from the internet; choose Open. A few short steps set it up: - Where should your rooms live? On this Mac keeps your rooms, notes and agents here; pick it to try Mycelium on your own or to give a demo. On my team's hub joins rooms someone else runs: paste the hub's addres",
     "p": "Reference"
   },
   {
@@ -2150,7 +2150,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#desktop-the-menu-bar",
     "t": "The menu bar",
     "s": "Guides › The Mac App",
-    "x": "Mycelium lives in the menu bar while it runs. Closing the window leaves it running; Quit Mycelium stops the hub. Agents you started keep running in herdr either way. the state of the hub, the SLIM node and the runner; Open Mycelium and Agents terminal; Start at login; Health check…, below; Settings… (also Mycelium → Settings…, ⌘,), to change how this Mac takes part; Check for Updates….",
+    "x": "Mycelium lives in the menu bar while it runs. Closing the window leaves it running; Quit Mycelium stops the hub. Agents you started keep running in herdr either way. the state of the hub, the SLIM node and the runner; Open Mycelium and Agents terminal; Start at login; Health check…, below; Settings… (also Mycelium → Settings…, ⌘,): where rooms live and starting at login, the model, the agents' folder, and usage stats",
     "p": "Reference"
   },
   {
@@ -2179,6 +2179,48 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "The command line",
     "s": "Guides › The Mac App",
     "x": "Everything the app does is also a command, for a Linux machine, a server, or if you'd rather use a terminal: mycelium desktop serve runs the same hub without the window. See Run it on a server instead for the full CLI setup.",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#models",
+    "t": "Models",
+    "s": "Guides",
+    "x": "Mycelium comes with agents of its own, and they need a model to think with. This page is about that one setting: what uses it, how to set it, and which models it can be.",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#models-what-uses-it",
+    "t": "What uses it",
+    "s": "Guides › Models",
+    "x": "The model is for the agents the hub runs itself: the aligner, which helps agents agree when they disagree; personas, which play a role in a room or a scenario; workers, which take tasks off the board and do them; the synthesizer, which keeps notes on what a room decided; the step that turns an agreement into tasks on the board. The conductor uses none: it follows a flow in code. Agents you bring, like Claude Code, Co",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#models-set-it",
+    "t": "Set it",
+    "s": "Guides › Models",
+    "x": "In the Mac app, the first run asks for it, and you can change it any time in Settings → Model (⌘,). Pick a provider, paste a key, and save. The model name is filled in for you. From the command line: mycelium config set llm.model \"anthropic/claude-sonnet-4-6\" mycelium config set llm.api_key \"<your key>\" mycelium config apply llm.base_url sets the address for a provider the hub can't find on its own, like Ollama or a ",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#models-providers",
+    "t": "Providers",
+    "s": "Guides › Models",
+    "x": "Provider Model names look like Key Anthropic anthropic/claude-sonnet-4-6 from console.anthropic.com OpenAI openai/gpt-4.1 from platform.openai.com OpenRouter openrouter/anthropic/claude-sonnet-4-6 from openrouter.ai Ollama ollama/llama3.3 none; set the address to where Ollama runs Other provider/model if the service needs one; set its address A name is always the provider, a slash, then the model.",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#models-under-the-hood",
+    "t": "Under the hood",
+    "s": "Guides › Models",
+    "x": "Mycelium's agents run on Pi, an open-source agent runtime that talks to many model providers. Any provider/model that Pi knows works here. Its model catalog lists every provider and model name, with their context limits and prices.",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#models-check-it",
+    "t": "Check it",
+    "s": "Guides › Models",
+    "x": "In the Mac app, Settings → Model says whether the model answered, and Health check… shows it under Models. From the command line, mycelium doctor asks the model for a real reply and says what went wrong if it can't get one: a missing key, a key the provider refuses, or a model name it doesn't know.",
     "p": "Reference"
   },
   {
