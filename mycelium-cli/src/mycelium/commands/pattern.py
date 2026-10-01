@@ -3,16 +3,20 @@
 
 """``mycelium pattern``: load a multi-agent design pattern as a room, ready to run.
 
-A pattern pack is a repository of scenarios
-(``scenarios/<pattern>/scenario.yaml``): a cast, some context, a task and the flow
-that sets them working. ``--from`` names the repository, a git URL or a folder; a URL is cloned shallowly into ``~/.mycelium/patterns/`` with the
-caller's own git credentials, so a private pack needs nothing stored here.
+A scenario is a small room: a cast, some context, a task and the flow that sets
+them working. The hub owns what a scenario is and what loading one writes
+(``POST /api/patterns/...``), so this is a thin caller.
 
-Loading is a sequence of calls the hub already answers (the room, its engines
-and members' notes, the context and the flow as memories, the task) and then
-stops: the scenario is **paused**. The summon that starts it is printed, or
-posted when ``--run`` is given. If a step fails the room is removed, so a
-half-loaded scenario is never left behind.
+- ``pattern ls`` / ``pattern use <name>`` use the pack the hub's operator
+  provides (``PATTERNS_DIR`` on the hub). The hub never fetches a pack a caller
+  names, so this is also the only form a public hub offers.
+- ``--from`` names a pack of your own, a git URL or a folder. A URL is cloned
+  shallowly into ``~/.mycelium/patterns/`` with your own git credentials, so a
+  private pack needs nothing stored here, and the scenario is sent to the hub
+  in the request. A hub can turn that off (``PATTERNS_ALLOW_INLINE``).
+
+A scenario loads **paused**. The summon that starts it is printed, or posted
+when ``--run`` is given. If a step fails the hub removes the room.
 """
 
 from __future__ import annotations
@@ -24,18 +28,16 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import httpx
 import typer
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from rich.console import Console
 from rich.table import Table
 
 from mycelium import identity
-from mycelium.client import hub_client
-from mycelium.commands.swarm import CONDUCTOR, SwarmError, _check
+from mycelium.client import hub_client, hub_error_detail
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
@@ -45,129 +47,20 @@ app = typer.Typer(
 )
 console = Console()
 
-SLUG = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
-
-#: The flows the hub ships; a scenario naming any other brings its own.
-BUILTIN_FLOWS = frozenset(
-    {"round-robin", "fan-out", "swarm", "review", "gated", "concord", "accord"}
-)
-
-#: The seat the person loading a scenario takes.
-HUMAN = "human"
-
-#: What a member can be that the hub runs; ``human`` is the loader.
-Kind = Literal["persona", "worker", "aligner", "synthesizer", "hello", "human"]
-
-#: Kinds a flow can put a question to.
-ASKABLE = frozenset({"persona", "worker", "human"})
-
+CONDUCTOR = "conductor"
 CLONE_TIMEOUT_S = 120
+
+SOURCE_HELP = (
+    "A pattern pack of your own: a git URL (cloned with your git credentials) or a folder. "
+    "Without it, the pack the hub provides."
+)
 
 
 class PatternError(Exception):
-    """A scenario that cannot be found, read or loaded, with what to do about it."""
+    """A pack or scenario that cannot be found or read, or a hub that refused it."""
 
 
-# ── the scenario ─────────────────────────────────────────────────────────────
-
-
-class _Strict(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-
-class Context(_Strict):
-    key: str
-    text: str = Field(min_length=1)
-
-    @model_validator(mode="after")
-    def _under_context(self) -> Context:
-        if not self.key.startswith("context/") or not SLUG.match(self.key.removeprefix("context/")):
-            msg = f"context key {self.key!r} must be context/<slug>"
-            raise ValueError(msg)
-        return self
-
-
-class Member(_Strict):
-    handle: str
-    kind: Kind
-    description: str = ""
-    notes: str = ""
-
-    @model_validator(mode="after")
-    def _shape(self) -> Member:
-        if not SLUG.match(self.handle) or self.handle == CONDUCTOR:
-            msg = f"handle {self.handle!r} must be a lowercase slug and not {CONDUCTOR!r}"
-            raise ValueError(msg)
-        if self.kind in ("persona", "worker") and not self.notes.strip():
-            msg = f"{self.kind} {self.handle!r} needs notes: they are its character"
-            raise ValueError(msg)
-        return self
-
-
-class Task(_Strict):
-    title: str = Field(min_length=1, max_length=200)
-    body: str = ""
-
-
-class Summon(_Strict):
-    flow: str
-    members: list[str] = Field(min_length=1)
-    ask: str = Field(min_length=1)
-
-
-class Room(_Strict):
-    title: str = Field(min_length=1, max_length=200)
-    description: str = Field("", max_length=500)
-
-
-class Scenario(_Strict):
-    pattern: str
-    title: str = Field(min_length=1)
-    summary: str = Field(min_length=1, max_length=300)
-    room: Room
-    context: list[Context] = Field(default_factory=list)
-    members: list[Member] = Field(min_length=1)
-    task: Task
-    summon: Summon | None = None
-    flow_file: str | None = None
-
-    #: The flow's YAML, read from ``flow_file`` when a scenario has one.
-    flow_body: str | None = Field(None, exclude=True)
-
-    def check(self) -> list[str]:
-        """What is wrong with the scenario as data. The hub's own flow check
-        runs in the pack's CI and, once loaded, against the room's flow list."""
-        errors: list[str] = []
-        handles = [m.handle for m in self.members]
-        if len(set(handles)) != len(handles):
-            errors.append("member handles must be distinct")
-        if sum(m.kind == HUMAN for m in self.members) > 1:
-            errors.append("at most one human seat: the person who loads it")
-        if len({c.key for c in self.context}) != len(self.context):
-            errors.append("context keys must be distinct")
-        if self.flow_file and self.summon is None:
-            errors.append("flow_file is set but there is no summon to run it")
-        if self.summon is None:
-            return errors
-        if not self.flow_file and self.summon.flow not in BUILTIN_FLOWS:
-            errors.append(
-                f"summon.flow {self.summon.flow!r} is not built in "
-                f"({', '.join(sorted(BUILTIN_FLOWS))}) and no flow_file is given"
-            )
-        by_handle = {m.handle: m for m in self.members}
-        cast = self.summon.members
-        if len(set(cast)) != len(cast):
-            errors.append("summon members must be distinct")
-        for handle in cast:
-            member = by_handle.get(handle)
-            if member is None:
-                errors.append(f"summon names {handle!r}, which the scenario does not cast")
-            elif member.kind not in ASKABLE:
-                errors.append(f"{handle!r} is a {member.kind}, which a flow cannot ask")
-        return errors
-
-
-# ── the pack ─────────────────────────────────────────────────────────────────
+# ── a pack of your own ───────────────────────────────────────────────────────
 
 
 @dataclass
@@ -184,27 +77,30 @@ class Pack:
     def names(self) -> list[str]:
         return sorted(p.parent.name for p in self.scenarios_dir.glob("*/scenario.yaml"))
 
-    def load(self, name: str) -> Scenario:
+    def read(self, name: str) -> tuple[dict[str, Any], str | None]:
+        """A scenario as parsed YAML, and its flow's text when it brings one.
+
+        Not checked here: the hub checks a scenario against its own models and
+        flows, and says what is wrong.
+        """
         folder = self.scenarios_dir / name
         path = folder / "scenario.yaml"
         if not path.is_file():
             known = ", ".join(self.names()) or "none"
             raise PatternError(f"no scenario named {name!r} in {self.source}. Known: {known}.")
         try:
-            scenario = Scenario.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
-        except (ValidationError, yaml.YAMLError, OSError) as exc:
-            raise PatternError(f"{name}: scenario.yaml is not valid: {exc}") from exc
-        if scenario.pattern != name:
-            raise PatternError(f"{name}: pattern {scenario.pattern!r} must match its folder")
-        if scenario.flow_file:
-            flow_path = (folder / scenario.flow_file).resolve()
-            if folder.resolve() not in flow_path.parents or not flow_path.is_file():
-                raise PatternError(f"{name}: flow_file {scenario.flow_file!r} is not in the folder")
-            scenario.flow_body = flow_path.read_text(encoding="utf-8")
-        problems = scenario.check()
-        if problems:
-            raise PatternError(f"{name}: " + "; ".join(problems))
-        return scenario
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError) as exc:
+            raise PatternError(f"{name}: scenario.yaml cannot be read: {exc}") from exc
+        if not isinstance(data, dict):
+            raise PatternError(f"{name}: scenario.yaml is not a mapping")
+        flow_file = data.get("flow_file")
+        if flow_file is None:
+            return data, None
+        flow_path = (folder / str(flow_file)).resolve()
+        if folder.resolve() not in flow_path.parents or not flow_path.is_file():
+            raise PatternError(f"{name}: flow_file {flow_file!r} is not a file in the folder")
+        return data, flow_path.read_text(encoding="utf-8")
 
 
 def _is_url(source: str) -> bool:
@@ -256,245 +152,98 @@ def _git(args: list[str], source: str) -> None:
         )
 
 
-# ── the plan ─────────────────────────────────────────────────────────────────
+# ── the hub ──────────────────────────────────────────────────────────────────
 
 
-@dataclass
-class Plan:
-    """What loading a scenario does, worked out before the hub is touched."""
-
-    room: str
-    me: str
-    scenario: Scenario
-    #: ``(handle, kind, description)`` for every engine to register.
-    engines: list[tuple[str, str, str]]
-    #: Memory items, in the order they are written.
-    memories: list[dict[str, Any]]
-    #: The summon text, with the person's own handle in their seat.
-    summon: str | None
-
-    def as_dict(self) -> dict[str, Any]:
-        return {
-            "room": self.room,
-            "title": self.scenario.room.title,
-            "engines": [{"handle": h, "kind": k} for h, k, _ in self.engines],
-            "memories": [m["key"] for m in self.memories],
-            "task": self.scenario.task.title,
-            "summon": self.summon,
-        }
+def _checked(resp: httpx.Response, what: str) -> Any:
+    """The response's JSON, or the hub's reason it refused."""
+    if resp.status_code >= 400:
+        detail = hub_error_detail(resp.content) or resp.text.strip() or f"HTTP {resp.status_code}"
+        raise PatternError(f"could not {what}: {detail}")
+    return resp.json()
 
 
-def build_plan(scenario: Scenario, room: str, me: str) -> Plan:
-    """The calls loading ``scenario`` into ``room`` as ``me`` will make."""
-    seat = {m.handle: (me if m.kind == HUMAN else m.handle) for m in scenario.members}
-    engines: list[tuple[str, str, str]] = []
-    if scenario.summon is not None:
-        engines.append((CONDUCTOR, "conductor", f"Runs the {scenario.summon.flow} flow."))
-    engines += [(m.handle, m.kind, m.description) for m in scenario.members if m.kind != HUMAN]
-
-    memories: list[dict[str, Any]] = [
-        {"key": c.key, "value": c.text.strip(), "created_by": me} for c in scenario.context
-    ]
-    memories += [
-        {
-            "key": f"agents/{m.handle}/notes",
-            "value": m.notes.strip(),
-            "created_by": me,
-            "embed": False,
-        }
-        for m in scenario.members
-        if m.notes.strip()
-    ]
-    summon = None
-    if scenario.summon is not None:
-        if scenario.flow_body:
-            memories.append(
-                {
-                    "key": f"protocols/{scenario.summon.flow}",
-                    "value": scenario.flow_body,
-                    "created_by": me,
-                    "embed": False,
-                }
-            )
-        names = " ".join(f"@{seat[h]}" for h in scenario.summon.members)
-        summon = f"@{CONDUCTOR} {scenario.summon.flow} {names}: {scenario.summon.ask}"
-    return Plan(
-        room=room, me=me, scenario=scenario, engines=engines, memories=memories, summon=summon
-    )
+def hub_patterns(client: httpx.Client) -> dict[str, Any]:
+    return _checked(client.get("/api/patterns"), "list the hub's patterns")
 
 
-def free_room_name(client: httpx.Client, wanted: str, *, exact: bool) -> str:
-    """``wanted`` if no room has it. Creating a room that exists quietly reuses
-    it, so a taken name is refused when asked for and counted past otherwise."""
-    taken = _room_exists(client, wanted)
-    if not taken:
-        return wanted
-    if exact:
-        raise PatternError(
-            f"a room named {wanted!r} already exists. Pick another name with --room."
-        )
-    for n in range(2, 100):
-        candidate = f"{wanted}-{n}"
-        if not _room_exists(client, candidate):
-            return candidate
-    raise PatternError(f"no free room name starting {wanted!r}.")
-
-
-def _room_exists(client: httpx.Client, name: str) -> bool:
-    resp = client.get(f"/api/rooms/{name}")
-    if resp.status_code == 404:
-        return False
-    _check(resp, f"look for room {name}")
-    return True
-
-
-# ── the load ─────────────────────────────────────────────────────────────────
-
-
-def load(
-    client: httpx.Client, plan: Plan, *, private: bool = False, run: bool = False
-) -> tuple[str, str]:
-    """Make the room from ``plan``; ``(task key, task thread)``. A failure takes
-    the room away again and says which step it was."""
-    scenario = plan.scenario
-    created = False
-    try:
-        body: dict[str, Any] = {
-            "name": plan.room,
-            "title": scenario.room.title,
-            "description": scenario.room.description or None,
-            "is_public": not private,
-            "owner": plan.me,
-        }
-        _check(client.post("/api/rooms", json=body), "create the room")
-        created = True
-
-        for handle, kind, description in plan.engines:
-            engine = {
-                "handle": handle,
-                "kind": kind,
-                "description": description,
-                "created_by": plan.me,
-            }
-            resp = client.post(f"/api/rooms/{plan.room}/engines", json=engine)
-            if resp.status_code == 422 and "engine kind" in resp.text:
-                raise SwarmError(
-                    f"this hub doesn't run {kind} engines yet. Upgrade it (mycelium upgrade)."
-                )
-            _check(resp, f"register @{handle}")
-
-        _check(
-            client.post(f"/api/rooms/{plan.room}/memory", json={"items": plan.memories}),
-            "write the context and the members' notes",
-        )
-        if scenario.summon is not None:
-            _check_flow_listed(client, plan.room, scenario.summon.flow, scenario.flow_body)
-
-        task = _check(
-            client.post(
-                f"/api/rooms/{plan.room}/tasks",
-                json={"title": scenario.task.title, "handle": plan.me},
-            ),
-            "file the task",
-        ).json()
-        key, episode = str(task["key"]), str(task.get("episode") or "")
-        if scenario.task.body.strip():
-            item = {
-                "key": key,
-                "value": f"{scenario.task.title}\n\n{scenario.task.body.strip()}",
-                "created_by": plan.me,
-            }
-            _check(
-                client.post(f"/api/rooms/{plan.room}/memory", json={"items": [item]}),
-                "write the task",
-            )
-
-        if run and plan.summon is not None:
-            message = {
-                "sender_handle": plan.me,
-                "message_type": "broadcast",
-                "content": plan.summon,
-                "episode": episode,
-            }
-            _check(client.post(f"/api/rooms/{plan.room}/messages", json=message), "start the flow")
-        return key, episode
-    except (SwarmError, httpx.HTTPError, KeyError):
-        if created:
-            client.delete(f"/api/rooms/{plan.room}")
-        raise
-
-
-def _check_flow_listed(client: httpx.Client, room: str, flow: str, body: str | None) -> None:
-    """The hub does not check a flow when it is saved: a bad one is left out of
-    the room's flows. Look for it, so a broken pack fails here and not mid-run."""
-    flows = _check(client.get(f"/api/rooms/{room}/protocols"), "list the room's flows").json()
-    found = {f["name"]: f.get("source") for f in flows}
-    if flow not in found:
-        raise SwarmError(
-            f"the hub did not accept the flow {flow!r}"
-            + (" (its protocol.yaml does not parse)" if body else "")
-        )
-    if body and found[flow] != "room":
-        raise SwarmError(f"the hub kept its built-in {flow!r} instead of the pack's flow")
+def load_on_hub(
+    client: httpx.Client,
+    name: str,
+    options: dict[str, Any],
+    pack: Pack | None,
+) -> dict[str, Any]:
+    """Ask the hub to load ``name``: from its own pack, or with a scenario of yours."""
+    if pack is None:
+        return _checked(client.post(f"/api/patterns/{name}/load", json=options), f"load {name}")
+    scenario, flow = pack.read(name)
+    body = {**options, "scenario": scenario, "flow": flow}
+    return _checked(client.post("/api/patterns/load", json=body), f"load {name}")
 
 
 # ── commands ─────────────────────────────────────────────────────────────────
 
 
-SOURCE_HELP = "Pattern pack: a git URL (cloned with your own git credentials) or a folder."
-
-
 @doc_ref(
-    usage="mycelium pattern ls --from <url|folder>",
-    desc="List the scenarios in a pattern pack: a git URL or a folder.",
+    usage="mycelium pattern ls [--from <url|folder>]",
+    desc="List the design patterns the hub offers, or those in a pack of your own.",
     group="room",
 )
 @app.command("ls")
 def pattern_ls(
     ctx: typer.Context,
-    source: str = typer.Option(..., "--from", help=SOURCE_HELP),
+    source: str | None = typer.Option(None, "--from", help=SOURCE_HELP),
 ) -> None:
-    """List the scenarios in a pattern pack."""
+    """List the patterns you can load."""
     try:
-        pack = fetch_pack(source)
-        loaded: list[Scenario] = []
-        failed: list[str] = []
-        for name in pack.names():
-            try:
-                loaded.append(pack.load(name))
-            except PatternError as exc:
-                failed.append(str(exc))
-        if ctx.obj and ctx.obj.get("json"):
-            console.print(
-                json_module.dumps(
-                    [
-                        {
-                            "pattern": s.pattern,
-                            "title": s.title,
-                            "summary": s.summary,
-                            "flow": s.summon.flow if s.summon else None,
-                            "members": [{"handle": m.handle, "kind": m.kind} for m in s.members],
-                        }
-                        for s in loaded
-                    ],
-                    indent=2,
+        rows: list[dict[str, Any]]
+        skipped: dict[str, str] = {}
+        where = "the hub"
+        if source:
+            pack = fetch_pack(source)
+            where = source
+            rows = []
+            for name in pack.names():
+                try:
+                    data, _ = pack.read(name)
+                except PatternError as exc:
+                    skipped[name] = str(exc)
+                    continue
+                summon = data.get("summon") or {}
+                rows.append(
+                    {
+                        "pattern": name,
+                        "summary": data.get("summary", ""),
+                        "flow": summon.get("flow") if isinstance(summon, dict) else None,
+                        "members": [
+                            {"handle": m.get("handle")}
+                            for m in data.get("members") or []
+                            if isinstance(m, dict)
+                        ],
+                    }
                 )
-            )
+        else:
+            with hub_client() as client:
+                listed = hub_patterns(client)
+            rows, skipped = listed["patterns"], listed.get("skipped", {})
+
+        if ctx.obj and ctx.obj.get("json"):
+            typer.echo(json_module.dumps({"patterns": rows, "skipped": skipped}, indent=2))
             return
-        if not loaded and not failed:
-            console.print(f"[dim]No scenarios in {source}.[/dim]")
+        if not rows and not skipped:
+            console.print(f"[dim]No patterns on {where}.[/dim]")
             return
-        table = Table(title=f"patterns in {source}", show_lines=False)
-        table.add_column("pattern", style="cyan")
+        table = Table(title=f"patterns on {where}", show_lines=False)
+        table.add_column("pattern", style="cyan", no_wrap=True)
         table.add_column("flow")
         table.add_column("cast")
         table.add_column("summary")
-        for s in loaded:
-            cast = ", ".join(f"{m.handle}" for m in s.members)
-            table.add_row(s.pattern, s.summon.flow if s.summon else "-", cast, s.summary)
+        for row in rows:
+            cast = ", ".join(str(m.get("handle")) for m in row.get("members") or [])
+            table.add_row(row["pattern"], row.get("flow") or "-", cast, row.get("summary", ""))
         console.print(table)
-        for problem in failed:
-            console.print(f"[yellow]skipped:[/yellow] {problem}")
+        for name, why in skipped.items():
+            console.print(f"[yellow]skipped {name}:[/yellow] {why}")
     except PatternError as exc:
         console.print(f"[red]Error:[/red] {exc}")
         raise typer.Exit(1) from exc
@@ -504,22 +253,22 @@ def pattern_ls(
 
 
 @doc_ref(
-    usage="mycelium pattern use <pattern> --from <url|folder> [--room <name>] [--run]",
-    desc="Load a pattern as a new room: its members, context, task and flow. It loads paused; <code>--run</code> starts it.",
+    usage="mycelium pattern use <pattern> [--from <url|folder>] [--room <name>] [--run]",
+    desc="Load a design pattern as a new room: its members, context, task and flow. It loads paused; <code>--run</code> starts it.",
     group="room",
 )
 @app.command("use")
 def pattern_use(
     ctx: typer.Context,
     pattern: str = typer.Argument(..., help="The pattern to load (see 'mycelium pattern ls')."),
-    source: str = typer.Option(..., "--from", help=SOURCE_HELP),
+    source: str | None = typer.Option(None, "--from", help=SOURCE_HELP),
     room: str | None = typer.Option(
         None, "--room", "-r", help="Name for the new room (defaults to the pattern's name)."
     ),
     run: bool = typer.Option(False, "--run", help="Start the flow once the room is loaded."),
     private: bool = typer.Option(False, "--private", help="Make the room private to you."),
     dry_run: bool = typer.Option(
-        False, "--dry-run", help="Show what would be created and touch nothing."
+        False, "--dry-run", help="Show what would be created and write nothing."
     ),
     handle_flag: str | None = typer.Option(
         None, "--as", "--handle", "-H", help="Your handle. Defaults to your hub identity."
@@ -528,40 +277,29 @@ def pattern_use(
     """Load a pattern as a new room, paused.
 
     Example:
-        mycelium pattern use approval-gate-agent --from https://github.com/<org>/<pattern-pack>
+        mycelium pattern use approval-gate-agent
+        mycelium pattern use approval-gate-agent --from ./my-patterns --run
     """
     try:
         config = MyceliumConfig.load()
-        pack = fetch_pack(source)
-        scenario = pack.load(pattern)
         me = identity.resolve_actor(config, override=handle_flag)
-        json_out = bool(ctx.obj and ctx.obj.get("json"))
-
-        if dry_run:
-            plan = build_plan(scenario, room or pattern, me)
-            if json_out:
-                console.print(json_module.dumps(plan.as_dict(), indent=2))
-            else:
-                _print_plan(plan, dry=True)
-            return
-
+        pack = fetch_pack(source) if source else None
+        options: dict[str, Any] = {
+            "room": room,
+            "private": private,
+            "run": run,
+            "dry_run": dry_run,
+            "created_by": me,
+        }
         with hub_client(config, handle=me) as client:
-            name = free_room_name(client, room or pattern, exact=room is not None)
-            plan = build_plan(scenario, name, me)
-            key, episode = load(client, plan, private=private, run=run)
+            loaded = load_on_hub(client, pattern, options, pack)
 
-        if json_out:
-            console.print(
-                json_module.dumps({**plan.as_dict(), "key": key, "episode": episode, "ran": run})
-            )
+        if ctx.obj and ctx.obj.get("json"):
+            typer.echo(json_module.dumps(loaded, indent=2))
             return
-        _print_plan(plan, dry=False)
-        _print_next(plan, key, run=run)
+        _print_loaded(loaded, me)
     except PatternError as exc:
         console.print(f"[red]Error:[/red] {exc}")
-        raise typer.Exit(1) from exc
-    except SwarmError as exc:
-        console.print(f"[red]Error:[/red] {exc}\n[dim]The room was removed.[/dim]")
         raise typer.Exit(1) from exc
     except typer.Exit:
         raise
@@ -570,25 +308,31 @@ def pattern_use(
         raise typer.Exit(1) from None
 
 
-def _print_plan(plan: Plan, *, dry: bool) -> None:
-    verb = "Would create" if dry else "Loaded"
-    console.print(f"[bold]{verb}[/bold] room [cyan]{plan.room}[/cyan]: {plan.scenario.room.title}")
-    for handle, kind, _ in plan.engines:
-        console.print(f"  [dim]{kind:<11}[/dim] @{handle}")
-    human = next((m for m in plan.scenario.members if m.kind == HUMAN), None)
-    if human:
-        console.print(f"  [dim]{'you':<11}[/dim] @{plan.me}")
-    console.print(f"  [dim]{len(plan.memories)} memories, task:[/dim] {plan.scenario.task.title}")
-
-
-def _print_next(plan: Plan, key: str, *, run: bool) -> None:
-    summon = plan.scenario.summon
-    if plan.summon is None or summon is None:
+def _print_loaded(loaded: dict[str, Any], me: str) -> None:
+    room = loaded["room"]
+    dry = bool(loaded.get("dry_run"))
+    console.print(
+        f"[bold]{'Would create' if dry else 'Loaded'}[/bold] room [cyan]{room}[/cyan]: "
+        f"{loaded.get('title', '')}"
+    )
+    for handle in loaded.get("members", []):
+        console.print(f"  [dim]engine[/dim] @{handle}")
+    console.print(f"  [dim]you[/dim]    @{me}")
+    console.print(f"  [dim]{len(loaded.get('memories', []))} memories written[/dim]")
+    summon = loaded.get("summon")
+    if dry:
+        return
+    if not summon:
         console.print("\n[dim]No flow to run: the room is ready to work in.[/dim]")
-    elif run:
-        console.print(f"\n[green]Started[/green] {summon.flow} on {key}.")
+    elif loaded.get("ran"):
+        console.print(f"\n[green]Started[/green] on {loaded.get('key')}.")
     else:
-        ask = plan.summon.removeprefix(f"@{CONDUCTOR} ")
+        ask = str(summon).removeprefix(f"@{CONDUCTOR} ")
         console.print("\nIt is [bold]paused[/bold]. Start it with:")
-        console.print(f'  mycelium board coordinate {key} {CONDUCTOR} "{ask}" --room {plan.room}')
-    console.print(f"\nOpen it: mycelium watch --room {plan.room}")
+        # One unbroken line: it is meant to be copied.
+        console.print(
+            f'  mycelium board coordinate {loaded.get("key")} {CONDUCTOR} "{ask}" --room {room}',
+            soft_wrap=True,
+            markup=False,
+        )
+    console.print(f"\nOpen it: mycelium watch --room {room}")

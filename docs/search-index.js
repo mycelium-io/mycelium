@@ -1272,17 +1272,17 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-room",
-    "t": "mycelium pattern ls --from <url|folder>",
+    "t": "mycelium pattern ls [--from <url|folder>]",
     "s": "CLI Reference",
-    "x": "List the scenarios in a pattern pack: a git URL or a folder.",
+    "x": "List the design patterns the hub offers, or those in a pack of your own.",
     "k": "cmd",
     "p": "Reference"
   },
   {
     "u": "reference.html#cli-room",
-    "t": "mycelium pattern use <pattern> --from <url|folder> [--room <name>] [--run]",
+    "t": "mycelium pattern use <pattern> [--from <url|folder>] [--room <name>] [--run]",
     "s": "CLI Reference",
-    "x": "Load a pattern as a new room: its members, context, task and flow. It loads paused; --run starts it.",
+    "x": "Load a design pattern as a new room: its members, context, task and flow. It loads paused; --run starts it.",
     "k": "cmd",
     "p": "Reference"
   },
@@ -1394,14 +1394,6 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "mycelium board credential rm <name>",
     "s": "CLI Reference",
     "x": "Forget a status-provider credential on this hub.",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-board",
-    "t": "mycelium swarm [\"<task>\"] [--room <room>] [--server]",
-    "s": "CLI Reference",
-    "x": "Put a team of agents on one task: they check in, split it, work it, and review each other.",
     "k": "cmd",
     "p": "Reference"
   },

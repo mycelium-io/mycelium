@@ -730,16 +730,16 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">pattern</span> <span class="cmd">ls</span> <span class="flag">--from</span> &lt;url|folder&gt;</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">pattern</span> <span class="cmd">ls</span> [<span class="flag">--from</span> &lt;url|folder&gt;]</code>
         </div>
-        <div class="cmd-ref-body">List the scenarios in a pattern pack: a git URL or a folder.</div>
+        <div class="cmd-ref-body">List the design patterns the hub offers, or those in a pack of your own.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">pattern</span> <span class="cmd">use</span> <span class="arg">&lt;pattern&gt;</span> <span class="flag">--from</span> &lt;url|folder&gt; [<span class="flag">--room</span> <span class="arg">&lt;name&gt;</span>] [<span class="flag">--run</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">pattern</span> <span class="cmd">use</span> <span class="arg">&lt;pattern&gt;</span> [<span class="flag">--from</span> &lt;url|folder&gt;] [<span class="flag">--room</span> <span class="arg">&lt;name&gt;</span>] [<span class="flag">--run</span>]</code>
         </div>
-        <div class="cmd-ref-body">Load a pattern as a new room: its members, context, task and flow. It loads paused; <code>--run</code> starts it.</div>
+        <div class="cmd-ref-body">Load a design pattern as a new room: its members, context, task and flow. It loads paused; <code>--run</code> starts it.</div>
       </div>
 
       <h2 id="cli-board">board</h2>
@@ -833,13 +833,6 @@
           <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">credential</span> rm <span class="arg">&lt;name&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Forget a status-provider credential on this hub.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">swarm</span> [&quot;<span class="arg">&lt;task&gt;</span>&quot;] [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--server</span>]</code>
-        </div>
-        <div class="cmd-ref-body">Put a team of agents on one task: they check in, split it, work it, and review each other.</div>
       </div>
 
       <h2 id="cli-agent">agent</h2>
