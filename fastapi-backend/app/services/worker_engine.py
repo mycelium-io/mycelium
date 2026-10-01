@@ -720,7 +720,9 @@ class WorkerEngine:
             return None
         if prose.strip():
             await self._say(managed, episode, handle, prose, payload=payload)
-            self._manager.enqueue_herdr_wakes_for_mentions(room, prose, exclude=handle)
+            self._manager.enqueue_herdr_wakes_for_mentions(
+                room, prose, exclude=handle, episode=episode
+            )
         await self._act(room, handle, row[0] if row else None, actions, prose)
         if row is not None and prose.strip():
             self._hand_back(room, handle, row[0], episode, prose, actions, team)
@@ -766,8 +768,9 @@ class WorkerEngine:
                 f"@mention {handle} to look again."
             )
             self._spawn(room, holder, self.turn(room, holder, episode=episode, ask=ask))
-        else:
-            self._manager.enqueue_herdr_wakes_for_mentions(room, f"@{holder}", exclude=handle)
+        elif self._manager.herdr_status(room, _norm(holder)) is not None:
+            # Rung with who and where, so the holder's digest can say it.
+            self._manager.enqueue_herdr_wake(room, _norm(holder), sender=handle, episode=episode)
 
     @staticmethod
     def _may_resolve(room: str, handle: str, key: str) -> bool:

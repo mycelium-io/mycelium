@@ -188,7 +188,9 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     # bridge to run `herdr agent prompt`. This is the "commands down" leg that
     # makes tagging-from-the-UI actually reach a resident-but-idle herdr agent.
     if coord is None and msg.message_type == MessageType.BROADCAST:
-        room_channels.manager.enqueue_herdr_wakes_for_mentions(base_room, msg.content or "")
+        room_channels.manager.enqueue_herdr_wakes_for_mentions(
+            base_room, msg.content or "", sender=msg.sender_handle, episode=msg.episode
+        )
     return MessageRead.model_validate(msg)
 
 

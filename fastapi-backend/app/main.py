@@ -206,7 +206,14 @@ async def lifespan(app: FastAPI):
                 fire(room, handle, envelope, message_text)
             except Exception:
                 logger.exception("addressed handler failed for @%s in %s", handle, room)
-        room_channel_manager.herdr_wake_addressed(room, handle)
+        from app.services.persister import envelope_sender
+
+        room_channel_manager.herdr_wake_addressed(
+            room,
+            handle,
+            sender=envelope_sender(envelope),
+            episode=envelope.header.message.episode if envelope.header.message else None,
+        )
 
     room_channel_manager.on_addressed = _dispatch_addressed
 

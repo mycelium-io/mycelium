@@ -29,6 +29,8 @@ AGENT_TEXT = [
     SRC / "runner" / "daemon.py",
     SRC / "commands" / "swarm.py",
     SRC / "integrations" / "claude_code" / "assets" / "skills" / "mycelium" / "SKILL.md",
+    # The digest a woken agent is told is built on the hub, in the same checkout.
+    SRC.parents[2] / "fastapi-backend" / "app" / "services" / "wake_digest.py",
 ]
 COMMAND = re.compile(r"mycelium ((?:[a-z][a-z-]* ){1,2})[^`\"'\n]*?--room\b")
 
@@ -57,7 +59,9 @@ def told_to_run_with_room() -> set[tuple[str, ...]]:
 
 
 def test_the_agent_text_names_commands_to_check():
-    assert ("room", "messages") in told_to_run_with_room()
+    found = told_to_run_with_room()
+    assert ("await",) in found
+    assert ("board", "claim") in found
 
 
 @pytest.mark.parametrize("words", sorted(told_to_run_with_room()), ids=" ".join)

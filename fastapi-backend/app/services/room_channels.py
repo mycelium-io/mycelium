@@ -539,20 +539,27 @@ class RoomChannelManager:
         reason: str = "mention",
         key: str | None = None,
         title: str | None = None,
+        sender: str | None = None,
+        episode: str | None = None,
     ) -> None:
         """Ring the doorbell for a herdr-present handle in ``room``.
 
         Enqueued regardless of the agent's current state — a tag for a *busy*
         agent is **held** here and released once it goes idle (see
         :meth:`drain_herdr_wakes`), so the nudge is never lost just because the
-        agent was mid-turn. Deduped by handle: the wake carries no message (the
-        agent reads the room itself), so repeated tags collapse to one pending
-        nudge — refreshing its hold timer, never adding content to lose.
+        agent was mid-turn. Deduped by handle: repeated tags collapse to one
+        pending nudge, refreshing its hold timer and counting how many there
+        were. The agent still reads the room itself (``await`` hands it the
+        message and everything said since its last turn).
 
         ``reason`` says what kind of doorbell it is, so the bridge can word the
-        prompt: ``mention`` (read the room), ``turn`` (a turn is addressed to
-        you: ``await`` it and answer), or ``assigned`` (the row ``key`` was
-        given to you). The most specific reason pending wins over a mention.
+        prompt: ``mention`` (someone tagged you), ``turn`` (a turn is addressed
+        to you), or ``assigned`` (the row ``key`` was given to you). The most
+        specific reason pending wins over a mention.
+
+        ``sender`` and ``episode`` say who rang last and where. What they said
+        isn't kept here: when the wake is delivered, the digest it carries is
+        built from the transcript then (``wake_digest``), so it is current.
         """
         queue = self._herdr_wakes.setdefault(room, [])
         entry: dict = {"handle": handle, "ts": time.monotonic(), "reason": reason}
@@ -560,16 +567,30 @@ class RoomChannelManager:
             entry["key"] = key
         if title:
             entry["title"] = title
+        if sender:
+            entry["from"] = sender.lstrip("@")
+        if episode:
+            entry["episode"] = episode
         for w in queue:
             if w["handle"] == handle:
                 w["ts"] = entry["ts"]  # fresh activity refreshes the hold timer
+                for field in ("from", "episode"):
+                    if field in entry:
+                        w[field] = entry[field]
+                # The reason only moves up: a turn or an assignment outranks a mention.
                 if reason != "mention":
                     w.update({k: v for k, v in entry.items() if k != "handle"})
                 return
         queue.append(entry)
 
     def enqueue_herdr_wakes_for_mentions(
-        self, room: str, content: str, *, exclude: str | None = None
+        self,
+        room: str,
+        content: str,
+        *,
+        exclude: str | None = None,
+        sender: str | None = None,
+        episode: str | None = None,
     ) -> list[str]:
         """Enqueue a herdr wake for each ``@``-mentioned handle that is herdr-present.
 
@@ -593,11 +614,18 @@ class RoomChannelManager:
             if handle == exclude_norm:
                 continue
             if self.herdr_status(room, handle) is not None:
-                self.enqueue_herdr_wake(room, handle)
+                self.enqueue_herdr_wake(room, handle, sender=sender or exclude, episode=episode)
                 enqueued.append(handle)
         return enqueued
 
-    def herdr_wake_addressed(self, room: str, handle: str) -> bool:
+    def herdr_wake_addressed(
+        self,
+        room: str,
+        handle: str,
+        *,
+        sender: str | None = None,
+        episode: str | None = None,
+    ) -> bool:
         """Ring a herdr-present handle that was just put a turn (an L9 recipient).
 
         How the aligner and the conductor reach a member: an exchange naming it,
@@ -608,7 +636,7 @@ class RoomChannelManager:
         name = handle.lstrip("@").lower()
         if self.herdr_status(room, name) is None:
             return False
-        self.enqueue_herdr_wake(room, name, reason="turn")
+        self.enqueue_herdr_wake(room, name, reason="turn", sender=sender, episode=episode)
         return True
 
     def herdr_wake_assigned(self, room: str, notice: dict[str, str]) -> bool:
@@ -624,7 +652,12 @@ class RoomChannelManager:
         if self.herdr_status(room, name) is None:
             return False
         self.enqueue_herdr_wake(
-            room, name, reason="assigned", key=notice.get("key"), title=notice.get("title")
+            room,
+            name,
+            reason="assigned",
+            key=notice.get("key"),
+            title=notice.get("title"),
+            sender=notice.get("by"),
         )
         return True
 
