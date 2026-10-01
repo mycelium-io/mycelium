@@ -233,7 +233,9 @@ async function modelSection(): Promise<{ section: HTMLElement; value: () => Reco
     el(
       "p",
       { class: "hint" },
-      "What the agents this hub runs, like personas and the aligner, think with. Agents you bring, like Claude Code, use their own login.",
+      "What the agents this hub runs, like personas and the aligner, think with. Agents you bring, like Claude Code, use their own login. ",
+      // Opened in a new tab, which the app hands to the default browser.
+      el("a", { href: "https://pi.dev/models", target: "_blank", rel: "noreferrer" }, "Browse models"),
     ),
   );
   keyRow.style.marginTop = "8px";
@@ -296,6 +298,18 @@ async function onboarding() {
   const rootButton = el("button", { class: "button ghost", type: "button" }, "Choose…");
   const rootField = el("div", { class: "folder" }, el("span", { class: "folder-icon", "aria-hidden": "true" }), rootPath, rootButton);
   const button = el("button", { class: "button", type: "button" });
+  // Settings is opened from a running app, so it can be left unchanged. The
+  // first run has nowhere to go back to.
+  const cancel = firstRun ? null : el("button", { class: "button ghost", type: "button" }, "Cancel");
+  cancel?.addEventListener("click", async () => {
+    if (!inApp) return;
+    try {
+      await invoke("open_room");
+    } catch {
+      // Not up yet (or stopped): show how starting is going instead.
+      await loading();
+    }
+  });
   const where = el("div", { class: "where" });
   // Said before anything happens: everything Start changes on this Mac.
   const setsUpList = el("ul", { class: "sets-up" });
@@ -438,7 +452,7 @@ async function onboarding() {
         setsUp,
         error,
       ),
-      el("div", { class: "card-foot" }, where, button),
+      el("div", { class: "card-foot" }, where, el("div", { class: "actions" }, cancel, button)),
     ),
   );
   hubRow.style.marginTop = "8px";

@@ -247,6 +247,15 @@ select.field {
   margin: 6px 0 0;
 }
 
+.hint a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.hint a:hover {
+  text-decoration: underline;
+}
+
 .share-label {
   display: flex;
   align-items: center;
