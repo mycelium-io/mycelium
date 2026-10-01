@@ -138,3 +138,75 @@ def serve(
 
         threading.Thread(target=watch_parent, daemon=True).start()
     sup.run()
+
+
+def model_view(llm: Any) -> dict[str, Any]:
+    """The model settings as the app shows them. The key itself never leaves:
+    only whether one is saved and its last four characters, to recognise it by."""
+    key = (llm.api_key or "").strip()
+    return {
+        "model": llm.model or None,
+        "base_url": llm.base_url or None,
+        "has_key": bool(key),
+        "key_hint": key[-4:] if len(key) >= 8 else None,
+    }
+
+
+def apply_model(llm: Any, body: dict[str, Any]) -> None:
+    """Write ``body`` onto ``llm``. A field that is absent stays as it is; an
+    empty one clears it. So the app can change the model without resending a
+    key it was never shown."""
+    if "model" in body:
+        model = str(body["model"] or "").strip()
+        if model and "/" not in model.strip("/"):
+            msg = f"{model!r} isn't provider/model, like anthropic/claude-sonnet-4-6"
+            raise ValueError(msg)
+        llm.model = model or None
+    if "api_key" in body:
+        llm.api_key = str(body["api_key"] or "").strip() or None
+    if "base_url" in body:
+        llm.base_url = str(body["base_url"] or "").strip() or None
+
+
+@doc_ref(
+    usage="mycelium desktop model [--set]",
+    desc="The model the hub on this machine runs its agents with, as JSON. With --set, reads new settings as JSON on stdin.",
+    group="agent",
+)
+@app.command("model")
+def model(
+    set_: bool = typer.Option(
+        False,
+        "--set",
+        help='Read {"model", "api_key", "base_url"} as JSON on stdin and save them',
+    ),
+) -> None:
+    """The model settings (``llm.*`` in config.toml) the hub's own agents use.
+
+    What the desktop app's settings read and write. The key is read from stdin
+    rather than taken as an argument, so it never shows in the process list.
+    A field left out of the JSON keeps its saved value; an empty one clears it.
+
+    Examples:
+        mycelium desktop model
+        echo '{"model": "anthropic/claude-sonnet-4-6", "api_key": "sk-ant-..."}' | mycelium desktop model --set
+    """
+    from mycelium.config import MyceliumConfig
+
+    config = MyceliumConfig.load()
+    if set_:
+        try:
+            body = json.loads(sys.stdin.read() or "{}")
+        except json.JSONDecodeError:
+            console.print("[red]--set reads a JSON object on stdin.[/]")
+            raise typer.Exit(2) from None
+        if not isinstance(body, dict):
+            console.print("[red]--set reads a JSON object on stdin.[/]")
+            raise typer.Exit(2)
+        try:
+            apply_model(config.llm, body)
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/]")
+            raise typer.Exit(2) from None
+        config.save()
+    sys.stdout.write(json.dumps(model_view(config.llm)) + "\n")

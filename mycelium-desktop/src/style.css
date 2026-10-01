@@ -185,6 +185,17 @@ body {
   border-color: var(--accent);
 }
 
+/* The model's provider beside the model it names. */
+.model-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 8px;
+}
+
+select.field {
+  cursor: pointer;
+}
+
 .agents {
   display: flex;
   flex-wrap: wrap;

@@ -57,6 +57,53 @@ interface PathSetup {
   line: string;
 }
 
+/** `mycelium desktop model`: the key itself never comes back, only its last four. */
+interface ModelView {
+  model: string | null;
+  base_url: string | null;
+  has_key: boolean;
+  key_hint: string | null;
+}
+
+type ProviderId = "anthropic" | "openai" | "openrouter" | "ollama" | "custom";
+
+interface Provider {
+  id: ProviderId;
+  name: string;
+  /** Suggestions, the first the default; the same ones `mycelium install` offers. */
+  models: string[];
+  /** The key field's placeholder; null for a provider that needs no key. */
+  key: string | null;
+  /** Where it answers, for a provider the hub can't find on its own. */
+  baseUrl?: string;
+}
+
+const PROVIDERS: Provider[] = [
+  {
+    id: "anthropic",
+    name: "Anthropic",
+    models: ["anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4-6", "anthropic/claude-haiku-4-5"],
+    key: "sk-ant-…",
+  },
+  { id: "openai", name: "OpenAI", models: ["openai/gpt-4.1", "openai/gpt-4o", "openai/gpt-4o-mini", "openai/o3"], key: "sk-…" },
+  { id: "openrouter", name: "OpenRouter", models: ["openrouter/anthropic/claude-sonnet-4-6"], key: "sk-or-…" },
+  {
+    id: "ollama",
+    name: "Ollama",
+    models: ["ollama/llama3.3", "ollama/mistral", "ollama/qwen2.5"],
+    key: null,
+    baseUrl: "http://localhost:11434",
+  },
+  { id: "custom", name: "Other", models: [], key: "API key, if it needs one", baseUrl: "" },
+];
+
+function providerOf(model: string | null): Provider {
+  const prefix = (model ?? "").split("/")[0];
+  return PROVIDERS.find((p) => p.id === prefix) ?? (model ? PROVIDERS[PROVIDERS.length - 1] : PROVIDERS[0]);
+}
+
+const PREVIEW_MODEL: ModelView = { model: null, base_url: null, has_key: false, key_hint: null };
+
 const inApp = "__TAURI_INTERNALS__" in window;
 const app = document.getElementById("app")!;
 
@@ -109,10 +156,109 @@ function head(sub: string): HTMLElement {
   );
 }
 
-// ── first run ───────────────────────────────────────────────────────────────
+// ── the model ───────────────────────────────────────────────────────────────
+
+/**
+ * The model the hub's own agents (personas, the aligner) think with: a
+ * provider, a model, a key, and an address for one the hub can't find on its
+ * own. The saved key is never shown, only its last four characters; leaving
+ * the key field empty keeps it.
+ */
+async function modelSection(): Promise<{ section: HTMLElement; value: () => Record<string, string> }> {
+  let saved = PREVIEW_MODEL;
+  try {
+    if (inApp) saved = await invoke<ModelView>("get_model");
+  } catch {
+    // Unread settings start from the defaults; saving still writes them.
+  }
+  let provider = providerOf(saved.model);
+
+  const providerField = el("select", { class: "field", "aria-label": "Provider" });
+  for (const p of PROVIDERS) {
+    const option = el("option", { value: p.id }, p.name);
+    if (p.id === provider.id) option.setAttribute("selected", "");
+    providerField.append(option);
+  }
+  const suggestions = el("datalist", { id: "model-suggestions" });
+  const modelField = el("input", {
+    class: "field mono",
+    list: "model-suggestions",
+    spellcheck: "false",
+    autocapitalize: "none",
+    "aria-label": "Model",
+  });
+  modelField.value = saved.model ?? provider.models[0] ?? "";
+  const keyField = el("input", {
+    class: "field mono",
+    type: "password",
+    autocomplete: "off",
+    spellcheck: "false",
+    "aria-label": "API key",
+  });
+  const baseField = el("input", {
+    class: "field mono",
+    spellcheck: "false",
+    autocapitalize: "none",
+    placeholder: "https://…",
+    "aria-label": "Address",
+  });
+  baseField.value = saved.base_url ?? provider.baseUrl ?? "";
+  const keyRow = el("div", {}, keyField);
+  const baseRow = el("div", {}, baseField);
+
+  const render = () => {
+    suggestions.replaceChildren(...provider.models.map((m) => el("option", { value: m })));
+    keyRow.hidden = provider.key === null;
+    const ask =
+      provider.id === "custom" ? "Paste the API key, if it needs one" : `Paste your ${provider.name} API key (${provider.key})`;
+    const kept = saved.key_hint ? `Saved key ending ${saved.key_hint}` : "A key is saved";
+    keyField.placeholder = saved.has_key ? `${kept}. Paste a new one to replace it.` : ask;
+    baseRow.hidden = provider.baseUrl === undefined;
+  };
+  providerField.addEventListener("change", () => {
+    provider = PROVIDERS.find((p) => p.id === providerField.value) ?? PROVIDERS[0];
+    modelField.value = provider.models[0] ?? "";
+    baseField.value = provider.baseUrl ?? "";
+    render();
+  });
+  render();
+
+  const section = el(
+    "div",
+    {},
+    el("div", { class: "label" }, "Model"),
+    el("div", { class: "model-row" }, providerField, modelField, suggestions),
+    keyRow,
+    baseRow,
+    el(
+      "p",
+      { class: "hint" },
+      "What the agents this hub runs, like personas and the aligner, think with. Agents you bring, like Claude Code, use their own login.",
+    ),
+  );
+  keyRow.style.marginTop = "8px";
+  baseRow.style.marginTop = "8px";
+
+  return {
+    section,
+    value: () => {
+      const body: Record<string, string> = {
+        model: modelField.value.trim(),
+        base_url: provider.baseUrl === undefined ? "" : baseField.value.trim(),
+      };
+      // Left empty, the saved key stays: the page never had it to send back.
+      if (provider.key !== null && keyField.value.trim()) body.api_key = keyField.value.trim();
+      return body;
+    },
+  };
+}
+
+// ── first run, and Settings ─────────────────────────────────────────────────
 
 async function onboarding() {
   const snap = await snapshot();
+  // The same page is the first run and, after it, Settings.
+  const firstRun = !snap.settings;
   let mode: Mode = snap.settings?.mode ?? "hub";
   let hubUrl = snap.settings?.hubUrl ?? "";
   let root = tilde(snap.settings?.roots[0] ?? snap.home, snap.home);
@@ -136,6 +282,7 @@ async function onboarding() {
       "Counts of tasks, flows and agents, so we know what's working. Never names, rooms or what anyone wrote. You can see them on the Metrics page either way.",
     ),
   );
+  const model = await modelSection();
   const hubField = el("input", {
     class: "field mono",
     placeholder: "https://hub.example.com",
@@ -189,7 +336,9 @@ async function onboarding() {
     clientChoice.setAttribute("aria-checked", String(mode === "client"));
     hubRow.hidden = mode !== "client";
     shareRow.hidden = mode !== "hub";
-    button.textContent = mode === "hub" ? "Start" : "Connect";
+    // The model is the hub's, so it's set where the hub runs: here, or not at all.
+    model.section.hidden = mode !== "hub";
+    button.textContent = !firstRun ? "Save and restart" : mode === "hub" ? "Start" : "Connect";
     renderSetsUp();
     where.textContent =
       mode === "hub" ? "Runs on this Mac, at 127.0.0.1" : hubUrl.trim() ? `Joins ${hubUrl.trim()}` : "Enter the hub's address";
@@ -252,6 +401,8 @@ async function onboarding() {
       shareUsage: mode === "hub" && shareUsage,
     };
     try {
+      // Saved first, so the hub that Start (re)starts reads it.
+      if (mode === "hub" && inApp) await invoke<ModelView>("save_model", { model: model.value() });
       const setup = inApp ? await invoke<PathSetup>("start", { settings }) : null;
       loading(setup);
     } catch (e) {
@@ -265,11 +416,16 @@ async function onboarding() {
     el(
       "section",
       { class: "card" },
-      head("Rooms where you and your agents work together. Choose how this Mac takes part."),
+      head(
+        firstRun
+          ? "Rooms where you and your agents work together. Choose how this Mac takes part."
+          : "Settings: how this Mac takes part, the model its agents use, and where they work. Saving restarts Mycelium.",
+      ),
       el(
         "div",
         { class: "card-body" },
         el("div", {}, el("div", { class: "choices", role: "radiogroup", "aria-label": "How this Mac takes part" }, hubChoice, clientChoice), hubRow),
+        model.section,
         el("div", {}, el("div", { class: "label" }, "Agents on this Mac"), agents),
         el(
           "div",
