@@ -599,6 +599,36 @@ select.field {
   color: var(--text);
 }
 
+/* A saved key, shown as a state rather than text in the field. */
+.key-saved {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 13px;
+}
+
+.key-saved .tick {
+  color: var(--green);
+}
+
+.key-saved .link {
+  margin-left: auto;
+}
+
+.key-entry {
+  display: grid;
+  gap: 6px;
+}
+
+.key-entry .link {
+  justify-self: end;
+  font-size: 12.5px;
+}
+
 .link {
   font: inherit;
   color: var(--accent);

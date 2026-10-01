@@ -248,8 +248,10 @@ async function startWith(c: Choices, model: Record<string, string> | null): Prom
 // ── the pieces: each written once, shown by the wizard a step at a time and
 // by Settings a section at a time ─────────────────────────────────────────────
 
-/** Where rooms live: on this Mac, or on a team's hub at an address. */
-function placePiece(c: Choices, onChange: () => void): { el: HTMLElement; problem: () => string | null } {
+/** Where rooms live: on this Mac, or on a team's hub at an address.
+ *  ``onModeChange`` fires when the choice changes, not on every keystroke of
+ *  the address, so a redraw it causes never takes the cursor out of the field. */
+function placePiece(c: Choices, onModeChange: () => void): { el: HTMLElement; problem: () => string | null } {
   const hubField = el("input", {
     class: "field mono",
     placeholder: "https://hub.example.com",
@@ -260,7 +262,6 @@ function placePiece(c: Choices, onChange: () => void): { el: HTMLElement; proble
   hubField.value = c.hubUrl;
   hubField.addEventListener("input", () => {
     c.hubUrl = hubField.value;
-    onChange();
   });
   const hubRow = el("div", { class: "indent" }, el("div", { class: "label" }, "The hub's address"), hubField);
 
@@ -273,9 +274,10 @@ function placePiece(c: Choices, onChange: () => void): { el: HTMLElement; proble
       el("i", { class: "radio", "aria-hidden": "true" }),
     );
     b.addEventListener("click", () => {
+      if (c.mode === value) return;
       c.mode = value;
       render();
-      onChange();
+      onModeChange();
     });
     return b;
   };
@@ -333,7 +335,26 @@ async function modelPiece(variant: "wizard" | "settings"): Promise<{ el: HTMLEle
     typedKey = keyField.value.trim();
   });
   const keyHint = el("p", { class: "hint" });
-  const keyRow = el("div", {}, el("div", { class: "label" }, "API key"), keyField, keyHint);
+  // A saved key is a state, not text in the field: "Key saved", and Replace
+  // to paste another. It belongs to the provider it was saved for.
+  const savedFor = providerOf(saved.model).id;
+  let replacing = false;
+  const replace = el("button", { type: "button", class: "link" }, "Replace");
+  const keep = el("button", { type: "button", class: "link" }, "Keep the saved key");
+  const keySaved = el("div", { class: "key-saved" }, el("span", { class: "tick", "aria-hidden": "true" }, "✓"), "Key saved", replace);
+  const keyEntry = el("div", { class: "key-entry" }, keyField, keep);
+  replace.addEventListener("click", () => {
+    replacing = true;
+    render();
+    keyField.focus();
+  });
+  keep.addEventListener("click", () => {
+    replacing = false;
+    typedKey = "";
+    keyField.value = "";
+    render();
+  });
+  const keyRow = el("div", {}, el("div", { class: "label" }, "API key"), keySaved, keyEntry, keyHint);
 
   const baseField = el("input", {
     class: "field mono",
@@ -380,8 +401,11 @@ async function modelPiece(variant: "wizard" | "settings"): Promise<{ el: HTMLEle
     for (const { p, b } of segButtons) b.setAttribute("aria-checked", String(p.id === provider.id));
     suggestions.replaceChildren(...provider.models.map((m) => el("option", { value: m })));
     keyRow.hidden = provider.key === null;
-    const kept = saved.key_hint ? `Saved key ending ${saved.key_hint}` : "A key is saved";
-    keyField.placeholder = saved.has_key ? `${kept}. Paste a new one to replace it.` : (provider.key ?? "");
+    const hasSaved = saved.has_key && provider.id === savedFor;
+    keySaved.hidden = !hasSaved || replacing;
+    keyEntry.hidden = hasSaved && !replacing;
+    keep.hidden = !hasSaved;
+    keyField.placeholder = provider.key ?? "";
     keyHint.replaceChildren(
       provider.keyFrom ? `Get one at ${provider.keyFrom}. ` : "",
       "It stays on this Mac. ",
@@ -408,13 +432,15 @@ async function modelPiece(variant: "wizard" | "settings"): Promise<{ el: HTMLEle
         base_url: provider.baseUrl === undefined ? "" : baseField.value.trim(),
       };
       // Left empty, the saved key stays: the page never had it to send back.
+      // Unless the provider changed: the old key is the old provider's.
       if (provider.key !== null && typedKey) body.api_key = typedKey;
+      else if (provider.key !== null && saved.has_key && provider.id !== savedFor) body.api_key = "";
       return body;
     },
     summary: () => {
       if (provider.key === null) return `${provider.name}, ${modelField.value.trim() || "no model"}`;
-      if (typedKey) return `${provider.name}, key ending ${typedKey.slice(-4)}`;
-      if (saved.has_key) return `${provider.name}, key ending ${saved.key_hint ?? "…"}`;
+      if (typedKey) return `${provider.name}, key added`;
+      if (saved.has_key && provider.id === savedFor) return `${provider.name}, key saved`;
       return `${provider.name}, no key yet`;
     },
   };
@@ -553,7 +579,10 @@ async function wizard() {
   let skippedModel = false;
   // Built once, so what's typed survives going Back and forth.
   const model = await modelPiece("wizard");
-  const place = placePiece(c, () => void 0);
+  // Choosing where rooms live changes how many steps there are, so the bar
+  // redraws on the spot.
+  let redraw = () => {};
+  const place = placePiece(c, () => redraw());
   const agents = agentsPiece(c, snap);
 
   const steps = (): Step[] => (c.mode === "hub" ? ["place", "model", "agents", "ready"] : ["place", "agents", "ready"]);
@@ -654,6 +683,7 @@ async function wizard() {
       ),
     );
   };
+  redraw = show;
   show();
 }
 
@@ -664,16 +694,30 @@ type Section = "mac" | "model" | "agents" | "privacy";
 async function settingsWindow(open: Section = "mac") {
   const snap = await snapshot();
   const c = choicesFrom(snap);
-  const sections = (): [Section, string][] =>
-    c.mode === "hub"
-      ? [["mac", "This Mac"], ["model", "Model"], ["agents", "Agents"], ["privacy", "Privacy"]]
-      : [["mac", "This Mac"], ["agents", "Agents"]];
+  // The same sections whatever is chosen: one that doesn't apply says why,
+  // rather than leaving the sidebar.
+  const sections = (): [Section, string][] => [
+    ["mac", "This Mac"],
+    ["model", "Model"],
+    ["agents", "Agents"],
+    ["privacy", "Privacy"],
+  ];
   let at: Section = sections().some(([s]) => s === open) ? open : "mac";
+  /** What a section says while rooms live on a team's hub, which decides this. */
+  const theHubs = (what: string) =>
+    el(
+      "div",
+      { class: "piece" },
+      el("p", { class: "lede" }, `Your rooms are on your team's hub, so ${what}. There's nothing to set on this Mac.`),
+      el("p", { class: "hint" }, "To keep rooms on this Mac instead, choose On this Mac in This Mac."),
+    );
 
   const show = async () => {
     const error = el("p", { class: "error", role: "alert", hidden: "" });
     let save: () => Promise<void> = () => startWith(c, null);
     let note = "Saving restarts Mycelium.";
+    // A section with nothing to set on this Mac offers nothing to save.
+    let nothingToSave = false;
     let body: Node;
     if (at === "mac") {
       const place = placePiece(c, () => void 0);
@@ -692,6 +736,9 @@ async function settingsWindow(open: Section = "mac") {
         if (problem) throw new Error(problem);
         await startWith(c, null);
       };
+    } else if (at === "model" && c.mode === "client") {
+      body = theHubs("its own agents use the model the hub's owner set");
+      nothingToSave = true;
     } else if (at === "model") {
       const model = await modelPiece("settings");
       body = el("div", { class: "piece" }, el("p", { class: "lede" }, "What Mycelium's own agents think with. Agents you bring sign in on their own."), model.el);
@@ -699,6 +746,9 @@ async function settingsWindow(open: Section = "mac") {
       note = "Saving restarts Mycelium's own agents.";
     } else if (at === "agents") {
       body = agentsPiece(c, snap);
+    } else if (c.mode === "client") {
+      body = theHubs("whether it shares usage stats is up to the hub's owner");
+      nothingToSave = true;
     } else {
       body = privacyPiece(c);
     }
@@ -726,6 +776,8 @@ async function settingsWindow(open: Section = "mac") {
       }
     });
     const saveButton = el("button", { class: "button", type: "button" }, "Save");
+    saveButton.hidden = nothingToSave;
+    if (nothingToSave) note = "";
     saveButton.addEventListener("click", async () => {
       saveButton.disabled = true;
       error.hidden = true;
