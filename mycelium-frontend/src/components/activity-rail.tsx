@@ -3,20 +3,25 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, MessageSquare } from "lucide-react";
 
 import { Tooltip } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 /** One thing the room raised about a task, as it reads once a row is opened. */
 export interface ActivityUpdate {
   id: string;
   /** When it landed, on the room's clock. */
   time: string;
+  /** When it landed, in ms, for saying how long ago. */
+  at: number;
   /** What happened — "Claimed", "Knowledge", "Activity". */
   label: string;
   /** Who, and any version it carries. */
   detail: string;
+  /** The board move it was, for a notice; null for anything else. */
+  subkind: string | null;
 }
 
 /** One subject's whole run of activity, as the rail shows it. */
@@ -31,28 +36,84 @@ export interface ActivityItem {
   memoryKey: string | null;
   /** Who moved it, in the order they first did. */
   actors: string[];
+  /** Who moved it last: the answer to "who has this". */
+  lastActor: string | null;
   /** The clock of the most recent update. */
   time: string;
+  /** When it last moved, in ms. */
+  at: number;
   /** The last board move it made — the state the row is standing in. */
   standing: string | null;
+  /** What whoever moved it said about it ("waiting on the merchant ID"). */
+  note: string | null;
   /** Everything the room raised about it, oldest first. */
   updates: ActivityUpdate[];
 }
 
-/** How many rows stand open before the rest go behind "more". */
-const SHOWN = 3;
+/** How many rows stand open before the rest go behind one line. */
+const SHOWN = 4;
 
-/** The color a row wears for the state it is standing in. Green when work
- *  lands or closes, red when it stalls, yellow when it comes back up for
- *  grabs, accent while somebody holds it. */
-const STANDING_TONE: Record<string, string> = {
-  filed: "var(--green)",
-  resolved: "var(--green)",
-  unblocked: "var(--green)",
-  blocked: "var(--red)",
-  released: "var(--yellow)",
-  claimed: "var(--accent)",
+/** The state a row is standing in, said as a word, and the color it wears.
+ *  Green when work arrives, accent while somebody holds it, red when it
+ *  stalls, yellow when it comes back up for grabs, and grey once it's done:
+ *  finished work steps back so the eye goes to what's still moving. */
+const STANDING: Record<string, { word: string; tone: string }> = {
+  filed: { word: "New", tone: "var(--green)" },
+  claimed: { word: "Claimed", tone: "var(--accent)" },
+  blocked: { word: "Blocked", tone: "var(--red)" },
+  released: { word: "Released", tone: "var(--yellow)" },
+  expired: { word: "Expired", tone: "var(--yellow)" },
+  unblocked: { word: "Unblocked", tone: "var(--green)" },
+  resolved: { word: "Done", tone: "var(--faint)" },
 };
+
+/** A row that has only been written to, not moved on the board. */
+const ACTIVE = { word: "Active", tone: "var(--muted-foreground)" };
+
+/** The states the header counts: what's live. Done work isn't news. */
+const TALLIED = ["claimed", "blocked", "filed", "released", "expired"] as const;
+
+function standingOf(item: ActivityItem) {
+  return (item.standing && STANDING[item.standing]) || ACTIVE;
+}
+
+/** "3 claimed · 2 blocked · 3 new", for the tasks given. */
+function tally(items: ActivityItem[]): { key: string; n: number; word: string; tone: string }[] {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    if (item.standing) counts.set(item.standing, (counts.get(item.standing) ?? 0) + 1);
+  }
+  return TALLIED.filter((s) => counts.get(s)).map((s) => ({
+    key: s,
+    n: counts.get(s) as number,
+    word: STANDING[s].word.toLowerCase(),
+    tone: STANDING[s].tone,
+  }));
+}
+
+/** How long ago, as short as it can be said: "now", "4m", "2h", "3d". */
+export function shortAge(at: number, now: number): string {
+  if (!at) return "";
+  const min = Math.floor(Math.max(0, now - at) / 60_000);
+  if (min < 1) return "now";
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60);
+  return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
+}
+
+/** The time, kept current, so an age doesn't freeze at what it said on arrival. */
+function useNow(everyMs = 30_000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), everyMs);
+    return () => clearInterval(id);
+  }, [everyMs]);
+  return now;
+}
+
+function Dot({ tone }: { tone: string }) {
+  return <span aria-hidden className="inline-block size-1.5 flex-shrink-0 rounded-full" style={{ background: tone }} />;
+}
 
 /**
  * What the room has been doing, held still above the conversation.
@@ -60,16 +121,15 @@ const STANDING_TONE: Record<string, string> = {
  * A room under load raises far more state than speech — a task being worked
  * writes memory, pings its thread and moves on the board, and none of that is
  * something anybody said. Woven into the feed it is a changelog with the
- * conversation buried in it; here it is a fixed number of rows that update in
- * place, so a busy hour costs the same height as a quiet one and the channel
- * below stays what people wrote.
+ * conversation buried in it; here it is a bounded strip that updates in place,
+ * so a busy hour never pushes the channel below off the screen.
  *
- * A row opens to the updates it stands for, each with its own clock, so the
- * count is a way in rather than a dead end — and because a task's filing and
- * its resolve land here too, an opened row reads as the whole life of that
- * task in order rather than as the part of it nobody filed anywhere else.
- *
- * Bounded on purpose: the rail is the room's current state, not its history.
+ * Each row says the state its task is standing in as a word (Claimed, Blocked,
+ * Done), who moved it last and how long ago, and what they said about it when
+ * they said anything. The header counts what's live. A row opens to its whole
+ * life in order. One task is a single line with no header; past four, the rest
+ * wait behind one line that says what they are, and showing them all scrolls
+ * inside the strip rather than growing it.
  */
 export function ActivityRail({
   items,
@@ -82,9 +142,8 @@ export function ActivityRail({
 }) {
   const [showAll, setShowAll] = useState(false);
   const [opened, setOpened] = useState<Set<string>>(() => new Set());
+  const now = useNow();
   if (!items.length) return null;
-  const shown = showAll ? items : items.slice(0, SHOWN);
-  const hidden = items.length - shown.length;
 
   const toggle = (subject: string) =>
     setOpened((prev) => {
@@ -92,126 +151,177 @@ export function ActivityRail({
       if (!next.delete(subject)) next.add(subject);
       return next;
     });
+  const row = (item: ActivityItem) => (
+    <ActivityRow
+      key={item.subject}
+      item={item}
+      now={now}
+      open={opened.has(item.subject)}
+      onToggle={() => toggle(item.subject)}
+      onOpenThread={onOpenThread}
+      onOpenMemory={onOpenMemory}
+    />
+  );
+
+  // One task is one line: a header over a single row is the heaviest version
+  // of the strip for the least news.
+  if (items.length === 1) {
+    return (
+      <div className="@container flex flex-shrink-0 items-start gap-3 border-b border-border bg-surface px-3 py-0.5 sm:px-4">
+        <span className="hidden h-[26px] flex-shrink-0 items-center text-micro font-medium text-muted-foreground @[30rem]:flex">
+          Recently updated
+        </span>
+        <ul className="flex min-w-0 flex-1 flex-col">{row(items[0])}</ul>
+      </div>
+    );
+  }
+
+  const shown = showAll ? items : items.slice(0, SHOWN);
+  const rest = items.slice(SHOWN);
 
   return (
-    <div className="flex-shrink-0 border-b border-border bg-surface px-3 py-2 sm:px-5">
-      <div className="flex items-center gap-2 text-micro text-muted-foreground">
+    <div className="@container flex-shrink-0 border-b border-border bg-surface px-3 pb-1 sm:px-4">
+      <div className="flex h-7 items-center gap-3 text-micro text-muted-foreground">
         <span className="font-medium">Recently updated</span>
-        {/* The count is the header's least load-bearing word — the rows below
-            are the answer — so it is the first thing to go when the row is
-            competing with a task title for the same inch. */}
-        <span className="hidden text-faint sm:inline">
-          {items.length} {items.length === 1 ? "task" : "tasks"}
+        <span className="flex min-w-0 items-center gap-2.5 overflow-hidden whitespace-nowrap text-muted-foreground">
+          {tally(items).map((t) => (
+            <span key={t.key} className="inline-flex items-center gap-1.5">
+              <Dot tone={t.tone} />
+              {t.n} {t.word}
+            </span>
+          ))}
         </span>
-        {items.length > SHOWN && (
+        <span className="ml-auto hidden flex-shrink-0 text-faint @[30rem]:inline">
+          {items.length} tasks
+        </span>
+      </div>
+      <ul className={cn("flex flex-col", showAll && "max-h-[12.5rem] overflow-y-auto")}>{shown.map(row)}</ul>
+      {rest.length > 0 && (
+        <div className="flex h-7 items-center gap-3 text-micro">
           <button
             type="button"
             onClick={() => setShowAll((v) => !v)}
             aria-expanded={showAll}
             aria-label={showAll ? "Show fewer" : `Show all ${items.length}`}
-            className="ml-auto inline-flex items-center gap-0.5 rounded px-1 text-faint transition-colors hover:bg-surface-2 hover:text-muted-foreground"
+            className="rounded px-1 text-accent transition-colors hover:bg-accent-soft"
           >
-            {showAll ? (
-              <ChevronDown className="size-3" strokeWidth={1.9} />
-            ) : (
-              <ChevronRight className="size-3" strokeWidth={1.9} />
-            )}
-            {showAll ? "fewer" : `${hidden} more`}
+            {showAll ? "Show fewer" : `Show ${rest.length} more`}
           </button>
+          {!showAll && (
+            <span className="min-w-0 truncate text-faint">
+              {tally(rest)
+                .map((t) => `${t.n} ${t.word}`)
+                .join(" · ")}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActivityRow({
+  item,
+  now,
+  open,
+  onToggle,
+  onOpenThread,
+  onOpenMemory,
+}: {
+  item: ActivityItem;
+  now: number;
+  open: boolean;
+  onToggle: () => void;
+  onOpenThread?: (episode: string) => void;
+  onOpenMemory?: (key: string) => void;
+}) {
+  const standing = standingOf(item);
+  const done = item.standing === "resolved";
+  const count = item.updates.length;
+  const canOpen = Boolean((item.memoryKey && onOpenMemory) || (item.episode && onOpenThread));
+  return (
+    <li>
+      <div className="flex h-[26px] items-center gap-2 text-micro">
+        {/* The row's history: a way in from the state, not a bare count. */}
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          aria-label={`${open ? "Hide" : "Show"} ${count} ${count === 1 ? "update" : "updates"} to ${item.title}`}
+          className="flex w-4 flex-shrink-0 items-center justify-center rounded text-faint transition-colors hover:bg-hairline hover:text-muted-foreground"
+        >
+          {open ? <ChevronDown className="size-3" strokeWidth={1.9} /> : <ChevronRight className="size-3" strokeWidth={1.9} />}
+        </button>
+        {/* The state as a word in a column of its own, so titles line up and a
+            blocked row says it's blocked without anyone learning the colors.
+            A narrow strip keeps the color alone. */}
+        <span className="flex flex-shrink-0 items-center gap-1.5 @[30rem]:w-[4.75rem]" style={{ color: standing.tone }}>
+          <Dot tone={standing.tone} />
+          <span className="hidden @[30rem]:inline">{standing.word}</span>
+        </span>
+        {/* The task itself, as text rather than a link-colored wall: it still
+            opens the task, and says so on hover. */}
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              item.memoryKey && onOpenMemory ? onOpenMemory(item.memoryKey) : item.episode && onOpenThread?.(item.episode)
+            }
+            disabled={!canOpen}
+            title={item.subject}
+            aria-label={`Open task ${item.title}`}
+            className={cn(
+              "min-w-0 truncate rounded text-left text-label transition-colors enabled:hover:text-accent enabled:hover:underline disabled:cursor-default",
+              done ? "text-muted-foreground" : "text-text",
+            )}
+          >
+            {item.title}
+          </button>
+          {item.note && (
+            <span className="hidden min-w-0 truncate text-faint @[36rem]:inline" title={item.note}>
+              {item.note}
+            </span>
+          )}
+        </span>
+        {item.lastActor && (
+          <span className="hidden max-w-[9rem] flex-shrink-0 truncate text-muted-foreground @[30rem]:inline">
+            @{item.lastActor}
+          </span>
+        )}
+        <span className="tabular w-8 flex-shrink-0 text-right text-faint" title={item.time.slice(0, 5)}>
+          {shortAge(item.at, now)}
+        </span>
+        {/* Its conversation, kept as its own target: the details and the
+            argument about them are two places. */}
+        {item.episode && onOpenThread ? (
+          <Tooltip content="Open the thread">
+            <button
+              type="button"
+              onClick={() => onOpenThread(item.episode as string)}
+              aria-label={`Open thread for ${item.title}`}
+              className="inline-flex w-5 flex-shrink-0 items-center justify-center rounded p-0.5 text-faint transition-colors hover:bg-hairline hover:text-accent"
+            >
+              <MessageSquare className="size-3" strokeWidth={1.9} />
+            </button>
+          </Tooltip>
+        ) : (
+          <span className="w-5 flex-shrink-0" />
         )}
       </div>
-      <ul className="mt-1 flex flex-col">
-        {shown.map((item) => {
-          const open = opened.has(item.subject);
-          return (
-            <li key={item.subject}>
-              <div className="flex items-center gap-2 rounded px-1 py-0.5 text-micro text-muted-foreground">
-                <span
-                  aria-hidden
-                  className="inline-block size-1.5 flex-shrink-0 rounded-full"
-                  style={{
-                    background:
-                      (item.standing && STANDING_TONE[item.standing]) ?? "var(--accent)",
-                  }}
-                />
-                {/* The task itself. Drawn as the link it is — a row that opens
-                    something must look like it does, and the name is the thing
-                    a reader reaches for. */}
-                <button
-                  type="button"
-                  onClick={() =>
-                    item.memoryKey && onOpenMemory
-                      ? onOpenMemory(item.memoryKey)
-                      : item.episode && onOpenThread?.(item.episode)
-                  }
-                  disabled={
-                    !(item.memoryKey && onOpenMemory) && !(item.episode && onOpenThread)
-                  }
-                  title={item.subject}
-                  aria-label={`Open task ${item.title}`}
-                  className="inline-flex min-w-0 flex-1 items-center gap-1 truncate rounded px-1 text-left text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
-                >
-                  <span className="truncate">{item.title}</span>
-                </button>
-                <span className="hidden max-w-[12rem] flex-shrink-0 truncate lg:inline">
-                  {item.actors.map((h) => `@${h}`).join(", ")}
-                </span>
-                <span className="tabular hidden flex-shrink-0 text-faint sm:inline">
-                  {item.time.slice(0, 5)}
-                </span>
-                {/* Its conversation, kept as its own target: the details and the
-                    argument about them are two places, and the rail should not
-                    make a reader guess which one the name goes to. */}
-                {item.episode && onOpenThread && (
-                  <Tooltip content="Open the thread">
-                    <button
-                      type="button"
-                      onClick={() => onOpenThread(item.episode as string)}
-                      aria-label={`Open thread for ${item.title}`}
-                      className="inline-flex flex-shrink-0 items-center rounded p-0.5 text-faint transition-colors hover:bg-surface-2 hover:text-accent"
-                    >
-                      <MessageSquare className="size-3" strokeWidth={1.9} />
-                    </button>
-                  </Tooltip>
-                )}
-                <button
-                  type="button"
-                  onClick={() => toggle(item.subject)}
-                  aria-expanded={open}
-                  aria-label={`${open ? "Hide" : "Show"} ${item.updates.length} ${item.updates.length === 1 ? "update" : "updates"} to ${item.title}`}
-                  className="inline-flex flex-shrink-0 items-center gap-0.5 rounded px-1 text-faint transition-colors hover:bg-surface-2 hover:text-muted-foreground"
-                >
-                  {open ? (
-                    <ChevronDown className="size-3" strokeWidth={1.9} />
-                  ) : (
-                    <ChevronRight className="size-3" strokeWidth={1.9} />
-                  )}
-                  {/* The bare count where the row is competing with the task's
-                      own name for the same inch, the whole phrase where it is
-                      not. Two spellings of one label, not two nodes of one. */}
-                  <span className="sm:hidden">{item.updates.length}</span>
-                  <span className="hidden sm:inline">
-                    {item.updates.length} {item.updates.length === 1 ? "update" : "updates"}
-                  </span>
-                </button>
-              </div>
-              {open && (
-                <ul className="mb-1 ml-[0.6rem] flex flex-col gap-1 border-l border-border py-1 pl-3 text-micro text-muted-foreground">
-                  {item.updates.map((update) => (
-                    <li key={update.id} className="flex items-center gap-2">
-                      <span className="tabular flex-shrink-0 text-faint">
-                        {update.time.slice(0, 5)}
-                      </span>
-                      <span className="flex-shrink-0 font-medium">{update.label}</span>
-                      {update.detail && <span className="truncate">{update.detail}</span>}
-                    </li>
-                  ))}
-                </ul>
-              )}
+      {open && (
+        <ul className="mb-1.5 ml-[1.9rem] flex flex-col gap-0.5 border-l border-border pl-3 text-micro text-muted-foreground">
+          {item.updates.map((update) => (
+            <li key={update.id} className="flex items-center gap-2">
+              <span className="tabular w-8 flex-shrink-0 text-right text-faint" title={update.time.slice(0, 5)}>
+                {shortAge(update.at, now)}
+              </span>
+              <Dot tone={(update.subkind && STANDING[update.subkind]?.tone) || "var(--border2)"} />
+              <span className="flex-shrink-0 font-medium">{update.label}</span>
+              {update.detail && <span className="truncate">{update.detail}</span>}
             </li>
-          );
-        })}
-      </ul>
-    </div>
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }

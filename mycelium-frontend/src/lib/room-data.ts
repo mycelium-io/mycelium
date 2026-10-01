@@ -406,6 +406,9 @@ export function useRoomThreads(room: string): Map<string, ThreadOwner> {
 export interface RowNaming {
   title: string;
   episode: string | null;
+  /** What the row is waiting on (`blocked_by`), else what whoever last moved it
+   *  said about it (`assignment_note`); null when neither was written. */
+  note: string | null;
 }
 
 /**
@@ -421,7 +424,12 @@ export function useRoomRowNames(room: string): Map<string, RowNaming> {
   return useMemo(() => {
     const index = new Map<string, RowNaming>();
     for (const memory of memories) {
-      index.set(memory.key, { title: memoryTitle(memory), episode: memory.episode ?? null });
+      const said = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+      index.set(memory.key, {
+        title: memoryTitle(memory),
+        episode: memory.episode ?? null,
+        note: said(memory.meta?.blocked_by) ?? said(memory.meta?.assignment_note),
+      });
     }
     return index;
   }, [memories]);
