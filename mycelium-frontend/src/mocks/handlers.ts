@@ -196,6 +196,10 @@ async function handleRunners(req: Request, method: string, rest: string[]): Prom
     return job ? json(job) : notFound("Job not found");
   }
   if (sub === "scan" && method === "POST") return json(queueJob(runner.id, "scan", {}), 201);
+  if (sub === "restart" && method === "POST") {
+    const body = await readJson(req);
+    return json(queueJob(runner.id, "restart", { all: Boolean(body.all), agents: body.agents ?? [] }), 201);
+  }
   if (sub === "agents" && method === "POST") {
     if (a !== undefined && b !== undefined && c === "stop") {
       const spec = { room: decodeURIComponent(a), handle: decodeURIComponent(b) };

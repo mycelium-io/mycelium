@@ -34,6 +34,7 @@ import { fmtAgo } from "@/lib/metrics-format";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AddMachineCode, ConnectMachine, HostMissing, RescanButton } from "@/components/runner-fields";
+import { MachineAgents } from "@/components/machine-agents";
 
 /** How many of a machine's jobs are listed. */
 const RECENT_JOBS = 8;
@@ -174,19 +175,27 @@ function MachineCard({ runner }: { runner: Runner }) {
         )}
       </Section>
 
-      <Section title="Agents running here">
-        {runner.agents.length === 0 ? (
-          <p className="text-label text-muted-foreground">
-            None yet. Start one from a room&apos;s Members panel, under Invite.
-          </p>
-        ) : (
-          <ul>
-            {runner.agents.map((a) => (
-              <AgentLine key={`${a.room}/${a.handle}`} runner={runner} agent={a} />
-            ))}
-          </ul>
-        )}
-      </Section>
+      {/* Every agent on the machine when its runner reports them; a runner
+          from before that, the ones it started. */}
+      {runner.machine ? (
+        <Section title="Agents on this machine">
+          <MachineAgents runner={runner} />
+        </Section>
+      ) : (
+        <Section title="Agents running here">
+          {runner.agents.length === 0 ? (
+            <p className="text-label text-muted-foreground">
+              None yet. Start one from a room&apos;s Members panel, under Invite.
+            </p>
+          ) : (
+            <ul>
+              {runner.agents.map((a) => (
+                <AgentLine key={`${a.room}/${a.handle}`} runner={runner} agent={a} />
+              ))}
+            </ul>
+          )}
+        </Section>
+      )}
 
       <Section title="Recent jobs">
         {jobs.length === 0 ? (

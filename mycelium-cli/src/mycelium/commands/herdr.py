@@ -344,7 +344,14 @@ def _enroll_one(
     manifest = _member_manifest(handle, room, agent, sender)
     _write_manifest(config, room, manifest, created_by=sender)
     bridge.registry.set(
-        HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=agent.get("agent"), managed=True)
+        HerdrPaneMapping(
+            room=room,
+            handle=handle,
+            pane=pane,
+            kind=agent.get("agent"),
+            managed=True,
+            cwd=agent.get("foreground_cwd") or agent.get("cwd"),
+        )
     )
     return handle
 
@@ -389,7 +396,8 @@ def _reconcile_workspace(
     """Make ``room``'s membership equal the live agents in ``workspace``.
 
     Enrolls any live agent that isn't a member yet and retires any sync-managed
-    member whose pane has closed. Returns ``(enrolled, retired)`` handles for
+    member whose pane has closed (not one whose pane is open with no agent in
+    it, which only stopped). Returns ``(enrolled, retired)`` handles for
     logging. Hand-mapped (non-``managed``) bindings are never retired here.
     """
     agents = [
@@ -423,9 +431,20 @@ def _reconcile_workspace(
         )
         is not None
     ]
+    # Retire on the pane closing, not on its agent stopping. After herdr's server
+    # restarts, every pane comes back at a bare shell: those agents stopped, they
+    # didn't leave, and retiring them would delete them from the room.
+    try:
+        open_panes = {
+            str(p["pane_id"])
+            for p in bridge.list_panes()
+            if p.get("workspace_id") == workspace and p.get("pane_id")
+        }
+    except HerdrError:
+        return enrolled, []  # can't tell which panes are open: retire nothing
     retired: list[str] = []
     for m in bridge.registry.all():
-        if m.room == room and m.managed and m.pane not in live_panes:
+        if m.room == room and m.managed and m.pane not in live_panes | open_panes:
             _retire_one(config, bridge, m)
             retired.append(m.handle)
     return enrolled, retired
@@ -686,9 +705,13 @@ def sync_pass(
     return enrolled, retired, sum(len(v) for v in view.values())
 
 
+#: How long one pass's liveness stands on the hub; the runner's next pass renews it.
+SYNC_TTL_S = 90.0
+
+
 @doc_ref(
-    usage="mycelium herdr sync [--workspace <id> --room <room>] [--once] [--interval N]",
-    desc="Bind a herdr workspace to a room and reconcile membership, liveness, and wakes.",
+    usage="mycelium herdr sync [--workspace <id> --room <room>]",
+    desc="Bind a herdr workspace to a room and sync it once; the runner keeps it synced.",
     group="agent",
 )
 @app.command("sync")
@@ -700,12 +723,6 @@ def herdr_sync(
     room: str | None = typer.Option(
         None, "--room", "-r", help="Room to bind/reconcile (scopes to bound workspaces)."
     ),
-    once: bool = typer.Option(
-        False,
-        "--once",
-        help="Reconcile a single pass and exit (default keeps watching on an interval).",
-    ),
-    interval: int = typer.Option(5, "--interval", help="Poll interval seconds while watching."),
     name_from: str = typer.Option(
         "tab", "--name-from", help="Handle source for new agents: 'tab' or 'pane'."
     ),
@@ -714,30 +731,24 @@ def herdr_sync(
     ),
     kind: str | None = typer.Option(None, "--kind", help="Only enroll agents of this herdr kind."),
 ) -> None:
-    """The one bridge that makes a herdr workspace *be* a mycelium room.
+    """Make a herdr workspace *be* a mycelium room, and sync it once.
 
-    Pass ``--workspace w2 --room myroom`` once to **bind** them; from then on this
-    watches that binding, reconciling every ``interval`` (pass ``--once`` for a
-    single pass and exit):
+    Pass ``--workspace w2 --room myroom`` to **bind** them. A pass then:
 
-    - **membership** — every live agent in the workspace is enrolled as a room
+    - **membership** — enrolls every live agent in the workspace as a room
       member (manifest + handle↔pane, handle from the tab name); a member whose
-      pane closes leaves the room. The roster tracks the workspace with no manual
-      ``map``/``enroll`` step.
-    - **liveness** — each member's herdr state (idle/working/blocked) is pushed to
-      the backend so the UI badges it (the backend is containerized and can't see
-      the herdr socket; this host-side loop is the only thing that can).
-    - **wakes** — queued ``@``-mention doorbells are drained and delivered to the
-      right pane.
+      pane closes leaves the room.
+    - **liveness** — pushes each member's herdr state (idle/working/blocked) to
+      the hub, which can't see herdr on this machine.
+    - **wakes** — delivers queued ``@``-mention doorbells to the right pane.
 
-    Bindings persist, so a bare ``mycelium herdr sync`` watches every bound
-    workspace. Watching is the default because the wake leg is a host-side loop:
-    the backend is containerized and can't reach the herdr socket, so nothing
-    delivers a queued ``@``-mention to its pane unless this keeps draining. This
-    only *drives* agents you started in herdr; it never spawns panes. Ctrl-C
-    clears the liveness overlay.
+    Keeping that going is the runner's job (``mycelium runner``): it syncs every
+    bound workspace on this machine, so binding one is all it takes. This runs
+    one pass now, so the workspace's agents join at once, and says whether the
+    runner is up. It only *drives* agents you started in herdr; it never
+    spawns panes.
     """
-    import time
+    from mycelium.commands.runner import running_pid
 
     try:
         config = MyceliumConfig.load()
@@ -773,42 +784,28 @@ def herdr_sync(
             )
             raise typer.Exit(1)
 
-        ttl_s = max(90.0, interval * 4.0)
-
-        def reconcile_and_push() -> tuple[int, int, int]:
-            return sync_pass(
-                config,
-                bridge,
-                targets,
-                room_filter=room_name,
-                ttl_s=ttl_s,
-                name_from=name_from,
-                prefix=prefix,
-                kind=kind,
-            )
-
-        enrolled, retired, states = reconcile_and_push()
+        enrolled, retired, states = sync_pass(
+            config,
+            bridge,
+            targets,
+            room_filter=room_name,
+            ttl_s=SYNC_TTL_S,
+            name_from=name_from,
+            prefix=prefix,
+            kind=kind,
+        )
         console.print(
             f"[green]Synced[/green] {states} live state(s) across {len(targets)} binding(s) "
             f"[dim](+{enrolled} enrolled, -{retired} retired)[/dim]"
-            + (" [dim](one-shot)[/dim]" if once else "")
         )
-        if once:
-            return
-
-        console.print(
-            f"[dim]Watching herdr every {interval}s "
-            f"(membership + presence up, wakes down). Ctrl-C to stop.[/dim]"
-        )
-        rooms_touched = {r for _, r in targets}
-        try:
-            while True:
-                time.sleep(interval)
-                reconcile_and_push()
-        except KeyboardInterrupt:
-            for r in rooms_touched:
-                _push_presence(config, r, {}, ttl_s)
-            console.print("\n[dim]Stopped; cleared herdr overlay.[/dim]")
+        if running_pid():
+            console.print("[dim]This machine's runner keeps them synced from here.[/dim]")
+        else:
+            console.print(
+                "[yellow]Nothing keeps them synced:[/yellow] agents here won't hear their "
+                "mentions until the runner is running. Start it with "
+                "[cyan]mycelium runner --detach[/cyan]."
+            )
     except typer.Exit:
         raise
     except Exception as e:

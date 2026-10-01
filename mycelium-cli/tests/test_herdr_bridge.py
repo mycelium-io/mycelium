@@ -513,15 +513,17 @@ def test_reconcile_workspace_enrolls_new_and_retires_closed(
         }
     ]
     tabs = [{"tab_id": "w2:tNEW", "label": "fresh agent"}]
+    # The open panes: the new agent's. w2:pDEAD is closed.
+    panes = [{"pane_id": "w2:pNEW", "workspace_id": "w2"}]
     bridge = HerdrBridge(
         runner=ScriptedRunner(
-            {"agent list": _proc(_ok({"agents": agents})), "tab list": _proc(_ok({"tabs": tabs}))}
+            {
+                "agent list": _proc(_ok({"agents": agents})),
+                "tab list": _proc(_ok({"tabs": tabs})),
+                "pane list": _proc(_ok({"panes": panes})),
+            }
         )
     )
-
-    class _Cfg:
-        def get_current_identity(self) -> str:
-            return "tester"
 
     enrolled, retired = herdr_cmd._reconcile_workspace(
         cast("MyceliumConfig", _Cfg()), bridge, "w2", "r", name_from="tab", prefix="", kind=None
@@ -532,11 +534,107 @@ def test_reconcile_workspace_enrolls_new_and_retires_closed(
     # It takes part like any resident agent, and says which agent CLI it is.
     assert (written[0].adapter, written[0].framework) == ("claude_code", "codex")
     assert retired == ["old"] and deleted == ["old"]
-    # New member is managed; the dead managed one is gone; the hand-mapped one stays.
+    # New member is managed, with its folder; the dead managed one is gone;
+    # the hand-mapped one stays.
     fresh = bridge.registry.get("r", "fresh-agent")
-    assert fresh is not None and fresh.managed is True
+    assert fresh is not None and (fresh.managed, fresh.cwd) == (True, "/x")
     assert bridge.registry.get("r", "old") is None
     assert bridge.registry.get("r", "manual") is not None
+
+
+class _Cfg:
+    def get_current_identity(self) -> str:
+        return "tester"
+
+
+def test_reconcile_keeps_a_member_whose_pane_is_open_but_empty(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    """After herdr's server restarts, every pane comes back at a bare shell. Those
+    agents stopped; they didn't leave. Retiring them would delete them from the room."""
+    from mycelium.commands import herdr as herdr_cmd
+
+    reg = HerdrRegistry()
+    reg.set(HerdrPaneMapping(room="r", handle="builder", pane="w2:p1", kind="claude", managed=True))
+    deleted: list[str] = []
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    monkeypatch.setattr(
+        "mycelium.commands.agent._delete_manifest",
+        lambda config, room, manifest: deleted.append(manifest.handle),
+    )
+    bridge = HerdrBridge(
+        runner=ScriptedRunner(
+            {
+                "agent list": _proc(_ok({"agents": []})),  # nothing running anywhere
+                "tab list": _proc(_ok({"tabs": []})),
+                "pane list": _proc(_ok({"panes": [{"pane_id": "w2:p1", "workspace_id": "w2"}]})),
+            }
+        )
+    )
+    _enrolled, retired = herdr_cmd._reconcile_workspace(
+        cast("MyceliumConfig", _Cfg()), bridge, "w2", "r", name_from="tab", prefix="", kind=None
+    )
+    assert retired == [] and deleted == []
+    assert bridge.registry.get("r", "builder") is not None
+
+
+def test_reconcile_retires_nothing_when_herdr_cant_list_panes(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    from mycelium.commands import herdr as herdr_cmd
+
+    reg = HerdrRegistry()
+    reg.set(HerdrPaneMapping(room="r", handle="builder", pane="w2:p1", kind="claude", managed=True))
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    bridge = HerdrBridge(
+        runner=ScriptedRunner(
+            {"agent list": _proc(_ok({"agents": []})), "tab list": _proc(_ok({"tabs": []}))}
+        )
+    )
+    _enrolled, retired = herdr_cmd._reconcile_workspace(
+        cast("MyceliumConfig", _Cfg()), bridge, "w2", "r", name_from="tab", prefix="", kind=None
+    )
+    assert retired == []
+    assert bridge.registry.get("r", "builder") is not None
+
+
+def test_rewriting_a_mapping_keeps_its_folder_for_the_same_pane_and_kind(
+    isolated_home: Path,
+) -> None:
+    reg = HerdrRegistry()
+    reg.set(HerdrPaneMapping(room="r", handle="a", pane="w2:p1", kind="claude", cwd="/work"))
+    # The sync rewrites it without knowing the folder.
+    reg.set(HerdrPaneMapping(room="r", handle="a", pane="w2:p1", kind="claude", managed=True))
+    kept = reg.get("r", "a")
+    assert kept is not None and (kept.cwd, kept.managed) == ("/work", True)
+    # Another pane is another agent, in a folder of its own.
+    reg.set(HerdrPaneMapping(room="r", handle="a", pane="w3:p4", kind="claude"))
+    moved = reg.get("r", "a")
+    assert moved is not None and moved.cwd is None
+
+
+def test_herdrs_integrations_read_current_only_as_current(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    status = (
+        "pi: not installed (/h/.pi/agent/extensions/herdr-agent-state.ts)\n"
+        "claude: current (v10) (/h/.claude/hooks/herdr-agent-state.sh)\n"
+        "codex: outdated (v4 < v5) (/h/.codex/herdr-agent-state.sh)\n"
+        "kimi: needs repair (v3) (/h/.kimi-code/hooks/herdr-agent-state.sh)\n"
+    )
+    bridge = HerdrBridge(runner=ScriptedRunner({"integration status": _proc(status)}))
+    assert bridge.integrations() == {"pi": False, "claude": True, "codex": False, "kimi": False}
+
+
+@pytest.mark.parametrize(
+    ("version", "old"),
+    [("0.8.0", True), ("0.9.2", True), ("0.9.3", False), ("herdr 0.10.0", False), (None, False)],
+)
+def test_herdr_older_than_the_minimum_is_too_old(version: str | None, old: bool) -> None:
+    from mycelium.integrations.herdr.bridge import too_old
+
+    assert too_old(version) is old
 
 
 # ── sync presence collection ────────────────────────────────────────────────────

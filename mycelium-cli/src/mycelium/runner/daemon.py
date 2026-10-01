@@ -6,12 +6,12 @@
 Three loops, each on its own thread:
 
 - **hello**: what this machine has (the scan, whether its host is up, the
-  folders agents may be started in) and the agents it is running, re-sent as a
-  heartbeat.
+  folders agents may be started in), the agents it is running, and every agent
+  on the machine (``mycelium.machine``'s report), re-sent as a heartbeat.
 - **jobs**: a long-poll for what the app asked for (``launch``, ``stop``,
-  ``scan``, ``swarm``), done one at a time and reported back.
-- **sync**: presence up and doorbells down for the agents it started, so they
-  hear their turns.
+  ``scan``, ``swarm``, ``restart``), done one at a time and reported back.
+- **sync**: presence up and doorbells down for every agent in a workspace
+  bound to a room on this machine, so they hear their turns.
 
 Where an agent runs is the host's business (``hosts.py``, picked by
 ``runner.host``). Everything else here is the same whichever host it is.
@@ -22,7 +22,7 @@ own roots; it never carries a command, so what the hub can ask of this machine
 is exactly "start one of the agent CLIs you found, here".
 
 Even that is asked of the person here first. Anyone who can reach a hub can
-queue a job for any runner on it, so a launch or a swarm waits for a yes on
+queue a job for any runner on it, so a launch, swarm or restart waits for a yes on
 this machine (``approvals``) unless the runner trusts its hub: the Mac app's
 own hub, which only this machine can reach, or one the person said to trust
 with ``--trust-hub``. Scans and stops don't ask: a scan changes nothing, and a
@@ -48,6 +48,7 @@ import httpx
 from rich.console import Console
 
 from mycelium import __version__
+from mycelium import machine as this_machine
 from mycelium.client import hub_client
 from mycelium.config import MyceliumConfig
 from mycelium.filesystem import get_mycelium_dir
@@ -56,7 +57,7 @@ from mycelium.runner import approvals, frameworks
 from mycelium.runner.hosts import AgentHost, HerdrHost, HostError, OmnigentHost
 
 #: Jobs that start something on this machine, and so wait for a yes here.
-ASK_FIRST = frozenset({"launch", "swarm"})
+ASK_FIRST = frozenset({"launch", "swarm", "restart"})
 #: How much of an agent's instructions the question shows.
 NOTES_PREVIEW = 400
 
@@ -297,7 +298,53 @@ class Runner:
             "roots": [str(r) for r in self.roots],
             "frameworks": [f.wire() for f in self.found],
             "agents": agents,
+            "machine": self.machine_report(),
         }
+
+    def machine_report(self) -> dict[str, Any] | None:
+        """Every agent on this machine, for the Machines page (``mycelium machine``'s report)."""
+        if self.host.name != "herdr":
+            return None
+        try:
+            return this_machine.report(bridge=self.bridge, machine=self.label, runner=True).wire()
+        except Exception as e:  # noqa: BLE001 - a heartbeat must not fail on its report
+            self.log.print(f"[dim]couldn't read this machine's agents: {e}[/dim]")
+            return None
+
+    def _restartable(self, spec: dict[str, Any]) -> list[this_machine.Agent]:
+        """The agents a ``restart`` job names, read now, each one restartable."""
+        r = this_machine.report(bridge=self.bridge, machine=self.label, runner=True)
+        try:
+            if spec.get("all"):
+                agents = [a for a in r.agents if a.restartable]
+            else:
+                agents = [
+                    r.find(str(a.get("handle")), a.get("room")) for a in spec.get("agents") or []
+                ]
+        except this_machine.MachineError as e:
+            raise JobError(str(e)) from e
+        if not agents:
+            raise JobError(f"No agent on {self.label} has stopped.")
+        if not_ready := [a for a in agents if not a.restartable]:
+            names = ", ".join(f"@{a.handle}" for a in not_ready)
+            raise JobError(f"{names} can't be restarted: it's running, or nothing says how.")
+        return agents
+
+    def restart_agents(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Start stopped agents again, as themselves (``mycelium machine restart``)."""
+        restarted: dict[str, str] = {}
+        failed: dict[str, str] = {}
+        for agent in self._restartable(spec):
+            try:
+                restarted[agent.handle] = this_machine.restart(
+                    self.config, agent, bridge=self.bridge
+                )
+            except this_machine.MachineError as e:
+                failed[agent.handle] = str(e)
+        if failed and not restarted:
+            raise JobError("; ".join(failed.values()))
+        self.log.print(f"[green]restarted[/green] {', '.join('@' + h for h in restarted)}")
+        return {"restarted": restarted, "failed": failed}
 
     def owner(self) -> str | None:
         """Whose agents these are: this machine's identity when it reads as a handle.
@@ -577,6 +624,8 @@ class Runner:
             return {"installed": [f.id for f in found if f.installed]}
         if kind == "swarm":
             return self.swarm(spec, job.get("created_by"))
+        if kind == "restart":
+            return self.restart_agents(spec)
         raise JobError(f"this runner doesn't know how to do '{kind}'; update mycelium here.")
 
     def question(self, job: dict[str, Any]) -> dict[str, Any]:
@@ -587,11 +636,25 @@ class Runner:
         the question says so.
         """
         kind, spec = job.get("kind"), job.get("spec") or {}
+        hub = urlparse(self.config.server.api_url).netloc or self.config.server.api_url
+        asked_by = job.get("created_by")
+        if kind == "restart":
+            agents = self._restartable(spec)
+            lines = "\n".join(this_machine.restart_command(a) for a in agents)
+            n = len(agents)
+            return {
+                "kind": kind,
+                "title": f"Restart {n} agent{'s' if n != 1 else ''} on {self.label}?",
+                "message": (
+                    f"Each starts again as itself and catches up from the room:\n{lines}\n\n"
+                    f"Asked for by {'@' + asked_by if asked_by else 'someone'} on {hub}."
+                ),
+                "hub": hub,
+                "asked_by": asked_by,
+            }
         known = self.framework(str(spec.get("framework")))
         cwd = self.folder(spec.get("cwd"))
         room = str(spec.get("room"))
-        hub = urlparse(self.config.server.api_url).netloc or self.config.server.api_url
-        asked_by = job.get("created_by")
         where = f"Room {room} on {hub}. Asked for by {'@' + asked_by if asked_by else 'someone on that hub'}."
         if kind == "launch":
             handle = str(spec.get("handle"))

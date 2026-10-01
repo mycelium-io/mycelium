@@ -70,7 +70,12 @@ def _get(url: str, timeout: float = 3.0) -> httpx.Response | None:
 
 
 def hub(api_url: str) -> CheckResult:
-    resp = _get(f"{api_url.rstrip('/')}/health")
+    base = api_url.rstrip("/")
+    resp = _get(f"{base}/health")
+    # A hub reached at its UI's address answers only under /api, where the UI
+    # maps /api/health onto the hub's /health.
+    if resp is not None and resp.status_code == 404:
+        resp = _get(f"{base}/api/health")
     if resp is not None and resp.status_code == 200:
         return CheckResult(name="Hub", status="ok", message=f"answering at {api_url}")
     return CheckResult(
@@ -124,7 +129,22 @@ def herdr() -> CheckResult:
             message="installed, but its server isn't running",
             details=["Open herdr once (run `herdr` in a terminal), then check again."],
         )
-    version = bridge.version()
+    from mycelium.integrations.herdr.bridge import MIN_VERSION, too_old
+
+    server, client = bridge.server_version(), bridge.version()
+    if too_old(client) or too_old(server):
+        fix = (
+            "Update it with `herdr update`."
+            if too_old(client)
+            else "Restart its server to start the newer one: `herdr server stop`."
+        )
+        return CheckResult(
+            name="herdr",
+            status="error",
+            message=f"{server or client} is out of date (Mycelium needs {MIN_VERSION} or newer)",
+            details=[fix, "`mycelium machine` says which agents that stops."],
+        )
+    version = server or client
     return CheckResult(
         name="herdr", status="ok", message=f"running{f' ({version})' if version else ''}"
     )

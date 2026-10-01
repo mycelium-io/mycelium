@@ -79,8 +79,9 @@ If your agent asks permission before running shell commands, the swarm lets it
 run `mycelium` commands without asking, for that session only. Your settings
 aren't changed. It still asks about everything else, such as editing files.
 
-Your agents only hear their turn while `swarm` is running. If you stop it,
-start `mycelium herdr sync` to keep them going.
+Your agents hear their turns while the [runner](#machines) is running, which
+the Mac app does for you. Without one, they hear them only while `swarm` is
+open; start `mycelium runner --detach` to keep them going after you close it.
 
 **The hub's agents (`--server`).** The team is made of [workers](#worker), which
 run on the hub, so you don't need anything installed locally. They're coding

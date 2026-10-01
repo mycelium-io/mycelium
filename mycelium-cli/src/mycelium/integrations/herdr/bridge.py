@@ -46,6 +46,31 @@ _WAKEABLE_STATES = frozenset({"idle", "done", "unknown"})
 #: Where ``herdr agent start --help`` lists the kinds it can start.
 _POSSIBLE_KINDS = re.compile(r"\[possible values:\s*([^\]]+)\]")
 
+#: The oldest herdr Mycelium works with. 0.9.2 is where herdr learned to
+#: restart each agent in its own session after its server restarts, which is
+#: what keeps a room's agents alive across one; 0.9.3 fixes its key handling.
+MIN_VERSION = "0.9.3"
+
+#: herdr's integration for an agent kind, where the two names differ.
+_INTEGRATION_FOR = {"agy": "antigravity-cli"}
+
+
+def integration_for(kind: str) -> str:
+    """The herdr integration that lets herdr restore an agent of ``kind``."""
+    return _INTEGRATION_FOR.get(kind, kind)
+
+
+def version_tuple(version: str | None) -> tuple[int, ...] | None:
+    """``"0.9.3"`` (or ``"v0.9.3"``, ``"herdr 0.9.3"``) as ``(0, 9, 3)``; ``None`` if unreadable."""
+    found = re.search(r"\d+(?:\.\d+)+", version or "")
+    return tuple(int(p) for p in found.group(0).split(".")) if found else None
+
+
+def too_old(version: str | None) -> bool:
+    """Whether ``version`` is older than :data:`MIN_VERSION` (unknown is not too old)."""
+    have, need = version_tuple(version), version_tuple(MIN_VERSION)
+    return bool(have and need and have < need)
+
 
 class HerdrError(RuntimeError):
     """A herdr CLI call failed. Carries the CLI's error detail when available."""
@@ -75,6 +100,8 @@ class HerdrPaneMapping:
     pane: str
     kind: str | None = None
     managed: bool = False
+    #: The folder it works in, which is where a restart starts it again.
+    cwd: str | None = None
 
     @property
     def key(self) -> str:
@@ -175,24 +202,24 @@ class HerdrRegistry:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
+    @staticmethod
+    def _mapping(room: str, handle: str, entry: dict) -> HerdrPaneMapping:
+        return HerdrPaneMapping(
+            room=room,
+            handle=handle,
+            pane=entry["pane"],
+            kind=entry.get("kind"),
+            managed=bool(entry.get("managed", False)),
+            cwd=entry.get("cwd") or None,
+        )
+
     def all(self) -> list[HerdrPaneMapping]:
         out: list[HerdrPaneMapping] = []
         for key, entry in self._load().items():
             room, _, handle = key.partition("/")
-            if not room or not handle or not isinstance(entry, dict):
+            if not room or not handle or not isinstance(entry, dict) or not entry.get("pane"):
                 continue
-            pane = entry.get("pane")
-            if not pane:
-                continue
-            out.append(
-                HerdrPaneMapping(
-                    room=room,
-                    handle=handle,
-                    pane=pane,
-                    kind=entry.get("kind"),
-                    managed=bool(entry.get("managed", False)),
-                )
-            )
+            out.append(self._mapping(room, handle, entry))
         return sorted(out, key=lambda m: m.key)
 
     def get(self, room: str, handle: str) -> HerdrPaneMapping | None:
@@ -200,21 +227,25 @@ class HerdrRegistry:
         entry = self._load().get(f"{room}/{h}")
         if not isinstance(entry, dict) or not entry.get("pane"):
             return None
-        return HerdrPaneMapping(
-            room=room,
-            handle=h,
-            pane=entry["pane"],
-            kind=entry.get("kind"),
-            managed=bool(entry.get("managed", False)),
-        )
+        return self._mapping(room, h, entry)
 
     def set(self, mapping: HerdrPaneMapping) -> None:
+        """Write ``mapping``. A folder it doesn't say is kept from before, for
+        the same pane and the same kind of agent.
+
+        The workspace sync rewrites a pane's mapping without knowing which
+        folder the agent was started in, and that folder is where a restart
+        starts it again. Another pane or kind is another agent.
+        """
         data = self._load()
-        data[mapping.key] = {
-            "pane": mapping.pane,
-            "kind": mapping.kind,
-            "managed": mapping.managed,
-        }
+        raw = data.get(mapping.key)
+        before: dict = raw if isinstance(raw, dict) else {}
+        same = before.get("pane") == mapping.pane and mapping.kind in (None, before.get("kind"))
+        entry: dict = {"pane": mapping.pane, "kind": mapping.kind, "managed": mapping.managed}
+        cwd = mapping.cwd or (before.get("cwd") if same else None)
+        if cwd:
+            entry["cwd"] = cwd
+        data[mapping.key] = entry
         self._save(data)
 
     def remove(self, room: str, handle: str) -> bool:
@@ -355,6 +386,25 @@ class HerdrBridge:
             if isinstance(t, dict) and t.get("tab_id")
         }
 
+    def list_panes(self) -> list[dict]:
+        """Every open pane (``pane_id``, ``workspace_id``…), with an agent in it or not."""
+        result = self._run_json(["pane", "list"]).get("result", {})
+        panes = result.get("panes", []) if isinstance(result, dict) else []
+        return panes if isinstance(panes, list) else []
+
+    def workspace_labels(self) -> dict[str, str]:
+        """Map ``workspace_id -> label``; empty on a herdr error."""
+        try:
+            result = self._run_json(["workspace", "list"]).get("result", {})
+        except HerdrError:
+            return {}
+        workspaces = result.get("workspaces", []) if isinstance(result, dict) else []
+        return {
+            str(w["workspace_id"]): str(w.get("label") or "")
+            for w in workspaces
+            if isinstance(w, dict) and w.get("workspace_id")
+        }
+
     def get_agent(self, target: str) -> dict | None:
         """One agent's live state, or ``None`` if no agent occupies ``target``."""
         try:
@@ -436,6 +486,57 @@ class HerdrBridge:
         """Close ``pane``, ending whatever runs in it."""
         self._run_json(["pane", "close", pane])
 
+    def _run_quiet(self, args: list[str]) -> None:
+        """Run a herdr command that prints nothing when it works."""
+        if not self.binary_present():
+            raise HerdrUnavailableError("herdr binary not found on PATH")
+        try:
+            proc = self._runner(args)
+        except OSError as e:
+            raise HerdrUnavailableError(str(e)) from e
+        if proc.returncode != 0:
+            raise HerdrError(
+                _extract_error(proc.stderr) or (proc.stderr or "").strip() or "herdr call failed"
+            )
+
+    def run_in_pane(self, pane: str, command: str) -> None:
+        """Type ``command`` into ``pane``'s shell and run it."""
+        self._run_quiet(["pane", "run", pane, command])
+
+    def rename_agent(self, target: str, name: str) -> None:
+        """Set the name herdr shows for the agent at ``target``."""
+        self._run_quiet(["agent", "rename", target, name])
+
+    def integrations(self) -> dict[str, bool] | None:
+        """Each herdr integration, and whether it's current; ``None`` if herdr can't say.
+
+        A current integration tells herdr which session its agent is in, so
+        herdr restarts the agent in that session after its server restarts.
+        One not installed, outdated or needing repair doesn't.
+        """
+        if not self.binary_present():
+            return None
+        try:
+            proc = self._runner(["integration", "status"])
+        except OSError:
+            return None
+        if proc.returncode != 0:
+            return None
+        out: dict[str, bool] = {}
+        for line in (proc.stdout or "").splitlines():
+            name, sep, state = line.partition(":")
+            if sep and name.strip():
+                out[name.strip()] = state.strip().startswith("current")
+        return out or None
+
+    def install_integration(self, name: str) -> None:
+        """Install (or bring up to date) herdr's integration ``name``.
+
+        It writes a hook into that agent CLI's own settings, so it only ever
+        runs on a yes from the person.
+        """
+        self._run_quiet(["integration", "install", name])
+
     def supported_kinds(self) -> set[str] | None:
         """The agent kinds ``herdr agent start --kind`` accepts, read from its own help.
 
@@ -463,6 +564,22 @@ class HerdrBridge:
             return None
         out = (proc.stdout or "").strip()
         return out.removeprefix("herdr").strip() or None if proc.returncode == 0 else None
+
+    def server_version(self) -> str | None:
+        """The running server's version (the client's is :meth:`version`), or ``None``."""
+        if not self.binary_present():
+            return None
+        try:
+            proc = self._runner(["status", "server"])
+        except OSError:
+            return None
+        if proc.returncode != 0:
+            return None
+        for line in (proc.stdout or "").splitlines():
+            label, _, value = line.partition(":")
+            if label.strip() == "version" and value.strip():
+                return value.strip()
+        return None
 
     def start_agent(
         self,

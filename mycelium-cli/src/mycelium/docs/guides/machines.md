@@ -58,9 +58,8 @@ coding agent you already have open. For an agent on your machine, pick:
 
 The agent is added to the room first, then started. It opens in a herdr
 pane, reads its notes, and looks at the board. From then on it hears
-mentions and turns the same way any herdr agent does. The runner keeps
-`herdr sync` running for the agents it started, so you don't need a separate
-terminal for that.
+mentions and turns the same way any herdr agent does, because the runner keeps
+it synced (see [The runner keeps your agents synced](#machines-the-runner-keeps-your-agents-synced)).
 
 Closing the pane, or pressing **Stop** on the Machines page, stops the agent
 but leaves it in the room with its notes. Starting it again from the app picks
@@ -164,15 +163,93 @@ mycelium runner stop         # stop it; agents it started keep running
 ```
 
 The Machines page (the laptop icon beside the notification bell) lists your
-connected runners, what each found, the agents it is running, and its recent
+connected runners, what each found, the agents on it, and its recent
 requests.
+
+## The runner keeps your agents synced
+
+An agent in herdr is a program in a terminal pane, and the hub can't see into
+your machine. So something on the machine has to keep telling the hub whether
+each agent is busy, and type a wake-up into an agent's pane when someone
+mentions it. That is the runner's job, for every herdr workspace connected to
+a room on this machine: the ones it opened, and any you connected yourself
+with `mycelium herdr sync --workspace w2 --room my-project`.
+
+While the runner isn't running, your agents keep working but don't hear their
+mentions. The Mac app runs the runner for you.
+
+## Your agents on a machine
+
+Every agent on a machine is listed in one place, whoever started it: the ones
+the runner started, the ones `mycelium swarm` started, and panes you connected
+to a room yourself. From a terminal on that machine:
+
+```bash
+mycelium machine
+```
+
+It lists the agents by herdr workspace, says what each is doing, and then
+what's wrong, with the command that fixes each. The Machines page shows the
+same list for each connected machine. In the Mac app, **Your agents…** in the
+menu bar opens it.
+
+An agent is **working**, **idle** or **blocked** while it runs; **stopped**
+when its pane is open with nothing running in it; or **pane gone** when the
+pane was closed.
+
+### When herdr restarts
+
+Restarting herdr's server (to update it, say) stops every agent running in
+it. herdr brings each one back in its own conversation if herdr's integration
+for that agent CLI is installed. herdr has one for most agent CLIs, including
+Claude Code, Codex, OpenCode and Pi. Without it, the panes come back empty and
+the agents show as stopped.
+
+```bash
+mycelium machine integrations             # which are installed
+mycelium machine integrations --install   # install them for the agent CLIs here
+```
+
+Installing one adds a hook to that agent CLI's own settings (for Claude Code,
+`~/.claude/settings.json`), so Mycelium only does it when you say so. The Mac
+app asks once. `mycelium machine` says, for each agent, whether it comes back
+or stops if herdr restarts.
+
+Mycelium needs herdr 0.9.3 or newer, and `mycelium machine` says how to update
+an older one. The Mac app includes it.
+
+### Restarting agents
+
+An agent that stopped and didn't come back can be restarted. It starts again
+in its own folder, as the same member, with no memory of what it was doing:
+it reads its notes, then catches up from the room, which tells it what
+happened since its last turn. This works the same for every agent CLI.
+
+```bash
+mycelium machine restart --all         # every stopped agent
+mycelium machine restart reviewer      # one
+```
+
+On the Machines page, **Restart** says where each agent will start before
+anything does. The runner then asks you on the machine, as it does before
+starting any agent.
+
+### Other fixes
+
+```bash
+mycelium machine rename reviewer "review"  # its name in herdr
+mycelium machine unbind reviewer           # forget its pane; it stays in the room
+mycelium machine unbind --gone             # forget every pane that's gone
+```
+
+Add `--json` to `mycelium machine` for the list as data.
 
 ## You say yes on the machine
 
 Anyone who can reach a hub can ask it for an agent on any machine connected
 to it, and the hub can't prove who asked. So the runner asks you before it
-starts anything. It shows who the hub says asked, the agent CLI, the folder,
-and the start of the agent's instructions:
+starts or restarts anything. It shows who the hub says asked, the agent CLI,
+the folder, and the start of the agent's instructions:
 
 - in the Mac app, as a dialog with **Start** and **Decline**;
 - from a terminal, in the runner's output, answered with a command:

@@ -216,6 +216,9 @@ interface Choices {
   hubUrl: string;
   root: string;
   shareUsage: boolean;
+  /** Whether to install herdr's integrations: asked on first run only, so
+   *  absent from Settings, which leaves the answer given then alone. */
+  restore?: boolean;
 }
 
 function choicesFrom(snap: Snapshot): Choices {
@@ -242,6 +245,10 @@ async function startWith(c: Choices, model: Record<string, string> | null): Prom
   // Saved first, so the hub that starts reads it.
   if (model && c.mode === "hub") await invoke<ModelView>("save_model", { model });
   const setup = await invoke<PathSetup>("start", { settings: settingsOf(c) });
+  if (c.restore !== undefined) {
+    // Remembered either way, so the app doesn't ask again when it starts.
+    void invoke("herdr_integrations", { install: c.restore }).catch((e) => console.warn("herdr's integrations:", e));
+  }
   await loading(setup);
 }
 
@@ -516,6 +523,26 @@ function agentsPiece(c: Choices, snap: Snapshot): HTMLElement {
       rootPath.textContent = c.root;
     }
   });
+  // Asked on first run only (``c.restore`` set); an existing install is asked
+  // once, as a dialog, when the app starts.
+  const restore =
+    c.restore === undefined
+      ? null
+      : el(
+          "div",
+          { class: "share" },
+          el(
+            "label",
+            { class: "share-label", for: "restore-agents" },
+            checkbox("restore-agents", c.restore, (on) => (c.restore = on)),
+            "Bring agents back after herdr restarts",
+          ),
+          el(
+            "p",
+            { class: "hint" },
+            "Installs herdr's integration for each agent program here, which adds a hook to that program's own settings. With it, herdr reopens each agent in its own conversation.",
+          ),
+        );
   return el(
     "div",
     { class: "piece" },
@@ -527,6 +554,7 @@ function agentsPiece(c: Choices, snap: Snapshot): HTMLElement {
       el("div", { class: "folder" }, el("span", { class: "folder-icon", "aria-hidden": "true" }), rootPath, rootButton),
       el("p", { class: "hint" }, "Agents you start from Mycelium only work inside this folder."),
     ),
+    restore,
   );
 }
 
@@ -557,6 +585,9 @@ function setsUpPiece(c: Choices): HTMLElement {
     c.mode === "hub"
       ? ["Rooms on this Mac, while Mycelium is open", "SLIM, the hub and its UI, reachable only from this Mac (127.0.0.1)."]
       : ["The runner, while Mycelium is open", "It tells the hub which agents this Mac can start, and starts them in herdr."],
+    ...(c.restore
+      ? ([["herdr's integrations", "A hook in each agent program's own settings, so herdr can reopen its agents after a restart."]] as [string, string][])
+      : []),
     ["Start at login", "Only if you turn it on, in Settings or from the menu bar icon."],
   ];
   return el(
@@ -574,7 +605,7 @@ type Step = "place" | "model" | "agents" | "ready";
 
 async function wizard() {
   const snap = await snapshot();
-  const c = choicesFrom(snap);
+  const c: Choices = { ...choicesFrom(snap), restore: true };
   let at: Step = "place";
   let skippedModel = false;
   // Built once, so what's typed survives going Back and forth.

@@ -95,3 +95,41 @@ def test_the_hub_check_names_the_address_it_tried(monkeypatch: pytest.MonkeyPatc
     result = checks.hub("http://127.0.0.1:8000")
     assert result.status == "error"
     assert "http://127.0.0.1:8000" in result.message
+
+
+def test_a_hub_reached_at_its_ui_answers_under_api(monkeypatch: pytest.MonkeyPatch):
+    import httpx
+
+    tried: list[str] = []
+
+    def get(url: str, *_a, **_k):
+        tried.append(url)
+        return httpx.Response(200 if url.endswith("/api/health") else 404)
+
+    monkeypatch.setattr(checks, "_get", get)
+    assert checks.hub("https://hub.example.com/").status == "ok"
+    assert tried == ["https://hub.example.com/health", "https://hub.example.com/api/health"]
+
+
+@pytest.mark.parametrize(
+    ("server", "client", "status", "fix"),
+    [
+        ("0.9.3", "0.9.3", "ok", None),
+        ("0.8.0", "0.9.3", "error", "herdr server stop"),
+        ("0.8.0", "0.8.0", "error", "herdr update"),
+    ],
+)
+def test_herdr_older_than_mycelium_needs_is_an_error_with_its_fix(
+    monkeypatch: pytest.MonkeyPatch, server: str, client: str, status: str, fix: str | None
+):
+    from mycelium.integrations.herdr import HerdrBridge
+
+    monkeypatch.setattr(HerdrBridge, "binary_present", lambda _self: True)
+    monkeypatch.setattr(HerdrBridge, "available", lambda _self: True)
+    monkeypatch.setattr(HerdrBridge, "server_version", lambda _self: server)
+    monkeypatch.setattr(HerdrBridge, "version", lambda _self: client)
+    result = checks.herdr()
+    assert result.status == status
+    if fix:
+        assert "needs 0.9.3 or newer" in result.message
+        assert any(fix in d for d in result.details)

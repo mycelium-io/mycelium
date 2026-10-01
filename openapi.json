@@ -1997,6 +1997,59 @@
         }
       }
     },
+    "/api/runners/{runner_id}/restart": {
+      "post": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Restart Agents",
+        "description": "Start stopped agents on this machine again, as themselves.\n\nAny agent the machine reports, not only one this runner started. The\nrunner asks the person at the machine first, as it does for a launch;\n``mycelium machine restart`` does the same there.",
+        "operationId": "restart_agents_api_runners__runner_id__restart_post",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MachineRestart"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerJobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/runners/{runner_id}/agents": {
       "post": {
         "tags": [
@@ -6311,6 +6364,359 @@
         "type": "object",
         "title": "L9PayloadRead"
       },
+      "MachineAgentRead": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "pane": {
+            "type": "string",
+            "title": "Pane"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "working",
+              "idle",
+              "blocked",
+              "stopped",
+              "gone",
+              "unknown"
+            ],
+            "title": "State",
+            "description": "stopped: its pane is open with nothing running in it; gone: closed"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind",
+            "description": "The agent CLI, as herdr names its kind"
+          },
+          "folder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder"
+          },
+          "workspace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace"
+          },
+          "restores": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restores",
+            "description": "Whether herdr brings it back after herdr restarts; null when unknown"
+          },
+          "restartable": {
+            "type": "boolean",
+            "title": "Restartable",
+            "description": "Stopped or gone, with a folder and CLI to restart",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle",
+          "room",
+          "pane",
+          "state"
+        ],
+        "title": "MachineAgentRead",
+        "description": "One herdr agent on a machine, however it got there (``mycelium machine``)."
+      },
+      "MachineProblemRead": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "stopped",
+              "lost",
+              "runner_down",
+              "no_restore",
+              "herdr_update",
+              "herdr_down"
+            ],
+            "title": "Kind"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "fix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fix"
+          },
+          "handles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Handles"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "text"
+        ],
+        "title": "MachineProblemRead",
+        "description": "Something wrong on a machine, and the CLI command that fixes it."
+      },
+      "MachineReportRead-Input": {
+        "properties": {
+          "machine": {
+            "type": "string",
+            "title": "Machine"
+          },
+          "herdr": {
+            "type": "boolean",
+            "title": "Herdr",
+            "default": false
+          },
+          "herdr_server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Herdr Server"
+          },
+          "herdr_client": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Herdr Client"
+          },
+          "herdr_minimum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Herdr Minimum",
+            "description": "The oldest herdr Mycelium works with"
+          },
+          "runner": {
+            "type": "boolean",
+            "title": "Runner",
+            "description": "Whether its runner is running (it keeps agents synced)",
+            "default": true
+          },
+          "missing_integrations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Integrations",
+            "description": "herdr integrations not current for agents running here"
+          },
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/MachineWorkspaceRead"
+            },
+            "type": "array",
+            "title": "Workspaces"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/MachineProblemRead"
+            },
+            "type": "array",
+            "title": "Problems"
+          }
+        },
+        "type": "object",
+        "required": [
+          "machine"
+        ],
+        "title": "MachineReportRead",
+        "description": "Every agent on a machine and what's wrong (``mycelium machine``'s report)."
+      },
+      "MachineReportRead-Output": {
+        "properties": {
+          "machine": {
+            "type": "string",
+            "title": "Machine"
+          },
+          "herdr": {
+            "type": "boolean",
+            "title": "Herdr",
+            "default": false
+          },
+          "herdr_server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Herdr Server"
+          },
+          "herdr_client": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Herdr Client"
+          },
+          "herdr_minimum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Herdr Minimum",
+            "description": "The oldest herdr Mycelium works with"
+          },
+          "runner": {
+            "type": "boolean",
+            "title": "Runner",
+            "description": "Whether its runner is running (it keeps agents synced)",
+            "default": true
+          },
+          "missing_integrations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Integrations",
+            "description": "herdr integrations not current for agents running here"
+          },
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/MachineWorkspaceRead"
+            },
+            "type": "array",
+            "title": "Workspaces"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/MachineProblemRead"
+            },
+            "type": "array",
+            "title": "Problems"
+          }
+        },
+        "type": "object",
+        "required": [
+          "machine"
+        ],
+        "title": "MachineReportRead",
+        "description": "Every agent on a machine and what's wrong (``mycelium machine``'s report)."
+      },
+      "MachineRestart": {
+        "properties": {
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/RunnerAgentRef"
+            },
+            "type": "array",
+            "title": "Agents"
+          },
+          "all": {
+            "type": "boolean",
+            "title": "All",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "MachineRestart",
+        "description": "Agents to restart on a machine: some by handle, or every stopped one."
+      },
+      "MachineWorkspaceRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "room": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room"
+          },
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/MachineAgentRead"
+            },
+            "type": "array",
+            "title": "Agents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "MachineWorkspaceRead",
+        "description": "A herdr workspace on a machine, and the room it's bound to."
+      },
       "MembershipRead": {
         "properties": {
           "room": {
@@ -8077,6 +8483,32 @@
         "title": "RunnerAgentRead",
         "description": "An agent a runner started in a herdr pane and is keeping track of."
       },
+      "RunnerAgentRef": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Handle"
+          },
+          "room": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle"
+        ],
+        "title": "RunnerAgentRef"
+      },
       "RunnerHello": {
         "properties": {
           "id": {
@@ -8143,6 +8575,16 @@
             },
             "type": "array",
             "title": "Agents"
+          },
+          "machine": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MachineReportRead-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -8169,7 +8611,8 @@
               "launch",
               "stop",
               "scan",
-              "swarm"
+              "swarm",
+              "restart"
             ],
             "title": "Kind"
           },
@@ -8356,6 +8799,16 @@
             },
             "type": "array",
             "title": "Agents"
+          },
+          "machine": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MachineReportRead-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "connected": {
             "type": "boolean",

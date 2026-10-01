@@ -2087,14 +2087,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#herdr-before-you-start",
     "t": "Before you start",
     "s": "Guides › Persistent Agents (herdr)",
-    "x": "Install herdr and start its local server. See herdr.dev. Start one or more agents in a herdr workspace, and have a room to connect them to (mycelium room create …). Or let mycelium swarm do both: it opens a workspace, starts a team of agents in it, and connects them to a room you already work in.",
+    "x": "Install herdr 0.9.3 or newer and start its local server. See herdr.dev. (The Mac app includes it.) Install herdr's integration for your agent CLI (mycelium machine integrations --install), so herdr brings your agents back in their own conversations when its server restarts. See Your agents on a machine. Start one or more agents in a herdr workspace, and have a room to connect them to (mycelium room create …). Or let ",
     "p": "Reference"
   },
   {
     "u": "reference.html#herdr-connecting-a-workspace-sync",
     "t": "Connecting a workspace: sync",
     "s": "Guides › Persistent Agents (herdr)",
-    "x": "Connect a herdr workspace to a room once, and Mycelium keeps them in step: # Connect herdr workspace w2 to the room my-project, then keep watching. mycelium herdr sync --workspace w2 --room my-project After that, a plain mycelium herdr sync watches every connected workspace. On each pass it: adds and removes members. Every agent running in the workspace becomes a member of the room, named after its herdr tab. When a ",
+    "x": "Connect a herdr workspace to a room once, and Mycelium keeps them in step: # Connect herdr workspace w2 to the room my-project. mycelium herdr sync --workspace w2 --room my-project From then on the runner keeps every connected workspace in step, every few seconds. On each pass it: adds and removes members. Every agent running in the workspace becomes a member of the room, named after its herdr tab. When a pane closes",
     "p": "Reference"
   },
   {
@@ -2283,14 +2283,49 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#machines-running-it-in-the-background",
     "t": "Running it in the background",
     "s": "Guides › Start Agents From the App",
-    "x": "mycelium runner --detach # start in the background mycelium runner status # is it running, and does the hub see it? mycelium runner stop # stop it; agents it started keep running The Machines page (the laptop icon beside the notification bell) lists your connected runners, what each found, the agents it is running, and its recent requests.",
+    "x": "mycelium runner --detach # start in the background mycelium runner status # is it running, and does the hub see it? mycelium runner stop # stop it; agents it started keep running The Machines page (the laptop icon beside the notification bell) lists your connected runners, what each found, the agents on it, and its recent requests.",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#machines-the-runner-keeps-your-agents-synced",
+    "t": "The runner keeps your agents synced",
+    "s": "Guides › Start Agents From the App",
+    "x": "An agent in herdr is a program in a terminal pane, and the hub can't see into your machine. So something on the machine has to keep telling the hub whether each agent is busy, and type a wake-up into an agent's pane when someone mentions it. That is the runner's job, for every herdr workspace connected to a room on this machine: the ones it opened, and any you connected yourself with mycelium herdr sync --workspace w",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#machines-your-agents-on-a-machine",
+    "t": "Your agents on a machine",
+    "s": "Guides › Start Agents From the App",
+    "x": "Every agent on a machine is listed in one place, whoever started it: the ones the runner started, the ones mycelium swarm started, and panes you connected to a room yourself. From a terminal on that machine: mycelium machine It lists the agents by herdr workspace, says what each is doing, and then what's wrong, with the command that fixes each. The Machines page shows the same list for each connected machine. In the ",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#machines-when-herdr-restarts",
+    "t": "When herdr restarts",
+    "s": "Guides › Start Agents From the App",
+    "x": "Restarting herdr's server (to update it, say) stops every agent running in it. herdr brings each one back in its own conversation if herdr's integration for that agent CLI is installed. herdr has one for most agent CLIs, including Claude Code, Codex, OpenCode and Pi. Without it, the panes come back empty and the agents show as stopped. mycelium machine integrations # which are installed mycelium machine integrations ",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#machines-restarting-agents",
+    "t": "Restarting agents",
+    "s": "Guides › Start Agents From the App",
+    "x": "An agent that stopped and didn't come back can be restarted. It starts again in its own folder, as the same member, with no memory of what it was doing: it reads its notes, then catches up from the room, which tells it what happened since its last turn. This works the same for every agent CLI. mycelium machine restart --all # every stopped agent mycelium machine restart reviewer # one On the Machines page, Restart sa",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#machines-other-fixes",
+    "t": "Other fixes",
+    "s": "Guides › Start Agents From the App",
+    "x": "mycelium machine rename reviewer \"review\" # its name in herdr mycelium machine unbind reviewer # forget its pane; it stays in the room mycelium machine unbind --gone # forget every pane that's gone Add --json to mycelium machine for the list as data.",
     "p": "Reference"
   },
   {
     "u": "reference.html#machines-you-say-yes-on-the-machine",
     "t": "You say yes on the machine",
     "s": "Guides › Start Agents From the App",
-    "x": "Anyone who can reach a hub can ask it for an agent on any machine connected to it, and the hub can't prove who asked. So the runner asks you before it starts anything. It shows who the hub says asked, the agent CLI, the folder, and the start of the agent's instructions: in the Mac app, as a dialog with Start and Decline; from a terminal, in the runner's output, answered with a command: mycelium runner requests # what",
+    "x": "Anyone who can reach a hub can ask it for an agent on any machine connected to it, and the hub can't prove who asked. So the runner asks you before it starts or restarts anything. It shows who the hub says asked, the agent CLI, the folder, and the start of the agent's instructions: in the Mac app, as a dialog with Start and Decline; from a terminal, in the runner's output, answered with a command: mycelium runner req",
     "p": "Reference"
   },
   {
