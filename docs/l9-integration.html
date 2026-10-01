@@ -70,6 +70,12 @@
     border: 1px solid var(--border); border-radius: var(--radius-lg);
     background: #0b0d10;
   }
+  /* Screenshots are taken at 2x; shown at their natural width so they stay sharp. */
+  .take img {
+    display: block; width: 496px; max-width: 100%; height: auto;
+    border: 1px solid var(--border); border-radius: var(--radius-lg);
+    background: #0b0d10;
+  }
   .take figcaption {
     margin-top: 8px; font-size: var(--text-label); color: var(--muted-foreground);
   }
@@ -206,6 +212,10 @@
       <pre><code>mycelium board coordinate work/acme-renewal-offer conductor \
   "concord @success @finance @sales @legal: Decide the renewal offer for Acme."</code></pre>
       <p>Or type this in the task&#x27;s thread in the app: <code>@conductor concord @success @finance @sales @legal: …</code></p>
+      <figure class="take">
+        <img src="l9-summon-concord.png" alt="The app's message box with '@conductor concord' typed. Above it, a hint reads '@conductor concord [@member…] <what…>' with Concord's one-line description.">
+        <figcaption>The message box helps write the summon. Once you name the flow, it shows what the flow needs and what it does. Concord has no fixed roles, so it takes any members you name.</figcaption>
+      </figure>
 
       <pre class="mermaid">
 flowchart LR
@@ -285,7 +295,11 @@ flowchart LR
       </p>
       <pre><code>mycelium board coordinate work/acme-renewal-handoff conductor \
   "accord @sales @success @finance @legal: Plan the Acme renewal handoff."</code></pre>
-      <p>Here <code>@sales</code> is named first, so sales leads.</p>
+      <p>Here <code>@sales</code> is named first, so sales leads. In the app, type <code>@conductor accord @sales …</code> in the task&#x27;s thread.</p>
+      <figure class="take">
+        <img src="l9-summon-accord.png" alt="The app's message box with '@conductor accord' typed. Above it, a hint reads '@conductor accord @lead <what…>' with Accord's one-line description.">
+        <figcaption>Accord has one role, the lead, so the hint asks for <code>@lead</code>. The first member you name takes it.</figcaption>
+      </figure>
 
       <pre class="mermaid">
 flowchart LR
