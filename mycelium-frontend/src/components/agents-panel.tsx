@@ -561,6 +561,7 @@ function AgentRow({
   const meta = rowMeta(a, memberPresence, floor, machine);
   const oddOwner = a.owner && a.owner !== groupOwner ? a.owner : null;
   const adapter = a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter;
+  const cli = a.adapter === "engine" || a.adapter === "a2a" ? undefined : (a.framework ?? undefined);
   return (
     <Tooltip
       side="left"
@@ -570,11 +571,9 @@ function AgentRow({
           <DetailRow label="floor" value={floor ? floorLabel(a.handle, floor) : undefined} color="var(--accent)" />
           <DetailRow label="owner" value={a.owner ? `@${a.owner}` : undefined} />
           <DetailRow label="team" value={a.team ?? undefined} />
+          <DetailRow label="runs" value={cli} />
           <DetailRow label="adapter" value={adapter} />
-          <DetailRow
-            label="machine"
-            value={machine ? `${machine}${a.framework ? ` · ${a.framework}` : ""}` : undefined}
-          />
+          <DetailRow label="machine" value={machine ?? undefined} />
           <DetailRow
             label="skills"
             value={a.adapter === "a2a" && a.a2a_skills?.length ? a.a2a_skills.join(", ") : undefined}

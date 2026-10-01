@@ -25,6 +25,7 @@ from mycelium.integrations.herdr import (
     HerdrUnavailableError,
     build_wake_prompt,
 )
+from mycelium.protocol import AgentManifest
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -479,7 +480,7 @@ def test_reconcile_workspace_enrolls_new_and_retires_closed(
     reg.set(HerdrPaneMapping(room="r", handle="old", pane="w2:pDEAD", kind="claude", managed=True))
     reg.set(HerdrPaneMapping(room="r", handle="manual", pane="w2:pGONE"))  # unmanaged
 
-    written: list[str] = []
+    written: list[AgentManifest] = []
     deleted: list[str] = []
 
     class _FakeManifest:
@@ -487,15 +488,10 @@ def test_reconcile_workspace_enrolls_new_and_retires_closed(
             self.handle = handle
             self.memory_key = f"agents/{handle}"
 
-    class _FakeImpl:
-        def build_manifest(self, *, handle: str, **_: object) -> _FakeManifest:
-            return _FakeManifest(handle)
-
     monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
-    monkeypatch.setattr("mycelium.integrations.get_integration", lambda *_a, **_k: _FakeImpl())
     monkeypatch.setattr(
         "mycelium.commands.agent._write_manifest",
-        lambda config, room, manifest, created_by: written.append(manifest.handle),
+        lambda config, room, manifest, created_by: written.append(manifest),
     )
     # Retire path loads then deletes the manifest; enroll of a new pane never loads.
     monkeypatch.setattr(
@@ -512,7 +508,7 @@ def test_reconcile_workspace_enrolls_new_and_retires_closed(
             "agent_status": "idle",
             "tab_id": "w2:tNEW",
             "workspace_id": "w2",
-            "agent": "claude",
+            "agent": "codex",
             "cwd": "/x",
         }
     ]
@@ -532,7 +528,9 @@ def test_reconcile_workspace_enrolls_new_and_retires_closed(
     )
 
     assert enrolled == ["fresh-agent"]
-    assert written == ["fresh-agent"]
+    assert [m.handle for m in written] == ["fresh-agent"]
+    # It takes part like any resident agent, and says which agent CLI it is.
+    assert (written[0].adapter, written[0].framework) == ("claude_code", "codex")
     assert retired == ["old"] and deleted == ["old"]
     # New member is managed; the dead managed one is gone; the hand-mapped one stays.
     fresh = bridge.registry.get("r", "fresh-agent")

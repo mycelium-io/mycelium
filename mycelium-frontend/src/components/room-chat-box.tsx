@@ -59,6 +59,7 @@ import {
   useRunners,
 } from "@/lib/runners";
 import { STANDARD_FOLDERS, keyProblem } from "@/lib/memory-location";
+import { agentLabel } from "@/lib/agent-label";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -342,7 +343,7 @@ export function RoomChatBox({
       ...agents.map((a) => ({
         handle: a.handle,
         name: undefined as string | undefined,
-        secondary: a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter,
+        secondary: agentLabel(a),
         tertiary: a.description as string | undefined,
       })),
       ...people.map((p) => ({

@@ -39,6 +39,7 @@ from mycelium.integrations.herdr import (
     build_mention_prompt,
     build_wake_prompt,
 )
+from mycelium.protocol import AgentManifest
 
 app = typer.Typer(
     help="Bind mycelium handles to persistent herdr agent panes (optional wake layer).",
@@ -321,7 +322,6 @@ def _enroll_one(
     handles — and gets a manifest + a ``managed`` mapping.
     """
     from mycelium.commands.agent import _load_manifest, _write_manifest
-    from mycelium.integrations import AddOptions, get_integration
 
     pane = str(agent["pane_id"])
     existing = next((m for m in bridge.registry.all() if m.room == room and m.pane == pane), None)
@@ -329,14 +329,7 @@ def _enroll_one(
         # Already bound to this pane — heal a manifest that was deleted out from
         # under us so the member doesn't silently drop off the roster.
         if _load_manifest(room, existing.handle) is None:
-            impl = get_integration("claude_code", cwd=agent.get("cwd"))
-            manifest = impl.build_manifest(
-                handle=existing.handle,
-                opts=AddOptions(room=room),
-                description=f"herdr-enrolled from {pane} ({agent.get('agent')})",
-                allow_from=[],
-                owner=sender,
-            )
+            manifest = _member_manifest(existing.handle, room, agent, sender)
             _write_manifest(config, room, manifest, created_by=sender)
         return None
 
@@ -348,19 +341,27 @@ def _enroll_one(
         taken=taken,
     )
     taken.add(handle)
-    impl = get_integration("claude_code", cwd=agent.get("cwd"))
-    manifest = impl.build_manifest(
-        handle=handle,
-        opts=AddOptions(room=room),
-        description=f"herdr-enrolled from {pane} ({agent.get('agent')})",
-        allow_from=[],
-        owner=sender,
-    )
+    manifest = _member_manifest(handle, room, agent, sender)
     _write_manifest(config, room, manifest, created_by=sender)
     bridge.registry.set(
         HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=agent.get("agent"), managed=True)
     )
     return handle
+
+
+def _member_manifest(handle: str, room: str, agent: dict, sender: str) -> AgentManifest:
+    """The manifest for a herdr agent enrolled as ``handle``, saying which agent CLI it is."""
+    from mycelium.integrations import AddOptions, adapter_for, get_integration
+
+    kind = str(agent.get("agent") or "") or None
+    manifest = get_integration(adapter_for(kind), cwd=agent.get("cwd")).build_manifest(
+        handle=handle,
+        opts=AddOptions(room=room),
+        description=f"herdr-enrolled from {agent['pane_id']} ({kind})",
+        allow_from=[],
+        owner=sender,
+    )
+    return manifest.model_copy(update={"framework": kind})
 
 
 def _retire_one(config: MyceliumConfig, bridge: HerdrBridge, mapping: HerdrPaneMapping) -> None:

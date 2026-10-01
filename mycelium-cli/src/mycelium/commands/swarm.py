@@ -343,7 +343,7 @@ def start_local(
     extra environment for every pane.
     """
     from mycelium.commands.agent import _write_manifest
-    from mycelium.integrations import AddOptions, get_integration
+    from mycelium.integrations import AddOptions, adapter_for, get_integration
     from mycelium.integrations.herdr import HerdrPaneMapping
 
     # The hub this swarm was started against, when the environment chose it,
@@ -373,13 +373,14 @@ def start_local(
                 HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=kind, managed=True)
             )
             continue
-        manifest = get_integration("claude_code", cwd=str(dirs[handle])).build_manifest(
+        manifest = get_integration(adapter_for(kind), cwd=str(dirs[handle])).build_manifest(
             handle=handle,
             opts=AddOptions(room=room),
             description=f"swarm member ({kind}) in herdr pane {pane}",
             allow_from=[],
             owner=me,
         )
+        manifest = manifest.model_copy(update={"framework": kind})
         _write_manifest(config, room, manifest, created_by=me)
         bridge.registry.set(
             HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=kind, managed=True)
