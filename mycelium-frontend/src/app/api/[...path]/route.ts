@@ -3,7 +3,7 @@
 
 import { getBackendUrl } from "@/lib/backend";
 import { bearer } from "@/lib/session";
-import { handleMock, isMockMode } from "@/mocks";
+import { MOCK_HEADER, handleMock, isMockMode } from "@/mocks";
 
 /**
  * Catch-all proxy for `/api/*` → the backend, resolved at REQUEST time.
@@ -20,7 +20,12 @@ async function proxy(req: Request): Promise<Response> {
   // mocked returns null and falls through to the real backend below.
   if (isMockMode()) {
     const mocked = await handleMock(req);
-    if (mocked) return mocked;
+    if (mocked) {
+      // Says so on the wire, so a tool attaching to a running dev server can
+      // tell a mock app from one in front of a real hub.
+      mocked.headers.set(MOCK_HEADER, "1");
+      return mocked;
+    }
   }
 
   const backend = getBackendUrl();

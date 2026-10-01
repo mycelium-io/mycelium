@@ -1,28 +1,26 @@
 #!/usr/bin/env bash
-# Refresh the committed openapi.json snapshot from a running backend.
+# Refresh the committed openapi.json snapshot from the backend's source.
 #
-# CI diffs this snapshot against the live backend's /openapi.json to detect
-# when a route change shipped without a refresh. Regenerating the typed
-# clients (mycelium-client/, mycelium-cli/src/mycelium_backend_client/) is a
-# separate developer step — see scripts/gen-mycelium-client.sh.
+# CI checks this snapshot against `app.openapi()` run in the backend's locked
+# environment (uv.lock), so that is what this writes too, and no backend has
+# to be running. It used to fetch /openapi.json from a running backend, but
+# the Docker image can carry a newer FastAPI than the lock (one that adds
+# `ctx`/`input` to ValidationError), so a snapshot taken there failed CI.
+# Regenerating the typed client is a separate step: scripts/gen-mycelium-client.sh.
 #
 # Usage:
 #   scripts/snapshot-openapi.sh
-#       Fetches from $BACKEND_URL (default http://localhost:8000).
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-BACKEND_URL="${BACKEND_URL:-http://localhost:8000}"
-
-echo "→ Fetching openapi.json from $BACKEND_URL"
-if ! curl -sfL "$BACKEND_URL/openapi.json" -o /tmp/openapi.live.json; then
-  echo "✗ Could not reach $BACKEND_URL/openapi.json" >&2
-  echo "  Start the backend first: docker compose -f mycelium-cli/src/mycelium/docker/compose.yml up -d mycelium-backend" >&2
-  exit 1
-fi
+echo "→ Building the spec from fastapi-backend/ (locked environment)"
+spec="$(mktemp)"
+trap 'rm -f "$spec"' EXIT
+(cd fastapi-backend && uv run --frozen python -c \
+  'import json; from app.main import app; print(json.dumps(app.openapi()))') > "$spec"
 
 # indent=2 matches the committed file, so a refresh shows only the real change.
-python3 -m json.tool --indent 2 /tmp/openapi.live.json > openapi.json
+python3 -m json.tool --indent 2 "$spec" > openapi.json
 echo "✓ Wrote openapi.json"

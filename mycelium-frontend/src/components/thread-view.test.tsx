@@ -13,7 +13,10 @@ const fetchMessages = vi.fn();
 const sendRoomMessage = vi.fn().mockResolvedValue(undefined);
 const fetchMemories = vi.fn();
 
-vi.mock("@/lib/api", () => ({
+// The real module underneath, so a read the composer starts making later
+// falls through to it rather than failing every test here.
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
   logFetchError: () => () => undefined,
   fetchUsers: async () => [],
   fetchMessages: (...args: unknown[]) => fetchMessages(...args),
@@ -28,7 +31,8 @@ vi.mock("@/lib/api", () => ({
   fetchSkills: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("@/components/current-user", () => ({
+vi.mock("@/components/current-user", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/components/current-user")>()),
   useCurrentUser: () => ({ principal: "julia" }),
   usePrincipal: () => "julia",
 }));

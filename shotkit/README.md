@@ -26,7 +26,7 @@ seconds doing the same three things every time. shotkit pays them once:
 |---|---|
 | **A daemon holds the browser.** | First shot ~2s, every later shot ~150ms. It starts itself, and shuts down after 15 idle minutes. |
 | **Cards never touch the network.** | `term`, `code` and `html` render a self-contained document into a page that stays open. No navigation, no fetches. |
-| **`--mock` boots the app once.** | The Next dev server is held by the daemon, not by the request, so six shots of six routes boot it once. |
+| **`--mock` boots the app once.** | The Next dev server is held by the daemon, not by the request, so six shots of six routes boot it once. A mock server already running is reused; a dev server in front of a real hub is refused rather than shot as if it were the mocks (Next allows one per folder, so stop it first). |
 | **`--offline` skips dead CDNs.** | The frontend links Google Fonts. Where those are unreachable, waiting on them costs ~13s *per navigation* — more than everything else combined. `shot doctor` probes for this, and a slow capture says so. |
 
 ```

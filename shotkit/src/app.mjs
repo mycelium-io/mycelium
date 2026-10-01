@@ -70,6 +70,33 @@ async function waitForServer(url, timeoutMs, check) {
   throw new Error(`dev:mock never answered at ${url} (${timeoutMs}ms)`);
 }
 
+/**
+ * Whether a running dev server is serving the mocks. The app marks every
+ * response a fixture answered (`x-mycelium-mock`, `src/mocks/index.ts`); a
+ * dev server in front of a real hub answers the same route without it.
+ */
+async function servesMocks(url) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 5000);
+  try {
+    const res = await fetch(`${url}/api/rooms`, { signal: ac.signal });
+    return res.headers.get("x-mycelium-mock") === "1";
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** A dev server holds the frontend folder and isn't the mock one: Next won't
+ *  start a second, and shooting this one would show real data as the mocks. */
+function notMock(url) {
+  return new Error(
+    `A dev server that isn't serving mocks is already running at ${url}, and Next ` +
+      "allows one per folder. Stop it to shoot with --mock, or drop --mock to shoot it as it is.",
+  );
+}
+
 /** @type {{proc: import("node:child_process").ChildProcess | null, url: string, adopted: boolean} | null} */
 let mockServer = null;
 
@@ -98,7 +125,8 @@ export function mockCommand(port, frontendDir = FRONTEND_DIR) {
 }
 
 /**
- * Boot `dev:mock`, or attach to the one that is already up.
+ * Boot `dev:mock`, or attach to the one that is already up. A running dev
+ * server that isn't serving mocks is refused, not attached to.
  *
  * Attaching matters more than it looks: a dev server that outlived a previous
  * daemon still holds the directory, and Next will refuse to start a second one
@@ -117,6 +145,7 @@ export async function ensureMockServer({ log = () => {} } = {}) {
 
   const locked = lockedDevServer();
   if (locked && (await alive(`${locked}/`, 1500))) {
+    if (!(await servesMocks(locked))) throw notMock(locked);
     log(`attaching to the dev server already running at ${locked}`);
     mockServer = { proc: null, url: locked, adopted: true };
     return locked;
@@ -155,6 +184,7 @@ export async function ensureMockServer({ log = () => {} } = {}) {
   } catch (e) {
     killTree(proc);
     if (e.adoptUrl && (await alive(`${e.adoptUrl}/`, 3000))) {
+      if (!(await servesMocks(e.adoptUrl))) throw notMock(e.adoptUrl);
       log(`attaching to the dev server already running at ${e.adoptUrl}`);
       mockServer = { proc: null, url: e.adoptUrl, adopted: true };
       return e.adoptUrl;

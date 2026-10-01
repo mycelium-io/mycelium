@@ -30,6 +30,9 @@ export function useNarrowerThan(width: number): boolean {
       clearTimeout(settle);
       settle = window.setTimeout(() => setNarrow(media.matches), SETTLE_MS);
     };
+    // Syncing to the browser, not deriving from React state: a new query (or
+    // the first effect after hydration) reads the media list once, at once.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNarrow(media.matches);
     media.addEventListener("change", onChange);
     return () => {
