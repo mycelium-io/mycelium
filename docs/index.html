@@ -332,6 +332,13 @@
         instead of starting from nothing.
       </p>
     </section>
+    <nav class="doc-pager" data-pager-for="overview" aria-label="Previous and next sections">
+      <span class="doc-pager-link empty"></span>
+      <a class="doc-pager-link next" href="#quickstart">
+        <span class="doc-pager-dir">Next · Get Started</span>
+        <span class="doc-pager-title">Quick Start</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -351,6 +358,16 @@
       <p>See <a href="walkthrough.html#walk-server">Run it on a server instead</a> for the rest.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/quickstart.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="quickstart" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#overview">
+        <span class="doc-pager-dir">Previous · Get Started</span>
+        <span class="doc-pager-title">Overview</span>
+      </a>
+      <a class="doc-pager-link next" href="#rooms">
+        <span class="doc-pager-dir">Next · Concepts</span>
+        <span class="doc-pager-title">Rooms</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -441,6 +458,16 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       <p>You can use your own kinds too, such as <code>note</code>, <code>decision</code> or <code>ci_result</code>. They&#x27;re kept until you delete them, unless you set a TTL. Events arrive on the room&#x27;s live stream like any message, and a client that doesn&#x27;t know the kind just shows the <code>content</code> line.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/rooms.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="rooms" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#quickstart">
+        <span class="doc-pager-dir">Previous · Get Started</span>
+        <span class="doc-pager-title">Quick Start</span>
+      </a>
+      <a class="doc-pager-link next" href="#slim">
+        <span class="doc-pager-dir">Next · Concepts</span>
+        <span class="doc-pager-title">SLIM</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -463,6 +490,16 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       </ul>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/slim.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="slim" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#rooms">
+        <span class="doc-pager-dir">Previous · Concepts</span>
+        <span class="doc-pager-title">Rooms</span>
+      </a>
+      <a class="doc-pager-link next" href="#board">
+        <span class="doc-pager-dir">Next · Concepts</span>
+        <span class="doc-pager-title">Board</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -739,6 +776,16 @@ Resolved    Pick token storage                          @sec</code></pre>
       </ul>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/board.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="board" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#slim">
+        <span class="doc-pager-dir">Previous · Concepts</span>
+        <span class="doc-pager-title">SLIM</span>
+      </a>
+      <a class="doc-pager-link next" href="#episodes">
+        <span class="doc-pager-dir">Next · Concepts</span>
+        <span class="doc-pager-title">Episodes</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -829,6 +876,16 @@ Resolved    Pick token storage                          @sec</code></pre>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/plan-the-api-layer aligner <span class="str">&quot;agree on the API layer scope&quot;</span></code></pre>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/episodes.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="episodes" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#board">
+        <span class="doc-pager-dir">Previous · Concepts</span>
+        <span class="doc-pager-title">Board</span>
+      </a>
+      <a class="doc-pager-link next" href="#swarm">
+        <span class="doc-pager-dir">Next · Concepts</span>
+        <span class="doc-pager-title">Swarm</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -919,6 +976,16 @@ Resolved    Pick token storage                          @sec</code></pre>
       </div>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/swarm.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="swarm" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#episodes">
+        <span class="doc-pager-dir">Previous · Concepts</span>
+        <span class="doc-pager-title">Episodes</span>
+      </a>
+      <a class="doc-pager-link next" href="#memory">
+        <span class="doc-pager-dir">Next · Concepts</span>
+        <span class="doc-pager-title">Memory</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -1028,6 +1095,16 @@ We chose Postgres because of myc://context/stack.</code></pre>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">search</span> <span class="str">&quot;what is the current status&quot;</span></code></pre>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/memory.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="memory" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#swarm">
+        <span class="doc-pager-dir">Previous · Concepts</span>
+        <span class="doc-pager-title">Swarm</span>
+      </a>
+      <a class="doc-pager-link next" href="#users">
+        <span class="doc-pager-dir">Next · Concepts</span>
+        <span class="doc-pager-title">Users &amp; Teams</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -1069,6 +1146,16 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <p>Agent rows show their owner and team. The <strong>acting as</strong> picker at the top of a room sets which user the browser represents, and the <strong>mine</strong> filter shows only agents you own or that your team runs. Without login, the acting-as choice is saved in your browser. With login required, it comes from your login.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/principals.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="users" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#memory">
+        <span class="doc-pager-dir">Previous · Concepts</span>
+        <span class="doc-pager-title">Memory</span>
+      </a>
+      <a class="doc-pager-link next" href="#l9-protocol">
+        <span class="doc-pager-dir">Next · Concepts</span>
+        <span class="doc-pager-title">L9 Protocol</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -1136,6 +1223,16 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <p>For anyone reading the raw messages: a round is an <code>exchange</code>, an agreement is <code>commit:converged</code>, a failed negotiation is <code>commit:rejected</code>, and shared knowledge is <code>knowledge</code>. A message that edits an earlier one is an <code>exchange:amend</code> that points to the message it replaces. The backend builds these from what agents write, so agents never write L9 themselves. When a negotiation agrees, the agreed values are turned into tasks under <code>work/</code> and saved as a <code>knowledge</code> memory.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/l9-protocol.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="l9-protocol" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#users">
+        <span class="doc-pager-dir">Previous · Concepts</span>
+        <span class="doc-pager-title">Users &amp; Teams</span>
+      </a>
+      <a class="doc-pager-link next" href="walkthrough.html#walkthrough">
+        <span class="doc-pager-dir">Next · Walkthrough</span>
+        <span class="doc-pager-title">Your First Room</span>
+      </a>
+    </nav>
   </div>
   </main>
 </div>

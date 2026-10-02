@@ -276,6 +276,16 @@
 <span class="cmd">mycelium adapter status</span>
 <span class="cmd">mycelium adapter status</span> <span class="arg">cursor</span></code></pre>
     </section>
+    <nav class="doc-pager" data-pager-for="adapters" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="walkthrough.html#walk-server">
+        <span class="doc-pager-dir">Previous · Other setups</span>
+        <span class="doc-pager-title">On a server</span>
+      </a>
+      <a class="doc-pager-link next" href="#adapter-claude-code">
+        <span class="doc-pager-dir">Next · Adapters</span>
+        <span class="doc-pager-title">Claude Code</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -359,6 +369,16 @@
         runs <code>mycelium await</code>.
       </p>
     </section>
+    <nav class="doc-pager" data-pager-for="adapter-claude-code" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#adapters">
+        <span class="doc-pager-dir">Previous · Adapters</span>
+        <span class="doc-pager-title">Overview</span>
+      </a>
+      <a class="doc-pager-link next" href="#adapter-cursor">
+        <span class="doc-pager-dir">Next · Adapters</span>
+        <span class="doc-pager-title">Cursor</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -464,6 +484,16 @@ A short Mycelium section for the agent to read. It goes between <code>&lt;!-- my
 <span class="comment"># mycelium section of AGENTS.md; surrounding AGENTS.md content preserved)</span>
 <span class="cmd">mycelium agent rm</span> design-agent <span class="flag">--full</span></code></pre>
     </section>
+    <nav class="doc-pager" data-pager-for="adapter-cursor" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#adapter-claude-code">
+        <span class="doc-pager-dir">Previous · Adapters</span>
+        <span class="doc-pager-title">Claude Code</span>
+      </a>
+      <a class="doc-pager-link next" href="#adapter-a2a">
+        <span class="doc-pager-dir">Next · Adapters</span>
+        <span class="doc-pager-title">A2A Bridge</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -519,6 +549,16 @@ A short Mycelium section for the agent to read. It goes between <code>&lt;!-- my
       <p>The hub can already read everything in the room. It needs to, for engines to work (see <a href="index.html#slim">SLIM</a>). Adding an A2A agent means sending some of the room&#x27;s content to another service as well, so add one the way you&#x27;d give any outside party access to a conversation.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/a2a-bridge.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="adapter-a2a" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#adapter-cursor">
+        <span class="doc-pager-dir">Previous · Adapters</span>
+        <span class="doc-pager-title">Cursor</span>
+      </a>
+      <a class="doc-pager-link next" href="#adapter-api">
+        <span class="doc-pager-dir">Next · Adapters</span>
+        <span class="doc-pager-title">REST API</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -569,6 +609,16 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
         <code>/docs</code> shows the same thing in your browser.
       </p>
     </section>
+    <nav class="doc-pager" data-pager-for="adapter-api" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#adapter-a2a">
+        <span class="doc-pager-dir">Previous · Adapters</span>
+        <span class="doc-pager-title">A2A Bridge</span>
+      </a>
+      <a class="doc-pager-link next" href="#engines">
+        <span class="doc-pager-dir">Next · Engines</span>
+        <span class="doc-pager-title">Overview</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -627,6 +677,16 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
       <p>Engines run inside the hub&#x27;s backend, using <a href="https://github.com/earendil-works/pi">Pi</a> and the model set in your config (<code>llm.model</code>). Pi is already in the backend image. This only applies to engines. The agents you connect yourself run however you normally run them.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/engines.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="engines" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#adapter-api">
+        <span class="doc-pager-dir">Previous · Adapters</span>
+        <span class="doc-pager-title">REST API</span>
+      </a>
+      <a class="doc-pager-link next" href="#aligner">
+        <span class="doc-pager-dir">Next · Engines</span>
+        <span class="doc-pager-title">Aligner</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -696,6 +756,16 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
       <p>Agents can say how confident they are when they reply. That&#x27;s recorded to measure how good the result was, but it doesn&#x27;t affect whether they agreed. See <a href="index.html#l9-protocol">decision quality</a>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/aligner.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="aligner" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#engines">
+        <span class="doc-pager-dir">Previous · Engines</span>
+        <span class="doc-pager-title">Overview</span>
+      </a>
+      <a class="doc-pager-link next" href="#synthesizer">
+        <span class="doc-pager-dir">Next · Engines</span>
+        <span class="doc-pager-title">Synthesizer</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -721,6 +791,16 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
       <p>If you&#x27;d rather have a summary of the room&#x27;s memories than of its conversation, set <code>SYNTHESIZER_SOURCE=memory</code> on the backend. In that mode it reads every memory in the room and summarizes them all each time, rather than only what&#x27;s new.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/synthesizer.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="synthesizer" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#aligner">
+        <span class="doc-pager-dir">Previous · Engines</span>
+        <span class="doc-pager-title">Aligner</span>
+      </a>
+      <a class="doc-pager-link next" href="#hello">
+        <span class="doc-pager-dir">Next · Engines</span>
+        <span class="doc-pager-title">Hello</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -736,6 +816,16 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
       <p>Each message is answered on its own. Hello won&#x27;t remember what you asked it before. If you want something that keeps a conversation going, use a <a href="#persona">persona</a>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/hello.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="hello" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#synthesizer">
+        <span class="doc-pager-dir">Previous · Engines</span>
+        <span class="doc-pager-title">Synthesizer</span>
+      </a>
+      <a class="doc-pager-link next" href="#persona">
+        <span class="doc-pager-dir">Next · Engines</span>
+        <span class="doc-pager-title">Persona</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -770,6 +860,16 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
       </ul>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/persona.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="persona" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#hello">
+        <span class="doc-pager-dir">Previous · Engines</span>
+        <span class="doc-pager-title">Hello</span>
+      </a>
+      <a class="doc-pager-link next" href="#conductor">
+        <span class="doc-pager-dir">Next · Engines</span>
+        <span class="doc-pager-title">Conductor</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -959,6 +1059,16 @@ steps:
       <p>If a flow doesn&#x27;t make sense, for example a step leads nowhere or there&#x27;s no end step, the conductor refuses to run it and says why. Each run keeps its own copy of the flow, so editing the memory changes future runs, not past records.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/conductor.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="conductor" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#persona">
+        <span class="doc-pager-dir">Previous · Engines</span>
+        <span class="doc-pager-title">Persona</span>
+      </a>
+      <a class="doc-pager-link next" href="#worker">
+        <span class="doc-pager-dir">Next · Engines</span>
+        <span class="doc-pager-title">Worker</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -1021,6 +1131,16 @@ steps:
       <p>Like a persona, a worker takes its character from its notes, <code>agents/&lt;handle&gt;/notes</code>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/worker.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="worker" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#conductor">
+        <span class="doc-pager-dir">Previous · Engines</span>
+        <span class="doc-pager-title">Conductor</span>
+      </a>
+      <a class="doc-pager-link next" href="reference.html#architecture">
+        <span class="doc-pager-dir">Next</span>
+        <span class="doc-pager-title">Architecture</span>
+      </a>
+    </nav>
   </div>
   </main>
 </div>

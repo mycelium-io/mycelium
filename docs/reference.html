@@ -552,6 +552,16 @@
       <p><code>ctx.http</code> refuses requests to any host other than <code>base_url</code>, so a redirect or a hard-coded URL can&#x27;t send your credentials anywhere else.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/architecture.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="architecture" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="adapters.html#worker">
+        <span class="doc-pager-dir">Previous · Engines</span>
+        <span class="doc-pager-title">Worker</span>
+      </a>
+      <a class="doc-pager-link next" href="#cli-reference">
+        <span class="doc-pager-dir">Next</span>
+        <span class="doc-pager-title">CLI Reference</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -1143,6 +1153,16 @@
         <div class="cmd-ref-body">Publish a reply as the handle; the backend records it as a position for the aligner.</div>
       </div>
     </section>
+    <nav class="doc-pager" data-pager-for="cli-reference" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#architecture">
+        <span class="doc-pager-dir">Previous</span>
+        <span class="doc-pager-title">Architecture</span>
+      </a>
+      <a class="doc-pager-link next" href="#configuration">
+        <span class="doc-pager-dir">Next</span>
+        <span class="doc-pager-title">Configuration</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -1365,6 +1385,16 @@
 <span class="comment"># Refuse any scenario with a member that is not a persona or a person, so this hub never starts a worker (Pi with tools) for a caller.</span>
 <span class="arg">personas_only</span> = <span class="flag">false</span></code></pre>
     </section>
+    <nav class="doc-pager" data-pager-for="configuration" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#cli-reference">
+        <span class="doc-pager-dir">Previous</span>
+        <span class="doc-pager-title">CLI Reference</span>
+      </a>
+      <a class="doc-pager-link next" href="#dependencies">
+        <span class="doc-pager-dir">Next</span>
+        <span class="doc-pager-title">Dependencies</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -1498,6 +1528,16 @@
       </div>
       <p>The rest of the stack is standard, widely used building blocks with no special version constraint beyond their pins: <code>fastapi[standard]</code>, <code>httpx</code>, <code>pydantic</code> / <code>pydantic-settings</code>, <code>typer</code>, <code>rich</code>, and <code>questionary</code>. See the <code>pyproject.toml</code> in each package for exact ranges.</p>
     </section>
+    <nav class="doc-pager" data-pager-for="dependencies" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#configuration">
+        <span class="doc-pager-dir">Previous</span>
+        <span class="doc-pager-title">Configuration</span>
+      </a>
+      <a class="doc-pager-link next" href="#structured-memory">
+        <span class="doc-pager-dir">Next · Guides</span>
+        <span class="doc-pager-title">Structured Memory</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -1559,6 +1599,16 @@ procedures/  Steps you&#x27;ll want to repeat later</code></pre>
       </ul>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/structured-memory.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="structured-memory" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#dependencies">
+        <span class="doc-pager-dir">Previous</span>
+        <span class="doc-pager-title">Dependencies</span>
+      </a>
+      <a class="doc-pager-link next" href="#hub-and-spoke">
+        <span class="doc-pager-dir">Next · Guides</span>
+        <span class="doc-pager-title">Hub &amp; Spoke</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -1715,6 +1765,16 @@ procedures/  Steps you&#x27;ll want to repeat later</code></pre>
       <p>See <a href="#troubleshooting">Troubleshooting</a> for more, and <a href="#security-planes">Security Planes</a> for how the API and SLIM are protected.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/hub-and-spoke.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="hub-and-spoke" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#structured-memory">
+        <span class="doc-pager-dir">Previous · Guides</span>
+        <span class="doc-pager-title">Structured Memory</span>
+      </a>
+      <a class="doc-pager-link next" href="#ephemeral-agents">
+        <span class="doc-pager-dir">Next · Guides</span>
+        <span class="doc-pager-title">Ephemeral Agents</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -1894,6 +1954,16 @@ EOF
       <p><code>mycelium doctor</code> works from a client-only install too. It sees <code>MYCELIUM_API_URL</code>, knows it&#x27;s on a spoke, and checks the hub instead of a local stack.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/ephemeral-agents.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="ephemeral-agents" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#hub-and-spoke">
+        <span class="doc-pager-dir">Previous · Guides</span>
+        <span class="doc-pager-title">Hub &amp; Spoke</span>
+      </a>
+      <a class="doc-pager-link next" href="#herdr">
+        <span class="doc-pager-dir">Next · Guides</span>
+        <span class="doc-pager-title">Persistent Agents (herdr)</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -1968,6 +2038,16 @@ EOF
       <p>Rooms, memory, the board and negotiations all work without herdr. Agents kept running with <code>mycelium await --loop</code> never miss a message, because the hub keeps their place in the room between turns (see <a href="#architecture">Architecture</a>). herdr only adds waking an agent that isn&#x27;t running, so you don&#x27;t have to be at the terminal for it to answer.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/herdr.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="herdr" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#ephemeral-agents">
+        <span class="doc-pager-dir">Previous · Guides</span>
+        <span class="doc-pager-title">Ephemeral Agents</span>
+      </a>
+      <a class="doc-pager-link next" href="#desktop">
+        <span class="doc-pager-dir">Next · Guides</span>
+        <span class="doc-pager-title">The Mac App</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -2022,6 +2102,16 @@ EOF
       <p>Everything the app does is also a command, for a Linux machine, a server, or if you&#x27;d rather use a terminal: <code>mycelium desktop serve</code> runs the same hub without the window. See <a href="walkthrough.html#walk-server">Run it on a server instead</a> for the full CLI setup.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/desktop.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="desktop" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#herdr">
+        <span class="doc-pager-dir">Previous · Guides</span>
+        <span class="doc-pager-title">Persistent Agents (herdr)</span>
+      </a>
+      <a class="doc-pager-link next" href="#models">
+        <span class="doc-pager-dir">Next · Guides</span>
+        <span class="doc-pager-title">Models</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -2093,6 +2183,16 @@ EOF
       <p>In the Mac app, <strong>Settings → Model</strong> says whether the model answered, and <strong>Health check…</strong> shows it under <strong>Models</strong>. From the command line, <code>mycelium doctor</code> asks the model for a real reply and says what went wrong if it can&#x27;t get one: a missing key, a key the provider refuses, or a model name it doesn&#x27;t know.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/models.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="models" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#desktop">
+        <span class="doc-pager-dir">Previous · Guides</span>
+        <span class="doc-pager-title">The Mac App</span>
+      </a>
+      <a class="doc-pager-link next" href="#machines">
+        <span class="doc-pager-dir">Next · Guides</span>
+        <span class="doc-pager-title">Start Agents From the App</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -2191,6 +2291,16 @@ EOF
       <p>The Machines page and <strong>where it runs</strong> show only your own machines, never anyone else&#x27;s. In the Mac app that is the Mac it runs on. In a browser, add a machine with the code <code>mycelium runner</code> prints when it starts. With the hub&#x27;s <a href="#auth">sign-in</a> turned on, the hub itself shows each person only the machines they own.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/machines.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="machines" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#models">
+        <span class="doc-pager-dir">Previous · Guides</span>
+        <span class="doc-pager-title">Models</span>
+      </a>
+      <a class="doc-pager-link next" href="#omnigent">
+        <span class="doc-pager-dir">Next · Guides</span>
+        <span class="doc-pager-title">Run Agents in Omnigent</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -2237,6 +2347,16 @@ EOF
       </ul>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/omnigent.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="omnigent" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#machines">
+        <span class="doc-pager-dir">Previous · Guides</span>
+        <span class="doc-pager-title">Start Agents From the App</span>
+      </a>
+      <a class="doc-pager-link next" href="#security-planes">
+        <span class="doc-pager-dir">Next · Guides</span>
+        <span class="doc-pager-title">Security Planes</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -2370,6 +2490,16 @@ EOF
       </ul>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/security-planes.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="security-planes" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#omnigent">
+        <span class="doc-pager-dir">Previous · Guides</span>
+        <span class="doc-pager-title">Run Agents in Omnigent</span>
+      </a>
+      <a class="doc-pager-link next" href="#auth">
+        <span class="doc-pager-dir">Next · Guides</span>
+        <span class="doc-pager-title">Authentication</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -2673,6 +2803,16 @@ role   = &quot;agent&quot;</code></pre>
       <p>The <a href="#keycloak-oidc">Keycloak / OIDC Setup</a> guide sets up a local provider, a client and <code>mycelium login</code>, end to end.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/auth.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="auth" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#security-planes">
+        <span class="doc-pager-dir">Previous · Guides</span>
+        <span class="doc-pager-title">Security Planes</span>
+      </a>
+      <a class="doc-pager-link next" href="#keycloak-oidc">
+        <span class="doc-pager-dir">Next · Guides</span>
+        <span class="doc-pager-title">Keycloak / OIDC Setup</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -2780,6 +2920,16 @@ export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
       <p>For production, run your own Keycloak over TLS, with a persistent database and real users, and point the same three settings at it: <code>issuer</code>, <code>jwks_url</code> and <code>login.issuer</code>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/keycloak-oidc.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="keycloak-oidc" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#auth">
+        <span class="doc-pager-dir">Previous · Guides</span>
+        <span class="doc-pager-title">Authentication</span>
+      </a>
+      <a class="doc-pager-link next" href="#troubleshooting">
+        <span class="doc-pager-dir">Next · Help</span>
+        <span class="doc-pager-title">Troubleshooting</span>
+      </a>
+    </nav>
 
     <hr class="divider">
 
@@ -3038,6 +3188,13 @@ rm <span class="flag">-rf</span> ~/.mycelium        # remove config and room fil
       <p>Report problems at <strong>https://github.com/mycelium-io/mycelium/issues</strong></p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/troubleshooting.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
+    <nav class="doc-pager" data-pager-for="troubleshooting" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#keycloak-oidc">
+        <span class="doc-pager-dir">Previous · Guides</span>
+        <span class="doc-pager-title">Keycloak / OIDC Setup</span>
+      </a>
+      <span class="doc-pager-link empty"></span>
+    </nav>
   </div>
   </main>
 </div>
