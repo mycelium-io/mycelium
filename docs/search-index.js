@@ -1192,6 +1192,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Reference"
   },
   {
+    "u": "reference.html#cli-setup",
+    "t": "mycelium version [--cli]",
+    "s": "CLI Reference",
+    "x": "Print the CLI's version and the configured hub's.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
     "u": "reference.html#cli-room",
     "t": "room",
     "s": "CLI Reference",

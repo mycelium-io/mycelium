@@ -37,6 +37,7 @@ from mycelium.commands import (
     swarm,
     ui,
     user,
+    version,
     wire,
 )
 from mycelium.commands import (
@@ -94,6 +95,7 @@ app.command(name="down")(instance.stop)
 app.command(name="status")(instance.status)
 app.command(name="network")(network.network)
 app.command(name="logs")(instance.logs)
+app.command(name="version")(version.version)
 
 # Top-level shortcuts
 app.command(name="login")(login_cmd.login)
