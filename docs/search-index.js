@@ -2224,6 +2224,34 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Reference"
   },
   {
+    "u": "reference.html#patterns",
+    "t": "Patterns",
+    "s": "Guides",
+    "x": "A pattern is a way for a team of agents to work through a problem together: a supervisor who asks specialists, a critic who tests a proposal, an agent that proposes and a person who approves. Mycelium runs patterns as scenarios: a small room, ready to go, with its members, what they know, a task and the flow that sets them working.",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#patterns-watch-one-run",
+    "t": "Watch one run",
+    "s": "Guides › Patterns",
+    "x": "Open /patterns in the app. Pick a pattern on the left; the middle column shows who is in the room, and the rest of the page shows the run: Before and now. Where the run started, and where it stands. The hub restates the second after every step, so you can watch a proposal change as the agents argue. The flow. The steps the conductor walks, with the current one lit. The conductor has no model: it only decides whose tu",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#patterns-give-a-hub-a-pack",
+    "t": "Give a hub a pack",
+    "s": "Guides › Patterns",
+    "x": "Patterns come from a pack, a folder of scenarios. Point the hub at one: mycelium config set patterns.dir ~/patterns mycelium config apply The hub reads the pack and never fetches anything a caller names. On a hub other people can reach, keep it to personas: mycelium config set patterns.personas_only true From a terminal, mycelium pattern ls lists what a hub offers, and mycelium pattern use <name> --run loads one and ",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#patterns-write-a-scenario",
+    "t": "Write a scenario",
+    "s": "Guides › Patterns",
+    "x": "A scenario is one scenario.yaml in scenarios/<pattern>/: pattern: approval-gate-agent title: Approval gate summary: An agent proposes a spend, and a person approves or blocks it. room: {title: Refund batch needs sign-off} context: - key: context/refund-policy text: A batch over $5,000 needs a person's approval. members: - handle: ops kind: persona description: Prepares refunds and proposes them for approval. notes: Y",
+    "p": "Reference"
+  },
+  {
     "u": "reference.html#machines",
     "t": "Start Agents From the App",
     "s": "Guides",

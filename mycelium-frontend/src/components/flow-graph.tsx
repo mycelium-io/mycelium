@@ -24,6 +24,7 @@ import {
   LANE_GAP,
   LOOP_BASE,
   NODE_H,
+  type FlowDirection,
   type FlowEdge,
   type FlowLayout,
   type FlowNode,
@@ -37,6 +38,8 @@ interface Props {
   outcome: string;
   /** The floor held on this episode right now, if any. */
   floor?: RoomFloor | null;
+  /** Row or column, for a pane that knows which fits; otherwise by length. */
+  direction?: FlowDirection;
   className?: string;
 }
 
@@ -150,8 +153,8 @@ function drawEdges(layout: FlowLayout): Map<FlowEdge, Drawn> {
   return drawn;
 }
 
-export function FlowGraph({ flow, trace, currentStep, outcome, floor, className }: Props) {
-  const layout = layoutFlow(flow);
+export function FlowGraph({ flow, trace, currentStep, outcome, floor, direction, className }: Props) {
+  const layout = layoutFlow(flow, direction);
   const states = stepStates(flow, trace, currentStep, outcome);
   const taken = takenEdges(trace);
   const speakers = new Set((floor?.speakers ?? []).map((h) => h.toLowerCase()));

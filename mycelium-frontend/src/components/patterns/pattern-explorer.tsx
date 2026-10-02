@@ -263,7 +263,12 @@ function RunView({ pattern, room, onRan }: { pattern: PatternRead; room: Room; o
   const task = memories.find((m) => m.key === room.pattern_task) ?? null;
   const thread = task?.episode ?? null;
   const standing = standingOf(memories.find((m) => m.key === STANDING_KEY));
-  const { messages, refresh } = useThreadMessages(room.name, thread, 200, live);
+  const { messages: page, refresh } = useThreadMessages(room.name, thread, 200, live);
+  // Oldest first, as a conversation reads.
+  const messages = useMemo(
+    () => [...page].sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? "")),
+    [page],
+  );
   useRoomStream(room.name, () => {
     refresh();
     revalidate();
@@ -331,7 +336,15 @@ function Attendants({
           const up = speakers.has(handle.toLowerCase());
           const role = roles.get(m.handle) ?? (human ? "you" : m.kind);
           const spoke = said.get(handle.toLowerCase());
-          const status = up ? (human ? "your turn" : "has the floor") : spoke ? `spoke ${clock(spoke)}` : role;
+          const status = up
+            ? human
+              ? "your turn"
+              : "has the floor"
+            : spoke
+              ? `spoke ${clock(spoke)}`
+              : human && role === "you"
+                ? "watching"
+                : role;
           const card = (
             <div className="whitespace-normal">
               <p className="text-[13px] font-semibold">
@@ -501,7 +514,7 @@ function FlowBand({ flow, episode, floor }: { flow: EpisodeFlow | null; episode:
         currentStep={episode?.current_step ?? null}
         outcome={episode?.outcome ?? "open"}
         floor={floor}
-        className="max-h-32"
+        direction="row"
       />
     </div>
   );
@@ -531,7 +544,9 @@ function handoff(line: ConductorLine, me: string): string | null {
 
 function Feed({ messages, me, floor, closed }: { messages: RoomMessage[]; me: string; floor: RoomFloor | null; closed: string | null }) {
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => end.current?.scrollIntoView({ block: "end" }), [messages.length]);
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "end" });
+  }, [messages.length]);
   const waitingOn = closed ? [] : (floor?.speakers ?? []).filter((s) => s.toLowerCase() !== me);
 
   return (
@@ -545,6 +560,9 @@ function Feed({ messages, me, floor, closed }: { messages: RoomMessage[]; me: st
             return text ? <Divider key={m.id ?? i} text={text} /> : null;
           }
           const content = typeof m.content === "string" ? m.content : "";
+          // The summon that started the run is how the hub is told, not what
+          // anyone said: it reads as the run starting.
+          if (/^@conductor\b/i.test(content.trim())) return <Divider key={m.id ?? i} text="started" />;
           const stance = /stance=accept/.test(content) ? "approved" : /stance=reject/.test(content) ? "blocked" : null;
           const sender = m.sender_handle ?? "someone";
           const mine = sender.toLowerCase() === me;
@@ -555,7 +573,16 @@ function Feed({ messages, me, floor, closed }: { messages: RoomMessage[]; me: st
                 <div className="flex items-baseline gap-2 text-[13px] text-faint">
                   <span className="font-semibold text-text">{mine ? "you" : sender}</span>
                   {clock(m.created_at)}
-                  {stance && <span className="rounded bg-yellow/10 px-1.5 text-[11px] text-yellow">{stance}</span>}
+                  {stance && (
+                    <span
+                      className={cn(
+                        "rounded px-1.5 text-[11px]",
+                        stance === "approved" ? "bg-green/10 text-green" : "bg-red/10 text-red",
+                      )}
+                    >
+                      {stance}
+                    </span>
+                  )}
                 </div>
                 <MessageBody content={content.replace(MARKER, "").trim()} />
               </div>

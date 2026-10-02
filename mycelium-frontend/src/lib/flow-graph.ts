@@ -123,10 +123,12 @@ function flowEdges(steps: FlowStep[]): Omit<FlowEdge, "rail">[] {
   return edges;
 }
 
-export function layoutFlow(flow: EpisodeFlow): FlowLayout {
+/** `direction` overrides the choice for a caller that knows its pane: a wide
+ *  one can keep a longer flow in a row. */
+export function layoutFlow(flow: EpisodeFlow, direction_?: FlowDirection): FlowLayout {
   const steps = flow.steps ?? [];
   const index = new Map(steps.map((s, i) => [s.id, i]));
-  const direction: FlowDirection = steps.length >= COLUMN_AT ? "column" : "row";
+  const direction: FlowDirection = direction_ ?? (steps.length >= COLUMN_AT ? "column" : "row");
   const bare = flowEdges(steps);
   const describe = (step: FlowStep) => ({
     id: step.id,

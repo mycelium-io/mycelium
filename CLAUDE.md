@@ -546,7 +546,14 @@ is no litellm dependency.
   so a public hub never starts a worker (Pi with tools). A scenario can also say
   how a run reads to someone watching it (`before`, `after.track`, and a `guide`
   of steps pointed at parts of the screen); loading writes none of that to the
-  room. The flow is parsed with the hub's own `Protocol` model before anything
+  room. A loaded room's sidecar records `pattern` and `pattern_task`, and after
+  every conductor step (`ConductorEngine.on_step`) a room whose scenario has
+  `after` gets a one-shot Pi restatement of where the run stands, written as
+  `context/standing` (`app/services/standing.py`, one call per room at a time,
+  later steps folded in). The app's **/patterns** explorer
+  (`components/patterns/pattern-explorer.tsx`) is a plain client of these: the
+  pack, a pattern's newest room, before and now, the flow, the thread, and the
+  person's turn as Approve/Block. The flow is parsed with the hub's own `Protocol` model before anything
   is written, because the hub does not check a `protocols/<name>` memory on save:
   a bad one is silently left out of the room's flows.
 - **Three composer sigils, one mechanism.** The chat composer
