@@ -73,6 +73,29 @@ export function startSpool() {
   };
 }
 
+/** How many frames the intro card adds before the take's first frame. */
+export function titleFrames(o, fps) {
+  return o.intro ? Math.round((o.titleSeconds ?? 2.6) * fps) : 0;
+}
+
+/**
+ * Where each click and keystroke falls in the finished video, written beside
+ * it as `<video>.sounds.json` for a sound pass: `{t, kind}` in seconds, and for
+ * typing `{t, t1, kind: "type", chars}`, the span the characters went in over.
+ *
+ * @param {string} out the video's path
+ * @param {{beat:number, kind:string, [k:string]:unknown}[]} sounds by take beat
+ */
+export function writeSounds(out, sounds, fps, intro) {
+  const at = (beat) => Number(((intro + beat) / fps).toFixed(3));
+  const events = sounds.map(({ beat, end, ...rest }) => ({
+    t: at(beat),
+    ...(typeof end === "number" ? { t1: at(end) } : {}),
+    ...rest,
+  }));
+  writeFileSync(`${out}.sounds.json`, JSON.stringify({ fps, events }, null, 1));
+}
+
 /**
  * Put every spooled frame on the stage and encode the result.
  *
@@ -103,7 +126,7 @@ export async function restage(eng, spool, o) {
   // window faded out under them; the take's first and last frames hold there.
   const titleBeats = Math.round((o.titleSeconds ?? 2.6) * fps);
   const fade = Math.max(1, Math.round(fps * 0.45));
-  const introN = o.intro ? titleBeats : 0;
+  const introN = titleFrames(o, fps);
   const outroN = o.outro ? titleBeats : 0;
   const take = spool.order.length;
   const total = introN + take + outroN;
