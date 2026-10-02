@@ -21,7 +21,7 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 use serde_json::Value;
-use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::{
     AppHandle, Emitter, Manager, RunEvent, Url, Webview, WebviewUrl, WebviewWindowBuilder,
@@ -55,6 +55,10 @@ struct TrayItems {
     menu: Menu<Wry>,
     /// Whether the SLIM row is in the menu: only a hub on this Mac runs one.
     slim_shown: bool,
+    /// The experiences added on this Mac, one item each; in the menu only
+    /// while there is at least one.
+    experiences: Submenu<Wry>,
+    experiences_shown: bool,
 }
 
 /// What the menu bar's update item says: `Some` while an update downloads
@@ -351,6 +355,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let switch = MenuItem::with_id(app, "switch", "Settings…", true, None::<&str>)?;
     let updates = MenuItem::with_id(app, "updates", "Check for Updates…", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit Mycelium", true, None::<&str>)?;
+    let experiences = Submenu::with_id(app, "experiences", "Experiences", true)?;
     let menu = Menu::with_items(
         app,
         &[
@@ -382,7 +387,12 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             "updates" => updates::check(app.clone(), true),
             "autostart" => toggle_autostart(app),
             "quit" => quit(app),
-            _ => {}
+            // An experience's item carries the path it opens on.
+            id => {
+                if let Some(path) = id.strip_prefix(EXPERIENCE_ITEM) {
+                    show_page(app, path);
+                }
+            }
         });
     // A template image: one colour with transparency, which macOS tints to
     // match the menu bar (white on dark, black on light) like its own icons.
@@ -397,8 +407,60 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         updates,
         menu,
         slim_shown: true,
+        experiences,
+        experiences_shown: false,
     });
+    refresh_experiences(app.clone());
     Ok(())
+}
+
+/// The id prefix of an experience's menu item; the rest is where it opens.
+const EXPERIENCE_ITEM: &str = "experience:";
+
+/// Put the experiences added on this Mac in the menu bar, under Open Mycelium,
+/// or take the folder away when there are none. Reads them in the background.
+fn refresh_experiences(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let Ok(list) = experiences_cli(vec![]).await else { return };
+        let added: Vec<(String, String)> = list
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|x| x.get("added").and_then(Value::as_bool) == Some(true))
+            .filter_map(|x| {
+                let title = x.get("title")?.as_str()?.to_string();
+                let open = x.get("open")?.as_str()?.to_string();
+                Some((title, open))
+            })
+            .collect();
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let shell = handle.state::<Shell>();
+            let mut tray = shell.tray.lock().unwrap();
+            let Some(items) = tray.as_mut() else { return };
+            while let Ok(Some(old)) = items.experiences.remove_at(0) {
+                drop(old);
+            }
+            for (title, open) in &added {
+                if let Ok(item) =
+                    MenuItem::with_id(&handle, format!("{EXPERIENCE_ITEM}{open}"), title, true, None::<&str>)
+                {
+                    let _ = items.experiences.append(&item);
+                }
+            }
+            if added.is_empty() && items.experiences_shown {
+                if items.menu.remove(&items.experiences).is_ok() {
+                    items.experiences_shown = false;
+                }
+            } else if !added.is_empty() && !items.experiences_shown {
+                // Under Open Mycelium, which sits after the status rows.
+                let at = if items.slim_shown { 5 } else { 4 };
+                if items.menu.insert(&items.experiences, at).is_ok() {
+                    items.experiences_shown = true;
+                }
+            }
+        });
+    });
 }
 
 fn toggle_autostart(app: &AppHandle) {
@@ -680,14 +742,18 @@ async fn add_experience(app: AppHandle, webview: Webview, id: String) -> Result<
         return Ok(None);
     };
     let path = path.to_string_lossy().to_string();
-    experiences_cli(vec!["--add".into(), id, path]).await.map(Some)
+    let list = experiences_cli(vec!["--add".into(), id, path]).await?;
+    refresh_experiences(app);
+    Ok(Some(list))
 }
 
 /// `mycelium desktop experiences --remove`. Rooms it made stay.
 #[tauri::command]
 async fn remove_experience(app: AppHandle, webview: Webview, id: String) -> Result<Value, String> {
     local_only(&app, &webview)?;
-    experiences_cli(vec!["--remove".into(), id]).await
+    let list = experiences_cli(vec!["--remove".into(), id]).await?;
+    refresh_experiences(app);
+    Ok(list)
 }
 
 async fn experiences_cli(args: Vec<String>) -> Result<Value, String> {
