@@ -1194,33 +1194,9 @@ def _sidebar(nav: list[NavPage], active_page_id: str) -> str:
         current = page_id == active_page_id
         page_cls = "nav-page-link" + (" active" if current else "")
         out.append('    <div class="nav-page-group">')
-        page_link = f'<a href="{file_name}" class="{page_cls}">{html.escape(label)}</a>'
-        # A page whose one group shares its name would read "Engines › Engines":
-        # fold its sections under the page link, with the toggle beside the link.
-        if len(groups) == 1 and groups[0][0] == label and groups[0][1]:
-            key = f"{page_id}:{_slugify(label)}"
-            group_cls = "nav-group" + ("" if current else " collapsed")
-            out.append(f'      <div class="{group_cls}" data-nav-group="{key}">')
-            out.append('        <div class="nav-page-row">')
-            out.append(f"          {page_link}")
-            out.append(
-                f'          <button class="nav-group-toggle nav-page-toggle" type="button" '
-                f'aria-label="Show {html.escape(label)} sections" '
-                f'aria-expanded="{"true" if current else "false"}">{CHEVRON_SVG}</button>'
-            )
-            out.append("        </div>")
-            out.append('        <div class="nav-group-items">')
-            for anchor, item_label in groups[0][1]:
-                href = f"#{anchor}" if current else f"{file_name}#{anchor}"
-                out.append(
-                    f'          <a href="{href}" class="nav-link sub">'
-                    f"{html.escape(item_label)}</a>"
-                )
-            out.append("        </div>")
-            out.append("      </div>")
-            out.append("    </div>")
-            continue
-        out.append(f"      {page_link}")
+        out.append(
+            f'      <a href="{file_name}" class="{page_cls}">{html.escape(label)}</a>'
+        )
         for group_label, items in groups:
             if not items:
                 continue
