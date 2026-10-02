@@ -141,11 +141,14 @@ def problems_in(path: Path, cache: dict[Path, set[str]]) -> list[str]:
         page = unquote(parsed.path)
 
         if page:
-            # A source link may name its neighbor in the source tree or the
-            # page that neighbor becomes; either resolving is enough.
+            # A source link may name its neighbor in the source tree, the page
+            # that neighbor becomes, or a file under the source root (the
+            # generator inlines `assets/*.svg` from there); any resolving is
+            # enough.
             candidates = [(base / page).resolve()]
             if published:
                 candidates.append((path.parent / page).resolve())
+                candidates.append((DOCS_SOURCE_DIR / page).resolve())
             resolved = next((c for c in candidates if c.exists()), None)
             if resolved is None:
                 found.append(f"{rel}: `{target}` → no such file")
