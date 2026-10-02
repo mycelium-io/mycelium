@@ -46,8 +46,8 @@ const CHROME = {
   chrome: { type: "boolean", help: "wrap the capture in browser window chrome" },
   address: { type: "string", help: "address-bar text (default: the route)" },
   "chrome-theme": { type: "string", value: "dark|light", help: "frame theme, when it differs from the app's" },
-  backdrop: { type: "string", value: "<preset|css>", help: "glass|mycelial|mycelium|dusk|ink|paper|none, or any CSS" },
-  "backdrop-seed": { type: "number", help: "which scene --backdrop glass|mycelial grows" },
+  backdrop: { type: "string", value: "<preset|css>", help: "canvas|glass|mycelium|dusk|ink|paper|none, or any CSS" },
+  "backdrop-seed": { type: "number", help: "which scene --backdrop canvas|glass paints" },
   padding: { type: "number", help: "gutter around the frame (default 40)" },
   radius: { type: "number", help: "corner radius (default 12)" },
   shadow: { type: "boolean", help: "drop shadow (default on)" },
@@ -80,7 +80,7 @@ const STAGE = {
 const VIDEO_STAGE = {
   ...STAGE,
   backdrop: { type: "string", value: "<preset|css>", help: "the stage's ground: mycelium|dusk|ink|paper|none, or any CSS" },
-  "backdrop-seed": { type: "number", help: "which scene --backdrop glass|mycelial grows" },
+  "backdrop-seed": { type: "number", help: "which scene --backdrop canvas|glass paints" },
   drift: { type: "number", value: "<deg>", help: "on a stage, swing the angle this far across the take (default 10; 0 holds still)" },
   intro: { type: "string", value: "<title|line>", help: "on a stage, open on a title card (the project's logo, a title, a line under it)" },
   outro: { type: "string", value: "<title|line>", help: "on a stage, close on a title card" },
@@ -114,6 +114,22 @@ const VIDEO = {
   viewport: { type: "string", value: "<preset|WxH@S>", help: "phone|tablet|laptop|desktop|wide, or 1280x800@2" },
 };
 
+/** How a soundtrack is mixed, for `shot sound` and `shot video --sound`. */
+const MIX = {
+  bed: { type: "string", value: "<file>", help: "music or ambience under the clicks, looped or cut to fit (needs a full ffmpeg)" },
+  "bed-db": { type: "number", value: "<dB>", help: "the bed under the clicks; moves the bed alone (default -6)" },
+  target: { type: "number", value: "<LUFS>", help: "bed and clicks together, before --bed-db (default -19)" },
+  "click-db": { type: "number", value: "<dB>", help: "clicks louder or softer (default 0)" },
+  "key-db": { type: "number", value: "<dB>", help: "keystrokes louder or softer (default 0)" },
+  foley: { type: "boolean", help: "the clicks and keys (default on; --no-foley for the bed alone)" },
+  wav: { type: "string", value: "<path>", help: "also keep the soundtrack as a WAV" },
+};
+
+const SOUND = {
+  sound: { type: "boolean", help: "give the take a soundtrack: its clicks and keys, over --bed if given" },
+  ...MIX,
+};
+
 const DAEMON = {
   daemon: { type: "boolean", help: "use the warm background browser (default on)" },
   idle: { type: "number", value: "<ms>", help: "daemon idle timeout when starting one" },
@@ -121,8 +137,8 @@ const DAEMON = {
 
 const CARD = {
   title: { type: "string", help: "title bar text" },
-  backdrop: { type: "string", value: "<preset|css>", help: "glass|mycelial|mycelium|dusk|ink|paper|none, or any CSS" },
-  "backdrop-seed": { type: "number", help: "which scene --backdrop glass|mycelial grows" },
+  backdrop: { type: "string", value: "<preset|css>", help: "canvas|glass|mycelium|dusk|ink|paper|none, or any CSS" },
+  "backdrop-seed": { type: "number", help: "which scene --backdrop canvas|glass paints" },
   padding: { type: "number", help: "gutter around the card (default 40)" },
   radius: { type: "number", help: "corner radius (default 12)" },
   shadow: { type: "boolean", help: "drop shadow (default on)" },
@@ -205,6 +221,8 @@ one-shot
 
 video
   shot video [route] --do click:X --auto-zoom      a short take, cursor and all
+  shot video [route] --do click:X --sound          …with its clicks and keys heard
+  shot sound <video> [--bed music.mp3]             give a take its soundtrack
 
 responsive
   shot app / --responsive --sheet     every breakpoint, plus one image of all of them
@@ -238,7 +256,15 @@ const COMMAND_HELP = {
   shoot: ["shot shoot [verb:arg…] [options]   — shoot the held page as it stands", { ...SESSION, ...PAGE, ...CHROME, ...STAGE, ...FRAME, ...OUTPUT, ...DAEMON }],
   video: [
     "shot video [route|url] [options]   — a recorded take, with a visible cursor",
-    { ...APP, ...VIDEO_PAGE, ...VIDEO_FRAME, ...OUTPUT, ...DAEMON, ...VIDEO, ...VIDEO_STAGE },
+    { ...APP, ...VIDEO_PAGE, ...VIDEO_FRAME, ...OUTPUT, ...DAEMON, ...VIDEO, ...VIDEO_STAGE, ...SOUND },
+  ],
+  sound: [
+    "shot sound <video> [options]       — mix its clicks and keys (from <video>.sounds.json) over --bed, and mux",
+    {
+      ...MIX,
+      out: { type: "string", alias: "o", value: "<path>", help: "write here instead of replacing the video" },
+      json: { type: "boolean", help: "print the full result object as JSON" },
+    },
   ],
   resize: ["shot resize --viewport <v> [options] — reframe the held page in place", { ...SESSION, ...RESPONSIVE, ...DAEMON }],
   close: ["shot close [options]", { ...SESSION, ...DAEMON }],
@@ -269,8 +295,30 @@ function storageStatePath(value) {
 }
 
 /** Turn parsed flags into an api.mjs spec. */
+/**
+ * `--bed` and `--wav` as absolute paths, resolved here in the caller's working
+ * directory: the daemon runs elsewhere, so a relative path must not reach it.
+ */
+function withLocalPaths(flags) {
+  return {
+    ...flags,
+    ...(flags.bed ? { bed: resolve(flags.bed) } : {}),
+    ...(flags.wav ? { wav: resolve(flags.wav) } : {}),
+  };
+}
+
+/** The soundtrack's numbers, on stderr beside the take's. */
+function reportSound(sound, ms) {
+  if (!sound) return;
+  const f = (n) => (Number.isFinite(n) ? n.toFixed(1) : "-inf");
+  err(
+    `[shot] sound · ${ms != null ? `${ms}ms · ` : ""}${sound.cues} cues${sound.bed ? " + bed" : ""} · ` +
+      `${f(sound.lufs)} LUFS · true peak ${f(sound.truePeakDb)} dBTP`,
+  );
+}
+
 function toSpec(op, flags) {
-  const spec = { op, ...flags };
+  const spec = { op, ...withLocalPaths(flags) };
   delete spec.storageState;
   if (CONTEXT_OPS.has(op)) {
     const state = storageStatePath(flags.storageState ?? process.env.SHOTKIT_STORAGE_STATE);
@@ -338,6 +386,7 @@ function report(result, flags) {
   if (result.meta?.hint) err(`[shot] ${result.meta.hint}`);
   for (const step of result.trace ?? []) err(`[shot]   ${step.action} (${step.ms}ms)`);
   for (const shot of result.shots ?? []) err(`[shot]   ${shot.viewport} · ${shot.ms}ms · ${shot.width}x${shot.height}`);
+  reportSound(result.sound, result.ms?.sound);
 
   if (flags.json) {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
@@ -423,6 +472,22 @@ async function main() {
   if (command === "bench") {
     const { bench } = await import("../src/doctor.mjs");
     await bench(argv);
+    return;
+  }
+
+  // No browser in it, so it runs here rather than in the daemon.
+  if (command === "sound") {
+    const { flags, rest } = parse(argv, COMMAND_HELP.sound[1]);
+    if (!rest[0]) throw new Error("shot sound needs a video: shot sound .shotkit/take.mp4");
+    const { addSound, soundOptions } = await import("../src/audio/soundtrack.mjs");
+    const t0 = Date.now();
+    const result = await addSound(resolve(rest[0]), {
+      ...soundOptions(withLocalPaths(flags)),
+      out: flags.out ? resolve(flags.out) : undefined,
+      log: (m) => err(`[shot] ${m}`),
+    });
+    reportSound(result, Date.now() - t0);
+    process.stdout.write(flags.json ? `${JSON.stringify(result, null, 2)}\n` : `${result.path}\n`);
     return;
   }
 

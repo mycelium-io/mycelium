@@ -49,7 +49,13 @@ const run = (cmd, args) =>
     child.on("close", (code) => resolve(code === 0 ? out : null));
   });
 
-/** @type {{path:string, source:string, encoders:string[], formats:string[]}|null} */
+/**
+ * What each container's sound is encoded as, when this ffmpeg can. Playwright's
+ * build has none of them, so a take with sound needs a full ffmpeg.
+ */
+export const AUDIO_CODECS = { mp4: "aac", webm: "libopus" };
+
+/** @type {{path:string, source:string, encoders:string[], formats:string[], audio:string[]}|null} */
 let cached = null;
 
 /**
@@ -71,15 +77,16 @@ export async function findEncoder(opts = {}) {
       }
       continue;
     }
-    const encoders = ["libx264", "libx265", "libvpx", "libvpx-vp9", "gif"].filter((e) =>
-      new RegExp(`^\\s*\\S+\\s+${e}\\s`, "m").test(listing),
-    );
+    const has = (e) => new RegExp(`^\\s*\\S+\\s+${e}\\s`, "m").test(listing);
+    const encoders = ["libx264", "libx265", "libvpx", "libvpx-vp9", "gif"].filter(has);
+    // Which containers can carry sound, by whether their codec is built in.
+    const audio = Object.entries(AUDIO_CODECS).filter(([, codec]) => has(codec)).map(([fmt]) => fmt);
     const formats = [];
     if (encoders.includes("libx264")) formats.push("mp4");
     if (encoders.includes("libvpx") || encoders.includes("libvpx-vp9")) formats.push("webm");
     if (encoders.includes("gif")) formats.push("gif");
     const source = path === process.env.SHOTKIT_FFMPEG ? "SHOTKIT_FFMPEG" : path === "ffmpeg" ? "PATH" : "playwright";
-    cached = { path, source, encoders, formats };
+    cached = { path, source, encoders, formats, audio };
     return cached;
   }
   throw new Error(

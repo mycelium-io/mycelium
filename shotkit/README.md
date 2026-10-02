@@ -30,6 +30,16 @@ shot doctor
 Node 20.6 or newer. Playwright downloads its browser on first use if no
 Chromium is on disk; `shot doctor` says what it found.
 
+### The Claude Code skill
+
+`skills/shotkit/SKILL.md` teaches a coding agent to use `shot`. Link it into
+your personal skills so it is available in every project, and stays current
+with `git pull`:
+
+```bash
+ln -s ~/Documents/GitHub/shotkit/skills/shotkit ~/.claude/skills/shotkit
+```
+
 ## The project
 
 shotkit works on the project you run it from: the git top-level of the
@@ -49,7 +59,7 @@ is optional:
     "mockHeader": "x-mock",
     "mockProbe": "/api/health"
   },
-  "backdrop": { "canvas": "scripts/canvas.js" }
+  "backdrop": { "canvas": "scripts/canvas.js", "size": "1920x1080", "pixelated": false }
 }
 ```
 
@@ -59,7 +69,9 @@ is optional:
 | `app.mockScript` | the package.json script `--mock` runs (default `dev:mock`) |
 | `app.mockEnv` | extra environment for that script |
 | `app.mockHeader` / `app.mockProbe` | a response header (value `1`) on a route that proves a running dev server is the mock one; without it, any running dev server is attached to |
-| `backdrop.canvas` | a canvas script for `--backdrop mycelial` (see **The desktop**) |
+| `backdrop.canvas` | a canvas script for `--backdrop canvas` (see **The desktop**) |
+| `backdrop.size` | the page the script paints on, `WxH` in CSS px (default `1920x1080`) |
+| `backdrop.pixelated` | upscale the painting hard-edged, for pixel art (default `false`, smooth) |
 
 ## Why it is fast
 
@@ -95,7 +107,7 @@ speedup: 13.1x
 | `shot warm` / `status` / `stop` / `serve` | the daemon |
 | `shot doctor` / `bench` | check and time this machine |
 
-`--backdrop` takes `glass` or `mycelial` (the docs site's two scenes — see **The desktop**),
+`--backdrop` takes `canvas` or `glass` (the project's own background — see **The desktop**),
 `mycelium`, `dusk`, `ink`, `paper`, `none`, or any CSS.
 
 `shot help <command>` lists every flag. stdout carries the path and nothing
@@ -241,6 +253,57 @@ Whichever it is, a frame is written every 1/fps whether the page changed or not,
 so the file's timeline is wall-clock and a still stretch costs repeats of one
 JPEG.
 
+## Sound
+
+A take can come out with the sound of the person driving it: a soft low tock
+on each click, a quiet tick per keystroke (spread unevenly over the span a
+string was typed in, as a hand types) and a heavier one for a key pressed on
+its own, like Enter. Over a bed, if you give it one.
+
+```bash
+shot video /settings --do click:Profile --do "fill:Name=Sam" --do press:Enter --sound
+shot video /settings --demo --do click:Profile --sound --bed ~/music/ambient.mp3
+shot sound .shotkit/video-settings.mp4 --bed ambient.mp3 --bed-db -9   # re-mix a take
+```
+
+**Cues.** Every take writes `<video>.sounds.json` beside it: each click and key
+at the second it shows in the finished video, and each typed string with the
+span it went in over. Placing them is the part that matters. A press is noted
+at the animation frame that paints it, and lands on the first video frame drawn
+after that, by the screencast's own frame timestamps. Noting "the frame being
+written right now" instead puts sounds early whenever the app is busy: its
+compositor keeps sending frames of the old picture for a while after a click.
+Measured against the picture, a click's sound lands within one frame (33ms) of
+the press. Speed-ups and title cards are already folded in.
+
+**The mix.** A bed (any file ffmpeg reads, looped or cut to the take's length)
+is brought to −23 LUFS, the clicks sit at a fixed size over it, and `--target`
+(−19) sets how loud the pair is together. `--bed-db` (−6) then moves the bed
+alone, so turning it down leaves the clicks where they were. With no bed the
+clicks are leveled by their peak instead (−6 dBFS at the default target), since
+a few clicks in silence meter near −40 LUFS and loudness is the wrong ruler.
+`--click-db` and `--key-db` trim each kind; `--no-foley` keeps the bed alone.
+A look-ahead limiter holds the master under −1.9 dBFS. The build prints the
+finished loudness (BS.1770-4) and the 4x-oversampled true peak, since those are
+the numbers that say whether it is too loud.
+
+**Needs a full ffmpeg.** Sound is AAC in an mp4 and Opus in a webm, and
+Playwright's bundled ffmpeg has neither; a gif has no sound at all. `--sound`
+checks before the take starts, so a minute of recording isn't lost to the wrong
+ffmpeg. The picture is copied into the muxed file, not re-encoded.
+
+**As a library.** `import { addSound, mixSoundtrack } from "shotkit/audio"`. A
+project that scores its own bed renders a stereo pair with the primitives there
+(oscillators, a state-variable filter, pink noise, an FDN reverb, envelopes,
+wavetables, the compressor, limiter and loudness meter) and passes it as `bed`;
+the clicks, the leveling and the mux stay shotkit's:
+
+```js
+import { addSound, makeBus, hz, rng } from "shotkit/audio";
+const bed = myScore(durationSeconds, 48000); // { L: Float64Array, R: Float64Array }
+await addSound("demo.mp4", { bed, bedDb: -6, target: -19 });
+```
+
 ## Browser chrome
 
 `--chrome` re-renders a page capture inside the same window frame the terminal
@@ -318,48 +381,62 @@ it. That pass costs about 25ms a frame spread over four pages; with
 
 ## The desktop
 
-`--backdrop mycelial` puts a generated hypha network behind the window, so a
-framed screenshot sits on a textured desktop rather than a gradient:
+`--backdrop canvas` puts the project's own background behind the window (the
+animated scene a docs site paints behind its pages, say), so a framed
+screenshot sits on the product's desktop rather than a gradient:
 
 ```bash
-shot app /settings --chrome --backdrop mycelial --padding 90
-shot term --backdrop mycelial -- git log --oneline -8
+shot app /settings --chrome --backdrop canvas --padding 90
+shot term --backdrop canvas -- git log --oneline -8
+shot app / --demo --backdrop canvas
 ```
 
-It needs the canvas algorithm, which shotkit does not carry: the project names
-a script in `shotkit.config.json` (`backdrop.canvas`). In mycelium that is
-`scripts/banner-assets/mycelial-canvas.js`, the same copy the mycelium docs
-site runs. The script is an IIFE that draws into `<canvas id="mycelium-bg">`
-reading `--canvas-bg`, `--canvas-ink` and `--canvas-alpha` from the root, and
-the colors are cream and quiet in light, near-black and teal in dark. Without a
-configured script this backdrop errors and the others are unaffected.
+shotkit carries no painting of its own: the project names a script in
+`shotkit.config.json` (`backdrop.canvas`). The script is an IIFE that draws
+into `<canvas id="mycelium-bg">`. It can read the `dark` or `light` class on
+`<html>` and the `--canvas-bg`, `--canvas-ink` and `--canvas-alpha` custom
+properties, and it should paint one still frame under
+`prefers-reduced-motion`, which every shotkit page sets. 2D canvas and WebGL
+both work. It paints on a `backdrop.size` page (1920x1080 by default; many
+scenes scale to the page, so this is also their density), and the result is
+upscaled smoothly, or hard-edged with `backdrop.pixelated` for pixel art.
+Without a configured script this backdrop errors and the others are
+unaffected.
+
+In mycelium, the older pixel hypha network is
+`scripts/banner-assets/mycelial-canvas.js` (with `"pixelated": true` and
+`"size": "1600x900"`, the density it was tuned at). The docs' glass droplets
+can run here too, as a still, but `--backdrop glass` below does more with them.
 
 A vignette in the ground's own color veils it, lightly in the middle and
-heavily at the edges. A site can run the network at full strength because
+heavily at the edges. A site can run its background at full strength because
 prose sits on near-solid paper above it; a screenshot has no such pane, and an
-unveiled network pulls the eye into the corners and away from the window. Light
-is veiled less than dark, since light already runs at a lower alpha.
+unveiled background pulls the eye into the corners and away from the window.
+Light is veiled less than dark, since light already runs at a lower alpha.
 
-One network is grown per theme and held for the life of the daemon, so a run of
-shots shares one desktop and only the first pays to grow it — about 150ms once,
-after which a framed shot costs what any other does. It grows from a fixed seed,
-so the same command gives the same background tomorrow and a committed asset
-does not churn on every re-render; `--backdrop-seed <n>` asks for a different
-one.
+One painting is made per theme and held for the life of the daemon, so a run
+of shots shares one desktop and only the first pays to paint it. It is painted
+from a fixed seed (shotkit replaces `Math.random`), so the same command gives
+the same background tomorrow and a committed asset does not churn on every
+re-render; `--backdrop-seed <n>` asks for a different one.
 
-`--backdrop glass` is the docs site's other scene: droplets of iridescent
-glass drifting up, reaching for each other with hyphae, now and then pooling
-into one. It is the project's script too (`backdrop.glass`; in mycelium,
-`docs/glass.js`, the file the docs load), run in WebGL with `Math.random`
-seeded. A still gets one frame. A staged video gets the scene live under the
-window, stepped one frame of the take at a time through the script's
-`__glassManual` seam, so every page the take is staged on holds the same scene
-at the same beat; it is drawn at half resolution and re-drawn at 15fps, since
-a software GL spends most of a frame on it and the drops drift slowly.
+`--backdrop glass` is for a scene that can be stepped by hand, so it moves
+during a video rather than holding still. In mycelium that is the docs' glass
+droplets (`docs/glass.js`, the file the docs load): drops of iridescent glass
+drifting up, reaching for each other with hyphae, now and then pooling into
+one. The project names the script in `backdrop.glass`; it runs in WebGL with
+`Math.random` seeded, and must honor `window.__glassManual` (skip its own
+animation loop), `window.__glassScale` (draw at a fraction of the page's
+resolution) and `window.__glass.seek(frame)` (step to a frame of a 30fps clock
+and draw). A still gets one frame. A staged video gets the scene live under the
+window, stepped one frame of the take at a time, so every page the take is
+staged on holds the same scene at the same beat; it is drawn at half
+resolution and re-drawn at 15fps, since a software GL spends most of a frame on
+it and the drops drift slowly.
 
 The other backdrops (`mycelium`, `dusk`, `ink`, `paper`, `none`, or any CSS you
 pass) are unchanged, and are what to reach for when a shot wants quiet behind
-it: the network is texture, and texture competes with a busy screen.
+it: a painted background is texture, and texture competes with a busy screen.
 
 ## The library
 

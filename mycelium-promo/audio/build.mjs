@@ -1,50 +1,54 @@
 #!/usr/bin/env node
-// Put the sound on a recorded take.
+// Put the sound on a recorded take, or re-mix it.
 //
-//   node mycelium-promo/audio/build.mjs <video.mp4> [--out <with-sound.mp4>] [--wav]
+//   node mycelium-promo/audio/build.mjs <video.mp4> [--out <file.mp4>] [--wav <file.wav>]
 //
-// Reads the video's length and its `<video>.sounds.json` (what shotkit writes
-// beside a staged take), renders the drone with the clicks and keys on it, and
-// muxes it in as AAC. The picture is copied, not re-encoded. Default output is
-// the video's own name with `-sound` before the extension.
+// `record.mjs` already does this after every staged take; run it alone to
+// change the sound without re-recording. Reads the video's length and its
+// `<video>.sounds.json` (the clicks and keys shotkit noted during the take),
+// renders the drone (score.mjs) as the bed, and lets shotkit mix and mux it:
+// the picture is copied, not re-encoded, and the video is replaced in place
+// unless --out says otherwise.
 
-import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-import { encodeWav } from './dsp.mjs';
-import { render } from './score.mjs';
+import { addSound, probeDuration } from '../../shotkit/src/audio/index.mjs';
+import { renderDrone } from './score.mjs';
 
-const argv = process.argv.slice(2);
-const video = argv.find((a) => !a.startsWith('--') && argv[argv.indexOf(a) - 1] !== '--out');
-if (!video) {
-  console.error('usage: node audio/build.mjs <video.mp4> [--out <file.mp4>] [--wav]');
-  process.exit(2);
+/**
+ * Give a take its sound: the drone under shotkit's clicks and keys, at
+ * shotkit's levels (bed at -23 LUFS, the pair at -19, the bed 6 dB under).
+ * @param {string} video
+ * @param {{out?: string, wav?: string, log?: (m: string) => void}} [opts]
+ */
+export async function soundTake(video, opts = {}) {
+  const log = opts.log ?? (() => {});
+  const duration = await probeDuration(video);
+  log(`rendering the drone, ${duration.toFixed(1)}s`);
+  const bed = renderDrone(duration, 48000, { onProgress: (p) => log(`  · ${p}`) });
+  const result = await addSound(video, { bed, out: opts.out, wav: opts.wav, log });
+  log(`${result.cues} cues · ${result.lufs.toFixed(1)} LUFS · true peak ${result.truePeakDb.toFixed(1)} dBTP`);
+  return result;
 }
-const outAt = argv.indexOf('--out');
-const out = outAt >= 0 ? argv[outAt + 1] : video.replace(/(\.[^.]+)$/, '-sound$1');
-const keepWav = argv.includes('--wav');
-const say = (m) => process.stdout.write(`  ${m}\n`);
 
-const soundsPath = `${video}.sounds.json`;
-const events = existsSync(soundsPath) ? JSON.parse(readFileSync(soundsPath, 'utf8')).events : [];
-if (events.length === 0) say(`no ${soundsPath}: the drone alone`);
-
-const duration = Number(
-  execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', video]).toString().trim(),
-);
-say(`rendering ${duration.toFixed(1)}s, ${events.length} clicks and typing runs`);
-const mix = render(duration, events, 48000, { onProgress: (p) => say(`  · ${p}`) });
-say(`loudness ${mix.lufs.toFixed(1)} LUFS, true peak ${mix.truePeakDb.toFixed(1)} dBTP`);
-
-const wav = out.replace(/\.[^.]+$/, '.wav');
-writeFileSync(wav, encodeWav(mix.left, mix.right, mix.sampleRate));
-execFileSync('ffmpeg', [
-  '-y', '-loglevel', 'error',
-  '-i', video, '-i', wav,
-  '-map', '0:v:0', '-map', '1:a:0',
-  '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k',
-  '-shortest', '-movflags', '+faststart',
-  out,
-]);
-if (!keepWav) rmSync(wav);
-say(`wrote ${out}`);
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const argv = process.argv.slice(2);
+  const flag = (name) => {
+    const at = argv.indexOf(name);
+    return at >= 0 ? argv.splice(at, 2)[1] : undefined;
+  };
+  const out = flag('--out');
+  const wav = flag('--wav');
+  const video = argv[0];
+  if (!video || video.startsWith('-')) {
+    console.error('usage: node mycelium-promo/audio/build.mjs <video.mp4> [--out <file.mp4>] [--wav <file.wav>]');
+    process.exit(2);
+  }
+  const result = await soundTake(resolve(video), {
+    out: out && resolve(out),
+    wav: wav && resolve(wav),
+    log: (m) => console.error(`  ${m}`),
+  });
+  console.log(result.path);
+}

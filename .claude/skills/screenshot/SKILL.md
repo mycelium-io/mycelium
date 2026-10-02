@@ -109,6 +109,11 @@ a .webm otherwise** — Playwright's bundled build is webm-only. `shot doctor`
 says which. You cannot watch it: hand the path to the user, or pull a frame out
 of it to look at. Keep takes short (a few actions); `--max-seconds` caps one.
 
+`--sound` gives the take its clicks and keystrokes as sound (over `--bed
+<file>` if given), and `shot sound <video>` re-mixes one; the take writes
+`<video>.sounds.json` either way. The product demo's sound is
+`node mycelium-promo/record.mjs`, which adds the drone too.
+
 ## Screenshot CLI output
 
 Runs the command under a pty, so Rich keeps its colors and box drawing:
@@ -130,15 +135,18 @@ and `shot code <file> --range 40:80` makes a syntax-highlighted code card.
 ```bash
 node shotkit/bin/shot.mjs app /room/checkout --chrome --offline          # browser window frame
 node shotkit/bin/shot.mjs app / --chrome --theme light --backdrop dusk
-node shotkit/bin/shot.mjs app / --chrome --backdrop mycelial --padding 90
+node shotkit/bin/shot.mjs app / --chrome --backdrop canvas --padding 90
+node shotkit/bin/shot.mjs app / --demo --backdrop glass --offline       # tilted, over the docs' glass
 ```
 
 `--theme` switches the app itself, not just the browser's media query.
 
-`--backdrop mycelial` is the desktop behind the window: the docs site's own
-mycelial network, the same one `docs/banner.png` is cut from. Give it padding to
-show — and prefer a quiet backdrop (`mycelium`, `ink`, `paper`) when the screen
-itself is busy.
+`--backdrop canvas` is the desktop behind the window: the docs site's mycelial
+network, the same one `docs/banner.png` is cut from (`backdrop.canvas` in
+`shotkit.config.json`). `--backdrop glass` is the docs' glass droplets
+(`docs/glass.js`), which move under a staged take. Give either padding to show,
+and prefer a quiet backdrop (`mycelium`, `ink`, `paper`) when the screen itself
+is busy.
 
 ## Rules
 
@@ -148,5 +156,8 @@ itself is busy.
   commit its output, only when asked to update the docs assets.
 - **Don't hand-roll Playwright for a screenshot.** If shotkit is missing a
   capability, add it there; `capture()` in `shotkit/src/api.mjs` is importable.
+  `shotkit/` is vendored from github.com/juliarvalenti/shotkit: change it there,
+  then `scripts/sync-shotkit.sh` brings it here (an edit made only here is
+  overwritten on the next sync).
 - **Leave the daemon running.** It idles out after 15 minutes. `shot stop` only
   if you need a clean slate.

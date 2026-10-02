@@ -16,6 +16,7 @@
  */
 
 import { backdrop, palette } from "./theme.mjs";
+import { ART_RENDERING } from "./canvas.mjs";
 
 /** Degrees: [x, y, z]. Positive x tips the top away; positive y turns the window to face right. */
 export const TILT_PRESETS = {
@@ -225,7 +226,7 @@ export function stageDocument(o) {
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:transparent}
 #canvas{position:relative;width:${w}px;height:${h}px;overflow:hidden;background:${ground}}
-#art{position:absolute;inset:0;image-rendering:pixelated;background:${o.art ?? "none"}}
+#art{position:absolute;inset:0;image-rendering:${ART_RENDERING};background:${o.art ?? "none"}}
 #grid{position:absolute;inset:-50%;background-size:56px 56px;
   transform:perspective(${o.perspective ?? STAGE_DEFAULTS.perspective}px) rotateX(62deg) translateY(18%);
   -webkit-mask-image:radial-gradient(closest-side, #000 20%, transparent 80%)}
