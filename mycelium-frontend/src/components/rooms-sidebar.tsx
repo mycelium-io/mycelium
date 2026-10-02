@@ -357,19 +357,21 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
               <BellOff aria-label="muted" className="size-3 flex-shrink-0 text-faint transition-opacity group-hover/room:opacity-0" />
             )}
           </Link>
-          {/* Discord-style per-room control, revealed on hover, overlaying the
-              badge slot. Outside the Link so it never navigates. */}
-          <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover/room:pointer-events-auto group-hover/room:opacity-100">
+          {/* Discord-style per-room controls, revealed on hover, overlaying the
+              badge slot. Outside the Link so they never navigate. The backing
+              blurs and fades in from the left, so a long name runs under the
+              icons and fades out rather than showing through them. */}
+          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center gap-2 rounded-r pl-6 pr-2 opacity-0 backdrop-blur-[2px] transition-opacity [background:linear-gradient(var(--hairline),var(--hairline)),color-mix(in_srgb,var(--surface)_50%,var(--bg))] [mask-image:linear-gradient(to_right,transparent,black_1.5rem)] group-hover/room:pointer-events-auto group-hover/room:opacity-100">
+            <button
+              type="button"
+              aria-label={`Delete room ${room.name}`}
+              onClick={() => setDeleteTarget(room.name)}
+              className="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:text-red"
+            >
+              <Trash2 className="size-3.5" />
+            </button>
             <RoomLevelMenu room={room.name} level={level} onSet={setRoomLevel} />
           </div>
-          <button
-            type="button"
-            aria-label={`Delete room ${room.name}`}
-            onClick={() => setDeleteTarget(room.name)}
-            className="pointer-events-none absolute right-9 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:text-red group-hover/room:pointer-events-auto group-hover/room:opacity-100"
-          >
-            <Trash2 className="size-3.5" />
-          </button>
         </div>
       </RoomContextMenu>
     );
