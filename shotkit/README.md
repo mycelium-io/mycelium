@@ -1,21 +1,65 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Copyright 2026 Mycelium Contributors -->
 
-# shotkit — the repo's camera
+# shotkit
 
-Screenshots of the running app, and of CLI output, fast enough to take one
+Screenshots of a running web app, and of CLI output, fast enough to take one
 mid-thought. Built for coding agents first: one line in, an absolute PNG path
 out, ready to read back.
 
 ```bash
-shot term mycelium memory ls --room checkout     # a terminal card, real ANSI colors
-shot app /room/checkout --mock         # the running frontend
+shot term git log --oneline -10               # a terminal card, real ANSI colors
+shot app /settings                            # the running frontend
 shot app / --responsive --sheet               # every breakpoint in one image
-shot code src/services/aligner.py --range 40:80
-shot video /room/checkout --click Negotiate --auto-zoom   # a short take, cursor and all
+shot code src/server.ts --range 40:80
+shot video /settings --do click:Save --auto-zoom   # a short take, cursor and all
 ```
 
-Nothing here is on the install path or in the runtime. A user never executes it.
+Originally written as the screenshot tool inside
+[mycelium](https://github.com/mycelium-io/mycelium); this repo is the
+standalone version, usable from any project.
+
+## Install
+
+```bash
+git clone https://github.com/juliarvalenti/shotkit ~/Documents/GitHub/shotkit
+cd ~/Documents/GitHub/shotkit && npm install && npm link   # puts `shot` on PATH
+shot doctor
+```
+
+Node 20.6 or newer. Playwright downloads its browser on first use if no
+Chromium is on disk; `shot doctor` says what it found.
+
+## The project
+
+shotkit works on the project you run it from: the git top-level of the
+current directory (or the directory itself outside a repo, or
+`SHOTKIT_PROJECT`). Captures land in that project's `.shotkit/` folder, so add
+`.shotkit/` to its `.gitignore`. Each project gets its own daemon.
+
+A project can describe itself in `shotkit.config.json` at its root. Every field
+is optional:
+
+```json
+{
+  "app": {
+    "dir": "web",
+    "mockScript": "dev:mock",
+    "mockEnv": { "UI_MOCK": "1" },
+    "mockHeader": "x-mock",
+    "mockProbe": "/api/health"
+  },
+  "backdrop": { "canvas": "scripts/canvas.js" }
+}
+```
+
+| | |
+|---|---|
+| `app.dir` | where the frontend lives, relative to the root (default `.`) |
+| `app.mockScript` | the package.json script `--mock` runs (default `dev:mock`) |
+| `app.mockEnv` | extra environment for that script |
+| `app.mockHeader` / `app.mockProbe` | a response header (value `1`) on a route that proves a running dev server is the mock one; without it, any running dev server is attached to |
+| `backdrop.canvas` | a canvas script for `--backdrop mycelial` (see **The desktop**) |
 
 ## Why it is fast
 
@@ -26,8 +70,8 @@ seconds doing the same three things every time. shotkit pays them once:
 |---|---|
 | **A daemon holds the browser.** | First shot ~2s, every later shot ~150ms. It starts itself, and shuts down after 15 idle minutes. |
 | **Cards never touch the network.** | `term`, `code` and `html` render a self-contained document into a page that stays open. No navigation, no fetches. |
-| **`--mock` boots the app once.** | The Next dev server is held by the daemon, not by the request, so six shots of six routes boot it once. A mock server already running is reused; a dev server in front of a real hub is refused rather than shot as if it were the mocks (Next allows one per folder, so stop it first). |
-| **`--offline` skips dead CDNs.** | The frontend links Google Fonts. Where those are unreachable, waiting on them costs ~13s *per navigation* — more than everything else combined. `shot doctor` probes for this, and a slow capture says so. |
+| **`--mock` boots the app once.** | The dev server is held by the daemon, not by the request, so six shots of six routes boot it once. A mock server already running is reused; with `app.mockHeader` set, a dev server in front of real data is refused rather than shot as if it were the mocks (Next allows one per folder, so stop it first). |
+| **`--offline` skips dead CDNs.** | An app that links Google Fonts or another CDN. Where those are unreachable, waiting on them costs ~13s *per navigation* — more than everything else combined. `shot doctor` probes for this, and a slow capture says so. |
 
 ```
 $ shot bench
@@ -40,7 +84,7 @@ speedup: 13.1x
 
 | | |
 |---|---|
-| `shot app [route]` | the running frontend; `--mock` boots `pnpm dev:mock` |
+| `shot app [route]` | the running frontend; `--mock` boots the project's `dev:mock` script |
 | `shot url <url>` | any URL |
 | `shot term <command…>` | run a command, shoot its terminal output |
 | `shot text <file\|->` | render an existing ANSI capture |
@@ -51,7 +95,7 @@ speedup: 13.1x
 | `shot warm` / `status` / `stop` / `serve` | the daemon |
 | `shot doctor` / `bench` | check and time this machine |
 
-`--backdrop` takes `mycelial` (the site's network — see **The desktop**),
+`--backdrop` takes `glass` or `mycelial` (the docs site's two scenes — see **The desktop**),
 `mycelium`, `dusk`, `ink`, `paper`, `none`, or any CSS.
 
 `shot help <command>` lists every flag. stdout carries the path and nothing
@@ -67,13 +111,13 @@ the raw stream would stack every intermediate frame into one image. What you get
 is the terminal as you would have found it.
 
 ```bash
-shot term --cols 84 --title mycelium -- mycelium memory --help
-shot term --command "mycelium doctor" -- uv run mycelium doctor   # run one thing, show another
+shot term --cols 84 --title git -- git status
+shot term --command "pytest -q" -- uv run pytest -q              # run one thing, show another
 shot text ci-failure.log --window plain                           # a capture you already have
 ```
 
-Colors come from the frontend's own palette, so a terminal card and an app
-screenshot sit next to each other without clashing.
+Colors come from a muted dark/light palette rather than the stock VGA one, so a
+terminal card sits next to an app screenshot without clashing.
 
 ## Responsive
 
@@ -92,7 +136,7 @@ look at rather than four.
 A one-shot capture takes ordered steps:
 
 ```bash
-shot app /room/checkout --do click:Negotiate --do wait:.offer-grid --do scroll:bottom
+shot app /settings --do click:Profile --do wait:.avatar --do scroll:bottom
 ```
 
 For anything longer, hold the page open. The daemon keeps it under a name, so
@@ -100,8 +144,8 @@ you can look, decide, and act, without replaying the flow from a cold load each
 time — and each shot is ~250ms.
 
 ```bash
-shot open /room/checkout --session r --viewport laptop
-shot do click:Negotiate --session r
+shot open /settings --session r --viewport laptop
+shot do click:Profile --session r
 shot shoot --session r --name negotiate
 shot shoot click:Plan sleep:300 --session r --name plan   # act and shoot in one call
 shot sessions ; shot close --session r
@@ -145,7 +189,7 @@ repo, and never in `.shotkit/`, which is only gitignored, not private.
 a pointer in it:
 
 ```bash
-shot video /room/checkout --do click:Negotiate --do wait:.offer-grid --auto-zoom
+shot video /settings --do click:Profile --do wait:.avatar --auto-zoom
 shot video / --mock --do 'fill:#search=aligner' --do press:Enter --format mp4
 shot video https://example.com --do 'zoom:.pricing@2' --do zoomout --fps 24
 ```
@@ -203,7 +247,7 @@ JPEG.
 cards use, with an address bar:
 
 ```bash
-shot app /room/checkout --chrome --backdrop dusk
+shot app /settings --chrome --backdrop dusk
 shot app / --chrome --theme light                 # app and frame both light
 shot app / --chrome --theme dark --chrome-theme light
 ```
@@ -211,27 +255,90 @@ shot app / --chrome --theme dark --chrome-theme light
 `--theme` drives the app's own theme, not just the browser's `prefers-color-scheme`:
 next-themes reads `localStorage` before first paint and would otherwise ignore it.
 
-## The desktop
+## Tech-demo framing
 
-`--backdrop mycelial` puts the docs site's own hypha network behind the window,
-so a framed screenshot sits on the product's background rather than a gradient:
+`--demo` puts the shot on a stage: tilted in perspective, floating over a dark
+ground with a soft accent glow behind it, the angled product shot from a launch
+page. It works on `app`, `url`, `shoot`, `term`, `text`, `code`, `html` and
+`video`.
 
 ```bash
-shot app /room/checkout --chrome --backdrop mycelial --padding 90
-shot term --backdrop mycelial -- mycelium memory ls --room checkout
+shot app / --demo                                  # the hero angle
+shot app / --demo --chrome                         # with the browser window bar
+shot code src/server.ts --range 40:80 --tilt right --reflect
+shot url https://example.com --tilt dutch          # a flat dutch tilt, no 3D
+shot term --tilt 10,-24,3 -- git log --oneline -8  # your own angles, in degrees
+shot video /settings --demo --do click:Profile --drift 14
 ```
 
-It is the same network in both senses. The algorithm is the one the live site
-runs — read from `scripts/banner-assets/mycelial-canvas.js`, the copy
-`docs/banner.png` is already cut from, rather than a third transcription of it
-— and the colors are the site's `--canvas-*` values, cream and quiet in light,
-near-black and teal in dark.
+`--tilt` takes a preset (`hero`, `left`, `right`, `dutch`, `desk`, `flat`) or
+`x,y,z` in degrees: x tips the top away, y turns the window to face left or
+right, z is the dutch angle. One number is a dutch tilt on its own. Any
+`--tilt` implies `--demo`.
+
+| | |
+|---|---|
+| `--perspective <px>` | camera distance; smaller is more dramatic (default 1800) |
+| `--fit <0-1>` | how much of the stage the flat window fills (default 0.74) |
+| `--stage <WxH>` | stage size in CSS px (default 1920x1080; a still is at `--scale`, so 3840x2160 by default) |
+| `--no-glow` / `--reflect` / `--grid` | drop the glow; add a faint reflection; add a perspective grid on the ground |
+| `--backdrop` | the ground, as everywhere else; unset, the stage uses its own near-black (or near-white with `--theme light`) |
+| `--drift <deg>` | video only: swing the angle this far across the take, with a slow push in (default 10, `0` holds still) |
+
+On a staged take the words belong to the stage, not the page. A `caption:`
+is drawn flat over the tilted window, a headline and, after a `|`, the line
+under it (`caption:Hand it a task|Every task is a row and a thread.`), and
+`--intro` / `--outro` open and close the take on a title card in the same form,
+with the project's logo above it. The faces, the accent and the logo come from
+`stage` in `shotkit.config.json`:
+
+```json
+"stage": {
+  "fonts": "https://fonts.googleapis.com/css2?family=…",
+  "titleFont": "\"Cormorant Garamond\", Georgia, serif",
+  "titleStyle": "italic 600",
+  "textFont": "\"IBM Plex Sans\", system-ui, sans-serif",
+  "accent": "#5dd4e0",
+  "logo": "docs/logo.png"
+}
+```
+
+| | |
+|---|---|
+| `--intro <title\|line>` / `--outro` | a title card before or after the take, cross-faded into the window |
+| `--title-seconds <s>` | how long each card holds (default 2.6) |
+| `--caption-at top` | captions top-left rather than bottom-left; the window shifts to make room |
+
+A still is re-rendered once, the way `--chrome` is: the browser does the 3D,
+so the type stays sharp instead of being resampled. A video is recorded as
+usual to a spool on disk, then each frame is put on the stage and encoded
+after the take ends, which is what lets the camera drift across the whole of
+it. That pass costs about 25ms a frame spread over four pages; with
+`--drift 0`, a stretch where nothing moves is rendered once.
+
+## The desktop
+
+`--backdrop mycelial` puts a generated hypha network behind the window, so a
+framed screenshot sits on a textured desktop rather than a gradient:
+
+```bash
+shot app /settings --chrome --backdrop mycelial --padding 90
+shot term --backdrop mycelial -- git log --oneline -8
+```
+
+It needs the canvas algorithm, which shotkit does not carry: the project names
+a script in `shotkit.config.json` (`backdrop.canvas`). In mycelium that is
+`scripts/banner-assets/mycelial-canvas.js`, the same copy the mycelium docs
+site runs. The script is an IIFE that draws into `<canvas id="mycelium-bg">`
+reading `--canvas-bg`, `--canvas-ink` and `--canvas-alpha` from the root, and
+the colors are cream and quiet in light, near-black and teal in dark. Without a
+configured script this backdrop errors and the others are unaffected.
 
 A vignette in the ground's own color veils it, lightly in the middle and
-heavily at the edges. The site can run the network at full strength because
+heavily at the edges. A site can run the network at full strength because
 prose sits on near-solid paper above it; a screenshot has no such pane, and an
 unveiled network pulls the eye into the corners and away from the window. Light
-is veiled less than dark, since the site already runs it quieter.
+is veiled less than dark, since light already runs at a lower alpha.
 
 One network is grown per theme and held for the life of the daemon, so a run of
 shots shares one desktop and only the first pays to grow it — about 150ms once,
@@ -240,6 +347,16 @@ so the same command gives the same background tomorrow and a committed asset
 does not churn on every re-render; `--backdrop-seed <n>` asks for a different
 one.
 
+`--backdrop glass` is the docs site's other scene: droplets of iridescent
+glass drifting up, reaching for each other with hyphae, now and then pooling
+into one. It is the project's script too (`backdrop.glass`; in mycelium,
+`docs/glass.js`, the file the docs load), run in WebGL with `Math.random`
+seeded. A still gets one frame. A staged video gets the scene live under the
+window, stepped one frame of the take at a time through the script's
+`__glassManual` seam, so every page the take is staged on holds the same scene
+at the same beat; it is drawn at half resolution and re-drawn at 15fps, since
+a software GL spends most of a frame on it and the drops drift slowly.
+
 The other backdrops (`mycelium`, `dusk`, `ink`, `paper`, `none`, or any CSS you
 pass) are unchanged, and are what to reach for when a shot wants quiet behind
 it: the network is texture, and texture competes with a busy screen.
@@ -247,25 +364,31 @@ it: the network is texture, and texture competes with a busy screen.
 ## The library
 
 ```js
-import { capture } from "../shotkit/src/api.mjs";
+import { capture, shutdown } from "shotkit";   // or a path to src/api.mjs
 
 const r = await capture({ op: "app", route: "/", responsive: true, sheet: true });
 r.path;      // absolute path of the sheet
 r.shots;     // one entry per breakpoint
+await shutdown();
 ```
 
-`mycelium-frontend/screenshots/capture.ts` is the other consumer: it publishes
-the committed docs assets and uses this engine for the browser work, keeping
-only what is publication's business — the shot manifest, the `sharp` pass, and
-where files land.
+In-process captures use the same engine as the CLI, without the daemon: useful
+for a script that publishes a set of committed screenshots.
 
 ## Waiting
 
-An app capture waits for a *populated* frame, not a mounted one: the shell hook,
-then the loading skeletons clearing, then the room's `data-connection` badge
-reading live. That last step is the difference between a screenshot and a
-publishable one — a shot taken a moment early catches the status bar mid
-"Reconnecting…", which reads as a broken app.
+An app capture waits for a *populated* frame, not a mounted one, using three
+hooks an app can opt into:
+
+- `data-app-shell="ready"` on the layout once it has mounted. With no
+  `data-app-shell` attribute on the page at all, this step is skipped after a
+  second.
+- `.animate-pulse` skeletons (Tailwind's loading placeholder) all gone.
+- a `data-connection` element reading `live`, for an app with a live stream. A
+  shot taken a moment early otherwise catches a "Reconnecting…" badge, which
+  reads as a broken app.
+
+An app with none of them is shot once it has loaded and its fonts are ready.
 
 `--settle full` raises every budget for a slow backend; `--settle none` skips the
 lot when you want the frame exactly as it loads.
@@ -279,6 +402,9 @@ lot when you want the frame exactly as it loads.
   skew between the driver and the host's browser is not a re-download.
 - **Editing shotkit restarts the daemon.** It stamps its own source at boot and
   the client replaces it when that moves, so a fix never silently runs stale.
+- **Behind an egress proxy**, Chromium reads no `HTTPS_PROXY`; set
+  `SHOTKIT_PROXY` to the proxy's URL and the browser uses it (loopback still
+  goes direct). The proxy's CA has to be trusted by Chromium's NSS store.
 - **Captures land in `.shotkit/`** (gitignored) and overwrite by name; `--unique`
   timestamps instead.
 - **A take costs about what it lasts.** Encoding keeps up with capture, so a

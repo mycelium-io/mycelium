@@ -11,6 +11,7 @@
  * stopped.
  */
 
+import { DEMO_PERSON, isDemoScenario } from "./demo";
 import type {
   Framework,
   MachineAgent,
@@ -194,6 +195,16 @@ const runners: Runner[] = [
     started_at: iso(90),
   },
 ];
+
+// The demo is recorded as Sam, on Sam's machine, before @builder exists.
+if (isDemoScenario()) {
+  Object.assign(runners[0], {
+    label: "sams-mbp",
+    owner: DEMO_PERSON.handle,
+    roots: [`${DEMO_PERSON.home}/code/shop`, `${DEMO_PERSON.home}/code/website`],
+    agents: [],
+  });
+}
 
 interface StoredJob extends Omit<RunnerJob, "status" | "updated_at"> {
   /** When the mock job settles, and how. */

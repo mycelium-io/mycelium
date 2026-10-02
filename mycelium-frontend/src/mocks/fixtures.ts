@@ -35,6 +35,7 @@ import type {
   RoomFloor,
 } from "@/lib/api";
 import type { RoomStatus } from "@/lib/board/upstream";
+import { demoCheckout, isDemoScenario } from "./demo";
 import { PATTERN_ROOMS } from "./patterns";
 
 // A fixed "now" so relative timestamps render deterministically. Callers
@@ -1916,12 +1917,18 @@ const storefront: RoomFixture = {
   ],
 };
 
-export const ROOM_FIXTURES: Record<string, RoomFixture> = {
-  checkout,
+// One store for the dev server's life. The REST routes and the stream route are
+// separate route modules, and a write made through one has to be what the other
+// reads, so the rooms hang off `globalThis` rather than living per module.
+const store = globalThis as typeof globalThis & { __myceliumMockRooms?: Record<string, RoomFixture> };
+
+export const ROOM_FIXTURES: Record<string, RoomFixture> = (store.__myceliumMockRooms ??= {
+  // The demo scenario starts the checkout room before its story (see demo.ts).
+  checkout: isDemoScenario() ? demoCheckout() : checkout,
   "subscription-pricing": pricing,
   storefront,
   scratch,
-};
+});
 
 export const ROOMS: MockRoom[] = Object.values(ROOM_FIXTURES).map((f) => f.room);
 

@@ -11,6 +11,8 @@
  * object on the default `message` event (see `event-stream.tsx`).
  */
 
+import { subscribe } from "./live";
+
 interface StreamStep {
   delayMs: number;
   message: Record<string, unknown>;
@@ -80,6 +82,7 @@ export function mockStream(roomName: string): Response {
   const encoder = new TextEncoder();
   const timeline = TIMELINES[roomName] ?? [];
   let canceled = false;
+  let unsubscribe = () => {};
   const timers: ReturnType<typeof setTimeout>[] = [];
 
   const stream = new ReadableStream<Uint8Array>({
@@ -99,6 +102,11 @@ export function mockStream(roomName: string): Response {
         );
       }
 
+      // What the room's writes put on the stream (live.ts), as they happen.
+      unsubscribe = subscribe(roomName, (frame) => {
+        if (!canceled) controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`));
+      });
+
       // Heartbeat so the badge stays LIVE after the timeline drains.
       const beat = setInterval(() => {
         if (canceled) return;
@@ -108,6 +116,7 @@ export function mockStream(roomName: string): Response {
     },
     cancel() {
       canceled = true;
+      unsubscribe();
       for (const t of timers) clearTimeout(t);
     },
   });

@@ -4,18 +4,21 @@
 /**
  * Finding — or starting — the app to point the camera at.
  *
- * `--mock` boots `pnpm dev:mock` and hands the process to the daemon rather than
- * to the request: a Next dev server takes seconds to come up, and an agent
- * taking six screenshots of six routes should pay that once. The server lives
- * until `shot stop` or the daemon's idle timeout, and dies with it.
+ * `--mock` runs the project's mock dev script (`dev:mock` unless
+ * `shotkit.config.json` names another) and hands the process to the daemon
+ * rather than to the request: a Next dev server takes seconds to come up, and an
+ * agent taking six screenshots of six routes should pay that once. The server
+ * lives until `shot stop` or the daemon's idle timeout, and dies with it.
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createServer } from "node:net";
-import { REPO_ROOT } from "./engine.mjs";
+import { APP_DIR, MOCK_ENV, MOCK_HEADER, MOCK_PROBE, MOCK_SCRIPT } from "./project.mjs";
 
-export const FRONTEND_DIR = `${REPO_ROOT}/mycelium-frontend`;
+export const FRONTEND_DIR = APP_DIR;
 
 /** Ports a dev server is plausibly already sitting on. */
 const PROBE_PORTS = [3000, 3001, 3002];
@@ -67,20 +70,23 @@ async function waitForServer(url, timeoutMs, check) {
     if (await alive(url, 1000)) return;
     await new Promise((r) => setTimeout(r, 300));
   }
-  throw new Error(`dev:mock never answered at ${url} (${timeoutMs}ms)`);
+  throw new Error(`${MOCK_SCRIPT} never answered at ${url} (${timeoutMs}ms)`);
 }
 
 /**
- * Whether a running dev server is serving the mocks. The app marks every
- * response a fixture answered (`x-mycelium-mock`, `src/mocks/index.ts`); a
- * dev server in front of a real hub answers the same route without it.
+ * Whether a running dev server is serving the mocks. A project that marks its
+ * mock responses names the header (`app.mockHeader`) and a route that carries
+ * it (`app.mockProbe`); a dev server in front of real data answers without it.
+ * With no header configured there is no way to tell, so a running server is
+ * taken at its word.
  */
 async function servesMocks(url) {
+  if (!MOCK_HEADER) return true;
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 5000);
   try {
-    const res = await fetch(`${url}/api/rooms`, { signal: ac.signal });
-    return res.headers.get("x-mycelium-mock") === "1";
+    const res = await fetch(`${url}${MOCK_PROBE}`, { signal: ac.signal });
+    return res.headers.get(MOCK_HEADER) === "1";
   } catch {
     return false;
   } finally {
@@ -109,23 +115,22 @@ export function mockStatus() {
 const ALREADY_RUNNING = /Another next dev server is already running[\s\S]*?(http:\/\/localhost:\d+)/;
 
 /**
- * How to run `dev:mock`, by the package manager that installed the frontend.
- * A checkout is a pnpm tree (`node_modules/.pnpm`); CI installs from the npm
- * lockfile, and pnpm handed an npm tree reinstalls it first, which its
- * build-script approval then refuses. Each runs the tree it made.
+ * How to run the mock script, by the package manager that installed the
+ * frontend. pnpm handed an npm tree reinstalls it first, which its build-script
+ * approval can then refuse, so each runs the tree it made.
  *
  * @param {number} port
  * @returns {[string, string[]]}
  */
-export function mockCommand(port, frontendDir = FRONTEND_DIR) {
+export function mockCommand(port, frontendDir = FRONTEND_DIR, script = MOCK_SCRIPT) {
   if (existsSync(`${frontendDir}/node_modules/.pnpm`)) {
-    return ["pnpm", ["dev:mock", "--port", String(port)]];
+    return ["pnpm", [script, "--port", String(port)]];
   }
-  return ["npm", ["run", "dev:mock", "--", "--port", String(port)]];
+  return ["npm", ["run", script, "--", "--port", String(port)]];
 }
 
 /**
- * Boot `dev:mock`, or attach to the one that is already up. A running dev
+ * Boot the mock script, or attach to the one that is already up. A running dev
  * server that isn't serving mocks is refused, not attached to.
  *
  * Attaching matters more than it looks: a dev server that outlived a previous
@@ -152,25 +157,34 @@ export async function ensureMockServer({ log = () => {} } = {}) {
   }
 
   const port = await freePort();
-  log(`booting dev:mock on :${port}`);
+  log(`booting ${MOCK_SCRIPT} on :${port}`);
   const [bin, args] = mockCommand(port);
+  // Output goes to a file, not a pipe: a dev server is left running across a
+  // daemon restart for the next one to adopt, and one still writing into a
+  // pipe whose reader has exited stalls on its next log line.
+  const logPath = join(tmpdir(), `shotkit-dev-mock-${port}.log`);
+  const logFd = openSync(logPath, "w");
   const proc = spawn(bin, args, {
     cwd: FRONTEND_DIR,
-    env: { ...process.env, MYCELIUM_UI_MOCK: "1", PORT: String(port) },
-    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, ...MOCK_ENV, PORT: String(port) },
+    stdio: ["ignore", logFd, logFd],
     // Its own process group: `pnpm` is a wrapper, and signaling only the
     // wrapper orphans the next-server child, which then holds the directory
     // against every later boot.
     detached: true,
   });
 
+  closeSync(logFd);
   let transcript = "";
-  const watch = (d) => {
-    transcript += d;
-    if (process.env.SHOTKIT_DAEMON_VERBOSE) process.stderr.write(d);
+  const readLog = () => {
+    try {
+      transcript = readFileSync(logPath, "utf8");
+    } catch {
+      /* not written yet */
+    }
+    return transcript;
   };
-  proc.stdout?.on("data", watch);
-  proc.stderr?.on("data", watch);
+  if (process.env.SHOTKIT_DAEMON_VERBOSE) log(`${MOCK_SCRIPT} output: ${logPath}`);
 
   // Address the dev server as `localhost`, not `127.0.0.1`: Next's dev-server
   // cross-origin guard only allow-lists `localhost`, so a browser 403s on every
@@ -178,7 +192,7 @@ export async function ensureMockServer({ log = () => {} } = {}) {
   const url = `http://localhost:${port}`;
   try {
     await waitForServer(`${url}/`, 120_000, () => {
-      const m = ALREADY_RUNNING.exec(transcript);
+      const m = ALREADY_RUNNING.exec(readLog());
       if (m) throw Object.assign(new Error("adopt"), { adoptUrl: m[1] });
     });
   } catch (e) {
@@ -189,11 +203,11 @@ export async function ensureMockServer({ log = () => {} } = {}) {
       mockServer = { proc: null, url: e.adoptUrl, adopted: true };
       return e.adoptUrl;
     }
-    throw new Error(`dev:mock did not come up.\n${transcript.slice(-800)}`);
+    throw new Error(`${MOCK_SCRIPT} did not come up.\n${readLog().slice(-800)}`);
   }
 
   mockServer = { proc, url, adopted: false };
-  log("dev:mock ready");
+  log(`${MOCK_SCRIPT} ready`);
   return url;
 }
 
@@ -225,7 +239,7 @@ export function stopMockServer() {
 export async function resolveBaseUrl(opts = {}) {
   if (opts.baseUrl) return opts.baseUrl.replace(/\/$/, "");
   if (opts.mock) return ensureMockServer(opts);
-  const fromEnv = process.env.SHOTKIT_APP_URL ?? process.env.MYCELIUM_UI_URL;
+  const fromEnv = process.env.SHOTKIT_APP_URL;
   if (fromEnv) return fromEnv.replace(/\/$/, "");
   // A remembered server is still checked: a dev server can wedge or be killed
   // between shots, and returning its URL anyway turns that into a 30s
@@ -241,6 +255,6 @@ export async function resolveBaseUrl(opts = {}) {
   throw new Error(
     `no app found${locked ? ` (${locked} from .next/dev/lock is not answering)` : ""} ` +
       `on ${PROBE_PORTS.map((p) => `:${p}`).join(", ")}. ` +
-      "Start it, pass --base-url, or use --mock to have shotkit boot dev:mock.",
+      `Start it, pass --base-url, or use --mock to have shotkit boot ${MOCK_SCRIPT}.`,
   );
 }

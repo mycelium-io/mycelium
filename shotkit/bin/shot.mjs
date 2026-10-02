@@ -46,8 +46,8 @@ const CHROME = {
   chrome: { type: "boolean", help: "wrap the capture in browser window chrome" },
   address: { type: "string", help: "address-bar text (default: the route)" },
   "chrome-theme": { type: "string", value: "dark|light", help: "frame theme, when it differs from the app's" },
-  backdrop: { type: "string", value: "<preset|css>", help: "mycelial|mycelium|dusk|ink|paper|none, or any CSS" },
-  "backdrop-seed": { type: "number", help: "which network --backdrop mycelial grows" },
+  backdrop: { type: "string", value: "<preset|css>", help: "glass|mycelial|mycelium|dusk|ink|paper|none, or any CSS" },
+  "backdrop-seed": { type: "number", help: "which scene --backdrop glass|mycelial grows" },
   padding: { type: "number", help: "gutter around the frame (default 40)" },
   radius: { type: "number", help: "corner radius (default 12)" },
   shadow: { type: "boolean", help: "drop shadow (default on)" },
@@ -60,6 +60,31 @@ const RESPONSIVE = {
   sheet: { type: "boolean", help: "also compose the frames into one contact sheet" },
   "sheet-only": { type: "boolean", help: "keep only the contact sheet, not the individual frames" },
   "sheet-title": { type: "string", help: "heading on the contact sheet" },
+};
+
+const STAGE = {
+  demo: { type: "boolean", help: "tech-demo framing: tilted in perspective on a dark stage (--tilt hero)" },
+  tilt: {
+    type: "string",
+    value: "<preset|x,y,z>",
+    help: "hero|left|right|dutch|desk|flat, or degrees x,y,z (one number = dutch only); implies --demo",
+  },
+  perspective: { type: "number", value: "<px>", help: "camera distance; smaller is more dramatic (default 1800)" },
+  fit: { type: "number", value: "<0-1>", help: "how much of the stage the window fills (default 0.74)" },
+  stage: { type: "string", value: "<WxH>", help: "stage size in CSS px (default 1920x1080)" },
+  glow: { type: "boolean", help: "accent glow behind the window (default on; --no-glow)" },
+  reflect: { type: "boolean", help: "a faint reflection under the window" },
+  grid: { type: "boolean", help: "a faint perspective grid on the ground" },
+};
+
+const VIDEO_STAGE = {
+  ...STAGE,
+  backdrop: { type: "string", value: "<preset|css>", help: "the stage's ground: mycelium|dusk|ink|paper|none, or any CSS" },
+  "backdrop-seed": { type: "number", help: "which scene --backdrop glass|mycelial grows" },
+  drift: { type: "number", value: "<deg>", help: "on a stage, swing the angle this far across the take (default 10; 0 holds still)" },
+  intro: { type: "string", value: "<title|line>", help: "on a stage, open on a title card (the project's logo, a title, a line under it)" },
+  outro: { type: "string", value: "<title|line>", help: "on a stage, close on a title card" },
+  "title-seconds": { type: "number", value: "<s>", help: "how long each title card holds (default 2.6)" },
 };
 
 const VIDEO = {
@@ -96,8 +121,8 @@ const DAEMON = {
 
 const CARD = {
   title: { type: "string", help: "title bar text" },
-  backdrop: { type: "string", value: "<preset|css>", help: "mycelial|mycelium|dusk|ink|paper|none, or any CSS" },
-  "backdrop-seed": { type: "number", help: "which network --backdrop mycelial grows" },
+  backdrop: { type: "string", value: "<preset|css>", help: "glass|mycelial|mycelium|dusk|ink|paper|none, or any CSS" },
+  "backdrop-seed": { type: "number", help: "which scene --backdrop glass|mycelial grows" },
   padding: { type: "number", help: "gutter around the card (default 40)" },
   radius: { type: "number", help: "corner radius (default 12)" },
   shadow: { type: "boolean", help: "drop shadow (default on)" },
@@ -158,7 +183,7 @@ const SESSION = {
 
 const APP = {
   "base-url": { type: "string", value: "<url>", help: "app origin (default: probe :3000-:3002)" },
-  mock: { type: "boolean", help: "boot pnpm dev:mock and keep it warm in the daemon" },
+  mock: { type: "boolean", help: "boot the project's mock dev script (dev:mock) and keep it warm in the daemon" },
 };
 
 // A take has no still-image business: nothing is clipped to an element, masked,
@@ -171,7 +196,7 @@ const err = (m) => process.stderr.write(`${m}\n`);
 const USAGE = `shot — fast screenshots of the app and of CLI output
 
 one-shot
-  shot app [route]        the running frontend (add --mock to boot dev:mock)
+  shot app [route]        the running frontend (add --mock to boot its dev:mock script)
   shot url <url>          any URL
   shot term <command…>    run a command, shoot its terminal output
   shot text <file|->      render an existing text/ANSI capture as a terminal
@@ -186,8 +211,8 @@ responsive
   shot app / --viewports phone,wide   just these two
 
 navigation — a page held open, driven step by step
-  shot open /room/checkout --session r   open it and keep it
-  shot do click:Negotiate --session r act on it
+  shot open /settings --session r     open it and keep it
+  shot do click:Save --session r      act on it
   shot shoot --session r              shoot it as it stands
   shot sessions | shot close --session r
 
@@ -196,24 +221,24 @@ daemon
   shot doctor | bench
 
 stdout carries the path and nothing else, so it composes:
-  open "$(shot app /room/checkout --mock)"
+  open "$(shot app /settings --mock)"
 ` + `
 actions (--do, and the arguments to \`shot do\` / \`shot shoot\`)${ACTION_HELP}
 `;
 
 const COMMAND_HELP = {
-  app: ["shot app [route] [options]", { ...APP, ...PAGE, ...RESPONSIVE, ...CHROME, ...FRAME, ...OUTPUT, ...DAEMON }],
-  url: ["shot url <url> [options]", { ...PAGE, ...RESPONSIVE, ...CHROME, ...FRAME, ...OUTPUT, ...DAEMON }],
-  term: ["shot term [options] <command…>   (flags must precede the command)", { ...TERM, ...CARD, ...FRAME, ...OUTPUT, ...DAEMON }],
-  text: ["shot text <file|-> [options]", { ...TERM, ...CARD, ...FRAME, ...OUTPUT, ...DAEMON }],
-  code: ["shot code <file> [options]", { ...CODE, ...CARD, ...FRAME, ...OUTPUT, ...DAEMON }],
-  html: ["shot html <file|-> [options]", { ...CARD, ...FRAME, ...OUTPUT, ...DAEMON }],
+  app: ["shot app [route] [options]", { ...APP, ...PAGE, ...RESPONSIVE, ...CHROME, ...STAGE, ...FRAME, ...OUTPUT, ...DAEMON }],
+  url: ["shot url <url> [options]", { ...PAGE, ...RESPONSIVE, ...CHROME, ...STAGE, ...FRAME, ...OUTPUT, ...DAEMON }],
+  term: ["shot term [options] <command…>   (flags must precede the command)", { ...TERM, ...CARD, ...STAGE, ...FRAME, ...OUTPUT, ...DAEMON }],
+  text: ["shot text <file|-> [options]", { ...TERM, ...CARD, ...STAGE, ...FRAME, ...OUTPUT, ...DAEMON }],
+  code: ["shot code <file> [options]", { ...CODE, ...CARD, ...STAGE, ...FRAME, ...OUTPUT, ...DAEMON }],
+  html: ["shot html <file|-> [options]", { ...CARD, ...STAGE, ...FRAME, ...OUTPUT, ...DAEMON }],
   open: ["shot open <route|url> [options]   — hold a page open under a name", { ...SESSION, ...APP, ...PAGE, ...RESPONSIVE, ...FRAME, ...DAEMON }],
   do: ["shot do <verb:arg…> [options]       — drive the held page", { ...SESSION, ...PAGE, ...DAEMON }],
-  shoot: ["shot shoot [verb:arg…] [options]   — shoot the held page as it stands", { ...SESSION, ...PAGE, ...CHROME, ...FRAME, ...OUTPUT, ...DAEMON }],
+  shoot: ["shot shoot [verb:arg…] [options]   — shoot the held page as it stands", { ...SESSION, ...PAGE, ...CHROME, ...STAGE, ...FRAME, ...OUTPUT, ...DAEMON }],
   video: [
     "shot video [route|url] [options]   — a recorded take, with a visible cursor",
-    { ...APP, ...VIDEO_PAGE, ...VIDEO_FRAME, ...OUTPUT, ...DAEMON, ...VIDEO },
+    { ...APP, ...VIDEO_PAGE, ...VIDEO_FRAME, ...OUTPUT, ...DAEMON, ...VIDEO, ...VIDEO_STAGE },
   ],
   resize: ["shot resize --viewport <v> [options] — reframe the held page in place", { ...SESSION, ...RESPONSIVE, ...DAEMON }],
   close: ["shot close [options]", { ...SESSION, ...DAEMON }],
@@ -413,7 +438,7 @@ async function main() {
 
   let spec;
   if (command === "term") {
-    if (rest.length === 0) throw new Error("shot term needs a command: shot term mycelium --help");
+    if (rest.length === 0) throw new Error("shot term needs a command: shot term git --help");
     spec = toSpec("term", flags);
     spec.argv = rest;
   } else if (command === "open") {

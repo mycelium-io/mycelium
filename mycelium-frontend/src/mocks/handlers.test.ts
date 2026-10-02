@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { handleMock } from "@/mocks/handlers";
+import { subscribe } from "@/mocks/live";
 
 async function mockGet(path: string): Promise<{ status: number; body: unknown }> {
   const res = await handleMock(new Request(`http://localhost${path}`));
@@ -194,5 +195,66 @@ describe("mock memory write handler", () => {
 
     const { body } = await mockGet("/api/rooms/checkout/memory/context/mock-clear-probe");
     expect((body as { expandable?: boolean }).expandable).toBe(false);
+  });
+});
+
+describe("mock live writes", () => {
+  const postJson = async (path: string, body: unknown) => {
+    const res = await handleMock(
+      new Request(`http://localhost${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+    if (!res) throw new Error(`handleMock returned null for ${path}`);
+    return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+  };
+
+  it("stores a posted message and puts it on the room's stream", async () => {
+    const heard: Record<string, unknown>[] = [];
+    const stop = subscribe("scratch", (f) => heard.push(f));
+    const { status, body } = await postJson("/api/rooms/scratch/messages", {
+      sender_handle: "alice",
+      message_type: "broadcast",
+      content: "hello, room",
+      episode: null,
+    });
+    stop();
+    expect(status).toBe(201);
+    expect(heard.some((f) => f.content === "hello, room")).toBe(true);
+    const { body: read } = await mockGet("/api/rooms/scratch/messages?limit=5");
+    const messages = (read as { messages: { id: string }[] }).messages;
+    expect(messages.some((m) => m.id === body.id)).toBe(true);
+  });
+
+  it("files a task as a work/ row with a thread of its own, and raises a filed notice", async () => {
+    const heard: Record<string, unknown>[] = [];
+    const stop = subscribe("scratch", (f) => heard.push(f));
+    const { status, body } = await postJson("/api/rooms/scratch/tasks", {
+      title: "Write the release notes",
+      handle: "alice",
+      assignee: "bob",
+    });
+    stop();
+    expect(status).toBe(201);
+    expect(body.key).toBe("work/write-the-release-notes");
+    expect(String(body.episode)).toMatch(/^urn:ioc:mycelium:episode:scratch:[0-9a-f]{8}$/);
+    expect(body.meta).toMatchObject({ kind: "action", status: "open", assignee: "bob" });
+    const notice = heard.find((f) => JSON.stringify(f).includes('"subkind":"filed"'));
+    expect(notice).toBeDefined();
+
+    const again = await postJson("/api/rooms/scratch/tasks", { title: "Write the release notes", handle: "alice" });
+    expect(again.status).toBe(409);
+  });
+
+  it("claims and resolves a row through the assignment routes", async () => {
+    await postJson("/api/rooms/scratch/tasks", { title: "Tidy the backlog", handle: "alice" });
+    const claimed = await postJson("/api/rooms/scratch/assignments/claim", { key: "work/tidy-the-backlog", handle: "bob" });
+    expect(claimed.body).toMatchObject({ assignment: "held", owner: "@bob" });
+    const resolved = await postJson("/api/rooms/scratch/assignments/resolve", { key: "work/tidy-the-backlog", handle: "bob" });
+    expect(resolved.body).toMatchObject({ assignment: "resolved" });
+    const { body } = await mockGet("/api/rooms/scratch/memory/work/tidy-the-backlog");
+    expect((body as { meta: Record<string, unknown> }).meta.status).toBe("resolved");
   });
 });

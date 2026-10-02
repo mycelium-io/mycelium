@@ -1233,6 +1233,7 @@ def _layout_close(sheet_no: str, plate_title: str) -> str:
 
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script src="site.js"></script>
+<script src="glass.js"></script>
 
 </body>
 </html>

@@ -16,24 +16,27 @@
 
 import { readFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
-import { Engine, REPO_ROOT, pngSize, writeShot } from "./engine.mjs";
+import { Engine, pngSize, writeShot } from "./engine.mjs";
+import { PROJECT_ROOT } from "./project.mjs";
 import { codeDocument } from "./code.mjs";
 import { terminalDocument } from "./terminal.mjs";
 import { cardDocument, imageCardDocument } from "./card.mjs";
 import { sheetDocument } from "./sheet.mjs";
+import { GLASS_VIDEO_SCALE, glassArt, glassMarkup, glassSource } from "./glass.mjs";
 import { mycelialArt } from "./mycelial.mjs";
 import { resolveBaseUrl } from "./app.mjs";
 import { runCommand } from "./run.mjs";
 import { stripAnsi } from "./ansi.mjs";
 import { viewportList } from "./viewports.mjs";
 import { record, resolveFormat } from "./video.mjs";
+import { STAGE_DEFAULTS, isStaged, pickStage, stageDocument } from "./stage.mjs";
 
 /**
  * @typedef {object} PageSpec
  * @property {string} [url] for `op: "url"`
  * @property {string} [route] for `op: "app"`
  * @property {string} [baseUrl] app origin; probed when absent
- * @property {boolean} [mock] boot `pnpm dev:mock` and hold it in the daemon
+ * @property {boolean} [mock] boot the project's mock script and hold it in the daemon
  * @property {number} [width] @property {number} [height] @property {number} [scale]
  * @property {string} [viewport] preset name or `1280x800@2`
  * @property {string} [viewports] comma-separated presets — one shot each
@@ -52,13 +55,13 @@ import { record, resolveFormat } from "./video.mjs";
  * @property {string} [address] address-bar text when `chrome` is set
  * @property {"dark"|"light"} [chromeTheme] frame theme, when it should differ
  *   from the app's — a light frame around a dark app, say
- * @property {number} [backdropSeed] which network `--backdrop mycelial` grows
+ * @property {number} [backdropSeed] which scene `--backdrop glass|mycelial` grows
  * @property {number} [fps] `op: "video"` — frames per second (default 30)
  * @property {number} [zoom] push-in factor for `zoom:` and `--auto-zoom`
  * @property {boolean} [autoZoom] push in on every click, and back out after
  */
 
-export const DEFAULT_OUT_DIR = process.env.SHOTKIT_OUT ?? resolve(REPO_ROOT, ".shotkit");
+export const DEFAULT_OUT_DIR = process.env.SHOTKIT_OUT ?? resolve(PROJECT_ROOT, ".shotkit");
 
 const slug = (s) =>
   (s || "shot").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "shot";
@@ -101,7 +104,7 @@ const pickCard = (spec) => Object.fromEntries(CARD_KEYS.filter((k) => spec[k] !=
 /**
  * The artwork layer behind the card, for the backdrops that have one.
  *
- * Only `mycelial` does. It is a backdrop rather than a flag of its own because
+ * `mycelial` and `glass` do. Each is a backdrop rather than a flag of its own because
  * that is where a caller looks for what the image sits on, but growing the
  * network is a render and not a CSS lookup, so it resolves here — where the
  * engine is — instead of in the string table.
@@ -110,8 +113,20 @@ const pickCard = (spec) => Object.fromEntries(CARD_KEYS.filter((k) => spec[k] !=
  * @returns {Promise<string|undefined>}
  */
 async function artFor(eng, spec, theme) {
+  const t = theme === "light" ? "light" : "dark";
+  if (spec.backdrop === "glass") return glassArt(eng, { theme: t, seed: spec.backdropSeed });
   if (spec.backdrop !== "mycelial") return undefined;
-  return mycelialArt(eng, { theme: theme === "light" ? "light" : "dark", seed: spec.backdropSeed });
+  return mycelialArt(eng, { theme: t, seed: spec.backdropSeed });
+}
+
+/** The glass scene as live markup for a staged take, which moves under the window. */
+async function glassLive(spec) {
+  const { script } = await glassSource();
+  return glassMarkup(script, {
+    theme: spec.theme === "light" ? "light" : "dark",
+    seed: spec.backdropSeed,
+    scale: GLASS_VIDEO_SCALE,
+  });
 }
 
 const pickStatic = (spec) => ({
@@ -134,8 +149,18 @@ export async function capture(spec, ctx = {}) {
   const base = { ok: true, op: spec.op, mode: ctx.mode ?? "direct", engine: eng.channel };
 
   if (spec.op === "term" || spec.op === "code" || spec.op === "html") {
-    const { buf, meta, timings, fallbackName } = await renderCard(spec, eng);
-    return finish({ ...base, meta, ms: { total: Date.now() - t0, ...timings } }, spec, buf, fallbackName);
+    // On a stage the card is rendered bare (no backdrop, no shadow, transparent
+    // corners) and the stage supplies the ground and the shadow, in 3D.
+    const staged = isStaged(spec);
+    const cardSpec = staged ? { ...spec, ...BARE } : spec;
+    const card = await renderCard(cardSpec, eng);
+    const buf = staged ? await stageImage(eng, card.buf, spec, "none") : card.buf;
+    return finish(
+      { ...base, meta: card.meta, ms: { total: Date.now() - t0, ...card.timings } },
+      spec,
+      buf,
+      card.fallbackName,
+    );
   }
 
   if (spec.op === "video") {
@@ -159,7 +184,12 @@ export async function capture(spec, ctx = {}) {
         settle: spec.settle ?? (isApp ? "fast" : "none"),
         storage: themedStorage(spec, isApp),
       },
-      { log, out },
+      {
+        log,
+        out,
+        stageArt: isStaged(spec) && spec.backdrop !== "glass" ? await artFor(eng, spec, spec.theme ?? "dark") : undefined,
+        stageLive: isStaged(spec) && spec.backdrop === "glass" ? await glassLive(spec) : undefined,
+      },
     );
     // Everything about *how* the take was made is meta; the file and its shape
     // stay at the top level, where every other op puts them.
@@ -191,7 +221,7 @@ export async function capture(spec, ctx = {}) {
       const frame = frames[0]?.viewport;
       const tCap = Date.now();
       const raw = await eng.capturePage({ ...pageSpec, ...(frame ?? {}) });
-      const buf = await wrapChrome(eng, raw.buf, spec, prettyAddress(spec, url));
+      const buf = await frameShot(eng, raw.buf, spec, prettyAddress(spec, url));
       const captureMs = Date.now() - tCap;
       const meta = {
         url,
@@ -199,6 +229,7 @@ export async function capture(spec, ctx = {}) {
         viewport: frames[0]?.name,
         trace: raw.trace,
         chrome: Boolean(spec.chrome),
+        ...(isStaged(spec) ? { tilt: pickStage(spec).tilt } : {}),
         hint: slowCaptureHint(spec, captureMs),
       };
       return finish(
@@ -250,6 +281,52 @@ async function wrapChrome(eng, buf, spec, address) {
   return eng.captureStatic({ html, ...pickStatic(spec), theme, scale, width: 2600, height: 2000 });
 }
 
+/** A card or window with nothing around it, for the stage to place. */
+const BARE = { backdrop: "none", padding: 0, shadow: false, transparent: true };
+
+/**
+ * Frame a page capture: on the tech-demo stage when `--demo`/`--tilt` asks,
+ * otherwise in browser chrome when `--chrome` does, otherwise as it is. On a
+ * stage, `--chrome` still adds the window bar: the window is built bare first
+ * and then tilted whole.
+ * @param {any} eng @param {Buffer} buf @param {Record<string,any>} spec @param {string} address
+ */
+async function frameShot(eng, buf, spec, address) {
+  if (!isStaged(spec)) return wrapChrome(eng, buf, spec, address);
+  if (!spec.chrome) return stageImage(eng, buf, spec, "window");
+  const win = await wrapChrome(eng, buf, { ...spec, ...BARE }, address);
+  return stageImage(eng, win, spec, "none");
+}
+
+/**
+ * Put an image on the stage and shoot it.
+ * @param {any} eng @param {Buffer} buf a PNG at `spec.scale`
+ * @param {Record<string,any>} spec @param {"window"|"none"} frame
+ */
+async function stageImage(eng, buf, spec, frame) {
+  const scale = spec.scale ?? 2;
+  const { width, height } = pngSize(buf);
+  const stage = pickStage(spec);
+  const theme = spec.chromeTheme ?? spec.theme ?? "dark";
+  const html = stageDocument({
+    ...stage,
+    frame,
+    theme,
+    art: await artFor(eng, spec, theme),
+    imgWidth: Math.round(width / scale),
+    imgHeight: Math.round(height / scale),
+    src: `data:image/png;base64,${buf.toString("base64")}`,
+  });
+  return eng.captureStatic({
+    html,
+    ...pickStatic(spec),
+    theme,
+    scale,
+    width: stage.width ?? STAGE_DEFAULTS.width,
+    height: stage.height ?? STAGE_DEFAULTS.height,
+  });
+}
+
 /**
  * A capture this slow is almost always a page waiting on an unreachable CDN,
  * which is silent by construction: the shot still succeeds, just late and in
@@ -278,7 +355,7 @@ async function captureResponsive({ base, spec, pageSpec, frames, fallbackName, e
   for (const { name, viewport } of frames) {
     const tCap = Date.now();
     const raw = await eng.capturePage({ ...pageSpec, ...viewport });
-    const buf = await wrapChrome(eng, raw.buf, { ...spec, scale: viewport.scale }, prettyAddress(spec, url));
+    const buf = await frameShot(eng, raw.buf, { ...spec, scale: viewport.scale }, prettyAddress(spec, url));
     const size = pngSize(buf);
     composed.push({ label: viewport.label ?? name, base64: buf.toString("base64"), ...size, scale: viewport.scale });
     if (!spec.sheetOnly) {
@@ -439,7 +516,7 @@ export async function session(spec, ctx = {}) {
   if (spec.op === "shoot") {
     const shot = await eng.shootSession(name, spec);
     const { trace, meta } = shot;
-    const buf = await wrapChrome(eng, shot.buf, spec, spec.address ?? meta.url);
+    const buf = await frameShot(eng, shot.buf, spec, spec.address ?? meta.url);
     const result = { ok: true, op: "shoot", session: meta, trace, mode: ctx.mode ?? "direct", ms: { total: Date.now() - t0 } };
     return finish(result, spec, buf, `session-${slug(name)}`);
   }

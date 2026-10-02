@@ -21,7 +21,7 @@ Mycelium is a multi-component monorepo. When you describe "the architecture" you
 - [`mycelium-cli/`](mycelium-cli/) — the user-facing CLI (typer + Rich). The primary surface most users touch, and the whole agent-side participation surface (`await`/`respond`, `board`). Hosts adapter logic for Claude Code (proven) and Cursor (untested).
 - [`mycelium-client/`](mycelium-client/) — auto-generated OpenAPI client. Treat as build output; don't document its internals.
 - [`mycelium-frontend/`](mycelium-frontend/) — Next.js + Tailwind UI, part of the stack `mycelium up` brings up. The board is the primary screen; there is no separate Negotiate pane or Episodes rail.
-- [`mycelium-promo/`](mycelium-promo/) — HyperFrames promo video (HTML→MP4), redone around the board. Out of scope for the wiki.
+- [`mycelium-promo/`](mycelium-promo/) — the product demo: a shotkit recording of the real app over the frontend's demo scenario. Out of scope for the wiki.
 - [`docs/`](docs/) — presentation site + demo script + agent-facing setup runbook (`docs/agents.md`).
 
 ## Where the actual logic lives
@@ -68,7 +68,7 @@ If you're documenting how Mycelium works, ground every claim against one of thes
 
 ## Out of scope for the wiki
 
-- Promo video pipeline (`mycelium-promo/`) — internal marketing artifact.
+- Product demo recording (`mycelium-promo/`) — internal marketing artifact.
 - Generated client internals (`mycelium-client/`) — build output, not source of truth.
 - Docs site rendering details (`docs/generate_docs.py`, CSS, etc.).
 - Step-by-step end-user install — that's what the README is for.

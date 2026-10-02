@@ -35,6 +35,9 @@ const byLabel = (page, spec) =>
     .or(page.getByRole("link", { name: spec }))
     .or(page.getByRole("tab", { name: spec }))
     .or(page.getByRole("menuitem", { name: spec }))
+    // A field is named by its label, and often only by its placeholder.
+    .or(page.getByRole("textbox", { name: spec }))
+    .or(page.getByPlaceholder(spec, { exact: true }))
     .or(page.getByText(spec, { exact: true }))
     .first();
 
