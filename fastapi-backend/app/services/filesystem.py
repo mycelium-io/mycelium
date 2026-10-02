@@ -97,7 +97,7 @@ class UnsafePathError(ValueError):
     """A client-supplied room name or memory key would resolve outside its directory."""
 
 
-def _contained(base_dir: Path, relative: str) -> Path:
+def contained(base_dir: Path, relative: str) -> Path:
     """``base_dir / relative``, refusing a result that resolves outside ``base_dir``.
 
     Rejects ``..`` segments, absolute paths, symlinks that leave the base, and the
@@ -111,9 +111,14 @@ def _contained(base_dir: Path, relative: str) -> Path:
     return path
 
 
+def room_path(room_name: str) -> Path:
+    """A room's directory path, not created. Raises ``UnsafePathError`` on an escaping name."""
+    return contained(get_data_dir() / "rooms", room_name)
+
+
 def get_room_dir(room_name: str) -> Path:
     """Get the directory for a room, creating it if needed."""
-    room_dir = _contained(get_data_dir() / "rooms", room_name)
+    room_dir = room_path(room_name)
     room_dir.mkdir(parents=True, exist_ok=True)
     return room_dir
 
@@ -268,7 +273,7 @@ def write_memory_file(
     extra_meta: dict[str, Any] | None = None,
 ) -> Path:
     """Write a memory as a markdown file. Creates parent directories as needed."""
-    file_path = _contained(base_dir, _sanitize_filename(key))
+    file_path = contained(base_dir, _sanitize_filename(key))
     file_path.parent.mkdir(parents=True, exist_ok=True)
 
     text = serialize_memory(
@@ -290,7 +295,7 @@ def write_memory_file(
 def read_memory_file(base_dir: Path, key: str) -> tuple[dict[str, Any], str] | None:
     """Read a memory file by key. Returns (metadata, content) or None if not found."""
     try:
-        file_path = _contained(base_dir, _sanitize_filename(key))
+        file_path = contained(base_dir, _sanitize_filename(key))
     except UnsafePathError:
         return None
     if not file_path.exists():
@@ -302,7 +307,7 @@ def read_memory_file(base_dir: Path, key: str) -> tuple[dict[str, Any], str] | N
 def delete_memory_file(base_dir: Path, key: str) -> bool:
     """Delete a memory file by key. Returns True if the file existed."""
     try:
-        file_path = _contained(base_dir, _sanitize_filename(key))
+        file_path = contained(base_dir, _sanitize_filename(key))
     except UnsafePathError:
         return False
     if file_path.exists():
@@ -435,7 +440,7 @@ def room_id(room_name: str) -> int:
 def room_exists(room_name: str) -> bool:
     """True if the room's directory exists on disk."""
     try:
-        return _contained(get_data_dir() / "rooms", room_name).is_dir()
+        return room_path(room_name).is_dir()
     except UnsafePathError:
         return False
 

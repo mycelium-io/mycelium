@@ -1921,7 +1921,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#hub-and-spoke-ports",
     "t": "Ports",
     "s": "Guides › Hub & Spoke",
-    "x": "Port Service Do spokes need it? Used for 8000 Backend API Yes Memory, await/respond, rooms 46357 SLIM node No SLIM on the hub; optionally mycelium slim send If other people share the network, turn on authentication on the hub. That's what protects the API from other machines. The SLIM secret doesn't.",
+    "x": "Port Service Do spokes need it? Used for 8000 Backend API Yes Memory, await/respond, rooms 46357 SLIM node No SLIM on the hub; optionally mycelium slim send By default Docker publishes the backend only on the hub machine's loopback address, so spokes on other machines can't reach it. To serve them, turn on authentication first, then bind to all interfaces: mycelium config set runtime.bind_addr 0.0.0.0 mycelium config",
     "p": "Reference"
   },
   {
@@ -1977,7 +1977,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#hub-and-spoke-a-spoke-cant-reach-the-hub",
     "t": "A spoke can't reach the hub",
     "s": "Guides › Hub & Spoke",
-    "x": "Check the API first, since that's what spokes use: curl http://192.168.1.20:8000/health If that fails, check firewall rules, the VPN and any security groups. The hub has to accept connections on port 8000. Spokes don't need port 46357.",
+    "x": "Check the API first, since that's what spokes use: curl http://192.168.1.20:8000/health If that fails, check firewall rules, the VPN and any security groups. The hub has to accept connections on port 8000, which also means runtime.bind_addr must be 0.0.0.0 (the default is loopback only). Spokes don't need port 46357.",
     "p": "Reference"
   },
   {
@@ -2782,7 +2782,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#troubleshooting-backend-settings-myceliumenv",
     "t": "Backend settings: ~/.mycelium/.env",
     "s": "Help › Troubleshooting",
-    "x": "Variable What it is Default LLM_MODEL The model, as provider/model anthropic/claude-sonnet-4-6 LLM_API_KEY The provider's API key (none) LLM_BASE_URL A custom model endpoint, such as Ollama or vLLM (none) MYCELIUM_DATA_DIR Where rooms and memories are stored ~/.mycelium MYCELIUM_BACKEND_PORT The backend's port on your machine 8000 MYCELIUM_UI_PORT The app's port on your machine 3000 MYCELIUM_METRICS_PORT The metrics ",
+    "x": "Variable What it is Default LLM_MODEL The model, as provider/model anthropic/claude-sonnet-4-6 LLM_API_KEY The provider's API key (none) LLM_BASE_URL A custom model endpoint, such as Ollama or vLLM (none) MYCELIUM_DATA_DIR Where rooms and memories are stored ~/.mycelium MYCELIUM_BIND_ADDR The address the stack's ports are published on (runtime.bind_addr) 127.0.0.1 MYCELIUM_BACKEND_PORT The backend's port on your mach",
     "p": "Reference"
   },
   {

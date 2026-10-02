@@ -14,8 +14,17 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from mycelium.engine import pi_session
 from mycelium.engine.pi_session import PiSession
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_pi_login(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the machine's own pi login out of key-routing tests."""
+    monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "pi-agent"))
+    monkeypatch.delenv("ANTHROPIC_OAUTH_TOKEN", raising=False)
 
 
 def _llm_session(tmp_path: Path, **kw: Any) -> PiSession:
@@ -39,6 +48,34 @@ def test_direct_key_provider_passes_key_via_env_not_argv(tmp_path: Path) -> None
     env = brain_._subprocess_env()
     assert env is not None
     assert env["ANTHROPIC_API_KEY"] == "secret"
+
+
+def test_stored_pi_login_keeps_the_api_key_flag(tmp_path: Path) -> None:
+    """pi ranks auth.json above env vars, so the flag must keep the configured key in charge."""
+    agent_dir = tmp_path / "pi-agent"
+    agent_dir.mkdir()
+    (agent_dir / "auth.json").write_text(json.dumps({"anthropic": {"type": "oauth"}}))
+    brain_ = _llm_session(tmp_path, api_key="secret")
+    cmd = brain_._build_command("p", system="")
+    assert cmd[cmd.index("--api-key") + 1] == "secret"
+    assert brain_._subprocess_env() is None
+
+
+def test_login_for_another_provider_does_not_change_routing(tmp_path: Path) -> None:
+    agent_dir = tmp_path / "pi-agent"
+    agent_dir.mkdir()
+    (agent_dir / "auth.json").write_text(json.dumps({"openai": {"type": "api_key"}}))
+    brain_ = _llm_session(tmp_path, api_key="secret")
+    assert "--api-key" not in brain_._build_command("p", system="")
+
+
+def test_anthropic_oauth_env_keeps_the_api_key_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """pi reads ANTHROPIC_OAUTH_TOKEN before ANTHROPIC_API_KEY."""
+    monkeypatch.setenv("ANTHROPIC_OAUTH_TOKEN", "oauth")
+    cmd = _llm_session(tmp_path, api_key="secret")._build_command("p", system="")
+    assert cmd[cmd.index("--api-key") + 1] == "secret"
 
 
 def test_provider_without_env_var_keeps_api_key_flag(tmp_path: Path) -> None:

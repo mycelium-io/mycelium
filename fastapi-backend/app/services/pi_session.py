@@ -169,6 +169,19 @@ def _pi_agent_dir() -> Path:
     return Path(override)
 
 
+def has_stored_login(provider: str) -> bool:
+    """True when pi's ``auth.json`` has an entry for *provider*.
+
+    Pi ranks a stored login above environment variables, so callers that would
+    send a key through the environment must know when that key would be shadowed.
+    """
+    try:
+        data = json.loads((_pi_agent_dir() / "auth.json").read_text())
+    except (OSError, ValueError):
+        return False
+    return isinstance(data, dict) and provider in data
+
+
 def _openai_compat_base_url(base_url: str) -> str:
     """Ensure an OpenAI-compatible base URL ends in ``/v1`` (pi wants the full path)."""
     trimmed = base_url.rstrip("/")
@@ -414,8 +427,15 @@ class PiSession:
             )
 
     def _key_env_name(self) -> str | None:
-        """The env var that carries this session's key, or None to use ``--api-key``."""
-        if self._endpoint_mode == "custom":
+        """The env var that carries this session's key, or None to use ``--api-key``.
+
+        Pi ranks the flag above ``auth.json`` above env vars, so a stored login (or
+        an Anthropic OAuth token in the environment) would beat an env-borne key.
+        In that case the flag keeps the configured key in charge.
+        """
+        if self._endpoint_mode == "custom" or has_stored_login(self._provider):
+            return None
+        if self._provider == "anthropic" and os.environ.get("ANTHROPIC_OAUTH_TOKEN"):
             return None
         return _PI_KEY_ENV.get(self._provider)
 

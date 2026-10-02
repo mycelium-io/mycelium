@@ -1216,6 +1216,9 @@
 <span class="comment"># Docker runtime / environment configuration.</span>
 <span class="cmd" id="config-runtime">[runtime]</span>
 
+<span class="comment"># Host address the Docker stack publishes its ports on (MYCELIUM_BIND_ADDR). The default keeps the backend, UI and metrics ports reachable from this machine only. A hub that serves spokes on other machines needs &#x27;0.0.0.0&#x27;, and should have authentication on first. Example: mycelium config set runtime.bind_addr 0.0.0.0</span>
+<span class="arg">bind_addr</span> = <span class="str">&quot;127.0.0.1&quot;</span>
+
 <span class="comment"># Host port for the backend API</span>
 <span class="arg">backend_port</span> = 8000
 
@@ -1699,7 +1702,10 @@ procedures/  Steps you&#x27;ll want to repeat later</code></pre>
           </tbody>
         </table>
       </div>
-      <p>If other people share the network, turn on <a href="#auth">authentication</a> on the hub. That&#x27;s what protects the API from other machines. The SLIM secret doesn&#x27;t.</p>
+      <p>By default Docker publishes the backend only on the hub machine&#x27;s loopback address, so spokes on other machines can&#x27;t reach it. To serve them, turn on <a href="#auth">authentication</a> first, then bind to all interfaces:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> runtime.bind_addr 0.0.0.0
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
+      <p>Authentication is what protects the API from other machines. The SLIM secret doesn&#x27;t.</p>
       <h2 id="hub-and-spoke-step-2-connect-each-spoke">Step 2: Connect each spoke</h2>
       <p>On each spoke, install the CLI:</p>
       <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash</code></pre>
@@ -1772,7 +1778,7 @@ procedures/  Steps you&#x27;ll want to repeat later</code></pre>
       <h3 id="hub-and-spoke-a-spoke-cant-reach-the-hub">A spoke can&#x27;t reach the hub</h3>
       <p>Check the API first, since that&#x27;s what spokes use:</p>
       <pre><code><span class="cmd">curl</span> <span class="url">http://192.168.1.20:8000/health</span></code></pre>
-      <p>If that fails, check firewall rules, the VPN and any security groups. The hub has to accept connections on port <strong>8000</strong>. Spokes don&#x27;t need port <code>46357</code>.</p>
+      <p>If that fails, check firewall rules, the VPN and any security groups. The hub has to accept connections on port <strong>8000</strong>, which also means <code>runtime.bind_addr</code> must be <code>0.0.0.0</code> (the default is loopback only). Spokes don&#x27;t need port <code>46357</code>.</p>
       <h3 id="hub-and-spoke-doctor-says-spoke-mode-on-the-hub"><code>doctor</code> says &quot;spoke mode&quot; on the hub</h3>
       <p><code>doctor</code> decides the mode from <code>server.api_url</code>. If that points at another address, it assumes it&#x27;s on a spoke. If the backend runs on this machine at a different address, set <code>server.api_url</code> to <code>http://localhost:8000</code> in <code>~/.mycelium/config.toml</code>, or run:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span> <span class="flag">--mode</span> hub</code></pre>
@@ -3131,6 +3137,11 @@ ls ~/.mycelium/rooms/       # are the files there?
               <td><code>MYCELIUM_DATA_DIR</code></td>
               <td>Where rooms and memories are stored</td>
               <td><code>~/.mycelium</code></td>
+            </tr>
+            <tr>
+              <td><code>MYCELIUM_BIND_ADDR</code></td>
+              <td>The address the stack&#x27;s ports are published on (<code>runtime.bind_addr</code>)</td>
+              <td><code>127.0.0.1</code></td>
             </tr>
             <tr>
               <td><code>MYCELIUM_BACKEND_PORT</code></td>

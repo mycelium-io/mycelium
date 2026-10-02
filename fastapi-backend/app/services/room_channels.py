@@ -108,9 +108,9 @@ ANNOUNCED_FILENAME = ".announced.json"
 
 def _announced_path(room: str):
     """The room's announced-members file, or None when the room has no folder."""
-    from app.services.filesystem import get_data_dir
+    from app.services.filesystem import room_path
 
-    room_dir = get_data_dir() / "rooms" / room
+    room_dir = room_path(room)
     return room_dir / ANNOUNCED_FILENAME if room_dir.is_dir() else None
 
 
