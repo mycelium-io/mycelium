@@ -37,14 +37,16 @@ Everything on screen is the app's own UI.
 
 ```bash
 cd mycelium-frontend && npm ci      # once; shotkit borrows its Playwright
-node mycelium-promo/record.mjs --quick   # the flow alone, flat, ~2 min: check it first
-node mycelium-promo/record.mjs           # the staged take → mycelium-promo/mycelium-demo.mp4
-node mycelium-promo/audio/build.mjs mycelium-promo/mycelium-demo.mp4   # its sound → mycelium-demo-sound.mp4
+scripts/sync-shotkit.sh                  # optional: bring shotkit/ up to the latest shotkit first
+node mycelium-promo/record.mjs --quick   # the flow alone, flat and silent, ~2 min: check it first
+node mycelium-promo/record.mjs           # the staged take, with its sound → mycelium-promo/mycelium-demo.mp4
 ```
 
-The sound is a gentle drone with the take's clicks and keystrokes on it, timed
-from the `mycelium-demo.mp4.sounds.json` the take writes beside the video. See
-[`audio/README.md`](audio/README.md).
+That last command is everything: it records the take, stages it, and gives it
+its sound, a gentle drone with the take's clicks and keystrokes on it, placed
+from the `mycelium-demo.mp4.sounds.json` the take writes beside the video.
+`--no-sound` leaves it silent, and `audio/build.mjs` re-mixes a take without
+re-recording it. See [`audio/README.md`](audio/README.md).
 
 `record.mjs` starts its own `next dev` (the scenario's acts play once per
 server), so stop any dev server in `mycelium-frontend/` first. The staged take

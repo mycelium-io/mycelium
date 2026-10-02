@@ -8,9 +8,9 @@ This file is the maintainer's hint to a [tiny-teams-with-tokens](https://github.
 
 - [CLAUDE.md](CLAUDE.md) — authoritative design rules + architecture overview. Read this before anything else.
 - [README.md](README.md) — user-facing pitch and quick start.
-- [docs/index.html](docs/index.html) — presentation deck (more conceptual framing), including the [Board](https://mycelium-io.github.io/mycelium/index.html#board) section.
+- [docs/index.html](docs/index.html) — overview and quick start.
 - [docs/concepts.html](docs/concepts.html) — the core concepts (rooms, tasks & threads, memory, L9, engines) in depth.
-- [docs/adapters.html](docs/adapters.html) — adapters, including the [A2A bridge](https://mycelium-io.github.io/mycelium/adapters.html#adapter-a2a).
+- [docs/guides.html](docs/guides.html) — guides, including the [A2A bridge](https://mycelium-io.github.io/mycelium/guides.html#a2a-bridge).
 - [docs/demo-script.md](docs/demo-script.md) — narrative walkthrough of a coordination flow.
 
 ## Repo layout

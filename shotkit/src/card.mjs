@@ -12,6 +12,7 @@
  */
 
 import { MONO_STACK, UI_STACK, backdrop, palette } from "./theme.mjs";
+import { ART_RENDERING } from "./canvas.mjs";
 
 /** Traffic lights, in macOS order. */
 const LIGHTS = ["#ff5f57", "#febc2e", "#28c840"];
@@ -24,7 +25,7 @@ const escapeHtml = (s) =>
  * @property {"dark"|"light"} [theme]
  * @property {string} [backdrop] preset name or literal CSS
  * @property {string} [art] a CSS background painted over the backdrop, behind
- *   the card — the mycelial network arrives this way
+ *   the card — the project's canvas arrives this way
  * @property {number} [padding] gutter between backdrop edge and card
  * @property {number} [radius]
  * @property {boolean} [shadow]
@@ -90,9 +91,9 @@ body{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
   background:${backdrop(opts.backdrop ?? "mycelium", theme)};
 }
 /* Artwork is its own layer rather than a second background on #canvas, so that
-   image-rendering reaches the network and nothing else: the card body holds a
+   image-rendering reaches the canvas and nothing else: the card body holds a
    page capture placed at 1:1, and pixelating that would undo the point of it. */
-#art{position:absolute;inset:0;image-rendering:pixelated;background:${opts.art ?? "none"}}
+#art{position:absolute;inset:0;image-rendering:${ART_RENDERING};background:${opts.art ?? "none"}}
 #card{
   /* Lifted over #art, which is positioned and would otherwise paint on top. */
   position:relative;

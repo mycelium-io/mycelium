@@ -12,7 +12,7 @@ and gets its own sidebar entries derived from its sections.
 Run from repo root:
     cd mycelium-cli && uv run python ../docs/generate_docs.py
 
-Write one page only (all three are still assembled, since the persistent nav and
+Write one page only (every page is still assembled, since the persistent nav and
 the search index span the whole site):
     cd mycelium-cli && uv run python ../docs/generate_docs.py --page reference
 """
@@ -30,21 +30,28 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 # ── Page layout ──
-# 4 pages, each a long doc with a grouped sidebar.
+# One page per top-nav entry, each a long doc with a grouped sidebar. The order
+# is the reading order: what to do first at the top, the dense material last.
 # (page_id, file_name, page_title, top_nav_label, sheet_no, plate_title, meta_description)
 PAGES: list[tuple[str, str, str, str, str, str, str]] = [
-    ("start", "index.html", "mycelium Docs", "Guide",
-     "GET-001", "OVERVIEW · QUICK START · CONCEPTS",
-     "A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, the board, episodes, and the L9 protocol."),
+    ("start", "index.html", "mycelium Docs", "Get Started",
+     "GET-001", "OVERVIEW · QUICK START",
+     "A shared space for humans and agents. What Mycelium is, and how to install it."),
     ("walkthrough", "walkthrough.html", "Your First Room · mycelium", "Walkthrough",
      "WLK-001", "YOUR FIRST ROOM · STEP BY STEP",
      "Set up Mycelium from nothing, one step at a time with screenshots: the Mac app, a room, two coding agents, and a task they work on together."),
-    ("adapters", "adapters.html", "Adapters · mycelium", "Adapters",
-     "ADP-001", "ADAPTERS · CLAUDE CODE · CURSOR · A2A BRIDGE · REST API · ENGINES",
-     "Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer, and summon the first-party engines: the aligner, the synthesizer, hello, a persona and the conductor."),
+    ("engines", "engines.html", "Engines · mycelium", "Engines",
+     "ENG-001", "ENGINES · ALIGNER · SYNTHESIZER · PERSONA · CONDUCTOR · WORKER",
+     "The engines a room runs itself: the aligner, the synthesizer, hello, personas, the conductor and workers."),
+    ("concepts", "concepts.html", "Concepts · mycelium", "Concepts",
+     "CON-001", "CONCEPTS · ROOMS · BOARD · EPISODES · MEMORY · L9",
+     "How Mycelium works: rooms, SLIM, the board, episodes, swarms, memory, users and teams, and the L9 protocol."),
+    ("guides", "guides.html", "Guides · mycelium", "Guides",
+     "GDE-001", "GUIDES · SETUP · AGENTS · SECURITY · HELP",
+     "Step-by-step guides: running Mycelium on a server, the Mac app, connecting agents and A2A agents, models, authentication, and troubleshooting."),
     ("reference", "reference.html", "Reference · mycelium", "Reference",
-     "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · DEPENDENCIES · GUIDES · HELP",
-     "Architecture, CLI reference, configuration, dependencies and compatibility, guides, and troubleshooting for Mycelium."),
+     "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · DEPENDENCIES",
+     "Architecture, CLI reference, configuration, and dependencies and compatibility for Mycelium."),
 ]
 
 # Sections, in render order per page.
@@ -52,18 +59,9 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
 # md_file=None means the section is hand-coded (kept verbatim from source HTML).
 # If md_file is set AND a kept section with the same id exists, the kept HTML wins.
 SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
-    # ── start (index.html), overview + quickstart ──
+    # ── start (index.html) ──
     ("overview.md",                   "overview",           "start",       "Get Started",  "Overview"),
     ("guides/quickstart.md",          "quickstart",         "start",       "Get Started",  "Quick Start"),
-    # ── concepts (now on the start page, grouped in the sidebar) ──
-    ("concepts/rooms.md",             "rooms",              "start",       "Concepts",     "Rooms"),
-    ("concepts/slim.md",              "slim",               "start",       "Concepts",     "SLIM"),
-    ("concepts/board.md",             "board",              "start",       "Concepts",     "Board"),
-    ("concepts/episodes.md",          "episodes",           "start",       "Concepts",     "Episodes"),
-    ("concepts/swarm.md",             "swarm",              "start",       "Concepts",     "Swarm"),
-    ("concepts/memory.md",            "memory",             "start",       "Concepts",     "Memory"),
-    ("concepts/principals.md",        "users",              "start",       "Concepts",     "Users & Teams"),
-    ("concepts/l9-protocol.md",       "l9-protocol",        "start",       "Concepts",     "L9 Protocol"),
     # ── walkthrough (walkthrough.html), setup from nothing, one step each ──
     ("walkthrough/intro.md",          "walkthrough",        "walkthrough", "Walkthrough",  "Your First Room"),
     ("walkthrough/app.md",            "walk-app",           "walkthrough", "Walkthrough",  "1. Get the app"),
@@ -73,38 +71,41 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("walkthrough/thread.md",         "walk-thread",        "walkthrough", "Walkthrough",  "5. Watch it work"),
     ("walkthrough/aligner.md",        "walk-aligner",       "walkthrough", "Walkthrough",  "6. When agents disagree"),
     ("walkthrough/next.md",           "walk-next",          "walkthrough", "Walkthrough",  "Where to go next"),
-    ("walkthrough/server.md",         "walk-server",        "walkthrough", "Other setups", "On a server"),
-    # ── adapters (adapters.html), the adapter blocks hand-coded ──
-    (None,                            "adapters",           "adapters",  "Adapters",     "Overview"),
-    (None,                            "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),
-    (None,                            "adapter-cursor",     "adapters",  "Adapters",     "Cursor"),
-    ("a2a-bridge.md",                 "adapter-a2a",        "adapters",  "Adapters",     "A2A Bridge"),
-    (None,                            "adapter-api",        "adapters",  "Adapters",     "REST API"),
-    # Engines sit alongside the adapters: an adapter connects an outside runtime
-    # to a room, an engine is cognition the room already owns. Nested group —
-    # the overview, then one page per kind.
-    ("concepts/engines.md",           "engines",            "adapters",  "Engines",      "Overview"),
-    ("concepts/aligner.md",           "aligner",            "adapters",  "Engines",      "Aligner"),
-    ("concepts/synthesizer.md",       "synthesizer",        "adapters",  "Engines",      "Synthesizer"),
-    ("concepts/hello.md",             "hello",              "adapters",  "Engines",      "Hello"),
-    ("concepts/persona.md",           "persona",            "adapters",  "Engines",      "Persona"),
-    ("concepts/conductor.md",         "conductor",          "adapters",  "Engines",      "Conductor"),
-    ("concepts/worker.md",            "worker",             "adapters",  "Engines",      "Worker"),
+    # ── engines (engines.html), the overview, then one section per kind ──
+    ("engines/engines.md",            "engines",            "engines",     "Engines",      "Overview"),
+    ("engines/aligner.md",            "aligner",            "engines",     "Engines",      "Aligner"),
+    ("engines/synthesizer.md",        "synthesizer",        "engines",     "Engines",      "Synthesizer"),
+    ("engines/hello.md",              "hello",              "engines",     "Engines",      "Hello"),
+    ("engines/persona.md",            "persona",            "engines",     "Engines",      "Persona"),
+    ("engines/conductor.md",          "conductor",          "engines",     "Engines",      "Conductor"),
+    ("engines/worker.md",             "worker",             "engines",     "Engines",      "Worker"),
+    # ── concepts (concepts.html) ──
+    ("concepts/rooms.md",             "rooms",              "concepts",    "Concepts",     "Rooms"),
+    ("concepts/slim.md",              "slim",               "concepts",    "Concepts",     "SLIM"),
+    ("concepts/board.md",             "board",              "concepts",    "Concepts",     "Board"),
+    ("concepts/episodes.md",          "episodes",           "concepts",    "Concepts",     "Episodes"),
+    ("concepts/swarm.md",             "swarm",              "concepts",    "Concepts",     "Swarm"),
+    ("concepts/memory.md",            "memory",             "concepts",    "Concepts",     "Memory"),
+    ("concepts/principals.md",        "users",              "concepts",    "Concepts",     "Users & Teams"),
+    ("concepts/l9-protocol.md",       "l9-protocol",        "concepts",    "Concepts",     "L9 Protocol"),
+    # ── guides (guides.html) ──
+    ("guides/server.md",              "on-a-server",        "guides",      "Setup",        "Run It on a Server"),
+    ("guides/desktop.md",             "desktop",            "guides",      "Setup",        "The Mac App"),
+    ("guides/hub-and-spoke.md",       "hub-and-spoke",      "guides",      "Setup",        "Hub & Spoke"),
+    ("guides/models.md",              "models",             "guides",      "Setup",        "Models"),
+    ("guides/machines.md",            "machines",           "guides",      "Agents",       "Start Agents From the App"),
+    ("guides/herdr.md",               "herdr",              "guides",      "Agents",       "Persistent Agents (herdr)"),
+    ("guides/ephemeral-agents.md",    "ephemeral-agents",   "guides",      "Agents",       "Ephemeral Agents"),
+    ("guides/omnigent.md",            "omnigent",           "guides",      "Agents",       "Run Agents in Omnigent"),
+    ("guides/a2a-bridge.md",          "a2a-bridge",         "guides",      "Agents",       "A2A Bridge"),
+    ("guides/structured-memory.md",   "structured-memory",  "guides",      "Memory",       "Structured Memory"),
+    ("guides/security-planes.md",     "security-planes",    "guides",      "Security",     "Security Planes"),
+    ("guides/auth.md",                "auth",               "guides",      "Security",     "Authentication"),
+    ("guides/keycloak-oidc.md",       "keycloak-oidc",      "guides",      "Security",     "Keycloak / OIDC Setup"),
+    ("guides/troubleshooting.md",     "troubleshooting",    "guides",      "Help",         "Troubleshooting"),
     # ── reference (reference.html) ──
-    ("reference/architecture.md",     "architecture",       "reference", "Architecture", "Architecture"),
-    # CLI + Config blocks injected after architecture, before guides/troubleshooting.
-    ("guides/structured-memory.md",   "structured-memory",  "reference", "Guides",       "Structured Memory"),
-    ("guides/hub-and-spoke.md",       "hub-and-spoke",      "reference", "Guides",       "Hub & Spoke"),
-    ("guides/ephemeral-agents.md",    "ephemeral-agents",   "reference", "Guides",       "Ephemeral Agents"),
-    ("guides/herdr.md",               "herdr",              "reference", "Guides",       "Persistent Agents (herdr)"),
-    ("guides/desktop.md",             "desktop",            "reference", "Guides",       "The Mac App"),
-    ("guides/models.md",              "models",             "reference", "Guides",       "Models"),
-    ("guides/machines.md",            "machines",           "reference", "Guides",       "Start Agents From the App"),
-    ("guides/omnigent.md",            "omnigent",           "reference", "Guides",       "Run Agents in Omnigent"),
-    ("guides/security-planes.md",     "security-planes",    "reference", "Guides",       "Security Planes"),
-    ("guides/auth.md",                "auth",               "reference", "Guides",       "Authentication"),
-    ("guides/keycloak-oidc.md",       "keycloak-oidc",      "reference", "Guides",       "Keycloak / OIDC Setup"),
-    ("guides/troubleshooting.md",     "troubleshooting",    "reference", "Help",         "Troubleshooting"),
+    ("reference/architecture.md",     "architecture",       "reference",   "Architecture", "Architecture"),
+    # CLI, config and dependency blocks are injected after architecture.
 ]
 
 # The CLI/config/dependency blocks are generated rather than listed in
@@ -121,10 +122,7 @@ GENERATED_SECTION_LABELS: dict[str, tuple[str, str]] = {
 NavPage = tuple[str, str, str, list[tuple[str, list[tuple[str, str]]]]]
 
 # IDs that should be looked up in kept HTML (have <!-- keep --> markers, or rescued by id).
-_KEPT_IDS: set[str] = {
-    "overview",
-    "adapters", "adapter-claude-code", "adapter-cursor", "adapter-api",
-}
+_KEPT_IDS: set[str] = {"overview"}
 
 # CLI groups for the cli-reference page.
 GROUP_CONFIG: list[tuple[str, str, str]] = [
@@ -1199,6 +1197,19 @@ def _sidebar(nav: list[NavPage], active_page_id: str) -> str:
         out.append(
             f'      <a href="{file_name}" class="{page_cls}">{html.escape(label)}</a>'
         )
+        # A page whose one group shares its name would read "Engines › Engines":
+        # list its sections straight under the page link, on that page only.
+        if len(groups) == 1 and groups[0][0] == label:
+            if current:
+                out.append('      <div class="nav-group-items">')
+                for anchor, item_label in groups[0][1]:
+                    out.append(
+                        f'        <a href="#{anchor}" class="nav-link sub">'
+                        f"{html.escape(item_label)}</a>"
+                    )
+                out.append("      </div>")
+            out.append("    </div>")
+            continue
         for group_label, items in groups:
             if not items:
                 continue
@@ -1323,7 +1334,7 @@ def _build_page(
 
     sidebar_groups: list of (group_label, [(anchor, label), ...]) preserving order.
     For the reference page, cli_block + config_block + deps_block (each a
-    (html, sidebar_entries)) are inserted between architecture and troubleshooting.
+    (html, sidebar_entries)) are inserted after architecture.
     """
     parts: list[str] = []
     grouped: dict[str, list[tuple[str, str]]] = {}
@@ -1382,7 +1393,7 @@ def _build_page(
 #
 # The index is derived from the rendered HTML rather than from the markdown, so
 # it covers every source the pages are assembled from — markdown sections, the
-# hand-coded adapter blocks, and the generated CLI/config/dependency reference —
+# hand-coded overview, and the generated CLI/config/dependency reference —
 # through one code path.
 
 _INDEX_SKIP_TAGS = {"script", "style"}
@@ -1532,7 +1543,7 @@ def _build_search_index(
             continue
         rec["p"] = page_label
         # The rendered breadcrumb is page + crumb, so a group named after its own
-        # page would read "Adapters › Adapters › Cursor".
+        # page would read "Engines › Engines › Aligner".
         crumb = rec["s"]
         if crumb == page_label:
             crumb = ""
@@ -1633,8 +1644,8 @@ def _add_pagers(
 ) -> list[tuple[tuple, str, list[tuple[str, list[tuple[str, str]]]]]]:
     """Give every section a Previous / Next bar, in reading order across pages.
 
-    The docs read as a sequence of sections (Guide, then Walkthrough, Adapters,
-    Reference), and site.js shows one section at a time, so each one ends with
+    The docs read as a sequence of sections (Get Started, Walkthrough, Engines,
+    Concepts, Guides, Reference), and site.js shows one section at a time, so each one ends with
     a link to its neighbours. The last section of a page links on to the first
     of the next. The bar sits after </section>, outside it, so a kept section
     re-read from this output never picks up an old bar.
@@ -1717,7 +1728,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--page",
-        help="Write a single page by id (start|adapters|reference). Every page is "
+        help="Write a single page by id (start|walkthrough|engines|concepts|guides|"
+             "reference). Every page is "
              "still assembled, since the persistent nav lists them all.",
     )
     args = parser.parse_args()

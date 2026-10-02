@@ -104,5 +104,5 @@ app (which joins that hub and room), the download, or the browser.
 
 Everything the app does is also a command, for a Linux machine, a server, or
 if you'd rather use a terminal: `mycelium desktop serve` runs the same hub
-without the window. See [Run it on a server instead](#walk-server) for the
+without the window. See [Run it on a server instead](#on-a-server) for the
 full CLI setup.

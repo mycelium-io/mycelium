@@ -20,4 +20,4 @@ curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 mycelium install
 ```
 
-See [Run it on a server instead](#walk-server) for the rest.
+See [Run it on a server instead](#on-a-server) for the rest.

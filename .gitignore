@@ -48,5 +48,7 @@ pnpm-lock.yaml
 *.swo
 *~
 
-# The promo recording is uploaded to a PR comment, never committed.
+# The promo recording is uploaded to a PR comment, never committed, and so are
+# the click and key cues its take writes beside it.
 mycelium-promo/*.mp4
+mycelium-promo/*.mp4.sounds.json

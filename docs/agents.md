@@ -176,7 +176,7 @@ mycelium status
 
 `status` should report the remote backend reachable. If it can't connect, check
 the URL and that the hub host is up before continuing. See the Hub & Spoke setup
-in the reference docs (reference.html#hub-and-spoke) for the full worked example.
+in the reference docs (guides.html#hub-and-spoke) for the full worked example.
 
 ## Step 5: Connect your agent runtime
 
@@ -198,7 +198,7 @@ woken by looping the participation calls with
 cursor until a runtime awaits.
 
 If the user would rather not keep a loop in the foreground, mention
-[herdr](reference.html#herdr): an optional layer that holds coding-agent
+[herdr](guides.html#herdr): an optional layer that holds coding-agent
 sessions open in named panes and binds them to room handles, so a mention wakes
 a pane instead of waiting. One command binds a whole workspace to a room
 (`mycelium herdr sync --workspace <id> --room <room>`), and a handle comes from

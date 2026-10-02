@@ -1,11 +1,13 @@
 {
-  "name": "@mycelium/shotkit",
-  "version": "0.2.0",
+  "name": "shotkit",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "Fast screenshots of the running app and of CLI output, for coding agents.",
+  "description": "Fast screenshots, terminal cards and short videos of a running app, for coding agents.",
+  "license": "Apache-2.0",
+  "repository": "github:juliarvalenti/shotkit",
   "bin": { "shot": "./bin/shot.mjs" },
-  "exports": { ".": "./src/api.mjs" },
+  "exports": { ".": "./src/api.mjs", "./audio": "./src/audio/index.mjs" },
   "engines": { "node": ">=20.6" },
   "scripts": {
     "shot": "node ./bin/shot.mjs",

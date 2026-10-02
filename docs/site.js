@@ -576,6 +576,28 @@
       });
   }
 
+  // ── Moved sections ──
+  // Sections move between pages as the docs are reorganized, and old links
+  // still carry the old page. When the hash names nothing here, find the page
+  // that holds it in the search index (which lists every anchor) and go there.
+  // Renamed anchors are mapped first.
+  const RENAMED_ANCHORS = {
+    'walk-server': 'on-a-server',
+    'adapter-a2a': 'a2a-bridge',
+    'adapters': 'engines',
+  };
+  (function relocate() {
+    const raw = decodeURIComponent(location.hash.slice(1));
+    if (!raw || document.getElementById(raw) && !RENAMED_ANCHORS[raw]) return;
+    const id = RENAMED_ANCHORS[raw] || raw;
+    if (document.getElementById(id)) { location.replace('#' + id); return; }
+    const page = location.pathname.split('/').pop() || 'index.html';
+    loadSearchIndex().then(index => {
+      const hit = index.find(rec => rec.u.endsWith('#' + id) && !rec.u.startsWith(page + '#'));
+      if (hit) location.replace(hit.u);
+    });
+  })();
+
   // ── One section at a time ──
   // Each page is a run of doc-sections; showing them all at once makes an
   // endless scroll. Only the section the URL points at is shown, ending in its

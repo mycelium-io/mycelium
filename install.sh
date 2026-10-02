@@ -48,6 +48,9 @@ Options:
                         MYCELIUM_CLIENT_ONLY=1, and implied when MYCELIUM_API_URL
                         names a non-local hub.
 
+The wheel is verified against the release's checksums.txt before it is installed.
+Set MYCELIUM_SKIP_CHECKSUM=1 to skip that, for a release that predates checksums.txt.
+
 Examples:
   curl -fsSL .../install.sh | bash
   curl -fsSL .../install.sh | bash -s -- --version 0.1.83
@@ -152,15 +155,11 @@ else
 
   OS=$(uname -s)
   if ! command -v docker &>/dev/null; then
+    # Installing Docker runs a downloaded script as root, so leave that to the user.
     if [ "$OS" = "Darwin" ]; then
-      die "Docker is required. Install Docker Desktop from https://www.docker.com/products/docker-desktop"
+      die "Docker is required. Install Docker Desktop from https://www.docker.com/products/docker-desktop, then run this installer again."
     else
-      warn "Docker not found — installing..."
-      curl -fsSL https://get.docker.com | sh >/dev/null 2>&1
-      if ! command -v docker &>/dev/null; then
-        die "Docker install failed. Install manually: https://docs.docker.com/engine/install/"
-      fi
-      ok "Docker installed"
+      die "Docker is required. Install it from https://docs.docker.com/engine/install/, then run this installer again (or pass --client-only to skip Docker)."
     fi
   elif ! docker info >/dev/null 2>&1; then
     if [ "$OS" = "Darwin" ]; then
@@ -230,16 +229,51 @@ step "Installing mycelium CLI..."
 
 WHEEL_FILENAME="mycelium_cli-${WHEEL_VERSION}-py3-none-any.whl"
 WHEEL_URL="https://github.com/${REPO}/releases/download/${LATEST}/${WHEEL_FILENAME}"
-WHEEL_TMP="/tmp/${WHEEL_FILENAME}"
+CHECKSUMS_URL="https://github.com/${REPO}/releases/download/${LATEST}/checksums.txt"
+
+# A private directory, not a fixed /tmp path another user could pre-plant.
+WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "$WORK_DIR"' EXIT
+WHEEL_TMP="$WORK_DIR/$WHEEL_FILENAME"
+
+sha256_of() {
+  if command -v sha256sum &>/dev/null; then
+    sha256sum "$1" | cut -d' ' -f1
+  elif command -v shasum &>/dev/null; then
+    shasum -a 256 "$1" | cut -d' ' -f1
+  else
+    die "sha256sum or shasum is required to verify the download"
+  fi
+}
 
 # The release wheel is the only source. `mycelium-cli` on PyPI is an unrelated
 # project, so falling back to it installs someone else's package under our name.
 if ! curl -fsSL "$WHEEL_URL" -o "$WHEEL_TMP" 2>/dev/null; then
   die "Could not download $WHEEL_FILENAME from $LATEST. See https://github.com/${REPO}/releases"
 fi
+
+# Check the wheel against the release's checksums.txt before installing it.
+# MYCELIUM_SKIP_CHECKSUM=1 is for releases that predate checksums.txt.
+if [ -n "${MYCELIUM_SKIP_CHECKSUM:-}" ]; then
+  warn "Skipping checksum verification (MYCELIUM_SKIP_CHECKSUM is set)"
+else
+  step "Verifying checksum..."
+  if ! curl -fsSL "$CHECKSUMS_URL" -o "$WORK_DIR/checksums.txt" 2>/dev/null; then
+    die "Could not download checksums.txt from $LATEST, so the wheel can't be verified. Set MYCELIUM_SKIP_CHECKSUM=1 to install anyway."
+  fi
+  EXPECTED_SHA=$(awk -v f="$WHEEL_FILENAME" '$2 == f || $2 == "*" f { print $1; exit }' "$WORK_DIR/checksums.txt")
+  if [ -z "$EXPECTED_SHA" ]; then
+    die "checksums.txt for $LATEST has no entry for $WHEEL_FILENAME. Set MYCELIUM_SKIP_CHECKSUM=1 to install anyway."
+  fi
+  ACTUAL_SHA=$(sha256_of "$WHEEL_TMP")
+  if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+    die "Checksum mismatch for $WHEEL_FILENAME (expected $EXPECTED_SHA, got $ACTUAL_SHA). Nothing was installed."
+  fi
+  ok "Checksum verified"
+fi
+
 # shellcheck disable=SC2086 - UV_PYTHON_FLAG is deliberately word-split (empty = no flag)
 uv tool install $UV_PYTHON_FLAG "$WHEEL_TMP" --force 2>&1 | sed 's/^/  /'
-rm -f "$WHEEL_TMP"
 
 ok "mycelium CLI installed"
 
@@ -291,7 +325,7 @@ if [ -n "$CLIENT_ONLY" ]; then
   echo ""
   echo -e "${DIM}  Point it at the hub with MYCELIUM_API_URL, MYCELIUM_ACTIVE_ROOM and${NC}"
   echo -e "${DIM}  MYCELIUM_AGENT_HANDLE:${NC}"
-  echo -e "${DIM}  https://mycelium-io.github.io/mycelium/reference.html#ephemeral-agents${NC}"
+  echo -e "${DIM}  https://mycelium-io.github.io/mycelium/guides.html#ephemeral-agents${NC}"
 else
   echo -e "  ${BOLD}mycelium --help${NC}               — show all commands"
   echo -e "  ${BOLD}mycelium install${NC}              — spin up the full stack (Docker)"
