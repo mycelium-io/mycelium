@@ -51,6 +51,8 @@ from app.services.persister import record_episode
 from app.services.tasks import mint_episode_id
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from app.services.l9_models import L9
     from app.services.persister import TranscriptRecord
     from app.services.protocols import Protocol, Step
@@ -328,6 +330,18 @@ class ConductorEngine:
         # (or the room) can start its own.
         self._active: set[tuple[str, str]] = set()
         self._tasks: set[asyncio.Task[Any]] = set()
+        #: Called with ``(room, thread, outcome)`` after every step a run takes
+        #: (``outcome`` None) and once when it closes, for anything that follows
+        #: a run as it goes. It must return at once; a failure is logged.
+        self.on_step: Callable[[str, str, str | None], None] | None = None
+
+    def _stepped(self, room: str, thread: str, outcome: str | None) -> None:
+        if self.on_step is None:
+            return
+        try:
+            self.on_step(room, thread, outcome)
+        except Exception:
+            logger.exception("conductor step hook failed in %s", thread)
 
     @property
     def handle(self) -> str:
@@ -639,6 +653,7 @@ class ConductorEngine:
                 # A branch taken is the one thing a reader cannot infer from the
                 # replies alone, so it is said in the episode.
                 await self._say(managed, run.episode, me, line, line=edge_event(step, stance, who))
+            self._stepped(managed.room, run.episode, None)
             step = protocol.step(nxt)
 
     async def _select(
@@ -1021,6 +1036,7 @@ class ConductorEngine:
         except Exception:
             logger.warning("conductor failed to post the outcome for %s", run.episode)
         l9_episode.write_episode_record(ep, outcome=outcome, metrics=metrics, tasks=None)
+        self._stepped(managed.room, run.episode, outcome)
         from app.services import analytics as usage
 
         await asyncio.to_thread(usage.flow_completed, run.protocol.name, outcome, run.steps_taken)

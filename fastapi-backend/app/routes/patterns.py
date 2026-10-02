@@ -49,7 +49,7 @@ from app.schemas import (
 )
 from app.services import actor, patterns, protocols
 from app.services.agent_registry import norm_handle
-from app.services.filesystem import get_data_dir
+from app.services.filesystem import get_data_dir, read_room_meta, write_room_meta
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +81,10 @@ class PatternRead(PatternSummary):
 
     scenario: dict[str, Any]
     flow_body: str | None = Field(None, description="The flow's YAML, when it brings its own")
+    flow_spec: dict[str, Any] | None = Field(
+        None,
+        description="The flow it runs, built in or its own, as steps: drawable before it runs",
+    )
 
 
 class PatternList(BaseModel):
@@ -157,6 +161,11 @@ async def get_pattern(name: str) -> PatternRead:
         **_summary(loaded).model_dump(),
         scenario=loaded.scenario.model_dump(mode="json", exclude_none=True),
         flow_body=loaded.flow_body,
+        flow_spec=(
+            {"name": loaded.protocol.name, **protocols.spec_of(loaded.protocol)}
+            if loaded.protocol is not None
+            else None
+        ),
     )
 
 
@@ -297,6 +306,11 @@ async def _load(loaded: patterns.Loaded, payload: PatternLoad, request: Request)
                 ),
                 request,
             )
+
+        # The room says which pattern it came from and where its flow runs, so a
+        # viewer finds a pattern's rooms and the hub knows what a run is about.
+        meta = read_room_meta(room) or {}
+        write_room_meta(room, {**meta, "pattern": scenario.pattern, "pattern_task": row.key})
 
         episode = str(row.episode or "")
         ran = False

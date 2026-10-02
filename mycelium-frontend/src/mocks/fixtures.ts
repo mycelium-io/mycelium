@@ -35,6 +35,7 @@ import type {
   RoomFloor,
 } from "@/lib/api";
 import type { RoomStatus } from "@/lib/board/upstream";
+import { PATTERN_ROOMS } from "./patterns";
 
 // A fixed "now" so relative timestamps render deterministically. Callers
 // offset from this; nothing here calls Date.now(), so snapshots stay stable.
@@ -50,6 +51,9 @@ export interface MockRoom {
   mas_id?: string | null;
   owner?: string | null;
   members?: string[];
+  /** The pattern a room was loaded from, and the task its flow runs in. */
+  pattern?: string | null;
+  pattern_task?: string | null;
 }
 
 export interface MockMemory {
@@ -1922,7 +1926,7 @@ export const ROOM_FIXTURES: Record<string, RoomFixture> = {
 export const ROOMS: MockRoom[] = Object.values(ROOM_FIXTURES).map((f) => f.room);
 
 export function getRoomFixture(name: string): RoomFixture | undefined {
-  return ROOM_FIXTURES[name];
+  return ROOM_FIXTURES[name] ?? PATTERN_ROOMS[name];
 }
 
 // ── usage ─────────────────────────────────────────────────────────────────────

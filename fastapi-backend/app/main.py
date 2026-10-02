@@ -165,6 +165,12 @@ async def lifespan(app: FastAPI):
     app.state.synthesizer = SynthesizerEngine(room_channel_manager)
     app.state.hello = ProbeEngine(room_channel_manager)
     app.state.conductor = ConductorEngine(room_channel_manager)
+    # A room loaded from a pattern has where its run stands restated after
+    # every step, for whoever is watching it.
+    from app.services.standing import Standing
+
+    app.state.standing = Standing()
+    app.state.conductor.on_step = app.state.standing.on_step
     app.state.persona = PersonaEngine(room_channel_manager)
     app.state.worker = WorkerEngine(room_channel_manager)
     # The A2A responder shares the seam too: it answers @-mentions of a

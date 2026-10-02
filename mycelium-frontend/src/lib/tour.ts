@@ -123,3 +123,44 @@ export function startRoomTour(deps: TourDeps): TourHandle {
     },
   };
 }
+
+/** One step of a guide: the `data-guide` target it points at, and what it says. */
+export interface GuideStop {
+  at: string;
+  title: string;
+  text: string;
+}
+
+/**
+ * A short guide through a page, one stop per `[data-guide="…"]` target, in the
+ * room tour's look. A stop whose target is not on the page is left out, so a
+ * guide written for every state of a page fits whichever state it opens on.
+ */
+export function startGuide(stops: GuideStop[], onExit: () => void): TourHandle | null {
+  const present = stops.filter((s) => document.querySelector(`[data-guide="${s.at}"]`));
+  if (present.length === 0) return null;
+  const d: Driver = driver({
+    showProgress: present.length > 1,
+    allowClose: true,
+    overlayColor: "#05070a",
+    overlayOpacity: 0.55,
+    stagePadding: 6,
+    stageRadius: 8,
+    popoverClass: "mycelium-tour",
+    nextBtnText: "Next",
+    prevBtnText: "Back",
+    doneBtnText: "Done",
+    progressText: "{{current}} of {{total}}",
+    onDestroyed: onExit,
+    steps: present.map((s) => ({
+      element: `[data-guide="${s.at}"]`,
+      popover: { title: s.title, description: s.text, side: "bottom", align: "start" },
+    })),
+  });
+  d.drive();
+  return {
+    destroy: () => {
+      if (d.isActive()) d.destroy();
+    },
+  };
+}

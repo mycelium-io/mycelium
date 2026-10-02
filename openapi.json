@@ -7778,6 +7778,19 @@
             ],
             "title": "Flow Body",
             "description": "The flow's YAML, when it brings its own"
+          },
+          "flow_spec": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow Spec",
+            "description": "The flow it runs, built in or its own, as steps: drawable before it runs"
           }
         },
         "type": "object",
@@ -8214,6 +8227,28 @@
               }
             ],
             "title": "Workspace Id"
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern"
+          },
+          "pattern_task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern Task"
           }
         },
         "type": "object",

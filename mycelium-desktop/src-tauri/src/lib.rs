@@ -21,7 +21,7 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 use serde_json::Value;
-use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::{
     AppHandle, Emitter, Manager, RunEvent, Url, Webview, WebviewUrl, WebviewWindowBuilder,
@@ -45,16 +45,16 @@ struct Shell {
 }
 
 struct TrayItems {
-    hub: MenuItem<Wry>,
-    slim: MenuItem<Wry>,
-    runner: MenuItem<Wry>,
-    autostart: CheckMenuItem<Wry>,
+    /// One line on whether Mycelium is working; opens the health check.
+    status: MenuItem<Wry>,
     /// "Check for Updates…", which says how a download is going while one is.
     updates: MenuItem<Wry>,
-    /// The tray menu itself, so a row can come and go with the mode.
+    /// The tray menu itself, so the experiences folder can come and go.
     menu: Menu<Wry>,
-    /// Whether the SLIM row is in the menu: only a hub on this Mac runs one.
-    slim_shown: bool,
+    /// The experiences added on this Mac, one item each; in the menu only
+    /// while there is at least one.
+    experiences: Submenu<Wry>,
+    experiences_shown: bool,
 }
 
 /// What the menu bar's update item says: `Some` while an update downloads
@@ -283,19 +283,9 @@ pub(crate) fn on_error(app: &AppHandle, error: &Value) {
 
 // ── tray ────────────────────────────────────────────────────────────────────
 
-fn tray_line(label: &str, state: &str) -> String {
-    let (dot, said) = match state {
-        "running" => ("●", "running"),
-        "starting" => ("○", "starting"),
-        "failed" => ("○", "failed"),
-        "stopped" => ("○", "stopped"),
-        "disabled" => ("○", "not on this Mac"),
-        _ => ("○", "waiting"),
-    };
-    format!("{dot} {label}  {said}")
-}
-
-fn update_tray(app: &AppHandle, status: &Value) {
+/// The menu bar's one status line: running, starting, or something stopped.
+/// Which part stopped, and why, is the health check's to say.
+fn status_line(status: &Value) -> String {
     let state = |name: &str| {
         status
             .pointer(&format!("/components/{name}/state"))
@@ -303,67 +293,70 @@ fn update_tray(app: &AppHandle, status: &Value) {
             .unwrap_or("")
             .to_string()
     };
-    let shell = app.state::<Shell>();
-    let mut guard = shell.tray.lock().unwrap();
-    let Some(items) = guard.as_mut() else { return };
-    let client = status.get("mode").and_then(Value::as_str) == Some("client");
-    if client {
-        // Joined someone else's hub: its hub and SLIM node aren't this Mac's
-        // to run, so they aren't reported as stopped. The first row names the
-        // hub instead, lit while the runner is connected to it.
+    if status.get("mode").and_then(Value::as_str) == Some("client") {
+        // Joined someone else's hub: the runner's connection is the whole story.
         let host = status
             .get("api_url")
             .and_then(Value::as_str)
             .and_then(|u| Url::parse(u).ok())
             .and_then(|u| u.host_str().map(str::to_string))
             .unwrap_or_else(|| "a hub".into());
-        let connected = state("runner") == "running";
-        let _ = items.hub.set_text(if connected {
+        return if state("runner") == "running" {
             format!("● Joined {host}")
         } else {
-            format!("○ Joining {host}")
-        });
-        if items.slim_shown && items.menu.remove(&items.slim).is_ok() {
-            items.slim_shown = false;
-        }
-    } else {
-        let _ = items.hub.set_text(tray_line("Hub", &state("hub")));
-        if !items.slim_shown && items.menu.insert(&items.slim, 1).is_ok() {
-            items.slim_shown = true;
-        }
-        let _ = items.slim.set_text(tray_line("SLIM", &state("slim")));
+            format!("○ Joining {host}…")
+        };
     }
-    let _ = items.runner.set_text(tray_line("Runner", &state("runner")));
+    let parts: Vec<String> = ["herdr", "slim", "hub", "ui", "runner"].iter().map(|p| state(p)).collect();
+    if parts.iter().any(|s| s == "failed" || s == "stopped") {
+        "○ Something stopped: open Health check".into()
+    } else if parts.iter().all(|s| s == "running" || s == "disabled") {
+        "● Mycelium is running".into()
+    } else {
+        "○ Starting…".into()
+    }
 }
 
+fn update_tray(app: &AppHandle, status: &Value) {
+    let shell = app.state::<Shell>();
+    let guard = shell.tray.lock().unwrap();
+    let Some(items) = guard.as_ref() else { return };
+    let _ = items.status.set_text(status_line(status));
+}
+
+/// Where the experiences folder goes: after Open Mycelium and Agents.
+const EXPERIENCES_AT: usize = 4;
+
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
-    let hub = MenuItem::with_id(app, "status-hub", tray_line("Hub", ""), false, None::<&str>)?;
-    let slim = MenuItem::with_id(app, "status-slim", tray_line("SLIM", ""), false, None::<&str>)?;
-    let runner =
-        MenuItem::with_id(app, "status-runner", tray_line("Runner", ""), false, None::<&str>)?;
-    let open = MenuItem::with_id(app, "open", "Open Mycelium", true, None::<&str>)?;
-    let agents = MenuItem::with_id(app, "terminal", "Agents terminal", true, None::<&str>)?;
-    let yours = MenuItem::with_id(app, "machines", "Your agents…", true, None::<&str>)?;
-    let at_login = app.autolaunch().is_enabled().unwrap_or(false);
-    let autostart =
-        CheckMenuItem::with_id(app, "autostart", "Start at login", true, at_login, None::<&str>)?;
+    // Clickable, so a line that says something stopped leads to why.
+    let status = MenuItem::with_id(app, "status", "○ Starting…", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "Open Mycelium", true, Some("CmdOrCtrl+O"))?;
+    let agents = Submenu::with_id_and_items(
+        app,
+        "agents",
+        "Agents",
+        true,
+        &[
+            &MenuItem::with_id(app, "machines", "Your agents…", true, None::<&str>)?,
+            &MenuItem::with_id(app, "terminal", "Agents terminal", true, None::<&str>)?,
+        ],
+    )?;
+    let experiences = Submenu::with_id(app, "experiences", "Experiences", true)?;
+    let switch = MenuItem::with_id(app, "switch", "Settings…", true, Some("CmdOrCtrl+,"))?;
     let health = MenuItem::with_id(app, "doctor", "Health check…", true, None::<&str>)?;
-    let switch = MenuItem::with_id(app, "switch", "Settings…", true, None::<&str>)?;
     let updates = MenuItem::with_id(app, "updates", "Check for Updates…", true, None::<&str>)?;
-    let quit_item = MenuItem::with_id(app, "quit", "Quit Mycelium", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", "Quit Mycelium", true, Some("CmdOrCtrl+Q"))?;
     let menu = Menu::with_items(
         app,
         &[
-            &hub,
-            &slim,
-            &runner,
+            &status,
             &PredefinedMenuItem::separator(app)?,
             &open,
             &agents,
-            &yours,
-            &autostart,
-            &health,
+            // The experiences folder goes here while one is added.
+            &PredefinedMenuItem::separator(app)?,
             &switch,
+            &health,
             &updates,
             &PredefinedMenuItem::separator(app)?,
             &quit_item,
@@ -378,11 +371,15 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             "terminal" => open_terminal_window(app, None),
             "machines" => show_page(app, "/machines"),
             "switch" => show_local(app, "onboarding"),
-            "doctor" => show_local(app, "doctor"),
+            "status" | "doctor" => show_local(app, "doctor"),
             "updates" => updates::check(app.clone(), true),
-            "autostart" => toggle_autostart(app),
             "quit" => quit(app),
-            _ => {}
+            // An experience's item carries the path it opens on.
+            id => {
+                if let Some(path) = id.strip_prefix(EXPERIENCE_ITEM) {
+                    show_page(app, path);
+                }
+            }
         });
     // A template image: one colour with transparency, which macOS tints to
     // match the menu bar (white on dark, black on light) like its own icons.
@@ -390,32 +387,69 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     tray = tray.icon(template).icon_as_template(true);
     tray.build(app)?;
     *app.state::<Shell>().tray.lock().unwrap() = Some(TrayItems {
-        hub,
-        slim,
-        runner,
-        autostart,
+        status,
         updates,
         menu,
-        slim_shown: true,
+        experiences,
+        experiences_shown: false,
     });
+    refresh_experiences(app.clone());
     Ok(())
 }
 
-fn toggle_autostart(app: &AppHandle) {
-    let enabled = app.autolaunch().is_enabled().unwrap_or(false);
-    set_autostart_to(app, !enabled);
+/// The id prefix of an experience's menu item; the rest is where it opens.
+const EXPERIENCE_ITEM: &str = "experience:";
+
+/// Put the experiences added on this Mac in the menu bar, under Open Mycelium,
+/// or take the folder away when there are none. Reads them in the background.
+fn refresh_experiences(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let Ok(list) = experiences_cli(vec![]).await else { return };
+        let added: Vec<(String, String)> = list
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|x| x.get("added").and_then(Value::as_bool) == Some(true))
+            .filter_map(|x| {
+                let title = x.get("title")?.as_str()?.to_string();
+                let open = x.get("open")?.as_str()?.to_string();
+                Some((title, open))
+            })
+            .collect();
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let shell = handle.state::<Shell>();
+            let mut tray = shell.tray.lock().unwrap();
+            let Some(items) = tray.as_mut() else { return };
+            while let Ok(Some(old)) = items.experiences.remove_at(0) {
+                drop(old);
+            }
+            for (title, open) in &added {
+                if let Ok(item) =
+                    MenuItem::with_id(&handle, format!("{EXPERIENCE_ITEM}{open}"), title, true, None::<&str>)
+                {
+                    let _ = items.experiences.append(&item);
+                }
+            }
+            if added.is_empty() && items.experiences_shown {
+                if items.menu.remove(&items.experiences).is_ok() {
+                    items.experiences_shown = false;
+                }
+            } else if !added.is_empty()
+                && !items.experiences_shown
+                && items.menu.insert(&items.experiences, EXPERIENCES_AT).is_ok()
+            {
+                items.experiences_shown = true;
+            }
+        });
+    });
 }
 
-/// Start at login on or off, with the menu bar's tick kept in step. Returns
-/// what it ended up as.
+/// Start at login on or off. Returns what it ended up as.
 fn set_autostart_to(app: &AppHandle, on: bool) -> bool {
     let launcher = app.autolaunch();
     let _ = if on { launcher.enable() } else { launcher.disable() };
-    let now = launcher.is_enabled().unwrap_or(on);
-    if let Some(items) = app.state::<Shell>().tray.lock().unwrap().as_ref() {
-        let _ = items.autostart.set_checked(now);
-    }
-    now
+    launcher.is_enabled().unwrap_or(on)
 }
 
 /// Whether Mycelium starts at login, for Settings' This Mac section.
@@ -655,6 +689,79 @@ async fn model_cli(input: Option<String>) -> Result<Value, String> {
     serde_json::from_slice(&out.stdout).map_err(|_| "The model settings came back unreadable.".into())
 }
 
+/// `mycelium desktop experiences`: the ready-made rooms this Mac has, and the
+/// ones it could add.
+#[tauri::command]
+async fn get_experiences(app: AppHandle, webview: Webview) -> Result<Value, String> {
+    local_only(&app, &webview)?;
+    experiences_cli(vec![]).await
+}
+
+/// Add an experience's content from a file the person picks: the macOS file
+/// picker, then `mycelium desktop experiences --add`. `None` when they cancel.
+#[tauri::command]
+async fn add_experience(app: AppHandle, webview: Webview, id: String) -> Result<Option<Value>, String> {
+    local_only(&app, &webview)?;
+    let dialog = app
+        .dialog()
+        .file()
+        .set_title("Add an experience")
+        .add_filter("Experience", &["zip"]);
+    let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_file())
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(path) = picked.and_then(|p| p.into_path().ok()) else {
+        return Ok(None);
+    };
+    let path = path.to_string_lossy().to_string();
+    let list = experiences_cli(vec!["--add".into(), id, path]).await?;
+    refresh_experiences(app);
+    Ok(Some(list))
+}
+
+/// `mycelium desktop experiences --remove`. Rooms it made stay.
+#[tauri::command]
+async fn remove_experience(app: AppHandle, webview: Webview, id: String) -> Result<Value, String> {
+    local_only(&app, &webview)?;
+    let list = experiences_cli(vec!["--remove".into(), id]).await?;
+    refresh_experiences(app);
+    Ok(list)
+}
+
+async fn experiences_cli(args: Vec<String>) -> Result<Value, String> {
+    let bin = paths::resolve("mycelium").ok_or("The mycelium program isn't available.")?;
+    let out = tauri::async_runtime::spawn_blocking(move || {
+        Command::new(bin)
+            .args(["desktop", "experiences"])
+            .args(&args)
+            .env("PATH", paths::shell_path())
+            .env("NO_COLOR", "1")
+            .output()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        return Err(err.lines().last().unwrap_or("Couldn't change the experiences.").trim().to_string());
+    }
+    serde_json::from_slice(&out.stdout).map_err(|_| "The experiences came back unreadable.".into())
+}
+
+/// Open an experience: the room UI, at the path the experience opens on.
+#[tauri::command]
+fn open_experience(app: AppHandle, webview: Webview, path: String) -> Result<(), String> {
+    local_only(&app, &webview)?;
+    if !path.starts_with('/') || path.starts_with("//") {
+        return Err("An experience opens on a path in the room UI.".into());
+    }
+    let status = app.state::<Supervisor>().status().ok_or("Mycelium is still starting.")?;
+    let ui = status.get("ui_url").and_then(Value::as_str).ok_or("Mycelium is still starting.")?;
+    let url = Url::parse(ui).and_then(|u| u.join(&path)).map_err(|e| e.to_string())?;
+    navigate_main(&app, url);
+    Ok(())
+}
+
 /// Open the supervisor's log (`~/.mycelium/logs/desktop.log`) in Console.
 #[tauri::command]
 fn open_log(app: AppHandle, webview: Webview) -> Result<(), String> {
@@ -812,6 +919,10 @@ pub fn run() {
             herdr_integrations,
             get_model,
             save_model,
+            get_experiences,
+            add_experience,
+            remove_experience,
+            open_experience,
             get_autostart,
             set_autostart,
             open_room,

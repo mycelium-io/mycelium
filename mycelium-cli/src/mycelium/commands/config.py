@@ -231,51 +231,7 @@ def apply_config(
 
         if restart:
             typer.echo("  Restarting containers...")
-            compose_path = _find_compose_path()
-            if not compose_path:
-                typer.secho("  ✗ Could not find compose.yml", fg=typer.colors.RED)
-                raise typer.Exit(1)
-
-            from mycelium.docker_utils import read_build_mode
-
-            cmd = [
-                "docker",
-                "compose",
-                "-p",
-                "mycelium",
-                "-f",
-                str(compose_path),
-            ]
-
-            # When the stack was started with `mycelium up --build`, inject
-            # compose-dev.yml so `pull_policy: never` stays in effect and the
-            # restart uses the locally-built images instead of pulling from GHCR.
-            restart_env: dict[str, str] | None = None
-            if read_build_mode(env_path) == "dev":
-                dev_compose = Path(__file__).parent.parent / "docker" / "compose-dev.yml"
-                if dev_compose.exists():
-                    cmd += ["-f", str(dev_compose)]
-                    # MYCELIUM_REPO_ROOT is referenced by compose-dev.yml build
-                    # contexts; it isn't used during a plain recreate (no --build),
-                    # but compose still needs it resolvable for var substitution.
-                    import os
-
-                    repo_root = dev_compose.parent.parent.parent.parent.parent
-                    restart_env = {**os.environ, "MYCELIUM_REPO_ROOT": str(repo_root)}
-
-            cmd += [
-                "--env-file",
-                str(env_path),
-                "up",
-                "--force-recreate",
-                "-d",
-            ]
-            result = subprocess.run(cmd, text=True, env=restart_env)
-            if result.returncode == 0:
-                typer.secho("  ✓ Containers restarted", fg=typer.colors.GREEN)
-            else:
-                typer.secho("  ✗ Restart failed", fg=typer.colors.RED)
-                raise typer.Exit(1)
+            restart_containers(env_path)
 
     except typer.Exit:
         raise
@@ -283,6 +239,59 @@ def apply_config(
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
         raise typer.Exit(1) from None
+
+
+def restart_containers(env_path: Path, services: list[str] | None = None) -> None:
+    """Recreate the Docker stack's containers (or just ``services``) with ``env_path``.
+
+    Raises ``typer.Exit(1)`` when compose can't be found or the restart fails.
+    """
+    compose_path = _find_compose_path()
+    if not compose_path:
+        typer.secho("  ✗ Could not find compose.yml", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    from mycelium.docker_utils import read_build_mode
+
+    cmd = [
+        "docker",
+        "compose",
+        "-p",
+        "mycelium",
+        "-f",
+        str(compose_path),
+    ]
+
+    # When the stack was started with `mycelium up --build`, inject
+    # compose-dev.yml so `pull_policy: never` stays in effect and the
+    # restart uses the locally-built images instead of pulling from GHCR.
+    restart_env: dict[str, str] | None = None
+    if read_build_mode(env_path) == "dev":
+        dev_compose = Path(__file__).parent.parent / "docker" / "compose-dev.yml"
+        if dev_compose.exists():
+            cmd += ["-f", str(dev_compose)]
+            # MYCELIUM_REPO_ROOT is referenced by compose-dev.yml build
+            # contexts; it isn't used during a plain recreate (no --build),
+            # but compose still needs it resolvable for var substitution.
+            import os
+
+            repo_root = dev_compose.parent.parent.parent.parent.parent
+            restart_env = {**os.environ, "MYCELIUM_REPO_ROOT": str(repo_root)}
+
+    cmd += [
+        "--env-file",
+        str(env_path),
+        "up",
+        "--force-recreate",
+        "-d",
+        *(services or []),
+    ]
+    result = subprocess.run(cmd, text=True, env=restart_env, check=False)
+    if result.returncode == 0:
+        typer.secho("  ✓ Containers restarted", fg=typer.colors.GREEN)
+    else:
+        typer.secho("  ✗ Restart failed", fg=typer.colors.RED)
+        raise typer.Exit(1)
 
 
 def _find_compose_path() -> Path | None:
