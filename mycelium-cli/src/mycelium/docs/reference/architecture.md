@@ -247,7 +247,7 @@ reads the room's messages and calls the remote agent over HTTPS. Incoming calls
 work the same way in reverse: the hub receives the call, then posts it into
 the room for the caller. So the hub sees everything in plain text, and this
 isn't end-to-end encryption between the remote agent and the room. See the
-[A2A bridge](adapters.html#adapter-a2a) for details.
+[A2A bridge](#a2a-bridge) for details.
 
 ### Backend API
 

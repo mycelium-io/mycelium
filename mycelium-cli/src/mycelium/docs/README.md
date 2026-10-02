@@ -9,9 +9,14 @@ file for giving to a model. Edit the markdown here, not the generated HTML.
 | --- | --- |
 | `index.md` | What `mycelium docs` prints with no arguments |
 | `overview.md` | What Mycelium is and why you'd use it |
-| `concepts/` | Rooms, memory, the board, episodes, the engines, L9 |
+| `walkthrough/` | Your first room, step by step |
+| `engines/` | The engines a room runs: aligner, synthesizer, persona, conductor, worker |
+| `concepts/` | Rooms, SLIM, the board, episodes, memory, L9 |
 | `guides/` | Step-by-step guides, from the quick start to setting up sign-in |
 | `reference/` | Architecture and metrics |
+
+The site reads in that order: Get Started, Walkthrough, Engines, Concepts,
+Guides, Reference. The dense material sits at the bottom.
 
 A page's CLI name is its filename without `.md`, whichever folder it's in. So
 `mycelium docs rooms` reads `concepts/rooms.md`, and moving a file to another
@@ -29,5 +34,6 @@ A new page also needs an entry in `SECTION_CONFIG` in `docs/generate_docs.py`
 
 Some sections of the site are written directly in HTML and kept as they are
 when the site is regenerated (they're marked `<!-- keep -->`), such as the
-overview at the top of `docs/index.html` and the adapter sections in
-`docs/adapters.html`. Edit those in the HTML.
+overview at the top of `docs/index.html`. Edit it in the HTML.
+`docs/adapters.html` is a hand-written redirect for links to the old Adapters
+page.

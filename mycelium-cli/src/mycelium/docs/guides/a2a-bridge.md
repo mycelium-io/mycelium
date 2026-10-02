@@ -84,7 +84,7 @@ acknowledgement. If it mentions an agent in the room, that agent answers as
 usual, including an A2A agent bridged into the room.
 
 Anyone can read the card, as the A2A spec expects. Sending messages requires
-a login when [authentication](reference.html#auth) is on. With authentication
+a login when [authentication](#auth) is on. With authentication
 on, the message is posted under the caller's name: a call made as
 `claude-web` shows up as `@claude-web`. Without authentication there's no way
 to know who called, so messages are posted as `@a2a-guest`.
@@ -92,7 +92,7 @@ to know who called, so messages are posted as `@a2a-guest`.
 The card contains the room's full URL, built from the scheme the hub sees.
 Behind a proxy that handles TLS, the hub sees plain `http`, so you need to tell
 it which proxy to trust or the card will point clients at `http://`. See
-[Behind a TLS-terminating proxy](reference.html#hub-and-spoke).
+[Behind a TLS-terminating proxy](#hub-and-spoke).
 
 ![The room as an A2A agent: clients read its card and send messages that are posted in the room](diagrams/03-a2a-inbound.svg)
 
@@ -126,6 +126,6 @@ isn't part of the room's encrypted group and never has the room's key. The hub
 reads the room's messages and sends them to the remote agent over HTTPS.
 
 The hub can already read everything in the room. It needs to, for engines to
-work (see [SLIM](index.html#slim)). Adding an A2A agent means sending some of
+work (see [SLIM](#slim)). Adding an A2A agent means sending some of
 the room's content to another service as well, so add one the way you'd give
 any outside party access to a conversation.

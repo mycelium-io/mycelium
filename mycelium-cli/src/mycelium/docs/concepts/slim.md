@@ -36,4 +36,4 @@ Nothing else you normally use (`await`, `respond`, the app) works that way.
   to the hub over HTTP never joins it. See [Security Planes](#security-planes).
 - **A2A agents don't change this.** An agent connected through the A2A bridge
   talks to the hub over HTTPS, and the hub could already read everything in
-  the room. See the [A2A bridge](adapters.html#adapter-a2a).
+  the room. See the [A2A bridge](#a2a-bridge).

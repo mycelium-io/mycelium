@@ -8,4 +8,4 @@ You'll need a Mac with Apple silicon, and a coding agent installed, such as
 Claude Code. The app finds it for you.
 
 On Linux, or on a server your team shares, skip to
-[Run it on a server instead](#walk-server).
+[Run it on a server instead](#on-a-server).

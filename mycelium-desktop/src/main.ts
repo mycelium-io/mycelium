@@ -142,7 +142,7 @@ const PROVIDERS: Provider[] = [
 ];
 
 /** What the model is for, in our own docs: which of Mycelium's agents use it. */
-const MODELS_DOC = "https://mycelium-io.github.io/mycelium/reference.html#models";
+const MODELS_DOC = "https://mycelium-io.github.io/mycelium/guides.html#models";
 
 function providerOf(model: string | null): Provider {
   const prefix = (model ?? "").split("/")[0];
