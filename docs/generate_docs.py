@@ -1347,7 +1347,7 @@ def _build_page(
                 for anchor, lbl in deps_entries:
                     add_group("Dependencies", anchor, lbl)
 
-    content = "\n\n    <hr class=\"divider\">\n\n".join(parts)
+    content = _SECTION_DIVIDER.join(parts)
     sidebar_groups = [(g, grouped[g]) for g in group_order]
     return content, sidebar_groups
 
@@ -1408,7 +1408,7 @@ class _SearchIndexExtractor(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attr = {k: v or "" for k, v in attrs}
         classes = attr.get("class", "").split()
-        if tag in _INDEX_SKIP_TAGS or "edit-page" in classes:
+        if tag in _INDEX_SKIP_TAGS or "edit-page" in classes or "doc-pager" in classes:
             self._skipped.append(tag)
             return
         if self._skipped:
@@ -1583,6 +1583,74 @@ def _resolve_cross_page_anchors(
     return resolved
 
 
+_SECTION_DIVIDER = "\n\n    <hr class=\"divider\">\n\n"
+_SECTION_ID = re.compile(r'<section\s+class="doc-section"\s+id="([^"]+)"')
+
+
+def _pager_link(direction: str, target: tuple[str, str, str, str] | None, file_name: str) -> str:
+    if target is None:
+        return '      <span class="doc-pager-link empty"></span>'
+    t_file, t_sid, t_group, t_label = target
+    href = f"#{t_sid}" if t_file == file_name else f"{t_file}#{t_sid}"
+    word = "Previous" if direction == "prev" else "Next"
+    where = f" · {html.escape(t_group)}" if t_group and t_group != t_label else ""
+    return (
+        f'      <a class="doc-pager-link {direction}" href="{href}">\n'
+        f'        <span class="doc-pager-dir">{word}{where}</span>\n'
+        f'        <span class="doc-pager-title">{html.escape(t_label)}</span>\n'
+        f"      </a>"
+    )
+
+
+def _add_pagers(
+    built: list[tuple[tuple, str, list[tuple[str, list[tuple[str, str]]]]]],
+) -> list[tuple[tuple, str, list[tuple[str, list[tuple[str, str]]]]]]:
+    """Give every section a Previous / Next bar, in reading order across pages.
+
+    The docs read as a sequence of sections (Guide, then Walkthrough, Adapters,
+    Reference), and site.js shows one section at a time, so each one ends with
+    a link to its neighbours. The last section of a page links on to the first
+    of the next. The bar sits after </section>, outside it, so a kept section
+    re-read from this output never picks up an old bar.
+    """
+    labels: dict[str, tuple[str, str]] = dict(GENERATED_SECTION_LABELS)
+    for _md, sid, _pid, group, label in SECTION_CONFIG:
+        labels[sid] = (group, label)
+
+    order: list[tuple[str, str, str, str]] = []   # (file, sid, group, label)
+    split: list[list[str]] = []
+    for page, content, _groups in built:
+        parts = content.split(_SECTION_DIVIDER)
+        split.append(parts)
+        for part in parts:
+            m = _SECTION_ID.search(part)
+            if not m:
+                raise SystemExit(f"{page[1]}: a content block has no doc-section id")
+            sid = m.group(1)
+            group, label = labels.get(sid, ("", sid.replace("-", " ").title()))
+            order.append((page[1], sid, group, label))
+
+    out = []
+    i = 0
+    for (page, _content, groups), parts in zip(built, split, strict=True):
+        file_name = page[1]
+        with_pagers = []
+        for part in parts:
+            sid = order[i][1]
+            prev = order[i - 1] if i > 0 else None
+            nxt = order[i + 1] if i + 1 < len(order) else None
+            i += 1
+            with_pagers.append(
+                part + "\n"
+                f'    <nav class="doc-pager" data-pager-for="{sid}" aria-label="Previous and next sections">\n'
+                f"{_pager_link('prev', prev, file_name)}\n"
+                f"{_pager_link('next', nxt, file_name)}\n"
+                "    </nav>"
+            )
+        out.append((page, _SECTION_DIVIDER.join(with_pagers), groups))
+    return out
+
+
 def _render_and_write(
     page_id: str,
     file_name: str,
@@ -1663,6 +1731,7 @@ def main() -> None:
         print(f"  {file_name}: {n} subsections in {len(sidebar_groups)} groups")
 
     built = _resolve_cross_page_anchors(built)
+    built = _add_pagers(built)
 
     print("Rendering pages...")
     for page, content, _groups in built:

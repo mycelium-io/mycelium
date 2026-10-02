@@ -576,11 +576,48 @@
       });
   }
 
-  // Active nav link tracking
+  // ── One section at a time ──
+  // Each page is a run of doc-sections; showing them all at once makes an
+  // endless scroll. Only the section the URL points at is shown, ending in its
+  // Previous / Next bar (generate_docs.py writes those, in reading order across
+  // pages). A link to a heading shows the section that holds it, then scrolls
+  // to it. Without JS nothing is hidden: every section shows, stacked.
+  const pagedSections = Array.prototype.slice.call(document.querySelectorAll('.main .doc-section[id]'));
+  const paged = pagedSections.length > 1;
+  if (paged) {
+    document.body.classList.add('paged');
+    const pagers = document.querySelectorAll('.doc-pager[data-pager-for]');
+    let current = null;
+
+    const route = (jump) => {
+      const id = decodeURIComponent(location.hash.slice(1));
+      const target = id ? document.getElementById(id) : null;
+      const section = (target && target.closest('.doc-section')) || pagedSections[0];
+      if (section !== current) {
+        pagedSections.forEach(s => s.classList.toggle('is-current', s === section));
+        pagers.forEach(p => p.classList.toggle('is-current', p.getAttribute('data-pager-for') === section.id));
+        current = section;
+      }
+      // Highlight the sidebar entry for this exact anchor, else its section.
+      const links = document.querySelectorAll('.sidebar .nav-link[href^="#"]');
+      const exact = target && document.querySelector('.sidebar .nav-link[href="#' + CSS.escape(id) + '"]');
+      const want = '#' + (exact ? id : section.id);
+      links.forEach(l => l.classList.toggle('active', l.getAttribute('href') === want));
+      // Instant, not the page's smooth scroll: a new section is a new page,
+      // and gliding through the old one's length to reach it reads as lag.
+      if (target && target !== section) target.scrollIntoView({ behavior: 'instant' });
+      else if (jump) window.scrollTo({ top: 0, behavior: 'instant' });
+    };
+    window.addEventListener('hashchange', () => route(true));
+    route(false);
+  }
+
+  // Active nav link tracking (the scrolling layout; paged mode sets it above)
   const sections = document.querySelectorAll('.doc-section[id], section[id]');
   const navLinks = document.querySelectorAll('.nav-link[href^="#"]');
 
   const observer = new IntersectionObserver((entries) => {
+    if (paged) return;
     entries.forEach(entry => {
       if (entry.isIntersecting) {
         const id = entry.target.id;

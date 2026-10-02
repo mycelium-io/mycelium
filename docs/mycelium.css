@@ -1454,6 +1454,44 @@ h4:hover .heading-tools,
 .edit-page a:hover { color: var(--text); background: var(--hairline); text-decoration: none; }
 .edit-page svg { flex-shrink: 0; }
 
+/* ── ONE SECTION AT A TIME ──
+ * site.js adds .paged and shows only the current section, ending in its
+ * Previous / Next bar. Without JS the sections stack as before and the bars
+ * stay hidden. */
+.paged .doc-section:not(.is-current),
+.paged .main-inner > .divider { display: none; }
+.paged .doc-section.is-current { margin-bottom: 0; }
+.doc-pager { display: none; }
+.paged .doc-pager.is-current {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 36px;
+}
+.doc-pager-link {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  text-decoration: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.doc-pager-link.next { grid-column: 2; align-items: flex-end; text-align: right; }
+.doc-pager-link:hover { border-color: var(--accent); background: var(--accent-soft); text-decoration: none; }
+.doc-pager-link.empty { border: none; padding: 0; }
+.doc-pager-dir { font-size: var(--text-label); color: var(--muted-foreground); }
+.doc-pager-link.prev .doc-pager-dir::before { content: "← "; }
+.doc-pager-link.next .doc-pager-dir::after { content: " →"; }
+.doc-pager-title { font-size: var(--text-body); font-weight: 600; color: var(--text); }
+.doc-pager-link:hover .doc-pager-title { color: var(--accent); }
+@media (max-width: 600px) {
+  .paged .doc-pager.is-current { grid-template-columns: 1fr; }
+  .doc-pager-link.next { grid-column: auto; }
+  .doc-pager-link.empty { display: none; }
+}
+
 /* ── DIAGRAMS ──
  * Architecture SVGs embedded via markdown (see docs/generate_docs.py). White
  * background baked into the d2 render, so a light card holds it correctly in
