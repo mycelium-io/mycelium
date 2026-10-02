@@ -49,7 +49,7 @@ from app.schemas import (
 )
 from app.services import actor, patterns, protocols
 from app.services.agent_registry import norm_handle
-from app.services.filesystem import get_data_dir
+from app.services.filesystem import get_data_dir, read_room_meta, write_room_meta
 
 logger = logging.getLogger(__name__)
 
@@ -297,6 +297,11 @@ async def _load(loaded: patterns.Loaded, payload: PatternLoad, request: Request)
                 ),
                 request,
             )
+
+        # The room says which pattern it came from and where its flow runs, so a
+        # viewer finds a pattern's rooms and the hub knows what a run is about.
+        meta = read_room_meta(room) or {}
+        write_room_meta(room, {**meta, "pattern": scenario.pattern, "pattern_task": row.key})
 
         episode = str(row.episode or "")
         ran = False

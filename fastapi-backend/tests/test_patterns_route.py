@@ -173,6 +173,11 @@ async def test_loading_makes_a_room_ready_and_paused(client, pack):
     assert info["title"] == "Refund batch"
     assert info["owner"] == "julia"
     assert info["is_public"] is True
+    # The room says where it came from and where its flow runs, and keeps
+    # saying so through a change to its other attributes.
+    assert (info["pattern"], info["pattern_task"]) == ("approval-gate-agent", body["key"])
+    await client.patch(f"/api/rooms/{room}", json={"title": "Renamed"})
+    assert (await client.get(f"/api/rooms/{room}")).json()["pattern"] == "approval-gate-agent"
     assert (kind_of(room, "conductor"), kind_of(room, "ops")) == ("conductor", "persona")
     assert kind_of(room, "you") is None  # the person is not an engine
 

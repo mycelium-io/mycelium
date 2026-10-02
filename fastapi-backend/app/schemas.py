@@ -86,6 +86,10 @@ class RoomRead(BaseModel):
     is_persistent: bool = False
     mas_id: str | None = None
     workspace_id: str | None = None
+    #: The pattern the room was loaded from, and the task its flow runs in;
+    #: unset for a room made any other way.
+    pattern: str | None = None
+    pattern_task: str | None = None
 
     model_config = {"from_attributes": True}
 

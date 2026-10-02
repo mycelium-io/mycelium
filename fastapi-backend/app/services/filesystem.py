@@ -474,6 +474,8 @@ def read_room_meta(room_name: str) -> dict[str, Any] | None:
         "mas_id": stored.get("mas_id"),
         "workspace_id": stored.get("workspace_id"),
         "title": stored.get("title"),
+        "pattern": stored.get("pattern"),
+        "pattern_task": stored.get("pattern_task"),
         "created_at": created_at,
     }
 
