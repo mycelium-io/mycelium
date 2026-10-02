@@ -10,9 +10,15 @@ at), the experiences it has, personas only, and usage sharing.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from app.config import settings
+from app.routes.hub import EXPERIENCES
+
+_CONTRACT = Path(__file__).resolve().parent.parent.parent / "contracts" / "experiences.json"
 
 
 @pytest.mark.asyncio
@@ -56,3 +62,8 @@ async def test_a_hub_with_a_pack_has_the_patterns_explorer(client, monkeypatch, 
 async def test_settings_cannot_be_changed_here(client):
     assert (await client.put("/api/hub/settings", json={})).status_code == 405
     assert (await client.post("/api/hub/settings", json={})).status_code == 405
+
+
+def test_the_experiences_are_the_contracts():
+    contract = json.loads(_CONTRACT.read_text())
+    assert contract["experiences"] == EXPERIENCES

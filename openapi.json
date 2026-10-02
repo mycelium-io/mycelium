@@ -6116,6 +6116,11 @@
             "title": "Open",
             "description": "Where it opens in the hub's UI"
           },
+          "unit": {
+            "type": "string",
+            "title": "Unit",
+            "description": "What one of its scenarios is called"
+          },
           "scenarios": {
             "type": "integer",
             "title": "Scenarios",
@@ -6128,6 +6133,7 @@
           "title",
           "description",
           "open",
+          "unit",
           "scenarios"
         ],
         "title": "HubExperience"

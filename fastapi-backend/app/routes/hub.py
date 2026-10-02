@@ -35,6 +35,7 @@ class HubExperience(BaseModel):
     title: str
     description: str
     open: str = Field(description="Where it opens in the hub's UI")
+    unit: str = Field(description="What one of its scenarios is called")
     scenarios: int = Field(description="How many scenarios it has")
 
 
@@ -47,24 +48,34 @@ class HubSettings(BaseModel):
     share_usage: bool = Field(description="Whether this hub sends its anonymous usage stats")
 
 
-#: The experiences a hub can have, and what makes each one available. The Mac
-#: app's catalogue (``mycelium/desktop/experiences.py``) names the same ones.
-PATTERNS_EXPLORER = {
-    "id": "patterns-explorer",
-    "title": "Patterns Explorer",
-    "description": "Watch a team of agents work through a business scenario, start to finish.",
-    "open": "/patterns",
-}
+#: The experiences Mycelium knows. Frozen in ``contracts/experiences.json``,
+#: which the CLI's catalogue (``mycelium/desktop/experiences.py``) also matches;
+#: the image carries only this package, so this is a checked copy of it.
+EXPERIENCES: list[dict[str, str]] = [
+    {
+        "id": "patterns-explorer",
+        "title": "Patterns Explorer",
+        "description": "Watch a team of agents work through a business scenario, start to finish.",
+        "open": "/patterns",
+        "unit": "business scenario",
+    },
+]
+
+
+def _scenarios(experience_id: str) -> int:
+    """How many scenarios this hub has for an experience; 0 when it has none."""
+    if experience_id == "patterns-explorer":
+        return len(patterns.pack_names())
+    return 0
 
 
 @router.get("/settings", response_model=HubSettings)
 async def hub_settings() -> HubSettings:
     """What this hub is set up with, without a key or an address in it."""
     model = (settings.LLM_MODEL or "").strip() or None
-    experiences: list[HubExperience] = []
-    scenarios = len(patterns.pack_names())
-    if scenarios:
-        experiences.append(HubExperience(**PATTERNS_EXPLORER, scenarios=scenarios))
+    experiences = [
+        HubExperience(**x, scenarios=n) for x in EXPERIENCES if (n := _scenarios(x["id"]))
+    ]
     return HubSettings(
         model=HubModel(
             model=model,

@@ -81,7 +81,7 @@ interface Experience {
 /** `mycelium hub settings --json`: what a hub is set up with. Read-only, no key in it. */
 interface HubSettings {
   model: { model: string | null; provider: string | null; has_key: boolean; custom_endpoint: boolean };
-  experiences: { id: string; title: string; description: string; open: string; scenarios: number }[];
+  experiences: { id: string; title: string; description: string; open: string; unit: string; scenarios: number }[];
   personas_only: boolean;
   share_usage: boolean;
 }
@@ -194,6 +194,7 @@ const PREVIEW_HUB: HubSettings = {
       title: "Patterns Explorer",
       description: "Watch a team of agents work through a business scenario, start to finish.",
       open: "/patterns",
+      unit: "business scenario",
       scenarios: 3,
     },
   ],
@@ -762,7 +763,7 @@ function hubReadOnly(at: "model" | "experiences" | "privacy", answer: Promise<Hu
                   { class: "exp on" },
                   el("i", { class: "check", "aria-hidden": "true" }),
                   el("strong", {}, x.title),
-                  el("span", {}, `${x.scenarios} business scenario${x.scenarios === 1 ? "" : "s"} · on the hub · `, open),
+                  el("span", {}, `${x.scenarios} ${x.unit}${x.scenarios === 1 ? "" : "s"} · on the hub · `, open),
                 );
               })),
         ];
