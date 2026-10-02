@@ -1145,6 +1145,14 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-setup",
+    "t": "mycelium hub settings [--hub <url>] [--json]",
+    "s": "CLI Reference",
+    "x": "What the hub is set up with (model, experiences, usage stats). Read-only; no key is shown.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-setup",
     "t": "mycelium install [--yes] [--non-interactive] [--force]",
     "s": "CLI Reference",
     "x": "Interactive installer: Docker check, LLM config, docker compose up, provision workspace.",

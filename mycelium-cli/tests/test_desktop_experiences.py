@@ -10,19 +10,24 @@ its folder, carries a link, or holds no scenarios is refused with a reason.
 
 from __future__ import annotations
 
+import json
 import stat
 import zipfile
-from typing import TYPE_CHECKING
+from dataclasses import asdict
+from pathlib import Path
 
 import pytest
 
 from mycelium.config import MyceliumConfig
 from mycelium.desktop import experiences as xp
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 SCENARIO = "pattern: approval-gate-agent\n"
+_CONTRACT = Path(__file__).resolve().parent.parent.parent / "contracts" / "experiences.json"
+
+
+def test_the_catalogue_is_the_contracts():
+    contract = json.loads(_CONTRACT.read_text())
+    assert [asdict(x) for x in xp.CATALOG] == contract["experiences"]
 
 
 @pytest.fixture(autouse=True)

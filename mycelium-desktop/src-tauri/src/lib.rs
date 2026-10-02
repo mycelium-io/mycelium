@@ -55,6 +55,8 @@ struct TrayItems {
     /// while there is at least one.
     experiences: Submenu<Wry>,
     experiences_shown: bool,
+    /// Whether the status line last said running or joined.
+    up: bool,
 }
 
 /// What the menu bar's update item says: `Some` while an update downloads
@@ -318,10 +320,22 @@ fn status_line(status: &Value) -> String {
 }
 
 fn update_tray(app: &AppHandle, status: &Value) {
-    let shell = app.state::<Shell>();
-    let guard = shell.tray.lock().unwrap();
-    let Some(items) = guard.as_ref() else { return };
-    let _ = items.status.set_text(status_line(status));
+    let line = status_line(status);
+    let up_now = {
+        let shell = app.state::<Shell>();
+        let mut guard = shell.tray.lock().unwrap();
+        let Some(items) = guard.as_mut() else { return };
+        let _ = items.status.set_text(&line);
+        // Once it's running or joined, the experiences can be read: a team's
+        // hub's only answer once the runner reaches it.
+        let up = line.starts_with('●');
+        let became = up && !items.up;
+        items.up = up;
+        became
+    };
+    if up_now {
+        refresh_experiences(app.clone());
+    }
 }
 
 /// Where the experiences folder goes: after Open Mycelium and Agents.
@@ -392,6 +406,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         menu,
         experiences,
         experiences_shown: false,
+        up: false,
     });
     refresh_experiences(app.clone());
     Ok(())
@@ -404,12 +419,24 @@ const EXPERIENCE_ITEM: &str = "experience:";
 /// or take the folder away when there are none. Reads them in the background.
 fn refresh_experiences(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
-        let Ok(list) = experiences_cli(vec![]).await else { return };
+        // Joined to a team's hub, the experiences are the hub's, read from it;
+        // on this Mac, the ones added here.
+        let list = match settings::load() {
+            Some(s) if s.mode == Mode::Client => match hub_settings_cli(s.hub_url).await {
+                Ok(v) => v.get("experiences").cloned().unwrap_or(Value::Null),
+                Err(_) => return,
+            },
+            _ => match experiences_cli(vec![]).await {
+                Ok(v) => v,
+                Err(_) => return,
+            },
+        };
         let added: Vec<(String, String)> = list
             .as_array()
             .into_iter()
             .flatten()
-            .filter(|x| x.get("added").and_then(Value::as_bool) == Some(true))
+            // The hub's list holds only what it has; this Mac's says which are added.
+            .filter(|x| x.get("added").and_then(Value::as_bool) != Some(false))
             .filter_map(|x| {
                 let title = x.get("title")?.as_str()?.to_string();
                 let open = x.get("open")?.as_str()?.to_string();
@@ -748,6 +775,37 @@ async fn experiences_cli(args: Vec<String>) -> Result<Value, String> {
     serde_json::from_slice(&out.stdout).map_err(|_| "The experiences came back unreadable.".into())
 }
 
+/// What the hub is set up with, read-only: `mycelium hub settings --json`
+/// against the team's hub (or this Mac's). No key is ever in the answer.
+#[tauri::command]
+async fn get_hub_settings(app: AppHandle, webview: Webview) -> Result<Value, String> {
+    local_only(&app, &webview)?;
+    let hub = settings::load().filter(|s| s.mode == Mode::Client).and_then(|s| s.hub_url);
+    hub_settings_cli(hub).await
+}
+
+async fn hub_settings_cli(hub: Option<String>) -> Result<Value, String> {
+    let bin = paths::resolve("mycelium").ok_or("The mycelium program isn't available.")?;
+    let out = tauri::async_runtime::spawn_blocking(move || {
+        let mut cmd = Command::new(bin);
+        cmd.args(["hub", "settings", "--json"])
+            .env("PATH", paths::shell_path())
+            .env("NO_COLOR", "1");
+        if let Some(hub) = hub {
+            cmd.args(["--hub", &hub]);
+        }
+        cmd.output()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        return Err(err.lines().last().unwrap_or("Couldn't ask the hub.").trim().to_string());
+    }
+    serde_json::from_slice(&out.stdout).map_err(|_| "The hub's answer was unreadable.".into())
+}
+
 /// Open an experience: the room UI, at the path the experience opens on.
 #[tauri::command]
 fn open_experience(app: AppHandle, webview: Webview, path: String) -> Result<(), String> {
@@ -920,6 +978,7 @@ pub fn run() {
             get_model,
             save_model,
             get_experiences,
+            get_hub_settings,
             add_experience,
             remove_experience,
             open_experience,

@@ -43,6 +43,9 @@ class Experience:
     unit: str
 
 
+#: Frozen in ``contracts/experiences.json``, which the hub's list
+#: (``app/routes/hub.py``) also matches; this package can't read the repo at run
+#: time, so this is a checked copy of it.
 CATALOG: tuple[Experience, ...] = (
     Experience(
         id="patterns-explorer",

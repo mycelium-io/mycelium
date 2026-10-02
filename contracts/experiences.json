@@ -1,0 +1,12 @@
+{
+  "_comment": "The experiences Mycelium knows: ready-made rooms to explore. The hub names the ones it has (fastapi-backend/app/routes/hub.py: EXPERIENCES, asserted by fastapi-backend/tests/test_hub_settings.py) and the Mac app's Settings and the CLI add them (mycelium-cli/src/mycelium/desktop/experiences.py: CATALOG, asserted by mycelium-cli/tests/test_desktop_experiences.py). `open` is where it opens in the room UI; `unit` is what one of its scenarios is called.",
+  "experiences": [
+    {
+      "id": "patterns-explorer",
+      "title": "Patterns Explorer",
+      "description": "Watch a team of agents work through a business scenario, start to finish.",
+      "open": "/patterns",
+      "unit": "business scenario"
+    }
+  ]
+}
