@@ -81,6 +81,10 @@ class PatternRead(PatternSummary):
 
     scenario: dict[str, Any]
     flow_body: str | None = Field(None, description="The flow's YAML, when it brings its own")
+    flow_spec: dict[str, Any] | None = Field(
+        None,
+        description="The flow it runs, built in or its own, as steps: drawable before it runs",
+    )
 
 
 class PatternList(BaseModel):
@@ -157,6 +161,11 @@ async def get_pattern(name: str) -> PatternRead:
         **_summary(loaded).model_dump(),
         scenario=loaded.scenario.model_dump(mode="json", exclude_none=True),
         flow_body=loaded.flow_body,
+        flow_spec=(
+            {"name": loaded.protocol.name, **protocols.spec_of(loaded.protocol)}
+            if loaded.protocol is not None
+            else None
+        ),
     )
 
 

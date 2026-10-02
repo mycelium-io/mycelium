@@ -108,6 +108,9 @@ async def test_the_pack_is_listed_and_read(client, pack):
     full = (await client.get("/api/patterns/approval-gate-agent")).json()
     assert full["scenario"]["task"]["title"] == "Refund the batch"
     assert full["flow_body"] is None
+    # The flow comes as steps, so it can be drawn before anything runs.
+    assert full["flow_spec"]["name"] == "gated"
+    assert [s["id"] for s in full["flow_spec"]["steps"]] == ["propose", "review", "approved"]
 
 
 @pytest.mark.asyncio
