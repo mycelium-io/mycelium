@@ -32,7 +32,7 @@ import { runActions } from "./actions.mjs";
 import { MAX_SPEED, frameSource, startPump } from "./pump.mjs";
 import { palette } from "./theme.mjs";
 import { isStaged, pickStage } from "./stage.mjs";
-import { restage, startSpool } from "./restage.mjs";
+import { restage, startSpool, titleFrames, writeSounds } from "./restage.mjs";
 import { STAGE_STYLE } from "./project.mjs";
 
 /** Timing, in ms. Beats a viewer can follow rather than the fastest that works. */
@@ -186,6 +186,9 @@ export async function record(eng, spec, ctx) {
 
     /** @type {{beat:number, text:string}[] | undefined} */
     const captions = staged ? [] : undefined;
+    /** Clicks and keystrokes, by the take beat they happen on, for a sound pass. */
+    /** @type {{beat:number, kind:string, [k:string]:unknown}[] | undefined} */
+    const sounds = staged ? [] : undefined;
     const cursor = makeCursor(page, {
       ...spec,
       log,
@@ -193,6 +196,7 @@ export async function record(eng, spec, ctx) {
       zoom: spec.zoom ?? VIDEO_DEFAULTS.zoom,
       pump,
       captions,
+      sounds,
       beat: () => spool?.frames ?? 0,
     });
     // Three ways a take ends: the flow finishes, the video reaches --max-seconds
@@ -243,6 +247,7 @@ export async function record(eng, spec, ctx) {
       });
       ({ width, height, frames } = result);
       staging = { tilt: stage.tilt, drift: spec.drift ?? STAGE_DRIFT, rendered: result.rendered, ms: Date.now() - tStage };
+      if (sounds?.length) writeSounds(ctx.out, sounds, fps, titleFrames(spec, fps));
     }
     return {
       path: ctx.out,
@@ -379,6 +384,7 @@ export function makeCursor(page, opts) {
    * frame of the press cannot wait for that.
    */
   async function press() {
+    opts.sounds?.push({ beat: opts.beat(), kind: "click" });
     await page.evaluate(() => window.__shotkit?.press(true)).catch(() => {});
     await page.mouse.down();
     await sleep(timing.pressMs);
@@ -401,6 +407,21 @@ export function makeCursor(page, opts) {
 
   return {
     typeDelay: timing.typeDelayMs,
+
+    /**
+     * Type `text` with `type`, noting the span it went in over for a sound pass.
+     * @param {(text: string) => Promise<void>} type
+     */
+    async typing(text, type) {
+      const beat = opts.beat();
+      await type(text);
+      opts.sounds?.push({ beat, end: opts.beat(), kind: "type", chars: [...text].length });
+    },
+
+    /** A key pressed on its own, like Enter, for a sound pass. */
+    key(name) {
+      opts.sounds?.push({ beat: opts.beat(), kind: "key", key: name });
+    },
 
     async glide(locator, o = {}) {
       const p = await pointOf(locator, o);

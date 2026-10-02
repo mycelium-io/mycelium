@@ -104,6 +104,8 @@ const splitPair = (arg) => {
  * @property {(ms?:number) => Promise<void>} dwell a beat, so the result reads
  * @property {(text:string) => Promise<void>} caption a lower-third caption
  * @property {(n:number) => void} speed time-lapse what follows
+ * @property {(text:string, type:(t:string) => Promise<void>) => Promise<void>} [typing] type, noting it for sound
+ * @property {(name:string) => void} [key] a key pressed on its own, noted for sound
  */
 
 /** Verbs that are already a wait, or take no screen time, so a recording must
@@ -158,7 +160,8 @@ export async function runActions(page, actions, ctx = {}) {
         // pointer goes to it, it is cleared, and the text is typed.
         await cursor.click(field, { timeout });
         await field.fill("", { timeout });
-        await field.pressSequentially(value, { delay: cursor.typeDelay, timeout });
+        const type = (t) => field.pressSequentially(t, { delay: cursor.typeDelay, timeout });
+        await (cursor.typing ? cursor.typing(value, type) : type(value));
         break;
       }
       case "select": {
@@ -169,11 +172,14 @@ export async function runActions(page, actions, ctx = {}) {
         break;
       }
       case "press":
+        cursor?.key?.(arg);
         await page.keyboard.press(arg);
         break;
-      case "typekeys":
-        await page.keyboard.type(arg, { delay: cursor?.typeDelay ?? 20 });
+      case "typekeys": {
+        const type = (t) => page.keyboard.type(t, { delay: cursor?.typeDelay ?? 20 });
+        await (cursor?.typing ? cursor.typing(arg, type) : type(arg));
         break;
+      }
       case "goto":
         await page.goto(arg.startsWith("http") ? arg : `${ctx.baseUrl ?? ""}${arg}`, {
           waitUntil: "domcontentloaded",
