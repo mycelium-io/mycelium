@@ -26,30 +26,51 @@ app = typer.Typer(
 SECTIONS: list[tuple[str, str]] = [
     ("overview", "Overview"),
     ("quickstart", "Quick Start"),
-    ("rooms", "Rooms"),
-    ("board", "Board"),
-    ("episodes", "Episodes"),
-    ("memory", "Memory"),
-    ("principals", "Users & Teams"),
-    ("l9-protocol", "L9 Protocol"),
     ("engines", "Engines"),
     ("aligner", "The Aligner"),
     ("synthesizer", "The Synthesizer"),
     ("hello", "Hello"),
-    ("architecture", "Architecture"),
-    ("structured-memory", "Structured Memory"),
+    ("persona", "Persona"),
+    ("conductor", "The Conductor"),
+    ("worker", "Worker"),
+    ("rooms", "Rooms"),
+    ("slim", "SLIM"),
+    ("board", "Board"),
+    ("episodes", "Episodes"),
+    ("swarm", "Swarm"),
+    ("memory", "Memory"),
+    ("principals", "Users & Teams"),
+    ("l9-protocol", "L9 Protocol"),
+    ("server", "Run It on a Server"),
+    ("desktop", "The Mac App"),
     ("hub-and-spoke", "Hub & Spoke"),
+    ("models", "Models"),
+    ("machines", "Start Agents From the App"),
+    ("herdr", "Persistent Agents (herdr)"),
     ("ephemeral-agents", "Ephemeral Agents"),
+    ("omnigent", "Run Agents in Omnigent"),
+    ("a2a-bridge", "A2A Bridge"),
+    ("structured-memory", "Structured Memory"),
     ("security-planes", "Security Planes"),
     ("auth", "Authentication"),
     ("keycloak-oidc", "Keycloak / OIDC Setup"),
-    ("metrics", "Metrics"),
     ("troubleshooting", "Troubleshooting"),
+    ("architecture", "Architecture"),
+    ("metrics", "Metrics"),
 ]
 
 # Subdirectories the docs tree is organized into, in lookup order. "commands"
 # and "examples" are older layouts that some installs may still carry.
-_DOC_DIRS = ("concepts", "guides", "reference", "adapters", "commands", "examples")
+_DOC_DIRS = (
+    "engines",
+    "concepts",
+    "guides",
+    "walkthrough",
+    "reference",
+    "adapters",
+    "commands",
+    "examples",
+)
 
 
 def _resolve_topic(docs_root: Path, topic: str) -> Path | None:

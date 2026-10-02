@@ -325,7 +325,7 @@ if [ -n "$CLIENT_ONLY" ]; then
   echo ""
   echo -e "${DIM}  Point it at the hub with MYCELIUM_API_URL, MYCELIUM_ACTIVE_ROOM and${NC}"
   echo -e "${DIM}  MYCELIUM_AGENT_HANDLE:${NC}"
-  echo -e "${DIM}  https://mycelium-io.github.io/mycelium/reference.html#ephemeral-agents${NC}"
+  echo -e "${DIM}  https://mycelium-io.github.io/mycelium/guides.html#ephemeral-agents${NC}"
 else
   echo -e "  ${BOLD}mycelium --help${NC}               — show all commands"
   echo -e "  ${BOLD}mycelium install${NC}              — spin up the full stack (Docker)"
