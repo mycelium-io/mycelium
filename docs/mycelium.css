@@ -529,6 +529,9 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
   border-left: 1px solid var(--border);
 }
 .nav-link.sub { padding: 5px 10px; font-size: var(--text-label); }
+/* Sections of a page with no group level sit where the group labels do, so their
+ * text lines up with "Setup" / "Architecture" (10px padding + 12px chevron + 6px gap). */
+.nav-page-items .nav-link.sub { padding-left: 28px; }
 
 .nav-external {
   margin: 4px 10px 0;

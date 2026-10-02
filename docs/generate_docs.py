@@ -1197,6 +1197,20 @@ def _sidebar(nav: list[NavPage], active_page_id: str) -> str:
         out.append(
             f'      <a href="{file_name}" class="{page_cls}">{html.escape(label)}</a>'
         )
+        # A page whose one group shares its name has no group level to show:
+        # list its sections where the groups would sit, not under a same-name
+        # accordion ("Engines › Engines").
+        if len(groups) == 1 and groups[0][0] == label:
+            out.append('      <div class="nav-page-items">')
+            for anchor, item_label in groups[0][1]:
+                href = f"#{anchor}" if current else f"{file_name}#{anchor}"
+                out.append(
+                    f'        <a href="{href}" class="nav-link sub">'
+                    f"{html.escape(item_label)}</a>"
+                )
+            out.append("      </div>")
+            out.append("    </div>")
+            continue
         for group_label, items in groups:
             if not items:
                 continue
