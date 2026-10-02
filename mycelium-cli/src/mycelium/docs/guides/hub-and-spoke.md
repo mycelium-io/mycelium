@@ -102,8 +102,17 @@ Spokes never need this secret.
 | **8000** | Backend API | **Yes** | Memory, `await`/`respond`, rooms |
 | 46357 | SLIM node | No | SLIM on the hub; optionally `mycelium slim send` |
 
-If other people share the network, turn on [authentication](#auth) on the hub.
-That's what protects the API from other machines. The SLIM secret doesn't.
+By default Docker publishes the backend only on the hub machine's loopback
+address, so spokes on other machines can't reach it. To serve them, turn on
+[authentication](#auth) first, then bind to all interfaces:
+
+```bash
+mycelium config set runtime.bind_addr 0.0.0.0
+mycelium config apply
+```
+
+Authentication is what protects the API from other machines. The SLIM secret
+doesn't.
 
 ## Step 2: Connect each spoke
 
@@ -287,7 +296,9 @@ curl http://192.168.1.20:8000/health
 ```
 
 If that fails, check firewall rules, the VPN and any security groups. The hub
-has to accept connections on port **8000**. Spokes don't need port `46357`.
+has to accept connections on port **8000**, which also means
+`runtime.bind_addr` must be `0.0.0.0` (the default is loopback only). Spokes
+don't need port `46357`.
 
 ### `doctor` says "spoke mode" on the hub
 

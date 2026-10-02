@@ -93,9 +93,27 @@ def get_data_dir() -> Path:
     return data_dir
 
 
+class UnsafePathError(ValueError):
+    """A client-supplied room name or memory key would resolve outside its directory."""
+
+
+def _contained(base_dir: Path, relative: str) -> Path:
+    """``base_dir / relative``, refusing a result that resolves outside ``base_dir``.
+
+    Rejects ``..`` segments, absolute paths, symlinks that leave the base, and the
+    base itself. The returned path is unresolved, so callers keep their existing
+    path semantics.
+    """
+    path = base_dir / relative
+    resolved, base = path.resolve(), base_dir.resolve()
+    if resolved == base or not resolved.is_relative_to(base):
+        raise UnsafePathError(f"path escapes {base_dir.name}/: {relative!r}")
+    return path
+
+
 def get_room_dir(room_name: str) -> Path:
     """Get the directory for a room, creating it if needed."""
-    room_dir = get_data_dir() / "rooms" / room_name
+    room_dir = _contained(get_data_dir() / "rooms", room_name)
     room_dir.mkdir(parents=True, exist_ok=True)
     return room_dir
 
@@ -250,8 +268,7 @@ def write_memory_file(
     extra_meta: dict[str, Any] | None = None,
 ) -> Path:
     """Write a memory as a markdown file. Creates parent directories as needed."""
-    filename = _sanitize_filename(key)
-    file_path = base_dir / filename
+    file_path = _contained(base_dir, _sanitize_filename(key))
     file_path.parent.mkdir(parents=True, exist_ok=True)
 
     text = serialize_memory(
@@ -272,8 +289,10 @@ def write_memory_file(
 
 def read_memory_file(base_dir: Path, key: str) -> tuple[dict[str, Any], str] | None:
     """Read a memory file by key. Returns (metadata, content) or None if not found."""
-    filename = _sanitize_filename(key)
-    file_path = base_dir / filename
+    try:
+        file_path = _contained(base_dir, _sanitize_filename(key))
+    except UnsafePathError:
+        return None
     if not file_path.exists():
         return None
     text = file_path.read_text(encoding="utf-8")
@@ -282,8 +301,10 @@ def read_memory_file(base_dir: Path, key: str) -> tuple[dict[str, Any], str] | N
 
 def delete_memory_file(base_dir: Path, key: str) -> bool:
     """Delete a memory file by key. Returns True if the file existed."""
-    filename = _sanitize_filename(key)
-    file_path = base_dir / filename
+    try:
+        file_path = _contained(base_dir, _sanitize_filename(key))
+    except UnsafePathError:
+        return False
     if file_path.exists():
         file_path.unlink()
         # Clean up empty parent directories
@@ -305,6 +326,8 @@ def list_memory_files(
         return []
 
     if prefix:
+        if not (base_dir / prefix).resolve().is_relative_to(base_dir.resolve()):
+            return []
         # Prefix might be "decisions/" — search in that subdirectory
         search_dir = base_dir / prefix.rstrip("/")
         if search_dir.is_dir():
@@ -411,7 +434,10 @@ def room_id(room_name: str) -> int:
 
 def room_exists(room_name: str) -> bool:
     """True if the room's directory exists on disk."""
-    return (get_data_dir() / "rooms" / room_name).is_dir()
+    try:
+        return _contained(get_data_dir() / "rooms", room_name).is_dir()
+    except UnsafePathError:
+        return False
 
 
 def list_room_names() -> list[str]:

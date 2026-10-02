@@ -289,6 +289,7 @@ header. Leave it unset if there's no proxy in front of the backend.
 | `LLM_API_KEY` | The provider's API key | (none) |
 | `LLM_BASE_URL` | A custom model endpoint, such as Ollama or vLLM | (none) |
 | `MYCELIUM_DATA_DIR` | Where rooms and memories are stored | `~/.mycelium` |
+| `MYCELIUM_BIND_ADDR` | The address the stack's ports are published on (`runtime.bind_addr`) | `127.0.0.1` |
 | `MYCELIUM_BACKEND_PORT` | The backend's port on your machine | `8000` |
 | `MYCELIUM_UI_PORT` | The app's port on your machine | `3000` |
 | `MYCELIUM_METRICS_PORT` | The metrics collector's port (`--metrics`) | `4318` |

@@ -29,11 +29,24 @@ def test_split_provider_model() -> None:
     assert pi_session.split_provider_model("my-model") == ("custom", "my-model")
 
 
-def test_direct_key_provider_uses_model_and_api_key(tmp_path: Path) -> None:
-    cmd = _llm_session(tmp_path, api_key="secret")._build_command("p", system="")
+def test_direct_key_provider_passes_key_via_env_not_argv(tmp_path: Path) -> None:
+    brain_ = _llm_session(tmp_path, api_key="secret")
+    cmd = brain_._build_command("p", system="")
     assert cmd[cmd.index("--model") + 1] == "anthropic/claude-sonnet-4-6"
-    assert cmd[cmd.index("--api-key") + 1] == "secret"
+    assert "--api-key" not in cmd
+    assert "secret" not in cmd
     assert "--provider" not in cmd
+    env = brain_._subprocess_env()
+    assert env is not None
+    assert env["ANTHROPIC_API_KEY"] == "secret"
+
+
+def test_provider_without_env_var_keeps_api_key_flag(tmp_path: Path) -> None:
+    """A provider pi has no documented key env var for still gets --api-key."""
+    brain_ = _llm_session(tmp_path, model="kimi-coding/k2", api_key="secret")
+    cmd = brain_._build_command("p", system="")
+    assert cmd[cmd.index("--api-key") + 1] == "secret"
+    assert brain_._subprocess_env() is None
 
 
 def test_prompt_leading_at_and_dash_are_neutralized(tmp_path: Path) -> None:
@@ -71,7 +84,7 @@ def test_standard_endpoint_stays_direct(tmp_path: Path) -> None:
 
 
 def test_builtin_provider_proxy_writes_override(tmp_path: Path) -> None:
-    """A proxy base URL on a built-in provider → baseUrl override, still --model/--api-key."""
+    """A proxy base URL on a built-in provider → baseUrl override, still --model + env key."""
     brain_ = _llm_session(
         tmp_path,
         model="anthropic/claude-haiku-4-5",
@@ -81,7 +94,10 @@ def test_builtin_provider_proxy_writes_override(tmp_path: Path) -> None:
     assert brain_._endpoint_mode == "builtin"
     cmd = brain_._build_command("p", system="")
     assert "--provider" not in cmd
-    assert cmd[cmd.index("--api-key") + 1] == "sk-ant-xyz"
+    assert "--api-key" not in cmd
+    env = brain_._subprocess_env()
+    assert env is not None
+    assert env["ANTHROPIC_API_KEY"] == "sk-ant-xyz"
 
 
 def test_is_standard_endpoint() -> None:

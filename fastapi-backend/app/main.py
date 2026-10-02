@@ -57,6 +57,7 @@ from app.routes.swarms import router as swarms_router
 from app.routes.tasks import router as tasks_router
 from app.routes.users import router as users_router
 from app.services.auth import auth_gate
+from app.services.filesystem import UnsafePathError
 
 from .config import settings
 
@@ -334,6 +335,15 @@ app = FastAPI(
     # inert unless AUTH_ENABLED is on, and exempts health/docs itself.
     dependencies=[Depends(auth_gate)],
 )
+
+
+@app.exception_handler(UnsafePathError)
+async def _unsafe_path_handler(_request: Request, _exc: UnsafePathError):
+    """A room name or memory key that escapes its directory is a client error."""
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(status_code=400, content={"detail": "Invalid room name or key"})
+
 
 # FastAPI HTTP instrumentation — must be applied at app-creation time, before
 # Starlette freezes the middleware stack, so spans are created for every request.

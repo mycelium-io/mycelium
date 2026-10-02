@@ -88,6 +88,24 @@ _PI_BUILTIN_PROVIDERS = frozenset(
 )
 
 
+#: Env var pi reads for each built-in provider's key (pi docs/providers.md). A key
+#: for one of these travels in the subprocess environment, not argv, so it is not
+#: visible to other local users in ``ps``. Other providers keep the ``--api-key`` flag.
+_PI_KEY_ENV = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "azure-openai-responses": "AZURE_OPENAI_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "google": "GEMINI_API_KEY",
+    "mistral": "MISTRAL_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "cerebras": "CEREBRAS_API_KEY",
+    "xai": "XAI_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "vercel-ai-gateway": "AI_GATEWAY_API_KEY",
+    "zai": "ZAI_API_KEY",
+}
+
+
 def split_provider_model(model: str) -> tuple[str, str]:
     """Split a ``provider/model-id`` string into ``(provider, model_id)``.
 
@@ -395,6 +413,21 @@ class PiSession:
                 api_key=self._api_key,
             )
 
+    def _key_env_name(self) -> str | None:
+        """The env var that carries this session's key, or None to use ``--api-key``."""
+        if self._endpoint_mode == "custom":
+            return None
+        return _PI_KEY_ENV.get(self._provider)
+
+    def _subprocess_env(self) -> dict[str, str] | None:
+        """The pi subprocess environment, or None to inherit the parent's unchanged."""
+        extra: dict[str, str] = {}
+        name = self._key_env_name()
+        if name and self._api_key:
+            extra[name] = self._api_key
+        extra.update(self._env or {})
+        return {**os.environ, **extra} if extra else None
+
     def _build_command(self, prompt: str, system: str) -> list[str]:
         cmd = [
             self._binary,
@@ -411,9 +444,10 @@ class PiSession:
             # address it by its canonical ``provider/model-id`` reference.
             cmd += ["--provider", self._provider, "--model", f"{self._provider}/{self._model_id}"]
         else:
-            # direct or builtin-redirect: pi keeps the real model + the key flag.
+            # direct or builtin-redirect: pi keeps the real model. The key rides the
+            # environment when pi has an env var for the provider, else the flag.
             cmd += ["--model", self._model]
-            if self._api_key:
+            if self._api_key and self._key_env_name() is None:
                 cmd += ["--api-key", self._api_key]
         if system:
             cmd += ["--append-system-prompt", system]
@@ -461,7 +495,7 @@ class PiSession:
                 stdin=subprocess.DEVNULL,
                 # A tooled session's read/edit/bash act on its working directory.
                 cwd=self._cwd,
-                env={**os.environ, **self._env} if self._env else None,
+                env=self._subprocess_env(),
             )
             # Flag non-zero exit before finally fires so record_llm_call sees it.
             if completed.returncode != 0:
