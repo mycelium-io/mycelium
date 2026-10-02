@@ -78,6 +78,14 @@ interface Experience {
   scenarios: number;
 }
 
+/** `mycelium hub settings --json`: what a hub is set up with. Read-only, no key in it. */
+interface HubSettings {
+  model: { model: string | null; provider: string | null; has_key: boolean; custom_endpoint: boolean };
+  experiences: { id: string; title: string; description: string; open: string; scenarios: number }[];
+  personas_only: boolean;
+  share_usage: boolean;
+}
+
 interface Check {
   section: string;
   name: string;
@@ -146,9 +154,14 @@ const app = document.getElementById("app")!;
 
 // ── outside the app (a browser preview): a made-up machine so pages still draw ──
 
-const previewSetUp = new URLSearchParams(location.search).get("preview") === "settings";
+const previewAs = new URLSearchParams(location.search).get("preview");
+const previewSetUp = previewAs === "settings" || previewAs === "client";
 const PREVIEW: Snapshot = {
-  settings: previewSetUp ? { mode: "hub", hubUrl: null, roots: ["/Users/you/code"], shareUsage: false } : null,
+  settings: previewSetUp
+    ? previewAs === "client"
+      ? { mode: "client", hubUrl: "https://hub.example.com", roots: ["/Users/you/code"], shareUsage: false }
+      : { mode: "hub", hubUrl: null, roots: ["/Users/you/code"], shareUsage: false }
+    : null,
   status: null,
   lastError: null,
   mycelium: { name: "mycelium", path: "/Applications/Mycelium.app/Contents/MacOS/mycelium", bundled: true },
@@ -173,6 +186,20 @@ let previewExperiences: Experience[] = [
     scenarios: previewSetUp ? 3 : 0,
   },
 ];
+const PREVIEW_HUB: HubSettings = {
+  model: { model: "anthropic/claude-sonnet-4-6", provider: "anthropic", has_key: true, custom_endpoint: false },
+  experiences: [
+    {
+      id: "patterns-explorer",
+      title: "Patterns Explorer",
+      description: "Watch a team of agents work through a business scenario, start to finish.",
+      open: "/patterns",
+      scenarios: 3,
+    },
+  ],
+  personas_only: true,
+  share_usage: false,
+};
 const PREVIEW_CHECKS: Check[] = [
   { section: "This Mac", name: "Hub", status: "ok", message: "answering at http://127.0.0.1:8000", details: [] },
   { section: "Agents", name: "herdr", status: "ok", message: "running (0.9.1)", details: [] },
@@ -695,6 +722,72 @@ function experiencesPiece(
   };
 }
 
+const PROVIDER_NAMES: Record<string, string> = Object.fromEntries(PROVIDERS.map((p) => [p.id, p.name]));
+
+/**
+ * A Settings section for a team's hub: what the hub says it is set up with,
+ * read-only. The settings live on the hub's machine; this only shows them.
+ */
+function hubReadOnly(at: "model" | "experiences" | "privacy", answer: Promise<HubSettings>): HTMLElement {
+  const box = el("div", { class: "piece" }, el("span", { class: "hint" }, "Asking your team's hub…"));
+  const row = (k: string, v: string) => [el("dt", {}, k), el("dd", {}, v)];
+  void answer
+    .then((s) => {
+      let content: Node[];
+      if (at === "model") {
+        const m = s.model;
+        content = [
+          el("p", { class: "lede" }, "The model your team's hub runs its built-in agents with."),
+          el(
+            "dl",
+            { class: "summary" },
+            ...row("Provider", m.provider ? (PROVIDER_NAMES[m.provider] ?? m.provider) : "Not set"),
+            ...row("Model", m.model ?? "Not set"),
+            ...row("API key", m.has_key ? "Set" : "Not set"),
+            ...(m.custom_endpoint ? row("Address", "Set on the hub") : []),
+          ),
+        ];
+      } else if (at === "experiences") {
+        content = [
+          el("p", { class: "lede" }, "Example rooms your team's hub has."),
+          ...(s.experiences.length === 0
+            ? [el("p", { class: "hint" }, "None yet.")]
+            : s.experiences.map((x) => {
+                const open = el("button", { class: "link", type: "button" }, "Open");
+                open.addEventListener("click", () => {
+                  if (inApp) void invoke("open_experience", { path: x.open });
+                });
+                return el(
+                  "div",
+                  { class: "exp on" },
+                  el("i", { class: "check", "aria-hidden": "true" }),
+                  el("strong", {}, x.title),
+                  el("span", {}, `${x.scenarios} business scenario${x.scenarios === 1 ? "" : "s"} · on the hub · `, open),
+                );
+              })),
+        ];
+      } else {
+        content = [
+          el(
+            "p",
+            { class: "lede" },
+            s.share_usage
+              ? "Your team's hub shares anonymous usage stats: counts of tasks, flows and agents, never names, rooms or messages."
+              : "Your team's hub doesn't share usage stats.",
+          ),
+        ];
+      }
+      box.replaceChildren(
+        ...content,
+        el("p", { class: "hint" }, "Set on your team's hub. To change it, change it there."),
+      );
+    })
+    .catch((e) => {
+      box.replaceChildren(el("p", { class: "lede" }, "Couldn't ask your team's hub."), el("p", { class: "hint" }, String(e)));
+    });
+  return box;
+}
+
 /** Everything Start changes on this Mac, said before anything happens. */
 function setsUpPiece(c: Choices): HTMLElement {
   const items: [string, string][] = [
@@ -866,14 +959,9 @@ async function settingsWindow(open: Section = "mac") {
     ["privacy", "Privacy"],
   ];
   let at: Section = sections().some(([s]) => s === open) ? open : "mac";
-  /** What a section says while rooms live on a team's hub, which decides this. */
-  const theHubs = (what: string) =>
-    el(
-      "div",
-      { class: "piece" },
-      el("p", { class: "lede" }, `Your rooms are on your team's hub, so ${what}.`),
-      el("p", { class: "hint" }, "To keep rooms on this Mac instead, change it in This Mac."),
-    );
+  // On a team's hub these are set there; asked once per window, and shown as is.
+  const hubSettings: Promise<HubSettings> | null =
+    c.mode === "client" ? (inApp ? invoke<HubSettings>("get_hub_settings") : Promise.resolve(PREVIEW_HUB)) : null;
 
   const show = async () => {
     const error = el("p", { class: "error", role: "alert", hidden: "" });
@@ -902,8 +990,8 @@ async function settingsWindow(open: Section = "mac") {
         if (problem) throw new Error(problem);
         await startWith(c, null);
       };
-    } else if (at === "model" && c.mode === "client") {
-      body = theHubs("the hub's owner sets the model");
+    } else if ((at === "model" || at === "experiences" || at === "privacy") && hubSettings) {
+      body = hubReadOnly(at, hubSettings);
       nothingToSave = true;
     } else if (at === "model") {
       const model = await modelPiece("settings");
@@ -911,9 +999,6 @@ async function settingsWindow(open: Section = "mac") {
       save = () => startWith(c, model.value());
     } else if (at === "agents") {
       body = agentsPiece(c, snap);
-    } else if (at === "experiences" && c.mode === "client") {
-      body = theHubs("experiences aren't available");
-      nothingToSave = true;
     } else if (at === "experiences") {
       // Added or removed already; the hub reads it when it starts again.
       let changed = false;
@@ -926,9 +1011,6 @@ async function settingsWindow(open: Section = "mac") {
         if (changed) await startWith(c, null);
       };
       waitForChange = true;
-    } else if (c.mode === "client") {
-      body = theHubs("the hub's owner decides about usage stats");
-      nothingToSave = true;
     } else {
       body = privacyPiece(c);
     }

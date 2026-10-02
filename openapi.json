@@ -4445,6 +4445,28 @@
         }
       }
     },
+    "/api/hub/settings": {
+      "get": {
+        "tags": [
+          "hub"
+        ],
+        "summary": "Hub Settings",
+        "description": "What this hub is set up with, without a key or an address in it.",
+        "operationId": "hub_settings_api_hub_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubSettings"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/whoami": {
       "get": {
         "tags": [
@@ -6074,6 +6096,118 @@
         "type": "object",
         "title": "HerdrPresenceBody",
         "description": "The host-side ``mycelium herdr sync`` push: handle \u2192 herdr agent state.\n\nEach value may be a bare status string (simple form) or a\n:class:`HerdrAgentState` object carrying the status + current task title."
+      },
+      "HubExperience": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "open": {
+            "type": "string",
+            "title": "Open",
+            "description": "Where it opens in the hub's UI"
+          },
+          "scenarios": {
+            "type": "integer",
+            "title": "Scenarios",
+            "description": "How many scenarios it has"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "description",
+          "open",
+          "scenarios"
+        ],
+        "title": "HubExperience"
+      },
+      "HubModel": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "provider/model, as the hub runs it"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider",
+            "description": "The part of the model name before the slash"
+          },
+          "has_key": {
+            "type": "boolean",
+            "title": "Has Key",
+            "description": "Whether an API key is set; the key itself is never shown"
+          },
+          "custom_endpoint": {
+            "type": "boolean",
+            "title": "Custom Endpoint",
+            "description": "Whether it answers at an address set by hand"
+          }
+        },
+        "type": "object",
+        "required": [
+          "has_key",
+          "custom_endpoint"
+        ],
+        "title": "HubModel"
+      },
+      "HubSettings": {
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/HubModel"
+          },
+          "experiences": {
+            "items": {
+              "$ref": "#/components/schemas/HubExperience"
+            },
+            "type": "array",
+            "title": "Experiences"
+          },
+          "personas_only": {
+            "type": "boolean",
+            "title": "Personas Only",
+            "description": "Patterns may start personas only, never workers"
+          },
+          "share_usage": {
+            "type": "boolean",
+            "title": "Share Usage",
+            "description": "Whether this hub sends its anonymous usage stats"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "experiences",
+          "personas_only",
+          "share_usage"
+        ],
+        "title": "HubSettings",
+        "description": "What this hub is set up with. Read-only: change it on the hub's machine."
       },
       "JoinCreate": {
         "properties": {

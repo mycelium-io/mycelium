@@ -38,6 +38,7 @@ from app.routes.briefing import router as briefing_router
 from app.routes.engines import router as engines_router
 from app.routes.episodes import router as episodes_router
 from app.routes.fields import router as fields_router
+from app.routes.hub import router as hub_router
 from app.routes.joins import router as joins_router
 from app.routes.links import router as links_router
 from app.routes.memory import router as memory_router
@@ -378,6 +379,7 @@ app.include_router(skills_router, prefix="/api")
 app.include_router(patterns_router, prefix="/api")
 app.include_router(protocols_router, prefix="/api")
 app.include_router(status_router, prefix="/api")
+app.include_router(hub_router, prefix="/api")
 
 
 @app.get("/api/whoami", tags=["auth"])

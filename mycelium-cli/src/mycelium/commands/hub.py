@@ -160,3 +160,68 @@ def connect(
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
+
+
+def _settings_lines(s: dict) -> list[str]:
+    model = s.get("model") or {}
+    name = model.get("model") or "none set"
+    key = "key set" if model.get("has_key") else "no key"
+    lines = [
+        f"  Model         {name} ({key}{', custom endpoint' if model.get('custom_endpoint') else ''})"
+    ]
+    xs = s.get("experiences") or []
+    if xs:
+        for x in xs:
+            unit = "scenario" if x["scenarios"] == 1 else "scenarios"
+            lines.append(f"  Experience    {x['title']}: {x['scenarios']} {unit}, at {x['open']}")
+    else:
+        lines.append("  Experiences   none")
+    lines.append(f"  Personas only {'yes' if s.get('personas_only') else 'no'}")
+    lines.append(f"  Usage stats   {'shared' if s.get('share_usage') else 'not shared'}")
+    return lines
+
+
+@doc_ref(
+    usage="mycelium hub settings [--hub <url>] [--json]",
+    desc="What the hub is set up with (model, experiences, usage stats). Read-only; no key is shown.",
+    group="setup",
+)
+@app.command("settings")
+def hub_settings(
+    hub: str | None = typer.Option(None, "--hub", help="The hub to ask. Default: this machine's."),
+    json_output: bool = typer.Option(False, "--json", help="Output in JSON format"),
+) -> None:
+    """What the hub is set up with, read-only.
+
+    For a hub on another machine, the one place that knows what it runs. It says
+    whether a key is set, never the key. Change settings on the hub's machine.
+
+    Examples:
+        mycelium hub settings
+        mycelium hub settings --hub https://hub.example.com --json
+    """
+    import json
+
+    from mycelium.client import hub_client, hub_error_detail
+
+    with hub_client(base_url=hub) as client:
+        try:
+            resp = client.get("/api/hub/settings")
+        except Exception as exc:
+            typer.secho(f"Couldn't reach the hub: {exc}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(1) from None
+    if resp.status_code == 404:
+        typer.secho("This hub is older and doesn't say what it's set up with.", err=True)
+        raise typer.Exit(1)
+    if resp.status_code != 200:
+        typer.secho(
+            f"The hub said no: {hub_error_detail(resp.content)}", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(1)
+    body = resp.json()
+    if json_output:
+        typer.echo(json.dumps(body))
+        return
+    typer.echo(f"  {hub or client.base_url}")
+    for line in _settings_lines(body):
+        typer.echo(line)
