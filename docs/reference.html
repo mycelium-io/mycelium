@@ -1910,23 +1910,23 @@ EOF
       <p>You don&#x27;t need herdr for anything else. If it isn&#x27;t installed or isn&#x27;t running, every <code>mycelium herdr</code> command says so and exits, and mentions wait for the agent as they normally would.</p>
       <h2 id="herdr-before-you-start">Before you start</h2>
       <ul>
-        <li>Install herdr and start its local server. See <a href="https://herdr.dev">herdr.dev</a>.</li>
+        <li>Install herdr 0.9.3 or newer and start its local server. See <a href="https://herdr.dev">herdr.dev</a>. (The Mac app includes it.)</li>
+        <li>Install herdr&#x27;s integration for your agent CLI (<code>mycelium machine integrations --install</code>), so herdr brings your agents back in their own conversations when its server restarts. See <a href="#machines-your-agents-on-a-machine">Your agents on a machine</a>.</li>
         <li>Start one or more agents in a herdr workspace, and have a room to connect them to (<code>mycelium room create …</code>).</li>
       </ul>
       <p>Or let <a href="index.html#swarm"><code>mycelium swarm</code></a> do both: it opens a workspace, starts a team of agents in it, and connects them to a room you already work in.</p>
       <h2 id="herdr-connecting-a-workspace-sync">Connecting a workspace: <code>sync</code></h2>
       <p>Connect a herdr workspace to a room once, and Mycelium keeps them in step:</p>
-      <pre><code><span class="comment"># Connect herdr workspace w2 to the room my-project, then keep watching.</span>
+      <pre><code><span class="comment"># Connect herdr workspace w2 to the room my-project.</span>
 <span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--workspace</span> w2 <span class="flag">--room</span> my-project</code></pre>
-      <p>After that, a plain <code>mycelium herdr sync</code> watches every connected workspace. On each pass it:</p>
+      <p>From then on the <a href="#machines">runner</a> keeps every connected workspace in step, every few seconds. On each pass it:</p>
       <ul>
         <li><strong>adds and removes members.</strong> Every agent running in the workspace becomes a member of the room, named after its herdr tab. When a pane closes, that member leaves the room.</li>
         <li><strong>reports what each agent is doing.</strong> Whether each one is <code>idle</code>, <code>working</code> or <code>blocked</code> is sent to the hub, so the app can show it.</li>
         <li><strong>delivers wake-ups.</strong> Waiting wake-ups are sent to the right pane. Each one tells the agent why it was woken: to read a mention in the room, to answer a turn the <a href="adapters.html#conductor">conductor</a> or aligner gave it, or to pick up a task assigned to it.</li>
       </ul>
-      <p><code>sync</code> needs to keep running for wake-ups to be delivered. The backend runs in a container and can&#x27;t reach herdr on your machine, so this command is what passes the wake-ups along. Press Ctrl-C to stop it; the agents&#x27; status is cleared from the app when you do.</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--once</span>                 # run one pass, then exit
-<span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--interval</span> 10          # check every 10 seconds
+      <p>The hub can&#x27;t reach herdr on your machine, so the runner is what passes the wake-ups along: run <code>mycelium runner --detach</code> (the Mac app runs it for you). <code>mycelium herdr sync</code> runs one pass straight away, so a workspace&#x27;s agents join the room at once, and says whether the runner is running.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span>                        # one pass over every connected workspace
 <span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--kind</span> &lt;kind&gt;          # only add agents of one kind</code></pre>
       <h2 id="herdr-connecting-single-agents-and-autowake">Connecting single agents, and autowake</h2>
       <p>To connect individual agents instead of a whole workspace, map each handle to a pane. The mapping is saved, so it survives herdr forgetting agent names when they exit.</p>
@@ -2116,7 +2116,7 @@ EOF
         <li><strong>instructions</strong>, how the agent should work. They are saved as the agent&#x27;s notes (<code>agents/&lt;handle&gt;/notes</code>), which it reads when it starts and you can edit later like any memory;</li>
         <li>along the bottom, <strong>where it runs</strong>: the machine (if more than one runner is connected), the agent CLI from what the scan found, and the folder it starts in.</li>
       </ul>
-      <p>The agent is added to the room first, then started. It opens in a herdr pane, reads its notes, and looks at the board. From then on it hears mentions and turns the same way any herdr agent does. The runner keeps <code>herdr sync</code> running for the agents it started, so you don&#x27;t need a separate terminal for that.</p>
+      <p>The agent is added to the room first, then started. It opens in a herdr pane, reads its notes, and looks at the board. From then on it hears mentions and turns the same way any herdr agent does, because the runner keeps it synced (see <a href="#machines-the-runner-keeps-your-agents-synced">The runner keeps your agents synced</a>).</p>
       <p>Closing the pane, or pressing <strong>Stop</strong> on the Machines page, stops the agent but leaves it in the room with its notes. Starting it again from the app picks up where its notes leave off.</p>
       <h2 id="machines-a-swarm-on-your-machine">A swarm on your machine</h2>
       <p>The <strong>Start a swarm</strong> dialog has a <strong>Where</strong> choice. Pick a connected machine instead of the hub, and the team is your own agent CLI in a new herdr workspace on that machine, started in the folder you choose (optionally with a git worktree per member). It is the same as running <code>mycelium swarm</code> in that folder, without the terminal.</p>
@@ -2151,9 +2151,33 @@ EOF
       <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="flag">--detach</span>     # start in the background
 <span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">status</span>       # is it running, and does the hub see it?
 <span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">stop</span>         # stop it; agents it started keep running</code></pre>
-      <p>The Machines page (the laptop icon beside the notification bell) lists your connected runners, what each found, the agents it is running, and its recent requests.</p>
+      <p>The Machines page (the laptop icon beside the notification bell) lists your connected runners, what each found, the agents on it, and its recent requests.</p>
+      <h2 id="machines-the-runner-keeps-your-agents-synced">The runner keeps your agents synced</h2>
+      <p>An agent in herdr is a program in a terminal pane, and the hub can&#x27;t see into your machine. So something on the machine has to keep telling the hub whether each agent is busy, and type a wake-up into an agent&#x27;s pane when someone mentions it. That is the runner&#x27;s job, for every herdr workspace connected to a room on this machine: the ones it opened, and any you connected yourself with <code>mycelium herdr sync --workspace w2 --room my-project</code>.</p>
+      <p>While the runner isn&#x27;t running, your agents keep working but don&#x27;t hear their mentions. The Mac app runs the runner for you.</p>
+      <h2 id="machines-your-agents-on-a-machine">Your agents on a machine</h2>
+      <p>Every agent on a machine is listed in one place, whoever started it: the ones the runner started, the ones <code>mycelium swarm</code> started, and panes you connected to a room yourself. From a terminal on that machine:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">machine</span></code></pre>
+      <p>It lists the agents by herdr workspace, says what each is doing, and then what&#x27;s wrong, with the command that fixes each. The Machines page shows the same list for each connected machine. In the Mac app, <strong>Your agents…</strong> in the menu bar opens it.</p>
+      <p>An agent is <strong>working</strong>, <strong>idle</strong> or <strong>blocked</strong> while it runs; <strong>stopped</strong> when its pane is open with nothing running in it; or <strong>pane gone</strong> when the pane was closed.</p>
+      <h3 id="machines-when-herdr-restarts">When herdr restarts</h3>
+      <p>Restarting herdr&#x27;s server (to update it, say) stops every agent running in it. herdr brings each one back in its own conversation if herdr&#x27;s integration for that agent CLI is installed. herdr has one for most agent CLIs, including Claude Code, Codex, OpenCode and Pi. Without it, the panes come back empty and the agents show as stopped.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">machine</span> <span class="cmd">integrations</span>             # which are installed
+<span class="bin">mycelium</span> <span class="cmd">machine</span> <span class="cmd">integrations</span> <span class="flag">--install</span>   # install them for the agent CLIs here</code></pre>
+      <p>Installing one adds a hook to that agent CLI&#x27;s own settings (for Claude Code, <code>~/.claude/settings.json</code>), so Mycelium only does it when you say so. The Mac app asks once. <code>mycelium machine</code> says, for each agent, whether it comes back or stops if herdr restarts.</p>
+      <p>Mycelium needs herdr 0.9.3 or newer, and <code>mycelium machine</code> says how to update an older one. The Mac app includes it.</p>
+      <h3 id="machines-restarting-agents">Restarting agents</h3>
+      <p>An agent that stopped and didn&#x27;t come back can be restarted. It starts again in its own folder, as the same member, with no memory of what it was doing: it reads its notes, then catches up from the room, which tells it what happened since its last turn. This works the same for every agent CLI.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">machine</span> <span class="cmd">restart</span> <span class="flag">--all</span>         # every stopped agent
+<span class="bin">mycelium</span> <span class="cmd">machine</span> <span class="cmd">restart</span> reviewer      # one</code></pre>
+      <p>On the Machines page, <strong>Restart</strong> says where each agent will start before anything does. The runner then asks you on the machine, as it does before starting any agent.</p>
+      <h3 id="machines-other-fixes">Other fixes</h3>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">machine</span> <span class="cmd">rename</span> reviewer <span class="str">&quot;review&quot;</span>  # its name in herdr
+<span class="bin">mycelium</span> <span class="cmd">machine</span> <span class="cmd">unbind</span> reviewer           # forget its pane; it stays in the room
+<span class="bin">mycelium</span> <span class="cmd">machine</span> <span class="cmd">unbind</span> <span class="flag">--gone</span>             # forget every pane that&#x27;s gone</code></pre>
+      <p>Add <code>--json</code> to <code>mycelium machine</code> for the list as data.</p>
       <h2 id="machines-you-say-yes-on-the-machine">You say yes on the machine</h2>
-      <p>Anyone who can reach a hub can ask it for an agent on any machine connected to it, and the hub can&#x27;t prove who asked. So the runner asks you before it starts anything. It shows who the hub says asked, the agent CLI, the folder, and the start of the agent&#x27;s instructions:</p>
+      <p>Anyone who can reach a hub can ask it for an agent on any machine connected to it, and the hub can&#x27;t prove who asked. So the runner asks you before it starts or restarts anything. It shows who the hub says asked, the agent CLI, the folder, and the start of the agent&#x27;s instructions:</p>
       <ul>
         <li>in the Mac app, as a dialog with <strong>Start</strong> and <strong>Decline</strong>;</li>
         <li>from a terminal, in the runner&#x27;s output, answered with a command:</li>

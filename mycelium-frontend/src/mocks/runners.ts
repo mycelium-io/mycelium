@@ -11,7 +11,16 @@
  * stopped.
  */
 
-import type { Framework, Runner, RunnerAgent, RunnerJob, RunnerJobKind } from "@/lib/api";
+import type {
+  Framework,
+  MachineAgent,
+  MachineProblem,
+  MachineReport,
+  Runner,
+  RunnerAgent,
+  RunnerJob,
+  RunnerJobKind,
+} from "@/lib/api";
 
 const iso = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
 
@@ -50,6 +59,113 @@ const FRAMEWORKS: Framework[] = [
 
 export const MOCK_RUNNER_ID = "morgans-mbp";
 
+/**
+ * Every agent on the mock machine, the morning after herdr's server restarted
+ * without its integrations: @builder was started again, @reviewer's and
+ * @scribe's panes are open but empty, one old pane is gone, and herdr's server
+ * is older than Mycelium needs.
+ */
+const machine: MachineReport = {
+  machine: "morgans-mbp",
+  herdr: true,
+  herdr_server: "0.8.0",
+  herdr_client: "0.9.3",
+  herdr_minimum: "0.9.3",
+  runner: true,
+  missing_integrations: ["claude", "opencode"],
+  workspaces: [
+    {
+      id: "w3",
+      label: "checkout",
+      room: "checkout",
+      agents: [
+        machineAgent("builder", "checkout", "w3:p1", "working", "claude", "/Users/morgan/code/shop"),
+        machineAgent("reviewer", "checkout", "w3:p2", "stopped", "claude", "/Users/morgan/code/shop"),
+      ],
+    },
+    {
+      id: "w5",
+      label: "storefront",
+      room: "storefront",
+      agents: [
+        machineAgent("scribe", "storefront", "w5:p1", "stopped", "opencode", "/Users/morgan/code/website"),
+      ],
+    },
+    {
+      id: "gone",
+      label: "Panes that are gone",
+      room: null,
+      agents: [machineAgent("poc-review", "checkout", "w2:pV", "gone", "claude", null)],
+    },
+  ],
+  problems: [],
+};
+
+function machineAgent(
+  handle: string,
+  room: string,
+  pane: string,
+  state: MachineAgent["state"],
+  kind: string,
+  folder: string | null,
+): MachineAgent {
+  const open = state !== "gone";
+  return {
+    handle,
+    room,
+    pane,
+    state,
+    kind,
+    folder,
+    workspace: open ? pane.split(":")[0] : null,
+    restores: open ? false : null,
+    restartable: (state === "stopped" || state === "gone") && folder !== null,
+  };
+}
+
+/** The problems, worked out as the runner would from the agents. */
+function problemsOf(report: MachineReport): MachineProblem[] {
+  const agents = report.workspaces.flatMap((w) => w.agents);
+  const names = (list: MachineAgent[]) => list.map((a) => `@${a.handle}`).join(" and ");
+  const out: MachineProblem[] = [];
+  const stopped = agents.filter((a) => a.restartable);
+  if (stopped.length > 0) {
+    out.push({
+      kind: "stopped",
+      text: `${names(stopped)} stopped. Restarting starts ${stopped.length === 1 ? "it" : "each"} again in its folder, as itself, to catch up from the room.`,
+      fix: "mycelium machine restart --all",
+      handles: stopped.map((a) => a.handle),
+    });
+  }
+  const lost = agents.filter((a) => a.state === "gone" && !a.restartable);
+  if (lost.length > 0) {
+    out.push({
+      kind: "lost",
+      text: `${names(lost)} ${lost.length === 1 ? "has" : "have"} no pane any more and nothing to restart it from. Unbinding forgets the pane. ${lost.length === 1 ? "It stays" : "They stay"} in the room.`,
+      fix: "mycelium machine unbind --gone",
+      handles: lost.map((a) => a.handle),
+    });
+  }
+  const without = agents.filter((a) => a.restores === false);
+  if (report.missing_integrations.length > 0) {
+    out.push({
+      kind: "no_restore",
+      text: `If herdr restarts, ${names(without)} won't come back on their own: herdr's integration for ${report.missing_integrations.join(", ")} isn't installed (or is out of date). Installing it adds a hook to that agent CLI's own settings.`,
+      fix: "mycelium machine integrations --install",
+      handles: without.map((a) => a.handle),
+    });
+  }
+  out.push({
+    kind: "herdr_update",
+    text: `herdr's server is ${report.herdr_server}, out of date: Mycelium needs ${report.herdr_minimum} or newer. This machine has ${report.herdr_client}, which starts when the old server stops. Restarting herdr's server stops the agents in it; those with herdr's integration come back on their own, and the rest can be restarted from here.`,
+    fix: "herdr server stop",
+    handles: [],
+  });
+  return out;
+}
+
+machine.problems = problemsOf(machine);
+
 const runners: Runner[] = [
   {
     id: MOCK_RUNNER_ID,
@@ -72,6 +188,7 @@ const runners: Runner[] = [
         detail: null,
       },
     ],
+    machine,
     connected: true,
     last_seen: iso(0),
     started_at: iso(90),
@@ -142,6 +259,14 @@ function settle(job: StoredJob): void {
   } else if (job.kind === "stop") {
     const agent = runner.agents.find((a) => a.room === spec.room && a.handle === spec.handle);
     if (agent) agent.status = "stopped";
+  } else if (job.kind === "restart") {
+    const named = (job.spec as { agents?: { handle: string; room: string }[] }).agents ?? [];
+    for (const a of machine.workspaces.flatMap((w) => w.agents)) {
+      if (named.some((n) => n.handle === a.handle && n.room === a.room)) {
+        Object.assign(a, { state: "idle", restartable: false });
+      }
+    }
+    machine.problems = problemsOf(machine);
   }
 }
 

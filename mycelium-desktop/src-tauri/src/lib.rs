@@ -16,6 +16,7 @@ mod terminal;
 mod updates;
 
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -100,6 +101,20 @@ fn navigate_main(app: &AppHandle, url: Url) {
     show_main(app);
 }
 
+/// A page of the room UI for this Mac, once the supervisor says where the UI is.
+fn show_page(app: &AppHandle, path: &str) {
+    let status = app.state::<Supervisor>().status();
+    let Some(ui) = status.as_ref().and_then(|s| s.get("ui_url")).and_then(Value::as_str) else {
+        show_main(app);
+        return;
+    };
+    let Ok(mut url) = Url::parse(&format!("{}{path}", ui.trim_end_matches('/'))) else { return };
+    if let Some(runner) = status.as_ref().and_then(|s| s.get("runner_id")).and_then(Value::as_str) {
+        url.query_pairs_mut().append_pair("machine", runner);
+    }
+    navigate_main(app, url);
+}
+
 fn show_local(app: &AppHandle, view: &str) {
     if let Some(url) = local_url(app, &format!("index.html?view={view}")) {
         navigate_main(app, url);
@@ -137,6 +152,7 @@ pub(crate) fn on_status(app: &AppHandle, generation: u64, status: &Value) {
     if !supervisor::ready(status) {
         return;
     }
+    ask_about_integrations(app);
     let sup = app.state::<Supervisor>();
     let Some(path) = sup.take_ready(generation) else { return };
     let Some(ui) = status.get("ui_url").and_then(Value::as_str) else { return };
@@ -153,6 +169,76 @@ pub(crate) fn on_status(app: &AppHandle, generation: u64, status: &Value) {
             url.query_pairs_mut().clear().extend_pairs(others).append_pair("machine", runner);
         }
         navigate_main(app, url);
+    }
+}
+
+/// `mycelium machine integrations` with `args`: herdr's integrations for the
+/// agent CLIs on this Mac, and the person's answer about them.
+fn machine_integrations(args: &[&str]) -> Option<std::process::Output> {
+    let bin = paths::resolve("mycelium")?;
+    Command::new(bin)
+        .args(["machine", "integrations"])
+        .args(args)
+        .env("PATH", paths::shell_path())
+        .output()
+        .ok()
+}
+
+/// Once a launch, when Mycelium is up: if nobody has answered yet and an agent
+/// CLI here lacks herdr's integration, ask. With it, herdr brings agents back
+/// in their own conversation after its server restarts; installing it edits
+/// that CLI's settings, so it's only done on a yes. Either answer is kept, so
+/// this asks once. First run asks in the wizard instead.
+fn ask_about_integrations(app: &AppHandle) {
+    static ASKED: AtomicBool = AtomicBool::new(false);
+    if ASKED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let Some(out) = machine_integrations(&["--json"]) else { return };
+        let Ok(state) = serde_json::from_slice::<Value>(&out.stdout) else { return };
+        let missing: Vec<&str> = state
+            .get("missing")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        if !state.get("answer").is_some_and(Value::is_null) || missing.is_empty() {
+            return;
+        }
+        let install = app
+            .dialog()
+            .message(format!(
+                "When herdr restarts, the agents running in it stop. With herdr's integration \
+                 for {} installed, herdr brings each one back in its own conversation.\n\n\
+                 Installing adds a hook to that agent program's own settings. You can change \
+                 this later with `mycelium machine integrations`.",
+                missing.join(", ")
+            ))
+            .title("Bring your agents back after herdr restarts?")
+            .buttons(MessageDialogButtons::OkCancelCustom("Install".into(), "No thanks".into()))
+            .blocking_show();
+        let answer: &[&str] = if install { &["--install", "--yes"] } else { &["--decline"] };
+        if !machine_integrations(answer).is_some_and(|o| o.status.success()) {
+            eprintln!("[mycelium] couldn't save the answer about herdr's integrations");
+        }
+    });
+}
+
+/// The first run's answer about herdr's integrations: install them, or don't
+/// and don't ask again.
+#[tauri::command]
+async fn herdr_integrations(app: AppHandle, webview: Webview, install: bool) -> Result<(), String> {
+    local_only(&app, &webview)?;
+    let args: &'static [&'static str] = if install { &["--install", "--yes"] } else { &["--decline"] };
+    let out = tauri::async_runtime::spawn_blocking(move || machine_integrations(args))
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("The mycelium program isn't available.")?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stdout).trim().to_string())
     }
 }
 
@@ -257,6 +343,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         MenuItem::with_id(app, "status-runner", tray_line("Runner", ""), false, None::<&str>)?;
     let open = MenuItem::with_id(app, "open", "Open Mycelium", true, None::<&str>)?;
     let agents = MenuItem::with_id(app, "terminal", "Agents terminal", true, None::<&str>)?;
+    let yours = MenuItem::with_id(app, "machines", "Your agents…", true, None::<&str>)?;
     let at_login = app.autolaunch().is_enabled().unwrap_or(false);
     let autostart =
         CheckMenuItem::with_id(app, "autostart", "Start at login", true, at_login, None::<&str>)?;
@@ -273,6 +360,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             &PredefinedMenuItem::separator(app)?,
             &open,
             &agents,
+            &yours,
             &autostart,
             &health,
             &switch,
@@ -288,6 +376,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id().as_ref() {
             "open" => show_main(app),
             "terminal" => open_terminal_window(app, None),
+            "machines" => show_page(app, "/machines"),
             "switch" => show_local(app, "onboarding"),
             "doctor" => show_local(app, "doctor"),
             "updates" => updates::check(app.clone(), true),
@@ -720,6 +809,7 @@ pub fn run() {
             scan_agents,
             pick_folder,
             run_doctor,
+            herdr_integrations,
             get_model,
             save_model,
             get_autostart,

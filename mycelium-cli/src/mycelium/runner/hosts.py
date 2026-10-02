@@ -175,7 +175,10 @@ class HerdrHost:
             raise HostError(str(e)) from e
         # Not ``managed``: a closed pane stops the agent, it does not delete it
         # from the room, so the app can start it again with its notes intact.
-        self.bridge.registry.set(HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=kind))
+        # Its folder is kept so it can be restarted there.
+        self.bridge.registry.set(
+            HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=kind, cwd=str(cwd))
+        )
         self.bridge.registry.bind(workspace, room)
         self.bridge.prompt(pane, intro, wait=False)
         state.owned[workspace] = room
@@ -229,15 +232,16 @@ class HerdrHost:
     def sync(self, config: MyceliumConfig, state: State, log: Console) -> None:
         from mycelium.commands.herdr import sync_pass
 
-        # Only the workspaces this runner opened: any other binding is the
-        # user's own `herdr sync`'s to keep.
-        targets = list(state.owned.items())
+        # Every workspace bound to a room on this machine: the ones this runner
+        # opened and any a person bound (`mycelium herdr sync --workspace …`).
+        # Binding one is the choice to sync it, and the runner is what does.
+        targets = dict(state.owned) | self.bridge.registry.bindings()
         if not targets:
             return
         sync_pass(
             config,
             self.bridge,
-            targets,
+            list(targets.items()),
             room_filter=None,
             ttl_s=self._ttl_s,
             log=log,

@@ -50,12 +50,15 @@ class Herdr:
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
         self.live: dict[str, str] = {}
+        #: Open panes, with an agent in them or not.
+        self.panes: list[str] = []
         self._panes = 0
         self.fail_start = False
 
     def _pane(self) -> str:
         self._panes += 1
-        return f"w9:p{self._panes}"
+        self.panes.append(f"w9:p{self._panes}")
+        return self.panes[-1]
 
     def __call__(self, args: list[str]) -> subprocess.CompletedProcess:
         self.calls.append(args)
@@ -75,8 +78,15 @@ class Herdr:
         if head == "agent prompt":
             return _proc(_ok({}))
         if head == "agent list":
-            agents = [{"pane_id": p, "agent_status": s} for p, s in self.live.items()]
+            agents = [
+                {"pane_id": p, "agent_status": s, "workspace_id": "w9", "agent": "claude"}
+                for p, s in self.live.items()
+            ]
             return _proc(_ok({"agents": agents}))
+        if head == "pane list":
+            return _proc(_ok({"panes": [{"pane_id": p, "workspace_id": "w9"} for p in self.panes]}))
+        if head == "pane run":
+            return _proc("")
         if head == "agent get":
             status = self.live.get(args[2])
             return _proc(
@@ -84,6 +94,8 @@ class Herdr:
             )
         if head == "pane close":
             self.live.pop(args[2], None)
+            if args[2] in self.panes:
+                self.panes.remove(args[2])
             return _proc(_ok({}))
         return _proc(stderr=_ok({}), returncode=2)
 
@@ -497,6 +509,55 @@ def test_a_declined_launch_starts_nothing_and_says_so(
     assert failed["error"] == f"Declined on {r.label}."
     assert herdr.of("agent start") == []
     assert herdr.of("workspace create") == []
+
+
+def test_the_runner_syncs_every_bound_workspace_not_only_its_own(
+    make_runner, monkeypatch: pytest.MonkeyPatch
+):
+    # A workspace a person bound by hand hears its mentions as soon as the
+    # runner is running: binding it is the choice to sync it.
+    r = make_runner()
+    r.state.owned = {"w9": "eng"}
+    r.bridge.registry.bind("w5", "tome")
+    synced: list[list[tuple[str, str]]] = []
+    monkeypatch.setattr(
+        "mycelium.commands.herdr.sync_pass",
+        lambda _config, _bridge, targets, **_kw: synced.append(sorted(targets)),
+    )
+    r.host.sync(r.config, r.state, r.log)
+    assert synced == [[("w5", "tome"), ("w9", "eng")]]
+
+
+def test_the_heartbeat_carries_every_agent_on_the_machine(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    r.launch(LAUNCH)
+    report = r.hello_body()["machine"]
+    assert report["runner"] is True
+    [agent] = [a for w in report["workspaces"] for a in w["agents"]]
+    assert (agent["handle"], agent["room"], agent["state"]) == ("a", "eng", "idle")
+
+
+def test_a_restart_from_the_hub_asks_first_then_starts_the_agent_in_its_pane(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, quick: None
+):
+    r = make_runner()
+    r.launch(LAUNCH)
+    herdr.live.clear()  # herdr's server restarted: the pane is back, the agent isn't
+    r.trust_hub = False
+
+    r.take(
+        {"id": "c0ffee01", "kind": "restart", "spec": {"agents": [{"handle": "a", "room": "eng"}]}}
+    )
+    [waiting] = _until(lambda: approvals.pending(base=tmp_path))
+    assert waiting["title"] == f"Restart 1 agent on {r.label}?"
+    assert "as @a in eng" in waiting["message"]
+    starts = len(herdr.of("agent start"))
+
+    approvals.answer("c0ffee01", yes=True, base=tmp_path)
+    done = _until(lambda: _report(hub, "c0ffee01", "done"))
+    assert done["result"]["restarted"] == {"a": "w9:p1"}
+    assert len(herdr.of("agent start")) == starts + 1
+    assert "You were restarted" in herdr.of("agent prompt")[-1][3]
 
 
 def test_the_question_shows_the_agents_instructions_and_folder(

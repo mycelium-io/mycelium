@@ -163,6 +163,11 @@ export function describeJob(job: RunnerJob): string {
       return "Scan for agent CLIs";
     case "swarm":
       return typeof spec.room === "string" ? `Start a swarm in ${spec.room}` : "Start a swarm";
+    case "restart": {
+      if (spec.all) return "Restart every stopped agent";
+      const agents = Array.isArray(spec.agents) ? (spec.agents as { handle?: string }[]) : [];
+      return agents.length === 1 ? `Restart @${agents[0].handle}` : `Restart ${agents.length} agents`;
+    }
   }
 }
 

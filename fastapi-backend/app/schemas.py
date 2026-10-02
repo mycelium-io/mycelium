@@ -654,7 +654,7 @@ class AgentRead(BaseModel):
 RunnerAgentStatus = Literal[
     "starting", "running", "idle", "working", "blocked", "stopped", "failed"
 ]
-RunnerJobKind = Literal["launch", "stop", "scan", "swarm"]
+RunnerJobKind = Literal["launch", "stop", "scan", "swarm", "restart"]
 #: ``waiting``: the runner took it and is asking the person at that machine first.
 RunnerJobStatus = Literal["queued", "running", "waiting", "done", "failed"]
 
@@ -685,6 +685,72 @@ class RunnerAgentRead(BaseModel):
     detail: str | None = None
 
 
+class RunnerAgentRef(BaseModel):
+    handle: str = Field(..., min_length=1, max_length=64)
+    room: str | None = None
+
+
+class MachineAgentRead(BaseModel):
+    """One herdr agent on a machine, however it got there (``mycelium machine``)."""
+
+    handle: str
+    room: str
+    pane: str
+    state: Literal["working", "idle", "blocked", "stopped", "gone", "unknown"] = Field(
+        ..., description="stopped: its pane is open with nothing running in it; gone: closed"
+    )
+    kind: str | None = Field(None, description="The agent CLI, as herdr names its kind")
+    folder: str | None = None
+    workspace: str | None = None
+    restores: bool | None = Field(
+        None, description="Whether herdr brings it back after herdr restarts; null when unknown"
+    )
+    restartable: bool = Field(
+        False, description="Stopped or gone, with a folder and CLI to restart"
+    )
+
+
+class MachineWorkspaceRead(BaseModel):
+    """A herdr workspace on a machine, and the room it's bound to."""
+
+    id: str
+    label: str
+    room: str | None = None
+    agents: list[MachineAgentRead] = Field(default_factory=list)
+
+
+class MachineProblemRead(BaseModel):
+    """Something wrong on a machine, and the CLI command that fixes it."""
+
+    kind: Literal["stopped", "lost", "runner_down", "no_restore", "herdr_update", "herdr_down"]
+    text: str
+    fix: str | None = None
+    handles: list[str] = Field(default_factory=list)
+
+
+class MachineReportRead(BaseModel):
+    """Every agent on a machine and what's wrong (``mycelium machine``'s report)."""
+
+    machine: str
+    herdr: bool = False
+    herdr_server: str | None = None
+    herdr_client: str | None = None
+    herdr_minimum: str | None = Field(None, description="The oldest herdr Mycelium works with")
+    runner: bool = Field(True, description="Whether its runner is running (it keeps agents synced)")
+    missing_integrations: list[str] = Field(
+        default_factory=list, description="herdr integrations not current for agents running here"
+    )
+    workspaces: list[MachineWorkspaceRead] = Field(default_factory=list)
+    problems: list[MachineProblemRead] = Field(default_factory=list)
+
+
+class MachineRestart(BaseModel):
+    """Agents to restart on a machine: some by handle, or every stopped one."""
+
+    agents: list[RunnerAgentRef] = Field(default_factory=list)
+    all: bool = False
+
+
 class RunnerHello(BaseModel):
     """What a runner says about itself when it dials in, and on every heartbeat."""
 
@@ -700,6 +766,9 @@ class RunnerHello(BaseModel):
     roots: list[str] = Field(default_factory=list)
     frameworks: list[FrameworkRead] = Field(default_factory=list)
     agents: list[RunnerAgentRead] = Field(default_factory=list)
+    #: Every agent on the machine, whoever started it, and what's wrong. None
+    #: from a runner from before it sent one.
+    machine: MachineReportRead | None = None
 
 
 class RunnerRead(RunnerHello):

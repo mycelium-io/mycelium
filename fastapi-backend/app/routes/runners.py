@@ -30,6 +30,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from app.schemas import (
     HANDLE_PATTERN,
+    MachineRestart,
     MemoryBatchCreate,
     MemoryCreate,
     RunnerAgentLaunch,
@@ -209,6 +210,32 @@ async def rescan(runner_id: str, request: Request) -> RunnerJobRead:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     me = actor.bind_optional_actor(request, None, field="created_by")
     return registry.enqueue(runner_id, "scan", {}, created_by=me)
+
+
+@router.post("/{runner_id}/restart", response_model=RunnerJobRead, status_code=201)
+async def restart_agents(
+    runner_id: str, payload: MachineRestart, request: Request
+) -> RunnerJobRead:
+    """Start stopped agents on this machine again, as themselves.
+
+    Any agent the machine reports, not only one this runner started. The
+    runner asks the person at the machine first, as it does for a launch;
+    ``mycelium machine restart`` does the same there.
+    """
+    runner = _runner_or_404(runner_id, request)
+    if not payload.all and not payload.agents:
+        raise HTTPException(status_code=422, detail="Say which agents to restart, or all.")
+    try:
+        check_ready(runner)
+    except RunnerError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    spec = {
+        "all": payload.all,
+        "agents": [{"handle": norm_handle(a.handle) or "", "room": a.room} for a in payload.agents],
+    }
+    me = actor.bind_optional_actor(request, None, field="created_by")
+    logger.info("runner %s: restart %s", runner_id, spec)
+    return registry.enqueue(runner_id, "restart", spec, created_by=me)
 
 
 @router.post("/{runner_id}/agents", response_model=RunnerJobRead, status_code=201)

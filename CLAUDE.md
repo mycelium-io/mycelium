@@ -344,15 +344,15 @@ is no litellm dependency.
   kickoff once its view is listening), with `--repo` for the hub to clone. The invoking terminal is the live view (thread prose and notices
   across the task and its children, which `room watch` deliberately hides;
   agent text is escaped, long messages cut to a few lines, and the finished
-  result printed in full) and, locally, runs the herdr sync pass on a thread
-  (`commands/herdr.sync_pass`) with `wait=False`, so woken members work at
-  once rather than one turn after another.
+  result printed in full) and, locally when no runner is running, runs the
+  herdr sync pass on a thread (`commands/herdr.sync_pass`) with `wait=False`,
+  so woken members work at once rather than one turn after another.
 - **The app starts agents on a machine through its runner, on the runner's
   host.** `mycelium runner` (`mycelium/runner/`) runs on the user's machine
   and only dials out: it says hello with its scan (agent CLIs found on `PATH`,
   launchable when its host says it can start their kind), its
   roots and its agents, heartbeats, and long-polls `GET
-  /api/runners/{id}/jobs/next` for `launch`, `stop`, `scan` and `swarm` jobs
+  /api/runners/{id}/jobs/next` for `launch`, `stop`, `scan`, `swarm` and `restart` jobs
   (`app/services/runners.py`, in memory like presence; `routes/runners.py`).
   The pattern is LangGraph Studio's (a hosted UI driving a local server),
   turned around so the hub never reaches into the machine. A job names a
@@ -371,9 +371,34 @@ is no litellm dependency.
   agent's introduction instead; see the next point. A swarm with `runner` set has the hub
   register the conductor, write the members and file the task, and the runner
   runs `swarm.start_local`/`brief_local`/`kick_off` exactly as the CLI does.
-  A swarm starts in herdr whatever the runner's host. The runner also runs
-  its host's sync pass; for herdr that is `herdr sync` over the workspaces it
-  opened only, and any other binding is the user's own `herdr sync`'s.
+  A swarm starts in herdr whatever the runner's host. **The runner is what
+  keeps a machine's agents synced**: its host's sync pass, for herdr over
+  every workspace bound to a room on the machine (the ones it opened and any
+  a person bound). Binding a workspace (`mycelium herdr sync --workspace w
+  --room r`) is the choice to sync it; that command runs one pass and says
+  whether the runner is up, and there is no terminal loop.
+- **`mycelium machine` is every herdr agent on this machine, and what to do
+  about it.** `mycelium/machine.py` reads herdr's registry and herdr itself
+  into one report: per agent a state (`working|idle|blocked`, `stopped` = pane
+  open with no agent, `gone` = pane closed), kind, folder and whether herdr
+  restores it; whether the runner is running; and problems, each with the
+  command that fixes it. The CLI prints it (`restart`, `rename`, `unbind`,
+  `integrations`); the runner sends it with every heartbeat
+  (`RunnerHello.machine`) for the Machines page, whose one action is Restart
+  (`POST /api/runners/{id}/restart`, a `restart` job that asks on the machine
+  like a launch). **An agent's own session is herdr's, never Mycelium's**:
+  with herdr's integration for its CLI installed, herdr reopens each agent in
+  its own conversation after its server restarts. Installing one edits that
+  CLI's settings, so it happens only on a yes (`mycelium machine integrations
+  --install`; the Mac app asks once, in the first-run wizard or as a dialog
+  on first launch, and the answer is kept in `~/.mycelium/herdr/restore.json`).
+  Restart is the same for every CLI: the same kind in its folder and pane, as
+  itself, told to catch up from the room, with its workspace bound again so
+  the runner syncs it. Mycelium needs herdr `MIN_VERSION` (0.9.3,
+  `integrations/herdr/bridge.py`) or newer; the Mac app ships it. A herdr
+  server restart leaves every pane a bare shell, so sync retires a managed
+  member only when its pane is closed, and retires nothing when the pane list
+  can't be read.
 - **"Who am I" has one answer, from ordered sources, and a folder can join a
   room.** Every command needs the hub, the handle, the room and a credential;
   `mycelium/caller.py` answers all four from the same order: a flag, the

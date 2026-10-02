@@ -391,3 +391,90 @@ async def test_a_swarm_on_a_runner_refuses_a_repository(client, room, runner):
     )
     assert resp.status_code == 422
     assert "folder" in resp.json()["detail"]
+
+
+# ── a machine's agents ────────────────────────────────────────────────────────
+
+MACHINE = {
+    "machine": "julias-mbp",
+    "herdr": True,
+    "herdr_server": "0.9.3",
+    "herdr_client": "0.9.3",
+    "herdr_minimum": "0.9.3",
+    "runner": True,
+    "missing_integrations": ["claude"],
+    "workspaces": [
+        {
+            "id": "w2",
+            "label": "tome-dev",
+            "room": ROOM,
+            "agents": [
+                {
+                    "handle": "reviewer",
+                    "room": ROOM,
+                    "pane": "w2:p2",
+                    "state": "stopped",
+                    "kind": "claude",
+                    "folder": "/Users/julia/code/shop",
+                    "workspace": "w2",
+                    "restores": False,
+                    "restartable": True,
+                }
+            ],
+        }
+    ],
+    "problems": [
+        {
+            "kind": "stopped",
+            "text": "@reviewer stopped.",
+            "fix": "mycelium machine restart --all",
+            "handles": ["reviewer"],
+        }
+    ],
+}
+
+
+@pytest.mark.asyncio
+async def test_a_runners_heartbeat_carries_every_agent_on_its_machine(client):
+    await client.post("/api/runners", json=hello(machine=MACHINE))
+    got = (await client.get(f"/api/runners/{RUNNER}")).json()["machine"]
+    [agent] = got["workspaces"][0]["agents"]
+    assert (agent["handle"], agent["state"], agent["restartable"]) == ("reviewer", "stopped", True)
+    assert got["problems"][0]["fix"] == "mycelium machine restart --all"
+
+
+@pytest.mark.asyncio
+async def test_a_runner_from_before_the_report_sends_none(client, runner):
+    assert (await client.get(f"/api/runners/{RUNNER}")).json()["machine"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("body", "spec"),
+    [
+        (
+            {"agents": [{"handle": "@Reviewer", "room": ROOM}]},
+            {"all": False, "agents": [{"handle": "reviewer", "room": ROOM}]},
+        ),
+        ({"all": True}, {"all": True, "agents": []}),
+    ],
+)
+async def test_a_restart_is_queued_as_that_machines_job(client, runner, body, spec):
+    resp = await client.post(f"/api/runners/{RUNNER}/restart", json=body)
+    assert resp.status_code == 201, resp.text
+    assert (resp.json()["kind"], resp.json()["spec"]) == ("restart", spec)
+
+
+@pytest.mark.asyncio
+async def test_a_restart_naming_nobody_is_refused(client, runner):
+    resp = await client.post(f"/api/runners/{RUNNER}/restart", json={})
+    assert resp.status_code == 422
+    assert (await client.get(f"/api/runners/{RUNNER}/jobs")).json() == []
+
+
+@pytest.mark.asyncio
+async def test_a_machine_that_isnt_connected_is_asked_to_restart_nothing(client, runner):
+    runners.registry._runners[RUNNER].last_seen -= runners.STALE_AFTER * 2
+    resp = await client.post(f"/api/runners/{RUNNER}/restart", json={"all": True})
+    assert resp.status_code == 422
+    assert "not connected" in resp.json()["detail"]

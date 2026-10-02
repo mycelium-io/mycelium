@@ -787,13 +787,61 @@ export interface Runner {
   roots: string[];
   frameworks: Framework[];
   agents: RunnerAgent[];
+  /** Every agent on the machine, whoever started it, and what's wrong (`mycelium machine`).
+   *  Absent from a runner from before it sent one. */
+  machine?: MachineReport | null;
   /** False once the machine's heartbeat is stale. */
   connected: boolean;
   last_seen: string;
   started_at: string;
 }
 
-export type RunnerJobKind = "launch" | "stop" | "scan" | "swarm";
+/** One herdr agent on a machine, however it got there. */
+export interface MachineAgent {
+  handle: string;
+  room: string;
+  pane: string;
+  /** `stopped`: its pane is open with nothing running in it. `gone`: the pane closed. */
+  state: "working" | "idle" | "blocked" | "stopped" | "gone" | "unknown";
+  /** The agent CLI, as herdr names its kind. */
+  kind: string | null;
+  folder: string | null;
+  workspace: string | null;
+  /** Whether herdr brings it back after herdr restarts; null when unknown. */
+  restores: boolean | null;
+  /** Stopped or gone, with a folder and CLI to restart it. */
+  restartable: boolean;
+}
+
+export interface MachineWorkspace {
+  id: string;
+  label: string;
+  room: string | null;
+  agents: MachineAgent[];
+}
+
+export interface MachineProblem {
+  kind: "stopped" | "lost" | "runner_down" | "no_restore" | "herdr_update" | "herdr_down";
+  text: string;
+  /** The command that fixes it, run on the machine. */
+  fix: string | null;
+  handles: string[];
+}
+
+export interface MachineReport {
+  machine: string;
+  herdr: boolean;
+  herdr_server: string | null;
+  herdr_client: string | null;
+  herdr_minimum: string | null;
+  /** Whether its runner is running, which keeps every bound workspace synced. */
+  runner: boolean;
+  missing_integrations: string[];
+  workspaces: MachineWorkspace[];
+  problems: MachineProblem[];
+}
+
+export type RunnerJobKind = "launch" | "stop" | "scan" | "swarm" | "restart";
 /** `waiting`: the machine's runner is asking the person there before it starts anything. */
 export type RunnerJobStatus = "queued" | "running" | "waiting" | "done" | "failed";
 
@@ -865,6 +913,18 @@ export async function launchRunnerAgent(id: string, data: RunnerAgentLaunch): Pr
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
+  });
+}
+
+/** Restart stopped agents on a machine, as themselves; the machine asks first. Throws `ApiError`. */
+export async function restartMachineAgents(
+  id: string,
+  agents: { handle: string; room: string }[],
+): Promise<RunnerJob> {
+  return apiFetch<RunnerJob>(`${runnerApiPath(id)}/restart`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ agents }),
   });
 }
 
