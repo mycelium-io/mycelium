@@ -26,7 +26,7 @@ The story is one coffee shop's checkout room:
 |---|---|
 | `demo.json` | the take: shotkit's options and its `do` action list, in the vocabulary of `shot video --do` |
 | `record.mjs` | boots the frontend in the demo scenario and records `demo.json` through shotkit's library |
-| `mycelium-demo.mp4` | the recording, 1920x1080 H.264 |
+| `mycelium-demo.mp4` | the recording, 1920x1080 H.264. Not committed (git-ignored); see Publishing |
 
 The agents' side of the story is the frontend's demo scenario
 (`MYCELIUM_UI_MOCK_SCENARIO=demo`, `mycelium-frontend/src/mocks/demo.ts`):

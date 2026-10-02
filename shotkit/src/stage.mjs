@@ -203,8 +203,16 @@ export function stageDocument(o) {
   const muted = dark ? "#a9afb7" : "#4b5872";
   const halo = dark ? "0 2px 28px rgba(0,0,0,.75), 0 1px 3px rgba(0,0,0,.6)" : "0 2px 24px rgba(255,255,255,.8)";
   const capPos = wd?.at === "top" ? "top:7%" : "bottom:8%";
+  // Words sit on a panel of their own, so they read over the window and the
+  // art behind them alike.
+  const panel = dark
+    ? "background:rgba(10,12,16,.72);border:1px solid rgba(255,255,255,.08);box-shadow:0 18px 50px rgba(0,0,0,.45)"
+    : "background:rgba(255,255,255,.78);border:1px solid rgba(14,26,51,.08);box-shadow:0 18px 50px rgba(14,26,51,.18)";
+  const pad = `${Math.round(h * 0.026)}px ${Math.round(h * 0.034)}px`;
   const words = wd
-    ? `#cap{position:absolute;left:6.5%;${capPos};max-width:46%;opacity:0;will-change:opacity,transform}
+    ? `#cap{position:absolute;left:6.5%;${capPos};max-width:46%;opacity:0;will-change:opacity,transform;
+  padding:${pad};border-radius:${Math.round(h * 0.014)}px;${panel};-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+#title .panel{padding:${Math.round(h * 0.045)}px ${Math.round(h * 0.07)}px;border-radius:${Math.round(h * 0.02)}px;${panel};-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);display:flex;flex-direction:column;align-items:center}
 #cap .t{font:${titleStyle} ${Math.round(h * 0.056)}px/1.04 ${titleFont};color:${ink};letter-spacing:-.01em;text-shadow:${halo}}
 #cap .s{margin-top:${Math.round(h * 0.014)}px;font:400 ${Math.round(h * 0.022)}px/1.45 ${textFont};color:${muted};text-shadow:${halo};max-width:36em}
 #cap .bar{width:${Math.round(h * 0.04)}px;height:3px;border-radius:2px;background:${wd.accent ?? pal.accent};margin-bottom:${Math.round(h * 0.02)}px}
@@ -230,7 +238,7 @@ html,body{margin:0;padding:0;background:transparent}
 ${words}
 </style></head><body><div id="canvas">${o.live ?? ""}${o.art && !o.live ? '<div id="art"></div>' : ""}${grid}${glow}
 <div id="scene"><div id="win"><img id="shot" alt="" ${o.src ? `src="${o.src}"` : ""}></div></div>${
-    wd ? `<div id="cap"></div><div id="title">${wd.logo ? `<img src="${wd.logo}" alt="">` : ""}<div class="t"></div><div class="s"></div></div>` : ""
+    wd ? `<div id="cap"></div><div id="title"><div class="panel">${wd.logo ? `<img src="${wd.logo}" alt="">` : ""}<div class="t"></div><div class="s"></div></div></div>` : ""
   }</div>
 <script>
 const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
