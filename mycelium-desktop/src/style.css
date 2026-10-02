@@ -170,6 +170,72 @@ body {
   color: var(--faint);
 }
 
+/* An experience: a card that's ticked once it's on this Mac. */
+.experiences {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.experiences .link {
+  font-size: 13px;
+}
+
+.exp {
+  justify-self: stretch;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.exp.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.exp .check {
+  grid-row: 1 / span 2;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border: 1.5px solid var(--border2);
+  border-radius: 4px;
+}
+
+.exp.on .check {
+  position: relative;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.exp.on .check::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--accent-fg);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.exp strong {
+  font-weight: 500;
+}
+
+.exp span {
+  color: var(--faint);
+  font-size: 12.5px;
+}
+
+.exp span .link {
+  font-size: inherit;
+}
+
 .field {
   width: 100%;
   font: inherit;

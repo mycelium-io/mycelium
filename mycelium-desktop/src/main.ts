@@ -65,6 +65,19 @@ interface ModelView {
   key_hint: string | null;
 }
 
+/** `mycelium desktop experiences`: a ready-made room to explore, and whether it's here. */
+interface Experience {
+  id: string;
+  title: string;
+  description: string;
+  /** Where it opens in the room UI. */
+  open: string;
+  /** What one scenario in it is called, for the count. */
+  unit: string;
+  added: boolean;
+  scenarios: number;
+}
+
 interface Check {
   section: string;
   name: string;
@@ -149,6 +162,17 @@ const PREVIEW_AGENTS: Framework[] = [
 const PREVIEW_MODEL: ModelView = previewSetUp
   ? { model: "anthropic/claude-sonnet-4-6", base_url: null, has_key: true, key_hint: "a1b2" }
   : { model: null, base_url: null, has_key: false, key_hint: null };
+let previewExperiences: Experience[] = [
+  {
+    id: "patterns-explorer",
+    title: "Patterns Explorer",
+    description: "Watch a team of agents work through a business scenario, start to finish.",
+    open: "/patterns",
+    unit: "business scenario",
+    added: previewSetUp,
+    scenarios: previewSetUp ? 3 : 0,
+  },
+];
 const PREVIEW_CHECKS: Check[] = [
   { section: "This Mac", name: "Hub", status: "ok", message: "answering at http://127.0.0.1:8000", details: [] },
   { section: "Agents", name: "herdr", status: "ok", message: "running (0.9.1)", details: [] },
@@ -577,6 +601,100 @@ function privacyPiece(c: Choices): HTMLElement {
   );
 }
 
+/**
+ * Ready-made rooms to explore, each added from a file the person was given.
+ * The wizard offers them as an optional step; Settings lists what's here and
+ * opens or removes it. Adding one points the hub at it, which it reads when it
+ * next starts, so ``onChange`` is how the caller hears that a restart is due.
+ */
+function experiencesPiece(
+  where: "wizard" | "settings",
+  onChange: () => void,
+): { el: HTMLElement; added: () => Experience[] } {
+  let list: Experience[] = [];
+  const error = el("p", { class: "error", role: "alert", hidden: "" });
+  const box = el("div", { class: "experiences" }, el("span", { class: "hint" }, "Looking…"));
+
+  const add = async (id: string) => {
+    error.hidden = true;
+    try {
+      if (!inApp) {
+        previewExperiences = previewExperiences.map((x) => (x.id === id ? { ...x, added: true, scenarios: 3 } : x));
+        list = previewExperiences;
+      } else {
+        const now = await invoke<Experience[] | null>("add_experience", { id });
+        if (!now) return; // they cancelled the picker
+        list = now;
+      }
+      onChange();
+      draw();
+    } catch (e) {
+      error.textContent = String(e);
+      error.hidden = false;
+    }
+  };
+  const remove = async (id: string) => {
+    error.hidden = true;
+    try {
+      list = inApp ? await invoke<Experience[]>("remove_experience", { id }) : list.map((x) => (x.id === id ? { ...x, added: false, scenarios: 0 } : x));
+      onChange();
+      draw();
+    } catch (e) {
+      error.textContent = String(e);
+      error.hidden = false;
+    }
+  };
+  const textLink = (label: string, onClick: () => void) => {
+    const b = el("button", { class: "link", type: "button" }, label);
+    b.addEventListener("click", onClick);
+    return b;
+  };
+
+  const draw = () => {
+    box.replaceChildren(
+      ...list.map((x) => {
+        const count = `${x.scenarios} ${x.unit}${x.scenarios === 1 ? "" : "s"}`;
+        const detail: (Node | string)[] =
+          x.added && where === "settings"
+            ? [
+                `${count} · added from a file · `,
+                textLink("Open", () => {
+                  if (inApp) void invoke("open_experience", { path: x.open }).catch((e) => ((error.textContent = String(e)), (error.hidden = false)));
+                }),
+                " · ",
+                textLink("Remove", () => void remove(x.id)),
+              ]
+            : x.added
+              ? [`${count} · added from a file`]
+              : [x.description];
+        return el(
+          "div",
+          { class: x.added ? "exp on" : "exp" },
+          el("i", { class: "check", "aria-hidden": "true" }),
+          el("strong", {}, x.title),
+          el("span", {}, ...detail),
+        );
+      }),
+      // One experience today, so the one file is its content.
+      ...(list[0] ? [textLink(list[0].added ? "Replace it from a file…" : "Add an experience from a file…", () => void add(list[0].id))] : []),
+    );
+  };
+
+  void (async () => {
+    try {
+      list = inApp ? await invoke<Experience[]>("get_experiences") : previewExperiences;
+      draw();
+    } catch (e) {
+      box.replaceChildren(el("span", { class: "hint" }, String(e)));
+    }
+  })();
+
+  return {
+    el: el("div", { class: "piece" }, box, error),
+    added: () => list.filter((x) => x.added),
+  };
+}
+
 /** Everything Start changes on this Mac, said before anything happens. */
 function setsUpPiece(c: Choices): HTMLElement {
   const items: [string, string][] = [
@@ -601,7 +719,7 @@ function setsUpPiece(c: Choices): HTMLElement {
 
 // ── first run: a short wizard ───────────────────────────────────────────────
 
-type Step = "place" | "model" | "agents" | "ready";
+type Step = "place" | "model" | "agents" | "experiences" | "ready";
 
 async function wizard() {
   const snap = await snapshot();
@@ -615,8 +733,12 @@ async function wizard() {
   let redraw = () => {};
   const place = placePiece(c, () => redraw());
   const agents = agentsPiece(c, snap);
+  // Nothing to restart yet: the hub that starts at the end reads what's added.
+  const experiences = experiencesPiece("wizard", () => {});
 
-  const steps = (): Step[] => (c.mode === "hub" ? ["place", "model", "agents", "ready"] : ["place", "agents", "ready"]);
+  // An experience runs on rooms on this Mac, so a team's hub skips it.
+  const steps = (): Step[] =>
+    c.mode === "hub" ? ["place", "model", "agents", "experiences", "ready"] : ["place", "agents", "ready"];
 
   const show = () => {
     const order = steps();
@@ -643,6 +765,10 @@ async function wizard() {
       title = "Agents on this Mac";
       lede = "Mycelium can start these for you and bring them into a room.";
       body = agents;
+    } else if (at === "experiences") {
+      title = "Add an experience";
+      lede = "Ready-made rooms to explore. Optional, and you can add them later.";
+      body = experiences.el;
     } else {
       title = "Ready to start";
       const summary: [string, string][] = [
@@ -650,6 +776,8 @@ async function wizard() {
       ];
       if (c.mode === "hub") summary.push(["Model", skippedModel ? "Not set yet. Add one in Settings (⌘,)." : model.summary()]);
       summary.push(["Agents work in", c.root]);
+      const added = c.mode === "hub" ? experiences.added() : [];
+      if (added.length > 0) summary.push(["Added", added.map((x) => x.title).join(", ")]);
       body = el(
         "div",
         { class: "piece" },
@@ -664,9 +792,12 @@ async function wizard() {
       at = order[i - 1];
       show();
     });
-    const skip = at === "model" ? el("button", { class: "button text", type: "button" }, "Skip for now") : null;
+    const skip =
+      at === "model" || at === "experiences"
+        ? el("button", { class: "button text", type: "button" }, at === "model" ? "Skip for now" : "Skip")
+        : null;
     skip?.addEventListener("click", () => {
-      skippedModel = true;
+      if (at === "model") skippedModel = true;
       at = order[i + 1];
       show();
     });
@@ -720,7 +851,7 @@ async function wizard() {
 
 // ── Settings: the same pieces, one section at a time ─────────────────────────
 
-type Section = "mac" | "model" | "agents" | "privacy";
+type Section = "mac" | "model" | "agents" | "experiences" | "privacy";
 
 async function settingsWindow(open: Section = "mac") {
   const snap = await snapshot();
@@ -731,6 +862,7 @@ async function settingsWindow(open: Section = "mac") {
     ["mac", "This Mac"],
     ["model", "Model"],
     ["agents", "Agents"],
+    ["experiences", "Experiences"],
     ["privacy", "Privacy"],
   ];
   let at: Section = sections().some(([s]) => s === open) ? open : "mac";
@@ -749,6 +881,9 @@ async function settingsWindow(open: Section = "mac") {
     let note = "Saving restarts Mycelium.";
     // A section with nothing to set on this Mac offers nothing to save.
     let nothingToSave = false;
+    // A section whose changes happen as they're made saves only once there is one.
+    let waitForChange = false;
+    const saveButton = el("button", { class: "button", type: "button" }, "Save");
     let body: Node;
     if (at === "mac") {
       const place = placePiece(c, () => void 0);
@@ -777,6 +912,22 @@ async function settingsWindow(open: Section = "mac") {
       note = "Saving restarts Mycelium's own agents.";
     } else if (at === "agents") {
       body = agentsPiece(c, snap);
+    } else if (at === "experiences" && c.mode === "client") {
+      body = theHubs("experiences, which run on rooms on this Mac, aren't available here");
+      nothingToSave = true;
+    } else if (at === "experiences") {
+      // Added or removed already; the hub reads it when it starts again.
+      let changed = false;
+      const experiences = experiencesPiece("settings", () => {
+        changed = true;
+        saveButton.disabled = false;
+      });
+      body = el("div", { class: "piece" }, el("p", { class: "lede" }, "Ready-made rooms to explore."), experiences.el);
+      save = async () => {
+        if (changed) await startWith(c, null);
+      };
+      note = "Saving restarts Mycelium so it reads what you added.";
+      waitForChange = true;
     } else if (c.mode === "client") {
       body = theHubs("whether it shares usage stats is up to the hub's owner");
       nothingToSave = true;
@@ -806,8 +957,8 @@ async function settingsWindow(open: Section = "mac") {
         await loading();
       }
     });
-    const saveButton = el("button", { class: "button", type: "button" }, "Save");
     saveButton.hidden = nothingToSave;
+    saveButton.disabled = waitForChange;
     if (nothingToSave) note = "";
     saveButton.addEventListener("click", async () => {
       saveButton.disabled = true;
