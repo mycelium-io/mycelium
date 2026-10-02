@@ -31,6 +31,9 @@ export const MAX_SPEED = 16;
  * @typedef {object} FrameSource
  * @property {string} mode how frames are being taken: `screencast` or `shots`
  * @property {Buffer|null} latest the newest frame, or null before the first
+ * @property {number} [latestAt] when the page drew it, in epoch ms. Not when it
+ *   arrived: a screencast frame reaches node a few hundred ms after the page
+ *   composited it, and anything timed against the picture has to know that.
  * @property {() => Promise<void>} stop
  */
 
@@ -63,7 +66,8 @@ async function screencast(page, context, opts) {
   const source = { mode: "screencast", latest: null, stop: () => cdp.send("Page.stopScreencast").catch(() => {}) };
   cdp.on("Page.screencastFrame", (f) => {
     source.latest = Buffer.from(f.data, "base64");
-    // Unacknowledged frames stop the stream after a few, so this is not
+    // The frame's swap time, in epoch seconds, when the browser reports it.
+    source.latestAt = f.metadata?.timestamp ? f.metadata.timestamp * 1000 : Date.now();    // Unacknowledged frames stop the stream after a few, so this is not
     // bookkeeping: it is what keeps the frames coming.
     cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {});
   });
@@ -87,12 +91,15 @@ function shots(page, opts) {
   const loop = (async () => {
     while (running) {
       try {
+        // A screenshot shows the page as it was when it was asked for.
+        const at = Date.now();
         source.latest = await page.screenshot({
           type: "jpeg",
           quality: opts.quality,
           animations: "allow",
           caret: "hide",
         });
+        source.latestAt = at;
       } catch {
         if (running) await sleep(100);
       }
@@ -132,6 +139,8 @@ export function startPump(opts) {
   // writes two frames in three beats rather than rounding to one or two.
   let speed = 1;
   let credit = 0;
+  /** When the page drew each frame written, in epoch ms, by its index in the video. */
+  const drawnAt = [];
 
   /** Resolves the moment the take is no longer worth continuing. */
   let onTrouble = () => {};
@@ -161,7 +170,10 @@ export function startPump(opts) {
             // takes longer to fill it. Reaching it ends the take.
             truncated = true;
             onTrouble("over");
-          } else encoder.write(frame);
+          } else {
+            encoder.write(frame);
+            drawnAt.push(opts.source.latestAt ?? Date.now());
+          }
         }
         if (encoder.saturated && !warnedSaturated) {
           warnedSaturated = true;
@@ -197,6 +209,29 @@ export function startPump(opts) {
     },
     get failure() {
       return failure;
+    },
+    /**
+     * Frames written so far: the take's clock in the finished video's own
+     * units, sped-up stretches already folded in. Something noted at frame n
+     * lands at n / fps in the file, whatever the wall clock said.
+     */
+    get frames() {
+      return encoder?.frames ?? 0;
+    },
+    /**
+     * The first frame of the video that shows the page as it was at `ms`
+     * (epoch ms): where something that happened then can be seen, and so where
+     * a sound for it belongs. Past the last frame, the last frame.
+     */
+    frameAt(ms) {
+      let lo = 0;
+      let hi = drawnAt.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (drawnAt[mid] < ms) lo = mid + 1;
+        else hi = mid;
+      }
+      return Math.min(lo, Math.max(0, drawnAt.length - 1));
     },
     /** How long the take may run before the frame cap bites, at 1x. */
     budgetMs: (opts.maxFrames / opts.fps) * 1000,

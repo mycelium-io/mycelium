@@ -79,24 +79,6 @@ export function titleFrames(o, fps) {
 }
 
 /**
- * Where each click and keystroke falls in the finished video, written beside
- * it as `<video>.sounds.json` for a sound pass: `{t, kind}` in seconds, and for
- * typing `{t, t1, kind: "type", chars}`, the span the characters went in over.
- *
- * @param {string} out the video's path
- * @param {{beat:number, kind:string, [k:string]:unknown}[]} sounds by take beat
- */
-export function writeSounds(out, sounds, fps, intro) {
-  const at = (beat) => Number(((intro + beat) / fps).toFixed(3));
-  const events = sounds.map(({ beat, end, ...rest }) => ({
-    t: at(beat),
-    ...(typeof end === "number" ? { t1: at(end) } : {}),
-    ...rest,
-  }));
-  writeFileSync(`${out}.sounds.json`, JSON.stringify({ fps, events }, null, 1));
-}
-
-/**
  * Put every spooled frame on the stage and encode the result.
  *
  * @param {import("./engine.mjs").Engine} eng

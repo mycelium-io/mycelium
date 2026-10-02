@@ -32,7 +32,8 @@ import { runActions } from "./actions.mjs";
 import { MAX_SPEED, frameSource, startPump } from "./pump.mjs";
 import { palette } from "./theme.mjs";
 import { isStaged, pickStage } from "./stage.mjs";
-import { restage, startSpool, titleFrames, writeSounds } from "./restage.mjs";
+import { restage, startSpool, titleFrames } from "./restage.mjs";
+import { writeCues } from "./audio/cues.mjs";
 import { STAGE_STYLE } from "./project.mjs";
 
 /** Timing, in ms. Beats a viewer can follow rather than the fastest that works. */
@@ -184,11 +185,18 @@ export async function record(eng, spec, ctx) {
       log,
     });
 
-    /** @type {{beat:number, text:string}[] | undefined} */
+    /**
+     * Stage captions and the clicks and keystrokes of the take, noted by the
+     * clock as they happen (`at`, epoch ms). They are placed in the video once
+     * the take is over, on the first frame that shows the page as it was then
+     * (`pump.frameAt`): a frame reaches the pump a few hundred ms after the page
+     * drew it, so "the frame being written right now" would put every caption
+     * and every sound early by however slow the screencast was.
+     * @type {{at:number, text:string}[] | undefined}
+     */
     const captions = staged ? [] : undefined;
-    /** Clicks and keystrokes, by the take beat they happen on, for a sound pass. */
-    /** @type {{beat:number, kind:string, [k:string]:unknown}[] | undefined} */
-    const sounds = staged ? [] : undefined;
+    /** @type {{at:number, endAt?:number, kind:string, [k:string]:unknown}[]} */
+    const sounds = [];
     const cursor = makeCursor(page, {
       ...spec,
       log,
@@ -197,7 +205,6 @@ export async function record(eng, spec, ctx) {
       pump,
       captions,
       sounds,
-      beat: () => spool?.frames ?? 0,
     });
     // Three ways a take ends: the flow finishes, the video reaches --max-seconds
     // (the pump says so), or there is nothing left to record into. A sped-up
@@ -219,7 +226,14 @@ export async function record(eng, spec, ctx) {
     await sleep(timing.tailMs);
 
     let { frames, width, height } = await pump.stop();
-    const url = page.url();
+    // A flow the cap cut off is still running and still clicking; what it does
+    // after the last frame is not in the video, so the cues stop here too.
+    const cues = sounds.map(({ at, endAt, ...rest }) => ({
+      beat: pump.frameAt(at),
+      ...(endAt ? { end: pump.frameAt(endAt) } : {}),
+      ...rest,
+    }));
+    const placedCaptions = captions?.map(({ at, text }) => ({ beat: pump.frameAt(at), text }));    const url = page.url();
     const tStage = Date.now();
     let staging;
     if (spool) {
@@ -234,7 +248,7 @@ export async function record(eng, spec, ctx) {
         art: ctx.stageArt,
         live: ctx.stageLive,
         fps,
-        captions,
+        captions: placedCaptions,
         words: await stageWords(spec),
         intro: spec.intro,
         outro: spec.outro,
@@ -247,8 +261,10 @@ export async function record(eng, spec, ctx) {
       });
       ({ width, height, frames } = result);
       staging = { tilt: stage.tilt, drift: spec.drift ?? STAGE_DRIFT, rendered: result.rendered, ms: Date.now() - tStage };
-      if (sounds?.length) writeSounds(ctx.out, sounds, fps, titleFrames(spec, fps));
     }
+    // Written even when empty, so a re-take never leaves the last take's cues
+    // beside the new video. A gif has no sound to put them in.
+    if (format !== "gif") writeCues(ctx.out, cues, fps, spool ? titleFrames(spec, fps) : 0);
     return {
       path: ctx.out,
       format,
@@ -384,8 +400,23 @@ export function makeCursor(page, opts) {
    * frame of the press cannot wait for that.
    */
   async function press() {
-    opts.sounds?.push({ beat: opts.beat(), kind: "click" });
-    await page.evaluate(() => window.__shotkit?.press(true)).catch(() => {});
+    // Noted by the clock at the frame that draws the press, and placed on the
+    // video frame that shows it once the take is in (`pump.frameAt`). "When the
+    // call returned" is not that moment: a page busy on its main thread keeps
+    // sending compositor frames of the old picture for a while, and a sound
+    // placed by the return time lands on one of those, before the press shows.
+    // So the page says when it painted it: the time at the first animation
+    // frame after the press, read once the frame after that has begun.
+    const drawn = await page
+      .evaluate(() => {
+        window.__shotkit?.press(true);
+        return new Promise((r) => requestAnimationFrame(() => {
+          const at = Date.now();
+          requestAnimationFrame(() => r(at));
+        }));
+      })
+      .catch(() => null);
+    opts.sounds?.push({ at: drawn ?? Date.now(), kind: "click" });
     await page.mouse.down();
     await sleep(timing.pressMs);
     await page.mouse.up();
@@ -413,14 +444,14 @@ export function makeCursor(page, opts) {
      * @param {(text: string) => Promise<void>} type
      */
     async typing(text, type) {
-      const beat = opts.beat();
+      const at = Date.now();
       await type(text);
-      opts.sounds?.push({ beat, end: opts.beat(), kind: "type", chars: [...text].length });
+      opts.sounds?.push({ at, endAt: Date.now(), kind: "type", chars: [...text].length });
     },
 
     /** A key pressed on its own, like Enter, for a sound pass. */
     key(name) {
-      opts.sounds?.push({ beat: opts.beat(), kind: "key", key: name });
+      opts.sounds?.push({ at: Date.now(), kind: "key", key: name });
     },
 
     async glide(locator, o = {}) {
@@ -476,10 +507,10 @@ export function makeCursor(page, opts) {
     /** Put a lower-third caption up, or take it down with an empty one. */
     async caption(text) {
       // On a stage the caption belongs to the stage, not the page: it is noted
-      // against the beat it starts on and drawn flat over the tilted window
-      // when the take is staged.
+      // by the clock, placed on the frame that shows that moment, and drawn
+      // flat over the tilted window when the take is staged.
       if (opts.captions) {
-        opts.captions.push({ beat: opts.beat(), text: String(text ?? "") });
+        opts.captions.push({ at: Date.now(), text: String(text ?? "") });
         return;
       }
       await page.evaluate((t) => window.__shotkit?.caption(t), text).catch(() => {});

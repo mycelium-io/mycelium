@@ -9,7 +9,7 @@
  * now and then pooling into one. `--backdrop glass` puts that scene behind a
  * capture instead of a gradient.
  *
- * As with `mycelial`, the algorithm is the project's, named in
+ * As with `canvas`, the algorithm is the project's, named in
  * `shotkit.config.json` (`backdrop.glass`; in mycelium, `docs/glass.js`, the
  * file the docs load), and read rather than copied. The script exposes one seam
  * for a recorder: with `window.__glassManual` set before it runs, it skips its

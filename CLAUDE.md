@@ -45,10 +45,15 @@ shotkit/            The repo's camera: fast screenshots of the running app and o
                     stage a shot or a take on a tilted window, over the docs'
                     glass droplets with `--backdrop glass` (`docs/glass.js`),
                     with flat captions and `--intro`/`--outro` title cards in the
-                    docs' type (`shotkit.config.json`). See the
-                    `screenshot` skill. Captures land in gitignored `.shotkit/`;
-                    the committed docs assets are still `pnpm screenshots`, which
-                    now runs on this engine.
+                    docs' type (`shotkit.config.json`). `--sound` gives a take
+                    its clicks and keystrokes as sound, placed on the frames
+                    that show them, over an optional bed (`shotkit/src/audio`).
+                    See the `screenshot` skill. Captures land in gitignored
+                    `.shotkit/`; the committed docs assets are still
+                    `pnpm screenshots`, which now runs on this engine.
+                    Vendored from github.com/juliarvalenti/shotkit: change it
+                    there and bring it here with `scripts/sync-shotkit.sh`
+                    (`shotkit/UPSTREAM` is the commit it came from).
 mycelium-promo/     The product demo: one shotkit take of the real app
                     (`mycelium-demo.mp4`), a coffee shop's checkout room — you
                     name yourself and add @builder from your machine → hand it a
@@ -59,8 +64,10 @@ mycelium-promo/     The product demo: one shotkit take of the real app
                     boots the frontend in its demo scenario
                     (`MYCELIUM_UI_MOCK_SCENARIO=demo`, `src/mocks/demo.ts`: the
                     room before the story, and a director that plays the
-                    agents' side) and records it, staged over the docs' glass
-                    (`--quick` for the flat flow alone).
+                    agents' side) and records it, staged over the docs' glass,
+                    with its sound: the drone in `audio/score.mjs` under the
+                    take's clicks and keys, mixed by shotkit (`--quick` for the
+                    flat, silent flow alone; `audio/build.mjs` re-mixes).
                     The README + docs/index.html embed the MP4 via a
                     `user-attachments/assets/...` URL; these only auto-render
                     inline when uploaded via GitHub's web drag-drop (gh CLI has

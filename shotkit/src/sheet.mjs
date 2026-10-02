@@ -13,6 +13,7 @@
  */
 
 import { UI_STACK, backdrop, palette } from "./theme.mjs";
+import { ART_RENDERING } from "./canvas.mjs";
 
 /** Widest sheet before everything is scaled down to fit. */
 const MAX_SHEET_WIDTH = 2400;
@@ -57,7 +58,7 @@ html,body{margin:0;padding:0;background:transparent}
   font-family:${UI_STACK};
 }
 /* The backdrop artwork, if there is any; see card.mjs for why it is a layer. */
-#art{position:absolute;inset:0;image-rendering:pixelated;background:${opts.art ?? "none"}}
+#art{position:absolute;inset:0;image-rendering:${ART_RENDERING};background:${opts.art ?? "none"}}
 h1,.row{position:relative}
 h1{
   margin:0 0 22px;font-size:15px;font-weight:600;letter-spacing:.01em;

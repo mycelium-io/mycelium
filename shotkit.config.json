@@ -7,6 +7,8 @@
   },
   "backdrop": {
     "canvas": "scripts/banner-assets/mycelial-canvas.js",
+    "pixelated": true,
+    "size": "1600x900",
     "glass": "docs/glass.js"
   },
   "stage": {
