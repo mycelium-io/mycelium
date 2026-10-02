@@ -77,25 +77,68 @@
   <nav class="sidebar" id="sidebar">
     <div class="nav-tree">
     <div class="nav-page-group">
-      <a href="index.html" class="nav-page-link">Get Started</a>
+      <div class="nav-group collapsed" data-nav-group="start:get-started">
+        <div class="nav-page-row">
+          <a href="index.html" class="nav-page-link">Get Started</a>
+          <button class="nav-group-toggle nav-page-toggle" type="button" aria-label="Show Get Started sections" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></button>
+        </div>
+        <div class="nav-group-items">
+          <a href="index.html#overview" class="nav-link sub">Overview</a>
+          <a href="index.html#quickstart" class="nav-link sub">Quick Start</a>
+        </div>
+      </div>
     </div>
     <div class="nav-page-group">
-      <a href="walkthrough.html" class="nav-page-link">Walkthrough</a>
+      <div class="nav-group collapsed" data-nav-group="walkthrough:walkthrough">
+        <div class="nav-page-row">
+          <a href="walkthrough.html" class="nav-page-link">Walkthrough</a>
+          <button class="nav-group-toggle nav-page-toggle" type="button" aria-label="Show Walkthrough sections" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></button>
+        </div>
+        <div class="nav-group-items">
+          <a href="walkthrough.html#walkthrough" class="nav-link sub">Your First Room</a>
+          <a href="walkthrough.html#walk-app" class="nav-link sub">1. Get the app</a>
+          <a href="walkthrough.html#walk-room" class="nav-link sub">2. Create a room</a>
+          <a href="walkthrough.html#walk-agents" class="nav-link sub">3. Add your agents</a>
+          <a href="walkthrough.html#walk-task" class="nav-link sub">4. Hand it a task</a>
+          <a href="walkthrough.html#walk-thread" class="nav-link sub">5. Watch it work</a>
+          <a href="walkthrough.html#walk-aligner" class="nav-link sub">6. When agents disagree</a>
+          <a href="walkthrough.html#walk-next" class="nav-link sub">Where to go next</a>
+        </div>
+      </div>
     </div>
     <div class="nav-page-group">
-      <a href="engines.html" class="nav-page-link">Engines</a>
+      <div class="nav-group collapsed" data-nav-group="engines:engines">
+        <div class="nav-page-row">
+          <a href="engines.html" class="nav-page-link">Engines</a>
+          <button class="nav-group-toggle nav-page-toggle" type="button" aria-label="Show Engines sections" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></button>
+        </div>
+        <div class="nav-group-items">
+          <a href="engines.html#engines" class="nav-link sub">Overview</a>
+          <a href="engines.html#aligner" class="nav-link sub">Aligner</a>
+          <a href="engines.html#synthesizer" class="nav-link sub">Synthesizer</a>
+          <a href="engines.html#hello" class="nav-link sub">Hello</a>
+          <a href="engines.html#persona" class="nav-link sub">Persona</a>
+          <a href="engines.html#conductor" class="nav-link sub">Conductor</a>
+          <a href="engines.html#worker" class="nav-link sub">Worker</a>
+        </div>
+      </div>
     </div>
     <div class="nav-page-group">
-      <a href="concepts.html" class="nav-page-link active">Concepts</a>
-      <div class="nav-group-items">
-        <a href="#rooms" class="nav-link sub">Rooms</a>
-        <a href="#slim" class="nav-link sub">SLIM</a>
-        <a href="#board" class="nav-link sub">Board</a>
-        <a href="#episodes" class="nav-link sub">Episodes</a>
-        <a href="#swarm" class="nav-link sub">Swarm</a>
-        <a href="#memory" class="nav-link sub">Memory</a>
-        <a href="#users" class="nav-link sub">Users &amp; Teams</a>
-        <a href="#l9-protocol" class="nav-link sub">L9 Protocol</a>
+      <div class="nav-group" data-nav-group="concepts:concepts">
+        <div class="nav-page-row">
+          <a href="concepts.html" class="nav-page-link active">Concepts</a>
+          <button class="nav-group-toggle nav-page-toggle" type="button" aria-label="Show Concepts sections" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></button>
+        </div>
+        <div class="nav-group-items">
+          <a href="#rooms" class="nav-link sub">Rooms</a>
+          <a href="#slim" class="nav-link sub">SLIM</a>
+          <a href="#board" class="nav-link sub">Board</a>
+          <a href="#episodes" class="nav-link sub">Episodes</a>
+          <a href="#swarm" class="nav-link sub">Swarm</a>
+          <a href="#memory" class="nav-link sub">Memory</a>
+          <a href="#users" class="nav-link sub">Users &amp; Teams</a>
+          <a href="#l9-protocol" class="nav-link sub">L9 Protocol</a>
+        </div>
       </div>
     </div>
     <div class="nav-page-group">

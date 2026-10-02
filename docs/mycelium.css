@@ -515,6 +515,11 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
   transition: color 0.15s, background 0.15s;
 }
 .nav-group-toggle:hover { color: var(--text); background: var(--hairline); }
+/* A page whose sections fold directly under its link: the link and its chevron
+ * share a row, so the page name stays a link and the chevron alone toggles. */
+.nav-page-row { display: flex; align-items: center; }
+.nav-page-row .nav-page-link { flex: 1; }
+.nav-page-toggle { width: auto; flex-shrink: 0; padding: 5px 8px; }
 .nav-chevron {
   flex-shrink: 0;
   color: var(--faint);
