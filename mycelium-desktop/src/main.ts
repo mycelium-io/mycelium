@@ -312,8 +312,8 @@ function placePiece(c: Choices, onModeChange: () => void): { el: HTMLElement; pr
     });
     return b;
   };
-  const here = choice("hub", "On this Mac", "Your rooms, notes and agents, all here. Best for trying it out or giving a demo.");
-  const team = choice("client", "On my team's hub", "Join rooms someone else runs. You'll need its address.");
+  const here = choice("hub", "On this Mac", "Everything stays on this Mac. Good for trying it out or giving a demo.");
+  const team = choice("client", "On my team's hub", "Join rooms someone else hosts. You'll need the hub's address.");
   const render = () => {
     here.setAttribute("aria-checked", String(c.mode === "hub"));
     team.setAttribute("aria-checked", String(c.mode === "client"));
@@ -395,7 +395,7 @@ async function modelPiece(variant: "wizard" | "settings"): Promise<{ el: HTMLEle
     "aria-label": "Address",
   });
   baseField.value = saved.base_url ?? provider.baseUrl ?? "";
-  const baseRow = el("div", {}, el("div", { class: "label" }, "Address"), baseField, el("p", { class: "hint" }, "Where the model answers."));
+  const baseRow = el("div", {}, el("div", { class: "label" }, "Address"), baseField, el("p", { class: "hint" }, "Your provider's URL."));
 
   const suggestions = el("datalist", { id: `model-suggestions-${variant}` });
   const modelField = el("input", {
@@ -492,7 +492,7 @@ async function modelStatus(): Promise<HTMLElement> {
       line.className = ok ? "status-line ok" : "status-line bad";
       line.replaceChildren(
         el("span", { class: ok ? "dot on" : "dot bad" }),
-        ok ? "Working: the model answered." : `Not working: ${check.message}. ${check.details[check.details.length - 1] ?? ""}`,
+        ok ? "Connected." : `Not connected: ${check.message}. ${check.details[check.details.length - 1] ?? ""}`,
       );
     } catch {
       line.replaceChildren(el("span", { class: "dot" }), "Couldn't check the model.");
@@ -529,7 +529,7 @@ function agentsPiece(c: Choices, snap: Snapshot): HTMLElement {
         herdrPill,
       );
       if (installed.length === 0) {
-        agents.append(el("span", { class: "hint" }, "No agent programs found yet. Install one, like Claude Code, to start agents from Mycelium."));
+        agents.append(el("span", { class: "hint" }, "No agent apps found. Install one, like Claude Code, to start agents from Mycelium."));
       }
     } catch (e) {
       agents.replaceChildren(herdrPill, el("span", { class: "hint" }, String(e)));
@@ -574,9 +574,9 @@ function agentsPiece(c: Choices, snap: Snapshot): HTMLElement {
     el(
       "div",
       {},
-      el("div", { class: "label" }, "Where they work"),
+      el("div", { class: "label" }, "Working folder"),
       el("div", { class: "folder" }, el("span", { class: "folder-icon", "aria-hidden": "true" }), rootPath, rootButton),
-      el("p", { class: "hint" }, "Agents you start from Mycelium only work inside this folder."),
+      el("p", { class: "hint" }, "Agents started from Mycelium can only work in this folder."),
     ),
     restore,
   );
@@ -596,7 +596,7 @@ function privacyPiece(c: Choices): HTMLElement {
     el(
       "p",
       { class: "hint" },
-      "Counts of tasks, flows and agents, so we know what's working. Never names, rooms or what anyone wrote. You can see them on the Metrics page either way.",
+      "Only counts of tasks, flows and agents. Never names, rooms or messages. You can see them on the Metrics page.",
     ),
   );
 }
@@ -871,14 +871,14 @@ async function settingsWindow(open: Section = "mac") {
     el(
       "div",
       { class: "piece" },
-      el("p", { class: "lede" }, `Your rooms are on your team's hub, so ${what}. There's nothing to set on this Mac.`),
-      el("p", { class: "hint" }, "To keep rooms on this Mac instead, choose On this Mac in This Mac."),
+      el("p", { class: "lede" }, `Your rooms are on your team's hub, so ${what}.`),
+      el("p", { class: "hint" }, "To keep rooms on this Mac instead, change it in This Mac."),
     );
 
   const show = async () => {
     const error = el("p", { class: "error", role: "alert", hidden: "" });
     let save: () => Promise<void> = () => startWith(c, null);
-    let note = "Saving restarts Mycelium.";
+    let note = "Mycelium will restart after saving.";
     // A section with nothing to set on this Mac offers nothing to save.
     let nothingToSave = false;
     // A section whose changes happen as they're made saves only once there is one.
@@ -895,7 +895,7 @@ async function settingsWindow(open: Section = "mac") {
         "div",
         { class: "piece" },
         place.el,
-        el("div", { class: "share" }, autostart, el("p", { class: "hint" }, "Applies right away, without saving.")),
+        el("div", { class: "share" }, autostart, el("p", { class: "hint" }, "Changes right away.")),
       );
       save = async () => {
         const problem = place.problem();
@@ -903,17 +903,16 @@ async function settingsWindow(open: Section = "mac") {
         await startWith(c, null);
       };
     } else if (at === "model" && c.mode === "client") {
-      body = theHubs("its own agents use the model the hub's owner set");
+      body = theHubs("the hub's owner sets the model");
       nothingToSave = true;
     } else if (at === "model") {
       const model = await modelPiece("settings");
-      body = el("div", { class: "piece" }, el("p", { class: "lede" }, "What Mycelium's own agents think with. Agents you bring sign in on their own."), model.el);
+      body = el("div", { class: "piece" }, el("p", { class: "lede" }, "The model Mycelium's built-in agents use. Agents like Claude Code use their own accounts."), model.el);
       save = () => startWith(c, model.value());
-      note = "Saving restarts Mycelium's own agents.";
     } else if (at === "agents") {
       body = agentsPiece(c, snap);
     } else if (at === "experiences" && c.mode === "client") {
-      body = theHubs("experiences, which run on rooms on this Mac, aren't available here");
+      body = theHubs("experiences aren't available");
       nothingToSave = true;
     } else if (at === "experiences") {
       // Added or removed already; the hub reads it when it starts again.
@@ -922,14 +921,13 @@ async function settingsWindow(open: Section = "mac") {
         changed = true;
         saveButton.disabled = false;
       });
-      body = el("div", { class: "piece" }, el("p", { class: "lede" }, "Ready-made rooms to explore."), experiences.el);
+      body = el("div", { class: "piece" }, el("p", { class: "lede" }, "Example rooms you can try."), experiences.el);
       save = async () => {
         if (changed) await startWith(c, null);
       };
-      note = "Saving restarts Mycelium so it reads what you added.";
       waitForChange = true;
     } else if (c.mode === "client") {
-      body = theHubs("whether it shares usage stats is up to the hub's owner");
+      body = theHubs("the hub's owner decides about usage stats");
       nothingToSave = true;
     } else {
       body = privacyPiece(c);
