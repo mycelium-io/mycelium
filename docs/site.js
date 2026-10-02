@@ -582,11 +582,15 @@
   // Previous / Next bar (generate_docs.py writes those, in reading order across
   // pages). A link to a heading shows the section that holds it, then scrolls
   // to it. Without JS nothing is hidden: every section shows, stacked.
+  //
+  // Only pages the generator built have pagers. Hand-written pages that load
+  // this file (l9-integration.html, omnigent-integration.html) have sections
+  // but no way between them, so they keep scrolling as one page.
   const pagedSections = Array.prototype.slice.call(document.querySelectorAll('.main .doc-section[id]'));
-  const paged = pagedSections.length > 1;
+  const pagers = document.querySelectorAll('.doc-pager[data-pager-for]');
+  const paged = pagedSections.length > 1 && pagers.length > 0;
   if (paged) {
     document.body.classList.add('paged');
-    const pagers = document.querySelectorAll('.doc-pager[data-pager-for]');
     let current = null;
 
     const route = (jump) => {
