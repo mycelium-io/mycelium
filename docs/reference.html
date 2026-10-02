@@ -2313,20 +2313,17 @@ EOF
       <p>You need Omnigent installed and signed in to the agent CLIs you want to use, and the Mycelium CLI installed on the same computer.</p>
       <h2 id="omnigent-set-it-up">Set it up</h2>
       <ol class="steps">
-        <li>Start Omnigent. It serves its app at <code>http://127.0.0.1:6767</code> and registers this computer as a place to run agents.</li>
-      </ol>
-      <p>``<code>bash omnigent start </code>``</p>
-      <ol class="steps">
-        <li>Tell the runner to start agents in Omnigent instead of herdr:</li>
-      </ol>
-      <p>``<code>bash mycelium config set runner.host omnigent </code>``</p>
+        <li>Start Omnigent. It serves its app at <code>http://127.0.0.1:6767</code> and registers this computer as a place to run agents.
+      <pre><code>omnigent start</code></pre>
+        </li>
+        <li>Tell the runner to start agents in Omnigent instead of herdr:
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> runner.host omnigent</code></pre>
       <p>If Omnigent runs at a different local address, also set <code>runner.omnigent_url</code>.</p>
-      <ol class="steps">
-        <li>Start the runner:</li>
-      </ol>
-      <p>``<code>bash mycelium runner </code>``</p>
+        </li>
+        <li>Start the runner:
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span></code></pre>
       <p>Its first lines say where it starts agents (&quot;Starts agents in omnigent at http://127.0.0.1:6767&quot;) and which agent CLIs it can start. Those are the ones Omnigent has ready on this computer.</p>
-      <ol class="steps">
+        </li>
         <li>In the Mycelium app, add the computer on the Machines page with the code the runner prints, if it isn&#x27;t listed already.</li>
       </ol>
       <h2 id="omnigent-add-an-agent">Add an agent</h2>

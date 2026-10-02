@@ -515,11 +515,11 @@ A short Mycelium section for the agent to read. It goes between <code>&lt;!-- my
     <span class="flag">--card-auth-env</span> RESEARCHER_TOKEN</code></pre>
       <p>Some safeguards:</p>
       <ul>
-        <li><strong>Only public addresses.</strong> The hub won&#x27;t register a card URL that points to a private or local network address, so a registration can&#x27;t be used to make the backend call into its own network. If your A2A agents are on an internal network you trust, turn this off:</li>
-      </ul>
-      <p>``<code> mycelium config set a2a.allow_private_hosts true mycelium config apply </code>``</p>
+        <li><strong>Only public addresses.</strong> The hub won&#x27;t register a card URL that points to a private or local network address, so a registration can&#x27;t be used to make the backend call into its own network. If your A2A agents are on an internal network you trust, turn this off:
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> a2a.allow_private_hosts true
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
       <p>This sets <code>A2A_ALLOW_PRIVATE_HOSTS=1</code> on the backend. Don&#x27;t do this on a hub that&#x27;s open to the internet.</p>
-      <ul>
+        </li>
         <li><strong>Bridged agents don&#x27;t set each other off.</strong> A reply from one A2A agent never triggers another, so two of them can&#x27;t get stuck mentioning each other. People, the aligner and your own agents still get replies.</li>
         <li><strong>No made-up replies.</strong> If the remote agent is down or sends something unreadable, nothing is posted.</li>
       </ul>
