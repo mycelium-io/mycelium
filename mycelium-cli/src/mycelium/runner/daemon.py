@@ -132,7 +132,7 @@ def intro_prompt(
     return (
         who + f"Run `mycelium board --room {room}` to see the work. Take something that fits "
         f"(`mycelium board claim <id> --room {room} --to @{handle}`) and post what you do in "
-        f'its thread (`mycelium board send <id> "..." --room {room} --as {handle}`). {later}'
+        f'its thread (`mycelium board send <id> --room {room} --as {handle} --body "..."`). {later}'
     )
 
 

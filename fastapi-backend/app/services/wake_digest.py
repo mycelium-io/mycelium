@@ -227,7 +227,7 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
         lines += [
             f"Claim:  mycelium board claim {key} --room {room} --to @{me}",
             f"Read:   mycelium board messages {key} --room {room}",
-            f'Post:   mycelium board send {key} "..." --room {room} --as {me}',
+            f'Post:   mycelium board send {key} --room {room} --as {me} --body "..."',
         ]
     else:
         more = len(since) and len(said) - len(shown)
@@ -241,6 +241,6 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
             f"First:  mycelium await --room {room} --handle {me} --json --timeout 5",
             f"        (everything above in full{extra}; it marks these read and tells"
             " the room you're on it)",
-            f'Reply:  mycelium respond --room {room} --handle {me}{task} "..."   (lands in {lands})',
+            f'Reply:  mycelium respond --room {room} --handle {me}{task} --body "..."   (lands in {lands})',
         ]
     return "\n".join(lines)

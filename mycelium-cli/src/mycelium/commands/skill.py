@@ -12,7 +12,6 @@ skill is reachable as a memory too. Reads and writes resolve against the hub ove
 HTTP; a spoke keeps no local replica.
 """
 
-import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from importlib import resources
@@ -27,6 +26,7 @@ from mycelium import identity
 from mycelium.client import hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
+from mycelium.text_input import takes_text
 from mycelium_backend_client.errors import UnexpectedStatus
 
 app = typer.Typer(
@@ -68,28 +68,6 @@ def _hub_session() -> Iterator[Any]:
             raise typer.Exit(1) from exc
 
 
-def _resolve_body(body: str | None, file: str | None) -> str:
-    """Resolve the skill body from the positional arg or a file ('-' is stdin)."""
-    if body is not None and file is not None:
-        console.print("[red]Error:[/red] pass either a body or --file, not both.")
-        raise typer.Exit(1)
-    if file is not None:
-        if file == "-":
-            return sys.stdin.read()
-        try:
-            return Path(file).read_text(encoding="utf-8")
-        except OSError as exc:
-            console.print(f"[red]Error:[/red] cannot read {file}: {exc.strerror or exc}")
-            raise typer.Exit(1) from exc
-        except UnicodeDecodeError as exc:
-            console.print(f"[red]Error:[/red] {file} is not valid UTF-8 text.")
-            raise typer.Exit(1) from exc
-    if body is None:
-        console.print("[red]Error:[/red] provide a body or --file <path> (use '-' for stdin).")
-        raise typer.Exit(1)
-    return body
-
-
 def _get_active_room(room: str | None) -> str:
     """Resolve the room from the arg or the active config, like `mycelium memory`."""
     if room:
@@ -106,17 +84,15 @@ def _get_active_room(room: str | None) -> str:
 
 
 @doc_ref(
-    usage="mycelium skill set <name> [<body>] [--file <path>] [--desc <text>]",
-    desc="Create or update a skill (upsert) in a room's skills/ namespace. The body comes from the positional argument or <code>--file</code> (<code>-</code> reads stdin).",
+    usage="mycelium skill set <name> [<body>] [--body <markdown>] [--file <path>] [--desc <text>]",
+    desc="Create or update a skill (upsert) in a room's skills/ namespace. The body is markdown, from the positional argument, <code>--body</code>, or <code>--file</code> (<code>-</code> reads stdin).",
     group="skill",
 )
 @app.command(name="set")
+@takes_text("body", "The skill's instructions, in markdown.", noun="skill body")
 def skill_set(
     name: str = typer.Argument(..., help="Skill slug (kebab-case, e.g. 'summarize-room')"),
-    body: str | None = typer.Argument(None, help="Skill body (prose / instructions)"),
-    file: str | None = typer.Option(
-        None, "--file", "-f", help="Read the body from a file ('-' for stdin)"
-    ),
+    body: str = typer.Argument(..., help="Skill body (prose / instructions)"),
     room: str | None = typer.Option(
         None, "--room", "-r", help="Room name (defaults to active room)"
     ),
@@ -138,7 +114,7 @@ def skill_set(
     )
     from mycelium_backend_client.models import SkillCreate
 
-    body_text = _resolve_body(body, file)
+    body_text = body
     room_name = _get_active_room(room)
     handle = identity.resolve_actor(MyceliumConfig.load(), override=handle)
     tag_list = [t.strip() for t in tags.split(",")] if tags else None

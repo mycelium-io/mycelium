@@ -61,6 +61,7 @@ from mycelium.client import hub_client
 from mycelium.commands.room import _resolve_room
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
+from mycelium.text_input import takes_text
 
 app = typer.Typer(
     help="The room's coordination board: what needs you, what's in flight, what resolved.",
@@ -871,11 +872,12 @@ def board_new(
 
 
 @doc_ref(
-    usage='mycelium board send <id> "<text>"',
-    desc="Post into the thread on a row or any memory. The room sees that it moved, not what was said.",
+    usage='mycelium board send <id> "<text>" | --body "<markdown>" | --file <path>',
+    desc="Post into the thread on a row or any memory, in markdown. The room sees that it moved, not what was said.",
     group="board",
 )
 @app.command(name="send")
+@takes_text("content", "What to say, in markdown. @handle mentions address agents.", noun="message")
 def board_send(
     row_id: str = typer.Argument(
         ..., help="Row id, thread id, or any memory key (e.g. t3, work/auth, context/api)"

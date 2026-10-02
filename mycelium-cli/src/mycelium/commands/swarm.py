@@ -149,7 +149,7 @@ Your terminal is already set up as @{handle} in that room
 2. **Turns.** When a line starting with `[mycelium]` appears in your terminal,
    do what it says. For a turn that means
    `mycelium await --handle {handle} --json --timeout 5`, then
-   `mycelium respond --handle {handle} "<your reply>"`. The reply lands in the
+   `mycelium respond --handle {handle} --body "<your reply>"`. The reply lands in the
    thread you were asked in.
 3. **The split** (@{lead}). One child task per member, matching what each
    offered: `mycelium board new "<title>" --parent {key} --assign @<member>`.
@@ -157,18 +157,21 @@ Your terminal is already set up as @{handle} in that room
    reviews or waits on another, since every piece gets reviewed anyway.
 4. **Your task.** Claim it (`mycelium board claim <id> --to @{handle}`), do it
    for real, and post progress and results in its thread
-   (`mycelium board send <id> "..." --as {handle}`).
+   (`mycelium board send <id> --as {handle} --body "..."`).
 5. **Review.** Before resolving, ask a teammate to review in the task's thread
-   (`mycelium board send <id> "@<member> can you check ...?" --as {handle}`).
+   (`mycelium board send <id> --as {handle} --body "@<member> can you check ...?"`).
    When you review, say what is good and what has to change, and @mention the
    author by name so they hear it. Once the review is good, resolve it:
    `mycelium board resolve <id>`.
 6. **Wrap-up.** Whoever resolves the last child task tells @{lead} in `{key}`'s
    thread. @{lead} then posts the combined result there and resolves `{key}`.
 
-When the task leaves something open, do not wait for an answer: say in one
-line what you will assume, and go on. Talk like a teammate: short, specific,
-no filler. Now wait for the conductor.
+When the task leaves something open, do not wait for an answer: say what you
+will assume, and go on. Talk like a teammate: specific, no filler. People read
+your posts in the app as markdown, so write anything longer than a line the way
+you'd write a PR description: the point first, short paragraphs with a blank
+line between them, a list for options or questions. `--body` can span lines.
+Now wait for the conductor.
 """
 
 

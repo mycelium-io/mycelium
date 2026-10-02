@@ -723,14 +723,14 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">send</span> &quot;<span class="arg">&lt;content&gt;</span>&quot; [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">send</span> &quot;<span class="arg">&lt;content&gt;</span><span class="str">&quot; | <span class="flag">--body</span> &quot;</span><span class="arg">&lt;markdown&gt;</span>&quot; | <span class="flag">--file</span> <span class="arg">&lt;path&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
-        <div class="cmd-ref-body">Send an addressed chat message into a room. Use <code>@handle</code> mentions to direct it to specific agents.</div>
+        <div class="cmd-ref-body">Send an addressed chat message into a room, in markdown. Use <code>@handle</code> mentions to direct it to specific agents.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">amend</span> &lt;message-id&gt; &quot;&lt;new content&gt;&quot; [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">amend</span> &lt;message-id&gt; &quot;&lt;new content&gt;<span class="str">&quot; | <span class="flag">--body</span> &quot;</span><span class="arg">&lt;markdown&gt;</span>&quot; | <span class="flag">--file</span> <span class="arg">&lt;path&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Revise a message you sent. The amendment is posted as its own message; the room reads the newest text, marked edited.</div>
       </div>
@@ -809,9 +809,9 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> <span class="arg">&lt;id&gt;</span> &quot;<span class="arg">&lt;text&gt;</span>&quot;</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> <span class="arg">&lt;id&gt;</span> &quot;<span class="arg">&lt;text&gt;</span><span class="str">&quot; | <span class="flag">--body</span> &quot;</span><span class="arg">&lt;markdown&gt;</span>&quot; | <span class="flag">--file</span> <span class="arg">&lt;path&gt;</span></code>
         </div>
-        <div class="cmd-ref-body">Post into the thread on a row or any memory. The room sees that it moved, not what was said.</div>
+        <div class="cmd-ref-body">Post into the thread on a row or any memory, in markdown. The room sees that it moved, not what was said.</div>
       </div>
 
       <div class="cmd-ref">
@@ -881,7 +881,7 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">invoke</span> <span class="arg">&lt;handle&gt;</span> &quot;<span class="arg">&lt;prompt&gt;</span>&quot; [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">invoke</span> <span class="arg">&lt;handle&gt;</span> &quot;<span class="arg">&lt;prompt&gt;</span><span class="str">&quot; | <span class="flag">--body</span> &quot;</span><span class="arg">&lt;markdown&gt;</span>&quot; | <span class="flag">--file</span> <span class="arg">&lt;path&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Send an addressed message to a registered agent. Desugars to <code>mycelium room send "@handle &lt;prompt&gt;"</code>.</div>
       </div>
@@ -946,9 +946,9 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> <span class="arg">&lt;key&gt;</span> [<span class="arg">&lt;value&gt;</span>] [<span class="flag">--file</span> <span class="arg">&lt;path&gt;</span>] [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> <span class="arg">&lt;key&gt;</span> [<span class="arg">&lt;value&gt;</span>] [<span class="flag">--body</span> <span class="arg">&lt;markdown&gt;</span>] [<span class="flag">--file</span> <span class="arg">&lt;path&gt;</span>] [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
-        <div class="cmd-ref-body">Write a memory (upsert). The value comes from the positional argument or <code>--file</code> (<code>-</code> reads stdin): one or the other, not both. Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts; the backend handles versioning.</div>
+        <div class="cmd-ref-body">Write a memory (upsert). The value comes from the positional argument, <code>--body</code>, or <code>--file</code> (<code>-</code> reads stdin): exactly one of them. Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts; the backend handles versioning.</div>
       </div>
 
       <div class="cmd-ref">
@@ -1039,9 +1039,9 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">skill</span> <span class="cmd">set</span> <span class="arg">&lt;name&gt;</span> [<span class="arg">&lt;body&gt;</span>] [<span class="flag">--file</span> <span class="arg">&lt;path&gt;</span>] [<span class="flag">--desc</span> <span class="arg">&lt;text&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">skill</span> <span class="cmd">set</span> <span class="arg">&lt;name&gt;</span> [<span class="arg">&lt;body&gt;</span>] [<span class="flag">--body</span> <span class="arg">&lt;markdown&gt;</span>] [<span class="flag">--file</span> <span class="arg">&lt;path&gt;</span>] [<span class="flag">--desc</span> <span class="arg">&lt;text&gt;</span>]</code>
         </div>
-        <div class="cmd-ref-body">Create or update a skill (upsert) in a room's skills/ namespace. The body comes from the positional argument or <code>--file</code> (<code>-</code> reads stdin).</div>
+        <div class="cmd-ref-body">Create or update a skill (upsert) in a room's skills/ namespace. The body is markdown, from the positional argument, <code>--body</code>, or <code>--file</code> (<code>-</code> reads stdin).</div>
       </div>
 
       <div class="cmd-ref">
@@ -1157,9 +1157,9 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="cmd">--room</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--task</span> <span class="arg">&lt;id&gt;</span>] &quot;<span class="arg">&lt;text&gt;</span>&quot;</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="cmd">--room</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--task</span> <span class="arg">&lt;id&gt;</span>] &quot;<span class="arg">&lt;text&gt;</span><span class="str">&quot; | <span class="flag">--body</span> &quot;</span><span class="arg">&lt;markdown&gt;</span>&quot; | <span class="flag">--file</span> <span class="arg">&lt;path&gt;</span></code>
         </div>
-        <div class="cmd-ref-body">Publish a reply as the handle; the backend records it as a position for the aligner.</div>
+        <div class="cmd-ref-body">Publish a reply as the handle; the backend records it as a position for the aligner. The reply is markdown: give it as the argument, <code>--body</code>, or <code>--file</code> (<code>-</code> reads stdin).</div>
       </div>
     </section>
     <nav class="doc-pager" data-pager-for="cli-reference" aria-label="Previous and next sections">

@@ -42,6 +42,7 @@ from mycelium.error_handler import print_error
 from mycelium.filesystem import get_room_dir, read_memory
 from mycelium.integrations import AddOptions, Integration, get_adapter
 from mycelium.protocol import AGENT_ADAPTERS, AgentManifest
+from mycelium.text_input import takes_text
 
 app = typer.Typer(
     help=(
@@ -1109,7 +1110,7 @@ def agent_show(
 
 
 @doc_ref(
-    usage='mycelium agent invoke <handle> "<prompt>" [--room <room>]',
+    usage='mycelium agent invoke <handle> "<prompt>" | --body "<markdown>" | --file <path> [--room <room>]',
     desc=(
         "Send an addressed message to a registered agent. "
         'Desugars to <code>mycelium room send "@handle &lt;prompt&gt;"</code>.'
@@ -1117,6 +1118,7 @@ def agent_show(
     group="agent",
 )
 @app.command("invoke")
+@takes_text("prompt", "What to ask the agent, in markdown.", noun="prompt")
 def agent_invoke(
     ctx: typer.Context,
     handle: str = typer.Argument(..., help="Agent handle (without leading @)"),

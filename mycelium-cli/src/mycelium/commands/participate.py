@@ -38,6 +38,7 @@ from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 from mycelium.names import name_of
+from mycelium.text_input import takes_text
 
 #: Statuses a resident loop stops on: the hub rejected the caller's identity
 #: (401) or refused it this handle (403). Everything else is treated as a blip.
@@ -398,10 +399,11 @@ def _await_loop(
 
 
 @doc_ref(
-    usage='mycelium respond --room <room> --handle <handle> [--task <id>] "<text>"',
-    desc="Publish a reply as the handle; the backend records it as a position for the aligner.",
+    usage='mycelium respond --room <room> --handle <handle> [--task <id>] "<text>" | --body "<markdown>" | --file <path>',
+    desc="Publish a reply as the handle; the backend records it as a position for the aligner. The reply is markdown: give it as the argument, <code>--body</code>, or <code>--file</code> (<code>-</code> reads stdin).",
     group="other",
 )
+@takes_text("text", "The reply, in markdown.", noun="reply")
 def respond(
     ctx: typer.Context,
     text: str = typer.Argument(..., help="The reply / position text to publish"),
@@ -431,6 +433,11 @@ def respond(
     Examples:
         mycelium respond --room design --handle me "I can move to 30% if the timeline slips."
         mycelium respond --room design --handle me --task t3 "claiming this; starting on the schema."
+        mycelium respond --room design --handle me --body "Two options:
+
+        - ship today, refunds manual
+        - wait a day for automatic refunds"
+        mycelium respond --room design --handle me --file reply.md
     """
     try:
         config = MyceliumConfig.load()
