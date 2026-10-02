@@ -111,6 +111,29 @@ async def test_the_pack_is_listed_and_read(client, pack):
 
 
 @pytest.mark.asyncio
+async def test_how_a_run_reads_comes_back_with_the_pattern(client, tmp_path, monkeypatch):
+    story: dict[str, Any] = {
+        "before": {"headline": "5,000 in refunds, ready", "detail": "Over the limit."},
+        "after": {"track": "Whether the batch went out, and what changed it."},
+        "guide": [
+            {"at": "before", "title": "Where it starts", "text": "The batch as proposed."},
+            {"at": "turn", "title": "Your call", "text": "Nothing goes out until you answer."},
+        ],
+    }
+    monkeypatch.setattr(settings, "PATTERNS_DIR", str(write_pack(tmp_path / "pack", **story)))
+
+    full = (await client.get("/api/patterns/approval-gate-agent")).json()
+    assert {k: full["scenario"][k] for k in story} == story
+
+    # A viewer reads it from the pattern; loading writes none of it to the room.
+    resp = await client.post("/api/patterns/approval-gate-agent/load", json={"created_by": "julia"})
+    assert resp.status_code == 201, resp.text
+    bodies = [body for _, _, body in list_memory_files(get_room_dir(resp.json()["room"]))]
+    assert bodies
+    assert not [b for b in bodies if "Nothing goes out" in b or "Over the limit" in b]
+
+
+@pytest.mark.asyncio
 async def test_a_scenario_that_does_not_load_is_skipped_and_says_why(client, pack, tmp_path):
     write_pack(
         tmp_path / "pack",
@@ -431,6 +454,18 @@ async def test_a_scenario_in_the_request_is_checked_like_any_other(client, pack)
         ),
         ({"context": [{"key": "notes/x", "text": "t"}]}, "context/<slug>"),
         ({"pattern": "Not A Slug"}, "lowercase slug"),
+        (
+            {
+                "members": [scenario()["members"][0]],
+                "summon": None,
+                "guide": [{"at": "turn", "title": "t", "text": "x"}],
+            },
+            "needs a person",
+        ),
+        ({"guide": [{"at": "before", "title": "t", "text": "x"}]}, "needs a before"),
+        ({"guide": [{"at": "after", "title": "t", "text": "x"}]}, "needs an after"),
+        ({"guide": [{"at": "sidebar", "title": "t", "text": "x"}]}, "guide"),
+        ({"before": {"detail": "no headline"}}, "headline"),
     ],
 )
 def test_a_scenario_that_does_not_fit_is_refused(over, message):

@@ -115,6 +115,29 @@ class Room(_Strict):
     description: str = Field("", max_length=500)
 
 
+class Before(_Strict):
+    """Where the run starts, said in a line and a sentence or two."""
+
+    headline: str = Field(min_length=1, max_length=120)
+    detail: str = Field("", max_length=300)
+
+
+class After(_Strict):
+    """What a reader wants to know at the end, so it can be restated as the run goes."""
+
+    track: str = Field(min_length=1, max_length=500)
+
+
+#: The parts of a run a guide step can point at.
+GuideAt = Literal["before", "after", "members", "flow", "chat", "turn"]
+
+
+class GuideStep(_Strict):
+    at: GuideAt
+    title: str = Field(min_length=1, max_length=80)
+    text: str = Field(min_length=1, max_length=500)
+
+
 class Scenario(_Strict):
     pattern: str
     title: str = Field(min_length=1)
@@ -126,11 +149,32 @@ class Scenario(_Strict):
     summon: Summon | None = None
     #: A flow file beside the scenario, installed as protocols/<summon.flow>.
     flow_file: str | None = None
+    #: How the run reads to someone watching it: where it starts, what the
+    #: result is about, and a short walk through what is on screen. None of it
+    #: is written to the room; a viewer reads it from the pattern.
+    before: Before | None = None
+    after: After | None = None
+    guide: list[GuideStep] = Field(default_factory=list, max_length=8)
 
     @model_validator(mode="after")
     def _pattern_is_a_slug(self) -> Scenario:
         if not SLUG.match(self.pattern):
             msg = f"pattern {self.pattern!r} must be a lowercase slug"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _guide_points_at_what_exists(self) -> Scenario:
+        if any(s.at == "turn" for s in self.guide) and not any(
+            m.kind == HUMAN for m in self.members
+        ):
+            msg = "a guide step at 'turn' needs a person in the cast to take one"
+            raise ValueError(msg)
+        if any(s.at == "before" for s in self.guide) and self.before is None:
+            msg = "a guide step at 'before' needs a before"
+            raise ValueError(msg)
+        if any(s.at == "after" for s in self.guide) and self.after is None:
+            msg = "a guide step at 'after' needs an after"
             raise ValueError(msg)
         return self
 

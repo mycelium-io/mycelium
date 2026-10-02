@@ -543,7 +543,10 @@ is no litellm dependency.
   (`patterns.allow_inline`, what `mycelium pattern use --from` does; the CLI
   clones a URL itself, with the caller's git credentials), and
   `patterns.personas_only` refuses any member that is not a persona or a person,
-  so a public hub never starts a worker (Pi with tools). The flow is parsed with the hub's own `Protocol` model before anything
+  so a public hub never starts a worker (Pi with tools). A scenario can also say
+  how a run reads to someone watching it (`before`, `after.track`, and a `guide`
+  of steps pointed at parts of the screen); loading writes none of that to the
+  room. The flow is parsed with the hub's own `Protocol` model before anything
   is written, because the hub does not check a `protocols/<name>` memory on save:
   a bad one is silently left out of the room's flows.
 - **Three composer sigils, one mechanism.** The chat composer
