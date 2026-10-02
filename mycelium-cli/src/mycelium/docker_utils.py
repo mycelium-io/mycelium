@@ -289,6 +289,7 @@ def generate_env_file(
         "# Regenerate with: mycelium config apply",
         "",
         "# ── Backend ──────────────────────────────────────────────────────────────",
+        f"MYCELIUM_BIND_ADDR={config.runtime.bind_addr}",
         f"MYCELIUM_BACKEND_PORT={config.runtime.backend_port}",
         f"MYCELIUM_UI_PORT={config.runtime.frontend_port}",
         f"MYCELIUM_METRICS_PORT={config.runtime.collector_port}",

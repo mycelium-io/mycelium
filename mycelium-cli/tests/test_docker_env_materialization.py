@@ -50,6 +50,15 @@ def test_env_materializes_all_service_ports() -> None:
     assert env["MYCELIUM_METRICS_PORT"] == "14318"
 
 
+def test_env_bind_addr_defaults_to_loopback_and_is_configurable() -> None:
+    """Published ports bind to loopback unless runtime.bind_addr says otherwise."""
+    assert _parse_env(generate_env_file(MyceliumConfig()))["MYCELIUM_BIND_ADDR"] == "127.0.0.1"
+
+    cfg = MyceliumConfig()
+    cfg.runtime.bind_addr = "0.0.0.0"
+    assert _parse_env(generate_env_file(cfg))["MYCELIUM_BIND_ADDR"] == "0.0.0.0"
+
+
 def test_env_metrics_port_defaults_to_4318() -> None:
     """Default config writes MYCELIUM_METRICS_PORT=4318, matching compose.yml."""
     cfg = MyceliumConfig()

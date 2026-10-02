@@ -96,7 +96,7 @@ services:
     networks:
       - mycelium
     ports:
-      - "${MYCELIUM_BACKEND_PORT:-8000}:8000"
+      - "${MYCELIUM_BIND_ADDR:-127.0.0.1}:${MYCELIUM_BACKEND_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
       interval: 10s
@@ -147,7 +147,7 @@ services:
     networks:
       - mycelium
     ports:
-      - "${MYCELIUM_UI_PORT:-8080}:3000"
+      - "${MYCELIUM_BIND_ADDR:-127.0.0.1}:${MYCELIUM_UI_PORT:-8080}:3000"
 
   # ── OTLP Collector (profile: metrics) ──────────────────────────────────────
   #
@@ -169,7 +169,7 @@ services:
     networks:
       - mycelium
     ports:
-      - "${MYCELIUM_METRICS_PORT:-4318}:4318"
+      - "${MYCELIUM_BIND_ADDR:-127.0.0.1}:${MYCELIUM_METRICS_PORT:-4318}:4318"
     volumes:
       - ${MYCELIUM_DATA_DIR:-~/.mycelium}:/home/collector/.mycelium
     command:
@@ -218,10 +218,10 @@ services:
       - path: ~/.mycelium/.env
         required: false
     ports:
-      - "${MYCELIUM_GRAFANA_PORT:-3001}:3000"
-      - "${MYCELIUM_GRAFANA_LOKI_PORT:-3100}:3100"
-      - "${MYCELIUM_GRAFANA_OTLP_PORT:-4319}:4318"
-      - "${MYCELIUM_GRAFANA_OTLP_GRPC_PORT:-4320}:4317"
+      - "${MYCELIUM_BIND_ADDR:-127.0.0.1}:${MYCELIUM_GRAFANA_PORT:-3001}:3000"
+      - "${MYCELIUM_BIND_ADDR:-127.0.0.1}:${MYCELIUM_GRAFANA_LOKI_PORT:-3100}:3100"
+      - "${MYCELIUM_BIND_ADDR:-127.0.0.1}:${MYCELIUM_GRAFANA_OTLP_PORT:-4319}:4318"
+      - "${MYCELIUM_BIND_ADDR:-127.0.0.1}:${MYCELIUM_GRAFANA_OTLP_GRPC_PORT:-4320}:4317"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
       interval: 10s

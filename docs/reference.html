@@ -1178,6 +1178,9 @@
 <span class="comment"># Docker runtime / environment configuration.</span>
 <span class="cmd" id="config-runtime">[runtime]</span>
 
+<span class="comment"># Host address the Docker stack publishes its ports on (MYCELIUM_BIND_ADDR). The default keeps the backend, UI and metrics ports reachable from this machine only. A hub that serves spokes on other machines needs &#x27;0.0.0.0&#x27;, and should have authentication on first. Example: mycelium config set runtime.bind_addr 0.0.0.0</span>
+<span class="arg">bind_addr</span> = <span class="str">&quot;127.0.0.1&quot;</span>
+
 <span class="comment"># Host port for the backend API</span>
 <span class="arg">backend_port</span> = 8000
 

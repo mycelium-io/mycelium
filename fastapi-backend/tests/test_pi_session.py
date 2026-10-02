@@ -26,6 +26,13 @@ from app.services.pi_session import PiSession, PiSessionError, parse_pi_json_out
 from tests.fakes import patch_pi_run
 
 
+@pytest.fixture(autouse=True)
+def _no_ambient_pi_login(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the machine's own pi login out of key-routing tests."""
+    monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "pi-agent"))
+    monkeypatch.delenv("ANTHROPIC_OAUTH_TOKEN", raising=False)
+
+
 def _stream(*events: dict[str, Any]) -> str:
     """Render events as a ``pi --mode json`` stdout stream (one JSON line each)."""
     return "\n".join(json.dumps(e) for e in events)
@@ -104,17 +111,58 @@ def _brain(tmp_path: Path, **kw: Any) -> PiSession:
 
 
 def test_build_command_core_flags(tmp_path: Path) -> None:
-    cmd = _brain(tmp_path, api_key="secret")._build_command("do it", system="be terse")
+    llm_session = _brain(tmp_path, api_key="secret")
+    cmd = llm_session._build_command("do it", system="be terse")
     assert cmd[0] == "pi"
     assert "--print" in cmd
     assert cmd[cmd.index("--mode") + 1] == "json"
     assert cmd[cmd.index("--session") + 1] == str(tmp_path / "s.jsonl")
     assert "--no-tools" in cmd
     assert cmd[cmd.index("--model") + 1] == "anthropic/claude-sonnet-4-6"
-    assert cmd[cmd.index("--api-key") + 1] == "secret"
+    # The key rides the environment, so it never shows in `ps`.
+    assert "--api-key" not in cmd
+    assert "secret" not in cmd
+    env = llm_session._subprocess_env()
+    assert env is not None
+    assert env["ANTHROPIC_API_KEY"] == "secret"
     assert cmd[cmd.index("--append-system-prompt") + 1] == "be terse"
     # The prompt is the final positional argument.
     assert cmd[-1] == "do it"
+
+
+def test_stored_pi_login_keeps_the_api_key_flag(tmp_path: Path) -> None:
+    """pi ranks auth.json above env vars, so the flag must keep the configured key in charge."""
+    agent_dir = tmp_path / "pi-agent"
+    agent_dir.mkdir()
+    (agent_dir / "auth.json").write_text(json.dumps({"anthropic": {"type": "oauth"}}))
+    llm_session = _brain(tmp_path, api_key="secret")
+    cmd = llm_session._build_command("p", system="")
+    assert cmd[cmd.index("--api-key") + 1] == "secret"
+    assert llm_session._subprocess_env() is None
+
+
+def test_login_for_another_provider_does_not_change_routing(tmp_path: Path) -> None:
+    agent_dir = tmp_path / "pi-agent"
+    agent_dir.mkdir()
+    (agent_dir / "auth.json").write_text(json.dumps({"openai": {"type": "api_key"}}))
+    assert "--api-key" not in _brain(tmp_path, api_key="secret")._build_command("p", system="")
+
+
+def test_anthropic_oauth_env_keeps_the_api_key_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """pi reads ANTHROPIC_OAUTH_TOKEN before ANTHROPIC_API_KEY."""
+    monkeypatch.setenv("ANTHROPIC_OAUTH_TOKEN", "oauth")
+    cmd = _brain(tmp_path, api_key="secret")._build_command("p", system="")
+    assert cmd[cmd.index("--api-key") + 1] == "secret"
+
+
+def test_provider_without_env_var_keeps_api_key_flag(tmp_path: Path) -> None:
+    """A provider pi has no documented key env var for still gets --api-key."""
+    llm_session = _brain(tmp_path, model="kimi-coding/k2", api_key="secret")
+    cmd = llm_session._build_command("p", system="")
+    assert cmd[cmd.index("--api-key") + 1] == "secret"
+    assert llm_session._subprocess_env() is None
 
 
 def test_a_tooled_session_keeps_pis_tools(tmp_path: Path) -> None:
@@ -194,11 +242,14 @@ def test_standard_endpoint_stays_direct(tmp_path: Path) -> None:
     cmd = llm_session._build_command("p", system="")
     assert "--provider" not in cmd
     assert cmd[cmd.index("--model") + 1] == "anthropic/claude-haiku-4-5"
-    assert cmd[cmd.index("--api-key") + 1] == "sk-ant-xyz"
+    assert "--api-key" not in cmd
+    env = llm_session._subprocess_env()
+    assert env is not None
+    assert env["ANTHROPIC_API_KEY"] == "sk-ant-xyz"
 
 
 def test_builtin_provider_proxy_writes_override_keeps_model_and_key(tmp_path: Path) -> None:
-    """A *proxy* base URL on a built-in provider → baseUrl override, still --model/--api-key."""
+    """A *proxy* base URL on a built-in provider → baseUrl override, still --model + env key."""
     llm_session = _brain(
         tmp_path,
         model="anthropic/claude-haiku-4-5",
@@ -209,7 +260,10 @@ def test_builtin_provider_proxy_writes_override_keeps_model_and_key(tmp_path: Pa
     cmd = llm_session._build_command("p", system="")
     assert "--provider" not in cmd  # keep pi's built-in catalog; just redirect endpoint
     assert cmd[cmd.index("--model") + 1] == "anthropic/claude-haiku-4-5"
-    assert cmd[cmd.index("--api-key") + 1] == "sk-ant-xyz"
+    assert "--api-key" not in cmd
+    env = llm_session._subprocess_env()
+    assert env is not None
+    assert env["ANTHROPIC_API_KEY"] == "sk-ant-xyz"
 
 
 def test_is_standard_endpoint() -> None:

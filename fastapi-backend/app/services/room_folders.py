@@ -22,7 +22,7 @@ from typing import Any
 
 from app.schemas import HANDLE_PATTERN, RoomFolders
 from app.services.agent_registry import norm_handle
-from app.services.filesystem import get_data_dir
+from app.services.filesystem import UnsafePathError, contained, get_data_dir
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ def _key(handle: str) -> str | None:
 
 
 def _path(handle: str) -> Path:
-    return get_data_dir() / "preferences" / handle / FILENAME
+    return contained(get_data_dir() / "preferences", handle) / FILENAME
 
 
 def normalize(layout: RoomFolders) -> RoomFolders:
@@ -64,7 +64,10 @@ def load(handle: str) -> RoomFolders:
     key = _key(handle)
     if not key:
         return RoomFolders()
-    path = _path(key)
+    try:
+        path = _path(key)
+    except UnsafePathError:
+        return RoomFolders()
     try:
         data: Any = json.loads(path.read_text())
         return RoomFolders.model_validate(data)

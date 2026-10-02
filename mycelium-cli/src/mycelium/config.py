@@ -361,6 +361,16 @@ class AgentAuthConfig(BaseModel):
 class RuntimeConfig(BaseModel):
     """Docker runtime / environment configuration."""
 
+    bind_addr: str = Field(
+        default="127.0.0.1",
+        description=(
+            "Host address the Docker stack publishes its ports on "
+            "(MYCELIUM_BIND_ADDR). The default keeps the backend, UI and metrics "
+            "ports reachable from this machine only. A hub that serves spokes on "
+            "other machines needs '0.0.0.0', and should have authentication on "
+            "first. Example: mycelium config set runtime.bind_addr 0.0.0.0"
+        ),
+    )
     backend_port: int = Field(
         default=8000,
         description="Host port for the backend API",

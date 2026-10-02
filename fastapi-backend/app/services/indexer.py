@@ -28,6 +28,7 @@ from app.services.filesystem import (
     list_memory_files,
     parse_memory,
     parse_timestamp,
+    room_path,
     unmanaged_meta,
 )
 
@@ -83,8 +84,7 @@ async def index_room(room_name: str, *, force: bool = False) -> dict:
     records whose files no longer exist. Returns stats.
     """
     t0 = time.monotonic()
-    data_dir = get_data_dir()
-    room_dir = data_dir / "rooms" / room_name
+    room_dir = room_path(room_name)
     stats = {"indexed": 0, "skipped": 0, "pruned": 0, "errors": 0}
     if ":session:" in room_name or not room_dir.exists():
         return stats
@@ -160,8 +160,7 @@ async def index_single_file(room_name: str, key: str) -> bool:
     t0 = time.monotonic()
     from app.services.metrics import record_index_run
 
-    data_dir = get_data_dir()
-    room_dir = data_dir / "rooms" / room_name
+    room_dir = room_path(room_name)
     file_path = room_dir / (key + ".md" if not key.endswith(".md") else key)
 
     if not file_path.exists():

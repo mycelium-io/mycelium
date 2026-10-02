@@ -86,6 +86,24 @@ _PI_BUILTIN_PROVIDERS = frozenset(
 )
 
 
+#: Env var pi reads for each built-in provider's key (pi docs/providers.md). A key
+#: for one of these travels in the subprocess environment, not argv, so it is not
+#: visible to other local users in ``ps``. Other providers keep the ``--api-key`` flag.
+_PI_KEY_ENV = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "azure-openai-responses": "AZURE_OPENAI_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "google": "GEMINI_API_KEY",
+    "mistral": "MISTRAL_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "cerebras": "CEREBRAS_API_KEY",
+    "xai": "XAI_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "vercel-ai-gateway": "AI_GATEWAY_API_KEY",
+    "zai": "ZAI_API_KEY",
+}
+
+
 def split_provider_model(model: str) -> tuple[str, str]:
     """Split a ``provider/model-id`` string into ``(provider, model_id)``.
 
@@ -147,6 +165,19 @@ def _pi_agent_dir() -> Path:
     if override.startswith("~"):
         return Path(str(Path.home()) + override[1:])
     return Path(override)
+
+
+def has_stored_login(provider: str) -> bool:
+    """True when pi's ``auth.json`` has an entry for *provider*.
+
+    Pi ranks a stored login above environment variables, so callers that would
+    send a key through the environment must know when that key would be shadowed.
+    """
+    try:
+        data = json.loads((_pi_agent_dir() / "auth.json").read_text())
+    except (OSError, ValueError):
+        return False
+    return isinstance(data, dict) and provider in data
 
 
 def _openai_compat_base_url(base_url: str) -> str:
@@ -356,6 +387,26 @@ class PiSession:
                 api_key=self._api_key,
             )
 
+    def _key_env_name(self) -> str | None:
+        """The env var that carries this session's key, or None to use ``--api-key``.
+
+        Pi ranks the flag above ``auth.json`` above env vars, so a stored login (or
+        an Anthropic OAuth token in the environment) would beat an env-borne key.
+        In that case the flag keeps the configured key in charge.
+        """
+        if self._endpoint_mode == "custom" or has_stored_login(self._provider):
+            return None
+        if self._provider == "anthropic" and os.environ.get("ANTHROPIC_OAUTH_TOKEN"):
+            return None
+        return _PI_KEY_ENV.get(self._provider)
+
+    def _subprocess_env(self) -> dict[str, str] | None:
+        """The pi subprocess environment, or None to inherit the parent's unchanged."""
+        name = self._key_env_name()
+        if name and self._api_key:
+            return {**os.environ, name: self._api_key}
+        return None
+
     def _build_command(self, prompt: str, system: str) -> list[str]:
         cmd = [
             self._binary,
@@ -371,9 +422,10 @@ class PiSession:
             # address it by its canonical ``provider/model-id`` reference.
             cmd += ["--provider", self._provider, "--model", f"{self._provider}/{self._model_id}"]
         else:
-            # direct or builtin-redirect: pi keeps the real model + the key flag.
+            # direct or builtin-redirect: pi keeps the real model. The key rides the
+            # environment when pi has an env var for the provider, else the flag.
             cmd += ["--model", self._model]
-            if self._api_key:
+            if self._api_key and self._key_env_name() is None:
                 cmd += ["--api-key", self._api_key]
         if system:
             cmd += ["--append-system-prompt", system]
@@ -421,6 +473,7 @@ class PiSession:
                 # stdin that never arrives and every turn hangs to the timeout.
                 # DEVNULL gives it immediate EOF so it uses the prompt arg.
                 stdin=subprocess.DEVNULL,
+                env=self._subprocess_env(),
             )
         except subprocess.TimeoutExpired as exc:
             raise PiSessionError(f"pi turn exceeded {self._timeout_s:.0f}s and was killed") from exc

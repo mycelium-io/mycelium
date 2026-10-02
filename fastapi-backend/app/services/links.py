@@ -44,7 +44,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from app.services.filesystem import get_data_dir, list_memory_files
+from app.services.filesystem import list_memory_files, room_path
 
 logger = logging.getLogger(__name__)
 
@@ -292,7 +292,7 @@ def parse_memory_links(key: str, meta: dict[str, Any], body: str) -> MemoryLinks
 
 def index_path(room_name: str) -> Path:
     """Path to a room's JSONL link index (not created here)."""
-    return get_data_dir() / "rooms" / room_name / INDEX_FILENAME
+    return room_path(room_name) / INDEX_FILENAME
 
 
 def _record(entry: MemoryLinks) -> dict[str, Any]:
@@ -378,7 +378,7 @@ def remove(room_name: str, key: str) -> bool:
 
 def rebuild(room_name: str) -> int:
     """Rebuild a room's whole link index from its markdown. Returns entry count."""
-    room_dir = get_data_dir() / "rooms" / room_name
+    room_dir = room_path(room_name)
     if not room_dir.exists():
         return 0
     entries = [
@@ -568,7 +568,7 @@ def expand(room_name: str, key: str) -> dict[str, Any]:
     """
     from app.services.filesystem import read_memory_file
 
-    room_dir = get_data_dir() / "rooms" / room_name
+    room_dir = room_path(room_name)
     source = read_memory_file(room_dir, key)
     if source is None:
         return {"key": key, "rendered": "", "expansions": [], "found": False}

@@ -27,7 +27,7 @@ import os
 import uuid
 from pathlib import Path
 
-from app.services.filesystem import get_data_dir
+from app.services.filesystem import room_path
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ def stable_memory_id(room_name: str, key: str) -> uuid.UUID:
 
 def index_path(room_name: str) -> Path:
     """Path to a room's JSONL search index (not created here)."""
-    return get_data_dir() / "rooms" / room_name / INDEX_FILENAME
+    return room_path(room_name) / INDEX_FILENAME
 
 
 def load_index(room_name: str) -> list[dict]:
