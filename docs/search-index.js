@@ -2353,7 +2353,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#omnigent-set-it-up",
     "t": "Set it up",
     "s": "Guides › Run Agents in Omnigent",
-    "x": "Start Omnigent. It serves its app at http://127.0.0.1:6767 and registers this computer as a place to run agents. ``bash omnigent start `` Tell the runner to start agents in Omnigent instead of herdr: ``bash mycelium config set runner.host omnigent `` If Omnigent runs at a different local address, also set runner.omnigent_url. Start the runner: ``bash mycelium runner `` Its first lines say where it starts agents (\"Sta",
+    "x": "Start Omnigent. It serves its app at http://127.0.0.1:6767 and registers this computer as a place to run agents. omnigent start Tell the runner to start agents in Omnigent instead of herdr: mycelium config set runner.host omnigent If Omnigent runs at a different local address, also set runner.omnigent_url. Start the runner: mycelium runner Its first lines say where it starts agents (\"Starts agents in omnigent at http",
     "p": "Reference"
   },
   {

@@ -163,6 +163,45 @@ COMPOSE_YML = REPO_ROOT / "mycelium-cli" / "src" / "mycelium" / "docker" / "comp
 # ── Markdown to HTML conversion (minimal, no dependencies) ──
 
 
+def _list_items(lines: list[str], i: int, marker: str, section_id: str, out: list[str]) -> int:
+    """Render the items of one list from lines[i]; return the index after it.
+
+    An item is its marker line plus any indented lines that wrap it. Indented
+    blocks after a blank line (a ```fence```, another paragraph, a nested
+    list) belong to the item too, as in standard markdown, so a step can
+    hold its command. Blank lines between items don't end the list, so
+    numbering carries on instead of restarting at 1.
+    """
+    while i < len(lines) and re.match(marker, lines[i]):
+        item_text = re.sub(marker, "", lines[i]).rstrip()
+        i += 1
+        # Fold indented continuation lines (wrapped prose) into the item.
+        while i < len(lines) and lines[i].strip() and lines[i][0].isspace():
+            item_text += " " + lines[i].strip()
+            i += 1
+        # Blank lines, then indented blocks, until a line back at the margin.
+        k, block = i, []
+        while k < len(lines) and (not lines[k].strip() or lines[k][0].isspace()):
+            block.append(lines[k])
+            k += 1
+        body = ""
+        if any(ln.strip() for ln in block):
+            indent = min(len(ln) - len(ln.lstrip()) for ln in block if ln.strip())
+            body = _md_to_html("\n".join(ln[indent:] for ln in block), section_id)
+            i = k
+        if body:
+            out.append(f"        <li>{_inline(item_text)}\n{body}\n        </li>")
+        else:
+            out.append(f"        <li>{_inline(item_text)}</li>")
+        # Another item after blank lines continues this list.
+        k = i
+        while k < len(lines) and not lines[k].strip():
+            k += 1
+        if k < len(lines) and re.match(marker, lines[k]):
+            i = k
+    return i
+
+
 def _md_to_html(md: str, section_id: str) -> str:
     lines = md.split("\n")
     out: list[str] = []
@@ -313,28 +352,13 @@ def _md_to_html(md: str, section_id: str) -> str:
 
         if re.match(r"^\d+\.\s", line):
             out.append('      <ol class="steps">')
-            while i < len(lines) and re.match(r"^\d+\.\s", lines[i]):
-                item_text = re.sub(r"^\d+\.\s+", "", lines[i]).rstrip()
-                i += 1
-                # Fold indented continuation lines (wrapped prose) into this item
-                # so a multi-line item stays one <li> instead of splitting into a
-                # fresh single-item <ol> that restarts numbering at 1.
-                while i < len(lines) and lines[i].strip() and lines[i][0].isspace():
-                    item_text += " " + lines[i].strip()
-                    i += 1
-                out.append(f"        <li>{_inline(item_text)}</li>")
+            i = _list_items(lines, i, r"^\d+\.\s+", section_id, out)
             out.append("      </ol>")
             continue
 
         if line.startswith("- "):
             out.append("      <ul>")
-            while i < len(lines) and lines[i].startswith("- "):
-                item_text = lines[i][2:].rstrip()
-                i += 1
-                while i < len(lines) and lines[i].strip() and lines[i][0].isspace():
-                    item_text += " " + lines[i].strip()
-                    i += 1
-                out.append(f"        <li>{_inline(item_text)}</li>")
+            i = _list_items(lines, i, r"^- ", section_id, out)
             out.append("      </ul>")
             continue
 
