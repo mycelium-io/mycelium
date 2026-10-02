@@ -28,6 +28,7 @@ import {
   runnerAgentOf,
 } from "./runners";
 import type { MockMemory } from "./fixtures";
+import { PATTERN_ROOMS, fromExplorer, patternList, patternRead } from "./patterns";
 import type { A2aBridgeState, MemoryGraph, MemoryGraphEdge, MemoryLink, Protocol } from "@/lib/api";
 import type { SearchHit, SearchResultType } from "@/lib/search";
 
@@ -308,6 +309,35 @@ export async function handleMock(req: Request): Promise<Response | null> {
   // ── /api/runners ────────────────────────────────────────────────────────────
   if (rest[0] === "runners") return handleRunners(req, method, rest.slice(1));
 
+  // ── /api/patterns ───────────────────────────────────────────────────────────
+  if (rest[0] === "patterns") {
+    if (rest.length === 1 && method === "GET") return json(patternList());
+    const name = decodeURIComponent(rest[1] ?? "");
+    const read = patternRead(name);
+    if (!read) return notFound(`No pattern named '${name}' (mock)`);
+    if (rest.length === 2 && method === "GET") return json(read);
+    if (rest[2] === "load" && method === "POST") {
+      // A mock has no conductor to run it, so loading answers with the room the
+      // pattern already ran in, or says what it would make.
+      const ran = PATTERN_ROOMS[name];
+      return json(
+        {
+          room: name,
+          title: read.title,
+          members: [],
+          memories: [],
+          summon: null,
+          key: ran?.room.pattern_task ?? null,
+          episode: null,
+          ran: Boolean(ran),
+          dry_run: false,
+        },
+        201,
+      );
+    }
+    return null;
+  }
+
   // ── /health ─────────────────────────────────────────────────────────────────
   if (rest[0] === "health")
     return json({
@@ -368,8 +398,11 @@ export async function handleMock(req: Request): Promise<Response | null> {
     if (method === "GET") {
       // A private room is listed only for its owner and members, as on the hub.
       const viewer = (searchParams.get("viewer") ?? "").toLowerCase();
+      // The rooms patterns ran in are listed to the explorer alone, so the rest
+      // of the app keeps the rooms its screenshots show.
+      const listed = fromExplorer(req) ? [...ROOMS, ...Object.values(PATTERN_ROOMS).map((f) => f.room)] : ROOMS;
       return json(
-        ROOMS.filter(
+        listed.filter(
           (r) => r.is_public || (!!viewer && (r.owner === viewer || (r.members ?? []).includes(viewer))),
         ),
       );

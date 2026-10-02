@@ -144,6 +144,9 @@ export interface Room {
   workspace_id?: string | null;
   /** The room's display title — the italic hero above the board. */
   title?: string | null;
+  /** The pattern the room was loaded from, and the task its flow runs in. */
+  pattern?: string | null;
+  pattern_task?: string | null;
 }
 
 /** Rename a room. Throws `ApiError` on failure. */
