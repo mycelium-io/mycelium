@@ -655,6 +655,75 @@ async fn model_cli(input: Option<String>) -> Result<Value, String> {
     serde_json::from_slice(&out.stdout).map_err(|_| "The model settings came back unreadable.".into())
 }
 
+/// `mycelium desktop experiences`: the ready-made rooms this Mac has, and the
+/// ones it could add.
+#[tauri::command]
+async fn get_experiences(app: AppHandle, webview: Webview) -> Result<Value, String> {
+    local_only(&app, &webview)?;
+    experiences_cli(vec![]).await
+}
+
+/// Add an experience's content from a file the person picks: the macOS file
+/// picker, then `mycelium desktop experiences --add`. `None` when they cancel.
+#[tauri::command]
+async fn add_experience(app: AppHandle, webview: Webview, id: String) -> Result<Option<Value>, String> {
+    local_only(&app, &webview)?;
+    let dialog = app
+        .dialog()
+        .file()
+        .set_title("Add an experience")
+        .add_filter("Experience", &["zip"]);
+    let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_file())
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(path) = picked.and_then(|p| p.into_path().ok()) else {
+        return Ok(None);
+    };
+    let path = path.to_string_lossy().to_string();
+    experiences_cli(vec!["--add".into(), id, path]).await.map(Some)
+}
+
+/// `mycelium desktop experiences --remove`. Rooms it made stay.
+#[tauri::command]
+async fn remove_experience(app: AppHandle, webview: Webview, id: String) -> Result<Value, String> {
+    local_only(&app, &webview)?;
+    experiences_cli(vec!["--remove".into(), id]).await
+}
+
+async fn experiences_cli(args: Vec<String>) -> Result<Value, String> {
+    let bin = paths::resolve("mycelium").ok_or("The mycelium program isn't available.")?;
+    let out = tauri::async_runtime::spawn_blocking(move || {
+        Command::new(bin)
+            .args(["desktop", "experiences"])
+            .args(&args)
+            .env("PATH", paths::shell_path())
+            .env("NO_COLOR", "1")
+            .output()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        return Err(err.lines().last().unwrap_or("Couldn't change the experiences.").trim().to_string());
+    }
+    serde_json::from_slice(&out.stdout).map_err(|_| "The experiences came back unreadable.".into())
+}
+
+/// Open an experience: the room UI, at the path the experience opens on.
+#[tauri::command]
+fn open_experience(app: AppHandle, webview: Webview, path: String) -> Result<(), String> {
+    local_only(&app, &webview)?;
+    if !path.starts_with('/') || path.starts_with("//") {
+        return Err("An experience opens on a path in the room UI.".into());
+    }
+    let status = app.state::<Supervisor>().status().ok_or("Mycelium is still starting.")?;
+    let ui = status.get("ui_url").and_then(Value::as_str).ok_or("Mycelium is still starting.")?;
+    let url = Url::parse(ui).and_then(|u| u.join(&path)).map_err(|e| e.to_string())?;
+    navigate_main(&app, url);
+    Ok(())
+}
+
 /// Open the supervisor's log (`~/.mycelium/logs/desktop.log`) in Console.
 #[tauri::command]
 fn open_log(app: AppHandle, webview: Webview) -> Result<(), String> {
@@ -812,6 +881,10 @@ pub fn run() {
             herdr_integrations,
             get_model,
             save_model,
+            get_experiences,
+            add_experience,
+            remove_experience,
+            open_experience,
             get_autostart,
             set_autostart,
             open_room,

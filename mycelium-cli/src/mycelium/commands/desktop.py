@@ -210,3 +210,43 @@ def model(
             raise typer.Exit(2) from None
         config.save()
     sys.stdout.write(json.dumps(model_view(config.llm)) + "\n")
+
+
+@doc_ref(
+    usage="mycelium desktop experiences [--add ID PATH] [--remove ID]",
+    desc="The experiences on this machine, as JSON. --add adds one's content from a .zip or folder; --remove takes it off.",
+    group="agent",
+)
+@app.command("experiences")
+def experiences(
+    add: tuple[str, Path] | None = typer.Option(
+        None, "--add", help="An experience's id and the .zip or folder its content comes in"
+    ),
+    remove: str | None = typer.Option(None, "--remove", help="Take an experience off this machine"),
+) -> None:
+    """Ready-made rooms to explore, added from a file: what the desktop app's
+    Experiences section reads and writes.
+
+    Adding one points the hub at its content (``patterns.dir``, personas only);
+    the hub reads it the next time it starts.
+
+    Examples:
+        mycelium desktop experiences
+        mycelium desktop experiences --add patterns-explorer ~/Downloads/patterns.zip
+        mycelium desktop experiences --remove patterns-explorer
+    """
+    from mycelium.config import MyceliumConfig
+    from mycelium.desktop import experiences as xp
+
+    config = MyceliumConfig.load()
+    try:
+        if add is not None:
+            xp.add(config, add[0], add[1])
+            config.save()
+        elif remove is not None:
+            xp.remove(config, remove)
+            config.save()
+    except xp.ExperienceError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(2) from None
+    sys.stdout.write(json.dumps(xp.view(config)) + "\n")
