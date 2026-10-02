@@ -27,7 +27,9 @@ import {
   queueJob,
   runnerAgentOf,
 } from "./runners";
-import type { MockMemory } from "./fixtures";
+import type { MockMemory, MockMessage, RoomFixture } from "./fixtures";
+import { demoOnLaunch, demoOnMessage, demoOnTask, isDemoScenario } from "./demo";
+import { memoryChangedFrame, noticeFrame, publish } from "./live";
 import { PATTERN_ROOMS, fromExplorer, patternList, patternRead } from "./patterns";
 import type { A2aBridgeState, MemoryGraph, MemoryGraphEdge, MemoryLink, Protocol } from "@/lib/api";
 import type { SearchHit, SearchResultType } from "@/lib/search";
@@ -127,6 +129,19 @@ const MOCK_EPOCH = new Date(0).toISOString();
  * without every fixture carrying one. Not cryptographic — it only has to be
  * stable, distinct, and shaped like the ids the store issues.
  */
+/** A board notice on the stream, kept in the room's replay so a reload shows it. */
+function publishNotice(fx: RoomFixture, room: string, data: Parameters<typeof noticeFrame>[1]): void {
+  const frame = { ...noticeFrame(room, data), created_at: new Date().toISOString() };
+  (fx.l9 ??= []).push(frame);
+  publish(room, frame);
+}
+
+/** A task's key fragment, as `services/tasks.py:slugify` makes it. */
+function slug(title: string): string {
+  const s = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48).replace(/-+$/, "");
+  return s || "task";
+}
+
 function stableUuid(seed: string): string {
   let hash = 0x811c9dc5;
   const digits: string[] = [];
@@ -225,10 +240,10 @@ async function handleRunners(req: Request, method: string, rest: string[]): Prom
       framework: framework.id,
       cwd: typeof body.cwd === "string" ? body.cwd : runner.roots[0],
     };
-    return json(
-      queueJob(runner.id, "launch", spec, typeof body.created_by === "string" ? body.created_by : null),
-      201,
-    );
+    const job = queueJob(runner.id, "launch", spec, typeof body.created_by === "string" ? body.created_by : null);
+    const fx = isDemoScenario() ? getRoomFixture(spec.room) : undefined;
+    if (fx) demoOnLaunch(fx, spec.room, handle);
+    return json(job, 201);
   }
   return null;
 }
@@ -591,17 +606,111 @@ export async function handleMock(req: Request): Promise<Response | null> {
         return json({ messages, total: scoped.length });
       }
       if (method === "POST") {
+        // Stored and put on the stream, as the hub does: the channel only ever
+        // appends what arrives live, and a thread refetches when its episode moves.
         const body = await readJson(req);
-        return json({
+        const msg: MockMessage = {
           id: `sent-${fx.messages.length + 1}`,
           sender_handle: String(body.sender_handle ?? "operator"),
           message_type: String(body.message_type ?? "broadcast"),
           content: String(body.content ?? ""),
-          episode: body.episode ?? null,
-          created_at: new Date(0).toISOString(),
-        });
+          episode: typeof body.episode === "string" ? body.episode : null,
+          created_at: new Date().toISOString(),
+        };
+        fx.messages.push(msg);
+        publish(roomName, { ...msg, room_name: roomName });
+        if (isDemoScenario()) demoOnMessage(fx, roomName, msg);
+        return json(msg, 201);
       }
       return null;
+    }
+
+    case "tasks": {
+      // POST /tasks — a row and its thread, minted together (services/tasks.py).
+      if (sub.length !== 1 || method !== "POST") return null;
+      const body = await readJson(req);
+      const title = String(body.title ?? "").trim();
+      if (!title) return json({ detail: "A task needs a title." }, 422);
+      const by = String(body.handle ?? "user");
+      const key = typeof body.key === "string" && body.key ? body.key : `work/${slug(title)}`;
+      if (fx.memories.some((m) => m.key === key)) return json({ detail: `${key} already exists` }, 409);
+      const assignee = typeof body.assignee === "string" && body.assignee ? body.assignee.replace(/^@/, "") : null;
+      const kind = key.startsWith("decisions/") ? "decision" : "action";
+      const row: MockMemory = {
+        key,
+        value: title,
+        content_text: title,
+        meta: { kind, status: "open", ...(assignee ? { assignee } : {}) },
+        created_by: by,
+        updated_by: by,
+        version: 1,
+        updated_at: new Date().toISOString(),
+        episode: `urn:ioc:mycelium:episode:${roomName}:${stableUuid(`${roomName}/${key}/${Date.now()}`).replace(/-/g, "").slice(0, 8)}`,
+      };
+      fx.memories.push(row);
+      publish(roomName, memoryChangedFrame(key, 1, by));
+      publishNotice(fx, roomName, {
+        subkind: "filed", key, title: title.split("\n")[0], episode: row.episode, by, kind, for: assignee ?? undefined,
+      });
+      if (isDemoScenario()) demoOnTask(fx, roomName, row);
+      return json(memoryRead(roomName, row), 201);
+    }
+
+    case "fields": {
+      // POST /fields — a row's frontmatter, merged (a board action or an edit).
+      if (sub.length !== 1 || method !== "POST") return null;
+      const body = await readJson(req);
+      const key = String(body.key ?? "");
+      const row = fx.memories.find((m) => m.key === key);
+      if (!row) return notFound(`memory ${key} not found (mock)`);
+      const fields = (body.fields ?? {}) as Record<string, unknown>;
+      const by = String(body.handle ?? "user");
+      row.meta = { ...(row.meta ?? {}), ...fields };
+      row.version += 1;
+      row.updated_at = new Date().toISOString();
+      row.updated_by = by;
+      publish(roomName, memoryChangedFrame(key, row.version, by));
+      if (fields.status === "resolved") {
+        publishNotice(fx, roomName, { subkind: "resolved", key, title: memText(row).split("\n")[0], episode: row.episode, by });
+      }
+      return json({ key, fields, version: row.version });
+    }
+
+    case "assignments": {
+      // POST /assignments/{claim|release|resolve} — who holds a row.
+      const action = sub[1];
+      if (sub.length !== 2 || method !== "POST" || !["claim", "release", "resolve"].includes(action)) return null;
+      const body = await readJson(req);
+      const key = String(body.key ?? "");
+      const row = fx.memories.find((m) => m.key === key);
+      if (!row) return notFound(`memory ${key} not found (mock)`);
+      const by = String(body.handle ?? "user");
+      const at = new Date().toISOString();
+      const patch: Record<string, unknown> =
+        action === "claim"
+          ? { assignment: "held", owner: `@${by}`, claimed_at: at, ttl_minutes: 120 }
+          : action === "release"
+            ? { assignment: "released", owner: null, claimed_at: null }
+            : { assignment: "resolved", status: "resolved" };
+      row.meta = { ...(row.meta ?? {}), ...patch };
+      row.version += 1;
+      row.updated_at = at;
+      row.updated_by = by;
+      publish(roomName, memoryChangedFrame(key, row.version, by));
+      const subkind = action === "claim" ? "claimed" : action === "release" ? "released" : "resolved";
+      publishNotice(fx, roomName, { subkind, key, title: memText(row).split("\n")[0], episode: row.episode, by });
+      const meta = row.meta as Record<string, unknown>;
+      return json({
+        key,
+        assignment: meta.assignment,
+        owner: meta.owner ?? null,
+        claimed_at: meta.claimed_at ?? null,
+        ttl_minutes: meta.ttl_minutes ?? null,
+        freshness: action === "claim" ? "fresh" : null,
+        version: row.version,
+        assignment_note: null,
+        assignment_note_by: null,
+      });
     }
 
     case "agents": {

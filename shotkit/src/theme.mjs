@@ -85,6 +85,7 @@ export const BACKDROPS = {
     light: "linear-gradient(135deg, #efe7fb 0%, #e6e9f7 55%, #dfe2ee 100%)",
   },
   mycelial: { dark: "#0c0e11", light: "#f4ecda" },
+  glass: { dark: "#0b0d12", light: "#f3f6fc" },
   ink: { dark: "#08090b", light: "#eceef1" },
   paper: { dark: "#14171c", light: "#f2f4f6" },
   none: { dark: "transparent", light: "transparent" },

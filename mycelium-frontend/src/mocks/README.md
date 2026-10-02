@@ -36,13 +36,38 @@ Both Next route handlers consult the mock layer first when `MYCELIUM_UI_MOCK=1`:
   `/api/*` request it recognizes; unrecognized routes return `null` and fall
   through to the real backend (so it degrades, never hangs).
 - `src/app/api/stream/route.ts` → `mockStream(name)` on the room channel replays
-  a scripted SSE negotiation.
+  a scripted SSE negotiation, and forwards whatever the room's writes put on its
+  stream.
+
+Writes behave the way the hub's do: a posted message is stored and arrives on
+the stream (the channel only ever appends what arrives live), `POST /tasks` mints
+a `work/` row with a thread of its own and raises a `filed` notice, and
+`/fields` and `/assignments/{claim,release,resolve}` move a row and say so. The
+store lives for the dev server's life; restart it to start over.
+
+## The demo scenario
+
+```bash
+MYCELIUM_UI_MOCK=1 MYCELIUM_UI_MOCK_SCENARIO=demo next dev
+```
+
+swaps `checkout` for the room *before* its double-charge story (real
+timestamps, no @builder yet) and adds a director (`demo.ts`) that plays the
+agents' side when a person does theirs: an agent added from **Your machine**
+joins and says hello; a task filed for it is claimed in its thread;
+`@conductor review @builder @reviewer` in that thread runs the review flow,
+which ends with @reviewer filing a decision the two disagree on; and `@aligner`
+in the decision's thread brokers an agreement that compiles into new rows.
+Each act plays once per server. `mycelium-promo/` records the product demo
+through it.
 
 Files:
 - `fixtures.ts` — the canonical data (rooms, memories, agents, plans, messages,
   episodes + L9 chains, invites, metrics), shaped to match `src/lib/api.ts`.
 - `handlers.ts` — the REST router mirroring the backend endpoints.
 - `stream.ts` — the scripted live SSE timeline.
+- `live.ts` — the room streams writes publish to, shared across route modules.
+- `demo.ts` — the demo scenario's room and director.
 - `index.ts` — `isMockMode()` + exports.
 
 The toggle is read per-request server-side, so nothing is baked into the build and

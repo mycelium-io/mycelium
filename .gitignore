@@ -47,3 +47,6 @@ pnpm-lock.yaml
 *.swp
 *.swo
 *~
+
+# The promo recording is uploaded to a PR comment, never committed.
+mycelium-promo/*.mp4

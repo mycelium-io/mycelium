@@ -93,7 +93,15 @@ export function installOverlay(opts) {
     st.caption = String(text ?? "");
     if (!captionEl) return;
     const apply = () => {
-      captionEl.textContent = st.caption;
+      // `Title|line` is a headline and the line under it, as the stage draws it.
+      const [head, line] = st.caption.split("|");
+      captionEl.textContent = head.trim();
+      if (line) {
+        const sub = document.createElement("div");
+        sub.className = "__shotkit-sub";
+        sub.textContent = line.trim();
+        captionEl.appendChild(sub);
+      }
       captionEl.classList.toggle("__shotkit-on", Boolean(st.caption));
     };
     if (!animate || !captionEl.classList.contains("__shotkit-on") || !st.caption) {
@@ -141,6 +149,7 @@ export function installOverlay(opts) {
       opacity: 0; transition: opacity 260ms ease, transform 260ms ease;
     }
     #__shotkit-caption.__shotkit-on { opacity: 1; transform: translate(-50%, 0); }
+    #__shotkit-caption .__shotkit-sub { font-size: 16px; font-weight: 400; opacity: .72; margin-top: 4px; }
   `;
 
   const ARROW = `<svg viewBox="0 0 26 30" xmlns="http://www.w3.org/2000/svg">

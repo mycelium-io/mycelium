@@ -73,6 +73,14 @@ export function candidates() {
  * @returns {Promise<{browser: any, channel: string}>}
  */
 export async function launchChromium(pw, opts) {
+  // Behind an egress proxy the browser needs telling: Chromium reads no
+  // HTTPS_PROXY of its own. Opt-in, so a proxy set for other tools does not
+  // reroute a capture of a local app. Loopback always goes direct.
+  if (process.env.SHOTKIT_PROXY) {
+    // A flag rather than Playwright's `proxy` option, which adds `<-loopback>`
+    // and so sends the local app through the proxy too.
+    opts = { ...opts, args: [...(opts.args ?? []), `--proxy-server=${process.env.SHOTKIT_PROXY}`] };
+  }
   const errors = [];
   for (const channel of ["chromium-headless-shell", undefined]) {
     try {

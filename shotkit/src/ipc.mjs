@@ -19,6 +19,7 @@ import { existsSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { PROJECT_ROOT } from "./project.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const PROTOCOL = 1;
@@ -42,7 +43,9 @@ export function sourceStamp() {
 
 export function socketPath() {
   if (process.env.SHOTKIT_SOCKET) return process.env.SHOTKIT_SOCKET;
-  const key = createHash("sha1").update(resolve(HERE, "..")).digest("hex").slice(0, 8);
+  // One daemon per (shotkit install, project): the daemon's mock server, output
+  // folder and config all belong to the project it was started in.
+  const key = createHash("sha1").update(`${resolve(HERE, "..")}\0${PROJECT_ROOT}`).digest("hex").slice(0, 8);
   return join(tmpdir(), `shotkit-${PROTOCOL}-${key}.sock`);
 }
 
@@ -117,7 +120,11 @@ export async function ensureDaemon({ idleMs, quiet = true } = {}) {
   const child = spawn(process.execPath, [join(HERE, "daemon.mjs")], {
     detached: true,
     stdio: quiet ? "ignore" : "inherit",
-    env: { ...process.env, ...(idleMs ? { SHOTKIT_IDLE_MS: String(idleMs) } : {}) },
+    env: {
+      ...process.env,
+      SHOTKIT_PROJECT: PROJECT_ROOT,
+      ...(idleMs ? { SHOTKIT_IDLE_MS: String(idleMs) } : {}),
+    },
   });
   child.unref();
 

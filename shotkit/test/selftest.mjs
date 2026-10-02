@@ -24,7 +24,9 @@ import { cardDocument } from "../src/card.mjs";
 import { encodeArgs, findEncoder, forgetEncoder, jpegSize, startEncoder } from "../src/encode.mjs";
 import { parseZoom } from "../src/video.mjs";
 import { startPump } from "../src/pump.mjs";
-import { mkdtempSync, utimesSync, writeFileSync } from "node:fs";
+import { TILT_PRESETS, driftAt, isStaged, parseStageSize, parseTilt, stageDocument } from "../src/stage.mjs";
+import { startSpool } from "../src/restage.mjs";
+import { existsSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Engine, frameOf, requireStorageState, storageStateKey } from "../src/engine.mjs";
@@ -260,6 +262,55 @@ test("one seed grows one network", () => {
   assert.equal(a, networkDocument("/* algorithm */", { seed: 7 }));
 });
 
+test("--tilt reads a preset, three angles, or one dutch angle", () => {
+  assert.deepEqual(parseTilt(undefined), TILT_PRESETS.hero);
+  assert.deepEqual(parseTilt("left"), TILT_PRESETS.left);
+  assert.deepEqual(parseTilt("-8,18,-6"), [-8, 18, -6]);
+  assert.deepEqual(parseTilt("12"), [0, 0, 12]);
+  assert.throws(() => parseTilt("sideways"), /preset/);
+  assert.throws(() => parseTilt("1,2,3,4"), /preset/);
+});
+
+test("the stage is asked for by --demo or any --tilt, and sized by --stage", () => {
+  assert.equal(isStaged({}), false);
+  assert.equal(isStaged({ demo: true }), true);
+  assert.equal(isStaged({ tilt: "dutch" }), true);
+  assert.deepEqual(parseStageSize("1280x720"), { width: 1280, height: 720 });
+  assert.throws(() => parseStageSize("wide"), /WxH/);
+});
+
+test("drift swings the angle across a take and holds it at zero", () => {
+  const tilt = [10, -20, 4];
+  const a = driftAt(tilt, 10, 0);
+  const b = driftAt(tilt, 10, 1);
+  assert.equal(b.tilt[1] - a.tilt[1], 10, "y sweeps the whole drift");
+  assert.equal(driftAt(tilt, 10, 0.5).tilt[1], -20, "the midpoint is the configured angle");
+  assert.equal(a.tilt[2], 4, "the dutch angle holds");
+  assert.deepEqual(driftAt(tilt, 0, 0.3), { tilt, zoom: 1 });
+});
+
+test("the stage document carries its options", () => {
+  const html = stageDocument({ imgWidth: 1280, imgHeight: 800, tilt: [0, 0, -7], reflect: true, glow: false });
+  assert.ok(html.includes("rotateZ(-7deg)"));
+  assert.ok(html.includes("-webkit-box-reflect"));
+  assert.ok(!html.includes('id="glow"'));
+});
+
+test("the spool keeps one file per distinct frame and the order of beats", async () => {
+  const spool = startSpool();
+  try {
+    const a = Buffer.from("a");
+    const b = Buffer.from("b");
+    for (const f of [a, a, a, b, b, a]) spool.write(f);
+    assert.deepEqual(spool.order, [0, 0, 0, 1, 1, 2]);
+    assert.equal(spool.read(1).toString(), "b");
+    assert.deepEqual(await spool.finish(), { frames: 6 });
+  } finally {
+    spool.remove();
+  }
+  assert.equal(existsSync(spool.dir), false);
+});
+
 test("the vignette veils light less than dark", () => {
   // The site already runs light at a lower canvas alpha; veiling both equally
   // washes the network out of the cream entirely.
@@ -292,6 +343,7 @@ function fakePage(present) {
     locator: (sel) => mk("css", sel),
     getByRole: (role, o) => mk("role", o.name),
     getByText: (t) => mk("text", t),
+    getByPlaceholder: (t) => mk("placeholder", t),
   };
 }
 
@@ -388,13 +440,15 @@ function fakeEncoder(overrides = {}) {
 }
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+/** A program that runs and exits non-zero: `/bin/false` on Linux, `/usr/bin/false` on macOS. */
+const FALSE_BIN = existsSync("/bin/false") ? "/bin/false" : "/usr/bin/false";
 
 await (async () => {
   await atest("a dead ffmpeg is reported, not waited on forever", async () => {
     // The exit listener is registered immediately on spawn: a process that
     // dies on its arguments emits `close` once before `finish()` would be
     // called, so a listener set inside `finish()` would miss it.
-    const enc = startEncoder({ format: "webm", fps: 30, width: 64, height: 64, out: "/tmp/shotkit-dead.webm", ffmpeg: "/bin/false" });
+    const enc = startEncoder({ format: "webm", fps: 30, width: 64, height: 64, out: "/tmp/shotkit-dead.webm", ffmpeg: FALSE_BIN });
     await wait(200);
     for (let i = 0; i < 3; i++) enc.write(FRAME);
     const outcome = await Promise.race([

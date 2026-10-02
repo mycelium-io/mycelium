@@ -1,0 +1,20 @@
+{
+  "app": {
+    "dir": "mycelium-frontend",
+    "mockScript": "dev:mock",
+    "mockHeader": "x-mycelium-mock",
+    "mockProbe": "/api/rooms"
+  },
+  "backdrop": {
+    "canvas": "scripts/banner-assets/mycelial-canvas.js",
+    "glass": "docs/glass.js"
+  },
+  "stage": {
+    "fonts": "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,500;1,600&family=IBM+Plex+Sans:wght@400;500&display=swap",
+    "titleFont": "\"Cormorant Garamond\", Georgia, serif",
+    "titleStyle": "italic 600",
+    "textFont": "\"IBM Plex Sans\", -apple-system, system-ui, sans-serif",
+    "accent": "#5dd4e0",
+    "logo": "docs/logo.png"
+  }
+}

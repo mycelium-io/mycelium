@@ -41,28 +41,30 @@ shotkit/            The repo's camera: fast screenshots of the running app and o
                     records the same `--do` flow as a short clip with a drawn
                     cursor, click rings and a camera that pushes in (--auto-zoom),
                     encoded by whatever ffmpeg is on the machine — mp4 with a full
-                    one, webm off the build Playwright ships. See the
+                    one, webm off the build Playwright ships. `--demo`/`--tilt`
+                    stage a shot or a take on a tilted window, over the docs'
+                    glass droplets with `--backdrop glass` (`docs/glass.js`),
+                    with flat captions and `--intro`/`--outro` title cards in the
+                    docs' type (`shotkit.config.json`). See the
                     `screenshot` skill. Captures land in gitignored `.shotkit/`;
                     the committed docs assets are still `pnpm screenshots`, which
                     now runs on this engine.
-mycelium-promo/     HyperFrames promo video, a code-defined HTML→MP4 walkthrough
-                    of one coffee shop's checkout room (Mycelium for Mac asks
-                    your name → add agents → hand one a task → one builds,
-                    another reviews → two agents disagree on a decision and the
-                    aligner helps them agree → it all lands on the board). The
-                    app-screen mockups mirror the frontend's
-                    workspace shell + dark design tokens, and the story is the
-                    mock data's `checkout` room.
-                    Renders 1920x1080 H.264. `cd mycelium-promo && npm run dev` to
-                    preview, `npm run render` to export to renders/*.mp4. Its
-                    backing track is synthesized from source too (`audio/`, see
-                    `mycelium-promo/audio/README.md`): the cues are keyed to the
-                    composition's own GSAP times, so `npm run audio` has to
-                    re-run after a beat moves.
-                    The README + docs/index.html embed the rendered MP4 via a
+mycelium-promo/     The product demo: one shotkit take of the real app
+                    (`mycelium-demo.mp4`), a coffee shop's checkout room — you
+                    name yourself and add @builder from your machine → hand it a
+                    task → a review flow runs in its thread → two agents
+                    disagree on a decision and the aligner brokers it → it
+                    lands on the board. `demo.json` is the take (shotkit
+                    options + its `--do` actions); `node mycelium-promo/record.mjs`
+                    boots the frontend in its demo scenario
+                    (`MYCELIUM_UI_MOCK_SCENARIO=demo`, `src/mocks/demo.ts`: the
+                    room before the story, and a director that plays the
+                    agents' side) and records it, staged over the docs' glass
+                    (`--quick` for the flat flow alone).
+                    The README + docs/index.html embed the MP4 via a
                     `user-attachments/assets/...` URL; these only auto-render
                     inline when uploaded via GitHub's web drag-drop (gh CLI has
-                    no equivalent). After re-rendering, drag the new MP4 into a
+                    no equivalent). After re-recording, drag the new MP4 into a
                     PR comment to mint a fresh URL, then swap it into both embeds.
 ```
 

@@ -10,10 +10,11 @@
  * not a gradient — so this renders the network once and hands back a CSS
  * background the card renderer can drop into its backdrop layer.
  *
- * The algorithm is not reimplemented here. `scripts/banner-assets/mycelial-canvas.js`
- * is already the repo's shared copy of the live site's canvas IIFE, kept there
- * so the banner looks like the site; this reads that file rather than adding a
- * third copy to keep in step.
+ * The algorithm is not reimplemented here. The project names its own copy of the
+ * site's canvas IIFE in `shotkit.config.json` (`backdrop.canvas`; in mycelium,
+ * `scripts/banner-assets/mycelial-canvas.js`) and this reads that file rather
+ * than carrying another copy to keep in step. A project that names none has no
+ * `mycelial` backdrop; the gradient presets don't need it.
  *
  * Two things make it cheap enough to put on every shot. The render is one small
  * PNG — one image pixel per cell, a couple of hundred pixels across, upscaled
@@ -24,11 +25,10 @@
  */
 
 import { readFile, stat } from "node:fs/promises";
-import { resolve } from "node:path";
-import { REPO_ROOT } from "./engine.mjs";
+import { CANVAS_PATH, CONFIG_FILE } from "./project.mjs";
 
-/** The shared canvas algorithm, relative to the repo root. */
-export const CANVAS_SOURCE = "scripts/banner-assets/mycelial-canvas.js";
+/** The project's canvas algorithm, or null when its config names none. */
+export const CANVAS_SOURCE = CANVAS_PATH;
 
 /**
  * The docs site's `--canvas-*` values (docs/mycelium.css), which is what makes
@@ -95,7 +95,13 @@ const cache = new Map();
 
 /** The canvas IIFE, and when it last changed. */
 export async function canvasSource() {
-  const path = resolve(REPO_ROOT, CANVAS_SOURCE);
+  const path = CANVAS_SOURCE;
+  if (!path) {
+    throw new Error(
+      `the mycelial backdrop needs a canvas algorithm, and ${CONFIG_FILE} names none (backdrop.canvas). ` +
+        "Use --backdrop mycelium for the gradient instead.",
+    );
+  }
   try {
     const [script, info] = await Promise.all([readFile(path, "utf8"), stat(path)]);
     return { script, version: info.mtimeMs };
