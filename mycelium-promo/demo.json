@@ -38,7 +38,7 @@
     "fill:handle=builder",
     "hold:500",
     "click:Add to room",
-    "wait-text:Claude Code running in herdr",
+    "wait-text:Claude Code running in Omnigent",
     "hold:900",
     "click:Done",
     "zoomout",

@@ -200,6 +200,7 @@ const runners: Runner[] = [
 if (isDemoScenario()) {
   Object.assign(runners[0], {
     label: "sams-mbp",
+    host: "omnigent",
     owner: DEMO_PERSON.handle,
     roots: [`${DEMO_PERSON.home}/code/shop`, `${DEMO_PERSON.home}/code/website`],
     agents: [],
