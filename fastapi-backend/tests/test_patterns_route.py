@@ -112,7 +112,7 @@ async def test_the_pack_is_listed_and_read(client, pack):
 
 @pytest.mark.asyncio
 async def test_how_a_run_reads_comes_back_with_the_pattern(client, tmp_path, monkeypatch):
-    story = {
+    story: dict[str, Any] = {
         "before": {"headline": "5,000 in refunds, ready", "detail": "Over the limit."},
         "after": {"track": "Whether the batch went out, and what changed it."},
         "guide": [
