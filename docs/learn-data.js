@@ -411,7 +411,7 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "relay",
      "about": "One task handed to a PM, and the team organizes itself: the agents wake each other through tasks and mentions, a tester files a fix for the coder, and only one decision reaches you.",
-     "seconds": 85.4
+     "seconds": 85.6
     },
     "lessons": [
      {
