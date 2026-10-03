@@ -1,0 +1,27 @@
+{
+  "order": 3,
+  "title": "Pair across teams, agents included",
+  "tagline": "You bring your agent, they bring theirs: work one problem in one thread, and keep what you decide.",
+  "track": "Collaboration",
+  "thumb": "app-room-channel.png",
+  "needs": [
+    "A teammate with their own coding agent",
+    "A problem that touches both your parts of the code"
+  ],
+  "takeaway": "A way to work across a team boundary where the agents carry each side's context.",
+  "outcomes": [
+    "Put both people and both agents on one problem",
+    "Steer while the agents do the legwork across both codebases",
+    "Settle a disagreement once, and keep the decision"
+  ],
+  "modules": [
+    {
+      "title": "Pairing",
+      "lessons": [
+        { "id": "01-setup", "title": "Set up the room", "minutes": 5 },
+        { "id": "02-working-it", "title": "Working it", "minutes": 4 },
+        { "id": "03-disagreeing", "title": "When you disagree", "minutes": 5 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Learn · mycelium</title>
+<meta name="description" content="Courses on scaling up your work with agents in Mycelium: hand a feature to a PM and a coder, run side work in parallel, pair across teams with your agents, and keep GitHub as the record.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="mycelium.css">
+<script>
+// Resolve the theme before first paint so the page never flashes the wrong one.
+(function () {
+  try {
+    var t = localStorage.getItem('mycelium-theme') || 'system';
+    var dark = t === 'dark'
+      || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.classList.toggle('dark', dark);
+  } catch (e) {
+    document.documentElement.classList.add('dark');
+  }
+})();
+</script>
+<style>
+  /* Learn is its own place, not a docs page: no docs sidebar, a course
+     catalog, a course page, and a lesson view with its own lesson list. It
+     draws every color and size from the site's tokens. */
+  .learn { position: relative; max-width: 1200px; margin: 0 auto;
+    padding: calc(var(--topbar-height) + 36px) 28px 96px; }
+  .glass {
+    background: color-mix(in srgb, var(--paper) 92%, transparent);
+    backdrop-filter: blur(24px) saturate(120%);
+    -webkit-backdrop-filter: blur(24px) saturate(120%);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+  }
+  .learn a { color: var(--accent); text-decoration: none; }
+  .learn a:hover { text-decoration: underline; }
+  .label { font-size: var(--text-label); font-weight: 500; color: var(--muted-foreground); }
+  /* The serif is the site's voice for its biggest moment only: the catalog's
+     headline. Everything else on this page is set in the sans. */
+  .learn h1, .learn h2, .learn h3 { font-family: var(--font-sans); font-style: normal; letter-spacing: -0.015em; }
+  .learn .hero h1 { font-family: var(--font-serif); font-style: italic; letter-spacing: -0.025em; }
+  .crumbs { display: inline-block; font-size: var(--text-label); color: var(--muted-foreground); margin-bottom: 18px;
+    padding: 5px 12px; border-radius: 999px; background: color-mix(in srgb, var(--paper) 72%, transparent);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  /* Frosted, borderless: keeps the network drifting behind a hero's words
+     from crossing them, without boxing the hero in. */
+  .veil { padding: 30px 34px; margin: -30px -34px; border-radius: 28px;
+    background: radial-gradient(120% 120% at 30% 40%, color-mix(in srgb, var(--paper) 78%, transparent), color-mix(in srgb, var(--paper) 40%, transparent));
+    backdrop-filter: blur(18px) saturate(115%); -webkit-backdrop-filter: blur(18px) saturate(115%); }
+  .crumbs a { color: var(--muted-foreground); }
+  .muted { color: var(--muted-foreground); }
+  .dot { color: var(--faint); }
+
+  /* ── buttons ── */
+  .btn { display: inline-flex; justify-content: center; align-items: center; gap: 8px;
+    border-radius: 999px; padding: 11px 20px; font-size: var(--text-body); font-weight: 600; cursor: pointer;
+    border: 1px solid transparent; background: var(--accent); color: var(--accent-fg) !important;
+    text-decoration: none !important; transition: filter 120ms ease, transform 120ms ease; }
+  .btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
+  .btn.ghost { background: color-mix(in srgb, var(--paper) 70%, transparent); color: var(--text) !important;
+    border-color: var(--border2); }
+  .btn i { width: 16px; height: 16px; }
+
+  /* ── catalog hero ── */
+  .hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 40px; align-items: center;
+    margin: 8px 0 64px; }
+  .hero h1 { font-size: clamp(2.6rem, 5vw, 3.9rem); line-height: 1.02; letter-spacing: -0.025em; margin: 14px 0 18px; }
+  .hero h1 em { display: block; color: var(--accent); font-style: italic; }
+  .hero p.lede { font-size: 1.08rem; line-height: 1.7; color: var(--muted-foreground); max-width: 34rem; margin: 0 0 26px; }
+  .hero .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+  .hero .stats { margin-top: 26px; display: flex; gap: 22px; font-size: var(--text-label); color: var(--muted-foreground); }
+  .hero .stats b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; margin-right: 4px; }
+  .stage { position: relative; perspective: 1600px; min-height: 360px; }
+  .stage .shot { position: absolute; border-radius: 12px; overflow: hidden; border: 1px solid var(--border2);
+    box-shadow: 0 40px 80px -20px rgba(0,0,0,0.55), 0 10px 24px rgba(0,0,0,0.25); background: #0b0d10; }
+  .stage .shot img { display: block; width: 100%; height: auto; }
+  .stage .back { width: 78%; right: 0; top: 0; transform: rotateY(-14deg) rotateX(6deg) translateZ(-60px); opacity: 0.75; }
+  .stage .front { width: 82%; left: 0; top: 56px; transform: rotateY(-10deg) rotateX(4deg); }
+
+  /* ── catalog ── */
+  .section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 16px; }
+  .section-head h2 { margin: 0; padding: 0; border: 0; font-size: 1.7rem; }
+  .featured { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); overflow: hidden; margin-bottom: 20px;
+    color: inherit; transition: transform 140ms ease, border-color 140ms ease; }
+  .featured:hover, .card:hover { transform: translateY(-3px); border-color: var(--border2); text-decoration: none !important; }
+  .featured .thumb { aspect-ratio: auto; min-height: 300px; }
+  .featured.mirrored { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); margin: 20px 0 0; }
+  .featured.mirrored .thumb { order: 2; }
+  .featured .body { padding: 34px 36px; display: flex; flex-direction: column; gap: 12px; }
+  .featured h3 { font-weight: 600; font-size: 1.6rem; line-height: 1.2; margin: 0; color: var(--text); }
+  .featured p { margin: 0; color: var(--muted-foreground); line-height: 1.65; }
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+  .card { display: flex; flex-direction: column; overflow: hidden; color: inherit;
+    transition: transform 140ms ease, border-color 140ms ease; }
+  .thumb { position: relative; aspect-ratio: 16 / 9; overflow: hidden; background: #0b0d10; }
+  .thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 62% 12%;
+    transform: scale(1.18); transform-origin: 62% 12%; transition: transform 300ms ease; }
+  .card:hover .thumb img, .featured:hover .thumb img { transform: scale(1.24); }
+  .thumb::after { content: ""; position: absolute; inset: 0;
+    background: linear-gradient(180deg, transparent 35%, rgba(6, 9, 14, 0.82)); }
+  .thumb .num { position: absolute; left: 16px; bottom: 14px; z-index: 1; font-weight: 600; font-size: 1.9rem;
+    line-height: 1; color: #fff; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  .thumb .track { position: absolute; right: 14px; bottom: 16px; z-index: 1; font-size: 12px; font-weight: 500;
+    color: rgba(255,255,255,0.92); border: 1px solid rgba(255,255,255,0.28); background: rgba(6,9,14,0.45);
+    border-radius: 999px; padding: 4px 10px; }
+  .card .body { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 9px; flex: 1; }
+  .card h3 { margin: 0; font-size: var(--text-ui); line-height: 1.35; color: var(--text); }
+  .card p { margin: 0; font-size: var(--text-body); color: var(--muted-foreground); line-height: 1.6; }
+  .meta { font-size: var(--text-label); color: var(--muted-foreground); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .foot { margin-top: auto; padding-top: 10px; display: flex; align-items: center; gap: 12px; }
+  .bar { flex: 1; height: 5px; border-radius: 999px; background: var(--hairline); overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+  .cta { font-size: var(--text-label); font-weight: 600; color: var(--accent); white-space: nowrap; display: inline-flex; gap: 6px; align-items: center; }
+  .cta i { width: 14px; height: 14px; }
+  .finished-tag { font-size: var(--text-label); font-weight: 600; color: var(--green); white-space: nowrap; display: inline-flex; gap: 6px; align-items: center; }
+  .finished-tag i { width: 14px; height: 14px; }
+
+  /* ── course page ── */
+  .course-hero { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 32px; align-items: start;
+    margin: 30px 0 48px; }
+  .course-hero h1 { font-size: clamp(2.2rem, 4vw, 3rem); line-height: 1.06; letter-spacing: -0.02em; margin: 12px 0 14px; }
+  .course-hero .lede { font-size: 1.05rem; line-height: 1.7; color: var(--muted-foreground); margin: 0 0 18px; max-width: 40rem; }
+  .take { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: var(--radius-lg);
+    background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); max-width: 40rem; }
+  .take i { width: 18px; height: 18px; color: var(--accent); flex: none; margin-top: 2px; }
+  .take p { margin: 0; font-size: var(--text-body); line-height: 1.6; }
+  .side { position: sticky; top: calc(var(--topbar-height) + 20px); overflow: hidden; }
+  .side .inner { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+  .side .btn { width: 100%; }
+  .course-body { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 32px; align-items: start; }
+  .block { padding: 26px 28px; margin-bottom: 20px; }
+  .block h3 { margin: 0 0 14px; font-size: var(--text-ui); }
+  .ticks { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 24px; }
+  .ticks.one { grid-template-columns: 1fr; }
+  .ticks li { display: flex; gap: 10px; font-size: var(--text-body); line-height: 1.55; }
+  .ticks li i { flex: none; width: 16px; height: 16px; color: var(--green); margin-top: 3px; }
+  .ticks.need li i { color: var(--muted-foreground); }
+  .module { border: 1px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 12px; overflow: hidden; }
+  .module-head { display: flex; justify-content: space-between; gap: 12px; padding: 13px 16px; background: var(--hairline);
+    font-weight: 600; font-size: var(--text-body); }
+  .module-head .muted { font-weight: 400; font-size: var(--text-label); }
+  .row { display: flex; align-items: center; gap: 12px; padding: 11px 16px; border-top: 1px solid var(--border);
+    font-size: var(--text-body); color: var(--text) !important; }
+  .row:hover { background: var(--hairline); text-decoration: none !important; }
+  .row .mins { margin-left: auto; font-size: var(--text-label); color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+  .row .tag { font-size: 11.5px; color: var(--muted-foreground); border: 1px solid var(--border); border-radius: 999px; padding: 2px 7px; }
+  .check { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--faint);
+    display: inline-flex; align-items: center; justify-content: center; }
+  .check.on { background: var(--green); border-color: var(--green); color: #fff; }
+  .check.on i { width: 12px; height: 12px; }
+
+  /* ── lesson view ── */
+  .lesson { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 24px; align-items: start; }
+  .lesson-nav { position: sticky; top: calc(var(--topbar-height) + 20px); max-height: calc(100vh - var(--topbar-height) - 40px);
+    overflow: auto; padding: 18px 0 10px; }
+  .lesson-nav .course-title { padding: 0 18px 12px; font-weight: 600; font-size: var(--text-body); line-height: 1.4; }
+  .lesson-nav .course-title a { color: var(--text); }
+  .lesson-nav .progress { padding: 0 18px 16px; display: flex; flex-direction: column; gap: 7px;
+    font-size: var(--text-label); color: var(--muted-foreground); border-bottom: 1px solid var(--border); }
+  .lesson-nav .mod { padding: 16px 18px 6px; }
+  .lesson-nav .row { border-top: 0; padding: 8px 18px; }
+  .lesson-nav .row.here { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+  .lesson-main { padding: 40px 48px 34px; min-width: 0; }
+  .lesson-main h1 { font-size: 2.3rem; line-height: 1.08; margin: 12px 0 8px; }
+  .lesson-main .mins-line { font-size: var(--text-label); color: var(--muted-foreground); margin-bottom: 28px; }
+  .lesson-body { font-size: var(--text-prose); }
+  .lesson-body ul, .lesson-body ol { line-height: 1.75; max-width: var(--measure); padding-left: 1.35em; }
+  .lesson-body li { margin-bottom: 6px; }
+  .quiz { margin-top: 32px; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 22px; background: var(--hairline); }
+  .quiz .q { margin: 10px 0 14px; font-weight: 600; }
+  .quiz button.opt { display: block; width: 100%; text-align: left; margin: 0 0 8px; padding: 11px 14px;
+    border-radius: var(--radius-md); border: 1px solid var(--border); background: color-mix(in srgb, var(--paper) 80%, transparent);
+    color: var(--text); font: inherit; font-size: var(--text-body); cursor: pointer; }
+  .quiz button.opt:hover { border-color: var(--border2); }
+  .quiz button.opt.right { border-color: var(--green); background: color-mix(in srgb, var(--green) 12%, transparent); }
+  .quiz button.opt.wrong { border-color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); }
+  .quiz .why { margin: 10px 0 0; font-size: var(--text-body); color: var(--muted-foreground); }
+  .lesson-foot { display: flex; justify-content: space-between; gap: 12px; margin-top: 36px; padding-top: 22px;
+    border-top: 1px solid var(--border); }
+  .finished { padding: 22px 26px; margin-bottom: 22px; display: flex; gap: 14px; align-items: center; }
+  .finished i { width: 26px; height: 26px; color: var(--green); flex: none; }
+  .finished h3 { margin: 0 0 2px; }
+  .finished p { margin: 0; color: var(--muted-foreground); font-size: var(--text-body); }
+
+  @media (max-width: 980px) {
+    .hero, .course-hero, .course-body, .lesson, .featured { grid-template-columns: 1fr; }
+    .stage { min-height: 260px; }
+    .grid { grid-template-columns: 1fr; }
+    .side, .lesson-nav { position: static; max-height: none; }
+    .ticks { grid-template-columns: 1fr; }
+    .featured .body, .block, .lesson-main { padding: 24px 20px; }
+    .learn { padding-left: 16px; padding-right: 16px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="mycelium-bg"></canvas>
+<nav class="topnav">
+  <a href="https://mycelium-io.github.io" class="topnav-cell topnav-brand">
+    <img src="logo.png" alt="Mycelium">
+    <span class="brand-word">mycelium</span>
+  </a>
+  <div class="topnav-right">
+    <a class="copy-agents-btn" href="index.html"><i data-lucide="book-open"></i>Docs</a>
+    <div class="theme-toggle">
+      <button class="theme-btn" id="theme-btn" aria-label="Theme" onclick="toggleThemeMenu(event)">
+        <i data-lucide="sun"></i>
+      </button>
+      <div class="theme-menu" id="theme-menu">
+        <button data-theme-set="light"><i data-lucide="sun"></i>Light</button>
+        <button data-theme-set="dark"><i data-lucide="moon"></i>Dark</button>
+        <button data-theme-set="system"><i data-lucide="monitor"></i>System</button>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<main class="learn" id="learn" aria-live="polite"></main>
+
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script src="learn-data.js"></script>
+<script src="learn.js"></script>
+<script src="site.js"></script>
+<script src="glass.js"></script>
+</body>
+</html>
