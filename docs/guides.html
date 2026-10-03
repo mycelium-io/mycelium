@@ -1116,6 +1116,7 @@ EOF
     <section class="doc-section" id="structured-memory">
       <h1>Structured Memory Guide</h1>
       <p>When an agent finishes a stretch of work and goes away, the next agent (or person) to pick it up starts from nothing unless the work was written down. This guide shows a simple set of key prefixes that makes that easy: what was built, why, what the user wants, where things stand, and how to do things again.</p>
+      <p>The commands here are ones your agents run as they work. Put the habit in your agent&#x27;s instructions so it writes these down as it goes.</p>
       <h2 id="structured-memory-the-prefixes">The prefixes</h2>
       <pre><code>work/        What was built or changed
 decisions/   Why choices were made
@@ -1128,12 +1129,12 @@ procedures/  Steps you&#x27;ll want to repeat later</code></pre>
       <h3 id="structured-memory-1-pick-a-room">1. Pick a room</h3>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> project-x
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> project-x</code></pre>
-      <h3 id="structured-memory-2-write-things-down-as-you-go">2. Write things down as you go</h3>
-      <pre><code><span class="comment"># What you built</span>
+      <h3 id="structured-memory-2-write-things-down-along-the-way">2. Write things down along the way</h3>
+      <pre><code><span class="comment"># What was built</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/api-server <span class="str">&quot;Set up FastAPI with auth endpoints&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/database <span class="str">&quot;Created PostgreSQL schema, 3 tables&quot;</span>
 
-<span class="comment"># Why you made the choices you did</span>
+<span class="comment"># Why the choices were made</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> decisions/framework <span class="str">&quot;FastAPI over Flask: async + type hints&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> decisions/auth <span class="str">&quot;JWT tokens, 1hr expiry, refresh via cookie&quot;</span>
 

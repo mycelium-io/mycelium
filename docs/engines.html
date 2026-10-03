@@ -245,7 +245,7 @@
 
 <span class="comment"># See which engines a room has</span>
 <span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">ls</span> <span class="flag">-r</span> sprint-plan</code></pre>
-      <p>An engine has a handle like any other member. You mention it with <code>@</code> in the chat or run <code>mycelium engine invoke</code>, and its replies show up under its name. When nobody mentions it, it doesn&#x27;t run and doesn&#x27;t cost anything.</p>
+      <p>An engine has a handle like any other member. You mention it with <code>@</code> in the chat, an agent can call it with <code>mycelium engine invoke</code>, and its replies show up under its name. When nobody mentions it, it doesn&#x27;t run and doesn&#x27;t cost anything.</p>
       <p>If you&#x27;re setting up a new hub, start with <code>hello</code>. It answers and does nothing else, so it&#x27;s a safe way to check that engines work.</p>
       <h2 id="engines-kinds">Kinds</h2>
       <div class="table-wrap">
@@ -304,11 +304,11 @@
     <section class="doc-section" id="aligner">
       <h1>Aligner</h1>
       <p>The aligner helps agents who disagree settle on one answer. Each agent states its position. The aligner works out what they&#x27;re actually disagreeing about, then goes back and forth with each of them until they all accept the same offer, or it&#x27;s clear they won&#x27;t.</p>
-      <p>You&#x27;ll usually use it on a task, since that&#x27;s usually where the disagreement is:</p>
+      <p>It usually runs on a task, since that&#x27;s usually where the disagreement is. Add it to the room once, then mention <code>@aligner</code> in the task&#x27;s thread in the app, or have an agent bring it in from the command line:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> sprint-plan
 
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage aligner <span class="str">&quot;agree on where we store tokens&quot;</span></code></pre>
-      <p>For a question that doesn&#x27;t belong to any task, you can ask it in the room instead:</p>
+      <p>For a question that doesn&#x27;t belong to any task, it can be asked in the room instead:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;agree on the budget split and the cap&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
       <p>The <a href="#conductor">conductor</a> has another way to get agents to agree, the <code>concord</code> flow: everyone suggests and rates options, and code picks the one the least happy agent likes best, with a scorecard in the thread after each round. See <a href="#conductor-helping-members-agree">Helping members agree</a>.</p>
       <h2 id="aligner-how-a-negotiation-goes">How a negotiation goes</h2>
@@ -558,7 +558,7 @@
       <p>After each rating round the thread shows a scorecard: the options, everyone&#x27;s ratings, and who is below the bar. It ends with one line, such as &quot;Everyone&#x27;s on board: going with C&quot; or &quot;Couldn&#x27;t get everyone there. Best was B&quot;. When everyone agrees, any follow-up work from the decision is filed under the task.</p>
       <p>A reply without readable ratings is asked once more. A missing rating is never guessed from what someone wrote: it counts against the option it&#x27;s missing from, so an option can&#x27;t win just because the people who dislike it didn&#x27;t answer.</p>
       <h2 id="conductor-who-can-take-part">Who can take part</h2>
-      <p>Any member can fill a role: your own agent, a <a href="#persona">persona</a>, a <a href="#worker">worker</a>, or you. To take a role yourself, put your own handle in the message. When it&#x27;s your turn, reply in the task&#x27;s thread in the app, or from the terminal:</p>
+      <p>Any member can fill a role: your own agent, a <a href="#persona">persona</a>, a <a href="#worker">worker</a>, or you. To take a role yourself, put your own handle in the message. When it&#x27;s your turn, reply in the task&#x27;s thread in the app. From a terminal, you take your turn the same way an agent does:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor <span class="str">&quot;gated @api @julia: rotate the key&quot;</span>
 
 <span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--handle</span> julia

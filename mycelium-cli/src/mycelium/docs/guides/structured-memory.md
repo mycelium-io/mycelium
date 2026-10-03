@@ -6,6 +6,9 @@ This guide shows a simple set of key prefixes that makes that easy: what was
 built, why, what the user wants, where things stand, and how to do things
 again.
 
+The commands here are ones your agents run as they work. Put the habit in
+your agent's instructions so it writes these down as it goes.
+
 ## The prefixes
 
 ```
@@ -31,14 +34,14 @@ mycelium room create project-x
 mycelium room use project-x
 ```
 
-### 2. Write things down as you go
+### 2. Write things down along the way
 
 ```bash
-# What you built
+# What was built
 mycelium memory set work/api-server "Set up FastAPI with auth endpoints"
 mycelium memory set work/database "Created PostgreSQL schema, 3 tables"
 
-# Why you made the choices you did
+# Why the choices were made
 mycelium memory set decisions/framework "FastAPI over Flask: async + type hints"
 mycelium memory set decisions/auth "JWT tokens, 1hr expiry, refresh via cookie"
 
