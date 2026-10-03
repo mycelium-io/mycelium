@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Learn · mycelium</title>
+<meta name="description" content="Short courses on working with agents in Mycelium: a PM and a coder, side quests in worktrees, pairing with someone else's agents, and GitHub alongside the board.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="mycelium.css">
+<script>
+// Resolve the theme before first paint so the page never flashes the wrong one.
+(function () {
+  try {
+    var t = localStorage.getItem('mycelium-theme') || 'system';
+    var dark = t === 'dark'
+      || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.classList.toggle('dark', dark);
+  } catch (e) {
+    document.documentElement.classList.add('dark');
+  }
+})();
+</script>
+<style>
+  /* Learn is its own place, not a docs page: no docs sidebar, a course
+     catalog, a course page, and a lesson view with its own lesson list. It
+     draws every color and size from the site's tokens. */
+  .learn { position: relative; max-width: 1180px; margin: 0 auto;
+    padding: calc(var(--topbar-height) + 28px) 24px 80px; }
+  .learn-panel {
+    background: color-mix(in srgb, var(--paper) 94%, transparent);
+    backdrop-filter: blur(24px) saturate(120%);
+    -webkit-backdrop-filter: blur(24px) saturate(120%);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+  }
+  .learn a { color: var(--accent); text-decoration: none; }
+  .learn a:hover { text-decoration: underline; }
+  .crumbs { font-size: var(--text-label); color: var(--muted-foreground); margin-bottom: 14px; }
+  .crumbs a { color: var(--muted-foreground); }
+  .eyebrow { font-size: var(--text-micro); font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--accent2); margin-bottom: 10px; }
+  .muted { color: var(--muted-foreground); }
+
+  /* ── catalog ── */
+  .hero { padding: 40px 44px; margin-bottom: 28px; }
+  .hero h1 { font-size: 2.4rem; margin-bottom: 10px; }
+  .hero p { font-size: var(--text-prose); color: var(--muted-foreground); margin: 0; }
+  .hero .start { margin-top: 16px; font-size: var(--text-body); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; }
+  .card { display: flex; flex-direction: column; overflow: hidden; color: inherit;
+    transition: transform 120ms ease, border-color 120ms ease; }
+  .card:hover { transform: translateY(-2px); border-color: var(--border2, var(--accent-soft)); text-decoration: none !important; }
+  .thumb { position: relative; aspect-ratio: 16 / 8; display: flex; align-items: flex-end;
+    padding: 14px 16px; overflow: hidden; }
+  .thumb .glyph { position: absolute; right: -6px; bottom: -28px; font-family: var(--font-serif);
+    font-style: italic; font-weight: 600; font-size: 7.5rem; line-height: 1; color: rgba(255,255,255,0.18); }
+  .thumb .level { position: relative; font-size: var(--text-micro); font-weight: 600; letter-spacing: 0.06em;
+    text-transform: uppercase; color: #fff; background: rgba(0,0,0,0.28); border-radius: 999px; padding: 3px 9px; }
+  .card-body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .card-body h3 { margin: 0; font-size: var(--text-ui); color: var(--text); }
+  .card-body p { margin: 0; font-size: var(--text-body); color: var(--muted-foreground); line-height: 1.55; }
+  .meta { font-size: var(--text-label); color: var(--muted-foreground); display: flex; gap: 10px; align-items: center; }
+  .card-foot { margin-top: auto; padding-top: 8px; display: flex; align-items: center; gap: 10px; }
+  .bar { flex: 1; height: 6px; border-radius: 999px; background: var(--hairline); overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+  .cta { font-size: var(--text-label); font-weight: 600; color: var(--accent); white-space: nowrap; }
+  .done-badge { font-size: var(--text-label); font-weight: 600; color: var(--green); white-space: nowrap; }
+
+  /* ── course page ── */
+  .course { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
+  .course-main { padding: 34px 38px; }
+  .course-main h1 { font-size: 2.1rem; margin-bottom: 8px; }
+  .course-main .tagline { font-size: var(--text-prose); color: var(--muted-foreground); margin-bottom: 26px; }
+  .outcomes { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px 20px; margin-bottom: 28px; }
+  .outcomes h3 { margin: 0 0 12px; }
+  .outcomes ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; }
+  .outcomes li { display: flex; gap: 8px; font-size: var(--text-body); line-height: 1.5; }
+  .outcomes li i { flex: none; width: 16px; height: 16px; color: var(--green); margin-top: 2px; }
+  .module { border: 1px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 12px; overflow: hidden; }
+  .module-head { display: flex; justify-content: space-between; padding: 12px 16px; background: var(--hairline);
+    font-weight: 600; font-size: var(--text-body); }
+  .module-head .muted { font-weight: 400; font-size: var(--text-label); }
+  .lesson-row { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid var(--border);
+    font-size: var(--text-body); color: var(--text) !important; }
+  .lesson-row:hover { background: var(--hairline); text-decoration: none !important; }
+  .lesson-row .mins { margin-left: auto; font-size: var(--text-label); color: var(--muted-foreground); }
+  .check { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--faint);
+    display: inline-flex; align-items: center; justify-content: center; }
+  .check.on { background: var(--green); border-color: var(--green); color: #fff; }
+  .check.on i { width: 12px; height: 12px; }
+  .side-card { position: sticky; top: calc(var(--topbar-height) + 20px); overflow: hidden; }
+  .side-card .side-body { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .btn { display: inline-flex; justify-content: center; align-items: center; gap: 8px; border-radius: var(--radius-md);
+    padding: 10px 16px; font-size: var(--text-body); font-weight: 600; cursor: pointer; border: 1px solid transparent;
+    background: var(--accent); color: var(--accent-fg) !important; text-decoration: none !important; }
+  .btn:hover { filter: brightness(1.08); }
+  .btn.ghost { background: transparent; color: var(--text) !important; border-color: var(--border); }
+  .btn i { width: 16px; height: 16px; }
+
+  /* ── lesson view ── */
+  .lesson { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 22px; align-items: start; }
+  .lesson-nav { position: sticky; top: calc(var(--topbar-height) + 20px); max-height: calc(100vh - var(--topbar-height) - 40px);
+    overflow: auto; padding: 18px 0 10px; }
+  .lesson-nav .course-title { padding: 0 18px 10px; font-weight: 600; font-size: var(--text-body); }
+  .lesson-nav .course-title a { color: var(--text); }
+  .lesson-nav .progress { padding: 0 18px 14px; display: flex; flex-direction: column; gap: 6px;
+    font-size: var(--text-label); color: var(--muted-foreground); border-bottom: 1px solid var(--border); }
+  .lesson-nav .mod { padding: 14px 18px 4px; font-size: var(--text-micro); font-weight: 600; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--muted-foreground); }
+  .lesson-nav .lesson-row { border-top: 0; padding: 8px 18px; }
+  .lesson-nav .lesson-row.here { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+  .lesson-main { padding: 34px 40px 30px; min-width: 0; }
+  .lesson-main h1 { font-size: 2rem; margin-bottom: 6px; }
+  .lesson-main .mins-line { font-size: var(--text-label); color: var(--muted-foreground); margin-bottom: 26px; }
+  .lesson-body { font-size: var(--text-prose); }
+  .lesson-body ul, .lesson-body ol { line-height: 1.75; max-width: var(--measure); padding-left: 1.35em; }
+  .lesson-body li { margin-bottom: 6px; }
+  .quiz { margin-top: 30px; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px 20px; }
+  .quiz h3 { margin: 0 0 4px; }
+  .quiz .q { margin: 6px 0 12px; }
+  .quiz button.opt { display: block; width: 100%; text-align: left; margin: 0 0 8px; padding: 10px 14px;
+    border-radius: var(--radius-md); border: 1px solid var(--border); background: transparent; color: var(--text);
+    font: inherit; font-size: var(--text-body); cursor: pointer; }
+  .quiz button.opt:hover { background: var(--hairline); }
+  .quiz button.opt.right { border-color: var(--green); background: color-mix(in srgb, var(--green) 12%, transparent); }
+  .quiz button.opt.wrong { border-color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); }
+  .quiz .why { margin: 8px 0 0; font-size: var(--text-body); color: var(--muted-foreground); }
+  .lesson-foot { display: flex; justify-content: space-between; gap: 12px; margin-top: 34px; padding-top: 20px;
+    border-top: 1px solid var(--border); }
+  .finished { padding: 26px 30px; margin-bottom: 20px; display: flex; gap: 14px; align-items: center; }
+  .finished i { width: 28px; height: 28px; color: var(--green); flex: none; }
+  .finished h3 { margin: 0 0 2px; }
+  .finished p { margin: 0; color: var(--muted-foreground); font-size: var(--text-body); }
+
+  @media (max-width: 900px) {
+    .course, .lesson { grid-template-columns: 1fr; }
+    .side-card, .lesson-nav { position: static; max-height: none; }
+    .outcomes ul { grid-template-columns: 1fr; }
+    .hero, .course-main, .lesson-main { padding: 24px 20px; }
+    .learn { padding-left: 16px; padding-right: 16px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="mycelium-bg"></canvas>
+<nav class="topnav">
+  <a href="https://mycelium-io.github.io" class="topnav-cell topnav-brand">
+    <img src="logo.png" alt="Mycelium">
+    <span class="brand-word">mycelium</span>
+  </a>
+  <div class="topnav-right">
+    <a class="copy-agents-btn" href="index.html"><i data-lucide="book-open"></i>Docs</a>
+    <div class="theme-toggle">
+      <button class="theme-btn" id="theme-btn" aria-label="Theme" onclick="toggleThemeMenu(event)">
+        <i data-lucide="sun"></i>
+      </button>
+      <div class="theme-menu" id="theme-menu">
+        <button data-theme-set="light"><i data-lucide="sun"></i>Light</button>
+        <button data-theme-set="dark"><i data-lucide="moon"></i>Dark</button>
+        <button data-theme-set="system"><i data-lucide="monitor"></i>System</button>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<main class="learn" id="learn" aria-live="polite"></main>
+
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script src="learn-data.js"></script>
+<script src="learn.js"></script>
+<script src="site.js"></script>
+<script src="glass.js"></script>
+</body>
+</html>

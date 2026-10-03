@@ -1,0 +1,65 @@
+{
+  "order": 1,
+  "title": "Run a PM and a coder",
+  "tagline": "Two agents, one reviewing the other, working on their own for hours.",
+  "level": "Start here",
+  "outcomes": [
+    "Write a PM brief that holds a coder to a clear idea of done",
+    "Start a pair on a real task",
+    "Check in without getting in the way",
+    "Notice when a pair is going in circles, and fix it"
+  ],
+  "modules": [
+    {
+      "title": "The idea",
+      "lessons": [
+        { "id": "01-why-two", "title": "Why two agents", "minutes": 4 },
+        {
+          "id": "02-roles",
+          "title": "Who does what",
+          "minutes": 4,
+          "quiz": {
+            "question": "The coder says a piece is done. What does the PM do?",
+            "options": [
+              "Fixes anything it doesn't like in the code itself",
+              "Checks it against the list of what done means, and sends it back with specifics if it falls short",
+              "Asks you to review it"
+            ],
+            "answer": 1,
+            "why": "The PM reviews against the checks it wrote at the start. It doesn't write code, and it only asks you what it can't decide."
+          }
+        }
+      ]
+    },
+    {
+      "title": "Set it up",
+      "lessons": [
+        { "id": "03-pm-brief", "title": "Write the PM's brief", "minutes": 8 },
+        { "id": "04-coder", "title": "Bring in the coder", "minutes": 5 },
+        { "id": "05-kickoff", "title": "Start a session", "minutes": 5 }
+      ]
+    },
+    {
+      "title": "Run it",
+      "lessons": [
+        { "id": "06-checking-in", "title": "Checking in", "minutes": 4 },
+        {
+          "id": "07-going-wrong",
+          "title": "When it goes wrong",
+          "minutes": 6,
+          "quiz": {
+            "question": "Two hours in, nothing has passed review and the PM keeps asking for more. What's the likely cause?",
+            "options": [
+              "The coder is too slow",
+              "The checks are vague, so nothing can pass them",
+              "The PM needs a bigger model"
+            ],
+            "answer": 1,
+            "why": "A loop that doesn't finish almost always means the checks can't be met. Tighten them so each one is something anyone could verify."
+          }
+        },
+        { "id": "08-exercise", "title": "Exercise: your first two-hour run", "minutes": 5 }
+      ]
+    }
+  ]
+}

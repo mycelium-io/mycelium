@@ -1,0 +1,35 @@
+{
+  "order": 4,
+  "title": "GitHub and the board",
+  "tagline": "What lives in GitHub, what lives on the board, and how work moves between them.",
+  "level": "Next",
+  "outcomes": [
+    "Decide where a piece of work belongs",
+    "Work a GitHub issue in a room",
+    "Move a task to GitHub when it turns out to matter"
+  ],
+  "modules": [
+    {
+      "title": "GitHub and the board",
+      "lessons": [
+        {
+          "id": "01-what-lives-where",
+          "title": "What lives where",
+          "minutes": 3,
+          "quiz": {
+            "question": "A flaky test needs fixing this afternoon. Where does it go?",
+            "options": [
+              "A GitHub issue, so it's tracked",
+              "A task on the board: it's work happening now, done in an hour",
+              "Both"
+            ],
+            "answer": 1,
+            "why": "GitHub is for what has to outlast the work. A ten-minute fix is work happening now, so it's a task on the board."
+          }
+        },
+        { "id": "02-an-issue", "title": "Work a GitHub issue in a room", "minutes": 4 },
+        { "id": "03-the-other-way", "title": "When a task should become an issue", "minutes": 3 }
+      ]
+    }
+  ]
+}

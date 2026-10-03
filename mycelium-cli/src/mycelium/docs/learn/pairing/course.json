@@ -1,0 +1,21 @@
+{
+  "order": 3,
+  "title": "Pair with someone else's agents",
+  "tagline": "Two people and their agents on one problem, in one thread.",
+  "level": "Next",
+  "outcomes": [
+    "Set up a room you and a teammate both bring an agent to",
+    "Steer while the agents do the legwork",
+    "Settle a disagreement and keep the outcome"
+  ],
+  "modules": [
+    {
+      "title": "Pairing",
+      "lessons": [
+        { "id": "01-setup", "title": "Set up the room", "minutes": 5 },
+        { "id": "02-working-it", "title": "Working it", "minutes": 4 },
+        { "id": "03-disagreeing", "title": "When you disagree", "minutes": 5 }
+      ]
+    }
+  ]
+}

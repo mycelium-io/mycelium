@@ -1,0 +1,35 @@
+{
+  "order": 2,
+  "title": "Side quests without stepping on toes",
+  "tagline": "Small tasks that come up while the main work goes on, each in its own worktree.",
+  "level": "Next",
+  "outcomes": [
+    "Hand off small tasks without interrupting a pair",
+    "Give each one its own git worktree and branch",
+    "Clean up when it's merged"
+  ],
+  "modules": [
+    {
+      "title": "Side quests",
+      "lessons": [
+        { "id": "01-why", "title": "Why side quests get in the way", "minutes": 3 },
+        { "id": "02-one-task-each", "title": "One task each", "minutes": 3 },
+        {
+          "id": "03-worktrees",
+          "title": "A worktree for each",
+          "minutes": 6,
+          "quiz": {
+            "question": "Why give a side quest its own worktree instead of the coder's checkout?",
+            "options": [
+              "It runs faster",
+              "Two agents in one checkout switch branches and commit each other's half-finished changes",
+              "Mycelium requires it"
+            ],
+            "answer": 1,
+            "why": "A worktree is its own folder on its own branch, so the side quest can't touch the pair's work, and it lands as its own small pull request."
+          }
+        }
+      ]
+    }
+  ]
+}
