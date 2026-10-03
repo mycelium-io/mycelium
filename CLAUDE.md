@@ -68,11 +68,13 @@ mycelium-promo/     The product demo: one shotkit take of the real app
                     with its sound: the drone in `audio/score.mjs` under the
                     take's clicks and keys, mixed by shotkit (`--quick` for the
                     flat, silent flow alone; `audio/build.mjs` re-mixes).
-                    The README + docs/index.html embed the MP4 via a
-                    `user-attachments/assets/...` URL; these only auto-render
-                    inline when uploaded via GitHub's web drag-drop (gh CLI has
-                    no equivalent). After re-recording, drag the new MP4 into a
-                    PR comment to mint a fresh URL, then swap it into both embeds.
+                    The docs site plays it from `docs/demo/mycelium-demo.mp4`,
+                    committed through Git LFS like every video under `docs/`
+                    (`.gitattributes`); copy a new take there. The README is
+                    the one embed that can't use it: GitHub plays a README
+                    video inline only from a `user-attachments/assets/...` URL,
+                    minted by dragging the MP4 into a PR comment in the browser
+                    (gh CLI has no equivalent), so swap that URL in by hand.
 ```
 
 ## Development
@@ -833,6 +835,14 @@ is no litellm dependency.
   `docs/` and a sibling splash checkout (`MYCELIUM_SPLASH_DIR`); a person
   looks at them and opens the PRs. There is no workflow that opens pull
   requests on its own.
+- **The docs site is the latest stable release's, not main's.** Pages
+  publishes `docs/` from a workflow (`pages.yml`) that `release.yml` calls
+  once a stable release is out, at its tag, so the site never documents what
+  no user can install yet (and `install.sh`, served from it, matches the
+  release it installs). A docs change merged to main goes live with the next
+  release; `gh workflow run pages.yml -f ref=<ref>` redeploys by hand for a
+  fix that can't wait. Videos under `docs/` are Git LFS objects, which is
+  why it is a workflow: Pages serves a branch's LFS pointers, not the files.
 
 ## Local development
 

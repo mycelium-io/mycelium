@@ -413,6 +413,20 @@ jobs:
             mycelium-cli/dist/binaries/checksums.txt
           fail_on_unmatched_files: true
 
+  # The docs site moves with stable releases only, so it never describes
+  # something a user can't install yet.
+  publish-docs:
+    needs: [detect-release-type, build-and-release]
+    if: needs.detect-release-type.outputs.is_prerelease == 'false'
+    name: Publish the docs site
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml
+    with:
+      ref: ${{ github.ref_name }}
+
   update-tap:
     needs: [detect-release-type, build-and-release]
     if: needs.detect-release-type.outputs.is_prerelease == 'false'

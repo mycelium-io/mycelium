@@ -50,6 +50,8 @@ The release pipeline's "promote to latest" steps (Docker `:latest` tags, GH "Lat
 
 5. **Create GitHub release** — The `release.yml` workflow handles this automatically (via `softprops/action-gh-release`), including setting `prerelease: true` for preview tags. No manual `gh release create` needed.
 
+   A stable release also publishes the docs site from its tag (the `Publish the docs site` job, `pages.yml`); a preview does not.
+
    Wait for the workflow to finish (`gh run watch` or `gh run list --workflow=release.yml --limit 1`). If it fails, fix and re-run before posting any notifications.
 
 6. **Webex notification** — Invoke `/webex` (no confirmation needed). Behavior depends on whether this is a stable or preview release.

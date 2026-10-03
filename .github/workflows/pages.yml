@@ -1,0 +1,72 @@
+name: Docs site
+
+# The docs site is what a stable release says, never what main says between
+# releases: release.yml calls this once the release is published, with the
+# release's tag. Run it by hand to redeploy (the latest stable release by
+# default, or any ref, for a fix to install.sh that can't wait).
+#
+# Videos under docs/ are Git LFS objects, which Pages never serves from a
+# branch, so the site is checked out with LFS and uploaded as an artifact.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Tag or branch to publish
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Tag or branch to publish (empty for the latest stable release)
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Package the docs site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pick the ref
+        id: ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ inputs.ref }}
+        run: |
+          if [ -z "$REF" ]; then
+            REF=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "→ publishing the docs at $REF"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.ref.outputs.ref }}
+          lfs: true
+
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs
+
+  deploy:
+    name: Deploy the docs site
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
