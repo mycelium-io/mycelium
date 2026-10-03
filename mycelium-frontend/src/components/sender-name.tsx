@@ -4,6 +4,7 @@
 "use client";
 
 import { HighlightText } from "@/components/ui/highlight-text";
+import type { Needles } from "@/lib/chat-search";
 import { nameOf, useNames } from "@/lib/people";
 
 /**
@@ -20,7 +21,7 @@ export function SenderName({
   tag,
 }: {
   handle: string;
-  highlight?: { query: string; active: boolean };
+  highlight?: { query: Needles; active: boolean };
   tag?: string;
 }) {
   const name = nameOf(useNames(), handle);

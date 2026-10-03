@@ -1,0 +1,49 @@
+{
+  "_comment": "Frozen grammar for searching a room's messages (GET /rooms/{room}/messages/search, `mycelium room search`). The backend owns the grammar (fastapi-backend/app/services/message_search.py over facet_query.py); the CLI carries a copy (mycelium-cli/src/mycelium/search_grammar.py) that cli_prose uses to check every search query written in the docs, skills, prompts and frontend strings. A unit test on each side asserts against this file, so a field can't be documented that the hub does not answer.",
+  "version": 1,
+  "fields": [
+    "from",
+    "to",
+    "mentions",
+    "task",
+    "in",
+    "type",
+    "kind",
+    "status",
+    "stance",
+    "step",
+    "is",
+    "has",
+    "day",
+    "thread"
+  ],
+  "aliases": {
+    "sender": "from",
+    "by": "from",
+    "author": "from",
+    "recipient": "to",
+    "mention": "mentions",
+    "row": "task",
+    "episode": "thread",
+    "date": "day"
+  },
+  "at_field": "from",
+  "time_keys": {
+    "after": "after",
+    "since": "after",
+    "before": "before",
+    "until": "before",
+    "on": "on"
+  },
+  "sorts": [
+    "newest",
+    "oldest",
+    "relevance"
+  ],
+  "closed_values": {
+    "in": ["channel", "thread"],
+    "is": ["edited", "conductor"],
+    "has": ["mention", "link", "memory", "code", "scores"],
+    "stance": ["accept", "reject"]
+  }
+}

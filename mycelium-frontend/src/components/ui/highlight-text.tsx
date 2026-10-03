@@ -4,7 +4,7 @@
 "use client";
 
 import React from "react";
-import { splitOnMatches } from "@/lib/chat-search";
+import { splitOnMatches, type Needles } from "@/lib/chat-search";
 
 /** The one mark the app draws for a find hit.
  *
@@ -17,7 +17,8 @@ const REST = `${MARK} bg-yellow/25`;
 const ACTIVE = `${MARK} bg-yellow/60 ring-1 ring-yellow/70`;
 
 export interface Highlight {
-  query: string;
+  /** The text to mark: one string, or every word and phrase of a query. */
+  query: Needles;
   /** True on the occurrence run the find bar has stepped to. */
   active?: boolean;
 }
@@ -27,7 +28,7 @@ export interface Highlight {
  *  Returns the string untouched when there is nothing to mark, so a message
  *  with no hit renders exactly the nodes it rendered before find was opened. */
 export function highlightText(text: string, highlight?: Highlight): React.ReactNode {
-  if (!highlight?.query || !text) return text;
+  if (!highlight?.query || highlight.query.length === 0 || !text) return text;
   const segments = splitOnMatches(text, highlight.query);
   if (!segments.some(s => s.match)) return text;
   return segments.map((segment, i) =>
@@ -43,11 +44,18 @@ export function highlightText(text: string, highlight?: Highlight): React.ReactN
 
 /** `highlightText` bound to one query, stable while that query is. */
 export function useHighlighter(highlight?: Highlight): (text: string) => React.ReactNode {
-  const query = highlight?.query ?? "";
+  // Keyed by the needles' text, so a fresh array holding the same words is
+  // the same highlighter.
+  const raw = highlight?.query ?? "";
+  const key = typeof raw === "string" ? raw : raw.join("\n");
   const active = highlight?.active ?? false;
   return React.useCallback(
-    (text: string) => (query ? highlightText(text, { query, active }) : text),
-    [query, active],
+    (text: string) => {
+      if (!key) return text;
+      const query = key.includes("\n") ? key.split("\n") : key;
+      return highlightText(text, { query, active });
+    },
+    [key, active],
   );
 }
 

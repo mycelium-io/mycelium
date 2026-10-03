@@ -9,7 +9,7 @@ import {
   fetchMessages,
   logFetchError,
 } from "@/lib/api";
-import { useRoomAgents, useRoomRowNames, useRoomThreads, type RowNaming, type ThreadOwner } from "@/lib/room-data";
+import { useMessageSearch, useRoomAgents, useRoomRowNames, useRoomThreads, type RowNaming, type ThreadOwner } from "@/lib/room-data";
 import { NOTICE_TYPE, PING_TYPE, isLiveEpisode, noticeLabel, threadShortId } from "@/lib/threads";
 import { CHAT_TYPES, parseEvent, type Event } from "@/lib/room-events";
 import {
@@ -25,6 +25,8 @@ import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { MessageBody } from "@/components/message-body";
 import { ConductorRow } from "@/components/task/conductor-row";
 import { ChatFindBar } from "@/components/chat-find-bar";
+import { ChatSearchResults } from "@/components/chat-search-results";
+import { freeText, hasScope, type MessageSearchHit } from "@/lib/message-search";
 import { ChatMinimap, type MinimapTick } from "@/components/chat-minimap";
 import { SenderName } from "@/components/sender-name";
 import { hasMatch, stepIndex } from "@/lib/chat-search";
@@ -56,6 +58,9 @@ const NO_TICKS: MinimapTick[] = [];
  *  A scan rather than a selector: an event id is synthesized, and escaping one
  *  into an attribute selector is a sharper edge than walking a handful of
  *  nodes. */
+/** How long typing in the find bar pauses before the room-wide search runs. */
+const SEARCH_SETTLE_MS = 200;
+
 function rowNode(root: HTMLElement | null, id: string): HTMLElement | null {
   if (!root) return null;
   for (const node of root.querySelectorAll<HTMLElement>("[data-event-id]")) {
@@ -550,6 +555,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // kind, or a bridged service as a2a.
   const agentTags = useMemo(() => new Map(agents.map((a) => [a.handle, agentTag(a)])), [agents]);
   const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle)), [agents]);
+  const searchHandles = useMemo(() => [...agentHandles], [agentHandles]);
   const agentOwners = useMemo(
     () => new Map(agents.filter((a) => a.owner).map((a) => [a.handle, a.owner as string])),
     [agents],
@@ -771,6 +777,36 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     onFocusConsumed?.();
   }, [focusMessageId, onFocusConsumed]);
 
+  // Arriving from the find bar's History: a hit said in the channel is
+  // revealed where it was said, reading back a page at a time until it is
+  // loaded; a hit said inside a task opens that task's thread.
+  const [seeking, setSeeking] = useState<string | null>(null);
+  useEffect(() => {
+    if (!seeking) return;
+    if (events.some((e) => e.messageId === seeking)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setHighlight(seeking);
+      setSeeking(null);
+      return;
+    }
+    if (older.current.exhausted) {
+      setSeeking(null);
+      return;
+    }
+    if (!loadingOlder) loadOlder();
+  }, [seeking, events, loadingOlder, loadOlder]);
+
+  const openHit = useCallback(
+    (hit: MessageSearchHit) => {
+      if (hit.thread && onOpenThread) {
+        onOpenThread(hit.thread);
+        return;
+      }
+      setSeeking(hit.message.id);
+    },
+    [onOpenThread],
+  );
+
   // ── Find in the channel ────────────────────────────────────────────────
   //
   // ⌘F is taken off the browser here rather than left alone, because the
@@ -790,15 +826,39 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   const findInput = useRef<HTMLInputElement>(null);
   const [ticks, setTicks] = useState<MinimapTick[]>(NO_TICKS);
 
-  const needle = query.trim();
+  // The query is the hub's grammar (`from:avery task:checkout apple`). What
+  // marks a loaded message is its words and phrases; the fields narrow the
+  // room-wide search behind the bar, and a query that is all fields steps
+  // through the loaded messages that search returned.
+  const needles = useMemo(() => freeText(query), [query]);
+  const needle = needles.length > 0 ? needles : null;
+  // The hub is asked once typing pauses, not per keystroke: a half-typed
+  // `fr` on its way to `from:` is not a query worth a round trip.
+  const [settled, setSettled] = useState("");
+  useEffect(() => {
+    const next = findOpen ? query : "";
+    const timer = setTimeout(() => setSettled(next), next ? SEARCH_SETTLE_MS : 0);
+    return () => clearTimeout(timer);
+  }, [findOpen, query]);
+  const search = useMessageSearch(roomName, settled);
+  const [historyOpen, setHistoryOpen] = useState(true);
+  const serverHits = useMemo(
+    () => new Set((search.result?.hits ?? []).map((h) => h.message.id)),
+    [search.result],
+  );
   const matches = useMemo(() => {
-    if (!findOpen || !needle) return NO_MATCHES;
+    if (!findOpen || !query.trim()) return NO_MATCHES;
     // System notices are the feed's own narration, not what anyone said, and
     // several carry an envelope rather than prose. Find searches messages.
-    return visible
-      .filter(e => !SYSTEM_TYPES.has(e.type) && (hasMatch(e.content, needle) || hasMatch(e.sender, needle)))
-      .map(e => e.id);
-  }, [findOpen, needle, visible]);
+    const said = visible.filter(e => !SYSTEM_TYPES.has(e.type));
+    // Words alone are matched here, at once. Once a field narrows the query,
+    // only the hub can say which messages pass it, so stepping walks the
+    // loaded messages its answer named.
+    if (!needle || hasScope(query)) {
+      return said.filter(e => e.messageId !== null && serverHits.has(e.messageId)).map(e => e.id);
+    }
+    return said.filter(e => hasMatch(e.content, needle) || hasMatch(e.sender, needle)).map(e => e.id);
+  }, [findOpen, query, needle, serverHits, visible]);
 
   const matchSet = useMemo(() => new Set(matches), [matches]);
   // Resolved at read time rather than corrected in an effect, so a message
@@ -1032,9 +1092,33 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
           onClose={closeFind}
           inputRef={findInput}
           partial={!reachedStart}
+          history={{
+            total: search.result?.total ?? null,
+            loading: search.loading,
+            failed: Boolean(search.error),
+            open: historyOpen,
+            onToggle: () => setHistoryOpen((o) => !o),
+            problems: search.result?.scope.problems ?? [],
+          }}
+          seen={search.result?.facets}
+          handles={searchHandles}
         />
       )}
-      {historyLoaded && (
+      {findOpen && historyOpen && query.trim() && (
+        <ChatSearchResults
+          query={query}
+          onQueryChange={value => {
+            setQuery(value);
+            setStanding(null);
+          }}
+          result={search.result}
+          loading={search.loading}
+          failed={Boolean(search.error)}
+          needles={needles}
+          onOpenHit={openHit}
+        />
+      )}
+      {historyLoaded && !(findOpen && historyOpen && query.trim()) && (
         <ActivityRail items={activity} onOpenThread={onOpenThread} onOpenMemory={onOpenMemory} />
       )}
       <div className="relative flex-1 min-h-0">
@@ -1291,7 +1375,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
               const owner = isAgent ? agentOwners.get(ev.sender) : undefined;
               // The row's own share of the open find: whether to mark its prose
               // at all, and whether it is the hit being stood on.
-              const hit = needle && matchSet.has(ev.id) ? { query: needle, active: ev.id === activeId } : undefined;
+              const hit = matchSet.has(ev.id) ? { query: needles, active: ev.id === activeId } : undefined;
               return (
                 <MessageMenu key={ev.id} roomName={roomName} messageId={ev.messageId} content={ev.content} sender={ev.sender}>
                 <div

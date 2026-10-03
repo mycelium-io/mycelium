@@ -567,6 +567,22 @@ is no litellm dependency.
   person's turn as Approve/Block. The flow is parsed with the hub's own `Protocol` model before anything
   is written, because the hub does not check a `protocols/<name>` memory on save:
   a bad one is silently left out of the room's flows.
+- **A room's messages are searched by any field, with counts to narrow by.**
+  `GET /rooms/{room}/messages/search` reads the whole history (not a page)
+  with one grammar: words, `"phrases"`, `-word`, `field:value` (`from:` `to:`
+  `mentions:` `task:` `in:` `stance:` `has:` `is:` `type:` `kind:` `step:`
+  `day:` `thread:`), `after:`/`before:`/`on:` and `sort:`. The grammar and the
+  engine are document-agnostic (`app/services/facet_query.py`); messages
+  declare their fields in `message_search.py`, and memories can declare
+  theirs on the same engine. Facet counts are disjunctive (a field's counts
+  ignore its own clauses). `contracts/message-search.json` freezes the
+  fields and closed values; the hub, the CLI's copy (`search_grammar.py`,
+  behind `mycelium room search`) and the frontend's (`lib/message-search.ts`)
+  assert against it, and `cli_prose` checks every search query written in
+  the docs and prompts against it. The channel's ⌘F speaks the same grammar
+  with the composer's hints (`composer-hints.tsx`), and its History panel
+  lists every hit with the counts as switches. The wake digest names the
+  command in one line.
 - **Three composer sigils, one mechanism.** The chat composer
   (`room-chat-box.tsx`) autocompletes `@` → agents, `[[` → room memories (inserts
   `[[key]]`, which resolves to `myc://` and is clickable in chat), and `/` → the

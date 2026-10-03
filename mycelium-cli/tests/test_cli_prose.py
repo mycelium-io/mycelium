@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from mycelium.cli_prose import Node, check, from_markdown, from_python, repo_root, scan
+from mycelium.cli_prose import Node, check, from_markdown, from_python, repo_root, scan, tree
 
 CLI = Node(
     "mycelium",
@@ -99,3 +99,45 @@ def f(room):
     assert ("mycelium docs ls", True) in found
     assert any(c.startswith("mycelium board send t3 --room <value>") for c, _ in found)
     assert not any("plan" in c for c, _ in found)
+
+
+_REAL = tree()
+
+
+@pytest.mark.parametrize(
+    ("command", "problem"),
+    [
+        ('mycelium room search "from:avery after:2d apple"', None),
+        ("mycelium room search refund --task checkout --stance reject", None),
+        ('mycelium room search "<query>" --in channel|thread', None),
+        ("mycelium room search https://stripe.test/x", None),  # a URL is text
+        ("mycelium room search from:<handle> on:<day>", None),
+        (
+            'mycelium room search "frm:avery"',
+            "mycelium room search query: frm:avery: no field 'frm' (fields: from, to, "
+            "mentions, task, in, type, kind, status, stance, step, is, has, day, thread)",
+        ),
+        (
+            "mycelium room search has:links",
+            "mycelium room search query: has:links: has is one of "
+            "mention, link, memory, code, scores",
+        ),
+        (
+            "mycelium room search apple --stance maybe",
+            "mycelium room search query: stance:maybe: stance is one of accept, reject",
+        ),
+        (
+            "mycelium room search --since lunchtime",
+            "mycelium room search query: after:lunchtime: not a time "
+            "(an ISO date, an age like 2h, today)",
+        ),
+        (
+            "mycelium room search sort:loudest",
+            "mycelium room search query: sort:loudest: sort is one of newest, oldest, relevance",
+        ),
+    ],
+)
+def test_a_search_query_is_read_against_the_grammar(command: str, problem: str | None) -> None:
+    """A field the hub does not answer would be searched quietly as text, so
+    a query written in the docs or a prompt is checked as a query."""
+    assert check(command, _REAL, code=True) == problem

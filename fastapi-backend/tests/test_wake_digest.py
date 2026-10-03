@@ -108,6 +108,10 @@ def test_a_mention_digest_says_why_what_changed_and_what_asked():
         in digest
     )
     assert '(lands in "Fix the receipt tax")' in digest
+    # The last line says the whole room can be searched, not only paged.
+    assert digest.splitlines()[-1].startswith(
+        'Find:   mycelium room search "<words> from:<handle> task:<row> after:1d" --room digest-room'
+    )
 
 
 def test_a_room_mention_replies_into_the_room():
