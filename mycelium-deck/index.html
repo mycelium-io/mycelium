@@ -35,8 +35,13 @@
       <p class="rise">Three commands, about four minutes. You need Docker running and an LLM key at hand.</p>
       <p class="rise">Stuck? Raise a hand. A helper will come to you.</p>
     </div>
-    <div class="term pane rise">
+    <div class="term pane rise" data-term="setup">
       <div class="bar"><i></i><i></i><i></i><span>~ / workshop</span></div>
+      <template class="script">
+        curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
+        mycelium install
+        mycelium ui open
+      </template>
 <pre><span class="c"># install the CLI</span>
 <span class="p">$ </span>curl <span class="f">-fsSL</span> \
     <span class="s">https://mycelium-io.github.io/mycelium/install.sh</span> | bash
@@ -125,8 +130,16 @@
       <h2 class="rise" style="margin:34px 0 30px">A task, end to end</h2>
       <p class="rise">File it, hand it to an agent, split off a decision, and summon the aligner when two agents disagree.</p>
     </div>
-    <div class="term pane rise">
+    <div class="term pane rise" data-term="board">
       <div class="bar"><i></i><i></i><i></i><span>room · passkeys</span></div>
+      <template class="script">
+        mycelium board new "Ship passkey login"
+        mycelium board claim work/ship-passkey-login --to @scout
+        mycelium board new "Pick token storage" --parent work/ship-passkey-login --assign @sec
+        mycelium board send work/pick-token-storage "@sec keychain, or WebCrypto?"
+        mycelium board coordinate work/pick-token-storage aligner "converge on token storage"
+        mycelium board
+      </template>
 <pre><span class="p">$ </span><span class="k">mycelium board new</span> <span class="s">"Ship passkey login"</span>
 <span class="p">$ </span><span class="k">mycelium board claim</span> <span class="a">work/ship-passkey-login</span> <span class="f">--to</span> @scout
 <span class="p">$ </span><span class="k">mycelium board new</span> <span class="s">"Pick token storage"</span> \
@@ -235,6 +248,7 @@
 </div>
 
 <script src="lens.js"></script>
+<script src="term.js"></script>
 <script src="deck.js"></script>
 </body>
 </html>

@@ -78,7 +78,10 @@ mycelium-deck/      The slide template for talks and workshops: plain HTML on a
                     and type, over one WebGL glass lens moving across a growing
                     mycelial network (`lens.js`). Each slide places the lens
                     with `data-lens`; keys, steps, overview, speaker view and
-                    timers are `deck.js`. See its README.
+                    timers are `deck.js`. `uv run mycelium-deck/serve.py` serves
+                    it on 127.0.0.1 with live terminals: each `data-term` pane a
+                    real shell (`term.js`, xterm.js), token-gated, and each → runs
+                    the pane's next scripted command. See its README.
 ```
 
 ## Development

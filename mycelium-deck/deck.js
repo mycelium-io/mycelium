@@ -83,6 +83,7 @@
     document.title = `${s.dataset.title || 'Slide ' + (index + 1)} · ${talk || 'Mycelium'}`;
     if (changed && window.Lens) window.Lens.grow(3);
     if (started === null && index > 0) started = Date.now();
+    window.DeckTerm?.activate(s);
     pushLens();
     syncSpeaker();
   }
@@ -90,6 +91,8 @@
   function next() {
     const hidden = steps(slides[index]).filter(e => !e.classList.contains('shown'));
     if (hidden.length) { hidden[0].classList.add('shown'); markCurrent(slides[index]); pushLens(); syncSpeaker(); return; }
+    // A live terminal's scripted commands run one per press, like steps.
+    if (window.DeckTerm?.typeNext(slides[index])) { syncSpeaker(); return; }
     go(index + 1);
   }
   function prev() {
@@ -125,6 +128,7 @@
     document.documentElement.dataset.theme = t;
     store.set('mycelium-deck-theme', t);
     if (window.Lens) window.Lens.theme(t !== 'light');
+    window.DeckTerm?.theme?.();
   }
 
   // ── Timers: click to start or pause, double-click to reset ──
@@ -165,7 +169,7 @@
     speaker.postMessage({
       kind: 'state', index, total: slides.length, title: titleOf(s), notes: notesOf(s),
       next: titleOf(slides[index + 1]) || 'End of deck', started,
-      steps: st.length ? `${st.filter(e => e.classList.contains('shown')).length} / ${st.length} steps` : '',
+      steps: [st.length ? `${st.filter(e => e.classList.contains('shown')).length} / ${st.length} steps` : '', window.DeckTerm?.progress(s) || ''].filter(Boolean).join(' · '),
     }, '*');
   }
   function openSpeaker() {
@@ -190,6 +194,7 @@
   let typed = '';
   addEventListener('keydown', e => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (window.DeckTerm?.focused()) return;   // keys belong to the shell until Esc
     const k = e.key;
     if (/^[0-9]$/.test(k)) { typed += k; gotoBox.textContent = `Go to ${typed}`; gotoBox.classList.add('open'); return; }
     if (k === 'Enter' && typed) { go(parseInt(typed, 10) - 1); typed = ''; gotoBox.classList.remove('open'); return; }

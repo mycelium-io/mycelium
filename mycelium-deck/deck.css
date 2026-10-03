@@ -221,6 +221,12 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 .term pre { margin: 0; padding: 38px 44px 46px; font: 400 27px/1.75 var(--mono); white-space: pre-wrap; }
 .layout-terminal.dense .copy { width: 440px; }
 .layout-terminal.dense .term pre { font-size: 24px; line-height: 1.7; }
+.term .xterm-wrap { padding: 32px 40px 38px; }
+.term .xterm-host .xterm { height: 100%; }
+.term .xterm-host .xterm-viewport { background: transparent !important; }
+.term .live-dot { margin-left: auto; font: 500 17px var(--mono); font-style: normal; letter-spacing: 0.16em; text-transform: uppercase; color: var(--green); display: inline-flex; align-items: center; gap: 10px; }
+.term .live-dot::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor; }
+.term.live:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
 .term .c { color: var(--code-comment); }
 .term .p { color: var(--accent2); user-select: none; }
 .term .k { color: var(--code-cmd); }
