@@ -342,6 +342,26 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 .layout-trio .line.step { opacity: 0.08; }
 .layout-trio .line.step.shown { opacity: 1; }
 
+/* ── Layout: scene (a living diagram, words kept to a heading) ── */
+.layout-scene { isolation: isolate; }   /* the canvas sits behind the slide's words, over the lens */
+.layout-scene canvas.scene { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; pointer-events: none; z-index: -1; }
+.layout-scene h2 { margin-top: 30px; font-size: 96px; }
+.swap { position: relative; height: 130px; }
+.swap [data-at] { position: absolute; left: 0; top: 0; white-space: nowrap; opacity: 0; transform: translateY(14px); filter: blur(6px); transition: opacity 0.5s, transform 0.5s, filter 0.5s; }
+.slide:not([data-stage]) .swap [data-at="0"],
+.slide[data-stage="0"] .swap [data-at="0"], .slide[data-stage="1"] .swap [data-at="1"],
+.slide[data-stage="2"] .swap [data-at="2"], .slide[data-stage="3"] .swap [data-at="3"] { opacity: 1; transform: none; filter: none; }
+.step.beat { display: none; }
+.stages { position: absolute; left: 150px; right: 150px; bottom: 140px; margin: 0; padding: 0; list-style: none; display: flex; justify-content: center; gap: 70px; font: italic 600 44px var(--display); color: var(--faint); }
+.stages li { transition: color 0.4s; }
+.stages .step { opacity: 1; transform: none; filter: none; }
+.layout-scene[data-stage="0"] .stages li:first-child, .stages .step.current { color: var(--accent); }
+.stages .step.shown:not(.current), .layout-scene:not([data-stage="0"]) .stages li:first-child { color: var(--muted); }
+.veil { position: absolute; left: 180px; top: 340px; width: 920px; height: 560px; border-radius: 28px; transition: backdrop-filter 0.8s, background 0.8s, border-color 0.8s; backdrop-filter: blur(26px) saturate(1.2); -webkit-backdrop-filter: blur(26px) saturate(1.2); }
+.veil span { position: absolute; left: 28px; top: 22px; font: 500 19px var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); opacity: 0; transition: opacity 0.6s; }
+.slide[data-stage="1"] .veil { backdrop-filter: none; -webkit-backdrop-filter: none; background: transparent; border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.slide[data-stage="1"] .veil span { opacity: 1; color: var(--accent); }
+
 /* ── Layout: close ── */
 .layout-close { align-items: center; justify-content: center; text-align: center; }
 .layout-close .display { font-size: 220px; }

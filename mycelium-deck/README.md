@@ -127,6 +127,37 @@ with the window and is still there when you come back. U or ⌘/Ctrl-Z
 undoes, C clears the slide, and D or Esc puts the pen down. Ink isn't
 printed.
 
+## Scenes: show, don't tell
+
+A scene is a small living diagram drawn in the deck's glass: beads for
+agents and people, hyphae between them, pulses for messages. Put
+`<canvas class="scene" data-scene="name">` on a `layout-scene` slide and
+add one empty `<i class="step beat"></i>` for each stage after the first:
+each press moves the scene on, like any other step, and arriving backwards
+shows its last stage. The slide carries `data-stage`, so a heading can
+change with it:
+
+```html
+<div class="swap">
+  <h2 data-at="0">A roleplay</h2>
+  <h2 data-at="1">Mycelium</h2>
+</div>
+```
+
+The scenes, in `scenes.js`:
+
+| | stages |
+|---|---|
+| `lifecycle` | one assistant that keeps everything → workers that work, die and compact into memory → new workers that read it first |
+| `scale` | you and one agent → three in parallel → three repeatable chains → a swarm (with `.stages` words as its steps) |
+| `roleplay` | an orchestrator passing turns to agent a and b → agents linking, passing work on and invoking helpers themselves |
+| `lanes` | everything in one conversation → the chat apart, each task's thread in its own lane |
+| `trust` | a swarm behind frosted glass (`.veil`) with outcomes coming out → the glass clears to show the agent pane |
+
+A new scene is a function in `defs` that returns `frame(draw, dt, stage)`
+(and optionally `stage(next, prev)`), drawing in stage pixels with the
+helpers `bead`, `ring`, `edge`, `pulse` and `label`.
+
 The URL hash is the slide number (`index.html#7`). To make a PDF, print from
 Chrome with background graphics on. Each slide prints as one 1920×1080 page
 with a still lens drawn in CSS.
@@ -181,6 +212,7 @@ Copy the one closest to what you need.
 | `term.js` | live terminals: xterm.js panes over the shells `serve.py` runs |
 | `app.js` | live app panes: the Mycelium app in a frame, its screenshot until it answers, with smooth zoom |
 | `ink.js` | drawing over the deck: pen, highlighter and laser ink, kept per slide |
+| `scenes.js` | the living diagrams: one canvas per scene slide, moved on by the slide's steps |
 | `serve.py` | serves the deck on 127.0.0.1 and runs a shell on a pseudo-terminal per pane |
 
 With `prefers-reduced-motion`, the network is drawn once and the lens jumps

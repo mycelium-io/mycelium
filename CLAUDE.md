@@ -84,7 +84,9 @@ mycelium-deck/      The slide template for talks and workshops: plain HTML on a
                     the pane's next scripted command. A `data-app` pane frames the
                     real app (`app.js`, found at `?app=`, :8080 or :3717), its
                     screenshot until the app answers, zooming smoothly at the
-                    pointer. D draws over any slide (`ink.js`). See its README.
+                    pointer. D draws over any slide (`ink.js`). Scene slides show rather
+                    than tell: living diagrams moved on by the clicker
+                    (`scenes.js`). See its README.
 ```
 
 ## Development

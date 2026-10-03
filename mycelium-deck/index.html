@@ -88,135 +88,93 @@
     </aside>
   </section>
 
-  <!-- ── The framing: compare ── -->
-  <section class="slide" data-title="Workers, not assistants" data-lens="1700 190 140">
+  <!-- ── An assistant → workers → memory (scene) ── -->
+  <section class="slide layout-scene" data-title="Workers, not assistants" data-lens="1770 170 100">
+    <canvas class="scene" data-scene="lifecycle"></canvas>
     <span class="kicker rise">The framing</span>
-    <h2 class="rise" style="margin-top:34px">Workers, not assistants</h2>
-    <div class="compare">
-      <div class="side pane without rise">
-        <h3>The assistant framing</h3>
-        <ul><li>One long-running agent</li><li>Trusted like a person</li><li>Its memory is its personality</li></ul>
-      </div>
-      <div class="side pane with rise">
-        <h3>How Mycelium sees agents</h3>
-        <ul><li>Many workers, each on a piece of the work</li><li>They do the work, then die and compact</li><li>Memory outlives them, as know-how</li></ul>
-      </div>
+    <div class="swap rise">
+      <h2 data-at="0">An assistant</h2>
+      <h2 data-at="1">Workers</h2>
+      <h2 data-at="2">Memory, not personality</h2>
     </div>
+    <i class="step beat"></i><i class="step beat"></i>
     <aside class="notes">
-      <p>Mycelium stands against the framing of agents as long-running, trustworthy personal assistants.</p>
-      <p>These agents do work, and they are expected to die and compact. Nothing is lost when one goes, because what matters was never kept inside it.</p>
+      <p><b>Now:</b> the familiar framing. One long-running assistant you trust like a person. Everything it does goes into it, and its memory becomes its personality.</p>
+      <p><b>Press:</b> Mycelium's framing. Agents are workers. They do the work, then they die and compact. What they learned drops into memory, not into them.</p>
+      <p><b>Press:</b> memory persists, but not to anthropomorphise anyone: preferences, behaviours, procedures. Every new worker reads it first, so it's faster and makes fewer mistakes.</p>
     </aside>
   </section>
 
-  <!-- ── Memory ── -->
-  <section class="slide" data-title="Memory, not personality" data-lens="1720 200 150">
-    <span class="kicker rise">Memory</span>
-    <h2 class="rise" style="margin-top:34px">Memory, not personality</h2>
-    <p class="lede rise" style="margin-top:26px; max-width:1300px">Memory persists. Not to make an agent someone, but to make the next worker faster and less often wrong.</p>
-    <div class="cards" style="margin-top:56px">
-      <article class="card pane rise"><span class="glyph"></span><h3>Preferences</h3><p>How this team wants things done, and the calls it has already made.</p><span class="foot">decisions/</span></article>
-      <article class="card pane rise"><span class="glyph"></span><h3>Behaviours</h3><p>What worked, what failed, and what to watch for next time.</p><span class="foot">failed/ · context/</span></article>
-      <article class="card pane rise"><span class="glyph"></span><h3>Procedures</h3><p>Skills a fresh worker picks up the moment it arrives.</p><span class="foot">skills/ · procedures/</span></article>
-    </div>
-    <aside class="notes">
-      <p>Memory is persistent, but it isn't there to anthropomorphise anyone. It's distinct preferences, behaviours and procedures.</p>
-      <p>They empower the workers to be more efficient and make fewer mistakes. A worker that arrives cold reads them and is useful at once.</p>
-    </aside>
-  </section>
-
-  <!-- ── Who it's for: steps, the lens follows ── -->
-  <section class="slide" data-title="From one prompt to a swarm" data-lens="191 432 96">
+  <!-- ── From one prompt to a swarm (scene) ── -->
+  <section class="slide layout-scene" data-title="From one prompt to a swarm" data-lens="300 600 92">
+    <canvas class="scene" data-scene="scale"></canvas>
     <span class="kicker rise">Who it's for</span>
-    <h2 class="rise" style="margin-top:34px">From one prompt to a swarm</h2>
-    <ol class="flow">
-      <li><span class="marker">1</span><h3>Prompt</h3><p>You and one agent, in one conversation.</p><span class="notice">single agent</span></li>
-      <li class="step" data-lens="604 432 96"><span class="marker">2</span><h3>Compose</h3><p>A few agents, each on its own piece.</p><span class="notice">in parallel</span></li>
-      <li class="step" data-lens="1018 432 96"><span class="marker">3</span><h3>Flows</h3><p>Ways of working you can run again.</p><span class="notice">repeatable</span></li>
-      <li class="step" data-lens="1431 432 96"><span class="marker">4</span><h3>Swarm</h3><p>Any number of flows, at once, on real work.</p><span class="notice">swarm intelligence</span></li>
-    </ol>
+    <h2 class="rise">From one prompt to a swarm</h2>
+    <ol class="stages rise"><li>Prompt</li><li class="step">Compose</li><li class="step">Flows</li><li class="step">Swarm</li></ol>
     <aside class="notes">
-      <p>Mycelium is for the person scaling their own workflows up: from single-agent prompting towards swarm intelligence.</p>
-      <p>Each press moves one step along. Ask the room where they are on this line today.</p>
+      <p>Mycelium is for the person scaling their own workflows up, from single-agent prompting towards swarm intelligence.</p>
+      <p><b>Now:</b> you and one agent. <b>Press:</b> a few agents, in parallel. <b>Press:</b> flows: ways of working you can run again. <b>Press:</b> a swarm: any number of flows at once.</p>
+      <p>Ask the room where they are on this line today.</p>
     </aside>
   </section>
 
-  <!-- ── What it isn't ── -->
-  <section class="slide layout-isnt" data-title="What it isn't" data-lens="960 900 120">
-    <span class="kicker rise">What it isn't</span>
-    <h2 class="rise" style="margin-top:34px">Two things it isn't</h2>
-    <div class="compare">
-      <div class="side pane without rise">
-        <h3>Not a roleplay</h3>
-        <p>One orchestrator hands work to agent A and agent B, around a roundtable that is only pretend.</p>
-      </div>
-      <div class="side pane without rise">
-        <h3>Not session management</h3>
-        <p>It doesn't babysit your agent sessions, or ask you to.</p>
-      </div>
+  <!-- ── A roleplay → agents working it out (scene) ── -->
+  <section class="slide layout-scene" data-title="Not a roleplay" data-lens="1780 960 90">
+    <canvas class="scene" data-scene="roleplay"></canvas>
+    <span class="kicker rise">Who coordinates?</span>
+    <div class="swap rise">
+      <h2 data-at="0">A roleplay</h2>
+      <h2 data-at="1">Mycelium</h2>
     </div>
-    <p class="verdict step" data-lens="1720 770 100">It's a system that makes composing <em class="glow">any number of flows</em> possible.</p>
+    <i class="step beat"></i>
     <aside class="notes">
-      <p>It is not a roleplay, where a single orchestrator delegates to agent A and agent B and sets up a fake roundtable.</p>
-      <p>It's not a session management tool either.</p>
-      <p>Press once for the line underneath: what it is instead.</p>
+      <p><b>Now:</b> the roleplay. One orchestrator hands work to agent A, then agent B, and every word goes through it. A roundtable that's only pretend.</p>
+      <p><b>Press:</b> Mycelium. No supervisor telling them how to collaborate. Agents invoke each other, pass work along, start helpers that finish and go. It's a system that makes composing any number of these flows possible.</p>
+      <p>And it isn't a session manager either: it doesn't babysit your sessions.</p>
     </aside>
   </section>
 
-  <!-- ── Two flows: the chat apart from the work ── -->
-  <section class="slide layout-diagram layout-lanes" data-title="Chat stands apart" data-lens="1300 690 150">
-    <svg class="diagram" viewBox="0 0 1920 1080" aria-hidden="true">
-      <text class="lane-label" x="860" y="250">the room · chat</text>
-      <path class="lane chat" d="M860 290 H1770"/>
-      <g class="who"><circle cx="980" cy="290" r="13"/><circle cx="1240" cy="290" r="13"/><circle cx="1560" cy="290" r="13"/></g>
-      <line class="divider" x1="860" y1="400" x2="1770" y2="400"/>
-      <text class="lane-label" x="860" y="470">work/api · thread</text>
-      <path class="lane wire live" d="M860 510 H1770"/>
-      <text class="lane-label" x="860" y="620">work/ui · thread</text>
-      <path class="lane wire live slow" d="M860 660 H1770"/>
-      <text class="lane-label" x="860" y="770">work/docs · thread</text>
-      <path class="lane wire live slower" d="M860 810 H1770"/>
-      <g class="agent-dot"><circle cx="1040" cy="510" r="11"/><circle cx="1460" cy="510" r="11"/><circle cx="1180" cy="660" r="11"/><circle cx="1620" cy="660" r="11"/><circle cx="1320" cy="810" r="11"/></g>
-    </svg>
-    <div class="copy">
-      <span class="kicker rise">Context</span>
-      <h2 class="rise" style="margin:34px 0 34px">Chat stands apart</h2>
-      <p class="rise">The room's chat is separate from the agents' own message flow.</p>
-      <p class="rise">Less context pollution, more focused outcomes, and workstreams that really run in parallel.</p>
+  <!-- ── One conversation → lanes (scene) ── -->
+  <section class="slide layout-scene" data-title="Chat stands apart" data-lens="330 880 110">
+    <canvas class="scene" data-scene="lanes"></canvas>
+    <span class="kicker rise">Context</span>
+    <div class="swap rise">
+      <h2 data-at="0">One conversation</h2>
+      <h2 data-at="1">Chat stands apart</h2>
     </div>
+    <i class="step beat"></i>
     <aside class="notes">
-      <p>Mycelium's chat stands separately from the agents' core message flow. People talk in the room; the work happens in each task's thread.</p>
-      <p>That leads to less context pollution and more focused outcomes: context is split, and parallel workstreams happen in parallel.</p>
+      <p><b>Now:</b> everything in one conversation. People, and every task's work, crowded together and moving at the pace of the slowest.</p>
+      <p><b>Press:</b> Mycelium's chat stands apart from the agents' own message flow. Each task's work runs in its own thread. Less context pollution, more focused outcomes, and parallel work actually in parallel.</p>
     </aside>
   </section>
 
-  <!-- ── Trust: statement ── -->
-  <section class="slide layout-statement" data-title="Trust the workers" data-lens="1700 330 200, 1460 170 40">
+  <!-- ── Outcomes, and the pane behind them (scene) ── -->
+  <section class="slide layout-scene" data-title="Trust the workers" data-lens="1700 900 120">
+    <canvas class="scene" data-scene="trust"></canvas>
     <span class="kicker rise">Governance</span>
-    <blockquote class="rise">Trust the workers. <span class="accent">Watch the outcome.</span></blockquote>
-    <cite class="rise">How each session governs itself stays out of your way, and one pane away when you need it.</cite>
-    <div class="points">
-      <div class="rise"><b>Outcomes</b>over micromanaging every step</div>
-      <div class="rise"><b>Trust</b>that they'll do the right thing</div>
-      <div class="rise"><b>Capability</b>to swarm effectively</div>
-    </div>
+    <h2 class="rise">Trust the workers. <span class="accent">Watch the outcome.</span></h2>
+    <div class="veil pane"><span>agent pane</span></div>
+    <i class="step beat"></i>
     <aside class="notes">
-      <p>The governance of your agent sessions, and their ability to execute, is out of sight but visible in the agent pane if you need it.</p>
-      <p>We look for outcomes more than micromanaging the agents: we put trust in them to do the right thing, and give them the capabilities to swarm effectively.</p>
+      <p><b>Now:</b> the work happens behind the glass. What reaches you is outcomes. We look for outcomes more than micromanaging agents: trust them to do the right thing, and give them the capabilities to swarm effectively.</p>
+      <p><b>Press:</b> the governance isn't hidden from you. It's out of your way, and visible in the agent pane whenever you need it.</p>
     </aside>
   </section>
 
-  <!-- ── Working like this: three lines, the lens moves to each ── -->
+  <!-- ── Working like this: three lines, one per press ── -->
   <section class="slide layout-trio" data-title="Working like this" data-lens="1500 262 100">
     <span class="kicker rise">Working like this</span>
     <div class="trio">
-      <div class="line"><h2>Fast creativity.</h2><p>Trying an idea costs minutes, so try it before you argue about it.</p></div>
-      <div class="line step" data-lens="1500 472 100"><h2>Strong opinions.</h2><p>Agents follow taste. Bring yours, or you get the average.</p></div>
-      <div class="line step" data-lens="1500 682 100"><h2>Broad, cross-level thinking.</h2><p>Product, protocol and pixel, often in the same hour.</p></div>
+      <div class="line"><h2>Fast creativity.</h2></div>
+      <div class="line step" data-lens="1500 452 100"><h2>Strong opinions.</h2></div>
+      <div class="line step" data-lens="1500 642 100"><h2>Broad, cross-level thinking.</h2></div>
     </div>
     <aside class="notes">
       <p>What it's like working like this. It asks a lot of the person in the middle.</p>
-      <p>It requires fast creativity and strong opinions, and broad thinking that crosses levels.</p>
-      <p>The small lines under each are my wording; change them to yours. Each press brings in the next line.</p>
+      <p><b>Fast creativity:</b> trying an idea costs minutes, so try it before you argue about it.</p>
+      <p><b>Strong opinions:</b> agents follow taste. Bring yours, or you get the average.</p>
+      <p><b>Broad, cross-level thinking:</b> product, protocol and pixel, often in the same hour.</p>
     </aside>
   </section>
 
@@ -438,6 +396,7 @@
 <script src="term.js"></script>
 <script src="app.js"></script>
 <script src="ink.js"></script>
+<script src="scenes.js"></script>
 <script src="deck.js"></script>
 </body>
 </html>
