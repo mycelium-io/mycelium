@@ -404,6 +404,19 @@ def test_credential_ls_lists_stored_agents() -> None:
     assert "s3cret" not in result.output
 
 
+def test_credential_ls_and_show_take_json_after_the_command() -> None:
+    agent_credentials.save_credential("release-agent", client_secret="s3cret")
+
+    listed = runner.invoke(app, ["agent", "credential", "ls", "--json"])
+    assert listed.exit_code == 0, listed.output
+    assert [c["handle"] for c in json.loads(listed.stdout)] == ["release-agent"]
+
+    shown = runner.invoke(app, ["agent", "credential", "show", "release-agent", "--json"])
+    assert shown.exit_code == 0, shown.output
+    assert json.loads(shown.stdout)["handle"] == "release-agent"
+    assert "s3cret" not in listed.output + shown.output
+
+
 def test_credential_rm_forgets_the_credential() -> None:
     agent_credentials.save_credential("release-agent", client_secret="s3cret")
 

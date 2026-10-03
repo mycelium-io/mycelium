@@ -20,13 +20,14 @@ and ``--file`` are folded into it before it runs. Exactly one of them is given.
 
 from __future__ import annotations
 
-import functools
 import inspect
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import typer
+
+from mycelium.cli_options import rewrite
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -83,26 +84,14 @@ def takes_text(
     """
 
     def decorate(fn: Callable[..., Any]) -> Callable[..., Any]:
-        signature = inspect.signature(fn, eval_str=True)
-        name = getattr(fn, "__name__", repr(fn))
-        if param not in signature.parameters:
-            msg = f"{name} has no parameter {param!r} to take text into"
-            raise TypeError(msg)
-        taken = {"--body", "-b", "--file", "-f"} & _declared(signature)
-        if taken:
-            msg = f"{name} already uses {', '.join(sorted(taken))}"
-            raise TypeError(msg)
-
-        params = []
-        for p in signature.parameters.values():
-            if p.name == param:
-                p = p.replace(  # noqa: PLW2901
-                    annotation=str | None,
-                    default=typer.Argument(
-                        None, help=f"{help} Or give it as --body or --file.", show_default=False
-                    ),
-                )
-            params.append(p)
+        argument = inspect.Parameter(
+            param,
+            inspect.Parameter.KEYWORD_ONLY,
+            annotation=str | None,
+            default=typer.Argument(
+                None, help=f"{help} Or give it as --body or --file.", show_default=False
+            ),
+        )
         options = [
             inspect.Parameter(
                 _BODY,
@@ -129,40 +118,12 @@ def takes_text(
                 ),
             ),
         ]
-        # Keyword-only parameters go last; a command's own **kwargs stays after them.
-        tail = [p for p in params if p.kind is inspect.Parameter.VAR_KEYWORD]
-        head = [p for p in params if p.kind is not inspect.Parameter.VAR_KEYWORD]
-        new_signature = signature.replace(parameters=[*_as_keywords(head), *options, *tail])
 
-        @functools.wraps(fn)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            body = kwargs.pop(_BODY, None)
-            file = kwargs.pop(_FILE, None)
-            bound = new_signature.bind_partial(*args, **kwargs)
-            bound.arguments[param] = resolve_text(bound.arguments.get(param), body, file, noun=noun)
-            return fn(**bound.arguments)
+        def before(kwargs: dict[str, Any], extras: dict[str, Any], _ctx: Any) -> None:
+            kwargs[param] = resolve_text(
+                kwargs.get(param), extras.get(_BODY), extras.get(_FILE), noun=noun
+            )
 
-        # What Typer reads to build the command (inspect.signature honors it).
-        wrapper.__signature__ = new_signature  # ty: ignore[unresolved-attribute]
-        wrapper.__annotations__ = {p.name: p.annotation for p in new_signature.parameters.values()}
-        return wrapper
+        return rewrite(fn, replace={param: argument}, add=options, before=before)
 
     return decorate
-
-
-def _as_keywords(params: list[inspect.Parameter]) -> list[inspect.Parameter]:
-    """Typer calls a command with keywords only, so every parameter can be one;
-    that is what lets the added options follow a command's own."""
-    return [p.replace(kind=inspect.Parameter.KEYWORD_ONLY) for p in params]
-
-
-def _declared(signature: inspect.Signature) -> set[str]:
-    """Every flag a command already declares."""
-    out: set[str] = set()
-    for p in signature.parameters.values():
-        decls = getattr(p.default, "param_decls", None) or ()
-        default = getattr(p.default, "default", None)
-        if isinstance(default, str) and default.startswith("-"):
-            out.add(default)
-        out.update(d for d in decls if isinstance(d, str))
-    return out

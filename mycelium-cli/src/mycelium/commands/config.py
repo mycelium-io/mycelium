@@ -9,6 +9,7 @@ from pathlib import Path
 
 import typer
 
+from mycelium.cli_options import emits_json
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
@@ -31,6 +32,7 @@ ENVIRONMENTS = {
     group="config",
 )
 @app.command("show")
+@emits_json()
 def show(ctx: typer.Context) -> None:
     """Show current configuration."""
     try:
@@ -153,6 +155,7 @@ def set_config(
     group="config",
 )
 @app.command("get")
+@emits_json()
 def get_config(
     ctx: typer.Context,
     key: str = typer.Argument(..., help="Config key (e.g., server.api_url)"),
@@ -169,8 +172,10 @@ def get_config(
             print_error(f"Config key '{key}' not found")
             raise typer.Exit(1)
 
-        if ctx.obj.get("json", False):
-            typer.echo(json_module.dumps({"key": key, "value": value}, indent=2))
+        if ctx.obj and ctx.obj.get("json", False):
+            if hasattr(value, "model_dump"):
+                value = value.model_dump(mode="json")
+            typer.echo(json_module.dumps({"key": key, "value": value}, indent=2, default=str))
         else:
             typer.echo(value)
 

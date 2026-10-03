@@ -14,6 +14,7 @@ so instead of printing the empty branch.
 from __future__ import annotations
 
 import datetime
+import json
 import uuid
 from typing import Any
 
@@ -228,6 +229,46 @@ def test_agent_show_resolves_manifest_and_notes_from_the_hub(
     assert result.exit_code == 0, result.output
     assert "the echoing one" in result.output
     assert "remember: be brief" in result.output
+
+
+def test_agent_show_json_after_the_command_prints_the_manifest_and_notes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bodies = {
+        "agents/echo": _manifest_yaml("echo", description="the echoing one"),
+        "agents/echo/notes": "remember: be brief",
+    }
+    _stub(
+        monkeypatch,
+        MEMORY_GET_SYNC,
+        lambda **kw: _memory_read(kw["key"], bodies[kw["key"]]) if kw["key"] in bodies else None,
+    )
+
+    result = runner.invoke(agent_cmd.app, ["show", "echo", "--room", "demo", "--json"])
+    assert result.exit_code == 0, result.output
+    shown = json.loads(result.stdout)
+    assert shown["handle"] == "echo"
+    assert shown["description"] == "the echoing one"
+    assert shown["notes"] == "remember: be brief"
+
+
+def test_agent_and_engine_ls_take_json_after_the_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub(
+        monkeypatch,
+        MEMORY_LIST_SYNC,
+        [
+            _record("agents/aligner", _manifest_yaml("aligner", adapter="engine", kind="aligner")),
+            _record("agents/echo", _manifest_yaml("echo")),
+        ],
+    )
+
+    agents = runner.invoke(agent_cmd.app, ["ls", "--room", "demo", "--json"])
+    assert agents.exit_code == 0, agents.output
+    assert {a["handle"] for a in json.loads(agents.stdout)} == {"aligner", "echo"}
+
+    engines = runner.invoke(engine_cmd.app, ["ls", "--room", "demo", "--json"])
+    assert engines.exit_code == 0, engines.output
+    assert [e["handle"] for e in json.loads(engines.stdout)] == ["aligner"]
 
 
 def test_agent_show_reports_a_missing_agent_the_hub_doesnt_have(

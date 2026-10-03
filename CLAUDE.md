@@ -800,6 +800,18 @@ is no litellm dependency.
   install path and the live-LLM cognition slice, too slow and too paid for the
   PR path, where a failure opens one issue rather than blocking a person.
   Putting a good check in the wrong tier is how the ~95s baseline gets spent.
+- **The CLI takes its shared flags one way, and two audits hold it there.**
+  Agents type a CLI the way they type every other one, so `--room`, `--as`,
+  `--json`, `--limit` and `--yes` are decorators in `mycelium/cli_options.py`
+  (`in_room`, `acts_as`, `emits_json`, `paged`, `confirms`; text an agent writes
+  is `text_input.takes_text`: the argument, `--body` or `--file`) that spell,
+  default and resolve them the same everywhere. A new command uses them rather
+  than declaring the flags itself. `mycelium.cli_audit` walks the built CLI and
+  fails on drift (a read with no `--json`, a required `--as`, a `--room`
+  without `-r`); `mycelium.cli_prose` parses every `mycelium …` command written
+  in the docs, skills, prompts and frontend strings against the same CLI, so a
+  renamed flag can't survive in what agents are told. Both run as tests; an
+  exemption names its reason, and a stale one is a finding.
 - **The checks are derivations, not lists.** Every gate added here recomputes
   something and fails on the drift, rather than asserting against a copy that
   has to be maintained: `openapi.json` vs the live app, `docs/*.html` vs its

@@ -24,6 +24,7 @@ from rich.console import Console
 from rich.table import Table
 
 from mycelium import identity
+from mycelium.cli_options import acts_as, emits_json, in_room
 from mycelium.commands.agent import (
     _load_manifest_remote,
     _persist_and_describe,
@@ -41,6 +42,8 @@ console = Console()
 
 
 @app.command("create")
+@in_room()
+@acts_as("handle_flag")
 def engine_create(
     ctx: typer.Context,
     handle: str = typer.Argument(..., help="Engine handle (lowercase slug, e.g. 'mediator-1')."),
@@ -49,9 +52,7 @@ def engine_create(
         "--kind",
         help=f"Which cognition engine to run. Known: {', '.join(sorted(ENGINE_KINDS))}.",
     ),
-    room: str | None = typer.Option(
-        None, "--room", "-r", help="Room to register in (defaults to active room)."
-    ),
+    room: str | None = None,
     description: str = typer.Option(
         "", "--description", "-d", help="One-paragraph statement of what this engine does."
     ),
@@ -60,15 +61,11 @@ def engine_create(
         "--allow-from",
         help="Comma-separated sender handles allowed to summon (e.g. '@avery').",
     ),
-    handle_flag: str | None = typer.Option(
-        None,
-        "--as",
-        "--handle",
-        "-H",
-        help="Your own handle (recorded as created_by). Defaults to your hub identity.",
-    ),
+    handle_flag: str | None = None,
 ) -> None:
     """Create a first-party cognition engine in a room.
+
+    Who you act as (``--as``) is recorded as created_by.
 
     Example:
         mycelium engine create mediator-1 --kind aligner --room portfolio
@@ -113,9 +110,11 @@ def engine_create(
 
 
 @app.command("ls")
+@in_room()
+@emits_json()
 def engine_ls(
     ctx: typer.Context,
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    room: str | None = None,
 ) -> None:
     """List the cognition engines registered in a room."""
     try:
@@ -125,9 +124,7 @@ def engine_ls(
         engines = [m for m in _room_manifests(room_name) if m.adapter == "engine"]
 
         if ctx.obj and ctx.obj.get("json"):
-            console.print(
-                json_module.dumps([m.model_dump() for m in engines], indent=2, default=str)
-            )
+            typer.echo(json_module.dumps([m.model_dump() for m in engines], indent=2, default=str))
             return
 
         if not engines:
@@ -154,6 +151,8 @@ def engine_ls(
 
 
 @app.command("invoke")
+@in_room()
+@acts_as("handle_flag")
 def engine_invoke(
     ctx: typer.Context,
     handle: str = typer.Argument(..., help="Engine handle (without leading @)."),
@@ -161,12 +160,8 @@ def engine_invoke(
         "please mediate us to an agreement.",
         help="Summon message (defaults to a generic mediate request).",
     ),
-    room: str | None = typer.Option(
-        None, "--room", "-r", help="Room to summon in (defaults to active room)."
-    ),
-    handle_flag: str | None = typer.Option(
-        None, "--as", "--handle", "-H", help="Your sender handle (defaults to identity config)."
-    ),
+    room: str | None = None,
+    handle_flag: str | None = None,
 ) -> None:
     """Summon a registered cognition engine by posting an ``@handle`` message.
 

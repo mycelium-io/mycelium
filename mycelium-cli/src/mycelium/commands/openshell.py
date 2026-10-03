@@ -11,10 +11,13 @@ run sandboxed; user/participant agents are unaffected.
 
 from __future__ import annotations
 
+import json
+
 import typer
 from rich.console import Console
 
 from mycelium import openshell
+from mycelium.cli_options import confirms, emits_json
 from mycelium.config import MyceliumConfig
 from mycelium.error_handler import print_error
 
@@ -30,9 +33,10 @@ _SECURITY_NOTE = (
 
 
 @app.command("install")
+@confirms("yes")
 def install(
     ctx: typer.Context,
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the security confirmation."),
+    yes: bool = False,
     metrics: bool = typer.Option(
         True, "--metrics/--no-metrics", help="Expose the gateway's /metrics + add a scrape target."
     ),
@@ -90,17 +94,29 @@ def install(
 
 
 @app.command("status")
+@emits_json()
 def status(ctx: typer.Context) -> None:
     """Show the gateway container + Pi sandbox + CLI state."""
     try:
-        console.print(
-            f"  openshell CLI: {'[green]installed[/green]' if openshell.cli_installed() else '[red]missing[/red]'}"
-        )
-        console.print(
-            f"  gateway:       {'[green]running[/green]' if openshell.gateway_running() else '[yellow]stopped[/yellow]'} [dim]({openshell.GATEWAY_CONTAINER})[/dim]"
-        )
+        cli = openshell.cli_installed()
+        gateway = openshell.gateway_running()
         cfg = MyceliumConfig.load()
         wired = any(t.name == openshell.SCRAPE_TARGET_NAME for t in cfg.metrics.scrape)
+        if ctx.obj and ctx.obj.get("json"):
+            state = {
+                "cli_installed": cli,
+                "gateway_running": gateway,
+                "gateway_container": openshell.GATEWAY_CONTAINER,
+                "metrics_wired": wired,
+            }
+            typer.echo(json.dumps(state, indent=2))
+            return
+        console.print(
+            f"  openshell CLI: {'[green]installed[/green]' if cli else '[red]missing[/red]'}"
+        )
+        console.print(
+            f"  gateway:       {'[green]running[/green]' if gateway else '[yellow]stopped[/yellow]'} [dim]({openshell.GATEWAY_CONTAINER})[/dim]"
+        )
         console.print(f"  metrics wired: {'[green]yes[/green]' if wired else '[dim]no[/dim]'}")
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False

@@ -12,6 +12,7 @@ wherever the tree currently keeps it.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -56,6 +57,16 @@ def test_top_level_file_wins_over_a_subdirectory_copy(tmp_path: Path) -> None:
 
 def test_unknown_topic_exits_nonzero() -> None:
     assert runner.invoke(docs_cmd.app, ["no-such-topic"]).exit_code == 1
+
+
+def test_search_json_after_the_command() -> None:
+    result = runner.invoke(docs_cmd.app, ["search", "aligner", "--json"])
+    assert result.exit_code == 0, result.output
+    found = json.loads(result.output)
+    assert found
+    assert {"section", "topic", "title", "command", "context"} <= set(found[0])
+    # No terminal color codes in what a program reads.
+    assert "\x1b[" not in result.output
 
 
 def test_full_dump_covers_every_section() -> None:

@@ -12,6 +12,7 @@ below still return the hub's memories.
 from __future__ import annotations
 
 import datetime
+import json
 import uuid
 from pathlib import Path
 from typing import Any
@@ -442,3 +443,78 @@ def test_memory_search_no_results(monkeypatch: pytest.MonkeyPatch) -> None:
     result = runner.invoke(memory_cmd.app, ["search", "nothing", "--room", "demo"])
     assert result.exit_code == 0, result.output
     assert "No matching memories found" in result.output
+
+
+# ── --json ───────────────────────────────────────────────────────────────────
+
+
+def test_memory_get_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_get(monkeypatch, _memory_read("decisions/db", "we chose postgres"))
+
+    result = runner.invoke(memory_cmd.app, ["get", "decisions/db", "--room", "demo", "--json"])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert data["key"] == "decisions/db"
+    assert data["value"] == "we chose postgres"
+
+
+def test_memory_ls_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _stub_list(monkeypatch, [_record("decisions/db", "postgres")])
+
+    result = runner.invoke(memory_cmd.app, ["ls", "--room", "demo", "-l", "7", "--json"])
+    assert result.exit_code == 0, result.output
+    assert [m["key"] for m in json.loads(result.output)] == ["decisions/db"]
+    assert calls[0]["limit"] == 7
+
+
+def test_memory_ls_json_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_list(monkeypatch, [])
+
+    result = runner.invoke(memory_cmd.app, ["ls", "--room", "demo", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == []
+
+
+@pytest.mark.parametrize("category", ["status", "work", "decisions", "context", "procedures"])
+def test_memory_category_view_json(monkeypatch: pytest.MonkeyPatch, category: str) -> None:
+    calls = _stub_list(monkeypatch, [_record(f"{category}/x", "value")])
+
+    result = runner.invoke(memory_cmd.app, [category, "--room", "demo", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)[0]["key"] == f"{category}/x"
+    assert calls[0]["prefix"] == f"{category}/"
+
+
+def test_memory_search_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mycelium_backend_client.models import MemorySearchResponse, MemorySearchResult
+
+    mem = _memory_read("decisions/db", "postgres", content_text="we chose postgres")
+    resp = MemorySearchResponse(results=[MemorySearchResult(memory=mem, similarity=0.91)], total=1)
+    monkeypatch.setattr(
+        "mycelium_backend_client.api.memory."
+        "search_memories_api_rooms_room_name_memory_search_post.sync",
+        lambda **_kw: resp,
+    )
+
+    result = runner.invoke(memory_cmd.app, ["search", "db", "--room", "demo", "--json"])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert data[0]["memory"]["key"] == "decisions/db"
+    assert data[0]["similarity"] == 0.91
+
+
+# ── rm ───────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("flag", ["--yes", "-y", "--force", "-f"])
+def test_memory_rm_skips_the_prompt(monkeypatch: pytest.MonkeyPatch, flag: str) -> None:
+    deleted: list[str] = []
+    monkeypatch.setattr(
+        "mycelium_backend_client.api.memory."
+        "delete_memory_api_rooms_room_name_memory_key_delete.sync_detailed",
+        lambda **kw: deleted.append(kw["key"]),
+    )
+
+    result = runner.invoke(memory_cmd.app, ["rm", "decisions/db", "--room", "demo", flag])
+    assert result.exit_code == 0, result.output
+    assert deleted == ["decisions/db"]

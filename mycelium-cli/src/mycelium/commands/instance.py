@@ -20,6 +20,7 @@ from pathlib import Path
 import httpx
 import typer
 
+from mycelium.cli_options import confirms, emits_json
 from mycelium.client import hub_error_detail
 from mycelium.config import MyceliumConfig, ServerConfig
 from mycelium.doc_ref import doc_ref
@@ -763,12 +764,13 @@ def stop(
     desc="Show running service health (backend connectivity, room count).",
     group="setup",
 )
+@emits_json()
 def status(ctx: typer.Context) -> None:
     """
     Show service health.
 
-    Checks backend, database, LLM, embedding model, Docker containers,
-    disk space, and data directory status.
+    Checks the backend, LLM, embedding model, Docker containers, disk space,
+    and data directory status.
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
@@ -779,7 +781,7 @@ def status(ctx: typer.Context) -> None:
 
         from mycelium import __version__ as cli_version
 
-        # -- Backend health (includes DB, LLM, embedding, version) -----------
+        # -- Backend health (includes LLM, embedding, version) ---------------
         backend_running = False
         backend_room_count = 0
         health_data: dict = {}
@@ -1166,6 +1168,7 @@ def logs(
     desc="Pull Mycelium Docker images and restart services. Pass --version to pin a preview/specific build.",
     group="setup",
 )
+@confirms()
 def pull(
     ctx: typer.Context,
     target_version: str | None = typer.Option(
@@ -1179,7 +1182,7 @@ def pull(
     no_restart: bool = typer.Option(
         False, "--no-restart", help="Pull images but don't restart services"
     ),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmations"),  # noqa: ARG001
+    yes: bool = False,  # noqa: ARG001
 ) -> None:
     """
     Pull Mycelium Docker images and restart services.

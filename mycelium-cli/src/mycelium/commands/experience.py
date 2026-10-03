@@ -12,6 +12,7 @@ Mac app runs is restarted by the app instead.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,7 @@ from typing import Any
 import typer
 from rich.console import Console
 
+from mycelium.cli_options import emits_json
 from mycelium.doc_ref import doc_ref
 
 app = typer.Typer(help="Ready-made rooms to explore, added from a file.", no_args_is_help=True)
@@ -69,12 +71,17 @@ def _line(x: dict[str, Any]) -> str:
     group="setup",
 )
 @app.command("ls")
-def ls() -> None:
+@emits_json("as_json")
+def ls(as_json: bool = False) -> None:
     """List the experiences, and which are added here."""
     from mycelium.config import MyceliumConfig
     from mycelium.desktop import experiences as xp
 
-    for x in xp.view(MyceliumConfig.load()):
+    rows = xp.view(MyceliumConfig.load())
+    if as_json:
+        typer.echo(json.dumps(rows, indent=2, default=str))
+        return
+    for x in rows:
         console.print(_line(x))
 
 

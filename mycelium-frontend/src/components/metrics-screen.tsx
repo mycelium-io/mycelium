@@ -489,7 +489,7 @@ function IndexerPanel({
             label="Errors"
             value={fmtNum(errors)}
             color={errors > 0 ? "var(--red)" : undefined}
-            hint={errors > 0 ? "mycelium logs --grep indexer" : undefined}
+            hint={errors > 0 ? "mycelium logs mycelium-backend | grep indexer" : undefined}
           />
         </Figures>
       )}

@@ -42,6 +42,8 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from mycelium.cli_options import emits_json, in_room, paged
+
 app = typer.Typer(
     help=(
         "Browse the traces the collector has received over OTLP."
@@ -63,10 +65,22 @@ def _default_summary(ctx: typer.Context) -> None:
     if ctx.invoked_subcommand is None:
         # Pass explicit values so Typer's OptionInfo defaults don't leak
         # through to the underlying function.
-        summary(since="1h", host=None, agent=None, room=None)
+        summary(
+            since="1h",
+            host=None,
+            agent=None,
+            room=None,
+            as_json=bool((ctx.obj or {}).get("json")),
+        )
 
 
 console = Console()
+
+
+def _emit(data: object) -> None:
+    """Print ``data`` as JSON, and nothing else, on stdout."""
+    typer.echo(json.dumps(data, indent=2, default=str))
+
 
 # ── Path helpers ──────────────────────────────────────────────────────────
 
@@ -418,22 +432,24 @@ AgentOpt = typer.Option(
     "--agent",
     help="Filter to a single agent (matched against gen_ai.agent.id / gen_ai.agent.name).",
 )
-RoomOpt = typer.Option(
-    None,
-    "--room",
-    help="Filter to a room id (mycelium room name or external channel room id; substring match).",
-)
 NameOpt = typer.Option(None, "--name", help="Filter span name (LIKE pattern, * wildcard).")
 StatusOpt = typer.Option(None, "--status", help="Filter by span status: ok, error, unset.")
-LimitOpt = typer.Option(20, "--limit", "-n", help="Max rows to display.")
+#: How many rows a table shows by default.
+LIMIT = 20
+
+# ``--room`` on these commands is a filter (a room id, substring match): none means
+# every room, so it is never resolved to the active one.
 
 
 @app.command("summary")
+@in_room("room", resolve=False)
+@emits_json("as_json")
 def summary(
     since: str = SinceOpt,
     host: str | None = HostOpt,
     agent: str | None = AgentOpt,
-    room: str | None = RoomOpt,
+    room: str | None = None,
+    as_json: bool = False,
 ) -> None:
     """High-level rollup: total spans, errors, hosts, agents, rooms, models."""
     where_sql, params = _build_filters(since, host, None, None, None, None)
@@ -445,7 +461,7 @@ def summary(
 
     rows = [r for r in rows if _row_matches_attr_filter(r, agent, room)]
 
-    if not rows:
+    if not rows and not as_json:
         typer.secho(f"No spans in window (since={since}).", fg=typer.colors.YELLOW)
         return
 
@@ -485,6 +501,25 @@ def summary(
         idx = min(len(durations) - 1, int(len(durations) * p))
         return durations[idx]
 
+    if as_json:
+        _emit(
+            {
+                "since": since,
+                "spans": total,
+                "errors": errors,
+                "hosts": dict(hosts),
+                "agents": {k: n for k, n in agents.items() if k != "-"},
+                "rooms": dict(rooms),
+                "channel_kinds": {k: n for k, n in chan_kinds.items() if k != "-"},
+                "models": dict(models),
+                "tool_call_spans": tool_calls,
+                "tokens_in": tokens_in,
+                "tokens_out": tokens_out,
+                "duration_ms": {"p50": pct(0.5), "p95": pct(0.95), "p99": pct(0.99)},
+            }
+        )
+        return
+
     table = Table(title=f"Trace summary (since {since})", show_header=False, box=None)
     table.add_column("Metric", style="bold")
     table.add_column("Value")
@@ -515,6 +550,8 @@ def _print_groupby(
     rows: list[sqlite3.Row],
     key_fn,
     limit: int,
+    *,
+    as_json: bool = False,
 ) -> None:
     counts: Counter = Counter()
     err_counts: Counter = Counter()
@@ -532,6 +569,27 @@ def _print_groupby(
         tokens_in[k] += int(a.get("gen_ai.usage.input_tokens") or 0)
         tokens_out[k] += int(a.get("gen_ai.usage.output_tokens") or 0)
 
+    groups = []
+    for k, n in counts.most_common(limit):
+        ds = sorted(durations.get(k, []))
+        avg = sum(ds) / len(ds) if ds else 0
+        p95 = ds[int(len(ds) * 0.95)] if len(ds) > 1 else (ds[0] if ds else 0)
+        groups.append(
+            {
+                "key": str(k),
+                "spans": n,
+                "errors": err_counts.get(k, 0),
+                "avg_ms": avg,
+                "p95_ms": p95,
+                "tokens_in": tokens_in[k],
+                "tokens_out": tokens_out[k],
+            }
+        )
+
+    if as_json:
+        _emit(groups)
+        return
+
     if not counts:
         typer.secho("No spans in window.", fg=typer.colors.YELLOW)
         return
@@ -545,19 +603,16 @@ def _print_groupby(
     table.add_column("Tokens in", justify="right")
     table.add_column("Tokens out", justify="right")
 
-    for k, n in counts.most_common(limit):
-        ds = sorted(durations.get(k, []))
-        avg = sum(ds) / len(ds) if ds else 0
-        p95 = ds[int(len(ds) * 0.95)] if len(ds) > 1 else (ds[0] if ds else 0)
-        err = err_counts.get(k, 0)
+    for g in groups:
+        err = g["errors"]
         table.add_row(
-            _truncate(str(k), 70),
-            str(n),
+            _truncate(g["key"], 70),
+            str(g["spans"]),
             (f"[red]{err}[/red]" if err else "0"),
-            f"{avg:.1f}",
-            f"{p95:.1f}",
-            f"{tokens_in[k]:,}" if tokens_in[k] else "-",
-            f"{tokens_out[k]:,}" if tokens_out[k] else "-",
+            f"{g['avg_ms']:.1f}",
+            f"{g['p95_ms']:.1f}",
+            f"{g['tokens_in']:,}" if g["tokens_in"] else "-",
+            f"{g['tokens_out']:,}" if g["tokens_out"] else "-",
         )
     console.print(table)
 
@@ -580,37 +635,58 @@ def _load_filtered_rows(
 
 
 @app.command("by-host")
+@in_room("room", resolve=False)
+@paged("limit", LIMIT)
+@emits_json("as_json")
 def by_host(
     since: str = SinceOpt,
     agent: str | None = AgentOpt,
-    room: str | None = RoomOpt,
-    limit: int = LimitOpt,
+    room: str | None = None,
+    limit: int = LIMIT,
+    as_json: bool = False,
 ) -> None:
     """Group spans by source host."""
     rows = _load_filtered_rows(since, None, agent, room)
     _print_groupby(
-        f"Spans by host (since {since})", rows, lambda r, _a: _alias_host(r["host"]) or "-", limit
+        f"Spans by host (since {since})",
+        rows,
+        lambda r, _a: _alias_host(r["host"]) or "-",
+        limit,
+        as_json=as_json,
     )
 
 
 @app.command("by-agent")
+@in_room("room", resolve=False)
+@paged("limit", LIMIT)
+@emits_json("as_json")
 def by_agent(
     since: str = SinceOpt,
     host: str | None = HostOpt,
-    room: str | None = RoomOpt,
-    limit: int = LimitOpt,
+    room: str | None = None,
+    limit: int = LIMIT,
+    as_json: bool = False,
 ) -> None:
     """Group spans by agent (gen_ai.agent.id / gen_ai.agent.name)."""
     rows = _load_filtered_rows(since, host, None, room)
-    _print_groupby(f"Spans by agent (since {since})", rows, lambda _r, a: _agent_of(a), limit)
+    _print_groupby(
+        f"Spans by agent (since {since})",
+        rows,
+        lambda _r, a: _agent_of(a),
+        limit,
+        as_json=as_json,
+    )
 
 
 @app.command("by-room")
+@paged("limit", LIMIT)
+@emits_json("as_json")
 def by_room(
     since: str = SinceOpt,
     host: str | None = HostOpt,
     agent: str | None = AgentOpt,
-    limit: int = LimitOpt,
+    limit: int = LIMIT,
+    as_json: bool = False,
 ) -> None:
     """Group spans by room (mycelium room name or external channel room id)."""
     rows = _load_filtered_rows(since, host, agent, None)
@@ -621,15 +697,18 @@ def by_room(
             return "-"
         return f"[{chan_kind}] {rid}  ({agent_id})"
 
-    _print_groupby(f"Spans by room (since {since})", rows, key, limit)
+    _print_groupby(f"Spans by room (since {since})", rows, key, limit, as_json=as_json)
 
 
 @app.command("by-channel")
+@paged("limit", LIMIT)
+@emits_json("as_json")
 def by_channel(
     since: str = SinceOpt,
     host: str | None = HostOpt,
     agent: str | None = AgentOpt,
-    limit: int = LimitOpt,
+    limit: int = LIMIT,
+    as_json: bool = False,
 ) -> None:
     """Group spans by channel kind (mycelium-room vs external channels)."""
     rows = _load_filtered_rows(since, host, agent, None)
@@ -638,42 +717,66 @@ def by_channel(
         _, ck, _ = _split_conversation(_conversation_of(attrs))
         return ck
 
-    _print_groupby(f"Spans by channel kind (since {since})", rows, key, limit)
+    _print_groupby(f"Spans by channel kind (since {since})", rows, key, limit, as_json=as_json)
 
 
 @app.command("by-model")
+@in_room("room", resolve=False)
+@paged("limit", LIMIT)
+@emits_json("as_json")
 def by_model(
     since: str = SinceOpt,
     host: str | None = HostOpt,
     agent: str | None = AgentOpt,
-    room: str | None = RoomOpt,
-    limit: int = LimitOpt,
+    room: str | None = None,
+    limit: int = LIMIT,
+    as_json: bool = False,
 ) -> None:
     """Group spans by LLM model (gen_ai.response.model / request.model)."""
     rows = _load_filtered_rows(since, host, agent, room)
-    _print_groupby(f"Spans by model (since {since})", rows, lambda _r, a: _model_of(a), limit)
+    _print_groupby(
+        f"Spans by model (since {since})",
+        rows,
+        lambda _r, a: _model_of(a),
+        limit,
+        as_json=as_json,
+    )
 
 
 @app.command("by-name")
+@in_room("room", resolve=False)
+@paged("limit", LIMIT)
+@emits_json("as_json")
 def by_name(
     since: str = SinceOpt,
     host: str | None = HostOpt,
     agent: str | None = AgentOpt,
-    room: str | None = RoomOpt,
-    limit: int = LimitOpt,
+    room: str | None = None,
+    limit: int = LIMIT,
+    as_json: bool = False,
 ) -> None:
     """Group spans by span name (e.g. chat, execute_tool)."""
     rows = _load_filtered_rows(since, host, agent, room)
-    _print_groupby(f"Spans by name (since {since})", rows, lambda r, _a: r["name"], limit)
+    _print_groupby(
+        f"Spans by name (since {since})",
+        rows,
+        lambda r, _a: r["name"],
+        limit,
+        as_json=as_json,
+    )
 
 
 @app.command("by-tool")
+@in_room("room", resolve=False)
+@paged("limit", LIMIT)
+@emits_json("as_json")
 def by_tool(
     since: str = SinceOpt,
     host: str | None = HostOpt,
     agent: str | None = AgentOpt,
-    room: str | None = RoomOpt,
-    limit: int = LimitOpt,
+    room: str | None = None,
+    limit: int = LIMIT,
+    as_json: bool = False,
 ) -> None:
     """Group tool-call spans by tool name."""
     rows = _load_filtered_rows(since, host, agent, room)
@@ -682,19 +785,47 @@ def by_tool(
     def key(_r, attrs: dict) -> str:
         return _attr_first(attrs, "gen_ai.tool.name", default="-")
 
-    _print_groupby(f"Tool-call spans (since {since})", rows, key, limit)
+    _print_groupby(f"Tool-call spans (since {since})", rows, key, limit, as_json=as_json)
+
+
+def _span_record(r: sqlite3.Row) -> dict:
+    """One span as the list views show it, with its fields whole rather than cut."""
+    a = _parse_attrs(r["attributes"])
+    _, _, rid = _split_conversation(_conversation_of(a))
+    return {
+        "trace_id": r["trace_id"],
+        "span_id": r["span_id"],
+        "start_time": r["start_time"],
+        "host": _alias_host(r["host"]) or "-",
+        "agent": _agent_of(a),
+        "name": r["name"],
+        "duration_ms": r["duration_ms"] or 0,
+        "status": r["status"] or "unset",
+        "status_message": r["status_message"],
+        "model": _model_of(a),
+        "room": rid,
+        "tokens_in": int(a.get("gen_ai.usage.input_tokens") or 0),
+        "tokens_out": int(a.get("gen_ai.usage.output_tokens") or 0),
+    }
 
 
 @app.command("errors")
+@in_room("room", resolve=False)
+@paged("limit", LIMIT)
+@emits_json("as_json")
 def errors(
     since: str = SinceOpt,
     host: str | None = HostOpt,
     agent: str | None = AgentOpt,
-    room: str | None = RoomOpt,
-    limit: int = LimitOpt,
+    room: str | None = None,
+    limit: int = LIMIT,
+    as_json: bool = False,
 ) -> None:
     """Show spans with status=error in the window."""
     rows = _load_filtered_rows(since, host, agent, room, status="error")
+    if as_json:
+        _emit([_span_record(r) for r in rows[:limit]])
+        return
     if not rows:
         typer.secho(f"No error spans (since {since}).", fg=typer.colors.GREEN)
         return
@@ -719,17 +850,24 @@ def errors(
 
 
 @app.command("slow")
+@in_room("room", resolve=False)
+@paged("limit", LIMIT)
+@emits_json("as_json")
 def slow(
     since: str = SinceOpt,
     host: str | None = HostOpt,
     agent: str | None = AgentOpt,
-    room: str | None = RoomOpt,
+    room: str | None = None,
     name: str | None = NameOpt,
-    limit: int = LimitOpt,
+    limit: int = LIMIT,
+    as_json: bool = False,
 ) -> None:
     """Show the slowest spans in the window."""
     rows = _load_filtered_rows(since, host, agent, room, name=name)
     rows.sort(key=lambda r: float(r["duration_ms"] or 0), reverse=True)
+    if as_json:
+        _emit([_span_record(r) for r in rows[:limit]])
+        return
     table = Table(title=f"Slowest spans (since {since})")
     table.add_column("Dur ms", justify="right")
     table.add_column("Time")
@@ -754,17 +892,24 @@ def slow(
 
 
 @app.command("list")
+@in_room("room", resolve=False)
+@paged("limit", LIMIT)
+@emits_json("as_json")
 def list_spans(
     since: str = SinceOpt,
     host: str | None = HostOpt,
     agent: str | None = AgentOpt,
-    room: str | None = RoomOpt,
+    room: str | None = None,
     name: str | None = NameOpt,
     status: str | None = StatusOpt,
-    limit: int = LimitOpt,
+    limit: int = LIMIT,
+    as_json: bool = False,
 ) -> None:
     """List recent spans (newest first), with the most useful columns inline."""
     rows = _load_filtered_rows(since, host, agent, room, name=name, status=status)
+    if as_json:
+        _emit([_span_record(r) for r in rows[:limit]])
+        return
     table = Table(title=f"Recent spans (since {since})")
     table.add_column("Time")
     table.add_column("Host")
@@ -815,6 +960,7 @@ def _walk_trace(
 
 
 @app.command("show")
+@emits_json("as_json")
 def show_trace(
     trace_or_span: str = typer.Argument(
         ..., help="Trace id or span id (any span in the trace works)."
@@ -828,6 +974,7 @@ def show_trace(
             " tool I/O snapshots, etc.) under their parent spans."
         ),
     ),
+    as_json: bool = False,
 ) -> None:
     """Render a single trace as a tree, parent → children, ordered by time."""
     with _open_db() as conn:
@@ -858,6 +1005,24 @@ def show_trace(
     ordered: list[tuple[int, sqlite3.Row]] = []
     for root in sorted(roots, key=lambda sid: spans_by_id[sid]["start_time"]):
         _walk_trace(spans_by_id, children, root, 0, ordered)
+
+    if as_json:
+        _emit(
+            {
+                "trace_id": trace_id,
+                "spans": [
+                    {
+                        "depth": depth,
+                        "parent_span_id": s["parent_span_id"],
+                        **_span_record(s),
+                        "tool": _attr_first(_parse_attrs(s["attributes"]), "gen_ai.tool.name"),
+                        "events": _parse_events(s),
+                    }
+                    for depth, s in ordered
+                ],
+            }
+        )
+        return
 
     total_events = sum(len(_parse_events(s)) for s in spans)
     title_suffix = f" ({len(spans)} spans"
@@ -927,6 +1092,7 @@ def show_trace(
 
 
 @app.command("show-attrs")
+@emits_json()
 def show_attrs(
     span_id: str = typer.Argument(..., help="Exact span id."),
 ) -> None:
@@ -955,9 +1121,11 @@ def show_attrs(
 
 
 @app.command("rooms")
+@emits_json("as_json")
 def rooms_overview(
     since: str = SinceOpt,
     host: str | None = HostOpt,
+    as_json: bool = False,
 ) -> None:
     """List active rooms with span counts and participating agents."""
     rows = _load_filtered_rows(since, host, None, None)
@@ -975,6 +1143,21 @@ def rooms_overview(
             e["agents"].add(agent_id)
         if r["host"]:
             e["hosts"].add(_alias_host(r["host"]))
+
+    if as_json:
+        _emit(
+            [
+                {
+                    "room": rid,
+                    "channel": info["channel"],
+                    "spans": info["spans"],
+                    "agents": sorted(info["agents"]),
+                    "hosts": sorted(info["hosts"]),
+                }
+                for rid, info in sorted(by_room.items(), key=lambda kv: -kv[1]["spans"])
+            ]
+        )
+        return
 
     if not by_room:
         typer.secho(f"No rooms in window (since {since}).", fg=typer.colors.YELLOW)
@@ -997,9 +1180,11 @@ def rooms_overview(
 
 
 @app.command("agents")
+@emits_json("as_json")
 def agents_overview(
     since: str = SinceOpt,
     host: str | None = HostOpt,
+    as_json: bool = False,
 ) -> None:
     """List active agents with span counts, hosts, and rooms."""
     rows = _load_filtered_rows(since, host, None, None)
@@ -1035,6 +1220,24 @@ def agents_overview(
         e["tokens_in"] += int(a.get("gen_ai.usage.input_tokens") or 0)
         e["tokens_out"] += int(a.get("gen_ai.usage.output_tokens") or 0)
 
+    if as_json:
+        _emit(
+            [
+                {
+                    "agent": agent_id,
+                    "spans": info["spans"],
+                    "errors": info["errors"],
+                    "hosts": sorted(info["hosts"]),
+                    "rooms": sorted(info["rooms"]),
+                    "models": sorted(info["models"]),
+                    "tokens_in": info["tokens_in"],
+                    "tokens_out": info["tokens_out"],
+                }
+                for agent_id, info in sorted(by_agent.items(), key=lambda kv: -kv[1]["spans"])
+            ]
+        )
+        return
+
     if not by_agent:
         typer.secho(f"No agents in window (since {since}).", fg=typer.colors.YELLOW)
         return
@@ -1061,6 +1264,9 @@ def agents_overview(
 
 
 @app.command("events")
+@in_room("room", resolve=False)
+@paged("limit", LIMIT)
+@emits_json("as_json")
 def events_view(
     trace_or_span: str | None = typer.Argument(
         None,
@@ -1072,9 +1278,10 @@ def events_view(
     since: str = SinceOpt,
     host: str | None = HostOpt,
     agent: str | None = AgentOpt,
-    room: str | None = RoomOpt,
+    room: str | None = None,
     name: str | None = NameOpt,
-    limit: int = LimitOpt,
+    limit: int = LIMIT,
+    as_json: bool = False,
 ) -> None:
     """Show OTel span events as a flat, time-ordered log.
 
@@ -1109,6 +1316,24 @@ def events_view(
         for ev in _parse_events(s):
             rows.append((ev.get("time") or s["start_time"], s, ev))
     rows.sort(key=lambda x: x[0])
+    if as_json:
+        _emit(
+            [
+                {
+                    "time": ts,
+                    "trace_id": span["trace_id"],
+                    "span_id": span["span_id"],
+                    "host": _alias_host(span["host"]) or "-",
+                    "agent": _agent_of(_parse_attrs(span["attributes"])),
+                    "span": span["name"],
+                    "event": ev.get("name") or "event",
+                    "message": _event_message(ev),
+                    "attributes": ev.get("attributes") or {},
+                }
+                for ts, span, ev in rows[:limit]
+            ]
+        )
+        return
     if not rows:
         typer.secho("No span events in selection.", fg=typer.colors.YELLOW)
         return
@@ -1137,18 +1362,20 @@ def events_view(
 
 
 @app.command("schema")
-def schema() -> None:
+@emits_json("as_json")
+def schema(as_json: bool = False) -> None:
     """Print the spans table schema and the most common attribute keys.
 
     Useful when you want to write your own ad-hoc SQL or pivot.
     """
     db_path = _traces_db_path()
-    typer.secho(f"DB: {db_path}", bold=True)
+    if not as_json:
+        typer.secho(f"DB: {db_path}", bold=True)
     with _open_db() as conn:
         sql = conn.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name='spans';"
         ).fetchone()
-        if sql:
+        if sql and not as_json:
             typer.echo("")
             typer.echo(sql[0])
         rows = conn.execute(
@@ -1158,6 +1385,16 @@ def schema() -> None:
     for r in rows:
         for k in _parse_attrs(r["attributes"]):
             counts[k] += 1
+    if as_json:
+        _emit(
+            {
+                "db": str(db_path),
+                "schema": sql[0] if sql else None,
+                "sampled_spans": len(rows),
+                "attribute_keys": [{"key": k, "spans": n} for k, n in counts.most_common(40)],
+            }
+        )
+        return
     typer.echo("")
     typer.secho(f"Top attribute keys (last hour, sample of {len(rows)} spans):", bold=True)
     for k, n in counts.most_common(40):

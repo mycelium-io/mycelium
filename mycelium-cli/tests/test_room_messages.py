@@ -288,6 +288,27 @@ def test_room_messages_json_carries_the_cursor(monkeypatch: pytest.MonkeyPatch) 
     assert payload["older_before"] == "2026-06-11T21:20:00+00:00"
 
 
+def test_room_messages_takes_json_and_n_after_the_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+
+    from mycelium_backend_client.models import MessageListResponse
+
+    msgs = _make_messages()
+    captured: dict = {}
+
+    def fake_sync(**kwargs):
+        captured.update(kwargs)
+        return MessageListResponse(messages=msgs, total=len(msgs))
+
+    _patch_common(monkeypatch, fake_sync)
+
+    result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest", "-n", "2", "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert len(json.loads(result.output)["messages"]) == 2
+    assert captured["limit"] == 2
+
+
 def test_json_cursor_is_null_when_the_page_is_everything(monkeypatch: pytest.MonkeyPatch) -> None:
     import json
 

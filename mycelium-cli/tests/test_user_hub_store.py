@@ -191,6 +191,47 @@ def test_write_user_sends_no_local_file(monkeypatch: pytest.MonkeyPatch) -> None
 # ── whoami / iam ─────────────────────────────────────────────────────────────
 
 
+def test_user_show_json_after_the_command_prints_the_record_and_its_agents(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub(
+        monkeypatch,
+        USER_GET_SYNC,
+        _user_read(
+            "avery",
+            display_name="Avery Quinn",
+            teams=["core"],
+            owns=[{"room": "alpha", "handle": "a1", "adapter": "claude_code"}],
+        ),
+    )
+
+    result = runner.invoke(user_cmd.app, ["show", "avery", "--json"])
+    assert result.exit_code == 0, result.output
+    shown = json.loads(result.stdout)
+    assert shown["handle"] == "avery"
+    assert shown["display_name"] == "Avery Quinn"
+    assert shown["owns"] == [{"handle": "a1", "adapter": "claude_code", "room": "alpha"}]
+
+
+def test_user_ls_and_whoami_take_json_after_the_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mycelium_backend_client.models import UserListResponse
+
+    _stub(
+        monkeypatch,
+        USER_LIST_SYNC,
+        UserListResponse(users=[_user_read("avery", teams=["core"])], total=1),
+    )
+    _stub(monkeypatch, USER_GET_SYNC, httpx.ConnectError("connection refused"))
+
+    users = runner.invoke(user_cmd.app, ["ls", "--json"])
+    assert users.exit_code == 0, users.output
+    assert [u["handle"] for u in json.loads(users.stdout)] == ["avery"]
+
+    me = runner.invoke(root_app, ["whoami", "--json"])
+    assert me.exit_code == 0, me.output
+    assert json.loads(me.stdout)["hub_reachable"] is False
+
+
 def test_whoami_rolls_up_from_the_hub_record(monkeypatch: pytest.MonkeyPatch) -> None:
     _stub(
         monkeypatch,

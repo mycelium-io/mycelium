@@ -23,6 +23,7 @@ import json as json_module
 
 import typer
 
+from mycelium.cli_options import acts_as, in_room
 from mycelium.commands.room import _resolve_room
 from mycelium.config import MyceliumConfig
 from mycelium.error_handler import print_error
@@ -73,10 +74,12 @@ def _run_publish(
 
 
 @l9_app.command("send")
+@in_room()
+@acts_as("as_handle", fallback=None)
 def l9_send(
     ctx: typer.Context,
-    room: str | None = typer.Option(None, "--room", "-r", help="Room (default: active room)"),
-    as_handle: str = typer.Option(..., "--as", "--handle", help="Sender handle to publish as"),
+    room: str | None = None,
+    as_handle: str | None = None,
     kind: str = typer.Option(..., "--kind", help=f"L9 kind ({', '.join(sorted(l9.VALID_KINDS))})"),
     subkind: str | None = typer.Option(None, "--subkind", help="L9 subkind (kind-specific)"),
     data: str | None = typer.Option(None, "--data", help="Payload data as a JSON object"),
@@ -113,7 +116,7 @@ def l9_send(
         raise typer.Exit(2) from e
 
     payload_data = _parse_json_object(data, label="data")
-    sender = as_handle.lstrip("@")
+    sender = (as_handle or "").lstrip("@")
 
     try:
         config = MyceliumConfig.load()
@@ -150,10 +153,12 @@ def l9_send(
 
 
 @slim_app.command("send")
+@in_room()
+@acts_as("as_handle", fallback=None)
 def slim_send(
     ctx: typer.Context,
-    room: str | None = typer.Option(None, "--room", "-r", help="Room (default: active room)"),
-    as_handle: str = typer.Option(..., "--as", "--handle", help="Sender handle to publish as"),
+    room: str | None = None,
+    as_handle: str | None = None,
     text: str | None = typer.Option(None, "--text", help="Raw text payload"),
     json_payload: str | None = typer.Option(None, "--json", help="Raw JSON payload"),
     workspace: str | None = typer.Option(
@@ -183,7 +188,7 @@ def slim_send(
     else:
         payload = (text or "").encode("utf-8")
 
-    sender = as_handle.lstrip("@")
+    sender = (as_handle or "").lstrip("@")
 
     try:
         config = MyceliumConfig.load()

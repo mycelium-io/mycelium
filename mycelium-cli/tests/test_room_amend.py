@@ -15,6 +15,7 @@ from uuid import uuid4
 import pytest
 from typer.testing import CliRunner
 
+from mycelium import cli_options
 from mycelium.commands import room as room_cmd
 
 _AMEND_SYNC = (
@@ -28,6 +29,8 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch, sync_fn) -> None:
     fake_config.get_current_identity = lambda: "growth"
     monkeypatch.setattr(room_cmd.MyceliumConfig, "load", classmethod(lambda _cls: fake_config))
     monkeypatch.setattr(room_cmd, "_resolve_room", lambda _c, _r: "amendtest")
+    monkeypatch.setattr(cli_options, "resolve_room", lambda _c, _r=None: "amendtest")
+    monkeypatch.setattr(cli_options, "resolve_handle", lambda _c, flag, **_k: flag or "growth")
 
     fake_cm = MagicMock()
     fake_cm.__enter__.return_value = Mock(name="client")

@@ -8,7 +8,6 @@
     "test":     "uv run pytest tests/ -v",
     "lint":     "uv run ruff check . && uv run ruff format --check . && uv run ty check .",
     "lint:fix": "uv run ruff check . --fix",
-    "migrate":  "uv run alembic upgrade head",
     "openapi":  "uv run python -c \"from app.main import app; import json; print(json.dumps(app.openapi(), indent=2))\" > ../docs/openapi.json",
     "clean":    "rm -rf __pycache__ .pytest_cache logs",
     "update:pricing": "uv run python ../scripts/update-pricing.py"

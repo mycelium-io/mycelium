@@ -9,15 +9,21 @@ Section files mirror the GUI docs at mycelium-io.github.io/mycelium/; markdown
 is the single source of truth for both.
 """
 
+import json
 import re
 from importlib import resources
 from pathlib import Path
 
 import typer
 
+from mycelium.cli_options import emits_json
+
 app = typer.Typer(
     help="Browse and search built-in documentation for Mycelium concepts, protocols, and API reference.",
     invoke_without_command=True,
+    # `docs search <query> --json` is read by the callback's own arguments, so
+    # its options must be allowed after them.
+    context_settings={"allow_interspersed_args": True},
 )
 
 # Ordered list of doc sections (topic → display name). Order matches the GUI
@@ -185,9 +191,9 @@ def _concat_all(docs_root: Path) -> str:
 
 
 def _search_docs(
-    docs_root: Path, query: str, context_lines: int = 2
+    docs_root: Path, query: str, context_lines: int = 2, *, highlight: bool = True
 ) -> list[tuple[str, str, str, list[str]]]:
-    """Search documentation for a query."""
+    """Search documentation for a query. ``highlight`` colors each match for a terminal."""
     results = []
     query_lower = query.lower()
     query_pattern = re.compile(re.escape(query), re.IGNORECASE)
@@ -230,6 +236,9 @@ def _search_docs(
                     ctx_line = lines[j].strip()
                     if not ctx_line:
                         continue
+                    if not highlight:
+                        context.append(ctx_line[:100])
+                        continue
                     highlighted = query_pattern.sub(
                         lambda m: typer.style(m.group(), fg=typer.colors.YELLOW, bold=True),
                         ctx_line[:100],
@@ -243,12 +252,14 @@ def _search_docs(
 
 
 @app.callback(invoke_without_command=True)
+@emits_json("as_json")
 def docs_main(
     ctx: typer.Context,
     section: str | None = typer.Argument(None),
     topic: str | None = typer.Argument(None),
     full: bool = typer.Option(False, "--full", "-f", is_eager=True),
     list_all: bool = typer.Option(False, "--list", "-l", is_eager=True),
+    as_json: bool = False,
 ) -> None:
     """
     Built-in documentation for Mycelium CLI.
@@ -279,7 +290,7 @@ def docs_main(
         if not topic:
             typer.secho("Usage: mycelium docs search QUERY", fg=typer.colors.RED)
             raise typer.Exit(1)
-        _do_search(docs_root, topic)
+        _do_search(docs_root, topic, as_json=as_json)
         return
 
     # No section: show index or --full dump
@@ -371,7 +382,24 @@ def _print_section_list(docs_root: Path, section: str) -> None:
         typer.echo(f"  {cmd:<40} {title}")
 
 
-def _do_search(docs_root: Path, query: str) -> None:
+def _doc_command(section: str, topic: str) -> str:
+    return f"mycelium docs {section} {topic}" if section else f"mycelium docs {topic}"
+
+
+def _do_search(docs_root: Path, query: str, *, as_json: bool = False) -> None:
+    if as_json:
+        found = [
+            {
+                "section": section,
+                "topic": topic,
+                "title": title,
+                "command": _doc_command(section, topic),
+                "context": context,
+            }
+            for section, topic, title, context in _search_docs(docs_root, query, highlight=False)
+        ]
+        typer.echo(json.dumps(found, indent=2))
+        return
     results = _search_docs(docs_root, query)
     if not results:
         typer.echo(f"No results for: {query}")
@@ -379,8 +407,7 @@ def _do_search(docs_root: Path, query: str) -> None:
     typer.secho(f"Search results for '{query}':", bold=True)
     typer.echo("")
     for section, topic, title, context_lines in results:
-        cmd = f"mycelium docs {section} {topic}" if section else f"mycelium docs {topic}"
-        typer.echo(f"  {cmd}")
+        typer.echo(f"  {_doc_command(section, topic)}")
         typer.secho(f"    {title}", fg=typer.colors.CYAN)
         if context_lines:
             typer.echo("    ---")
@@ -398,7 +425,11 @@ def list_docs() -> None:
 
 
 @app.command()
-def search(query: str = typer.Argument(..., help="Search query")) -> None:
+@emits_json("as_json")
+def search(
+    query: str = typer.Argument(..., help="Search query"),
+    as_json: bool = False,
+) -> None:
     """Search documentation for a term."""
     docs_root = _get_docs_root()
-    _do_search(docs_root, query)
+    _do_search(docs_root, query, as_json=as_json)

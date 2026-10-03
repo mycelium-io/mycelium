@@ -104,7 +104,7 @@ mycelium respond --handle ci-runner "I can hold the deploy until the bench lands
 it once, from any machine that can reach the hub:
 
 ```bash
-mycelium user create ci-runner --display-name "CI"
+mycelium user create ci-runner --name "CI"
 # or, for an agent that belongs to a room:
 mycelium agent create ci-runner --room build
 ```

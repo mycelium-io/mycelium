@@ -37,6 +37,7 @@ from rich.console import Console
 from rich.table import Table
 
 from mycelium import identity
+from mycelium.cli_options import acts_as, emits_json
 from mycelium.client import hub_client, hub_error_detail
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
@@ -190,6 +191,7 @@ def load_on_hub(
     group="room",
 )
 @app.command("ls")
+@emits_json()
 def pattern_ls(
     ctx: typer.Context,
     source: str | None = typer.Option(None, "--from", help=SOURCE_HELP),
@@ -258,6 +260,7 @@ def pattern_ls(
     group="room",
 )
 @app.command("use")
+@acts_as("handle_flag")
 def pattern_use(
     ctx: typer.Context,
     pattern: str = typer.Argument(..., help="The pattern to load (see 'mycelium pattern ls')."),
@@ -270,9 +273,7 @@ def pattern_use(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be created and write nothing."
     ),
-    handle_flag: str | None = typer.Option(
-        None, "--as", "--handle", "-H", help="Your handle. Defaults to your hub identity."
-    ),
+    handle_flag: str | None = None,
 ) -> None:
     """Load a pattern as a new room, paused.
 

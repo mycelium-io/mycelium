@@ -1056,7 +1056,7 @@ keeps a separate encrypted session for each member of each room (see
 [custodial sessions](#security-planes)). Those sessions still live inside the
 backend, so no other machine holds room keys.
 
-The exception is a debugging tool: `mycelium wire` / `slim send` connects to
+The exception is a debugging tool: `mycelium slim send` (and `mycelium l9 send`) connects to
 SLIM directly from the CLI and joins the channel as its own encrypted member.
 Nothing else you normally use (`await`, `respond`, the app) works that way.
 
@@ -3333,7 +3333,7 @@ mycelium respond --handle ci-runner "I can hold the deploy until the bench lands
 it once, from any machine that can reach the hub:
 
 ```bash
-mycelium user create ci-runner --display-name "CI"
+mycelium user create ci-runner --name "CI"
 # or, for an agent that belongs to a room:
 mycelium agent create ci-runner --room build
 ```
@@ -3772,7 +3772,7 @@ mycelium memory set status/deploy "BLOCKED: waiting on DNS propagation"
 
 # Steps to repeat later
 mycelium memory set procedures/deploy-vps "1. ssh vps  2. cd /app && git pull  3. systemctl restart app  4. curl healthcheck"
-mycelium memory set procedures/db-migrate "1. uv run alembic upgrade head  2. Verify with psql -c 'SELECT version()'"
+mycelium memory set procedures/release "1. bump the version  2. tag it  3. watch the release workflow"
 ```
 
 ### 3. Read them back

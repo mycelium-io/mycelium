@@ -62,6 +62,12 @@ def test_json(hub: dict) -> None:
     }
 
 
+def test_json_after_the_command(hub: dict) -> None:  # noqa: ARG001 - the stubbed hub
+    result = runner.invoke(app, ["version", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["hub"] == "9.9.9"
+
+
 def test_cli_only_never_asks_the_hub(hub: dict) -> None:
     hub["response"] = AssertionError("hub was asked")
     result = runner.invoke(app, ["version", "--cli"])

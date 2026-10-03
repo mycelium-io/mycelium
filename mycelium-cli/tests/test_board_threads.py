@@ -25,6 +25,7 @@ from uuid import uuid4
 import pytest
 from typer.testing import CliRunner
 
+from mycelium import cli_options
 from mycelium.board.model import ItemSource, LiveItem
 from mycelium.cli import app as cli_app
 from mycelium.commands import board as board_cmd
@@ -39,6 +40,13 @@ THREAD = "urn:ioc:mycelium:episode:atlas:t3aa11bb"
 SHORT = "t3aa11bb"
 OTHER = "urn:ioc:mycelium:episode:atlas:c0ffee42"
 OTHER_SHORT = "c0ffee42"
+
+
+@pytest.fixture(autouse=True)
+def _shared_options(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The room and handle the shared options resolve to, without a real config."""
+    monkeypatch.setattr(cli_options, "resolve_room", lambda _c, flag=None: flag or ROOM)
+    monkeypatch.setattr(cli_options, "resolve_handle", lambda _c, flag, **_k: flag or "julia")
 
 
 def _unit(key: str = "work/passkey-login", episode: str | None = THREAD) -> dict:
@@ -245,6 +253,7 @@ class TestChatVerbs:
             "content": "@sec token storage?",
             "episode": THREAD,
             "destination": f"{ROOM}/{SHORT}",
+            "json_output": False,
         }
 
     def test_messages_reads_only_that_thread(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -469,6 +478,38 @@ def test_the_thread_read_is_the_room_read_with_one_argument(
     chat.read(_config(), ROOM, limit=10, episode=THREAD, label=f"{ROOM}/{SHORT}")
     assert captured["episode"] == THREAD
     assert captured["room_name"] == ROOM
+
+
+def test_board_messages_json_after_the_command_prints_the_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mycelium_backend_client.models import MessageListResponse
+
+    _hub(monkeypatch, memories=[_unit()])
+    monkeypatch.setattr("mycelium.chat._typed_client", lambda _c: _null_cm())
+    monkeypatch.setattr(
+        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync",
+        lambda **_k: MessageListResponse(messages=_messages(THREAD), total=1),
+    )
+
+    result = runner.invoke(board_cmd.app, ["messages", SHORT, "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert [m["content"] for m in payload["messages"]] == ["keychain, with a fallback"]
+
+
+def test_board_log_json_after_the_command_prints_the_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _hub(monkeypatch, memories=[_unit()])
+
+    result = runner.invoke(board_cmd.app, ["log", "--since", "30d", "--tz", "UTC", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["room"] == ROOM
+    assert payload["timezone"] == "UTC"
+    assert isinstance(payload["events"], list)
+    assert set(payload["streak"]) == {"current", "longest"}
 
 
 def test_a_thread_with_nothing_in_it_says_so_rather_than_no_messages(

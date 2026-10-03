@@ -52,7 +52,7 @@ mycelium memory set status/deploy "BLOCKED: waiting on DNS propagation"
 
 # Steps to repeat later
 mycelium memory set procedures/deploy-vps "1. ssh vps  2. cd /app && git pull  3. systemctl restart app  4. curl healthcheck"
-mycelium memory set procedures/db-migrate "1. uv run alembic upgrade head  2. Verify with psql -c 'SELECT version()'"
+mycelium memory set procedures/release "1. bump the version  2. tag it  3. watch the release workflow"
 ```
 
 ### 3. Read them back

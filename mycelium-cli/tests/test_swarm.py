@@ -638,3 +638,27 @@ def test_each_conductor_line_is_said_in_a_few_words():
         swarm.describe_line({"event": "select", "step": "pick", "select": pick})
         == "pick: B, @success at 55; no rating from @legal"
     )
+
+
+def test_swarm_takes_its_room_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """--room resolves the way every command's does, so MYCELIUM_ROOM_ID counts."""
+    from typer.testing import CliRunner
+
+    from mycelium.cli import app
+
+    # Away from any folder's membership, with no room in the environment.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("MYCELIUM_ROOM_ID", raising=False)
+    monkeypatch.delenv("MYCELIUM_CHANNEL_ID", raising=False)
+    runner = CliRunner()
+    nowhere = runner.invoke(app, ["swarm", "fix it"])
+    assert nowhere.exit_code != 0
+    assert "No room context found" in nowhere.output
+
+    monkeypatch.setenv("MYCELIUM_ROOM_ID", "hay")
+    # Past the room: the next thing it says is about --repo without --server.
+    found = runner.invoke(app, ["swarm", "fix it", "--repo", "https://example.com/r"])
+    assert found.exit_code == 1
+    assert "--repo is for --server" in found.output

@@ -32,6 +32,7 @@ import subprocess
 import httpx
 import typer
 
+from mycelium.cli_options import ACT_FLAGS, ACT_HELP, acts_as, emits_json, in_room, resolve_handle
 from mycelium.client import hub_client
 from mycelium.commands.room import _resolve_room
 from mycelium.config import MyceliumConfig
@@ -215,10 +216,12 @@ def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:
     desc="Long-poll a room until a message is addressed to the handle — or until a named lease changes hands.",
     group="other",
 )
+@in_room()
+@emits_json("json_output")
 def await_room(
     ctx: typer.Context,
-    room: str | None = typer.Option(None, "--room", "-r", help="Room (default: active room)"),
-    handle: str = typer.Option("", "--as", "--handle", "-H", help="Handle to participate as"),
+    room: str | None = None,
+    handle: str | None = typer.Option(None, *ACT_FLAGS, help=ACT_HELP),
     lease: str | None = typer.Option(
         None,
         "--lease",
@@ -243,7 +246,7 @@ def await_room(
         "--exec",
         help="With --loop: run this command per turn (turn JSON on stdin); it should call `respond`.",
     ),
-    json_output: bool = typer.Option(False, "--json", help="Emit the message as JSON for agents"),
+    json_output: bool = False,
 ) -> None:
     """Block until a message addressed to the handle arrives, print it, and exit.
 
@@ -286,9 +289,10 @@ def await_room(
             _lease_watch(config, room_name, lease, timeout, loop, exec_cmd, json_output)
             return
 
-        if not handle:
-            typer.secho("  ⟫  await needs --handle (or --lease <key>)", fg=typer.colors.RED)
-            raise typer.Exit(2)
+        # Resolved here rather than by `acts_as`, because a lease watch needs no
+        # handle. A turn does: with nothing to say who is waiting, it errors
+        # rather than waiting as a placeholder.
+        handle = resolve_handle(config, handle, fallback=None)
 
         # Resolved before the first poll, so a row id that names nothing is
         # refused now rather than after an hour of waiting on a thread that
@@ -404,20 +408,21 @@ def _await_loop(
     group="other",
 )
 @takes_text("text", "The reply, in markdown.", noun="reply")
+@in_room()
+@acts_as(fallback=None)
+@emits_json("json_output")
 def respond(
     ctx: typer.Context,
     text: str = typer.Argument(..., help="The reply / position text to publish"),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room (default: active room)"),
-    handle: str = typer.Option(
-        ..., "--as", "--handle", "-H", help="Handle to publish the reply as"
-    ),
+    room: str | None = None,
+    handle: str | None = None,
     task: str | None = typer.Option(
         None,
         "--task",
         "-u",
         help="Reply into one board row's thread (e.g. t3, work/auth) rather than where you were asked",
     ),
-    json_output: bool = typer.Option(False, "--json", help="Emit the result as JSON for agents"),
+    json_output: bool = False,
 ) -> None:
     """Publish the caller's reply; the backend threads it onto the last awaited turn.
 
@@ -442,7 +447,7 @@ def respond(
     try:
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
-        body: dict[str, str] = {"handle": handle, "text": text}
+        body: dict[str, str] = {"handle": handle or "", "text": text}
         if task:
             body["episode"] = _task_episode(room_name, task)
         with hub_client(config, timeout=30.0, handle=handle) as client:

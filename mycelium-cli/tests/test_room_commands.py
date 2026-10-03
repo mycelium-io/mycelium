@@ -98,6 +98,18 @@ def test_room_list_passes_limit_and_name(monkeypatch: pytest.MonkeyPatch) -> Non
     assert captured["name"] == "alpha"
 
 
+def test_room_list_takes_json_after_the_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+
+    monkeypatch.setattr(
+        "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync",
+        lambda **_kw: [_room("alpha"), _room("beta")],
+    )
+    result = runner.invoke(room_cmd.app, ["ls", "--json"])
+    assert result.exit_code == 0, result.output
+    assert [r["name"] for r in json.loads(result.output)] == ["alpha", "beta"]
+
+
 def test_room_create_writes_local_dir_and_reports(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "mycelium_backend_client.api.rooms.create_room_api_rooms_post.sync",

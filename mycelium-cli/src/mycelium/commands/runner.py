@@ -14,6 +14,7 @@ The app can only start what the scan found, in folders you allowed with
 
 from __future__ import annotations
 
+import json
 import os
 import signal
 import subprocess
@@ -24,6 +25,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from mycelium.cli_options import emits_json
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 
@@ -190,7 +192,8 @@ def runner(
     group="agent",
 )
 @app.command("status")
-def runner_status() -> None:
+@emits_json("as_json")
+def runner_status(as_json: bool = False) -> None:
     """Whether this machine's runner is running, and what the hub sees of it."""
     import httpx
 
@@ -199,21 +202,34 @@ def runner_status() -> None:
 
     pid = running_pid()
     rid = runner_id()
-    console.print(
-        f"runner [cyan]{rid}[/cyan]: " + (f"running (pid {pid})" if pid else "not running")
-    )
+    state: dict = {"runner": rid, "running": pid is not None, "pid": pid, "hub": None}
+    if not as_json:
+        console.print(
+            f"runner [cyan]{rid}[/cyan]: " + (f"running (pid {pid})" if pid else "not running")
+        )
     try:
         with hub_client(MyceliumConfig.load(), timeout=5) as client:
             resp = client.get(f"/api/runners/{rid}")
     except httpx.HTTPError as e:
-        console.print(f"[yellow]hub unreachable:[/yellow] {e}")
+        if as_json:
+            state["hub_error"] = str(e)
+            typer.echo(json.dumps(state, indent=2, default=str))
+        else:
+            console.print(f"[yellow]hub unreachable:[/yellow] {e}")
         raise typer.Exit(1) from None
     if resp.status_code == 404:
+        if as_json:
+            typer.echo(json.dumps(state, indent=2, default=str))
+            return
         console.print("[dim]The hub hasn't heard from it.[/dim]")
         return
     seen = resp.json()
-    state = "[green]connected[/]" if seen.get("connected") else "[yellow]not connected[/]"
-    console.print(f"hub: {state} · herdr {'yes' if seen.get('herdr') else 'no'}")
+    if as_json:
+        state["hub"] = seen
+        typer.echo(json.dumps(state, indent=2, default=str))
+        return
+    connected = "[green]connected[/]" if seen.get("connected") else "[yellow]not connected[/]"
+    console.print(f"hub: {connected} · herdr {'yes' if seen.get('herdr') else 'no'}")
     for a in seen.get("agents") or []:
         console.print(f"  @{a['handle']} in {a['room']} · {a['framework']} · {a['status']}")
 
@@ -294,12 +310,9 @@ def runner_stop() -> None:
     group="agent",
 )
 @app.command("scan")
-def runner_scan(
-    json_out: bool = typer.Option(False, "--json", help="Print the scan as JSON"),
-) -> None:
+@emits_json("json_out")
+def runner_scan(json_out: bool = False) -> None:
     """What the runner would report: the agent CLIs here, and which herdr can start."""
-    import json
-
     from mycelium.integrations.herdr import HerdrBridge
     from mycelium.runner import frameworks
 
