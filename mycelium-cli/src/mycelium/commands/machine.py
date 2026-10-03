@@ -15,6 +15,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
+from mycelium.cli_options import confirms, emits_json, in_room
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.machine import (
@@ -109,7 +110,8 @@ def _find(handle: str, room: str | None) -> Agent:
         raise
 
 
-_ROOM = typer.Option(None, "--room", "-r", help="The room, when two share a handle.")
+# --room here only tells apart two agents with one handle, so it is never resolved
+# to the active room: without it, a handle names the agent in whichever room it is.
 
 
 @doc_ref(
@@ -118,9 +120,10 @@ _ROOM = typer.Option(None, "--room", "-r", help="The room, when two share a hand
     group="agent",
 )
 @app.callback()
+@emits_json("as_json")
 def machine(
     ctx: typer.Context,
-    as_json: bool = typer.Option(False, "--json", help="Print the report as JSON."),
+    as_json: bool = False,
 ) -> None:
     """Every agent on this machine, and what's wrong.
 
@@ -142,11 +145,13 @@ def machine(
     group="agent",
 )
 @app.command("restart")
+@in_room("room", resolve=False)
+@confirms("yes")
 def restart_cmd(
     handles: list[str] = typer.Argument(None, help="Agents to restart (@ optional)."),
     every: bool = typer.Option(False, "--all", help="Every stopped agent that can be."),
-    room: str | None = _ROOM,
-    yes: bool = typer.Option(False, "--yes", "-y", help="Don't ask first."),
+    room: str | None = None,
+    yes: bool = False,
 ) -> None:
     """Restart stopped agents.
 
@@ -200,10 +205,11 @@ def restart_cmd(
     group="agent",
 )
 @app.command("rename")
+@in_room("room", resolve=False)
 def rename_cmd(
     handle: str = typer.Argument(..., help="The agent (@ optional)."),
     name: str = typer.Argument(..., help="The name herdr should show."),
-    room: str | None = _ROOM,
+    room: str | None = None,
 ) -> None:
     """Rename an agent in herdr."""
     agent = _find(handle, room)
@@ -220,13 +226,15 @@ def rename_cmd(
     group="agent",
 )
 @app.command("unbind")
+@in_room("room", resolve=False)
+@confirms("yes")
 def unbind_cmd(
     handle: str | None = typer.Argument(None, help="The agent (@ optional)."),
     gone: bool = typer.Option(
         False, "--gone", help="Every pane that's gone with nothing to restart."
     ),
-    room: str | None = _ROOM,
-    yes: bool = typer.Option(False, "--yes", "-y", help="Don't ask first."),
+    room: str | None = None,
+    yes: bool = False,
 ) -> None:
     """Unbind an agent from its herdr pane. It stays a member of its room."""
     if gone:
@@ -258,11 +266,13 @@ def unbind_cmd(
     group="agent",
 )
 @app.command("integrations")
+@confirms("yes")
+@emits_json("as_json")
 def integrations_cmd(
     install: bool = typer.Option(False, "--install", help="Install them for the agent CLIs here."),
     decline: bool = typer.Option(False, "--decline", help="Don't, and don't ask again."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Install without asking first."),
-    as_json: bool = typer.Option(False, "--json", help="Print the state as JSON."),
+    yes: bool = False,
+    as_json: bool = False,
 ) -> None:
     """herdr's integrations for the agent CLIs here.
 

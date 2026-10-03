@@ -22,7 +22,7 @@ keeps a separate encrypted session for each member of each room (see
 [custodial sessions](#security-planes)). Those sessions still live inside the
 backend, so no other machine holds room keys.
 
-The exception is a debugging tool: `mycelium wire` / `slim send` connects to
+The exception is a debugging tool: `mycelium slim send` (and `mycelium l9 send`) connects to
 SLIM directly from the CLI and joins the channel as its own encrypted member.
 Nothing else you normally use (`await`, `respond`, the app) works that way.
 

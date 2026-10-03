@@ -27,6 +27,7 @@ from rich.console import Console
 from rich.table import Table
 
 from mycelium import identity
+from mycelium.cli_options import acts_as, emits_json
 from mycelium.client import current_token
 from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
@@ -190,6 +191,7 @@ def _owned_lines(read: UserRead) -> list[tuple[str, str, str]]:
     group="user",
 )
 @app.command("create")
+@acts_as("handle_flag")
 def user_create(
     ctx: typer.Context,
     handle: str = typer.Argument(..., help="User handle (lowercase slug, e.g. 'avery')."),
@@ -202,15 +204,11 @@ def user_create(
     notify: str | None = typer.Option(
         None, "--notify", help="Where to route 'needs you' escalations (email/webhook)."
     ),
-    handle_flag: str | None = typer.Option(
-        None,
-        "--as",
-        "--handle",
-        "-H",
-        help="Your own handle (recorded as created_by). Defaults to your hub identity.",
-    ),
+    handle_flag: str | None = None,
 ) -> None:
     """Create (or upsert) a user in the global store.
+
+    Who you act as (``--as``) is recorded as created_by.
 
     Examples:
         mycelium user create avery --name "Avery Quinn" --team core
@@ -248,6 +246,7 @@ def user_create(
     group="user",
 )
 @app.command("ls")
+@emits_json()
 def user_ls(
     ctx: typer.Context,
     team: str | None = typer.Option(None, "--team", help="Filter to one team slug."),
@@ -296,6 +295,7 @@ def user_ls(
     group="user",
 )
 @app.command("show")
+@emits_json()
 def user_show(
     ctx: typer.Context,
     handle: str = typer.Argument(..., help="User handle."),
@@ -308,6 +308,15 @@ def user_show(
             console.print(f"[red]Not found:[/red] no user '{handle}' on the hub.")
             raise typer.Exit(1)
 
+        # The hub rolls up owned agents across every room, in the same request.
+        owned = _owned_lines(read)
+        if ctx.obj and ctx.obj.get("json"):
+            owns = [{"handle": h, "adapter": a, "room": r} for h, a, r in owned]
+            typer.echo(
+                json_module.dumps({**user.model_dump(), "owns": owns}, indent=2, default=str)
+            )
+            return
+
         console.print(f"[bold cyan]@{user.handle}[/bold cyan]")
         if user.display_name:
             console.print(f"  name: {user.display_name}")
@@ -316,8 +325,6 @@ def user_show(
         if user.notify:
             console.print(f"  notify: {user.notify}")
 
-        # The hub rolls up owned agents across every room, in the same request.
-        owned = _owned_lines(read)
         if owned:
             console.print(f"\n[bold]owns {len(owned)} agent(s)[/bold]")
             for agent_handle, adapter, room_name in owned:
@@ -388,6 +395,7 @@ def _principal_view(handle: str) -> tuple[UserManifest | None, list[tuple[str, s
     desc="Print the user you're acting as, plus the agents you own.",
     group="user",
 )
+@emits_json()
 def whoami(
     ctx: typer.Context,
     sources: bool = typer.Option(
@@ -407,6 +415,11 @@ def whoami(
     as (a flag, the environment, this folder's `mycelium join`, or this machine's
     setup), which is what to check when something is recorded as the wrong person.
     """
+    _whoami(ctx, sources=sources)
+
+
+def _whoami(ctx: typer.Context, *, sources: bool) -> None:
+    """``whoami``'s body, which ``iam`` with no handle also runs."""
     if sources:
         _print_sources(ctx)
         return
@@ -533,7 +546,7 @@ def iam(
         mycelium iam
     """
     if handle is None:
-        whoami(ctx, sources=False)
+        _whoami(ctx, sources=False)
         return
 
     try:

@@ -15,6 +15,7 @@ import subprocess
 
 import typer
 
+from mycelium.cli_options import emits_json
 from mycelium.commands.instance import (
     _COMPOSE_PROJECT,
     _get_compose_path,
@@ -187,9 +188,10 @@ def _settings_lines(s: dict) -> list[str]:
     group="setup",
 )
 @app.command("settings")
+@emits_json("json_output")
 def hub_settings(
     hub: str | None = typer.Option(None, "--hub", help="The hub to ask. Default: this machine's."),
-    json_output: bool = typer.Option(False, "--json", help="Output in JSON format"),
+    json_output: bool = False,
 ) -> None:
     """What the hub is set up with, read-only.
 

@@ -260,6 +260,15 @@ def test_ls_lists_the_hubs_patterns(hub: Hub) -> None:
     assert "skipped broken" in result.output
 
 
+def test_ls_json_after_the_command(tmp_path: Path, hub: Hub) -> None:
+    result = CliRunner().invoke(
+        app, ["pattern", "ls", "--from", str(write_pack(tmp_path)), "--json"]
+    )
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert [row["pattern"] for row in data["patterns"]] == ["adversarial-review-agents"]
+
+
 def test_ls_from_a_pack_of_your_own_never_calls_the_hub(tmp_path: Path, hub: Hub) -> None:
     result = CliRunner().invoke(app, ["pattern", "ls", "--from", str(write_pack(tmp_path))])
     assert result.exit_code == 0, result.output

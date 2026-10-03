@@ -21,13 +21,14 @@ would.
 
 from __future__ import annotations
 
+import json
 import re
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
-from mycelium.commands.room import _resolve_room
+from mycelium.cli_options import emits_json, in_room
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
@@ -58,11 +59,12 @@ def _bridge() -> HerdrBridge:
     group="agent",
 )
 @app.command("map")
+@in_room("room")
 def herdr_map(
     ctx: typer.Context,
     handle: str = typer.Argument(..., help="Mycelium agent handle (without leading @)."),
     pane: str = typer.Argument(..., help="herdr pane id hosting the agent, e.g. w2:pV."),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room (defaults to active)."),
+    room: str | None = None,
     kind: str | None = typer.Option(None, "--kind", help="herdr agent kind (claude, pi, …)."),
 ) -> None:
     """Record a durable ``handle -> pane`` binding used by wake.
@@ -71,8 +73,7 @@ def herdr_map(
     (a warning, not a hard failure — you can map ahead of starting the agent).
     """
     try:
-        config = MyceliumConfig.load()
-        room_name = _resolve_room(config, room)
+        room_name = str(room)
         bridge = _bridge()
 
         resolved_kind = kind
@@ -110,15 +111,15 @@ def herdr_map(
     group="agent",
 )
 @app.command("unmap")
+@in_room("room")
 def herdr_unmap(
     ctx: typer.Context,
     handle: str = typer.Argument(..., help="Mycelium agent handle."),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room (defaults to active)."),
+    room: str | None = None,
 ) -> None:
     """Forget a ``handle -> pane`` binding."""
     try:
-        config = MyceliumConfig.load()
-        room_name = _resolve_room(config, room)
+        room_name = str(room)
         removed = _bridge().registry.remove(room_name, handle)
         if removed:
             console.print(
@@ -181,9 +182,11 @@ def _reconcile_note(mycelium_kind: str | None, herdr_status: str | None) -> tupl
     group="agent",
 )
 @app.command("ls")
+@in_room("room", resolve=False)  # no room: every binding
+@emits_json()
 def herdr_ls(
     ctx: typer.Context,
-    room: str | None = typer.Option(None, "--room", "-r", help="Only this room."),
+    room: str | None = None,
 ) -> None:
     """Reconcile each binding across three views: the registry, the backend's
     presence (``slim``/``lease``), and herdr's live agent list.
@@ -193,15 +196,18 @@ def herdr_ls(
     that can cross-check — so a lease with a dead pane shows as **stale lease**,
     and a live herdr agent the backend never joined shows as **herdr-only**.
     """
+    as_json = bool(ctx.obj and ctx.obj.get("json"))
     try:
         config = MyceliumConfig.load()
         bridge = _bridge()
         mappings = bridge.registry.all()
         if room:
-            room_name = _resolve_room(config, room)
-            mappings = [m for m in mappings if m.room == room_name]
+            mappings = [m for m in mappings if m.room == room]
 
         if not mappings:
+            if as_json:
+                typer.echo("[]")
+                return
             console.print(
                 "[dim]No herdr mappings. Bind one with `mycelium herdr map <handle> <pane>`.[/dim]"
             )
@@ -219,6 +225,29 @@ def herdr_ls(
         for m in mappings:
             if m.room not in members_by_room:
                 members_by_room[m.room] = _room_members(config, m.room)
+
+        if as_json:
+            rows = []
+            for m in mappings:
+                herdr_state = live.get(m.pane)
+                members = members_by_room.get(m.room)
+                myc_kind = members.get(m.handle.lower()) if members is not None else None
+                rows.append(
+                    {
+                        "room": m.room,
+                        "handle": m.handle,
+                        "pane": m.pane,
+                        "kind": m.kind,
+                        "managed": m.managed,
+                        # False when the hub couldn't be asked.
+                        "presence_known": members is not None,
+                        "mycelium": myc_kind,
+                        "herdr": herdr_state,
+                        "verdict": _reconcile_note(myc_kind, herdr_state)[0],
+                    }
+                )
+            typer.echo(json.dumps(rows, indent=2, default=str))
+            return
 
         table = Table(title="herdr ↔ mycelium reconciliation", show_lines=False)
         table.add_column("room", style="dim")
@@ -456,20 +485,41 @@ def _reconcile_workspace(
     group="agent",
 )
 @app.command("status")
+@emits_json()
 def herdr_status(ctx: typer.Context) -> None:
     """Report herdr availability, the precondition for the wake path."""
+    as_json = bool(ctx.obj and ctx.obj.get("json"))
+
+    def report(installed: bool, reachable: bool, agents: int = 0, bindings: int = 0) -> None:
+        state = {
+            "installed": installed,
+            "reachable": reachable,
+            "live_agents": agents,
+            "bindings": bindings,
+        }
+        typer.echo(json.dumps(state, indent=2))
+
     try:
         bridge = _bridge()
         if not bridge.binary_present():
+            if as_json:
+                report(installed=False, reachable=False)
+                raise typer.Exit(1)
             console.print("[yellow]herdr not installed[/yellow]; the wake layer is unavailable.")
             console.print(
                 "[dim]Install from https://herdr.dev; mycelium works fine without it.[/dim]"
             )
             raise typer.Exit(1)
         if not bridge.available():
+            if as_json:
+                report(installed=True, reachable=False)
+                raise typer.Exit(1)
             console.print("[yellow]herdr installed but server unreachable.[/yellow]")
             raise typer.Exit(1)
         agents = bridge.list_agents()
+        if as_json:
+            report(True, True, len(agents), len(bridge.registry.all()))
+            return
         console.print(
             f"[green]herdr reachable[/green]: {len(agents)} live agent(s), "
             f"{len(bridge.registry.all())} mycelium binding(s)."
@@ -487,10 +537,11 @@ def herdr_status(ctx: typer.Context) -> None:
     group="agent",
 )
 @app.command("wake")
+@in_room("room")
 def herdr_wake(
     ctx: typer.Context,
     handle: str = typer.Argument(..., help="Mycelium agent handle to wake."),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room (defaults to active)."),
+    room: str | None = None,
     timeout_ms: int = typer.Option(120000, "--timeout-ms", help="Wake wait budget (ms)."),
 ) -> None:
     """Prompt the mapped herdr pane to drain its pending mycelium turn.
@@ -500,8 +551,7 @@ def herdr_wake(
     all report cleanly and exit non-zero (the message stays on the cursor).
     """
     try:
-        config = MyceliumConfig.load()
-        room_name = _resolve_room(config, room)
+        room_name = str(room)
         bridge = _bridge()
 
         if not bridge.available():
@@ -715,14 +765,13 @@ SYNC_TTL_S = 90.0
     group="agent",
 )
 @app.command("sync")
+@in_room("room", resolve=False)  # no room: every bound workspace
 def herdr_sync(
     ctx: typer.Context,
     workspace: str | None = typer.Option(
         None, "--workspace", "-w", help="herdr workspace id to bind to --room (e.g. w2)."
     ),
-    room: str | None = typer.Option(
-        None, "--room", "-r", help="Room to bind/reconcile (scopes to bound workspaces)."
-    ),
+    room: str | None = None,
     name_from: str = typer.Option(
         "tab", "--name-from", help="Handle source for new agents: 'tab' or 'pane'."
     ),
@@ -757,7 +806,7 @@ def herdr_sync(
             console.print("[yellow]herdr not reachable[/yellow]; nothing to sync.")
             raise typer.Exit(1)
 
-        room_name = _resolve_room(config, room) if room else None
+        room_name = room or None
         if workspace and room_name:
             bridge.registry.bind(workspace, room_name)
             console.print(

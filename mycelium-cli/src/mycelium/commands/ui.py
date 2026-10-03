@@ -12,6 +12,7 @@ the backend over the compose network (see mycelium-frontend/Dockerfile).
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -19,6 +20,7 @@ import webbrowser
 
 import typer
 
+from mycelium.cli_options import confirms, emits_json
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 
@@ -62,14 +64,10 @@ def _container_running(name: str) -> bool:
     desc="Open the frontend in your default browser.",
     group="setup",
 )
+@confirms("yes")
 def ui_open(
     ctx: typer.Context,
-    yes: bool = typer.Option(
-        False,
-        "--yes",
-        "-y",
-        help="Skip the confirmation prompt and start the stack if it isn't running",
-    ),
+    yes: bool = False,
 ) -> None:
     """Open the frontend in your default browser.
 
@@ -104,14 +102,29 @@ def ui_open(
     desc="Show whether the frontend container is running.",
     group="setup",
 )
-def ui_status() -> None:
+@emits_json("as_json")
+def ui_status(as_json: bool = False) -> None:
     """Show whether the frontend container is running.
 
     Examples:
         mycelium ui status
     """
     url = _ui_url()
-    if _container_running(_FRONTEND_CONTAINER):
+    running = _container_running(_FRONTEND_CONTAINER)
+    if as_json:
+        try:
+            backend: str | None = MyceliumConfig.load().server.api_url
+        except Exception:
+            backend = None
+        state = {
+            "container": _FRONTEND_CONTAINER,
+            "running": running,
+            "url": url,
+            "backend": backend,
+        }
+        typer.echo(json.dumps(state, indent=2))
+        return
+    if running:
         typer.secho(f"✓ {_FRONTEND_CONTAINER} is running", fg=typer.colors.GREEN)
         typer.echo(f"  URL: {url}")
     else:

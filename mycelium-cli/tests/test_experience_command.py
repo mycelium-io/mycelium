@@ -9,6 +9,7 @@ just written; without one, it says to restart; --no-restart touches nothing.
 
 from __future__ import annotations
 
+import json
 import zipfile
 from typing import TYPE_CHECKING
 
@@ -57,6 +58,15 @@ def test_adding_one_restarts_the_backend_only_when_a_stack_runs(
     assert "3 business" not in result.output  # one scenario in this pack
     assert "1 business scenario " in result.output
     assert calls == restarted
+
+
+def test_ls_json_lists_every_experience(tmp_path, monkeypatch):
+    monkeypatch.setattr(xp, "experiences_dir", lambda: tmp_path / "experiences")
+    result = CliRunner().invoke(experience.app, ["ls", "--json"])
+    assert result.exit_code == 0, result.output
+    rows = json.loads(result.output)
+    assert isinstance(rows, list)
+    assert all("id" in row and "added" in row for row in rows)
 
 
 def test_a_bad_file_says_why_and_changes_nothing(tmp_path, monkeypatch):

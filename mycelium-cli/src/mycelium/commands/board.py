@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -57,6 +57,7 @@ from mycelium.board.model import (
     format_age,
 )
 from mycelium.board.schema import groupable_fields
+from mycelium.cli_options import ROOM_HELP, acts_as, emits_json, in_room, paged
 from mycelium.client import hub_client
 from mycelium.commands.room import _resolve_room
 from mycelium.config import MyceliumConfig
@@ -113,6 +114,11 @@ TITLE_WIDTH = 50
 #: How a lease reads as it drains. The terminal's version of the GUI's TtlBar:
 #: the same fraction, five cells wide.
 TTL_CELLS = 5
+
+
+def _json_wanted(ctx: typer.Context) -> bool:
+    """Whether the reader asked for JSON, before the command or after it."""
+    return bool(ctx.obj and ctx.obj.get("json"))
 
 
 # ── data ─────────────────────────────────────────────────────────────────────
@@ -448,9 +454,10 @@ def _table(shown: list[LiveItem], every: list[LiveItem]) -> Group:
     group="board",
 )
 @app.callback(invoke_without_command=True)
+@in_room(resolve=False, help=ROOM_HELP)  # resolved below, once a subcommand isn't taking over
 def board(
     ctx: typer.Context,
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    room: str | None = None,
     attention_filter: str = typer.Option(
         "needs-you", "--filter", "-f", help="needs-you | in-flight | resolved | all"
     ),
@@ -508,9 +515,10 @@ def board(
     group="board",
 )
 @app.command(name="resolve")
+@in_room()
 def board_resolve(
     row_id: str = typer.Argument(..., help="Row id as shown on the board (e.g. t3, work/auth)"),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    room: str | None = None,
 ) -> None:
     """Resolve a row."""
     cfg = MyceliumConfig.load()
@@ -533,6 +541,7 @@ def board_resolve(
     group="board",
 )
 @app.command(name="claim")
+@in_room()
 def board_claim(
     row_id: str = typer.Argument(..., help="Row id as shown on the board (e.g. work/auth-spike)"),
     to: str | None = typer.Option(None, "--to", help="Handle to claim it for (default: you)"),
@@ -544,7 +553,7 @@ def board_claim(
         "--force",
         help="Take the row even while it waits on an unresolved dependency",
     ),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    room: str | None = None,
 ) -> None:
     """Claim a row, as a lease rather than a fact.
 
@@ -582,10 +591,11 @@ def board_claim(
     group="board",
 )
 @app.command(name="release")
+@in_room()
 def board_release(
     row_id: str = typer.Argument(..., help="Row id as shown on the board"),
     note: str | None = typer.Option(None, "--note", help="Why you're handing it back"),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    room: str | None = None,
 ) -> None:
     """Release a row you hold."""
     cfg = MyceliumConfig.load()
@@ -613,10 +623,11 @@ def board_release(
     group="board",
 )
 @app.command(name="block")
+@in_room()
 def board_block(
     row_id: str = typer.Argument(..., help="Row id as shown on the board"),
     on: str | None = typer.Option(None, "--on", help="What it's waiting on (e.g. #502)"),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    room: str | None = None,
 ) -> None:
     """Say what a row is waiting on."""
     if not on:
@@ -822,7 +833,10 @@ def _write_fields(cfg: MyceliumConfig, room: str, row_id: str, patch: dict) -> N
     group="board",
 )
 @app.command(name="new")
+@in_room()
+@emits_json()
 def board_new(
+    ctx: typer.Context,
     title: str = typer.Argument(..., help="What the task is"),
     assign: str | None = typer.Option(
         None, "--assign", help="Who it's for (an assignment, not a claim — holding it is a lease)"
@@ -830,7 +844,7 @@ def board_new(
     parent: str | None = typer.Option(
         None, "--parent", help="Row this one decomposes, as a part-of relation"
     ),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    room: str | None = None,
 ) -> None:
     """Create a task.
 
@@ -861,6 +875,9 @@ def board_new(
         console.print(f"[red]✗[/red] could not create the task: {resp.text}")
         raise typer.Exit(1)
     task = resp.json()
+    if _json_wanted(ctx):
+        typer.echo(json.dumps(task, indent=2, default=str))
+        return
     thread = str(task.get(EPISODE_FIELD) or "").rsplit(":", 1)[-1]
     console.print(
         f"[green]✓[/green] [bold]{task.get('key')}[/bold] — {title}"
@@ -878,15 +895,17 @@ def board_new(
 )
 @app.command(name="send")
 @takes_text("content", "What to say, in markdown. @handle mentions address agents.", noun="message")
+@in_room()
+@acts_as()
+@emits_json()
 def board_send(
+    ctx: typer.Context,
     row_id: str = typer.Argument(
         ..., help="Row id, thread id, or any memory key (e.g. t3, work/auth, context/api)"
     ),
     content: str = typer.Argument(..., help="What to say. @handle mentions address agents."),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-    handle: str | None = typer.Option(
-        None, "--as", "--handle", "-H", help="Your sender handle (defaults to identity config)"
-    ),
+    room: str | None = None,
+    handle: str | None = None,
 ) -> None:
     """Say something in a thread.
 
@@ -912,6 +931,7 @@ def board_send(
         content=content,
         episode=episode,
         destination=where,
+        json_output=_json_wanted(ctx),
     )
 
 
@@ -921,11 +941,15 @@ def board_send(
     group="board",
 )
 @app.command(name="messages")
+@in_room()
+@paged()
+@emits_json()
 def board_messages(
+    ctx: typer.Context,
     row_id: str = typer.Argument(
         ..., help="Row id, thread id, or any memory key (e.g. t3, work/auth, context/api)"
     ),
-    limit: int = typer.Option(20, "--limit", "-l", help="Max messages to show (newest first)"),
+    limit: int = 20,
     sender: str | None = typer.Option(
         None, "--sender", "-s", help="Only messages from this handle"
     ),
@@ -938,7 +962,7 @@ def board_messages(
     since: str | None = typer.Option(
         None, "--since", help="Only messages at/after this ISO stamp or age (2h, 30m, 1d)"
     ),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    room: str | None = None,
 ) -> None:
     """Read a thread.
 
@@ -964,6 +988,7 @@ def board_messages(
         label=where,
         empty_note="nothing said in this thread yet",
         older_with=stem,
+        json_output=_json_wanted(ctx),
     )
 
 
@@ -973,6 +998,8 @@ def board_messages(
     group="board",
 )
 @app.command(name="coordinate")
+@in_room()
+@acts_as()
 def board_coordinate(
     row_id: str = typer.Argument(
         ..., help="Row id, thread id, or any memory key (e.g. t3, work/auth, context/api)"
@@ -981,10 +1008,8 @@ def board_coordinate(
     ask: str = typer.Argument(
         "please mediate us to an agreement.", help="What you're asking it to do"
     ),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-    handle: str | None = typer.Option(
-        None, "--as", "--handle", "-H", help="Your sender handle (defaults to identity config)"
-    ),
+    room: str | None = None,
+    handle: str | None = None,
 ) -> None:
     """Open a coordination phase on a row, run by an engine.
 
@@ -1054,8 +1079,11 @@ HEAT_BLOCKS = ["·", "░", "▒", "▓", "█"]
     group="board",
 )
 @app.command(name="log")
+@in_room()
+@emits_json()
 def board_log(
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    ctx: typer.Context,
+    room: str | None = None,
     since: str = typer.Option("7d", "--since", "-s", help="Window: 7d, 30d, today"),
     day: str | None = typer.Option(None, "--day", help="One day, as YYYY-MM-DD"),
     week: bool = typer.Option(False, "--week", help="This week, Monday to Sunday"),
@@ -1084,7 +1112,11 @@ def board_log(
         wanted = by.lstrip("@").lower()
         events = [e for e in events if e.actor.lower() == wanted]
 
+    json_output = _json_wanted(ctx)
     if not events and not health.reachable:
+        if json_output:
+            typer.echo(json.dumps({"room": name, "error": health.note, "events": []}, indent=2))
+            return
         console.print(Text(f"  {health.note}. No log to draw for {name}.", style="red"))
         return
 
@@ -1110,6 +1142,22 @@ def board_log(
     current, longest = streaks(days, today_local)
     summary = summarize_activity(days, frm, to)
     logged_today = len(days.get(today_local, []))
+
+    if json_output:
+        out = {
+            "room": name,
+            "from": frm,
+            "to": to,
+            "timezone": tz.key,
+            "logged_today": logged_today,
+            "daily_goal": DAILY_GOAL,
+            "streak": {"current": current, "longest": longest},
+            "active_days": summary.active_days,
+            "incomplete": health.note,
+            "events": [asdict(e) for e in summary.events],
+        }
+        typer.echo(json.dumps(out, indent=2, default=str))
+        return
 
     console.print()
     header = Text()
@@ -1197,6 +1245,7 @@ app.add_typer(credential_app, name="credential")
     group="board",
 )
 @credential_app.command("set")
+@emits_json()
 def credential_set(
     ctx: typer.Context,
     name: str = typer.Argument(..., help="Credential name a provider declares, e.g. GITHUB_TOKEN"),
@@ -1257,6 +1306,7 @@ def credential_set(
     group="board",
 )
 @credential_app.command("ls")
+@emits_json()
 def credential_ls(ctx: typer.Context) -> None:
     """List stored status-provider credential names, never their values."""
     from mycelium import status_credentials
@@ -1290,6 +1340,7 @@ def credential_ls(ctx: typer.Context) -> None:
     group="board",
 )
 @credential_app.command("rm")
+@emits_json()
 def credential_rm(
     ctx: typer.Context,
     name: str = typer.Argument(..., help="Credential name to forget"),

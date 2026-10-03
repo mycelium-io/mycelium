@@ -110,6 +110,16 @@ def test_ls_shows_names_and_set_state_never_values() -> None:
     assert "ghp_secret" not in result.output
 
 
+def test_ls_json_after_the_command_lists_names_never_values() -> None:
+    runner.invoke(
+        app, ["board", "credential", "set", "GITHUB_TOKEN", "--stdin"], input="ghp_secret"
+    )
+    result = runner.invoke(app, ["board", "credential", "ls", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"GITHUB_TOKEN": True}
+    assert "ghp_secret" not in result.output
+
+
 def test_ls_on_an_empty_hub_says_so() -> None:
     result = runner.invoke(app, ["board", "credential", "ls"])
     assert result.exit_code == 0, result.output

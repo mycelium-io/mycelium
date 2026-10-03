@@ -10,6 +10,7 @@ so the API ``.sync`` functions are stubbed. Room-scoped, like memory.
 from __future__ import annotations
 
 import datetime
+import json
 from typing import Any
 
 import pytest
@@ -146,6 +147,30 @@ def test_skill_get(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.exit_code == 0, result.output
     assert "/alpha" in result.output
     assert "the body" in result.output
+
+
+def test_skill_get_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "mycelium_backend_client.api.skills.get_skill_api_rooms_room_name_skills_name_get.sync",
+        lambda *, room_name, name, client: _skill_read(name, body="the body", description="d"),
+    )
+    result = runner.invoke(skill_cmd.app, ["get", "alpha", "--room", "demo", "--json"])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert data["name"] == "alpha"
+    assert data["body"] == "the body"
+
+
+def test_skill_ls_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mycelium_backend_client.models import SkillListResponse
+
+    monkeypatch.setattr(
+        "mycelium_backend_client.api.skills.list_skills_api_rooms_room_name_skills_get.sync",
+        lambda *, room_name, client: SkillListResponse(skills=[_skill_read("alpha")], total=1),
+    )
+    result = runner.invoke(skill_cmd.app, ["ls", "--room", "demo", "--json"])
+    assert result.exit_code == 0, result.output
+    assert [s["name"] for s in json.loads(result.output)] == ["alpha"]
 
 
 def test_skill_get_missing(monkeypatch: pytest.MonkeyPatch) -> None:

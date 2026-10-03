@@ -12,6 +12,7 @@ skill is reachable as a memory too. Reads and writes resolve against the hub ove
 HTTP; a spoke keeps no local replica.
 """
 
+import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from importlib import resources
@@ -23,6 +24,7 @@ import typer
 from rich.console import Console
 
 from mycelium import identity
+from mycelium.cli_options import acts_as, emits_json, in_room, room_or_exit
 from mycelium.client import hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
@@ -69,18 +71,13 @@ def _hub_session() -> Iterator[Any]:
 
 
 def _get_active_room(room: str | None) -> str:
-    """Resolve the room from the arg or the active config, like `mycelium memory`."""
-    if room:
-        return room
-    cfg = MyceliumConfig.load()
-    active = getattr(cfg.rooms, "active", None) if hasattr(cfg, "rooms") else None
-    if active:
-        return active
-    console.print(
-        "[red]Error:[/red] no room specified and no active room set. Use --room or "
-        "'mycelium config set rooms.active <name>'."
-    )
-    raise typer.Exit(1)
+    """The room to use, in ``caller.room``'s order."""
+    return room_or_exit(MyceliumConfig.load(), room)
+
+
+def _echo_json(data: Any) -> None:
+    """Print ``data`` as JSON and nothing else, for ``--json``."""
+    typer.echo(json.dumps(data, indent=2, default=str))
 
 
 @doc_ref(
@@ -90,22 +87,16 @@ def _get_active_room(room: str | None) -> str:
 )
 @app.command(name="set")
 @takes_text("body", "The skill's instructions, in markdown.", noun="skill body")
+@in_room("room")
+@acts_as("handle")
 def skill_set(
     name: str = typer.Argument(..., help="Skill slug (kebab-case, e.g. 'summarize-room')"),
     body: str = typer.Argument(..., help="Skill body (prose / instructions)"),
-    room: str | None = typer.Option(
-        None, "--room", "-r", help="Room name (defaults to active room)"
-    ),
+    room: str | None = None,
     description: str = typer.Option(
         "", "--desc", "-d", help="One-line summary shown in listings and the composer"
     ),
-    handle: str | None = typer.Option(
-        None,
-        "--as",
-        "--handle",
-        "-H",
-        help="Author to attribute this to (created_by). Defaults to your hub identity.",
-    ),
+    handle: str | None = None,
     tags: str | None = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
 ) -> None:
     """Create or upsert a skill in a room's skills/ namespace. Always upserts; version bumps."""
@@ -138,9 +129,9 @@ def skill_set(
     group="skill",
 )
 @app.command(name="ls")
-def skill_ls(
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-) -> None:
+@in_room("room")
+@emits_json("as_json")
+def skill_ls(room: str | None = None, as_json: bool = False) -> None:
     """List a room's skills from the hub."""
     from mycelium_backend_client.api.skills import (
         list_skills_api_rooms_room_name_skills_get as list_api,
@@ -151,6 +142,9 @@ def skill_ls(
         resp = list_api.sync(room_name=room_name, client=client)
 
     skills = getattr(resp, "skills", None) or []
+    if as_json:
+        _echo_json([s.to_dict() for s in skills])
+        return
     if not skills:
         console.print("[dim]No skills found[/dim]")
         return
@@ -171,9 +165,12 @@ def skill_ls(
     group="skill",
 )
 @app.command(name="get")
+@in_room("room")
+@emits_json("as_json")
 def skill_get(
     name: str = typer.Argument(..., help="Skill name"),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    room: str | None = None,
+    as_json: bool = False,
 ) -> None:
     """Read a skill by name (from the hub)."""
     from mycelium_backend_client.api.skills import (
@@ -195,6 +192,10 @@ def skill_get(
         console.print(f"[red]Not found:[/red] {name}")
         raise typer.Exit(1)
 
+    if as_json:
+        _echo_json(skill.to_dict())
+        return
+
     desc = skill.description or ""
     console.print(f"[cyan]/{skill.name}[/cyan]  [dim]v{skill.version}  {skill.created_by}[/dim]")
     if desc:
@@ -208,9 +209,10 @@ def skill_get(
     group="skill",
 )
 @app.command(name="rm")
+@in_room("room")
 def skill_rm(
     name: str = typer.Argument(..., help="Skill name"),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    room: str | None = None,
 ) -> None:
     """Delete a skill by name."""
     from mycelium_backend_client.api.skills import (

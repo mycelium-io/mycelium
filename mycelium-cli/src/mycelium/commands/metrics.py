@@ -22,6 +22,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from mycelium.cli_options import emits_json
 from mycelium.collector import _ensure_shared_dir
 from mycelium.commands.traces import app as traces_app
 
@@ -95,58 +96,75 @@ def _port_in_use(port: int) -> bool:
         s.close()
 
 
-def _check_otel_deps() -> bool:
-    """Return True if opentelemetry-proto is importable, else print an error."""
+def _otel_deps_installed() -> bool:
+    """Return True if opentelemetry-proto is importable."""
     try:
         from opentelemetry.proto.collector.metrics.v1 import metrics_service_pb2  # noqa: F401
-
-        return True
     except ImportError:
-        typer.secho(
-            "✗ opentelemetry-proto not found. Reinstall the CLI:\n"
-            "  curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash",
-            fg=typer.colors.RED,
-        )
         return False
+    return True
+
+
+def _check_otel_deps() -> bool:
+    """Return True if opentelemetry-proto is importable, else print an error."""
+    if _otel_deps_installed():
+        return True
+    typer.secho(
+        "✗ opentelemetry-proto not found. Reinstall the CLI:\n"
+        "  curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash",
+        fg=typer.colors.RED,
+    )
+    return False
 
 
 @app.command("status")
-def status() -> None:
+@emits_json("as_json")
+def status(as_json: bool = False) -> None:
     """Show the health of the metrics pipeline (collector, config, data)."""
     from datetime import UTC, datetime
 
     all_ok = True
+    # What the JSON view prints: the same checks the text view shows.
+    report: dict = {}
+
+    def say(*args: object) -> None:
+        if not as_json:
+            console.print(*args)
 
     # ── OTLP deps ────────────────────────────────────────────────────────
-    if _check_otel_deps():
-        console.print("[green]✓[/green] OTLP dependencies  installed")
+    deps_ok = _otel_deps_installed() if as_json else _check_otel_deps()
+    report["otlp_dependencies"] = deps_ok
+    if deps_ok:
+        say("[green]✓[/green] OTLP dependencies  installed")
     else:
-        console.print("[red]✗[/red] OTLP dependencies  missing (opentelemetry-proto)")
+        say("[red]✗[/red] OTLP dependencies  missing (opentelemetry-proto)")
         all_ok = False
 
     # ── Collector process ────────────────────────────────────────────────
     collector_url = _get_collector_url()
     collector_port = _resolve_port(None)
     spoke = _is_spoke_mode()
+    report["mode"] = "spoke" if spoke and collector_url else "hub"
+    report["collector_port"] = collector_port
 
     if spoke and collector_url:
         # Spoke mode: show hub (remote) AND local collector state
         remote_data = _fetch_remote_metrics(collector_url)
+        report["hub_collector"] = {"url": collector_url, "reachable": remote_data is not None}
         if remote_data is not None:
-            console.print(f"[green]✓[/green] Hub collector      reachable ({collector_url})")
+            say(f"[green]✓[/green] Hub collector      reachable ({collector_url})")
         else:
-            console.print(f"[red]✗[/red] Hub collector      unreachable ({collector_url})")
+            say(f"[red]✗[/red] Hub collector      unreachable ({collector_url})")
             all_ok = False
 
         local_pid = _read_collector_pid()
         local_alive = local_pid is not None or _port_in_use(collector_port)
+        report["local_collector"] = {"running": local_alive, "pid": local_pid}
         if local_alive:
             pid_label = f" PID {local_pid}" if local_pid else ""
-            console.print(
-                f"[green]✓[/green] Local collector    running on :{collector_port}{pid_label}"
-            )
+            say(f"[green]✓[/green] Local collector    running on :{collector_port}{pid_label}")
         else:
-            console.print(
+            say(
                 f"[yellow]⚠[/yellow] Local collector    not running on :{collector_port}\n"
                 "  [dim]Start with [bold]mycelium metrics collect[/bold] to receive traces on this machine[/dim]"
             )
@@ -161,16 +179,19 @@ def status() -> None:
             collector_alive = True
             collector_label = f"port {collector_port}"
 
+        report["collector"] = {"running": collector_alive, "via": collector_label or None}
         if collector_alive:
-            console.print(f"[green]✓[/green] Collector running  {collector_label}")
+            say(f"[green]✓[/green] Collector running  {collector_label}")
         else:
-            console.print(
+            say(
                 "[red]✗[/red] Collector not running\n"
                 "  [dim]Start with [bold]mycelium up --metrics[/bold][/dim]"
             )
             all_ok = False
 
     # ── Metrics data file ────────────────────────────────────────────────
+    data_file: dict = {"path": str(_metrics_json()), "exists": _metrics_json().exists()}
+    report["data_file"] = data_file
     if _metrics_json().exists():
         try:
             stat = _metrics_json().stat()
@@ -187,47 +208,62 @@ def status() -> None:
                 (data.get("backend") or {}).get("counters", {}).get("llm", {}).get("calls", 0)
             )
             hosts = len(data.get("by_host") or {})
+            data_file.update(
+                {
+                    "readable": True,
+                    "updated_at": mtime.isoformat(),
+                    "backend_llm_calls": llm_calls,
+                    "hosts_sending_traces": hosts,
+                }
+            )
 
-            console.print(f"[green]✓[/green] Data file          {_metrics_json()}")
-            console.print(
+            say(f"[green]✓[/green] Data file          {_metrics_json()}")
+            say(
                 f"  [dim]Last updated {age_str}  •  {llm_calls:,} backend LLM calls  •  "
                 f"{hosts} host(s) sending traces[/dim]"
             )
         except Exception:
-            console.print(f"[yellow]⚠[/yellow] Data file exists but unreadable: {_metrics_json()}")
+            data_file["readable"] = False
+            say(f"[yellow]⚠[/yellow] Data file exists but unreadable: {_metrics_json()}")
             all_ok = False
     else:
-        console.print("[yellow]⚠[/yellow] No metrics data yet")
+        say("[yellow]⚠[/yellow] No metrics data yet")
 
     # ── Pricing data ────────────────────────────────────────────────────
     pricing = _load_pricing()
     models = pricing.get("models", [])
     gen_date = _pricing_generated_at()
+    report["pricing"] = {
+        "found": bool(pricing),
+        "source": pricing.get("source"),
+        "generated_at": gen_date,
+        "models": [m.get("pattern", "?") for m in models],
+    }
     if models:
         source_label = (
             "update-pricing" if pricing.get("source") == "litellm_catalog_api" else "bundled"
         )
-        console.print(
+        say(
             f"[green]✓[/green] Pricing data        "
             f"{len(models)} models ({source_label}"
             f"{', ' + gen_date.split(',')[0] if gen_date else ''})"
         )
         patterns = [m.get("pattern", "?") for m in models]
-        console.print(f"  [dim]{', '.join(patterns)}[/dim]")
+        say(f"  [dim]{', '.join(patterns)}[/dim]")
     elif pricing:
-        console.print("[yellow]⚠[/yellow] Pricing data        no models found")
-        console.print(
-            "  [dim]Run [bold]mycelium metrics update-pricing[/bold] to fetch pricing[/dim]"
-        )
+        say("[yellow]⚠[/yellow] Pricing data        no models found")
+        say("  [dim]Run [bold]mycelium metrics update-pricing[/bold] to fetch pricing[/dim]")
         all_ok = False
     else:
-        console.print("[yellow]⚠[/yellow] Pricing data        not found")
-        console.print(
-            "  [dim]Run [bold]mycelium metrics update-pricing[/bold] to fetch pricing[/dim]"
-        )
+        say("[yellow]⚠[/yellow] Pricing data        not found")
+        say("  [dim]Run [bold]mycelium metrics update-pricing[/bold] to fetch pricing[/dim]")
         all_ok = False
 
     # ── Summary ──────────────────────────────────────────────────────────
+    if as_json:
+        report["healthy"] = all_ok
+        typer.echo(json.dumps(report, indent=2, default=str))
+        return
     console.print()
     if all_ok:
         console.print("[bold green]Pipeline healthy[/bold green]")
@@ -952,12 +988,13 @@ _VALID_SECTIONS = ("mycelium", "cost", "all")
 
 
 @app.command("show")
+@emits_json("json_output")
 def show(
     section: str | None = typer.Argument(
         None,
         help="Section to show: mycelium, cost, all. Omit for an overview.",
     ),
-    json_output: bool = typer.Option(False, "--json", help="Output raw JSON"),
+    json_output: bool = False,
     detail: bool = typer.Option(
         False,
         "--detail",
@@ -980,6 +1017,11 @@ def show(
             raise typer.Exit(1)
 
     otel_data = _load_metrics_json()
+
+    if otel_data is None and json_output:
+        # Nothing collected yet: an empty object, so the answer still parses.
+        typer.echo("{}")
+        return
 
     if otel_data is None:
         spoke = _is_spoke_mode()

@@ -200,10 +200,35 @@ def test_await_lease_needs_no_handle(fake_httpx: FakeHTTPX) -> None:
     assert runner.invoke(app, ["await", "--lease", "work/x", "--json"]).exit_code == 0
 
 
-def test_await_without_a_handle_or_a_lease_says_which_it_needs() -> None:
+def test_await_with_nobody_to_wait_as_says_how_to_name_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With no --as and nothing that resolves a handle, a turn has no recipient,
+    so await refuses rather than waiting as a placeholder."""
+    monkeypatch.setattr("mycelium.identity.resolve_actor", lambda *_a, **_k: "")
     result = runner.invoke(app, ["await"])
     assert result.exit_code == 2
-    assert "--handle" in result.stdout
+    assert "--as" in result.output
+
+
+def test_respond_with_nobody_to_send_as_refuses(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A reply must name a real sender: no `cli-user` placeholder."""
+    monkeypatch.setattr("mycelium.identity.resolve_actor", lambda *_a, **_k: "")
+    result = runner.invoke(app, ["respond", "hello"])
+    assert result.exit_code == 2
+    assert "--as" in result.output
+
+
+def test_respond_resolves_its_sender_without_a_flag(
+    fake_httpx: FakeHTTPX, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--as is no longer required: the environment names the sender."""
+    monkeypatch.setenv("MYCELIUM_AGENT_HANDLE", "env-agent")
+    fake_httpx.respond_with(lambda *_a: FakeResp({"message_id": "m1"}))
+    result = runner.invoke(app, ["respond", "hello", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"message_id": "m1"}
+    assert fake_httpx.calls[-1][2]["handle"] == "env-agent"
 
 
 def test_a_resident_loop_renews_the_claims_it_holds(fake_httpx: FakeHTTPX) -> None:

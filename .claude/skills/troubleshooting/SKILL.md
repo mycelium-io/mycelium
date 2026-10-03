@@ -1,6 +1,6 @@
 ---
 name: troubleshooting
-description: Diagnose and fix common Mycelium installation and runtime issues. Use when encountering errors with mycelium commands, backend connectivity, Docker containers, LLM configuration, memory operations, or database migrations. Triggers on "not working", "error", "failed", "cannot connect", "troubleshoot", "debug", "fix".
+description: Diagnose and fix common Mycelium installation and runtime issues. Use when encountering errors with mycelium commands, backend connectivity, Docker containers, LLM configuration, or memory operations. Triggers on "not working", "error", "failed", "cannot connect", "troubleshoot", "debug", "fix".
 ---
 
 # Mycelium Troubleshooting
@@ -9,7 +9,7 @@ Diagnose and fix common installation and runtime issues.
 
 ## Quick Diagnostics
 
-Run `mycelium status --json` for machine-readable health data, or `mycelium status` for human-readable output. This checks backend, database, LLM, embedding, Docker, disk, and data directory.
+Run `mycelium status --json` for machine-readable health data, or `mycelium status` for human-readable output. This checks the backend, the LLM, embedding, Docker, disk, and the data directory.
 
 ## Common Issues
 
@@ -66,40 +66,24 @@ Or with custom API URL:
 mycelium init --api-url http://your-server:8000
 ```
 
-### 4. Database Connection Failed
+### 4. Container Name Conflicts
 
-**Symptom**: Backend logs show `connection refused` or `could not connect to server`
-
-**Diagnosis**:
-```bash
-docker ps | grep mycelium-db    # is container running?
-docker logs mycelium-db --tail 20
-```
-
-**Fixes**:
-- Wait for healthcheck: DB takes ~15s to initialize
-- Check port conflict: `lsof -i :5432`
-- Restart stack: `mycelium down && mycelium up`
-- Nuclear option: `mycelium down --volumes && mycelium up` (destroys data)
-
-### 5. Container Name Conflicts
-
-**Symptom**: `container name "mycelium-db" is already in use`
+**Symptom**: `container name "mycelium-backend" is already in use`
 
 **Fix**: The CLI handles this automatically, but if it persists:
 ```bash
-docker rm -f mycelium-db mycelium-backend mycelium-graph-viewer
+docker rm -f mycelium-slim mycelium-backend mycelium-frontend
 mycelium up
 ```
 
-### 6. Port Already in Use
+### 5. Port Already in Use
 
 **Symptom**: `bind: address already in use`
 
 **Diagnosis**:
 ```bash
 lsof -i :8000   # backend port
-lsof -i :5432   # database port
+lsof -i :46357  # SLIM node port
 ```
 
 **Fixes**:
@@ -110,7 +94,7 @@ lsof -i :5432   # database port
   MYCELIUM_DB_PORT=5433
   ```
 
-### 7. LLM Not Configured
+### 6. LLM Not Configured
 
 **Symptom**: `LLM unavailable — no API key configured`
 
@@ -128,7 +112,7 @@ LLM_BASE_URL=http://localhost:11434
 
 Restart backend after changes: `mycelium down && mycelium up`
 
-### 8. Memory Search Returns Nothing
+### 7. Memory Search Returns Nothing
 
 **Symptom**: `mycelium memory search` returns empty despite memories existing
 
@@ -141,11 +125,11 @@ ls ~/.mycelium/rooms/   # files present?
 **Fixes**:
 - Memories written directly (cat, editor) need reindex:
   ```bash
-  mycelium reindex
+  mycelium memory reindex
   ```
 - Check active room: `mycelium room ls` — wrong room selected?
 
-### 9. No Active Room
+### 8. No Active Room
 
 **Symptom**: `No active room. Use 'mycelium room use <name>'`
 
@@ -160,23 +144,7 @@ Or pass room explicitly:
 mycelium memory ls --room my-project
 ```
 
-### 10. Migration Failures
-
-**Symptom**: `alembic.util.exc.CommandError` or schema mismatch
-
-**Note**: Migrations run automatically when the backend container starts. Manual migration is rarely needed.
-
-**Diagnosis**:
-```bash
-mycelium logs mycelium-backend --tail 100   # check startup errors
-```
-
-**Fixes**:
-- Restart the stack: `mycelium down && mycelium up`
-- If schema is corrupted, reset: `mycelium down --volumes && mycelium up` (destroys data)
-- Check backend logs for specific SQL errors
-
-### 11. Docker Not Installed/Running
+### 9. Docker Not Installed/Running
 
 **Symptom**: `Docker not installed` or `Cannot connect to Docker daemon`
 
@@ -185,7 +153,7 @@ mycelium logs mycelium-backend --tail 100   # check startup errors
 - Start daemon: `sudo systemctl start docker`
 - Add user to docker group: `sudo usermod -aG docker $USER` (logout/login required)
 
-### 12. Image Pull Failures
+### 10. Image Pull Failures
 
 **Symptom**: `manifest unknown` or `unauthorized`
 
@@ -194,7 +162,7 @@ mycelium logs mycelium-backend --tail 100   # check startup errors
 - Pull explicitly: `docker pull ghcr.io/mycelium-io/mycelium-backend:latest`
 - Build from source: `mycelium up --build`
 
-### 13. Agent Behaving Strangely / "Why did it do that?"
+### 11. Agent Behaving Strangely / "Why did it do that?"
 
 **Symptom**: An agent took an unexpected action, replied with the wrong context, called the wrong tool, or burned a lot of tokens. `mycelium metrics show` rolls everything up into headline numbers but doesn't show *why* a specific turn behaved that way.
 
@@ -261,14 +229,11 @@ Stored in `~/.mycelium/.env`. Used by Docker Compose and the backend container.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `LLM_MODEL` | LiteLLM model string | `anthropic/claude-sonnet-4-6` |
+| `LLM_MODEL` | Pi model string (provider/model) | `anthropic/claude-sonnet-4-6` |
 | `LLM_API_KEY` | Provider API key | (required for cloud LLMs) |
 | `LLM_BASE_URL` | Custom LLM endpoint | (for Ollama, vLLM) |
-| `DATABASE_URL` | PostgreSQL connection | (compose sets this) |
 | `MYCELIUM_DATA_DIR` | Data directory | `~/.mycelium` |
-| `MYCELIUM_DB_PASSWORD` | Database password | `password` |
 | `MYCELIUM_BACKEND_PORT` | Backend port | `8000` |
-| `MYCELIUM_DB_PORT` | Database port | `5432` |
 
 ### File Locations
 
@@ -276,7 +241,7 @@ Stored in `~/.mycelium/.env`. Used by Docker Compose and the backend container.
 |------|---------|
 | `~/.mycelium/config.toml` | CLI settings (identity, server URL) |
 | `./.mycelium/config.toml` | Project settings (active room) |
-| `~/.mycelium/.env` | Backend/Docker settings (LLM, database) |
+| `~/.mycelium/.env` | Backend/Docker settings (LLM, ports), written by `mycelium config apply` |
 | `~/.mycelium/rooms/{name}/` | Room memory files |
 
 ## Log Locations
@@ -284,7 +249,7 @@ Stored in `~/.mycelium/.env`. Used by Docker Compose and the backend container.
 ```bash
 mycelium logs                      # all services
 mycelium logs mycelium-backend     # backend only
-mycelium logs mycelium-db          # database only
+mycelium logs mycelium-slim        # the SLIM node only
 docker logs mycelium-backend       # direct docker access
 ```
 

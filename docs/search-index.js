@@ -2096,7 +2096,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-room",
-    "t": "mycelium room delete <name> [<name> ...] [--force]",
+    "t": "mycelium room delete <name> [<name> ...] [--yes]",
     "s": "CLI Reference",
     "x": "Delete one or more rooms and all their data (memories, sessions, messages).",
     "k": "cmd",
@@ -2310,7 +2310,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-agent",
-    "t": "mycelium agent rm <handle> [--room <room>] [--full] [--force]",
+    "t": "mycelium agent rm <handle> [--room <room>] [--full] [--yes]",
     "s": "CLI Reference",
     "x": "Unregister an agent. Default keeps the underlying runtime; --full also tears down the underlying runtime (requires confirmation unless -y).",
     "k": "cmd",

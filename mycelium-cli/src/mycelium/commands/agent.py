@@ -34,6 +34,7 @@ from rich.console import Console
 from rich.table import Table
 
 from mycelium import identity
+from mycelium.cli_options import acts_as, confirms, emits_json, in_room, room_or_exit
 from mycelium.client import hub_client
 from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
@@ -123,17 +124,7 @@ def _check_writable_or_bail(target: Path) -> None:
 
 
 def _resolve_room(config: MyceliumConfig, room: str | None) -> str:
-    if room:
-        return room
-    active = getattr(config.rooms, "active", None)
-    if active:
-        return active
-    typer.secho(
-        "No room specified and no active room set. "
-        "Use --room or `mycelium config set rooms.active <name>`.",
-        fg=typer.colors.RED,
-    )
-    raise typer.Exit(1)
+    return room_or_exit(config, room)
 
 
 _log = logging.getLogger(__name__)
@@ -733,6 +724,8 @@ def _create_a2a_agent(
 
 
 @app.command("create")
+@in_room(resolve=False, help="Room to create the agent in (asked when not given).")
+@acts_as("handle_flag")
 def agent_create(
     ctx: typer.Context,
     handle: str | None = typer.Argument(
@@ -772,9 +765,7 @@ def agent_create(
             "Only the var name is stored; the secret stays in the hub's environment."
         ),
     ),
-    room: str | None = typer.Option(
-        None, "--room", "-r", help="Room to register in (defaults to active room)."
-    ),
+    room: str | None = None,
     description: str = typer.Option(
         "", "--description", "-d", help="One-paragraph statement of what this agent does."
     ),
@@ -797,19 +788,12 @@ def agent_create(
     team: str | None = typer.Option(
         None, "--team", help="Team slug this agent is fielded by. Self-asserted."
     ),
-    handle_flag: str | None = typer.Option(
-        None,
-        "--as",
-        "--handle",
-        "-H",
-        help=(
-            "Your own handle (recorded as created_by, and made --owner by default "
-            "so you can act on the agent you just created; pass --owner to override). "
-            "Defaults to your hub identity."
-        ),
-    ),
+    handle_flag: str | None = None,
 ) -> None:
     """Create a new, Mycelium-controlled agent in a room.
+
+    Who you act as (``--as``) is recorded as created_by, and made ``--owner`` by
+    default so you can act on the agent you just created.
 
     Examples:
         # claude_code (a resident session kept woken with `await --loop`)
@@ -990,9 +974,11 @@ def _pick_room(config: MyceliumConfig) -> str | None:
     group="agent",
 )
 @app.command("ls")
+@in_room()
+@emits_json()
 def agent_ls(
     ctx: typer.Context,
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    room: str | None = None,
     owner: str | None = typer.Option(
         None, "--owner", help="Filter to agents owned by this user handle ('my agents')."
     ),
@@ -1059,10 +1045,12 @@ def agent_ls(
     group="agent",
 )
 @app.command("show")
+@in_room()
+@emits_json()
 def agent_show(
     ctx: typer.Context,
     handle: str = typer.Argument(..., help="Agent handle"),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    room: str | None = None,
 ) -> None:
     """Inspect a registered agent: manifest + notes + last invocation."""
     try:
@@ -1077,6 +1065,14 @@ def agent_show(
                 )
                 raise typer.Exit(1)
             notes_content = _remote_memory_text(client, room_name, manifest.notes_key)
+
+        if ctx.obj and ctx.obj.get("json"):
+            typer.echo(
+                json_module.dumps(
+                    {**manifest.model_dump(), "notes": notes_content}, indent=2, default=str
+                )
+            )
+            return
 
         console.print(f"[bold cyan]@{manifest.handle}[/bold cyan]  [dim]({manifest.adapter})[/dim]")
         console.print(f"  cwd: {manifest.cwd}")
@@ -1118,16 +1114,14 @@ def agent_show(
 )
 @app.command("invoke")
 @takes_text("prompt", "What to ask the agent, in markdown.", noun="prompt")
+@in_room()
+@acts_as("handle_flag")
 def agent_invoke(
     ctx: typer.Context,
     handle: str = typer.Argument(..., help="Agent handle (without leading @)"),
     prompt: str = typer.Argument(..., help="Message body to send the agent."),
-    room: str | None = typer.Option(
-        None, "--room", "-r", help="Room to send into (defaults to active room)."
-    ),
-    handle_flag: str | None = typer.Option(
-        None, "--as", "--handle", "-H", help="Your sender handle (defaults to identity config)."
-    ),
+    room: str | None = None,
+    handle_flag: str | None = None,
 ) -> None:
     """Send an @-addressed message to a registered agent.
 
@@ -1275,7 +1269,7 @@ def _herdr_presence(
 
 
 @doc_ref(
-    usage="mycelium agent rm <handle> [--room <room>] [--full] [--force]",
+    usage="mycelium agent rm <handle> [--room <room>] [--full] [--yes]",
     desc=(
         "Unregister an agent. Default keeps the underlying runtime; "
         "<code>--full</code> also tears down the underlying runtime "
@@ -1284,16 +1278,18 @@ def _herdr_presence(
     group="agent",
 )
 @app.command("rm")
+@in_room()
+@confirms("force", also_force=True)
 def agent_rm(
     ctx: typer.Context,
     handle: str = typer.Argument(..., help="Agent handle"),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    room: str | None = None,
     full: bool = typer.Option(
         False,
         "--full",
         help=("Destructive: also tear down the underlying runtime."),
     ),
-    force: bool = typer.Option(False, "--force", "-f", "-y", help="Skip the confirmation prompt."),
+    force: bool = False,
 ) -> None:
     """Unregister an agent.
 
@@ -1380,6 +1376,7 @@ app.add_typer(credential_app, name="credential")
     group="agent",
 )
 @credential_app.command("set")
+@emits_json()
 def credential_set(
     ctx: typer.Context,
     handle: str = typer.Argument(..., help="Agent handle the credential belongs to"),
@@ -1464,6 +1461,7 @@ def credential_set(
     group="agent",
 )
 @credential_app.command("show")
+@emits_json()
 def credential_show(
     ctx: typer.Context,
     handle: str = typer.Argument(..., help="Agent handle"),
@@ -1515,6 +1513,7 @@ def credential_show(
     group="agent",
 )
 @credential_app.command("ls")
+@emits_json()
 def credential_ls(ctx: typer.Context) -> None:
     """List stored per-agent credentials (never their secrets)."""
     from mycelium import agent_credentials
@@ -1558,6 +1557,7 @@ def credential_ls(ctx: typer.Context) -> None:
     group="agent",
 )
 @credential_app.command("rm")
+@emits_json()
 def credential_rm(
     ctx: typer.Context,
     handle: str = typer.Argument(..., help="Agent handle"),
@@ -1598,6 +1598,7 @@ def credential_rm(
     group="agent",
 )
 @credential_app.command("slim-key")
+@emits_json()
 def credential_slim_key(
     ctx: typer.Context,
     handle: str = typer.Argument(..., help="Agent handle the signing key belongs to"),

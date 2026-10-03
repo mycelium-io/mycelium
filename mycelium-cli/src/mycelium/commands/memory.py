@@ -21,6 +21,7 @@ from rich.console import Console
 from rich.table import Table
 
 from mycelium import identity
+from mycelium.cli_options import acts_as, confirms, emits_json, in_room, paged, room_or_exit
 from mycelium.client import hub_client, hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
@@ -127,17 +128,13 @@ def _parse_meta_pairs(pairs: list[str] | None) -> dict[str, Any]:
 
 
 def _get_active_room(room: str | None) -> str:
-    """Get room name from arg or active config."""
-    if room:
-        return room
-    cfg = MyceliumConfig.load()
-    active = getattr(cfg.rooms, "active", None) if hasattr(cfg, "rooms") else None
-    if active:
-        return active
-    typer.echo(
-        "No room specified and no active room set. Use --room or 'mycelium config set rooms.active <name>'"
-    )
-    raise typer.Exit(1)
+    """The room to use, in ``caller.room``'s order."""
+    return room_or_exit(MyceliumConfig.load(), room)
+
+
+def _echo_json(data: Any) -> None:
+    """Print ``data`` as JSON and nothing else, for ``--json``."""
+    typer.echo(json.dumps(data, indent=2, default=str))
 
 
 @doc_ref(
@@ -147,19 +144,13 @@ def _get_active_room(room: str | None) -> str:
 )
 @app.command(name="set")
 @takes_text("value", "The memory: markdown, plain text or JSON.", noun="value")
+@in_room("room")
+@acts_as("handle")
 def memory_set(
     key: str = typer.Argument(..., help="Memory key (e.g. 'status/deploy', 'project/config')"),
     value: str = typer.Argument(..., help="Memory value (string or JSON)"),
-    room: str | None = typer.Option(
-        None, "--room", "-r", help="Room name (defaults to active room)"
-    ),
-    handle: str | None = typer.Option(
-        None,
-        "--as",
-        "--handle",
-        "-H",
-        help="Author to attribute this to (created_by). Defaults to your hub identity.",
-    ),
+    room: str | None = None,
+    handle: str | None = None,
     no_embed: bool = typer.Option(False, "--no-embed", help="Skip vector embedding"),
     tags: str | None = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
     expandable: bool = typer.Option(
@@ -279,13 +270,16 @@ def memory_set(
     group="memory",
 )
 @app.command(name="get")
+@in_room("room")
+@emits_json("as_json")
 def memory_get(
     key: str = typer.Argument(..., help="Memory key"),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    room: str | None = None,
     raw: bool = typer.Option(False, "--raw", help="Show the markdown form (frontmatter + body)"),
     expand: bool = typer.Option(
         False, "--expand", help="Expand ![[key]] transclusions inline from their source"
     ),
+    as_json: bool = False,
 ) -> None:
     """Read a memory by key (from the hub)."""
     from mycelium_backend_client.api.memory import (
@@ -296,6 +290,9 @@ def memory_get(
     room_name = _get_active_room(room)
 
     if expand:
+        if as_json:
+            _echo_json(_fetch_links(room_name, "/expand", {"key": key}))
+            return
         _print_expanded(room_name, key)
         return
 
@@ -311,6 +308,10 @@ def memory_get(
     if not isinstance(mem, MemoryRead):
         console.print(f"[red]Not found:[/red] {key}")
         raise typer.Exit(1)
+
+    if as_json:
+        _echo_json(mem.to_dict())
+        return
 
     content = _value_text(mem.value)
 
@@ -375,21 +376,28 @@ def _fetch_memories(room_name: str, prefix: str | None, limit: int) -> list[dict
     group="memory",
 )
 @app.command(name="ls")
+@in_room("room")
+@paged("limit")
+@emits_json("as_json")
 def memory_ls(
     namespace: str | None = typer.Argument(
         None, help="Key prefix to filter by (e.g. 'position/' or 'decisions/')"
     ),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    room: str | None = None,
     prefix: str | None = typer.Option(
         None, "--prefix", "-p", help="Key prefix filter (same as positional arg)"
     ),
-    limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
+    limit: int = 20,
+    as_json: bool = False,
 ) -> None:
     """List memories in a room (from the hub)."""
     prefix = namespace or prefix
     room_name = _get_active_room(room)
 
     entries = _fetch_memories(room_name, prefix, limit)
+    if as_json:
+        _echo_json(entries)
+        return
     if not entries:
         console.print("[dim]No memories found[/dim]")
         return
@@ -416,10 +424,14 @@ def memory_ls(
     group="memory",
 )
 @app.command(name="search")
+@in_room("room")
+@paged("limit")
+@emits_json("as_json")
 def memory_search(
     query: str = typer.Argument(..., help="Natural language search query"),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-    limit: int = typer.Option(5, "--limit", "-n", help="Max results"),
+    room: str | None = None,
+    limit: int = 5,
+    as_json: bool = False,
 ) -> None:
     """Semantic search over memories (via the backend API)."""
     from mycelium_backend_client.api.memory import (
@@ -434,6 +446,11 @@ def memory_search(
         from mycelium_backend_client.models import MemorySearchResponse
 
         result = search_api.sync(room_name=room_name, client=client, body=body)
+
+        if as_json:
+            found = result.results if isinstance(result, MemorySearchResponse) else []
+            _echo_json([r.to_dict() for r in found or []])
+            return
 
         if not isinstance(result, MemorySearchResponse) or not result.results:
             console.print("[dim]No matching memories found[/dim]")
@@ -563,13 +580,15 @@ def _print_integrity(room_name: str) -> None:
     group="memory",
 )
 @app.command(name="links")
+@in_room("room")
+@emits_json("as_json")
 def memory_links(
     key: str | None = typer.Argument(None, help="Memory key to inspect"),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    room: str | None = None,
     check: bool = typer.Option(
         False, "--check", help="Report broken links, orphans, roots, and leaves across the room"
     ),
-    as_json: bool = typer.Option(False, "--json", help="Emit raw JSON"),
+    as_json: bool = False,
 ) -> None:
     """Show what a memory links to, and what links back to it.
 
@@ -584,7 +603,7 @@ def memory_links(
 
     if check:
         if as_json:
-            console.print_json(data=_fetch_links(room_name, "/integrity"))
+            _echo_json(_fetch_links(room_name, "/integrity"))
             return
         _print_integrity(room_name)
         return
@@ -595,7 +614,7 @@ def memory_links(
 
     data = _fetch_links(room_name, "", {"key": key})
     if as_json:
-        console.print_json(data=data)
+        _echo_json(data)
         return
 
     outbound = data.get("outbound") or []
@@ -633,10 +652,12 @@ def memory_links(
     group="memory",
 )
 @app.command(name="rm")
+@in_room("room")
+@confirms("force", also_force=True)
 def memory_rm(
     key: str = typer.Argument(..., help="Memory key to delete"),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+    room: str | None = None,
+    force: bool = False,
 ) -> None:
     """Delete a memory (removes both the file and search index)."""
     from mycelium_backend_client.api.memory import (
@@ -662,8 +683,9 @@ def memory_rm(
     group="memory",
 )
 @app.command(name="reindex")
+@in_room("room")
 def memory_reindex(
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    room: str | None = None,
 ) -> None:
     """Re-index the room into the local JSONL search index.
 
@@ -691,16 +713,12 @@ def memory_reindex(
     group="memory",
 )
 @app.command(name="subscribe")
+@in_room("room")
+@acts_as("handle")
 def memory_subscribe(
     pattern: str = typer.Argument(..., help="Key glob pattern (e.g. 'project/*')"),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-    handle: str | None = typer.Option(
-        None,
-        "--as",
-        "--handle",
-        "-H",
-        help="Subscriber handle. Defaults to your hub identity.",
-    ),
+    room: str | None = None,
+    handle: str | None = None,
 ) -> None:
     """Subscribe to memory change notifications."""
     from mycelium_backend_client.api.memory import (
@@ -722,12 +740,15 @@ def memory_subscribe(
 # ── Structured memory commands ───────────────────────────────────────────────
 
 
-def _list_by_category(category: str, room: str | None, limit: int) -> None:
+def _list_by_category(category: str, room: str | None, limit: int, *, as_json: bool) -> None:
     """Shared implementation for category-filtered listing; reads from the hub."""
     room_name = _get_active_room(room)
     prefix = f"{category}/"
 
     entries = _fetch_memories(room_name, prefix, limit)
+    if as_json:
+        _echo_json(entries)
+        return
     if not entries:
         console.print(f"[dim]No {category} memories found[/dim]")
         return
@@ -754,12 +775,12 @@ def _list_by_category(category: str, room: str | None, limit: int) -> None:
     group="memory",
 )
 @app.command(name="status")
-def memory_status(
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-    limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
-) -> None:
+@in_room("room")
+@paged("limit")
+@emits_json("as_json")
+def memory_status(room: str | None = None, limit: int = 20, as_json: bool = False) -> None:
     """Show current status of everything (filters to status/* memories)."""
-    _list_by_category("status", room, limit)
+    _list_by_category("status", room, limit, as_json=as_json)
 
 
 @doc_ref(
@@ -768,12 +789,12 @@ def memory_status(
     group="memory",
 )
 @app.command(name="work")
-def memory_work(
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-    limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
-) -> None:
+@in_room("room")
+@paged("limit")
+@emits_json("as_json")
+def memory_work(room: str | None = None, limit: int = 20, as_json: bool = False) -> None:
     """Show what's been built (filters to work/* memories)."""
-    _list_by_category("work", room, limit)
+    _list_by_category("work", room, limit, as_json=as_json)
 
 
 @doc_ref(
@@ -782,12 +803,12 @@ def memory_work(
     group="memory",
 )
 @app.command(name="decisions")
-def memory_decisions(
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-    limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
-) -> None:
+@in_room("room")
+@paged("limit")
+@emits_json("as_json")
+def memory_decisions(room: str | None = None, limit: int = 20, as_json: bool = False) -> None:
     """Show why choices were made (filters to decisions/* memories)."""
-    _list_by_category("decisions", room, limit)
+    _list_by_category("decisions", room, limit, as_json=as_json)
 
 
 @doc_ref(
@@ -796,12 +817,12 @@ def memory_decisions(
     group="memory",
 )
 @app.command(name="context")
-def memory_context(
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-    limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
-) -> None:
+@in_room("room")
+@paged("limit")
+@emits_json("as_json")
+def memory_context(room: str | None = None, limit: int = 20, as_json: bool = False) -> None:
     """Show background and preferences (filters to context/* memories)."""
-    _list_by_category("context", room, limit)
+    _list_by_category("context", room, limit, as_json=as_json)
 
 
 @doc_ref(
@@ -810,12 +831,12 @@ def memory_context(
     group="memory",
 )
 @app.command(name="procedures")
-def memory_procedures(
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-    limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
-) -> None:
+@in_room("room")
+@paged("limit")
+@emits_json("as_json")
+def memory_procedures(room: str | None = None, limit: int = 20, as_json: bool = False) -> None:
     """Show reusable how-to procedures (filters to procedures/* memories)."""
-    _list_by_category("procedures", room, limit)
+    _list_by_category("procedures", room, limit, as_json=as_json)
 
 
 # ── Sync commands ────────────────────────────────────────────────────────────
@@ -827,8 +848,9 @@ def memory_procedures(
     group="other",
 )
 @app.command(name="sync")
+@in_room("room")
 def memory_sync(
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    room: str | None = None,
     no_reindex: bool = typer.Option(False, "--no-reindex", help="Skip re-indexing after sync"),
 ) -> None:
     """Sync room files from the backend API, fetching all memories and writing local copies.

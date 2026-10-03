@@ -9,6 +9,7 @@ import httpx
 import typer
 
 from mycelium import __version__
+from mycelium.cli_options import emits_json
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 
@@ -29,6 +30,7 @@ def hub_version(api_url: str, timeout: float = 3.0) -> str | None:
     desc="Print the CLI's version and the configured hub's.",
     group="setup",
 )
+@emits_json()
 def version(
     ctx: typer.Context,
     cli_only: bool = typer.Option(

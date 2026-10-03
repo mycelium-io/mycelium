@@ -51,6 +51,7 @@ from rich.markdown import Markdown
 from rich.markup import escape
 from rich.panel import Panel
 
+from mycelium.cli_options import in_room
 from mycelium.client import hub_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
@@ -680,15 +681,14 @@ def _ui_room_url(room: str) -> str:
     desc="Put a team of agents on one task: they check in, split it, work it, and review each other.",
     group="board",
 )
+@in_room("room")
 def swarm(
     task: str | None = typer.Argument(None, help="What the team should work on"),
     server: bool = typer.Option(
         False, "--server", help="Members the hub plays, instead of your own CLI agents in herdr"
     ),
     size: int = typer.Option(DEFAULT_SIZE, "-n", help="How many members", min=2, max=8),
-    room: str | None = typer.Option(
-        None, "--room", "-r", help="Room to swarm in (default: this shell's active room)"
-    ),
+    room: str | None = None,
     kind: str | None = typer.Option(
         None, "--kind", help="Agent CLI to start this time (default: swarm.agent)"
     ),
@@ -718,14 +718,7 @@ def swarm(
 
     config = MyceliumConfig.load()
     me = sender_of(config)
-    room_name = room or config.get_active_room()
-    if not room_name:
-        console.print(
-            "[yellow]Which room?[/yellow] A swarm is a task in a room you already work "
-            "in. Name it with --room, or set this shell's room:\n"
-            "  mycelium config set rooms.active <room>"
-        )
-        raise typer.Exit(1)
+    room_name = str(room)
     if not task:
         task = typer.prompt("What should the agents work on?").strip()
     if not task:

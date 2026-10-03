@@ -23,6 +23,7 @@ from pathlib import Path
 
 import typer
 
+from mycelium.cli_options import confirms
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 
@@ -739,6 +740,7 @@ def _write_mycelium_config(
     desc="Interactive installer: Docker check, LLM config, <code>docker compose up</code>, provision workspace.",
     group="setup",
 )
+@confirms("yes")
 def install(
     ctx: typer.Context,
     ascii_: bool = typer.Option(False, "--ascii", help="Use ASCII rendering"),
@@ -746,7 +748,7 @@ def install(
     theme: str = typer.Option(
         "cyan", "--color", help="Color theme (cyan|amber|magenta|green|white)"
     ),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmations"),
+    yes: bool = False,
     non_interactive: bool = typer.Option(
         False, "--non-interactive", "-n", help="Skip prompts and animation (use --llm-model etc.)"
     ),

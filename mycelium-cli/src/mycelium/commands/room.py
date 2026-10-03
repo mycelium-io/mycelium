@@ -24,6 +24,7 @@ import typer
 from rich.markup import escape
 
 from mycelium import chat
+from mycelium.cli_options import acts_as, confirms, emits_json, in_room, paged
 from mycelium.client import hub_client
 from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
@@ -119,10 +120,12 @@ def _viewer(config: MyceliumConfig) -> str | None:
     group="room",
 )
 @app.command("ls")
+@paged()
+@emits_json()
 def list_rooms(
     ctx: typer.Context,
-    limit: int = typer.Option(20, "--limit", "-l"),
-    name: str | None = typer.Option(None, "--name", "-n"),
+    limit: int = 20,
+    name: str | None = typer.Option(None, "--name", help="Only rooms with this name."),
 ) -> None:
     """List available rooms."""
     try:
@@ -185,6 +188,7 @@ def list_rooms(
     group="room",
 )
 @app.command()
+@emits_json()
 def create(
     ctx: typer.Context,
     name: str | None = typer.Argument(None, help="Room name"),
@@ -241,6 +245,7 @@ def create(
     group="room",
 )
 @app.command("use")
+@emits_json()
 def use(
     ctx: typer.Context,
     room_name: str = typer.Argument(..., help="Room name to set as active"),
@@ -287,15 +292,16 @@ def use(
 
 
 @doc_ref(
-    usage="mycelium room delete <name> [<name> ...] [--force]",
+    usage="mycelium room delete <name> [<name> ...] [--yes]",
     desc="Delete one or more rooms and all their data (memories, sessions, messages).",
     group="room",
 )
 @app.command()
+@confirms("force", also_force=True)
 def delete(
     ctx: typer.Context,
     room_names: list[str] = typer.Argument(..., help="Room name(s) to delete"),
-    force: bool = typer.Option(False, "--force", "-f"),
+    force: bool = False,
 ) -> None:
     """Delete one or more rooms."""
     try:
@@ -453,18 +459,9 @@ def _resolve_room(config: MyceliumConfig, channel: str | None = None) -> str:
     folder's membership (``mycelium join``), then the active room ('mycelium
     room use'). With none of them it's an error.
     """
-    from mycelium import caller
+    from mycelium.cli_options import resolve_room
 
-    answer = caller.room(config, channel)
-    if answer.value:
-        return answer.value
-    raise MyceliumError(
-        "No room context found",
-        suggestion=(
-            "Pass --room <room>, set MYCELIUM_ROOM_ID in your environment, "
-            "or run: mycelium room use <name>"
-        ),
-    )
+    return resolve_room(config, channel)
 
 
 # Known stub options for NegMAS SAO issues (mirrors options_generation.py)
@@ -827,12 +824,11 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     group="other",
 )
 @app.command()
+@in_room("room_opt", resolve=False)
 def watch(
     ctx: typer.Context,
     room_name: str | None = typer.Argument(None, help="Room to watch (default: active room)"),
-    room_opt: str | None = typer.Option(
-        None, "--room", "-r", help="Room to watch, as a flag like other commands take it"
-    ),
+    room_opt: str | None = None,
     timeout: int = typer.Option(0, "--timeout", "-t", help="Timeout in seconds (0=no timeout)"),
 ) -> None:
     """
@@ -865,22 +861,17 @@ def watch(
 )
 @app.command("send")
 @takes_text("content", "The message, in markdown. @handle mentions address agents.", noun="message")
+@in_room()
+@acts_as()
+@emits_json()
 def send(
     ctx: typer.Context,
     content: str = typer.Argument(
         ...,
         help='Message content. Use @handle mentions to address specific agents, e.g. "@avery-agent ping".',
     ),
-    room: str | None = typer.Option(
-        None, "--room", "-r", help="Room to post into (defaults to active room)"
-    ),
-    handle: str | None = typer.Option(
-        None,
-        "--as",
-        "--handle",
-        "-H",
-        help="Your sender handle (defaults to identity config)",
-    ),
+    room: str | None = None,
+    handle: str | None = None,
 ) -> None:
     """
     Send an addressed chat message into a room (cross-agent DM).
@@ -931,18 +922,17 @@ def send(
 )
 @app.command("amend")
 @takes_text("content", "The revised message, in markdown.", noun="message")
+@in_room()
+@acts_as()
+@emits_json()
 def amend(
     ctx: typer.Context,
     message_id: str = typer.Argument(
         ..., help="Id of the message to revise (the short id `room messages` prints is enough)"
     ),
     content: str = typer.Argument(..., help="The revised message text"),
-    room: str | None = typer.Option(
-        None, "--room", "-r", help="Room the message is in (defaults to active room)"
-    ),
-    handle: str | None = typer.Option(
-        None, "--as", "--handle", "-H", help="Your sender handle (defaults to identity config)"
-    ),
+    room: str | None = None,
+    handle: str | None = None,
 ) -> None:
     """
     Revise a message you already sent.
@@ -1007,13 +997,14 @@ def amend(
     group="room",
 )
 @app.command("messages")
+@in_room("room_opt", resolve=False)
+@paged()
+@emits_json()
 def messages(
     ctx: typer.Context,
     room: str | None = typer.Argument(None, help="Room to read (defaults to active room)"),
-    room_opt: str | None = typer.Option(
-        None, "--room", "-r", help="Room to read, as a flag like other commands take it"
-    ),
-    limit: int = typer.Option(20, "--limit", "-l", help="Max messages to show (newest first)"),
+    room_opt: str | None = None,
+    limit: int = 20,
     sender: str | None = typer.Option(
         None, "--sender", "-s", help="Only messages from this handle"
     ),
@@ -1085,6 +1076,7 @@ def messages(
     group="room",
 )
 @app.command()
+@emits_json()
 def delegate(
     ctx: typer.Context,
     session_id: str = typer.Argument(..., help="Room session/name"),

@@ -868,7 +868,7 @@
       <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span>   <span class="flag">--handle</span> ci-runner <span class="flag">--timeout</span> 120
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> ci-runner <span class="str">&quot;I can hold the deploy until the bench lands.&quot;</span></code></pre>
       <p><code>respond</code> does need a registered handle, either an agent or a user. Register it once, from any machine that can reach the hub:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">user</span> <span class="cmd">create</span> ci-runner <span class="flag">--display-name</span> <span class="str">&quot;CI&quot;</span>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">user</span> <span class="cmd">create</span> ci-runner <span class="flag">--name</span> <span class="str">&quot;CI&quot;</span>
 <span class="comment"># or, for an agent that belongs to a room:</span>
 <span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> ci-runner <span class="flag">--room</span> build</code></pre>
       <p>Otherwise the hub answers <code>403 … is not a registered agent or user</code>.</p>
@@ -1138,7 +1138,7 @@ procedures/  Steps you&#x27;ll want to repeat later</code></pre>
 
 <span class="comment"># Steps to repeat later</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> procedures/deploy-vps &quot;1. ssh vps  2. cd /app &amp;&amp; git pull  3. systemctl restart app  4. curl healthcheck&quot;
-<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> procedures/db-migrate &quot;1. uv run alembic upgrade head  2. Verify with psql <span class="flag">-c</span> &#x27;SELECT version()&#x27;&quot;</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> procedures/release <span class="str">&quot;1. bump the version  2. tag it  3. watch the release workflow&quot;</span></code></pre>
       <h3 id="structured-memory-3-read-them-back">3. Read them back</h3>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">status</span>      # everything under status/
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">work</span>        # what&#x27;s been built
