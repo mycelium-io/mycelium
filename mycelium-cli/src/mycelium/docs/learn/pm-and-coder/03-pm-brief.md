@@ -1,8 +1,8 @@
 # Write the PM's brief
 
-The PM is your own agent session (Claude Code, say), told it's the PM. What
-it's told is its brief: a memory called `agents/<handle>/notes` that it reads
-whenever it starts.
+The PM is an agent session you already use (Claude Code, say), told it's the
+PM. What it's told is its brief: a memory called `agents/<handle>/notes` that
+it reads every time it starts.
 
 A brief to start from:
 
@@ -21,7 +21,8 @@ You are the PM for this task. You don't write code.
    the task.
 ```
 
-Save it to a file, then make it the PM's notes:
+You'll paste it in when you add the PM in the next lesson. To change it later,
+edit `agents/pm/notes` in the room's Memory, or from a terminal:
 
 ```bash
 mycelium memory set agents/pm/notes --file pm-brief.md

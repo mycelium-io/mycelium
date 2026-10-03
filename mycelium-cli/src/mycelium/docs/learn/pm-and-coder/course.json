@@ -6,6 +6,7 @@
   "thumb": "walk-thread.png",
   "needs": [
     "A coding agent you already use (Claude Code, Codex, or another)",
+    "Mycelium on your machine with its runner going (the Mac app runs it for you)",
     "A repository with a task you'd normally spend an afternoon on"
   ],
   "takeaway": "A PM brief tuned to how you work, and a pair you can hand features to.",
@@ -19,7 +20,11 @@
     {
       "title": "The idea",
       "lessons": [
-        { "id": "01-why-two", "title": "Why two agents", "minutes": 4 },
+        {
+          "id": "01-why-two",
+          "title": "Why two agents",
+          "minutes": 4
+        },
         {
           "id": "02-roles",
           "title": "Who does what",
@@ -35,20 +40,44 @@
             "why": "The PM reviews against the checks it wrote at the start. It doesn't write code, and it only asks you what it can't decide."
           }
         }
-      ]
+      ],
+      "video": {
+        "take": "pair-idea",
+        "about": "A PM and a coder working one task: the checks first, then a piece sent back and fixed."
+      }
     },
     {
       "title": "Set it up",
       "lessons": [
-        { "id": "03-pm-brief", "title": "Write the PM's brief", "minutes": 8 },
-        { "id": "04-coder", "title": "Bring in the coder", "minutes": 5 },
-        { "id": "05-kickoff", "title": "Start a session", "minutes": 5 }
-      ]
+        {
+          "id": "03-pm-brief",
+          "title": "Write the PM's brief",
+          "minutes": 8
+        },
+        {
+          "id": "04-coder",
+          "title": "Bring in the pair",
+          "minutes": 5
+        },
+        {
+          "id": "05-kickoff",
+          "title": "Start a session",
+          "minutes": 5
+        }
+      ],
+      "video": {
+        "take": "pair-setup",
+        "about": "Adding the PM with its brief and the coder from your machine, then filing the task and handing it over."
+      }
     },
     {
       "title": "Run it",
       "lessons": [
-        { "id": "06-checking-in", "title": "Checking in", "minutes": 4 },
+        {
+          "id": "06-checking-in",
+          "title": "Checking in",
+          "minutes": 4
+        },
         {
           "id": "07-going-wrong",
           "title": "When it goes wrong",
@@ -64,8 +93,16 @@
             "why": "A loop that doesn't finish almost always means the checks can't be met. Tighten them so each one is something anyone could verify."
           }
         },
-        { "id": "08-exercise", "title": "Exercise: your first two-hour run", "minutes": 5 }
-      ]
+        {
+          "id": "08-exercise",
+          "title": "Exercise: your first two-hour run",
+          "minutes": 5
+        }
+      ],
+      "video": {
+        "take": "pair-checkin",
+        "about": "Checking in an hour later: answering the PM's question, and the task resolved with a PR to review."
+      }
     }
   ]
 }

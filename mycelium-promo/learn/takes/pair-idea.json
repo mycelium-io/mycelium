@@ -1,0 +1,31 @@
+{
+  "$comment": "Hand off a feature, 1: the review loop a PM and a coder run in a task's thread.",
+  "poster": 26,
+  "do": [
+    "press:Alt+b",
+    "wait-text:Gift season",
+    "caption:A pair on one task|A PM agent holds the task. A coder does the work.",
+    "click:Board",
+    "click:role=button[name=/^All\\s*\\d+$/]",
+    "hold:900",
+    "click:text=\"Add a gift message to orders\"",
+    "press:t",
+    "click:role=button[name=/^All\\s*\\d+$/]",
+    "wait-text:What done means",
+    "zoom:css=section[aria-label^=\"Thread\"]@1.3",
+    "eval:(() => { const c = document.querySelector('[data-testid=\"thread-conversation\"]'); if (!c) return; let n = c; while (n && !/(auto|scroll)/.test(getComputedStyle(n).overflowY)) n = n.parentElement; if (!n) return; const go = () => n.scrollTo({ top: n.scrollHeight, behavior: 'smooth' }); go(); new MutationObserver(go).observe(c, { childList: true, subtree: true }); })()",
+    "caption:The PM writes what done means, first|Checks anyone could verify, before any code.",
+    "hold:2600",
+    "wait-text:1 and 2 are up",
+    "caption:The coder reports, with evidence|The branch, the test run, what changed.",
+    "wait-text:Send me that response",
+    "caption:The PM checks it against the list|and sends it back with exactly what's missing.",
+    "hold:1400",
+    "wait-text:Added a test for the API response",
+    "caption:The coder fixes what was asked",
+    "wait-text:on to 3 and 4",
+    "caption:Every review is in the thread|Catching up is reading one thread.",
+    "hold:3400",
+    "caption:"
+  ]
+}

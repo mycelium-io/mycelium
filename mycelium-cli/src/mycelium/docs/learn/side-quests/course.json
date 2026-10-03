@@ -6,7 +6,7 @@
   "thumb": "app-board-columns.png",
   "needs": [
     "The core workflow running, or any long task you don't want interrupted",
-    "A repository you can add git worktrees to"
+    "A repository you can add git worktrees to, inside a folder your runner allows"
   ],
   "takeaway": "A habit for clearing small tasks without breaking anyone's focus, yours included.",
   "outcomes": [
@@ -18,8 +18,16 @@
     {
       "title": "Side quests",
       "lessons": [
-        { "id": "01-why", "title": "Why side quests get in the way", "minutes": 3 },
-        { "id": "02-one-task-each", "title": "One task each", "minutes": 3 },
+        {
+          "id": "01-why",
+          "title": "Why side quests get in the way",
+          "minutes": 3
+        },
+        {
+          "id": "02-one-task-each",
+          "title": "One task each",
+          "minutes": 3
+        },
         {
           "id": "03-worktrees",
           "title": "A worktree for each",
@@ -35,7 +43,11 @@
             "why": "A worktree is its own folder on its own branch, so the side quest can't touch the pair's work, and it lands as its own small pull request."
           }
         }
-      ]
+      ],
+      "video": {
+        "take": "side-quest",
+        "about": "A fixer started in its own worktree, handed a task of its own, done without touching the pair."
+      }
     }
   ]
 }

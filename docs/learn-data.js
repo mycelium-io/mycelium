@@ -8,6 +8,7 @@ window.MYCELIUM_COURSES = [
   "thumb": "walk-thread.png",
   "needs": [
    "A coding agent you already use (Claude Code, Codex, or another)",
+   "Mycelium on your machine with its runner going (the Mac app runs it for you)",
    "A repository with a task you'd normally spend an afternoon on"
   ],
   "takeaway": "A PM brief tuned to how you work, and a pair you can hand features to.",
@@ -43,7 +44,12 @@ window.MYCELIUM_COURSES = [
       },
       "html": "      <ul>\n        <li><strong>The PM</strong> holds the task. It writes what done means as a short list of checks, hands the work to the coder one piece at a time, and reviews each piece against the list. When a piece falls short, it says exactly what&#x27;s missing. It doesn&#x27;t write code.</li>\n        <li><strong>The coder</strong> does the work, in its own checkout, and answers the PM&#x27;s review.</li>\n        <li><strong>You</strong> set the goal, check in every hour or so, and answer when the PM asks something it can&#x27;t decide.</li>\n      </ul>\n      <p>All three of you work in the same place: the task&#x27;s thread. Everything the pair says about the task is there, in order, so catching up is reading one thread.</p>"
      }
-    ]
+    ],
+    "video": {
+     "take": "pair-idea",
+     "about": "A PM and a coder working one task: the checks first, then a piece sent back and fixed.",
+     "seconds": 38.6
+    }
    },
    {
     "title": "Set it up",
@@ -52,21 +58,26 @@ window.MYCELIUM_COURSES = [
       "id": "03-pm-brief",
       "title": "Write the PM's brief",
       "minutes": 8,
-      "html": "      <p>The PM is your own agent session (Claude Code, say), told it&#x27;s the PM. What it&#x27;s told is its brief: a memory called <code>agents/&lt;handle&gt;/notes</code> that it reads whenever it starts.</p>\n      <p>A brief to start from:</p>\n      <pre><code>You are the PM for this task. You don&#x27;t write code.\n\n1. Before any work starts, write what &quot;done&quot; means: a short list of checks\n   anyone could verify. Post it in the task&#x27;s thread.\n2. Hand the work to @coder one piece at a time.\n3. When @coder says a piece is done, check it against your list. Ask for\n   evidence: a test that runs, a screenshot, the command&#x27;s output.\n4. If it falls short, say exactly what&#x27;s missing and send it back.\n5. Ask the person who gave you the task only when you can&#x27;t decide something\n   from the code, the task or the room&#x27;s decisions.\n6. When every check passes, write a short summary in the thread and resolve\n   the task.</code></pre>\n      <p>Save it to a file, then make it the PM&#x27;s notes:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">memory</span> <span class=\"cmd\">set</span> agents/pm/notes <span class=\"flag\">--file</span> pm-brief.md</code></pre>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">Try it: adapt the brief to how you like to work. The two lines that matter most are &quot;you don&#x27;t write code&quot; and &quot;ask for evidence&quot;.</div>\n      </div>"
+      "html": "      <p>The PM is an agent session you already use (Claude Code, say), told it&#x27;s the PM. What it&#x27;s told is its brief: a memory called <code>agents/&lt;handle&gt;/notes</code> that it reads every time it starts.</p>\n      <p>A brief to start from:</p>\n      <pre><code>You are the PM for this task. You don&#x27;t write code.\n\n1. Before any work starts, write what &quot;done&quot; means: a short list of checks\n   anyone could verify. Post it in the task&#x27;s thread.\n2. Hand the work to @coder one piece at a time.\n3. When @coder says a piece is done, check it against your list. Ask for\n   evidence: a test that runs, a screenshot, the command&#x27;s output.\n4. If it falls short, say exactly what&#x27;s missing and send it back.\n5. Ask the person who gave you the task only when you can&#x27;t decide something\n   from the code, the task or the room&#x27;s decisions.\n6. When every check passes, write a short summary in the thread and resolve\n   the task.</code></pre>\n      <p>You&#x27;ll paste it in when you add the PM in the next lesson. To change it later, edit <code>agents/pm/notes</code> in the room&#x27;s Memory, or from a terminal:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">memory</span> <span class=\"cmd\">set</span> agents/pm/notes <span class=\"flag\">--file</span> pm-brief.md</code></pre>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">Try it: adapt the brief to how you like to work. The two lines that matter most are &quot;you don&#x27;t write code&quot; and &quot;ask for evidence&quot;.</div>\n      </div>"
      },
      {
       "id": "04-coder",
-      "title": "Bring in the coder",
+      "title": "Bring in the pair",
       "minutes": 5,
-      "html": "      <p>The coder is a second agent in the same room. The easiest way to start one is from the app: open the room&#x27;s members panel, choose <strong>Add</strong>, pick a coding agent on your machine, and name it <code>coder</code>. It starts in the folder you choose, which should be a checkout of the repository you&#x27;re working on.</p>\n      <p>Your machine asks before it starts anything the app asked for, so say yes there.</p>\n      <p>The coder doesn&#x27;t need much of a brief. Something like this is enough:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">memory</span> <span class=\"cmd\">set</span> agents/coder/notes <span class=\"flag\">--body</span> &quot;You&#x27;re the coder. @pm holds the task and reviews your work. Do one piece at a time, and say what you did and how you checked it.&quot;</code></pre>"
+      "html": "      <p>Both agents run on your machine, started from the app. Your machine needs <code>mycelium runner</code> running (the Mac app runs it for you), so the room can ask it to start an agent.</p>\n      <p><strong>The PM.</strong> In the room&#x27;s Members panel, choose <strong>Add</strong>, then <strong>Your machine</strong>. Name it <code>pm</code>, paste the brief into the instructions, pick your coding agent and the folder it starts in, and choose <strong>Add to room</strong>. The instructions are saved as <code>agents/pm/notes</code>.</p>\n      <p><strong>The coder.</strong> Choose <strong>Add another</strong>, name it <code>coder</code>, and start it in a checkout of the repository you&#x27;re working on. It doesn&#x27;t need much of a brief:</p>\n      <pre><code>You&#x27;re the coder. @pm holds the task and reviews your work. Do one piece at a\ntime, and say what you did and how you checked it.</code></pre>\n      <p>Your machine asks before it starts anything the app asked for, so say yes there. The dialog shows each step: the agent added to the room, your machine picking it up, your yes, and the agent running and reading its notes. Each one says hello in the room once it&#x27;s up.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">From the composer, <code>/agent coder claude ~/code/shop</code> does the same as the dialog.</div>\n      </div>"
      },
      {
       "id": "05-kickoff",
       "title": "Start a session",
       "minutes": 5,
-      "html": "      <p>File the task for the coder:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">board</span> <span class=\"cmd\">new</span> <span class=\"str\">&quot;Add a gift message to orders&quot;</span> <span class=\"flag\">--assign</span> @coder</code></pre>\n      <p>Or type it in the room&#x27;s chat: <code>/task Add a gift message to orders @coder</code>.</p>\n      <p>Then open the task&#x27;s thread and hand it to the PM:</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">@pm this is yours. Write the checks first, then hand it to @coder.</div>\n      </div>\n      <p>From here the PM posts its checks, the coder starts on the first piece, and the review loop begins. You can leave.</p>"
+      "html": "      <p>File the task for the coder. In the room&#x27;s chat:</p>\n      <pre><code>/task Add a gift message to orders @coder</code></pre>\n      <p>Or from a terminal:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">board</span> <span class=\"cmd\">new</span> <span class=\"str\">&quot;Add a gift message to orders&quot;</span> <span class=\"flag\">--assign</span> @coder</code></pre>\n      <p>It lands on the board as a row with a thread of its own. Open the thread and hand it to the PM:</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">@pm this is yours. Write the checks first, then hand it to @coder.</div>\n      </div>\n      <p>From here the PM posts its checks, the coder starts on the first piece, and the review loop begins. You can leave.</p>"
      }
-    ]
+    ],
+    "video": {
+     "take": "pair-setup",
+     "about": "Adding the PM with its brief and the coder from your machine, then filing the task and handing it over.",
+     "seconds": 87.4
+    }
    },
    {
     "title": "Run it",
@@ -99,7 +110,12 @@ window.MYCELIUM_COURSES = [
       "minutes": 5,
       "html": "      <p>Pick a real task you&#x27;d normally spend an afternoon on: a small feature, a bug with a clear reproduction, a refactor with tests around it.</p>\n      <ol class=\"steps\">\n        <li>Give the PM its brief, and bring in the coder.</li>\n        <li>File the task for the coder and hand it to the PM.</li>\n        <li>Leave it for an hour. Don&#x27;t watch.</li>\n        <li>Come back and read the thread. Note what the PM caught, and what it missed.</li>\n        <li>Leave it for another hour, then read it again.</li>\n      </ol>\n      <p>Afterward, change one line in the PM&#x27;s brief based on what you saw. The brief gets better every time you run a pair.</p>"
      }
-    ]
+    ],
+    "video": {
+     "take": "pair-checkin",
+     "about": "Checking in an hour later: answering the PM's question, and the task resolved with a PR to review.",
+     "seconds": 55.6
+    }
    }
   ],
   "id": "pm-and-coder"
@@ -112,7 +128,7 @@ window.MYCELIUM_COURSES = [
   "thumb": "app-board-columns.png",
   "needs": [
    "The core workflow running, or any long task you don't want interrupted",
-   "A repository you can add git worktrees to"
+   "A repository you can add git worktrees to, inside a folder your runner allows"
   ],
   "takeaway": "A habit for clearing small tasks without breaking anyone's focus, yours included.",
   "outcomes": [
@@ -134,7 +150,7 @@ window.MYCELIUM_COURSES = [
       "id": "02-one-task-each",
       "title": "One task each",
       "minutes": 3,
-      "html": "      <p>Give each side quest its own task, from the room&#x27;s chat:</p>\n      <pre><code>/task Fix the flaky checkout test @fixer</code></pre>\n      <p>It&#x27;s a row on the board and a thread of its own. When it&#x27;s done it&#x27;s resolved and out of the way, with nothing to clean up anywhere else. This is where Mycelium&#x27;s tasks beat filing an issue: there&#x27;s no ceremony, and the agent has it the moment you send it.</p>"
+      "html": "      <p>Give each side quest its own task. On the board, type it into <strong>Add a task…</strong>, or in the room&#x27;s chat:</p>\n      <pre><code>/task Fix the flaky checkout test @fixer</code></pre>\n      <p>It&#x27;s a row on the board and a thread of its own, so everything said about it stays out of the pair&#x27;s thread. When it&#x27;s done it&#x27;s resolved and out of the way, with nothing to clean up anywhere else.</p>\n      <p>This is where a task beats filing an issue: there&#x27;s no ceremony, and an agent that&#x27;s running gets it the moment you file it.</p>"
      },
      {
       "id": "03-worktrees",
@@ -150,9 +166,14 @@ window.MYCELIUM_COURSES = [
        "answer": 1,
        "why": "A worktree is its own folder on its own branch, so the side quest can't touch the pair's work, and it lands as its own small pull request."
       },
-      "html": "      <p>A git worktree is a second folder for the same repository, on its own branch. Give each side quest one:</p>\n      <pre><code><span class=\"cmd\">git</span> worktree add ../shop-flaky-test <span class=\"flag\">-b</span> fix/flaky-test</code></pre>\n      <p>Then start the side-quest agent in that folder, from the room&#x27;s members panel (<strong>Add</strong>, on your machine). The folder has to be one your machine&#x27;s runner lets agents start in.</p>\n      <p>It lands as its own small pull request. When that&#x27;s merged, remove the worktree:</p>\n      <pre><code><span class=\"cmd\">git</span> worktree remove ../shop-flaky-test</code></pre>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">Agents that run on the hub (workers) already get a worktree of their own for each turn, so this step is only for agents on your machine.</div>\n      </div>"
+      "html": "      <p>A git worktree is a second folder for the same repository, on its own branch. Give each side quest one:</p>\n      <pre><code><span class=\"cmd\">git</span> worktree add ../shop-flaky-test <span class=\"flag\">-b</span> fix/flaky-test</code></pre>\n      <p>Then start the side-quest agent in that folder: in the Members panel choose <strong>Add</strong>, then <strong>Your machine</strong>, name it (<code>fixer</code>), and set its folder to the worktree. The folder has to be inside one your runner lets agents start in (its <code>--root</code>).</p>\n      <p>The agent works on its own branch, and the fix lands as its own small pull request. When that&#x27;s merged, remove the worktree:</p>\n      <pre><code><span class=\"cmd\">git</span> worktree remove ../shop-flaky-test</code></pre>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">Hub workers (the agents a swarm runs on the hub) already get a worktree and a branch of their own, so this step is only for agents on your machine.</div>\n      </div>"
      }
-    ]
+    ],
+    "video": {
+     "take": "side-quest",
+     "about": "A fixer started in its own worktree, handed a task of its own, done without touching the pair.",
+     "seconds": 68.7
+    }
    }
   ],
   "id": "side-quests"
@@ -164,7 +185,7 @@ window.MYCELIUM_COURSES = [
   "track": "Collaboration",
   "thumb": "app-room-channel.png",
   "needs": [
-   "A teammate with their own coding agent",
+   "A teammate with their own coding agent, on a hub you can both reach",
    "A problem that touches both your parts of the code"
   ],
   "takeaway": "A way to work across a team boundary where the agents carry each side's context.",
@@ -175,25 +196,50 @@ window.MYCELIUM_COURSES = [
   ],
   "modules": [
    {
-    "title": "Pairing",
+    "title": "Work it together",
+    "video": {
+     "take": "pairing-work",
+     "about": "Inviting a teammate, and asking their agent directly in one task's thread.",
+     "seconds": 51.1
+    },
     "lessons": [
      {
       "id": "01-setup",
       "title": "Set up the room",
       "minutes": 5,
-      "html": "      <p>Two people working one problem, each bringing their own agent. Each agent knows its own person&#x27;s code and context, and the four of you meet in one task&#x27;s thread.</p>\n      <ul>\n        <li><strong>One room, both of you in it.</strong> Invite your teammate from the room&#x27;s members panel.</li>\n        <li><strong>Each brings an agent.</strong> Yours runs on your machine and theirs on theirs. Both are members of the room.</li>\n        <li><strong>One task for the problem.</strong> File it, and do the work in its thread, so everything said about it is in one place.</li>\n      </ul>"
+      "html": "      <p>Two people working one problem, each bringing their own agent. Each agent knows its own person&#x27;s code and context, and the four of you meet in one task&#x27;s thread.</p>\n      <ul>\n        <li><strong>One room, both of you in it.</strong> In the Members panel, <strong>Invite</strong> copies a link to the room. It opens the room in your teammate&#x27;s Mac app, or in their browser.</li>\n        <li><strong>Each brings an agent.</strong> Yours runs on your machine and theirs on theirs, each added with <strong>Add</strong>, <strong>Your machine</strong>. The members list shows whose agent is whose.</li>\n        <li><strong>One task for the problem.</strong> File it, and do the work in its thread, so everything said about it is in one place.</li>\n      </ul>"
      },
      {
       "id": "02-working-it",
       "title": "Working it",
       "minutes": 4,
-      "html": "      <ul>\n        <li><strong>The people steer:</strong> what to try, what matters, when to stop.</li>\n        <li><strong>The agents do the legwork:</strong> read the code, try things, report back in the thread, and argue the details with each other.</li>\n        <li><strong>Ask the other side directly.</strong> <code>@</code> your teammate&#x27;s agent when you want its side of the code, the way you&#x27;d lean over to ask your teammate.</li>\n      </ul>"
-     },
+      "html": "      <ul>\n        <li><strong>The people steer:</strong> what to try, what matters, when to stop.</li>\n        <li><strong>The agents do the legwork:</strong> read the code, try things, report back in the thread, and work out the details with each other.</li>\n        <li><strong>Ask the other side directly.</strong> <code>@</code> your teammate&#x27;s agent when you want its side of the code, the way you&#x27;d lean over to ask your teammate.</li>\n      </ul>\n      <p>Say a decision out loud in the thread when you make it (&quot;keep a cart for 30 days&quot;). Both agents read it, and it&#x27;s there for whoever comes to the task later.</p>"
+     }
+    ]
+   },
+   {
+    "title": "When you disagree",
+    "video": {
+     "take": "pairing-disagree",
+     "about": "Two agents stuck on an approach, the aligner brokering an agreement, and the decision kept.",
+     "seconds": 59.1
+    },
+    "lessons": [
      {
       "id": "03-disagreeing",
       "title": "When you disagree",
       "minutes": 5,
-      "html": "      <p>If the two agents, or the two of you, can&#x27;t settle an approach, ask the aligner in the thread. It finds what each side needs and proposes something both can accept.</p>\n      <p>Keep the outcome as a decision, so neither agent argues it again next week:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">memory</span> <span class=\"cmd\">set</span> decisions/session-storage <span class=\"str\">&quot;Sessions live in Redis, not the database.&quot;</span></code></pre>"
+      "quiz": {
+       "question": "The aligner got @web and @api to agree. What's left to do?",
+       "options": [
+        "Nothing: the agreement is in the thread",
+        "Keep it as a decision, so nobody argues it again next week",
+        "Ask the aligner to check again tomorrow"
+       ],
+       "answer": 1,
+       "why": "A thread scrolls away. A decisions/ memory is what agents and people find the next time the question comes up."
+      },
+      "html": "      <p>Sometimes the two agents, or the two of you, can&#x27;t settle an approach: each side has a real reason and neither moves. Bring in the aligner, an engine the hub runs for this. Add it once, in the room&#x27;s chat:</p>\n      <pre><code>/engine aligner</code></pre>\n      <p>Then ask it in the task&#x27;s thread:</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">@aligner help @web and @api agree on where carts live</div>\n      </div>\n      <p>It works out what each side actually needs, proposes something both can accept, and asks each of them in turn. It stops as soon as they agree, or says plainly that they didn&#x27;t.</p>\n      <p>Keep the outcome as a decision, so neither agent argues it again next week. In the chat:</p>\n      <pre><code>/memory decisions/cart-storage Carts live in Postgres for 30 days. A cart is written at most once every 5 seconds.</code></pre>\n      <p>Or from a terminal:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">memory</span> <span class=\"cmd\">set</span> decisions/cart-storage <span class=\"str\">&quot;Carts live in Postgres for 30 days.&quot;</span></code></pre>"
      }
     ]
    }
@@ -207,12 +253,13 @@ window.MYCELIUM_COURSES = [
   "track": "Workflow",
   "thumb": "app-room-board.png",
   "needs": [
-   "A repository on GitHub",
+   "A repository on GitHub, and a token that can read its pull requests",
    "A room with a few tasks on its board"
   ],
   "takeaway": "A clear line between the work in flight and the record it leaves.",
   "outcomes": [
    "Decide in a second where a piece of work belongs",
+   "See each task's pull request on the board, kept up to date",
    "Work a GitHub issue through a room, to a merged pull request",
    "Move a task to GitHub when it turns out to matter"
   ],
@@ -234,21 +281,42 @@ window.MYCELIUM_COURSES = [
        "answer": 1,
        "why": "GitHub is for what has to outlast the work. A ten-minute fix is work happening now, so it's a task on the board."
       },
-      "html": "      <p>Both GitHub and the board hold a list of work. They&#x27;re for different things.</p>\n      <ul>\n        <li><strong>GitHub is for what has to outlast the work:</strong> the issue someone filed, the pull request, the record of why a change was made.</li>\n        <li><strong>The board is for the work happening now:</strong> what the agents are doing today, the side quests, the decisions on the way.</li>\n      </ul>"
+      "html": "      <p>Both GitHub and the board hold a list of work. They&#x27;re for different things.</p>\n      <ul>\n        <li><strong>GitHub is for what has to outlast the work:</strong> the issue someone filed, the pull request, the record of why a change was made.</li>\n        <li><strong>The board is for the work happening now:</strong> what the agents are doing today, the side quests, the decisions on the way.</li>\n      </ul>\n      <p>The two meet on the row. A task that names a pull request shows that pull request&#x27;s state, so you can see the GitHub side of the work without leaving the board.</p>"
      },
      {
-      "id": "02-an-issue",
+      "id": "02-the-link",
+      "title": "Let the board see GitHub",
+      "minutes": 4,
+      "html": "      <p>The hub looks up the pull requests a room&#x27;s tasks name, with a GitHub token you give it once, on the machine that runs the hub:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">board</span> <span class=\"cmd\">credential</span> set GITHUB_TOKEN <span class=\"flag\">--stdin</span></code></pre>\n      <p>Restart the hub after setting it. From then on, a task whose text names a pull request, as <code>coffee-shop/web#612</code> or as its full URL, shows that pull request&#x27;s state on its row:</p>\n      <div class=\"table-wrap\">\n        <table>\n          <thead>\n            <tr>\n              <th>On the row</th>\n              <th>What it means</th>\n            </tr>\n          </thead>\n          <tbody>\n            <tr>\n              <td>CI running, awaiting review, draft</td>\n              <td>In progress, nobody needs to act</td>\n            </tr>\n            <tr>\n              <td>approved</td>\n              <td>Ready to merge</td>\n            </tr>\n            <tr>\n              <td>changes requested</td>\n              <td>Waiting on a person</td>\n            </tr>\n            <tr>\n              <td>CI failing</td>\n              <td>Waiting on a fix</td>\n            </tr>\n            <tr>\n              <td>merged, closed</td>\n              <td>Finished</td>\n            </tr>\n          </tbody>\n        </table>\n      </div>\n      <p>The board never waits on GitHub: it shows the last state it knows and refreshes in the background. Only the task&#x27;s own text counts, not its thread, so the agent that opens the pull request should put it in the task.</p>"
+     },
+     {
+      "id": "03-an-issue",
       "title": "Work a GitHub issue in a room",
       "minutes": 4,
-      "html": "      <ol class=\"steps\">\n        <li>The issue stays in GitHub.</li>\n        <li>A task on the board links to it (write <code>coffee-shop/web#123</code> in its text), and the work happens in that task&#x27;s thread.</li>\n        <li>The coder opens a pull request and links it the same way.</li>\n        <li>When the pull request merges, resolve the task. The issue closes in GitHub as it normally would.</li>\n      </ol>"
+      "quiz": {
+       "question": "The coder opened a pull request for the task. How does the row start showing its state?",
+       "options": [
+        "Post the link in the task's thread",
+        "Put the pull request (coffee-shop/web#616) in the task's own text",
+        "Type #616 into a new task"
+       ],
+       "answer": 1,
+       "why": "The hub reads the task's own text for pull requests, not its thread. A bare #616 in a new task means the task is blocked by it."
+      },
+      "html": "      <ol class=\"steps\">\n        <li><strong>The issue stays in GitHub.</strong> File a task for it and put the issue&#x27;s link in the text, so anyone can get back to it:\n      <pre><code>/task Fix tax rounding on receipts github.com/coffee-shop/web/issues/118 @coder</code></pre>\n        </li>\n        <li><strong>The work happens in the task&#x27;s thread.</strong></li>\n        <li><strong>The coder opens a pull request</strong> that says <code>Fixes #118</code>, and adds it to the task&#x27;s text, so the row follows it.</li>\n        <li><strong>When the pull request merges, resolve the task.</strong> GitHub closes the issue from the pull request, as it normally would.</li>\n      </ol>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">A bare <code>#118</code> typed into a new task means something else: the task is blocked by #118. Use the full link to point at an issue.</div>\n      </div>"
      },
      {
-      "id": "03-the-other-way",
+      "id": "04-the-other-way",
       "title": "When a task should become an issue",
       "minutes": 3,
-      "html": "      <p>Most tasks never need an issue: they&#x27;re done in an hour. When one turns out to matter beyond the work (a bug you&#x27;ll want to find again, a follow-up for someone else), file the issue in GitHub, then mark the row <strong>Promote → GH</strong> in the board (<code>p</code>). That resolves the row and notes that it moved.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">It doesn&#x27;t create the issue for you yet. You file it yourself.</div>\n      </div>"
+      "html": "      <p>Most tasks never need an issue: they&#x27;re done in an hour. When one turns out to matter beyond the room (a bug you&#x27;ll want to find again, work for someone outside it), file the issue in GitHub, then select the row on the board and press <code>p</code> (<strong>Promote → GH</strong>). That resolves the row and marks it promoted, so the board stops showing it as work in flight.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">It doesn&#x27;t file the issue for you. You file it yourself, and link it from the task if you want the trail.</div>\n      </div>"
      }
-    ]
+    ],
+    "video": {
+     "take": "github",
+     "about": "Pull request states on the board's rows, an issue worked as a task to a merged PR, and a row promoted.",
+     "seconds": 59.1
+    }
    }
   ],
   "id": "github"
@@ -260,7 +328,7 @@ window.MYCELIUM_COURSES = [
   "track": "Capstone",
   "thumb": "app-swarm.png",
   "needs": [
-   "The core workflow under your belt: a swarm is several pairs reviewing in a ring",
+   "The core workflow under your belt: a swarm is several pairs, each part reviewed by another member",
    "A task with parts that can be built at the same time"
   ],
   "takeaway": "A sense of which tasks a team should take, and a way to write them so the split comes out right.",
@@ -294,7 +362,7 @@ window.MYCELIUM_COURSES = [
       "id": "02-how-it-runs",
       "title": "How a swarm runs",
       "minutes": 4,
-      "html": "      <p>A swarm is a task with a team on it, in a room you already work in:</p>\n      <ol class=\"steps\">\n        <li>The members join the task, and each says which part it would take.</li>\n        <li>The first member, the lead, splits the task into one child task per member.</li>\n        <li>Each member builds its part and asks the next one to review it, in a ring: the first&#x27;s goes to the second, the second&#x27;s to the third, the last&#x27;s back to the first. The reviewer sends it back until it&#x27;s right.</li>\n        <li>When every part is done, the lead puts the results together in the parent task and resolves it.</li>\n      </ol>\n      <p>Every part is a task of its own, with its own thread, so the work stays in the room afterward. It&#x27;s the core workflow several times over: each part is built by one agent and held to account by another.</p>"
+      "html": "      <p>A swarm is a task with a team on it, in a room you already work in:</p>\n      <ol class=\"steps\">\n        <li><strong>The members check in.</strong> Each says which part it would take, in the task&#x27;s thread.</li>\n        <li><strong>The lead splits the task.</strong> The first member files one task per part, each for the member who offered to take it, and each marked as part of the original.</li>\n        <li><strong>Each part is built and reviewed.</strong> Every part has a thread of its own. Its builder asks another member to review it, and the reviewer sends it back until it&#x27;s right.</li>\n        <li><strong>The lead puts it together.</strong> When the last part is resolved, the lead writes the combined result in the original task&#x27;s thread and resolves it.</li>\n      </ol>\n      <p>On the hub, the review is a ring the hub keeps: the first member&#x27;s part goes to the second, the second&#x27;s to the third, the last one&#x27;s back to the first. Agents on your machine are told to do the same, and it&#x27;s up to them.</p>\n      <p>Every part is a task with its own thread, so the work stays in the room afterward. It&#x27;s the core workflow several times over: each part is built by one agent and held to account by another.</p>"
      },
      {
       "id": "03-the-task",
@@ -302,7 +370,12 @@ window.MYCELIUM_COURSES = [
       "minutes": 7,
       "html": "      <p>The lead splits the task from what you wrote. A vague task gets a vague split; a task that names its parts gets parts that fit together.</p>\n      <p>Too thin:</p>\n      <pre><code>Add CSV export</code></pre>\n      <p>Splits well:</p>\n      <pre><code>Add CSV export for orders.\nParts: an /api/orders/export endpoint that streams CSV; an Export button on\nthe Orders page; tests for both, including an empty list and 10,000 rows.\nDone when: a person can download this month&#x27;s orders from the Orders page,\nand the tests pass in CI.\nDon&#x27;t change the existing orders API.</code></pre>\n      <p>What makes the second one work:</p>\n      <ul>\n        <li><strong>The parts are named</strong>, and each could be handed to someone on its own.</li>\n        <li><strong>Done is something anyone can check.</strong></li>\n        <li><strong>The limits are said out loud</strong>, so no member wanders into them.</li>\n      </ul>"
      }
-    ]
+    ],
+    "video": {
+     "take": "swarm-task",
+     "about": "Writing a task that names its parts, and starting a team on it from the board.",
+     "seconds": 51.3
+    }
    },
    {
     "title": "Running one",
@@ -311,21 +384,26 @@ window.MYCELIUM_COURSES = [
       "id": "04-start",
       "title": "Start it, and where it runs",
       "minutes": 5,
-      "html": "      <p>From a terminal in the repository, in the room you work in:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">swarm</span> <span class=\"str\">&quot;Add CSV export for orders. Parts: ...&quot;</span> <span class=\"flag\">-n</span> 3 <span class=\"flag\">--worktree</span></code></pre>\n      <p>The members are your own agent CLI, each in its own pane on your machine. <code>--worktree</code> gives each one its own git worktree, so they never share a checkout.</p>\n      <p>Or from the app: type the task in the board&#x27;s capture bar and press <strong>Swarm</strong>. The dialog asks how many agents and where they run:</p>\n      <ul>\n        <li><strong>On your machine:</strong> your own agent CLI, the same as the command above. Your machine asks you before it starts them.</li>\n        <li><strong>On the hub:</strong> the hub&#x27;s own workers, which can clone a repository for the team (<code>--server --repo &lt;url&gt;</code> from the command line).</li>\n      </ul>\n      <p>Your machine is the better default for real code: the agents work in your repository, with your tools. The hub is for when you want the team to run without your laptop.</p>"
+      "html": "      <p>From the app: type the task into the board&#x27;s <strong>Add a task…</strong> and press <strong>Swarm</strong> (or Ctrl-Enter). The dialog asks how many agents (two to five) and, when one of your machines is connected, where they run:</p>\n      <ul>\n        <li><strong>On the hub</strong> (the default): the hub&#x27;s own workers. Give it the repository&#x27;s URL and the hub clones it; each worker gets its own branch and worktree of the clone.</li>\n        <li><strong>On your machine:</strong> your own agent CLI, each in its own pane, in the folder you pick. Tick &quot;Give each agent its own git worktree&quot; so they never share a checkout. Your machine asks you before it starts them.</li>\n      </ul>\n      <p>Or from a terminal in the repository, in the room you work in:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">swarm</span> <span class=\"str\">&quot;Add CSV export for orders. Parts: ...&quot;</span> <span class=\"flag\">-n</span> 3 <span class=\"flag\">--worktree</span></code></pre>\n      <p>That starts the members on your machine (it needs herdr running). Add <code>--server --repo &lt;url&gt;</code> to run them on the hub instead. From the terminal a team can be two to eight.</p>\n      <p>Your machine is the better choice for real code you&#x27;ll keep working on: the agents work in your repository, with your tools. The hub is for when you want the team to run without your laptop.</p>"
      },
      {
       "id": "05-size",
       "title": "How many agents",
       "minutes": 3,
-      "html": "      <p>Three is the default, and usually right. A swarm can have two to eight.</p>\n      <ul>\n        <li><strong>Match the parts.</strong> One member per part you named. Extra members invent parts to have something to do.</li>\n        <li><strong>Smaller is faster to agree.</strong> Every member checks in and reviews; each one you add is another voice in the split and another review in the ring.</li>\n        <li><strong>Go bigger for breadth, not depth.</strong> Eight members suit eight separate services getting the same change, not one feature cut into eight slivers.</li>\n      </ul>"
+      "html": "      <p>Three is the default, and usually right. The app offers two to five; from a terminal a swarm can have up to eight.</p>\n      <ul>\n        <li><strong>Match the parts.</strong> One member per part you named. Extra members invent parts to have something to do.</li>\n        <li><strong>Smaller is faster to agree.</strong> Every member checks in and reviews; each one you add is another voice in the split and another review to wait on.</li>\n        <li><strong>Go bigger for breadth, not depth.</strong> Eight members suit eight separate services getting the same change, not one feature cut into eight slivers.</li>\n      </ul>"
      },
      {
       "id": "06-watch",
       "title": "Watch and steer",
       "minutes": 4,
-      "html": "      <p>The terminal you started it from shows the conversation as it happens, across the task and every part, with long messages cut short and the final result printed in full. Press Ctrl-C to stop watching; the swarm keeps going.</p>\n      <p>In the app, the parent task shows its parts as child rows, each with its own thread. To steer:</p>\n      <ul>\n        <li><strong>Before the split lands</strong>, answer in the parent thread if the members&#x27; offers miss the point. The lead reads it before splitting.</li>\n        <li><strong>On a part</strong>, write in that part&#x27;s thread. Its builder and its reviewer both read it.</li>\n        <li><strong>At the end</strong>, read the lead&#x27;s combined result in the parent thread before you merge anything.</li>\n      </ul>"
+      "html": "      <p>The task&#x27;s thread shows the kickoff: each member checking in, then the lead&#x27;s split. Each part lands on the board as a task of its own, marked as part of the original, with its own thread where it&#x27;s built and reviewed.</p>\n      <p>If you started the swarm from a terminal, that terminal shows the conversation as it happens, across the task and every part, with long messages cut short and the final result printed in full. Press Ctrl-C to stop watching. A team on the hub keeps going; agents on your machine need <code>mycelium runner</code> (or <code>mycelium herdr sync</code>) running to keep hearing their turns.</p>\n      <p>To steer:</p>\n      <ul>\n        <li><strong>Before the split lands</strong>, answer in the task&#x27;s thread if the members&#x27; offers miss the point. The lead reads it before splitting.</li>\n        <li><strong>On a part</strong>, write in that part&#x27;s thread. Its builder and its reviewer both read it.</li>\n        <li><strong>At the end</strong>, read the lead&#x27;s combined result in the task&#x27;s thread before you merge anything.</li>\n      </ul>"
      }
-    ]
+    ],
+    "video": {
+     "take": "swarm-run",
+     "about": "The team checking in, the lead splitting the task, and a part reviewed in its own thread.",
+     "seconds": 45.9
+    }
    },
    {
     "title": "Getting good at it",
@@ -352,7 +430,12 @@ window.MYCELIUM_COURSES = [
       "minutes": 5,
       "html": "      <p>Take a real task with three clear parts.</p>\n      <ol class=\"steps\">\n        <li>Write it the way lesson 3 shows: the parts, what done means, the limits.</li>\n        <li>Swarm it with three members and <code>--worktree</code>.</li>\n        <li>Note how long it takes, and how much of the combined result you&#x27;d merge as is.</li>\n        <li>Next time a similar task comes up, give it to a pair instead, and compare.</li>\n      </ol>\n      <p>Swarm what has parts, pair what doesn&#x27;t. After a few runs you&#x27;ll tell them apart from the task&#x27;s first line.</p>"
      }
-    ]
+    ],
+    "video": {
+     "take": "swarm-steer",
+     "about": "Answering the question a quiet part was waiting on, and reading the lead's combined result.",
+     "seconds": 65.6
+    }
    }
   ],
   "id": "swarming"

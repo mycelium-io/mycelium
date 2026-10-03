@@ -12,6 +12,7 @@
  */
 
 import { DEMO_PERSON, isDemoScenario } from "./demo";
+import { LEARN_PERSON, LEARN_ROOTS, isLearnScenario } from "./learn";
 import type {
   Framework,
   MachineAgent,
@@ -206,6 +207,17 @@ if (isDemoScenario()) {
   });
 }
 
+// A Learn take is recorded as Sam too, on a machine that asks before it starts
+// anything (the dialog shows the yes being given).
+if (isLearnScenario()) {
+  Object.assign(runners[0], {
+    label: "sams-mbp",
+    owner: LEARN_PERSON.handle,
+    roots: LEARN_ROOTS,
+    agents: [],
+  });
+}
+
 interface StoredJob extends Omit<RunnerJob, "status" | "updated_at"> {
   /** When the mock job settles, and how. */
   failWith: string | null;
@@ -239,9 +251,16 @@ const jobs: StoredJob[] = [
 let seq = 2;
 const applied = new Set<string>(["job-0000", "job-0001"]);
 
-/** Queued for the first second, running until 2.5s, then settled. */
+/** Queued for the first second, running until 2.5s, then settled; a Learn
+ *  take's launch waits on a yes first. */
 function statusOf(job: StoredJob): RunnerJob["status"] {
   const age = Date.now() - Date.parse(job.created_at);
+  if (isLearnScenario() && (job.kind === "launch" || job.kind === "swarm")) {
+    if (age < 1_000) return "queued";
+    if (age < 3_200) return "waiting";
+    if (age < 4_600) return "running";
+    return job.failWith ? "failed" : "done";
+  }
   if (age < 1_000) return "queued";
   if (age < 2_500) return "running";
   return job.failWith ? "failed" : "done";

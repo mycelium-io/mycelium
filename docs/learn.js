@@ -9,6 +9,11 @@
  *   #/c/<course>           a course: what you'll learn, its lessons
  *   #/c/<course>/<lesson>  a lesson, with the course's lessons beside it
  *
+ * A section (a module) can have a video: a take of the app doing what its
+ * lessons teach, recorded by mycelium-promo/learn/record.mjs into learn/video/.
+ * It opens the section's first lesson, and is a click away on the course page
+ * and on the section's other lessons.
+ *
  * Progress is which lessons you marked done, kept in this browser only. A
  * page that can't reach localStorage still works; it just forgets.
  */
@@ -97,7 +102,11 @@
     var p = progressOf(course);
     return (
       '<div class="meta"><span>' + count(p.total, "lesson", "lessons") + '</span><span class="dot">·</span><span>' +
-      minutesOf(course) + " min</span></div>"
+      minutesOf(course) + " min</span>" +
+      (videosOf(course)
+        ? '<span class="dot">·</span><span>' + count(videosOf(course), "video", "videos") + "</span>"
+        : "") +
+      "</div>"
     );
   }
   function bar(pct) {
@@ -107,6 +116,34 @@
     return '<span class="check' + (on ? " on" : "") + '">' + (on ? '<i data-lucide="check"></i>' : "") + "</span>";
   }
   function count(n, one, many) { return n + " " + (n === 1 ? one : many); }
+
+  // ── videos ─────────────────────────────────────────────────────────────────
+
+  function clock(seconds) {
+    var s = Math.round(seconds || 0);
+    return Math.floor(s / 60) + ":" + (s % 60 < 10 ? "0" : "") + (s % 60);
+  }
+  function videosOf(course) {
+    return (course.modules || []).filter(function (m) { return m.video; }).length;
+  }
+  // The player itself. preload="none" so a page of sections costs a poster each.
+  function player(video) {
+    var base = "learn/video/" + esc(video.take);
+    return (
+      '<figure class="clip"><video controls playsinline muted preload="none" poster="' + base + '.jpg">' +
+      '<source src="' + base + '.mp4" type="video/mp4"></video>' +
+      (video.about ? "<figcaption>" + esc(video.about) + "</figcaption>" : "") + "</figure>"
+    );
+  }
+  // A section's video behind a disclosure: the course page and a section's
+  // later lessons, where it's there if wanted rather than in the way.
+  function folded(video, label) {
+    return (
+      '<details class="clip-fold"><summary><i data-lucide="play"></i><span>' + esc(label) + "</span>" +
+      (video.seconds ? '<span class="mins">' + clock(video.seconds) + "</span>" : "") + "</summary>" +
+      player(video) + "</details>"
+    );
+  }
 
   // ── views ──────────────────────────────────────────────────────────────────
 
@@ -182,7 +219,8 @@
       }).join("");
       return (
         '<div class="module"><div class="module-head"><span>' + esc(m.title) + '</span><span class="muted">' +
-        count((m.lessons || []).length, "lesson", "lessons") + " · " + mins + " min</span></div>" + rows + "</div>"
+        count((m.lessons || []).length, "lesson", "lessons") + " · " + mins + " min</span></div>" +
+        (m.video ? folded(m.video, "Watch this section") : "") + rows + "</div>"
       );
     }).join("");
     var finished = p.total && p.done === p.total;
@@ -239,6 +277,11 @@
       );
     }).join("");
 
+    var video = "";
+    if (here.module.video) {
+      video = here.indexInModule === 0 ? player(here.module.video) : folded(here.module.video, "Watch this section again");
+    }
+
     var quiz = "";
     if (lesson.quiz) {
       quiz =
@@ -266,7 +309,7 @@
       '<div class="progress">' + bar(p.pct) + "<span>" + p.done + " of " + p.total + " done</span></div>" + nav + "</nav>" +
       '<article class="lesson-main glass"><div class="label">' + esc(here.module.title) + " · Lesson " + (at + 1) +
       " of " + all.length + "</div><h1>" + esc(lesson.title) + '</h1><div class="mins-line">About ' + (lesson.minutes || 0) +
-      ' minutes</div><div class="lesson-body">' + (lesson.html || "") + "</div>" + quiz + foot + "</article></div>"
+      ' minutes</div><div class="lesson-body">' + video + (lesson.html || "") + "</div>" + quiz + foot + "</article></div>"
     );
   }
 

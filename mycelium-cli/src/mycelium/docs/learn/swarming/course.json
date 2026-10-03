@@ -5,7 +5,7 @@
   "track": "Capstone",
   "thumb": "app-swarm.png",
   "needs": [
-    "The core workflow under your belt: a swarm is several pairs reviewing in a ring",
+    "The core workflow under your belt: a swarm is several pairs, each part reviewed by another member",
     "A task with parts that can be built at the same time"
   ],
   "takeaway": "A sense of which tasks a team should take, and a way to write them so the split comes out right.",
@@ -34,17 +34,45 @@
             "why": "The export feature has parts that can be built at the same time by different agents. The other two are one coherent change: a pair, or one agent, does them better."
           }
         },
-        { "id": "02-how-it-runs", "title": "How a swarm runs", "minutes": 4 },
-        { "id": "03-the-task", "title": "Write a task that splits well", "minutes": 7 }
-      ]
+        {
+          "id": "02-how-it-runs",
+          "title": "How a swarm runs",
+          "minutes": 4
+        },
+        {
+          "id": "03-the-task",
+          "title": "Write a task that splits well",
+          "minutes": 7
+        }
+      ],
+      "video": {
+        "take": "swarm-task",
+        "about": "Writing a task that names its parts, and starting a team on it from the board."
+      }
     },
     {
       "title": "Running one",
       "lessons": [
-        { "id": "04-start", "title": "Start it, and where it runs", "minutes": 5 },
-        { "id": "05-size", "title": "How many agents", "minutes": 3 },
-        { "id": "06-watch", "title": "Watch and steer", "minutes": 4 }
-      ]
+        {
+          "id": "04-start",
+          "title": "Start it, and where it runs",
+          "minutes": 5
+        },
+        {
+          "id": "05-size",
+          "title": "How many agents",
+          "minutes": 3
+        },
+        {
+          "id": "06-watch",
+          "title": "Watch and steer",
+          "minutes": 4
+        }
+      ],
+      "video": {
+        "take": "swarm-run",
+        "about": "The team checking in, the lead splitting the task, and a part reviewed in its own thread."
+      }
     },
     {
       "title": "Getting good at it",
@@ -64,8 +92,16 @@
             "why": "Members colliding is a split problem and a checkout problem. --worktree gives each its own branch, and a task that names separate areas keeps their parts apart."
           }
         },
-        { "id": "08-exercise", "title": "Exercise: a team against a pair", "minutes": 5 }
-      ]
+        {
+          "id": "08-exercise",
+          "title": "Exercise: a team against a pair",
+          "minutes": 5
+        }
+      ],
+      "video": {
+        "take": "swarm-steer",
+        "about": "Answering the question a quiet part was waiting on, and reading the lead's combined result."
+      }
     }
   ]
 }

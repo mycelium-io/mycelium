@@ -150,6 +150,21 @@
   .check.on { background: var(--green); border-color: var(--green); color: #fff; }
   .check.on i { width: 12px; height: 12px; }
 
+  /* ── section videos ── */
+  .clip { margin: 0 0 30px; }
+  .clip video { display: block; width: 100%; aspect-ratio: 16 / 10; border-radius: var(--radius-lg);
+    border: 1px solid var(--border2); background: #0b0d10; box-shadow: 0 24px 48px -24px rgba(0,0,0,0.55); }
+  .clip figcaption { margin-top: 10px; font-size: var(--text-label); color: var(--muted-foreground); line-height: 1.55; }
+  .clip-fold { border-top: 1px solid var(--border); }
+  .lesson-body .clip-fold { border: 1px solid var(--border); border-radius: var(--radius-lg); margin: 0 0 28px; }
+  .clip-fold summary { display: flex; align-items: center; gap: 10px; padding: 11px 16px; cursor: pointer; list-style: none;
+    font-size: var(--text-body); color: var(--accent); }
+  .clip-fold summary::-webkit-details-marker { display: none; }
+  .clip-fold summary:hover { background: var(--hairline); }
+  .clip-fold summary i { width: 15px; height: 15px; }
+  .clip-fold summary .mins { margin-left: auto; font-size: var(--text-label); color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+  .clip-fold .clip { margin: 4px 16px 16px; }
+
   /* ── lesson view ── */
   .lesson { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 24px; align-items: start; }
   .lesson-nav { position: sticky; top: calc(var(--topbar-height) + 20px); max-height: calc(100vh - var(--topbar-height) - 40px);

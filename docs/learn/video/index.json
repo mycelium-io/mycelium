@@ -1,0 +1,32 @@
+{
+  "github": {
+    "seconds": 59.1
+  },
+  "pair-checkin": {
+    "seconds": 55.6
+  },
+  "pair-idea": {
+    "seconds": 38.6
+  },
+  "pair-setup": {
+    "seconds": 87.4
+  },
+  "pairing-disagree": {
+    "seconds": 59.1
+  },
+  "pairing-work": {
+    "seconds": 51.1
+  },
+  "side-quest": {
+    "seconds": 68.7
+  },
+  "swarm-run": {
+    "seconds": 45.9
+  },
+  "swarm-steer": {
+    "seconds": 65.6
+  },
+  "swarm-task": {
+    "seconds": 51.3
+  }
+}

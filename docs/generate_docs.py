@@ -1804,11 +1804,31 @@ def _write_learn_data() -> None:
     import json
 
     learn_dir = DOCS_DIR / "learn"
+    # A section's video is recorded by mycelium-promo/learn/record.mjs, which
+    # writes each take's length into this index beside the videos.
+    video_dir = OUT_DIR / "learn" / "video"
+    index_path = video_dir / "index.json"
+    takes = json.loads(index_path.read_text()) if index_path.exists() else {}
     courses: list[dict] = []
     for course_json in sorted(learn_dir.glob("*/course.json")):
         course = json.loads(course_json.read_text())
         course["id"] = course_json.parent.name
         for module in course.get("modules", []):
+            video = module.get("video")
+            if video:
+                take = video["take"]
+                missing = [
+                    f"learn/video/{take}{ext}"
+                    for ext in (".mp4", ".jpg")
+                    if not (video_dir / f"{take}{ext}").exists()
+                ]
+                if missing or take not in takes:
+                    sys.exit(
+                        f"{course_json.parent.name}: section {module['title']!r} names the video "
+                        f"{take!r}, which isn't recorded ({', '.join(missing) or 'not in index.json'}). "
+                        f"Record it: node mycelium-promo/learn/record.mjs {take}"
+                    )
+                video["seconds"] = takes[take]["seconds"]
             for lesson in module.get("lessons", []):
                 md = (course_json.parent / f"{lesson['id']}.md").read_text()
                 # The lesson's own title is the page's heading; drop the
