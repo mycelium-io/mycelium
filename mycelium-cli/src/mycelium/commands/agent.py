@@ -839,10 +839,9 @@ def agent_create(
             _create_wizard(ctx, config=config, room_opt=room, handle_flag=handle_flag)
             return
 
-        # `mycelium adapter add` accepts the kebab-case spelling
-        # (``claude-code``); accept the same spelling here so users don't have
-        # to remember which command uses which casing. The canonical id in
-        # ``AGENT_ADAPTERS`` (and on the manifest) is the underscore form.
+        # Accept the kebab-case spelling (``claude-code``) people type as well.
+        # The canonical id in ``AGENT_ADAPTERS`` (and on the manifest) is the
+        # underscore form.
         adapter = adapter.replace("-", "_")
         if adapter not in AGENT_ADAPTERS:
             known = ", ".join(sorted(AGENT_ADAPTERS))

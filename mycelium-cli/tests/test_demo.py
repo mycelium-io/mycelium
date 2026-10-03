@@ -110,7 +110,7 @@ def test_unknown_adapter_rejected() -> None:
 
 
 def test_blocks_when_prereqs_missing() -> None:
-    """Missing adapter/LLM/backend should fail fast with fixes, not provision."""
+    """Missing LLM/backend should fail fast with fixes, not provision."""
     spec = {
         "id": "x",
         "title": "X",
@@ -124,7 +124,7 @@ def test_blocks_when_prereqs_missing() -> None:
         patch.object(
             demo,
             "_check_prereqs",
-            return_value=(object(), ["Adapter 'claude_code' is not installed."]),
+            return_value=(object(), ["No LLM configured."]),
         ),
         patch.object(demo, "_provision") as prov,
     ):

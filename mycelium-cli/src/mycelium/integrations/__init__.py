@@ -4,18 +4,16 @@
 """
 Integration registry: the single resolution point for a runtime family.
 
-Each family implements an :class:`Integration` subclass exposing the facets that
-build/register agent manifests and spawn turns: the per-family ``dispatch`` facet,
-``install.py``, and the ``assets/`` bundle live together under
-``integrations/<family>/``.
+Each family implements an :class:`Integration` subclass that builds, registers
+and destroys agent manifests, under ``integrations/<family>/`` (cursor also
+keeps the workspace assets it drops there).
 
 One canonical family id is used everywhere internally: the **underscore**
 spelling (``claude_code``), since that is the value persisted in
-``agents/<handle>`` manifests and matched by the daemon dispatch guard and
-``sstp.AGENT_ADAPTERS``. The **hyphen** spelling (``claude-code``) survives
-only as the user-facing ``mycelium adapter add`` argument and the on-disk
-asset directory name; :func:`normalize_family_id` is the one translation
-boundary.
+``agents/<handle>`` manifests and matched by ``sstp.AGENT_ADAPTERS``. The
+**hyphen** spelling (``claude-code``) is accepted from people, as
+``agent create --adapter claude-code``; :func:`normalize_family_id` is the
+one translation boundary.
 """
 
 from __future__ import annotations
@@ -38,8 +36,8 @@ __all__ = [
 ]
 
 #: Presentation/legacy aliases → canonical underscore family id. The hyphen
-#: form is the public CLI argument (`mycelium adapter add claude-code`) and the
-#: asset directory name; everything internal uses the canonical value.
+#: form is what people type (`agent create --adapter claude-code`); everything
+#: internal uses the canonical value.
 _FAMILY_ALIASES: dict[str, str] = {
     "claude-code": "claude_code",
 }
@@ -60,7 +58,7 @@ def adapter_for(framework: str | None) -> str:
     """The adapter an agent CLI's agents are recorded under.
 
     Every resident agent takes part the same way (``await``/``respond``), so the
-    adapter only matters where a family has install-time assets; the agent CLI
+    adapter only matters where a family drops workspace assets; the agent CLI
     itself is recorded beside it, as the manifest's ``framework``. The hub's
     ``routes/runners.adapter_for`` answers the same for the agents it writes.
     """

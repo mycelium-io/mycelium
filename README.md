@@ -120,7 +120,7 @@ Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform th
 
 The agent follows [agents.md](https://mycelium-io.github.io/mycelium/agents.md),
 a setup runbook written for agents: it installs the CLI, brings up the stack,
-and connects its own runtime as an adapter.
+and joins a room itself.
 
 Or install by hand:
 
@@ -141,8 +141,8 @@ From the UI you:
 4. **watch** them pick it up and work it, live. The room's timeline tells you each time a task is filed, claimed, handed back or resolved; the argument stays in the task.
 
 Your agents drive that same room from the **CLI** on their own, waiting for
-their turn, responding, and writing to shared memory (that's what the
-`mycelium` skill teaches them). You don't run those by hand; they do.
+their turn, responding, and writing to shared memory (their notes and the
+prompts that wake them say how). You don't run those by hand; they do.
 
 Prefer to script the human side too? Every UI action has a CLI equivalent:
 
@@ -187,7 +187,7 @@ Repo layout:
 
 ```
 .mycelium/            Memory storage (rooms are folders, memories are markdown files)
-mycelium-cli/         CLI + adapters
+mycelium-cli/         CLI
 fastapi-backend/      FastAPI moderator + engines (aligner, synthesizer, hello, persona, conductor)
 mycelium-client/      Generated typed OpenAPI client
 mycelium-frontend/    Next.js UI
@@ -198,26 +198,23 @@ docs/                 Docs site + design notes
 Each component directory carries its own README covering what lives inside it and the
 boundaries worth knowing before changing anything there.
 
-## Adapters
+## Agents
 
-Mycelium reaches your agents through per-runtime adapters. An adapter doesn't run your
-agent — it teaches the runtime you already use how to participate in a room. Support is
-honest about maturity:
+The app starts agents on your machine through `mycelium runner` (or the Mac app), and
+`mycelium swarm` starts a team. Either way each agent is an interactive session of the
+agent CLI you already use, told who it is in its notes and woken with what to do, so
+there is nothing to install into the agent CLI itself. Claude Code is the proven path;
+Cursor is untested.
 
-| Adapter | Status |
-|---|---|
-| `claude_code` | ✅ proven |
-| `cursor` | ⚠️ untested / unverified |
-
-**Claude Code.** Installs the `mycelium` skill (`~/.claude/skills/mycelium/SKILL.md`), giving Claude Code memory and coordination commands via `/mycelium`. This is the proven path.
+An agent CLI you start yourself can read the same protocol from the Mycelium skill:
 
 ```bash
-mycelium adapter add claude-code
+mycelium skill print > ~/.claude/skills/mycelium/SKILL.md
 ```
 
-**Cursor.** Ships its assets per-agent rather than host-wide: `mycelium agent create
---adapter cursor --cwd <workspace>` drops a Cursor rule and an `AGENTS.md` section into
-that workspace, which `cursor-agent` reads on every session there.
+**Cursor.** `mycelium agent create --adapter cursor --cwd <workspace>` drops a Cursor
+rule and an `AGENTS.md` section into that workspace, which `cursor-agent` reads on every
+session there.
 
 ## Development
 

@@ -191,12 +191,7 @@ def _demo_workdir(room: str, handle: str) -> Path:
     return d
 
 
-def _adapter_installed(config: Any, adapter: str) -> bool:
-    keys = {str(k).replace("-", "_") for k in (config.adapters or {})}
-    return adapter in keys
-
-
-def _check_prereqs(adapter: str) -> tuple[Any, list[str]]:
+def _check_prereqs() -> tuple[Any, list[str]]:
     """Load config and collect blocking problems (empty list = good to go)."""
     from mycelium.config import MyceliumConfig
 
@@ -208,12 +203,6 @@ def _check_prereqs(adapter: str) -> tuple[Any, list[str]]:
             "[red]No Mycelium config found.[/red] Run [bold]mycelium install[/bold] first."
         )
         raise typer.Exit(1)
-
-    if not _adapter_installed(config, adapter):
-        kebab = adapter.replace("_", "-")
-        problems.append(
-            f"Adapter '{adapter}' is not installed. Install it with: mycelium adapter add {kebab}"
-        )
 
     if not getattr(config.llm, "model", None):
         problems.append(
@@ -492,7 +481,7 @@ def demo(
 
     _print_intro(chosen, adapter, room_name)
 
-    _config, problems = _check_prereqs(adapter)
+    _config, problems = _check_prereqs()
     if problems:
         console.print("\n[red]Can't run the live demo yet:[/red]")
         for p in problems:

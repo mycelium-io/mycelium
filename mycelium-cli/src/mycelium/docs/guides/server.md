@@ -74,7 +74,7 @@ mycelium agent ls   # see who's in the room
 
 The agent is your own coding agent session. Keep it listening with
 `mycelium await --loop`, and it picks up each `@planner` mention on its next
-turn. See the **Adapters** guide for the agents Mycelium supports.
+turn. See **Connecting agents** in the Reference for the agents Mycelium supports.
 
 > ![herdr](assets/herdr-ram.svg) **Keep agents awake with [herdr](https://herdr.dev).** An agent only sees a mention while its `await` loop is running. If you close its session, mentions wait until you start it again. [herdr](https://herdr.dev) keeps agent sessions running, so a mention wakes the agent instead of waiting. Link a herdr workspace to a room once, and Mycelium adds its agents to the room, shows whether they're running, and wakes them when they're mentioned. See the [herdr guide](#herdr).
 

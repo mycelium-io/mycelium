@@ -9,7 +9,6 @@ import typer
 
 from mycelium import __version__
 from mycelium.commands import (
-    adapter,
     agent,
     board,
     config,
@@ -124,7 +123,6 @@ app.add_typer(room.app, name="room")
 app.add_typer(memory.app, name="memory")
 app.add_typer(skill.app, name="skill")
 app.add_typer(config.app, name="config")
-app.add_typer(adapter.app, name="adapter")
 app.add_typer(docs.app, name="docs")
 app.add_typer(metrics.app, name="metrics")
 app.add_typer(ui.app, name="ui")

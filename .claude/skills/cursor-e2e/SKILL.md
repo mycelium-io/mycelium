@@ -43,13 +43,13 @@ cursor-agent --version
 ls ~/.config/cursor/auth.json
 python3 -c "import json,os; p=os.path.expanduser('~/.config/cursor/auth.json'); j=json.load(open(p)); print('authenticated' if j.get('accessToken') else 'NOT LOGGED IN')"
 
-# 3. Adapter installed + backend reachable
-mycelium adapter add cursor
+# 3. Backend reachable (the workspace rule and AGENTS.md section land when
+#    the agent is created with `mycelium agent create --adapter cursor`)
 mycelium doctor --mode auto
 ```
 
-**Fail criteria**: any missing → run `cursor-agent login` and `mycelium adapter
-add cursor` before proceeding.
+**Fail criteria**: any missing → run `cursor-agent login` or `mycelium up`
+before proceeding.
 
 ## The resident-loop harness
 

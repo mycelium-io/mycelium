@@ -18,7 +18,7 @@ This file is the maintainer's hint to a [tiny-teams-with-tokens](https://github.
 Mycelium is a multi-component monorepo. When you describe "the architecture" you should mention all of these by their actual roles:
 
 - [`fastapi-backend/`](fastapi-backend/) — the coordination engine (Python 3.12, FastAPI). No database: state is local markdown files + a JSONL search index. Runs the SLIM messaging node's counterpart services: room moderation, the board/task projection, the aligner/synthesizer engines, the A2A bridge, L9 envelope construction, the persister.
-- [`mycelium-cli/`](mycelium-cli/) — the user-facing CLI (typer + Rich). The primary surface most users touch, and the whole agent-side participation surface (`await`/`respond`, `board`). Hosts adapter logic for Claude Code (proven) and Cursor (untested).
+- [`mycelium-cli/`](mycelium-cli/) — the user-facing CLI (typer + Rich). The primary surface most users touch, and the whole agent-side participation surface (`await`/`respond`, `board`). Claude Code is the proven agent CLI; Cursor is untested.
 - [`mycelium-client/`](mycelium-client/) — auto-generated OpenAPI client. Treat as build output; don't document its internals.
 - [`mycelium-frontend/`](mycelium-frontend/) — Next.js + Tailwind UI, part of the stack `mycelium up` brings up. The board is the primary screen; there is no separate Negotiate pane or Episodes rail.
 - [`mycelium-promo/`](mycelium-promo/) — the product demo: a shotkit recording of the real app over the frontend's demo scenario. Out of scope for the wiki.
@@ -37,7 +37,7 @@ If you're documenting how Mycelium works, ground every claim against one of thes
 - [`fastapi-backend/app/services/room_channels.py`](fastapi-backend/app/services/room_channels.py), [`slim_client.py`](fastapi-backend/app/services/slim_client.py) — the SLIM messaging node integration: room = SLIM group channel, moderator/channel lifecycle.
 - [`fastapi-backend/app/services/embedding.py`](fastapi-backend/app/services/embedding.py), [`indexer.py`](fastapi-backend/app/services/indexer.py), [`reindex.py`](fastapi-backend/app/services/reindex.py) — fastembed (`BAAI/bge-small-en-v1.5`, 384-dim, local ONNX) search index over memory. No pgvector, no external embedding service.
 - [`fastapi-backend/app/routes/`](fastapi-backend/app/routes/) — HTTP API surface (rooms, tasks, participate/await/respond, memory, engines, a2a).
-- [`mycelium-cli/src/mycelium/commands/`](mycelium-cli/src/mycelium/commands/) — every CLI verb (`board`, `memory`, `room`, `engine`, `adapter`, `install`, `network`, …).
+- [`mycelium-cli/src/mycelium/commands/`](mycelium-cli/src/mycelium/commands/) — every CLI verb (`board`, `memory`, `room`, `engine`, `runner`, `install`, `network`, …).
 - [`mycelium-cli/src/mycelium/integrations/`](mycelium-cli/src/mycelium/integrations/) — one package per runtime family (`claude_code/`, `cursor/`), each holding its registration+install code and an `assets/` bundle.
 - [`mycelium-cli/src/mycelium/commands/participate.py`](mycelium-cli/src/mycelium/commands/participate.py) — `await` / `respond`, the entire agent-side participation surface. `await --loop --exec` is the resident runner that keeps a live session woken.
 
@@ -59,7 +59,7 @@ If you're documenting how Mycelium works, ground every claim against one of thes
 - **SLIM is the fabric, not an add-on.** Rooms are SLIM group channels (MLS-encrypted multicast); the backend is each room's moderator. Don't describe SLIM as optional infrastructure — it's the coordination substrate.
 - **L9 is in-house, not consumed from upstream.** Post-rewrite, Mycelium implements its own minimal L9 envelope semantics rather than depending on an external L9 service. Don't describe L9 as an external dependency.
 - **CFN/KXP/CognitiveEngines are gone.** These were taken off open source in July 2026 and Mycelium's rewrite removed the dependency outright rather than waiting on access. Do not describe the current architecture in terms of CFN, a "CognitiveEngine" service, or `cfn_negotiation.py`-style files — none of that exists anymore.
-- **Adapter capability is uneven — be honest about it.** `claude_code` is proven; `cursor` is untested. OpenClaw and Hermes are **gone**, not deprecated — they rode the removed SSE/coordination-tick model and their packages were deleted; don't list them as adapters.
+- **Agent CLI support is uneven — be honest about it.** Claude Code is proven; Cursor is untested. OpenClaw and Hermes are **gone**, not deprecated — they rode the removed SSE/coordination-tick model and their packages were deleted; don't list them as supported.
 - **Agents are resident, never cold-spawned.** A runtime participates by looping `mycelium await --loop --exec` in a live session it already owns. The daemon that cold-spawned `claude -p` per mention was removed (it threw away context every turn). Don't describe Mycelium as spawning or hosting agents.
 - **SPIRE identity is gone, not an option.** Removed outright (issue #668, PR #708) after a live audit found it only ever attested the backend to itself on one box. The identity ladder is now two rungs: `psk` (default) and `signerjwt`. Don't list SPIRE as a selectable identity tier.
 - **memory set always upserts.** It overwrites existing keys; the row's version increments. Don't describe it as "create-only".

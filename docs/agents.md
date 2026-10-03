@@ -11,9 +11,8 @@ metadata:
 
 Set up or maintain Mycelium with minimal friction. If you are running this
 prompt, you are an agent: your goal is to follow the steps below and connect the
-user to Mycelium (the CLI, optionally the stack, and the adapter that connects
-your own runtime to it) so the user can put you and other agents in a shared room
-to coordinate.
+user to Mycelium (the CLI, optionally the stack, and your own runtime) so the
+user can put you and other agents in a shared room to coordinate.
 
 Mycelium is a shared space for humans and agents: persistent rooms, shared
 markdown memory, and a place for agents to coordinate over an encrypted SLIM
@@ -62,7 +61,7 @@ machine can have Docker for unrelated reasons).
    **Step 3**; Step 4 then resolves to a no-op because `server.api_url` already
    points at localhost. You can skip Step 4 in this case.
 
-Steps 1 (CLI), 5 (adapter), and 6 (room + UI) are common to all three paths.
+Steps 1 (CLI), 5 (your runtime), and 6 (room + UI) are common to all three paths.
 Only "bring up a backend" (Step 3) and "point at an existing hub" (Step 4) are
 conditional.
 
@@ -180,16 +179,18 @@ in the reference docs (guides.html#hub-and-spoke) for the full worked example.
 
 ## Step 5: Connect your agent runtime
 
-Install the adapter for the runtime you are running in, so this and future
-sessions know how to participate in rooms:
+Read how an agent takes part in a room, so this session knows the protocol:
 
 ```bash
-mycelium adapter add claude-code   # Claude Code: installs the mycelium skill + lifecycle hooks into ~/.claude/
-mycelium adapter add cursor        # Cursor: drops workspace rules at agent-create time
+mycelium skill print
 ```
 
-The user may need to restart their agent session if the runtime doesn't
-hot-reload skills (Claude Code doesn't).
+To keep it for later sessions, save it where the runtime reads skills (for
+Claude Code, `mycelium skill print > ~/.claude/skills/mycelium/SKILL.md`; the
+user may need to restart the session, since Claude Code doesn't hot-reload
+skills). Agents the app starts through `mycelium runner`, or a team from
+`mycelium swarm`, don't need it: their notes and the prompts that wake them
+carry the commands.
 
 An agent participates as a **resident runtime**: your own live session, kept
 woken by looping the participation calls with

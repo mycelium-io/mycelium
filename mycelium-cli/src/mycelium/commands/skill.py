@@ -227,26 +227,23 @@ def skill_rm(
 
 
 @doc_ref(
-    usage="mycelium skill adapter-def",
-    desc="Print the Mycelium SKILL.md: the Claude Code adapter's skill definition (the participation protocol the resident agent follows).",
+    usage="mycelium skill print",
+    desc="Print the Mycelium agent skill (SKILL.md): how an agent takes part in a room. Save it where your agent CLI reads skills, e.g. <code>~/.claude/skills/mycelium/SKILL.md</code>.",
     group="skill",
 )
-@app.command(name="adapter-def")
-def skill_adapter_def() -> None:
-    """Print the Mycelium SKILL.md (Claude Code adapter skill definition).
+@app.command(name="print")
+def skill_print() -> None:
+    """Print the Mycelium agent skill, to install by hand into an agent CLI.
 
-    This is the adapter's *own* SKILL.md asset (the participation protocol the
-    resident agent runs), not an entry in the skills store above.
+    This is Mycelium's own SKILL.md (the protocol an agent follows in a room),
+    not an entry in a room's skills store above. Agents the runner, swarm or
+    the Mac app start don't need it: their notes and wake prompts carry the
+    commands. It is for an agent CLI you start yourself, e.g.:
+
+        mycelium skill print > ~/.claude/skills/mycelium/SKILL.md
     """
-    rel = "integrations/claude_code/assets/skills/mycelium/SKILL.md"
-    fallback_parts = (
-        "integrations",
-        "claude_code",
-        "assets",
-        "skills",
-        "mycelium",
-        "SKILL.md",
-    )
+    rel = "skills/mycelium/SKILL.md"
+    fallback_parts = ("skills", "mycelium", "SKILL.md")
     try:
         with resources.as_file(resources.files("mycelium").joinpath(rel)) as p:
             typer.echo(p.read_text())

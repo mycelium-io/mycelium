@@ -694,10 +694,6 @@ class MyceliumConfig(BaseModel):
     health: HealthConfig = Field(default_factory=HealthConfig)
     a2a: A2aConfig = Field(default_factory=A2aConfig)
     patterns: PatternsConfig = Field(default_factory=PatternsConfig)
-    adapters: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Registered agent framework adapters (claude-code, cursor, …)",
-    )
 
     model_config = {"arbitrary_types_allowed": True}
     _global_config_path: Path | None = None

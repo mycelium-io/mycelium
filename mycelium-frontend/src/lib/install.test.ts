@@ -89,7 +89,8 @@ describe("install content", () => {
     expect(prompt).not.toContain("room messages --room");
     // A reader that is never told how to speak, or how to take a second turn,
     // joins the room and then goes quiet.
-    expect(prompt).toContain("mycelium adapter add claude-code");
+    expect(prompt).toContain("mycelium skill print");
+    expect(prompt).not.toContain("adapter add");
     expect(prompt).toContain("mycelium respond --room atlas --handle");
     expect(prompt).toContain("await again");
   });
