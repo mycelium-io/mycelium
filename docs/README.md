@@ -25,6 +25,14 @@ intended it to do.
   across regenerations. Those are the ones that *can* go stale without a test
   noticing, so treat them with the suspicion you'd give an old comment.
 
+## When it's published
+
+The site is published from the latest stable release's tag, not from main
+(`.github/workflows/pages.yml`, called by `release.yml`). A change merged here
+goes live with the next release, so the site, `install.sh` and `agents.md`
+always describe something a user can install. Videos (`*.mp4`) are committed
+through Git LFS.
+
 ## Authored by hand
 
 - `agents.md`: the setup runbook written for an agent to follow, not a human to

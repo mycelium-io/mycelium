@@ -61,7 +61,8 @@ fast-forwards the waits.
 
 ## Publishing
 
-The README and `docs/index.html` embed the video from a
-`user-attachments/assets/...` URL. Those only play inline when uploaded through
-GitHub's web drag-and-drop, so after re-recording, drag the new mp4 into a PR
-comment to mint a URL, then swap it into both embeds.
+The docs site plays `docs/demo/mycelium-demo.mp4`, committed through Git LFS
+(every `*.mp4` under `docs/` is), so after re-recording, copy the take there.
+The README can't play a file from the repo: GitHub only plays a README video
+inline from a `user-attachments/assets/...` URL, minted by dragging the mp4
+into a PR comment in the browser. Swap that URL into the README by hand.
