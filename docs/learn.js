@@ -19,13 +19,6 @@
   var KEY = "mycelium.learn.done";
   var root = document.getElementById("learn");
 
-  // Each course's tile, in the site's own colors.
-  var TILES = [
-    "linear-gradient(135deg, var(--accent), var(--accent2))",
-    "linear-gradient(135deg, var(--accent2), var(--code-kw))",
-    "linear-gradient(135deg, var(--green), var(--accent))",
-    "linear-gradient(135deg, var(--code-flag), var(--accent2))",
-  ];
 
   // ── progress ───────────────────────────────────────────────────────────────
 
@@ -83,11 +76,28 @@
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
   }
+  // A course's thumbnail: a screenshot of the app doing what the course
+  // teaches, its number, and its track.
   function tile(course, i) {
+    var n = (i + 1 < 10 ? "0" : "") + (i + 1);
     return (
-      '<div class="thumb" style="background:' + TILES[i % TILES.length] + '">' +
-      '<span class="glyph">' + esc(course.title.charAt(0)) + "</span>" +
-      '<span class="level">' + esc(course.level || "Course") + "</span></div>"
+      '<div class="thumb">' +
+      (course.thumb ? '<img src="' + esc(course.thumb) + '" alt="" loading="lazy">' : "") +
+      '<span class="num">' + n + "</span>" +
+      '<span class="track">' + esc(course.track || "Course") + "</span></div>"
+    );
+  }
+  function stateFoot(course) {
+    var p = progressOf(course);
+    if (p.total && p.done === p.total) return '<span class="finished-tag"><i data-lucide="badge-check"></i>Finished</span>';
+    if (p.done) return bar(p.pct) + '<span class="cta">Continue <i data-lucide="arrow-right"></i></span>';
+    return '<span class="cta">Start <i data-lucide="arrow-right"></i></span>';
+  }
+  function metaLine(course) {
+    var p = progressOf(course);
+    return (
+      '<div class="meta"><span>' + count(p.total, "lesson", "lessons") + '</span><span class="dot">·</span><span>' +
+      minutesOf(course) + " min</span></div>"
     );
   }
   function bar(pct) {
@@ -101,28 +111,50 @@
   // ── views ──────────────────────────────────────────────────────────────────
 
   function catalog() {
-    var cards = COURSES.map(function (c, i) {
-      var p = progressOf(c);
-      var foot = p.done === p.total && p.total
-        ? '<span class="done-badge">Finished</span>'
-        : p.done
-          ? bar(p.pct) + '<span class="cta">Continue</span>'
-          : '<span class="cta">Start</span>';
+    var first = COURSES[0];
+    var lessons = COURSES.reduce(function (n, c) { return n + lessonsOf(c).length; }, 0);
+    var minutes = COURSES.reduce(function (n, c) { return n + minutesOf(c); }, 0);
+    var hero =
+      '<section class="hero"><div class="veil"><div class="label">Mycelium · Learn</div>' +
+      "<h1>Scale up your work <em>with agents</em></h1>" +
+      '<p class="lede">Courses on the setups that let a few agents carry real work for hours: who does what, ' +
+      "how they hold each other to it, and where you come in. Written from using Mycelium on real work.</p>" +
+      '<div class="actions">' +
+      (first ? '<a class="btn" href="#/c/' + esc(first.id) + '">Start with the core workflow <i data-lucide="arrow-right"></i></a>' : "") +
+      '<a class="btn ghost" href="walkthrough.html">New to Mycelium? Your first room</a></div>' +
+      '<div class="stats"><span><b>' + COURSES.length + "</b>courses</span><span><b>" + lessons +
+      "</b>lessons</span><span><b>" + minutes + "</b>minutes in all</span></div></div>" +
+      '<div class="stage" aria-hidden="true">' +
+      '<div class="shot back"><img src="app-board-columns.png" alt=""></div>' +
+      '<div class="shot front"><img src="walk-thread.png" alt=""></div></div></section>';
+
+    var featured = first
+      ? '<a class="featured glass" href="#/c/' + esc(first.id) + '">' + tile(first, 0) +
+        '<div class="body"><div class="label">' + esc(first.track || "Course") + "</div><h3>" + esc(first.title) +
+        "</h3><p>" + esc(first.tagline) + "</p>" + metaLine(first) + '<div class="foot">' + stateFoot(first) +
+        "</div></div></a>"
+      : "";
+    var rest = COURSES.slice(1).map(function (c, i) {
       return (
-        '<a class="card learn-panel" href="#/c/' + esc(c.id) + '">' + tile(c, i) +
-        '<div class="card-body"><h3>' + esc(c.title) + "</h3><p>" + esc(c.tagline) + "</p>" +
-        '<div class="meta"><span>' + count(p.total, "lesson", "lessons") + "</span><span>·</span><span>" +
-        minutesOf(c) + " min</span></div>" +
-        '<div class="card-foot">' + foot + "</div></div></a>"
+        '<a class="card glass" href="#/c/' + esc(c.id) + '">' + tile(c, i + 1) +
+        '<div class="body"><h3>' + esc(c.title) + "</h3><p>" + esc(c.tagline) + "</p>" + metaLine(c) +
+        '<div class="foot">' + stateFoot(c) + "</div></div></a>"
       );
     }).join("");
     return (
-      '<section class="hero learn-panel"><div class="eyebrow">Learn</div>' +
-      "<h1>Learn to work with agents</h1>" +
-      "<p>Short courses on the setups that hold up in real work. A few lessons each, a few minutes a lesson, " +
-      "with something to try at the end.</p>" +
-      '<p class="start">New to Mycelium? Start with <a href="walkthrough.html">Your First Room</a>.</p></section>' +
-      '<div class="grid">' + cards + "</div>"
+      hero +
+      '<div class="section-head"><h2>Courses</h2><span class="label">' + COURSES.length + " to start</span></div>" +
+      featured + '<div class="grid">' + rest + "</div>"
+    );
+  }
+
+  function ticks(items, cls, icon) {
+    return (
+      '<ul class="ticks ' + (cls || "") + '">' +
+      (items || []).map(function (o) {
+        return '<li><i data-lucide="' + (icon || "check") + '"></i><span>' + esc(o) + "</span></li>";
+      }).join("") +
+      "</ul>"
     );
   }
 
@@ -130,16 +162,13 @@
     var i = COURSES.indexOf(course);
     var p = progressOf(course);
     var next = nextLesson(course);
-    var outcomes = (course.outcomes || []).map(function (o) {
-      return '<li><i data-lucide="check"></i><span>' + esc(o) + "</span></li>";
-    }).join("");
     var modules = (course.modules || []).map(function (m) {
       var mins = (m.lessons || []).reduce(function (n, l) { return n + (l.minutes || 0); }, 0);
       var rows = (m.lessons || []).map(function (l) {
         return (
-          '<a class="lesson-row" href="#/c/' + esc(course.id) + "/" + esc(l.id) + '">' +
+          '<a class="row" href="#/c/' + esc(course.id) + "/" + esc(l.id) + '">' +
           check(isDone(course, l.id)) + "<span>" + esc(l.title) + "</span>" +
-          (l.quiz ? '<span class="muted" title="Has a quick check">· quiz</span>' : "") +
+          (l.quiz ? '<span class="tag" title="Has a quick check">Check</span>' : "") +
           '<span class="mins">' + (l.minutes || 0) + " min</span></a>"
         );
       }).join("");
@@ -151,25 +180,30 @@
     var finished = p.total && p.done === p.total;
     var action = next
       ? '<a class="btn" href="#/c/' + esc(course.id) + "/" + esc(next.id) + '">' +
-        (finished ? "Go through it again" : p.done ? "Continue" : "Start the course") +
+        (finished ? "Go through it again" : p.done ? "Continue where you left off" : "Start the course") +
         ' <i data-lucide="arrow-right"></i></a>'
       : "";
     return (
       '<div class="crumbs"><a href="#/">Learn</a> › ' + esc(course.title) + "</div>" +
       (finished
-        ? '<div class="finished learn-panel"><i data-lucide="badge-check"></i><div><h3>You finished this course</h3>' +
-          "<p>Every lesson is marked done. Try the exercise on real work if you haven't yet.</p></div></div>"
+        ? '<div class="finished glass"><i data-lucide="badge-check"></i><div><h3>You finished this course</h3>' +
+          "<p>Every lesson is marked done. Run the exercise on real work if you haven't yet.</p></div></div>"
         : "") +
-      '<div class="course"><div class="course-main learn-panel">' +
-      '<div class="eyebrow">' + esc(course.level || "Course") + "</div><h1>" + esc(course.title) + "</h1>" +
-      '<p class="tagline">' + esc(course.tagline) + "</p>" +
-      (outcomes ? '<div class="outcomes"><h3>What you\'ll learn</h3><ul>' + outcomes + "</ul></div>" : "") +
-      "<h3>Lessons</h3>" + modules + "</div>" +
-      '<aside class="side-card learn-panel">' + tile(course, i) + '<div class="side-body">' +
-      '<div class="meta"><span>' + count(p.total, "lesson", "lessons") + "</span><span>·</span><span>" +
-      minutesOf(course) + " min</span></div>" +
-      (p.done ? '<div class="meta">' + bar(p.pct) + "<span>" + p.done + " of " + p.total + "</span></div>" : "") +
-      action + '<a class="btn ghost" href="#/">All courses</a></div></aside></div>'
+      '<div class="course-hero"><div class="veil"><div class="label">' + esc(course.track || "Course") + " · Course " + (i + 1) +
+      "</div><h1>" + esc(course.title) + '</h1><p class="lede">' + esc(course.tagline) + "</p>" + metaLine(course) +
+      (course.takeaway
+        ? '<div class="take" style="margin-top:18px"><i data-lucide="sparkles"></i><p><strong>You\'ll come away with:</strong> ' +
+          esc(course.takeaway) + "</p></div>"
+        : "") +
+      "</div>" +
+      '<aside class="side glass">' + tile(course, i) + '<div class="inner">' +
+      (p.done ? '<div class="meta">' + bar(p.pct) + "<span>" + p.done + " of " + p.total + " done</span></div>" : "") +
+      action + '<a class="btn ghost" href="#/">All courses</a></div></aside></div>' +
+      '<div class="course-body"><div>' +
+      (course.outcomes ? '<section class="block glass"><h3>What you\'ll be able to do</h3>' + ticks(course.outcomes) + "</section>" : "") +
+      '<section class="block glass"><h3>Lessons</h3>' + modules + "</section></div>" +
+      (course.needs ? '<section class="block glass"><h3>You\'ll need</h3>' + ticks(course.needs, "one need", "circle-dot") + "</section>" : "<div></div>") +
+      "</div>"
     );
   }
 
@@ -186,10 +220,10 @@
 
     var nav = (course.modules || []).map(function (m) {
       return (
-        '<div class="mod">' + esc(m.title) + "</div>" +
+        '<div class="mod label">' + esc(m.title) + "</div>" +
         (m.lessons || []).map(function (l) {
           return (
-            '<a class="lesson-row' + (l.id === lesson.id ? " here" : "") + '" href="#/c/' + esc(course.id) + "/" +
+            '<a class="row' + (l.id === lesson.id ? " here" : "") + '" href="#/c/' + esc(course.id) + "/" +
             esc(l.id) + '">' + check(isDone(course, l.id)) + "<span>" + esc(l.title) + "</span>" +
             '<span class="mins">' + (l.minutes || 0) + "m</span></a>"
           );
@@ -200,7 +234,7 @@
     var quiz = "";
     if (lesson.quiz) {
       quiz =
-        '<div class="quiz" id="quiz"><div class="eyebrow">Quick check</div><p class="q">' + esc(lesson.quiz.question) + "</p>" +
+        '<div class="quiz" id="quiz"><div class="label">Quick check</div><p class="q">' + esc(lesson.quiz.question) + "</p>" +
         lesson.quiz.options.map(function (o, i) {
           return '<button class="opt" data-opt="' + i + '">' + esc(o) + "</button>";
         }).join("") +
@@ -219,10 +253,10 @@
     return (
       '<div class="crumbs"><a href="#/">Learn</a> › <a href="#/c/' + esc(course.id) + '">' + esc(course.title) +
       "</a> › " + esc(lesson.title) + "</div>" +
-      '<div class="lesson"><nav class="lesson-nav learn-panel" aria-label="Lessons">' +
+      '<div class="lesson"><nav class="lesson-nav glass" aria-label="Lessons">' +
       '<div class="course-title"><a href="#/c/' + esc(course.id) + '">' + esc(course.title) + "</a></div>" +
       '<div class="progress">' + bar(p.pct) + "<span>" + p.done + " of " + p.total + " done</span></div>" + nav + "</nav>" +
-      '<article class="lesson-main learn-panel"><div class="eyebrow">' + esc(here.module.title) + " · Lesson " + (at + 1) +
+      '<article class="lesson-main glass"><div class="label">' + esc(here.module.title) + " · Lesson " + (at + 1) +
       " of " + all.length + "</div><h1>" + esc(lesson.title) + '</h1><div class="mins-line">About ' + (lesson.minutes || 0) +
       ' minutes</div><div class="lesson-body">' + (lesson.html || "") + "</div>" + quiz + foot + "</article></div>"
     );

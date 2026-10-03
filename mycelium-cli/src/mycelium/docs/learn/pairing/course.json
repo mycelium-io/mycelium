@@ -1,12 +1,18 @@
 {
   "order": 3,
-  "title": "Pair with someone else's agents",
-  "tagline": "Two people and their agents on one problem, in one thread.",
-  "level": "Next",
+  "title": "Pair across teams, agents included",
+  "tagline": "You bring your agent, they bring theirs: work one problem in one thread, and keep what you decide.",
+  "track": "Collaboration",
+  "thumb": "app-room-channel.png",
+  "needs": [
+    "A teammate with their own coding agent",
+    "A problem that touches both your parts of the code"
+  ],
+  "takeaway": "A way to work across a team boundary where the agents carry each side's context.",
   "outcomes": [
-    "Set up a room you and a teammate both bring an agent to",
-    "Steer while the agents do the legwork",
-    "Settle a disagreement and keep the outcome"
+    "Put both people and both agents on one problem",
+    "Steer while the agents do the legwork across both codebases",
+    "Settle a disagreement once, and keep the decision"
   ],
   "modules": [
     {

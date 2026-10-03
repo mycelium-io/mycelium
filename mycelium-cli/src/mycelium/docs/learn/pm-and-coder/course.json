@@ -1,13 +1,19 @@
 {
   "order": 1,
-  "title": "Run a PM and a coder",
-  "tagline": "Two agents, one reviewing the other, working on their own for hours.",
-  "level": "Start here",
+  "title": "Hand off a feature, come back to a reviewed PR",
+  "tagline": "Pair a PM agent with a coder, hold them to a definition of done you wrote, and let them run for hours.",
+  "track": "Core workflow",
+  "thumb": "walk-thread.png",
+  "needs": [
+    "A coding agent you already use (Claude Code, Codex, or another)",
+    "A repository with a task you'd normally spend an afternoon on"
+  ],
+  "takeaway": "A PM brief tuned to how you work, and a pair you can hand features to.",
   "outcomes": [
-    "Write a PM brief that holds a coder to a clear idea of done",
-    "Start a pair on a real task",
-    "Check in without getting in the way",
-    "Notice when a pair is going in circles, and fix it"
+    "Write a definition of done an agent can be held to",
+    "Hand a feature to a pair and leave for hours",
+    "Check in by reading one thread, not babysitting",
+    "Spot a pair that's going in circles, and fix it"
   ],
   "modules": [
     {

@@ -1,11 +1,17 @@
 {
   "order": 4,
-  "title": "GitHub and the board",
-  "tagline": "What lives in GitHub, what lives on the board, and how work moves between them.",
-  "level": "Next",
+  "title": "Keep GitHub as the record",
+  "tagline": "The board for the work happening now, GitHub for what has to last, and how work moves between them.",
+  "track": "Workflow",
+  "thumb": "app-room-board.png",
+  "needs": [
+    "A repository on GitHub",
+    "A room with a few tasks on its board"
+  ],
+  "takeaway": "A clear line between the work in flight and the record it leaves.",
   "outcomes": [
-    "Decide where a piece of work belongs",
-    "Work a GitHub issue in a room",
+    "Decide in a second where a piece of work belongs",
+    "Work a GitHub issue through a room, to a merged pull request",
     "Move a task to GitHub when it turns out to matter"
   ],
   "modules": [

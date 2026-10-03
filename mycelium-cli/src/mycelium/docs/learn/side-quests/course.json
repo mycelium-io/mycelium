@@ -1,12 +1,18 @@
 {
   "order": 2,
-  "title": "Side quests without stepping on toes",
-  "tagline": "Small tasks that come up while the main work goes on, each in its own worktree.",
-  "level": "Next",
+  "title": "Run side work in parallel",
+  "tagline": "Keep the main work moving while small fixes land as their own pull requests, each in its own worktree.",
+  "track": "Parallel work",
+  "thumb": "app-board-columns.png",
+  "needs": [
+    "The core workflow running, or any long task you don't want interrupted",
+    "A repository you can add git worktrees to"
+  ],
+  "takeaway": "A habit for clearing small tasks without breaking anyone's focus, yours included.",
   "outcomes": [
-    "Hand off small tasks without interrupting a pair",
-    "Give each one its own git worktree and branch",
-    "Clean up when it's merged"
+    "Hand off small fixes without interrupting the main work",
+    "Run each in its own worktree and branch, so nothing collides",
+    "Land each as its own small pull request"
   ],
   "modules": [
     {

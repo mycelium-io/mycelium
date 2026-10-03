@@ -2,14 +2,20 @@
 window.MYCELIUM_COURSES = [
  {
   "order": 1,
-  "title": "Run a PM and a coder",
-  "tagline": "Two agents, one reviewing the other, working on their own for hours.",
-  "level": "Start here",
+  "title": "Hand off a feature, come back to a reviewed PR",
+  "tagline": "Pair a PM agent with a coder, hold them to a definition of done you wrote, and let them run for hours.",
+  "track": "Core workflow",
+  "thumb": "walk-thread.png",
+  "needs": [
+   "A coding agent you already use (Claude Code, Codex, or another)",
+   "A repository with a task you'd normally spend an afternoon on"
+  ],
+  "takeaway": "A PM brief tuned to how you work, and a pair you can hand features to.",
   "outcomes": [
-   "Write a PM brief that holds a coder to a clear idea of done",
-   "Start a pair on a real task",
-   "Check in without getting in the way",
-   "Notice when a pair is going in circles, and fix it"
+   "Write a definition of done an agent can be held to",
+   "Hand a feature to a pair and leave for hours",
+   "Check in by reading one thread, not babysitting",
+   "Spot a pair that's going in circles, and fix it"
   ],
   "modules": [
    {
@@ -100,13 +106,19 @@ window.MYCELIUM_COURSES = [
  },
  {
   "order": 2,
-  "title": "Side quests without stepping on toes",
-  "tagline": "Small tasks that come up while the main work goes on, each in its own worktree.",
-  "level": "Next",
+  "title": "Run side work in parallel",
+  "tagline": "Keep the main work moving while small fixes land as their own pull requests, each in its own worktree.",
+  "track": "Parallel work",
+  "thumb": "app-board-columns.png",
+  "needs": [
+   "The core workflow running, or any long task you don't want interrupted",
+   "A repository you can add git worktrees to"
+  ],
+  "takeaway": "A habit for clearing small tasks without breaking anyone's focus, yours included.",
   "outcomes": [
-   "Hand off small tasks without interrupting a pair",
-   "Give each one its own git worktree and branch",
-   "Clean up when it's merged"
+   "Hand off small fixes without interrupting the main work",
+   "Run each in its own worktree and branch, so nothing collides",
+   "Land each as its own small pull request"
   ],
   "modules": [
    {
@@ -147,13 +159,19 @@ window.MYCELIUM_COURSES = [
  },
  {
   "order": 3,
-  "title": "Pair with someone else's agents",
-  "tagline": "Two people and their agents on one problem, in one thread.",
-  "level": "Next",
+  "title": "Pair across teams, agents included",
+  "tagline": "You bring your agent, they bring theirs: work one problem in one thread, and keep what you decide.",
+  "track": "Collaboration",
+  "thumb": "app-room-channel.png",
+  "needs": [
+   "A teammate with their own coding agent",
+   "A problem that touches both your parts of the code"
+  ],
+  "takeaway": "A way to work across a team boundary where the agents carry each side's context.",
   "outcomes": [
-   "Set up a room you and a teammate both bring an agent to",
-   "Steer while the agents do the legwork",
-   "Settle a disagreement and keep the outcome"
+   "Put both people and both agents on one problem",
+   "Steer while the agents do the legwork across both codebases",
+   "Settle a disagreement once, and keep the decision"
   ],
   "modules": [
    {
@@ -184,12 +202,18 @@ window.MYCELIUM_COURSES = [
  },
  {
   "order": 4,
-  "title": "GitHub and the board",
-  "tagline": "What lives in GitHub, what lives on the board, and how work moves between them.",
-  "level": "Next",
+  "title": "Keep GitHub as the record",
+  "tagline": "The board for the work happening now, GitHub for what has to last, and how work moves between them.",
+  "track": "Workflow",
+  "thumb": "app-room-board.png",
+  "needs": [
+   "A repository on GitHub",
+   "A room with a few tasks on its board"
+  ],
+  "takeaway": "A clear line between the work in flight and the record it leaves.",
   "outcomes": [
-   "Decide where a piece of work belongs",
-   "Work a GitHub issue in a room",
+   "Decide in a second where a piece of work belongs",
+   "Work a GitHub issue through a room, to a merged pull request",
    "Move a task to GitHub when it turns out to matter"
   ],
   "modules": [
