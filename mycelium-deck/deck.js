@@ -34,7 +34,7 @@
     const chrome = document.createElement('div');
     chrome.className = 'chrome';
     chrome.innerHTML = `<img src="../docs/logo.png" alt=""><span>mycelium</span><span class="talk"></span><span class="count"><b>${String(i + 1).padStart(2, '0')}</b> / ${String(slides.length).padStart(2, '0')}</span>`;
-    chrome.querySelector('.talk').textContent = talk;
+    chrome.querySelector('.talk').textContent = deck.dataset.footer || '';
     s.appendChild(chrome);
     s.addEventListener('click', () => { if (overview) { toggleOverview(false); go(i); } });
   });

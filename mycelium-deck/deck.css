@@ -28,6 +28,7 @@
   --code-comment: #7c848d;
   --sheen: rgba(255, 255, 255, 0.07);
   --shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+  --halo: 0 0 28px rgba(11, 13, 18, 0.95), 0 0 2px rgba(11, 13, 18, 0.8);
 
   --display: "Cormorant Garamond", Georgia, serif;
   --sans: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
@@ -55,6 +56,7 @@
   --code-comment: #66728a;
   --sheen: rgba(255, 255, 255, 0.7);
   --shadow: 0 30px 70px rgba(14, 26, 51, 0.16);
+  --halo: 0 0 28px rgba(238, 243, 251, 0.95), 0 0 2px rgba(238, 243, 251, 0.8);
 }
 
 * { box-sizing: border-box; }
@@ -81,6 +83,7 @@ body {
   padding: 120px 150px 150px;
   display: flex; flex-direction: column;
   opacity: 0; visibility: hidden;
+  text-shadow: var(--halo);
   transition: opacity 0.55s ease, visibility 0s linear 0.55s;
 }
 .slide.active { opacity: 1; visibility: visible; transition: opacity 0.55s ease, visibility 0s; }
@@ -95,7 +98,7 @@ body {
 @keyframes rise { to { opacity: 1; transform: none; filter: none; } }
 
 /* Steps reveal one press at a time, before the deck moves on. */
-.step { opacity: 0.12; transform: translateY(10px); filter: blur(3px); transition: opacity 0.5s, transform 0.5s, filter 0.5s; }
+.step { opacity: 0.06; transform: translateY(10px); filter: blur(3px); transition: opacity 0.5s, transform 0.5s, filter 0.5s; }
 .step.shown { opacity: 1; transform: none; filter: none; }
 .step.current .marker { background: var(--accent); color: var(--accent-ink); border-color: transparent; box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent) 18%, transparent); }
 
@@ -111,8 +114,8 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .display { font: italic 600 172px/0.92 var(--display); letter-spacing: -0.02em; }
 h2, .h2 { font: italic 600 104px/1 var(--display); letter-spacing: -0.015em; }
 h3 { font: 500 40px/1.2 var(--sans); letter-spacing: -0.01em; }
-p, li { font-size: 34px; line-height: 1.45; font-weight: 300; }
-.lede { font-size: 40px; line-height: 1.4; font-weight: 300; color: var(--muted); max-width: 1000px; }
+p, li { font-size: 34px; line-height: 1.45; font-weight: 400; }
+.lede { font-size: 40px; line-height: 1.4; font-weight: 400; color: var(--muted); max-width: 1000px; }
 .muted { color: var(--muted); }
 .accent { color: var(--accent); }
 em.glow { font-style: italic; color: var(--accent); }
@@ -122,6 +125,7 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 
 /* ── Glass panes: frosted over the lens and the network ── */
 .pane {
+  text-shadow: none;
   background: var(--pane);
   backdrop-filter: blur(22px) saturate(1.35);
   -webkit-backdrop-filter: blur(22px) saturate(1.35);
@@ -136,6 +140,7 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
   display: flex; align-items: center; gap: 20px;
   font: 500 19px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--muted);
+  opacity: 0.7;
   pointer-events: none;
 }
 .chrome img { width: 30px; height: 30px; }

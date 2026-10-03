@@ -20,7 +20,7 @@
 
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const MAX_LENS = 3;
-  const MAX_P = 24;   // message pulses
+  const MAX_P = 12;   // message pulses
   const OVER = 1.22;  // the network is wider than the view, so slides can pan across it
 
   // ── The network: a 2D canvas, uploaded as a texture while it grows ──
@@ -39,13 +39,13 @@
   const rand = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 
   const nodes = [];
-  for (let tries = 0; nodes.length < 11 && tries < 400; tries++) {
+  for (let tries = 0; nodes.length < 9 && tries < 400; tries++) {
     const x = NW * (0.06 + rand() * 0.88), y = NH * (0.08 + rand() * 0.84);
-    if (nodes.every(n => Math.hypot(n.x - x, n.y - y) > NW * 0.16)) nodes.push({ x, y });
+    if (nodes.every(n => Math.hypot(n.x - x, n.y - y) > NW * 0.19)) nodes.push({ x, y });
   }
   const paths = [], tips = [];
   let segments = 0;
-  const CAP = 11000;
+  const CAP = 7000;
 
   function sprout(x, y, a, w, life, gen, home) {
     const path = { pts: [x, y] };
@@ -59,7 +59,7 @@
   }
   nodes.forEach((n, i) => {
     bead(n, 13 * SC + 4);
-    const k = 3 + Math.floor(rand() * 3);
+    const k = 2 + Math.floor(rand() * 3);
     for (let j = 0; j < k; j++) sprout(n.x, n.y, rand() * 6.2832, 2.6 * SC + 0.6, 260 + rand() * 260, 0, i);
   });
 
@@ -81,13 +81,13 @@
       }
       tip.a += (rand() - 0.5) * 0.36;
       const x = tip.x + Math.cos(tip.a) * STEP, y = tip.y + Math.sin(tip.a) * STEP;
-      nx.strokeStyle = `rgba(255,0,0,${0.32 + 0.3 * Math.min(1, tip.w / 2.5)})`;
+      nx.strokeStyle = `rgba(255,0,0,${0.3 + 0.35 * Math.min(1, tip.w / 2.5)})`;
       nx.lineWidth = tip.w;
       nx.beginPath(); nx.moveTo(tip.x, tip.y); nx.lineTo(x, y); nx.stroke();
       tip.x = x; tip.y = y; tip.path.pts.push(x, y);
       tip.life--; tip.w = Math.max(0.55, tip.w * 0.9975);
       segments++;
-      if (tip.gen < 4 && rand() < 0.022) {
+      if (tip.gen < 3 && rand() < 0.016) {
         sprout(x, y, tip.a + (rand() < 0.5 ? -1 : 1) * (0.45 + rand() * 0.5), tip.w * 0.72, tip.life * 0.7, tip.gen + 1, tip.home);
       }
       const out = x < -20 || y < -20 || x > NW + 20 || y > NH + 20;
@@ -108,7 +108,7 @@
   }
   // Start most of the way grown, so the first slide is not an empty field.
   for (let i = 0; i < 260 && tips.length; i++) step();
-  bud(10);
+  bud(6);
   for (let i = 0; i < 90 && tips.length; i++) step();
 
   // ── GL ──
@@ -160,20 +160,29 @@ vec3 shade(vec2 uv, float boost){
   vec3 g = ground(uv);
   vec3 n = netAt(t);
   float drift = smoothstep(.15,.95, t.x + .18*sin(t.y*5.+uTime*.05));
-  float breathe = .82 + .18*sin(uTime*1.3 + t.x*9.);
+  float breathe = .9 + .1*sin(uTime*.8 + t.x*9.);
   vec3 hd = mix(CYAN, VIOLET, drift);
-  vec3 dark = g + hd*n.r*.36*boost + vec3(.8,.97,1.)*n.g*.9*boost + mix(CYAN, vec3(1.), .4)*n.b*breathe*.9;
+  vec3 dark = g + hd*n.r*.36*boost + vec3(.8,.97,1.)*n.g*.9*boost + mix(CYAN, vec3(1.), .4)*n.b*breathe*.7*min(boost,1.);
   vec3 hl = mix(COBALT, INDIGO, drift);
   vec3 light = mix(g, hl, clamp(n.r*.3*boost,0.,1.));
   light = mix(light, COBALT*.9, clamp(n.g*.7*boost,0.,1.));
-  light = mix(light, hl*.85, clamp(n.b*breathe*.8,0.,1.));
+  light = mix(light, hl*.85, clamp(n.b*breathe*.6*min(boost,1.),0.,1.));
   return mix(light, dark, uDark);
 }
 
 void main(){
   vec2 p = gl_FragCoord.xy;
   vec2 uv = p/uRes;
-  vec3 col = shade(uv, 1.);
+  // The network is faint across the slide, where the text is, and comes up
+  // only near a lens: the glass is where the room is shown.
+  float focus = 0.;
+  for (int i=0;i<${MAX_LENS};i++){
+    vec4 L = uL[i];
+    if (L.z < 1.) continue;
+    float d = length(p-L.xy)/(L.z*2.3);
+    focus = max(focus, exp(-d*d));
+  }
+  vec3 col = shade(uv, mix(.22, 1., focus));
 
   // What the lenses do to the ground around them: a shadow down and right of
   // each, with a caustic focused inside it where the glass gathers the light.
@@ -201,7 +210,7 @@ void main(){
     }
     float th = atan(q.y,q.x);
     float fi = float(i);
-    float R = L.z*(1. + .013*sin(3.*th + uTime*.55 + fi*2.1) + .008*sin(5.*th - uTime*.8 + fi));
+    float R = L.z*(1. + .008*sin(3.*th + uTime*.35 + fi*2.1) + .004*sin(5.*th - uTime*.5 + fi));
     float l = length(q)/R;
     if (l > 1.02) continue;
 
@@ -209,9 +218,9 @@ void main(){
     vec2 dir = q/max(length(q), 1e-3);
     float f = l*.58 + (1.-z)*.95*l;
     vec3 c;
-    c.r = shade((L.xy + dir*f*(1.-.04*(1.-z))*R)/uRes, 2.2).r;
-    c.g = shade((L.xy + dir*f*R)/uRes, 2.2).g;
-    c.b = shade((L.xy + dir*f*(1.+.04*(1.-z))*R)/uRes, 2.2).b;
+    c.r = shade((L.xy + dir*f*(1.-.04*(1.-z))*R)/uRes, 2.5).r;
+    c.g = shade((L.xy + dir*f*R)/uRes, 2.5).g;
+    c.b = shade((L.xy + dir*f*(1.+.04*(1.-z))*R)/uRes, 2.5).b;
 
     c *= mix(mix(vec3(.88,.92,1.), vec3(.86,.97,1.), uDark), vec3(1.), z);
     float far = smoothstep(-.2,.9, dot(dir, vec2(.6,-.8)));
@@ -220,7 +229,7 @@ void main(){
     float fres = pow(1.-z, 2.4);
     vec3 iri = mix(CYAN, VIOLET, .5+.5*sin(th*2. + l*6. + uTime*.12 + L.w*6.283));
     iri = mix(mix(COBALT, INDIGO, .5+.5*sin(th*2.+L.w*6.283)), iri, uDark);
-    c += iri*fres*mix(.45,.6,uDark);
+    c += iri*fres*mix(.35,.45,uDark);
     c += vec3(1.)*smoothstep(.94,1.,l)*mix(.25,.3,uDark);
 
     vec2 u = q/R;
@@ -340,8 +349,8 @@ void main(){
 
     if (!reduce) {
       if (tips.length) { step(); if (++uploadEvery % 3 === 0) upload(); }
-      else if (segments < CAP && rand() < 0.01) bud(1);   // keeps growing, slowly, all talk long
-      if (pulses.length < MAX_P && rand() < 0.08) spawnPulse();
+      else if (segments < CAP && rand() < 0.004) bud(1);   // keeps growing, slowly, all talk long
+      if (pulses.length < MAX_P && rand() < 0.025) spawnPulse();
     }
     for (let i = pulses.length - 1; i >= 0; i--) {
       const q = pulses[i];

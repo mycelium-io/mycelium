@@ -51,7 +51,9 @@ out in stage pixels and the deck scales them to fit the screen.
   pixels. Give up to three, separated by commas (`"1520 470 330, 1130 860 54"`
   is a lens with a bead beside it), or `none`.
 - `data-title` names the slide in the tab and the speaker view.
-- `data-bare` hides the footer.
+- `data-bare` hides the footer. On the `.deck` itself, `data-talk` names the
+  talk in the tab and the speaker view, and `data-footer` puts a line in the
+  middle of every footer.
 - `.rise` elements arrive one after another when their slide opens.
 - `.step` elements are revealed one per key press before the deck moves on. A
   step with its own `data-lens` moves the lens while it is the latest one shown.
