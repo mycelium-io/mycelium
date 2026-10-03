@@ -1,0 +1,33 @@
+{
+  "$comment": "Pair across teams, 1: invite a teammate, work one task's thread, ask their agent directly.",
+  "poster": 44,
+  "do": [
+    "press:Alt+b",
+    "wait-text:Pairing with Sam",
+    "caption:Pair with a teammate, agents included|Alex brought @api. Sam brought @web.",
+    "hold:1600",
+    "hover:role=button[name=/Invite/]",
+    "hold:1800",
+    "caption:Work it in one task's thread",
+    "click:Board",
+    "click:role=button[name=/^All\\s*\\d+$/]",
+    "hold:800",
+    "click:text=\"Keep a customer's cart when they switch devices\"",
+    "press:t",
+    "click:role=button[name=/^All\\s*\\d+$/]",
+    "zoom:css=section[aria-label^=\"Thread\"]@1.3",
+    "eval:(() => { const c = document.querySelector('[data-testid=\"thread-conversation\"]'); if (!c) return; let n = c; while (n && !/(auto|scroll)/.test(getComputedStyle(n).overflowY)) n = n.parentElement; if (!n) return; const go = () => n.scrollTo({ top: n.scrollHeight, behavior: 'smooth' }); go(); new MutationObserver(go).observe(c, { childList: true, subtree: true }); })()",
+    "hold:1000",
+    "caption:Ask the other side directly|the way you'd lean over and ask Alex.",
+    "fill:Reply in Keep a customer's cart when they switch devices…=@api where does a cart live on the server today?",
+    "hold:700",
+    "click:role=button[name=\"Send message\"] >> nth=-1",
+    "wait-text:local storage",
+    "caption:The agents do the legwork|They read the code and work out the details.",
+    "wait-text:Keep a cart for 30 days",
+    "caption:The people steer|what to build, what matters, when to stop.",
+    "wait-text:overwrite each other",
+    "hold:2600",
+    "caption:"
+  ]
+}

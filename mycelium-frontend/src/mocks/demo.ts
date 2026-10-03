@@ -24,14 +24,8 @@
 
 import type { EpisodeSummary, FlowStep, PresenceMember, RoomFloor } from "@/lib/api";
 import type { MockMemory, MockMessage, RoomFixture } from "./fixtures";
-import {
-  liveEpisode,
-  memoryChangedFrame,
-  noticeFrame,
-  pingFrame,
-  publish,
-  respondingFrame,
-} from "./live";
+import { Director, once, sleep } from "./director";
+import { liveEpisode, memoryChangedFrame, publish, respondingFrame } from "./live";
 
 export function isDemoScenario(): boolean {
   return (process.env.MYCELIUM_UI_MOCK_SCENARIO ?? "").toLowerCase() === "demo";
@@ -229,151 +223,26 @@ export function demoCheckout(): RoomFixture {
 
 // ── the director ──────────────────────────────────────────────────────────────
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-/** Acts already played, so a second summon or a refetch never replays one. */
-const g = globalThis as typeof globalThis & { __myceliumDemoActs?: Set<string> };
-const played: Set<string> = (g.__myceliumDemoActs ??= new Set());
-function once(act: string): boolean {
-  if (played.has(act)) return false;
-  played.add(act);
-  return true;
-}
-
-let seq = 0;
-
-/** Post a message as `who`: stored, so a refetch finds it, and on the stream. */
-function say(
-  fx: RoomFixture,
-  who: string,
-  content: string,
-  episode: string | null = null,
-  conductor?: Record<string, unknown>,
-): MockMessage {
-  const msg: MockMessage = {
-    id: `demo-${++seq}`,
-    sender_handle: who,
-    message_type: "broadcast",
-    content,
-    created_at: now(),
-    episode,
-    ...(conductor ? { metadata: { conductor } } : {}),
-  };
-  fx.messages.push(msg);
-  publish(ROOM, { ...msg, room_name: ROOM });
-  if (episode && episode !== LIVE) publish(ROOM, pingFrame(ROOM, { episode, sender: who, message: msg.id }));
-  return msg;
-}
-
-/** A member joining the room, or a negotiation in it. */
-function join(fx: RoomFixture, handle: string, intent: string, episode: string): void {
-  const msg: MockMessage = {
-    id: `join-${episode}-${handle}`,
-    sender_handle: handle,
-    message_type: "coordination_join",
-    content: JSON.stringify({ handle, intent, episode }),
-    created_at: now(),
-    episode,
-  };
-  fx.messages.push(msg);
-  publish(ROOM, { ...msg, room_name: ROOM });
-}
+// The writes an agent's side makes, through the shared director (director.ts),
+// bound to the demo's room.
+const on = (fx: RoomFixture): Director => new Director(ROOM, fx);
+const say = (fx: RoomFixture, who: string, content: string, episode: string | null = null, conductor?: Record<string, unknown>) =>
+  on(fx).say(who, content, episode, conductor);
+const join = (fx: RoomFixture, handle: string, intent: string, episode: string) => on(fx).join(handle, intent, episode);
+const patchRow = (fx: RoomFixture, key: string, meta: Record<string, unknown>, by: string) => on(fx).patchRow(key, meta, by);
+const fileRow = (fx: RoomFixture, key: string, title: string, meta: Record<string, unknown>, by: string, short: string) =>
+  on(fx).fileRow(key, title, meta, by, short);
+const claim = (fx: RoomFixture, key: string, who: string) => on(fx).claim(key, who);
+const resolveRow = (fx: RoomFixture, key: string, who: string, extra: Record<string, unknown> = {}) => on(fx).resolve(key, who, extra);
+const setPresence = (fx: RoomFixture, handle: string, title?: string) => on(fx).present(handle, title);
+const setFloor = (fx: RoomFixture, floor: RoomFloor | null, episode: string) => on(fx).floor(floor, episode);
+const rowOf = (fx: RoomFixture, episode: string | null | undefined) => on(fx).rowOf(episode);
 
 /** An agent visibly thinking, then the beat it takes. */
 async function think(who: string, episode: string | null, ms: number): Promise<void> {
   publish(ROOM, respondingFrame(who, episode));
   await sleep(ms);
 }
-
-/** A board notice: on the stream, and in the replay a reload reads it back from. */
-function notice(fx: RoomFixture, data: Parameters<typeof noticeFrame>[1]): void {
-  const frame = { ...noticeFrame(ROOM, data), created_at: now() };
-  (fx.l9 ??= []).push(frame);
-  publish(ROOM, frame);
-}
-
-/** Merge into a row's frontmatter, as a board action or an agent's write would. */
-function patchRow(fx: RoomFixture, key: string, meta: Record<string, unknown>, by: string): MockMemory | undefined {
-  const row = fx.memories.find((m) => m.key === key);
-  if (!row) return undefined;
-  row.meta = { ...(row.meta ?? {}), ...meta };
-  row.version += 1;
-  row.updated_at = now();
-  row.updated_by = by;
-  publish(ROOM, memoryChangedFrame(key, row.version, by));
-  return row;
-}
-
-function fileRow(
-  fx: RoomFixture,
-  key: string,
-  title: string,
-  meta: Record<string, unknown>,
-  by: string,
-  short: string,
-): MockMemory {
-  const row: MockMemory = {
-    key,
-    value: title,
-    content_text: title,
-    meta,
-    created_by: by,
-    updated_by: by,
-    version: 1,
-    updated_at: now(),
-    episode: ep(short),
-  };
-  fx.memories.push(row);
-  publish(ROOM, memoryChangedFrame(key, 1, by));
-  notice(fx, {
-    subkind: "filed",
-    key,
-    title,
-    episode: row.episode,
-    by,
-    kind: String(meta.kind ?? "action"),
-    for: typeof meta.assignee === "string" ? meta.assignee : undefined,
-  });
-  return row;
-}
-
-function claim(fx: RoomFixture, key: string, who: string): void {
-  const row = patchRow(fx, key, { assignment: "held", owner: `@${who}`, claimed_at: now(), ttl_minutes: 120 }, who);
-  if (row) notice(fx, { subkind: "claimed", key, title: String(row.value), episode: row.episode, by: who });
-}
-
-function resolveRow(fx: RoomFixture, key: string, who: string, extra: Record<string, unknown> = {}): void {
-  const row = patchRow(fx, key, { assignment: "resolved", status: "resolved", ...extra }, who);
-  if (row) notice(fx, { subkind: "resolved", key, title: String(row.value), episode: row.episode, by: who });
-}
-
-function setPresence(fx: RoomFixture, handle: string, title?: string): void {
-  fx.presence = (fx.presence ?? []).filter((p) => p.handle !== handle);
-  fx.presence.push({ handle, kind: "lease", last_seen: now(), ...(title ? { title } : {}) });
-}
-
-function setFloor(fx: RoomFixture, floor: RoomFloor | null, episode: string): void {
-  const held = (fx.floors ?? []).find((f) => f.episode === episode);
-  fx.floors = (fx.floors ?? []).filter((f) => f.episode !== episode);
-  if (floor) fx.floors.push(floor);
-  const key = floor?.key ?? held?.key;
-  if (!key) return;
-  notice(fx, {
-    subkind: "floor",
-    key,
-    title: (floor ?? held)?.title ?? undefined,
-    episode,
-    by: "conductor",
-    ...(floor ? { speakers: floor.speakers.join(",") } : { released: "1" }),
-  });
-  // The members read carries the floors; a write is what makes the app refetch it.
-  const row = fx.memories.find((m) => m.key === key);
-  if (row) publish(ROOM, memoryChangedFrame(key, row.version, "conductor"));
-}
-
-/** The row a thread belongs to. */
-const rowOf = (fx: RoomFixture, episode: string | null | undefined) =>
-  episode ? fx.memories.find((m) => m.episode === episode) : undefined;
 
 // Act 1 — an agent added from your machine joins and says hello.
 export function demoOnLaunch(fx: RoomFixture, room: string, handle: string): void {

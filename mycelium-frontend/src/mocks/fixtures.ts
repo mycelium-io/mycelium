@@ -36,6 +36,7 @@ import type {
 } from "@/lib/api";
 import type { RoomStatus } from "@/lib/board/upstream";
 import { demoCheckout, isDemoScenario } from "./demo";
+import { LEARN_ROOM, learnRoom } from "./learn";
 import { PATTERN_ROOMS } from "./patterns";
 
 // A fixed "now" so relative timestamps render deterministically. Callers
@@ -1929,6 +1930,10 @@ export const ROOM_FIXTURES: Record<string, RoomFixture> = (store.__myceliumMockR
   storefront,
   scratch,
 });
+
+// A Learn take (see learn.ts) adds the room its course is filmed in.
+const learn = learnRoom();
+if (learn && !ROOM_FIXTURES[LEARN_ROOM]) ROOM_FIXTURES[LEARN_ROOM] = learn;
 
 export const ROOMS: MockRoom[] = Object.values(ROOM_FIXTURES).map((f) => f.room);
 

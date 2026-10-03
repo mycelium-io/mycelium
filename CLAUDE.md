@@ -73,6 +73,10 @@ mycelium-promo/     The product demo: one shotkit take of the real app
                     inline when uploaded via GitHub's web drag-drop (gh CLI has
                     no equivalent). After re-recording, drag the new MP4 into a
                     PR comment to mint a fresh URL, then swap it into both embeds.
+                    `learn/` records the Learn videos the same way, one take
+                    per course section (`learn/takes/`, over the frontend's
+                    `learn:<take>` scenario, `src/mocks/learn.ts`), into the
+                    committed `docs/learn/video/`.
 ```
 
 ## Development
