@@ -163,6 +163,7 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
   font-variant-numeric: lining-nums;
   letter-spacing: -0.04em;
   color: transparent;
+  text-shadow: none;   /* a halo would show through the hollow figures */
   -webkit-text-stroke: 2.5px color-mix(in srgb, var(--text) 75%, transparent);
   position: absolute; right: 190px; top: 210px;
 }
@@ -245,7 +246,7 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 
 /* ── Layout: numbers ── */
 .numbers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 60px; margin-top: auto; margin-bottom: 40px; }
-.numbers .n { font: italic 500 260px/0.85 var(--display); font-variant-numeric: lining-nums; letter-spacing: -0.03em; background: linear-gradient(170deg, var(--text) 30%, var(--accent) 75%, var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.numbers .n { text-shadow: none; font: italic 500 260px/0.85 var(--display); font-variant-numeric: lining-nums; letter-spacing: -0.03em; background: linear-gradient(170deg, var(--text) 30%, var(--accent) 75%, var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .numbers .label { margin-top: 26px; padding-top: 24px; border-top: 1px solid var(--border-hi); font-size: 30px; color: var(--muted); max-width: 420px; }
 
 /* ── Layout: exercise ── */
