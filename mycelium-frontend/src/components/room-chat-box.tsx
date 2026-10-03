@@ -773,7 +773,7 @@ export function RoomChatBox({
               if (el) setScrolls(el.scrollHeight > el.clientHeight + 1);
             }}
             style={{ overflowY: scrolls ? "auto" : "hidden" }}
-            className="block w-full resize-none bg-transparent px-3 pb-1 pt-2.5 text-body text-text leading-relaxed focus:outline-none placeholder:text-faint"
+            className="block w-full resize-none bg-transparent px-3 pb-1 pt-2.5 text-body font-[430] text-text leading-relaxed focus:outline-none placeholder:text-faint"
             disabled={sending}
           />
           <div className="flex items-center gap-2 px-1.5 pb-1.5">

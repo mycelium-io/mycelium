@@ -9,6 +9,7 @@ import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useHighlighter, type Highlight } from "@/components/ui/highlight-text";
+import { typeset } from "@/lib/typeset";
 
 // Mentions, memory links, transclusions, and skill references, in one pass so a
 // body is split once. `![[…]]` is listed before `[[…]]` so the transclusion form
@@ -174,12 +175,22 @@ interface Props {
 export function MarkdownContent({ children, className, onLinkClick, brokenLinks, highlight }: Props) {
   const marked = useHighlighter(highlight);
 
+  // Plain prose, drawn with typographic punctuation (`lib/typeset.ts`); the
+  // source keeps what was typed.
+  const renderProse = React.useCallback(
+    (part: string, key: number): React.ReactNode => {
+      const text = typeset(part);
+      return highlight?.query ? <React.Fragment key={key}>{marked(text)}</React.Fragment> : text;
+    },
+    [marked, highlight?.query],
+  );
+
   const renderText = React.useCallback(
     (text: string): React.ReactNode => {
       const parts = text.split(TOKEN_RE);
       return parts.map((part, i) => {
         // Odd indices are the captured tokens; even indices are plain text.
-        if (i % 2 === 0) return highlight?.query ? <React.Fragment key={i}>{marked(part)}</React.Fragment> : part;
+        if (i % 2 === 0) return renderProse(part, i);
         if (part.startsWith("@")) {
           return (
             <span key={i} className="text-accent font-semibold">
@@ -212,7 +223,7 @@ export function MarkdownContent({ children, className, onLinkClick, brokenLinks,
         );
       });
     },
-    [onLinkClick, brokenLinks, marked, highlight?.query],
+    [onLinkClick, brokenLinks, marked, renderProse],
   );
 
   const processNode = React.useCallback(

@@ -38,6 +38,8 @@
   --hairline: rgba(17, 20, 24, 0.035);
   /* text (audited legible on #fff, #f2f4f6 and #eceef1) */
   --text: #14171b;
+  /* conversation prose: a step under --text, so names, bold and mentions stand on it */
+  --prose: #2a3037;
   --muted-foreground: #545c65;
   --faint: #9198a0;
   /* lines */
@@ -101,6 +103,7 @@
   --hairline: rgba(255, 255, 255, 0.035);
   /* text (audited legible on #0c0e11, #14171c and #21262d) */
   --text: #e8ebee;
+  --prose: #c4cad1;
   --muted-foreground: #a7adb5;
   --faint: #565d65;
   /* lines */
@@ -355,9 +358,16 @@ body {
 .markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 0.8em 0; }
 .markdown-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 
-/* Conversation copy reads at primary contrast (chat is the human register). */
+/* Conversation copy. A step under primary contrast, so the sender's name, bold
+ * and mentions have something to stand on, and a hair over regular weight:
+ * Plex at 400 goes thin on a dark ground with font smoothing on. Lines hold to
+ * a readable length however wide the pane is: an agent's message is often one
+ * long paragraph, and at full width it runs to 140 characters a line. Code
+ * blocks and tables keep the full width. */
+.markdown-body.contrast { font-weight: 430; }
 .markdown-body.contrast p,
-.markdown-body.contrast li { color: var(--text); }
+.markdown-body.contrast li { color: var(--prose); }
+.markdown-body.contrast :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) { max-width: 68ch; }
 .markdown-body.contrast p:first-child { margin-top: 0.15em; }
 
 /* Primary accent button: not a flat fill. A top-lit gradient, an inner
