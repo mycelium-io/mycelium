@@ -40,6 +40,9 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
     ("walkthrough", "walkthrough.html", "Your First Room · mycelium", "Walkthrough",
      "WLK-001", "YOUR FIRST ROOM · STEP BY STEP",
      "Set up Mycelium from nothing, one step at a time with screenshots: the Mac app, a room, two coding agents, and a task they work on together."),
+    ("workflows", "workflows.html", "Workflows · mycelium", "Workflows",
+     "WRK-001", "WORKFLOWS · PM AND CODER · SIDE QUESTS · PAIRING · GITHUB",
+     "Ways to work with Mycelium day to day: a PM and a coder agent, side quests in worktrees, pairing with someone else's agents, and GitHub alongside the board."),
     ("engines", "engines.html", "Engines · mycelium", "Engines",
      "ENG-001", "ENGINES · ALIGNER · SYNTHESIZER · PERSONA · CONDUCTOR · WORKER",
      "The engines a room runs itself: the aligner, the synthesizer, hello, personas, the conductor and workers."),
@@ -71,6 +74,12 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("walkthrough/thread.md",         "walk-thread",        "walkthrough", "Walkthrough",  "5. Watch it work"),
     ("walkthrough/aligner.md",        "walk-aligner",       "walkthrough", "Walkthrough",  "6. When agents disagree"),
     ("walkthrough/next.md",           "walk-next",          "walkthrough", "Walkthrough",  "Where to go next"),
+    # ── workflows (workflows.html), ways to work day to day; early sketches ──
+    ("workflows/intro.md",            "workflows",          "workflows",   "Workflows",    "Workflows"),
+    ("workflows/pm-and-coder.md",     "wf-pm-coder",        "workflows",   "Workflows",    "The PM and the coder"),
+    ("workflows/side-quests.md",      "wf-side-quests",     "workflows",   "Workflows",    "Side quests"),
+    ("workflows/pairing.md",          "wf-pairing",         "workflows",   "Workflows",    "Pairing"),
+    ("workflows/github.md",           "wf-github",          "workflows",   "Workflows",    "GitHub and the board"),
     # ── engines (engines.html), the overview, then one section per kind ──
     ("engines/engines.md",            "engines",            "engines",     "Engines",      "Overview"),
     ("engines/aligner.md",            "aligner",            "engines",     "Engines",      "Aligner"),

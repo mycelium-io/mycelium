@@ -60,6 +60,120 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Walkthrough"
   },
   {
+    "u": "workflows.html#workflows",
+    "t": "Workflows",
+    "x": "The walkthrough shows what's in the app. These pages are about how to work with it: setups that hold up over a working day, written from using Mycelium on real work. These are early. They describe what has worked so far, and they'll change as we learn more. The PM and the coder: two agents, one reviewing the other, that can work on their own for a few hours. Start here. Side quests: small tasks that come up while the",
+    "p": "Workflows"
+  },
+  {
+    "u": "workflows.html#wf-pm-coder",
+    "t": "The PM and the coder",
+    "x": "A sketch. It will change as we learn more. The setup that has worked best so far is the simplest: two agents, one acting as a PM and one as the coder, talking in one task's thread. Given a clear task, they can work on their own for two or three hours. There's no flow and no engine here. The conductor and the aligner are for when two agents talking isn't enough; most of the time it is.",
+    "p": "Workflows"
+  },
+  {
+    "u": "workflows.html#wf-pm-coder-who-does-what",
+    "t": "Who does what",
+    "s": "The PM and the coder",
+    "x": "The PM holds the task. It writes down what \"done\" means before any code is written, reviews each piece the coder hands back against that, and sends it back with specifics when it falls short. It doesn't write code. The coder does the work, in its own checkout, and answers the PM's review. You set the goal, check in every hour or so, and answer when the PM asks you something it can't decide.",
+    "p": "Workflows"
+  },
+  {
+    "u": "workflows.html#wf-pm-coder-setting-it-up",
+    "t": "Setting it up",
+    "s": "The PM and the coder",
+    "x": "The PM is your own agent session (Claude Code, say), given a PM brief as its notes. The coder is a second agent, started from the app or on your machine. Save the PM's brief as its notes, so it reads them whenever it starts: mycelium memory set agents/pm/notes --file pm-brief.md A brief to start from: You are the PM for this task. You don't write code. 1. Before any work starts, write what \"done\" means: a short list ",
+    "p": "Workflows"
+  },
+  {
+    "u": "workflows.html#wf-pm-coder-starting-a-session",
+    "t": "Starting a session",
+    "s": "The PM and the coder",
+    "x": "File the task for the coder, and tell the PM it owns it: mycelium board new \"Add a gift message to orders\" --assign @coder Then, in the task's thread: \"@pm this is yours. Write the checks first.\"",
+    "p": "Workflows"
+  },
+  {
+    "u": "workflows.html#wf-pm-coder-checking-in",
+    "t": "Checking in",
+    "s": "The PM and the coder",
+    "x": "Open the task's thread. The PM's checks are at the top, and every review below them. If the PM is waiting on you, it says so there.",
+    "p": "Workflows"
+  },
+  {
+    "u": "workflows.html#wf-pm-coder-when-it-goes-wrong",
+    "t": "When it goes wrong",
+    "s": "The PM and the coder",
+    "x": "The loop doesn't finish. The checks are vague, so nothing ever passes. Tighten them. The PM approves everything. The brief needs to ask for evidence: a test that runs, a screenshot, the command output. The coder drifts. It's working on something the checks don't cover. Point the PM back at its own list.",
+    "p": "Workflows"
+  },
+  {
+    "u": "workflows.html#wf-side-quests",
+    "t": "Side quests",
+    "x": "A sketch. It will change as we learn more. While a pair works on the main thing, small things come up: a flaky test, a flag to rename, a doc to fix. They shouldn't interrupt the pair, and they shouldn't touch the coder's checkout.",
+    "p": "Workflows"
+  },
+  {
+    "u": "workflows.html#wf-side-quests-one-task-each",
+    "t": "One task each",
+    "s": "Side quests",
+    "x": "Give each one its own task, from the room's chat: /task Fix the flaky checkout test @fixer It's a row and a thread of its own. When it's done it's resolved and out of the way, with nothing to clean up elsewhere.",
+    "p": "Workflows"
+  },
+  {
+    "u": "workflows.html#wf-side-quests-each-in-its-own-worktree",
+    "t": "Each in its own worktree",
+    "s": "Side quests",
+    "x": "Two agents in one checkout step on each other: one switches branches under the other, or commits the other's half-finished change. Give a side quest its own git worktree, so it works on its own branch in its own folder and lands as its own small pull request: git worktree add ../shop-flaky-test -b fix/flaky-test Then start the side-quest agent in that folder. The folder has to be inside the folders your machine's run",
+    "p": "Workflows"
+  },
+  {
+    "u": "workflows.html#wf-pairing",
+    "t": "Pairing",
+    "x": "A sketch. It will change as we learn more. Two people working one problem, each bringing their own agent. Each agent knows its own person's code and context, and the four of you meet in one task's thread.",
+    "p": "Workflows"
+  },
+  {
+    "u": "workflows.html#wf-pairing-setting-it-up",
+    "t": "Setting it up",
+    "s": "Pairing",
+    "x": "One room, both of you in it. Invite the other person from the room's members panel. They join from the app, or from a folder with mycelium join <code>. Each brings an agent. Your agent runs on your machine and theirs on theirs. Both are members of the room. One task for the problem. File it, and do the work in its thread, so everything said about it is in one place.",
+    "p": "Workflows"
+  },
+  {
+    "u": "workflows.html#wf-pairing-working-it",
+    "t": "Working it",
+    "s": "Pairing",
+    "x": "The people steer: what to try, what matters, when to stop. The agents do the legwork: read the code, try things, report back in the thread, and argue the details with each other. @ the other person's agent directly when you want its side of the code.",
+    "p": "Workflows"
+  },
+  {
+    "u": "workflows.html#wf-pairing-when-you-disagree",
+    "t": "When you disagree",
+    "s": "Pairing",
+    "x": "If the two agents (or the two of you) can't settle an approach, ask the aligner in the thread. It finds what each side needs and proposes something both can accept. Keep the outcome as a decision, so neither agent argues it again: mycelium memory set decisions/session-storage \"Sessions live in Redis, not the database.\"",
+    "p": "Workflows"
+  },
+  {
+    "u": "workflows.html#wf-github",
+    "t": "GitHub and the board",
+    "x": "A sketch. It will change as we learn more. Both have a list of work. They're for different things. GitHub is for what has to outlast the work: the issue someone filed, the pull request, the record of why a change was made. The board is for the work happening now: what the agents are doing today, the side quests, the decisions on the way.",
+    "p": "Workflows"
+  },
+  {
+    "u": "workflows.html#wf-github-a-github-issue-worked-in-a-room",
+    "t": "A GitHub issue, worked in a room",
+    "s": "GitHub and the board",
+    "x": "The issue stays in GitHub. A task on the board links to it (coffee-shop/web#123 in its text), and the work happens in that task's thread. The coder opens a pull request and links it the same way. When the pull request merges, resolve the task. The issue closes in GitHub as it normally would.",
+    "p": "Workflows"
+  },
+  {
+    "u": "workflows.html#wf-github-the-other-way",
+    "t": "The other way",
+    "s": "GitHub and the board",
+    "x": "Most tasks never need an issue: they're done in an hour. When one turns out to matter beyond the work (a bug you'll want to find again, a follow-up for someone else), file the issue in GitHub, then mark the row Promote → GH in the board (p). That resolves the row and notes that it moved, so it leaves the board. It doesn't create the issue for you yet. See the board's GitHub section for linking and the live status a r",
+    "p": "Workflows"
+  },
+  {
     "u": "engines.html#engines",
     "t": "Overview",
     "x": "Engines are agents that come with Mycelium. They run on the hub, so you don't need to install or keep anything running to use them. You add one to a room, and it does nothing until someone mentions it. Some jobs are better done by something that isn't one of the participants. If two agents disagree, neither of them should also be the one deciding the outcome. Engines fill those roles. # Add an engine to a room myceli",
