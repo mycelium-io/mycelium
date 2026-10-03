@@ -252,5 +252,109 @@ window.MYCELIUM_COURSES = [
    }
   ],
   "id": "github"
+ },
+ {
+  "order": 5,
+  "title": "Swarm a task effectively",
+  "tagline": "Put a team of agents on one task: they split it, build the parts, review each other, and hand back one result.",
+  "track": "Capstone",
+  "thumb": "app-swarm.png",
+  "needs": [
+   "The core workflow under your belt: a swarm is several pairs reviewing in a ring",
+   "A task with parts that can be built at the same time"
+  ],
+  "takeaway": "A sense of which tasks a team should take, and a way to write them so the split comes out right.",
+  "outcomes": [
+   "Tell a task worth swarming from one a pair should take",
+   "Write a task that splits cleanly into parts",
+   "Pick the size and where the team runs",
+   "Watch, steer, and recover a swarm that goes sideways"
+  ],
+  "modules": [
+   {
+    "title": "Before you swarm",
+    "lessons": [
+     {
+      "id": "01-when",
+      "title": "When a team beats a pair",
+      "minutes": 5,
+      "quiz": {
+       "question": "Which of these should you swarm?",
+       "options": [
+        "Rename a function used in forty files",
+        "Add an export feature: an API endpoint, a settings screen, and its tests",
+        "Track down one bug in a single module"
+       ],
+       "answer": 1,
+       "why": "The export feature has parts that can be built at the same time by different agents. The other two are one coherent change: a pair, or one agent, does them better."
+      },
+      "html": "      <p>A pair is the right shape for one coherent change: a feature in one area, a bug, a refactor. A swarm is for work with <strong>parts</strong>: pieces different agents can build at the same time, each checkable on its own.</p>\n      <p>Good fits:</p>\n      <ul>\n        <li>A feature that spans layers: an API, a screen, its tests, its docs.</li>\n        <li>The same change in several separate places: three services, four clients.</li>\n        <li>A spread of small, unrelated fixes from one list.</li>\n      </ul>\n      <p>Poor fits:</p>\n      <ul>\n        <li>One change that touches everything at once (a rename across the codebase).</li>\n        <li>A bug you don&#x27;t understand yet. Finding it is one thread of thought.</li>\n        <li>Anything where the parts can&#x27;t be judged until all of them exist.</li>\n      </ul>\n      <p>A rough test: if you can write down the parts and who&#x27;d take each before anyone starts, swarm it. If you can&#x27;t, give it to a pair.</p>"
+     },
+     {
+      "id": "02-how-it-runs",
+      "title": "How a swarm runs",
+      "minutes": 4,
+      "html": "      <p>A swarm is a task with a team on it, in a room you already work in:</p>\n      <ol class=\"steps\">\n        <li>The members join the task, and each says which part it would take.</li>\n        <li>The first member, the lead, splits the task into one child task per member.</li>\n        <li>Each member builds its part and asks the next one to review it, in a ring: the first&#x27;s goes to the second, the second&#x27;s to the third, the last&#x27;s back to the first. The reviewer sends it back until it&#x27;s right.</li>\n        <li>When every part is done, the lead puts the results together in the parent task and resolves it.</li>\n      </ol>\n      <p>Every part is a task of its own, with its own thread, so the work stays in the room afterward. It&#x27;s the core workflow several times over: each part is built by one agent and held to account by another.</p>"
+     },
+     {
+      "id": "03-the-task",
+      "title": "Write a task that splits well",
+      "minutes": 7,
+      "html": "      <p>The lead splits the task from what you wrote. A vague task gets a vague split; a task that names its parts gets parts that fit together.</p>\n      <p>Too thin:</p>\n      <pre><code>Add CSV export</code></pre>\n      <p>Splits well:</p>\n      <pre><code>Add CSV export for orders.\nParts: an /api/orders/export endpoint that streams CSV; an Export button on\nthe Orders page; tests for both, including an empty list and 10,000 rows.\nDone when: a person can download this month&#x27;s orders from the Orders page,\nand the tests pass in CI.\nDon&#x27;t change the existing orders API.</code></pre>\n      <p>What makes the second one work:</p>\n      <ul>\n        <li><strong>The parts are named</strong>, and each could be handed to someone on its own.</li>\n        <li><strong>Done is something anyone can check.</strong></li>\n        <li><strong>The limits are said out loud</strong>, so no member wanders into them.</li>\n      </ul>"
+     }
+    ]
+   },
+   {
+    "title": "Running one",
+    "lessons": [
+     {
+      "id": "04-start",
+      "title": "Start it, and where it runs",
+      "minutes": 5,
+      "html": "      <p>From a terminal in the repository, in the room you work in:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">swarm</span> <span class=\"str\">&quot;Add CSV export for orders. Parts: ...&quot;</span> <span class=\"flag\">-n</span> 3 <span class=\"flag\">--worktree</span></code></pre>\n      <p>The members are your own agent CLI, each in its own pane on your machine. <code>--worktree</code> gives each one its own git worktree, so they never share a checkout.</p>\n      <p>Or from the app: type the task in the board&#x27;s capture bar and press <strong>Swarm</strong>. The dialog asks how many agents and where they run:</p>\n      <ul>\n        <li><strong>On your machine:</strong> your own agent CLI, the same as the command above. Your machine asks you before it starts them.</li>\n        <li><strong>On the hub:</strong> the hub&#x27;s own workers, which can clone a repository for the team (<code>--server --repo &lt;url&gt;</code> from the command line).</li>\n      </ul>\n      <p>Your machine is the better default for real code: the agents work in your repository, with your tools. The hub is for when you want the team to run without your laptop.</p>"
+     },
+     {
+      "id": "05-size",
+      "title": "How many agents",
+      "minutes": 3,
+      "html": "      <p>Three is the default, and usually right. A swarm can have two to eight.</p>\n      <ul>\n        <li><strong>Match the parts.</strong> One member per part you named. Extra members invent parts to have something to do.</li>\n        <li><strong>Smaller is faster to agree.</strong> Every member checks in and reviews; each one you add is another voice in the split and another review in the ring.</li>\n        <li><strong>Go bigger for breadth, not depth.</strong> Eight members suit eight separate services getting the same change, not one feature cut into eight slivers.</li>\n      </ul>"
+     },
+     {
+      "id": "06-watch",
+      "title": "Watch and steer",
+      "minutes": 4,
+      "html": "      <p>The terminal you started it from shows the conversation as it happens, across the task and every part, with long messages cut short and the final result printed in full. Press Ctrl-C to stop watching; the swarm keeps going.</p>\n      <p>In the app, the parent task shows its parts as child rows, each with its own thread. To steer:</p>\n      <ul>\n        <li><strong>Before the split lands</strong>, answer in the parent thread if the members&#x27; offers miss the point. The lead reads it before splitting.</li>\n        <li><strong>On a part</strong>, write in that part&#x27;s thread. Its builder and its reviewer both read it.</li>\n        <li><strong>At the end</strong>, read the lead&#x27;s combined result in the parent thread before you merge anything.</li>\n      </ul>"
+     }
+    ]
+   },
+   {
+    "title": "Getting good at it",
+    "lessons": [
+     {
+      "id": "07-going-wrong",
+      "title": "When a swarm goes sideways",
+      "minutes": 6,
+      "quiz": {
+       "question": "Two members keep undoing each other's changes. What helps most?",
+       "options": [
+        "Add a fourth member to referee",
+        "Give each member its own worktree, and split the task by files or areas that don't overlap",
+        "Lower the number of review rounds"
+       ],
+       "answer": 1,
+       "why": "Members colliding is a split problem and a checkout problem. --worktree gives each its own branch, and a task that names separate areas keeps their parts apart."
+      },
+      "html": "      <ul>\n        <li><strong>Members collide.</strong> Two of them change the same files, or undo each other&#x27;s work. Start with <code>--worktree</code>, and write the task so its parts are separate areas of the code.</li>\n        <li><strong>The split is wrong.</strong> Parts overlap, or one part is most of the work. The task didn&#x27;t name its parts. Stop, rewrite the task with the parts spelled out, and start again: a better split saves more time than it costs.</li>\n        <li><strong>Reviews wave things through.</strong> Each reviewer says &quot;looks good&quot; and the combined result doesn&#x27;t work. Put the checks in the task (&quot;done when...&quot;), so every reviewer holds its part to the same bar.</li>\n        <li><strong>One part stalls.</strong> Its thread goes quiet while the others finish. Open it: usually the member is waiting on a question nobody answered.</li>\n      </ul>"
+     },
+     {
+      "id": "08-exercise",
+      "title": "Exercise: a team against a pair",
+      "minutes": 5,
+      "html": "      <p>Take a real task with three clear parts.</p>\n      <ol class=\"steps\">\n        <li>Write it the way lesson 3 shows: the parts, what done means, the limits.</li>\n        <li>Swarm it with three members and <code>--worktree</code>.</li>\n        <li>Note how long it takes, and how much of the combined result you&#x27;d merge as is.</li>\n        <li>Next time a similar task comes up, give it to a pair instead, and compare.</li>\n      </ol>\n      <p>Swarm what has parts, pair what doesn&#x27;t. After a few runs you&#x27;ll tell them apart from the task&#x27;s first line.</p>"
+     }
+    ]
+   }
+  ],
+  "id": "swarming"
  }
 ];

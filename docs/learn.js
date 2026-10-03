@@ -128,13 +128,21 @@
       '<div class="shot back"><img src="app-board-columns.png" alt=""></div>' +
       '<div class="shot front"><img src="walk-thread.png" alt=""></div></div></section>';
 
-    var featured = first
-      ? '<a class="featured glass" href="#/c/' + esc(first.id) + '">' + tile(first, 0) +
-        '<div class="body"><div class="label">' + esc(first.track || "Course") + "</div><h3>" + esc(first.title) +
-        "</h3><p>" + esc(first.tagline) + "</p>" + metaLine(first) + '<div class="foot">' + stateFoot(first) +
+    // The core course opens the catalog and the capstone closes it, each as a
+    // wide card; the courses between them sit in a row.
+    function wide(c, i, mirrored) {
+      return (
+        '<a class="featured glass' + (mirrored ? " mirrored" : "") + '" href="#/c/' + esc(c.id) + '">' + tile(c, i) +
+        '<div class="body"><div class="label">' + esc(c.track || "Course") + "</div><h3>" + esc(c.title) +
+        "</h3><p>" + esc(c.tagline) + "</p>" + metaLine(c) + '<div class="foot">' + stateFoot(c) +
         "</div></div></a>"
-      : "";
-    var rest = COURSES.slice(1).map(function (c, i) {
+      );
+    }
+    var last = COURSES.length > 2 && COURSES[COURSES.length - 1].track === "Capstone" ? COURSES[COURSES.length - 1] : null;
+    var featured = first ? wide(first, 0, false) : "";
+    var capstone = last ? wide(last, COURSES.length - 1, true) : "";
+    var middle = COURSES.slice(1, last ? -1 : undefined);
+    var rest = middle.map(function (c, i) {
       return (
         '<a class="card glass" href="#/c/' + esc(c.id) + '">' + tile(c, i + 1) +
         '<div class="body"><h3>' + esc(c.title) + "</h3><p>" + esc(c.tagline) + "</p>" + metaLine(c) +
@@ -144,7 +152,7 @@
     return (
       hero +
       '<div class="section-head"><h2>Courses</h2><span class="label">' + COURSES.length + " to start</span></div>" +
-      featured + '<div class="grid">' + rest + "</div>"
+      featured + '<div class="grid">' + rest + "</div>" + capstone
     );
   }
 

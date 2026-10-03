@@ -82,6 +82,8 @@
     color: inherit; transition: transform 140ms ease, border-color 140ms ease; }
   .featured:hover, .card:hover { transform: translateY(-3px); border-color: var(--border2); text-decoration: none !important; }
   .featured .thumb { aspect-ratio: auto; min-height: 300px; }
+  .featured.mirrored { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); margin: 20px 0 0; }
+  .featured.mirrored .thumb { order: 2; }
   .featured .body { padding: 34px 36px; display: flex; flex-direction: column; gap: 12px; }
   .featured h3 { font-family: var(--font-serif); font-style: italic; font-weight: 600; font-size: 2rem; line-height: 1.12;
     margin: 0; color: var(--text); letter-spacing: -0.01em; }
