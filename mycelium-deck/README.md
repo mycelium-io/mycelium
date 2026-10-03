@@ -69,6 +69,39 @@ To make a pane live, give it a `data-term` id and a script:
 </div>
 ```
 
+## The live app
+
+An app pane shows the real Mycelium app in a frame:
+
+```html
+<div class="app pane" data-app="/room/workshop" data-zoom="1.1">
+  <div class="bar"><i></i><i></i><i></i><span class="addr">mycelium</span></div>
+  <div class="app-view"><img src="../docs/app-room-channel@2x.png" alt=""></div>
+  <template class="script">
+    /room/workshop/graph
+    /metrics
+  </template>
+</div>
+```
+
+- **Finding the app.** The deck looks for it at `?app=` on its own URL
+  (`serve.py --app URL` adds that), else on the Docker stack's port
+  (`127.0.0.1:8080`), else the Mac app's (`127.0.0.1:3717`). Until one
+  answers, the pane shows its screenshot, so the slide works offline and as
+  a file.
+- **Clicking in.** The frame sits under a shield. Click it to use the app,
+  and click anywhere else on the slide to give the keys back to the deck.
+  A frame with focus keeps every key, a clicker's included.
+- **Stepping through pages.** Each → opens the next route in the script,
+  after any terminal commands on the slide. The speaker view counts the
+  pages left.
+- **Zoom.** `data-zoom` enlarges the app inside the frame, so the room can
+  read it.
+
+The app keeps its own theme, whatever the deck's. Present from the app
+`mycelium up` or the Mac app serves: a `next dev` server draws its own
+error badge over the page.
+
 The URL hash is the slide number (`index.html#7`). To make a PDF, print from
 Chrome with background graphics on. Each slide prints as one 1920×1080 page
 with a still lens drawn in CSS.
@@ -106,7 +139,7 @@ The sample deck has one slide for each layout: `layout-title`, a terminal
 (`layout-terminal`), an agenda (`.agenda`), `layout-section`,
 `layout-statement`, `.cards`, `layout-diagram` (an SVG in stage coordinates
 with the lens over its centre), a flow of `.step`s, `.numbers`,
-`layout-exercise` with a timer, `layout-image`, `.compare` and `layout-close`.
+`layout-exercise` with a timer, `layout-image`, `layout-app` (the live app), `.compare` and `layout-close`.
 Copy the one closest to what you need.
 
 ## Files
@@ -118,6 +151,7 @@ Copy the one closest to what you need.
 | `deck.js` | fitting the stage, keys, steps, overview, speaker view, timers |
 | `lens.js` | the background: grows the network on a 2D canvas, then draws it with the lens in one WebGL shader |
 | `term.js` | live terminals: xterm.js panes over the shells `serve.py` runs |
+| `app.js` | live app panes: the Mycelium app in a frame, its screenshot until it answers |
 | `serve.py` | serves the deck on 127.0.0.1 and runs a shell on a pseudo-terminal per pane |
 
 With `prefers-reduced-motion`, the network is drawn once and the lens jumps

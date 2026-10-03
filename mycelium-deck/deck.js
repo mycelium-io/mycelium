@@ -84,6 +84,7 @@
     if (changed && window.Lens) window.Lens.grow(3);
     if (started === null && index > 0) started = Date.now();
     window.DeckTerm?.activate(s);
+    window.DeckApp?.activate(s);
     pushLens();
     syncSpeaker();
   }
@@ -91,8 +92,8 @@
   function next() {
     const hidden = steps(slides[index]).filter(e => !e.classList.contains('shown'));
     if (hidden.length) { hidden[0].classList.add('shown'); markCurrent(slides[index]); pushLens(); syncSpeaker(); return; }
-    // A live terminal's scripted commands run one per press, like steps.
-    if (window.DeckTerm?.typeNext(slides[index])) { syncSpeaker(); return; }
+    // A live terminal's commands, then a live app's routes, run one per press, like steps.
+    if (window.DeckTerm?.typeNext(slides[index]) || window.DeckApp?.typeNext(slides[index])) { syncSpeaker(); return; }
     go(index + 1);
   }
   function prev() {
@@ -169,7 +170,7 @@
     speaker.postMessage({
       kind: 'state', index, total: slides.length, title: titleOf(s), notes: notesOf(s),
       next: titleOf(slides[index + 1]) || 'End of deck', started,
-      steps: [st.length ? `${st.filter(e => e.classList.contains('shown')).length} / ${st.length} steps` : '', window.DeckTerm?.progress(s) || ''].filter(Boolean).join(' · '),
+      steps: [st.length ? `${st.filter(e => e.classList.contains('shown')).length} / ${st.length} steps` : '', window.DeckTerm?.progress(s) || '', window.DeckApp?.progress(s) || ''].filter(Boolean).join(' · '),
     }, '*');
   }
   function openSpeaker() {

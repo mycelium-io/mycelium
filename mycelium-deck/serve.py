@@ -6,7 +6,7 @@
 # ///
 """Serve the deck with live terminals.
 
-    uv run mycelium-deck/serve.py [--cwd DIR] [--port 8765] [--login] [--no-open]
+    uv run mycelium-deck/serve.py [--cwd DIR] [--app URL] [--port 8765] [--login] [--no-open]
 
 Serves the repository on 127.0.0.1 and gives each terminal in the deck a
 real shell on a pseudo-terminal. The shells run as you, in --cwd (the
@@ -39,7 +39,7 @@ import webbrowser
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
 HISTORY = 256 * 1024  # bytes of output kept per shell, replayed on reconnect
@@ -259,6 +259,9 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--cwd", default=os.getcwd(), help="where the shells start (default: here)")
     parser.add_argument(
+        "--app", help="the Mycelium app to show in app panes (default: :8080, then :3717)"
+    )
+    parser.add_argument(
         "--login", action="store_true", help="your own login shell and prompt, not the plain one"
     )
     parser.add_argument(
@@ -270,6 +273,8 @@ def main() -> None:
     server = ThreadingHTTPServer(("127.0.0.1", args.port), handler(deck))
     server.daemon_threads = True
     url = f"http://127.0.0.1:{args.port}/mycelium-deck/index.html?token={deck.token}"
+    if args.app:
+        url += "&app=" + quote(args.app, safe="")
     print(
         f"\n  Deck with live terminals:\n  {url}\n\n  Shells start in {deck.cwd}. Ctrl-C to stop.\n"
     )

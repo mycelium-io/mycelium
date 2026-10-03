@@ -81,7 +81,9 @@ mycelium-deck/      The slide template for talks and workshops: plain HTML on a
                     timers are `deck.js`. `uv run mycelium-deck/serve.py` serves
                     it on 127.0.0.1 with live terminals: each `data-term` pane a
                     real shell (`term.js`, xterm.js), token-gated, and each → runs
-                    the pane's next scripted command. See its README.
+                    the pane's next scripted command. A `data-app` pane frames the
+                    real app (`app.js`, found at `?app=`, :8080 or :3717), its
+                    screenshot until the app answers. See its README.
 ```
 
 ## Development

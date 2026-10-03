@@ -274,6 +274,27 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 .frame img { display: block; width: 100%; border-radius: 18px; border: 1px solid var(--border); }
 .tilt { transform: rotateY(-9deg) rotateX(3deg); transform-origin: left center; }
 
+/* ── Layout: app (a live frame of the Mycelium app) ── */
+.layout-app { padding-top: 90px; gap: 34px; }
+.layout-app .head { display: flex; align-items: baseline; gap: 40px; }
+.layout-app .head h2 { font-size: 80px; }
+.app { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+.app .bar { display: flex; gap: 12px; align-items: center; padding: 20px 28px; border-bottom: 1px solid var(--border); }
+.app .bar i { width: 15px; height: 15px; border-radius: 50%; background: var(--border-hi); }
+.app .bar .addr { margin-left: 18px; flex: 1; max-width: 760px; font: 400 19px var(--mono); color: var(--muted); padding: 8px 18px; border-radius: 10px; background: var(--pane); border: 1px solid var(--border); text-shadow: none; }
+.app.live .bar::after { content: "live"; margin-left: auto; font: 500 17px var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--green); }
+.app-view { position: relative; flex: 1; overflow: hidden; border-radius: 0 0 30px 30px; }
+.app-view img { width: 100%; height: 100%; object-fit: cover; object-position: top left; display: block; }
+.app-view iframe { position: absolute; left: 0; top: 0; border: 0; transform-origin: 0 0; background: var(--bg); opacity: 0; transition: opacity 0.5s; }
+.app.live .app-view iframe { opacity: 1; }
+.app.live .app-view img { visibility: hidden; }
+.app-shield { position: absolute; inset: 0; border: 0; padding: 0; background: transparent; cursor: pointer; display: none; }
+.app.live .app-shield { display: block; }
+.app.using .app-shield { display: none; }
+.app-shield span { position: absolute; right: 24px; bottom: 24px; font: 500 18px var(--mono); letter-spacing: 0.08em; color: var(--text); padding: 12px 18px; border-radius: 12px; background: var(--pane-solid); border: 1px solid var(--border); opacity: 0; transition: opacity 0.2s; }
+.app-shield:hover span { opacity: 1; }
+.app.using { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+
 /* ── Layout: compare ── */
 .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 64px; align-items: start; }
 .compare .side { padding: 52px 56px; }

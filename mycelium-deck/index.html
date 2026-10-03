@@ -202,6 +202,26 @@
     <aside class="notes"><p>Screenshots come from <code>docs/</code>. Run <code>pnpm screenshots</code> in mycelium-frontend for fresh ones before the day.</p></aside>
   </section>
 
+  <!-- ── The live app: the real app in a frame, its screenshot until it answers ── -->
+  <section class="slide layout-app" data-title="The app, live" data-lens="1760 960 170">
+    <div class="head">
+      <span class="kicker rise">In the app</span>
+      <h2 class="rise">The room, live</h2>
+    </div>
+    <div class="app pane rise" data-app="/room/workshop" data-zoom="1.1">
+      <div class="bar"><i></i><i></i><i></i><span class="addr">mycelium · your hub</span></div>
+      <div class="app-view"><img src="../docs/app-room-channel@2x.png" alt="The Mycelium app: a room's channel"></div>
+      <template class="script">
+        /room/workshop/graph
+        /metrics
+      </template>
+    </div>
+    <aside class="notes">
+      <p>With the app running, this is the real thing. Click it to use it; click anywhere else on the slide to give the keys back to the deck.</p>
+      <p>It opens on the workshop room. Each press of → opens the next page in the script: its memory graph, then Metrics. Change the routes to your room's name.</p>
+    </aside>
+  </section>
+
   <!-- ── Compare ── -->
   <section class="slide" data-title="Without a room, with a room" data-lens="1700 190 140">
     <span class="kicker rise">The difference</span>
@@ -249,6 +269,7 @@
 
 <script src="lens.js"></script>
 <script src="term.js"></script>
+<script src="app.js"></script>
 <script src="deck.js"></script>
 </body>
 </html>
