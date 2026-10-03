@@ -197,6 +197,9 @@
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (window.DeckTerm?.focused()) return;   // keys belong to the shell until Esc
     const k = e.key;
+    // + − 0 zoom a live app on the slide (0 only before a slide number is typed).
+    if ((k === '+' || k === '=' || k === '-' || k === '_' || (k === '0' && !typed)) && !overview
+        && window.DeckApp?.zoomKey(slides[index], k === '0' ? 0 : (k === '-' || k === '_') ? -1 : 1)) { e.preventDefault(); return; }
     if (/^[0-9]$/.test(k)) { typed += k; gotoBox.textContent = `Go to ${typed}`; gotoBox.classList.add('open'); return; }
     if (k === 'Enter' && typed) { go(parseInt(typed, 10) - 1); typed = ''; gotoBox.classList.remove('open'); return; }
     if (typed && k !== 'Enter') { typed = ''; gotoBox.classList.remove('open'); }

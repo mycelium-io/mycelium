@@ -27,6 +27,7 @@ fonts. Without a connection the type falls back to Georgia and system fonts.
 | T | light / dark (light suits a bright room or a weak projector) |
 | B or . | blackout |
 | a number, then ⏎ | go to that slide |
+| + − 0 | zoom the live app toward the pointer; 0 goes back to fit |
 | ? | the key list |
 
 ## Live terminals
@@ -95,8 +96,18 @@ An app pane shows the real Mycelium app in a frame:
 - **Stepping through pages.** Each → opens the next route in the script,
   after any terminal commands on the slide. The speaker view counts the
   pages left.
-- **Zoom.** `data-zoom` enlarges the app inside the frame, so the room can
-  read it.
+- **Zoom while presenting.** Magnify any part of the app on the fly, and
+  keep using it while zoomed:
+  - the − and + in the pane's address bar (the percentage goes back to fit)
+  - the + and − keys, which zoom toward the pointer when it is over the app,
+    and 0 to go back to fit
+  - a pinch over the app
+  - drag or scroll to look around while zoomed
+
+  Once you have clicked into the app, its keys and pinch belong to the app,
+  so use the bar's buttons, or click outside first.
+- **Base size.** `data-zoom` sets how large the app is drawn at fit, so the
+  room can read it.
 
 The app keeps its own theme, whatever the deck's. Present from the app
 `mycelium up` or the Mac app serves: a `next dev` server draws its own

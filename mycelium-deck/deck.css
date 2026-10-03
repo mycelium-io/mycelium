@@ -288,6 +288,16 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 .app-view iframe { position: absolute; left: 0; top: 0; border: 0; transform-origin: 0 0; background: var(--bg); opacity: 0; transition: opacity 0.5s; }
 .app.live .app-view iframe { opacity: 1; }
 .app.live .app-view img { visibility: hidden; }
+.app-view iframe.zooming { transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.1, 1), opacity 0.5s; }
+.app .app-zoom { display: none; margin-left: auto; align-items: center; gap: 2px; padding: 3px; border-radius: 11px; border: 1px solid var(--border); background: var(--pane); }
+.app.live .app-zoom { display: inline-flex; }
+.app.live .bar::after { margin-left: 18px; }
+.app-zoom button { font: 500 17px var(--mono); color: var(--text); background: transparent; border: 0; border-radius: 8px; padding: 5px 11px; cursor: pointer; text-shadow: none; }
+.app-zoom button:hover { background: var(--border); }
+.app-zoom .pct { min-width: 70px; color: var(--muted); font-size: 15px; }
+.app.magnified .app-zoom .pct { color: var(--accent); }
+.app.magnified .app-shield { cursor: grab; }
+.app.magnified .app-shield:active { cursor: grabbing; }
 .app-shield { position: absolute; inset: 0; border: 0; padding: 0; background: transparent; cursor: pointer; display: none; }
 .app.live .app-shield { display: block; }
 .app.using .app-shield { display: none; }
