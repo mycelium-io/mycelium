@@ -25,9 +25,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         {/* The next/next/no-page-custom-font rule targets the Pages Router; this is the App Router. */}
+        {/* Plex is the variable face, upright and italic: every weight the app
+            asks for (a heading's 700, prose's 430) and a real italic, so
+            nothing is synthesized from the upright. */}
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,600&family=IBM+Plex+Sans:wght@400;500;600&family=Geist+Mono:wght@400;500;600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,600&family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&family=Geist+Mono:wght@400;500;600;700&display=swap"
           rel="stylesheet"
         />
       </head>
