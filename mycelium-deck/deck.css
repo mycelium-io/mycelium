@@ -177,11 +177,11 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 .layout-statement cite { display: block; margin-top: 56px; font: 400 26px/1.4 var(--mono); font-style: normal; color: var(--muted); letter-spacing: 0.04em; }
 
 /* ── Layout: agenda ── */
-.agenda { list-style: none; margin: 60px 0 0; padding: 0; max-width: 1180px; }
+.agenda { list-style: none; margin: 44px 0 0; padding: 0; max-width: 1180px; }
 .agenda li {
   display: grid; grid-template-columns: 170px 1fr auto; align-items: baseline; gap: 40px;
-  padding: 26px 0; border-top: 1px solid var(--border);
-  font-size: 40px; font-weight: 400;
+  padding: 15px 0; border-top: 1px solid var(--border);
+  font-size: 36px; font-weight: 400;
 }
 .agenda li:last-child { border-bottom: 1px solid var(--border); }
 .agenda time { font: 500 26px/1 var(--mono); color: var(--accent); letter-spacing: 0.06em; }
@@ -315,6 +315,32 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 .compare li::before { content: "—"; position: absolute; left: 0; color: var(--faint); }
 .compare .with li::before { content: ""; top: 32px; width: 20px; height: 20px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff 0 10%, var(--accent) 45%, var(--accent2)); }
 .compare .without { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; border-style: dashed; }
+
+/* ── Layout: what it isn't (two "not" panes and the line under them) ── */
+.layout-isnt .compare { flex: none; }
+.compare .side p { font-size: 34px; color: var(--muted); margin: 0; }
+.verdict { margin: 70px 0 0; font: italic 500 70px/1.15 var(--display); max-width: 1500px; }
+
+/* ── Layout: lanes (the room's chat over the tasks' threads) ── */
+.layout-lanes .lane-label { font: 500 20px var(--mono); fill: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; }
+.layout-lanes .lane.chat { stroke: var(--accent2); stroke-width: 3; stroke-dasharray: 2 16; stroke-linecap: round; fill: none; }
+.layout-lanes .who circle { fill: var(--accent2); }
+.layout-lanes .divider { stroke: var(--border-hi); stroke-width: 1.5; stroke-dasharray: 10 10; }
+.layout-lanes .agent-dot circle { fill: var(--pane-solid); stroke: var(--accent); stroke-width: 3; }
+.diagram .wire.live.slow { animation-duration: 2.3s; }
+.diagram .wire.live.slower { animation-duration: 3.1s; }
+
+/* ── Layout: points (a row of three under a statement) ── */
+.points { display: grid; grid-template-columns: repeat(3, 1fr); gap: 50px; margin-top: 90px; max-width: 1300px; }
+.points div { font-size: 28px; color: var(--muted); padding-top: 22px; border-top: 1px solid var(--border-hi); }
+.points b { display: block; margin-bottom: 8px; font: italic 600 46px/1 var(--display); color: var(--text); }
+
+/* ── Layout: trio (three big lines, one per press) ── */
+.layout-trio .trio { margin-top: 60px; display: flex; flex-direction: column; gap: 46px; }
+.layout-trio .line h2 { font-size: 112px; }
+.layout-trio .line p { margin: 10px 0 0; font-size: 30px; color: var(--muted); }
+.layout-trio .line.step { opacity: 0.08; }
+.layout-trio .line.step.shown { opacity: 1; }
 
 /* ── Layout: close ── */
 .layout-close { align-items: center; justify-content: center; text-align: center; }

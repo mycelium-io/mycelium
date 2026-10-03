@@ -164,7 +164,10 @@ The sample deck has one slide for each layout: `layout-title`, a terminal
 (`layout-terminal`), an agenda (`.agenda`), `layout-section`,
 `layout-statement`, `.cards`, `layout-diagram` (an SVG in stage coordinates
 with the lens over its centre), a flow of `.step`s, `.numbers`,
-`layout-exercise` with a timer, `layout-image`, `layout-app` (the live app), `.compare` and `layout-close`.
+`layout-exercise` with a timer, `layout-image`, `layout-app` (the live app), `.compare`,
+`layout-isnt` (two "not" panes and a line revealed under them), `layout-lanes` (the room's
+chat over parallel task threads), `.points` (three short points under a statement),
+`layout-trio` (three big lines, one per press) and `layout-close`.
 Copy the one closest to what you need.
 
 ## Files

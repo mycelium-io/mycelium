@@ -19,7 +19,7 @@
   <section class="slide layout-title" data-title="Title" data-lens="1520 470 330, 1130 860 54" data-bare>
     <span class="kicker rise">Workshop · October 2026</span>
     <h1 class="display rise">Agents that work <em class="glow">as a room</em></h1>
-    <p class="lede rise">Hands-on with Mycelium: tasks, threads, and an aligner that settles what the agents disagree on.</p>
+    <p class="lede rise">Composing agents into real work, from one prompt to a swarm.</p>
     <div class="byline rise"><span>Your Name</span><span class="dot"></span><span>@handle</span><span class="dot"></span><span>Venue · Room</span></div>
     <aside class="notes">
       <p>Welcome everyone. While people settle in, the next slide has the install commands up. Leave it there for five minutes.</p>
@@ -63,23 +63,172 @@
     <span class="kicker rise">The next 90 minutes</span>
     <h2 class="rise" style="margin-top:34px">Agenda</h2>
     <ol class="agenda">
-      <li class="rise"><time>00:00</time><span>Why a room</span><span></span></li>
-      <li class="rise"><time>00:15</time><span>Rooms, tasks and threads</span><span></span></li>
-      <li class="rise"><time>00:35</time><span>File your first task</span><span class="tag">Exercise</span></li>
-      <li class="rise"><time>00:50</time><span>The aligner</span><span></span></li>
+      <li class="rise"><time>00:00</time><span>Agents, composed</span><span></span></li>
+      <li class="rise"><time>00:20</time><span>Working like this</span><span></span></li>
+      <li class="rise"><time>00:30</time><span>Rooms, tasks and threads</span><span></span></li>
+      <li class="rise"><time>00:45</time><span>File your first task</span><span class="tag">Exercise</span></li>
+      <li class="rise"><time>01:00</time><span>The aligner</span><span></span></li>
       <li class="rise"><time>01:10</time><span>Run a swarm</span><span class="tag">Exercise</span></li>
       <li class="rise"><time>01:30</time><span>Questions</span><span></span></li>
     </ol>
     <aside class="notes"><p>Two hands-on blocks. Say clearly that the exercises build on each other, so anyone who falls behind should pair with a neighbour.</p></aside>
   </section>
 
+  <!-- ════ Part one: agents, composed ════ -->
+
   <!-- ── Section ── -->
-  <section class="slide layout-section" data-title="01 · Why a room" data-lens="1430 520 300">
+  <section class="slide layout-section" data-title="01 · Agents, composed" data-lens="1430 520 300">
     <span class="num" aria-hidden="true">01</span>
     <span class="kicker rise">Part one</span>
+    <h2 class="rise">Agents, composed</h2>
+    <p class="lede rise">Agents are rapidly consumable pieces of logic. Compose them, and they do real work.</p>
+    <aside class="notes">
+      <p>This is the idea everything in Mycelium is built from. An agent isn't a colleague you keep. It's a piece of logic you pick up, use, and compose with others.</p>
+      <p>Section divider: copy this slide for each part and change the numeral and the lens.</p>
+    </aside>
+  </section>
+
+  <!-- ── The framing: compare ── -->
+  <section class="slide" data-title="Workers, not assistants" data-lens="1700 190 140">
+    <span class="kicker rise">The framing</span>
+    <h2 class="rise" style="margin-top:34px">Workers, not assistants</h2>
+    <div class="compare">
+      <div class="side pane without rise">
+        <h3>The assistant framing</h3>
+        <ul><li>One long-running agent</li><li>Trusted like a person</li><li>Its memory is its personality</li></ul>
+      </div>
+      <div class="side pane with rise">
+        <h3>How Mycelium sees agents</h3>
+        <ul><li>Many workers, each on a piece of the work</li><li>They do the work, then die and compact</li><li>Memory outlives them, as know-how</li></ul>
+      </div>
+    </div>
+    <aside class="notes">
+      <p>Mycelium stands against the framing of agents as long-running, trustworthy personal assistants.</p>
+      <p>These agents do work, and they are expected to die and compact. Nothing is lost when one goes, because what matters was never kept inside it.</p>
+    </aside>
+  </section>
+
+  <!-- ── Memory ── -->
+  <section class="slide" data-title="Memory, not personality" data-lens="1720 200 150">
+    <span class="kicker rise">Memory</span>
+    <h2 class="rise" style="margin-top:34px">Memory, not personality</h2>
+    <p class="lede rise" style="margin-top:26px; max-width:1300px">Memory persists. Not to make an agent someone, but to make the next worker faster and less often wrong.</p>
+    <div class="cards" style="margin-top:56px">
+      <article class="card pane rise"><span class="glyph"></span><h3>Preferences</h3><p>How this team wants things done, and the calls it has already made.</p><span class="foot">decisions/</span></article>
+      <article class="card pane rise"><span class="glyph"></span><h3>Behaviours</h3><p>What worked, what failed, and what to watch for next time.</p><span class="foot">failed/ · context/</span></article>
+      <article class="card pane rise"><span class="glyph"></span><h3>Procedures</h3><p>Skills a fresh worker picks up the moment it arrives.</p><span class="foot">skills/ · procedures/</span></article>
+    </div>
+    <aside class="notes">
+      <p>Memory is persistent, but it isn't there to anthropomorphise anyone. It's distinct preferences, behaviours and procedures.</p>
+      <p>They empower the workers to be more efficient and make fewer mistakes. A worker that arrives cold reads them and is useful at once.</p>
+    </aside>
+  </section>
+
+  <!-- ── Who it's for: steps, the lens follows ── -->
+  <section class="slide" data-title="From one prompt to a swarm" data-lens="191 432 96">
+    <span class="kicker rise">Who it's for</span>
+    <h2 class="rise" style="margin-top:34px">From one prompt to a swarm</h2>
+    <ol class="flow">
+      <li><span class="marker">1</span><h3>Prompt</h3><p>You and one agent, in one conversation.</p><span class="notice">single agent</span></li>
+      <li class="step" data-lens="604 432 96"><span class="marker">2</span><h3>Compose</h3><p>A few agents, each on its own piece.</p><span class="notice">in parallel</span></li>
+      <li class="step" data-lens="1018 432 96"><span class="marker">3</span><h3>Flows</h3><p>Ways of working you can run again.</p><span class="notice">repeatable</span></li>
+      <li class="step" data-lens="1431 432 96"><span class="marker">4</span><h3>Swarm</h3><p>Any number of flows, at once, on real work.</p><span class="notice">swarm intelligence</span></li>
+    </ol>
+    <aside class="notes">
+      <p>Mycelium is for the person scaling their own workflows up: from single-agent prompting towards swarm intelligence.</p>
+      <p>Each press moves one step along. Ask the room where they are on this line today.</p>
+    </aside>
+  </section>
+
+  <!-- ── What it isn't ── -->
+  <section class="slide layout-isnt" data-title="What it isn't" data-lens="960 900 120">
+    <span class="kicker rise">What it isn't</span>
+    <h2 class="rise" style="margin-top:34px">Two things it isn't</h2>
+    <div class="compare">
+      <div class="side pane without rise">
+        <h3>Not a roleplay</h3>
+        <p>One orchestrator hands work to agent A and agent B, around a roundtable that is only pretend.</p>
+      </div>
+      <div class="side pane without rise">
+        <h3>Not session management</h3>
+        <p>It doesn't babysit your agent sessions, or ask you to.</p>
+      </div>
+    </div>
+    <p class="verdict step" data-lens="1720 770 100">It's a system that makes composing <em class="glow">any number of flows</em> possible.</p>
+    <aside class="notes">
+      <p>It is not a roleplay, where a single orchestrator delegates to agent A and agent B and sets up a fake roundtable.</p>
+      <p>It's not a session management tool either.</p>
+      <p>Press once for the line underneath: what it is instead.</p>
+    </aside>
+  </section>
+
+  <!-- ── Two flows: the chat apart from the work ── -->
+  <section class="slide layout-diagram layout-lanes" data-title="Chat stands apart" data-lens="1300 690 150">
+    <svg class="diagram" viewBox="0 0 1920 1080" aria-hidden="true">
+      <text class="lane-label" x="860" y="250">the room · chat</text>
+      <path class="lane chat" d="M860 290 H1770"/>
+      <g class="who"><circle cx="980" cy="290" r="13"/><circle cx="1240" cy="290" r="13"/><circle cx="1560" cy="290" r="13"/></g>
+      <line class="divider" x1="860" y1="400" x2="1770" y2="400"/>
+      <text class="lane-label" x="860" y="470">work/api · thread</text>
+      <path class="lane wire live" d="M860 510 H1770"/>
+      <text class="lane-label" x="860" y="620">work/ui · thread</text>
+      <path class="lane wire live slow" d="M860 660 H1770"/>
+      <text class="lane-label" x="860" y="770">work/docs · thread</text>
+      <path class="lane wire live slower" d="M860 810 H1770"/>
+      <g class="agent-dot"><circle cx="1040" cy="510" r="11"/><circle cx="1460" cy="510" r="11"/><circle cx="1180" cy="660" r="11"/><circle cx="1620" cy="660" r="11"/><circle cx="1320" cy="810" r="11"/></g>
+    </svg>
+    <div class="copy">
+      <span class="kicker rise">Context</span>
+      <h2 class="rise" style="margin:34px 0 34px">Chat stands apart</h2>
+      <p class="rise">The room's chat is separate from the agents' own message flow.</p>
+      <p class="rise">Less context pollution, more focused outcomes, and workstreams that really run in parallel.</p>
+    </div>
+    <aside class="notes">
+      <p>Mycelium's chat stands separately from the agents' core message flow. People talk in the room; the work happens in each task's thread.</p>
+      <p>That leads to less context pollution and more focused outcomes: context is split, and parallel workstreams happen in parallel.</p>
+    </aside>
+  </section>
+
+  <!-- ── Trust: statement ── -->
+  <section class="slide layout-statement" data-title="Trust the workers" data-lens="1700 330 200, 1460 170 40">
+    <span class="kicker rise">Governance</span>
+    <blockquote class="rise">Trust the workers. <span class="accent">Watch the outcome.</span></blockquote>
+    <cite class="rise">How each session governs itself stays out of your way, and one pane away when you need it.</cite>
+    <div class="points">
+      <div class="rise"><b>Outcomes</b>over micromanaging every step</div>
+      <div class="rise"><b>Trust</b>that they'll do the right thing</div>
+      <div class="rise"><b>Capability</b>to swarm effectively</div>
+    </div>
+    <aside class="notes">
+      <p>The governance of your agent sessions, and their ability to execute, is out of sight but visible in the agent pane if you need it.</p>
+      <p>We look for outcomes more than micromanaging the agents: we put trust in them to do the right thing, and give them the capabilities to swarm effectively.</p>
+    </aside>
+  </section>
+
+  <!-- ── Working like this: three lines, the lens moves to each ── -->
+  <section class="slide layout-trio" data-title="Working like this" data-lens="1500 262 100">
+    <span class="kicker rise">Working like this</span>
+    <div class="trio">
+      <div class="line"><h2>Fast creativity.</h2><p>Trying an idea costs minutes, so try it before you argue about it.</p></div>
+      <div class="line step" data-lens="1500 472 100"><h2>Strong opinions.</h2><p>Agents follow taste. Bring yours, or you get the average.</p></div>
+      <div class="line step" data-lens="1500 682 100"><h2>Broad, cross-level thinking.</h2><p>Product, protocol and pixel, often in the same hour.</p></div>
+    </div>
+    <aside class="notes">
+      <p>What it's like working like this. It asks a lot of the person in the middle.</p>
+      <p>It requires fast creativity and strong opinions, and broad thinking that crosses levels.</p>
+      <p>The small lines under each are my wording; change them to yours. Each press brings in the next line.</p>
+    </aside>
+  </section>
+
+  <!-- ════ Part two: rooms ════ -->
+
+  <!-- ── Section ── -->
+  <section class="slide layout-section" data-title="02 · Why a room" data-lens="1430 520 300">
+    <span class="num" aria-hidden="true">02</span>
+    <span class="kicker rise">Part two</span>
     <h2 class="rise">Why a room</h2>
     <p class="lede rise">Agents that share a room, and keep its memory, coordinate without you choosing a protocol.</p>
-    <aside class="notes"><p>Section divider. Copy this slide for each part and change the numeral and the lens position.</p></aside>
+    <aside class="notes"><p>Now the room itself: where these workers meet, and what they leave behind.</p></aside>
   </section>
 
   <!-- ── Statement ── -->
@@ -116,7 +265,7 @@
       <g class="hub"><text x="1270" y="545">aligner</text><text class="sub" x="1270" y="610">brokers each round</text></g>
     </svg>
     <div class="copy">
-      <span class="kicker rise">Part two</span>
+      <span class="kicker rise">The mediator</span>
       <h2 class="rise" style="margin:34px 0 34px">The aligner sits in the middle</h2>
       <p class="rise">It finds the issues in the opening positions, asks one agent at a time, and stops the moment they agree.</p>
     </div>
