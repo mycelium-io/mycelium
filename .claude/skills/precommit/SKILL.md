@@ -61,13 +61,13 @@ Run all quality checks on the mycelium codebase. Auto-fix issues where possible.
    - `docs/demo-script.md` — live demo script
    - `README.md` — quickstart and overview
    - `mycelium-cli/src/mycelium/docs/` — built-in CLI docs
-   - Adapter skills (`mycelium-cli/src/mycelium/integrations/*/assets/skills/`)
+   - The agent skill (`mycelium-cli/src/mycelium/skills/mycelium/SKILL.md`) and cursor's workspace assets (`mycelium-cli/src/mycelium/integrations/cursor/assets/`)
 
-8. **Doctor sanity check** — If any file under `mycelium-cli/src/mycelium/commands/doctor.py`, `mycelium-cli/src/mycelium/commands/adapter.py`, or an adapter's shipped assets (`mycelium-cli/src/mycelium/integrations/claude_code/assets/`, `.../cursor/assets/`) was changed, run `mycelium doctor` to verify every check still passes against the current install:
+8. **Doctor sanity check** — If `mycelium-cli/src/mycelium/commands/doctor.py` was changed, run `mycelium doctor` to verify every check still passes against the current install:
    ```bash
    mycelium doctor
    ```
-   All checks should be green (`✓`). If any come back as warnings (`~`) or errors (`✗`), act on them before committing — doctor is the fastest way to catch adapter-install regressions (stale manifests, drift between installed vs packaged plugin, channel config issues).
+   All checks should be green (`✓`). If any come back as warnings (`~`) or errors (`✗`), act on them before committing — doctor is the fastest way to catch setup regressions (config drift, an unreachable backend, channel config issues).
 
    If you added new failure modes that doctor should catch, add a new check function to `doctor.py` following the `_check_*() -> CheckResult` pattern and register it in `_run_all_checks()`. Doctor is the user's first debugging tool — new silent-failure classes should land here alongside their fix.
 

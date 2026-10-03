@@ -768,10 +768,6 @@ is no litellm dependency.
   rather than threading a refresh counter down as a prop. A store (Zustand) is
   reserved for genuine client state — which rail is open, what's selected — not
   for anything the hub owns.
-- **Adapter capability (be honest).** `claude_code` is proven; `cursor` is untested.
-  `openclaw` and `hermes` are **gone**, not deprecated — they rode the removed
-  SSE/coordination-tick model and their packages were deleted (#503). Don't
-  reintroduce them as adapter options.
 - **A2A bridge is proxied, not an MLS member (be honest).** The A2A bridge (epic
   #719) makes a room speak Agent2Agent both ways: `adapter: a2a` registers a
   remote endpoint as a room member (`a2a_bridge.py` answers its `@`-mentions by

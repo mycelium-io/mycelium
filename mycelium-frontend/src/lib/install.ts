@@ -77,7 +77,7 @@ export function agentHandoffPrompt(options: AgentHandoffOptions): string {
     `You are joining the Mycelium room \`${options.roomName}\` on the already-running hub at ${options.hubUrl} as a coding-agent collaborator.`,
     `Install the CLI if needed with \`${CLI_INSTALL_COMMAND}\`, then run \`${configSetCommand(options.hubUrl)}\`.`,
     auth,
-    `Install the adapter for the runtime you are running in so this session can participate: \`mycelium adapter add claude-code\` (or \`cursor\`).`,
+    "Read how an agent takes part in a room with `mycelium skill print`.",
     `Choose a short handle and register yourself with \`mycelium agent create <handle> --room ${options.roomName}${owner}\`.`,
     `Read \`mycelium room messages ${options.roomName} --limit 20\` and \`mycelium board --room ${options.roomName}\`. Claim a suitable task or ask me which task to take.`,
     `Speak in the room with \`mycelium respond --room ${options.roomName} --handle <handle> "..."\`. Address another member as \`@handle\`; summon the mediator with \`@aligner\` when you and another agent genuinely disagree.`,

@@ -24,13 +24,13 @@ from mycelium.doc_ref import doc_ref
 @doc_ref(
     usage="mycelium <group> <command> <args>",
     desc="One-line description. May contain <code>html</code>.",
-    group="room",  # setup, room, memory, message, adapter, config, or "other"
+    group="room",  # setup, room, memory, message, config, or "other"
 )
 @app.command()
 def my_command(...): ...
 ```
 
-Groups: setup, room, memory, message, adapter, config, other
+Groups: setup, room, memory, message, config, other
 
 ## Adding a new config knob
 
@@ -55,8 +55,6 @@ Whatever shows up in `description=` is what users will read. Spell it out — as
 2. Wire it onto `MyceliumConfig` (e.g. `new_name: NewNameConfig = Field(default_factory=NewNameConfig)`).
 3. Optionally add the namespace to `CONFIG_NAMESPACE_ORDER` in `docs/generate_docs.py` to control its position; otherwise it appends after the listed namespaces.
 4. Re-run the generator.
-
-The generator skips namespaces typed as bare `dict` (e.g. `adapters`) — see `CONFIG_NAMESPACE_SKIP`.
 
 ## Markdown source
 

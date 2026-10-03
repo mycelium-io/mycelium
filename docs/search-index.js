@@ -755,7 +755,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#on-a-server-create-a-room-and-add-agents",
     "t": "Create a room and add agents",
     "s": "Setup › Run It on a Server",
-    "x": "mycelium room create my-project mycelium room use my-project mycelium agent create planner \\ --description \"Sprint planner, optimizes for shipping speed\" mycelium agent ls # see who's in the room The agent is your own coding agent session. Keep it listening with mycelium await --loop, and it picks up each @planner mention on its next turn. See the Adapters guide for the agents Mycelium supports. Keep agents awake wit",
+    "x": "mycelium room create my-project mycelium room use my-project mycelium agent create planner \\ --description \"Sprint planner, optimizes for shipping speed\" mycelium agent ls # see who's in the room The agent is your own coding agent session. Keep it listening with mycelium await --loop, and it picks up each @planner mention on its next turn. See Connecting agents in the Reference for the agents Mycelium supports. Keep ",
     "p": "Guides"
   },
   {
@@ -1644,7 +1644,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-start-with-mycelium-doctor",
     "t": "Start with mycelium doctor",
     "s": "Help › Troubleshooting",
-    "x": "mycelium doctor # checks config, backend, model, SLIM and adapters mycelium doctor --fix # fixes whatever it can without asking mycelium status # a quick look at the services mycelium logs --tail 50 # recent logs mycelium doctor is the first thing to run for almost any problem. It works out whether this machine is a hub (it runs the backend and SLIM node) or a spoke (it connects to a hub somewhere else), and only run",
+    "x": "mycelium doctor # checks config, backend, model and SLIM mycelium doctor --fix # fixes whatever it can without asking mycelium status # a quick look at the services mycelium logs --tail 50 # recent logs mycelium doctor is the first thing to run for almost any problem. It works out whether this machine is a hub (it runs the backend and SLIM node) or a spoke (it connects to a hub somewhere else), and only runs the chec",
     "p": "Guides"
   },
   {
@@ -1851,24 +1851,24 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Reference"
   },
   {
-    "u": "reference.html#architecture-adapters",
-    "t": "Adapters",
+    "u": "reference.html#architecture-connecting-agents",
+    "t": "Connecting agents",
     "s": "Architecture",
-    "x": "Adapters connect agent tools to Mycelium. Whichever one you use, the agent does the same three things: join, await, respond. Adapter How it connects claude_code A skill, plus the await/respond loop cursor Workspace rules, plus the same loop a2a A remote Agent2Agent endpoint that the hub calls; nothing runs locally",
+    "x": "Whatever agent CLI it runs in, an agent does the same three things: join, await, respond. An agent's manifest records how it connects as its adapter: Adapter How it connects claude_code A Claude Code session running the await/respond loop cursor A Cursor session, with workspace rules, running the same loop a2a A remote Agent2Agent endpoint that the hub calls; nothing runs locally",
     "p": "Reference"
   },
   {
     "u": "reference.html#architecture-claude-code",
     "t": "Claude Code",
     "s": "Architecture",
-    "x": "The Mycelium skill is installed at ~/.claude/skills/mycelium/SKILL.md and used with the /mycelium slash command. It covers memory and coordination commands. # Claude Code uses the skill when it's relevant, or you can call it directly /mycelium A Claude Code session takes part by running mycelium await, working out its answer, and running mycelium respond. It picks up each @handle mention on its next turn. For an agen",
+    "x": "The runner, mycelium swarm and the Mac app start Claude Code as an interactive session and tell it who it is in its notes; each wake says what to run next. Nothing is installed into Claude Code for that. A session takes part by running mycelium await, working out its answer, and running mycelium respond. It picks up each @handle mention on its next turn. For an agent with no interactive session, use mycelium await --",
     "p": "Reference"
   },
   {
     "u": "reference.html#architecture-cursor",
     "t": "Cursor",
     "s": "Architecture",
-    "x": "Works the same way as Claude Code: a Cursor session runs await, works out its answer, and runs respond. mycelium adapter add cursor # installs the workspace rule and AGENTS.md cursor-agent login # once, interactively # Per agent. --cwd is the session's workspace folder (optional) mycelium agent create design-agent --adapter cursor \\ --cwd ~/repos/my-frontend --room my-project",
+    "x": "Works the same way as Claude Code: a Cursor session runs await, works out its answer, and runs respond. Creating the agent drops a Cursor rule and an AGENTS.md section into its workspace. cursor-agent login # once, interactively # Per agent. --cwd is the session's workspace folder (optional) mycelium agent create design-agent --adapter cursor \\ --cwd ~/repos/my-frontend --room my-project",
     "p": "Reference"
   },
   {
@@ -1889,7 +1889,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#architecture-status-providers",
     "t": "Status providers",
     "s": "Architecture",
-    "x": "Adapters connect agents to a room. Status providers connect the tools your work already happens in. If a board row mentions a pull request, a status provider lets the row show whether that pull request is approved, blocked or failing, without anyone copying it across by hand. Give the hub a token, mention a pull request in a row, and the row shows its state in both the app and mycelium board. Nothing is polled on a t",
+    "x": "Agents connect to a room through the CLI. Status providers connect the tools your work already happens in. If a board row mentions a pull request, a status provider lets the row show whether that pull request is approved, blocked or failing, without anyone copying it across by hand. Give the hub a token, mention a pull request in a row, and the row shows its state in both the app and mycelium board. Nothing is polled",
     "p": "Reference"
   },
   {
@@ -2524,48 +2524,9 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-skill",
-    "t": "mycelium skill adapter-def",
+    "t": "mycelium skill print",
     "s": "CLI Reference",
-    "x": "Print the Mycelium SKILL.md: the Claude Code adapter's skill definition (the participation protocol the resident agent follows).",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-adapter",
-    "t": "adapter",
-    "s": "CLI Reference",
-    "x": "",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-adapter",
-    "t": "mycelium adapter add <type> [--dry-run]",
-    "s": "CLI Reference",
-    "x": "Install an agent framework adapter (claude-code, cursor).",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-adapter",
-    "t": "mycelium adapter remove <type> [--force]",
-    "s": "CLI Reference",
-    "x": "Unregister and uninstall an adapter.",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-adapter",
-    "t": "mycelium adapter ls",
-    "s": "CLI Reference",
-    "x": "List available and registered adapters.",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-adapter",
-    "t": "mycelium adapter status [type]",
-    "s": "CLI Reference",
-    "x": "Check adapter health and installation status.",
+    "x": "Print the Mycelium agent skill (SKILL.md): how an agent takes part in a room. Save it where your agent CLI reads skills, e.g. ~/.claude/skills/mycelium/SKILL.md.",
     "k": "cmd",
     "p": "Reference"
   },

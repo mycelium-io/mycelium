@@ -1145,9 +1145,9 @@ def install(
         typer.echo(f"    mycelium-frontend → http://localhost:{custom_ports['ui']}")
         print()
         typer.echo("  Next steps:")
-        typer.echo("    mycelium adapter add claude-code  # wire your Claude Code agent")
-        typer.echo("    mycelium room create <name>      # create your first room")
-        typer.echo("    mycelium ui open                # open the frontend in your browser")
+        typer.echo("    mycelium room create <name>  # create your first room")
+        typer.echo("    mycelium ui open             # open the frontend in your browser")
+        typer.echo("    mycelium runner              # let the app start agents on this machine")
         print()
 
     except KeyboardInterrupt:

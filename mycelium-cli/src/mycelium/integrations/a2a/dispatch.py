@@ -21,8 +21,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import typer
-
 from mycelium.integrations.base import AddOptions, Integration
 from mycelium.protocol import AgentManifest
 
@@ -83,58 +81,3 @@ class A2aIntegration(Integration):
         if manifest.allow_from:
             lines.append(f"  allow:    {', '.join(manifest.allow_from)}")
         return lines
-
-    # ── install facet (no host assets; the backend drives the seat) ─────────
-
-    def install(
-        self,
-        *,
-        config: MyceliumConfig,
-        verbose: bool,
-        profile: str | None,
-        container: str | None,
-        reinstall: bool,
-    ) -> None:
-        return
-
-    def uninstall(self, *, record: dict, profile: str | None, container: str | None) -> None:
-        return
-
-    def reinstall_targets(self, *, profile: str | None, container: str | None) -> list[str]:
-        return []
-
-    def dry_run_lines(
-        self, *, config: MyceliumConfig, profile: str | None, container: str | None
-    ) -> list[str]:
-        return ["  (no host-level install for a2a agents; the backend drives them)"]
-
-    def post_install_banner(
-        self,
-        *,
-        config: MyceliumConfig,
-        reinstall: bool,
-        profile: str | None,
-        container: str | None,
-    ) -> None:
-        typer.secho("A2A family ready.", fg=typer.colors.GREEN)
-        typer.echo("  Register an external A2A agent in a room:")
-        typer.secho(
-            "    $ mycelium agent create <handle> --adapter a2a --card <url> --room <room>",
-            fg=typer.colors.CYAN,
-        )
-
-    def run_step(
-        self,
-        step: str,
-        *,
-        config: MyceliumConfig,
-        verbose: bool,
-        profile: str | None,
-        container: str | None,
-        remove: bool,
-    ) -> None:
-        return
-
-    def status_check(self, *, name: str, info: dict) -> dict:
-        # No host binary/asset to probe; the backend owns the seat.
-        return {"ok": True, "details": [f"api_url: {info.get('api_url', '')}"]}

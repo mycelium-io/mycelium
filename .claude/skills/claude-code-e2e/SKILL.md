@@ -39,16 +39,17 @@ claude --version
 # 2. Authenticated (claude stores its session under ~/.claude/.credentials.json)
 ls ~/.claude/.credentials.json && echo "claude credentials present"
 
-# 3. Adapter installed (SKILL.md + workspace assets; NO daemon)
-mycelium adapter add claude-code
+# 3. The mycelium skill, for a session started by hand (NO daemon)
+mkdir -p ~/.claude/skills/mycelium
+mycelium skill print > ~/.claude/skills/mycelium/SKILL.md
 ls ~/.claude/skills/mycelium/SKILL.md && echo "mycelium skill present"
 
 # 4. Mycelium backend reachable
 mycelium doctor --mode auto
 ```
 
-**Fail criteria**: any missing → run `claude login`, `mycelium adapter add
-claude-code`, or `mycelium up` before proceeding.
+**Fail criteria**: any missing → run `claude login`, step 3 above, or
+`mycelium up` before proceeding.
 
 ## The resident-loop harness
 

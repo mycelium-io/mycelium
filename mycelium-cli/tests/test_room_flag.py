@@ -28,7 +28,7 @@ AGENT_TEXT = [
     SRC / "integrations" / "herdr" / "bridge.py",
     SRC / "runner" / "daemon.py",
     SRC / "commands" / "swarm.py",
-    SRC / "integrations" / "claude_code" / "assets" / "skills" / "mycelium" / "SKILL.md",
+    SRC / "skills" / "mycelium" / "SKILL.md",
     # The digest a woken agent is told is built on the hub, in the same checkout.
     SRC.parents[2] / "fastapi-backend" / "app" / "services" / "wake_digest.py",
 ]

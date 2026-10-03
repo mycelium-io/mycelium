@@ -59,42 +59,27 @@ def test_family_declares_lifecycle(family: str) -> None:
 
 
 @pytest.mark.parametrize("family", FAMILIES)
-def test_install_facet_is_implemented(family: str) -> None:
-    """Both facets of the contract are present on every family.
+def test_the_contract_is_implemented(family: str) -> None:
+    """The whole contract is present on every family.
 
-    If a family is missing one, the class stays abstract and ``get_integration``
-    (above) raises — assert the surface explicitly so the contract is documented.
+    If a family is missing a method, the class stays abstract and
+    ``get_integration`` (above) raises; assert the surface explicitly so the
+    contract is documented.
     """
     impl = get_integration(family)
-    for method in (
-        "install",
-        "uninstall",
-        "reinstall_targets",
-        "dry_run_lines",
-        "post_install_banner",
-        "run_step",
-        "status_check",
-        # dispatch facet
-        "build_manifest",
-        "register",
-        "destroy",
-    ):
+    for method in ("build_manifest", "register", "destroy", "describe"):
         assert callable(getattr(impl, method)), f"{family} missing {method}"
-    assert isinstance(impl.STEPS, dict)
 
 
-def test_no_if_family_branching_left_in_command_layer() -> None:
-    """The command layer must dispatch via the registry, not branch on family.
+def test_there_is_no_host_install_step() -> None:
+    """Agents learn the protocol from their notes and wake prompts, so nothing
+    installs into an agent CLI's own settings any more."""
+    import importlib
 
-    A literal ``adapter_type ==`` / ``name ==`` comparison creeping back into
-    ``commands/adapter.py`` is a family-branching regression — fail loudly on it.
-    """
-    import pathlib
-
-    repo = pathlib.Path(__file__).resolve().parents[1]
-    src = (repo / "src/mycelium/commands/adapter.py").read_text()
-    assert 'adapter_type == "cursor"' not in src
-    assert 'adapter_type == "claude-code"' not in src
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("mycelium.commands.adapter")
+    for family in FAMILIES:
+        assert not hasattr(get_integration(family), "install"), family
 
 
 def test_manifest_literal_matches_registry() -> None:
@@ -109,7 +94,7 @@ def test_manifest_literal_matches_registry() -> None:
 
 
 def test_normalize_family_id_is_the_only_translation_boundary() -> None:
-    """Hyphen (CLI arg + asset dir) → underscore (persisted) and idempotent."""
+    """Hyphen (what people type) → underscore (persisted) and idempotent."""
     assert normalize_family_id("claude-code") == "claude_code"
     for family in AGENT_ADAPTERS:
         # Canonical ids are fixed points.

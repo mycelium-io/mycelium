@@ -22,8 +22,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import typer
-
 from mycelium.integrations.base import AddOptions, Integration
 from mycelium.protocol import AgentManifest
 
@@ -91,58 +89,3 @@ class EngineIntegration(Integration):
             f'  mycelium engine invoke {manifest.handle} "..."'
         )
         return lines
-
-    # ── install facet (no host assets; engines are backend-run) ─────────────
-
-    def install(
-        self,
-        *,
-        config: MyceliumConfig,
-        verbose: bool,
-        profile: str | None,
-        container: str | None,
-        reinstall: bool,
-    ) -> None:
-        return
-
-    def uninstall(self, *, record: dict, profile: str | None, container: str | None) -> None:
-        return
-
-    def reinstall_targets(self, *, profile: str | None, container: str | None) -> list[str]:
-        return []
-
-    def dry_run_lines(
-        self, *, config: MyceliumConfig, profile: str | None, container: str | None
-    ) -> list[str]:
-        return ["  (no host-level install for engines; the backend runs them)"]
-
-    def post_install_banner(
-        self,
-        *,
-        config: MyceliumConfig,
-        reinstall: bool,
-        profile: str | None,
-        container: str | None,
-    ) -> None:
-        typer.secho("Engine family ready.", fg=typer.colors.GREEN)
-        typer.echo("  Create a cognition engine in a room:")
-        typer.secho(
-            "    $ mycelium engine create <handle> --kind aligner --room <room>",
-            fg=typer.colors.CYAN,
-        )
-
-    def run_step(
-        self,
-        step: str,
-        *,
-        config: MyceliumConfig,
-        verbose: bool,
-        profile: str | None,
-        container: str | None,
-        remove: bool,
-    ) -> None:
-        return
-
-    def status_check(self, *, name: str, info: dict) -> dict:
-        # Engines have no host binary/asset to probe; the backend owns their run.
-        return {"ok": True, "details": [f"api_url: {info.get('api_url', '')}"]}

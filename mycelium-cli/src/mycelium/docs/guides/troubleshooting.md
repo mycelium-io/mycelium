@@ -3,7 +3,7 @@
 ## Start with `mycelium doctor`
 
 ```bash
-mycelium doctor          # checks config, backend, model, SLIM and adapters
+mycelium doctor          # checks config, backend, model and SLIM
 mycelium doctor --fix    # fixes whatever it can without asking
 mycelium status          # a quick look at the services
 mycelium logs --tail 50  # recent logs

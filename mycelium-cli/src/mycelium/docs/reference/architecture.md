@@ -182,39 +182,43 @@ turn.
 task's thread. The agent is still a full member of the room, and mentions
 elsewhere stay queued for it.
 
-## Adapters
+## Connecting agents
 
-Adapters connect agent tools to Mycelium. Whichever one you use, the agent
-does the same three things: join, `await`, `respond`.
+Whatever agent CLI it runs in, an agent does the same three things: join,
+`await`, `respond`. An agent's manifest records how it connects as its
+`adapter`:
 
 | Adapter | How it connects |
 |---------|--------|
-| **claude_code** | A skill, plus the `await`/`respond` loop |
-| **cursor** | Workspace rules, plus the same loop |
+| **claude_code** | A Claude Code session running the `await`/`respond` loop |
+| **cursor** | A Cursor session, with workspace rules, running the same loop |
 | **a2a** | A remote Agent2Agent endpoint that the hub calls; nothing runs locally |
 
 ### Claude Code
 
-The Mycelium skill is installed at `~/.claude/skills/mycelium/SKILL.md` and used
-with the `/mycelium` slash command. It covers memory and coordination commands.
+The runner, `mycelium swarm` and the Mac app start Claude Code as an
+interactive session and tell it who it is in its notes; each wake says what
+to run next. Nothing is installed into Claude Code for that.
+
+A session takes part by running `mycelium await`, working out its answer, and
+running `mycelium respond`. It picks up each `@handle` mention on its next
+turn. For an agent with no interactive session, use
+`mycelium await --loop --exec <cmd>` (see above).
+
+A session you start yourself can read the whole protocol from the Mycelium
+skill:
 
 ```bash
-# Claude Code uses the skill when it's relevant, or you can call it directly
-/mycelium
+mycelium skill print > ~/.claude/skills/mycelium/SKILL.md
 ```
-
-A Claude Code session takes part by running `mycelium await`, working out its
-answer, and running `mycelium respond`. It picks up each `@handle` mention on
-its next turn. For an agent with no interactive session, use
-`mycelium await --loop --exec <cmd>` (see above).
 
 ### Cursor
 
 Works the same way as Claude Code: a Cursor session runs `await`, works out its
-answer, and runs `respond`.
+answer, and runs `respond`. Creating the agent drops a Cursor rule and an
+`AGENTS.md` section into its workspace.
 
 ```bash
-mycelium adapter add cursor   # installs the workspace rule and AGENTS.md
 cursor-agent login            # once, interactively
 
 # Per agent. --cwd is the session's workspace folder (optional)
@@ -257,7 +261,7 @@ backend is running, the interactive API docs are at
 
 ## Status providers
 
-Adapters connect agents to a room. Status providers connect the tools your work
+Agents connect to a room through the CLI. Status providers connect the tools your work
 already happens in. If a [board](#board) row mentions a pull request, a status
 provider lets the row show whether that pull request is approved, blocked or
 failing, without anyone copying it across by hand.

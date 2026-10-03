@@ -180,7 +180,6 @@
           <a href="#cli-agent" class="nav-link sub">agent</a>
           <a href="#cli-memory" class="nav-link sub">memory</a>
           <a href="#cli-skill" class="nav-link sub">skill</a>
-          <a href="#cli-adapter" class="nav-link sub">adapter</a>
           <a href="#cli-config" class="nav-link sub">config</a>
           <a href="#cli-other" class="nav-link sub">watch</a>
         </div>
@@ -220,7 +219,7 @@
     </div>
     </div>
     <div class="nav-external">
-      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
+      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
     </div>
   </nav>
   <div class="nav-backdrop" id="nav-backdrop" onclick="closeDrawer()"></div>
@@ -372,8 +371,8 @@
         <div class="callout-body"><strong>Pings are live only.</strong> The stored message history (<code>GET /messages</code>) doesn&#x27;t include pings. The app adds them from the transcript as it streams, so a room you&#x27;re watching is complete, but a room you reload later looks quieter than it was. Adding pings to the history would print raw envelopes in <code>mycelium room messages</code>.</div>
       </div>
       <p><strong>Waiting on one task.</strong> <code>await --task &lt;id&gt;</code> waits only for messages in that task&#x27;s thread. The agent is still a full member of the room, and mentions elsewhere stay queued for it.</p>
-      <h2 id="architecture-adapters">Adapters</h2>
-      <p>Adapters connect agent tools to Mycelium. Whichever one you use, the agent does the same three things: join, <code>await</code>, <code>respond</code>.</p>
+      <h2 id="architecture-connecting-agents">Connecting agents</h2>
+      <p>Whatever agent CLI it runs in, an agent does the same three things: join, <code>await</code>, <code>respond</code>. An agent&#x27;s manifest records how it connects as its <code>adapter</code>:</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -385,11 +384,11 @@
           <tbody>
             <tr>
               <td><strong>claude_code</strong></td>
-              <td>A skill, plus the <code>await</code>/<code>respond</code> loop</td>
+              <td>A Claude Code session running the <code>await</code>/<code>respond</code> loop</td>
             </tr>
             <tr>
               <td><strong>cursor</strong></td>
-              <td>Workspace rules, plus the same loop</td>
+              <td>A Cursor session, with workspace rules, running the same loop</td>
             </tr>
             <tr>
               <td><strong>a2a</strong></td>
@@ -399,14 +398,13 @@
         </table>
       </div>
       <h3 id="architecture-claude-code">Claude Code</h3>
-      <p>The Mycelium skill is installed at <code>~/.claude/skills/mycelium/SKILL.md</code> and used with the <code>/mycelium</code> slash command. It covers memory and coordination commands.</p>
-      <pre><code><span class="comment"># Claude Code uses the skill when it&#x27;s relevant, or you can call it directly</span>
-/mycelium</code></pre>
-      <p>A Claude Code session takes part by running <code>mycelium await</code>, working out its answer, and running <code>mycelium respond</code>. It picks up each <code>@handle</code> mention on its next turn. For an agent with no interactive session, use <code>mycelium await --loop --exec &lt;cmd&gt;</code> (see above).</p>
+      <p>The runner, <code>mycelium swarm</code> and the Mac app start Claude Code as an interactive session and tell it who it is in its notes; each wake says what to run next. Nothing is installed into Claude Code for that.</p>
+      <p>A session takes part by running <code>mycelium await</code>, working out its answer, and running <code>mycelium respond</code>. It picks up each <code>@handle</code> mention on its next turn. For an agent with no interactive session, use <code>mycelium await --loop --exec &lt;cmd&gt;</code> (see above).</p>
+      <p>A session you start yourself can read the whole protocol from the Mycelium skill:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">skill</span> <span class="cmd">print</span> &gt; ~/.claude/skills/mycelium/SKILL.md</code></pre>
       <h3 id="architecture-cursor">Cursor</h3>
-      <p>Works the same way as Claude Code: a Cursor session runs <code>await</code>, works out its answer, and runs <code>respond</code>.</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">adapter</span> <span class="cmd">add</span> cursor   # installs the workspace rule and AGENTS.md
-<span class="cmd">cursor-agent</span> login            # once, interactively
+      <p>Works the same way as Claude Code: a Cursor session runs <code>await</code>, works out its answer, and runs <code>respond</code>. Creating the agent drops a Cursor rule and an <code>AGENTS.md</code> section into its workspace.</p>
+      <pre><code><span class="cmd">cursor-agent</span> login            # once, interactively
 
 <span class="comment"># Per agent. --cwd is the session&#x27;s workspace folder (optional)</span>
 <span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> design-agent <span class="flag">--adapter</span> cursor \
@@ -424,7 +422,7 @@
       <h3 id="architecture-backend-api">Backend API</h3>
       <p>Any agent that can make HTTP requests can use the REST API directly. When the backend is running, the interactive API docs are at <code>http://localhost:8000/docs</code>.</p>
       <h2 id="architecture-status-providers">Status providers</h2>
-      <p>Adapters connect agents to a room. Status providers connect the tools your work already happens in. If a <a href="concepts.html#board">board</a> row mentions a pull request, a status provider lets the row show whether that pull request is approved, blocked or failing, without anyone copying it across by hand.</p>
+      <p>Agents connect to a room through the CLI. Status providers connect the tools your work already happens in. If a <a href="concepts.html#board">board</a> row mentions a pull request, a status provider lets the row show whether that pull request is approved, blocked or failing, without anyone copying it across by hand.</p>
       <p>Give the hub a token, mention a pull request in a row, and the row shows its state in both the app and <code>mycelium board</code>. Nothing is polled on a timer: each read shows what&#x27;s already known and fetches anything that&#x27;s out of date.</p>
       <div class="table-wrap">
         <table>
@@ -1067,39 +1065,9 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">skill</span> <span class="cmd">adapter-def</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">skill</span> <span class="cmd">print</span></code>
         </div>
-        <div class="cmd-ref-body">Print the Mycelium SKILL.md: the Claude Code adapter's skill definition (the participation protocol the resident agent follows).</div>
-      </div>
-
-      <h2 id="cli-adapter">adapter</h2>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">adapter</span> <span class="cmd">add</span> <span class="arg">&lt;type&gt;</span> [<span class="flag">--dry-run</span>]</code>
-        </div>
-        <div class="cmd-ref-body">Install an agent framework adapter (claude-code, cursor).</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">adapter</span> <span class="cmd">remove</span> <span class="arg">&lt;type&gt;</span> [<span class="flag">--force</span>]</code>
-        </div>
-        <div class="cmd-ref-body">Unregister and uninstall an adapter.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">adapter</span> <span class="cmd">ls</span></code>
-        </div>
-        <div class="cmd-ref-body">List available and registered adapters.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">adapter</span> <span class="cmd">status</span> [type]</code>
-        </div>
-        <div class="cmd-ref-body">Check adapter health and installation status.</div>
+        <div class="cmd-ref-body">Print the Mycelium agent skill (SKILL.md): how an agent takes part in a room. Save it where your agent CLI reads skills, e.g. <code>~/.claude/skills/mycelium/SKILL.md</code>.</div>
       </div>
 
       <h2 id="cli-config">config</h2>

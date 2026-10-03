@@ -92,7 +92,7 @@ mycelium = [
     "py.typed",
     "data/*.json",
     "docs/**/*.md",
-    "integrations/claude_code/assets/**/*",
+    "skills/**/*",
     "integrations/cursor/assets/**/*",
     "daemon/service/*",
     "docker/*",

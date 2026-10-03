@@ -5,25 +5,16 @@
 
 A ``claude_code`` agent is a **resident** runtime: a Claude Code session (kept
 woken with ``mycelium await --loop``) that participates via ``await``/``respond``.
-Mycelium names the agent (the ``agents/<handle>`` manifest) and installs the
-skill; it does not run the process. So register/destroy have no runtime side
-effects; this exists so the command layer has a uniform contract.
+Mycelium names the agent (the ``agents/<handle>`` manifest); it does not run
+the process. So register/destroy have no runtime side effects; this exists so
+the command layer has a uniform contract.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
-import typer
-
 from mycelium.integrations.base import AddOptions, Integration
-from mycelium.integrations.claude_code.install import (
-    _CLAUDE_CODE_HOOKS,
-    _CLAUDE_CODE_SKILL_NAME,
-    _CLAUDE_CODE_STEPS,
-    _install_claude_code,
-)
 from mycelium.protocol import AgentManifest
 
 if TYPE_CHECKING:
@@ -92,96 +83,6 @@ class ClaudeCodeIntegration(Integration):
             f'  mycelium agent invoke {manifest.handle} "..."'
         )
         return lines
-
-    # ── install facet ───────────────────────────────────────────────────────
-
-    STEPS = _CLAUDE_CODE_STEPS
-
-    def install(
-        self,
-        *,
-        config: MyceliumConfig,
-        verbose: bool,
-        profile: str | None,
-        container: str | None,
-        reinstall: bool,
-    ) -> None:
-        _install_claude_code(verbose=verbose)
-
-    def uninstall(self, *, record: dict, profile: str | None, container: str | None) -> None:
-        # claude-code has no external runtime to tear down; `remove` just
-        # drops the config entry (handled by the command layer).
-        return
-
-    def reinstall_targets(self, *, profile: str | None, container: str | None) -> list[str]:
-        claude_dir = Path.home() / ".claude"
-        targets = [f"  • {claude_dir}/skills/{_CLAUDE_CODE_SKILL_NAME}"]
-        for hook in _CLAUDE_CODE_HOOKS:
-            targets.append(f"  • {claude_dir}/hooks/{hook}")
-        return targets
-
-    def dry_run_lines(
-        self, *, config: MyceliumConfig, profile: str | None, container: str | None
-    ) -> list[str]:
-        claude_dir = Path.home() / ".claude"
-        lines = [f"  skill → {claude_dir}/skills/{_CLAUDE_CODE_SKILL_NAME}/SKILL.md"]
-        for hook in _CLAUDE_CODE_HOOKS:
-            lines.append(f"  hook  → {claude_dir}/hooks/{hook}")
-        return lines
-
-    def post_install_banner(
-        self,
-        *,
-        config: MyceliumConfig,
-        reinstall: bool,
-        profile: str | None,
-        container: str | None,
-    ) -> None:
-        action = "reinstalled" if reinstall else "installed"
-        typer.secho(f"Adapter 'claude-code' {action}.", fg=typer.colors.GREEN)
-        typer.echo(f"  skill:   ~/.claude/skills/{_CLAUDE_CODE_SKILL_NAME}/SKILL.md")
-        for hook in _CLAUDE_CODE_HOOKS:
-            typer.echo(f"  hook:    ~/.claude/hooks/{hook}")
-        typer.echo("")
-        typer.secho("  Next steps:", bold=True)
-        typer.echo("")
-        typer.echo("  Set your active room, then start a Claude Code session:")
-        typer.secho("    $ mycelium room use <room-name>", fg=typer.colors.CYAN)
-        typer.echo("")
-        typer.echo("  Invoke the skill from within a session:")
-        typer.secho("    /mycelium", fg=typer.colors.CYAN)
-
-    def run_step(
-        self,
-        step: str,
-        *,
-        config: MyceliumConfig,
-        verbose: bool,
-        profile: str | None,
-        container: str | None,
-        remove: bool,
-    ) -> None:
-        # No follow-up steps (_CLAUDE_CODE_STEPS is empty). Kept to satisfy the
-        # Integration contract.
-        return
-
-    def status_check(self, *, name: str, info: dict) -> dict:
-        details: list[str] = []
-        ok = True
-
-        claude_dir = Path.home() / ".claude"
-        skill_ok = (claude_dir / "skills" / _CLAUDE_CODE_SKILL_NAME / "SKILL.md").exists()
-        details.append(f"  {'✓' if skill_ok else '✗'} skill:{_CLAUDE_CODE_SKILL_NAME}")
-        if not skill_ok:
-            ok = False
-        for hook_name in _CLAUDE_CODE_HOOKS:
-            hook_ok = (claude_dir / "hooks" / hook_name).exists()
-            details.append(f"  {'✓' if hook_ok else '✗'} hook:{hook_name}")
-            if not hook_ok:
-                ok = False
-
-        details.append(f"api_url: {info.get('api_url', '')}")
-        return {"ok": ok, "details": details}
 
 
 #: Back-compat alias for the historical class name.

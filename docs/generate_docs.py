@@ -135,7 +135,6 @@ GROUP_CONFIG: list[tuple[str, str, str]] = [
     ("skill", "skill", "skill"),
     ("negotiate", "negotiate", "negotiate"),
     ("cfn", "cfn", "cfn"),
-    ("adapter", "adapter", "adapter"),
     ("config", "config", "config"),
     ("other", "watch", "watch"),
 ]
@@ -144,7 +143,6 @@ GROUP_CONFIG: list[tuple[str, str, str]] = [
 CONFIG_NAMESPACE_ORDER: list[str] = [
     "identity", "server", "llm", "runtime", "negotiation", "rooms", "knowledge_ingest",
 ]
-CONFIG_NAMESPACE_SKIP: set[str] = {"adapters"}
 
 REPO_ROOT = Path(__file__).parent.parent
 DOCS_DIR = REPO_ROOT / "mycelium-cli" / "src" / "mycelium" / "docs"
@@ -575,7 +573,6 @@ def _all_kept_sections() -> dict[str, str]:
 
 def _generate_cli_reference() -> tuple[str, list[tuple[str, str]]]:
     """Return (content_html, sidebar_entries) for the cli-reference page."""
-    import mycelium.commands.adapter  # noqa: F401
     import mycelium.commands.agent  # noqa: F401
     import mycelium.commands.board  # noqa: F401
     import mycelium.commands.config  # noqa: F401
@@ -694,9 +691,7 @@ def _generate_config_reference() -> tuple[str, list[tuple[str, str]]]:
 
     declared = list(MyceliumConfig.model_fields.keys())
     ordered = [n for n in CONFIG_NAMESPACE_ORDER if n in declared]
-    ordered += [
-        n for n in declared if n not in ordered and n not in CONFIG_NAMESPACE_SKIP
-    ]
+    ordered += [n for n in declared if n not in ordered]
 
     section_lines = ["      <h1>Configuration</h1>"]
     section_lines.append(
@@ -1050,8 +1045,7 @@ GITHUB_SVG = (
 
 SKILL_MD_URL = (
     "https://raw.githubusercontent.com/mycelium-io/mycelium/main/"
-    "mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/"
-    "mycelium/SKILL.md"
+    "mycelium-cli/src/mycelium/skills/mycelium/SKILL.md"
 )
 
 # Every markdown-backed section links back to the file it was rendered from, so

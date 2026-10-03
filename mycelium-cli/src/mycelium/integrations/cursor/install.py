@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Cursor install facet: workspace assets + daemon composition.
+"""Cursor workspace assets, dropped when a cursor agent is created.
 
-Unlike claude_code (which installs host-level skills/hooks into
-``~/.claude/``), cursor's reading surfaces are workspace-local:
+Cursor's reading surfaces are workspace-local:
 
 - ``<cwd>/.cursor/rules/mycelium.mdc``: a Cursor project-rules file loaded
   automatically by Cursor on every session in the workspace. Owned wholly by
@@ -18,9 +17,7 @@ Unlike claude_code (which installs host-level skills/hooks into
   whether to write.
 
 These drops happen per-agent in :class:`CursorIntegration.register` (called
-by ``mycelium agent create``), NOT in :meth:`Integration.install`. Cursor
-has no single host-level state dir, so ``mycelium adapter add cursor``
-itself is informational; it points the user at the agent-create path.
+by ``mycelium agent create --adapter cursor``).
 """
 
 from __future__ import annotations
@@ -55,9 +52,6 @@ _CURSOR_AGENTS_ASSET = "AGENTS.md"
 #: has placed there.
 _AGENTS_SECTION_START = "<!-- mycelium:start -->"
 _AGENTS_SECTION_END = "<!-- mycelium:end -->"
-
-#: ``mycelium adapter add cursor --step=<step>`` follow-up actions. None today.
-_CURSOR_STEPS: dict[str, str] = {}
 
 
 # ── workspace asset drop / remove ────────────────────────────────────────────
