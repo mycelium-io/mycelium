@@ -73,6 +73,12 @@ mycelium-promo/     The product demo: one shotkit take of the real app
                     inline when uploaded via GitHub's web drag-drop (gh CLI has
                     no equivalent). After re-recording, drag the new MP4 into a
                     PR comment to mint a fresh URL, then swap it into both embeds.
+mycelium-deck/      The slide template for talks and workshops: plain HTML on a
+                    1920x1080 stage (`index.html`, no build), the docs' palette
+                    and type, over one WebGL glass lens moving across a growing
+                    mycelial network (`lens.js`). Each slide places the lens
+                    with `data-lens`; keys, steps, overview, speaker view and
+                    timers are `deck.js`. See its README.
 ```
 
 ## Development

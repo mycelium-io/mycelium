@@ -1,0 +1,240 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- Copyright 2026 Mycelium Contributors -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mycelium Workshop</title>
+<link rel="icon" href="../docs/logo.png">
+<link rel="stylesheet" href="deck.css">
+</head>
+<body>
+<canvas id="lens-bg" aria-hidden="true"></canvas>
+
+<!-- data-talk is the line in the middle of every slide's footer. -->
+<main class="deck" data-talk="Mycelium · Hands-on workshop">
+
+  <!-- ── Title ── -->
+  <section class="slide layout-title" data-title="Title" data-lens="1520 470 330, 1130 860 54" data-bare>
+    <span class="kicker rise">Workshop · October 2026</span>
+    <h1 class="display rise">Agents that work <em class="glow">as a room</em></h1>
+    <p class="lede rise">Hands-on with Mycelium: tasks, threads, and an aligner that settles what the agents disagree on.</p>
+    <div class="byline rise"><span>Your Name</span><span class="dot"></span><span>@handle</span><span class="dot"></span><span>Venue · Room</span></div>
+    <aside class="notes">
+      <p>Welcome everyone. While people settle in, the next slide has the install commands up. Leave it there for five minutes.</p>
+      <p>The lens behind me moves with every slide. If someone asks: it is WebGL, and the network behind it keeps growing for the whole session.</p>
+    </aside>
+  </section>
+
+  <!-- ── Setup ── -->
+  <section class="slide layout-terminal" data-title="Set up while we talk" data-lens="1700 220 200">
+    <div class="copy">
+      <span class="kicker rise">Before we start</span>
+      <h2 class="rise" style="margin:34px 0 30px">Set up while we talk</h2>
+      <p class="rise">Three commands, about four minutes. You need Docker running and an LLM key at hand.</p>
+      <p class="rise">Stuck? Raise a hand. A helper will come to you.</p>
+    </div>
+    <div class="term pane rise">
+      <div class="bar"><i></i><i></i><i></i><span>~ / workshop</span></div>
+<pre><span class="c"># install the CLI</span>
+<span class="p">$ </span>curl <span class="f">-fsSL</span> \
+    <span class="s">https://mycelium-io.github.io/mycelium/install.sh</span> | bash
+
+<span class="c"># pull images, add your LLM key</span>
+<span class="p">$ </span><span class="k">mycelium install</span>
+
+<span class="c"># open the app</span>
+<span class="p">$ </span><span class="k">mycelium ui open</span></pre>
+    </div>
+    <aside class="notes">
+      <p>Read the commands out once. Point at the helpers in the room.</p>
+      <p>Anyone using an agent can paste: “Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium.”</p>
+    </aside>
+  </section>
+
+  <!-- ── Agenda ── -->
+  <section class="slide" data-title="Agenda" data-lens="1600 600 250">
+    <span class="kicker rise">The next 90 minutes</span>
+    <h2 class="rise" style="margin-top:34px">Agenda</h2>
+    <ol class="agenda">
+      <li class="rise"><time>00:00</time><span>Why a room</span><span></span></li>
+      <li class="rise"><time>00:15</time><span>Rooms, tasks and threads</span><span></span></li>
+      <li class="rise"><time>00:35</time><span>File your first task</span><span class="tag">Exercise</span></li>
+      <li class="rise"><time>00:50</time><span>The aligner</span><span></span></li>
+      <li class="rise"><time>01:10</time><span>Run a swarm</span><span class="tag">Exercise</span></li>
+      <li class="rise"><time>01:30</time><span>Questions</span><span></span></li>
+    </ol>
+    <aside class="notes"><p>Two hands-on blocks. Say clearly that the exercises build on each other, so anyone who falls behind should pair with a neighbour.</p></aside>
+  </section>
+
+  <!-- ── Section ── -->
+  <section class="slide layout-section" data-title="01 · Why a room" data-lens="1430 520 300">
+    <span class="num" aria-hidden="true">01</span>
+    <span class="kicker rise">Part one</span>
+    <h2 class="rise">Why a room</h2>
+    <p class="lede rise">Agents that share a room, and keep its memory, coordinate without you choosing a protocol.</p>
+    <aside class="notes"><p>Section divider. Copy this slide for each part and change the numeral and the lens position.</p></aside>
+  </section>
+
+  <!-- ── Statement ── -->
+  <section class="slide layout-statement" data-title="The design rule" data-lens="1680 840 190, 1440 970 38">
+    <span class="kicker rise">The design rule</span>
+    <blockquote class="rise">A human drops a task <span class="accent">and never picks a protocol.</span></blockquote>
+    <cite class="rise">Everything else in Mycelium follows from this line.</cite>
+    <aside class="notes"><p>Pause here and let the line land. Then: agents claim the task, break it up, and coordinate inside it. A negotiation is one optional step inside a task.</p></aside>
+  </section>
+
+  <!-- ── Cards ── -->
+  <section class="slide" data-title="Three things to know" data-lens="960 780 330">
+    <span class="kicker rise">The model</span>
+    <h2 class="rise" style="margin-top:34px">Three things to know</h2>
+    <div class="cards">
+      <article class="card pane rise"><span class="glyph"></span><h3>Rooms</h3><p>An end-to-end encrypted group channel, plus a folder of memory on the hub.</p><span class="foot">mycelium room create</span></article>
+      <article class="card pane rise"><span class="glyph"></span><h3>Tasks</h3><p>A row on the board and a thread on the channel, one to one. Work happens in the thread.</p><span class="foot">mycelium board new</span></article>
+      <article class="card pane rise"><span class="glyph"></span><h3>Memory</h3><p>Markdown with frontmatter, searchable by meaning, linked with <code>[[key]]</code>.</p><span class="foot">mycelium memory search</span></article>
+    </div>
+    <aside class="notes"><p>Keep it to one sentence per card. The exercise will make each one concrete.</p></aside>
+  </section>
+
+  <!-- ── Diagram: the aligner sits in the lens ── -->
+  <section class="slide layout-diagram" data-title="The aligner" data-lens="1270 560 220">
+    <svg class="diagram" viewBox="0 0 1920 1080" aria-hidden="true">
+      <path class="wire live" d="M960 310 Q 1080 380 1110 420"/>
+      <path class="wire" d="M1640 290 Q 1520 360 1440 430"/>
+      <path class="wire live" d="M1680 820 Q 1560 760 1450 690"/>
+      <path class="wire" d="M940 830 Q 1040 760 1100 700"/>
+      <g class="agent"><circle cx="900" cy="290" r="80"/><text x="900" y="280">@scout</text><text class="role" x="900" y="315">plans</text></g>
+      <g class="agent"><circle cx="1700" cy="260" r="80"/><text x="1700" y="250">@sec</text><text class="role" x="1700" y="285">security</text></g>
+      <g class="agent"><circle cx="1740" cy="850" r="80"/><text x="1740" y="840">@builder</text><text class="role" x="1740" y="875">builds</text></g>
+      <g class="agent"><circle cx="880" cy="860" r="80"/><text x="880" y="850">@reviewer</text><text class="role" x="880" y="885">reviews</text></g>
+      <g class="hub"><text x="1270" y="545">aligner</text><text class="sub" x="1270" y="610">brokers each round</text></g>
+    </svg>
+    <div class="copy">
+      <span class="kicker rise">Part two</span>
+      <h2 class="rise" style="margin:34px 0 34px">The aligner sits in the middle</h2>
+      <p class="rise">It finds the issues in the opening positions, asks one agent at a time, and stops the moment they agree.</p>
+    </div>
+    <aside class="notes"><p>In this layout the lens is the subject: the aligner's label sits at its centre. Move the diagram and the lens together. The lens coordinates are the same stage pixels as the SVG viewBox.</p></aside>
+  </section>
+
+  <!-- ── Terminal ── -->
+  <section class="slide layout-terminal dense" data-title="A task, end to end" data-lens="1730 150 150">
+    <div class="copy">
+      <span class="kicker rise">In the terminal</span>
+      <h2 class="rise" style="margin:34px 0 30px">A task, end to end</h2>
+      <p class="rise">File it, hand it to an agent, split off a decision, and summon the aligner when two agents disagree.</p>
+    </div>
+    <div class="term pane rise">
+      <div class="bar"><i></i><i></i><i></i><span>room · passkeys</span></div>
+<pre><span class="p">$ </span><span class="k">mycelium board new</span> <span class="s">"Ship passkey login"</span>
+<span class="p">$ </span><span class="k">mycelium board claim</span> <span class="a">work/ship-passkey-login</span> <span class="f">--to</span> @scout
+<span class="p">$ </span><span class="k">mycelium board new</span> <span class="s">"Pick token storage"</span> \
+    <span class="f">--parent</span> <span class="a">work/ship-passkey-login</span> <span class="f">--assign</span> @sec
+<span class="p">$ </span><span class="k">mycelium board send</span> <span class="a">work/pick-token-storage</span> \
+    <span class="s">"@sec keychain, or WebCrypto?"</span>
+<span class="p">$ </span><span class="k">mycelium board coordinate</span> <span class="a">work/pick-token-storage</span> \
+    aligner <span class="s">"converge on token storage"</span>
+<span class="p">$ </span><span class="k">mycelium board</span>   <span class="c"># what needs you</span></pre>
+    </div>
+    <aside class="notes"><p>Walk through one line at a time. The last command is the one people will type most.</p></aside>
+  </section>
+
+  <!-- ── Flow: the lens follows each step ── -->
+  <section class="slide" data-title="How a task moves" data-lens="191 432 96">
+    <span class="kicker rise">The board</span>
+    <h2 class="rise" style="margin-top:34px">How a task moves</h2>
+    <ol class="flow">
+      <li><span class="marker">1</span><h3>Filed</h3><p>A row on the board, with its own thread.</p><span class="notice">filed</span></li>
+      <li class="step" data-lens="604 432 96"><span class="marker">2</span><h3>Claimed</h3><p>An agent takes it and says so.</p><span class="notice">claimed</span></li>
+      <li class="step" data-lens="1018 432 96"><span class="marker">3</span><h3>Worked</h3><p>The conversation stays in the thread.</p><span class="notice">ping</span></li>
+      <li class="step" data-lens="1431 432 96"><span class="marker">4</span><h3>Resolved</h3><p>The room's timeline shows it as done.</p><span class="notice">resolved</span></li>
+    </ol>
+    <aside class="notes"><p>Each press shows the next step, and the lens moves under it. Mark a step with class <code>step</code> to reveal it on a press, and give it <code>data-lens</code> to move the lens.</p></aside>
+  </section>
+
+  <!-- ── Numbers ── -->
+  <section class="slide" data-title="In numbers" data-lens="1600 320 220, 1330 170 46">
+    <span class="kicker rise">This afternoon</span>
+    <h2 class="rise" style="margin-top:34px">In numbers</h2>
+    <div class="numbers">
+      <div class="rise"><div class="n">1</div><div class="label">room, shared by everyone here</div></div>
+      <div class="rise"><div class="n">50+</div><div class="label">people, each with an agent of their own</div></div>
+      <div class="rise"><div class="n">0</div><div class="label">protocols you will have to pick</div></div>
+    </div>
+    <aside class="notes"><p>Sample figures. Swap in whatever is true for the room on the day.</p></aside>
+  </section>
+
+  <!-- ── Exercise: the timer sits in the lens ── -->
+  <section class="slide layout-exercise" data-title="Exercise 1 · File your first task" data-lens="1500 560 300">
+    <span class="kicker rise">Exercise 1 · 10 minutes</span>
+    <h2 class="rise" style="margin-top:34px">File your first task</h2>
+    <ol class="steps">
+      <li class="rise"><span>Make a room and switch to it<br><code>mycelium room create workshop-you</code><br><code>mycelium room use workshop-you</code></span></li>
+      <li class="rise"><span>File a task<br><code>mycelium board new "Plan a team lunch"</code></span></li>
+      <li class="rise"><span>Open the app, find the row, and mention your agent in its thread.</span></li>
+    </ol>
+    <div class="timer rise" data-minutes="10" style="--x:1500px; --y:560px" role="timer" aria-label="Exercise timer"></div>
+    <aside class="notes"><p>Click the timer to start it. Click again to pause, double-click to reset. Walk the room while it runs.</p></aside>
+  </section>
+
+  <!-- ── Image ── -->
+  <section class="slide layout-image" data-title="The board in the app" data-lens="760 860 230, 1760 160 60">
+    <div class="copy">
+      <span class="kicker rise">In the app</span>
+      <h2 class="rise" style="margin:34px 0 30px">The board</h2>
+      <p class="rise">Every row is a task. Open one and you are in its thread.</p>
+    </div>
+    <div class="frame pane rise tilt"><img src="../docs/app-room-board@2x.png" alt="The Mycelium app: a room's board with tasks in columns"></div>
+    <aside class="notes"><p>Screenshots come from <code>docs/</code>. Run <code>pnpm screenshots</code> in mycelium-frontend for fresh ones before the day.</p></aside>
+  </section>
+
+  <!-- ── Compare ── -->
+  <section class="slide" data-title="Without a room, with a room" data-lens="1700 190 140">
+    <span class="kicker rise">The difference</span>
+    <h2 class="rise" style="margin-top:34px">Without a room, with one</h2>
+    <div class="compare">
+      <div class="side pane without rise">
+        <h3>Agents on their own</h3>
+        <ul><li>Each one starts from nothing</li><li>You copy context between them</li><li>Disagreements end with you</li></ul>
+      </div>
+      <div class="side pane with rise">
+        <h3>Agents in a room</h3>
+        <ul><li>Shared memory, searchable by meaning</li><li>Every task carries its own thread</li><li>The aligner brokers the decision</li></ul>
+      </div>
+    </div>
+    <aside class="notes"><p>The dashed pane is the “before”. Keep the two lists the same length so the rows line up.</p></aside>
+  </section>
+
+  <!-- ── Close ── -->
+  <section class="slide layout-close" data-title="Questions" data-lens="960 470 400" data-bare>
+    <span class="kicker rise">Thank you</span>
+    <h1 class="display rise" style="margin-top:30px">Questions?</h1>
+    <div class="links rise">
+      <a class="pane" href="https://mycelium-io.github.io/mycelium/"><span>docs</span> mycelium-io.github.io/mycelium</a>
+      <a class="pane" href="https://github.com/mycelium-io/mycelium"><span>code</span> github.com/mycelium-io/mycelium</a>
+    </div>
+    <aside class="notes"><p>Leave this up during questions. The network has been growing since the first slide.</p></aside>
+  </section>
+</main>
+
+<div class="progress"></div>
+<div class="goto pane"></div>
+<div class="blackout"></div>
+<div class="help pane" role="dialog" aria-label="Keys">
+  <div class="title">Keys</div>
+  <div><b>→ Space</b>next step or slide</div>
+  <div><b>←</b>back</div>
+  <div><b>O</b>overview</div>
+  <div><b>S</b>speaker view</div>
+  <div><b>F</b>fullscreen</div>
+  <div><b>T</b>light / dark</div>
+  <div><b>B</b>blackout</div>
+  <div><b>12 ⏎</b>go to slide 12</div>
+  <div><b>?</b>this panel</div>
+</div>
+
+<script src="lens.js"></script>
+<script src="deck.js"></script>
+</body>
+</html>
