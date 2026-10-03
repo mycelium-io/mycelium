@@ -10,6 +10,7 @@ exactly as written.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -22,6 +23,15 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 runner = CliRunner()
+
+
+def _help(app: typer.Typer, *path: str) -> str:
+    """A command's help as plain text. Rich colors a flag in pieces (`-` then
+    `-body`) when color is forced, as it is in CI, so the escapes come off."""
+    out = runner.invoke(app, [*path, "--help"], env={"COLUMNS": "200"}).output
+    return re.sub(r"\x1b\[[0-9;]*m", "", out)
+
+
 BODY = "Two options:\n\n- ship today, refunds manual\n- wait a day for automatic ones\n"
 
 
@@ -84,7 +94,7 @@ def test_none_two_or_an_unreadable_file_is_a_usage_mistake(args: list[str], said
 
 def test_help_names_all_three() -> None:
     app, _ = _app()
-    out = runner.invoke(app, ["--help"], env={"NO_COLOR": "1", "COLUMNS": "200"}).output
+    out = _help(app)
     assert "--body" in out
     assert "--file" in out
 
@@ -117,6 +127,6 @@ def test_every_command_that_takes_text_takes_it_the_same_way() -> None:
         ("skill", "set"),
     }
     for path in names:
-        out = runner.invoke(app, [*path, "--help"], env={"NO_COLOR": "1", "COLUMNS": "200"}).output
+        out = _help(app, *path)
         assert "--body" in out, path
         assert "--file" in out, path
