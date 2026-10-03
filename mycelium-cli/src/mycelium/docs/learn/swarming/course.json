@@ -13,6 +13,7 @@
     "Tell a task worth swarming from one a pair should take",
     "Write a task that splits cleanly into parts",
     "Pick the size and where the team runs",
+    "Set up a self-organizing team that hands work to itself, so only decisions reach you",
     "Watch, steer, and recover a swarm that goes sideways"
   ],
   "modules": [
@@ -75,10 +76,49 @@
       }
     },
     {
+      "title": "A self-organizing team",
+      "video": {
+        "take": "relay",
+        "about": "One task handed to a PM, and the team organizes itself: the agents wake each other through tasks and mentions, a tester files a fix for the coder, and only one decision reaches you."
+      },
+      "lessons": [
+        {
+          "id": "07-attention",
+          "title": "Spend your attention where it counts",
+          "minutes": 4
+        },
+        {
+          "id": "08-wake",
+          "title": "How an agent wakes another",
+          "minutes": 5,
+          "quiz": {
+            "question": "The coder resolves the API task. The help page task, for @writer, was waiting on it. What gets the writer started?",
+            "options": [
+              "Nothing needs to: resolving the API task wakes the writer",
+              "The coder says so in the thread: \"@writer, it's yours\"",
+              "The PM files the help page task again"
+            ],
+            "answer": 1,
+            "why": "Resolving a task tells the board, not the agent waiting on it. A mention (or a task filed for it) is what wakes an agent, so whoever finishes says who's next."
+          }
+        },
+        {
+          "id": "09-chain",
+          "title": "Lay out work that hands itself off",
+          "minutes": 6
+        },
+        {
+          "id": "10-reach-you",
+          "title": "Let only decisions reach you",
+          "minutes": 5
+        }
+      ]
+    },
+    {
       "title": "Getting good at it",
       "lessons": [
         {
-          "id": "07-going-wrong",
+          "id": "11-going-wrong",
           "title": "When a swarm goes sideways",
           "minutes": 6,
           "quiz": {
@@ -93,7 +133,7 @@
           }
         },
         {
-          "id": "08-exercise",
+          "id": "12-exercise",
           "title": "Exercise: a team against a pair",
           "minutes": 5
         }

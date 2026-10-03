@@ -336,6 +336,7 @@ window.MYCELIUM_COURSES = [
    "Tell a task worth swarming from one a pair should take",
    "Write a task that splits cleanly into parts",
    "Pick the size and where the team runs",
+   "Set up a self-organizing team that hands work to itself, so only decisions reach you",
    "Watch, steer, and recover a swarm that goes sideways"
   ],
   "modules": [
@@ -406,10 +407,54 @@ window.MYCELIUM_COURSES = [
     }
    },
    {
+    "title": "A self-organizing team",
+    "video": {
+     "take": "relay",
+     "about": "One task handed to a PM, and the team organizes itself: the agents wake each other through tasks and mentions, a tester files a fix for the coder, and only one decision reaches you.",
+     "seconds": 85.4
+    },
+    "lessons": [
+     {
+      "id": "07-attention",
+      "title": "Spend your attention where it counts",
+      "minutes": 4,
+      "html": "      <p>Every way of working with agents asks for some of your attention. The point of this section is to need less of it without losing control:</p>\n      <ol class=\"steps\">\n        <li><strong>Watching:</strong> you read every message as it lands. One agent at a time.</li>\n        <li><strong>Checking in:</strong> you read a thread every hour or so. A pair, or a team.</li>\n        <li><strong>Answering:</strong> you come back only when something asks you. The agents ask each other for everything else.</li>\n        <li><strong>Reading results:</strong> you hand off a goal and read one summary at the end.</li>\n      </ol>\n      <p>Getting from the second rung to the fourth is not about smarter agents. It&#x27;s about a <strong>self-organizing team</strong>: agents that set each other to work. When one finishes, it tells the next one to start; when one finds work for another, it files it for them; when one is stuck, it asks a teammate before it asks you. You stop being the one who passes work along.</p>\n      <p>Self-organizing doesn&#x27;t mean unstructured. The team organizes itself inside a shape you give it once: who does what, what waits on what, and which questions are yours. The rest of this section is that shape.</p>\n      <p>What stays with you are the decisions only you can make. The aim is that those are the only things that reach you, in one place you check.</p>"
+     },
+     {
+      "id": "08-wake",
+      "title": "How an agent wakes another",
+      "minutes": 5,
+      "quiz": {
+       "question": "The coder resolves the API task. The help page task, for @writer, was waiting on it. What gets the writer started?",
+       "options": [
+        "Nothing needs to: resolving the API task wakes the writer",
+        "The coder says so in the thread: \"@writer, it's yours\"",
+        "The PM files the help page task again"
+       ],
+       "answer": 1,
+       "why": "Resolving a task tells the board, not the agent waiting on it. A mention (or a task filed for it) is what wakes an agent, so whoever finishes says who's next."
+      },
+      "html": "      <p>An agent that&#x27;s waiting is woken by three things, and an agent can do all three on its own, from its CLI:</p>\n      <ul>\n        <li><strong>A task filed for it.</strong> <code>mycelium board new &quot;Fix the split payment&quot; --assign @coder</code> wakes the coder if it runs on your machine (in herdr) or on the hub. Its wake says what it was given and how to claim it.</li>\n        <li><strong>A mention.</strong> <code>@writer</code> in a message, in the room or in a task&#x27;s thread, wakes the writer. This is the one that also reaches an agent kept going with <code>mycelium await --loop</code>, which a filed task alone doesn&#x27;t wake.</li>\n        <li><strong>A turn.</strong> When the conductor or the aligner puts a step to one member, that member is woken for it.</li>\n      </ul>\n      <p>One thing does <strong>not</strong> wake anybody: finishing a task. Resolving a row tells the board, and a task that was waiting on it stops waiting, but its agent isn&#x27;t told. So the agent that finishes says who&#x27;s next:</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">The API is in, so the help page can start. @writer, it&#x27;s yours.</div>\n      </div>\n      <p>A woken agent doesn&#x27;t get a bare ping. It gets a short digest: why it woke, what changed since its last turn, its tasks, and the messages that asked for it.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">An agent that should start the moment its prerequisite is done, with nobody mentioning it, can watch its own row: <code>mycelium await --lease work/gift-cards-tests --loop</code> wakes when the row stops waiting.</div>\n      </div>"
+     },
+     {
+      "id": "09-chain",
+      "title": "Lay out work that hands itself off",
+      "minutes": 6,
+      "html": "      <p>Give the lead (your PM, or a swarm&#x27;s first member) the whole goal, and have it file the work as a chain: each task for the agent who&#x27;ll do it, waiting on the one before it, and all of them part of the goal.</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">memory</span> <span class=\"cmd\">set</span> work/gift-cards-checkout <span class=\"str\">&quot;Pay with a gift card at checkout&quot;</span> \\\n  <span class=\"flag\">-m</span> assignee=coder <span class=\"flag\">-m</span> depends-on=work/gift-cards-api <span class=\"flag\">-m</span> part-of=work/ship-gift-cards</code></pre>\n      <p>The board shows a waiting task as <strong>after work/gift-cards-api</strong>, so you can see the order at a glance. Then three lines in the agents&#x27; briefs make the chain run itself:</p>\n      <pre><code>- When a task is filed for you, claim it right away, even if it&#x27;s waiting.\n- When you resolve a task, @mention whoever is waiting on it.\n- When you find work that belongs to someone else, file it for them with\n  `mycelium board new &quot;&lt;what&gt;&quot; --assign @&lt;who&gt;`, and say so in your thread.\n- Whoever resolves the last part tells the lead, who writes the summary.</code></pre>\n      <p>Claiming at once matters for you as much as for them: a task nobody has claimed counts as needing you, so a chain whose tasks sit unclaimed fills your &quot;Needs you&quot; with work that&#x27;s simply waiting its turn.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">Hub workers in a swarm already do the last step on their own: when the last part resolves, the lead combines them. Agents on your machine do it because their brief says so.</div>\n      </div>"
+     },
+     {
+      "id": "10-reach-you",
+      "title": "Let only decisions reach you",
+      "minutes": 5,
+      "html": "      <p>The board&#x27;s <strong>Needs you</strong> is the one place to check. Keep it for what only you can decide, and have the agents put their questions there instead of waiting in a thread for you to notice:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">memory</span> <span class=\"cmd\">set</span> decisions/gift-card-expiry <span class=\"str\">&quot;Do gift cards expire?&quot;</span> <span class=\"flag\">-m</span> status=open</code></pre>\n      <p>An open decision sits in Needs you until it&#x27;s resolved. Answer in its thread; the agent that asked reads your answer and passes it on. Work that can go on without the answer goes on.</p>\n      <p>What keeps a team that wakes itself from running away:</p>\n      <ul>\n        <li><strong>Your machine asks before it starts a new agent</strong> the app or another agent asked for through the hub, unless you&#x27;ve told your runner to trust its hub. The question guards against the network, not against an agent already running commands on your machine: a local <code>mycelium swarm</code> starts agents without asking, so only let agents run what you mean them to.</li>\n        <li><strong>Hub workers are capped</strong>: a bounded number of turns per room, each one timed out, one at a time per worker, and a part can&#x27;t be resolved before someone else has reviewed it.</li>\n        <li><strong>Engines can&#x27;t be summoned by just anyone&#x27;s model</strong>: workers and personas can&#x27;t summon the aligner or the conductor, and a thread with a flow running in it only takes posts from whoever has the floor.</li>\n      </ul>\n      <p>What you still watch for: a chain where nothing has moved for an hour (someone finished and didn&#x27;t say who&#x27;s next), and a Needs you that fills with tasks rather than questions (agents not claiming what&#x27;s filed for them).</p>"
+     }
+    ]
+   },
+   {
     "title": "Getting good at it",
     "lessons": [
      {
-      "id": "07-going-wrong",
+      "id": "11-going-wrong",
       "title": "When a swarm goes sideways",
       "minutes": 6,
       "quiz": {
@@ -425,10 +470,10 @@ window.MYCELIUM_COURSES = [
       "html": "      <ul>\n        <li><strong>Members collide.</strong> Two of them change the same files, or undo each other&#x27;s work. Start with <code>--worktree</code>, and write the task so its parts are separate areas of the code.</li>\n        <li><strong>The split is wrong.</strong> Parts overlap, or one part is most of the work. The task didn&#x27;t name its parts. Stop, rewrite the task with the parts spelled out, and start again: a better split saves more time than it costs.</li>\n        <li><strong>Reviews wave things through.</strong> Each reviewer says &quot;looks good&quot; and the combined result doesn&#x27;t work. Put the checks in the task (&quot;done when...&quot;), so every reviewer holds its part to the same bar.</li>\n        <li><strong>One part stalls.</strong> Its thread goes quiet while the others finish. Open it: usually the member is waiting on a question nobody answered.</li>\n      </ul>"
      },
      {
-      "id": "08-exercise",
+      "id": "12-exercise",
       "title": "Exercise: a team against a pair",
       "minutes": 5,
-      "html": "      <p>Take a real task with three clear parts.</p>\n      <ol class=\"steps\">\n        <li>Write it the way lesson 3 shows: the parts, what done means, the limits.</li>\n        <li>Swarm it with three members and <code>--worktree</code>.</li>\n        <li>Note how long it takes, and how much of the combined result you&#x27;d merge as is.</li>\n        <li>Next time a similar task comes up, give it to a pair instead, and compare.</li>\n      </ol>\n      <p>Swarm what has parts, pair what doesn&#x27;t. After a few runs you&#x27;ll tell them apart from the task&#x27;s first line.</p>"
+      "html": "      <p>Take a real task with three clear parts.</p>\n      <ol class=\"steps\">\n        <li>Write it the way lesson 3 shows: the parts, what done means, the limits.</li>\n        <li>Swarm it with three members and <code>--worktree</code>.</li>\n        <li>Note how long it takes, and how much of the combined result you&#x27;d merge as is.</li>\n        <li>Next time a similar task comes up, give it to a pair instead, and compare.</li>\n      </ol>\n      <p>Then try the hands-off version. Give your PM the next goal with parts, add the four lines from &quot;Lay out work that hands itself off&quot; to every agent&#x27;s brief, and check only Needs you until the summary lands. Count how many times you were asked something, and whether each one was a real decision.</p>\n      <p>Swarm what has parts, pair what doesn&#x27;t, and hand off whatever runs in order. After a few runs you&#x27;ll tell them apart from the task&#x27;s first line.</p>"
      }
     ],
     "video": {

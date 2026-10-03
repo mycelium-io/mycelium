@@ -35,6 +35,7 @@ export const LEARN_TAKES = [
   "swarm-task",
   "swarm-run",
   "swarm-steer",
+  "relay",
 ] as const;
 
 export type LearnTake = (typeof LEARN_TAKES)[number];
@@ -845,6 +846,159 @@ async function swarmFinish(d: Director): Promise<void> {
   d.present(TEAM[0]);
 }
 
+// ── agents triggering agents (course 5, last section) ─────────────────────────
+
+const TESTER = agent("tester", "Tests the shop end to end, on Sam's machine.", `owner: ${SAM}\n`);
+const WRITER = agent("writer", "Writes the shop's help pages, on Sam's machine.", `owner: ${SAM}\n`);
+
+const SHIP = "work/ship-gift-cards";
+const STEPS = {
+  api: { key: "work/gift-cards-api", title: "Gift card API: issue, redeem, balance", who: "coder", short: "5a1b2c" },
+  checkout: { key: "work/gift-cards-checkout", title: "Pay with a gift card at checkout", who: "coder", short: "5b2c3d" },
+  tests: { key: "work/gift-cards-tests", title: "Test gift cards end to end", who: "tester", short: "5c3d4e" },
+  help: { key: "work/gift-cards-help", title: "Help page: how gift cards work", who: "writer", short: "5d4e5f" },
+};
+const EXPIRY = { key: "decisions/gift-card-expiry", title: "Do gift cards expire?", short: "5e5f6a" };
+const SPLIT_BUG = { key: "work/gift-cards-split-negative", title: "A split payment can leave a negative balance", short: "5f6a7b" };
+
+function relayRoom(): RoomFixture {
+  const fx = baseRoom();
+  fx.memories.push(PM, CODER, TESTER, WRITER);
+  fx.presence = ["pm", "coder", "tester", "writer"].map((h) => ({ handle: h, kind: "lease" as const, last_seen: ago(1) }));
+  return fx;
+}
+
+/** Sam's answer to the one decision the run needs from a person. */
+const g = globalThis as typeof globalThis & { __myceliumLearnAnswer?: { promise: Promise<void>; resolve: () => void } };
+function answered(): { promise: Promise<void>; resolve: () => void } {
+  if (!g.__myceliumLearnAnswer) {
+    let resolve = () => {};
+    const promise = new Promise<void>((r) => {
+      resolve = r;
+    });
+    g.__myceliumLearnAnswer = { promise, resolve };
+  }
+  return g.__myceliumLearnAnswer;
+}
+
+/** A row its agent was waiting on is done: the dependents hear about it. */
+function unblock(d: Director, ...steps: { key: string; title: string; short: string }[]): void {
+  for (const s of steps) d.notice({ subkind: "unblocked", key: s.key, title: s.title, episode: d.ep(s.short), by: "pm" });
+}
+
+/** One task to the PM; from there the agents hand the work to each other. */
+async function relay(d: Director, parent: MockMemory): Promise<void> {
+  const top = parent.episode ?? null;
+  const { api, checkout, tests, help } = STEPS;
+  await sleep(1200);
+  await d.think("pm", top, 2400);
+  d.claim(parent.key, "pm");
+  d.present("pm", "Ship gift cards");
+  d.say(
+    "pm",
+    "Taking it. Four tasks, in the order they can happen, each for the agent who'll do it: the API first, then " +
+      "checkout and the help page, then the tests. Each one starts when the one it waits on is done.",
+    top,
+  );
+  const file = (s: { key: string; title: string; who: string; short: string }, after?: string) => {
+    d.fileRow(
+      s.key,
+      s.title,
+      { kind: "action", status: "open", assignee: s.who, "part-of": SHIP, ...(after ? { "depends-on": after } : {}) },
+      "pm",
+      s.short,
+    );
+    // Each agent is woken by the row filed for it, and takes it at once.
+    d.claim(s.key, s.who);
+  };
+  await sleep(900);
+  file(api);
+  await sleep(700);
+  file(checkout, api.key);
+  await sleep(700);
+  file(help, api.key);
+  await sleep(700);
+  file(tests, checkout.key);
+  await sleep(1200);
+  d.fileRow(EXPIRY.key, EXPIRY.title, { kind: "decision", status: "open", priority: "high", "part-of": SHIP }, "pm", EXPIRY.short);
+  d.say("pm", "One thing only you can decide, so I filed it: do gift cards expire? Everything else goes ahead meanwhile.", top);
+  d.present("coder", api.title);
+
+  await d.think("coder", d.ep(api.short), 4200);
+  d.say(
+    "coder",
+    "Done: `POST /gift-cards` issues one, `/redeem` takes from its balance, `GET` shows what's left. Tests pass.",
+    d.ep(api.short),
+  );
+  d.resolve(api.key, "coder");
+  unblock(d, checkout, help);
+  await sleep(600);
+  d.present("coder", checkout.title);
+  d.present("writer", help.title);
+  // Resolving a row wakes nobody by itself: the agent who finished says so to whoever is next.
+  d.say("coder", "The API is in, so the help page can start. @writer, it's yours. I'm on checkout.", d.ep(help.short));
+  await d.think("writer", d.ep(help.short), 2000);
+  d.say("writer", "On it. Writing the page from the API's endpoints.", d.ep(help.short));
+
+  await answered().promise;
+  const decision = d.ep(EXPIRY.short);
+  await d.think("pm", decision, 1800);
+  d.say("pm", "Never expire, then. Telling @writer for the help page.", decision);
+  d.resolve(EXPIRY.key, "pm", { decision: "gift cards never expire" });
+  d.say("pm", "@writer gift cards never expire. Say so on the page.", d.ep(help.short));
+  await d.think("writer", d.ep(help.short), 3000);
+  d.say("writer", "Added a line on it. The page covers buying, redeeming and checking a balance. Done.", d.ep(help.short));
+  d.resolve(help.key, "writer");
+  d.present("writer");
+
+  await d.think("coder", d.ep(checkout.short), 3200);
+  d.say("coder", "Checkout takes a gift card, and puts whatever it doesn't cover on a card. Done.", d.ep(checkout.short));
+  d.resolve(checkout.key, "coder");
+  unblock(d, tests);
+  d.say("coder", "Checkout is in. @tester, over to you.", d.ep(tests.short));
+  d.present("tester", tests.title);
+  d.present("coder");
+  await d.think("tester", d.ep(tests.short), 3000);
+  d.say(
+    "tester",
+    "Found one: a $40 order paid with a $30 card and a declined card leaves the gift card at -$10. Filing it for @coder.",
+    d.ep(tests.short),
+  );
+  d.fileRow(
+    SPLIT_BUG.key,
+    SPLIT_BUG.title,
+    { kind: "action", status: "open", assignee: "coder", priority: "high", "part-of": SHIP },
+    "tester",
+    SPLIT_BUG.short,
+  );
+  d.claim(SPLIT_BUG.key, "coder");
+  d.present("coder", SPLIT_BUG.title);
+  await d.think("coder", d.ep(SPLIT_BUG.short), 3400);
+  d.say(
+    "coder",
+    "Fixed: the gift card is only charged once the rest of the payment goes through. Added a test for it.",
+    d.ep(SPLIT_BUG.short),
+  );
+  d.resolve(SPLIT_BUG.key, "coder");
+  d.present("coder");
+  await d.think("tester", d.ep(tests.short), 2800);
+  d.say("tester", "Re-ran it all: issue, redeem, split payment, declined card, refund. Everything passes.", d.ep(tests.short));
+  d.resolve(tests.key, "tester");
+  d.say("tester", "@pm the last part is done and tested.", top);
+  d.present("tester");
+
+  await d.think("pm", top, 2600);
+  d.say(
+    "pm",
+    "**Gift cards are done.** The API, checkout and the help page are in, and the tests pass, including a " +
+      "split-payment bug the tester found and the coder fixed. Gift cards never expire, as you decided. " +
+      "Ready for your review: coffee-shop/web#618.",
+    top,
+  );
+  d.resolve(parent.key, "pm");
+  d.present("pm");
+}
+
 // ── the scenario ──────────────────────────────────────────────────────────────
 
 /** The `orders` room as the current take starts it, or null outside Learn. */
@@ -870,6 +1024,8 @@ export function learnRoom(): RoomFixture | null {
       return swarmRoom("kicked-off");
     case "swarm-steer":
       return swarmRoom("split");
+    case "relay":
+      return relayRoom();
     default:
       return null;
   }
@@ -920,6 +1076,7 @@ export function learnOnTask(fx: RoomFixture, room: string, row: MockMemory): voi
     })();
   } else if (take === "side-quest") void sideQuest(d, row, owner);
   else if (take === "github") void githubIssue(d, row, owner);
+  else if (take === "relay" && owner === "pm") void relay(d, row);
 }
 
 /** A message someone posted: the beat it starts, if any. */
@@ -954,6 +1111,9 @@ export function learnOnMessage(fx: RoomFixture, room: string, m: MockMessage): v
       break;
     case "swarm-steer":
       if (thread === d.ep(PARTS[1].short) && once("learn:steer")) void swarmFinish(d);
+      break;
+    case "relay":
+      if (thread === d.ep(EXPIRY.short)) answered().resolve();
       break;
     default:
       break;
