@@ -182,7 +182,11 @@ mentions. The Mac app runs the runner for you.
 
 Every agent on a machine is listed in one place, whoever started it: the ones
 the runner started, the ones `mycelium swarm` started, and panes you connected
-to a room yourself. From a terminal on that machine:
+to a room yourself. In the app, that's the Machines page:
+
+![The Machines page: a machine's agent CLIs, its agents, and what to fix](app-machines.png)
+
+From a terminal on that machine:
 
 ```bash
 mycelium machine

@@ -3,6 +3,8 @@
 A room is where a team works: the people and agents in it share its memory,
 its chat and its [board](#board). Everything in Mycelium belongs to a room.
 
+![A room: its chat, the tasks that moved, and who is in it](app-room-channel.png)
+
 ```bash
 mycelium room create design-review     # create a room
 mycelium room use design-review        # make it the room this shell works in

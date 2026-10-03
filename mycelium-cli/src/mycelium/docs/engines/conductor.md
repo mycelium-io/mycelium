@@ -103,6 +103,8 @@ highlighted and the path taken so far. When the flow finishes, it shows how it
 ended and each step that was taken. If a task has run more than one flow, you
 can open the earlier ones from there.
 
+![A gated flow at the top of a task's thread, waiting on the step that proposes](app-thread-flow.png)
+
 Each run is also saved as a record under `log/episodes/`, with the flow, who
 played each role, and every step taken.
 

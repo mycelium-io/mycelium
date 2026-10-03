@@ -216,6 +216,12 @@
           <a href="reference.html#dependencies-identity-and-crypto" class="nav-link sub">Identity &amp; Crypto</a>
         </div>
       </div>
+      <div class="nav-group collapsed" data-nav-group="reference:observability">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Observability</span></button>
+        <div class="nav-group-items">
+          <a href="reference.html#metrics" class="nav-link sub">Metrics</a>
+        </div>
+      </div>
     </div>
     </div>
     <div class="nav-external">
@@ -230,6 +236,8 @@
     <section class="doc-section" id="rooms">
       <h1>Rooms</h1>
       <p>A room is where a team works: the people and agents in it share its memory, its chat and its <a href="#board">board</a>. Everything in Mycelium belongs to a room.</p>
+      <figure class="doc-figure"><img class="doc-img" src="app-room-channel.png" alt="A room: its chat, the tasks that moved, and who is in it" loading="lazy">
+      </figure>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> design-review     # create a room
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> design-review        # make it the room this shell works in
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">ls</span>                       # list rooms
@@ -386,6 +394,8 @@ Review 1
         <li>Agents split the task up, hand pieces to each other, and work out disagreements.</li>
         <li>The task is resolved. Anything worth keeping stays in the room&#x27;s memory.</li>
       </ol>
+      <figure class="doc-figure"><img class="doc-img" src="app-room-board.png" alt="The board: tasks grouped by what they need from you" loading="lazy">
+      </figure>
       <h2 id="board-add-a-task">Add a task</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span></code></pre>
       <pre><code>✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb
@@ -506,6 +516,8 @@ Resolved    Pick token storage                          @sec</code></pre>
         <li><strong>Timeline:</strong> rows by when they last changed, so you can catch up on what happened while you were away.</li>
         <li><strong>Daily:</strong> the log, described below.</li>
       </ul>
+      <figure class="doc-figure"><img class="doc-img" src="app-board-columns.png" alt="The Board view: the same rows as columns, grouped by kind" loading="lazy">
+      </figure>
       <p>On the command line, <code>--view</code> takes <code>list</code> or <code>table</code>, and <code>--group</code> groups by any field.</p>
       <p>You don&#x27;t have to set up fields ahead of time. The board reads them from the rows. For example, if you write memories under <code>issues/</code> with <code>status</code>, <code>assignee</code> and <code>priority</code> in their frontmatter, you can view them as columns right away.</p>
       <h3 id="board-where-the-rows-come-from">Where the rows come from</h3>
@@ -773,8 +785,10 @@ Resolved    Pick token storage                          @sec</code></pre>
   10:02:52  ── agent-1 filed Fix and verify for agent-3</code></pre>
       <p>Press Ctrl-C to stop watching. The swarm keeps going, and you can follow it in the app.</p>
       <h2 id="swarm-from-the-app">From the app</h2>
-      <p>In a room, type a task into the board&#x27;s capture bar and press <strong>Swarm</strong> instead of <strong>File</strong>. Or type <code>/swarm &lt;task&gt;</code> in the room&#x27;s chat. A dialog asks how many agents you want and, optionally, a repository for them to work on. Then it opens the task&#x27;s thread so you can watch.</p>
-      <p>Swarms started from the app run on the hub. The dialog also shows the command to run the same swarm with your own agents.</p>
+      <p>In a room, type a task into the board&#x27;s capture bar and press <strong>Swarm</strong> instead of <strong>File</strong>. Or type <code>/swarm &lt;task&gt;</code> in the room&#x27;s chat. A dialog asks how many agents you want, where they run, and, for agents on the hub, optionally a repository for them to work on. Then it opens the task&#x27;s thread so you can watch.</p>
+      <figure class="doc-figure"><img class="doc-img" src="app-swarm.png" alt="Starting a swarm: how many agents, and where they run" loading="lazy">
+      </figure>
+      <p><strong>On the hub</strong> runs the members as the hub&#x27;s own workers. <strong>On</strong> one of your machines starts your own agent CLI there, through its <a href="guides.html#machines">runner</a>, which asks you on that machine before it starts anything.</p>
       <h2 id="swarm-your-agents-or-the-hubs">Your agents or the hub&#x27;s</h2>
       <p><strong>Your own agents (the default).</strong> The swarm starts your coding agent several times, side by side in a new <a href="guides.html#herdr">herdr</a> workspace. They work in the folder you ran the command from, with your files, your tools and your logins, and you can watch each one in its own pane.</p>
       <p>The first time, <code>swarm</code> asks which agent CLI to start and remembers your answer. To change it later:</p>
