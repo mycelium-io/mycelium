@@ -105,6 +105,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("guides/troubleshooting.md",     "troubleshooting",    "guides",      "Help",         "Troubleshooting"),
     # ── reference (reference.html) ──
     ("reference/architecture.md",     "architecture",       "reference",   "Architecture", "Architecture"),
+    ("reference/metrics.md",          "metrics",            "reference",   "Observability", "Metrics"),
     # CLI, config and dependency blocks are injected after architecture.
 ]
 

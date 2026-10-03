@@ -137,6 +137,62 @@ export const SHOTS: Shot[] = [
     caption: "The network pane: SLIM channel diagnostics over a live L9 protocol feed.",
   },
 
+  // ── The docs' concept and guide pages ────────────────────────────────────
+  {
+    id: "board-columns",
+    route: "/room/checkout",
+    theme: "dark",
+    viewport: "desktop",
+    steps: ["Board"],
+    // The view switcher's "Board" (columns), not the tab of the same name.
+    actions: ['click:css=button[aria-label="Board"]', "sleep:800"],
+    caption: "The board's columns view: the same rows, grouped by any field.",
+  },
+  {
+    id: "thread-flow",
+    route: "/room/checkout",
+    theme: "dark",
+    viewport: "desktop",
+    steps: ["Board"],
+    actions: [
+      'click:[data-board-row="memory:work/turn-on-apple-pay"]',
+      "sleep:1200",
+      'click:css=button[aria-expanded]:has-text("Flow")',
+      "sleep:800",
+    ],
+    caption: "A flow at the top of a task's thread: the steps, the one it's on, and who has the floor.",
+  },
+  {
+    id: "swarm-dialog",
+    route: "/room/checkout",
+    theme: "dark",
+    viewport: "desktop",
+    steps: ["Board"],
+    actions: [
+      'click:css=button:has-text("Swarm")',
+      'click:[role="dialog"] textarea',
+      "typekeys:Write the release notes for the spring sale",
+      "sleep:400",
+    ],
+    caption: "Starting a swarm: how many agents, and where they run.",
+  },
+  {
+    id: "machines",
+    route: "/machines",
+    theme: "dark",
+    viewport: "desktop",
+    waitFor: "text=Agents on this machine",
+    caption: "The Machines page: each of your machines, its agent CLIs, its agents, and what to fix.",
+  },
+  {
+    id: "metrics-usage",
+    route: "/metrics",
+    theme: "dark",
+    viewport: "desktop",
+    waitFor: "text=Is the board keeping up?",
+    caption: "The Metrics page's Usage tab: what gets filed, what gets done, and how work is started.",
+  },
+
   // ── The docs walkthrough ("Your first room"), one shot per step ──────────
   {
     id: "walk-name",

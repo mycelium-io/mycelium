@@ -41,6 +41,8 @@ since its name is the room's.
 
 ### Where to see it
 
+![The Metrics page's Usage tab](app-metrics.png)
+
 The Metrics page opens on its **Usage** tab, over the last 30 or 90 days:
 tasks filed and resolved, how long tasks stay open, and active days; whether
 the board keeps up (filed against resolved, by day or by week); each way of

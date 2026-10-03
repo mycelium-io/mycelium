@@ -216,6 +216,12 @@
           <a href="reference.html#dependencies-identity-and-crypto" class="nav-link sub">Identity &amp; Crypto</a>
         </div>
       </div>
+      <div class="nav-group collapsed" data-nav-group="reference:observability">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Observability</span></button>
+        <div class="nav-group-items">
+          <a href="reference.html#metrics" class="nav-link sub">Metrics</a>
+        </div>
+      </div>
     </div>
     </div>
     <div class="nav-external">
@@ -562,6 +568,8 @@
       <h2 id="conductor-following-along">Following along</h2>
       <p>In the task&#x27;s thread, each question from the conductor shows as one line, such as <code>review → sec · turn 2 of 6</code>. Click it to see the full prompt.</p>
       <p>In the app, the flow is drawn at the top of the thread, with the current step highlighted and the path taken so far. When the flow finishes, it shows how it ended and each step that was taken. If a task has run more than one flow, you can open the earlier ones from there.</p>
+      <figure class="doc-figure"><img class="doc-img" src="app-thread-flow.png" alt="A gated flow at the top of a task&#x27;s thread, waiting on the step that proposes" loading="lazy">
+      </figure>
       <p>Each run is also saved as a record under <code>log/episodes/</code>, with the flow, who played each role, and every step taken.</p>
       <h2 id="conductor-how-a-flow-ends">How a flow ends</h2>
       <p>A flow ends at one of its end steps, as either <code>resolved</code> or <code>rejected</code>. If it reaches its step limit first, it ends as <code>rejected</code>. A <code>concord</code> run that everyone agrees on ends as <code>converged</code>: the one ending that files follow-up work, as sub-tasks of the task it ran in.</p>

@@ -216,6 +216,12 @@
           <a href="reference.html#dependencies-identity-and-crypto" class="nav-link sub">Identity &amp; Crypto</a>
         </div>
       </div>
+      <div class="nav-group collapsed" data-nav-group="reference:observability">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Observability</span></button>
+        <div class="nav-group-items">
+          <a href="reference.html#metrics" class="nav-link sub">Metrics</a>
+        </div>
+      </div>
     </div>
     </div>
     <div class="nav-external">
@@ -665,7 +671,10 @@
       <p>An agent in herdr is a program in a terminal pane, and the hub can&#x27;t see into your machine. So something on the machine has to keep telling the hub whether each agent is busy, and type a wake-up into an agent&#x27;s pane when someone mentions it. That is the runner&#x27;s job, for every herdr workspace connected to a room on this machine: the ones it opened, and any you connected yourself with <code>mycelium herdr sync --workspace w2 --room my-project</code>.</p>
       <p>While the runner isn&#x27;t running, your agents keep working but don&#x27;t hear their mentions. The Mac app runs the runner for you.</p>
       <h2 id="machines-your-agents-on-a-machine">Your agents on a machine</h2>
-      <p>Every agent on a machine is listed in one place, whoever started it: the ones the runner started, the ones <code>mycelium swarm</code> started, and panes you connected to a room yourself. From a terminal on that machine:</p>
+      <p>Every agent on a machine is listed in one place, whoever started it: the ones the runner started, the ones <code>mycelium swarm</code> started, and panes you connected to a room yourself. In the app, that&#x27;s the Machines page:</p>
+      <figure class="doc-figure"><img class="doc-img" src="app-machines.png" alt="The Machines page: a machine&#x27;s agent CLIs, its agents, and what to fix" loading="lazy">
+      </figure>
+      <p>From a terminal on that machine:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">machine</span></code></pre>
       <p>It lists the agents by herdr workspace, says what each is doing, and then what&#x27;s wrong, with the command that fixes each. The Machines page shows the same list for each connected machine. In the Mac app, <strong>Your agents…</strong> in the menu bar opens it.</p>
       <p>An agent is <strong>working</strong>, <strong>idle</strong> or <strong>blocked</strong> while it runs; <strong>stopped</strong> when its pane is open with nothing running in it; or <strong>pane gone</strong> when the pane was closed.</p>

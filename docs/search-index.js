@@ -548,7 +548,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "concepts.html#swarm-from-the-app",
     "t": "From the app",
     "s": "Swarm",
-    "x": "In a room, type a task into the board's capture bar and press Swarm instead of File. Or type /swarm <task> in the room's chat. A dialog asks how many agents you want and, optionally, a repository for them to work on. Then it opens the task's thread so you can watch. Swarms started from the app run on the hub. The dialog also shows the command to run the same swarm with your own agents.",
+    "x": "In a room, type a task into the board's capture bar and press Swarm instead of File. Or type /swarm <task> in the room's chat. A dialog asks how many agents you want, where they run, and, for agents on the hub, optionally a repository for them to work on. Then it opens the task's thread so you can watch. On the hub runs the members as the hub's own workers. On one of your machines starts your own agent CLI there, thr",
     "p": "Concepts"
   },
   {
@@ -1049,7 +1049,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#machines-your-agents-on-a-machine",
     "t": "Your agents on a machine",
     "s": "Agents › Start Agents From the App",
-    "x": "Every agent on a machine is listed in one place, whoever started it: the ones the runner started, the ones mycelium swarm started, and panes you connected to a room yourself. From a terminal on that machine: mycelium machine It lists the agents by herdr workspace, says what each is doing, and then what's wrong, with the command that fixes each. The Machines page shows the same list for each connected machine. In the ",
+    "x": "Every agent on a machine is listed in one place, whoever started it: the ones the runner started, the ones mycelium swarm started, and panes you connected to a room yourself. In the app, that's the Machines page: From a terminal on that machine: mycelium machine It lists the agents by herdr workspace, says what each is doing, and then what's wrong, with the command that fixes each. The Machines page shows the same li",
     "p": "Guides"
   },
   {
@@ -2648,6 +2648,69 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Identity and crypto",
     "s": "Dependencies",
     "x": "Component Pinned version Role Upstream pyjwt[crypto] >=2.10,<3 JWT validation for the auth gate and SignerJwt identity jpadilla/pyjwt cryptography >=42,<47 ES256 keypair and JWK for SLIM channel identity pyca/cryptography The rest of the stack is standard, widely used building blocks with no special version constraint beyond their pins: fastapi[standard], httpx, pydantic / pydantic-settings, typer, rich, and question",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#metrics",
+    "t": "Metrics",
+    "s": "Observability",
+    "x": "A hub keeps three kinds of numbers: What What it answers Where it goes Usage What the hub is used for: tasks filed and resolved, flows and negotiations finished, agents joined Recorded on the hub, always. Sent on only if the hub shares usage stats Backend metrics What the backend is doing: memory, embeddings, model calls, messaging, latency Kept in the running backend. Exported over OpenTelemetry if you turn that on ",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#metrics-usage",
+    "t": "Usage",
+    "s": "Observability › Metrics",
+    "x": "Every piece of work a room does is a task, so usage follows tasks. The hub records one event each time: Event When Carries mycelium.hub_started The hub starts how it runs (desktop, docker, server), OS mycelium.task_filed A row lands on a board its kind, who filed it (person, agent, engine), whether it was for someone mycelium.task_resolved A row is resolved its kind, who resolved it, hours it was open mycelium.flow_c",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#metrics-where-to-see-it",
+    "t": "Where to see it",
+    "s": "Observability › Metrics",
+    "x": "The Metrics page opens on its Usage tab, over the last 30 or 90 days: tasks filed and resolved, how long tasks stay open, and active days; whether the board keeps up (filed against resolved, by day or by week); each way of starting work and how often it ends well; who files the work, and how long tasks stay open by who resolved them; and agents joined by adapter. Its System tab is the backend's own metrics, below. Th",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#metrics-sharing-usage-stats",
+    "t": "Sharing usage stats",
+    "s": "Observability › Metrics",
+    "x": "Sharing sends each event to telemetry.analytics_destination as it happens, so the people building Mycelium can see what's working. It's off unless you turn it on. You're asked in two places: The Mac app, on its first screen (and again under Settings), when it runs a hub. The app's answer is the one that counts for the hub it starts. mycelium install, as its last question. To change it by hand: mycelium config set tel",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#metrics-backend-metrics",
+    "t": "Backend metrics",
+    "s": "Observability › Metrics",
+    "x": "What the backend records. Memory writes and searches, embeddings, index runs, and model calls (by operation and model), with how long each took. Model calls go through pi, which doesn't report token usage, so calls, failures and timings are recorded but cost isn't. Read them as JSON at GET /api/observability. Health. GET /health tells you whether messaging is working: channels set up and failed, failed invites, and p",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#metrics-viewing-them",
+    "t": "Viewing them",
+    "s": "Observability › Metrics",
+    "x": "mycelium metrics status # is the collector running, and is the config right mycelium metrics show # an overview mycelium metrics show mycelium # the backend's activity in detail mycelium metrics show cost # estimated cost of the backend's model calls, by room mycelium metrics show --json # everything collected, as JSON mycelium metrics reset # clear the metrics collected on this machine",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#metrics-exporting-them-over-opentelemetry-optional",
+    "t": "Exporting them over OpenTelemetry (optional)",
+    "s": "Observability › Metrics",
+    "x": "With telemetry.enabled, the backend also exports traces and metrics over OTLP: a span per HTTP route, and timings for aligner rounds, SLIM channels, await and model calls. Off by default, and when it's off none of that code runs. mycelium config set telemetry.enabled true mycelium config set telemetry.otlp_endpoint <url> mycelium config apply Where to point it: A hosted OTLP backend, such as Grafana Cloud or Honeycom",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#metrics-agent-telemetry-over-otlp-optional",
+    "t": "Agent telemetry over OTLP (optional)",
+    "s": "Observability › Metrics",
+    "x": "The collector receives OpenTelemetry data. Start it with mycelium up --metrics, and it listens for OTLP metrics and traces on localhost:4318, and also reads the backend's /api/observability. It saves a combined snapshot to $MYCELIUM_DATA_DIR/metrics/, which is what mycelium metrics reads. Point any OTLP exporter at http://<host>:4318 to send data to it. Traces are stored in full. Spans that carry OpenTelemetry's GenA",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#metrics-files",
+    "t": "Files",
+    "s": "Observability › Metrics",
+    "x": "Under $MYCELIUM_DATA_DIR (~/.mycelium/ by default): usage/events.jsonl: the hub's usage events (rotated at 5 MB, keeping one previous file), and usage/hub_id when the hub made its own id. metrics/metrics.json: the collector's combined snapshot. metrics/traces.db: the OTLP traces the collector received. [telemetry] enabled = false # export backend traces and metrics over OTLP otlp_endpoint = \"\" # where to; the Docker ",
     "p": "Reference"
   }
 ];

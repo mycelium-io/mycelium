@@ -44,7 +44,10 @@ export interface Target {
  */
 export const TARGETS: Record<string, Target[]> = {
   home: [{ dir: SPLASH_DIR, name: "app-home", retina: true }],
-  "room-channel": [{ dir: SPLASH_DIR, name: "app-channel", retina: true }],
+  "room-channel": [
+    { dir: SPLASH_DIR, name: "app-channel", retina: true },
+    { dir: DOCS_DIR, name: "app-room-channel", retina: true },
+  ],
   "room-board": [
     { dir: DOCS_DIR, name: "app-room-board", retina: true },
     { dir: SPLASH_DIR, name: "app-hero", retina: true },
@@ -53,6 +56,12 @@ export const TARGETS: Record<string, Target[]> = {
   "room-empty": [{ dir: DOCS_DIR, name: "app-room-empty", retina: true }],
   "room-memory": [{ dir: SPLASH_DIR, name: "app-memory", retina: true }],
   "room-network": [{ dir: SPLASH_DIR, name: "app-network", retina: true }],
+  // The docs' concept and guide pages.
+  "board-columns": [{ dir: DOCS_DIR, name: "app-board-columns", retina: true }],
+  "thread-flow": [{ dir: DOCS_DIR, name: "app-thread-flow", retina: true }],
+  "swarm-dialog": [{ dir: DOCS_DIR, name: "app-swarm", retina: true }],
+  machines: [{ dir: DOCS_DIR, name: "app-machines", retina: true }],
+  "metrics-usage": [{ dir: DOCS_DIR, name: "app-metrics", retina: true }],
   // The docs walkthrough. It also uses app-room-empty and app-room-board.
   "walk-name": [{ dir: DOCS_DIR, name: "walk-name", retina: true }],
   "walk-add-agent": [{ dir: DOCS_DIR, name: "walk-add-agent", retina: true }],

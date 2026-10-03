@@ -53,11 +53,15 @@ the app.
 
 In a room, type a task into the board's capture bar and press **Swarm**
 instead of **File**. Or type `/swarm <task>` in the room's chat. A dialog asks
-how many agents you want and, optionally, a repository for them to work on.
-Then it opens the task's thread so you can watch.
+how many agents you want, where they run, and, for agents on the hub,
+optionally a repository for them to work on. Then it opens the task's thread
+so you can watch.
 
-Swarms started from the app run on the hub. The dialog also shows the command
-to run the same swarm with your own agents.
+![Starting a swarm: how many agents, and where they run](app-swarm.png)
+
+**On the hub** runs the members as the hub's own workers. **On** one of your
+machines starts your own agent CLI there, through its [runner](#machines),
+which asks you on that machine before it starts anything.
 
 ## Your agents or the hub's
 

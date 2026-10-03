@@ -40,6 +40,8 @@ A typical day:
    disagreements.
 6. The task is resolved. Anything worth keeping stays in the room's memory.
 
+![The board: tasks grouped by what they need from you](app-room-board.png)
+
 ## Add a task
 
 ```bash
@@ -292,6 +294,8 @@ The app has five ways to look at the same rows:
 - **Timeline:** rows by when they last changed, so you can catch up on what
   happened while you were away.
 - **Daily:** the log, described below.
+
+![The Board view: the same rows as columns, grouped by kind](app-board-columns.png)
 
 On the command line, `--view` takes `list` or `table`, and `--group` groups by
 any field.
