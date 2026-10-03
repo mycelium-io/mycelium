@@ -199,7 +199,7 @@
     const k = e.key;
     // + − 0 zoom a live app on the slide (0 only before a slide number is typed).
     if ((k === '+' || k === '=' || k === '-' || k === '_' || (k === '0' && !typed)) && !overview
-        && window.DeckApp?.zoomKey(slides[index], k === '0' ? 0 : (k === '-' || k === '_') ? -1 : 1)) { e.preventDefault(); return; }
+        && window.DeckApp?.zoomKey(slides[index], k === '0' ? 0 : (k === '-' || k === '_') ? -1 : 1, e.repeat)) { e.preventDefault(); return; }
     if (/^[0-9]$/.test(k)) { typed += k; gotoBox.textContent = `Go to ${typed}`; gotoBox.classList.add('open'); return; }
     if (k === 'Enter' && typed) { go(parseInt(typed, 10) - 1); typed = ''; gotoBox.classList.remove('open'); return; }
     if (typed && k !== 'Enter') { typed = ''; gotoBox.classList.remove('open'); }
@@ -209,12 +209,18 @@
       case 'Home': go(0); break;
       case 'End': go(slides.length - 1, { reveal: true }); break;
       case 'Enter': if (overview) toggleOverview(false); break;
-      case 'o': case 'Escape': if (k === 'Escape' && !overview) { help.classList.remove('open'); break; } toggleOverview(); break;
+      case 'o': case 'Escape':
+        if (k === 'Escape' && window.DeckInk?.on) { window.DeckInk.off(); break; }
+        if (k === 'Escape' && !overview) { help.classList.remove('open'); break; }
+        toggleOverview(); break;
       case 'f': if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); break;
       case 't': setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'); break;
       case 'b': case '.': document.body.classList.toggle('black'); break;
       case 's': openSpeaker(); break;
       case '?': case 'h': help.classList.toggle('open'); break;
+      case 'd': window.DeckInk?.toggle(); break;
+      case 'u': if (window.DeckInk?.on) window.DeckInk.undo(); break;
+      case 'c': if (window.DeckInk?.on) window.DeckInk.clear(); break;
       default: return;
     }
     if (overview) layoutOverview();

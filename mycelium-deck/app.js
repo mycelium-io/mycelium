@@ -55,15 +55,15 @@
     shield.className = 'app-shield';
     shield.type = 'button';
     shield.innerHTML = '<span>Click to use the app</span>';
-    const s = { el, view, frame, shield, url, routes, queue: [...routes], zoom, mag: 1, mx: 0, my: 0 };
+    const s = { el, view, frame, shield, url, routes, queue: [...routes], zoom, mag: 1, mx: 0, my: 0, tm: 1, tx: 0, ty: 0, anchor: null };
     panes.set(el, s);
-    place(s);
+    draw(s);
     const bar = el.querySelector('.bar');
     if (bar) {
       bar.insertAdjacentHTML('beforeend', '<span class="app-zoom"><button type="button" class="out" aria-label="Zoom out">−</button><button type="button" class="pct" title="Back to fit">100%</button><button type="button" class="in" aria-label="Zoom in">+</button></span>');
       const centre = () => ({ x: view.offsetWidth / 2, y: view.offsetHeight / 2 });
-      bar.querySelector('.app-zoom .in').addEventListener('click', () => magnify(s, s.mag * 1.25, centre()));
-      bar.querySelector('.app-zoom .out').addEventListener('click', () => magnify(s, s.mag / 1.25, centre()));
+      bar.querySelector('.app-zoom .in').addEventListener('click', () => magnify(s, s.tm * 1.25, centre()));
+      bar.querySelector('.app-zoom .out').addEventListener('click', () => magnify(s, s.tm / 1.25, centre()));
       bar.querySelector('.app-zoom .pct').addEventListener('click', () => magnify(s, 1));
     }
 
@@ -81,13 +81,12 @@
     });
     // While zoomed, drag the shield to look around; a pinch over it zooms.
     shield.addEventListener('mousedown', e => {
-      if (s.mag <= 1.001 || e.button !== 0) return;
+      if (s.tm <= 1.001 || e.button !== 0) return;
       const k = view.offsetWidth / view.getBoundingClientRect().width;
-      const start = { x: e.clientX, y: e.clientY, mx: s.mx, my: s.my };
+      const start = { x: e.clientX, y: e.clientY, mx: s.tx, my: s.ty };
       const move = m => {
         if (Math.abs(m.clientX - start.x) + Math.abs(m.clientY - start.y) > 4) s.dragged = true;
-        s.mx = start.mx + (m.clientX - start.x) * k; s.my = start.my + (m.clientY - start.y) * k;
-        place(s, false);
+        pan(s, start.mx + (m.clientX - start.x) * k, start.my + (m.clientY - start.y) * k, true);
       };
       const up = () => { removeEventListener('mousemove', move); removeEventListener('mouseup', up); };
       addEventListener('mousemove', move); addEventListener('mouseup', up);
@@ -96,8 +95,8 @@
     shield.addEventListener('wheel', e => {
       e.preventDefault();
       const p = local(s, e);
-      if (e.ctrlKey || e.metaKey) magnify(s, s.mag * Math.exp(-e.deltaY * 0.01), p, false);
-      else if (s.mag > 1.001) { s.mx -= e.deltaX; s.my -= e.deltaY; place(s, false); }
+      if (e.ctrlKey || e.metaKey) magnify(s, s.tm * Math.exp(-e.deltaY * 0.01), p);
+      else if (s.tm > 1.001) pan(s, s.tx - e.deltaX, s.ty - e.deltaY);
     }, { passive: false });
     view.append(frame, shield);
     open(el.dataset.app);
@@ -107,25 +106,64 @@
   // ── Zoom ──
   // The frame is laid out at the pane's size over its data-zoom, then drawn at
   // translate(mx, my) scale(zoom * mag), so magnifying never reflows the app.
-  // The magnified app always covers the pane.
-  function place(s, animate = true) {
+  // Every input sets a target and the view eases to it, frame by frame. A zoom
+  // holds one point of the app under one point of the pane (the anchor) the
+  // whole way, so what you point at stays put as it grows. The magnified app
+  // always covers the pane.
+  function clampTo(s, mag, mx, my) {
     const w = s.view.offsetWidth, h = s.view.offsetHeight;
-    s.mx = Math.min(0, Math.max(w - w * s.mag, s.mx));
-    s.my = Math.min(0, Math.max(h - h * s.mag, s.my));
-    s.frame.classList.toggle('zooming', animate);
-    s.frame.style.transform = `translate(${s.mx}px, ${s.my}px) scale(${s.zoom * s.mag})`;
-    s.el.classList.toggle('magnified', s.mag > 1.001);
-    const pct = s.el.querySelector('.app-zoom .pct');
-    if (pct) pct.textContent = `${Math.round(s.mag * 100)}%`;
+    return [Math.min(0, Math.max(w - w * mag, mx)), Math.min(0, Math.max(h - h * mag, my))];
   }
-  // Zoom to `mag`, keeping the point `at` (pane pixels) where it is.
-  function magnify(s, mag, at, animate = true) {
+  function draw(s) {
+    s.frame.style.transform = `translate(${s.mx}px, ${s.my}px) scale(${s.zoom * s.mag})`;
+    s.el.classList.toggle('magnified', s.tm > 1.001);
+    const pct = s.el.querySelector('.app-zoom .pct');
+    if (pct) pct.textContent = `${Math.round(s.tm * 100)}%`;
+  }
+  let ticking = false, last = 0;
+  function tick(now) {
+    const dt = Math.min(0.05, (now - last) / 1000 || 0.016); last = now;
+    const k = reduce ? 1 : 1 - Math.exp(-dt * 13);
+    let moving = false;
+    panes.forEach(s => {
+      const lm = Math.log(s.mag), lt = Math.log(s.tm);
+      s.mag = Math.exp(lm + (lt - lm) * k);
+      if (s.anchor) { s.mx = s.anchor.px - s.anchor.cx * s.mag; s.my = s.anchor.py - s.anchor.cy * s.mag; }
+      else { s.mx += (s.tx - s.mx) * k; s.my += (s.ty - s.my) * k; }
+      [s.mx, s.my] = clampTo(s, s.mag, s.mx, s.my);
+      if (Math.abs(lt - Math.log(s.mag)) > 1e-4 || Math.abs(s.tx - s.mx) > 0.1 || Math.abs(s.ty - s.my) > 0.1) moving = true;
+      else { s.mag = s.tm; s.mx = s.tx; s.my = s.ty; s.anchor = null; }
+      draw(s);
+    });
+    ticking = moving;
+    if (moving) requestAnimationFrame(tick);
+  }
+  function run() { if (!ticking) { ticking = true; last = performance.now(); requestAnimationFrame(tick); } }
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Zoom to `mag`, keeping the point `at` (pane pixels) where it is, or as
+  // near as the pane's edges allow.
+  function magnify(s, mag, at) {
     mag = Math.max(1, Math.min(4, mag));
     const p = at || { x: s.view.offsetWidth / 2, y: s.view.offsetHeight / 2 };
     const cx = (p.x - s.mx) / s.mag, cy = (p.y - s.my) / s.mag;
-    s.mx = p.x - cx * mag; s.my = p.y - cy * mag; s.mag = mag;
-    if (mag === 1) { s.mx = 0; s.my = 0; }
-    place(s, animate);
+    s.tm = mag;
+    [s.tx, s.ty] = clampTo(s, mag, p.x - cx * mag, p.y - cy * mag);
+    // The one point that is in the same place now and at the target: zoom
+    // around it, and the glide lands exactly on the target, edges and all.
+    const d = s.mag - mag;
+    if (Math.abs(d) < 1e-6) s.anchor = null;
+    else {
+      const ax = (s.tx - s.mx) / d, ay = (s.ty - s.my) / d;
+      s.anchor = { px: s.mx + ax * s.mag, py: s.my + ay * s.mag, cx: ax, cy: ay };
+    }
+    run();
+  }
+  // Look around: `instant` for a drag, which follows the hand exactly.
+  function pan(s, mx, my, instant) {
+    s.anchor = null;
+    [s.tx, s.ty] = clampTo(s, s.tm, mx, my);
+    if (instant) { s.mx = s.tx; s.my = s.ty; draw(s); } else run();
   }
   // A screen point in pane pixels (the deck scales the stage).
   function local(s, e) {
@@ -156,14 +194,16 @@
     activate,
     // The + − 0 keys: zoom the app on the slide toward the pointer when it is
     // over the app, else around the middle. False when the slide has none.
-    zoomKey: (slide, dir) => {
+    zoomKey: (slide, dir, repeat) => {
       const el = slide.querySelector('.app.live');
       const s = el && panes.get(el);
       if (!s) return false;
       if (dir === 0) { magnify(s, 1); return true; }
       const r = s.view.getBoundingClientRect();
       const over = pointer && pointer.clientX >= r.left && pointer.clientX <= r.right && pointer.clientY >= r.top && pointer.clientY <= r.bottom;
-      magnify(s, s.mag * (dir > 0 ? 1.25 : 1 / 1.25), over ? local(s, pointer) : null);
+      // Held down, the key repeats: smaller steps, so it glides rather than jumps.
+      const step = repeat ? 1.08 : 1.25;
+      magnify(s, s.tm * (dir > 0 ? step : 1 / step), over ? local(s, pointer) : null);
       return true;
     },
     typeNext: slide => {

@@ -28,6 +28,7 @@ fonts. Without a connection the type falls back to Georgia and system fonts.
 | B or . | blackout |
 | a number, then ⏎ | go to that slide |
 | + − 0 | zoom the live app toward the pointer; 0 goes back to fit |
+| D | draw on the slide; U undoes, C clears it, Esc puts the pen down |
 | ? | the key list |
 
 ## Live terminals
@@ -97,7 +98,8 @@ An app pane shows the real Mycelium app in a frame:
   after any terminal commands on the slide. The speaker view counts the
   pages left.
 - **Zoom while presenting.** Magnify any part of the app on the fly, and
-  keep using it while zoomed:
+  keep using it while zoomed. Every zoom glides there, holding still the
+  point you aim at, and holding + down zooms in steadily:
   - the − and + in the pane's address bar (the percentage goes back to fit)
   - the + and − keys, which zoom toward the pointer when it is over the app,
     and 0 to go back to fit
@@ -112,6 +114,18 @@ An app pane shows the real Mycelium app in a frame:
 The app keeps its own theme, whatever the deck's. Present from the app
 `mycelium up` or the Mac app serves: a `next dev` server draws its own
 error badge over the page.
+
+## Drawing
+
+Press D (or pick a tool) to draw over the whole slide, the live app and
+terminals included. A toolbar appears at the bottom with three tools: a
+pen (it follows a stylus's pressure), a highlighter, and laser ink that
+fades a moment after you lift. It has five colours from the palette, and
+Undo, Clear and Done. The deck keys still move between slides while you
+draw. Ink belongs to its slide: it is kept in stage pixels, so it scales
+with the window and is still there when you come back. U or ⌘/Ctrl-Z
+undoes, C clears the slide, and D or Esc puts the pen down. Ink isn't
+printed.
 
 The URL hash is the slide number (`index.html#7`). To make a PDF, print from
 Chrome with background graphics on. Each slide prints as one 1920×1080 page
@@ -162,7 +176,8 @@ Copy the one closest to what you need.
 | `deck.js` | fitting the stage, keys, steps, overview, speaker view, timers |
 | `lens.js` | the background: grows the network on a 2D canvas, then draws it with the lens in one WebGL shader |
 | `term.js` | live terminals: xterm.js panes over the shells `serve.py` runs |
-| `app.js` | live app panes: the Mycelium app in a frame, its screenshot until it answers |
+| `app.js` | live app panes: the Mycelium app in a frame, its screenshot until it answers, with smooth zoom |
+| `ink.js` | drawing over the deck: pen, highlighter and laser ink, kept per slide |
 | `serve.py` | serves the deck on 127.0.0.1 and runs a shell on a pseudo-terminal per pane |
 
 With `prefers-reduced-motion`, the network is drawn once and the lens jumps

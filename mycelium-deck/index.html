@@ -253,6 +253,22 @@
 
 <div class="progress"></div>
 <div class="goto pane"></div>
+<canvas id="ink" aria-hidden="true"></canvas>
+<div class="ink-bar pane" role="toolbar" aria-label="Draw">
+  <button type="button" data-tool="pen" class="on" title="Pen">Pen</button>
+  <button type="button" data-tool="marker" title="Highlighter">Marker</button>
+  <button type="button" data-tool="laser" title="Laser ink: fades after you lift">Laser</button>
+  <span class="sep"></span>
+  <button type="button" data-color="accent" class="swatch on" aria-label="Cyan"></button>
+  <button type="button" data-color="violet" class="swatch" aria-label="Violet"></button>
+  <button type="button" data-color="yellow" class="swatch" aria-label="Yellow"></button>
+  <button type="button" data-color="red" class="swatch" aria-label="Red"></button>
+  <button type="button" data-color="ink" class="swatch" aria-label="White"></button>
+  <span class="sep"></span>
+  <button type="button" data-act="undo" title="Undo (U)">Undo</button>
+  <button type="button" data-act="clear" title="Clear this slide (C)">Clear</button>
+  <button type="button" data-act="close" title="Done (D or Esc)">Done</button>
+</div>
 <div class="blackout"></div>
 <div class="help pane" role="dialog" aria-label="Keys">
   <div class="title">Keys</div>
@@ -263,6 +279,7 @@
   <div><b>F</b>fullscreen</div>
   <div><b>T</b>light / dark</div>
   <div><b>B</b>blackout</div>
+  <div><b>D</b>draw on the slide (U undo, C clear)</div>
   <div><b>+ − 0</b>zoom the live app at the pointer, fit</div>
   <div><b>12 ⏎</b>go to slide 12</div>
   <div><b>?</b>this panel</div>
@@ -271,6 +288,7 @@
 <script src="lens.js"></script>
 <script src="term.js"></script>
 <script src="app.js"></script>
+<script src="ink.js"></script>
 <script src="deck.js"></script>
 </body>
 </html>

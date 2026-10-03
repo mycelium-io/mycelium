@@ -288,7 +288,6 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 .app-view iframe { position: absolute; left: 0; top: 0; border: 0; transform-origin: 0 0; background: var(--bg); opacity: 0; transition: opacity 0.5s; }
 .app.live .app-view iframe { opacity: 1; }
 .app.live .app-view img { visibility: hidden; }
-.app-view iframe.zooming { transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.1, 1), opacity 0.5s; }
 .app .app-zoom { display: none; margin-left: auto; align-items: center; gap: 2px; padding: 3px; border-radius: 11px; border: 1px solid var(--border); background: var(--pane); }
 .app.live .app-zoom { display: inline-flex; }
 .app.live .bar::after { margin-left: 18px; }
@@ -330,6 +329,21 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 .deck.overview .pane { backdrop-filter: none; -webkit-backdrop-filter: none; }
 
 /* ── Overlays ── */
+#ink { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 6; pointer-events: none; touch-action: none; }
+body.inking #ink { pointer-events: auto; cursor: crosshair; }
+.ink-bar {
+  position: fixed; left: 50%; bottom: 22px; z-index: 7; display: flex; align-items: center; gap: 4px; padding: 7px;
+  border-radius: 16px; transform: translate(-50%, 12px); opacity: 0; pointer-events: none; transition: opacity 0.25s, transform 0.25s;
+}
+.ink-bar.open { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.ink-bar button { font: 500 14px var(--mono); letter-spacing: 0.04em; color: var(--muted); background: transparent; border: 0; border-radius: 10px; padding: 9px 13px; cursor: pointer; }
+.ink-bar button:hover { background: var(--border); color: var(--text); }
+.ink-bar button.on { color: var(--text); background: var(--border-hi); }
+.ink-bar .swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; background: var(--swatch); box-shadow: inset 0 0 0 2px rgba(0,0,0,.25); }
+.ink-bar .swatch:hover { background: var(--swatch); transform: scale(1.1); }
+.ink-bar .swatch.on { background: var(--swatch); box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text); }
+.ink-bar .sep { width: 1px; height: 24px; background: var(--border-hi); margin: 0 6px; }
+
 .blackout { position: fixed; inset: 0; background: #000; z-index: 9; opacity: 0; pointer-events: none; transition: opacity 0.4s; }
 body.black .blackout { opacity: 1; }
 .help {
@@ -366,7 +380,7 @@ body.black .blackout { opacity: 1; }
 @media print {
   @page { size: 1920px 1080px; margin: 0; }
   html, body { overflow: visible; height: auto; background: var(--bg); }
-  #lens-bg, .progress, .help, .goto, .blackout { display: none !important; }
+  #lens-bg, .progress, .help, .goto, .blackout, #ink, .ink-bar { display: none !important; }
   .deck { position: static; transform: none !important; width: 1920px; height: auto; }
   .slide {
     position: relative; width: 1920px; height: 1080px; opacity: 1; visibility: visible;

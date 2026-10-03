@@ -83,7 +83,8 @@ mycelium-deck/      The slide template for talks and workshops: plain HTML on a
                     real shell (`term.js`, xterm.js), token-gated, and each → runs
                     the pane's next scripted command. A `data-app` pane frames the
                     real app (`app.js`, found at `?app=`, :8080 or :3717), its
-                    screenshot until the app answers. See its README.
+                    screenshot until the app answers, zooming smoothly at the
+                    pointer. D draws over any slide (`ink.js`). See its README.
 ```
 
 ## Development
