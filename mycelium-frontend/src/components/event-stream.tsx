@@ -45,6 +45,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowDown, AtSign, Copy, Link2, Loader2, MessageSquare, MessagesSquare } from "lucide-react";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { absoluteUrl, copyText } from "@/lib/clipboard";
+import { agentTag } from "@/lib/agent-label";
 
 /** Stable empties: find writes these back on every close, and a fresh array
  *  each time would re-run the effects that read them. */
@@ -162,7 +163,7 @@ function ChannelSkeleton() {
     <div className="flex flex-col gap-5 px-5 py-4">
       {widths.map((w, i) => (
         <div key={i} className="flex gap-3">
-          <Skeleton className="size-8 flex-shrink-0 rounded-full" />
+          <Skeleton className="size-6 flex-shrink-0 rounded-full" />
           <div className="min-w-0 flex-1 pt-0.5">
             <Skeleton className="h-3 w-24" />
             <Skeleton className={`mt-2 h-3 ${w}`} />
@@ -545,18 +546,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // And what each row is called, so a notice, a ping and a memory push about one
   // task all print its name rather than three shapes of its key.
   const rowNames = useRoomRowNames(roomName);
-  // What each agent is, said beside its name: an engine by its kind (the rail's
-  // word for it), a bridged service as a2a, anything else just an agent.
-  const agentTags = useMemo(
-    () =>
-      new Map(
-        agents.map((a) => [
-          a.handle,
-          a.adapter === "engine" ? (a.kind ?? "engine") : a.adapter === "a2a" ? "a2a" : "agent",
-        ]),
-      ),
-    [agents],
-  );
+  // What each agent is, said beside its name (`agentTag`): its CLI, an engine's
+  // kind, or a bridged service as a2a.
+  const agentTags = useMemo(() => new Map(agents.map((a) => [a.handle, agentTag(a)])), [agents]);
   const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle)), [agents]);
   const agentOwners = useMemo(
     () => new Map(agents.filter((a) => a.owner).map((a) => [a.handle, a.owner as string])),
@@ -1314,11 +1306,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                     {ev.time.slice(0, 5)}
                   </span>
 
-                  <div className="w-7 flex-shrink-0">
+                  <div className="w-6 flex-shrink-0">
                     {!grouped && (
                       <Tooltip content={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
                         <span role="img" aria-label={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
-                          <Monogram handle={ev.sender} color={color} className="size-7 text-micro" />
+                          <Monogram handle={ev.sender} color={color} className="size-6 text-[10px]" />
                         </span>
                       </Tooltip>
                     )}
@@ -1326,14 +1318,13 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                   <div className="min-w-0 flex-1">
                     {!grouped && (
                       <div className="flex items-center gap-1.5 pr-12">
-                        <SenderName handle={ev.sender} highlight={hit} />
-                        {isAgent && (
-                          <span className="flex-shrink-0 rounded bg-accent-soft px-1 py-px font-mono text-[10px] leading-none text-accent">
-                            {agentTags.get(ev.sender) ?? "agent"}
-                          </span>
-                        )}
+                        <SenderName
+                          handle={ev.sender}
+                          highlight={hit}
+                          tag={isAgent ? (agentTags.get(ev.sender) ?? "agent") : undefined}
+                        />
                         {ev.recipient && (
-                          <span className="rounded bg-hairline px-1.5 py-px font-mono text-micro text-muted-foreground">
+                          <span className="flex-shrink-0 rounded bg-hairline px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground">
                             → {ev.recipient}
                           </span>
                         )}

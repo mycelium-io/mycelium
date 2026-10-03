@@ -21,6 +21,7 @@ import { MessageBody } from "@/components/message-body";
 import { ConductorRow } from "@/components/task/conductor-row";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Monogram } from "@/components/ui/monogram";
+import { agentTag } from "@/lib/agent-label";
 import { SenderName } from "@/components/sender-name";
 
 interface Props {
@@ -85,6 +86,7 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
     useThreadMessages(roomName, episode);
   const { agents } = useRoomAgents(roomName);
   const agentHandles = new Set(agents.map(a => a.handle));
+  const agentTags = new Map(agents.map(a => [a.handle, agentTag(a)]));
   const endRef = useRef<HTMLDivElement>(null);
 
   // Hand the parent our refresh once it is stable, so its composer's onSent can
@@ -214,17 +216,19 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
                 key={message.id ?? `${sender}-${i}`}
                 className={`flex gap-3 px-5 ${grouped ? "py-0.5" : "mt-3 pt-1 first:mt-0"}`}
               >
-                <div className="w-7 flex-shrink-0">
+                <div className="w-6 flex-shrink-0">
                   {!grouped && (
                     <Monogram
                       handle={sender}
                       color={isAgent ? undefined : "var(--avatar-neutral)"}
-                      className="size-7 text-micro"
+                      className="size-6 text-[10px]"
                     />
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
-                  {!grouped && <SenderName handle={sender} />}
+                  {!grouped && (
+                    <SenderName handle={sender} tag={isAgent ? (agentTags.get(sender) ?? "agent") : undefined} />
+                  )}
                   <MessageBody content={text} onOpenMemory={onOpenMemory} />
                 </div>
               </div>

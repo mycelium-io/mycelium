@@ -15,3 +15,15 @@ export function agentLabel(a: Pick<AgentSummary, "adapter" | "kind" | "framework
   if (a.adapter === "engine") return a.kind ? `engine · ${a.kind}` : "engine";
   return a.framework ?? a.adapter;
 }
+
+/**
+ * The word beside an agent's name in the chat: the engine's kind, `a2a` for a
+ * bridged service, and for an agent CLI the CLI itself where it was recorded
+ * (`codex`, `claude`), else just `agent`. Never the adapter: `claude_code` is
+ * how a herdr agent takes part, whatever CLI it runs.
+ */
+export function agentTag(a: Pick<AgentSummary, "adapter" | "kind" | "framework">): string {
+  if (a.adapter === "engine") return a.kind ?? "engine";
+  if (a.adapter === "a2a") return "a2a";
+  return a.framework ?? "agent";
+}
