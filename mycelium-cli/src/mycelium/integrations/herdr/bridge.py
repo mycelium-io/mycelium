@@ -124,7 +124,7 @@ def build_wake_prompt(room: str, handle: str) -> str:
 
     Tells the (already-context-rich) resident agent to drain its pending mycelium
     turn and reply through the room. Kept explicit so the agent needs no state
-    beyond its own accumulated context + the mycelium skill.
+    beyond its own accumulated context.
     """
     h = handle.lstrip("@")
     return (
@@ -132,7 +132,7 @@ def build_wake_prompt(room: str, handle: str) -> str:
         f"'{room}' addressed to you as '@{h}'. Run one turn now: "
         f"`mycelium await --room {room} --handle {h} --json --timeout 5` to read it, "
         f"reason about the returned prompt using your full context, then post your reply "
-        f'with `mycelium respond --room {room} --handle {h} "<your reply>"`. '
+        f'with `mycelium respond --room {room} --handle {h} --body "<your reply>"`. '
         f"Your reply flows through the room, not this terminal."
     )
 
@@ -145,7 +145,7 @@ def build_assigned_prompt(room: str, handle: str, key: str, title: str | None = 
         f"[mycelium] The task {what} in room '{room}' was given to you as '@{h}'. "
         f"Claim it (`mycelium board claim {key} --room {room} --to @{h}`), read its thread "
         f"(`mycelium board messages {key} --room {room}`), do the work, and post what you "
-        f'did there with `mycelium board send {key} "..." --room {room} --as {h}`.'
+        f'did there with `mycelium board send {key} --room {room} --as {h} --body "..."`.'
     )
 
 
@@ -166,7 +166,7 @@ def build_mention_prompt(room: str, handle: str) -> str:
         f"[mycelium] You were mentioned in room '{room}'. "
         f"Run `mycelium await --room {room} --handle {h} --json --timeout 5` to read it "
         f"with everything said since your last turn, then reply with "
-        f'`mycelium respond --room {room} --handle {h} "..."`. '
+        f'`mycelium respond --room {room} --handle {h} --body "..."`. '
         f"Your reply lands where you were asked."
     )
 

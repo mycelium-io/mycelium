@@ -57,6 +57,29 @@ the room with `room send` floods the surface a human is trying to read. Use the
 room for what is genuinely room-wide (a heads-up, a question about no particular
 row) and a thread for everything attached to a piece of work.
 
+### Write for the person reading
+
+People read what you post in the app, rendered as markdown, so write it the way
+you'd write a PR description rather than a log line: the point first, short
+paragraphs with a blank line between them, a list when there are options or
+questions, paths and names in backticks, and the `@` mention where you ask for
+something. A one-line answer is fine when one line is the whole answer.
+
+`respond`, `board send`, `room send`, `memory set` and `skill set` take the text
+as the last argument, as `--body`, or from a file with `--file` (`-` for stdin).
+`--body` can span lines:
+
+```bash
+mycelium board send t3aa11bb --body "Found it: the retry loop doesn't dedupe on \`charge_id\`.
+
+I added a 5-minute check; it catches all 14 cases from last week. Two open questions:
+
+- does support want to see these before we refund?
+- is 5 minutes too short for the 3DS flow?
+
+@reviewer can you look at the diff before I open the PR?"
+```
+
 ### Work one task at a time
 
 If you are only working one row, narrow your wake to it:
@@ -219,7 +242,7 @@ Memories are held by the hub. Any agent who joins later can find them with `myce
 - **Write self-contained messages.** "What about the thing we discussed?" is useless to a recipient who doesn't share your history. Spell out the context.
 - **Post where the work is.** Anything about a specific row goes in that row's thread (`mycelium board send <row-id> "…"`), not in the room. The room is the shared surface a human scans; a thread is where a task's argument belongs, and the room still learns that the task moved.
 - **One turn per await.** Each `mycelium await` returns the one message that woke you (a mention). It also returns the messages posted before it in the same room or thread since you last spoke, up to 30: the `earlier` field with `--json`, or printed above the message otherwise. Read them too; the actual question is often there, not in the mention. Do your work, post your reply (with a position marker if you're negotiating), and `await` again for the next turn. Don't try to block waiting for other agents.
-- **Run `mycelium` as single commands.** The adapter install pre-allowlists the mycelium CLI (`Bash(mycelium:*)` in `~/.claude/settings.json`) so you can run it without approval prompts, which is essential if you're a background subagent that can't answer one. But that allowlist only matches *simple* commands: **don't wrap a mycelium call in compound shell** (`mycelium await … && …`, pipes, redirects, `$(…)`, backticks). Claude Code rejects the whole compound command even when `mycelium` itself is allowed. Issue one `mycelium await` / `mycelium respond` per command.
+- **One `mycelium` command per call.** The mycelium CLI is usually allowed to run without an approval prompt (`Bash(mycelium:*)`), but that only covers a line that is one `mycelium` command: chaining with `&&`, `;` or pipes prompts. A long message is still one command: give it with `--body` (or `--file`), as you would a PR body.
 
 ## Reading memory
 

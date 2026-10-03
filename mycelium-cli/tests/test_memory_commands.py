@@ -164,14 +164,25 @@ def test_memory_set_rejects_both_value_and_file(tmp_path: Path) -> None:
     result = runner.invoke(
         memory_cmd.app, ["set", "reference/spec", "inline", "--file", str(spec), "--room", "demo"]
     )
-    assert result.exit_code == 1
-    assert "not both" in result.output
+    assert result.exit_code == 2
+    assert "once" in result.output
 
 
 def test_memory_set_rejects_neither_value_nor_file() -> None:
     result = runner.invoke(memory_cmd.app, ["set", "reference/spec", "--room", "demo"])
-    assert result.exit_code == 1
+    assert result.exit_code == 2
     assert "--file" in result.output
+
+
+def test_memory_set_takes_a_multiline_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = _stub_create(monkeypatch)
+    body = "# Notes\n\nFirst paragraph.\n\n- one\n- two\n"
+
+    result = runner.invoke(
+        memory_cmd.app, ["set", "reference/notes", "--body", body, "--room", "demo"]
+    )
+    assert result.exit_code == 0, result.output
+    assert captured[0].items[0].value == body
 
 
 def test_memory_set_missing_file_errors(tmp_path: Path) -> None:
@@ -179,7 +190,7 @@ def test_memory_set_missing_file_errors(tmp_path: Path) -> None:
         memory_cmd.app,
         ["set", "reference/spec", "--file", str(tmp_path / "nope.md"), "--room", "demo"],
     )
-    assert result.exit_code == 1
+    assert result.exit_code == 2
     assert "cannot read" in result.output
 
 

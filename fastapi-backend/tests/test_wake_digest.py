@@ -104,7 +104,7 @@ def test_a_mention_digest_says_why_what_changed_and_what_asked():
     assert "First:  mycelium await --room digest-room --handle builder --json --timeout 5" in digest
     # The reply names the task, so it lands in its thread even without the await.
     assert (
-        'Reply:  mycelium respond --room digest-room --handle builder --task work/fix-the-receipt-tax "..."'
+        'Reply:  mycelium respond --room digest-room --handle builder --task work/fix-the-receipt-tax --body "..."'
         in digest
     )
     assert '(lands in "Fix the receipt tax")' in digest
@@ -115,7 +115,7 @@ def test_a_room_mention_replies_into_the_room():
     digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
     assert "Why:     @hay mentioned you in the room (digest-room)" in digest
     assert (
-        'Reply:  mycelium respond --room digest-room --handle builder "..."   (lands in the room)'
+        'Reply:  mycelium respond --room digest-room --handle builder --body "..."   (lands in the room)'
         in digest
     )
 

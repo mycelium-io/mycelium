@@ -2112,15 +2112,15 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-room",
-    "t": "mycelium room send \"<content>\" [--room <room>] [--handle <handle>]",
+    "t": "mycelium room send \"<content>\" | --body \"<markdown>\" | --file <path> [--room <room>] [--handle <handle>]",
     "s": "CLI Reference",
-    "x": "Send an addressed chat message into a room. Use @handle mentions to direct it to specific agents.",
+    "x": "Send an addressed chat message into a room, in markdown. Use @handle mentions to direct it to specific agents.",
     "k": "cmd",
     "p": "Reference"
   },
   {
     "u": "reference.html#cli-room",
-    "t": "mycelium room amend <message-id> \"<new content>\" [--room <room>] [--handle <handle>]",
+    "t": "mycelium room amend <message-id> \"<new content>\" | --body \"<markdown>\" | --file <path> [--room <room>] [--handle <handle>]",
     "s": "CLI Reference",
     "x": "Revise a message you sent. The amendment is posted as its own message; the room reads the newest text, marked edited.",
     "k": "cmd",
@@ -2215,9 +2215,9 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-board",
-    "t": "mycelium board send <id> \"<text>\"",
+    "t": "mycelium board send <id> \"<text>\" | --body \"<markdown>\" | --file <path>",
     "s": "CLI Reference",
-    "x": "Post into the thread on a row or any memory. The room sees that it moved, not what was said.",
+    "x": "Post into the thread on a row or any memory, in markdown. The room sees that it moved, not what was said.",
     "k": "cmd",
     "p": "Reference"
   },
@@ -2302,7 +2302,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-agent",
-    "t": "mycelium agent invoke <handle> \"<prompt>\" [--room <room>]",
+    "t": "mycelium agent invoke <handle> \"<prompt>\" | --body \"<markdown>\" | --file <path> [--room <room>]",
     "s": "CLI Reference",
     "x": "Send an addressed message to a registered agent. Desugars to mycelium room send \"@handle <prompt>\".",
     "k": "cmd",
@@ -2381,9 +2381,9 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-memory",
-    "t": "mycelium memory set <key> [<value>] [--file <path>] [--handle <handle>]",
+    "t": "mycelium memory set <key> [<value>] [--body <markdown>] [--file <path>] [--handle <handle>]",
     "s": "CLI Reference",
-    "x": "Write a memory (upsert). The value comes from the positional argument or --file (- reads stdin): one or the other, not both. Structured category keys (work/, decisions/, status/, context/) are auto-validated. Always upserts; the backend handles versioning.",
+    "x": "Write a memory (upsert). The value comes from the positional argument, --body, or --file (- reads stdin): exactly one of them. Structured category keys (work/, decisions/, status/, context/) are auto-validated. Always upserts; the backend handles versioning.",
     "k": "cmd",
     "p": "Reference"
   },
@@ -2492,9 +2492,9 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-skill",
-    "t": "mycelium skill set <name> [<body>] [--file <path>] [--desc <text>]",
+    "t": "mycelium skill set <name> [<body>] [--body <markdown>] [--file <path>] [--desc <text>]",
     "s": "CLI Reference",
-    "x": "Create or update a skill (upsert) in a room's skills/ namespace. The body comes from the positional argument or --file (- reads stdin).",
+    "x": "Create or update a skill (upsert) in a room's skills/ namespace. The body is markdown, from the positional argument, --body, or --file (- reads stdin).",
     "k": "cmd",
     "p": "Reference"
   },
@@ -2641,9 +2641,9 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-other",
-    "t": "mycelium respond --room <room> --handle <handle> [--task <id>] \"<text>\"",
+    "t": "mycelium respond --room <room> --handle <handle> [--task <id>] \"<text>\" | --body \"<markdown>\" | --file <path>",
     "s": "CLI Reference",
-    "x": "Publish a reply as the handle; the backend records it as a position for the aligner.",
+    "x": "Publish a reply as the handle; the backend records it as a position for the aligner. The reply is markdown: give it as the argument, --body, or --file (- reads stdin).",
     "k": "cmd",
     "p": "Reference"
   },

@@ -33,6 +33,7 @@ from mycelium.exceptions import MyceliumError
 from mycelium.identity import resolve_actor
 from mycelium.names import who
 from mycelium.slim.l9 import room_episode
+from mycelium.text_input import takes_text
 
 # The L9 "raise-up" whitelist: message types promoted onto the primary channel
 # surface (here, `room watch`'s live stream) rather than staying inspector-only.
@@ -858,11 +859,12 @@ def watch(
 
 
 @doc_ref(
-    usage='mycelium room send "<content>" [--room <room>] [--handle <handle>]',
-    desc="Send an addressed chat message into a room. Use <code>@handle</code> mentions to direct it to specific agents.",
+    usage='mycelium room send "<content>" | --body "<markdown>" | --file <path> [--room <room>] [--handle <handle>]',
+    desc="Send an addressed chat message into a room, in markdown. Use <code>@handle</code> mentions to direct it to specific agents.",
     group="room",
 )
 @app.command("send")
+@takes_text("content", "The message, in markdown. @handle mentions address agents.", noun="message")
 def send(
     ctx: typer.Context,
     content: str = typer.Argument(
@@ -923,11 +925,12 @@ def send(
 
 
 @doc_ref(
-    usage='mycelium room amend <message-id> "<new content>" [--room <room>] [--handle <handle>]',
+    usage='mycelium room amend <message-id> "<new content>" | --body "<markdown>" | --file <path> [--room <room>] [--handle <handle>]',
     desc="Revise a message you sent. The amendment is posted as its own message; the room reads the newest text, marked edited.",
     group="room",
 )
 @app.command("amend")
+@takes_text("content", "The revised message, in markdown.", noun="message")
 def amend(
     ctx: typer.Context,
     message_id: str = typer.Argument(
