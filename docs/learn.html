@@ -35,8 +35,11 @@
   }
   .learn a { color: var(--accent); text-decoration: none; }
   .learn a:hover { text-decoration: underline; }
-  .label { font-family: var(--font-mono); font-size: var(--text-micro); font-weight: 600;
-    letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted-foreground); }
+  .label { font-size: var(--text-label); font-weight: 500; color: var(--muted-foreground); }
+  /* The serif is the site's voice for its biggest moment only: the catalog's
+     headline. Everything else on this page is set in the sans. */
+  .learn h1, .learn h2, .learn h3 { font-family: var(--font-sans); font-style: normal; letter-spacing: -0.015em; }
+  .learn .hero h1 { font-family: var(--font-serif); font-style: italic; letter-spacing: -0.025em; }
   .crumbs { display: inline-block; font-size: var(--text-label); color: var(--muted-foreground); margin-bottom: 18px;
     padding: 5px 12px; border-radius: 999px; background: color-mix(in srgb, var(--paper) 72%, transparent);
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
@@ -85,8 +88,7 @@
   .featured.mirrored { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); margin: 20px 0 0; }
   .featured.mirrored .thumb { order: 2; }
   .featured .body { padding: 34px 36px; display: flex; flex-direction: column; gap: 12px; }
-  .featured h3 { font-family: var(--font-serif); font-style: italic; font-weight: 600; font-size: 2rem; line-height: 1.12;
-    margin: 0; color: var(--text); letter-spacing: -0.01em; }
+  .featured h3 { font-weight: 600; font-size: 1.6rem; line-height: 1.2; margin: 0; color: var(--text); }
   .featured p { margin: 0; color: var(--muted-foreground); line-height: 1.65; }
   .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
   .card { display: flex; flex-direction: column; overflow: hidden; color: inherit;
@@ -97,11 +99,11 @@
   .card:hover .thumb img, .featured:hover .thumb img { transform: scale(1.24); }
   .thumb::after { content: ""; position: absolute; inset: 0;
     background: linear-gradient(180deg, transparent 35%, rgba(6, 9, 14, 0.82)); }
-  .thumb .num { position: absolute; left: 16px; bottom: 12px; z-index: 1; font-family: var(--font-serif); font-style: italic;
-    font-weight: 600; font-size: 2.6rem; line-height: 1; color: #fff; }
-  .thumb .track { position: absolute; right: 14px; bottom: 16px; z-index: 1; font-family: var(--font-mono);
-    font-size: 10.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.9);
-    border: 1px solid rgba(255,255,255,0.28); background: rgba(6,9,14,0.45); border-radius: 999px; padding: 4px 9px; }
+  .thumb .num { position: absolute; left: 16px; bottom: 14px; z-index: 1; font-weight: 600; font-size: 1.9rem;
+    line-height: 1; color: #fff; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  .thumb .track { position: absolute; right: 14px; bottom: 16px; z-index: 1; font-size: 12px; font-weight: 500;
+    color: rgba(255,255,255,0.92); border: 1px solid rgba(255,255,255,0.28); background: rgba(6,9,14,0.45);
+    border-radius: 999px; padding: 4px 10px; }
   .card .body { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 9px; flex: 1; }
   .card h3 { margin: 0; font-size: var(--text-ui); line-height: 1.35; color: var(--text); }
   .card p { margin: 0; font-size: var(--text-body); color: var(--muted-foreground); line-height: 1.6; }
@@ -142,8 +144,7 @@
     font-size: var(--text-body); color: var(--text) !important; }
   .row:hover { background: var(--hairline); text-decoration: none !important; }
   .row .mins { margin-left: auto; font-size: var(--text-label); color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
-  .row .tag { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase;
-    color: var(--muted-foreground); border: 1px solid var(--border); border-radius: 999px; padding: 2px 7px; }
+  .row .tag { font-size: 11.5px; color: var(--muted-foreground); border: 1px solid var(--border); border-radius: 999px; padding: 2px 7px; }
   .check { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--faint);
     display: inline-flex; align-items: center; justify-content: center; }
   .check.on { background: var(--green); border-color: var(--green); color: #fff; }
