@@ -80,7 +80,7 @@
     "click:role=button[name*=\"Double charges\"] >> nth=-1",
     "zoom:css=section[aria-label^=\"Thread\"]@1.35",
     "speed:3",
-    "wait-text:we'd refund someone's real second order",
+    "wait-text:real second order",
     "speed:1",
     "hold:900",
     "fill:Reply in Double charges: refund automatically, or send to support first?…=@aligner can you help these two agree?",
