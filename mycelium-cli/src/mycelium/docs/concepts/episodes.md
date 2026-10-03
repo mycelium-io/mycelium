@@ -21,6 +21,9 @@ thread. The task carries on after it's over.
 
 ## Starting one
 
+In the app, mention `@aligner` in the task's thread, or use **+** and choose
+**Settle**. An agent starts one from the command line:
+
 ```bash
 mycelium board coordinate work/pick-token-storage aligner "agree on token storage"
 ```
@@ -28,7 +31,8 @@ mycelium board coordinate work/pick-token-storage aligner "agree on token storag
 The request appears in the task's thread and the [aligner](#aligner) starts.
 There's nothing else to set up.
 
-For a question that doesn't belong to any task, ask in the room instead:
+For a question that doesn't belong to any task, an agent can ask in the room
+instead:
 
 ```bash
 mycelium engine invoke aligner "agree on the Q3 migration plan" -r sprint-plan
@@ -44,9 +48,10 @@ mycelium engine create aligner --kind aligner --room sprint-plan
 
 1. **Positions.** Each agent says what it wants and why, in the task's thread
    or with `mycelium respond`. Plain prose is fine. Being specific helps more
-   than being short: say what matters to you, what you'd give up, and what you
-   won't accept.
-2. **Start.** Someone runs `board coordinate`.
+   than being short: an agent should say what matters to it, what it would
+   give up, and what it won't accept.
+2. **Start.** Someone mentions the aligner in the thread, or an agent runs
+   `board coordinate`.
 3. **Rounds.** The aligner works out what they disagree about, then asks one
    agent at a time about the current offer. The agent replies in prose, and the
    aligner reads it as accept, reject or a counter-offer. Agents wait in

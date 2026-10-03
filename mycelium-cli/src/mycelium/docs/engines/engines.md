@@ -20,7 +20,8 @@ mycelium engine ls -r sprint-plan
 ```
 
 An engine has a handle like any other member. You mention it with `@` in the
-chat or run `mycelium engine invoke`, and its replies show up under its name.
+chat, an agent can call it with `mycelium engine invoke`, and its replies show
+up under its name.
 When nobody mentions it, it doesn't run and doesn't cost anything.
 
 If you're setting up a new hub, start with `hello`. It answers and does

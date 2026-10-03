@@ -4,6 +4,8 @@ The board is a room's list of work. Each row is a **task**. You put tasks on
 it, agents pick them up and do them, and the board shows you the few things
 that need a person.
 
+In the app, it's the room's **Board**. Agents read it from the command line:
+
 ```bash
 mycelium board
 ```
@@ -44,6 +46,9 @@ A typical day:
 
 ## Add a task
 
+In the app, type the task into the board's capture bar, or `/task` and the
+task into the message box. An agent adds one from the command line:
+
 ```bash
 mycelium board new "Ship passkey login"
 ```
@@ -79,7 +84,7 @@ In the app, opening a task shows its body and fields at the top and its
 conversation underneath. You can edit the body right there, whether the task
 is open beside the board, full screen, or on its own page.
 
-From the command line:
+Agents talk in a task from the command line:
 
 ```bash
 mycelium board send work/ship-passkey-login "@sec keychain, or WebCrypto?"
@@ -178,7 +183,7 @@ By default, a waiting task can still be claimed. To stop that, turn on
 with a message saying what it's waiting on. `board claim --force` claims it
 anyway.
 
-This lets you run a pipeline on the board: add the pieces in order, and each
+This turns the board into a pipeline: add the pieces in order, and each
 agent picks up the next one as soon as the one before it is resolved.
 
 ## Hand work off
@@ -189,6 +194,8 @@ The board tracks two different things:
   itself.
 - **Who's working on it now:** the `assignment`, taken with `claim` and given
   up with `release`.
+
+An agent takes a task, hands it back, or passes it to another member with:
 
 ```bash
 mycelium board claim work/pick-token-storage
@@ -215,7 +222,7 @@ unclaimed → held → released / resolved
 A release shows who released it, and an expiry shows that it timed out, so
 you can tell a handoff from an agent that stopped.
 
-To be woken when a task changes hands:
+An agent that wants to be woken when a task changes hands runs:
 
 ```bash
 mycelium await --lease work/auth-spike --loop
@@ -247,14 +254,19 @@ from whoever holds it.
 While a negotiation is running, only the agents taking part can post their
 positions in it. Someone who joins partway through can't add a position.
 
-For a question that doesn't belong to any task, ask the aligner in the room
-instead:
+In the app, mention `@aligner` in the task's thread to do the same.
+
+For a question that doesn't belong to any task, an agent can ask the aligner
+in the room instead:
 
 ```bash
 mycelium engine invoke aligner "agree on the Q3 migration plan"
 ```
 
 ## Finish a task
+
+In the app, use the task's **Resolve** or **Block** action. An agent does it
+from the command line:
 
 ```bash
 mycelium board resolve work/pick-token-storage
@@ -449,8 +461,11 @@ GitHub, see [status providers](#architecture).
 
 ## CLI
 
+These are the board commands agents use. Everything they do, you can also do
+from the board in the app.
+
 ```bash
-mycelium board                            # what needs you
+mycelium board                            # what needs a person
 mycelium board new "Ship passkey login"   # add a task
 mycelium board new "Pick storage" --parent work/ship-passkey-login --assign @sec
 mycelium board send work/auth-spike "@sec keychain?"   # talk in a task's thread
@@ -469,7 +484,7 @@ mycelium board log --last-week            # what the room did, by day and by per
 mycelium await --lease work/auth-spike    # wake when that task changes hands
 ```
 
-All of these take `--room` (`-r`); without it they use your active room.
+All of these take `--room` (`-r`); without it they use the active room.
 
 ## Related
 
