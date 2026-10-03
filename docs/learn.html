@@ -91,6 +91,8 @@
   .featured h3 { font-weight: 600; font-size: 1.6rem; line-height: 1.2; margin: 0; color: var(--text); }
   .featured p { margin: 0; color: var(--muted-foreground); line-height: 1.65; }
   .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+  /* Four courses between the bookends read as two rows of two, not three and one. */
+  .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .card { display: flex; flex-direction: column; overflow: hidden; color: inherit;
     transition: transform 140ms ease, border-color 140ms ease; }
   .thumb { position: relative; aspect-ratio: 16 / 9; overflow: hidden; background: #0b0d10; }

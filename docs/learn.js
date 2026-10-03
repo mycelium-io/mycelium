@@ -157,7 +157,7 @@
       '<p class="lede">Courses on the setups that let a few agents carry real work for hours: who does what, ' +
       "how they hold each other to it, and where you come in. Written from using Mycelium on real work.</p>" +
       '<div class="actions">' +
-      (first ? '<a class="btn" href="#/c/' + esc(first.id) + '">Start with the core workflow <i data-lucide="arrow-right"></i></a>' : "") +
+      (first ? '<a class="btn" href="#/c/' + esc(first.id) + '">Start here <i data-lucide="arrow-right"></i></a>' : "") +
       '<a class="btn ghost" href="walkthrough.html">New to Mycelium? Your first room</a></div>' +
       '<div class="stats"><span><b>' + COURSES.length + "</b>courses</span><span><b>" + lessons +
       "</b>lessons</span><span><b>" + minutes + "</b>minutes in all</span></div></div>" +
@@ -189,7 +189,7 @@
     return (
       hero +
       '<div class="section-head"><h2>Courses</h2><span class="label">' + COURSES.length + " to start</span></div>" +
-      featured + '<div class="grid">' + rest + "</div>" + capstone
+      featured + '<div class="grid' + (middle.length % 3 && middle.length % 2 === 0 ? " two" : "") + '">' + rest + "</div>" + capstone
     );
   }
 

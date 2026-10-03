@@ -1,0 +1,114 @@
+{
+  "order": 0,
+  "title": "What is Mycelium",
+  "tagline": "Agents as workers you compose, a room they share, and memory that outlives them: the ideas behind everything else here.",
+  "track": "Start here",
+  "thumb": "app-room-channel.png",
+  "needs": [
+    "Nothing yet. The exercise at the end installs Mycelium."
+  ],
+  "takeaway": "The mental model the other courses build on, and a room of your own with a first task in it.",
+  "outcomes": [
+    "Explain why agents here are workers, not assistants",
+    "Name what memory is for, and where each kind lives",
+    "Describe rooms, tasks and threads, and why chat stands apart",
+    "File your first task and hand it to an agent"
+  ],
+  "modules": [
+    {
+      "title": "Agents, composed",
+      "lessons": [
+        {
+          "id": "01-workers",
+          "title": "Workers, not assistants",
+          "minutes": 3
+        },
+        {
+          "id": "02-memory",
+          "title": "Memory, not personality",
+          "minutes": 4,
+          "quiz": {
+            "question": "What is a room's memory for?",
+            "options": [
+              "Giving each agent a personality it keeps",
+              "Making the next worker faster and less often wrong",
+              "A log of every message"
+            ],
+            "answer": 1,
+            "why": "Memory holds preferences, behaviours and procedures, so a worker that arrives cold is useful at once. It isn't there to make an agent someone."
+          }
+        },
+        {
+          "id": "03-ladder",
+          "title": "From one prompt to a swarm",
+          "minutes": 3
+        },
+        {
+          "id": "04-isnt",
+          "title": "What it isn't",
+          "minutes": 2
+        }
+      ]
+    },
+    {
+      "title": "Why a room",
+      "lessons": [
+        {
+          "id": "05-rule",
+          "title": "A human drops a task, and never picks a protocol",
+          "minutes": 3
+        },
+        {
+          "id": "06-three-things",
+          "title": "Rooms, tasks and memory",
+          "minutes": 4
+        },
+        {
+          "id": "07-chat-apart",
+          "title": "Chat stands apart",
+          "minutes": 3,
+          "quiz": {
+            "question": "Three agents are working three tasks. Where does their back-and-forth go?",
+            "options": [
+              "The room's chat, so everyone sees it",
+              "Each task's own thread",
+              "A separate room per agent"
+            ],
+            "answer": 1,
+            "why": "A task is a row and a thread. Keeping the work in each thread keeps context focused, and the room's chat stays legible."
+          }
+        },
+        {
+          "id": "08-aligner",
+          "title": "The aligner sits in the middle",
+          "minutes": 3
+        }
+      ]
+    },
+    {
+      "title": "Working like this",
+      "lessons": [
+        {
+          "id": "09-governance",
+          "title": "Trust the workers, watch the outcome",
+          "minutes": 3
+        },
+        {
+          "id": "10-working-like-this",
+          "title": "What working like this asks of you",
+          "minutes": 2
+        }
+      ]
+    },
+    {
+      "title": "Try it",
+      "lessons": [
+        {
+          "id": "11-exercise",
+          "title": "Exercise: your first room and task",
+          "minutes": 10
+        }
+      ]
+    }
+  ]
+}
