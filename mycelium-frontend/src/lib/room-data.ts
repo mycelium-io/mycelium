@@ -38,6 +38,7 @@ import {
   fetchSkills,
   logFetchError,
   saveRoomFolders,
+  searchMessages,
   type A2aBridgeState,
   type AgentSummary,
   type EpisodeSummary,
@@ -306,6 +307,25 @@ export function useRoomMessages(room: string, limit = 200, opts: RoomQueryOption
     void mutate();
   }, [mutate]);
   return { messages: data?.messages ?? NO_MESSAGES, loading: isLoading, refresh };
+}
+
+/**
+ * A search over the room's whole history, for the channel's find bar.
+ *
+ * Keyed by the query, so going back to an earlier one is instant, and under
+ * the `["room", <name>]` prefix so a pushed write refreshes an open search with
+ * everything else. The previous answer stays on screen while the next query is
+ * in flight: a find bar that blanks on every keystroke reads as "no matches".
+ * An empty query parks it: an empty find bar asks the hub nothing.
+ */
+export function useMessageSearch(room: string, query: string, limit = 50) {
+  const q = query.trim();
+  const { data, error, isLoading, isValidating } = useSWR(
+    room && q ? (["room", room, "message-search", q, limit] as const) : null,
+    () => searchMessages(room, q, { limit }),
+    { keepPreviousData: true, revalidateOnFocus: false },
+  );
+  return { result: q ? data ?? null : null, error: error as Error | undefined, loading: isLoading || isValidating };
 }
 
 /**

@@ -51,6 +51,7 @@ const QUERY: Record<string, string> = {
   "/api/rooms/{room_name}/links": `?key=${encodeURIComponent(FIXTURE.memories[0].key)}`,
   "/api/rooms/{room_name}/links/expand": `?key=${encodeURIComponent(FIXTURE.memories[0].key)}`,
   "/api/search": "?q=apple pay",
+  "/api/rooms/{room_name}/messages/search": "?q=apple from:builder",
 };
 
 function fill(path: string): string | null {

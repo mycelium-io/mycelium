@@ -18,24 +18,41 @@ export interface Segment {
   match: boolean;
 }
 
+/** One needle or several: the words and phrases of a query, each marked. */
+export type Needles = string | readonly string[];
+
+function needlesOf(query: Needles): string[] {
+  const list = typeof query === "string" ? [query] : [...query];
+  return list.map((n) => n.toLowerCase()).filter((n) => n.trim().length > 0);
+}
+
 /** Split `text` into alternating plain/matched runs.
  *
  *  An empty or whitespace-only query matches nothing: a find bar is open long
  *  before it has a query in it, and lighting up every character in the room the
- *  moment it opens is not a search result. */
-export function splitOnMatches(text: string, query: string): Segment[] {
-  const needle = query.toLowerCase();
-  if (!needle.trim() || !text) return text ? [{ text, match: false }] : [];
+ *  moment it opens is not a search result. With several needles, each run is
+ *  the earliest one that starts there, the longest when two start together. */
+export function splitOnMatches(text: string, query: Needles): Segment[] {
+  const needles = needlesOf(query).sort((a, b) => b.length - a.length);
+  if (needles.length === 0 || !text) return text ? [{ text, match: false }] : [];
 
   const hay = text.toLowerCase();
   const segments: Segment[] = [];
   let cursor = 0;
   for (;;) {
-    const at = hay.indexOf(needle, cursor);
+    let at = -1;
+    let len = 0;
+    for (const needle of needles) {
+      const found = hay.indexOf(needle, cursor);
+      if (found !== -1 && (at === -1 || found < at)) {
+        at = found;
+        len = needle.length;
+      }
+    }
     if (at === -1) break;
     if (at > cursor) segments.push({ text: text.slice(cursor, at), match: false });
-    segments.push({ text: text.slice(at, at + needle.length), match: true });
-    cursor = at + needle.length;
+    segments.push({ text: text.slice(at, at + len), match: true });
+    cursor = at + len;
   }
   if (segments.length === 0) return [{ text, match: false }];
   if (cursor < text.length) segments.push({ text: text.slice(cursor), match: false });
@@ -43,15 +60,17 @@ export function splitOnMatches(text: string, query: string): Segment[] {
 }
 
 /** How many times the query occurs in the text. */
-export function countMatches(text: string, query: string): number {
+export function countMatches(text: string, query: Needles): number {
   return splitOnMatches(text, query).reduce((n, s) => n + (s.match ? 1 : 0), 0);
 }
 
-/** Whether the text carries the query at all — the cheap half of the split. */
-export function hasMatch(text: string, query: string): boolean {
-  const needle = query.toLowerCase();
-  if (!needle.trim() || !text) return false;
-  return text.toLowerCase().includes(needle);
+/** Whether the text carries the query at all — the cheap half of the split.
+ *  With several needles, every one of them, as the hub's search requires. */
+export function hasMatch(text: string, query: Needles): boolean {
+  const needles = needlesOf(query);
+  if (needles.length === 0 || !text) return false;
+  const hay = text.toLowerCase();
+  return needles.every((n) => hay.includes(n));
 }
 
 /** Step through matches with wrap-around, the way a find bar does: past the

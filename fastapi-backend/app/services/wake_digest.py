@@ -243,4 +243,10 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
             " the room you're on it)",
             f'Reply:  mycelium respond --room {room} --handle {me}{task} --body "..."   (lands in {lands})',
         ]
+    # One line, so an agent that needs more than this digest holds knows the
+    # room's whole history can be asked rather than paged through.
+    lines.append(
+        f'Find:   mycelium room search "<words> from:<handle> task:<row> after:1d" --room {room}'
+        "   (any message, any field; --facets for counts)"
+    )
     return "\n".join(lines)

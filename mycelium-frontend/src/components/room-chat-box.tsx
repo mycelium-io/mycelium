@@ -14,6 +14,7 @@ import {
   type Memory,
   type Runner,
 } from "@/lib/api";
+import { CandidateList, Signature, type Candidate, type Slot } from "@/components/composer-hints";
 import { SendPlaneIcon } from "@/components/send-plane-icon";
 import {
   useRoomMemories,
@@ -105,23 +106,6 @@ interface Trigger {
   query: string;
 }
 
-/** A normalized popover row, so rendering is uniform across the three sigils. */
-interface Candidate {
-  /** Stable React key. */
-  id: string;
-  /** The full token written into the message on select, e.g. `@bob`, `[[decisions/db]]`, `/summarize`. */
-  insert: string;
-  /** Part of a word (a folder): inserted without the trailing space, so completing goes on. */
-  open?: boolean;
-  /** Monospace accent label (the token itself), or a person's name. */
-  primary: string;
-  /** The label is a person's name, set as text rather than as a token. */
-  named?: boolean;
-  /** Dim qualifier (adapter, "memory", "skill"). */
-  secondary: string;
-  /** Optional trailing description. */
-  tertiary?: string;
-}
 
 /** Detect an in-flight trigger from the cursor's prefix. Order matters: `[[`
  *  is checked before `/` and `@` since a memory key can itself contain slashes. */
@@ -670,9 +654,6 @@ export function RoomChatBox({
   };
 
   const showCandidates = trigger !== null && candidates.length > 0;
-  // The kind column says something only when the rows differ: commands beside
-  // skills, agents beside people. Five rows all saying "command" is noise.
-  const mixedKinds = new Set(candidates.map((c) => c.secondary)).size > 1;
   const status = error ? (
     <StatusLine tone="error" onDismiss={() => setError(null)}>
       {error}
@@ -710,40 +691,7 @@ export function RoomChatBox({
         {(showCandidates || parsed || summon || status) && (
         <div className="absolute bottom-full left-0 z-20 mb-2 flex w-full max-w-md flex-col gap-1.5">
         {showCandidates && (
-          // One grid for every row, so the names share a column and what each
-          // does starts at the same place whatever the name's length; the kind
-          // (command, skill, the argument) sits quietly at the right edge.
-          <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-xl border border-border bg-elevated p-1 shadow-xl">
-            {candidates.map((c, i) => (
-              <button
-                key={c.id}
-                type="button"
-                onMouseDown={(e) => {
-                  // mouseDown so we don't lose textarea focus before the click
-                  e.preventDefault();
-                  accept(c);
-                }}
-                onMouseEnter={() => setHighlight(i)}
-                className={cn(
-                  "col-span-full grid grid-cols-subgrid items-baseline gap-x-3 rounded-lg px-2.5 py-1.5 text-left transition-colors",
-                  i === highlight ? "bg-surface" : "hover:bg-surface/60",
-                )}
-              >
-                <span
-                  className={cn(
-                    "max-w-56 truncate text-label",
-                    c.named ? "text-text" : "font-mono text-accent",
-                  )}
-                >
-                  {c.primary}
-                </span>
-                <span className="min-w-0 truncate text-micro text-muted-foreground">{c.tertiary}</span>
-                <span className="max-w-40 truncate text-right text-micro text-muted-foreground/70">
-                  {mixedKinds && c.secondary}
-                </span>
-              </button>
-            ))}
-          </div>
+          <CandidateList candidates={candidates} highlight={highlight} onPick={accept} onHover={setHighlight} />
         )}
         {parsed && <CommandSignature parsed={parsed} completes={showCandidates} />}
         {summon && <SummonSignature summon={summon} completes={showCandidates} inTask={Boolean(episode)} />}
@@ -870,63 +818,6 @@ export function RoomChatBox({
 }
 
 /** One part of a signature: how it's drawn, and whether something fills it yet. */
-interface Slot {
-  label: string;
-  filled: boolean;
-}
-
-/**
- * What's being written, drawn over the box: its head (`/agent`, `@conductor`),
- * then each part, the one the cursor is in lit, and a line saying what that
- * part is. A warning says what will happen that the writer may not expect.
- */
-function Signature({
-  label,
-  head,
-  slots,
-  active,
-  about,
-  completes,
-  warning,
-}: {
-  label: string;
-  head: string;
-  slots: Slot[];
-  active: number | null;
-  about: string;
-  completes: boolean;
-  warning?: string | null;
-}) {
-  return (
-    <div aria-label={label} className="rounded-lg border border-border bg-elevated px-2.5 py-1.5 shadow-lg">
-      <div className="flex flex-wrap items-baseline gap-x-1 font-mono text-label">
-        <span className="text-accent">{head}</span>
-        {slots.map((s, i) => (
-          <span
-            key={`${s.label}-${i}`}
-            aria-current={i === active || undefined}
-            className={cn(
-              "rounded px-1 transition-colors",
-              i === active ? "bg-accent-soft text-accent" : s.filled ? "text-text" : "text-muted-foreground",
-            )}
-          >
-            {s.label}
-          </span>
-        ))}
-      </div>
-      <p className="mt-0.5 flex items-center gap-1.5 text-micro text-muted-foreground">
-        <span className="min-w-0">{about}</span>
-        {completes && (
-          <span className="ml-auto flex shrink-0 items-center gap-1">
-            <Kbd size="xs" tone="muted">tab</Kbd> completes
-          </span>
-        )}
-      </p>
-      {warning && <p className="mt-1 text-micro text-yellow">{warning}</p>}
-    </div>
-  );
-}
-
 /** `/agent <handle> <harness> [folder] [machine]`, with the argument being typed lit and said. */
 function CommandSignature({ parsed, completes }: { parsed: ParsedCommand; completes: boolean }) {
   const { command, active, args } = parsed;
