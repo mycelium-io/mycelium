@@ -143,49 +143,20 @@ def _eval_stack() -> Any:
     )
 
 
-def test_a_hub_the_app_did_not_start_is_put_to_the_person_first():
-    # The question names whose hub it is, its version and its data folder,
-    # and nothing starts until it is answered.
+def test_a_hub_the_app_did_not_start_is_used_and_reported_never_stopped():
+    # Whose it is, its version and its data folder go in the status for the
+    # app to show; nothing waits on the person, and the other hub keeps running.
     events = Events()
     outside = comp("hub", EXIT, external=lambda: True)
-    sup = hub(events, [outside], existing_hub="ask", look=lambda: [_eval_stack()])
-
-    def asked() -> bool:
-        q = events.statuses()[-1]["question"] if events.statuses() else None
-        if q and outside.state == "waiting":
-            assert q["kind"] == "existing_hub"
-            assert q["hub"]["project"] == "mycelium-concord-eval"
-            assert "data in /Users/julia/.mycelium-concord-eval" in q["hub"]["description"]
-            assert q["choices"] == ["use", "stop"]
-            sup.answer("use")
-        return outside.state == "running"
-
-    run_until(sup, asked)
-    last = events.statuses()[-1]
-    assert last["question"] is None
-    assert last["existing_hub"]["project"] == "mycelium-concord-eval"
-    assert "mycelium-concord-eval" in (outside.detail or "")
+    sup = hub(events, [outside], look=lambda: [_eval_stack()])
+    run_until(sup, lambda: outside.state == "running")
+    other = events.statuses()[-1]["existing_hub"]
+    assert other["project"] == "mycelium-concord-eval"
+    assert other["data_path"] == "/Users/julia/.mycelium-concord-eval"
+    assert other["same_store"] is False
+    assert "question" not in events.statuses()[-1]
+    assert outside.detail == f"another hub on port {sv.HUB_PORT}"
     assert any(e["type"] == "warning" and "development build" in e["message"] for e in events.all)
-
-
-def test_stop_it_stops_the_other_hub_and_starts_the_apps_own(monkeypatch: pytest.MonkeyPatch):
-    from mycelium import hubs
-
-    stopped: list[Any] = []
-    up = {"outside": True}
-
-    def stop(h: Any, **_: Any) -> str:
-        stopped.append(h)
-        up["outside"] = False
-        return "Docker project `mycelium-concord-eval`"
-
-    monkeypatch.setattr(hubs, "stop", stop)
-    events = Events()
-    own = comp("hub", SLEEP, external=lambda: up["outside"])
-    sup = hub(events, [own], existing_hub="stop", look=lambda: [_eval_stack()])
-    run_until(sup, lambda: own.state == "running" and sup._own_hub())
-    assert len(stopped) == 1
-    assert events.statuses()[-1]["existing_hub"] is None
 
 
 def test_the_runner_trusts_only_a_hub_the_app_started():

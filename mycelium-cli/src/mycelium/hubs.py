@@ -29,11 +29,9 @@ import json
 import os
 import re
 import shutil
-import signal
 import subprocess
-import time
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -74,8 +72,6 @@ class Hub:
     pid: int | None = None
     #: Whether ``/health`` answered.
     answering: bool = False
-    #: Every container in its compose project, for stopping the whole stack.
-    project_containers: list[str] = field(default_factory=list)
 
     @property
     def dev_build(self) -> bool:
@@ -217,17 +213,7 @@ def docker_hubs() -> list[Hub]:
         containers = json.loads(inspected or "[]")
     except ValueError:
         return []
-    hubs = [_from_container(c) for c in containers if isinstance(c, dict)]
-    projects = {h.project for h in hubs if h.project}
-    for project in projects:
-        members = _run(
-            ["docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={project}"]
-        )
-        for h in hubs:
-            if h.project == project:
-                listed_ids = [str(cid) for cid in (members or "").split()]
-                h.project_containers = listed_ids or [h.container or ""]
-    return hubs
+    return [_from_container(c) for c in containers if isinstance(c, dict)]
 
 
 def _from_container(c: dict[str, Any]) -> Hub:
@@ -354,42 +340,3 @@ def warnings(hubs: list[Hub], data_dir: Path, app_version: str) -> list[str]:
         if why := stale(hub, app_version):
             said.append(f"{hub.owner()} is {why} (version {hub.version or 'unknown'}).")
     return said
-
-
-# ── stopping ─────────────────────────────────────────────────────────────────
-
-
-class StopError(Exception):
-    """A hub that couldn't be stopped, said for a person."""
-
-
-def stop(hub: Hub, *, wait_s: float = 30.0) -> str:
-    """Stop ``hub`` (its whole compose project, for Docker) and wait for its port.
-
-    Returns what was stopped, for a person.
-    """
-    if hub.source == "docker":
-        targets = [c for c in hub.project_containers if c] or [hub.container or ""]
-        if not any(targets) or _run(["docker", "stop", *targets]) is None:
-            raise StopError(f"Couldn't stop {hub.owner()}. Stop it with `docker stop`.")
-        stopped = f"Docker project `{hub.project}`" if hub.project else f"`{hub.container}`"
-    elif hub.source == "process" and hub.pid:
-        try:
-            os.kill(hub.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-        except PermissionError as e:
-            raise StopError(f"Not allowed to stop process {hub.pid}.") from e
-        stopped = f"process {hub.pid}"
-    else:
-        raise StopError(
-            f"Can't tell what runs the hub on port {hub.port}, so it can't be stopped from here."
-        )
-    deadline = time.monotonic() + wait_s
-    while hub.port and time.monotonic() < deadline:
-        if health(hub.port) is None:
-            return stopped
-        time.sleep(0.5)
-    if hub.port and health(hub.port) is not None:
-        raise StopError(f"Stopped {stopped}, but port {hub.port} still answers.")
-    return stopped

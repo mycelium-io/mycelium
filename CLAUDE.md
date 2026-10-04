@@ -478,8 +478,10 @@ is no litellm dependency.
   anything it lists every hub on the machine (`mycelium/hubs.py`: Docker
   containers, hub processes, the port; each with its version and store, told
   apart by the `.store-id` `/health` reports), warns when there is more than
-  one, and asks the app (a `question` in its status, answered on stdin) to
-  use that hub or stop it and start its own. It leaves herdr running on stop
+  one, and uses the hub on its port while reporting it (`existing_hub` in its
+  status: owner, version, data folder), which the app shows with the command
+  to stop it. It never stops another hub itself: that one may be someone's on
+  purpose, so the person decides. It leaves herdr running on stop
   (agents live in it), and writes everything to
   `~/.mycelium/logs/desktop.log`. Programs are found in the app bundle, then
   a checkout, then PATH. `mycelium-desktop/` (Tauri 2) adds first run, the

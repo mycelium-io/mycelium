@@ -10,7 +10,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 type Mode = "hub" | "client";
-type State = "starting" | "running" | "stopped" | "failed" | "disabled" | "waiting";
+type State = "starting" | "running" | "stopped" | "failed" | "disabled";
 
 interface Settings {
   mode: Mode;
@@ -40,10 +40,8 @@ interface HubSeen {
   pid: number | null;
 }
 
-/** A hub the app didn't start is on its port: use it, or stop it and start the app's own. */
-interface HubQuestion {
-  kind: "existing_hub";
-  hub: HubSeen;
+/** The hub on the app's port that the app is using but didn't start. */
+interface OtherHub extends HubSeen {
   /** False: it writes somewhere other than the app's data folder. Null: can't tell. */
   same_store: boolean | null;
   data_dir: string;
@@ -58,7 +56,7 @@ interface Status {
   components: Record<string, { state: State; detail?: string | null }>;
   /** More than one hub here, a hub on someone else's store, an old one. */
   warnings?: string[];
-  question?: HubQuestion | null;
+  existing_hub?: OtherHub | null;
 }
 
 interface Snapshot {
@@ -183,35 +181,32 @@ const app = document.getElementById("app")!;
 // ── outside the app (a browser preview): a made-up machine so pages still draw ──
 
 const previewAs = new URLSearchParams(location.search).get("preview");
-const previewSetUp = previewAs === "settings" || previewAs === "client" || previewAs === "hub-question";
-// ?preview=hub-question: a leftover Docker hub on the app's port, put to the person.
-const PREVIEW_QUESTION: Status | null =
-  previewAs === "hub-question"
+const previewSetUp = previewAs === "settings" || previewAs === "client" || previewAs === "other-hub";
+// ?preview=other-hub: a leftover Docker hub on the app's port, which the app is using.
+const PREVIEW_OTHER_HUB: Status | null =
+  previewAs === "other-hub"
     ? {
         type: "status",
         mode: "hub",
         components: {
-          herdr: { state: "stopped" },
-          slim: { state: "stopped" },
-          hub: { state: "waiting", detail: "another hub is on port 8000" },
-          ui: { state: "stopped" },
-          runner: { state: "stopped" },
+          herdr: { state: "running" },
+          slim: { state: "running" },
+          hub: { state: "running", detail: "another hub on port 8000" },
+          ui: { state: "starting" },
+          runner: { state: "starting" },
         },
-        question: {
-          kind: "existing_hub",
-          hub: {
-            source: "docker",
-            owner: "Docker project `mycelium-concord-eval`, `mycelium-backend:dev`",
-            description: "",
-            version: "0.1.0",
-            data_path: "/Users/you/.mycelium-concord-eval",
-            dev_build: true,
-            port: 8000,
-            project: "mycelium-concord-eval",
-            container: "mycelium-eval-backend",
-            image: "mycelium-backend:dev",
-            pid: null,
-          },
+        existing_hub: {
+          source: "docker",
+          owner: "Docker project `mycelium-concord-eval`, `mycelium-backend:dev`",
+          description: "",
+          version: "0.1.0",
+          data_path: "/Users/you/.mycelium-concord-eval",
+          dev_build: true,
+          port: 8000,
+          project: "mycelium-concord-eval",
+          container: "mycelium-eval-backend",
+          image: "mycelium-backend:dev",
+          pid: null,
           same_store: false,
           data_dir: "/Users/you/.mycelium",
           app_version: "3.0.22",
@@ -224,7 +219,7 @@ const PREVIEW: Snapshot = {
       ? { mode: "client", hubUrl: "https://hub.example.com", roots: ["/Users/you/code"], shareUsage: false }
       : { mode: "hub", hubUrl: null, roots: ["/Users/you/code"], shareUsage: false }
     : null,
-  status: PREVIEW_QUESTION,
+  status: PREVIEW_OTHER_HUB,
   lastError: null,
   mycelium: { name: "mycelium", path: "/Applications/Mycelium.app/Contents/MacOS/mycelium", bundled: true },
   herdr: { name: "herdr", path: "/Applications/Mycelium.app/Contents/MacOS/herdr", bundled: true },
@@ -1153,7 +1148,6 @@ const SAID: Record<State, string> = {
   stopped: "stopped",
   failed: "failed",
   disabled: "",
-  waiting: "waiting for you",
 };
 
 /** Whether `version` is older than `than`, by its numbers (unknown is not older). */
@@ -1168,11 +1162,11 @@ function olderThan(version: string | null, than: string): boolean {
 }
 
 /**
- * A hub already on the app's port that the app didn't start, put to the
- * person: whose it is, its version, where it keeps its data, and the choice.
+ * The hub on the app's port that the app is using but didn't start: whose it
+ * is, its version, where it keeps its data, and how to stop it. The app never
+ * stops it; it may be someone's on purpose.
  */
-function hubQuestion(q: HubQuestion, home: string, answered: (e: unknown) => void): HTMLElement {
-  const h = q.hub;
+function otherHubNotice(h: OtherHub, home: string): HTMLElement {
   const tag = (text: string) => el("span", { class: "tag warn" }, text);
   const row = (label: string, ...value: (Node | string | null)[]) =>
     el("div", { class: "facts-row" }, el("dt", {}, label), el("dd", {}, ...value));
@@ -1185,50 +1179,51 @@ function hubQuestion(q: HubQuestion, home: string, answered: (e: unknown) => voi
       : h.source === "process"
         ? `A process on this Mac (${h.pid})`
         : "Something Mycelium can't identify";
-  const older = h.version && !h.dev_build && olderThan(h.version, q.app_version);
+  const older = h.version && !h.dev_build && olderThan(h.version, h.app_version);
   const data = h.data_path ? tilde(h.data_path, home) : "unknown";
-  const elsewhere = q.same_store === false;
-  const stops =
-    h.source === "docker" && h.project
-      ? `Starting Mycelium's own stops the Docker project ${h.project} first. Its data stays where it is.`
-      : h.source === "process"
-        ? `Starting Mycelium's own stops process ${h.pid} first. Its data stays where it is.`
-        : "Starting Mycelium's own stops it first. Its data stays where it is.";
-
-  const use = el("button", { class: "button ghost", type: "button" }, "Use it");
-  const replace = el("button", { class: "button", type: "button" }, "Start Mycelium's own");
-  const pick = (choice: "use" | "stop") => {
-    use.disabled = replace.disabled = true;
-    if (inApp) void invoke("answer_existing_hub", { choice }).catch((e) => ((use.disabled = replace.disabled = false), answered(e)));
-  };
-  use.addEventListener("click", () => pick("use"));
-  replace.addEventListener("click", () => pick("stop"));
+  const elsewhere = h.same_store === false;
+  const port = h.port ?? 8000;
+  const stop =
+    h.source === "docker"
+      ? h.project
+        ? `docker compose -p ${h.project} down`
+        : `docker stop ${h.container ?? ""}`.trim()
+      : h.source === "process" && h.pid
+        ? `kill ${h.pid}`
+        : null;
 
   return el(
     "div",
-    { class: "hub-ask", role: "alertdialog", "aria-labelledby": "hub-ask-title" },
-    el("h2", { id: "hub-ask-title" }, `Another hub is already on port ${h.port ?? 8000}`),
-    el("p", { class: "hub-ask-lede" }, "Mycelium didn't start it, so it's checking with you before using it."),
+    { class: "hub-ask", role: "status", "aria-labelledby": "hub-ask-title" },
+    el("h2", { id: "hub-ask-title" }, `Using another hub on port ${port}`),
+    el("p", { class: "hub-ask-lede" }, "Mycelium didn't start this hub. It was already running, so Mycelium is using it."),
     el(
       "dl",
       { class: "facts" },
       row("Started by", startedBy),
       h.image ? row("Image", el("code", {}, h.image), h.dev_build ? tag("dev build") : null) : null,
-      row("Version", h.version ?? "unknown", older ? tag(`older than ${q.app_version}`) : null),
+      row("Version", h.version ?? "unknown", older ? tag(`older than ${h.app_version}`) : null),
       row("Data", el("code", {}, data), elsewhere ? tag("not your data folder") : null),
     ),
     elsewhere
       ? el(
           "p",
           { class: "hub-ask-note" },
-          "If you use it, your rooms and memories are read from and saved to ",
+          "Your rooms and memories are read from and saved to ",
           el("code", {}, data),
           ", not ",
-          el("code", {}, tilde(q.data_dir, home)),
+          el("code", {}, tilde(h.data_dir, home)),
           ".",
         )
       : null,
-    el("div", { class: "hub-ask-foot" }, el("p", { class: "hint" }, stops), el("div", { class: "actions" }, use, replace)),
+    el(
+      "p",
+      { class: "hint" },
+      stop
+        ? "To use Mycelium's own hub instead, stop this one and reopen Mycelium. Its data stays where it is."
+        : `To use Mycelium's own hub instead, stop whatever is on port ${port} and reopen Mycelium.`,
+    ),
+    stop ? el("pre", { class: "hub-ask-cmd" }, el("code", {}, stop)) : null,
   );
 }
 
@@ -1249,7 +1244,7 @@ async function loading(setup: PathSetup | null = null) {
   const error = el("p", { class: "error", role: "alert", hidden: "" });
   const log = el("div", { class: "log" });
   // A hub the app didn't start, and anything else about the hubs on this Mac.
-  const ask = el("div", { hidden: "" });
+  const otherHub = el("div", { hidden: "" });
   const warned = el("div", { class: "note", hidden: "" });
   const change = el("button", { class: "button ghost", type: "button" }, "Settings");
   change.addEventListener("click", () => void settingsWindow());
@@ -1287,16 +1282,15 @@ async function loading(setup: PathSetup | null = null) {
       row.detail.hidden = !why;
       row.detail.classList.toggle("bad", s === "failed");
     }
-    const q = status?.question ?? null;
-    const asked = q ? `${q.hub.description}|${q.same_store}` : "";
-    if (ask.dataset.asked !== asked) {
-      ask.dataset.asked = asked;
-      ask.replaceChildren(
-        ...(q ? [hubQuestion(q, snap.home, (e) => ((error.textContent = String(e)), (error.hidden = false)))] : []),
-      );
-      ask.hidden = !q;
+    const other = status?.existing_hub ?? null;
+    const shown = other ? `${other.owner}|${other.same_store}` : "";
+    if (otherHub.dataset.shown !== shown) {
+      otherHub.dataset.shown = shown;
+      otherHub.replaceChildren(...(other ? [otherHubNotice(other, snap.home)] : []));
+      otherHub.hidden = !other;
     }
-    const said = q ? [] : (status?.warnings ?? []);
+    // The notice already says what the warnings say about that hub.
+    const said = (status?.warnings ?? []).filter((w) => !other || !w.includes(other.owner));
     warned.replaceChildren(...said.map((w) => el("div", {}, w)));
     warned.hidden = said.length === 0;
   };
@@ -1312,7 +1306,7 @@ async function loading(setup: PathSetup | null = null) {
       "section",
       { class: "card" },
       head(where),
-      el("div", { class: "card-body" }, pathNote, skipped, ask, warned, list, error, log),
+      el("div", { class: "card-body" }, pathNote, skipped, otherHub, warned, list, error, log),
       el(
         "div",
         { class: "card-foot" },
