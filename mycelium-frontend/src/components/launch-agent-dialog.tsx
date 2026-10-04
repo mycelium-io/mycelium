@@ -4,8 +4,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Circle, Laptop, Loader2, X } from "lucide-react";
-import { launchRunnerAgent, type Runner, type RunnerJob } from "@/lib/api";
+import { Check, Circle, Laptop, Loader2, Sparkles, Undo2, X } from "lucide-react";
+import {
+  draftMemberNotes,
+  launchRunnerAgent,
+  type NotesKind,
+  type Runner,
+  type RunnerJob,
+} from "@/lib/api";
 import {
   hostOf,
   jobSettled,
@@ -197,6 +203,7 @@ export function LaunchAgentForm({
 
         <InstructionsEditor
           handle={trimmed}
+          draft={{ room: roomName, kind: "agent" }}
           value={instructions}
           onChange={(v) => {
             setInstructions(v);
@@ -392,12 +399,19 @@ const INSTRUCTIONS_PLACEHOLDER =
   "It reads this first, every time it starts. Say what it owns, how it " +
   "should talk to the room, and when to ask a teammate.";
 
-/** A member's instructions: the notes it reads, which can be kept as a role. */
+/**
+ * A member's instructions: the notes it reads, which can be kept as a role.
+ *
+ * With `draft`, a line typed here can be expanded by the hub's model into
+ * fuller notes (what it owns, how it works the board, who to ask), replacing
+ * the text in the box; Undo puts back what was typed until the draft is edited.
+ */
 export function InstructionsEditor({
   handle,
   value,
   onChange,
   onSaveTemplate,
+  draft,
   placeholder = INSTRUCTIONS_PLACEHOLDER,
   rows = 9,
 }: {
@@ -406,11 +420,38 @@ export function InstructionsEditor({
   onChange: (value: string) => void;
   /** Offered as "Save as a role" when given. */
   onSaveTemplate?: (name: string) => void;
+  /** Offers "Expand" when given: the room it joins and what kind of member it is. */
+  draft?: { room: string; kind: NotesKind };
   placeholder?: string;
   rows?: number;
 }) {
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
+  const [drafting, setDrafting] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  // What was typed before the last expansion, and the expansion itself, so
+  // Undo is offered only while the box still holds that draft.
+  const [undo, setUndo] = useState<{ before: string; after: string } | null>(null);
+
+  const expand = async () => {
+    if (!draft || drafting || !value.trim()) return;
+    setDrafting(true);
+    setDraftError(null);
+    try {
+      const notes = await draftMemberNotes(draft.room, {
+        brief: value.trim(),
+        handle: handle || undefined,
+        kind: draft.kind,
+      });
+      setUndo({ before: value, after: notes });
+      onChange(notes);
+    } catch (e) {
+      setDraftError(e instanceof Error ? e.message : "Couldn't expand it");
+    } finally {
+      setDrafting(false);
+    }
+  };
+  const canUndo = undo !== null && undo.after === value;
   return (
     <div className="rounded-lg border border-border bg-bg transition-colors focus-within:border-accent hover:border-border2">
       <label htmlFor="launch-instructions" className="sr-only">
@@ -419,19 +460,63 @@ export function InstructionsEditor({
       <textarea
         id="launch-instructions"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          setDraftError(null);
+          onChange(e.target.value);
+        }}
+        readOnly={drafting}
+        aria-busy={drafting}
         rows={rows}
-        placeholder={placeholder}
-        className="block min-h-32 w-full resize-y bg-transparent px-4 py-3 text-label leading-relaxed text-text outline-none placeholder:text-faint"
+        placeholder={draft ? `${placeholder}\n\nOr write one line and Expand it.` : placeholder}
+        className={cn(
+          "block min-h-32 w-full resize-y bg-transparent px-4 py-3 text-label leading-relaxed text-text outline-none placeholder:text-faint",
+          drafting && "text-muted-foreground",
+        )}
       />
+      {draftError && (
+        <p role="alert" className="break-words px-4 pb-2 text-micro text-red">
+          {draftError}
+        </p>
+      )}
       <div className="flex items-center gap-2 border-t border-border px-4 py-2 text-micro text-muted-foreground">
         <span className="min-w-0 truncate">
           Saved as <code className="font-mono">agents/{handle || "handle"}/notes</code>. Edit it
           any time in Memory.
         </span>
+        {draft && (
+          <span className="ml-auto flex flex-shrink-0 items-center gap-3">
+            {canUndo && (
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(undo.before);
+                  setUndo(null);
+                }}
+                className="flex items-center gap-1 text-muted-foreground hover:text-text"
+              >
+                <Undo2 className="size-3" aria-hidden />
+                Undo
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={!value.trim() || drafting}
+              onClick={expand}
+              title="Have the hub's model expand what you wrote into fuller notes"
+              className="flex items-center gap-1 text-accent hover:underline disabled:text-faint disabled:no-underline"
+            >
+              {drafting ? (
+                <Loader2 className="size-3 animate-spin" aria-hidden />
+              ) : (
+                <Sparkles className="size-3" aria-hidden />
+              )}
+              {drafting ? "Expanding…" : "Expand"}
+            </button>
+          </span>
+        )}
         {!onSaveTemplate ? null : naming ? (
           <form
-            className="ml-auto flex items-center gap-1.5"
+            className={cn("flex items-center gap-1.5", !draft && "ml-auto")}
             onSubmit={(e) => {
               e.preventDefault();
               if (!name.trim()) return;
@@ -463,7 +548,10 @@ export function InstructionsEditor({
             type="button"
             disabled={!value.trim()}
             onClick={() => setNaming(true)}
-            className="ml-auto flex-shrink-0 text-accent hover:underline disabled:text-faint disabled:no-underline"
+            className={cn(
+              "flex-shrink-0 text-accent hover:underline disabled:text-faint disabled:no-underline",
+              !draft && "ml-auto",
+            )}
           >
             Save as a role
           </button>

@@ -201,6 +201,26 @@ function emptyBridge(room: string): A2aBridgeState {
   };
 }
 
+/** A canned expansion of a member's brief, naming one of the room's agents as its reviewer. */
+function mockNotesDraft(brief: string, fx: RoomFixture): string {
+  const mate = fx.memories
+    .map((m) => m.key.match(/^agents\/([^/]+)$/)?.[1])
+    .find(Boolean);
+  const said = brief.replace(/[.\s]+$/, "");
+  return [
+    `Your job here: ${said}. That is what you own in this room; leave the rest to its owners.`,
+    "",
+    "- Take tasks for this off the board, claim one before you start, and work it in its own thread.",
+    "- Post what you did and what you found in that thread, briefly, with file and line where it helps.",
+    mate
+      ? `- Ask @${mate} to review before you resolve a task, and say plainly what you want them to check.`
+      : "- Ask a teammate to review before you resolve a task, and say plainly what you want them to check.",
+    "- When something is unclear or outside what you own, ask in the thread rather than guessing.",
+    "",
+    "A good result is one a teammate can pick up without asking you anything.",
+  ].join("\n");
+}
+
 async function readJson(req: Request): Promise<Record<string, unknown>> {
   try {
     return (await req.json()) as Record<string, unknown>;
@@ -775,6 +795,14 @@ export async function handleMock(req: Request): Promise<Response | null> {
     }
 
     case "agents": {
+      // POST /agents/draft-notes — the hub's model expanding a brief; here a
+      // canned expansion that keeps what was typed.
+      if (sub[1] === "draft-notes" && method === "POST") {
+        const body = await readJson(req);
+        const brief = String(body.brief ?? "").trim();
+        if (!brief) return json({ detail: "Say what the agent is for first." }, 422);
+        return json({ notes: mockNotesDraft(brief, fx) });
+      }
       // Agents are `agents/<handle>` memories whose body is a YAML manifest —
       // the same projection the backend's agents route does.
       if (method !== "GET") return null;
