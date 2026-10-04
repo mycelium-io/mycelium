@@ -382,6 +382,13 @@ export async function fetchMemory(roomName: string, key: string): Promise<Memory
   });
 }
 
+/** Delete one memory by key. Throws on failure (404 included). */
+export async function deleteMemory(roomName: string, key: string): Promise<void> {
+  await apiFetch<void>(`${roomApiPath(roomName)}/memory/${encodeMemoryKeyPath(key)}`, {
+    method: "DELETE",
+  });
+}
+
 export interface MemorySearchResult {
   memory: Memory;
   similarity: number;

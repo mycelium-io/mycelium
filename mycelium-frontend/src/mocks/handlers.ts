@@ -549,6 +549,14 @@ export async function handleMock(req: Request): Promise<Response | null> {
           201,
         );
       }
+      // DELETE /memory/:key — removes the file; 404 when nothing was there.
+      if (sub.length > 1 && method === "DELETE") {
+        const key = sub.slice(1).map(decodeURIComponent).join("/");
+        const index = fx.memories.findIndex((m) => m.key === key);
+        if (index < 0) return notFound(`memory ${key} not found (mock)`);
+        fx.memories.splice(index, 1);
+        return new Response(null, { status: 204 });
+      }
       if (method !== "GET") return null;
       // GET /memory/:key — the key is a path, so it spans the remaining segments.
       if (sub.length > 1) {
