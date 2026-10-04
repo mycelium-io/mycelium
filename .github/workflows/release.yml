@@ -241,6 +241,9 @@ jobs:
           SEMVER="$(echo "$VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+)([a-z].*)$/\1-\2/')"
           sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$SEMVER\"/" src-tauri/tauri.conf.json
           rm -f src-tauri/tauri.conf.json.bak
+          # The bundled hub reports the version in the pyproject.toml it carries.
+          sed -i.bak "s/^version = .*/version = \"$VERSION\"/" ../fastapi-backend/pyproject.toml
+          rm -f ../fastapi-backend/pyproject.toml.bak
 
       - name: Stage what the app carries
         working-directory: mycelium-desktop

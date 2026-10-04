@@ -314,8 +314,10 @@ async def lifespan(app: FastAPI):
 def _read_pkg_version() -> str:
     """Read version from pyproject.toml so release.yml's tag bump (which seds
     pyproject.toml::project.version) is reflected at /healthz without needing
-    a second sed against this file. Falls back to '0.0.0+unknown' if the file
-    can't be located (e.g. running from an unusual layout)."""
+    a second sed against this file. The desktop bundle carries the file beside
+    the package (stage-sidecars.sh), since the backend is not an installed
+    package and has no metadata to read. Falls back to '0.0.0+unknown' if the
+    file can't be located."""
     for candidate in (Path(__file__).resolve().parent.parent / "pyproject.toml",):
         if candidate.exists():
             try:
