@@ -122,6 +122,7 @@ def intro_prompt(
             "(install the mycelium CLI first if it isn't there). That makes every "
             "mycelium command you run there act as you. "
         )
+    who += "Run `mycelium skill print` and read it: it is how you take part in a room. "
     later = "When a line starting with [mycelium] appears here later, do what it says."
     if has_notes:
         return (
