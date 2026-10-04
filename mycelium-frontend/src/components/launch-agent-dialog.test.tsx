@@ -7,8 +7,10 @@ vi.mock("@/components/current-user", () => ({
 }));
 const launchRunnerAgent = vi.fn();
 const fetchRunnerJob = vi.fn();
+const draftMemberNotes = vi.fn();
 vi.mock("@/lib/api", () => ({
   launchRunnerAgent: (...args: unknown[]) => launchRunnerAgent(...args),
+  draftMemberNotes: (...args: unknown[]) => draftMemberNotes(...args),
   fetchRunnerJob: (...args: unknown[]) => fetchRunnerJob(...args),
   rescanRunner: vi.fn(),
 }));
@@ -45,6 +47,7 @@ describe("LaunchAgentForm", () => {
     window.localStorage.clear();
     launchRunnerAgent.mockReset();
     fetchRunnerJob.mockReset();
+    draftMemberNotes.mockReset();
   });
 
   it("says how to connect a machine when none is", () => {
@@ -148,6 +151,43 @@ describe("LaunchAgentForm", () => {
     expect(screen.queryByLabelText("Agent CLI")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
     expect(screen.getByRole("button", { name: "Add to room" })).toBeDisabled();
+  });
+});
+
+describe("Expand", () => {
+  beforeEach(() => {
+    connected = [runner()];
+    draftMemberNotes.mockReset();
+  });
+
+  it("expands a line into the hub's draft, and Undo puts the line back", async () => {
+    draftMemberNotes.mockResolvedValue("You review every pull request in this room.");
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "rev" } });
+    const box = screen.getByLabelText("Instructions");
+    fireEvent.change(box, { target: { value: "reviews PRs" } });
+    fireEvent.click(screen.getByRole("button", { name: "Expand" }));
+
+    await waitFor(() => expect(box).toHaveValue("You review every pull request in this room."));
+    expect(draftMemberNotes).toHaveBeenCalledWith("atlas", { brief: "reviews PRs", handle: "rev", kind: "agent" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(box).toHaveValue("reviews PRs");
+    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+  });
+
+  it("is off with nothing typed, and says so when the hub can't draft", async () => {
+    draftMemberNotes.mockRejectedValue(new Error("The hub's model couldn't write a draft. Try again."));
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "Expand" })).toBeDisabled();
+    const box = screen.getByLabelText("Instructions");
+    fireEvent.change(box, { target: { value: "reviews PRs" } });
+    fireEvent.click(screen.getByRole("button", { name: "Expand" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("couldn't write a draft");
+    expect(box).toHaveValue("reviews PRs");
   });
 });
 

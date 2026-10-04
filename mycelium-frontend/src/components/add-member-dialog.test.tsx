@@ -13,6 +13,7 @@ vi.mock("@/lib/api", () => ({
   createMemories: (...a: unknown[]) => createMemories(...a),
   registerA2aAgent: (...a: unknown[]) => registerA2aAgent(...a),
   launchRunnerAgent: vi.fn(),
+  draftMemberNotes: vi.fn(),
   fetchRunnerJob: vi.fn(),
   rescanRunner: vi.fn(),
 }));

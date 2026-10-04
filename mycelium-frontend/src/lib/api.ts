@@ -300,6 +300,26 @@ export async function createMemories(
   });
 }
 
+/** What kind of member a set of notes is for: it changes what they need to say. */
+export type NotesKind = "agent" | "persona" | "worker";
+
+/**
+ * A member's notes, expanded by the hub's model from the line a person typed
+ * about it. Writes nothing; the person edits the draft before adding the
+ * member. Throws `ApiError` (502 when the model could not answer).
+ */
+export async function draftMemberNotes(
+  roomName: string,
+  data: { brief: string; handle?: string; kind?: NotesKind },
+): Promise<string> {
+  const res = await apiFetch<{ notes: string }>(`${roomApiPath(roomName)}/agents/draft-notes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return res.notes;
+}
+
 // ── Assignments ──────────────────────────────────────────────────────────────────
 
 /** One row's assignment, as `/rooms/{room}/assignments/*` answers it. */

@@ -253,7 +253,14 @@ function EngineMember({ roomName, onAdded }: { roomName: string; onAdded: (handl
         />
 
         {noted && (
-          <InstructionsEditor handle={trimmed} value={notes} onChange={setNotes} placeholder={noted} rows={6} />
+          <InstructionsEditor
+            handle={trimmed}
+            value={notes}
+            onChange={setNotes}
+            draft={engine === "persona" || engine === "worker" ? { room: roomName, kind: engine } : undefined}
+            placeholder={noted}
+            rows={6}
+          />
         )}
         <ErrorLine error={error} />
       </div>

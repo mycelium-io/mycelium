@@ -52,6 +52,59 @@
         }
       }
     },
+    "/api/rooms/{room_name}/agents/draft-notes": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Draft Notes",
+        "description": "Expand a short brief into a member's notes. Writes nothing to the room.",
+        "operationId": "draft_notes_api_rooms__room_name__agents_draft_notes_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotesDraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotesDraftRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/a2a-agents": {
       "post": {
         "tags": [
@@ -7821,6 +7874,50 @@
         "type": "object",
         "title": "MessageSearchScope",
         "description": "The interpretation a message search ran under, echoed so a client draws\nits chips from the same parse the server used."
+      },
+      "NotesDraftRead": {
+        "properties": {
+          "notes": {
+            "type": "string",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "notes"
+        ],
+        "title": "NotesDraftRead"
+      },
+      "NotesDraftRequest": {
+        "properties": {
+          "brief": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Brief"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle",
+            "default": ""
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "agent",
+              "persona",
+              "worker"
+            ],
+            "title": "Kind",
+            "default": "agent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "brief"
+        ],
+        "title": "NotesDraftRequest",
+        "description": "What a person said a member is for, and what kind of member it is."
       },
       "OwnedAgentRead": {
         "properties": {
