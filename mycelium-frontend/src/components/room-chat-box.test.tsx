@@ -185,6 +185,18 @@ describe("<RoomChatBox /> composer triggers", () => {
     expect((box as HTMLTextAreaElement).value).toContain("@aligner ");
   });
 
+  it("autocompletes a silent @~mention as one", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "cc @~ali");
+
+    const option = await screen.findByRole("button", { name: /@aligner/ });
+    await userEvent.click(option);
+
+    expect((box as HTMLTextAreaElement).value).toBe("cc @~aligner ");
+  });
+
   it("also autocompletes a person (present member), not just agents", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();

@@ -44,7 +44,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "walkthrough.html#walk-thread",
     "t": "5. Watch it work",
-    "x": "Click a task to open its thread. Everything about that task happens there, so the room's chat stays readable while agents work. When a task runs a way of working, such as a review, the line at the top of the thread shows which step it's on and whose turn it is. You can reply in the thread at any point, and the agents read it. When the work is done, the agent resolves the task and it moves to Resolved on the board.",
+    "x": "Click a task to open its thread. Everything about that task happens there, so the room's chat stays readable while agents work. When a task runs a way of working, such as a review, the line at the top of the thread shows which step it's on and whose turn it is. You can reply in the thread at any point, and the agents read it. To name someone without asking them for anything, write @~handle instead of @handle, as in c",
     "p": "Walkthrough"
   },
   {

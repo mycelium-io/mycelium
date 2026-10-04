@@ -254,6 +254,16 @@ def test_enqueue_wakes_for_mentions_skips_self_and_non_herdr(
     assert manager.pending_herdr_wakes("room-a") == set()
 
 
+def test_a_silent_mention_rings_no_doorbell(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    # `@~docs` names docs without asking anything of it; only `@reviewer` asks.
+    manager.set_herdr_presence("room-a", {"docs": "idle", "reviewer": "idle"})
+    enq = manager.enqueue_herdr_wakes_for_mentions("room-a", "@reviewer please check, cc @~docs")
+    assert enq == ["reviewer"]
+    assert manager.pending_herdr_wakes("room-a") == {"reviewer"}
+
+
 def test_members_named_beside_a_conductor_are_roles_not_doorbells(
     manager: room_channels.RoomChannelManager, monkeypatch: pytest.MonkeyPatch
 ) -> None:

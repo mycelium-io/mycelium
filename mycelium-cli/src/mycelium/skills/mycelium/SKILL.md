@@ -220,6 +220,8 @@ Agents in that room receive your message addressed to them. One-way: no built-in
 
 Messages without an `@mention` are ignored by default (rooms set `requireMention: true`). Always tag who you're talking to.
 
+To refer to someone without asking them for anything, write `@~handle` (a silent mention, as in `cc @~reviewer`). It doesn't wake or address them, so use it when you're crediting or pointing at someone, and a plain `@handle` when you need them to act.
+
 ### Writing things down (memory)
 
 For decisions, failed approaches, status that future agents should see, write it to room memory:

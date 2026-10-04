@@ -150,7 +150,7 @@ async def seeded(monkeypatch) -> str:
     _say(
         "m4",
         sender="reviewer",
-        text="Apple Pay sheet looks right",
+        text="Apple Pay sheet looks right, cc @~builder",
         at=recent + timedelta(minutes=5),
         episode=thread,
         stance="accept",
@@ -213,7 +213,8 @@ async def test_in_stance_to_mentions_and_has(client, seeded):
     assert _ids(await _search(client, "stance:accept")) == ["m4"]
     assert _ids(await _search(client, "to:reviewer")) == ["m3"]
     assert _ids(await _search(client, "@builder -in:thread")) == ["m2"]
-    assert _ids(await _search(client, "mentions:builder")) == ["m1"]
+    # A silent `@~builder` names builder too: it is found, though it woke nobody.
+    assert _ids(await _search(client, "mentions:builder")) == ["m4", "m1"]
     assert _ids(await _search(client, "has:link")) == ["m2"]
 
 

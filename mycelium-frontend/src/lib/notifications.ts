@@ -7,6 +7,7 @@
 // Framework-agnostic on purpose — `notifications-provider.tsx` is the only
 // React-aware consumer, so this stays unit-testable without rendering.
 
+import { parseMentions } from "@/lib/mentions";
 import { unwrapContent } from "@/lib/room-events";
 
 export type NotificationKind = "mention" | "direct" | "consensus" | "knowledge" | "join" | "message";
@@ -77,16 +78,10 @@ export function isAlert(n: ClassifiedNotification, settings: NotificationSetting
   return level === "all" || n.needsMe;
 }
 
-const MENTION_RE = /@([\w-]+)/g;
-
+/** A silent `@~handle` names you without asking you anything, so it never rings. */
 function mentionsHandle(text: string, handle: string): boolean {
   if (!handle) return false;
-  MENTION_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = MENTION_RE.exec(text))) {
-    if (m[1].toLowerCase() === handle) return true;
-  }
-  return false;
+  return parseMentions(text).some((h) => h.toLowerCase() === handle);
 }
 
 /** Whether an L9 actor id names this handle: bare, `@`-prefixed, or as the

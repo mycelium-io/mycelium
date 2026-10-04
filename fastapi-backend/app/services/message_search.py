@@ -17,7 +17,7 @@ fields a message has:
 =============  ================================================================
 ``from:``      who said it (``@handle`` is shorthand; ``sender:``, ``by:``)
 ``to:``        who it was addressed to: a direct recipient or an L9 recipient
-``mentions:``  who it ``@``-mentions in its text
+``mentions:``  who it ``@``-mentions in its text, silent ``@~`` ones included
 ``type:``      message type (``broadcast``, ``direct``, ``announce`` …)
 ``kind:``      an event's kind, or the L9 subkind it rode (``amend`` …)
 ``status:``    an event's ledger status
@@ -199,6 +199,12 @@ def _is(doc: Doc) -> list[str]:
     return out
 
 
+def _mentioned(text: str) -> tuple[str, ...]:
+    """Everyone the text names, loudly or with a silent ``@~``, first-seen."""
+    both = persister.parse_mentions(text) + persister.parse_silent_mentions(text)
+    return tuple(dict.fromkeys(both))
+
+
 def _has(doc: Doc) -> list[str]:
     text = doc.message.content or ""
     out = []
@@ -363,7 +369,7 @@ def search(
             Doc(
                 message=m,
                 side=sides.get(m.message_id or "", Side()),
-                mentions=tuple(persister.parse_mentions(m.content or "")),
+                mentions=_mentioned(m.content or ""),
                 task=row[0] if row else None,
                 thread=thread,
             )

@@ -32,6 +32,7 @@ import { NewMemoryDialog } from "@/components/new-memory-dialog";
 import { AddMemberDialog, ENGINE_KINDS } from "@/components/add-member-dialog";
 import { expandPath, handleValid, normHandle, tildePath } from "@/components/launch-agent-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { MENTION_SIGIL, SILENT_MENTION_SIGIL } from "@/lib/mentions";
 import { mentionRank, nameOf, useNames } from "@/lib/people";
 import { draftKey, loadDraft, saveDraft } from "@/lib/drafts";
 import { FileText, ListTodo, Plus, UserPlus, X } from "lucide-react";
@@ -104,6 +105,8 @@ interface Trigger {
   /** Cursor position (the end of the replaced span). */
   end: number;
   query: string;
+  /** An `@~` trigger: the member is named silently (`lib/mentions.ts`). */
+  silent?: boolean;
 }
 
 
@@ -114,9 +117,11 @@ function detectTrigger(prefix: string, cursor: number): Trigger | null {
   if (mem) {
     return { kind: "memory", start: cursor - mem[1].length - 2, end: cursor, query: mem[1] };
   }
-  const agent = prefix.match(/(?:^|\s)@([a-z0-9._-]*)$/i);
+  const agent = prefix.match(/(?:^|\s)(@~?)([a-z0-9._-]*)$/i);
   if (agent) {
-    return { kind: "agent", start: cursor - agent[1].length - 1, end: cursor, query: agent[1].toLowerCase() };
+    const [, sigil, query] = agent;
+    const start = cursor - query.length - sigil.length;
+    return { kind: "agent", start, end: cursor, query: query.toLowerCase(), silent: sigil === SILENT_MENTION_SIGIL };
   }
   const skill = prefix.match(/(?:^|\s)\/([a-z0-9._-]*)$/i);
   if (skill) {
@@ -385,7 +390,7 @@ export function RoomChatBox({
         .map((x) => x.r);
       return pool.slice(0, 8).map((r) => ({
         id: r.handle,
-        insert: `@${r.handle}`,
+        insert: `${trigger.silent ? SILENT_MENTION_SIGIL : MENTION_SIGIL}${r.handle}`,
         primary: r.name ?? `@${r.handle}`,
         named: Boolean(r.name),
         secondary: r.name ? `@${r.handle} · ${r.secondary}` : r.secondary,
@@ -768,7 +773,7 @@ export function RoomChatBox({
                 is wide enough (measured against the composer, not the window:
                 it is this narrow on a phone and in a room with both rails open). */}
             <span className="min-w-0 truncate text-micro text-faint opacity-0 transition-opacity group-focus-within/composer:opacity-100">
-              @ mention · [[ memory · / command
+              @ mention · @~ silent · [[ memory · / command
             </span>
             <div className="ml-auto flex shrink-0 items-center gap-2">
             <span className="hidden items-center gap-1.5 text-micro text-faint opacity-0 transition-opacity group-focus-within/composer:opacity-100 @[34rem]:flex">

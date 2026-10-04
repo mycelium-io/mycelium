@@ -139,6 +139,23 @@ async def test_await_ignores_turns_addressed_to_others(wired):
     assert result["message"] is None
 
 
+def test_a_silent_mention_is_not_a_turn():
+    """``@~handle`` names a member without asking it anything: the send path
+    makes it no recipient, and the text alone does not address it either."""
+    env = l9.build_envelope(
+        kind=Kind.exchange,
+        episode=l9.episode_urn("r", "live"),
+        sender="avery",
+        sender_role="human",
+        recipients=persister.parse_mentions("@reviewer look, cc @~claude-code-agent"),
+        topic=l9.topic_urn("r"),
+        payload_type="message",
+    )
+    content = serialize_content(env, extra={"content": "@reviewer look, cc @~claude-code-agent"})
+    assert participate._addressed_to(content, "reviewer")
+    assert not participate._addressed_to(content, "claude-code-agent")
+
+
 @pytest.mark.asyncio
 async def test_a_served_turn_says_the_handle_is_responding(wired):
     """From the moment ``await`` hands a turn over until the reply lands, the
