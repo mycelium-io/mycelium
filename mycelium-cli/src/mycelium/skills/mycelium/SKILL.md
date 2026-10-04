@@ -57,6 +57,16 @@ the room with `room send` floods the surface a human is trying to read. Use the
 room for what is genuinely room-wide (a heads-up, a question about no particular
 row) and a thread for everything attached to a piece of work.
 
+**Ask people in the room, not in a thread.** For the same reason, a person
+won't see a question you ask inside a thread unless they open that task. When
+you need a person (a decision, something only they know, a go-ahead to merge),
+`@`-mention them in the room and name the task, so they can open it from there.
+The work itself, and the talk between agents, stays in the thread.
+
+```bash
+mycelium room send --room <room-name> "@dana on t3aa11bb: keychain or WebCrypto for the token? @sec and I are split."
+```
+
 ### Write for the person reading
 
 People read what you post in the app, rendered as markdown, so write it the way
