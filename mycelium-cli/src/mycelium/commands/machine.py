@@ -18,6 +18,8 @@ from rich.table import Table
 from mycelium.cli_options import confirms, emits_json, in_room
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
+from mycelium.hubs import Hub, find_hubs
+from mycelium.hubs import warnings as hub_warnings
 from mycelium.machine import (
     Agent,
     MachineError,
@@ -118,7 +120,7 @@ def _find(handle: str, room: str | None) -> Agent:
 
 @doc_ref(
     usage="mycelium machine [--json]",
-    desc="Show every agent on this machine, its state, and whether herdr brings it back after a restart; then what's wrong and how to fix it.",
+    desc="Show every agent on this machine, its state, and whether herdr brings it back after a restart; every Mycelium hub running here; then what's wrong and how to fix it.",
     group="agent",
 )
 @app.callback()
@@ -135,10 +137,34 @@ def machine(
     if ctx.invoked_subcommand is not None:
         return
     r = report()
+    found, warned = _hubs()
     if as_json:
-        typer.echo(json.dumps(r.wire()))
+        typer.echo(
+            json.dumps({**r.wire(), "hubs": [h.wire() for h in found], "hub_warnings": warned})
+        )
         return
     _print(r)
+    _print_hubs(found, warned)
+
+
+def _hubs() -> tuple[list[Hub], list[str]]:
+    """Every hub on this machine, and what deserves a look about them."""
+    from mycelium import __version__
+
+    found = find_hubs()
+    return found, hub_warnings(found, MyceliumConfig.load().get_data_dir(), __version__)
+
+
+def _print_hubs(found: list[Hub], warned: list[str]) -> None:
+    console.print()
+    if not found:
+        console.print("[dim]No hub running on this machine.[/dim]")
+        return
+    console.print("[bold]Hubs[/bold]")
+    for h in found:
+        console.print(f"  {escape(h.describe())}")
+    for line in warned:
+        console.print(f"  [yellow]![/yellow] {escape(line)}")
 
 
 @doc_ref(

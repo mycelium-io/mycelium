@@ -9,7 +9,7 @@
 //! A restart bumps a generation number, so a loop left over from the previous
 //! settings stops on its own instead of racing the new one.
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::process::{ChildStdin, Command, Stdio};
 use std::sync::Mutex;
 use std::thread;
@@ -39,6 +39,9 @@ struct Inner {
     shown: Option<u64>,
     /// A path to open under the UI once it is ready (a room, from an invite).
     pending_path: Option<String>,
+    /// The generation whose question (a hub the app didn't start) the main
+    /// window was sent to, so it is sent once.
+    asked: Option<u64>,
 }
 
 #[derive(Default)]
@@ -78,9 +81,31 @@ impl Supervisor {
             return;
         }
         inner.shown = None;
+        inner.asked = None;
         if inner.pending_path.is_none() {
             inner.pending_path = path;
         }
+    }
+
+    /// Whether this status's question is new for its generation.
+    pub fn take_question(&self, generation: u64) -> bool {
+        let mut inner = self.inner.lock().unwrap();
+        if inner.generation != generation || inner.asked == Some(generation) {
+            return false;
+        }
+        inner.asked = Some(generation);
+        true
+    }
+
+    /// The person's answer to the supervisor's question, written to its stdin.
+    pub fn answer(&self, choice: &str) -> Result<(), String> {
+        if !matches!(choice, "use" | "stop") {
+            return Err(format!("{choice} isn't an answer"));
+        }
+        let mut inner = self.inner.lock().unwrap();
+        let stdin = inner.stdin.as_mut().ok_or("Mycelium isn't running.")?;
+        let line = json!({ "type": "answer", "choice": choice }).to_string();
+        writeln!(stdin, "{line}").and_then(|()| stdin.flush()).map_err(|e| e.to_string())
     }
 
     fn stale(&self, generation: u64) -> bool {

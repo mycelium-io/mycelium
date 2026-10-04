@@ -10,7 +10,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 type Mode = "hub" | "client";
-type State = "starting" | "running" | "stopped" | "failed" | "disabled";
+type State = "starting" | "running" | "stopped" | "failed" | "disabled" | "waiting";
 
 interface Settings {
   mode: Mode;
@@ -25,12 +25,35 @@ interface Found {
   bundled: boolean;
 }
 
+/** A hub on this Mac, as `mycelium.hubs` found it. */
+interface HubSeen {
+  source: "docker" | "process" | "port";
+  owner: string;
+  description: string;
+  version: string | null;
+  data_path: string | null;
+  dev_build: boolean;
+}
+
+/** A hub the app didn't start is on its port: use it, or stop it and start the app's own. */
+interface HubQuestion {
+  kind: "existing_hub";
+  hub: HubSeen;
+  /** False: it writes somewhere other than the app's data folder. Null: can't tell. */
+  same_store: boolean | null;
+  data_dir: string;
+  app_version: string;
+}
+
 interface Status {
   type: "status";
   mode: Mode;
   ui_url?: string;
   api_url?: string;
   components: Record<string, { state: State; detail?: string | null }>;
+  /** More than one hub here, a hub on someone else's store, an old one. */
+  warnings?: string[];
+  question?: HubQuestion | null;
 }
 
 interface Snapshot {
@@ -1091,7 +1114,61 @@ const SAID: Record<State, string> = {
   stopped: "stopped",
   failed: "failed",
   disabled: "",
+  waiting: "waiting for you",
 };
+
+/** Whether `version` is older than `than`, by its numbers (unknown is not older). */
+function olderThan(version: string | null, than: string): boolean {
+  const nums = (v: string) => (v.match(/\d+(?:\.\d+)+/)?.[0] ?? "").split(".").filter(Boolean).map(Number);
+  const [a, b] = [nums(version ?? ""), nums(than)];
+  if (!a.length || !b.length || than.includes("dev")) return false;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) < (b[i] ?? 0);
+  }
+  return false;
+}
+
+/**
+ * A hub already on the app's port that the app didn't start, put to the
+ * person: whose it is, its version, where it keeps its data, and the choice.
+ */
+function hubQuestion(q: HubQuestion, home: string, answered: (e: unknown) => void): HTMLElement {
+  const h = q.hub;
+  const version = h.version
+    ? h.dev_build
+      ? `${h.version}, a development build`
+      : olderThan(h.version, q.app_version)
+        ? `${h.version}, older than this app (${q.app_version})`
+        : h.version
+    : "unknown";
+  const data = h.data_path ? tilde(h.data_path, home) : "unknown";
+  const elsewhere =
+    q.same_store === false
+      ? el(
+          "p",
+          { class: "error" },
+          `It keeps its rooms and memories in ${data}, not ${tilde(q.data_dir, home)}. Using it means working in that store, not yours.`,
+        )
+      : null;
+  const use = el("button", { class: "button ghost", type: "button" }, "Use it");
+  const replace = el("button", { class: "button", type: "button" }, "Stop it and start Mycelium's own");
+  const pick = (choice: "use" | "stop") => {
+    use.disabled = replace.disabled = true;
+    if (inApp) void invoke("answer_existing_hub", { choice }).catch((e) => ((use.disabled = replace.disabled = false), answered(e)));
+  };
+  use.addEventListener("click", () => pick("use"));
+  replace.addEventListener("click", () => pick("stop"));
+  return el(
+    "div",
+    { class: "note", role: "alertdialog" },
+    el("strong", {}, "Another Mycelium hub is already running on this Mac."),
+    el("div", {}, "Run by: ", el("code", {}, h.owner)),
+    el("div", {}, "Version: ", version),
+    el("div", {}, "Data: ", el("code", {}, data)),
+    elsewhere,
+    el("div", { class: "actions" }, use, replace),
+  );
+}
 
 async function loading(setup: PathSetup | null = null) {
   const snap = await snapshot();
@@ -1109,6 +1186,9 @@ async function loading(setup: PathSetup | null = null) {
   }
   const error = el("p", { class: "error", role: "alert", hidden: "" });
   const log = el("div", { class: "log" });
+  // A hub the app didn't start, and anything else about the hubs on this Mac.
+  const ask = el("div", { hidden: "" });
+  const warned = el("div", { class: "note", hidden: "" });
   const change = el("button", { class: "button ghost", type: "button" }, "Settings");
   change.addEventListener("click", () => void settingsWindow());
   const showLog = el("button", { class: "button ghost", type: "button" }, "Show log");
@@ -1145,6 +1225,18 @@ async function loading(setup: PathSetup | null = null) {
       row.detail.hidden = !why;
       row.detail.classList.toggle("bad", s === "failed");
     }
+    const q = status?.question ?? null;
+    const asked = q ? `${q.hub.description}|${q.same_store}` : "";
+    if (ask.dataset.asked !== asked) {
+      ask.dataset.asked = asked;
+      ask.replaceChildren(
+        ...(q ? [hubQuestion(q, snap.home, (e) => ((error.textContent = String(e)), (error.hidden = false)))] : []),
+      );
+      ask.hidden = !q;
+    }
+    const said = q ? [] : (status?.warnings ?? []);
+    warned.replaceChildren(...said.map((w) => el("div", {}, w)));
+    warned.hidden = said.length === 0;
   };
   apply(snap.status);
   if (snap.lastError) {
@@ -1158,7 +1250,7 @@ async function loading(setup: PathSetup | null = null) {
       "section",
       { class: "card" },
       head(where),
-      el("div", { class: "card-body" }, pathNote, skipped, list, error, log),
+      el("div", { class: "card-body" }, pathNote, skipped, ask, warned, list, error, log),
       el(
         "div",
         { class: "card-foot" },

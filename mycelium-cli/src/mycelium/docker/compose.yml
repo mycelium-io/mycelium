@@ -84,6 +84,9 @@ services:
       # env var is read separately by docker compose to resolve the volume
       # source path; the two values are different by design.)
       MYCELIUM_DATA_DIR: /home/mycelium/.mycelium
+      # The same folder as the host sees it (the mount's source below), which
+      # /health reports so the app can tell this hub's store from its own.
+      MYCELIUM_HOST_DATA_DIR: ${MYCELIUM_DATA_DIR:-~/.mycelium}
       # IN-CONTAINER path of the design-pattern pack (patterns.dir in config.toml,
       # a host path rendered to PATTERNS_DIR in .env and mounted below). Empty when
       # none is set, which is how the backend knows it has no pack.

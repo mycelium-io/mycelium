@@ -473,7 +473,13 @@ is no litellm dependency.
   before answers; `--mode client` runs only herdr and the runner against a
   hub elsewhere. It restarts what crashes with backoff, says why from the
   program's own last output, treats a port something else already answers as
-  running (so it sits beside a Docker stack), leaves herdr running on stop
+  running (so it sits beside a Docker stack), except the hub's: a hub it
+  didn't start on its port is never used without saying so. Before starting
+  anything it lists every hub on the machine (`mycelium/hubs.py`: Docker
+  containers, hub processes, the port; each with its version and store, told
+  apart by the `.store-id` `/health` reports), warns when there is more than
+  one, and asks the app (a `question` in its status, answered on stdin) to
+  use that hub or stop it and start its own. It leaves herdr running on stop
   (agents live in it), and writes everything to
   `~/.mycelium/logs/desktop.log`. Programs are found in the app bundle, then
   a checkout, then PATH. `mycelium-desktop/` (Tauri 2) adds first run, the

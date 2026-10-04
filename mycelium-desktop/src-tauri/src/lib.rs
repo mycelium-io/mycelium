@@ -151,6 +151,14 @@ fn open_terminal_window(app: &AppHandle, pane: Option<String>) {
 pub(crate) fn on_status(app: &AppHandle, generation: u64, status: &Value) {
     let _ = app.emit_to("main", "status", status.clone());
     update_tray(app, status);
+    // A hub the app didn't start is never used without the person saying so:
+    // the question is on the app's own page, wherever the window was.
+    if status.get("question").is_some_and(|q| !q.is_null())
+        && app.state::<Supervisor>().take_question(generation)
+    {
+        show_local(app, "loading");
+        return;
+    }
     if !supervisor::ready(status) {
         return;
     }
@@ -310,7 +318,9 @@ fn status_line(status: &Value) -> String {
         };
     }
     let parts: Vec<String> = ["herdr", "slim", "hub", "ui", "runner"].iter().map(|p| state(p)).collect();
-    if parts.iter().any(|s| s == "failed" || s == "stopped") {
+    if parts.iter().any(|s| s == "waiting") {
+        "○ Another hub is running: open Mycelium".into()
+    } else if parts.iter().any(|s| s == "failed" || s == "stopped") {
         "○ Something stopped: open Health check".into()
     } else if parts.iter().all(|s| s == "running" || s == "disabled") {
         "● Mycelium is running".into()
@@ -854,6 +864,14 @@ fn open_room(app: AppHandle, webview: Webview) -> Result<(), String> {
     Ok(())
 }
 
+/// The person's answer about a hub already running that the app didn't
+/// start: `use` it, or `stop` it and start the app's own.
+#[tauri::command]
+fn answer_existing_hub(app: AppHandle, webview: Webview, choice: String) -> Result<(), String> {
+    local_only(&app, &webview)?;
+    app.state::<Supervisor>().answer(&choice)
+}
+
 /// The macOS folder picker, opened at `start`. `None` when the person cancels.
 #[tauri::command]
 async fn pick_folder(
@@ -989,6 +1007,7 @@ pub fn run() {
             set_autostart,
             open_room,
             open_log,
+            answer_existing_hub,
             start,
             terminal_open,
             terminal_write,

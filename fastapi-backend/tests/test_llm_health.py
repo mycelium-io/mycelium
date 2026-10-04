@@ -437,6 +437,25 @@ async def test_health_storage_ok(client: AsyncClient):
     assert data["storage"]["status"] == "ok"
 
 
+async def test_health_names_the_store_the_same_way_every_time(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    """The store's id is written once and read back, so two hubs on one
+    machine can be told apart; a containerized hub also says the host path."""
+    from app.config import settings
+    from app.services.filesystem import STORE_ID_FILE, get_data_dir
+
+    first = (await client.get("/health")).json()["storage"]
+    assert len(first["id"]) == 32
+    assert "host_path" not in first
+    assert (get_data_dir() / STORE_ID_FILE).read_text().strip() == first["id"]
+
+    monkeypatch.setattr(settings, "MYCELIUM_HOST_DATA_DIR", "/Users/me/.mycelium-eval")
+    again = (await client.get("/health")).json()["storage"]
+    assert again["id"] == first["id"]
+    assert again["host_path"] == "/Users/me/.mycelium-eval"
+
+
 # ── /health: embedding ───────────────────────────────────────────────────────
 
 
