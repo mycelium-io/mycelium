@@ -9,6 +9,7 @@ The same report and actions as the app's Machines page; see ``mycelium.machine``
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 
 import typer
 from rich.console import Console
@@ -106,6 +107,15 @@ def _tilde(path: str | None) -> str:
     return "~" + path[len(home) :] if path.startswith(home) else path
 
 
+def _print_by_room(agents: list[Agent], line: Callable[[Agent], str]) -> None:
+    """``agents`` under a heading per room, so a wrong scope shows before it runs."""
+    for room in sorted({a.room for a in agents}):
+        console.print(f"  [bold]{escape(room)}[/bold]")
+        for a in agents:
+            if a.room == room:
+                console.print(f"    {line(a)}")
+
+
 def _find(handle: str, room: str | None) -> Agent:
     try:
         return report().find(handle, room)
@@ -192,7 +202,7 @@ def restart_cmd(
     r = report()
     try:
         if every:
-            agents = [a for a in r.agents if a.restartable]
+            agents = r.stopped(room)
         elif handles:
             agents = [r.find(h, room) for h in handles]
         else:
@@ -209,8 +219,7 @@ def restart_cmd(
         console.print("[dim]Nothing to restart.[/dim]")
         return
     console.print(f"Restart {len(agents)} on {escape(r.machine)}:")
-    for a in agents:
-        console.print(f"  [cyan]{escape(restart_command(a))}[/cyan]")
+    _print_by_room(agents, lambda a: f"[cyan]{escape(restart_command(a))}[/cyan]")
     if not yes and not typer.confirm("Start them?", default=True):
         raise typer.Exit(1)
     config = MyceliumConfig.load()
@@ -249,7 +258,7 @@ def rename_cmd(
 
 
 @doc_ref(
-    usage="mycelium machine unbind <handle> [--room <room>] | --gone [--yes]",
+    usage="mycelium machine unbind <handle> [--room <room>] | --gone [--room <room>] [--yes]",
     desc="Forget which herdr pane an agent is, or every pane that's gone with nothing to restart. They stay in their rooms.",
     group="agent",
 )
@@ -266,14 +275,12 @@ def unbind_cmd(
 ) -> None:
     """Unbind an agent from its herdr pane. It stays a member of its room."""
     if gone:
-        agents = [a for a in report().agents if a.state == "gone" and not a.restartable]
+        agents = report().lost(room)
         if not agents:
             console.print("[dim]No gone panes to forget.[/dim]")
             return
-        names = ", ".join(f"@{a.handle} ({a.room})" for a in agents)
-        console.print(
-            f"Forget {len(agents)} pane{'s' if len(agents) != 1 else ''}: {escape(names)}"
-        )
+        console.print(f"Forget {len(agents)} pane{'s' if len(agents) != 1 else ''}:")
+        _print_by_room(agents, lambda a: f"@{escape(a.handle)} [dim]{escape(a.pane)}[/dim]")
         if not yes and not typer.confirm("Unbind them?", default=True):
             raise typer.Exit(1)
         for a in agents:
