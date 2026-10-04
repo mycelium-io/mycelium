@@ -5,7 +5,7 @@
 
 The app runs no containers, so the Docker-shaped checks don't apply. These
 look at what it does run, in the order a problem would show: the SLIM node,
-the hub, the UI, the runner and herdr under it, the agent CLIs herdr can
+the hub (and any other hub on this Mac), the UI, the runner and herdr under it, the agent CLIs herdr can
 start, and whether ``mycelium`` and ``herdr`` are on PATH for the agents that
 call them. Which of them apply depends on the app's own setting: a Mac that
 joins a hub elsewhere runs no SLIM node, hub or UI.
@@ -83,6 +83,47 @@ def hub(api_url: str) -> CheckResult:
         status="error",
         message=f"no answer from {api_url}",
         details=["Is Mycelium running? Its menu bar icon shows each part's state."],
+    )
+
+
+def hubs_here(*, client: bool = False) -> CheckResult:
+    """Every hub on this Mac: more than one, someone else's store, or an old one is a warning."""
+    from mycelium import __version__
+    from mycelium.config import MyceliumConfig
+    from mycelium.hubs import at_port, find_hubs, warnings
+
+    found = find_hubs(HUB_PORT)
+    data_dir = MyceliumConfig.load().get_data_dir()
+    said = warnings(found, data_dir, __version__)
+    listed = [h.describe() for h in found]
+    if not found:
+        return CheckResult(
+            name="Hubs on this Mac",
+            status="info" if client else "error",
+            message="none running",
+        )
+    if client:
+        # Joined elsewhere: a hub here gets nothing from the app.
+        return CheckResult(
+            name="Hubs on this Mac",
+            status="info",
+            message=f"{len(found)} running, not used by the app",
+            details=listed,
+        )
+    there = at_port(found, HUB_PORT)
+    if not said:
+        return CheckResult(name="Hubs on this Mac", status="ok", message=listed[0])
+    fix = []
+    if there is not None and there.source != "process":
+        fix.append(
+            "Quit Mycelium, stop the other stack (or `docker stop` it), and open Mycelium again "
+            "to start its own hub."
+        )
+    return CheckResult(
+        name="Hubs on this Mac",
+        status="warning",
+        message=said[0],
+        details=[*said[1:], *listed, *fix],
     )
 
 
@@ -224,6 +265,7 @@ def desktop_checks() -> list[tuple[str, list[CheckResult]]]:
     if not client:
         services.append(slim_node())
     services.append(hub(api_url) if api_url else app_setting())
+    services.append(hubs_here(client=client))
     if not client:
         services.append(ui())
     if api_url:

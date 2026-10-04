@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     # Root directory for .mycelium/ data (rooms, config)
     # Defaults to ~/.mycelium/ so backend and CLI share the same directory.
     MYCELIUM_DATA_DIR: str = str(Path.home() / ".mycelium")
+    # Where MYCELIUM_DATA_DIR is on the host, when the hub runs in a container
+    # (compose sets it from the bind mount's source). /health reports it so a
+    # client can tell which folder on its machine this hub writes to.
+    MYCELIUM_HOST_DATA_DIR: str | None = None
 
     # Metrics collector (for proxying /api/observability/collector and /traces)
     COLLECTOR_URL: str = "http://mycelium-collector:4318"

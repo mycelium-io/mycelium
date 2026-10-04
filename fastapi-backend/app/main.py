@@ -644,12 +644,25 @@ async def _proxy_collector(path: str):
 
 
 def _check_storage() -> dict:
-    """Probe the local markdown/JSONL data directory is writable."""
-    from app.services.filesystem import get_data_dir
+    """Probe the local markdown/JSONL data directory is writable.
+
+    ``path`` is where the hub sees it; ``host_path`` where it is on the host
+    when the hub runs in a container; ``id`` names the store wherever it is
+    mounted, so a client can tell two hubs' stores apart.
+    """
+    from app.services.filesystem import get_data_dir, store_id
 
     try:
         data_dir = get_data_dir()
-        return {"status": "ok", "message": "Local store", "path": str(data_dir)}
+        result = {
+            "status": "ok",
+            "message": "Local store",
+            "path": str(data_dir),
+            "id": store_id(),
+        }
+        if settings.MYCELIUM_HOST_DATA_DIR:
+            result["host_path"] = settings.MYCELIUM_HOST_DATA_DIR
+        return result
     except Exception as exc:
         logger.warning("Storage health check failed: %s", exc)
         return {"status": "unreachable", "message": f"Cannot access data dir: {type(exc).__name__}"}

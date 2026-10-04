@@ -22,6 +22,13 @@ keeps failing is left failed with the reason. A port something else already
 answers on counts as running, so the app sits beside a Docker stack rather
 than fighting it for its ports.
 
+A hub is the exception: one the app didn't start, already on its port, is
+never used without saying so. Before starting anything in hub mode the
+supervisor looks for every hub on this machine (``mycelium.hubs``), warns
+when there is more than one, and puts the one on its port to the person as a
+question (its owner, version and data folder): use it, or stop it and start
+the app's own. The app answers on stdin.
+
 Where each program comes from, first found wins: an environment override,
 the app bundle (the directory this binary runs from, and its ``Resources``),
 then a checkout of the repository, then ``PATH``.
@@ -48,7 +55,9 @@ from typing import Any, Literal
 import httpx
 
 Mode = Literal["hub", "client"]
-State = Literal["starting", "running", "stopped", "failed", "disabled"]
+State = Literal["starting", "running", "stopped", "failed", "disabled", "waiting"]
+#: What to do about a hub already on the app's port: ask the app, use it, or stop it.
+OnExisting = Literal["ask", "use", "stop"]
 
 HOST = "127.0.0.1"
 SLIM_PORT = 46357
@@ -216,6 +225,8 @@ class Component:
     external: Callable[[], bool] | None = None
     #: Left running when the supervisor stops (herdr: agents live in it).
     outlives: bool = False
+    #: What to say when something outside provides it, in place of the default.
+    adopted: str | None = None
     state: State = "stopped"
     detail: str | None = None
     proc: subprocess.Popen | None = None
@@ -251,6 +262,8 @@ class Supervisor:
         env: dict[str, str] | None = None,
         start_runner: bool = True,
         share_usage: bool | None = None,
+        existing_hub: OnExisting = "use",
+        look: Callable[[], list[Any]] | None = None,
     ) -> None:
         if mode == "client" and not hub_url:
             raise ValueError("client mode needs the hub's URL")
@@ -265,6 +278,18 @@ class Supervisor:
         #: The Mac app's answer to "share usage stats", which wins over
         #: config.toml for the hub it starts. None leaves config.toml's.
         self.share_usage = share_usage
+        #: What to do about a hub this supervisor didn't start, on its port.
+        self.existing_hub: OnExisting = existing_hub
+        #: How the hubs on this machine are found (``mycelium.hubs.find_hubs``).
+        self.look = look
+        #: Every hub seen at start, what deserves a look about them, the one
+        #: on the app's port when the app is using it, and the open question.
+        self.hubs: list[dict[str, Any]] = []
+        self.warnings: list[str] = []
+        self.adopted_hub: dict[str, Any] | None = None
+        self.question: dict[str, Any] | None = None
+        self._answer: str | None = None
+        self._answered = threading.Event()
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self._last: str | None = None
@@ -371,6 +396,13 @@ class Supervisor:
             # So the app can tell the page which machine is this one.
             "runner_id": self.runner_id,
             "components": components,
+            # More than one hub here, a hub on someone else's store, an old one.
+            "warnings": self.warnings,
+            "hubs": self.hubs,
+            # The hub on the app's port that the app is using but didn't start.
+            "existing_hub": self.adopted_hub,
+            # Something only the person can answer; the app answers on stdin.
+            "question": self.question,
         }
 
     def _publish(self) -> None:
@@ -397,7 +429,7 @@ class Supervisor:
 
     def _spawn(self, c: Component) -> None:
         if c.external is not None and c.restarts == 0 and c.external():
-            self._set(c, "running", "already running (not started by the app)")
+            self._set(c, "running", c.adopted or "already running (not started by the app)")
             return
         try:
             argv, cwd = c.argv()
@@ -538,6 +570,86 @@ class Supervisor:
             self.runner_state, self.runner_detail = state, detail
             self._publish()
 
+    # ── a hub this supervisor didn't start ───────────────────────────────────
+
+    def data_dir(self) -> Path:
+        """Where the hub this supervisor starts keeps its data."""
+        return Path(self.env.get("MYCELIUM_DATA_DIR") or Path.home() / ".mycelium").expanduser()
+
+    def answer(self, choice: str) -> None:
+        """The person's answer to the open question: ``use`` or ``stop``."""
+        if choice in ("use", "stop") and self.question is not None:
+            self._answer = choice
+            self._answered.set()
+
+    def _wait_for_answer(self) -> str | None:
+        while not self._stop.is_set():
+            if self._answered.wait(TICK_S):
+                return self._answer
+        return None
+
+    def _preflight(self) -> bool:
+        """Before anything starts: every hub here, and what to do about one on our port.
+
+        ``False`` when the supervisor was stopped while it waited for an answer.
+        """
+        from mycelium import __version__
+        from mycelium.hubs import StopError, at_port, find_hubs, same_store, store_id, warnings
+        from mycelium.hubs import stop as stop_hub
+
+        found = self.look() if self.look is not None else find_hubs(HUB_PORT)
+        data_dir = self.data_dir()
+
+        def note() -> None:
+            self.hubs = [h.wire() for h in found]
+            self.warnings = warnings(found, data_dir, __version__)
+
+        note()
+        for line in self.warnings:
+            self.emit({"type": "warning", "message": line})
+        there = at_port(found, HUB_PORT)
+        hub = next((c for c in self.components if c.name == "hub"), None)
+        if there is None or hub is None:
+            self._publish()
+            return True
+        same = same_store(there, data_dir, store_id(data_dir, create=False))
+        choice: str | None = self.existing_hub
+        if choice == "ask":
+            self.question = {
+                "kind": "existing_hub",
+                "hub": there.wire(),
+                # False: it writes somewhere other than the app's data folder.
+                "same_store": same,
+                "data_dir": str(data_dir),
+                "app_version": __version__,
+                "choices": ["use", "stop"],
+            }
+            self._set(hub, "waiting", f"a hub the app didn't start is running: {there.describe()}")
+            choice = self._wait_for_answer()
+            self.question = None
+            if choice is None:
+                return False
+        if choice == "stop":
+            self._set(hub, "starting", f"stopping {there.owner()}")
+            try:
+                stopped = stop_hub(there)
+            except StopError as e:
+                self._set(hub, "failed", str(e))
+                self.emit({"type": "error", "component": "hub", "message": str(e)})
+                return True
+            self.emit({"type": "warning", "message": f"Stopped {stopped} to start the app's hub."})
+            found.remove(there)
+            note()
+            self._set(hub, "stopped")
+            return True
+        hub.adopted = f"not started by the app: {there.describe()}"
+        self.adopted_hub = {**there.wire(), "same_store": same}
+        self.emit(
+            {"type": "warning", "message": f"Using a hub the app didn't start: {there.describe()}"}
+        )
+        self._set(hub, "stopped")
+        return True
+
     # ── the loop ─────────────────────────────────────────────────────────────
 
     def run(self) -> None:
@@ -547,6 +659,9 @@ class Supervisor:
 
             self.runner_id = runner_id()
         self._publish()
+        if self.mode == "hub" and not self._preflight():
+            self._shutdown()
+            return
         try:
             while not self._stop.is_set():
                 ready = True

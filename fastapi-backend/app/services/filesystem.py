@@ -17,9 +17,11 @@ File format:
     PostgreSQL chosen for graph+SQL+vector support.
 """
 
+import contextlib
 import json
 import logging
 import re
+import uuid
 import zlib
 from datetime import UTC, datetime
 from pathlib import Path
@@ -91,6 +93,27 @@ def get_data_dir() -> Path:
     data_dir = Path(settings.MYCELIUM_DATA_DIR)
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir
+
+
+#: A random id written once into the data dir, so two hubs (or a hub and a
+#: client) can tell whether they share a store whatever path each sees it at.
+#: The CLI reads and writes the same file (``mycelium/hubs.py``).
+STORE_ID_FILE = ".store-id"
+
+
+def store_id() -> str:
+    """This store's id, written on first use."""
+    path = get_data_dir() / STORE_ID_FILE
+    with contextlib.suppress(FileNotFoundError):
+        if found := path.read_text().strip():
+            return found
+    new = uuid.uuid4().hex
+    try:
+        with path.open("x", encoding="utf-8") as f:
+            f.write(new + "\n")
+    except FileExistsError:
+        return path.read_text().strip() or new
+    return new
 
 
 class UnsafePathError(ValueError):

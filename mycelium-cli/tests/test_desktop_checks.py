@@ -30,6 +30,7 @@ def setting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     for fn in (
         "slim_node",
         "hub",
+        "hubs_here",
         "ui",
         "runner",
         "herdr",
@@ -57,6 +58,7 @@ def test_a_hub_mac_checks_everything_it_runs(setting):
         "Desktop app",
         "slim_node",
         "hub",
+        "hubs_here",
         "ui",
         "runner",
         "herdr",
@@ -133,3 +135,50 @@ def test_herdr_older_than_mycelium_needs_is_an_error_with_its_fix(
     if fix:
         assert "needs 0.9.3 or newer" in result.message
         assert any(fix in d for d in result.details)
+
+
+def _hubs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, found: list) -> None:
+    from mycelium import hubs
+    from mycelium.config import MyceliumConfig
+
+    monkeypatch.setattr(hubs, "find_hubs", lambda *_a, **_k: found)
+    monkeypatch.setattr(MyceliumConfig, "get_data_dir", lambda _self: tmp_path)
+
+
+def test_one_hub_on_this_macs_own_store_checks_out(monkeypatch, tmp_path: Path):
+    from mycelium import __version__
+    from mycelium.hubs import Hub
+
+    own = Hub(source="process", port=8000, pid=7, version=__version__, data_path=str(tmp_path))
+    own.answering = True
+    _hubs(monkeypatch, tmp_path, [own])
+    result = checks.hubs_here()
+    assert result.status == "ok"
+    assert "process 7" in result.message
+
+
+def test_a_second_stack_on_another_store_is_a_warning_that_names_it(monkeypatch, tmp_path: Path):
+    from mycelium.hubs import Hub
+
+    eval_stack = Hub(
+        source="docker",
+        port=8000,
+        image="mycelium-backend:dev",
+        project="mycelium-concord-eval",
+        data_path="/Users/julia/.mycelium-concord-eval",
+        answering=True,
+    )
+    other = Hub(source="process", port=8001, pid=9, data_path=str(tmp_path))
+    _hubs(monkeypatch, tmp_path, [eval_stack, other])
+    result = checks.hubs_here()
+    assert result.status == "warning"
+    text = " ".join([result.message, *result.details])
+    assert "2 Mycelium hubs" in result.message
+    assert "mycelium-concord-eval" in text
+    assert "/Users/julia/.mycelium-concord-eval" in text
+    assert "development build" in text
+
+
+def test_a_client_mac_only_mentions_hubs_here(monkeypatch, tmp_path: Path):
+    _hubs(monkeypatch, tmp_path, [])
+    assert checks.hubs_here(client=True).status == "info"
