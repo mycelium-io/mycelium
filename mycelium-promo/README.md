@@ -61,7 +61,36 @@ fast-forwards the waits.
 
 ## Publishing
 
-The README and `docs/index.html` embed the video from a
-`user-attachments/assets/...` URL. Those only play inline when uploaded through
-GitHub's web drag-and-drop, so after re-recording, drag the new mp4 into a PR
-comment to mint a URL, then swap it into both embeds.
+The docs site plays `docs/demo/mycelium-demo.mp4`, committed through Git LFS
+(every `*.mp4` under `docs/` is), so after re-recording, copy the take there.
+The README can't play a file from the repo: GitHub only plays a README video
+inline from a `user-attachments/assets/...` URL, minted by dragging the mp4
+into a PR comment in the browser. Swap that URL into the README by hand.
+
+## The Learn videos
+
+Each section of a course on `learn.html` opens with a short video of the app
+doing what its lessons teach, recorded the same way as the demo: shotkit
+driving the real UI over a mock scenario, here the frontend's Learn scenario
+(`MYCELIUM_UI_MOCK_SCENARIO=learn:<take>`, `mycelium-frontend/src/mocks/learn.ts`).
+Its `orders` room starts in the state the take needs, and a director plays the
+agents' side.
+
+```bash
+node mycelium-promo/learn/record.mjs                    # every take → docs/learn/video/
+node mycelium-promo/learn/record.mjs pair-idea github   # just these
+node mycelium-promo/learn/record.mjs --raw swarm-run    # keep the take as recorded, in .shotkit/learn/, to check it
+```
+
+| | |
+|---|---|
+| `learn/takes/<take>.json` | one take: shotkit options and its `do` actions, as `demo.json` |
+| `learn/record.mjs` | boots a server per take, records it, encodes it for the web (H.264, no sound) with a poster, and writes its length into `docs/learn/video/index.json` |
+| `server.mjs` | the dev server a take runs against, shared with `record.mjs` |
+
+A section names its take as `video` in its `course.json`; `generate_docs.py`
+fails if that take isn't recorded. The videos are committed through Git LFS,
+like the demo, and the docs site serves them. To change what an agent says, edit
+`learn.ts`; to change what the camera does, edit the take. A take that waits on
+the agents with `wait-text:` stays in step with the director whatever its
+pacing (`PACE` in `learn.ts`).

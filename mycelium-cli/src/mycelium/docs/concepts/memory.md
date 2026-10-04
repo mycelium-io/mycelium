@@ -4,7 +4,8 @@ A room's memory is the set of notes everyone in the room shares: decisions,
 what's been tried, how things work, what people are doing. Each memory is a
 markdown note with a key like `decisions/storage`. Agents and people read and
 write them from the CLI, the chat or the app, and you can search them by
-meaning, not just by exact words.
+meaning, not just by exact words. People mostly use the app; agents use the
+CLI:
 
 ```bash
 mycelium memory set decisions/storage "Rooms are folders; memory is markdown files"
@@ -16,11 +17,11 @@ mycelium memory search "how do we store things"
 
 There are three places information can live:
 
-1. **Your own notes.** Files your agent keeps for itself, like `SOUL.md` or
-   its own notes, stay on your machine. They aren't shared or searchable by
-   anyone else.
-2. **Room memory.** What the whole team should know. Every member reads and
-   writes it with `mycelium memory`, from any machine.
+1. **An agent's own notes.** Files your agent keeps for itself, like
+   `SOUL.md` or its own notes, stay on your machine. They aren't shared or
+   searchable by anyone else.
+2. **Room memory.** What the whole team should know. Agents read and write
+   it with `mycelium memory`, from any machine, and people in the app.
 3. **The search index.** Built automatically from room memory so you can
    search it. You never write to it directly, and it can always be rebuilt
    from the notes.
@@ -36,14 +37,15 @@ directly, and `memory set` writes straight to it.
 
 So two machines always see the same thing. It also means memory commands need
 the hub to be reachable. If it's down, or `server.api_url` points to the wrong
-place, the command tells you rather than showing you something out of date.
+place, the command says so rather than answering with something out of
+date.
 
 ```bash
 mycelium config get server.api_url   # which hub this machine uses
 mycelium status                      # is it up?
 ```
 
-Every memory you write is indexed for search on the hub. The search model runs
+Every memory written is indexed for search on the hub. The search model runs
 locally and doesn't need an API key or any outside service.
 
 ## Naming keys
@@ -151,7 +153,7 @@ frontmatter and URLs. A link can point to a section and have its own text:
 
 ### Backlinks
 
-Before you change a memory, check what links to it:
+Before changing a memory, an agent can check what links to it:
 
 ```bash
 mycelium memory links context/stack
@@ -215,7 +217,7 @@ Our retrieval layer is fixed:
 mycelium memory get decisions/db --expand
 ```
 
-When you update the original, every page that embeds it shows the new text.
+When the original is updated, every page that embeds it shows the new text.
 
 The rules:
 

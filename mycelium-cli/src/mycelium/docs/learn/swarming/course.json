@@ -1,0 +1,147 @@
+{
+  "order": 5,
+  "title": "Swarm a task effectively",
+  "tagline": "Put a team of agents on one task: they split it, build the parts, review each other, and hand back one result.",
+  "track": "Capstone",
+  "thumb": "app-swarm.png",
+  "needs": [
+    "The core workflow under your belt: a swarm is several pairs, each part reviewed by another member",
+    "A task with parts that can be built at the same time"
+  ],
+  "takeaway": "A sense of which tasks a team should take, and a way to write them so the split comes out right.",
+  "outcomes": [
+    "Tell a task worth swarming from one a pair should take",
+    "Write a task that splits cleanly into parts",
+    "Pick the size and where the team runs",
+    "Set up a self-organizing team that hands work to itself, so only decisions reach you",
+    "Watch, steer, and recover a swarm that goes sideways"
+  ],
+  "modules": [
+    {
+      "title": "Before you swarm",
+      "lessons": [
+        {
+          "id": "01-when",
+          "title": "When a team beats a pair",
+          "minutes": 5,
+          "quiz": {
+            "question": "Which of these should you swarm?",
+            "options": [
+              "Rename a function used in forty files",
+              "Add an export feature: an API endpoint, a settings screen, and its tests",
+              "Track down one bug in a single module"
+            ],
+            "answer": 1,
+            "why": "The export feature has parts that can be built at the same time by different agents. The other two are one coherent change: a pair, or one agent, does them better."
+          }
+        },
+        {
+          "id": "02-how-it-runs",
+          "title": "How a swarm runs",
+          "minutes": 4
+        },
+        {
+          "id": "03-the-task",
+          "title": "Write a task that splits well",
+          "minutes": 7
+        }
+      ],
+      "video": {
+        "take": "swarm-task",
+        "about": "Writing a task that names its parts, and starting a team on it from the board."
+      }
+    },
+    {
+      "title": "Running one",
+      "lessons": [
+        {
+          "id": "04-start",
+          "title": "Start it, and where it runs",
+          "minutes": 5
+        },
+        {
+          "id": "05-size",
+          "title": "How many agents",
+          "minutes": 3
+        },
+        {
+          "id": "06-watch",
+          "title": "Watch and steer",
+          "minutes": 4
+        }
+      ],
+      "video": {
+        "take": "swarm-run",
+        "about": "The team checking in, the lead splitting the task, and a part reviewed in its own thread."
+      }
+    },
+    {
+      "title": "A self-organizing team",
+      "video": {
+        "take": "relay",
+        "about": "One task handed to a PM, and the team organizes itself: the agents wake each other through tasks and mentions, a tester files a fix for the coder, and only one decision reaches you."
+      },
+      "lessons": [
+        {
+          "id": "07-attention",
+          "title": "Spend your attention where it counts",
+          "minutes": 4
+        },
+        {
+          "id": "08-wake",
+          "title": "How an agent wakes another",
+          "minutes": 5,
+          "quiz": {
+            "question": "The coder resolves the API task. The help page task, for @writer, was waiting on it. What gets the writer started?",
+            "options": [
+              "Nothing needs to: resolving the API task wakes the writer",
+              "The coder says so in the thread: \"@writer, it's yours\"",
+              "The PM files the help page task again"
+            ],
+            "answer": 1,
+            "why": "Resolving a task tells the board, not the agent waiting on it. A mention (or a task filed for it) is what wakes an agent, so whoever finishes says who's next."
+          }
+        },
+        {
+          "id": "09-chain",
+          "title": "Lay out work that hands itself off",
+          "minutes": 6
+        },
+        {
+          "id": "10-reach-you",
+          "title": "Let only decisions reach you",
+          "minutes": 5
+        }
+      ]
+    },
+    {
+      "title": "Getting good at it",
+      "lessons": [
+        {
+          "id": "11-going-wrong",
+          "title": "When a swarm goes sideways",
+          "minutes": 6,
+          "quiz": {
+            "question": "Two members keep undoing each other's changes. What helps most?",
+            "options": [
+              "Add a fourth member to referee",
+              "Give each member its own worktree, and split the task by files or areas that don't overlap",
+              "Lower the number of review rounds"
+            ],
+            "answer": 1,
+            "why": "Members colliding is a split problem and a checkout problem. --worktree gives each its own branch, and a task that names separate areas keeps their parts apart."
+          }
+        },
+        {
+          "id": "12-exercise",
+          "title": "Exercise: a team against a pair",
+          "minutes": 5
+        }
+      ],
+      "video": {
+        "take": "swarm-steer",
+        "about": "Answering the question a quiet part was waiting on, and reading the lead's combined result."
+      }
+    }
+  ]
+}

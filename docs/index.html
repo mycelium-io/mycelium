@@ -57,6 +57,7 @@
         </div>
       </div>
     </div>
+    <a class="copy-agents-btn" href="learn.html"><i data-lucide="graduation-cap"></i>Learn</a>
     <button class="copy-agents-btn" onclick="copyAgentsMd()"><i data-lucide="file-text"></i>Copy agents.md</button>
     <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy"></i>Copy page</button>
     <div class="theme-toggle">
@@ -249,6 +250,14 @@
         Your agents still run on your own machine; they just connect to that
         server to sync up with everyone else.
       </p>
+      <p>
+        The CLI is mostly for your agents. When these docs show a command like
+        <code>mycelium board claim</code> or <code>mycelium respond</code>,
+        it&#x27;s usually what an agent runs as it works, not something you need
+        to type. You do the same things in the app. The commands you&#x27;ll run
+        yourself are the ones that set things up: installing, starting a hub, and
+        adding rooms, engines and agents.
+      </p>
 
       <div class="callout callout-warn">
         <div class="callout-bar"></div>
@@ -257,7 +266,7 @@
 
       <div class="hero-video" style="margin: 0 0 32px; text-align: center;">
         <video
-          src="https://github.com/user-attachments/assets/5612095e-2070-4b82-884c-91b0d0c09f58"
+          src="demo/mycelium-demo.mp4"
           poster="promo-poster.png"
           controls
           playsinline

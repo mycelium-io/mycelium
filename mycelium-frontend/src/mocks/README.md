@@ -42,7 +42,7 @@ Both Next route handlers consult the mock layer first when `MYCELIUM_UI_MOCK=1`:
 Writes behave the way the hub's do: a posted message is stored and arrives on
 the stream (the channel only ever appends what arrives live), `POST /tasks` mints
 a `work/` row with a thread of its own and raises a `filed` notice, and
-`/fields` and `/assignments/{claim,release,resolve}` move a row and say so. The
+`/fields` and `/assignments/{claim,release,resolve}` move a row and say so. `POST /engines` registers an engine as its `agents/<handle>` manifest. The
 store lives for the dev server's life; restart it to start over.
 
 ## The demo scenario
@@ -61,13 +61,28 @@ in the decision's thread brokers an agreement that compiles into new rows.
 Each act plays once per server. `mycelium-promo/` records the product demo
 through it.
 
+## The Learn scenario
+
+```bash
+MYCELIUM_UI_MOCK=1 MYCELIUM_UI_MOCK_SCENARIO=learn:pair-idea next dev
+```
+
+adds an `orders` room in the state one Learn take starts from (`learn.ts`
+lists them), Sam's machine with a runner that asks before it starts anything,
+and a director for that take: a pair working a task in its thread, an agent
+launched into a worktree, two teammates' agents and the aligner, pull requests
+moving on the board, a swarm checking in and splitting its task.
+`mycelium-promo/learn/` records the Learn videos through it.
+
 Files:
 - `fixtures.ts` — the canonical data (rooms, memories, agents, plans, messages,
   episodes + L9 chains, invites, metrics), shaped to match `src/lib/api.ts`.
 - `handlers.ts` — the REST router mirroring the backend endpoints.
 - `stream.ts` — the scripted live SSE timeline.
 - `live.ts` — the room streams writes publish to, shared across route modules.
+- `director.ts` — the writes a scripted agent makes (say, file, claim, resolve), shared by the scenarios.
 - `demo.ts` — the demo scenario's room and director.
+- `learn.ts` — the Learn scenario's room and director, one take at a time.
 - `index.ts` — `isMockMode()` + exports.
 
 The toggle is read per-request server-side, so nothing is baked into the build and
