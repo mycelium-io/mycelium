@@ -108,7 +108,8 @@ def resolve_actor(
     """The one seam every command uses to answer "who am I acting as".
 
     The order is ``caller.handle``'s: an explicit ``--as`` override,
-    ``MYCELIUM_AGENT_HANDLE``, this folder's membership (``mycelium join``), the
+    ``MYCELIUM_AGENT_HANDLE``, the agent herdr's registry maps this pane to,
+    this folder's membership (``mycelium join``), the
     principal the hub resolves our token to (``/api/whoami``, exactly the value a
     gated hub enforces ``created_by`` against), the locally configured identity
     (``mycelium iam``), and last ``fallback`` (the ``cli-user`` sentinel for a

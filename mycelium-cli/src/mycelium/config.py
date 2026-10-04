@@ -702,6 +702,12 @@ class MyceliumConfig(BaseModel):
     #: put there). A membership belongs to its folder, so save() writes the
     #: files' value back unless the key was changed after loading.
     _membership_overrides: dict[tuple[str, str], tuple[Any, Any]] = {}  # noqa: RUF012 - per-instance, set by load()
+    #: The ``identity`` sections the global and the project file had when loaded.
+    #: A folder's config keeps only the identity keys it set itself, so the
+    #: machine's identity is never copied into it to shadow ~/.mycelium for every
+    #: folder below.
+    _global_identity: dict[str, Any] = {}  # noqa: RUF012 - per-instance, set by load()
+    _project_identity: dict[str, Any] = {}  # noqa: RUF012 - per-instance, set by load()
 
     #: Sections that live only in a project's .mycelium/config.toml.
     PROJECT_ONLY_SECTIONS: ClassVar[frozenset[str]] = frozenset({"rooms"})
@@ -761,6 +767,8 @@ class MyceliumConfig(BaseModel):
         """Load configuration from global and project-local files."""
         config_dict: dict[str, Any] = {}
         replaced: dict[tuple[str, str], tuple[Any, Any]] = {}
+        global_identity: dict[str, Any] = {}
+        project_identity: dict[str, Any] = {}
 
         if config_path is not None:
             if config_path.exists():
@@ -773,11 +781,13 @@ class MyceliumConfig(BaseModel):
             if global_path.exists():
                 with open(global_path) as f:
                     config_dict = toml.load(f)
+            global_identity = dict(config_dict.get("identity") or {})
 
             project_path = cls.find_project_config()
             if project_path and project_path.exists():
                 with open(project_path) as f:
                     project_dict = toml.load(f)
+                project_identity = dict(project_dict.get("identity") or {})
                 config_dict = cls._deep_merge(config_dict, project_dict)
 
             # A folder that joined a room (`mycelium join`) names its hub and
@@ -799,6 +809,8 @@ class MyceliumConfig(BaseModel):
         instance._global_config_path = global_path
         instance._project_config_path = project_path
         instance._membership_overrides = replaced
+        instance._global_identity = global_identity
+        instance._project_identity = project_identity
         return instance
 
     @classmethod
@@ -942,10 +954,16 @@ class MyceliumConfig(BaseModel):
 
         if self._project_config_path:
             global_dict = {k: v for k, v in config_dict.items() if k in _global_sections}
-            project_dict = {
-                k: v
-                for k, v in config_dict.items()
-                if k in {"identity"} | self.PROJECT_ONLY_SECTIONS
+            project_dict = {k: v for k, v in config_dict.items() if k in self.PROJECT_ONLY_SECTIONS}
+            # identity is the machine's, except the keys the folder set itself:
+            # those stay the folder's, and the machine keeps its own values.
+            identity = config_dict.get("identity", {})
+            owned = set(self._project_identity)
+            if folder_identity := {k: identity[k] for k in owned if k in identity}:
+                project_dict["identity"] = folder_identity
+            global_dict["identity"] = {
+                **{k: v for k, v in identity.items() if k not in owned},
+                **{k: v for k, v in self._global_identity.items() if k in owned},
             }
             with open(self._project_config_path, "w") as f:
                 toml.dump(project_dict, f)
@@ -998,7 +1016,17 @@ class MyceliumConfig(BaseModel):
         config_dir.mkdir(parents=True, exist_ok=True)
 
         config_dict = self.model_dump(mode="json", exclude_none=True)
-        project_dict = {k: v for k, v in config_dict.items() if k in ("identity", "rooms")}
+        project_dict = {k: v for k, v in config_dict.items() if k == "rooms"}
+        # Like save(): only the identity keys this folder's file already set.
+        existing: dict[str, Any] = {}
+        if config_path.exists():
+            with open(config_path) as f:
+                existing = toml.load(f)
+        identity = config_dict.get("identity", {})
+        if folder_identity := {
+            k: identity[k] for k in existing.get("identity") or {} if k in identity
+        }:
+            project_dict["identity"] = folder_identity
 
         with open(config_path, "w") as f:
             toml.dump(project_dict, f)
@@ -1022,6 +1050,14 @@ class MyceliumConfig(BaseModel):
 
         self.save_to_project(project_dir)
         return config_dir
+
+    def identity_name_path(self) -> Path | None:
+        """The file ``identity.name`` was read from, or ``None`` when no file set it."""
+        if "name" in self._project_identity:
+            return self._project_config_path
+        if "name" in self._global_identity:
+            return self._global_config_path
+        return None
 
     def get_active_room(self) -> str | None:
         return self.rooms.active

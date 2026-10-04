@@ -343,6 +343,7 @@ def user_show(
 _SOURCE_LABELS = {
     "flag": "a flag",
     "environment": "the environment",
+    "pane": "this herdr pane's agent",
     "membership": "this folder's `mycelium join`",
     "machine": "this machine's setup",
     "default": "nothing set",
@@ -367,6 +368,12 @@ def _print_sources(ctx: typer.Context) -> None:
     member = caller.find_membership()
     if member is not None:
         console.print(f"[dim]Membership: {member.path}[/dim]")
+    agent = caller.pane_agent()
+    if agent is not None:
+        console.print(f"[dim]herdr pane: {agent.pane}[/dim]")
+    name_path = config.identity_name_path()
+    if name_path is not None:
+        console.print(f"[dim]identity.name: {name_path}[/dim]")
 
 
 def _principal_view(handle: str) -> tuple[UserManifest | None, list[tuple[str, str, str]]] | None:
@@ -412,8 +419,9 @@ def whoami(
     exactly as before.
 
     ``--sources`` answers a narrower question: what every command run here acts
-    as (a flag, the environment, this folder's `mycelium join`, or this machine's
-    setup), which is what to check when something is recorded as the wrong person.
+    as (a flag, the environment, the herdr pane, this folder's `mycelium join`, or
+    this machine's setup), which is what to check when something is recorded as
+    the wrong person.
     """
     _whoami(ctx, sources=sources)
 

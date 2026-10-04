@@ -295,6 +295,8 @@ AGENT_AUTH_ENV_VARS = (
     "MYCELIUM_AGENT_AUTH_AUDIENCE",
     "MYCELIUM_AGENT_HANDLE",
     "MYCELIUM_AGENT_CREDENTIALS_FILE",
+    # A herdr pane names the agent the registry maps it to (``caller``).
+    "HERDR_PANE_ID",
 )
 
 
