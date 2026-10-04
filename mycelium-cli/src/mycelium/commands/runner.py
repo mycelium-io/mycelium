@@ -43,9 +43,20 @@ def _pid_path() -> Path:
 
 
 def _log_path() -> Path:
+    """What the runner did (``mycelium.runner.log``), however it was started."""
     from mycelium.runner.daemon import runner_dir
 
     return runner_dir() / "runner.log"
+
+
+def _out_path() -> Path:
+    """A detached runner's terminal output: its banner, and a crash's traceback.
+
+    Kept apart from ``runner.log``, which the runner rotates.
+    """
+    from mycelium.runner.daemon import runner_dir
+
+    return runner_dir() / "runner.out"
 
 
 def running_pid() -> int | None:
@@ -130,10 +141,10 @@ def runner(
         args = [sys.argv[0], "runner", *(a for r in roots for a in ("--root", str(r)))]
         if trust_hub:
             args.append("--trust-hub")
-        with _log_path().open("ab") as log:
+        with _out_path().open("ab") as out:
             proc = subprocess.Popen(  # noqa: S603 - this same CLI, code-built arguments
                 args,
-                stdout=log,
+                stdout=out,
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
                 start_new_session=True,

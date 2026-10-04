@@ -26,13 +26,16 @@ Design rules (mirrors the package docstring):
 from __future__ import annotations
 
 import json
+import logging
 import re
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from mycelium.filesystem import get_mycelium_dir
+from mycelium.runner.log import ms, slow
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -50,6 +53,13 @@ _POSSIBLE_KINDS = re.compile(r"\[possible values:\s*([^\]]+)\]")
 #: restart each agent in its own session after its server restarts, which is
 #: what keeps a room's agents alive across one; 0.9.3 fixes its key handling.
 MIN_VERSION = "0.9.3"
+
+#: How long a herdr call may take before it is given up on. One that waits on
+#: an agent (``--timeout``) gets its own budget on top.
+CALL_TIMEOUT_S = 30.0
+
+#: herdr calls that fail or are slow, in the runner's log.
+_log = logging.getLogger("mycelium.runner.herdr")
 
 #: herdr's integration for an agent kind, where the two names differ.
 _INTEGRATION_FOR = {"agy": "antigravity-cli"}
@@ -313,7 +323,25 @@ class HerdrBridge:
             capture_output=True,
             text=True,
             check=False,
+            timeout=call_timeout(args),
         )
+
+    def _invoke(self, args: list[str]) -> subprocess.CompletedProcess:
+        """Run one herdr call. One that gives no answer in time raises ``OSError``,
+        like a herdr that isn't there, so a hung server stops a caller rather than
+        holding it forever."""
+        what = "herdr " + " ".join(args[:2])
+        started = time.monotonic()
+        try:
+            proc = self._runner(args)
+        except subprocess.TimeoutExpired as e:
+            _log.error("%s gave no answer in %dms; gave up", what, ms(started))
+            raise OSError(f"{what} gave no answer in {e.timeout:.0f}s") from e
+        except OSError as e:
+            _log.warning("%s failed: %s", what, e)
+            raise
+        slow(_log, what, started)
+        return proc
 
     # ── availability ─────────────────────────────────────────────────────────
 
@@ -341,7 +369,7 @@ class HerdrBridge:
         if not self.binary_present():
             raise HerdrUnavailableError("herdr binary not found on PATH")
         try:
-            proc = self._runner(args)
+            proc = self._invoke(args)
         except OSError as e:  # binary vanished between check and exec, etc.
             raise HerdrUnavailableError(str(e)) from e
         if proc.returncode != 0:
@@ -491,7 +519,7 @@ class HerdrBridge:
         if not self.binary_present():
             raise HerdrUnavailableError("herdr binary not found on PATH")
         try:
-            proc = self._runner(args)
+            proc = self._invoke(args)
         except OSError as e:
             raise HerdrUnavailableError(str(e)) from e
         if proc.returncode != 0:
@@ -517,7 +545,7 @@ class HerdrBridge:
         if not self.binary_present():
             return None
         try:
-            proc = self._runner(["integration", "status"])
+            proc = self._invoke(["integration", "status"])
         except OSError:
             return None
         if proc.returncode != 0:
@@ -546,7 +574,7 @@ class HerdrBridge:
         if not self.binary_present():
             return None
         try:
-            proc = self._runner(["agent", "start", "--help"])
+            proc = self._invoke(["agent", "start", "--help"])
         except OSError:
             return None
         found = _POSSIBLE_KINDS.search(proc.stdout or "")
@@ -559,7 +587,7 @@ class HerdrBridge:
         if not self.binary_present():
             return None
         try:
-            proc = self._runner(["--version"])
+            proc = self._invoke(["--version"])
         except OSError:
             return None
         out = (proc.stdout or "").strip()
@@ -570,7 +598,7 @@ class HerdrBridge:
         if not self.binary_present():
             return None
         try:
-            proc = self._runner(["status", "server"])
+            proc = self._invoke(["status", "server"])
         except OSError:
             return None
         if proc.returncode != 0:
@@ -653,6 +681,17 @@ class HerdrBridge:
             detail=f"woke agent at {mapping.pane}" + (f" (settled: {settled})" if settled else ""),
             raw=result,
         )
+
+
+def call_timeout(args: list[str]) -> float:
+    """How long the herdr call ``args`` may take: :data:`CALL_TIMEOUT_S`, plus
+    the call's own ``--timeout`` when it waits on an agent."""
+    if "--timeout" in args:
+        try:
+            return int(args[args.index("--timeout") + 1]) / 1000 + CALL_TIMEOUT_S
+        except (IndexError, ValueError):
+            pass
+    return CALL_TIMEOUT_S
 
 
 def _extract_error(stderr: str | None) -> str | None:

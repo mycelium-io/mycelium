@@ -148,12 +148,24 @@ def auth_headers(
     return {"Authorization": f"Bearer {token}"} if token else {}
 
 
-def typed_client(config: MyceliumConfig | None = None, *, handle: str | None = None) -> Client:
-    """The generated OpenAPI client, authenticated when there's a credential."""
+def typed_client(
+    config: MyceliumConfig | None = None,
+    *,
+    handle: str | None = None,
+    timeout: float | None = None,
+) -> Client:
+    """The generated OpenAPI client, authenticated when there's a credential.
+
+    ``timeout`` bounds each call; without one a call waits as long as the hub takes.
+    """
     from mycelium_backend_client import Client
 
     cfg = _resolve_config(config)
-    client = Client(base_url=cfg.server.api_url, raise_on_unexpected_status=True)
+    client = Client(
+        base_url=cfg.server.api_url,
+        raise_on_unexpected_status=True,
+        timeout=httpx.Timeout(timeout) if timeout is not None else None,
+    )
     headers = auth_headers(cfg, handle=handle)
     return client.with_headers(headers) if headers else client
 

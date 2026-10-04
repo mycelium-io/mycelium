@@ -800,6 +800,8 @@ export interface Runner {
   /** Every agent on the machine, whoever started it, and what's wrong (`mycelium machine`).
    *  Absent from a runner from before it sent one. */
   machine?: MachineReport | null;
+  /** How its sync pass (presence up, wakes down) is doing. Absent from a runner from before it sent one. */
+  sync?: RunnerSync | null;
   /** False once the machine's heartbeat is stale. */
   connected: boolean;
   last_seen: string;
@@ -831,11 +833,29 @@ export interface MachineWorkspace {
 }
 
 export interface MachineProblem {
-  kind: "stopped" | "lost" | "runner_down" | "no_restore" | "herdr_update" | "herdr_down";
+  kind:
+    | "stopped"
+    | "lost"
+    | "runner_down"
+    | "wakes_stalled"
+    | "no_restore"
+    | "herdr_update"
+    | "herdr_down";
   text: string;
   /** The command that fixes it, run on the machine. */
   fix: string | null;
   handles: string[];
+}
+
+export interface RunnerSync {
+  /** When the last pass finished, by the runner's clock. */
+  last_pass_at: string | null;
+  last_pass_ms: number | null;
+  /** How long the pass running now has run; past `stall_s` no wakes go out. */
+  running_s: number | null;
+  stall_s: number | null;
+  /** Why the last pass failed, when it did. */
+  error: string | null;
 }
 
 export interface MachineReport {

@@ -59,6 +59,8 @@ def _fail(message: str) -> None:
 def _print(r: Report) -> None:
     herdr = f"herdr {r.herdr_server}" if r.herdr else "[yellow]herdr not running[/yellow]"
     runner = "runner running" if r.runner else "[yellow]runner not running[/yellow]"
+    if any(p.kind == "wakes_stalled" for p in r.problems):
+        runner = "[red]runner stuck: wakes stalled[/red]"
     console.print(f"[bold]{escape(r.machine)}[/bold] [dim]·[/dim] {herdr} [dim]·[/dim] {runner}\n")
     if not r.workspaces:
         console.print("[dim]No agents on this machine yet.[/dim]")

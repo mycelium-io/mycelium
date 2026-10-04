@@ -97,7 +97,9 @@ class Workspace:
     agents: list[Agent] = field(default_factory=list)
 
 
-ProblemKind = Literal["stopped", "lost", "runner_down", "no_restore", "herdr_update", "herdr_down"]
+ProblemKind = Literal[
+    "stopped", "lost", "runner_down", "wakes_stalled", "no_restore", "herdr_update", "herdr_down"
+]
 
 
 @dataclass
@@ -156,13 +158,15 @@ def report(
     bridge: HerdrBridge | None = None,
     machine: str | None = None,
     runner: bool | None = None,
+    sync: dict[str, Any] | None = None,
 ) -> Report:
     """Every agent on this machine, read now. Never raises for herdr being down.
 
-    ``runner`` says whether this machine's runner is running; the runner
-    building its own report says so, anything else finds out.
+    ``runner`` says whether this machine's runner is running, and ``sync`` how
+    its sync pass is doing (``Runner.sync_health``); the runner building its
+    own report says both, anything else finds out.
     """
-    from mycelium.runner.daemon import machine_label
+    from mycelium.runner.daemon import machine_label, read_sync
 
     bridge = bridge or HerdrBridge()
     machine = machine or machine_label()
@@ -170,6 +174,7 @@ def report(
         from mycelium.commands.runner import running_pid
 
         runner = running_pid() is not None
+        sync = read_sync()
 
     herdr_up = bridge.available()
     client = bridge.version()
@@ -220,7 +225,9 @@ def report(
         herdr_client=client,
         runner=runner,
         workspaces=ordered,
-        problems=_problems(agents, ordered, herdr_up, server, client, machine, missing, runner),
+        problems=_problems(
+            agents, ordered, herdr_up, server, client, machine, missing, runner, sync
+        ),
         missing_integrations=missing,
     )
 
@@ -287,6 +294,7 @@ def _problems(
     machine: str,
     missing: list[str],
     runner: bool,
+    sync: dict[str, Any] | None = None,
 ) -> list[Problem]:
     problems: list[Problem] = []
     if not herdr_up and agents:
@@ -337,6 +345,18 @@ def _problems(
                 [a.handle for a in live],
             )
         )
+    if (stalled := _stalled(sync)) is not None:
+        problems.append(
+            Problem(
+                "wakes_stalled",
+                f"Wakes have stalled on {machine}: the runner has been stuck on one sync pass "
+                f"for {stalled}, so {_names(live) if live else 'no agent here'} won't hear "
+                "mentions until it ends. Its log (~/.mycelium/runner/runner.log) says where it is stuck; restarting "
+                "the runner, or the Mac app, gets wakes going again.",
+                "mycelium runner stop && mycelium runner --detach",
+                [a.handle for a in live],
+            )
+        )
     if missing:
         without = [a for a in agents if a.restores is False]
         problems.append(
@@ -353,6 +373,21 @@ def _problems(
     if (update := _herdr_update(server if herdr_up else None, client)) is not None:
         problems.append(update)
     return problems
+
+
+def _stalled(sync: dict[str, Any] | None) -> str | None:
+    """How long the runner's sync pass has been stuck, said for a person; ``None`` if it isn't."""
+    if not sync:
+        return None
+    running, limit = sync.get("running_s"), sync.get("stall_s")
+    if not isinstance(running, int | float) or not isinstance(limit, int | float):
+        return None
+    if running < limit:
+        return None
+    minutes = int(running // 60)
+    if minutes < 1:
+        return f"{int(running)} seconds"
+    return f"{minutes} minute{'s' if minutes != 1 else ''}"
 
 
 def _herdr_update(server: str | None, client: str | None) -> Problem | None:

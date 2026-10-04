@@ -6602,6 +6602,7 @@
               "stopped",
               "lost",
               "runner_down",
+              "wakes_stalled",
               "no_restore",
               "herdr_update",
               "herdr_down"
@@ -8760,6 +8761,16 @@
                 "type": "null"
               }
             ]
+          },
+          "sync": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunnerSyncRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -8985,6 +8996,16 @@
               }
             ]
           },
+          "sync": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunnerSyncRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "connected": {
             "type": "boolean",
             "title": "Connected"
@@ -9010,6 +9031,69 @@
         ],
         "title": "RunnerRead",
         "description": "A runner as the app sees it."
+      },
+      "RunnerSyncRead": {
+        "properties": {
+          "last_pass_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Pass At"
+          },
+          "last_pass_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Pass Ms"
+          },
+          "running_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Running S"
+          },
+          "stall_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stall S"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "title": "RunnerSyncRead",
+        "description": "How a runner's sync pass (presence up, wakes down) is doing."
       },
       "SearchHitRead": {
         "properties": {

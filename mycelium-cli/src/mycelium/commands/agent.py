@@ -238,7 +238,13 @@ def _load_manifest_remote(client: Any, room_name: str, handle: str) -> AgentMani
     return _manifest_from_yaml(handle, body, key)
 
 
-def _delete_manifest(config: MyceliumConfig, room_name: str, manifest: AgentManifest) -> None:
+def _delete_manifest(
+    config: MyceliumConfig,
+    room_name: str,
+    manifest: AgentManifest,
+    *,
+    timeout: float | None = None,
+) -> None:
     """Delete a manifest from the backend and the local mirror (notes/logs kept).
 
     The unregister half of ``agent rm``, factored out so other lifecycle owners
@@ -249,7 +255,7 @@ def _delete_manifest(config: MyceliumConfig, room_name: str, manifest: AgentMani
         delete_memory_api_rooms_room_name_memory_key_delete as delete_api,
     )
 
-    with _typed_client(config) as client:
+    with _typed_client(config, timeout=timeout) as client:
         delete_api.sync_detailed(room_name=room_name, key=manifest.memory_key, client=client)
     local = get_room_dir(room_name) / f"{manifest.memory_key}.md"
     if local.exists():
@@ -378,7 +384,12 @@ def _warn_unknown_principal(manifest: AgentManifest) -> None:
 
 
 def _write_manifest(
-    config: MyceliumConfig, room_name: str, manifest: AgentManifest, created_by: str
+    config: MyceliumConfig,
+    room_name: str,
+    manifest: AgentManifest,
+    created_by: str,
+    *,
+    timeout: float | None = None,
 ) -> None:
     """Upsert the manifest into the backend AND mirror it to the local filesystem.
 
@@ -406,7 +417,7 @@ def _write_manifest(
         tags=["agent-manifest"],
     )
     batch = MemoryBatchCreate(items=[item])
-    with _typed_client(config) as client:
+    with _typed_client(config, timeout=timeout) as client:
         result = create_api.sync(room_name=room_name, client=client, body=batch)
 
     # Mirror locally: the hub operator's files stay a faithful copy of the room.

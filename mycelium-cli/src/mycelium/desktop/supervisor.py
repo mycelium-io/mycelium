@@ -519,7 +519,7 @@ class Supervisor:
                 self.runner_state, self.runner_detail = "failed", str(e)
                 self._publish()
 
-        threading.Thread(target=run, daemon=True).start()
+        threading.Thread(target=run, name="runner", daemon=True).start()
 
     def _own_hub(self) -> bool:
         """Whether the hub is one this supervisor started (and so only this machine reaches)."""

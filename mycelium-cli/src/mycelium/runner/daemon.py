@@ -13,6 +13,12 @@ Three loops, each on its own thread:
 - **sync**: presence up and doorbells down for every agent in a workspace
   bound to a room on this machine, so they hear their turns.
 
+A fourth, the **watchdog**, looks at the sync pass: one that runs past
+``SYNC_STALL_S`` is logged with where every thread is, and every heartbeat says
+when the last pass finished and how long the current one has run, so a stuck
+runner reads as stuck rather than connected. What the runner does goes to
+``runner.log`` (``mycelium.runner.log``), however it was started.
+
 Where an agent runs is the host's business (``hosts.py``, picked by
 ``runner.host``). Everything else here is the same whichever host it is.
 
@@ -32,11 +38,15 @@ stop only ends an agent this machine already agreed to start.
 from __future__ import annotations
 
 import json
+import os
 import platform
 import re
 import secrets
 import socket
+import sys
 import threading
+import time
+import traceback
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -55,6 +65,7 @@ from mycelium.filesystem import get_mycelium_dir
 from mycelium.integrations.herdr import HerdrBridge, HerdrError
 from mycelium.runner import approvals, frameworks
 from mycelium.runner.hosts import AgentHost, HerdrHost, HostError, OmnigentHost
+from mycelium.runner.log import failing, log, ms, open_log, recovered
 
 #: Jobs that start something on this machine, and so wait for a yes here.
 ASK_FIRST = frozenset({"launch", "swarm", "restart"})
@@ -69,6 +80,10 @@ POLL_S = 25.0
 SYNC_S = 3.0
 #: How long to wait before dialing again after the hub was unreachable.
 RETRY_S = 3.0
+#: A sync pass running longer than this is stuck: no wakes go out until it ends.
+SYNC_STALL_S = 30.0
+#: How often the watchdog looks at the sync pass and writes ``sync.json``.
+WATCH_S = 5.0
 #: A stopped agent is still listed for this long, so the app can start it again.
 KEEP_STOPPED = timedelta(hours=24)
 
@@ -85,6 +100,39 @@ def runner_dir() -> Path:
     path = get_mycelium_dir() / "runner"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def read_sync(path: Path | None = None) -> dict[str, Any] | None:
+    """The sync health a running runner last wrote (``sync.json``), or ``None``.
+
+    ``None`` when no runner wrote it, the one that did has exited, or it hasn't
+    written for a while (and so says nothing about now).
+    """
+    path = path or runner_dir() / "sync.json"
+    try:
+        body = json.loads(path.read_text())
+        pid, at = int(body["pid"]), datetime.fromisoformat(str(body["at"]))
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if datetime.now(UTC) - at > timedelta(seconds=WATCH_S * 6):
+        return None
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return None
+    except PermissionError:
+        pass
+    return body
+
+
+def _stacks() -> str:
+    """Where every thread in this process is, for a pass that is stuck."""
+    names = {t.ident: t.name for t in threading.enumerate()}
+    frames = sys._current_frames()  # noqa: SLF001 - the stdlib's way to see other threads
+    return "\n".join(
+        f"--- {names.get(ident, ident)}\n" + "".join(traceback.format_stack(frame)).rstrip()
+        for ident, frame in frames.items()
+    )
 
 
 def machine_label() -> str:
@@ -246,6 +294,7 @@ class Runner:
         trust_hub: bool = False,
         on_request: Callable[[dict[str, Any]], None] | None = None,
         requests_base: Path | None = None,
+        log_path: Path | None = None,
     ) -> None:
         self.config = config
         #: Start what the hub asks without asking here: only for a hub nobody else can reach.
@@ -266,6 +315,9 @@ class Runner:
         self.label = machine_label()
         self.log = log or Console()
         self._state_path = state_path or runner_dir() / "state.json"
+        #: Where the watchdog says how the sync pass is doing, for ``mycelium machine``.
+        self._sync_path = self._state_path.with_name("sync.json")
+        open_log(log_path or runner_dir() / "runner.log")
         self.state = State.load(self._state_path)
         #: Whether the host is up. Named ``herdr`` on the wire, which predates hosts.
         self.herdr = False
@@ -276,6 +328,14 @@ class Runner:
         self._panes = threading.Lock()
         self._stop = threading.Event()
         self.connected = False
+        #: ``(number, monotonic start)`` of the sync pass running now, if one is.
+        self._pass: tuple[int, float] | None = None
+        self._passes = 0
+        #: The pass the watchdog has already reported stuck.
+        self._stuck_pass = 0
+        self.last_pass_at: str | None = None
+        self.last_pass_ms: int | None = None
+        self.sync_error: str | None = None
 
     # ── what this machine has ────────────────────────────────────────────────
 
@@ -299,6 +359,7 @@ class Runner:
             "frameworks": [f.wire() for f in self.found],
             "agents": agents,
             "machine": self.machine_report(),
+            "sync": self.sync_health(),
         }
 
     def machine_report(self) -> dict[str, Any] | None:
@@ -306,10 +367,15 @@ class Runner:
         if self.host.name != "herdr":
             return None
         try:
-            return this_machine.report(bridge=self.bridge, machine=self.label, runner=True).wire()
+            report = this_machine.report(
+                bridge=self.bridge, machine=self.label, runner=True, sync=self.sync_health()
+            ).wire()
         except Exception as e:  # noqa: BLE001 - a heartbeat must not fail on its report
+            failing(log, "machine report", f"couldn't read this machine's agents: {e}")
             self.log.print(f"[dim]couldn't read this machine's agents: {e}[/dim]")
             return None
+        recovered(log, "machine report")
+        return report
 
     def _restartable(self, spec: dict[str, Any]) -> list[this_machine.Agent]:
         """The agents a ``restart`` job names, read now, each one restartable."""
@@ -341,6 +407,7 @@ class Runner:
                 )
             except this_machine.MachineError as e:
                 failed[agent.handle] = str(e)
+                log.warning("restart @%s failed: %s", agent.handle, e)
         if failed and not restarted:
             raise JobError("; ".join(failed.values()))
         self.log.print(f"[green]restarted[/green] {', '.join('@' + h for h in restarted)}")
@@ -374,10 +441,12 @@ class Runner:
                 client.post("/api/runners", json=self.hello_body()).raise_for_status()
         except httpx.HTTPError as e:
             if self.connected:
+                log.warning("lost the hub at %s: %s", self.config.server.api_url, e)
                 self.log.print(f"[yellow]lost the hub:[/yellow] {e}")
             self.connected = False
             return False
         if not self.connected:
+            log.info("connected to %s as %s", self.config.server.api_url, self.id)
             self.log.print(f"[green]connected[/green] to {self.config.server.api_url} as {self.id}")
         self.connected = True
         return True
@@ -395,6 +464,7 @@ class Runner:
             with hub_client(self.config, timeout=10) as client:
                 client.patch(f"/api/runners/{self.id}/jobs/{job_id}", json=body)
         except httpx.HTTPError as e:
+            log.warning("job %s: couldn't report it %s to the hub: %s", job_id, status, e)
             self.log.print(f"[yellow]could not report job {job_id}:[/yellow] {e}")
 
     # ── agents ───────────────────────────────────────────────────────────────
@@ -678,11 +748,16 @@ class Runner:
         so a stop or a scan isn't held up behind a question nobody has seen.
         """
         job_id = str(job["id"])
-        self.log.print(
-            f"[dim]job {job_id}: {job.get('kind')} {json.dumps(job.get('spec') or {})}[/dim]"
-        )
+        spec = json.dumps(job.get("spec") or {})
+        log.info("job %s %s from %s: %s", job_id, job.get("kind"), job.get("created_by"), spec)
+        self.log.print(f"[dim]job {job_id}: {job.get('kind')} {spec}[/dim]")
         if job.get("kind") in ASK_FIRST and not self.trust_hub:
-            threading.Thread(target=self._take_once_approved, args=(job,), daemon=True).start()
+            threading.Thread(
+                target=self._take_once_approved,
+                args=(job,),
+                name=f"runner-job-{job_id}",
+                daemon=True,
+            ).start()
             return
         self._do_and_report(job)
 
@@ -691,9 +766,12 @@ class Runner:
         try:
             request = approvals.ask(job_id, self.question(job), base=self._requests_base)
         except (JobError, approvals.ApprovalError) as e:
+            log.warning("job %s %s failed before asking: %s", job_id, job.get("kind"), e)
             self._report(job_id, "failed", None, str(e))
             self.log.print(f"[red]job {job_id} failed:[/red] {e}")
             return
+        log.info("job %s: asked here: %s", job_id, request["title"])
+        asked = time.monotonic()
         self._report(job_id, "waiting", None, None)
         self.log.print(
             f"\n[bold]{request['title']}[/bold]\n{request['message']}\n"
@@ -707,6 +785,8 @@ class Runner:
                 self.log.print(f"[dim]couldn't show the question: {e}[/dim]")
         answer = approvals.wait(job_id, self._stop, base=self._requests_base)
         approvals.forget(job_id, base=self._requests_base)
+        said = "yes" if answer is True else "no" if answer is False else "no answer"
+        log.info("job %s: answered %s after %ds", job_id, said, ms(asked) // 1000)
         if answer is True:
             self._do_and_report(job)
             return
@@ -720,17 +800,21 @@ class Runner:
         self.log.print(f"[yellow]job {job_id}:[/yellow] {error}")
 
     def _do_and_report(self, job: dict[str, Any]) -> None:
-        job_id = str(job["id"])
+        job_id, kind = str(job["id"]), job.get("kind")
+        started = time.monotonic()
         try:
             with self._panes:
                 result = self.do(job)
         except JobError as e:
+            log.warning("job %s %s failed %dms: %s", job_id, kind, ms(started), e)
             self._report(job_id, "failed", None, str(e))
             self.log.print(f"[red]job {job_id} failed:[/red] {e}")
         except Exception as e:  # noqa: BLE001 - a job must always be reported
+            log.exception("job %s %s failed %dms", job_id, kind, ms(started))
             self._report(job_id, "failed", None, f"the runner hit an error: {e}")
             self.log.print(f"[red]job {job_id} failed:[/red] {e!r}")
         else:
+            log.info("job %s %s done %dms: %s", job_id, kind, ms(started), json.dumps(result))
             self._report(job_id, "done", result, None)
         self.hello()
 
@@ -761,31 +845,99 @@ class Runner:
         while not self._stop.wait(SYNC_S):
             if not self.herdr:
                 continue
+            self.sync_pass()
+
+    def sync_pass(self) -> None:
+        """One pass, timed from before it waits on a job's panes, so a wait counts too."""
+        self._passes += 1
+        number, started = self._passes, time.monotonic()
+        self._pass = (number, started)
+        try:
             with self._panes:
                 self._sync_once()
+        finally:
+            self._pass = None
+            self.last_pass_at, self.last_pass_ms = _now(), ms(started)
+            if self._stuck_pass == number:
+                log.warning("sync pass finished after %dms; wakes go out again", ms(started))
 
     def _sync_once(self) -> None:
         try:
             self.host.sync(self.config, self.state, self.log)
         except Exception as e:  # noqa: BLE001 - a missed pass is retried on the next
+            self.sync_error = str(e)
+            failing(log, f"{self.host.name} sync", f"{self.host.name} sync failed: {e!r}")
             self.log.print(f"[dim]{self.host.name} sync: {e}[/dim]")
+        else:
+            self.sync_error = None
+            recovered(log, f"{self.host.name} sync")
+
+    def sync_health(self) -> dict[str, Any]:
+        """How the sync pass is doing, sent with every heartbeat."""
+        running = self._pass
+        return {
+            "last_pass_at": self.last_pass_at,
+            "last_pass_ms": self.last_pass_ms,
+            "running_s": round(time.monotonic() - running[1], 1) if running else None,
+            "stall_s": SYNC_STALL_S,
+            "error": self.sync_error,
+        }
+
+    def watch(self) -> None:
+        """Log a sync pass that has run past ``SYNC_STALL_S``, once, with every thread's stack."""
+        running = self._pass
+        if running is None or self._stuck_pass == running[0]:
+            return
+        took = time.monotonic() - running[1]
+        if took < SYNC_STALL_S:
+            return
+        self._stuck_pass = running[0]
+        log.error(
+            "sync pass stuck for %ds; no wakes go out until it ends. Every thread:\n%s",
+            took,
+            _stacks(),
+        )
+
+    def _watch_loop(self) -> None:
+        while not self._stop.wait(WATCH_S):
+            self.watch()
+            try:
+                body = {"pid": os.getpid(), "at": _now(), **self.sync_health()}
+                self._sync_path.write_text(json.dumps(body) + "\n")
+            except OSError as e:
+                failing(log, "sync.json", f"couldn't write {self._sync_path}: {e}")
 
     def run(self) -> None:
         # Questions left by a runner that stopped are about jobs nobody is waiting on.
         approvals.forget_all(base=self._requests_base)
         self.scan()
+        log.info(
+            "runner %s %s on %s: host %s (%s), hub %s, roots %s",
+            self.id,
+            __version__,
+            self.label,
+            self.host.name,
+            "up" if self.herdr else "down",
+            self.config.server.api_url,
+            ", ".join(str(r) for r in self.roots),
+        )
         while not self.hello():
             self.log.print(
                 f"[dim]hub not reachable at {self.config.server.api_url}; retrying…[/dim]"
             )
             if self._stop.wait(RETRY_S):
                 return
-        for loop in (self._heartbeat_loop, self._sync_loop):
-            threading.Thread(target=loop, daemon=True).start()
+        for name, loop in (
+            ("runner-heartbeat", self._heartbeat_loop),
+            ("runner-sync", self._sync_loop),
+            ("runner-watchdog", self._watch_loop),
+        ):
+            threading.Thread(target=loop, name=name, daemon=True).start()
         while not self._stop.is_set():
             if not self.poll_once():
                 self._stop.wait(RETRY_S)
         self.goodbye()
+        log.info("runner %s stopped", self.id)
 
     def stop(self) -> None:
         self._stop.set()
