@@ -1112,7 +1112,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
             setStanding(null);
           }}
           result={search.result}
-          loading={search.loading}
           failed={Boolean(search.error)}
           needles={needles}
           onOpenHit={openHit}

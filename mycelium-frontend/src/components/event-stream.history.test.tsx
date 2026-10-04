@@ -111,7 +111,7 @@ describe("<EventStream /> find: the room's whole history", () => {
     expect(searchMessages).toHaveBeenLastCalledWith("sprint", "deploy", { limit: 50 });
     const list = within(history()).getByRole("list", { name: "Matching messages" });
     expect(within(list).getByText("Ship the release")).toBeInTheDocument();
-    expect(within(list).getByText("in the room")).toBeInTheDocument();
+    expect(within(list).getAllByRole("button")).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Search history, 2 matches" })).toBeInTheDocument();
 
     // A count is a switch: on adds the clause to the query, and the bar says so.

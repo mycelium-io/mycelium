@@ -256,21 +256,21 @@ function valueCandidates(field: string, typed: string, seen: Seen, handles: stri
         insert: `${field}:${v}`,
         primary: v,
         secondary: field,
-        tertiary: counts.has(v) ? `${counts.get(v)} ${counts.get(v) === 1 ? "message" : "messages"}` : undefined,
+        tertiary: counts.has(v) ? String(counts.get(v)) : undefined,
       }));
   }
   if (field === "sort") {
     return SORTS.filter((v) => match(v)).map((v) => ({ id: `sort:${v}`, insert: `sort:${v}`, primary: v, secondary: "sort", tertiary: SORT_ABOUT[v] }));
   }
   if (field === "after" || field === "before" || field === "on") {
-    const days = (seen.day ?? []).map((b) => ({ value: b.value, about: `${b.count} said that day` }));
+    const days = (seen.day ?? []).map((b) => ({ value: b.value, about: String(b.count) }));
     const options = field === "on" ? [...TIME_CHOICES.filter((t) => !/\d[hmw]$/.test(t.value)), ...days] : [...TIME_CHOICES, ...days];
     return options.filter((o) => match(o.value)).slice(0, 8).map((o) => ({ id: `${field}:${o.value}`, insert: `${field}:${o.value}`, primary: o.value, secondary: field, tertiary: o.about }));
   }
   // A handle field offers who the room has heard from, then the roster.
   const buckets = seen[field] ?? [];
   const known = new Set(buckets.map((b) => b.value));
-  const rows = buckets.map((b) => ({ value: b.value, label: b.label, about: `${b.count} ${b.count === 1 ? "message" : "messages"}` }));
+  const rows = buckets.map((b) => ({ value: b.value, label: b.label, about: String(b.count) }));
   if (field === "from" || field === "to" || field === "mentions") {
     for (const h of handles) if (!known.has(h)) rows.push({ value: h, label: h, about: "" });
   }

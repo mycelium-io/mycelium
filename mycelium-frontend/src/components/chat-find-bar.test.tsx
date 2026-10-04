@@ -69,7 +69,7 @@ describe("<ChatFindBar />", () => {
 
   it("says what the hub couldn't read", () => {
     bar({ history: { total: 0, loading: false, failed: false, open: true, onToggle: vi.fn(), problems: ["after:someday"] } });
-    expect(screen.getByText(/Couldn.t read “after:someday”/)).toBeInTheDocument();
+    expect(screen.getByText("Not understood: after:someday")).toBeInTheDocument();
   });
 
   it("does not offer to step when there is nothing to step to", () => {
@@ -114,9 +114,10 @@ describe("<ChatFindBar /> hints", () => {
     expect(screen.getByTestId("query")).toHaveTextContent("from:");
 
     // The room's senders first, with how many messages each, then the roster.
-    expect(screen.getByRole("button", { name: /operator.*9 messages/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /operator\s*9/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /builder/ })).toBeInTheDocument();
-    expect(screen.getByLabelText("Search field")).toHaveTextContent("who said it");
+    // One box at a time: with values to pick, the field's signature stays away.
+    expect(screen.queryByLabelText("Search field")).not.toBeInTheDocument();
     await userEvent.keyboard("{Tab}");
     expect(screen.getByTestId("query").textContent).toBe("from:operator ");
   });

@@ -6,7 +6,6 @@
 import { ChevronDown, ChevronUp, History, Loader2, Search, X } from "lucide-react";
 import { useMemo, useState, type RefObject } from "react";
 import { CandidateList, Signature, type Candidate } from "@/components/composer-hints";
-import { Kbd } from "@/components/ui/kbd";
 import { Tooltip } from "@/components/ui/tooltip";
 import { hintAt, type Seen } from "@/lib/message-search";
 import { cn } from "@/lib/utils";
@@ -106,7 +105,7 @@ export function ChatFindBar({
           type="text"
           value={query}
           aria-label="Find in the channel"
-          placeholder="Find in the channel… try from: task: after:2d"
+          placeholder="Find  ·  from:  task:  after:"
           spellCheck={false}
           autoComplete="off"
           onChange={e => {
@@ -178,6 +177,7 @@ export function ChatFindBar({
             onClick={() => onStep(-1)}
             disabled={count === 0}
             aria-label="Previous match"
+            title="Previous (⇧Enter)"
             className="rounded p-1 text-muted-foreground transition-colors enabled:hover:bg-hairline enabled:hover:text-text disabled:opacity-40"
           >
             <ChevronUp className="size-3.5" />
@@ -187,37 +187,36 @@ export function ChatFindBar({
             onClick={() => onStep(1)}
             disabled={count === 0}
             aria-label="Next match"
+            title="Next (Enter)"
             className="rounded p-1 text-muted-foreground transition-colors enabled:hover:bg-hairline enabled:hover:text-text disabled:opacity-40"
           >
             <ChevronDown className="size-3.5" />
           </button>
         </div>
-        <Tooltip content="Enter for the next match, ⇧Enter for the previous">
-          <Kbd size="xs" tone="muted" className="shrink-0">↵</Kbd>
-        </Tooltip>
         {history && !empty && (
-          <button
-            type="button"
-            onClick={history.onToggle}
-            aria-expanded={history.open}
-            aria-label={`Search history${history.total !== null ? `, ${history.total} matches` : ""}`}
-            className={cn(
-              "flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-micro transition-colors",
-              history.open ? "bg-accent-soft text-accent" : "text-muted-foreground hover:bg-hairline hover:text-text",
-            )}
-          >
-            {history.loading ? (
-              <Loader2 aria-hidden className="size-3 animate-spin" />
-            ) : (
-              <History aria-hidden className="size-3" />
-            )}
-            <span>History</span>
-            {history.failed ? (
-              <span className="text-red">offline</span>
-            ) : (
-              history.total !== null && <span className="tabular">{history.total}</span>
-            )}
-          </button>
+          <Tooltip content={history.failed ? "Hub unreachable" : "Every match in the room, threads included"}>
+            <button
+              type="button"
+              onClick={history.onToggle}
+              aria-expanded={history.open}
+              aria-label={`Search history${history.total !== null ? `, ${history.total} matches` : ""}`}
+              className={cn(
+                "flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-micro tabular transition-colors",
+                history.failed
+                  ? "text-red"
+                  : history.open
+                    ? "bg-accent-soft text-accent"
+                    : "text-muted-foreground hover:bg-hairline hover:text-text",
+              )}
+            >
+              {history.loading ? (
+                <Loader2 aria-hidden className="size-3 animate-spin" />
+              ) : (
+                <History aria-hidden className="size-3" />
+              )}
+              {!history.failed && history.total !== null && history.total}
+            </button>
+          </Tooltip>
         )}
         <button
           type="button"
@@ -230,12 +229,12 @@ export function ChatFindBar({
       </div>
       {history && history.problems.length > 0 && (
         <p className="px-4 pb-1.5 pl-[2.6rem] text-micro text-red">
-          Couldn&apos;t read {history.problems.map((p) => `“${p}”`).join(", ")}: it matches nothing as written.
+          Not understood: {history.problems.join(", ")}
         </p>
       )}
       {(showCandidates || hint?.signature) && (
         <div className="absolute left-9 top-full z-30 mt-1 flex w-full max-w-md flex-col gap-1.5">
-          {hint?.signature && (
+          {hint?.signature && !showCandidates && (
             <Signature
               label="Search field"
               head={hint.signature.head}
