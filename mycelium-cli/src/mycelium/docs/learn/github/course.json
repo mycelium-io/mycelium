@@ -1,0 +1,69 @@
+{
+  "order": 4,
+  "title": "Keep GitHub as the record",
+  "tagline": "The board for the work happening now, GitHub for what has to last, and how work moves between them.",
+  "track": "Workflow",
+  "thumb": "app-room-board.png",
+  "needs": [
+    "A repository on GitHub, and a token that can read its pull requests",
+    "A room with a few tasks on its board"
+  ],
+  "takeaway": "A clear line between the work in flight and the record it leaves.",
+  "outcomes": [
+    "Decide in a second where a piece of work belongs",
+    "See each task's pull request on the board, kept up to date",
+    "Work a GitHub issue through a room, to a merged pull request",
+    "Move a task to GitHub when it turns out to matter"
+  ],
+  "modules": [
+    {
+      "title": "GitHub and the board",
+      "lessons": [
+        {
+          "id": "01-what-lives-where",
+          "title": "What lives where",
+          "minutes": 3,
+          "quiz": {
+            "question": "A flaky test needs fixing this afternoon. Where does it go?",
+            "options": [
+              "A GitHub issue, so it's tracked",
+              "A task on the board: it's work happening now, done in an hour",
+              "Both"
+            ],
+            "answer": 1,
+            "why": "GitHub is for what has to outlast the work. A ten-minute fix is work happening now, so it's a task on the board."
+          }
+        },
+        {
+          "id": "02-the-link",
+          "title": "Let the board see GitHub",
+          "minutes": 4
+        },
+        {
+          "id": "03-an-issue",
+          "title": "Work a GitHub issue in a room",
+          "minutes": 4,
+          "quiz": {
+            "question": "The coder opened a pull request for the task. How does the row start showing its state?",
+            "options": [
+              "Post the link in the task's thread",
+              "Put the pull request (coffee-shop/web#616) in the task's own text",
+              "Type #616 into a new task"
+            ],
+            "answer": 1,
+            "why": "The hub reads the task's own text for pull requests, not its thread. A bare #616 in a new task means the task is blocked by it."
+          }
+        },
+        {
+          "id": "04-the-other-way",
+          "title": "When a task should become an issue",
+          "minutes": 3
+        }
+      ],
+      "video": {
+        "take": "github",
+        "about": "Pull request states on the board's rows, an issue worked as a task to a merged PR, and a row promoted."
+      }
+    }
+  ]
+}

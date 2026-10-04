@@ -29,6 +29,16 @@ import {
 } from "./runners";
 import type { MockMemory, MockMessage, RoomFixture } from "./fixtures";
 import { demoOnLaunch, demoOnMessage, demoOnTask, isDemoScenario } from "./demo";
+import {
+  LEARN_PERSON,
+  LEARN_TEAMMATE,
+  isLearnScenario,
+  learnOnLaunch,
+  learnOnMessage,
+  learnOnSwarm,
+  learnOnTask,
+  learnOnThreadRead,
+} from "./learn";
 import { memoryChangedFrame, noticeFrame, publish } from "./live";
 import { PATTERN_ROOMS, fromExplorer, patternList, patternRead } from "./patterns";
 import type { A2aBridgeState, MemoryGraph, MemoryGraphEdge, MemoryLink, Protocol } from "@/lib/api";
@@ -243,6 +253,8 @@ async function handleRunners(req: Request, method: string, rest: string[]): Prom
     const job = queueJob(runner.id, "launch", spec, typeof body.created_by === "string" ? body.created_by : null);
     const fx = isDemoScenario() ? getRoomFixture(spec.room) : undefined;
     if (fx) demoOnLaunch(fx, spec.room, handle);
+    const lfx = isLearnScenario() ? getRoomFixture(spec.room) : undefined;
+    if (lfx) learnOnLaunch(lfx, spec.room, handle, spec.cwd ?? null);
     return json(job, 201);
   }
   return null;
@@ -258,6 +270,12 @@ const MOCK_USERS = new Map<string, { handle: string; display_name: string; teams
     ["operator", "Morgan Reyes"],
     ["ada@example.com", "Ada Lindqvist"],
     ["june@example.com", "June Park"],
+    ...(isLearnScenario()
+      ? [
+          [LEARN_PERSON.handle, LEARN_PERSON.name],
+          [LEARN_TEAMMATE.handle, LEARN_TEAMMATE.name],
+        ]
+      : []),
   ].map(([handle, display_name]) => [handle, { handle, display_name, teams: [], notify: null, owns: [] }]),
 );
 
@@ -559,7 +577,8 @@ export async function handleMock(req: Request): Promise<Response | null> {
         rows: {},
         refreshing: false,
       };
-      if (resolved.refs.length > 0 && !statusWarmed.has(roomName)) {
+      // A Learn take opens on a board the hub has already looked up.
+      if (resolved.refs.length > 0 && !statusWarmed.has(roomName) && !isLearnScenario()) {
         statusWarmed.add(roomName);
         return json({
           ...resolved,
@@ -598,6 +617,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
         // before the count, as the backend counts it — `total` is what is older
         // than the cursor, which is how a reader knows it has reached the start.
         const before = searchParams.get("before");
+        if (episode && isLearnScenario()) learnOnThreadRead(fx, roomName, episode);
         const scoped = fx.messages.filter(
           (m) => (!episode || m.episode === episode) && olderThan(m.created_at, before),
         );
@@ -620,6 +640,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
         fx.messages.push(msg);
         publish(roomName, { ...msg, room_name: roomName });
         if (isDemoScenario()) demoOnMessage(fx, roomName, msg);
+        if (isLearnScenario()) learnOnMessage(fx, roomName, msg);
         return json(msg, 201);
       }
       return null;
@@ -653,6 +674,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
         subkind: "filed", key, title: title.split("\n")[0], episode: row.episode, by, kind, for: assignee ?? undefined,
       });
       if (isDemoScenario()) demoOnTask(fx, roomName, row);
+      if (isLearnScenario()) learnOnTask(fx, roomName, row);
       return json(memoryRead(roomName, row), 201);
     }
 
@@ -711,6 +733,45 @@ export async function handleMock(req: Request): Promise<Response | null> {
         assignment_note: null,
         assignment_note_by: null,
       });
+    }
+
+    case "engines": {
+      // POST /engines — an engine the hub runs, registered as its manifest.
+      if (sub.length !== 1 || method !== "POST") return null;
+      const body = await readJson(req);
+      const handle = String(body.handle ?? "").trim().toLowerCase();
+      const kind = String(body.kind ?? "");
+      if (!/^[a-z0-9][a-z0-9_-]*$/.test(handle)) return json({ detail: "Handle must be a lowercase slug." }, 422);
+      if (!kind) return json({ detail: "An engine needs a kind." }, 422);
+      const key = `agents/${handle}`;
+      if (fx.memories.some((m) => m.key === key)) return json({ detail: `@${handle} is already in ${roomName}` }, 409);
+      const by = String(body.created_by ?? "user");
+      const description = String(body.description ?? "");
+      fx.memories.push({
+        key,
+        value: `adapter: engine\nkind: ${kind}\ndescription: "${description}"\n`,
+        created_by: by,
+        version: 1,
+        updated_at: new Date().toISOString(),
+      });
+      fx.presence = [...(fx.presence ?? []).filter((p) => p.handle !== handle), { handle, kind: "lease", last_seen: new Date().toISOString() }];
+      publish(roomName, memoryChangedFrame(key, 1, by));
+      return json(
+        {
+          handle, adapter: "engine", kind, description, cwd: null, owner: by, team: null, allow_from: [],
+          a2a_card: null, a2a_endpoint: null, a2a_skills: [], runner: null, framework: null,
+        },
+        201,
+      );
+    }
+
+    case "swarms": {
+      // POST /swarms — a team put on a task. Only a Learn take plays one; the
+      // default fixtures have no workers to run it.
+      if (sub.length !== 1 || method !== "POST") return null;
+      const started = isLearnScenario() ? learnOnSwarm(fx, roomName) : null;
+      if (!started) return json({ detail: "The mock runs no swarms in this room." }, 501);
+      return json({ room: roomName, ...started, job: null }, 201);
     }
 
     case "agents": {

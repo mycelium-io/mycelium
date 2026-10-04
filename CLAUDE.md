@@ -75,6 +75,10 @@ mycelium-promo/     The product demo: one shotkit take of the real app
                     video inline only from a `user-attachments/assets/...` URL,
                     minted by dragging the MP4 into a PR comment in the browser
                     (gh CLI has no equivalent), so swap that URL in by hand.
+                    `learn/` records the Learn videos the same way, one take
+                    per course section (`learn/takes/`, over the frontend's
+                    `learn:<take>` scenario, `src/mocks/learn.ts`), into
+                    `docs/learn/video/` (LFS too).
 ```
 
 ## Development

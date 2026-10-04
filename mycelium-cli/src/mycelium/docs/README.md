@@ -10,13 +10,15 @@ file for giving to a model. Edit the markdown here, not the generated HTML.
 | `index.md` | What `mycelium docs` prints with no arguments |
 | `overview.md` | What Mycelium is and why you'd use it |
 | `walkthrough/` | Your first room, step by step |
+| `learn/` | The courses on `learn.html`: a folder per course, a `course.json` (title, modules, lessons, quick checks, and a section's `video`) and a markdown file per lesson. A section's video is a take recorded by `mycelium-promo/learn/` into `docs/learn/video/` |
 | `engines/` | The engines a room runs: aligner, synthesizer, persona, conductor, worker |
 | `concepts/` | Rooms, SLIM, the board, episodes, memory, L9 |
 | `guides/` | Step-by-step guides, from the quick start to setting up sign-in |
 | `reference/` | Architecture and metrics |
 
 The site reads in that order: Get Started, Walkthrough, Engines, Concepts,
-Guides, Reference. The dense material sits at the bottom.
+Guides, Reference. Learn (`learn.html`) is its own place beside them, linked
+from the top bar. The dense material sits at the bottom.
 
 A page's CLI name is its filename without `.md`, whichever folder it's in. So
 `mycelium docs rooms` reads `concepts/rooms.md`, and moving a file to another

@@ -19,18 +19,15 @@
  * server would find the story already told.
  */
 
-import { spawn } from "node:child_process";
-import { closeSync, openSync, readFileSync } from "node:fs";
-import { createServer } from "node:net";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { capture, shutdown } from "../shotkit/src/api.mjs";
 import { soundTake } from "./audio/build.mjs";
+import { refuseIfRunning, startScenario } from "./server.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const frontend = resolve(here, "../mycelium-frontend");
 const argv = process.argv.slice(2);
 const quick = argv.includes("--quick");
 const sound = !quick && !argv.includes("--no-sound");
@@ -40,69 +37,11 @@ const out = resolve(outAt >= 0 ? argv[outAt + 1] : join(here, quick ? "../.shotk
 const flow = JSON.parse(readFileSync(join(here, "demo.json"), "utf8"));
 delete flow.$comment;
 
-/** A port nothing is listening on. */
-const freePort = () =>
-  new Promise((res, rej) => {
-    const srv = createServer();
-    srv.on("error", rej);
-    srv.listen(0, () => {
-      const { port } = /** @type {import("node:net").AddressInfo} */ (srv.address());
-      srv.close(() => res(port));
-    });
-  });
-
-async function waitFor(url, ms) {
-  const until = Date.now() + ms;
-  while (Date.now() < until) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) return;
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-  throw new Error(`${url} did not come up in ${ms / 1000}s`);
-}
-
-// Next allows one dev server per folder, and a take needs one of its own.
-try {
-  const { pid, appUrl } = JSON.parse(readFileSync(join(frontend, ".next/dev/lock"), "utf8"));
-  process.kill(pid, 0);
-  console.error(`A dev server is already running in mycelium-frontend (${appUrl}, pid ${pid}). Stop it first:`);
-  console.error(`  kill ${pid}`);
-  process.exit(1);
-} catch {
-  /* no lock, or its process is gone */
-}
-
-const port = await freePort();
-const logPath = join(tmpdir(), `mycelium-demo-${port}.log`);
-const logFd = openSync(logPath, "w");
-const server = spawn("npx", ["next", "dev", "--port", String(port)], {
-  cwd: frontend,
-  env: { ...process.env, MYCELIUM_UI_MOCK: "1", MYCELIUM_UI_MOCK_SCENARIO: "demo" },
-  stdio: ["ignore", logFd, logFd],
-  detached: true,
-});
-closeSync(logFd);
-const stop = () => {
-  try {
-    process.kill(-server.pid, "SIGTERM");
-  } catch {
-    /* already gone */
-  }
-};
-process.on("exit", stop);
+refuseIfRunning();
+mkdirSync(dirname(out), { recursive: true });
+const { baseUrl, stop } = await startScenario("demo", [flow.route]);
 
 try {
-  // Next serves `localhost` only (its dev-server origin guard), so the take does too.
-  const baseUrl = `http://localhost:${port}`;
-  console.error(`demo server on ${baseUrl} (log: ${logPath})`);
-  await waitFor(`${baseUrl}/api/rooms`, 180_000);
-  // Compile the room page once, so the take doesn't open on a compile.
-  await fetch(`${baseUrl}${flow.route}`).catch(() => {});
-
   const spec = quick
     ? { ...flow, demo: false, tilt: undefined, backdrop: undefined, intro: undefined, outro: undefined }
     : flow;
@@ -115,5 +54,5 @@ try {
   console.log(result.path);
 } finally {
   await shutdown();
-  stop();
+  await stop();
 }
