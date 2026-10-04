@@ -131,6 +131,18 @@ class Report:
     def agents(self) -> list[Agent]:
         return [a for w in self.workspaces for a in w.agents]
 
+    def stopped(self, room: str | None = None) -> list[Agent]:
+        """Every agent that can be restarted (in ``room``, when one is given)."""
+        return [a for a in self.agents if a.restartable and room in (None, a.room)]
+
+    def lost(self, room: str | None = None) -> list[Agent]:
+        """Every gone pane with nothing to restart (in ``room``, when one is given)."""
+        return [
+            a
+            for a in self.agents
+            if a.state == "gone" and not a.restartable and room in (None, a.room)
+        ]
+
     def find(self, handle: str, room: str | None = None) -> Agent:
         """The agent ``handle`` names (in ``room``, when two rooms share a handle)."""
         h = handle.lstrip("@")

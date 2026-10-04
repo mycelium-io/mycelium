@@ -383,7 +383,7 @@ class Runner:
         r = this_machine.report(bridge=self.bridge, machine=self.label, runner=True)
         try:
             if spec.get("all"):
-                agents = [a for a in r.agents if a.restartable]
+                agents = r.stopped()
             else:
                 agents = [
                     r.find(str(a.get("handle")), a.get("room")) for a in spec.get("agents") or []

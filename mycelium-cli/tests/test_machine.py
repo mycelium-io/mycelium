@@ -234,6 +234,52 @@ def test_a_running_agent_isnt_restarted(herdr: FakeHerdr):
 # ── rename and unbind ────────────────────────────────────────────────────────
 
 
+def _two_rooms(fake: FakeHerdr) -> HerdrBridge:
+    """``_setup``'s checkout, plus room ``other`` in w3 with its own stopped and gone agents."""
+    bridge = _setup(fake)
+    bridge.registry.bind("w3", "other")
+    bridge.registry.set(
+        HerdrPaneMapping(
+            room="other", handle="drafter", pane="w3:p1", kind="claude", managed=True, cwd="/o"
+        )
+    )
+    bridge.registry.set(HerdrPaneMapping(room="other", handle="ghost", pane="w3:p9", kind="claude"))
+    fake.panes.append({"pane_id": "w3:p1", "workspace_id": "w3"})
+    return bridge
+
+
+def test_stopped_and_lost_agents_narrow_to_a_room(herdr: FakeHerdr):
+    r = _report(_two_rooms(herdr))
+    assert sorted(a.handle for a in r.stopped()) == ["drafter", "reviewer"]
+    assert [a.handle for a in r.stopped("checkout")] == ["reviewer"]
+    assert sorted(a.handle for a in r.lost()) == ["ghost", "old"]
+    assert [a.handle for a in r.lost("other")] == ["ghost"]
+
+
+def test_restart_all_in_a_room_leaves_other_rooms_alone(
+    herdr: FakeHerdr, monkeypatch: pytest.MonkeyPatch
+):
+    from typer.testing import CliRunner
+
+    from mycelium.commands import machine as cmd
+
+    bridge = _two_rooms(herdr)
+    restarted: list[str] = []
+    monkeypatch.setattr(cmd, "report", lambda: _report(bridge))
+    monkeypatch.setattr(cmd, "restart", lambda _config, a: restarted.append(a.handle) or a.pane)
+
+    result = CliRunner().invoke(cmd.app, ["restart", "--all", "--room", "checkout", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert restarted == ["reviewer"]
+    assert "checkout" in result.output
+    assert "other" not in result.output
+
+    result = CliRunner().invoke(cmd.app, ["unbind", "--gone", "--room", "other", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert bridge.registry.get("other", "ghost") is None
+    assert bridge.registry.get("checkout", "old") is not None
+
+
 def test_renaming_changes_herdrs_name_and_unbinding_forgets_the_pane(herdr: FakeHerdr):
     bridge = _setup(herdr)
     r = _report(bridge)
