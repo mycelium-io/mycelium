@@ -274,6 +274,68 @@ class MessageListResponse(BaseModel):
     total: int
 
 
+class MessageSearchClause(BaseModel):
+    """One ``field:value`` the search narrowed by, as the server read it."""
+
+    field: str
+    value: str
+    negate: bool = False
+
+
+class MessageSearchScope(BaseModel):
+    """The interpretation a message search ran under, echoed so a client draws
+    its chips from the same parse the server used."""
+
+    text: str = ""
+    clauses: list[MessageSearchClause] = Field(default_factory=list)
+    after: datetime | None = None
+    before: datetime | None = None
+    sort: Literal["newest", "oldest", "relevance"] = "newest"
+    problems: list[str] = Field(
+        default_factory=list,
+        description="Tokens that looked like a field or a time but could not be read, as typed",
+    )
+
+
+class FacetBucket(BaseModel):
+    value: str
+    label: str = Field(..., description="What to show for the value (a task's title for its key)")
+    count: int
+
+
+class MessageSearchHit(BaseModel):
+    message: MessageRead
+    snippet: str = Field(..., description="A one-line window of the text around the first match")
+    score: float = 0.0
+    task_key: str | None = Field(None, description="The board row whose thread it was said in")
+    task_title: str | None = None
+    thread: str | None = Field(
+        None, description="The thread's episode URN; null when said in the room"
+    )
+    recipients: list[str] = Field(default_factory=list)
+    mentions: list[str] = Field(default_factory=list)
+    stance: str | None = None
+    context_before: list[MessageRead] = Field(default_factory=list)
+    context_after: list[MessageRead] = Field(default_factory=list)
+
+
+class MessageSearchResponse(BaseModel):
+    query: str
+    scope: MessageSearchScope
+    hits: list[MessageSearchHit] = Field(default_factory=list)
+    total: int = Field(..., description="Every message the query matched, before paging")
+    scanned: int = Field(..., description="Messages the search read")
+    facets: dict[str, list[FacetBucket]] = Field(
+        default_factory=dict,
+        description=(
+            "Counts per field value. A field's counts ignore that field's own clauses, "
+            "so its other values stay visible as alternatives"
+        ),
+    )
+    fields: list[str] = Field(default_factory=list, description="Every field the grammar accepts")
+    next_cursor: str | None = Field(None, description="Pass as `cursor` to read the next page")
+
+
 # ── Participant (agent in a coordination session) ────────────────────────────
 
 

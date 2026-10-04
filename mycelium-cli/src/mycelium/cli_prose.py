@@ -32,7 +32,10 @@ import shlex
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 #: Where prose that teaches the CLI lives, relative to the repository root.
 SOURCES = (
@@ -55,6 +58,35 @@ EXEMPT: dict[tuple[str, str], str] = {}
 #: Whole files known to be out of date, waiting on a rewrite, with where that
 #: is tracked. A listed file that checks clean is reported, so this shrinks.
 STALE: dict[str, str] = {}
+
+
+def _search_grammar() -> tuple[Callable[[str], list[str]], dict[str, str]]:
+    from mycelium import search_grammar
+
+    return search_grammar.problems, SEARCH_FLAGS
+
+
+#: Flags of ``room search`` that are a query clause spelled as a flag, so a
+#: value written after one is checked like the same clause in the query.
+SEARCH_FLAGS: dict[str, str] = {
+    "--in": "in",
+    "--has": "has",
+    "--stance": "stance",
+    "--sort": "sort",
+    "--since": "after",
+    "--after": "after",
+    "--before": "before",
+    "-b": "before",
+    "--on": "on",
+}
+
+#: Commands whose words are a query in a grammar of their own, with the check
+#: that reads one (every problem in it) and the flags that are its clauses.
+#: A query written in prose with a field the hub does not answer would
+#: otherwise be searched quietly as text; this is where that is caught.
+QUERIES: dict[str, tuple[Callable[[str], list[str]], dict[str, str]]] = {
+    "room search": _search_grammar(),
+}
 
 _PLACEHOLDER = re.compile(r"^(<.*>|\{.*\}|\.\.\.|…|\$.*|\[.*\]|\".*\"|'.*')$")
 
@@ -142,22 +174,42 @@ def check(command: str, root: Node, *, code: bool) -> str | None:
         return f"{path} has no command {word!r}"
     if here is root:
         return None
-    # The rest: flags this command must take; positionals are anyone's.
+    # The rest: flags this command must take; positionals are anyone's, unless
+    # the command reads them as a query, which is then checked as one.
     global_flags = root.flags
+    path = " ".join(_path_of(root, here))
+    grammar = QUERIES.get(path)
+    query: list[str] = []
     while i < len(words):
         word = words[i]
         i += 1
         if not word.startswith("-") or word in {"-", "--"} or re.fullmatch(r"-\d.*", word):
+            query.append(_unquote(word))
             continue
-        flag = word.split("=", 1)[0]
+        flag, _, inline = word.partition("=")
         if flag in here.flags:
-            if here.flags[flag] and "=" not in word:
+            if here.flags[flag] and not inline:
+                inline = _unquote(words[i]) if i < len(words) else ""
                 i += 1  # its value
+            if grammar and flag in grammar[1] and inline and not _PLACEHOLDER.match(inline):
+                # A usage line's ``a|b`` is a choice: each one must be a value.
+                query.extend(f"{grammar[1][flag]}:{alt}" for alt in inline.split("|"))
             continue
         if flag in global_flags:
             continue
-        return f"{' '.join(['mycelium', *_path_of(root, here)])} takes no {flag}"
+        return f"mycelium {path} takes no {flag}"
+    if grammar:
+        found = grammar[0](" ".join(query))
+        if found:
+            return f"mycelium {path} query: {found[0]}"
     return None
+
+
+def _unquote(word: str) -> str:
+    """A shell word as the command receives it: one layer of quotes removed."""
+    if len(word) >= 2 and word[0] == word[-1] and word[0] in "\"'":  # noqa: PLR2004
+        return word[1:-1]
+    return word
 
 
 def _path_of(root: Node, target: Node) -> list[str]:

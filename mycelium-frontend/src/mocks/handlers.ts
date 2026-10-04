@@ -40,6 +40,7 @@ import {
   learnOnThreadRead,
 } from "./learn";
 import { memoryChangedFrame, noticeFrame, publish } from "./live";
+import { mockMessageSearch } from "./message-search";
 import { PATTERN_ROOMS, fromExplorer, patternList, patternRead } from "./patterns";
 import type { A2aBridgeState, MemoryGraph, MemoryGraphEdge, MemoryLink, Protocol } from "@/lib/api";
 import type { SearchHit, SearchResultType } from "@/lib/search";
@@ -608,6 +609,10 @@ export async function handleMock(req: Request): Promise<Response | null> {
       // of the channel's feed that carries pings and board notices. Oldest
       // first, the last `limit` of what is older than the cursor — the shape
       // the backend's transcript replay serves.
+      // GET /messages/search — the find bar's History.
+      if (sub[1] === "search" && method === "GET") {
+        return json(mockMessageSearch(fx, searchParams.get("q") ?? "", Number(searchParams.get("limit") ?? "20")));
+      }
       if (sub[1] === "l9" && method === "GET") {
         const limit = Number(searchParams.get("limit") ?? "200");
         const before = searchParams.get("before");

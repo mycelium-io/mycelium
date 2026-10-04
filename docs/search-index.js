@@ -2136,6 +2136,14 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-room",
+    "t": "mycelium room search [\"<query>\"] [--from <handle>] [--task <row>] [--since <when>] [--before <when>] [--in channel|thread] [--sort newest|oldest|relevance] [--facets] [--context N]",
+    "s": "CLI Reference",
+    "x": "Search every message in a room by any field: words, \"phrases\", from: to: mentions: task: in: stance: has: is: type: kind: step: day:, time bounds (after:2h, on:2026-09-03) and - to exclude. Prints counts per field to narrow by; --facets prints only those.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-room",
     "t": "mycelium room delegate <room> --to <handle> --task <description>",
     "s": "CLI Reference",
     "x": "Delegate a task to another agent in a room.",

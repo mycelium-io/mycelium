@@ -750,6 +750,13 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">search</span> [&quot;<span class="arg">&lt;query&gt;</span>&quot;] [<span class="flag">--from</span> <span class="arg">&lt;handle&gt;</span>] [<span class="flag">--task</span> <span class="arg">&lt;row&gt;</span>] [<span class="flag">--since</span> <span class="arg">&lt;when&gt;</span>] [<span class="flag">--before</span> <span class="arg">&lt;when&gt;</span>] [<span class="flag">--in</span> channel|thread] [<span class="flag">--sort</span> newest|oldest|relevance] [<span class="flag">--facets</span>] [<span class="flag">--context</span> N]</code>
+        </div>
+        <div class="cmd-ref-body">Search every message in a room by any field: words, <code>"phrases"</code>, <code>from:</code> <code>to:</code> <code>mentions:</code> <code>task:</code> <code>in:</code> <code>stance:</code> <code>has:</code> <code>is:</code> <code>type:</code> <code>kind:</code> <code>step:</code> <code>day:</code>, time bounds (<code>after:2h</code>, <code>on:2026-09-03</code>) and <code>-</code> to exclude. Prints counts per field to narrow by; <code>--facets</code> prints only those.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
           <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">delegate</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--to</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--task</span> <span class="arg">&lt;description&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Delegate a task to another agent in a room.</div>

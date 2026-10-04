@@ -7,6 +7,7 @@
 // URL baking. The internal backend URL is a server-side concern.
 
 import type { SearchResponse } from "@/lib/search";
+import type { MessageSearchResponse } from "@/lib/message-search";
 import { encodeMemoryKeyPath } from "@/lib/memory-routes";
 import type { RoomStatus } from "@/lib/board/upstream";
 import type { RoomFolders } from "@/lib/room-folders";
@@ -635,6 +636,23 @@ export async function fetchMessages(
       guard: isMessagesResponse,
     },
   );
+}
+
+/** Search every message in a room by any field (`from:` `task:` `after:` …).
+ *
+ *  Throws rather than falling back, so the find bar can tell "nothing matched"
+ *  from "the hub didn't answer" and say which. */
+export async function searchMessages(
+  roomName: string,
+  q: string,
+  opts: { limit?: number; cursor?: string | null; context?: number } = {},
+): Promise<MessageSearchResponse> {
+  const params = new URLSearchParams({ q, limit: String(opts.limit ?? 50) });
+  if (opts.cursor) params.set("cursor", opts.cursor);
+  if (opts.context) params.set("context", String(opts.context));
+  return apiFetch<MessageSearchResponse>(`${roomApiPath(roomName)}/messages/search?${params}`, {
+    cache: "no-store",
+  });
 }
 
 /** The room's L9 wire history (transcript replay), for backfilling the live
