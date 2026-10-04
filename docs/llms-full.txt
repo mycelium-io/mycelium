@@ -2472,25 +2472,6 @@ with what to do when something isn't. It runs the same checks as
 
 ![The health check](desktop-health.png)
 
-## Another hub already running
-
-Only one hub can answer on the app's port, and whichever does gets every
-room, memory and task you make. When the app starts and finds a hub it
-didn't start there (a Docker stack, or a hub run from a terminal), it stops
-and asks before using it, naming who runs it, its version and where it keeps
-its data:
-
-- **Use it**: work in that hub's store, as if it were the app's own.
-- **Stop it and start Mycelium's own**: stop that hub (for Docker, its whole
-  compose project) and start the app's, on your own data folder.
-
-Look harder at a hub that keeps its data somewhere other than
-`~/.mycelium`, is older than the app, or is a development build: updating the
-app doesn't update a hub it didn't start. The health check, `mycelium doctor
---mode desktop` and `mycelium machine` list every hub running on the Mac and
-warn when there's more than one. From a terminal, `mycelium desktop serve
---existing-hub stop` stops the other hub rather than using it.
-
 ## Inviting people
 
 In **Members**, **Invite** copies a link to the room. Opening it offers the

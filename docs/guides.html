@@ -343,13 +343,6 @@
       <p><strong>Health check…</strong> shows each part the app runs and whether it&#x27;s working, with what to do when something isn&#x27;t. It runs the same checks as <code>mycelium doctor --mode desktop</code>.</p>
       <figure class="doc-figure"><img class="doc-img" src="desktop-health.png" alt="The health check" loading="lazy">
       </figure>
-      <h2 id="desktop-another-hub-already-running">Another hub already running</h2>
-      <p>Only one hub can answer on the app&#x27;s port, and whichever does gets every room, memory and task you make. When the app starts and finds a hub it didn&#x27;t start there (a Docker stack, or a hub run from a terminal), it stops and asks before using it, naming who runs it, its version and where it keeps its data:</p>
-      <ul>
-        <li><strong>Use it</strong>: work in that hub&#x27;s store, as if it were the app&#x27;s own.</li>
-        <li><strong>Stop it and start Mycelium&#x27;s own</strong>: stop that hub (for Docker, its whole compose project) and start the app&#x27;s, on your own data folder.</li>
-      </ul>
-      <p>Look harder at a hub that keeps its data somewhere other than <code>~/.mycelium</code>, is older than the app, or is a development build: updating the app doesn&#x27;t update a hub it didn&#x27;t start. The health check, <code>mycelium doctor --mode desktop</code> and <code>mycelium machine</code> list every hub running on the Mac and warn when there&#x27;s more than one. From a terminal, <code>mycelium desktop serve --existing-hub stop</code> stops the other hub rather than using it.</p>
       <h2 id="desktop-inviting-people">Inviting people</h2>
       <p>In <strong>Members</strong>, <strong>Invite</strong> copies a link to the room. Opening it offers the app (which joins that hub and room), the download, or the browser.</p>
       <h2 id="desktop-the-command-line">The command line</h2>

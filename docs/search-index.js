@@ -822,13 +822,6 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
-    "u": "guides.html#desktop-another-hub-already-running",
-    "t": "Another hub already running",
-    "s": "Setup › The Mac App",
-    "x": "Only one hub can answer on the app's port, and whichever does gets every room, memory and task you make. When the app starts and finds a hub it didn't start there (a Docker stack, or a hub run from a terminal), it stops and asks before using it, naming who runs it, its version and where it keeps its data: Use it: work in that hub's store, as if it were the app's own. Stop it and start Mycelium's own: stop that hub (f",
-    "p": "Guides"
-  },
-  {
     "u": "guides.html#desktop-inviting-people",
     "t": "Inviting people",
     "s": "Setup › The Mac App",
