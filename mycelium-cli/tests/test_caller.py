@@ -369,13 +369,6 @@ def test_a_pane_mapped_to_two_agents_guesses_neither_and_says_so(
 # ── a folder config never quietly names someone else ────────────────────────
 
 
-def test_an_opaque_id_in_identity_name_names_nobody(isolated_home: Path):
-    _identity(isolated_home, "9907770b-3781-49ad-a242-fce7c28e5008")
-    config = MyceliumConfig.load()
-    assert caller.handle(config) == caller.Answer(None, caller.DEFAULT)
-    assert identity.resolve_actor(config) == identity.LEGACY_ACTOR_SENTINEL
-
-
 def test_saving_in_a_folder_does_not_copy_the_machines_identity_into_it(
     isolated_home: Path, monkeypatch
 ):
@@ -418,10 +411,9 @@ def test_an_identity_a_folder_set_itself_stays_the_folders(isolated_home: Path, 
 
 def test_whoami_sources_names_the_file_identity_came_from(isolated_home: Path, monkeypatch):
     project = isolated_home / "proj"
-    _identity(isolated_home, "9907770b-3781-49ad-a242-fce7c28e5008", folder=project)
+    _identity(isolated_home, "someone-else", folder=project)
     monkeypatch.chdir(project)
     result = runner.invoke(app, ["whoami", "--sources"])
     assert result.exit_code == 0, result.output
     out = "".join(result.output.split())
     assert f"identity.name:{project / '.mycelium' / 'config.toml'}" in out
-    assert "notahandle" in out

@@ -373,12 +373,7 @@ def _print_sources(ctx: typer.Context) -> None:
         console.print(f"[dim]herdr pane: {agent.pane}[/dim]")
     name_path = config.identity_name_path()
     if name_path is not None:
-        refused = (
-            ""
-            if caller.configured_name(config)
-            else " (not a handle, so it names nobody; set one with `mycelium iam <handle>`)"
-        )
-        console.print(f"[dim]identity.name: {name_path}{refused}[/dim]")
+        console.print(f"[dim]identity.name: {name_path}[/dim]")
 
 
 def _principal_view(handle: str) -> tuple[UserManifest | None, list[tuple[str, str, str]]] | None:

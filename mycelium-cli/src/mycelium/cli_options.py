@@ -42,9 +42,9 @@ JSON_FLAGS = ("--json",)
 LIMIT_FLAGS = ("--limit", "-n", "-l")
 YES_FLAGS = ("--yes", "-y")
 
-ROOM_HELP = "Room (default: MYCELIUM_ROOM_ID, this herdr pane's agent, this folder's membership, then the active room)."
+ROOM_HELP = "Room (default: MYCELIUM_ROOM_ID, this folder's membership, then the active room)."
 ROOM_FILTER_HELP = "Only this room."
-ACT_HELP = "Act as this handle (default: MYCELIUM_AGENT_HANDLE, this herdr pane's agent, this folder's membership, then your login)."
+ACT_HELP = "Act as this handle (default: MYCELIUM_AGENT_HANDLE, this folder's membership, then your login)."
 JSON_HELP = "Print JSON (the same as `mycelium --json <command>`)."
 YES_HELP = "Go ahead without asking."
 

@@ -433,9 +433,8 @@ is no litellm dependency.
   `mycelium/caller.py` answers all four from the same order: a flag, the
   environment, the herdr pane (`HERDR_PANE_ID` through herdr's registry, which
   is how an agent herdr restored without its environment is still itself),
-  this folder's membership, this machine's setup, a default. An
-  `identity.name` that is an opaque id names nobody, and a folder config
-  keeps only the `identity` keys it set itself.
+  this folder's membership, this machine's setup, a default. A folder
+  config keeps only the `identity` keys it set itself.
   `resolve_actor`, `_resolve_room`, `client.auth_headers` and
   `MyceliumConfig.load` call into it, so a new way of running agents adds a
   source there, once; `mycelium whoami --sources` shows each answer and where

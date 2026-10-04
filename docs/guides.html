@@ -657,12 +657,9 @@
       <ol class="steps">
         <li>a flag on the command</li>
         <li>the environment</li>
-        <li>the herdr pane the command runs in, when the runner started an agent there</li>
         <li>this folder&#x27;s <code>mycelium join</code></li>
         <li>this machine&#x27;s setup</li>
       </ol>
-      <p>The herdr pane matters after herdr&#x27;s server restarts. herdr brings each agent back in its own conversation, in the same pane, but without the environment the runner started it with. The pane still tells Mycelium which agent it is.</p>
-      <p><code>identity.name</code> is the name this machine uses. If it isn&#x27;t a handle (an opaque ID, say), it names nobody. <code>whoami --sources</code> shows which <code>config.toml</code> set it. A folder&#x27;s <code>.mycelium/config.toml</code> keeps an <code>identity</code> only if you wrote one there yourself.</p>
       <h2 id="machines-which-folders">Which folders</h2>
       <p>The app can only start agents inside the folders the runner was given, and only with an agent CLI the scan found. It never sends a command to run. By default the allowed folder is the one you ran <code>mycelium runner</code> from; name others with <code>--root</code>:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="flag">--root</span> ~/code <span class="flag">--root</span> ~/work/api</code></pre>

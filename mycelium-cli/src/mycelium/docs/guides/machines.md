@@ -140,18 +140,8 @@ value wins:
 
 1. a flag on the command
 2. the environment
-3. the herdr pane the command runs in, when the runner started an agent there
-4. this folder's `mycelium join`
-5. this machine's setup
-
-The herdr pane matters after herdr's server restarts. herdr brings each agent
-back in its own conversation, in the same pane, but without the environment the
-runner started it with. The pane still tells Mycelium which agent it is.
-
-`identity.name` is the name this machine uses. If it isn't a handle (an opaque
-ID, say), it names nobody. `whoami --sources` shows which `config.toml` set it.
-A folder's `.mycelium/config.toml` keeps an `identity` only if you wrote one
-there yourself.
+3. this folder's `mycelium join`
+4. this machine's setup
 
 ## Which folders
 

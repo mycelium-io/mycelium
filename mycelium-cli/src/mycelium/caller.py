@@ -35,7 +35,6 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import re
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -62,9 +61,6 @@ FLAG, ENVIRONMENT, PANE, MEMBERSHIP, MACHINE, DEFAULT = (
     "machine",
     "default",
 )
-
-#: An opaque id (a login's subject, a machine id) is never a handle someone chose.
-_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
 
 
 # ── membership: what `mycelium join` saved ───────────────────────────────────
@@ -275,8 +271,7 @@ def handle(
 
     The machine source asks the hub who this machine's login is (``ask_hub``)
     before the handle set with ``mycelium iam``, because a gated hub attributes a
-    write to the token, not to what the CLI claims. A configured name that is an
-    opaque id is not a handle and answers nothing.
+    write to the token, not to what the CLI claims.
 
     A process in a herdr pane the registry maps to an agent is that agent, so
     when the pane can't say which one, it is told it is about to act as this
@@ -300,8 +295,10 @@ def handle(
         who = _hub_whoami(config)
         if who and who.get("handle"):
             answer = Answer(str(who["handle"]), MACHINE)
-    if answer.source == DEFAULT and configured_name(config):
-        answer = Answer(get_current_handle(config) or configured_name(config), MACHINE)
+    if answer.source == DEFAULT:
+        local = get_current_handle(config) or config.identity.name
+        if local:
+            answer = Answer(local, MACHINE)
     if agent is not None and answer.source == MACHINE:
         _warn_once(
             f"warning: herdr pane {agent.pane} belongs to more than one agent "
@@ -309,14 +306,6 @@ def handle(
             f"machine's identity. Pass --as <handle> to act as the agent.",
         )
     return answer
-
-
-def configured_name(config: MyceliumConfig) -> str | None:
-    """``identity.name``, unless it is an opaque id rather than a handle."""
-    name = config.identity.name
-    if not isinstance(name, str) or not name.strip():
-        return None
-    return None if _UUID.match(name.strip()) else name.strip()
 
 
 def _pane_handles(pane: str) -> str:
