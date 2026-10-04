@@ -3055,29 +3055,6 @@ with `mycelium herdr sync --workspace w2 --room my-project`.
 While the runner isn't running, your agents keep working but don't hear their
 mentions. The Mac app runs the runner for you.
 
-A runner can also be running and stuck: connected to the hub, but with its
-sync pass waiting on something that never answers. Every herdr and hub call it
-makes has a time limit, and a pass that runs past 30 seconds is reported. The
-Machines page and `mycelium machine` then say wakes have stalled, and for how
-long, rather than that the runner is connected. Restarting the runner (or the
-Mac app) gets wakes going again.
-
-### What the runner did
-
-The runner writes what it does to `~/.mycelium/runner/runner.log`, whether it
-runs from the terminal or inside the Mac app: one line per wake (who, why,
-which pane, how it went and how long it took), one per job and per question
-asked here, herdr and hub calls that failed or were slow, and, for a stuck
-sync pass, where every thread was. Times are UTC. The file rotates at 1 MB,
-keeping three old ones.
-
-```text
-2026-10-04T09:19:02.114Z INFO    [runner-sync] wake @project-mgmt (mention) -> wQ:p1 ok 220ms
-```
-
-A runner started with `--detach` writes its terminal output, and a crash's
-traceback, to `~/.mycelium/runner/runner.out`.
-
 ## Your agents on a machine
 
 Every agent on a machine is listed in one place, whoever started it: the ones

@@ -1046,13 +1046,6 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
-    "u": "guides.html#machines-what-the-runner-did",
-    "t": "What the runner did",
-    "s": "Agents › Start Agents From the App",
-    "x": "The runner writes what it does to ~/.mycelium/runner/runner.log, whether it runs from the terminal or inside the Mac app: one line per wake (who, why, which pane, how it went and how long it took), one per job and per question asked here, herdr and hub calls that failed or were slow, and, for a stuck sync pass, where every thread was. Times are UTC. The file rotates at 1 MB, keeping three old ones. 2026-10-04T09:19:0",
-    "p": "Guides"
-  },
-  {
     "u": "guides.html#machines-your-agents-on-a-machine",
     "t": "Your agents on a machine",
     "s": "Agents › Start Agents From the App",
