@@ -379,22 +379,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let mut tray = TrayIconBuilder::with_id("mycelium")
         .tooltip("Mycelium")
         .menu(&menu)
-        .show_menu_on_left_click(true)
-        .on_menu_event(|app, event| match event.id().as_ref() {
-            "open" => show_main(app),
-            "terminal" => open_terminal_window(app, None),
-            "machines" => show_page(app, "/machines"),
-            "switch" => show_local(app, "onboarding"),
-            "status" | "doctor" => show_local(app, "doctor"),
-            "updates" => updates::check(app.clone(), true),
-            "quit" => quit(app),
-            // An experience's item carries the path it opens on.
-            id => {
-                if let Some(path) = id.strip_prefix(EXPERIENCE_ITEM) {
-                    show_page(app, path);
-                }
-            }
-        });
+        .show_menu_on_left_click(true);
     // A template image: one colour with transparency, which macOS tints to
     // match the menu bar (white on dark, black on light) like its own icons.
     let template = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-template.png"))?;
@@ -501,6 +486,28 @@ pub(crate) fn shut_down(app: &AppHandle) {
 fn quit(app: &AppHandle) {
     shut_down(app);
     app.exit(0);
+}
+
+/// Every menu item's click, the tray's and the app menu's. Tauri hands each
+/// menu event to the app-wide handler whichever menu it came from, so this is
+/// the only handler: a second one on the tray would run a shared item (Check
+/// for Updates…) twice.
+fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
+    match event.id().as_ref() {
+        "open" => show_main(app),
+        "terminal" => open_terminal_window(app, None),
+        "machines" => show_page(app, "/machines"),
+        "switch" | "settings" => show_local(app, "onboarding"),
+        "status" | "doctor" => show_local(app, "doctor"),
+        "updates" => updates::check(app.clone(), true),
+        "quit" => quit(app),
+        // An experience's item carries the path it opens on.
+        id => {
+            if let Some(path) = id.strip_prefix(EXPERIENCE_ITEM) {
+                show_page(app, path);
+            }
+        }
+    }
 }
 
 /// The macOS app menu, with Check for Updates… and Settings… (⌘,) where a
@@ -961,11 +968,7 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .menu(app_menu)
-        .on_menu_event(|app, event| match event.id().as_ref() {
-            "settings" => show_local(app, "onboarding"),
-            "updates" => updates::check(app.clone(), true),
-            _ => {}
-        })
+        .on_menu_event(on_menu_event)
         .manage(Shell::default())
         .manage(Supervisor::default())
         .manage(Terminal::default())
