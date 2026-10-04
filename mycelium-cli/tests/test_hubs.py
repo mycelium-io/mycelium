@@ -8,7 +8,6 @@ are replaced."""
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -137,22 +136,3 @@ def test_warnings_name_a_second_hub_and_whose_store_it_is(tmp_path: Path):
     assert said[0].startswith("2 Mycelium hubs are running")
     assert any("Docker project `eval`" in s and "/elsewhere" in s for s in said)
     assert hubs.warnings([own], tmp_path, "3.0.21") == []
-
-
-def test_stopping_a_docker_hub_stops_its_whole_project(monkeypatch: pytest.MonkeyPatch):
-    ran: list[list[str]] = []
-
-    def run(argv: list[str]) -> Any:
-        ran.append(argv)
-        return ""
-
-    monkeypatch.setattr(hubs, "_run", run)
-    monkeypatch.setattr(hubs, "health", lambda *_a, **_k: None)
-    hub = Hub(source="docker", port=8000, project="eval", project_containers=["a", "b", "c"])
-    assert hubs.stop(hub) == "Docker project `eval`"
-    assert ran == [["docker", "stop", "a", "b", "c"]]
-
-
-def test_a_hub_with_no_known_owner_cannot_be_stopped():
-    with pytest.raises(hubs.StopError, match="Can't tell what runs"):
-        hubs.stop(Hub(source="port", port=8000))

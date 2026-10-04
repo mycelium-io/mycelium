@@ -15,6 +15,8 @@
   --accent-soft: rgba(92, 199, 210, 0.13);
   --green: #4fc296;
   --red: #e6746f;
+  --amber: #e3b462;
+  --amber-soft: rgba(227, 180, 98, 0.12);
   --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: "Geist Mono", "SF Mono", "JetBrains Mono", Menlo, monospace;
   color-scheme: dark;
@@ -362,6 +364,119 @@ select.field {
 .hint code {
   font-family: var(--font-mono);
   color: var(--text);
+}
+
+/* A hub the app didn't start, put to the person as a choice. */
+.hub-ask {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  background: var(--paper);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+}
+
+.hub-ask h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.hub-ask-lede,
+.hub-ask-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+.hub-ask-lede {
+  margin-top: -6px;
+}
+
+.hub-ask-note code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.facts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.facts-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.facts dt {
+  color: var(--faint);
+}
+
+.facts dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  color: var(--text);
+  min-width: 0;
+}
+
+.facts code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.tag {
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+  background: var(--elevated);
+}
+
+.tag.warn {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.hub-ask .hint {
+  margin: 0;
+  color: var(--muted-foreground);
+}
+
+.hub-ask-cmd {
+  margin: -4px 0 0;
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.hub-ask-cmd code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  user-select: all;
 }
 
 .error {

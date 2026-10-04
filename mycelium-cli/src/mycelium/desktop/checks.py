@@ -114,11 +114,17 @@ def hubs_here(*, client: bool = False) -> CheckResult:
     if not said:
         return CheckResult(name="Hubs on this Mac", status="ok", message=listed[0])
     fix = []
-    if there is not None and there.source != "process":
-        fix.append(
-            "Quit Mycelium, stop the other stack (or `docker stop` it), and open Mycelium again "
-            "to start its own hub."
+    if there is not None:
+        stop = (
+            f"`docker compose -p {there.project} down`"
+            if there.source == "docker" and there.project
+            else f"`docker stop {there.container}`"
+            if there.source == "docker" and there.container
+            else f"`kill {there.pid}`"
+            if there.source == "process" and there.pid
+            else f"stop whatever is on port {there.port or HUB_PORT}"
         )
+        fix.append(f"To use Mycelium's own hub: {stop}, then reopen Mycelium.")
     return CheckResult(
         name="Hubs on this Mac",
         status="warning",
