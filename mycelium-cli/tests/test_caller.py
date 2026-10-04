@@ -295,3 +295,133 @@ def test_a_hub_you_set_in_a_joined_folder_is_still_saved(isolated_home: Path, mo
     config.server.api_url = "http://chosen-on-purpose:8000"
     config.save()
     assert _global_toml(isolated_home)["server"]["api_url"] == "http://chosen-on-purpose:8000"
+
+
+# ── a herdr pane names the agent the registry maps it to ────────────────────
+
+
+def _map(room: str, handle: str, pane: str) -> None:
+    from mycelium.integrations.herdr.bridge import HerdrPaneMapping, HerdrRegistry
+
+    HerdrRegistry().set(HerdrPaneMapping(room=room, handle=handle, pane=pane, kind="claude"))
+
+
+def _identity(home: Path, name: str, folder: Path | None = None) -> None:
+    path = (folder or home) / ".mycelium" / "config.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f'[identity]\nname = "{name}"\n')
+
+
+def test_an_agent_herdr_restored_without_its_environment_is_still_itself(
+    isolated_home: Path, monkeypatch
+):
+    """herdr restores a pane under the same id but without the env it was started with."""
+    _identity(isolated_home, "operator")
+    _map("checkout", "project-mgmt", "w1:p2")
+    monkeypatch.setenv("HERDR_PANE_ID", "w1:p2")
+
+    config = MyceliumConfig.load()
+    assert caller.handle(config) == caller.Answer("project-mgmt", caller.PANE)
+    assert caller.room(config) == caller.Answer("checkout", caller.PANE)
+    assert identity.resolve_actor(config) == "project-mgmt"
+
+
+def test_the_environment_beats_the_pane_and_the_pane_beats_a_membership(
+    isolated_home: Path, monkeypatch
+):
+    """Several agents share one checkout, so the pane says more than the folder."""
+    _join(isolated_home, handle="builder")
+    _map("checkout", "coder", "w1:p3")
+    monkeypatch.setenv("HERDR_PANE_ID", "w1:p3")
+    config = MyceliumConfig.load()
+    assert caller.handle(config) == caller.Answer("coder", caller.PANE)
+
+    monkeypatch.setenv("MYCELIUM_AGENT_HANDLE", "coder2")
+    assert caller.handle(config) == caller.Answer("coder2", caller.ENVIRONMENT)
+
+
+def test_a_pane_the_registry_does_not_map_says_nothing(isolated_home: Path, monkeypatch):
+    _identity(isolated_home, "operator")
+    _map("checkout", "coder", "w1:p3")
+    monkeypatch.setenv("HERDR_PANE_ID", "w9:p1")
+    config = MyceliumConfig.load()
+    assert caller.pane_agent() is None
+    assert caller.handle(config) == caller.Answer("operator", caller.MACHINE)
+
+
+def test_a_pane_mapped_to_two_agents_guesses_neither_and_says_so(
+    isolated_home: Path, monkeypatch, capsys
+):
+    _identity(isolated_home, "operator")
+    _map("checkout", "coder", "w1:p3")
+    _map("checkout", "designer", "w1:p3")
+    monkeypatch.setenv("HERDR_PANE_ID", "w1:p3")
+    caller._WARNED.clear()
+
+    config = MyceliumConfig.load()
+    assert caller.handle(config) == caller.Answer("operator", caller.MACHINE)
+    assert caller.room(config) == caller.Answer("checkout", caller.PANE)
+    err = capsys.readouterr().err
+    assert "@coder, @designer" in err
+    assert "--as" in err
+
+
+# ── a folder config never quietly names someone else ────────────────────────
+
+
+def test_an_opaque_id_in_identity_name_names_nobody(isolated_home: Path):
+    _identity(isolated_home, "9907770b-3781-49ad-a242-fce7c28e5008")
+    config = MyceliumConfig.load()
+    assert caller.handle(config) == caller.Answer(None, caller.DEFAULT)
+    assert identity.resolve_actor(config) == identity.LEGACY_ACTOR_SENTINEL
+
+
+def test_saving_in_a_folder_does_not_copy_the_machines_identity_into_it(
+    isolated_home: Path, monkeypatch
+):
+    """A folder config that names someone shadows ~/.mycelium for every folder below it."""
+    import toml
+
+    _identity(isolated_home, "operator")
+    project = isolated_home / "proj"
+    (project / ".mycelium").mkdir(parents=True)
+    (project / ".mycelium" / "config.toml").write_text('[rooms]\nactive = "design"\n')
+    monkeypatch.chdir(project)
+
+    config = MyceliumConfig.load()
+    config.set_active_room("checkout")
+    config.init_project(room_name="checkout")
+
+    folder = toml.load(project / ".mycelium" / "config.toml")
+    assert "identity" not in folder
+    assert folder["rooms"]["active"] == "checkout"
+    assert _global_toml(isolated_home)["identity"]["name"] == "operator"
+
+
+def test_an_identity_a_folder_set_itself_stays_the_folders(isolated_home: Path, monkeypatch):
+    import toml
+
+    _identity(isolated_home, "operator")
+    project = isolated_home / "proj"
+    _identity(isolated_home, "folder-bot", folder=project)
+    monkeypatch.chdir(project)
+
+    config = MyceliumConfig.load()
+    assert config.identity.name == "folder-bot"
+    assert config.identity_name_path() == project / ".mycelium" / "config.toml"
+    config.runner.host = "omnigent"
+    config.save()
+
+    assert toml.load(project / ".mycelium" / "config.toml")["identity"] == {"name": "folder-bot"}
+    assert _global_toml(isolated_home)["identity"]["name"] == "operator"
+
+
+def test_whoami_sources_names_the_file_identity_came_from(isolated_home: Path, monkeypatch):
+    project = isolated_home / "proj"
+    _identity(isolated_home, "9907770b-3781-49ad-a242-fce7c28e5008", folder=project)
+    monkeypatch.chdir(project)
+    result = runner.invoke(app, ["whoami", "--sources"])
+    assert result.exit_code == 0, result.output
+    out = "".join(result.output.split())
+    assert f"identity.name:{project / '.mycelium' / 'config.toml'}" in out
+    assert "notahandle" in out

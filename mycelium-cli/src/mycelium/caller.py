@@ -12,12 +12,16 @@ from several places, and they are tried in the same order for all four:
    agent whose host passes it an environment is told who it is
    (``MYCELIUM_API_URL``, ``MYCELIUM_AGENT_HANDLE``, ``MYCELIUM_ROOM_ID``, the
    agent token variables).
-3. **membership**: what ``mycelium join`` saved in this folder, found by walking
+3. **herdr pane**: the agent herdr's registry maps this process's pane to
+   (``HERDR_PANE_ID``). herdr gives a pane the same id after its server
+   restarts but brings the agent back without the environment it was started
+   with, so this is how a restored agent is still told who it is.
+4. **membership**: what ``mycelium join`` saved in this folder, found by walking
    up from the current folder the way git finds ``.git``. This is how an agent
    whose host passes it no environment knows who it is.
-4. **machine**: this machine's own setup: ``config.toml``, ``mycelium login``,
+5. **machine**: this machine's own setup: ``config.toml``, ``mycelium login``,
    ``mycelium iam``, and the hub's ``whoami`` for that login.
-5. **default**.
+6. **default**.
 
 ``identity.resolve_actor``, ``commands.room._resolve_room``,
 ``client.auth_headers`` and ``MyceliumConfig.load`` keep their signatures and
@@ -31,6 +35,8 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
+import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -45,14 +51,20 @@ MEMBERSHIP_FILE = "member.json"
 HANDLE_ENV = "MYCELIUM_AGENT_HANDLE"
 ROOM_ENVS = ("MYCELIUM_ROOM_ID", "MYCELIUM_CHANNEL_ID")
 HUB_ENV = "MYCELIUM_API_URL"
+#: What herdr sets in each of its panes, and keeps across its server's restarts.
+PANE_ENV = "HERDR_PANE_ID"
 
-FLAG, ENVIRONMENT, MEMBERSHIP, MACHINE, DEFAULT = (
+FLAG, ENVIRONMENT, PANE, MEMBERSHIP, MACHINE, DEFAULT = (
     "flag",
     "environment",
+    "pane",
     "membership",
     "machine",
     "default",
 )
+
+#: An opaque id (a login's subject, a machine id) is never a handle someone chose.
+_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
 
 
 # ── membership: what `mycelium join` saved ───────────────────────────────────
@@ -163,6 +175,44 @@ def remove_membership(folder: Path) -> bool:
     return True
 
 
+# ── the herdr pane: who the registry says runs in this one ───────────────────
+
+
+@dataclass(frozen=True)
+class PaneAgent:
+    """The agent herdr's registry maps this process's pane to.
+
+    ``handle`` or ``room`` is ``None`` when the registry maps the pane to more
+    than one, so neither is guessed.
+    """
+
+    pane: str
+    handle: str | None
+    room: str | None
+
+
+def pane_agent() -> PaneAgent | None:
+    """Who runs in this herdr pane, by the registry, or ``None`` outside one it maps."""
+    pane = os.environ.get(PANE_ENV, "").strip()
+    if not pane:
+        return None
+    from mycelium.integrations.herdr.bridge import HerdrRegistry
+
+    try:
+        mapped = [m for m in HerdrRegistry().all() if m.pane == pane]
+    except OSError:
+        return None
+    if not mapped:
+        return None
+    handles = {m.handle.lstrip("@") for m in mapped}
+    rooms = {m.room for m in mapped}
+    return PaneAgent(
+        pane=pane,
+        handle=handles.pop() if len(handles) == 1 else None,
+        room=rooms.pop() if len(rooms) == 1 else None,
+    )
+
+
 # ── the four answers ─────────────────────────────────────────────────────────
 
 
@@ -203,6 +253,9 @@ def room(config: MyceliumConfig, flag: str | None = None) -> Answer:
     for name in ROOM_ENVS:
         if os.environ.get(name):
             return Answer(os.environ[name], ENVIRONMENT)
+    agent = pane_agent()
+    if agent is not None and agent.room:
+        return Answer(agent.room, PANE)
     member = find_membership()
     if member is not None:
         return Answer(member.room, MEMBERSHIP)
@@ -222,7 +275,12 @@ def handle(
 
     The machine source asks the hub who this machine's login is (``ask_hub``)
     before the handle set with ``mycelium iam``, because a gated hub attributes a
-    write to the token, not to what the CLI claims.
+    write to the token, not to what the CLI claims. A configured name that is an
+    opaque id is not a handle and answers nothing.
+
+    A process in a herdr pane the registry maps to an agent is that agent, so
+    when the pane can't say which one, it is told it is about to act as this
+    machine instead.
     """
     from mycelium.identity import LEGACY_ACTOR_SENTINEL, _hub_whoami, get_current_handle
 
@@ -231,17 +289,49 @@ def handle(
     env_handle = os.environ.get(HANDLE_ENV, "").strip()
     if env_handle:
         return Answer(env_handle, ENVIRONMENT)
+    agent = pane_agent()
+    if agent is not None and agent.handle:
+        return Answer(agent.handle, PANE)
     member = find_membership()
     if member is not None:
         return Answer(member.handle, MEMBERSHIP)
+    answer = Answer(fallback, DEFAULT)
     if ask_hub:
         who = _hub_whoami(config)
         if who and who.get("handle"):
-            return Answer(str(who["handle"]), MACHINE)
-    local = get_current_handle(config) or config.identity.name
-    if local:
-        return Answer(local, MACHINE)
-    return Answer(fallback, DEFAULT)
+            answer = Answer(str(who["handle"]), MACHINE)
+    if answer.source == DEFAULT and configured_name(config):
+        answer = Answer(get_current_handle(config) or configured_name(config), MACHINE)
+    if agent is not None and answer.source == MACHINE:
+        _warn_once(
+            f"warning: herdr pane {agent.pane} belongs to more than one agent "
+            f"({_pane_handles(agent.pane)}), so this acts as @{answer.value}, this "
+            f"machine's identity. Pass --as <handle> to act as the agent.",
+        )
+    return answer
+
+
+def configured_name(config: MyceliumConfig) -> str | None:
+    """``identity.name``, unless it is an opaque id rather than a handle."""
+    name = config.identity.name
+    if not isinstance(name, str) or not name.strip():
+        return None
+    return None if _UUID.match(name.strip()) else name.strip()
+
+
+def _pane_handles(pane: str) -> str:
+    from mycelium.integrations.herdr.bridge import HerdrRegistry
+
+    return ", ".join(sorted({f"@{m.handle}" for m in HerdrRegistry().all() if m.pane == pane}))
+
+
+_WARNED: set[str] = set()
+
+
+def _warn_once(text: str) -> None:
+    if text not in _WARNED:
+        _WARNED.add(text)
+        print(text, file=sys.stderr)
 
 
 def credential(config: MyceliumConfig, acting_as: str | None = None) -> Answer:
