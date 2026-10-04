@@ -12,7 +12,9 @@ a stop, a swarm the hub set up, and that every job is reported back.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -20,9 +22,12 @@ from typing import Any
 import httpx
 import pytest
 
+from mycelium import machine
 from mycelium.config import MyceliumConfig
-from mycelium.integrations.herdr import HerdrBridge, HerdrRegistry
+from mycelium.integrations.herdr import HerdrBridge, HerdrRegistry, HerdrUnavailableError
+from mycelium.integrations.herdr.bridge import CALL_TIMEOUT_S, call_timeout
 from mycelium.runner import approvals, daemon, frameworks
+from mycelium.runner.log import open_log
 
 HELP = """Start a supported interactive agent in an existing pane
 
@@ -619,3 +624,132 @@ def test_a_stopped_runner_gives_up_on_its_question(
 def test_answering_what_isnt_waiting_says_so(tmp_path: Path):
     with pytest.raises(approvals.ApprovalError, match="Nothing is waiting"):
         approvals.answer("a1b2c3d4", yes=True, base=tmp_path)
+
+
+# ── what the runner leaves in runner.log ──────────────────────────────────────
+
+
+def _log() -> str:
+    return (daemon.runner_dir() / "runner.log").read_text()
+
+
+@pytest.fixture
+def quiet_hub(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
+    """The hub's side of a sync pass: presence taken, and ``wakes`` handed out once."""
+    wakes: list[dict] = []
+
+    def fetch(_config: Any, room: str) -> list[dict]:
+        taken = [w for w in wakes if w.get("room") == room]
+        for w in taken:
+            wakes.remove(w)
+        return taken
+
+    monkeypatch.setattr("mycelium.commands.herdr.fetch_wakes", fetch)
+    monkeypatch.setattr("mycelium.commands.herdr._push_presence", lambda *_a, **_kw: True)
+    monkeypatch.setattr("mycelium.commands.agent._write_manifest", lambda *_a, **_kw: None)
+    return wakes
+
+
+def test_each_wake_is_a_line_with_its_pane_outcome_and_time(
+    make_runner, hub: Hub, quiet_hub: list[dict]
+):
+    r = make_runner()
+    r.launch(LAUNCH)
+    quiet_hub += [
+        {"room": "eng", "handle": "a", "reason": "mention"},
+        {"room": "eng", "handle": "ghost", "reason": "turn"},
+    ]
+    r.sync_pass()
+    log = _log()
+    assert re.search(r"INFO .* wake @a \(mention\) -> w9:p1 ok \d+ms", log)
+    assert "wake @ghost (turn) in eng: no pane here is bound to it" in log
+    assert r.sync_health()["last_pass_at"] is not None
+    assert r.sync_health()["running_s"] is None
+
+
+def test_each_job_is_a_line_with_its_outcome_and_time(make_runner, hub: Hub):
+    r = make_runner()
+    r.take({"id": "j1", "kind": "launch", "spec": LAUNCH})
+    r.take({"id": "j2", "kind": "launch", "spec": {**LAUNCH, "framework": "nope"}})
+    log = _log()
+    assert re.search(r"job j1 launch done \d+ms", log)
+    assert re.search(r"job j2 launch failed \d+ms: nope is not installed", log)
+
+
+def test_a_question_asked_and_answered_is_in_the_log(
+    make_runner, hub: Hub, tmp_path: Path, quick: None
+):
+    r = make_runner(trust_hub=False)
+    r.take({"id": "a1b2c3d4", "kind": "launch", "spec": LAUNCH})
+    _until(lambda: approvals.pending(base=tmp_path))
+    approvals.answer("a1b2c3d4", yes=False, base=tmp_path)
+    _until(lambda: _report(hub, "a1b2c3d4", "failed"))
+    log = _log()
+    assert "job a1b2c3d4: asked here: Start @a" in log
+    assert "job a1b2c3d4: answered no" in log
+
+
+def test_a_stuck_sync_pass_is_logged_with_every_stack_and_reported(
+    make_runner, hub: Hub, quiet_hub: list[dict], monkeypatch: pytest.MonkeyPatch
+):
+    # The pass waits on a job's panes lock that is never let go: from outside
+    # it looks like a runner that is connected and does nothing.
+    monkeypatch.setattr(daemon, "SYNC_STALL_S", 0.05)
+    r = make_runner()
+    r.launch(LAUNCH)
+    r._panes.acquire()
+    stuck = threading.Thread(target=r.sync_pass, name="runner-sync", daemon=True)
+    stuck.start()
+    _until(lambda: (r.sync_health()["running_s"] or 0) >= 0.05)
+    r.watch()
+    r.watch()  # once per pass, not once per look
+
+    log = _log()
+    assert log.count("sync pass stuck") == 1
+    assert "--- runner-sync" in log
+    assert "in sync_pass" in log
+    body = r.hello_body()
+    assert body["sync"]["running_s"] >= 0.05
+    [stalled] = [p for p in body["machine"]["problems"] if p["kind"] == "wakes_stalled"]
+    assert stalled["handles"] == ["a"]
+
+    r._panes.release()
+    stuck.join(timeout=5)
+    assert "sync pass finished after" in _log()
+    assert r.sync_health()["running_s"] is None
+
+
+def test_mycelium_machine_reads_a_stall_from_the_runner_it_did_not_start(
+    tmp_path: Path, isolated_home: Path
+):
+    import os
+
+    path = tmp_path / "sync.json"
+    body = {"pid": os.getpid(), "at": daemon._now(), "running_s": 95.0, "stall_s": 30.0}
+    path.write_text(json.dumps(body))
+    assert daemon.read_sync(path) == body
+    path.write_text(json.dumps({**body, "at": "2020-01-01T00:00:00+00:00"}))
+    assert daemon.read_sync(path) is None  # written long ago: says nothing about now
+
+    problems = machine._problems([], [], True, None, None, "mbp", [], True, body)
+    assert [p.kind for p in problems] == ["wakes_stalled"]
+    assert "for 1 minute" in problems[0].text
+
+
+def test_a_herdr_call_that_never_answers_is_given_up_on(tmp_path: Path, isolated_home: Path):
+    open_log(tmp_path / "runner.log")
+
+    def hangs(args: list[str]) -> subprocess.CompletedProcess:
+        raise subprocess.TimeoutExpired(["herdr", *args], timeout=30)
+
+    bridge = HerdrBridge(runner=hangs, registry=HerdrRegistry(tmp_path / "herdr.json"))
+    with pytest.MonkeyPatch.context() as m:
+        m.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+        with pytest.raises(HerdrUnavailableError, match="gave no answer in 30s"):
+            bridge.list_agents()
+        assert bridge.available() is False
+    assert "herdr agent list gave no answer" in (tmp_path / "runner.log").read_text()
+    assert call_timeout(["agent", "list"]) == CALL_TIMEOUT_S
+    assert call_timeout(["agent", "prompt", "p", "hi", "--wait", "--timeout", "120000"]) == (
+        120 + CALL_TIMEOUT_S
+    )

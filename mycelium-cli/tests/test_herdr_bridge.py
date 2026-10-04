@@ -491,7 +491,7 @@ def test_reconcile_workspace_enrolls_new_and_retires_closed(
     monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
     monkeypatch.setattr(
         "mycelium.commands.agent._write_manifest",
-        lambda config, room, manifest, created_by: written.append(manifest),
+        lambda config, room, manifest, created_by, **_kw: written.append(manifest),
     )
     # Retire path loads then deletes the manifest; enroll of a new pane never loads.
     monkeypatch.setattr(
@@ -499,7 +499,7 @@ def test_reconcile_workspace_enrolls_new_and_retires_closed(
     )
     monkeypatch.setattr(
         "mycelium.commands.agent._delete_manifest",
-        lambda config, room, manifest: deleted.append(manifest.handle),
+        lambda config, room, manifest, **_kw: deleted.append(manifest.handle),
     )
 
     agents = [
@@ -560,7 +560,7 @@ def test_reconcile_keeps_a_member_whose_pane_is_open_but_empty(
     monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
     monkeypatch.setattr(
         "mycelium.commands.agent._delete_manifest",
-        lambda config, room, manifest: deleted.append(manifest.handle),
+        lambda config, room, manifest, **_kw: deleted.append(manifest.handle),
     )
     bridge = HerdrBridge(
         runner=ScriptedRunner(

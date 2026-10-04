@@ -22,7 +22,9 @@ would.
 from __future__ import annotations
 
 import json
+import logging
 import re
+import time
 
 import typer
 from rich.console import Console
@@ -41,12 +43,20 @@ from mycelium.integrations.herdr import (
     build_wake_prompt,
 )
 from mycelium.protocol import AgentManifest
+from mycelium.runner.log import failing, ms, recovered, slow
 
 app = typer.Typer(
     help="Bind mycelium handles to persistent herdr agent panes (optional wake layer).",
     no_args_is_help=True,
 )
 console = Console()
+
+#: How long one hub call in a sync pass may take, so a hub that never answers
+#: is an error in the runner's log, not a pass that never ends.
+HUB_TIMEOUT_S = 15.0
+#: Wakes delivered, and hub calls that fail or are slow, in the runner's log.
+_sync = logging.getLogger("mycelium.runner.sync")
+_hub = logging.getLogger("mycelium.runner.hub")
 
 
 def _bridge() -> HerdrBridge:
@@ -359,7 +369,7 @@ def _enroll_one(
         # under us so the member doesn't silently drop off the roster.
         if _load_manifest(room, existing.handle) is None:
             manifest = _member_manifest(existing.handle, room, agent, sender)
-            _write_manifest(config, room, manifest, created_by=sender)
+            _write_manifest(config, room, manifest, created_by=sender, timeout=HUB_TIMEOUT_S)
         return None
 
     handle = _derive_handle(
@@ -371,7 +381,7 @@ def _enroll_one(
     )
     taken.add(handle)
     manifest = _member_manifest(handle, room, agent, sender)
-    _write_manifest(config, room, manifest, created_by=sender)
+    _write_manifest(config, room, manifest, created_by=sender, timeout=HUB_TIMEOUT_S)
     bridge.registry.set(
         HerdrPaneMapping(
             room=room,
@@ -408,7 +418,7 @@ def _retire_one(config: MyceliumConfig, bridge: HerdrBridge, mapping: HerdrPaneM
 
     manifest = _load_manifest(mapping.room, mapping.handle)
     if manifest is not None:
-        _delete_manifest(config, mapping.room, manifest)
+        _delete_manifest(config, mapping.room, manifest, timeout=HUB_TIMEOUT_S)
     bridge.registry.remove(mapping.room, mapping.handle)
 
 
@@ -621,6 +631,8 @@ def _push_presence(
 
     from mycelium.client import auth_headers
 
+    what = f"hub presence for {room}"
+    started = time.monotonic()
     try:
         url = f"{config.server.api_url}/api/rooms/{room}/sessions/herdr-presence"
         resp = httpx.post(
@@ -630,8 +642,11 @@ def _push_presence(
             headers=auth_headers(config),
         )
         resp.raise_for_status()
-    except Exception:
+    except Exception as e:  # noqa: BLE001 - presence is best-effort; the next pass renews it
+        failing(_hub, what, f"{what} failed after {ms(started)}ms: {e}")
         return False
+    recovered(_hub, what)
+    slow(_hub, what, started)
     return True
 
 
@@ -666,13 +681,18 @@ def fetch_wakes(config: MyceliumConfig, room: str) -> list[dict]:
 
     from mycelium.client import auth_headers
 
+    what = f"hub wakes for {room}"
+    started = time.monotonic()
     try:
         url = f"{config.server.api_url}/api/rooms/{room}/sessions/herdr-wakes"
         resp = httpx.get(url, timeout=5.0, headers=auth_headers(config))
         resp.raise_for_status()
         wakes = resp.json().get("wakes", [])
-    except Exception:
+    except Exception as e:  # noqa: BLE001 - the queue keeps them for the next pass
+        failing(_hub, what, f"{what} failed after {ms(started)}ms: {e}")
         return []
+    recovered(_hub, what)
+    slow(_hub, what, started)
     return [w for w in wakes if isinstance(w, dict)]
 
 
@@ -697,21 +717,27 @@ def _drain_wakes(
     woke = 0
     for w in fetch_wakes(config, room):
         handle = str(w.get("handle") or "")
+        reason = w.get("reason") or "mention"
         mapping = bridge.registry.get(room, handle)
         if mapping is None:
+            _sync.warning("wake @%s (%s) in %s: no pane here is bound to it", handle, reason, room)
             continue
         prompt = wake_prompt_for(room, w)
+        line = f"wake @{handle} ({reason}) -> {mapping.pane}"
+        started = time.monotonic()
         try:
             result = bridge.wake(
                 mapping, prompt, timeout_ms=config.herdr.wake_timeout_ms, wait=wait
             )
-        except HerdrError:
+        except HerdrError as e:
+            _sync.warning("%s failed %dms: %s", line, ms(started), e)
             continue
-        reason = w.get("reason") or "mention"
         if result.ok:
             woke += 1
+            _sync.info("%s ok %dms", line, ms(started))
             out.print(f"[green]↯ woke[/green] @{handle} [dim]on {reason} → {mapping.pane}[/dim]")
         else:
+            _sync.info("%s skipped %dms: %s", line, ms(started), result.detail)
             out.print(f"[yellow]↯ skip[/yellow] @{handle} [dim]{result.detail}[/dim]")
     return woke
 
@@ -742,8 +768,10 @@ def sync_pass(
             config, bridge, ws, r, name_from=name_from, prefix=prefix, kind=kind
         )
         for h in e:
+            _sync.info("enrolled @%s (%s -> %s)", h, ws, r)
             out.print(f"[green]＋ enrolled[/green] @{h} [dim]({ws} → {r})[/dim]")
         for h in x:
+            _sync.info("retired @%s (pane closed in %s)", h, r)
             out.print(f"[yellow]－ retired[/yellow] @{h} [dim](pane closed in {r})[/dim]")
         enrolled += len(e)
         retired += len(x)

@@ -788,7 +788,15 @@ class MachineWorkspaceRead(BaseModel):
 class MachineProblemRead(BaseModel):
     """Something wrong on a machine, and the CLI command that fixes it."""
 
-    kind: Literal["stopped", "lost", "runner_down", "no_restore", "herdr_update", "herdr_down"]
+    kind: Literal[
+        "stopped",
+        "lost",
+        "runner_down",
+        "wakes_stalled",
+        "no_restore",
+        "herdr_update",
+        "herdr_down",
+    ]
     text: str
     fix: str | None = None
     handles: list[str] = Field(default_factory=list)
@@ -817,6 +825,20 @@ class MachineRestart(BaseModel):
     all: bool = False
 
 
+class RunnerSyncRead(BaseModel):
+    """How a runner's sync pass (presence up, wakes down) is doing."""
+
+    #: When the last pass finished, by the runner's clock; None before the first.
+    last_pass_at: datetime | None = None
+    last_pass_ms: int | None = None
+    #: How long the pass running now has run; None between passes. Past
+    #: ``stall_s`` the runner is stuck and delivers no wakes.
+    running_s: float | None = None
+    stall_s: float | None = None
+    #: Why the last pass failed, when it did.
+    error: str | None = None
+
+
 class RunnerHello(BaseModel):
     """What a runner says about itself when it dials in, and on every heartbeat."""
 
@@ -835,6 +857,8 @@ class RunnerHello(BaseModel):
     #: Every agent on the machine, whoever started it, and what's wrong. None
     #: from a runner from before it sent one.
     machine: MachineReportRead | None = None
+    #: How its sync pass is doing. None from a runner from before it sent one.
+    sync: RunnerSyncRead | None = None
 
 
 class RunnerRead(RunnerHello):

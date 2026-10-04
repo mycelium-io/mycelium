@@ -643,9 +643,17 @@ async def test_a_re_summon_into_a_running_thread_is_ignored():
     engine.handle_summon(ROOM, "conductor", env, summons, text)
     await asyncio.sleep(0.01)
     engine.handle_summon(ROOM, "conductor", env, summons, text)
-    await asyncio.sleep(0.5)
 
-    assert len([e for e, _x in channel.sent if e.header.kind == Kind.commit]) == 1
+    def commits() -> int:
+        return len([e for e, _x in channel.sent if e.header.kind == Kind.commit])
+
+    # Wait for the run to finish rather than a fixed time a slow runner can miss.
+    for _ in range(500):
+        if commits():
+            break
+        await asyncio.sleep(0.01)
+    await asyncio.sleep(0.1)  # time for a second run to commit, were there one
+    assert commits() == 1
 
 
 # ── legible from the outside ──────────────────────────────────────────────────

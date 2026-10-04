@@ -17,8 +17,10 @@ agent's introduction (``mycelium.commands.join``).
 
 from __future__ import annotations
 
+import logging
 import platform
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
@@ -27,10 +29,15 @@ import httpx
 from rich.console import Console
 
 from mycelium.integrations.herdr import HerdrBridge, HerdrError, HerdrPaneMapping
+from mycelium.runner.log import ms
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
     from mycelium.runner.daemon import State, Tracked
+
+
+#: Wakes delivered, in the runner's log.
+_log = logging.getLogger("mycelium.runner.sync")
 
 
 class HostError(Exception):
@@ -461,14 +468,20 @@ class OmnigentHost:
                 self._ttl_s,
             )
             for wake in fetch_wakes(config, room):
-                agent = members.get(str(wake.get("handle") or ""))
+                handle, reason = str(wake.get("handle") or ""), wake.get("reason") or "mention"
+                agent = members.get(handle)
                 if agent is None:
+                    _log.warning("wake @%s (%s) in %s: no session here is it", handle, reason, room)
                     continue
+                line = f"wake @{handle} ({reason}) -> {agent.pane}"
+                started = time.monotonic()
                 try:
                     self.wake(agent.pane, wake_prompt_for(room, wake))
                 except HostError as e:
+                    _log.warning("%s failed %dms: %s", line, ms(started), e)
                     log.print(f"[yellow]↯ skip[/yellow] @{agent.handle} [dim]{e}[/dim]")
                     continue
+                _log.info("%s ok %dms", line, ms(started))
                 log.print(
                     f"[green]↯ woke[/green] @{agent.handle} "
                     f"[dim]on {wake.get('reason') or 'mention'} → {agent.pane}[/dim]"
