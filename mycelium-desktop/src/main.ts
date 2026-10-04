@@ -33,6 +33,11 @@ interface HubSeen {
   version: string | null;
   data_path: string | null;
   dev_build: boolean;
+  port: number | null;
+  project: string | null;
+  container: string | null;
+  image: string | null;
+  pid: number | null;
 }
 
 /** A hub the app didn't start is on its port: use it, or stop it and start the app's own. */
@@ -178,14 +183,48 @@ const app = document.getElementById("app")!;
 // ── outside the app (a browser preview): a made-up machine so pages still draw ──
 
 const previewAs = new URLSearchParams(location.search).get("preview");
-const previewSetUp = previewAs === "settings" || previewAs === "client";
+const previewSetUp = previewAs === "settings" || previewAs === "client" || previewAs === "hub-question";
+// ?preview=hub-question: a leftover Docker hub on the app's port, put to the person.
+const PREVIEW_QUESTION: Status | null =
+  previewAs === "hub-question"
+    ? {
+        type: "status",
+        mode: "hub",
+        components: {
+          herdr: { state: "stopped" },
+          slim: { state: "stopped" },
+          hub: { state: "waiting", detail: "another hub is on port 8000" },
+          ui: { state: "stopped" },
+          runner: { state: "stopped" },
+        },
+        question: {
+          kind: "existing_hub",
+          hub: {
+            source: "docker",
+            owner: "Docker project `mycelium-concord-eval`, `mycelium-backend:dev`",
+            description: "",
+            version: "0.1.0",
+            data_path: "/Users/you/.mycelium-concord-eval",
+            dev_build: true,
+            port: 8000,
+            project: "mycelium-concord-eval",
+            container: "mycelium-eval-backend",
+            image: "mycelium-backend:dev",
+            pid: null,
+          },
+          same_store: false,
+          data_dir: "/Users/you/.mycelium",
+          app_version: "3.0.22",
+        },
+      }
+    : null;
 const PREVIEW: Snapshot = {
   settings: previewSetUp
     ? previewAs === "client"
       ? { mode: "client", hubUrl: "https://hub.example.com", roots: ["/Users/you/code"], shareUsage: false }
       : { mode: "hub", hubUrl: null, roots: ["/Users/you/code"], shareUsage: false }
     : null,
-  status: null,
+  status: PREVIEW_QUESTION,
   lastError: null,
   mycelium: { name: "mycelium", path: "/Applications/Mycelium.app/Contents/MacOS/mycelium", bundled: true },
   herdr: { name: "herdr", path: "/Applications/Mycelium.app/Contents/MacOS/herdr", bundled: true },
@@ -1134,39 +1173,62 @@ function olderThan(version: string | null, than: string): boolean {
  */
 function hubQuestion(q: HubQuestion, home: string, answered: (e: unknown) => void): HTMLElement {
   const h = q.hub;
-  const version = h.version
-    ? h.dev_build
-      ? `${h.version}, a development build`
-      : olderThan(h.version, q.app_version)
-        ? `${h.version}, older than this app (${q.app_version})`
-        : h.version
-    : "unknown";
+  const tag = (text: string) => el("span", { class: "tag warn" }, text);
+  const row = (label: string, ...value: (Node | string | null)[]) =>
+    el("div", { class: "facts-row" }, el("dt", {}, label), el("dd", {}, ...value));
+
+  const startedBy =
+    h.source === "docker"
+      ? h.project
+        ? `Docker, project ${h.project}`
+        : `Docker, container ${h.container ?? "unknown"}`
+      : h.source === "process"
+        ? `A process on this Mac (${h.pid})`
+        : "Something Mycelium can't identify";
+  const older = h.version && !h.dev_build && olderThan(h.version, q.app_version);
   const data = h.data_path ? tilde(h.data_path, home) : "unknown";
-  const elsewhere =
-    q.same_store === false
-      ? el(
-          "p",
-          { class: "error" },
-          `It keeps its rooms and memories in ${data}, not ${tilde(q.data_dir, home)}. Using it means working in that store, not yours.`,
-        )
-      : null;
+  const elsewhere = q.same_store === false;
+  const stops =
+    h.source === "docker" && h.project
+      ? `Starting Mycelium's own stops the Docker project ${h.project} first. Its data stays where it is.`
+      : h.source === "process"
+        ? `Starting Mycelium's own stops process ${h.pid} first. Its data stays where it is.`
+        : "Starting Mycelium's own stops it first. Its data stays where it is.";
+
   const use = el("button", { class: "button ghost", type: "button" }, "Use it");
-  const replace = el("button", { class: "button", type: "button" }, "Stop it and start Mycelium's own");
+  const replace = el("button", { class: "button", type: "button" }, "Start Mycelium's own");
   const pick = (choice: "use" | "stop") => {
     use.disabled = replace.disabled = true;
     if (inApp) void invoke("answer_existing_hub", { choice }).catch((e) => ((use.disabled = replace.disabled = false), answered(e)));
   };
   use.addEventListener("click", () => pick("use"));
   replace.addEventListener("click", () => pick("stop"));
+
   return el(
     "div",
-    { class: "note", role: "alertdialog" },
-    el("strong", {}, "Another Mycelium hub is already running on this Mac."),
-    el("div", {}, "Run by: ", el("code", {}, h.owner)),
-    el("div", {}, "Version: ", version),
-    el("div", {}, "Data: ", el("code", {}, data)),
-    elsewhere,
-    el("div", { class: "actions" }, use, replace),
+    { class: "hub-ask", role: "alertdialog", "aria-labelledby": "hub-ask-title" },
+    el("h2", { id: "hub-ask-title" }, `Another hub is already on port ${h.port ?? 8000}`),
+    el("p", { class: "hub-ask-lede" }, "Mycelium didn't start it, so it's checking with you before using it."),
+    el(
+      "dl",
+      { class: "facts" },
+      row("Started by", startedBy),
+      h.image ? row("Image", el("code", {}, h.image), h.dev_build ? tag("dev build") : null) : null,
+      row("Version", h.version ?? "unknown", older ? tag(`older than ${q.app_version}`) : null),
+      row("Data", el("code", {}, data), elsewhere ? tag("not your data folder") : null),
+    ),
+    elsewhere
+      ? el(
+          "p",
+          { class: "hub-ask-note" },
+          "If you use it, your rooms and memories are read from and saved to ",
+          el("code", {}, data),
+          ", not ",
+          el("code", {}, tilde(q.data_dir, home)),
+          ".",
+        )
+      : null,
+    el("div", { class: "hub-ask-foot" }, el("p", { class: "hint" }, stops), el("div", { class: "actions" }, use, replace)),
   );
 }
 

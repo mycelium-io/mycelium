@@ -624,7 +624,7 @@ class Supervisor:
                 "app_version": __version__,
                 "choices": ["use", "stop"],
             }
-            self._set(hub, "waiting", f"a hub the app didn't start is running: {there.describe()}")
+            self._set(hub, "waiting", f"another hub is on port {there.port or HUB_PORT}")
             choice = self._wait_for_answer()
             self.question = None
             if choice is None:
