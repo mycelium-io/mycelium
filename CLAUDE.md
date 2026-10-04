@@ -79,6 +79,20 @@ mycelium-promo/     The product demo: one shotkit take of the real app
                     per course section (`learn/takes/`, over the frontend's
                     `learn:<take>` scenario, `src/mocks/learn.ts`), into
                     `docs/learn/video/` (LFS too).
+mycelium-deck/      The slide template for talks and workshops: plain HTML on a
+                    1920x1080 stage (`index.html`, no build), the docs' palette
+                    and type, over one WebGL glass lens moving across a growing
+                    mycelial network (`lens.js`). Each slide places the lens
+                    with `data-lens`; keys, steps, overview, speaker view and
+                    timers are `deck.js`. `uv run mycelium-deck/serve.py` serves
+                    it on 127.0.0.1 with live terminals: each `data-term` pane a
+                    real shell (`term.js`, xterm.js), token-gated, and each → runs
+                    the pane's next scripted command. A `data-app` pane frames the
+                    real app (`app.js`, found at `?app=`, :8080 or :3717), its
+                    screenshot until the app answers, zooming smoothly at the
+                    pointer. D draws over any slide (`ink.js`). Scene slides show rather
+                    than tell: living diagrams moved on by the clicker
+                    (`scenes.js`). See its README.
 ```
 
 ## Development
