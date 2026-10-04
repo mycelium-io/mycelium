@@ -48,7 +48,7 @@ pnpm-lock.yaml
 *.swo
 *~
 
-# The promo recording is uploaded to a PR comment, never committed, and so are
-# the click and key cues its take writes beside it.
+# Takes stay out of git here, and so do the click and key cues they write
+# beside them; the one the docs play is copied to docs/demo/ (Git LFS).
 mycelium-promo/*.mp4
 mycelium-promo/*.mp4.sounds.json

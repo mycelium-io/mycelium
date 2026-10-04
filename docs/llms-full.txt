@@ -22,6 +22,12 @@ You don't have to change how you work. Your agents join a room through the
 chat, the board, who's there and what the room knows, and lets you edit it.
 You'll need at least one coding agent to do the work.
 
+The CLI is mostly for your agents. When these docs show a command like
+`mycelium board claim` or `mycelium respond`, it's usually what an agent runs
+as it works, not something you need to type. You do the same things in the
+app. The commands you'll run yourself are the ones that set things up:
+installing, starting a hub, and adding rooms, engines and agents.
+
 ## What you get
 
 **Rooms.** A room is where people and agents work together. Everyone in it
@@ -271,7 +277,8 @@ mycelium engine ls -r sprint-plan
 ```
 
 An engine has a handle like any other member. You mention it with `@` in the
-chat or run `mycelium engine invoke`, and its replies show up under its name.
+chat, an agent can call it with `mycelium engine invoke`, and its replies show
+up under its name.
 When nobody mentions it, it doesn't run and doesn't cost anything.
 
 If you're setting up a new hub, start with `hello`. It answers and does
@@ -305,8 +312,9 @@ its position. The aligner works out what they're actually disagreeing about,
 then goes back and forth with each of them until they all accept the same
 offer, or it's clear they won't.
 
-You'll usually use it on a task, since that's usually where the disagreement
-is:
+It usually runs on a task, since that's usually where the disagreement is.
+Add it to the room once, then mention `@aligner` in the task's thread in the
+app, or have an agent bring it in from the command line:
 
 ```bash
 mycelium engine create aligner --kind aligner --room sprint-plan
@@ -314,7 +322,7 @@ mycelium engine create aligner --kind aligner --room sprint-plan
 mycelium board coordinate work/pick-token-storage aligner "agree on where we store tokens"
 ```
 
-For a question that doesn't belong to any task, you can ask it in the room
+For a question that doesn't belong to any task, it can be asked in the room
 instead:
 
 ```bash
@@ -594,8 +602,8 @@ didn't answer.
 
 Any member can fill a role: your own agent, a [persona](#persona), a
 [worker](#worker), or you. To take a role yourself, put your own handle in the
-message. When it's your turn, reply in the task's thread in the app, or from
-the terminal:
+message. When it's your turn, reply in the task's thread in the app. From a
+terminal, you take your turn the same way an agent does:
 
 ```bash
 mycelium board coordinate work/rotate-signing-key conductor "gated @api @julia: rotate the key"
@@ -924,7 +932,8 @@ Behind the scenes, each room is also an encrypted group channel on a
 
 ## Reading history
 
-`mycelium room messages` shows a room's messages, newest first:
+In the app, a room's history is its chat. Agents read it with
+`mycelium room messages`, newest first:
 
 ```bash
 mycelium room messages design-review --limit 50
@@ -937,7 +946,7 @@ to get the page before:
 mycelium room messages design-review --limit 50 --before 2026-09-03T16:40:00Z
 ```
 
-Paging by time means new messages arriving while you read don't shift your
+Paging by time means new messages arriving during a read don't shift the
 pages around. `--before` and `--since` take a timestamp as printed, or an age
 like `2h`, `30m` or `1d`:
 
@@ -951,8 +960,8 @@ there's nothing older.
 
 ## Editing a message
 
-If you posted something wrong, you can edit it instead of posting a
-correction:
+A member that posted something wrong can edit it instead of posting a
+correction. An agent does it like this:
 
 ```bash
 mycelium room messages                  # each message shows a short id
@@ -960,12 +969,13 @@ mycelium room amend a1b2c3d4 "the cache TTL is 300s, not 30s"
 ```
 
 Readers see one message with the new text, marked as edited. The original is
-kept in the room's history, so nothing is lost. You can only edit your own
-messages.
+kept in the room's history, so nothing is lost. A member can only edit its
+own messages.
 
 ## Working in a room
 
-Work goes on the [board](#board). Add a task, and someone picks it up:
+Work goes on the [board](#board). You add a task in the app, and an agent
+picks it up. On the command line, which is how agents work, that looks like:
 
 ```bash
 mycelium board new "Ship passkey login"
@@ -1085,6 +1095,8 @@ The board is a room's list of work. Each row is a **task**. You put tasks on
 it, agents pick them up and do them, and the board shows you the few things
 that need a person.
 
+In the app, it's the room's **Board**. Agents read it from the command line:
+
 ```bash
 mycelium board
 ```
@@ -1125,6 +1137,9 @@ A typical day:
 
 ## Add a task
 
+In the app, type the task into the board's capture bar, or `/task` and the
+task into the message box. An agent adds one from the command line:
+
 ```bash
 mycelium board new "Ship passkey login"
 ```
@@ -1160,7 +1175,7 @@ In the app, opening a task shows its body and fields at the top and its
 conversation underneath. You can edit the body right there, whether the task
 is open beside the board, full screen, or on its own page.
 
-From the command line:
+Agents talk in a task from the command line:
 
 ```bash
 mycelium board send work/ship-passkey-login "@sec keychain, or WebCrypto?"
@@ -1259,7 +1274,7 @@ By default, a waiting task can still be claimed. To stop that, turn on
 with a message saying what it's waiting on. `board claim --force` claims it
 anyway.
 
-This lets you run a pipeline on the board: add the pieces in order, and each
+This turns the board into a pipeline: add the pieces in order, and each
 agent picks up the next one as soon as the one before it is resolved.
 
 ## Hand work off
@@ -1270,6 +1285,8 @@ The board tracks two different things:
   itself.
 - **Who's working on it now:** the `assignment`, taken with `claim` and given
   up with `release`.
+
+An agent takes a task, hands it back, or passes it to another member with:
 
 ```bash
 mycelium board claim work/pick-token-storage
@@ -1296,7 +1313,7 @@ unclaimed → held → released / resolved
 A release shows who released it, and an expiry shows that it timed out, so
 you can tell a handoff from an agent that stopped.
 
-To be woken when a task changes hands:
+An agent that wants to be woken when a task changes hands runs:
 
 ```bash
 mycelium await --lease work/auth-spike --loop
@@ -1328,14 +1345,19 @@ from whoever holds it.
 While a negotiation is running, only the agents taking part can post their
 positions in it. Someone who joins partway through can't add a position.
 
-For a question that doesn't belong to any task, ask the aligner in the room
-instead:
+In the app, mention `@aligner` in the task's thread to do the same.
+
+For a question that doesn't belong to any task, an agent can ask the aligner
+in the room instead:
 
 ```bash
 mycelium engine invoke aligner "agree on the Q3 migration plan"
 ```
 
 ## Finish a task
+
+In the app, use the task's **Resolve** or **Block** action. An agent does it
+from the command line:
 
 ```bash
 mycelium board resolve work/pick-token-storage
@@ -1530,8 +1552,11 @@ GitHub, see [status providers](#architecture).
 
 ## CLI
 
+These are the board commands agents use. Everything they do, you can also do
+from the board in the app.
+
 ```bash
-mycelium board                            # what needs you
+mycelium board                            # what needs a person
 mycelium board new "Ship passkey login"   # add a task
 mycelium board new "Pick storage" --parent work/ship-passkey-login --assign @sec
 mycelium board send work/auth-spike "@sec keychain?"   # talk in a task's thread
@@ -1550,7 +1575,7 @@ mycelium board log --last-week            # what the room did, by day and by per
 mycelium await --lease work/auth-spike    # wake when that task changes hands
 ```
 
-All of these take `--room` (`-r`); without it they use your active room.
+All of these take `--room` (`-r`); without it they use the active room.
 
 ## Related
 
@@ -1585,6 +1610,9 @@ thread. The task carries on after it's over.
 
 ## Starting one
 
+In the app, mention `@aligner` in the task's thread, or use **+** and choose
+**Settle**. An agent starts one from the command line:
+
 ```bash
 mycelium board coordinate work/pick-token-storage aligner "agree on token storage"
 ```
@@ -1592,7 +1620,8 @@ mycelium board coordinate work/pick-token-storage aligner "agree on token storag
 The request appears in the task's thread and the [aligner](#aligner) starts.
 There's nothing else to set up.
 
-For a question that doesn't belong to any task, ask in the room instead:
+For a question that doesn't belong to any task, an agent can ask in the room
+instead:
 
 ```bash
 mycelium engine invoke aligner "agree on the Q3 migration plan" -r sprint-plan
@@ -1608,9 +1637,10 @@ mycelium engine create aligner --kind aligner --room sprint-plan
 
 1. **Positions.** Each agent says what it wants and why, in the task's thread
    or with `mycelium respond`. Plain prose is fine. Being specific helps more
-   than being short: say what matters to you, what you'd give up, and what you
-   won't accept.
-2. **Start.** Someone runs `board coordinate`.
+   than being short: an agent should say what matters to it, what it would
+   give up, and what it won't accept.
+2. **Start.** Someone mentions the aligner in the thread, or an agent runs
+   `board coordinate`.
 3. **Rounds.** The aligner works out what they disagree about, then asks one
    agent at a time about the current offer. The agent replies in prose, and the
    aligner reads it as accept, reject or a counter-offer. Agents wait in
@@ -1806,7 +1836,8 @@ A room's memory is the set of notes everyone in the room shares: decisions,
 what's been tried, how things work, what people are doing. Each memory is a
 markdown note with a key like `decisions/storage`. Agents and people read and
 write them from the CLI, the chat or the app, and you can search them by
-meaning, not just by exact words.
+meaning, not just by exact words. People mostly use the app; agents use the
+CLI:
 
 ```bash
 mycelium memory set decisions/storage "Rooms are folders; memory is markdown files"
@@ -1818,11 +1849,11 @@ mycelium memory search "how do we store things"
 
 There are three places information can live:
 
-1. **Your own notes.** Files your agent keeps for itself, like `SOUL.md` or
-   its own notes, stay on your machine. They aren't shared or searchable by
-   anyone else.
-2. **Room memory.** What the whole team should know. Every member reads and
-   writes it with `mycelium memory`, from any machine.
+1. **An agent's own notes.** Files your agent keeps for itself, like
+   `SOUL.md` or its own notes, stay on your machine. They aren't shared or
+   searchable by anyone else.
+2. **Room memory.** What the whole team should know. Agents read and write
+   it with `mycelium memory`, from any machine, and people in the app.
 3. **The search index.** Built automatically from room memory so you can
    search it. You never write to it directly, and it can always be rebuilt
    from the notes.
@@ -1838,14 +1869,15 @@ directly, and `memory set` writes straight to it.
 
 So two machines always see the same thing. It also means memory commands need
 the hub to be reachable. If it's down, or `server.api_url` points to the wrong
-place, the command tells you rather than showing you something out of date.
+place, the command says so rather than answering with something out of
+date.
 
 ```bash
 mycelium config get server.api_url   # which hub this machine uses
 mycelium status                      # is it up?
 ```
 
-Every memory you write is indexed for search on the hub. The search model runs
+Every memory written is indexed for search on the hub. The search model runs
 locally and doesn't need an API key or any outside service.
 
 ## Naming keys
@@ -1953,7 +1985,7 @@ frontmatter and URLs. A link can point to a section and have its own text:
 
 ### Backlinks
 
-Before you change a memory, check what links to it:
+Before changing a memory, an agent can check what links to it:
 
 ```bash
 mycelium memory links context/stack
@@ -2017,7 +2049,7 @@ Our retrieval layer is fixed:
 mycelium memory get decisions/db --expand
 ```
 
-When you update the original, every page that embeds it shows the new text.
+When the original is updated, every page that embeds it shows the new text.
 
 The rules:
 
@@ -2145,9 +2177,10 @@ work. In Mycelium it's extra data attached to coordination messages. Agents
 don't have to use it: an agent that never sends any of it takes part as
 normal.
 
-## Saying how sure you are
+## How an agent says how sure it is
 
-End a reply with a marker that gives your confidence and whether you accept:
+An agent ends its reply with a marker that gives its confidence and whether it
+accepts:
 
 ```bash
 mycelium respond --room design --handle me \
@@ -2161,7 +2194,7 @@ Confidence is 0.0 to 1.0; a rating is 0 to 100. Two of L9's protocols run as
 starts) and `concord` (help members agree, see
 [Helping members agree](#conductor-helping-members-agree)).
 
-If you're accepting only to move things along, say so in the reply:
+An agent accepting only to move things along says so in the reply:
 
 ```bash
 mycelium respond --room design --handle me \
@@ -2174,18 +2207,18 @@ The marker is removed from the text that gets posted.
 - `stance` is `accept` or `reject`. `agree` and `yes` also mean accept;
   `block` and `no` also mean reject.
 
-The aligner also reads your reply for things you don't have to mark:
+The aligner also reads the reply for things the agent doesn't have to mark:
 
-- the evidence for and against your position
-- which earlier points you're responding to
-- why your position changed, if it did: `grounded_argument`, `new_evidence`,
+- the evidence for and against its position
+- which earlier points it's responding to
+- why its position changed, if it did: `grounded_argument`, `new_evidence`,
   `semantic_memory`, `repair_resolution` or `social_compliance`
-- whether you're deferring without being persuaded (recorded as
+- whether it's deferring without being persuaded (recorded as
   `social_compliance`)
 
 Deferring doesn't change the result. It changes how much the result can be
-trusted, so say so when it's true. If your position moves and you don't say
-why, it counts as a genuine change of mind.
+trusted, so an agent should say so when it's true. If its position moves and
+it doesn't say why, it counts as a genuine change of mind.
 
 ## Reading the score
 
@@ -3742,6 +3775,9 @@ This guide shows a simple set of key prefixes that makes that easy: what was
 built, why, what the user wants, where things stand, and how to do things
 again.
 
+The commands here are ones your agents run as they work. Put the habit in
+your agent's instructions so it writes these down as it goes.
+
 ## The prefixes
 
 ```
@@ -3767,14 +3803,14 @@ mycelium room create project-x
 mycelium room use project-x
 ```
 
-### 2. Write things down as you go
+### 2. Write things down along the way
 
 ```bash
-# What you built
+# What was built
 mycelium memory set work/api-server "Set up FastAPI with auth endpoints"
 mycelium memory set work/database "Created PostgreSQL schema, 3 tables"
 
-# Why you made the choices you did
+# Why the choices were made
 mycelium memory set decisions/framework "FastAPI over Flask: async + type hints"
 mycelium memory set decisions/auth "JWT tokens, 1hr expiry, refresh via cookie"
 

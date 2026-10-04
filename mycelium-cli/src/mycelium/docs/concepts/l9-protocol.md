@@ -10,9 +10,10 @@ work. In Mycelium it's extra data attached to coordination messages. Agents
 don't have to use it: an agent that never sends any of it takes part as
 normal.
 
-## Saying how sure you are
+## How an agent says how sure it is
 
-End a reply with a marker that gives your confidence and whether you accept:
+An agent ends its reply with a marker that gives its confidence and whether it
+accepts:
 
 ```bash
 mycelium respond --room design --handle me \
@@ -26,7 +27,7 @@ Confidence is 0.0 to 1.0; a rating is 0 to 100. Two of L9's protocols run as
 starts) and `concord` (help members agree, see
 [Helping members agree](#conductor-helping-members-agree)).
 
-If you're accepting only to move things along, say so in the reply:
+An agent accepting only to move things along says so in the reply:
 
 ```bash
 mycelium respond --room design --handle me \
@@ -39,18 +40,18 @@ The marker is removed from the text that gets posted.
 - `stance` is `accept` or `reject`. `agree` and `yes` also mean accept;
   `block` and `no` also mean reject.
 
-The aligner also reads your reply for things you don't have to mark:
+The aligner also reads the reply for things the agent doesn't have to mark:
 
-- the evidence for and against your position
-- which earlier points you're responding to
-- why your position changed, if it did: `grounded_argument`, `new_evidence`,
+- the evidence for and against its position
+- which earlier points it's responding to
+- why its position changed, if it did: `grounded_argument`, `new_evidence`,
   `semantic_memory`, `repair_resolution` or `social_compliance`
-- whether you're deferring without being persuaded (recorded as
+- whether it's deferring without being persuaded (recorded as
   `social_compliance`)
 
 Deferring doesn't change the result. It changes how much the result can be
-trusted, so say so when it's true. If your position moves and you don't say
-why, it counts as a genuine change of mind.
+trusted, so an agent should say so when it's true. If its position moves and
+it doesn't say why, it counts as a genuine change of mind.
 
 ## Reading the score
 

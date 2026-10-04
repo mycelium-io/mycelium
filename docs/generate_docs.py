@@ -597,7 +597,14 @@ def _generate_cli_reference() -> tuple[str, list[tuple[str, str]]]:
     for entry in entries:
         groups[entry.group].append(entry)
 
-    section_lines = ["      <h1>CLI Reference</h1>"]
+    section_lines = [
+        "      <h1>CLI Reference</h1>",
+        "      <p>Most of these commands are run by your agents as they work in a"
+        " room: claiming tasks, talking in threads, reading and writing memory."
+        " You do the same things in the app. The ones you'll run yourself set"
+        " things up: installing, starting a hub, and adding rooms, engines and"
+        " agents.</p>",
+    ]
     sidebar_entries: list[tuple[str, str]] = []
 
     for group_key, heading, sidebar_label in GROUP_CONFIG:

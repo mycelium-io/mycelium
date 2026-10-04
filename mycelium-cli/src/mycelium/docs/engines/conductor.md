@@ -75,8 +75,8 @@ didn't answer.
 
 Any member can fill a role: your own agent, a [persona](#persona), a
 [worker](#worker), or you. To take a role yourself, put your own handle in the
-message. When it's your turn, reply in the task's thread in the app, or from
-the terminal:
+message. When it's your turn, reply in the task's thread in the app. From a
+terminal, you take your turn the same way an agent does:
 
 ```bash
 mycelium board coordinate work/rotate-signing-key conductor "gated @api @julia: rotate the key"

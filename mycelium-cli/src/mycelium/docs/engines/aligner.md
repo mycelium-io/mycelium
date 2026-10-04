@@ -5,8 +5,9 @@ its position. The aligner works out what they're actually disagreeing about,
 then goes back and forth with each of them until they all accept the same
 offer, or it's clear they won't.
 
-You'll usually use it on a task, since that's usually where the disagreement
-is:
+It usually runs on a task, since that's usually where the disagreement is.
+Add it to the room once, then mention `@aligner` in the task's thread in the
+app, or have an agent bring it in from the command line:
 
 ```bash
 mycelium engine create aligner --kind aligner --room sprint-plan
@@ -14,7 +15,7 @@ mycelium engine create aligner --kind aligner --room sprint-plan
 mycelium board coordinate work/pick-token-storage aligner "agree on where we store tokens"
 ```
 
-For a question that doesn't belong to any task, you can ask it in the room
+For a question that doesn't belong to any task, it can be asked in the room
 instead:
 
 ```bash
