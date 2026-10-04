@@ -4,8 +4,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AtSign, Check, FileText, Plus, UserPlus, Users } from "lucide-react";
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { AtSign, Check, FileText, Plus, UserMinus, UserPlus, Users } from "lucide-react";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { copyText } from "@/lib/clipboard";
 import { inviteLink } from "@/lib/desktop";
 import { type PresenceMember, type RoomFloor } from "@/lib/api";
@@ -13,6 +19,7 @@ import { floorLabel } from "@/lib/floors";
 import { useRoomRoster } from "@/lib/room-data";
 import { runnerName, useRunners } from "@/lib/runners";
 import { AddMemberDialog, type MemberKind } from "@/components/add-member-dialog";
+import { UnregisterAgentDialog, type UnregisterTarget } from "@/components/unregister-agent-dialog";
 import { Button } from "@/components/ui/button";
 import { Monogram } from "@/components/ui/monogram";
 import { HerdrRam } from "@/components/ui/herdr-ram";
@@ -44,11 +51,14 @@ function MemberMenu({
   handle,
   agent,
   onOpenMemory,
+  onUnregister,
   children,
 }: {
   handle: string;
   agent: boolean;
   onOpenMemory?: (key: string) => void;
+  /** Agents only: opens the confirmation for `agent rm`. */
+  onUnregister?: () => void;
   children: React.ReactNode;
 }) {
   return (
@@ -65,6 +75,14 @@ function MemberMenu({
         <ContextMenuItem icon={AtSign} onClick={() => void copyText(`@${handle}`)}>
           Copy @{handle}
         </ContextMenuItem>
+        {agent && onUnregister && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem icon={UserMinus} destructive onClick={onUnregister}>
+              Unregister…
+            </ContextMenuItem>
+          </>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -208,6 +226,7 @@ export function AgentsPanel({
 }: Props) {
   const [addOpen, setAddOpen] = useState(false);
   const [addKind, setAddKind] = useState<MemberKind>("machine");
+  const [unregistering, setUnregistering] = useState<UnregisterTarget | null>(null);
 
   // Who's here, shared with the composer's `@` popover: agents from the room's
   // manifests, people from agent owners ∪ posters ∪ live presence ∪ you, and a
@@ -304,6 +323,12 @@ export function AgentsPanel({
           initialKind={addKind}
           onAdded={refresh}
         />
+        <UnregisterAgentDialog
+          roomName={roomName}
+          target={unregistering}
+          onClose={() => setUnregistering(null)}
+          onUnregistered={refresh}
+        />
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -366,18 +391,29 @@ export function AgentsPanel({
               </SectionLabel>
               {group.agents.map((a) => {
                   const marked = highlight === a.handle;
+                  // Named only on your own machines: another person's
+                  // computer isn't listed here, even by its id.
+                  const machine =
+                    a.runner && runnersById.has(a.runner)
+                      ? runnerName(runnersById.get(a.runner), a.runner)
+                      : null;
                   return (
-                    <MemberMenu key={`agent-${a.handle}`} handle={a.handle} agent onOpenMemory={onOpenMemory}>
+                    <MemberMenu
+                      key={`agent-${a.handle}`}
+                      handle={a.handle}
+                      agent
+                      onOpenMemory={onOpenMemory}
+                      onUnregister={() =>
+                        setUnregistering({
+                          handle: a.handle,
+                          runner: a.runner && machine ? { id: a.runner, name: machine } : null,
+                        })
+                      }
+                    >
                     <AgentRow
                       agent={a}
                       groupOwner={groupOwner}
-                      // Named only on your own machines: another person's
-                      // computer isn't listed here, even by its id.
-                      machine={
-                        a.runner && runnersById.has(a.runner)
-                          ? runnerName(runnersById.get(a.runner), a.runner)
-                          : null
-                      }
+                      machine={machine}
                       memberPresence={presence.get(a.handle.toLowerCase())}
                       floor={floors.get(a.handle.toLowerCase())}
                       marked={marked}

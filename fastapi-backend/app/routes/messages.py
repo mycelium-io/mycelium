@@ -21,13 +21,26 @@ from app.schemas import (
     PROSE_MESSAGE_TYPES,
     STATEFUL_EVENT_KINDS,
     EventStatusUpdate,
+    FacetBucket,
     MessageAmend,
     MessageCreate,
     MessageListResponse,
     MessageRead,
+    MessageSearchHit,
+    MessageSearchResponse,
+    MessageSearchScope,
     MessageType,
 )
-from app.services import actor, in_memory_store, l9, persister, principals, room_channels, tasks
+from app.services import (
+    actor,
+    in_memory_store,
+    l9,
+    message_search,
+    persister,
+    principals,
+    room_channels,
+    tasks,
+)
 from app.services.filesystem import room_exists
 
 logger = logging.getLogger(__name__)
@@ -261,6 +274,70 @@ async def list_messages(
     return MessageListResponse(
         messages=[MessageRead.model_validate(m) for m in page],
         total=total,
+    )
+
+
+@router.get("/search", response_model=MessageSearchResponse)
+async def search_messages(
+    room_name: str,
+    q: str = Query(
+        "",
+        description=(
+            'Words, "phrases" and field:value clauses (from: to: mentions: task: in: type: '
+            "kind: status: stance: step: is: has: day: thread:), time bounds (after: before: "
+            "on:, an ISO date or an age like 2h) and sort:newest|oldest|relevance. "
+            "-word and -field:value exclude; @handle is from:handle."
+        ),
+    ),
+    limit: int = Query(20, ge=1, le=200),
+    cursor: str | None = Query(None, description="The previous page's next_cursor"),
+    context: int = Query(
+        0, ge=0, le=5, description="Messages to include either side of each hit, same thread"
+    ),
+) -> MessageSearchResponse:
+    """Search every message in a room, by any field, with counts per field value.
+
+    The whole history, not a page of it: the counts in ``facets`` say how many
+    messages each value would leave, so a caller can narrow one step at a time.
+    An empty query matches everything, newest first, which makes the facets a
+    summary of the room.
+    """
+    channel, coord = _resolve_channel(room_name)
+    result = message_search.search(
+        channel,
+        _read_messages(channel, coord),
+        q,
+        limit=limit,
+        cursor=cursor,
+        context=context,
+    )
+    return MessageSearchResponse(
+        query=q,
+        scope=MessageSearchScope.model_validate(message_search.scope_of(result.query)),
+        hits=[
+            MessageSearchHit(
+                message=MessageRead.model_validate(hit.doc.message),
+                snippet=hit.snippet,
+                score=hit.score,
+                task_key=hit.doc.task,
+                task_title=result.task_titles.get(hit.doc.task) if hit.doc.task else None,
+                thread=hit.doc.thread,
+                recipients=sorted(set(hit.doc.side.recipients) - {hit.doc.message.sender_handle}),
+                mentions=list(hit.doc.mentions),
+                stance=hit.doc.side.stance,
+                context_before=[MessageRead.model_validate(m) for m in hit.before],
+                context_after=[MessageRead.model_validate(m) for m in hit.after],
+            )
+            for hit in result.hits
+        ],
+        total=result.total,
+        scanned=result.scanned,
+        facets={
+            name: [FacetBucket(value=b.value, label=b.label, count=b.count) for b in buckets]
+            for name, buckets in result.facets.items()
+        },
+        fields=list(message_search.FIELDS),
+        next_cursor=result.next_cursor,
     )
 
 

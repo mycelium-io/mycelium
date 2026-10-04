@@ -896,6 +896,105 @@
         }
       }
     },
+    "/api/rooms/{room_name}/messages/search": {
+      "get": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Search Messages",
+        "description": "Search every message in a room, by any field, with counts per field value.\n\nThe whole history, not a page of it: the counts in ``facets`` say how many\nmessages each value would leave, so a caller can narrow one step at a time.\nAn empty query matches everything, newest first, which makes the facets a\nsummary of the room.",
+        "operationId": "search_messages_api_rooms__room_name__messages_search_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Words, \"phrases\" and field:value clauses (from: to: mentions: task: in: type: kind: status: stance: step: is: has: day: thread:), time bounds (after: before: on:, an ISO date or an age like 2h) and sort:newest|oldest|relevance. -word and -field:value exclude; @handle is from:handle.",
+              "default": "",
+              "title": "Q"
+            },
+            "description": "Words, \"phrases\" and field:value clauses (from: to: mentions: task: in: type: kind: status: stance: step: is: has: day: thread:), time bounds (after: before: on:, an ISO date or an age like 2h) and sort:newest|oldest|relevance. -word and -field:value exclude; @handle is from:handle."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The previous page's next_cursor",
+              "title": "Cursor"
+            },
+            "description": "The previous page's next_cursor"
+          },
+          {
+            "name": "context",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 5,
+              "minimum": 0,
+              "description": "Messages to include either side of each hit, same thread",
+              "default": 0,
+              "title": "Context"
+            },
+            "description": "Messages to include either side of each hit, same thread"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageSearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/messages/l9": {
       "get": {
         "tags": [
@@ -6004,6 +6103,30 @@
         "title": "EventStatusUpdate",
         "description": "Body for PATCH /rooms/{name}/messages/{id} \u2014 transition an event's status."
       },
+      "FacetBucket": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "What to show for the value (a task's title for its key)"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "label",
+          "count"
+        ],
+        "title": "FacetBucket"
+      },
       "FrameworkRead": {
         "properties": {
           "id": {
@@ -7502,6 +7625,255 @@
           "created_at"
         ],
         "title": "MessageRead"
+      },
+      "MessageSearchClause": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "negate": {
+            "type": "boolean",
+            "title": "Negate",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "value"
+        ],
+        "title": "MessageSearchClause",
+        "description": "One ``field:value`` the search narrowed by, as the server read it."
+      },
+      "MessageSearchHit": {
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/MessageRead"
+          },
+          "snippet": {
+            "type": "string",
+            "title": "Snippet",
+            "description": "A one-line window of the text around the first match"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score",
+            "default": 0.0
+          },
+          "task_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Key",
+            "description": "The board row whose thread it was said in"
+          },
+          "task_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Title"
+          },
+          "thread": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread",
+            "description": "The thread's episode URN; null when said in the room"
+          },
+          "recipients": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recipients"
+          },
+          "mentions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Mentions"
+          },
+          "stance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stance"
+          },
+          "context_before": {
+            "items": {
+              "$ref": "#/components/schemas/MessageRead"
+            },
+            "type": "array",
+            "title": "Context Before"
+          },
+          "context_after": {
+            "items": {
+              "$ref": "#/components/schemas/MessageRead"
+            },
+            "type": "array",
+            "title": "Context After"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "snippet"
+        ],
+        "title": "MessageSearchHit"
+      },
+      "MessageSearchResponse": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/MessageSearchScope"
+          },
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/MessageSearchHit"
+            },
+            "type": "array",
+            "title": "Hits"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Every message the query matched, before paging"
+          },
+          "scanned": {
+            "type": "integer",
+            "title": "Scanned",
+            "description": "Messages the search read"
+          },
+          "facets": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/FacetBucket"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Facets",
+            "description": "Counts per field value. A field's counts ignore that field's own clauses, so its other values stay visible as alternatives"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fields",
+            "description": "Every field the grammar accepts"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor",
+            "description": "Pass as `cursor` to read the next page"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query",
+          "scope",
+          "total",
+          "scanned"
+        ],
+        "title": "MessageSearchResponse"
+      },
+      "MessageSearchScope": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "default": ""
+          },
+          "clauses": {
+            "items": {
+              "$ref": "#/components/schemas/MessageSearchClause"
+            },
+            "type": "array",
+            "title": "Clauses"
+          },
+          "after": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "newest",
+              "oldest",
+              "relevance"
+            ],
+            "title": "Sort",
+            "default": "newest"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Problems",
+            "description": "Tokens that looked like a field or a time but could not be read, as typed"
+          }
+        },
+        "type": "object",
+        "title": "MessageSearchScope",
+        "description": "The interpretation a message search ran under, echoed so a client draws\nits chips from the same parse the server used."
       },
       "NotesDraftRead": {
         "properties": {

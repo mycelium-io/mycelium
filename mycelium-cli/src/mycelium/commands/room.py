@@ -1071,6 +1071,128 @@ def messages(
 
 
 @doc_ref(
+    usage='mycelium room search ["<query>"] [--from <handle>] [--task <row>] [--since <when>] [--before <when>] [--in channel|thread] [--sort newest|oldest|relevance] [--facets] [--context N]',
+    desc=(
+        'Search every message in a room by any field: words, <code>"phrases"</code>, '
+        "<code>from:</code> <code>to:</code> <code>mentions:</code> <code>task:</code> "
+        "<code>in:</code> <code>stance:</code> <code>has:</code> <code>is:</code> "
+        "<code>type:</code> <code>kind:</code> <code>step:</code> <code>day:</code>, time bounds "
+        "(<code>after:2h</code>, <code>on:2026-09-03</code>) and <code>-</code> to exclude. "
+        "Prints counts per field to narrow by; <code>--facets</code> prints only those."
+    ),
+    group="room",
+)
+@app.command("search")
+@in_room("room")
+@paged()
+@emits_json()
+def search(  # noqa: PLR0913 — one flag per field an agent narrows by
+    ctx: typer.Context,
+    words: list[str] | None = typer.Argument(
+        None, help='The query: words, "phrases" and field:value clauses (see below)'
+    ),
+    room: str | None = None,
+    limit: int = 20,
+    sender: list[str] | None = typer.Option(None, "--from", "-s", help="Said by this handle"),
+    to: list[str] | None = typer.Option(None, "--to", help="Addressed to this handle"),
+    mentions: list[str] | None = typer.Option(None, "--mentions", help="@-mentions this handle"),
+    task: list[str] | None = typer.Option(
+        None, "--task", help="Said in this task's thread (its key, or words from its title)"
+    ),
+    where: str | None = typer.Option(None, "--in", help="channel (the room) or thread (a task's)"),
+    message_type: list[str] | None = typer.Option(None, "--type", "-t", help="Message type"),
+    stance: str | None = typer.Option(None, "--stance", help="accept or reject"),
+    has: list[str] | None = typer.Option(
+        None, "--has", help="mention, link, memory, code or scores"
+    ),
+    since: str | None = typer.Option(
+        None, "--since", "--after", help="At/after this ISO stamp, date or age (2h, 3d)"
+    ),
+    before: str | None = typer.Option(
+        None, "--before", "-b", help="Before this ISO stamp, date or age (2h, 3d)"
+    ),
+    on: str | None = typer.Option(None, "--on", help="On this UTC day (2026-09-03, today)"),
+    sort: str | None = typer.Option(None, "--sort", help="newest (default), oldest or relevance"),
+    context: int = typer.Option(
+        0, "--context", "-C", min=0, max=5, help="Messages either side of each hit, same thread"
+    ),
+    cursor: str | None = typer.Option(
+        None, "--cursor", help="Read the next page: the cursor the last page printed"
+    ),
+    facets_only: bool = typer.Option(
+        False, "--facets", help="Only the counts per field: how big each narrowing would be"
+    ),
+) -> None:
+    """
+    Search every message in a room, by any field, with counts to narrow by.
+
+    The whole history, not the latest page. The query is one line: words must
+    all appear, "quoted phrases" must appear as written, -word must not, and
+    field:value clauses narrow (the same field twice is either; different
+    fields are both; -field:value excludes):
+
+      from:<handle>  to:<handle>  mentions:<handle>  task:<key or title words>
+      in:channel|thread  stance:accept|reject  has:mention|link|memory|code|scores
+      is:edited|conductor  type:<type>  kind:<kind>  status:<status>
+      step:<conductor step>  day:<date>  thread:<episode>
+      after:<when>  before:<when>  on:<day>  sort:newest|oldest|relevance
+
+    @handle is from:handle. A time is an ISO date or stamp, an age (30m, 2h,
+    3d, 1w), today or yesterday. Every flag below is the same clause spelled
+    as a flag, so both forms mix.
+
+    Under the hits, "narrow by" counts each field's values among the matches
+    (a field's own choice left out, so the alternatives stay visible). Use
+    --facets to see only those: the cheap first look before reading messages.
+
+    Examples:
+        mycelium room search "apple pay"
+        mycelium room search "from:avery after:2d" --sort oldest
+        mycelium room search refund --task checkout --stance reject
+        mycelium room search "@builder -in:thread has:link"
+        mycelium room search --facets --since 1w
+        mycelium room search '"ready for review"' --context 2 --json
+    """
+    from mycelium import message_search
+
+    try:
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+        config = MyceliumConfig.load()
+        flags: dict[str, list[str]] = {
+            "from": [h.lstrip("@") for h in sender or []],
+            "to": [h.lstrip("@") for h in to or []],
+            "mentions": [h.lstrip("@") for h in mentions or []],
+            "task": list(task or []),
+            "in": [where] if where else [],
+            "type": list(message_type or []),
+            "stance": [stance] if stance else [],
+            "has": list(has or []),
+            "after": [since] if since else [],
+            "before": [before] if before else [],
+            "on": [on] if on else [],
+            "sort": [sort] if sort else [],
+        }
+        if sort and sort not in ("newest", "oldest", "relevance"):
+            raise typer.BadParameter(f"--sort is newest, oldest or relevance, not {sort!r}")
+        query = message_search.build_query(list(words or []), flags)
+        message_search.run(
+            config,
+            str(room),
+            query,
+            limit=limit,
+            cursor=cursor,
+            context=context,
+            facets_only=facets_only,
+            json_output=json_output,
+        )
+    except (typer.Exit, typer.Abort, typer.BadParameter):
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+@doc_ref(
     usage="mycelium room delegate <room> --to <handle> --task <description>",
     desc="Delegate a task to another agent in a room.",
     group="room",
