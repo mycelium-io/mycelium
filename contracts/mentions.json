@@ -1,0 +1,33 @@
+{
+  "_comment": [
+    "Frozen contract for @-mentions in message text. Two forms:",
+    "",
+    "  @handle   a mention: the handle is an L9 recipient, its herdr doorbell",
+    "            rings once it is idle, and an engine handle is summoned.",
+    "  @~handle  a silent mention: it names the handle (drawn as a member, found",
+    "            by mentions:handle) and never wakes, addresses or summons it.",
+    "",
+    "A token counts only at the start of the text or after whitespace, ( or <,",
+    "so an email address is neither. The backend (fastapi-backend/app/services/",
+    "persister.py: parse_mentions, parse_silent_mentions) and the frontend",
+    "(mycelium-frontend/src/lib/mentions.ts) each parse it; both assert every",
+    "case below: fastapi-backend/tests/test_mentions_contract.py and",
+    "mycelium-frontend/src/lib/mentions.contract.test.ts."
+  ],
+  "version": 1,
+  "sigils": {
+    "mention": "@",
+    "silent": "@~"
+  },
+  "cases": [
+    { "text": "@alice @bob do the thing", "mentions": ["alice", "bob"], "silent": [] },
+    { "text": "@alice please review, cc @~bob", "mentions": ["alice"], "silent": ["bob"] },
+    { "text": "@~bob only", "mentions": [], "silent": ["bob"] },
+    { "text": "(@~bob) and <@alice>", "mentions": ["alice"], "silent": ["bob"] },
+    { "text": "@a hi @b then @a again @~c @~c", "mentions": ["a", "b"], "silent": ["c"] },
+    { "text": "@~bob and @bob", "mentions": ["bob"], "silent": ["bob"] },
+    { "text": "mail bob@host.example or x@~bob", "mentions": [], "silent": [] },
+    { "text": "@~ alone and @~-x", "mentions": [], "silent": [] },
+    { "text": "@release-agent then @~build_bot", "mentions": ["release-agent"], "silent": ["build_bot"] }
+  ]
+}

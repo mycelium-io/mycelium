@@ -29,6 +29,11 @@ describe("classify", () => {
     expect(n).toMatchObject({ kind: "message", needsMe: false });
   });
 
+  it("lets a silent @~mention of you pass without ringing", () => {
+    const n = classify(l9Exchange("@carol please check, cc @~bob"), "bob");
+    expect(n).toMatchObject({ kind: "message", needsMe: false });
+  });
+
   it("ignores your own post", () => {
     const n = classify(l9Exchange("just thinking out loud"), "alice");
     expect(n).toBeNull();

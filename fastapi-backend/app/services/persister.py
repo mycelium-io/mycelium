@@ -78,7 +78,10 @@ TRANSCRIPT_FILENAME = "log/transcript.jsonl"
 
 # An ``@``-summon token: ``@`` followed by a handle (letter/digit start, then
 # word chars or hyphens). Guarded so it doesn't fire mid-word (e.g. an email).
+# ``@~handle`` is a silent mention (``contracts/mentions.json``): the ``~`` keeps
+# it out of this pattern, so it never wakes, addresses or summons anyone.
 _SUMMON_RE = re.compile(r"(?:^|(?<=[\s(<]))@([A-Za-z0-9][\w-]*)")
+_SILENT_RE = re.compile(r"(?:^|(?<=[\s(<]))@~([A-Za-z0-9][\w-]*)")
 
 
 # ── Envelope helpers ─────────────────────────────────────────────────────────
@@ -144,6 +147,20 @@ def parse_mentions(text: str) -> list[str]:
     """
     seen: dict[str, None] = {}
     for match in _SUMMON_RE.findall(text):
+        seen.setdefault(match, None)
+    return list(seen)
+
+
+def parse_silent_mentions(text: str) -> list[str]:
+    """Handles named with a silent ``@~handle`` in one plain-text string.
+
+    A silent mention refers to a member without asking anything of it: it is
+    searchable as ``mentions:`` and drawn as a member, but it is no L9 recipient,
+    rings no doorbell and summons no engine. Same boundary rule and order as
+    :func:`parse_mentions`.
+    """
+    seen: dict[str, None] = {}
+    for match in _SILENT_RE.findall(text):
         seen.setdefault(match, None)
     return list(seen)
 

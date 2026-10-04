@@ -90,6 +90,17 @@ describe("<MarkdownContent /> memory links", () => {
     expect(screen.getByText("work/api")).toBeInTheDocument();
   });
 
+  it("draws a silent @~mention apart from one that asks", () => {
+    render(<MarkdownContent>{"@alice please check, cc @~bob and @~carol"}</MarkdownContent>);
+
+    expect(screen.getByText("@alice")).toHaveClass("text-accent");
+    const bob = screen.getByText("@~bob");
+    expect(bob).toHaveClass("text-muted-foreground");
+    expect(bob).toHaveAttribute("aria-description", "Mentioned silently, not notified");
+    expect(screen.getByText("@~carol")).toBeInTheDocument();
+    expect(document.querySelector("del")).toBeNull();
+  });
+
   it("makes a markdown link with a myc:// href navigable", async () => {
     const onLinkClick = vi.fn();
     render(
