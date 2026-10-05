@@ -159,6 +159,20 @@ def test_a_hub_the_app_did_not_start_is_used_and_reported_never_stopped():
     assert any(e["type"] == "warning" and "development build" in e["message"] for e in events.all)
 
 
+def test_the_app_starts_no_second_runner_beside_one_from_a_terminal(isolated_home: Path):
+    import os
+
+    from mycelium.runner.daemon import runner_dir
+
+    (runner_dir() / "runner.pid").write_text(f"{os.getppid()}\n")  # another process, alive
+    events = Events()
+    sup = Supervisor("client", hub_url="https://hub.example.com", emit=events, env={})
+    sup._start_runner()
+    assert sup.runner is None
+    assert sup.runner_state == "stopped"
+    assert str(os.getppid()) in (sup.runner_detail or "")
+
+
 def test_the_runner_trusts_only_a_hub_the_app_started():
     # A hub the app started listens on 127.0.0.1 alone, so a launch from it
     # needs no question. One that was already there (Docker publishes to the

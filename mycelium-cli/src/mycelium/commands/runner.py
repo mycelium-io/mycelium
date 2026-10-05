@@ -36,12 +36,6 @@ app = typer.Typer(
 console = Console()
 
 
-def _pid_path() -> Path:
-    from mycelium.runner.daemon import runner_dir
-
-    return runner_dir() / "runner.pid"
-
-
 def _log_path() -> Path:
     """What the runner did (``mycelium.runner.log``), however it was started."""
     from mycelium.runner.daemon import runner_dir
@@ -60,18 +54,19 @@ def _out_path() -> Path:
 
 
 def running_pid() -> int | None:
-    """The pid of this machine's runner, when one is running."""
-    try:
-        pid = int(_pid_path().read_text().strip())
-    except (OSError, ValueError):
-        return None
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return None
-    except PermissionError:
-        return pid
-    return pid
+    """The pid of this machine's runner, when one is running, the Mac app's included."""
+    from mycelium.runner.daemon import registered
+
+    found = registered()
+    return found[0] if found else None
+
+
+def runs_in_app() -> bool:
+    """Whether this machine's runner is the one inside the Mac app."""
+    from mycelium.runner.daemon import APP, registered
+
+    found = registered()
+    return found is not None and found[1] == APP
 
 
 def _scan_table(found: list, *, herdr: bool) -> Table:
@@ -133,9 +128,10 @@ def runner(
 
     roots = [p.expanduser().resolve() for p in (root or [Path.cwd()])]
     if (pid := running_pid()) is not None and pid != os.getpid():
+        whose = "the Mycelium app's" if runs_in_app() else "one"
         console.print(
-            f"[yellow]A runner is already running here[/yellow] (pid {pid}). "
-            "See it with: mycelium runner status"
+            f"[yellow]A runner is already running here[/yellow]: {whose} (pid {pid}). "
+            "One machine runs one runner. See it with: mycelium runner status"
         )
         raise typer.Exit(1)
 
@@ -159,7 +155,6 @@ def runner(
 
     config = MyceliumConfig.load()
     daemon = Runner(config, roots=roots, trust_hub=trust_hub)
-    _pid_path().write_text(f"{os.getpid()}\n")
 
     def _terminate(*_: object) -> None:
         daemon.stop()
@@ -191,12 +186,6 @@ def runner(
         daemon.stop()
         daemon.goodbye()
         console.print("\n[dim]Disconnected. Agents already started keep running in herdr.[/dim]")
-    finally:
-        try:
-            if running_pid() == os.getpid():
-                _pid_path().unlink()
-        except OSError:
-            pass
 
 
 @doc_ref(
@@ -448,6 +437,11 @@ def runner_stop() -> None:
     if pid is None:
         console.print("[dim]No runner is running here.[/dim]")
         return
+    if runs_in_app():
+        # Its pid is the app's supervisor: signalling it would stop the hub and
+        # everything else the app runs.
+        console.print("The runner here is the Mycelium app's. Quit the app to stop it.")
+        raise typer.Exit(1)
     os.kill(pid, signal.SIGTERM)
     console.print(f"[green]Stopped[/green] the runner (pid {pid}).")
 
