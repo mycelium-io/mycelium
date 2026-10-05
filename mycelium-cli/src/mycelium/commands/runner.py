@@ -118,6 +118,8 @@ def runner(
 
     Each agent or team the app asks for waits until you say yes here, with
     `mycelium runner approve <id>`, since anyone who can reach the hub can ask.
+    A device paired with `mycelium runner pair` skips the question, within
+    what the pairing allows.
 
     Examples:
         mycelium runner
@@ -297,6 +299,141 @@ def runner_approve(job_id: str = typer.Argument(..., help="The request's id")) -
 def runner_decline(job_id: str = typer.Argument(..., help="The request's id")) -> None:
     """Refuse an agent or team the hub asked for; the app is told it was declined."""
     _answer(job_id, yes=False)
+
+
+@doc_ref(
+    usage="mycelium runner pair [--folder <folder>]... [--cli <id>]... [--swarms] [--days <n>]",
+    desc="Pair another computer with this machine so its requests start without approval.",
+    group="agent",
+)
+@app.command("pair")
+def runner_pair(
+    folder: list[Path] = typer.Option(
+        None,
+        "--folder",
+        help="A folder agents can start in (repeatable; default: all runner folders)",
+    ),
+    cli: list[str] = typer.Option(
+        None, "--cli", help="An agent CLI it can start, by id (repeatable; default: any)"
+    ),
+    swarms: bool = typer.Option(False, "--swarms", help="Allow swarms"),
+    days: int = typer.Option(
+        90, "--days", min=0, help="Days until the pairing expires (0: no expiry)"
+    ),
+) -> None:
+    """Print a code to pair another computer, so its requests start here without approval.
+
+    Use this on a machine where no one is around to approve requests.
+    Launches, swarms and restarts signed by the paired computer start
+    without approval, within the folders, agent CLIs and duration you set
+    here. Everything else still needs approval. Run it on this machine,
+    with the runner running.
+
+    Examples:
+        mycelium runner pair
+        mycelium runner pair --folder ~/code --cli opencode --days 30
+    """
+    import time
+
+    from mycelium.runner import pairing
+
+    if running_pid() is None:
+        console.print(
+            "[yellow]The runner isn't running.[/yellow] Pairing needs it: "
+            "start it with `mycelium runner --detach`, then try again."
+        )
+        raise typer.Exit(1)
+    limits = pairing.Limits.make(folders=folder, clis=cli, swarms=swarms, days=days)
+    code = pairing.offer(limits)
+    covers = ", ".join(limits.folders) or "all runner folders"
+    clis = ", ".join(limits.clis) or "any agent CLI"
+    ends = f"expires in {days} days" if days else "no expiry"
+    console.print(
+        f"\nPairing code: [bold cyan]{pairing.show_code(code)}[/bold cyan]\n\n"
+        "On your computer, open the Machines page, click Add machine → Pair, "
+        "and enter this code.\n"
+        f"[dim]Limits: {covers}; {clis}; {'swarms allowed' if swarms else 'no swarms'}; {ends}. "
+        f"The code can be used once and expires in "
+        f"{int(pairing.OFFER_TTL.total_seconds() // 60)} minutes.[/dim]\n"
+    )
+    deadline = time.monotonic() + pairing.OFFER_TTL.total_seconds()
+    try:
+        with console.status("Waiting for your computer to pair…"):
+            while time.monotonic() < deadline:
+                if (made := pairing.landed(code)) is not None:
+                    console.print(
+                        f"[green]Paired[/green] with '{made.name}', key "
+                        f"[cyan]{pairing.fingerprint(made.key)}[/cyan]. Check that your computer shows the same key."
+                        f"\n[dim]To remove it: mycelium runner unpair '{made.name}'[/dim]"
+                    )
+                    return
+                if code[: pairing.OFFER_ID_LEN] not in pairing.live_offers():
+                    break
+                time.sleep(0.5)
+    except KeyboardInterrupt:
+        pairing.withdraw(code)
+        console.print("[dim]Cancelled. The code no longer works.[/dim]")
+        raise typer.Exit(1) from None
+    pairing.withdraw(code)
+    console.print(
+        "[yellow]The code expired or had too many wrong attempts. Run this again for a new one.[/yellow]"
+    )
+    raise typer.Exit(1)
+
+
+@doc_ref(
+    usage="mycelium runner pairings",
+    desc="List paired computers, their limits and when they expire.",
+    group="agent",
+)
+@app.command("pairings")
+@emits_json("as_json")
+def runner_pairings(as_json: bool = False) -> None:
+    """List paired computers, their limits and when they expire."""
+    from mycelium.runner import pairing
+
+    found = pairing.load()
+    if as_json:
+        out = [{**p.wire(), "expired": p.expired()} for p in found]
+        typer.echo(json.dumps(out, indent=2))
+        return
+    if not found:
+        console.print("[dim]No paired computers. Pair one with: mycelium runner pair[/dim]")
+        return
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    for col in ("Computer", "Key", "Folders", "Agent CLIs", "Swarms", "Expires"):
+        table.add_column(col)
+    for p in found:
+        ends = p.limits.expires_at[:10] if p.limits.expires_at else "never"
+        table.add_row(
+            p.name,
+            pairing.fingerprint(p.key),
+            "\n".join(p.limits.folders) or "[dim]all runner folders[/dim]",
+            ", ".join(p.limits.clis) or "[dim]any[/dim]",
+            "yes" if p.limits.swarms else "no",
+            f"[red]ended {ends}[/red]" if p.expired() else ends,
+        )
+    console.print(table)
+
+
+@doc_ref(
+    usage="mycelium runner unpair <name>",
+    desc="Remove a pairing. That computer's requests need approval again.",
+    group="agent",
+)
+@app.command("unpair")
+def runner_unpair(
+    name: str = typer.Argument(..., help="The paired computer's name, or its key id"),
+) -> None:
+    """Remove a pairing. It takes effect immediately."""
+    from mycelium.runner import pairing
+
+    try:
+        gone = pairing.remove(name)
+    except pairing.PairingError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from None
+    console.print(f"[green]Unpaired[/green] '{gone.name}'. Its requests need approval again.")
 
 
 @doc_ref(

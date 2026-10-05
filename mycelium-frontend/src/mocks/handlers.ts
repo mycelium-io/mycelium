@@ -24,6 +24,7 @@ import {
   launchedHandles,
   listJobs,
   listRunners,
+  pairDevice,
   queueJob,
   runnerAgentOf,
 } from "./runners";
@@ -233,6 +234,7 @@ async function readJson(req: Request): Promise<Record<string, unknown>> {
 /** `/api/runners/...`, answered from `./runners`. */
 async function handleRunners(req: Request, method: string, rest: string[]): Promise<Response | null> {
   if (rest.length === 0) return method === "GET" ? json(listRunners()) : null;
+  if (rest[0] === "pair" && method === "POST") return json(await pairDevice(await readJson(req)), 201);
   const runner = getRunner(decodeURIComponent(rest[0]));
   if (!runner) return notFound("Runner not found");
   const [, sub, a, b, c] = rest;

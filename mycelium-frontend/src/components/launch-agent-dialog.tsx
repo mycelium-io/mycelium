@@ -15,6 +15,7 @@ import {
 import {
   hostOf,
   jobSettled,
+  pairingNote,
   launchable,
   runnerName,
   startsInHerdr,
@@ -22,6 +23,7 @@ import {
   useRunners,
   useRunnersRevalidate,
 } from "@/lib/runners";
+import { signFor } from "@/lib/device-key";
 import {
   BUILT_IN,
   deleteTemplate,
@@ -127,6 +129,10 @@ export function LaunchAgentForm({
     setJobId(null);
     try {
       const folder = expandPath(folderShown.trim(), runner.roots);
+      const signature = await signFor(runner, {
+        kind: "launch",
+        job: { room: roomName, handle: trimmed, framework: framework.id, cwd: folder || null },
+      });
       const queued = await launchRunnerAgent(runner.id, {
         room: roomName,
         handle: trimmed,
@@ -134,6 +140,7 @@ export function LaunchAgentForm({
         instructions: instructions.trim() || undefined,
         cwd: folder || undefined,
         created_by: principal.trim() || undefined,
+        signature,
       });
       setJobId(queued.id);
     } catch (e) {
@@ -694,9 +701,11 @@ function LaunchProgress({
   // except the app's own hub; the step shows only once it has asked.
   const [asked, setAsked] = useState(false);
   if (status === "waiting" && !asked) setAsked(true);
+  const paired = job?.pairing?.accepted ? job.pairing.name : null;
   const steps: { label: string; state: StepState }[] = [
     { label: `@${handle} added to ${room}, with its notes`, state: "done" },
     { label: `${machine} picked it up`, state: status === "queued" ? "active" : "done" },
+    ...(paired ? [{ label: `Started without approval (paired as “${paired}”)`, state: "done" as StepState }] : []),
     ...(asked
       ? [
           {
@@ -727,6 +736,7 @@ function LaunchProgress({
                   ? `Waiting for a yes on ${machine}: it asks there before starting anything.`
                   : `Starting on ${machine}…`}
           </p>
+          {job && pairingNote(job) && <p className="text-micro text-muted-foreground">{pairingNote(job)}</p>}
         </div>
       </div>
       <ol className="mt-5 space-y-2.5">

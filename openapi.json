@@ -2059,6 +2059,48 @@
         }
       }
     },
+    "/api/runners/pair": {
+      "post": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Pair Device",
+        "description": "Ask the machine that printed a pairing code to pair this device.\n\nThe hub routes by the code's public part and carries the proof; only the\nmachine can check it. Follow the returned job: ``done`` carries the\npairing as the machine recorded it, ``failed`` says why not.",
+        "operationId": "pair_device_api_runners_pair_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerPair"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerJobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/runners/{runner_id}/jobs": {
       "get": {
         "tags": [
@@ -5577,6 +5619,60 @@
         ],
         "title": "CoordinationSessionRead"
       },
+      "DeviceKey": {
+        "properties": {
+          "x": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 40,
+            "title": "X"
+          },
+          "y": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 40,
+            "title": "Y"
+          }
+        },
+        "type": "object",
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "DeviceKey",
+        "description": "A P-256 public key as a JWK's coordinates."
+      },
+      "DeviceSignature": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 8,
+            "title": "Key",
+            "description": "The device key's id"
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 8192,
+            "minLength": 2,
+            "title": "Body"
+          },
+          "sig": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 8,
+            "title": "Sig"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "body",
+          "sig"
+        ],
+        "title": "DeviceSignature",
+        "description": "A paired device's signature over a job it asked for, which the hub only carries.\n\n``body`` is the exact JSON the device signed (the runner, the job's kind\nand fields, a time and a nonce); ``sig`` is ECDSA P-256 over it, ``r||s``\nin base64url. The runner checks both against the job it receives, and\nstarts it without asking only when they hold (``mycelium/runner/pairing.py``)."
+      },
       "EngineCreate": {
         "properties": {
           "handle": {
@@ -6991,6 +7087,17 @@
             "type": "boolean",
             "title": "All",
             "default": false
+          },
+          "signature": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeviceSignature"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "From a device paired with the machine: starts without asking there"
           }
         },
         "type": "object",
@@ -7954,6 +8061,44 @@
         ],
         "title": "OwnedAgentRead",
         "description": "One agent bound to a principal, with its room."
+      },
+      "PairingOutcome": {
+        "properties": {
+          "accepted": {
+            "type": "boolean",
+            "title": "Accepted"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "The pairing it started under"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Why the signature wasn't enough"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accepted"
+        ],
+        "title": "PairingOutcome",
+        "description": "Whether a signed job started under a pairing, or why it waits for a yes after all."
       },
       "ParticipantCreate": {
         "properties": {
@@ -9040,6 +9185,17 @@
               }
             ],
             "title": "Created By"
+          },
+          "signature": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeviceSignature"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "From a device paired with the machine: starts without asking there"
           }
         },
         "type": "object",
@@ -9240,6 +9396,21 @@
                 "type": "null"
               }
             ]
+          },
+          "pairings": {
+            "items": {
+              "$ref": "#/components/schemas/RunnerPairingRead"
+            },
+            "type": "array",
+            "title": "Pairings"
+          },
+          "pairing_offers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Pairing Offers"
           }
         },
         "type": "object",
@@ -9267,7 +9438,8 @@
               "stop",
               "scan",
               "swarm",
-              "restart"
+              "restart",
+              "pair"
             ],
             "title": "Kind"
           },
@@ -9331,6 +9503,26 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "signature": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeviceSignature"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pairing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PairingOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -9379,6 +9571,16 @@
               }
             ],
             "title": "Error"
+          },
+          "pairing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PairingOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -9387,6 +9589,99 @@
         ],
         "title": "RunnerJobReport",
         "description": "A runner reporting on a job it took."
+      },
+      "RunnerPair": {
+        "properties": {
+          "code_id": {
+            "type": "string",
+            "maxLength": 4,
+            "minLength": 4,
+            "title": "Code Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "key": {
+            "$ref": "#/components/schemas/DeviceKey"
+          },
+          "proof": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 40,
+            "title": "Proof"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code_id",
+          "name",
+          "key",
+          "proof"
+        ],
+        "title": "RunnerPair",
+        "description": "A device asking to pair with the machine that printed a code.\n\nOnly the code's first four characters are sent, to find the machine; the\nrest keys ``proof``, an HMAC over the device's name and key, which only\nthe machine can check."
+      },
+      "RunnerPairingRead": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "The device key's id, which the device also knows"
+          },
+          "paired_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Paired At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "folders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Folders",
+            "description": "Folders it covers; empty: every root"
+          },
+          "clis": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Clis",
+            "description": "Agent CLIs it covers; empty: any"
+          },
+          "swarms": {
+            "type": "boolean",
+            "title": "Swarms",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "key",
+          "paired_at"
+        ],
+        "title": "RunnerPairingRead",
+        "description": "A device paired with a runner, and what the pairing covers (set on that machine)."
       },
       "RunnerRead": {
         "properties": {
@@ -9474,6 +9769,13 @@
                 "type": "null"
               }
             ]
+          },
+          "pairings": {
+            "items": {
+              "$ref": "#/components/schemas/RunnerPairingRead"
+            },
+            "type": "array",
+            "title": "Pairings"
           },
           "connected": {
             "type": "boolean",
@@ -10010,6 +10312,17 @@
             "title": "Worktree",
             "description": "With runner: a git worktree per member",
             "default": false
+          },
+          "signature": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeviceSignature"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "With runner: from a device paired with it, starts without asking there"
           }
         },
         "type": "object",

@@ -706,6 +706,24 @@
 <span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">decline</span> &lt;id&gt;      # don&#x27;t</code></pre>
       <p>Nobody answering within ten minutes is a no. The app shows <strong>Waiting for a yes</strong> until you answer, and says so when you decline.</p>
       <p>One case doesn&#x27;t ask: the Mac app&#x27;s own hub. It listens only on your Mac, so nobody else can reach it. A hub the app didn&#x27;t start, such as a Docker one, still asks. For a hub you know nobody else can reach, <code>mycelium runner --trust-hub</code> skips the question.</p>
+      <h2 id="machines-pair-a-device-to-skip-approvals-on-a-remote-machine">Pair a device to skip approvals on a remote machine</h2>
+      <p>If no one is at a machine to approve requests (for example, a Mac mini or a home server), pair the computer you work from with it. Then requests you send from that computer start without approval.</p>
+      <p>On the remote machine, run:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="flag">--detach</span>                          # if the runner isn&#x27;t running
+<span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">pair</span> <span class="flag">--folder</span> ~/code <span class="flag">--cli</span> opencode <span class="flag">--days</span> 30</code></pre>
+      <p>This prints a code like <code>K7QM-4XHD-9RWA</code>. On your computer, open the <strong>Machines</strong> page, click <strong>Add machine → Pair</strong>, and enter the code and a name for your computer (for example, &quot;work laptop&quot;). Both sides then show the same key fingerprint; check that they match.</p>
+      <p>The options set what paired requests can do:</p>
+      <ul>
+        <li><code>--folder</code>: folders agents can start in (default: all of the runner&#x27;s folders).</li>
+        <li><code>--cli</code>: agent CLIs it can start, by id (default: any).</li>
+        <li><code>--swarms</code>: allow swarms (default: no).</li>
+        <li><code>--days</code>: how long the pairing lasts (default: 90; <code>0</code> means no expiry).</li>
+      </ul>
+      <p>Launches, swarms and restarts from the paired computer start right away if they&#x27;re within these limits. Everything else still needs approval on the machine, including requests from other computers, requests outside the limits, and requests that were modified or replayed. The app shows the reason when a request needs approval.</p>
+      <p>To manage pairings, run these on the remote machine:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">pairings</span>                  # list pairings, their limits and expiry
+<span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">unpair</span> <span class="str">&quot;work laptop&quot;</span>      # remove a pairing</code></pre>
+      <p><strong>Security:</strong> your computer creates a signing key the first time you pair. The browser (or Mac app) stores it so that it can&#x27;t be exported. Every request is signed with this key, and the machine checks the signature before starting anything. The limits are stored on the machine, so they can&#x27;t be changed over the network, and the hub can&#x27;t create or alter a signed request. Jobs started under a pairing are logged in <code>runner.log</code>, and <code>mycelium doctor</code> lists pairings and when they expire.</p>
       <h2 id="machines-only-your-machines-are-listed">Only your machines are listed</h2>
       <p>The Machines page and <strong>where it runs</strong> show only your own machines, never anyone else&#x27;s. In the Mac app that is the Mac it runs on. In a browser, add a machine with the code <code>mycelium runner</code> prints when it starts. With the hub&#x27;s <a href="#auth">sign-in</a> turned on, the hub itself shows each person only the machines they own.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/machines.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>

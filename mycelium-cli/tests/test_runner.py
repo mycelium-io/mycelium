@@ -757,3 +757,297 @@ def test_a_herdr_call_that_never_answers_is_given_up_on(tmp_path: Path, isolated
     assert call_timeout(["agent", "prompt", "p", "hi", "--wait", "--timeout", "120000"]) == (
         120 + CALL_TIMEOUT_S
     )
+
+
+# ── devices paired with this machine ──────────────────────────────────────────
+
+
+def _device() -> tuple[Any, str, str]:
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    from mycelium.runner.pairing import b64url
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    n = key.public_key().public_numbers()
+    return key, b64url(n.x.to_bytes(32, "big")), b64url(n.y.to_bytes(32, "big"))
+
+
+def _sign(
+    key: Any, kind: str, fields: dict, *, runner: str = "julias-mbp-ab12", ts: float | None = None
+) -> dict:
+    """A signature as the app makes one: ECDSA P-256 over the body's bytes, ``r||s``."""
+    import secrets
+    import time
+
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+
+    from mycelium.runner.pairing import b64url, key_id
+
+    n = key.public_key().public_numbers()
+    kid = key_id(b64url(n.x.to_bytes(32, "big")), b64url(n.y.to_bytes(32, "big")))
+    body = json.dumps(
+        {
+            "v": 1,
+            "runner": runner,
+            "kind": kind,
+            "ts": time.time() if ts is None else ts,
+            "nonce": secrets.token_hex(8),
+            "job": fields,
+        }
+    )
+    r, s = decode_dss_signature(key.sign(body.encode(), ec.ECDSA(hashes.SHA256())))
+    return {"key": kid, "body": body, "sig": b64url(r.to_bytes(32, "big") + s.to_bytes(32, "big"))}
+
+
+def _pair(r: daemon.Runner, x: str, y: str, limits: Any = None, name: str = "work laptop") -> Any:
+    from mycelium.runner import pairing
+
+    code = pairing.offer(limits or pairing.Limits.make())
+    spec = {"offer": code[:4], "name": name, "key": {"x": x, "y": y}}
+    r.take(
+        {"id": "a0a0a0", "kind": "pair", "spec": {**spec, "proof": pairing.proof(code, name, x, y)}}
+    )
+    return pairing.landed(code)
+
+
+def test_a_code_from_this_machine_pairs_a_device(make_runner, hub: Hub):
+    from mycelium.runner import pairing
+
+    r = make_runner(trust_hub=False)
+    code = pairing.offer(pairing.Limits.make(clis=["opencode"]))
+    assert r.hello_body()["pairing_offers"] == [code[:4]]
+    _, x, y = _device()
+    spec = {"offer": code[:4].lower(), "name": "work laptop", "key": {"x": x, "y": y}}
+    r.take(
+        {
+            "id": "a0a0a0",
+            "kind": "pair",
+            "spec": {**spec, "proof": pairing.proof(code, "work laptop", x, y)},
+        }
+    )
+
+    done = _until(lambda: _report(hub, "a0a0a0", "done"))
+    assert done["result"]["name"] == "work laptop"
+    assert done["result"]["key"] == pairing.key_id(x, y)
+    assert done["result"]["clis"] == ["opencode"]
+    hello = r.hello_body()
+    assert hello["pairing_offers"] == []
+    assert [p["name"] for p in hello["pairings"]] == ["work laptop"]
+
+
+def test_a_wrong_proof_pairs_nothing_and_burns_the_code(make_runner, hub: Hub):
+    from mycelium.runner import pairing
+
+    r = make_runner(trust_hub=False)
+    code = pairing.offer(pairing.Limits.make())
+    _, x, y = _device()
+    for n in range(pairing.MAX_ATTEMPTS):
+        wrong = pairing.proof("ZZZZ-ZZZZ-ZZZZ", "work laptop", x, y)
+        spec = {"offer": code[:4], "name": "work laptop", "key": {"x": x, "y": y}, "proof": wrong}
+        r.take({"id": f"b{n}b0b0", "kind": "pair", "spec": spec})
+    assert "wrong" in _until(lambda: _report(hub, "b0b0b0", "failed"))["error"]
+    assert (
+        "too often"
+        in _until(lambda: _report(hub, f"b{pairing.MAX_ATTEMPTS - 1}b0b0", "failed"))["error"]
+    )
+    assert pairing.load() == []
+    assert pairing.live_offers() == []
+
+
+def test_a_code_is_read_back_the_way_a_person_types_it():
+    from mycelium.runner import pairing
+
+    assert pairing.normalize_code("abcd-efgh-jkmo ") == "ABCDEFGHJKM0"
+    assert pairing.normalize_code("i1l1 0000 0000") == "111100000000"
+    with pytest.raises(pairing.PairingError):
+        pairing.normalize_code("ABCD-EFGH")
+
+
+def test_a_launch_a_paired_device_signed_starts_without_asking(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, quick: None
+):
+    r = make_runner(trust_hub=False)
+    key, x, y = _device()
+    _pair(r, x, y)
+    fields = {**LAUNCH, "cwd": None}
+    r.take(
+        {
+            "id": "c1c1c1",
+            "kind": "launch",
+            "spec": LAUNCH,
+            "signature": _sign(key, "launch", fields),
+        }
+    )
+
+    done = _until(lambda: _report(hub, "c1c1c1", "done"))
+    assert done["pairing"] == {"name": "work laptop", "accepted": True}
+    assert [c[2] for c in herdr.of("agent start")] == ["a"]
+    assert approvals.pending(base=tmp_path) == []
+    assert "signed by 'work laptop'" in (daemon.runner_dir() / "runner.log").read_text()
+
+
+@pytest.mark.parametrize(
+    ("limits", "kind", "fields", "spec", "why"),
+    [
+        pytest.param(
+            {"clis": ["opencode"]},
+            "launch",
+            {**LAUNCH, "cwd": None},
+            LAUNCH,
+            "agent CLI is outside",
+            id="a-cli-it-doesnt-cover",
+        ),
+        pytest.param(
+            {"folders": [Path("/elsewhere")]},
+            "launch",
+            {**LAUNCH, "cwd": None},
+            LAUNCH,
+            "outside the folders this pairing allows",
+            id="a-folder-it-doesnt-cover",
+        ),
+        pytest.param(
+            {},
+            "launch",
+            {**LAUNCH, "cwd": None},
+            {**LAUNCH, "handle": "b"},
+            "doesn't match the job",
+            id="a-job-the-hub-changed",
+        ),
+        pytest.param(
+            {},
+            "swarm",
+            {
+                "room": "eng",
+                "task": "t",
+                "framework": "claude",
+                "cwd": None,
+                "size": 2,
+                "worktree": False,
+            },
+            {
+                "room": "eng",
+                "task": "t",
+                "framework": "claude",
+                "team": ["a-1", "a-2"],
+                "key": "k",
+                "episode": "e",
+            },
+            "doesn't allow swarms",
+            id="a-team-without-teams",
+        ),
+    ],
+)
+def test_a_signed_job_the_pairing_doesnt_cover_asks_and_says_why(
+    make_runner, hub: Hub, tmp_path: Path, quick: None, limits, kind, fields, spec, why
+):
+    from mycelium.runner import pairing
+
+    r = make_runner(trust_hub=False)
+    key, x, y = _device()
+    _pair(r, x, y, pairing.Limits.make(**limits))
+    r.take({"id": "d1d1d1", "kind": kind, "spec": spec, "signature": _sign(key, kind, fields)})
+
+    waiting = _until(lambda: _report(hub, "d1d1d1", "waiting"))
+    assert waiting["pairing"]["accepted"] is False
+    assert why in waiting["pairing"]["reason"]
+    [asked] = approvals.pending(base=tmp_path)
+    assert why in asked["message"]
+
+
+def test_a_signature_is_good_once_and_only_while_fresh(make_runner, hub: Hub, quick: None):
+    import time
+
+    r = make_runner(trust_hub=False)
+    key, x, y = _device()
+    _pair(r, x, y)
+    sig = _sign(key, "launch", {**LAUNCH, "cwd": None})
+    r.take({"id": "e1e1e1", "kind": "launch", "spec": LAUNCH, "signature": sig})
+    _until(lambda: _report(hub, "e1e1e1", "done"))
+    r.take({"id": "e2e2e2", "kind": "launch", "spec": LAUNCH, "signature": sig})
+    assert "already used" in _until(lambda: _report(hub, "e2e2e2", "waiting"))["pairing"]["reason"]
+
+    old = _sign(key, "launch", {**LAUNCH, "cwd": None}, ts=time.time() - 3600)
+    r.take({"id": "e3e3e3", "kind": "launch", "spec": LAUNCH, "signature": old})
+    assert "has expired" in _until(lambda: _report(hub, "e3e3e3", "waiting"))["pairing"]["reason"]
+
+
+def test_an_unpaired_or_ended_device_asks_like_anyone(make_runner, hub: Hub, quick: None):
+    from mycelium.runner import pairing
+
+    r = make_runner(trust_hub=False)
+    key, x, y = _device()
+    stranger, _, _ = _device()
+    _pair(r, x, y, pairing.Limits.make(days=0))
+    r.take(
+        {
+            "id": "f1f1f1",
+            "kind": "launch",
+            "spec": LAUNCH,
+            "signature": _sign(stranger, "launch", {**LAUNCH, "cwd": None}),
+        }
+    )
+    assert "isn't paired" in _until(lambda: _report(hub, "f1f1f1", "waiting"))["pairing"]["reason"]
+
+    other = _sign(key, "launch", {**LAUNCH, "cwd": None}, runner="someone-elses")
+    r.take({"id": "f2f2f2", "kind": "launch", "spec": LAUNCH, "signature": other})
+    assert (
+        "doesn't match the job"
+        in _until(lambda: _report(hub, "f2f2f2", "waiting"))["pairing"]["reason"]
+    )
+
+    pairing.remove("work laptop")
+    r.take(
+        {
+            "id": "f3f3f3",
+            "kind": "launch",
+            "spec": LAUNCH,
+            "signature": _sign(key, "launch", {**LAUNCH, "cwd": None}),
+        }
+    )
+    assert "isn't paired" in _until(lambda: _report(hub, "f3f3f3", "waiting"))["pairing"]["reason"]
+
+
+def test_a_pairing_ends_when_it_says(make_runner, hub: Hub, quick: None):
+    from mycelium.runner import pairing
+
+    r = make_runner(trust_hub=False)
+    key, x, y = _device()
+    made = _pair(r, x, y)
+    pairings = pairing.load()
+    pairings[0].limits.expires_at = "2020-01-01T00:00:00+00:00"
+    pairing._save(pairings, None)  # noqa: SLF001 - ending it without waiting 90 days
+    r.take(
+        {
+            "id": "a9a9a9",
+            "kind": "launch",
+            "spec": LAUNCH,
+            "signature": _sign(key, "launch", {**LAUNCH, "cwd": None}),
+        }
+    )
+    assert "expired" in _until(lambda: _report(hub, "a9a9a9", "waiting"))["pairing"]["reason"]
+    assert made.name not in [p["name"] for p in r.hello_body()["pairings"]]
+
+
+def test_a_signature_webcrypto_made_verifies_here():
+    """A vector the browser made (``crypto.subtle``, P-256, ``r||s``), checked as the runner does."""
+    from mycelium.runner import pairing
+
+    x, y = (
+        "kGLaxTmOR24jd44ln-NWsHpIvRVwmbKQpjAhdVVbNng",
+        "4NdlYCR4WCc4s-0SXpeuNflUTHFt2ppIRnbcR5NYDVo",
+    )
+    body = '{"v":1,"runner":"studio-mini-ab12","kind":"launch","ts":1790000000,"nonce":"0011223344556677","job":{"room":"eng","handle":"a","framework":"opencode","cwd":null}}'
+    sig = "xTTMH3znUs_nJ0rvcWMnNPMgUcj3GGt9i4btstfkr1OV1EZrRjnXqVBSedycz6idfS8RXwp8NsSF5uP92qg0pA"
+    assert pairing.key_id(x, y) == "10e112267b23b604"
+    assert pairing.verify_signature(x, y, body.encode(), sig)
+    assert not pairing.verify_signature(x, y, body.replace('"a"', '"b"').encode(), sig)
+
+
+def test_a_pairing_proof_is_the_one_the_browser_makes():
+    """``device-key.test.ts`` pins the same value from WebCrypto."""
+    from mycelium.runner import pairing
+
+    proof = pairing.proof("K7QM-4XHD-9RWA", "work laptop", "A" * 43, "B" * 43)
+    assert proof == "zakRBGwNeLR_W1E702hnTIRWyo1daHS8tqBe3QmCZOc"

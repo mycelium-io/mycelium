@@ -168,7 +168,17 @@ export function describeJob(job: RunnerJob): string {
       const agents = Array.isArray(spec.agents) ? (spec.agents as { handle?: string }[]) : [];
       return agents.length === 1 ? `Restart @${agents[0].handle}` : `Restart ${agents.length} agents`;
     }
+    case "pair":
+      return typeof spec.name === "string" ? `Pair “${spec.name}”` : "Pair a device";
   }
+}
+
+/** What a signed job's pairing came to, in a sentence; null for a job nobody signed. */
+export function pairingNote(job: Pick<RunnerJob, "pairing">): string | null {
+  const p = job.pairing;
+  if (!p) return null;
+  if (p.accepted) return `Started without approval (paired as “${p.name}”).`;
+  return p.reason ? `Needs approval on the machine: ${p.reason}.` : null;
 }
 
 export const JOB_STATUS_LABEL: Record<RunnerJob["status"], string> = {

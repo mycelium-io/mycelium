@@ -8,22 +8,25 @@
  * `mycelium runner`, what each found installed, what it is running, and what
  * it was last asked to do.
  *
- *   <MachinesScreen />
+ *   <MachinesScreen />            Add machine: pair a remote one, or add one by id
  *     └─ <MachineCard /> per runner
  *          ├─ frameworks   the scan, with Rescan
  *          ├─ agents       started from the app, each with Stop
+ *          ├─ pairings     devices that start agents here without asking
  *          └─ jobs         the recent queue, newest first
  */
 
 import { useState } from "react";
 import Link from "next/link";
-import { Laptop, Loader2, Square, SquareTerminal } from "lucide-react";
-import { stopRunnerAgent, type Runner, type RunnerAgent } from "@/lib/api";
+import { KeyRound, Laptop, Loader2, Plus, Square, SquareTerminal } from "lucide-react";
+import { stopRunnerAgent, type Runner, type RunnerAgent, type RunnerPairing } from "@/lib/api";
+import { fingerprint, pairingWith, useDeviceKeyId } from "@/lib/device-key";
 import { terminalLink, useIsDesktop } from "@/lib/desktop";
 import {
   describeJob,
   hostOf,
   JOB_STATUS_LABEL,
+  pairingNote,
   sortFrameworks,
   startsInHerdr,
   useRunnerJobs,
@@ -33,8 +36,9 @@ import {
 import { fmtAgo } from "@/lib/metrics-format";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AddMachineCode, ConnectMachine, HostMissing, RescanButton } from "@/components/runner-fields";
+import { ConnectMachine, HostMissing, RescanButton } from "@/components/runner-fields";
 import { MachineAgents } from "@/components/machine-agents";
+import { AddMachineDialog, PAIR_COMMAND } from "@/components/add-machine-dialog";
 
 /** How many of a machine's jobs are listed. */
 const RECENT_JOBS = 8;
@@ -44,32 +48,35 @@ export function MachinesScreen() {
   // Inside the Mac app this Mac is always one of them: the app runs its
   // runner, so there is nothing to set up, only a moment to wait for it.
   const desktop = useIsDesktop();
+  const keyId = useDeviceKeyId();
+  const [adding, setAdding] = useState(false);
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
-        <p className="max-w-2xl px-1 text-micro leading-relaxed text-muted-foreground">
-          {desktop ? (
-            <>This Mac, and any other computer of yours connected with </>
-          ) : (
-            <>Your computers connected to this hub with </>
-          )}
-          <code className="font-mono text-text">mycelium runner</code>. Each starts the agents you ask
-          for on that computer, where you can watch and type to them. Only yours are listed.
-        </p>
+        <div className="flex flex-wrap items-center gap-3 px-1">
+          <p className="min-w-0 max-w-2xl flex-1 text-micro leading-relaxed text-muted-foreground">
+            {desktop ? (
+              <>This Mac, and any other computer of yours connected with </>
+            ) : (
+              <>Your computers connected to this hub with </>
+            )}
+            <code className="font-mono text-text">mycelium runner</code>. Each starts the agents you ask
+            for on that computer, where you can watch and type to them. Only yours are listed.
+          </p>
+          <Button size="sm" variant="secondary" onClick={() => setAdding(true)}>
+            <Plus className="size-3.5" />
+            Add machine
+          </Button>
+        </div>
+        <AddMachineDialog open={adding} onClose={() => setAdding(false)} />
 
         <div className="mt-4 space-y-6">
           {loading && runners.length === 0 && <Skeleton className="h-40 w-full rounded-xl" />}
           {!loading && runners.length === 0 && (desktop ? <ThisMacConnecting /> : <ConnectMachine />)}
           {runners.map((r) => (
-            <MachineCard key={r.id} runner={r} />
+            <MachineCard key={r.id} runner={r} keyId={keyId} />
           ))}
-          {runners.length > 0 && (
-            <div className="border-t border-border px-1 pt-3 text-micro text-muted-foreground">
-              To add another machine, run <code className="font-mono text-text">mycelium runner</code> on it.
-              <AddMachineCode />
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -104,9 +111,10 @@ function Section({ title, action, children }: { title: string; action?: React.Re
   );
 }
 
-function MachineCard({ runner }: { runner: Runner }) {
+function MachineCard({ runner, keyId }: { runner: Runner; keyId: string | null }) {
   const frameworks = sortFrameworks(runner.frameworks);
   const { jobs } = useRunnerJobs(runner.id);
+  const mine = pairingWith(runner, keyId);
 
   return (
     <article className="border-t border-border pt-3">
@@ -122,6 +130,15 @@ function MachineCard({ runner }: { runner: Runner }) {
           />
           {runner.connected ? "Connected" : `Last seen ${fmtAgo(runner.last_seen)}`}
         </span>
+        {mine && (
+          <span
+            className="inline-flex items-center gap-1 rounded bg-hairline px-1.5 text-micro text-text"
+            title="Requests from this computer start without approval, within the pairing's limits."
+          >
+            <KeyRound className="size-3" />
+            Paired as &ldquo;{mine.name}&rdquo;
+          </span>
+        )}
         <span className="ml-auto font-mono text-micro text-faint">
           {runner.platform} · mycelium {runner.version}
           {runner.owner ? ` · @${runner.owner}` : ""}
@@ -197,6 +214,10 @@ function MachineCard({ runner }: { runner: Runner }) {
         </Section>
       )}
 
+      <Section title="Paired computers">
+        <Pairings runner={runner} keyId={keyId} />
+      </Section>
+
       <Section title="Recent jobs">
         {jobs.length === 0 ? (
           <p className="text-label text-muted-foreground">Nothing asked of this machine yet.</p>
@@ -214,12 +235,58 @@ function MachineCard({ runner }: { runner: Runner }) {
                 </span>
                 <span className="text-micro text-faint">{fmtAgo(j.created_at)}</span>
                 {j.error && <span className="basis-full text-micro text-red">{j.error}</span>}
+                {!j.error && pairingNote(j) && (
+                  <span className="basis-full text-micro text-muted-foreground">{pairingNote(j)}</span>
+                )}
               </li>
             ))}
           </ul>
         )}
       </Section>
     </article>
+  );
+}
+
+/** The devices that start agents on a machine without asking there, and what each may start. */
+function Pairings({ runner, keyId }: { runner: Runner; keyId: string | null }) {
+  const pairings = runner.pairings ?? [];
+  if (pairings.length === 0) {
+    return (
+      <p className="text-label text-muted-foreground">
+        None. Every request needs approval on this machine. To pair a computer, run{" "}
+        <code className="font-mono text-micro text-text">{PAIR_COMMAND}</code> there, then Add machine → Pair.
+      </p>
+    );
+  }
+  return (
+    <ul className="space-y-1">
+      {pairings.map((p) => (
+        <PairingLine key={p.key} pairing={p} mine={p.key === keyId} />
+      ))}
+      <li className="pt-1 text-micro text-faint">
+        To remove a pairing, run on this machine: <code className="font-mono">mycelium runner unpair &quot;&lt;name&gt;&quot;</code>
+      </li>
+    </ul>
+  );
+}
+
+function PairingLine({ pairing: p, mine }: { pairing: RunnerPairing; mine: boolean }) {
+  const covers = [
+    p.folders.length ? p.folders.join(", ") : "all runner folders",
+    p.clis.length ? p.clis.join(", ") : "any agent CLI",
+    p.swarms ? "swarms allowed" : "no swarms",
+  ].join(" · ");
+  return (
+    <li className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-label">
+      <span className="text-text">{p.name}</span>
+      {mine && <span className="text-micro text-accent">this computer</span>}
+      <span className="font-mono text-micro text-faint">{fingerprint(p.key)}</span>
+      <span className="text-micro text-muted-foreground">{covers}</span>
+      {/* A machine lists only the pairings that haven't ended. */}
+      <span className="ml-auto text-micro text-faint">
+        {p.expires_at === null ? "no expiry" : `expires ${new Date(p.expires_at).toLocaleDateString()}`}
+      </span>
+    </li>
   );
 }
 

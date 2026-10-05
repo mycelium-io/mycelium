@@ -22,7 +22,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { restartMachineAgents, type MachineAgent, type MachineProblem, type Runner } from "@/lib/api";
-import { JOB_STATUS_LABEL, jobSettled, useRunnerJob, useRunnersRevalidate } from "@/lib/runners";
+import { signFor } from "@/lib/device-key";
+import { JOB_STATUS_LABEL, jobSettled, pairingNote, useRunnerJob, useRunnersRevalidate } from "@/lib/runners";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -195,10 +196,11 @@ function RestartDialog({ runner, agents, onClose }: { runner: Runner; agents: Ma
     setBusy(true);
     setError(null);
     try {
-      const queued = await restartMachineAgents(
-        runner.id,
-        chosen.map((a) => ({ handle: a.handle, room: a.room })),
-      );
+      const agents = chosen.map((a) => ({ handle: a.handle, room: a.room }));
+      const signature = await signFor(runner, { kind: "restart", job: { all: false, agents } });
+      const queued = signature
+        ? await restartMachineAgents(runner.id, agents, signature)
+        : await restartMachineAgents(runner.id, agents);
       setJobId(queued.id);
       revalidate();
     } catch (e) {
@@ -214,7 +216,7 @@ function RestartDialog({ runner, agents, onClose }: { runner: Runner; agents: Ma
       : job?.status === "failed"
         ? (job.error ?? "It failed.")
         : job?.status === "waiting"
-          ? `Waiting for a yes on ${name}.`
+          ? `Waiting for a yes on ${name}.${job.pairing?.reason ? ` ${pairingNote(job)}` : ""}`
           : job
             ? JOB_STATUS_LABEL[job.status]
             : "The machine will ask once more before anything starts.";

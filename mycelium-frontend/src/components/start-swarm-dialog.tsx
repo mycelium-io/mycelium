@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { startSwarm } from "@/lib/api";
+import { signFor } from "@/lib/device-key";
 import { hostOf, launchable, startsInHerdr, useRunners } from "@/lib/runners";
 import { useCurrentUser } from "@/components/current-user";
 import { Button } from "@/components/ui/button";
@@ -82,6 +83,14 @@ export function StartSwarmDialog({ open, onClose, roomName, initialTask = "" }: 
     setStarting(true);
     setError(null);
     try {
+      const cwd = folder.trim() || undefined;
+      const signature =
+        machine && framework
+          ? await signFor(machine, {
+              kind: "swarm",
+              job: { room: roomName, task: what, framework: framework.id, cwd: cwd ?? null, size, worktree },
+            })
+          : undefined;
       const swarm = await startSwarm(roomName, {
         task: what,
         size,
@@ -90,8 +99,9 @@ export function StartSwarmDialog({ open, onClose, roomName, initialTask = "" }: 
           ? {
               runner: machine.id,
               framework: framework.id,
-              cwd: folder.trim() || undefined,
+              cwd,
               worktree,
+              ...(signature ? { signature } : {}),
             }
           : { repo: repo.trim() || undefined }),
       });

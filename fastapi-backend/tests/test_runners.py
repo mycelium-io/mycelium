@@ -478,3 +478,76 @@ async def test_a_machine_that_isnt_connected_is_asked_to_restart_nothing(client,
     resp = await client.post(f"/api/runners/{RUNNER}/restart", json={"all": True})
     assert resp.status_code == 422
     assert "not connected" in resp.json()["detail"]
+
+
+# ── pairing ──────────────────────────────────────────────────────────────────
+
+KEY = {"x": "A" * 43, "y": "B" * 43}
+SIGNATURE = {"key": "3f9a12c4b0de7781", "body": '{"v":1}', "sig": "c" * 86}
+PAIRING = {
+    "name": "work laptop",
+    "key": "3f9a12c4b0de7781",
+    "paired_at": "2026-10-01T00:00:00Z",
+    "expires_at": "2026-12-30T00:00:00Z",
+    "folders": ["/Users/julia/code"],
+    "clis": ["opencode"],
+    "swarms": False,
+}
+
+
+@pytest.mark.asyncio
+async def test_a_pair_request_goes_to_the_machine_offering_its_code(client):
+    await client.post("/api/runners", json=hello(pairing_offers=["K7QM"]))
+    resp = await client.post(
+        "/api/runners/pair",
+        json={"code_id": "k7qm", "name": "work laptop", "key": KEY, "proof": "p" * 43},
+    )
+    assert resp.status_code == 201, resp.text
+    job = (await client.get(f"/api/runners/{RUNNER}/jobs/next?timeout=0")).json()
+    assert job["kind"] == "pair"
+    assert job["spec"] == {"offer": "K7QM", "name": "work laptop", "key": KEY, "proof": "p" * 43}
+
+
+@pytest.mark.asyncio
+async def test_a_code_no_machine_offers_is_refused(client, runner):
+    resp = await client.post(
+        "/api/runners/pair",
+        json={"code_id": "ZZZZ", "name": "work laptop", "key": KEY, "proof": "p" * 43},
+    )
+    assert resp.status_code == 404
+    assert "mycelium runner pair" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_the_app_sees_a_machines_pairings_but_not_its_codes(client):
+    await client.post("/api/runners", json=hello(pairing_offers=["K7QM"], pairings=[PAIRING]))
+    [seen] = (await client.get("/api/runners")).json()
+    assert "pairing_offers" not in seen
+    assert seen["pairings"][0]["name"] == "work laptop"
+    spec = (await client.get("/openapi.json")).json()["components"]["schemas"]["RunnerRead"]
+    assert "pairing_offers" not in spec["properties"]
+
+
+@pytest.mark.asyncio
+async def test_a_signed_launch_carries_its_signature_to_the_runner(client, room, runner):
+    await client.post(
+        f"/api/runners/{RUNNER}/agents",
+        json={"room": room, "handle": "one", "framework": "claude", "signature": SIGNATURE},
+    )
+    job = (await client.get(f"/api/runners/{RUNNER}/jobs/next?timeout=0")).json()
+    assert job["signature"] == SIGNATURE
+
+
+@pytest.mark.asyncio
+async def test_the_runner_says_whether_a_job_started_under_a_pairing(client, room, runner):
+    await client.post(
+        f"/api/runners/{RUNNER}/agents", json={"room": room, "handle": "one", "framework": "claude"}
+    )
+    job = (await client.get(f"/api/runners/{RUNNER}/jobs/next?timeout=0")).json()
+    refused = {"accepted": False, "reason": "outside the folders this pairing allows"}
+    await client.patch(
+        f"/api/runners/{RUNNER}/jobs/{job['id']}", json={"status": "waiting", "pairing": refused}
+    )
+    # A later report that says nothing of it keeps what was said.
+    done = await client.patch(f"/api/runners/{RUNNER}/jobs/{job['id']}", json={"status": "done"})
+    assert done.json()["pairing"] == {**refused, "name": None}
