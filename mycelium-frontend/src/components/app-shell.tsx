@@ -17,7 +17,7 @@ import { InstallModalProvider, useOpenInstallModal } from "@/components/install-
 import { DocsLink } from "@/components/docs-link";
 import { DMG_URL, useIsDesktop } from "@/lib/desktop";
 import { useIsMac } from "@/lib/client-hooks";
-import { GlobalStatusItems, MachinesStatusLink, MetricsStatusLink } from "@/components/status-items";
+import { HubStatus, MachinesStatusLink, MetricsStatusLink } from "@/components/status-items";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
@@ -289,7 +289,7 @@ export function AppShell({
             )}
             <div className="ml-auto flex flex-shrink-0 items-center gap-3">
               {statusRight}
-              <GlobalStatusItems />
+              <HubStatus />
               <MetricsStatusLink />
               <span aria-hidden className="hidden h-3 w-px flex-shrink-0 bg-border sm:block" />
               <div className="flex items-center gap-1 xl:gap-2.5">

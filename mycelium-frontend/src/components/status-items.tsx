@@ -5,11 +5,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Laptop } from "lucide-react";
+import { BarChart3, Laptop, Server } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Runner } from "@/lib/api";
 import { useRunners } from "@/lib/runners";
-import { useGlobalStatus } from "@/lib/use-status";
+import { useHubHealth, type HubHealth } from "@/lib/use-status";
+import { useHubLabel } from "@/components/title-bar";
+import { DOCS_URL } from "@/lib/install";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip } from "@/components/ui/tooltip";
 import { KbdChord } from "@/components/ui/kbd";
 
@@ -173,60 +176,138 @@ export function MachinesStatusLink() {
   );
 }
 
-/** `/health` statuses that mean the model can be called. */
-const LLM_USABLE = new Set(["ok", "unchecked"]);
+/** `/health` part statuses that mean the part works. */
+const USABLE = new Set(["ok", "unchecked"]);
 
-/** The model the hub's engines think with, named as such. Its tooltip says
- *  what uses it and how to change it; the cell opens its usage in Metrics. */
-export function ModelStatusLink() {
-  const { model, llmStatus, llmMessage } = useGlobalStatus();
-  if (!model && !llmStatus) return null;
-  const usable = llmStatus === null || LLM_USABLE.has(llmStatus);
-  // The provider is in the tooltip; the cell keeps the part that differs.
-  const name = model ? model.slice(model.indexOf("/") + 1) : null;
-  const tooltip = (
-    <TooltipCard title="Engine model">
-      {model && <span className="font-mono text-text">{model}</span>}
-      <span className="text-muted-foreground">
-        The aligner, personas, workers and the task compiler think with it, through Pi.
-      </span>
-      {!usable && llmMessage && <span style={{ color: TONE_COLOR.warn }}>{llmMessage}</span>}
-      <span className="text-muted-foreground">
-        Change it: <span className="font-mono">mycelium config set llm.model provider/model</span>
-      </span>
-      <span className="text-faint">Click for its calls and errors in Metrics.</span>
-    </TooltipCard>
-  );
+export interface HubSummary {
+  tone: Tone;
+  /** One word for the cell when the hub needs attention; null when healthy. */
+  problem: string | null;
+}
+
+/** How the hub reads at a glance: unreachable, degraded (naming what), its
+ *  model unusable, or fine. `undefined` health is a probe still in flight. */
+export function hubSummary(health: HubHealth | null | undefined): HubSummary {
+  if (health === undefined) return { tone: "off", problem: null };
+  if (health === null) return { tone: "bad", problem: "unreachable" };
+  if (health.llm?.status && !USABLE.has(health.llm.status)) return { tone: "warn", problem: "LLM not ready" };
+  if (health.status === "degraded") return { tone: "warn", problem: "degraded" };
+  return { tone: "ok", problem: null };
+}
+
+function HubRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <StatusLink href="/metrics#cognition" tooltip={tooltip} className="hidden flex-shrink-0 lg:flex">
-      <CellLabel>LLM</CellLabel>
-      {name ? (
-        <span className="max-w-48 truncate font-mono">{name}</span>
-      ) : (
-        <span>not set</span>
-      )}
-      {!usable && <Dot tone="warn" />}
-    </StatusLink>
+    <>
+      <dt className="text-faint">{label}</dt>
+      <dd className="min-w-0 text-text">{children}</dd>
+    </>
   );
 }
 
-/** Global items shared by every screen's status bar: the cognition model and,
- *  when it is down, the hub itself. */
-export function GlobalStatusItems() {
-  const { healthy } = useGlobalStatus();
+/** The hub, as one cell: whether it is up, and the model its engines think
+ *  with, which is the hub's configuration rather than anything of this page.
+ *  Opens a card with the rest of how the hub is set up. */
+export function HubStatus() {
+  const { data: health } = useHubHealth();
+  const hub = useHubLabel();
+  const summary = hubSummary(health);
+  const model = health?.llm?.model || null;
+  const shortModel = model ? model.slice(model.indexOf("/") + 1) : null;
+  const llmUsable = !health?.llm?.status || USABLE.has(health.llm.status);
+  const store = health?.storage?.host_path || health?.storage?.path || null;
+
   return (
-    <>
-      {/* Health only shows when unhealthy. */}
-      {healthy === false && (
-        <StatusLink href="/metrics" tooltip="Backend unreachable">
-          <span className="flex items-center gap-1.5 text-red">
-            <Dot tone="bad" />
-            backend
+    <Popover>
+      <Tooltip content="How this hub is set up" side="top">
+        <PopoverTrigger
+          aria-label="Hub"
+          className={`${CELL} flex-shrink-0 ${summary.tone === "bad" ? "text-red" : ""}`}
+        >
+          <Server className="size-3.5" />
+          <span>hub</span>
+          <Dot tone={summary.tone} />
+          {summary.problem ? (
+            <span style={{ color: TONE_COLOR[summary.tone] }}>{summary.problem}</span>
+          ) : (
+            shortModel && (
+              <span className="hidden max-w-48 truncate font-mono text-faint lg:inline">{shortModel}</span>
+            )
+          )}
+        </PopoverTrigger>
+      </Tooltip>
+      <PopoverContent side="top" align="end" className="w-96 p-0 text-label">
+        <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+          <Server className="size-3.5 text-muted-foreground" />
+          <span className="font-medium">Hub</span>
+          {hub && <span className="truncate text-muted-foreground">{hub}</span>}
+          <span className="ml-auto flex items-center gap-1.5 text-micro" style={{ color: TONE_COLOR[summary.tone] }}>
+            <Dot tone={summary.tone} />
+            {health === null
+              ? "unreachable"
+              : health?.status === "degraded"
+                ? `degraded${health.issues?.length ? `: ${health.issues.join(", ")}` : ""}`
+                : health
+                  ? "healthy"
+                  : "checking…"}
           </span>
-        </StatusLink>
-      )}
-      <ModelStatusLink />
-    </>
+        </div>
+        {health ? (
+          <dl className="grid grid-cols-[6.5rem_1fr] gap-x-3 gap-y-1.5 px-3 py-2.5 text-micro">
+            <HubRow label="LLM">
+              <span className="flex items-center gap-1.5">
+                <span className="truncate font-mono">{model ?? "not set"}</span>
+                <Link href="/metrics#cognition" className="ml-auto flex-shrink-0 text-accent hover:underline">
+                  usage
+                </Link>
+              </span>
+              <span className="block text-muted-foreground">
+                What the aligner, personas, workers and the task compiler think with.
+              </span>
+              {!llmUsable && health.llm?.message && (
+                <span className="block" style={{ color: TONE_COLOR.warn }}>
+                  {health.llm.message}
+                </span>
+              )}
+            </HubRow>
+            {health.embedding?.model && (
+              <HubRow label="Search">
+                <span className="font-mono">{health.embedding.model}</span>
+              </HubRow>
+            )}
+            {health.coordination?.channels_live != null && (
+              <HubRow label="Channels">{health.coordination.channels_live} live</HubRow>
+            )}
+            {health.identity?.mode && <HubRow label="Identity">{health.identity.mode}</HubRow>}
+            {health.auth && <HubRow label="API auth">{health.auth.enabled ? "on" : "off"}</HubRow>}
+            {health.version && <HubRow label="Version">{health.version}</HubRow>}
+            {store && (
+              <HubRow label="Store">
+                <span className="block truncate font-mono" title={store}>
+                  {store}
+                </span>
+              </HubRow>
+            )}
+          </dl>
+        ) : (
+          <p className="px-3 py-2.5 text-micro text-muted-foreground">
+            {health === null ? "The hub is not answering. Start it with `mycelium up`." : "Checking the hub…"}
+          </p>
+        )}
+        <div className="border-t border-border px-3 py-2 text-micro text-muted-foreground">
+          Set on the hub&apos;s machine:{" "}
+          <span className="font-mono text-text">mycelium config set llm.model provider/model</span>, then{" "}
+          <span className="font-mono text-text">mycelium config apply</span>.{" "}
+          <a
+            href={`${DOCS_URL}/reference.html#config-llm`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-accent hover:underline"
+          >
+            Every setting
+          </a>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
