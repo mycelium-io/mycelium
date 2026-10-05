@@ -179,7 +179,7 @@ function PairForm({ onClose }: { onClose: () => void }) {
             spellCheck={false}
             autoComplete="off"
             autoFocus
-            className="h-8 w-full rounded-md border border-border bg-bg px-2 font-mono text-label uppercase text-text placeholder:normal-case placeholder:text-faint focus:border-accent focus:outline-none"
+            className="h-8 w-full rounded-md border border-border bg-bg px-2 pt-1 font-mono text-label uppercase text-text placeholder:normal-case placeholder:text-faint focus:border-accent focus:outline-none"
           />
         </label>
         <label className="space-y-1">
