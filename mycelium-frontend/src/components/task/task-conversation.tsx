@@ -23,6 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Monogram } from "@/components/ui/monogram";
 import { agentTag } from "@/lib/agent-label";
 import { SenderName } from "@/components/sender-name";
+import { Ago, NowProvider } from "@/lib/relative-time";
 
 interface Props {
   roomName: string;
@@ -176,65 +177,75 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
           No replies yet. Reply below, or @-mention an agent: it lands in this task, not in the room.
         </p>
       ) : (
-        <div className="py-3">
-          {/* A control, not a scroll trigger. This conversation owns no scroll —
-              it is the lower half of the task's own column — so "near the top"
-              is a position in the task above it, not in the thread. Asking is
-              the honest gesture here. */}
-          {hasOlder && (
-            <div className="px-5 pb-2 text-center">
-              <button
-                type="button"
-                onClick={loadOlder}
-                disabled={loadingOlder}
-                className="text-micro text-muted-foreground underline-offset-2 hover:underline disabled:no-underline disabled:opacity-60"
-              >
-                {loadingOlder ? "Loading earlier replies…" : "Load earlier replies"}
-              </button>
-            </div>
-          )}
-          {ordered.map(({ message, text, line }, i) => {
-            const sender = message.sender_handle ?? message.updated_by ?? "?";
-            if (line) {
-              return (
-                <ConductorRow
-                  key={message.id ?? `${sender}-${i}`}
-                  line={line}
-                  text={text}
-                  onOpenMemory={onOpenMemory}
-                />
-              );
-            }
-            // A conductor row between two of one member's messages breaks the
-            // run, so the second one names its sender again.
-            const prev = ordered[i - 1];
-            const previous = prev && !prev.line ? prev.message : undefined;
-            const grouped = previous && (previous.sender_handle ?? previous.updated_by) === sender;
-            const isAgent = agentHandles.has(sender);
-            return (
-              <div
-                key={message.id ?? `${sender}-${i}`}
-                className={`flex gap-3 px-5 ${grouped ? "py-0.5" : "mt-3 pt-1 first:mt-0"}`}
-              >
-                <div className="w-6 flex-shrink-0">
-                  {!grouped && (
-                    <Monogram
-                      handle={sender}
-                      color={isAgent ? undefined : "var(--avatar-neutral)"}
-                      className="size-6 text-[10px]"
-                    />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  {!grouped && (
-                    <SenderName handle={sender} tag={isAgent ? (agentTags.get(sender) ?? "agent") : undefined} />
-                  )}
-                  <MessageBody content={text} onOpenMemory={onOpenMemory} />
-                </div>
+        <NowProvider>
+          <div className="py-3">
+            {/* A control, not a scroll trigger. This conversation owns no scroll —
+                it is the lower half of the task's own column — so "near the top"
+                is a position in the task above it, not in the thread. Asking is
+                the honest gesture here. */}
+            {hasOlder && (
+              <div className="px-5 pb-2 text-center">
+                <button
+                  type="button"
+                  onClick={loadOlder}
+                  disabled={loadingOlder}
+                  className="text-micro text-muted-foreground underline-offset-2 hover:underline disabled:no-underline disabled:opacity-60"
+                >
+                  {loadingOlder ? "Loading earlier replies…" : "Load earlier replies"}
+                </button>
               </div>
-            );
-          })}
-        </div>
+            )}
+            {ordered.map(({ message, text, line }, i) => {
+              const sender = message.sender_handle ?? message.updated_by ?? "?";
+              if (line) {
+                return (
+                  <ConductorRow
+                    key={message.id ?? `${sender}-${i}`}
+                    line={line}
+                    text={text}
+                    onOpenMemory={onOpenMemory}
+                  />
+                );
+              }
+              // A conductor row between two of one member's messages breaks the
+              // run, so the second one names its sender again.
+              const prev = ordered[i - 1];
+              const previous = prev && !prev.line ? prev.message : undefined;
+              const grouped = previous && (previous.sender_handle ?? previous.updated_by) === sender;
+              const isAgent = agentHandles.has(sender);
+              return (
+                <div
+                  key={message.id ?? `${sender}-${i}`}
+                  className={`flex gap-3 px-5 ${grouped ? "py-0.5" : "mt-3 pt-1 first:mt-0"}`}
+                >
+                  <div className="w-6 flex-shrink-0">
+                    {!grouped && (
+                      <Monogram
+                        handle={sender}
+                        color={isAgent ? undefined : "var(--avatar-neutral)"}
+                        className="size-6 text-[10px]"
+                      />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    {!grouped && (
+                      <div className="flex items-center gap-1.5">
+                        <SenderName handle={sender} tag={isAgent ? (agentTags.get(sender) ?? "agent") : undefined} />
+                        {message.created_at && (
+                          <Ago
+                            at={message.created_at}
+                            className="flex-shrink-0 whitespace-nowrap text-micro tabular text-faint"
+                          />
+                        )}
+                      </div>
+                    )}
+                    <MessageBody content={text} onOpenMemory={onOpenMemory} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </NowProvider>
       )}
       {responding.length > 0 && (
         <div
