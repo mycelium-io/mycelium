@@ -22,6 +22,7 @@ is why herdr's inability to scrape alt-screen TUI output never bites us.
 from __future__ import annotations
 
 from mycelium.integrations.herdr.bridge import (
+    PANES_PER_TAB,
     HerdrBridge,
     HerdrError,
     HerdrPaneMapping,
@@ -34,6 +35,7 @@ from mycelium.integrations.herdr.bridge import (
 )
 
 __all__ = [
+    "PANES_PER_TAB",
     "HerdrBridge",
     "HerdrError",
     "HerdrPaneMapping",

@@ -310,7 +310,9 @@ class Runner:
         self.host: AgentHost = host or (
             OmnigentHost(config.runner.omnigent_url, sync_every_s=SYNC_S)
             if config.runner.host == "omnigent"
-            else HerdrHost(self.bridge, sync_every_s=SYNC_S)
+            else HerdrHost(
+                self.bridge, sync_every_s=SYNC_S, panes_per_tab=config.herdr.panes_per_tab
+            )
         )
         self.id = rid or runner_id()
         self.label = machine_label()

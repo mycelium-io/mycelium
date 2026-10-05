@@ -21,9 +21,10 @@ import pytest
 
 from mycelium.commands import swarm
 from mycelium.commands.herdr import wake_prompt_for
-from mycelium.config import SwarmConfig
+from mycelium.config import MyceliumConfig, SwarmConfig
 from mycelium.integrations.herdr import HerdrBridge, HerdrError
 from mycelium.protocol import AgentManifest
+from tests.herdr_layout import HerdrLayout
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -46,27 +47,13 @@ class Herdr:
 
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
-        self._panes = 0
-
-    def _pane(self) -> str:
-        self._panes += 1
-        return f"w9:p{self._panes}"
+        self.layout = HerdrLayout()
 
     def __call__(self, args: list[str]) -> subprocess.CompletedProcess:
         self.calls.append(args)
         head = " ".join(args[:2])
-        if head == "workspace create":
-            return _proc(
-                _ok(
-                    {
-                        "type": "workspace_created",
-                        "workspace": {"workspace_id": "w9"},
-                        "root_pane": {"pane_id": self._pane()},
-                    }
-                )
-            )
-        if head == "pane split":
-            return _proc(_ok({"type": "pane_info", "pane": {"pane_id": self._pane()}}))
+        if (result := self.layout.answer(args)) is not None:
+            return _proc(_ok(result))
         if head in {"agent start", "agent prompt"}:
             return _proc(_ok({"type": "ok"}))
         return _proc(stderr=_ok({}), returncode=2)
@@ -251,7 +238,7 @@ def test_each_member_gets_a_pane_an_agent_and_its_own_identity(
     bridge = HerdrBridge(runner=herdr)
 
     local = swarm.start_local(
-        cast("MyceliumConfig", object()),
+        MyceliumConfig(),
         bridge,
         "fix-tests",
         ["agent-1", "agent-2", "agent-3"],

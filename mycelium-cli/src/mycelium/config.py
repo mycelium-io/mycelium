@@ -434,6 +434,14 @@ class HerdrConfig(BaseModel):
         default=120000,
         description="Wait budget (ms) for a herdr wake to settle.",
     )
+    panes_per_tab: int = Field(
+        default=4,
+        ge=1,
+        description=(
+            "How many agent panes a herdr tab holds before the next agent opens a new tab "
+            "in the room's workspace."
+        ),
+    )
 
 
 class SwarmConfig(BaseModel):

@@ -61,6 +61,15 @@ CALL_TIMEOUT_S = 30.0
 #: herdr calls that fail or are slow, in the runner's log.
 _log = logging.getLogger("mycelium.runner.herdr")
 
+#: How many panes a tab holds before the next agent opens a new tab
+#: (``herdr.panes_per_tab``): four is a 2x2 grid, each pane still readable.
+PANES_PER_TAB = 4
+
+#: A terminal cell is about twice as tall as it is wide, and an agent wants
+#: width more than height, so a pane is split side by side only while it is
+#: this many times wider than tall (in cells); otherwise one above the other.
+_SPLIT_RIGHT_ASPECT = 2.5
+
 #: herdr's integration for an agent kind, where the two names differ.
 _INTEGRATION_FOR = {"agy": "antigravity-cli"}
 
@@ -510,6 +519,126 @@ class HerdrBridge:
             raise HerdrError("herdr split a pane but named no new pane")
         return new
 
+    def create_tab(
+        self,
+        workspace: str,
+        *,
+        label: str | None = None,
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+    ) -> tuple[str, str]:
+        """Open a new tab in ``workspace``; ``(tab id, its first pane id)``."""
+        args = ["tab", "create", "--workspace", workspace, "--no-focus"]
+        if label:
+            args += ["--label", label]
+        if cwd:
+            args += ["--cwd", cwd]
+        args += self._env_args(env)
+        result = self._run_json(args).get("result", {})
+        tab = str((result.get("tab") or {}).get("tab_id") or "")
+        pane = str((result.get("root_pane") or {}).get("pane_id") or "")
+        if not tab or not pane:
+            raise HerdrError("herdr created a tab but named no tab or pane")
+        return tab, pane
+
+    def rename_tab(self, tab: str, label: str) -> None:
+        """Set the name herdr shows for ``tab``."""
+        self._run_json(["tab", "rename", tab, label])
+
+    def pane_layout(self, pane: str) -> list[dict]:
+        """The panes of ``pane``'s tab, each with its ``rect`` (cells)."""
+        layout = self._run_json(["pane", "layout", "--pane", pane]).get("result", {})
+        panes = (layout.get("layout") or {}).get("panes", [])
+        return [p for p in panes if isinstance(p, dict) and p.get("pane_id")]
+
+    def place_pane(
+        self,
+        room: str,
+        workspace: str | None,
+        *,
+        handle: str | None = None,
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+        per_tab: int = PANES_PER_TAB,
+    ) -> tuple[str, str]:
+        """A new pane for an agent of ``room``; ``(workspace, pane)``.
+
+        In ``workspace`` when it is still open: the largest pane of the first
+        tab with room is split in half along its longer side, so panes stay
+        even (two side by side, then a 2x2 grid). A tab holds ``per_tab``
+        panes; past that the pane opens a new tab. With no workspace, or one
+        that is gone, a new workspace labelled ``room``. The tab is named after
+        the agents in it (``@a @b``), unless someone named it otherwise.
+        """
+        placed = None
+        if workspace:
+            try:
+                placed = workspace, self._place_in(workspace, cwd, env, max(1, per_tab))
+            except HerdrUnavailableError:
+                raise
+            except HerdrError:
+                _log.info("herdr workspace %s is gone; opening a new one for %s", workspace, room)
+        workspace, pane = placed or self.create_workspace(room, cwd=cwd, env=env)
+        if handle:
+            self._label_tab(room, workspace, pane, handle)
+        return workspace, pane
+
+    def _tabs(self, workspace: str) -> list[dict]:
+        tabs = self._run_json(["tab", "list", "--workspace", workspace]).get("result", {})
+        tabs = tabs.get("tabs", []) if isinstance(tabs, dict) else []
+        return [t for t in tabs if isinstance(t, dict) and t.get("tab_id")]
+
+    def _place_in(
+        self,
+        workspace: str,
+        cwd: str | None,
+        env: dict[str, str] | None,
+        per_tab: int,
+    ) -> str:
+        tabs = self._tabs(workspace)
+        if not tabs:
+            raise HerdrError(f"herdr has no workspace {workspace}")
+        tab = next((t for t in tabs if int(t.get("pane_count") or 0) < per_tab), None)
+        if tab is None:
+            return self.create_tab(workspace, cwd=cwd, env=env)[1]
+        in_tab = [
+            str(p["pane_id"])
+            for p in self.list_panes()
+            if p.get("workspace_id") == workspace and p.get("tab_id") == tab["tab_id"]
+        ]
+        if not in_tab:
+            raise HerdrError(f"herdr tab {tab['tab_id']} has no panes")
+        target, direction = _split_target(self.pane_layout(in_tab[0]))
+        return self.split_pane(target or in_tab[-1], direction=direction, cwd=cwd, env=env)
+
+    def _label_tab(self, room: str, workspace: str, pane: str, handle: str) -> None:
+        """Name ``pane``'s tab after the agents in it, ``handle`` added.
+
+        Only a tab herdr numbered or Mycelium named (every word an ``@handle``):
+        one a person named keeps their name. A handle of ``room`` whose agent
+        now runs outside the tab is dropped. Best-effort, as a name is cosmetic.
+        """
+        try:
+            panes = [p for p in self.list_panes() if p.get("workspace_id") == workspace]
+            tab_id = next((p.get("tab_id") for p in panes if str(p["pane_id"]) == pane), None)
+            tab = next((t for t in self._tabs(workspace) if t["tab_id"] == tab_id), None)
+            if tab is None:
+                return
+            label = str(tab.get("label") or "")
+            words = label.split()
+            if label != str(tab.get("number")) and not (
+                words and all(w.startswith("@") for w in words)
+            ):
+                return
+            here = {str(p["pane_id"]) for p in panes if p.get("tab_id") == tab_id}
+            moved = {m.handle for m in self.registry.all() if m.room == room and m.pane not in here}
+            kept = [w[1:] for w in words if w.startswith("@") and w[1:] not in moved]
+            new = _tab_label(kept, handle)
+            if new != label:
+                self.rename_tab(str(tab_id), new)
+        except HerdrError as e:
+            _log.info("couldn't name the herdr tab of @%s: %s", handle, e)
+
     def close_pane(self, pane: str) -> None:
         """Close ``pane``, ending whatever runs in it."""
         self._run_json(["pane", "close", pane])
@@ -681,6 +810,24 @@ class HerdrBridge:
             detail=f"woke agent at {mapping.pane}" + (f" (settled: {settled})" if settled else ""),
             raw=result,
         )
+
+
+def _tab_label(handles: list[str], handle: str) -> str:
+    """``@a @b``: the handles in a tab, ``handle`` last, each once."""
+    return " ".join(f"@{h}" for h in [*(h for h in handles if h != handle), handle])
+
+
+def _split_target(panes: list[dict]) -> tuple[str | None, str]:
+    """The largest pane in a tab layout, and the side to split it along."""
+    sized = [
+        (int(r.get("width") or 0), int(r.get("height") or 0), str(p["pane_id"]))
+        for p in panes
+        if isinstance(r := p.get("rect"), dict)
+    ]
+    if not sized:
+        return None, "right"
+    width, height, pane = max(sized, key=lambda s: s[0] * s[1])
+    return pane, "right" if width >= _SPLIT_RIGHT_ASPECT * height else "down"
 
 
 def call_timeout(args: list[str]) -> float:

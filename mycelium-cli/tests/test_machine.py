@@ -14,6 +14,7 @@ import pytest
 from mycelium import machine
 from mycelium.config import MyceliumConfig
 from mycelium.integrations.herdr import HerdrBridge, HerdrPaneMapping
+from tests.herdr_layout import HerdrLayout
 
 
 class FakeHerdr:
@@ -26,6 +27,12 @@ class FakeHerdr:
         #: Each integration herdr has, and whether it's current.
         self.integrations: dict[str, bool] = {"claude": False, "codex": False, "pi": False}
         self.calls: list[list[str]] = []
+        self.layout = HerdrLayout(self._pane)
+
+    def _pane(self, workspace: str) -> str:
+        pane = f"{workspace}:p{sum(p['workspace_id'] == workspace for p in self.panes) + 1}"
+        self.panes.append({"pane_id": pane, "workspace_id": workspace})
+        return pane
 
     def __call__(self, args: list[str]) -> subprocess.CompletedProcess:
         self.calls.append(args)
@@ -51,17 +58,16 @@ class FakeHerdr:
         if head == "agent list":
             result = {"agents": self.agents}
         elif head == "pane list":
-            result = {"panes": self.panes}
+            result = {
+                "panes": [{**p, "tab_id": self.layout.tab_of(p["pane_id"])} for p in self.panes]
+            }
         elif head == "workspace list":
             result = {"workspaces": [{"workspace_id": "w2", "label": "tome-dev"}]}
-        elif head == "pane split":
-            workspace = args[2].split(":")[0]
-            pane = f"{workspace}:pNEW{len(self.of('pane split'))}"
-            self.panes.append({"pane_id": pane, "workspace_id": workspace})
-            result = {"pane": {"pane_id": pane}}
         elif head == "workspace create":
-            self.panes.append({"pane_id": "w7:p1", "workspace_id": "w7"})
+            self.layout.open_tab("w7", self._pane("w7"))
             result = {"workspace": {"workspace_id": "w7"}, "root_pane": {"pane_id": "w7:p1"}}
+        elif (answer := self.layout.answer(args)) is not None:
+            result = answer
         elif head == "agent start":
             result = {"agent": {"pane_id": args[args.index("--pane") + 1]}}
         return subprocess.CompletedProcess(args, 0, json.dumps({"result": result}), "")

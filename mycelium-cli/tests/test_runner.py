@@ -28,6 +28,7 @@ from mycelium.integrations.herdr import HerdrBridge, HerdrRegistry, HerdrUnavail
 from mycelium.integrations.herdr.bridge import CALL_TIMEOUT_S, call_timeout
 from mycelium.runner import approvals, daemon, frameworks
 from mycelium.runner.log import open_log
+from tests.herdr_layout import HerdrLayout
 
 HELP = """Start a supported interactive agent in an existing pane
 
@@ -59,10 +60,11 @@ class Herdr:
         self.panes: list[str] = []
         self._panes = 0
         self.fail_start = False
+        self.layout = HerdrLayout(self._pane)
 
-    def _pane(self) -> str:
+    def _pane(self, workspace: str = "w9") -> str:
         self._panes += 1
-        self.panes.append(f"w9:p{self._panes}")
+        self.panes.append(f"{workspace}:p{self._panes}")
         return self.panes[-1]
 
     def __call__(self, args: list[str]) -> subprocess.CompletedProcess:
@@ -70,11 +72,14 @@ class Herdr:
         head = " ".join(args[:2])
         if args[:3] == ["agent", "start", "--help"]:
             return _proc(HELP)
-        if head == "workspace create":
-            pane = self._pane()
-            return _proc(_ok({"workspace": {"workspace_id": "w9"}, "root_pane": {"pane_id": pane}}))
-        if head == "pane split":
-            return _proc(_ok({"pane": {"pane_id": self._pane()}}))
+        if head == "pane list":
+            panes = [
+                {"pane_id": p, "workspace_id": p.split(":")[0], "tab_id": self.layout.tab_of(p)}
+                for p in self.panes
+            ]
+            return _proc(_ok({"panes": panes}))
+        if (result := self.layout.answer(args)) is not None:
+            return _proc(_ok(result))
         if head == "agent start":
             if self.fail_start:
                 return _proc(stderr=json.dumps({"error": "agent never became ready"}), returncode=1)
@@ -88,8 +93,6 @@ class Herdr:
                 for p, s in self.live.items()
             ]
             return _proc(_ok({"agents": agents}))
-        if head == "pane list":
-            return _proc(_ok({"panes": [{"pane_id": p, "workspace_id": "w9"} for p in self.panes]}))
         if head == "pane run":
             return _proc("")
         if head == "agent get":
@@ -101,6 +104,7 @@ class Herdr:
             self.live.pop(args[2], None)
             if args[2] in self.panes:
                 self.panes.remove(args[2])
+            self.layout.panes.pop(args[2], None)
             return _proc(_ok({}))
         return _proc(stderr=_ok({}), returncode=2)
 

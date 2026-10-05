@@ -1126,7 +1126,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#herdr-configuration",
     "t": "Configuration",
     "s": "Agents › Persistent Agents (herdr)",
-    "x": "Key Default What it does herdr.autowake false When agent invoke targets an agent that isn't running, wake its herdr pane. herdr.wake_timeout_ms 120000 How long (in ms) to wait for a wake-up to finish.",
+    "x": "Key Default What it does herdr.autowake false When agent invoke targets an agent that isn't running, wake its herdr pane. herdr.wake_timeout_ms 120000 How long (in ms) to wait for a wake-up to finish. herdr.panes_per_tab 4 How many agents share a tab in a room's workspace. A new agent splits the largest pane in half; past this many, it opens a new tab. Each tab is named after the agents in it.",
     "p": "Guides"
   },
   {

@@ -483,7 +483,7 @@ def restart(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None 
             bridge.run_in_pane(pane, f"cd {shlex.quote(folder)} && export {exports}")
             workspace = agent.workspace
         else:
-            workspace, pane = _new_pane(bridge, agent, folder, env)
+            workspace, pane = _new_pane(bridge, agent, folder, env, config.herdr.panes_per_tab)
         _start_when_ready(bridge, agent.handle, kind, pane)
         bridge.prompt(pane, restart_prompt(agent), wait=False)
     except HerdrError as e:
@@ -505,7 +505,7 @@ def restart(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None 
 
 
 def _new_pane(
-    bridge: HerdrBridge, agent: Agent, folder: str, env: dict[str, str]
+    bridge: HerdrBridge, agent: Agent, folder: str, env: dict[str, str], per_tab: int
 ) -> tuple[str, str]:
     """``(workspace, pane)`` for an agent whose pane is gone: beside another of its room's.
 
@@ -516,11 +516,16 @@ def _new_pane(
         panes = bridge.list_panes()
     except HerdrError:
         panes = []
-    for workspace in [w for w, r in bridge.registry.bindings().items() if r == agent.room]:
-        siblings = [str(p["pane_id"]) for p in panes if p.get("workspace_id") == workspace]
-        if siblings:
-            return workspace, bridge.split_pane(siblings[-1], cwd=folder, env=env)
-    return bridge.create_workspace(agent.room, cwd=folder, env=env)
+    open_workspaces = {p.get("workspace_id") for p in panes}
+    bound = [w for w, r in bridge.registry.bindings().items() if r == agent.room]
+    return bridge.place_pane(
+        agent.room,
+        next((w for w in bound if w in open_workspaces), None),
+        handle=agent.handle,
+        cwd=folder,
+        env=env,
+        per_tab=per_tab,
+    )
 
 
 def rename(agent: Agent, name: str, *, bridge: HerdrBridge | None = None) -> None:
