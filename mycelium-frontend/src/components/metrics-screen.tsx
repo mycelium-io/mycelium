@@ -510,7 +510,7 @@ function CognitionPanel({
   const operations = subCounters(llm, "by_operation");
   const models = subCounters(llm, "by_model", true);
   return (
-    <Panel id="cognition" title="Cognition">
+    <Panel title="Cognition">
       {calls == null ? (
         <Nothing>
           No Pi turn has run yet. The aligner&apos;s brain, the task compiler and the health probe all
