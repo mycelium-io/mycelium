@@ -516,7 +516,8 @@ class Supervisor:
         # again every tick until it does).
         found = registered()
         if found is not None and found[0] != os.getpid():
-            detail = f"a runner started with `mycelium runner` is running (pid {found[0]})"
+            whose = "another copy of the app" if found[1] == APP else "`mycelium runner`"
+            detail = f"a runner started by {whose} is running (pid {found[0]})"
             if (self.runner_state, self.runner_detail) != ("stopped", detail):
                 self.runner_state, self.runner_detail = "stopped", detail
                 self._publish()
