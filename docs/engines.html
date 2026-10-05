@@ -704,7 +704,7 @@ steps:
       </ul>
       <h2 id="worker-where-it-works">Where it works</h2>
       <p>Each room with workers has a git repository on the hub. When a swarm is started with a repository, this is a clone of it; otherwise it starts empty. Each worker gets its own copy to work in, on its own branch (<code>swarm/agent-1</code>, <code>swarm/agent-2</code>, and so on), and commits its work there. Reviewers look at the author&#x27;s branch. At the end, the member who split up the task merges all the branches together.</p>
-      <p>On a hub started with <code>mycelium up</code>, the repository is at <code>~/.mycelium/workspaces/&lt;room&gt;/repo</code>, so you can look at the branches from your own machine or push them somewhere:</p>
+      <p>On a hub on your own machine (the Mac app&#x27;s, or one started with <code>mycelium up</code>), the repository is at <code>~/.mycelium/workspaces/&lt;room&gt;/repo</code>, so you can look at the branches from your own machine or push them somewhere:</p>
       <pre><code><span class="cmd">git</span> <span class="flag">-C</span> ~/.mycelium/workspaces/&lt;room&gt;/repo log swarm/agent-1</code></pre>
       <p>Use the branches from <code>repo/</code> rather than from the workers&#x27; own folders next to it. Those folders only work from inside the hub&#x27;s container.</p>
       <h2 id="worker-reviews">Reviews</h2>

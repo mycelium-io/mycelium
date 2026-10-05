@@ -3,10 +3,11 @@
 ## Prerequisites
 
 ```bash
-# Install the CLI
+# Install Mycelium. On an Apple silicon Mac this installs and opens the Mac
+# app: choose On this Mac, then Start Mycelium. Elsewhere it installs the CLI.
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 
-# Bring up the stack: one SLIM node + a thin backend
+# Off a Mac (or after --docker): bring up the stack, one SLIM node + a thin backend
 mycelium install
 
 # Verify
@@ -14,9 +15,10 @@ mycelium --help
 mycelium doctor
 ```
 
-`mycelium install` starts a SLIM node (the encrypted group-channel transport), an
-always-on thin FastAPI backend that acts as each room's moderator, and the UI at
-`http://localhost:3000`. There is no database: rooms are folders, memories are
+The app (or `mycelium install`, in Docker) starts a SLIM node (the encrypted
+group-channel transport), an always-on thin FastAPI backend that acts as each
+room's moderator, and the UI (`http://127.0.0.1:3717` in the app,
+`http://localhost:3000` in Docker). There is no database: rooms are folders, memories are
 markdown, and search runs against a local embedding index. Pick an LLM for the
 aligner during install.
 

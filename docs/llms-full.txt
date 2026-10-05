@@ -85,7 +85,7 @@ needs you.
 On a Mac, four steps:
 
 1. **[Download Mycelium for Mac](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg)**,
-   open it, and choose **Run a hub on this Mac**.
+   open it, and choose **On this Mac**.
 2. Press **+** next to **Rooms** to create a room.
 3. Open **Members**, press **Add**, and add a coding agent from **Your
    machine**.
@@ -95,7 +95,15 @@ On a Mac, four steps:
 New to this? **[Walk through it step by step](#walkthrough)**, with a
 screenshot at each step.
 
-On Linux or a server your team shares, use the CLI instead:
+Rather use a terminal? This installs the same app into Applications, puts
+its `mycelium` CLI on your PATH, and opens it:
+
+```bash
+curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
+```
+
+On Linux or a server your team shares, the same installer installs the CLI,
+which runs the hub in Docker:
 
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
@@ -779,7 +787,7 @@ Each worker gets its own copy to work in, on its own branch (`swarm/agent-1`,
 author's branch. At the end, the member who split up the task merges all the
 branches together.
 
-On a hub started with `mycelium up`, the repository is at
+On a hub on your own machine (the Mac app's, or one started with `mycelium up`), the repository is at
 `~/.mycelium/workspaces/<room>/repo`, so you can look at the branches from your
 own machine or push them somewhere:
 
@@ -2275,8 +2283,10 @@ saved as a `knowledge` memory.
 
 # Run it on a server instead
 
-On Linux, on a server your team shares, or if you'd rather use a terminal,
-run Mycelium with the CLI. It starts the hub with Docker.
+On Linux, on a server your team shares, or anywhere you'd rather run the hub
+in Docker, run Mycelium with the CLI. It starts the hub with Docker. (On a
+Mac the installer below installs [the Mac app](#desktop) instead, which needs
+no Docker; pass `--docker` to get this path there.)
 
 ## Start with a prompt
 
@@ -2288,7 +2298,8 @@ Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform th
 ```
 
 It reads [agents.md](agents.md), a setup guide written for agents, and does
-the whole setup: starts the server with Docker, configures your model,
+the whole setup: starts the server (the app on a Mac, Docker elsewhere),
+configures your model,
 creates a room and adds itself to it. When it's done, open the app to see
 what's going on.
 
@@ -2303,6 +2314,10 @@ team wants a shared server, move it there.
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 mycelium install
 ```
+
+On a Mac, add `--docker` to the installer (`curl -fsSL
+https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --docker`), or
+it installs the Mac app instead of the CLI for Docker.
 
 `install` sets up the CLI and starts the server: a SLIM messaging node, the
 backend, and the app. There's no database; rooms and memory are files.
@@ -2482,6 +2497,10 @@ app (which joins that hub and room), the download, or the browser.
 
 ## The command line
 
+The installer on the docs site installs the app too, from a terminal:
+`curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash` puts it
+in Applications, links its `mycelium` CLI into `~/.local/bin`, and opens it.
+
 Everything the app does is also a command, for a Linux machine, a server, or
 if you'd rather use a terminal: `mycelium desktop serve` runs the same hub
 without the window. See [Run it on a server instead](#on-a-server) for the
@@ -2539,9 +2558,12 @@ them. It has to, so it can keep the transcript, run engines and save memory.
 
 ## Step 1: Set up the hub
 
-On the hub machine, install Mycelium and start the SLIM node:
+The hub here is the Docker stack. (The Mac app's hub listens on 127.0.0.1
+only, so it's for the Mac it runs on, not one spokes can reach.) On the hub
+machine, install the CLI and the stack, and start the SLIM node:
 
 ```bash
+curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash   # on a Mac: bash -s -- --docker
 mycelium install
 mycelium hub host
 ```
@@ -2608,11 +2630,15 @@ doesn't.
 
 ## Step 2: Connect each spoke
 
-On each spoke, install the CLI:
+On each spoke, install the CLI alone (`--client-only` skips the Mac app and
+Docker, neither of which a spoke needs):
 
 ```bash
-curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
+curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only
 ```
+
+A Mac spoke can use the Mac app instead: on its first screen, choose **On my
+team's hub** and enter the hub's address.
 
 Point it at the hub's API:
 
@@ -3382,16 +3408,17 @@ The full list of environment variables is in
 
 ## Install the CLI without Docker
 
-The normal installer sets up the whole Mycelium stack, which needs Docker. An
-ephemeral agent only talks to an existing hub, so it only needs the CLI:
+The normal installer sets up a hub on the machine: the Mac app on a Mac, or the
+CLI for the Docker stack anywhere else. An ephemeral agent only talks to an
+existing hub, so it only needs the CLI:
 
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only
 ```
 
-With `--client-only`, the installer doesn't check for Docker. If the
-container's `python3` is older than 3.12, it installs Python 3.12 for the CLI
-instead of failing. Many base images have an older Python and no Docker, so
+With `--client-only`, the installer neither installs the app nor checks for
+Docker. If the container's `python3` is older than 3.12, it installs Python
+3.12 for the CLI instead of failing. Many base images have an older Python and no Docker, so
 this is usually what you want.
 
 You can set `MYCELIUM_CLIENT_ONLY=1` instead of passing the flag. If
@@ -4608,9 +4635,10 @@ mycelium logs --tail 50  # recent logs
 ```
 
 `mycelium doctor` is the first thing to run for almost any problem. It works
-out whether this machine is a **hub** (it runs the backend and SLIM node) or a
-**spoke** (it connects to a hub somewhere else), and only runs the checks that
-apply. To choose yourself, pass `--mode hub` or `--mode spoke`.
+out whether this machine runs **the Mac app**, is a **hub** (it runs the
+backend and SLIM node in Docker) or a **spoke** (it connects to a hub somewhere
+else), and only runs the checks that apply. To choose yourself, pass
+`--mode desktop`, `--mode hub` or `--mode spoke`.
 
 ---
 
@@ -4618,7 +4646,9 @@ apply. To choose yourself, pass `--mode hub` or `--mode spoke`.
 
 ### `mycelium: command not found`
 
-The CLI isn't installed, or isn't on your `PATH`. Install it:
+The CLI isn't installed, or isn't on your `PATH`. Install it (on an Apple
+silicon Mac this installs the Mac app, whose CLI it links into `~/.local/bin`;
+add `bash -s -- --client-only` for the CLI alone):
 
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
@@ -4926,11 +4956,16 @@ mycelium --verbose status           # extra detail from the CLI
 
 This deletes all your rooms, memories and config.
 
+With the Docker stack:
+
 ```bash
 mycelium down --volumes   # stop everything and delete its data
 rm -rf ~/.mycelium        # remove config and room files
 mycelium install          # install again
 ```
+
+With the Mac app, quit it from its menu bar icon, remove `~/.mycelium`, and
+open it again: it starts at its first screen.
 
 ---
 
@@ -4951,14 +4986,14 @@ run and how they reach the room.
 ### 1. Single-device (default)
 
 Everything runs on one machine: the backend, the SLIM node, the app, the CLI
-and your agents. This is what `mycelium install` sets up, and it needs no
-network configuration. Use it when one person or one machine runs the whole
+and your agents. This is what the Mac app sets up (or `mycelium install`, which
+runs it in Docker), and it needs no network configuration. Use it when one person or one machine runs the whole
 workflow.
 
 ### 2. Hub-and-spoke (small teams)
 
 For a team that wants to share rooms and memory across machines. One machine,
-the **hub**, runs the SLIM node, the backend and the app. The other machines,
+the **hub**, runs the SLIM node, the backend and the app in Docker. The other machines,
 the **spokes**, run only the CLI and agents, and talk to the hub over HTTP.
 
 | Role  | What runs on it | Used for |

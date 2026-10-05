@@ -355,13 +355,15 @@
       <h1>Quick Start</h1>
       <p>On a Mac, four steps:</p>
       <ol class="steps">
-        <li><strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg">Download Mycelium for Mac</a></strong>, open it, and choose <strong>Run a hub on this Mac</strong>.</li>
+        <li><strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg">Download Mycelium for Mac</a></strong>, open it, and choose <strong>On this Mac</strong>.</li>
         <li>Press <strong>+</strong> next to <strong>Rooms</strong> to create a room.</li>
         <li>Open <strong>Members</strong>, press <strong>Add</strong>, and add a coding agent from <strong>Your machine</strong>.</li>
         <li>Hand it a task: type <code>/task Add a gift message to orders @builder</code> into the message box.</li>
       </ol>
       <p>New to this? <strong><a href="walkthrough.html#walkthrough">Walk through it step by step</a></strong>, with a screenshot at each step.</p>
-      <p>On Linux or a server your team shares, use the CLI instead:</p>
+      <p>Rather use a terminal? This installs the same app into Applications, puts its <code>mycelium</code> CLI on your PATH, and opens it:</p>
+      <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash</code></pre>
+      <p>On Linux or a server your team shares, the same installer installs the CLI, which runs the hub in Docker:</p>
       <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash
 <span class="bin">mycelium</span> <span class="cmd">install</span></code></pre>
       <p>See <a href="guides.html#on-a-server">Run it on a server instead</a> for the rest.</p>

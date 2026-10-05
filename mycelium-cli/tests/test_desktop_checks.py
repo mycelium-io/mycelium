@@ -182,3 +182,25 @@ def test_a_second_stack_on_another_store_is_a_warning_that_names_it(monkeypatch,
 def test_a_client_mac_only_mentions_hubs_here(monkeypatch, tmp_path: Path):
     _hubs(monkeypatch, tmp_path, [])
     assert checks.hubs_here(client=True).status == "info"
+
+
+def test_the_way_to_start_the_hub_follows_who_runs_it(setting):
+    assert checks.start_hub() == "mycelium up"
+    setting({"mode": "client", "hubUrl": "https://hub.example.com"})
+    assert checks.start_hub() == "mycelium up"
+    setting({"mode": "hub"})
+    assert checks.start_hub() == "open the Mycelium app"
+
+
+def test_doctor_checks_what_the_app_runs_once_it_is_set_up(setting, monkeypatch):
+    from typer.testing import CliRunner
+
+    from mycelium.cli import app
+    from mycelium.commands import doctor
+
+    setting({"mode": "client", "hubUrl": "https://hub.example.com"})
+    monkeypatch.setattr(doctor, "_check_docker_containers", _ok("Docker containers"))
+    monkeypatch.setattr(checks, "pairings", lambda: None)
+    result = CliRunner().invoke(app, ["--json", "doctor"])
+    assert '"mode": "desktop"' in result.output
+    assert "Docker containers" not in result.output

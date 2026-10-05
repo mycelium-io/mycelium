@@ -38,7 +38,7 @@ Each worker gets its own copy to work in, on its own branch (`swarm/agent-1`,
 author's branch. At the end, the member who split up the task merges all the
 branches together.
 
-On a hub started with `mycelium up`, the repository is at
+On a hub on your own machine (the Mac app's, or one started with `mycelium up`), the repository is at
 `~/.mycelium/workspaces/<room>/repo`, so you can look at the branches from your
 own machine or push them somewhere:
 

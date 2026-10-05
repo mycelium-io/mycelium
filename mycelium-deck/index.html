@@ -32,21 +32,22 @@
     <div class="copy">
       <span class="kicker rise">Before we start</span>
       <h2 class="rise" style="margin:34px 0 30px">Set up while we talk</h2>
-      <p class="rise">Three commands, about four minutes. You need Docker running and an LLM key at hand.</p>
+      <p class="rise">One command on a Mac, about four minutes. You need an LLM key at hand. On Linux, add <code>mycelium install</code>, with Docker running.</p>
       <p class="rise">Stuck? Raise a hand. A helper will come to you.</p>
     </div>
     <div class="term pane rise" data-term="setup">
       <div class="bar"><i></i><i></i><i></i><span>~ / workshop</span></div>
       <template class="script">
         curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
-        mycelium install
+        mycelium doctor --mode desktop
         mycelium ui open
       </template>
-<pre><span class="c"># install the CLI</span>
+<pre><span class="c"># install Mycelium: on a Mac, the app (choose On this Mac,</span>
+<span class="c"># then Start Mycelium, and add your key in Settings)</span>
 <span class="p">$ </span>curl <span class="f">-fsSL</span> \
     <span class="s">https://mycelium-io.github.io/mycelium/install.sh</span> | bash
 
-<span class="c"># pull images, add your LLM key</span>
+<span class="c"># on Linux: pull images, add your LLM key (Docker)</span>
 <span class="p">$ </span><span class="k">mycelium install</span>
 
 <span class="c"># open the app</span>

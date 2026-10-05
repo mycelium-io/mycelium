@@ -1,9 +1,16 @@
 # Exercise: your first room and task
 
-Set up (about four minutes; you need Docker running and an LLM key):
+Set up (about four minutes; you need an LLM key):
 
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
+```
+
+On a Mac that installs Mycelium and opens it: choose **On this Mac**, press
+**Start Mycelium**, and add your model's key in its Settings (⌘,). On Linux it
+installs the CLI, and the hub runs in Docker:
+
+```bash
 mycelium install
 mycelium ui open
 ```

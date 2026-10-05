@@ -1237,6 +1237,20 @@ def upgrade(
         typer.echo(f"  Current CLI version: v{__version__}")
         typer.echo("")
 
+        # The Mac app's own CLI is replaced with the app, which updates itself;
+        # a wheel installed over its link would only be put back on its next start.
+        from mycelium.desktop.supervisor import bundle_dir
+
+        bundle = bundle_dir()
+        if (
+            bundle is not None
+            and bundle.parent.name == "Contents"
+            and bundle.parent.parent.suffix == ".app"
+        ):
+            typer.echo("  This mycelium is Mycelium for Mac's, and the app updates itself:")
+            typer.echo("  use Check for Updates… in its menu bar icon.")
+            raise typer.Exit(0)
+
         # --version pins directly without is-this-newer check (for downgrade/pin).
         if target_version is not None:
             latest_version = target_version.lstrip("v")
