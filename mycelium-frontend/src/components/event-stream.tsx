@@ -276,7 +276,11 @@ function isActivity(event: Event): boolean {
  * moving) stays on the rail alone.
  */
 function isAlsoInChat(event: Event): boolean {
-  return event.type === NOTICE_TYPE && ((event.raw.subkind as string) || "filed") === "filed";
+  // What a task's thread said, and its arrival and finish, read in the chat as
+  // a line, so a person watching the room sees work happen there. Who picked
+  // it up stays on its rail row.
+  if (event.type === PING_TYPE) return true;
+  return event.type === NOTICE_TYPE && event.raw.subkind !== "claimed";
 }
 
 /**
@@ -723,6 +727,32 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     () => inChannel.filter(e => !isActivity(e) || isAlsoInChat(e)),
     [inChannel],
   );
+
+  // A thread's activity reads in the channel as one line per run: a ping
+  // followed by another from the same thread folds into the later one, which
+  // says how many it stands for and quotes the newest of their messages that
+  // is loaded.
+  const pingRuns = useMemo(() => {
+    const folded = new Set<string>();
+    const messages = new Map<string, string[]>();
+    let run: string[] = [];
+    visible.forEach((ev, i) => {
+      if (ev.type !== PING_TYPE) return;
+      run.push((ev.raw.pingMessage as string | undefined) ?? "");
+      const next = visible[i + 1];
+      if (next?.type === PING_TYPE && next.thread === ev.thread) folded.add(ev.id);
+      else {
+        messages.set(ev.id, run);
+        run = [];
+      }
+    });
+    return { folded, messages };
+  }, [visible]);
+  const saidById = useMemo(() => {
+    const said = new Map<string, Event>();
+    for (const ev of events) if (ev.messageId && CHAT_TYPES.has(ev.type)) said.set(ev.messageId, ev);
+    return said;
+  }, [events]);
 
   // What the room has been doing, one entry per task rather than one per frame.
   // No window here: the rail is the room's current state, so a task that has
@@ -1178,12 +1208,28 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
               // system notices — quiet dividers woven into the conversation,
               // not loud rows. Chat messages group under one sender header.
               if (ev.type === PING_TYPE && ev.thread) {
+                if (pingRuns.folded.has(ev.id)) return null;
                 const thread = ev.thread;
                 const shortId = threadShortId(thread) ?? "thread";
                 const owner = threads.get(thread);
-                const who = ev.pingSenders;
+                const run = pingRuns.messages.get(ev.id) ?? [];
+                const n = Math.max(run.length, 1);
+                const said = [...run].reverse().map((id) => saidById.get(id)).find(Boolean);
+                const quote = said?.content.split("\n").find((line) => line.trim())?.trim();
+                // Nothing to quote: the rail row already says the thread moved.
+                if (!quote) return null;
+                // One line from the thread: who, where, and the first line of
+                // what they said. The argument stays in the thread.
                 return (
-                  <SystemNotice key={ev.id} time={ev.time} at={ev.at} prevAt={prevAt} dot="var(--accent)" label="Activity">
+                  <SystemNotice
+                    key={ev.id}
+                    time={ev.time}
+                    at={ev.at}
+                    prevAt={prevAt}
+                    dot="var(--accent)"
+                    label={`@${said?.sender ?? ev.pingSenders[0] ?? "someone"}`}
+                    labelColor="var(--text)"
+                  >
                     <span>in</span>
                     <button
                       type="button"
@@ -1191,15 +1237,13 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                       disabled={!onOpenThread}
                       title={thread}
                       aria-label={`Open thread ${shortId}`}
-                      className="inline-flex max-w-[18rem] items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default"
+                      className="inline-flex max-w-[16rem] flex-shrink-0 items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default"
                     >
                       <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
                       <span className="truncate">{owner?.title ?? shortId}</span>
                     </button>
-                    {who.length > 0 && (
-                      <span className="truncate">· {who.map(h => `@${h}`).join(", ")}</span>
-                    )}
-                    {onOpenThread && <span className="text-faint">· click to open</span>}
+                    <span className="truncate text-text">{quote}</span>
+                    {n > 1 && <span className="flex-shrink-0 text-faint">· {n} messages</span>}
                   </SystemNotice>
                 );
               }

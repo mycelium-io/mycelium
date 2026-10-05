@@ -1856,6 +1856,37 @@ const storefrontSaid: MockMessage[] = [
   },
 ];
 
+/** What was said inside the tasks' threads, by the id each ping names. */
+function storefrontThreadMessage(
+  id: string,
+  key: string,
+  sender: string,
+  minutesAgo: number,
+  content: string,
+): MockMessage {
+  return {
+    id,
+    sender_handle: sender,
+    message_type: "broadcast",
+    created_at: iso(minutesAgo),
+    episode: storefrontEpisode(`t${key.replace(/^work\/(\d+)-.*$/, "$1")}`),
+    content,
+  };
+}
+
+const storefrontThreadSaid: MockMessage[] = [
+  storefrontThreadMessage("m19-0", "work/428-shipping-to-canada-costs-too-much", "task-428", 78, "Taking this. Canada checkout pulls the US price table; checking where the region is read."),
+  storefrontThreadMessage("m35-0", "work/412-product-photos-load-slowly-on-phones", "fix-412", 73, "Product photos ship at 4000px. Resizing them at upload and serving WebP."),
+  storefrontThreadMessage("m36-0", "work/428-shipping-to-canada-costs-too-much", "task-428", 70, "Found it: the region comes from the IP, and our CDN puts Canadian traffic in the US."),
+  storefrontThreadMessage("m40-0", "work/426-show-which-coffees-are-back-in-stock", "task-426", 69, "Restock dates come from the warehouse sheet; adding a nightly import."),
+  storefrontThreadMessage("m42-0", "work/421-password-reset-link-doesnt-work", "fix-421", 68, "PR #508 is merged: reset links now last 24 hours instead of 10 minutes."),
+  storefrontThreadMessage("m53-0", "work/428-shipping-to-canada-costs-too-much", "task-428", 67, "PR #512 is up: shipping reads the address country, not the IP. @reviewer can you look?"),
+  storefrontThreadMessage("m59-1", "work/429-reviews-show-the-wrong-star-count", "task-429", 63, "Review passed. The star count was rounding the average before summing."),
+  storefrontThreadMessage("m63-0", "work/412-product-photos-load-slowly-on-phones", "fix-412", 63, "Done: product pages load in 0.9s on a mid-range phone, from 4.2s."),
+  storefrontThreadMessage("m69-0", "work/418-add-a-gift-message-to-orders", "task-418", 62, "Gift messages print on the packing slip now. Merged as PR #510."),
+  storefrontThreadMessage("m73-2", "work/427-search-doesnt-find-decaf", "operator@example.com", 60, "Can search also match \"decaffeinated\" and \"DECAF\"? That's what people type."),
+];
+
 /**
  * The room before today — the half that used to be unreachable.
  *
@@ -1897,7 +1928,12 @@ const storefront: RoomFixture = {
     mas_id: "mas_9f3c02de",
   },
   memories: [...storefrontMemories, ...storefrontExtraAgentMemories, ...storefrontExtraMemories],
-  messages: [...storefrontBacklog, ...storefrontKnowledgePushes, ...storefrontSaid].sort(
+  messages: [
+    ...storefrontBacklog,
+    ...storefrontKnowledgePushes,
+    ...storefrontSaid,
+    ...storefrontThreadSaid,
+  ].sort(
     (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at),
   ),
   episodes: [],

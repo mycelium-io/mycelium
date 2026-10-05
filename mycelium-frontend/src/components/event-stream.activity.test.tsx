@@ -184,22 +184,47 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     expect(within(rail()).getByText("Claimed")).toBeInTheDocument();
   });
 
-  it("says a new task in the chat, and keeps the rest of its life on its row", async () => {
-    // A task being filed is the room's news, so the chat says it where people
-    // are reading. What happens to it after (claimed, resolved) stays on the
-    // rail, where the row reads created → worked → resolved in one place.
+  it("says a task's arrival and finish in the chat, and leaves who picked it up to its row", async () => {
+    // A task filed and a task finished are the room's news, so the chat says
+    // them where people are reading. Who claimed it is on its rail row, which
+    // still reads created → worked → resolved in one place.
     await stream([
       notice("filed", "aligner"),
+      notice("claimed", "growth", 200),
       said("taking this one", "growth", 400),
       notice("resolved", "growth", 800),
     ]);
 
     expect(await screen.findByText("taking this one")).toBeInTheDocument();
     expect(screen.getByText("New task")).toBeInTheDocument();
-    expect(screen.queryByText("Resolved")).not.toBeInTheDocument();
+    expect(screen.getByText("Resolved")).toBeInTheDocument();
+    expect(screen.queryByText("Claimed")).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: `Show 2 updates to ${TITLE}` }),
+      screen.getByRole("button", { name: `Show 3 updates to ${TITLE}` }),
     ).toBeInTheDocument();
+  });
+
+  it("quotes the first line of what a thread said, one line per run", async () => {
+    // A thread moving reaches the room as who, where and the first line they
+    // wrote, so the headline is visible without opening the task. A burst from
+    // one thread is one line that says how many; the argument stays inside.
+    vi.mocked(fetchMessages).mockResolvedValue({
+      messages: [
+        {
+          id: "m1",
+          message_type: "broadcast",
+          sender_handle: "growth",
+          created_at: at(100),
+          episode: THREAD,
+          content: "PR #512 is up: flag flipped for 5% of reads.\n\nDetails below.",
+        },
+      ],
+    });
+    await stream([ping("growth", "m0", 50), ping("growth", "m1", 100), ping("growth", "unloaded", 900)]);
+
+    expect(await screen.findByText("PR #512 is up: flag flipped for 5% of reads.")).toBeInTheDocument();
+    expect(screen.getByText("· 3 messages")).toBeInTheDocument();
+    expect(screen.queryByText("Details below.")).not.toBeInTheDocument();
   });
 
   it("puts a stalled task first, where three rows stand open", async () => {
