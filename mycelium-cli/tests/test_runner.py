@@ -230,6 +230,62 @@ def test_the_owner_is_a_handle_a_person_reads(make_runner, monkeypatch: pytest.M
     assert r.owner() == "julia-valenti"
 
 
+# ── registration: one way, however the runner was started ─────────────────────
+
+
+def test_a_runner_registers_while_it_runs_and_says_who_started_it(make_runner, tmp_path: Path):
+    import os
+
+    r = make_runner()
+    r.started_by = daemon.APP
+    seen: list[object] = []
+    r._run = lambda: seen.append(daemon.registered(tmp_path))  # type: ignore[method-assign]
+    r.run()
+    assert seen == [(os.getpid(), daemon.APP)]
+    assert daemon.registered(tmp_path) is None  # taken back when it stops
+
+
+def test_a_registration_is_only_taken_back_by_its_own_process(tmp_path: Path):
+    import os
+
+    (tmp_path / "runner.pid").write_text(f"{os.getppid()}\n")  # another process, alive
+    daemon.unregister(tmp_path)
+    assert daemon.registered(tmp_path) == (os.getppid(), daemon.TERMINAL)
+    (tmp_path / "runner.pid").write_text("999999999\n")  # gone
+    assert daemon.registered(tmp_path) is None
+
+
+def test_the_apps_runner_counts_as_running_and_isnt_stopped_from_a_terminal(
+    isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """#1140: `mycelium machine`, `runner pair` and `herdr sync` read the same
+    registration, and `runner stop` won't signal the app's supervisor."""
+    import os
+
+    from typer.testing import CliRunner
+
+    from mycelium.commands import runner as cmd
+
+    # The app's supervisor: a live process that isn't this one.
+    folder = daemon.runner_dir()
+    (folder / "runner.started-by").write_text(f"{daemon.APP}\n")
+    (folder / "runner.pid").write_text(f"{os.getppid()}\n")
+    assert cmd.running_pid() == os.getppid()
+    assert cmd.runs_in_app()
+    assert machine.report(bridge=HerdrBridge(runner=Herdr()), machine="mac").runner
+
+    killed: list[tuple[int, int]] = []
+    monkeypatch.setattr(cmd.os, "kill", lambda pid, sig: killed.append((pid, sig)))
+    result = CliRunner().invoke(cmd.app, ["stop"])
+    assert result.exit_code == 1
+    assert "Mycelium app's" in result.output
+    assert [sig for _pid, sig in killed if sig != 0] == []  # only liveness checks, no SIGTERM
+
+    started = CliRunner().invoke(cmd.app, [])
+    assert started.exit_code == 1
+    assert "already running" in started.output
+
+
 def test_a_runner_id_is_made_once_and_kept(tmp_path: Path):
     first = daemon.runner_id(tmp_path / "id")
     assert first == daemon.runner_id(tmp_path / "id")

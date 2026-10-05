@@ -509,7 +509,18 @@ class Supervisor:
 
         from mycelium.config import MyceliumConfig
         from mycelium.runner.approvals import requests_dir
-        from mycelium.runner.daemon import Runner
+        from mycelium.runner.daemon import APP, Runner, registered
+
+        # One machine runs one runner. One started in a terminal keeps the
+        # machine, and the app's starts once that one stops (this is asked
+        # again every tick until it does).
+        found = registered()
+        if found is not None and found[0] != os.getpid():
+            detail = f"a runner started with `mycelium runner` is running (pid {found[0]})"
+            if (self.runner_state, self.runner_detail) != ("stopped", detail):
+                self.runner_state, self.runner_detail = "stopped", detail
+                self._publish()
+            return
 
         config = self.config or MyceliumConfig.load()
         config.server.api_url = self.api_url
@@ -525,6 +536,7 @@ class Supervisor:
             rid=self.runner_id,
             log=Console(stderr=True),
             trust_hub=self._own_hub(),
+            started_by=APP,
             # The app answers by writing the answer file into this folder.
             on_request=lambda request: self.emit(
                 {"type": "request", "request": request, "folder": str(requests_dir())}

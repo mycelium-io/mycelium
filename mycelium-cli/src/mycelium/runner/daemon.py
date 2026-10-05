@@ -39,6 +39,7 @@ job doesn't ask either: it carries proof of a code only this machine printed.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import platform
@@ -102,6 +103,58 @@ def runner_dir() -> Path:
     path = get_mycelium_dir() / "runner"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+# ── registration ──────────────────────────────────────────────────────────────
+#
+# Every runner says it is running the same way, however it was started:
+# `mycelium runner` in a terminal, or the one inside the Mac app's supervisor.
+# `runner.pid` holds the pid of the process it runs in (just the number, which
+# older CLIs read too), and `runner.started-by` beside it says who started it,
+# so a command that would signal that pid knows when it is the app's.
+
+#: Who started a runner: a terminal (`mycelium runner`), or the Mac app.
+TERMINAL, APP = "terminal", "app"
+
+_PID, _STARTED_BY = "runner.pid", "runner.started-by"
+
+
+def registered(base: Path | None = None) -> tuple[int, str] | None:
+    """``(pid, started_by)`` of this machine's running runner, or ``None`` when none is."""
+    folder = base or runner_dir()
+    try:
+        pid = int((folder / _PID).read_text().strip())
+    except (OSError, ValueError):
+        return None
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return None
+    except PermissionError:
+        pass
+    try:
+        started_by = (folder / _STARTED_BY).read_text().strip() or TERMINAL
+    except OSError:
+        started_by = TERMINAL
+    return pid, started_by
+
+
+def register(started_by: str, base: Path | None = None) -> None:
+    """Say this process runs this machine's runner."""
+    folder = base or runner_dir()
+    (folder / _STARTED_BY).write_text(f"{started_by}\n")
+    (folder / _PID).write_text(f"{os.getpid()}\n")
+
+
+def unregister(base: Path | None = None) -> None:
+    """Take back the registration, if it is this process's."""
+    found = registered(base)
+    if found is None or found[0] != os.getpid():
+        return
+    folder = base or runner_dir()
+    for name in (_PID, _STARTED_BY):
+        with contextlib.suppress(OSError):
+            (folder / name).unlink()
 
 
 def read_sync(path: Path | None = None) -> dict[str, Any] | None:
@@ -299,8 +352,11 @@ class Runner:
         requests_base: Path | None = None,
         log_path: Path | None = None,
         pairings_base: Path | None = None,
+        started_by: str = TERMINAL,
     ) -> None:
         self.config = config
+        #: Who started it (:data:`TERMINAL` or :data:`APP`), said in its registration.
+        self.started_by = started_by
         #: Start what the hub asks without asking here: only for a hub nobody else can reach.
         self.trust_hub = trust_hub
         #: Told of each question as it is asked (the Mac app shows it as a dialog).
@@ -1041,6 +1097,19 @@ class Runner:
                 failing(log, "sync.json", f"couldn't write {self._sync_path}: {e}")
 
     def run(self) -> None:
+        """Run until :meth:`stop`, registered as this machine's runner the whole time.
+
+        The registration is what `mycelium machine`, `runner pair` and
+        `herdr sync` read, so a runner counts as running however it was
+        started, the Mac app's included.
+        """
+        register(self.started_by, self._state_path.parent)
+        try:
+            self._run()
+        finally:
+            unregister(self._state_path.parent)
+
+    def _run(self) -> None:
         # Questions left by a runner that stopped are about jobs nobody is waiting on.
         approvals.forget_all(base=self._requests_base)
         self.scan()
