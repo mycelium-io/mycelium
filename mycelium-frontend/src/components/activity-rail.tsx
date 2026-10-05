@@ -118,6 +118,17 @@ export function lastChange(update: ActivityUpdate): string {
   const who = update.detail.match(/@[\w.@-]+/g)?.join(", ") ?? "";
   if (update.label === "Activity") return who ? `${who} posted in the thread` : "a message in the thread";
   if (update.label === "Knowledge") return who ? `${who} edited its notes` : "its notes changed";
+  // The handle on an expired lease is whoever stopped renewing it, not who did it.
+  if (update.label === "Expired") return who ? `${who}'s lease ran out` : "its lease ran out";
+  // Whose turn it is in the thread: the holder alone, the handles it gave the
+  // floor to, or the floor opening back up.
+  if (update.label === "Floor") {
+    if (/\breleased\b/.test(update.detail)) return "floor open";
+    const holder = update.detail.match(/held by (@[\w.@-]+)/)?.[1];
+    const turn = holder ?? who;
+    if (!turn) return "the floor moved";
+    return turn.includes(",") ? `turn for ${turn}` : `${turn}'s turn`;
+  }
   return `${update.label.toLowerCase()}${who ? ` by ${who}` : ""}`;
 }
 
