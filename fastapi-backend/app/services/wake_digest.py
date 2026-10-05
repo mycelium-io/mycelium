@@ -233,10 +233,12 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
         more = len(since) and len(said) - len(shown)
         noun = "message" if more == 1 else "messages"
         extra = f", plus {more} other {noun} since your last turn" if more > 0 else ""
-        # Named outright, so the reply lands in the task's thread even if the
-        # agent replies without awaiting first.
+        # The target is named outright: ``respond`` lands in a task's thread only
+        # with ``--task``, and in the room without it, whatever ``await`` handed
+        # over last. A thread no row carries can't be named, so its reply goes
+        # to the room, and the line says so.
         task = f" --task {where[0]}" if here and where else ""
-        lands = f'"{where[1]}"' if here and where else "this thread" if here else "the room"
+        lands = f'"{where[1]}"' if here and where else "the room"
         lines += [
             f"First:  mycelium await --room {room} --handle {me} --json --timeout 5",
             f"        (everything above in full{extra}; it marks these read and tells"

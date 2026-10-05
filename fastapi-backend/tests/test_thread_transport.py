@@ -557,19 +557,33 @@ class TestReplyTargeting:
         )
 
     @pytest.mark.asyncio
-    async def test_a_reply_answers_where_it_was_asked(self, client, replying):
-        """The inherit: a resident loop stays threaded without tracking URNs."""
+    async def test_an_untargeted_reply_lands_in_the_room(self, client, replying):
+        """No inheriting: a reply with no thread lands in the room, even when the
+        last turn the handle was handed was asked in a task's thread. Whatever
+        ``await`` handed over last is not a target the caller chose."""
         thread = await _unit_thread(ROOM, "pick a token store")
         self._woke(thread)
 
         assert (await self._reply(client)).status_code == 200
+        env = self._replied(replying)
+        assert env.header.message.episode == l9.live_episode_urn(ROOM)
+        # It is not an answer to the thread's tick, so no edge reaches across.
+        assert env.header.message.parents == []
+        assert replying.persister.pings == []
+
+    @pytest.mark.asyncio
+    async def test_a_reply_in_the_thread_it_was_asked_answers_the_turn(self, client, replying):
+        thread = await _unit_thread(ROOM, "pick a token store")
+        self._woke(thread)
+
+        assert (await self._reply(client, episode=thread)).status_code == 200
         env = self._replied(replying)
         assert env.header.message.episode == thread
         assert env.header.message.parents == ["tick-1"]
         assert [a.id for a in env.header.participants.actors] == ["api", "aligner"]
 
     @pytest.mark.asyncio
-    async def test_a_named_thread_beats_the_one_inherited(self, client, replying):
+    async def test_a_named_thread_is_where_the_reply_lands(self, client, replying):
         thread = await _unit_thread(ROOM, "pick a token store")
         other = await _unit_thread(ROOM, "rotate the signing key")
         self._woke(thread)
@@ -606,7 +620,7 @@ class TestReplyTargeting:
         thread = await _unit_thread(ROOM, "pick a token store")
         self._woke(thread)
 
-        await self._reply(client)
+        await self._reply(client, episode=thread)
         assert len(replying.persister.pings) == 1
         assert replying.persister.pings[0][0].payload.data["episode"] == thread
 
@@ -656,7 +670,7 @@ class TestReplyTargeting:
         replying.lifecycle.open(thread, {"aligner", "api"}, negotiation=True)
         self._woke(thread)
 
-        assert (await self._reply(client)).status_code == 200
+        assert (await self._reply(client, episode=thread)).status_code == 200
         assert self._replied(replying).header.message.episode == thread
 
     @pytest.mark.asyncio
@@ -668,7 +682,7 @@ class TestReplyTargeting:
         room_channels.manager.hold_floor(ROOM, thread, holder="conductor", speakers=["sec"])
         self._woke(thread, sender="conductor")
 
-        resp = await self._reply(client)
+        resp = await self._reply(client, episode=thread)
         assert resp.status_code == 409
         assert "@conductor holds the floor; @sec may speak" in resp.json()["detail"]
         assert [e for e, _c, _lw in replying.persister.ingested if e.payload.type == "reply"] == []
@@ -680,7 +694,7 @@ class TestReplyTargeting:
         room_channels.manager.hold_floor(ROOM, thread, holder="conductor", speakers=["api"])
         self._woke(thread, sender="conductor")
 
-        assert (await self._reply(client)).status_code == 200
+        assert (await self._reply(client, episode=thread)).status_code == 200
         assert self._replied(replying).header.message.episode == thread
 
     @pytest.mark.asyncio
@@ -690,7 +704,7 @@ class TestReplyTargeting:
         room_channels.manager.release_floor(ROOM, thread)
         self._woke(thread, sender="conductor")
 
-        assert (await self._reply(client)).status_code == 200
+        assert (await self._reply(client, episode=thread)).status_code == 200
 
     @pytest.mark.asyncio
     async def test_the_room_is_open_however_many_floors_are_held(self, client, replying):

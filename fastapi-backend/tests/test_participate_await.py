@@ -322,3 +322,25 @@ async def test_an_empty_poll_says_nothing(wired):
         assert queue.empty()
     finally:
         bus.unsubscribe(room_channel("r"), queue)
+
+
+@pytest.mark.asyncio
+async def test_a_turn_in_the_room_names_no_task(wired):
+    """Asked in the room, the turn has no task: a bare ``respond`` answers it."""
+    wired(_log(_said("m1", "@agent ship it?")))
+    result = await participate.await_message("r", _REQUEST, handle="agent", timeout=0)
+    assert result["task"] is None
+
+
+@pytest.mark.asyncio
+async def test_a_turn_in_a_tasks_thread_names_the_task(wired, monkeypatch):
+    """Asked in a row's thread, the turn names the row, which is what the caller
+    passes as ``respond --task`` to answer there: a reply never follows the turn
+    on its own."""
+    thread = l9.episode_urn("r", "t3")
+    rows = {thread: ("work/fix-receipt", "Fix the receipt")}
+    monkeypatch.setattr(participate.tasks, "row_of_episode", lambda _room, ep: rows.get(ep))
+    wired(_log(_said("m1", "@agent can you review?", thread="t3")))
+    result = await participate.await_message("r", _REQUEST, handle="agent", timeout=0)
+    assert result["episode"] == thread
+    assert result["task"] == "work/fix-receipt"

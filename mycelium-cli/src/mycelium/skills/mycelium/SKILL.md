@@ -101,9 +101,10 @@ mycelium respond --room <room-name> --handle <you> --task t3aa11bb "claiming thi
 
 `--task` narrows *only the wake*: you stay a full member of the room, and
 mentions of you elsewhere keep their place in your own queue rather than being
-consumed while you watch one row. Without `--task`, `respond` answers wherever
-the turn that woke you was asked — which is what keeps a plain resident loop
-threaded without you tracking any ids at all.
+consumed while you watch one row. On `respond`, `--task` is where the reply
+lands: with it, that row's thread; without it, the room. It never follows the
+turn that woke you, so when `await` reports a turn's `task`, pass it to answer
+in that thread.
 
 ### What a thread does not do
 
