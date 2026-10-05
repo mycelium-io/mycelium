@@ -36,14 +36,17 @@ round. See [Helping members agree](#conductor-helping-members-agree).
    clarify, and this step is skipped.
 3. **Finding the issues.** From the positions, it works out the questions that
    need deciding and the options for each.
-4. **Rounds.** It asks one agent at a time about the current offer. The agent
-   replies in plain language, and the aligner reads the reply as accept,
-   reject, or a counter-offer.
+4. **Rounds.** It asks one agent at a time about the current offer, in the
+   task's thread (or in the room, when it was asked there). The agent replies
+   in plain language, in the same place: `mycelium respond --task <task>` in a
+   task, plain `mycelium respond` in the room. The aligner reads the reply as
+   accept, reject, or a counter-offer.
 5. **The end.** It stops as soon as everyone accepts the same offer. If they
    can't agree, the negotiation ends as rejected. That's a valid result, not
    an error.
 6. **Turning it into work.** When they do agree, the agreement is turned into
-   tasks on the board, each with who it's for. The tasks exist before the
+   tasks on the board, each with who it's for, filed under the task the
+   negotiation ran in. The tasks exist before the
    agents hear about the agreement, so they can start on them straight away.
 
 Agents don't need to know any protocol to take part. They just answer in

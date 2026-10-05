@@ -251,10 +251,9 @@ async def test_two_convenings_write_distinct_episode_records() -> None:
     ep1 = await _convene()
     ep2 = await _convene()
 
-    # Distinct episode URNs on the wire ...
-    assert ep1 != ep2
-    assert ep1.startswith(l9.episode_urn(_ROOM, ""))
-    # ... and two distinct records on disk (no clobber of a single record).
+    # Both are held where they were summoned (the room, here) ...
+    assert ep1 == ep2 == l9.live_episode_urn(_ROOM)
+    # ... and still write two distinct records on disk (no clobber of a single record).
     records = sorted(p.name for p in (room_dir / "log" / "episodes").glob("*.md"))
     assert len(records) == 2, records
 
@@ -625,3 +624,60 @@ async def test_least_satisfied_order_preserves_termination() -> None:
 
     assert verdict is not None
     assert verdict["header"]["subkind"] == "converged"
+
+
+@pytest.mark.asyncio
+async def test_a_negotiation_summoned_in_a_task_is_held_in_its_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Summoned in a task's thread, the aligner negotiates there: every question it
+    puts to an agent and the verdict land in that thread, so an agent answers
+    with ``respond --task <row>`` like any other turn there. The record stays an
+    episode of its own, nested in the thread, and the commit names the row so
+    the compiled work is filed under it."""
+    from app.services import tasks
+    from app.services.filesystem import ensure_room_structure, get_room_dir
+    from app.services.l9_models import Kind
+
+    monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
+    ensure_room_structure(get_room_dir(_ROOM))
+    task = await tasks.create_task(_ROOM, "cap the discount", created_by="avery")
+    assert task.episode
+
+    persister = FakePersister()
+    channel = FakeChannel(persister, reply_conf=0.9)
+    managed = FakeManaged(_ROOM, "mycelium", channel, persister)
+    manager = FakeManager(managed, ["growth", "risk", "aligner"])
+
+    verdict = await _engine(manager).mediate(_ROOM, episode=task.episode)
+
+    assert verdict is not None
+    assert manager.opened == [task.episode]
+    prompts = [s for s, _ in channel.sent if s.header.kind == Kind.exchange]
+    assert prompts
+    assert {p.header.message.episode for p in prompts} == {task.episode}
+    assert verdict["header"]["message"]["episode"] == task.episode
+    assert verdict["payload"]["data"]["within"] == task.key
+
+    records = list((get_room_dir(_ROOM) / "log" / "episodes").glob("*.md"))
+    assert len(records) == 1
+    assert f"- within: `{task.episode}`" in records[0].read_text()
+
+
+@pytest.mark.asyncio
+async def test_a_negotiation_summoned_in_the_room_is_held_in_the_room() -> None:
+    """Summoned in the room, its questions are asked in the room, where a bare
+    ``respond`` answers them, and the commit names no task."""
+    from app.services.l9_models import Kind
+
+    persister = FakePersister()
+    channel = FakeChannel(persister, reply_conf=0.9)
+    managed = FakeManaged(_ROOM, "mycelium", channel, persister)
+    manager = FakeManager(managed, ["growth", "risk", "aligner"])
+
+    verdict = await _engine(manager).mediate(_ROOM)
+
+    assert verdict is not None
+    prompts = [s for s, _ in channel.sent if s.header.kind == Kind.exchange]
+    assert {p.header.message.episode for p in prompts} == {l9.live_episode_urn(_ROOM)}
+    assert "within" not in verdict["payload"]["data"]

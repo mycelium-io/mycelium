@@ -172,8 +172,16 @@ def open_episode(
     joined_intents: str,
     engine_handle: str = "",
     opening_positions: dict[str, str] | None = None,
+    episode: str | None = None,
+    within: str | None = None,
 ) -> NegotiationState:
     """Open a negotiation episode: mint URNs and record the ``intent`` envelope.
+
+    ``episode`` is the thread the negotiation is held in (a task's thread, or
+    the room), so its ticks and verdict land where the agents can answer them;
+    omitted, the episode is a thread of its own named by ``short_id``.
+    ``within`` names the task's thread when it was opened inside one. Either
+    way the record is ``log/episodes/{short_id}.md``.
 
     ``engine_handle`` is the registered engine mediating the episode; it signs
     the intent/tick/consensus envelopes so the wire carries the engine's real
@@ -184,7 +192,7 @@ def open_episode(
     "Opening Positions" section for audit.
     """
     ep = NegotiationState(
-        episode=l9.episode_urn(parent_room, short_id),
+        episode=episode or l9.episode_urn(parent_room, short_id),
         topic=l9.topic_urn(parent_room),
         parent_room=parent_room,
         short_id=short_id,
@@ -193,6 +201,7 @@ def open_episode(
         agents=agents[:],
         engine_handle=engine_handle,
         opening_positions=dict(opening_positions or {}),
+        within=within,
     )
     intent = l9.build_envelope(
         kind=Kind.intent,
@@ -449,12 +458,19 @@ def build_consensus_envelope(
     broken: bool,
     assignments: dict[str, Any],
     metrics: dict[str, Any] | None,
+    task: str | None = None,
 ) -> dict[str, Any]:
-    """The ``commit`` envelope closing the episode (converged or rejected)."""
+    """The ``commit`` envelope closing the episode (converged or rejected).
+
+    ``task`` is the key of the row the negotiation was held in; it rides as
+    ``within``, so the work compiled from an agreement is filed under that row.
+    """
     parents = sorted(ep.last_reply_ids.values()) or ([ep.intent_id] if ep.intent_id else [])
     payload: dict[str, Any] = {"assignments": assignments}
     if metrics:
         payload["metrics"] = metrics
+    if task:
+        payload["within"] = task
     env = l9.build_envelope(
         kind=Kind.commit,
         subkind="rejected" if broken else "converged",

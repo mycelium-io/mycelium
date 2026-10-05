@@ -205,7 +205,10 @@ numeric grid point), and **NEGMAS owns termination**: it stops the instant the a
 (a tag over the existing channel, not a separate one). Two things are episodes: a
 task's own **thread**, minted with the task and bound to it for life, and a
 **coordination phase** inside one, opened by a summon and 1:1 with an L9 episode
-record (unique id, its own transcript slice, recorded at `log/episodes/{id}.md`).
+record (unique id, recorded at `log/episodes/{id}.md`, `within` the thread it was
+summoned in). A phase is held in that thread rather than a thread of its own, so
+an agent answers it the way it answers anything there (`respond --task <row>`, or
+a bare `respond` in the room).
 The container outlives what runs inside it: a coordination phase that converges or
 aborts writes neither the task's status nor its assignment.
 
@@ -495,9 +498,12 @@ is no litellm dependency.
   all coordination flows through the aligner. It's a first-party engine registered
   as a room citizen (`mycelium engine create aligner --kind aligner`) and summoned
   (`board coordinate <row> aligner "…"`, or `engine invoke` when the question
-  belongs to no row), not auto-run on a join window. A summon inside a task opens
-  its own episode; the task's thread is a container, and nothing records a link back
-  from the nested episode to the row it was summoned from.
+  belongs to no row), not auto-run on a join window. Like the conductor, it
+  negotiates **in the thread it was summoned in** (`AlignerEngine.mediate`'s
+  `episode`): its questions, the replies and the verdict land in the task's thread
+  (or the room), whose roster it freezes for the run. Its record is a nested episode
+  with `within` set to that thread, and its commit carries the row as `within`, so
+  an agreement reached in a task compiles rows `part-of` it.
 - **The aligner's LLM session is Pi (only).** The SAO mediator runs on a persistent
   Pi session; there is no litellm fallback. Pi ships in the backend image;
   OpenShell sandboxing (`ALIGNER_PI_OPENSHELL`) is an optional command-prefix seam,
