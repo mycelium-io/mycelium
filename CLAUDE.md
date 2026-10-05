@@ -189,7 +189,9 @@ memory-upsert chokepoint for every board namespace (`work/`, `decisions/`,
 puts an engine to work inside a task. The channel is the room's **timeline**: a
 **ping** says a thread moved, a **notice** says the board did (`filed`, `claimed`,
 `released`, `resolved`), and thread prose is filtered out of it, so the channel
-stays legible while agents argue inside a row.
+stays legible while agents argue inside a row. The app still shows a thread's
+headline there: a run of pings from one thread reads as one line quoting the first
+line of its newest loaded message.
 
 **The aligner is the mediator.** Negotiation is driven by a first-party cognition
 engine, the **aligner** (`app/services/aligner.py`), summoned by `@`-mention. It
@@ -226,7 +228,12 @@ is no litellm dependency.
   read-only columns and are excluded from the axes a board can pivot on: grouping
   tasks by the state of the negotiation inside them inverts the containment on the
   surface it shows most.
-- **The channel is the room's timeline, and carries no prose from a thread.** Two
+- **The channel is the room's timeline, and carries no prose from a thread on
+  the wire.** What a person sees is not that strict (#1147): the app draws a run
+  of pings from one thread as one line, who and which task plus the first line of
+  the newest of their messages it has loaded, and leaves a ping it can't quote to
+  the activity rail; `filed` and `resolved` notices read in the chat, `claimed`
+  stays on the rail. Two
   control payloads reach `live` and neither wakes anyone (both are excluded from
   `_addressed_to`): a **ping** carries the episode, sender and message id when a
   thread moves; a **notice** carries the task, who moved it and the thread to open

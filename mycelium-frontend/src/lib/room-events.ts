@@ -153,6 +153,8 @@ export function parseEvent(msg: Record<string, unknown>): Event {
         thread = ping.episode;
         pingSender = ping.sender;
         mtype = PING_TYPE;
+        // The thread message it is about, so the channel can quote its first line.
+        raw = { ...raw, pingMessage: ping.message };
         break;
       }
       // A board event — a task filed, claimed, handed back, resolved — rides the

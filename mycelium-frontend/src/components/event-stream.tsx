@@ -32,6 +32,7 @@ import { SenderName } from "@/components/sender-name";
 import { hasMatch, stepIndex } from "@/lib/chat-search";
 import { RoomBoard } from "@/components/board/room-board";
 import { ActivityRail, type ActivityItem } from "@/components/activity-rail";
+import { Ago, NowProvider } from "@/lib/relative-time";
 import { EpisodeTag } from "@/components/episode-tag";
 import { L9Inspector } from "@/components/l9-inspector";
 import { RoomA2aView } from "@/components/room-a2a";
@@ -182,6 +183,8 @@ function ChannelSkeleton() {
 /** A quiet, centered lifecycle line woven into the conversation. */
 function SystemNotice({
   time,
+  at,
+  prevAt,
   dot,
   label,
   labelColor,
@@ -190,6 +193,10 @@ function SystemNotice({
   trailing,
 }: {
   time: string;
+  /** When it landed, as an ISO stamp: shown as "2m ago", the exact time on hover. */
+  at?: string;
+  /** When the notice above it landed, so a run doesn't repeat one age down the column. */
+  prevAt?: string;
   dot: string;
   label?: string;
   labelColor?: string;
@@ -198,8 +205,13 @@ function SystemNotice({
   /** Held out of the truncating run, so a control here survives a long title. */
   trailing?: React.ReactNode;
 }) {
+  // A run of notices reads as one block: space above the first, none between
+  // them, so six tasks filed in a row take six lines rather than a screen.
   return (
-    <div className="group mt-3 flex items-center gap-2 px-5 py-1 text-micro text-muted-foreground first:mt-0">
+    <div
+      data-system-notice=""
+      className="group mt-3 flex items-center gap-2 px-5 py-0.5 text-micro text-muted-foreground first:mt-0 [[data-system-notice]+&]:mt-0"
+    >
       <span aria-hidden className="inline-block size-1.5 flex-shrink-0 rounded-full" style={{ background: dot }} />
       {label && (
         <span
@@ -211,9 +223,15 @@ function SystemNotice({
       )}
       <span className="flex min-w-0 items-center gap-1.5 truncate">{children}</span>
       {trailing}
-      <span className="ml-auto flex-shrink-0 tabular text-faint opacity-0 transition-opacity group-hover:opacity-100">
-        {time.slice(0, 5)}
-      </span>
+      {at ? (
+        <Ago
+          at={at}
+          unlessSameAs={prevAt}
+          className="ml-auto flex-shrink-0 whitespace-nowrap pl-2 tabular text-faint"
+        />
+      ) : (
+        <span className="ml-auto flex-shrink-0 tabular text-faint">{time.slice(0, 5)}</span>
+      )}
     </div>
   );
 }
@@ -251,14 +269,18 @@ function isActivity(event: Event): boolean {
 }
 
 /**
- * Activity the chat shows as well: a new task. Work being filed is the room's
- * news, the thing people in the chat need to see to pick it up, so it gets a
- * line where they are reading. It stays on the rail too, where the task's later
- * activity collects. Every other board event (claimed, resolved, the floor
- * moving) stays on the rail alone.
+ * Activity the chat shows as well: a task's arrival and its finish, and what its
+ * thread said (a ping, drawn as a quoted line when there is one to quote). Those
+ * are the room's news, so they get a line where people are reading; each stays
+ * on the rail too, where the task's whole life collects. Every other board event
+ * (claimed, released, expired, blocked, the floor moving on each step of a flow)
+ * stays on the rail alone.
  */
 function isAlsoInChat(event: Event): boolean {
-  return event.type === NOTICE_TYPE && ((event.raw.subkind as string) || "filed") === "filed";
+  if (event.type === PING_TYPE) return true;
+  if (event.type !== NOTICE_TYPE) return false;
+  const subkind = (event.raw.subkind as string) || "filed";
+  return subkind === "filed" || subkind === "resolved";
 }
 
 /**
@@ -701,9 +723,42 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     [events, roomName],
   );
 
-  const visible = useMemo(
+  const candidates = useMemo(
     () => inChannel.filter(e => !isActivity(e) || isAlsoInChat(e)),
     [inChannel],
+  );
+
+  const saidById = useMemo(() => {
+    const said = new Map<string, Event>();
+    for (const ev of events) if (ev.messageId && CHAT_TYPES.has(ev.type)) said.set(ev.messageId, ev);
+    return said;
+  }, [events]);
+
+  // A thread's activity reads in the channel as one line per run: a ping
+  // followed by another from the same thread folds into the later one, which
+  // says how many it stands for and quotes the newest of their messages that
+  // is loaded. A run with nothing loaded to quote is left to the rail.
+  const pingLines = useMemo(() => {
+    const lines = new Map<string, { said: Event; quote: string; count: number }>();
+    let run: string[] = [];
+    candidates.forEach((ev, i) => {
+      if (ev.type !== PING_TYPE) return;
+      run.push((ev.raw.pingMessage as string | undefined) ?? "");
+      const next = candidates[i + 1];
+      if (next?.type === PING_TYPE && next.thread === ev.thread) return;
+      const said = [...run].reverse().map((id) => saidById.get(id)).find(Boolean);
+      const quote = said?.content.split("\n").find((line) => line.trim())?.trim();
+      if (said && quote) lines.set(ev.id, { said, quote, count: run.length });
+      run = [];
+    });
+    return lines;
+  }, [candidates, saidById]);
+
+  // What the channel draws, row for row: a ping that draws nothing is not
+  // here, so it neither splits a sender's messages nor breaks a run of notices.
+  const visible = useMemo(
+    () => candidates.filter(e => e.type !== PING_TYPE || pingLines.has(e.id)),
+    [candidates, pingLines],
   );
 
   // What the room has been doing, one entry per task rather than one per frame.
@@ -1152,17 +1207,33 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
         ) : reachedStart ? (
           <div className="py-3 text-center text-micro text-muted-foreground">Beginning of the room</div>
         ) : null}
+        <NowProvider>
         {visible.map((ev, idx) => {
+              // A notice under another says its age only when it differs.
+              const prevAt = idx > 0 && SYSTEM_TYPES.has(visible[idx - 1].type) ? visible[idx - 1].at : undefined;
               // Coordination + plan lifecycle events render as slim, centered
               // system notices — quiet dividers woven into the conversation,
               // not loud rows. Chat messages group under one sender header.
               if (ev.type === PING_TYPE && ev.thread) {
+                // Only a run's last ping with something to quote is in `visible`.
+                const line = pingLines.get(ev.id);
+                if (!line) return null;
+                const { said, quote, count: n } = line;
                 const thread = ev.thread;
                 const shortId = threadShortId(thread) ?? "thread";
                 const owner = threads.get(thread);
-                const who = ev.pingSenders;
+                // One line from the thread: who, where, and the first line of
+                // what they said. The argument stays in the thread.
                 return (
-                  <SystemNotice key={ev.id} time={ev.time} dot="var(--accent)" label="Activity">
+                  <SystemNotice
+                    key={ev.id}
+                    time={ev.time}
+                    at={ev.at}
+                    prevAt={prevAt}
+                    dot="var(--accent)"
+                    label={`@${said.sender || ev.pingSenders[0] || "someone"}`}
+                    labelColor="var(--text)"
+                  >
                     <span>in</span>
                     <button
                       type="button"
@@ -1170,15 +1241,13 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                       disabled={!onOpenThread}
                       title={thread}
                       aria-label={`Open thread ${shortId}`}
-                      className="inline-flex max-w-[18rem] items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default"
+                      className="inline-flex max-w-[16rem] flex-shrink-0 items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default"
                     >
                       <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
                       <span className="truncate">{owner?.title ?? shortId}</span>
                     </button>
-                    {who.length > 0 && (
-                      <span className="truncate">· {who.map(h => `@${h}`).join(", ")}</span>
-                    )}
-                    {onOpenThread && <span className="text-faint">· click to open</span>}
+                    <span className="truncate text-text">{quote}</span>
+                    {n > 1 && <span className="flex-shrink-0 text-faint">· {n} messages</span>}
                   </SystemNotice>
                 );
               }
@@ -1200,7 +1269,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                 return (
                   <SystemNotice
                     key={ev.id}
-                    time={ev.time}
+                    time={ev.time} at={ev.at} prevAt={prevAt}
                     dot={dot}
                     label={noticeLabel(subkind, ev.raw.kind as string | undefined)}
                   >
@@ -1235,7 +1304,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                 // in the mono span beside it.
                 const named = key ? nameActivity(key, [ev], threads, rowNames) : null;
                 return (
-                  <SystemNotice key={ev.id} time={ev.time} dot="var(--yellow)" label="Knowledge">
+                  <SystemNotice key={ev.id} time={ev.time} at={ev.at} prevAt={prevAt} dot="var(--yellow)" label="Knowledge">
                     <span>updated</span>
                     {named ? (
                       <button
@@ -1279,7 +1348,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                     ? ((ev.raw.select as { pick?: string } | undefined)?.pick ?? null)
                     : null;
                   return (
-                    <SystemNotice key={ev.id} time={ev.time} dot={tone} label={agreed ? "Agreed" : "Done"} labelColor={tone} strong>
+                    <SystemNotice key={ev.id} time={ev.time} at={ev.at} prevAt={prevAt} dot={tone} label={agreed ? "Agreed" : "Done"} labelColor={tone} strong>
                       <span>in</span>
                       {shortId ? (
                         <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined} />
@@ -1297,7 +1366,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                 return (
                   <SystemNotice
                     key={ev.id}
-                    time={ev.time}
+                    time={ev.time} at={ev.at} prevAt={prevAt}
                     dot={tone}
                     label={broken ? "Timeout" : "Consensus"}
                     labelColor={tone}
@@ -1338,7 +1407,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                 const episodeUrn = (ev.raw.episode as string | undefined) ?? (ev.raw.session as string | undefined);
                 const shortId = episodeUrn ? episodeUrn.split(":").pop() : undefined;
                 return (
-                  <SystemNotice key={ev.id} time={ev.time} dot="var(--muted-foreground)">
+                  <SystemNotice key={ev.id} time={ev.time} at={ev.at} prevAt={prevAt} dot="var(--muted-foreground)">
                     <span className="font-medium text-muted-foreground">@{handle}</span>
                     <span>joined</span>
                     {shortId ? (
@@ -1384,10 +1453,13 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                     marked ? "bg-accent/15" : ""
                   } ${hit?.active ? "bg-yellow/10 ring-1 ring-inset ring-yellow/40" : ""}`}
                 >
-                  {/* Timestamp low-signal: right gutter, hover-revealed. */}
-                  <span className="pointer-events-none absolute right-5 top-1.5 text-micro tabular text-faint opacity-0 transition-opacity group-hover:opacity-100">
-                    {ev.time.slice(0, 5)}
-                  </span>
+                  {/* A follow-up line keeps its clock time in the gutter, on
+                      hover; the group's header already says how long ago. */}
+                  {grouped && (
+                    <span className="pointer-events-none absolute right-5 top-1.5 text-micro tabular text-faint opacity-0 transition-opacity group-hover:opacity-100">
+                      {ev.time.slice(0, 5)}
+                    </span>
+                  )}
 
                   <div className="w-6 flex-shrink-0">
                     {!grouped && (
@@ -1411,6 +1483,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                             → {ev.recipient}
                           </span>
                         )}
+                        <Ago at={ev.at} className="flex-shrink-0 whitespace-nowrap text-micro tabular text-faint" />
                       </div>
                     )}
                     <MessageBody content={ev.content} hit={hit} onOpenMemory={onOpenMemory} />
@@ -1424,6 +1497,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                 </MessageMenu>
               );
             })}
+        </NowProvider>
           {responding.length > 0 && (
             <RespondingLine entries={responding} room={roomName} threads={threads} onOpenThread={onOpenThread} />
           )}
