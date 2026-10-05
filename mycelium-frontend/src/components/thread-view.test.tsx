@@ -92,6 +92,18 @@ describe("<ThreadView />", () => {
     expect(said[0]).toHaveTextContent("hold the flip until lag is under a second");
   });
 
+  it("stamps each message with when it was said", async () => {
+    const { container } = renderWithSWR(
+      <ThreadView roomName="atlas" target={{ episode: THREAD }} onClose={vi.fn()} />,
+    );
+    await screen.findByText(/hold the flip/);
+    const stamps = [...container.querySelectorAll("[data-testid=thread-conversation] time")];
+    expect(stamps.map(t => t.getAttribute("datetime"))).toEqual([
+      "2026-08-04T10:00:00.000Z",
+      "2026-08-04T10:01:00.000Z",
+    ]);
+  });
+
   it("names the task it belongs to, and falls back to the thread when nothing does", async () => {
     const { unmount } = renderWithSWR(
       <ThreadView roomName="atlas" target={{ episode: THREAD, title: "flip reads behind a flag" }} onClose={vi.fn()} />,
