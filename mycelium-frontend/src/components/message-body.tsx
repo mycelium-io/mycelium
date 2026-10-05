@@ -13,6 +13,11 @@ import type { Highlight } from "@/components/ui/highlight-text";
  *  clamp, short enough that a wall of text can't swallow the timeline. */
 const CLAMP_PX = 168;
 
+/** The clamp's fade is a mask on the prose rather than a gradient painted over
+ *  it, so it fades into whatever the message sits on: the channel's page, a
+ *  thread's surface card, the memory tab's paper. */
+const CLAMP_MASK = "linear-gradient(to bottom, black calc(100% - 3.5rem), transparent)";
+
 /**
  * A message's prose, clamped when it runs long.
  *
@@ -62,15 +67,16 @@ export function MessageBody({
     <>
       <div
         ref={ref}
-        className="relative overflow-hidden"
-        style={clamped ? { maxHeight: CLAMP_PX } : undefined}
+        className="overflow-hidden"
+        style={
+          clamped
+            ? { maxHeight: CLAMP_PX, maskImage: CLAMP_MASK, WebkitMaskImage: CLAMP_MASK }
+            : undefined
+        }
       >
         <MarkdownContent className="contrast text-body leading-relaxed" onLinkClick={onOpenMemory} highlight={hit}>
           {content}
         </MarkdownContent>
-        {clamped && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-bg to-transparent" />
-        )}
       </div>
       {overflows && !forceOpen && (
         <button
