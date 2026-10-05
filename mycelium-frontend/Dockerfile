@@ -13,15 +13,21 @@
 #
 #   docker run -e MYCELIUM_INTERNAL_API_URL=http://host.docker.internal:8000 ...
 
+# ─── base ─────────────────────────────────────────────────────────────────────
+# Every stage starts here, so the npm in the shipped image is the pinned one,
+# not whichever the node image bundles.
+FROM node:22-alpine AS base
+RUN npm install -g npm@11.21.0 && npm cache clean --force
+
 # ─── deps ─────────────────────────────────────────────────────────────────────
-FROM node:22-alpine AS deps
+FROM base AS deps
 WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci
 
 # ─── build ────────────────────────────────────────────────────────────────────
-FROM node:22-alpine AS builder
+FROM base AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -30,7 +36,7 @@ COPY . .
 RUN npm run build
 
 # ─── runtime ──────────────────────────────────────────────────────────────────
-FROM node:22-alpine AS runner
+FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
