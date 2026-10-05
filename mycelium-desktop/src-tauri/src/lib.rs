@@ -549,6 +549,7 @@ fn handle_link(app: &AppHandle, link: &Url) {
     };
     match link.host_str() {
         Some("terminal") => open_terminal_window(app, param("pane").filter(|p| !p.is_empty())),
+        Some("settings") => show_local(app, "onboarding"),
         Some("join") => {
             let Some(hub) = param("hub") else { return };
             let path = param("room").filter(|r| !r.is_empty()).map(|room| {

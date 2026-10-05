@@ -24,7 +24,7 @@ export function hubLabel(host: string, desktop: boolean): string {
   return name;
 }
 
-function useHubLabel(): string {
+export function useHubLabel(): string {
   const desktop = useIsDesktop();
   const host = useSyncExternalStore(noSubscribe, () => window.location.host, () => "");
   return hubLabel(host, desktop);

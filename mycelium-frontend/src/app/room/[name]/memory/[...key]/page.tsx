@@ -7,7 +7,6 @@ import { Suspense } from "react";
 import { useParams } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { MemoryPageView } from "@/components/memory-page-view";
-import { GlobalStatusItems } from "@/components/status-items";
 import { parseMemoryKeyParam, parseRoomNameParam } from "@/lib/memory-routes";
 
 function MemoryPageBody() {
@@ -29,8 +28,6 @@ export default function MemoryPage() {
   return (
     <AppShell
       activeRoom={roomName}
-      statusLeft={<span className="text-micro text-muted-foreground">Memory</span>}
-      statusRight={<GlobalStatusItems />}
     >
       <Suspense fallback={null}>
         <MemoryPageBody />

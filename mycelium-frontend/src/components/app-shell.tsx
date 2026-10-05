@@ -5,8 +5,7 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Download, Laptop, PanelLeft, Terminal } from "lucide-react";
+import { Download, PanelLeft, Terminal } from "lucide-react";
 import { TitleBar } from "@/components/title-bar";
 import { Tooltip } from "@/components/ui/tooltip";
 import { KbdChord } from "@/components/ui/kbd";
@@ -18,7 +17,7 @@ import { InstallModalProvider, useOpenInstallModal } from "@/components/install-
 import { DocsLink } from "@/components/docs-link";
 import { DMG_URL, useIsDesktop } from "@/lib/desktop";
 import { useIsMac } from "@/lib/client-hooks";
-import { MetricsStatusLink } from "@/components/status-items";
+import { HubStatus, MachinesStatusLink, MetricsStatusLink } from "@/components/status-items";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
@@ -126,22 +125,6 @@ function DockToggle({
       >
         {children}
       </button>
-    </Tooltip>
-  );
-}
-
-function MachinesDockLink() {
-  const active = usePathname() === "/machines";
-  return (
-    <Tooltip content="Machines" side="top">
-      <Link
-        href="/machines"
-        aria-label="Machines"
-        aria-current={active ? "page" : undefined}
-        className={`flex size-5 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-hairline hover:text-text ${active ? "text-text" : ""}`}
-      >
-        <Laptop className="size-3.5" />
-      </Link>
     </Tooltip>
   );
 }
@@ -281,11 +264,13 @@ export function AppShell({
               and a bar that wraps to three rows on a phone eats the workspace
               it is supposed to annotate — so it scrolls sideways instead, and
               the cells that only name a keyboard drop out where there is no
-              keyboard to name. */}
+              keyboard to name.
+
+              Left to right: the hub and the machines that run agents for it,
+              then what the page is showing (`statusLeft`, e.g. the room's
+              connection and counts), then metrics and the keys. Every value
+              carries a word saying what it is. */}
           <footer className="flex h-6 flex-shrink-0 items-center gap-3 overflow-x-auto border-t border-border bg-surface px-2 text-micro whitespace-nowrap text-muted-foreground [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {/* The docks, as an editor keeps them: a toggle for the rooms
-                rail and the way to this machine's agents, always in the same
-                corner. */}
             <DockToggle
               label={roomsOpen ? "Hide rooms" : "Show rooms"}
               action="rooms.toggle"
@@ -294,15 +279,23 @@ export function AppShell({
             >
               <PanelLeft className="size-3.5" />
             </DockToggle>
-            <MachinesDockLink />
-            <span aria-hidden className="h-3 w-px flex-shrink-0 bg-border" />
-            {statusLeft}
+            <HubStatus />
+            <MachinesStatusLink />
+            {statusLeft && (
+              <>
+                <span aria-hidden className="h-3 w-px flex-shrink-0 bg-border" />
+                {statusLeft}
+              </>
+            )}
             <div className="ml-auto flex flex-shrink-0 items-center gap-3">
               {statusRight}
               <MetricsStatusLink />
-              <GlobalSearchButton />
-              <CommandPaletteButton />
-              <KeymapHelpButton />
+              <span aria-hidden className="hidden h-3 w-px flex-shrink-0 bg-border sm:block" />
+              <div className="flex items-center gap-1 xl:gap-2.5">
+                <GlobalSearchButton />
+                <CommandPaletteButton />
+                <KeymapHelpButton />
+              </div>
             </div>
           </footer>
         </div>

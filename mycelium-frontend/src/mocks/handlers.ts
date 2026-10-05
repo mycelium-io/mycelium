@@ -438,6 +438,8 @@ export async function handleMock(req: Request): Promise<Response | null> {
       // API gate off.
       identity: { status: "ok", mode: "psk", message: "psk" },
       auth: { enabled: false, issuers: [], localhost_bypass: true, audience: null },
+      storage: { status: "ok", message: "Local store", path: "/data", host_path: "~/.mycelium/data" },
+      embedding: { status: "ok", model: "BAAI/bge-small-en-v1.5", message: "Model loaded" },
     });
 
   // ── /api/search ─────────────────────────────────────────────────────────────

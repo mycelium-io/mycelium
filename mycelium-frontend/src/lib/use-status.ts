@@ -41,15 +41,22 @@ export function useRoomStatus(roomName: string): RoomStatus {
   };
 }
 
-export interface GlobalStatus {
-  model: string | null;
-  healthy: boolean | null;
+interface HealthPart {
+  status?: string | null;
+  message?: string | null;
 }
 
-/** The slice of `/health` the status bar reads: the hub answered at all, and
- *  which model its cognition is configured against. */
-interface HubHealth {
-  llm?: { model?: string | null } | null;
+/** The slice of `/health` the status bar reads: whether the hub answered,
+ *  what it runs, and how it is configured. */
+export interface HubHealth {
+  status?: string | null;
+  issues?: string[] | null;
+  version?: string | null;
+  embedding?: (HealthPart & { model?: string | null }) | null;
+  storage?: (HealthPart & { path?: string | null; host_path?: string | null }) | null;
+  identity?: (HealthPart & { mode?: string | null }) | null;
+  auth?: { enabled?: boolean | null } | null;
+  coordination?: { channels_live?: number | null } | null;
 }
 
 /** One `/health` read, shared by every caller. Resolves to `null` when the hub
@@ -67,7 +74,9 @@ async function readHealth(): Promise<HubHealth | null> {
 /** How often the status bar re-checks the hub. */
 const HEALTH_POLL = 20_000;
 
-function useHubHealth(refreshInterval: number) {
+/** The hub's own `/health`, `null` when it does not answer and `undefined`
+ *  until the first probe lands. */
+export function useHubHealth(refreshInterval: number = HEALTH_POLL) {
   return useSWR<HubHealth | null>("health", readHealth, { refreshInterval });
 }
 
@@ -78,15 +87,4 @@ function useHubHealth(refreshInterval: number) {
 export function useBackendHealth(refreshInterval: number = HEALTH_POLL): boolean | null {
   const { data } = useHubHealth(refreshInterval);
   return data === undefined ? null : data !== null;
-}
-
-/** Global workspace status for the status bar: the configured cognition model
- *  and whether the hub is answering. Both come off the one shared `/health`
- *  entry, so the bar renders on every page for one request. */
-export function useGlobalStatus(): GlobalStatus {
-  const { data } = useHubHealth(HEALTH_POLL);
-  return {
-    model: data?.llm?.model ?? null,
-    healthy: data === undefined ? null : data !== null,
-  };
 }

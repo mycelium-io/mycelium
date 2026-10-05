@@ -32,6 +32,11 @@ export function terminalLink(pane: string): string {
   return `mycelium://terminal?pane=${encodeURIComponent(pane)}`;
 }
 
+/** Opens the app's Settings window, where the app's own hub is set up. */
+export function settingsLink(): string {
+  return "mycelium://settings";
+}
+
 /** Opens the app joined to this hub, in a room. */
 export function appJoinLink(hubUrl: string, room?: string | null): string {
   const params = new URLSearchParams({ hub: hubUrl });

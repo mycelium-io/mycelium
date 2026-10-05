@@ -2,7 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { describe, expect, it } from "vitest";
-import { appJoinLink, desktopVersion, inviteLink, isDesktop, terminalLink } from "@/lib/desktop";
+import { appJoinLink, desktopVersion, inviteLink, isDesktop, settingsLink, terminalLink } from "@/lib/desktop";
 
 describe("desktop links", () => {
   it("knows the app by its user agent", () => {
@@ -20,6 +20,7 @@ describe("desktop links", () => {
 
   it("asks the app for things by link, never by call", () => {
     expect(terminalLink("w9:p2")).toBe("mycelium://terminal?pane=w9%3Ap2");
+    expect(settingsLink()).toBe("mycelium://settings");
     expect(appJoinLink("https://hub.example.com", "atlas")).toBe(
       "mycelium://join?hub=https%3A%2F%2Fhub.example.com&room=atlas",
     );
