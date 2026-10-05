@@ -1081,6 +1081,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#machines-a-machine-nobody-sits-at-pair-a-device",
+    "t": "A machine nobody sits at: pair a device",
+    "s": "Agents › Start Agents From the App",
+    "x": "A Mac mini on the desk or a box in a closet has nobody there to say yes. Pair the device you start agents from with it instead, once, at the machine: mycelium runner --detach # if it isn't running yet mycelium runner pair --folder ~/code --cli opencode --days 30 It prints a code like K7QM-4XHD-9RWA. On your laptop, open the app's Machines page, choose Add machine → Pair, and enter the code and a name for this device ",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#machines-only-your-machines-are-listed",
     "t": "Only your machines are listed",
     "s": "Agents › Start Agents From the App",

@@ -14,6 +14,7 @@ import {
   type Memory,
   type Runner,
 } from "@/lib/api";
+import { signFor } from "@/lib/device-key";
 import { CandidateList, Signature, type Candidate, type Slot } from "@/components/composer-hints";
 import { SendPlaneIcon } from "@/components/send-plane-icon";
 import {
@@ -496,12 +497,18 @@ export function RoomChatBox({
         return null;
       }
       const folder = argValue(command, "folder");
+      const cwd = folder ? expandPath(folder, runner.roots) : undefined;
+      const signature = await signFor(runner, {
+        kind: "launch",
+        job: { room: roomName, handle, framework: framework.id, cwd: cwd ?? null },
+      });
       const job = await launchRunnerAgent(runner.id, {
         room: roomName,
         handle,
         framework: framework.id,
-        cwd: folder ? expandPath(folder, runner.roots) : undefined,
+        cwd,
         created_by: me,
+        ...(signature ? { signature } : {}),
       });
       return { runner: runner.id, job: job.id, handle };
     },

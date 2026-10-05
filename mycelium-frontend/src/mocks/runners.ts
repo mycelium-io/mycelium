@@ -8,7 +8,8 @@
  * status is read off its age (queued, then running, then done), so the app
  * shows the same progression without a runner. Finishing a launch puts the
  * agent on the machine and in the room's roster; finishing a stop marks it
- * stopped.
+ * stopped. A second machine, a Mac mini nobody sits at, is paired with a
+ * device; pairing this browser with it (any well-formed code) adds another.
  */
 
 import { DEMO_PERSON, isDemoScenario } from "./demo";
@@ -22,6 +23,7 @@ import type {
   RunnerAgent,
   RunnerJob,
   RunnerJobKind,
+  RunnerPairing,
 } from "@/lib/api";
 
 const iso = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
@@ -197,6 +199,37 @@ const runners: Runner[] = [
   },
 ];
 
+/** The unattended machine: it starts what a paired device asks for, without a yes. */
+export const MOCK_MINI_ID = "studio-mini";
+
+if (!isDemoScenario() && !isLearnScenario()) {
+  runners.push({
+    id: MOCK_MINI_ID,
+    label: "studio-mini",
+    owner: "operator",
+    platform: "darwin-arm64",
+    version: "0.14.0",
+    herdr: true,
+    roots: ["/Users/morgan/models"],
+    frameworks: FRAMEWORKS,
+    agents: [],
+    pairings: [
+      {
+        name: "work laptop",
+        key: "59802479f5b1936d",
+        paired_at: iso(60 * 24 * 3),
+        expires_at: new Date(Date.now() + 87 * 24 * 3_600_000).toISOString(),
+        folders: ["/Users/morgan/models"],
+        clis: ["opencode"],
+        swarms: false,
+      },
+    ],
+    connected: true,
+    last_seen: iso(0),
+    started_at: iso(600),
+  });
+}
+
 // The demo is recorded as Sam, on Sam's machine, before @builder exists.
 if (isDemoScenario()) {
   Object.assign(runners[0], {
@@ -297,6 +330,18 @@ function settle(job: StoredJob): void {
       }
     }
     machine.problems = problemsOf(machine);
+  } else if (job.kind === "pair") {
+    const r = job.result as unknown as RunnerPairing;
+    const pairing: RunnerPairing = {
+      name: r.name,
+      key: r.key,
+      paired_at: r.paired_at,
+      expires_at: r.expires_at,
+      folders: r.folders,
+      clis: r.clis,
+      swarms: r.swarms,
+    };
+    runner.pairings = [...(runner.pairings ?? []).filter((p) => p.key !== pairing.key), pairing];
   }
 }
 
@@ -315,6 +360,26 @@ function view(job: StoredJob): RunnerJob {
 export function listRunners(): Runner[] {
   for (const j of jobs) settle(j);
   return runners.map((r) => ({ ...r, last_seen: new Date().toISOString() }));
+}
+
+/** Pair a device with the Mac mini, as its runner would once it checked the proof. */
+export async function pairDevice(body: Record<string, unknown>): Promise<RunnerJob> {
+  const key = (body.key ?? {}) as { x?: string; y?: string };
+  const b64 = (t: string) => Uint8Array.from(atob(t.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+  const point = new Uint8Array([4, ...b64(key.x ?? ""), ...b64(key.y ?? "")]);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", point));
+  const id = Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
+  const pairing: RunnerPairing = {
+    name: String(body.name ?? "this device"),
+    key: id,
+    paired_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 90 * 24 * 3_600_000).toISOString(),
+    folders: [],
+    clis: [],
+    swarms: false,
+  };
+  const spec = { offer: String(body.code_id ?? ""), name: pairing.name, key };
+  return queueJob(MOCK_MINI_ID, "pair", spec, null, null, { label: "studio-mini", ...pairing });
 }
 
 export function getRunner(id: string): Runner | undefined {
@@ -339,13 +404,14 @@ export function queueJob(
   spec: Record<string, unknown>,
   createdBy: string | null = null,
   failWith: string | null = null,
+  result: Record<string, unknown> | null = null,
 ): RunnerJob {
   const job: StoredJob = {
     id: `job-${String(seq++).padStart(4, "0")}`,
     runner,
     kind,
     spec,
-    result: null,
+    result,
     error: null,
     created_by: createdBy,
     created_at: new Date().toISOString(),

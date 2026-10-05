@@ -856,6 +856,10 @@ def doctor(
         service_checks.append(_check_llm_connectivity())
         if local:
             service_checks.append(_check_mediator_pi_binary())
+        from mycelium.desktop.checks import pairings
+
+        if (paired := pairings()) is not None:
+            service_checks.append(paired)
 
         sections: list[tuple[str, list[CheckResult]]] = [
             ("Configuration", config_checks),

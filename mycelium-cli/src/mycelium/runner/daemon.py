@@ -29,10 +29,12 @@ is exactly "start one of the agent CLIs you found, here".
 
 Even that is asked of the person here first. Anyone who can reach a hub can
 queue a job for any runner on it, so a launch, swarm or restart waits for a yes on
-this machine (``approvals``) unless the runner trusts its hub: the Mac app's
-own hub, which only this machine can reach, or one the person said to trust
-with ``--trust-hub``. Scans and stops don't ask: a scan changes nothing, and a
-stop only ends an agent this machine already agreed to start.
+this machine (``approvals``) unless a device paired here signed it, within
+what the pairing allows (``pairing``), or the runner trusts its hub: the Mac
+app's own hub, which only this machine can reach, or one the person said to
+trust with ``--trust-hub``. Scans and stops don't ask: a scan changes nothing,
+and a stop only ends an agent this machine already agreed to start. A ``pair``
+job doesn't ask either: it carries proof of a code only this machine printed.
 """
 
 from __future__ import annotations
@@ -63,7 +65,7 @@ from mycelium.client import hub_client
 from mycelium.config import MyceliumConfig
 from mycelium.filesystem import get_mycelium_dir
 from mycelium.integrations.herdr import HerdrBridge, HerdrError
-from mycelium.runner import approvals, frameworks
+from mycelium.runner import approvals, frameworks, pairing
 from mycelium.runner.hosts import AgentHost, HerdrHost, HostError, OmnigentHost
 from mycelium.runner.log import failing, log, ms, open_log, recovered
 
@@ -296,6 +298,7 @@ class Runner:
         on_request: Callable[[dict[str, Any]], None] | None = None,
         requests_base: Path | None = None,
         log_path: Path | None = None,
+        pairings_base: Path | None = None,
     ) -> None:
         self.config = config
         #: Start what the hub asks without asking here: only for a hub nobody else can reach.
@@ -303,6 +306,8 @@ class Runner:
         #: Told of each question as it is asked (the Mac app shows it as a dialog).
         self.on_request = on_request
         self._requests_base = requests_base
+        #: Where the devices paired with this machine are kept (``pairing.folder``).
+        self._pairings_base = pairings_base
         self.roots = [r.expanduser().resolve() for r in roots]
         #: herdr's bridge: a swarm is started in herdr whichever host launches do.
         self.bridge = bridge or HerdrBridge()
@@ -361,6 +366,8 @@ class Runner:
             "agents": agents,
             "machine": self.machine_report(),
             "sync": self.sync_health(),
+            "pairings": [p.wire() for p in pairing.live(base=self._pairings_base)],
+            "pairing_offers": pairing.live_offers(base=self._pairings_base),
         }
 
     def machine_report(self) -> dict[str, Any] | None:
@@ -459,8 +466,17 @@ class Runner:
         except httpx.HTTPError:
             pass
 
-    def _report(self, job_id: str, status: str, result: dict | None, error: str | None) -> None:
-        body = {"status": status, "result": result, "error": error}
+    def _report(
+        self,
+        job_id: str,
+        status: str,
+        result: dict | None,
+        error: str | None,
+        paired: dict[str, Any] | None = None,
+    ) -> None:
+        body: dict[str, Any] = {"status": status, "result": result, "error": error}
+        if paired is not None:
+            body["pairing"] = paired
         try:
             with hub_client(self.config, timeout=10) as client:
                 client.patch(f"/api/runners/{self.id}/jobs/{job_id}", json=body)
@@ -682,6 +698,91 @@ class Runner:
         )
         return {"workspace": local.workspace, "panes": local.panes}
 
+    def pair(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Pair the device a ``pair`` job carries, if it proves it has a live code from here."""
+        try:
+            made = pairing.redeem(spec, base=self._pairings_base)
+        except pairing.PairingError as e:
+            raise JobError(str(e)) from e
+        log.info("paired with '%s' (key %s)", made.name, made.key)
+        self.log.print(
+            f"[green]paired[/green] with '{made.name}' (key {pairing.fingerprint(made.key)})"
+        )
+        return {"label": self.label, **made.wire()}
+
+    # ── pairings ─────────────────────────────────────────────────────────────
+
+    def paired(self, job: dict[str, Any]) -> tuple[pairing.Pairing | None, str | None]:
+        """The pairing ``job`` may start under without asking, or why its signature isn't enough.
+
+        ``(None, None)`` for a job nobody signed. A job this machine couldn't
+        do anyway raises ``JobError``, as asking about it would.
+        """
+        if job.get("signature") is None:
+            return None, None
+        try:
+            paired, fields = pairing.signed(job, runner=self.id, base=self._pairings_base)
+            self._within(paired, job, fields)
+        except pairing.Refused as e:
+            return None, str(e)
+        return paired, None
+
+    def _signed_folder(self, cwd: Any) -> Path:
+        try:
+            return self.folder(cwd)
+        except JobError as e:
+            raise pairing.Refused("it was signed for a different job") from e
+
+    def _cli_of(self, kind: str | None) -> str | None:
+        """The framework id for a herdr kind, which is how a pairing names an agent CLI."""
+        return next((k.id for k in frameworks.KNOWN if kind and k.herdr_kind == kind), kind)
+
+    def _within(self, paired: pairing.Pairing, job: dict[str, Any], fields: dict[str, Any]) -> None:
+        """Refuse unless ``fields`` are ``job``'s and the pairing covers them."""
+        kind, spec = job.get("kind"), job.get("spec") or {}
+        different = pairing.Refused("it was signed for a different job")
+        if kind == "restart":
+            agents = [
+                {"handle": str(a.get("handle") or "").lower(), "room": a.get("room")}
+                for a in spec.get("agents") or []
+            ]
+            signed_agents = [
+                {"handle": str(a.get("handle") or "").lower(), "room": a.get("room")}
+                for a in fields.get("agents") or []
+                if isinstance(a, dict)
+            ]
+            if bool(fields.get("all")) != bool(spec.get("all")) or signed_agents != agents:
+                raise different
+            for agent in self._restartable(spec):
+                if not paired.covers_cli(self._cli_of(agent.kind)):
+                    raise pairing.Refused(
+                        "@" + agent.handle + "'s agent CLI is outside what this pairing allows"
+                    )
+                if not paired.covers_folder(Path(agent.folder or "/").expanduser().resolve()):
+                    raise pairing.Refused(
+                        "@" + agent.handle + " works outside the folders this pairing allows"
+                    )
+            return
+        if kind == "swarm" and not paired.limits.swarms:
+            raise pairing.Refused("this pairing doesn't allow teams")
+        same = (
+            ("room", "handle", "framework") if kind == "launch" else ("room", "task", "framework")
+        )
+        if any(str(fields.get(k)) != str(spec.get(k)) for k in same):
+            raise different
+        if kind == "swarm" and (
+            fields.get("size") != len(spec.get("team") or [])
+            or bool(fields.get("worktree")) != bool(spec.get("worktree"))
+        ):
+            raise different
+        cwd = self.folder(spec.get("cwd"))
+        if self._signed_folder(fields.get("cwd")) != cwd:
+            raise different
+        if not paired.covers_cli(str(spec.get("framework"))):
+            raise pairing.Refused("its agent CLI is outside what this pairing allows")
+        if not paired.covers_folder(cwd):
+            raise pairing.Refused(f"{_tilde(cwd)} is outside the folders this pairing allows")
+
     # ── jobs ─────────────────────────────────────────────────────────────────
 
     def do(self, job: dict[str, Any]) -> dict[str, Any]:
@@ -697,6 +798,8 @@ class Runner:
             return self.swarm(spec, job.get("created_by"))
         if kind == "restart":
             return self.restart_agents(spec)
+        if kind == "pair":
+            return self.pair(spec)
         raise JobError(f"this runner doesn't know how to do '{kind}'; update mycelium here.")
 
     def question(self, job: dict[str, Any]) -> dict[str, Any]:
@@ -749,7 +852,8 @@ class Runner:
         so a stop or a scan isn't held up behind a question nobody has seen.
         """
         job_id = str(job["id"])
-        spec = json.dumps(job.get("spec") or {})
+        said = {k: v for k, v in (job.get("spec") or {}).items() if k != "proof"}
+        spec = json.dumps(said)
         log.info("job %s %s from %s: %s", job_id, job.get("kind"), job.get("created_by"), spec)
         self.log.print(f"[dim]job {job_id}: {job.get('kind')} {spec}[/dim]")
         if job.get("kind") in ASK_FIRST and not self.trust_hub:
@@ -765,7 +869,24 @@ class Runner:
     def _take_once_approved(self, job: dict[str, Any]) -> None:
         job_id = str(job["id"])
         try:
-            request = approvals.ask(job_id, self.question(job), base=self._requests_base)
+            paired, refused = self.paired(job)
+            if paired is not None:
+                log.info(
+                    "job %s %s: signed by '%s' (key %s), started without asking",
+                    job_id,
+                    job.get("kind"),
+                    paired.name,
+                    paired.key,
+                )
+                self.log.print(f"[dim]job {job_id}: signed by '{paired.name}', paired here[/dim]")
+                self._do_and_report(job, {"name": paired.name, "accepted": True})
+                return
+            question = self.question(job)
+            if refused is not None:
+                log.info("job %s: a signature didn't start it: %s", job_id, refused)
+                question["message"] += f"\n\nIt was signed, but not started on its own: {refused}."
+                question["pairing_refused"] = refused
+            request = approvals.ask(job_id, question, base=self._requests_base)
         except (JobError, approvals.ApprovalError) as e:
             log.warning("job %s %s failed before asking: %s", job_id, job.get("kind"), e)
             self._report(job_id, "failed", None, str(e))
@@ -773,7 +894,14 @@ class Runner:
             return
         log.info("job %s: asked here: %s", job_id, request["title"])
         asked = time.monotonic()
-        self._report(job_id, "waiting", None, None)
+        refusal = request.get("pairing_refused")
+        self._report(
+            job_id,
+            "waiting",
+            None,
+            None,
+            {"accepted": False, "reason": refusal} if refusal else None,
+        )
         self.log.print(
             f"\n[bold]{request['title']}[/bold]\n{request['message']}\n"
             f"Start it: [cyan]mycelium runner approve {job_id}[/cyan]  "
@@ -800,7 +928,7 @@ class Runner:
         self._report(job_id, "failed", None, error)
         self.log.print(f"[yellow]job {job_id}:[/yellow] {error}")
 
-    def _do_and_report(self, job: dict[str, Any]) -> None:
+    def _do_and_report(self, job: dict[str, Any], paired: dict[str, Any] | None = None) -> None:
         job_id, kind = str(job["id"]), job.get("kind")
         started = time.monotonic()
         try:
@@ -808,15 +936,15 @@ class Runner:
                 result = self.do(job)
         except JobError as e:
             log.warning("job %s %s failed %dms: %s", job_id, kind, ms(started), e)
-            self._report(job_id, "failed", None, str(e))
+            self._report(job_id, "failed", None, str(e), paired)
             self.log.print(f"[red]job {job_id} failed:[/red] {e}")
         except Exception as e:  # noqa: BLE001 - a job must always be reported
             log.exception("job %s %s failed %dms", job_id, kind, ms(started))
-            self._report(job_id, "failed", None, f"the runner hit an error: {e}")
+            self._report(job_id, "failed", None, f"the runner hit an error: {e}", paired)
             self.log.print(f"[red]job {job_id} failed:[/red] {e!r}")
         else:
             log.info("job %s %s done %dms: %s", job_id, kind, ms(started), json.dumps(result))
-            self._report(job_id, "done", result, None)
+            self._report(job_id, "done", result, None, paired)
         self.hello()
 
     def poll_once(self) -> bool:

@@ -272,6 +272,52 @@ nobody else can reach it. A hub the app didn't start, such as a Docker one,
 still asks. For a hub you know nobody else can reach, `mycelium runner
 --trust-hub` skips the question.
 
+## A machine nobody sits at: pair a device
+
+A Mac mini on the desk or a box in a closet has nobody there to say yes.
+Pair the device you start agents from with it instead, once, at the machine:
+
+```bash
+mycelium runner --detach                          # if it isn't running yet
+mycelium runner pair --folder ~/code --cli opencode --days 30
+```
+
+It prints a code like `K7QM-4XHD-9RWA`. On your laptop, open the app's
+**Machines** page, choose **Add machine → Pair**, and enter the code and a
+name for this device ("work laptop"). The machine then lists the device, and
+both show the same key, so you can check it's yours.
+
+From then on, a launch, a team or a restart this device asks for starts on
+that machine without the question, as long as it is inside what the pairing
+allows:
+
+- `--folder`: the folders it may start agents in (default: every folder the
+  runner allows);
+- `--cli`: the agent CLIs it may start, by id (default: any);
+- `--swarms`: whether it may start teams (default: no);
+- `--days`: when it ends (default: 90; `0` for never).
+
+Anything else still waits for a yes: a request from any other device, one
+from a device the machine doesn't know, one outside those limits, an old or
+reused one, or one the hub changed on the way. The app says why
+("outside the folders this pairing allows"), and so does the question on
+the machine.
+
+```bash
+mycelium runner pairings                  # each device, what it covers, when it ends
+mycelium runner unpair "work laptop"      # its requests ask again, at once
+```
+
+How it holds: the device makes a key the first time you pair, in the browser
+(or the Mac app), and the private half can't be read out of it, not even by
+the page. The code shows the machine that whoever paired was told it there.
+Each request is signed by that key over the job itself, the machine checks
+the signature and the job before it starts anything, and the limits are
+written on the machine, so nothing over the network can add or widen a
+pairing. The hub only carries the request; it can't make one up. Every job
+started under a pairing is in `runner.log` with the device's name, and
+`mycelium doctor` lists the pairings and when each ends.
+
 ## Only your machines are listed
 
 The Machines page and **where it runs** show only your own machines, never

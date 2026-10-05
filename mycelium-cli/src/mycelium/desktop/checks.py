@@ -158,6 +158,40 @@ def runner(api_url: str) -> CheckResult:
     return CheckResult(name="Runner", status="ok", message=f"connected as {rid}")
 
 
+def pairings() -> CheckResult | None:
+    """The devices paired with this machine's runner and when each ends; ``None`` with none."""
+    from datetime import UTC, datetime, timedelta
+
+    from mycelium.runner import pairing
+
+    found = pairing.load()
+    if not found:
+        return None
+    now = datetime.now(UTC)
+    soon = now + timedelta(days=7)
+    lines, ending = [], 0
+    for p in found:
+        ends = p.limits.expires_at
+        if ends is None:
+            lines.append(f"{p.name}: never ends")
+            continue
+        at = datetime.fromisoformat(ends)
+        if at <= now:
+            ending += 1
+            lines.append(f"{p.name}: ended {ends[:10]}")
+        else:
+            ending += at <= soon
+            lines.append(f"{p.name}: ends {ends[:10]}")
+    n = len(found)
+    message = f"{n} device{'s' if n != 1 else ''} start agents here without asking"
+    if ending:
+        lines.append(
+            "Pair again with `mycelium runner pair`; unpair with `mycelium runner unpair`."
+        )
+        return CheckResult(name="Paired devices", status="warning", message=message, details=lines)
+    return CheckResult(name="Paired devices", status="ok", message=message, details=lines)
+
+
 def herdr() -> CheckResult:
     from mycelium.integrations.herdr import HerdrBridge
 
@@ -277,6 +311,8 @@ def desktop_checks() -> list[tuple[str, list[CheckResult]]]:
     if api_url:
         services.append(runner(api_url))
     agents = [herdr(), agent_clis(), on_path()]
+    if (paired := pairings()) is not None:
+        agents.append(paired)
     if not client:
         agents.append(embedding_model())
     return [("This Mac", services), ("Agents", agents)]

@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from app.routes.engines import EngineCreate, create_engine
 from app.routes.messages import send_message
 from app.routes.runners import _runner_or_404, existing_runner_of, runner_manifest
-from app.schemas import MessageCreate, MessageType
+from app.schemas import DeviceSignature, MessageCreate, MessageType
 from app.services import actor, runners, swarm, tasks, worker_engine, workspace
 from app.services.agent_registry import write_agent_manifest
 from app.services.filesystem import get_room_dir, read_memory_file, room_exists
@@ -68,6 +68,9 @@ class SwarmCreate(BaseModel):
     )
     cwd: str | None = Field(None, description="With runner: the folder the members start in")
     worktree: bool = Field(False, description="With runner: a git worktree per member")
+    signature: DeviceSignature | None = Field(
+        None, description="With runner: from a device paired with it, starts without asking there"
+    )
 
 
 class SwarmRead(BaseModel):
@@ -158,6 +161,7 @@ async def _start_on_runner(
             "kickoff": payload.kickoff,
         },
         created_by=me,
+        signature=payload.signature,
     )
     logger.info(
         "room %s: swarm of %d on runner %s (%s) for %s",

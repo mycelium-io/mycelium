@@ -24,6 +24,7 @@ from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any
 
 from app.schemas import (
+    DeviceSignature,
     FrameworkRead,
     RunnerHello,
     RunnerJobKind,
@@ -58,7 +59,7 @@ class _Entry:
 
     def read(self, now: datetime) -> RunnerRead:
         return RunnerRead(
-            **self.hello.model_dump(),
+            **self.hello.model_dump(exclude={"pairing_offers"}),
             connected=now - self.last_seen <= STALE_AFTER,
             last_seen=self.last_seen,
             started_at=self.started_at,
@@ -140,10 +141,21 @@ class RunnerRegistry:
         if report.result is not None:
             job.result = report.result
         job.error = report.error
+        if report.pairing is not None:
+            job.pairing = report.pairing
         job.updated_at = _now()
         return job
 
     # ── the app's side ───────────────────────────────────────────────────────
+
+    def offering(self, code_id: str) -> RunnerRead | None:
+        """The connected runner with a live pairing code starting ``code_id``."""
+        now = _now()
+        wanted = code_id.upper()
+        for entry in self._runners.values():
+            if wanted in entry.hello.pairing_offers and now - entry.last_seen <= STALE_AFTER:
+                return entry.read(now)
+        return None
 
     def get(self, runner_id: str) -> RunnerRead | None:
         entry = self._runners.get(runner_id)
@@ -164,6 +176,7 @@ class RunnerRegistry:
         spec: dict[str, Any],
         *,
         created_by: str | None,
+        signature: DeviceSignature | None = None,
     ) -> RunnerJobRead:
         entry = self._runners.get(runner_id)
         if entry is None:
@@ -177,6 +190,7 @@ class RunnerRegistry:
             created_by=created_by,
             created_at=now,
             updated_at=now,
+            signature=signature,
         )
         entry.jobs[job.id] = job
         while len(entry.jobs) > JOB_HISTORY:

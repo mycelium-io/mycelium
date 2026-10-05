@@ -118,6 +118,8 @@ def runner(
 
     Each agent or team the app asks for waits until you say yes here, with
     `mycelium runner approve <id>`, since anyone who can reach the hub can ask.
+    A device paired with `mycelium runner pair` skips the question, within
+    what the pairing allows.
 
     Examples:
         mycelium runner
@@ -297,6 +299,135 @@ def runner_approve(job_id: str = typer.Argument(..., help="The request's id")) -
 def runner_decline(job_id: str = typer.Argument(..., help="The request's id")) -> None:
     """Refuse an agent or team the hub asked for; the app is told it was declined."""
     _answer(job_id, yes=False)
+
+
+@doc_ref(
+    usage="mycelium runner pair [--folder <folder>]... [--cli <id>]... [--swarms] [--days <n>]",
+    desc="Pair a device with this machine, so what it signs starts here without asking.",
+    group="agent",
+)
+@app.command("pair")
+def runner_pair(
+    folder: list[Path] = typer.Option(
+        None, "--folder", help="A folder the pairing covers (repeatable; default: every root)"
+    ),
+    cli: list[str] = typer.Option(
+        None, "--cli", help="An agent CLI it may start, by id (repeatable; default: any)"
+    ),
+    swarms: bool = typer.Option(False, "--swarms", help="Let it start teams too"),
+    days: int = typer.Option(
+        90, "--days", min=0, help="Days until the pairing ends (0: it doesn't)"
+    ),
+) -> None:
+    """Print a code to enter on your laptop; once it is, that device's requests start here.
+
+    For a machine nobody sits at. A launch, team or restart the paired device
+    signs starts without a yes here, inside the folders, agent CLIs and time
+    you set now. Anything else still waits for a yes. Run it where the runner
+    runs, at the machine: the code is the proof that whoever pairs was told it here.
+
+    Examples:
+        mycelium runner pair
+        mycelium runner pair --folder ~/code --cli opencode --days 30
+    """
+    import time
+
+    from mycelium.runner import pairing
+
+    if running_pid() is None:
+        console.print(
+            "[yellow]No runner is running here.[/yellow] The pairing arrives through it: "
+            "start it with `mycelium runner --detach` first."
+        )
+        raise typer.Exit(1)
+    limits = pairing.Limits.make(folders=folder, clis=cli, swarms=swarms, days=days)
+    code = pairing.offer(limits)
+    covers = ", ".join(limits.folders) or "every folder the runner allows"
+    clis = ", ".join(limits.clis) or "any agent CLI"
+    ends = f"for {days} days" if days else "until you unpair it"
+    console.print(
+        f"\nPairing code: [bold cyan]{pairing.show_code(code)}[/bold cyan]\n\n"
+        "Enter it on the device you'll start agents from: on the app's Machines page, "
+        "Add machine → Pair.\n"
+        f"[dim]It covers {covers}; {clis}; {'teams too' if swarms else 'no teams'}; {ends}. "
+        f"The code works once, for {int(pairing.OFFER_TTL.total_seconds() // 60)} minutes.[/dim]\n"
+    )
+    deadline = time.monotonic() + pairing.OFFER_TTL.total_seconds()
+    try:
+        with console.status("Waiting for the device…"):
+            while time.monotonic() < deadline:
+                if (made := pairing.landed(code)) is not None:
+                    console.print(
+                        f"[green]Paired[/green] with '{made.name}', key "
+                        f"[cyan]{pairing.fingerprint(made.key)}[/cyan]. Check the device shows the same key."
+                        f"\n[dim]Unpair it any time: mycelium runner unpair '{made.name}'[/dim]"
+                    )
+                    return
+                if code[: pairing.OFFER_ID_LEN] not in pairing.live_offers():
+                    break
+                time.sleep(0.5)
+    except KeyboardInterrupt:
+        pairing.withdraw(code)
+        console.print("[dim]Withdrawn; the code no longer works.[/dim]")
+        raise typer.Exit(1) from None
+    pairing.withdraw(code)
+    console.print("[yellow]The code expired or was tried too often. Make a new one.[/yellow]")
+    raise typer.Exit(1)
+
+
+@doc_ref(
+    usage="mycelium runner pairings",
+    desc="List the devices paired with this machine, what each covers and when it ends.",
+    group="agent",
+)
+@app.command("pairings")
+@emits_json("as_json")
+def runner_pairings(as_json: bool = False) -> None:
+    """The devices whose requests start here without asking, and their limits."""
+    from mycelium.runner import pairing
+
+    found = pairing.load()
+    if as_json:
+        out = [{**p.wire(), "expired": p.expired()} for p in found]
+        typer.echo(json.dumps(out, indent=2))
+        return
+    if not found:
+        console.print("[dim]No device is paired. Pair one with: mycelium runner pair[/dim]")
+        return
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    for col in ("Device", "Key", "Folders", "Agent CLIs", "Teams", "Ends"):
+        table.add_column(col)
+    for p in found:
+        ends = p.limits.expires_at[:10] if p.limits.expires_at else "never"
+        table.add_row(
+            p.name,
+            pairing.fingerprint(p.key),
+            "\n".join(p.limits.folders) or "[dim]every root[/dim]",
+            ", ".join(p.limits.clis) or "[dim]any[/dim]",
+            "yes" if p.limits.swarms else "no",
+            f"[red]ended {ends}[/red]" if p.expired() else ends,
+        )
+    console.print(table)
+
+
+@doc_ref(
+    usage="mycelium runner unpair <name>",
+    desc="Unpair a device: its requests wait for a yes here again.",
+    group="agent",
+)
+@app.command("unpair")
+def runner_unpair(
+    name: str = typer.Argument(..., help="The device's name, or its key id"),
+) -> None:
+    """Revoke a pairing. Takes effect at once; the device is not told."""
+    from mycelium.runner import pairing
+
+    try:
+        gone = pairing.remove(name)
+    except pairing.PairingError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from None
+    console.print(f"[green]Unpaired[/green] '{gone.name}'. What it asks for waits for a yes again.")
 
 
 @doc_ref(

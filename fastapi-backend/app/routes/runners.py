@@ -37,6 +37,7 @@ from app.schemas import (
     RunnerHello,
     RunnerJobRead,
     RunnerJobReport,
+    RunnerPair,
     RunnerRead,
 )
 from app.services import actor
@@ -176,6 +177,32 @@ async def list_runners(request: Request) -> list[RunnerRead]:
     return [r for r in registry.all() if _yours(r, request)]
 
 
+@router.post("/pair", response_model=RunnerJobRead, status_code=201)
+async def pair_device(payload: RunnerPair, request: Request) -> RunnerJobRead:
+    """Ask the machine that printed a pairing code to pair this device.
+
+    The hub routes by the code's public part and carries the proof; only the
+    machine can check it. Follow the returned job: ``done`` carries the
+    pairing as the machine recorded it, ``failed`` says why not.
+    """
+    runner = registry.offering(payload.code_id)
+    if runner is None or not _yours(runner, request):
+        raise HTTPException(
+            status_code=404,
+            detail="No machine is waiting to pair with that code. Check it, or make a new one "
+            "there with `mycelium runner pair`.",
+        )
+    me = actor.bind_optional_actor(request, None, field="created_by")
+    spec = {
+        "offer": payload.code_id.upper(),
+        "name": payload.name,
+        "key": payload.key.model_dump(),
+        "proof": payload.proof,
+    }
+    logger.info("runner %s: pair '%s'", runner.id, payload.name)
+    return registry.enqueue(runner.id, "pair", spec, created_by=me)
+
+
 @router.get("/{runner_id}", response_model=RunnerRead)
 async def get_runner(runner_id: str, request: Request) -> RunnerRead:
     return _runner_or_404(runner_id, request)
@@ -235,7 +262,7 @@ async def restart_agents(
     }
     me = actor.bind_optional_actor(request, None, field="created_by")
     logger.info("runner %s: restart %s", runner_id, spec)
-    return registry.enqueue(runner_id, "restart", spec, created_by=me)
+    return registry.enqueue(runner_id, "restart", spec, created_by=me, signature=payload.signature)
 
 
 @router.post("/{runner_id}/agents", response_model=RunnerJobRead, status_code=201)
@@ -296,7 +323,7 @@ async def launch_agent(
         "framework": payload.framework,
         "cwd": cwd,
     }
-    job = registry.enqueue(runner_id, "launch", spec, created_by=me)
+    job = registry.enqueue(runner_id, "launch", spec, created_by=me, signature=payload.signature)
     logger.info(
         "runner %s: launch @%s (%s) in %s", runner_id, handle, payload.framework, payload.room
     )

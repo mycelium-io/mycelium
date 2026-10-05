@@ -238,6 +238,8 @@ export async function startSwarm(
     cwd?: string;
     /** Give each member its own git worktree of `cwd`. */
     worktree?: boolean;
+    /** With runner: from a device paired with it, starts without asking there. */
+    signature?: DeviceSignature;
   },
 ): Promise<Swarm> {
   return apiFetch<Swarm>(`${roomApiPath(room)}/swarms`, {
@@ -840,6 +842,8 @@ export interface Runner {
   machine?: MachineReport | null;
   /** How its sync pass (presence up, wakes down) is doing. Absent from a runner from before it sent one. */
   sync?: RunnerSync | null;
+  /** Devices whose signed requests it starts without asking (`mycelium runner pair`). */
+  pairings?: RunnerPairing[];
   /** False once the machine's heartbeat is stale. */
   connected: boolean;
   last_seen: string;
@@ -909,7 +913,36 @@ export interface MachineReport {
   problems: MachineProblem[];
 }
 
-export type RunnerJobKind = "launch" | "stop" | "scan" | "swarm" | "restart";
+/** A device paired with a machine, and what the pairing covers (set on that machine). */
+export interface RunnerPairing {
+  name: string;
+  /** The device key's id; this browser's is `useDeviceKeyId()`. */
+  key: string;
+  paired_at: string;
+  /** Null: it doesn't end. */
+  expires_at: string | null;
+  /** Empty: every folder the runner allows. */
+  folders: string[];
+  /** Empty: any agent CLI. */
+  clis: string[];
+  swarms: boolean;
+}
+
+/** A paired device's signature over a job, which the hub only carries (`device-key.ts`). */
+export interface DeviceSignature {
+  key: string;
+  body: string;
+  sig: string;
+}
+
+/** Whether a signed job started under a pairing, or why it waits for a yes after all. */
+export interface PairingOutcome {
+  accepted: boolean;
+  name?: string | null;
+  reason?: string | null;
+}
+
+export type RunnerJobKind = "launch" | "stop" | "scan" | "swarm" | "restart" | "pair";
 /** `waiting`: the machine's runner is asking the person there before it starts anything. */
 export type RunnerJobStatus = "queued" | "running" | "waiting" | "done" | "failed";
 
@@ -925,6 +958,8 @@ export interface RunnerJob {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  /** Set once the machine has looked at a signed job. */
+  pairing?: PairingOutcome | null;
 }
 
 function runnerApiPath(id: string): string {
@@ -973,6 +1008,8 @@ export interface RunnerAgentLaunch {
   description?: string;
   cwd?: string;
   created_by?: string;
+  /** From a device paired with the machine: it starts without asking there. */
+  signature?: DeviceSignature;
 }
 
 /** Register an agent in a room and start it in a herdr pane on a machine. Throws `ApiError`. */
@@ -988,11 +1025,26 @@ export async function launchRunnerAgent(id: string, data: RunnerAgentLaunch): Pr
 export async function restartMachineAgents(
   id: string,
   agents: { handle: string; room: string }[],
+  signature?: DeviceSignature,
 ): Promise<RunnerJob> {
   return apiFetch<RunnerJob>(`${runnerApiPath(id)}/restart`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agents }),
+    body: JSON.stringify({ agents, signature }),
+  });
+}
+
+/** Ask the machine that printed a pairing code to pair this device; follow the job it returns. */
+export async function pairRunner(body: {
+  code_id: string;
+  name: string;
+  key: { x: string; y: string };
+  proof: string;
+}): Promise<RunnerJob> {
+  return apiFetch<RunnerJob>(`/api/runners/pair`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 }
 

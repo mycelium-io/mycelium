@@ -11,6 +11,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
 # Two shape rules, deliberately distinct. A *handle* is an identity and can be
 # minted by a real IdP, so it allows the `@` a corporate SSO `preferred_username`
@@ -720,7 +721,7 @@ class AgentRead(BaseModel):
 RunnerAgentStatus = Literal[
     "starting", "running", "idle", "working", "blocked", "stopped", "failed"
 ]
-RunnerJobKind = Literal["launch", "stop", "scan", "swarm", "restart"]
+RunnerJobKind = Literal["launch", "stop", "scan", "swarm", "restart", "pair"]
 #: ``waiting``: the runner took it and is asking the person at that machine first.
 RunnerJobStatus = Literal["queued", "running", "waiting", "done", "failed"]
 
@@ -818,11 +819,71 @@ class MachineReportRead(BaseModel):
     problems: list[MachineProblemRead] = Field(default_factory=list)
 
 
+class DeviceSignature(BaseModel):
+    """A paired device's signature over a job it asked for, which the hub only carries.
+
+    ``body`` is the exact JSON the device signed (the runner, the job's kind
+    and fields, a time and a nonce); ``sig`` is ECDSA P-256 over it, ``r||s``
+    in base64url. The runner checks both against the job it receives, and
+    starts it without asking only when they hold (``mycelium/runner/pairing.py``).
+    """
+
+    key: str = Field(..., min_length=8, max_length=64, description="The device key's id")
+    body: str = Field(..., min_length=2, max_length=8192)
+    sig: str = Field(..., min_length=8, max_length=200)
+
+
 class MachineRestart(BaseModel):
     """Agents to restart on a machine: some by handle, or every stopped one."""
 
     agents: list[RunnerAgentRef] = Field(default_factory=list)
     all: bool = False
+    signature: DeviceSignature | None = Field(
+        None, description="From a device paired with the machine: starts without asking there"
+    )
+
+
+class RunnerPairingRead(BaseModel):
+    """A device paired with a runner, and what the pairing covers (set on that machine)."""
+
+    name: str
+    key: str = Field(..., description="The device key's id, which the device also knows")
+    paired_at: datetime
+    expires_at: datetime | None = None
+    folders: list[str] = Field(
+        default_factory=list, description="Folders it covers; empty: every root"
+    )
+    clis: list[str] = Field(default_factory=list, description="Agent CLIs it covers; empty: any")
+    swarms: bool = False
+
+
+class PairingOutcome(BaseModel):
+    """Whether a signed job started under a pairing, or why it waits for a yes after all."""
+
+    accepted: bool
+    name: str | None = Field(None, description="The pairing it started under")
+    reason: str | None = Field(None, description="Why the signature wasn't enough")
+
+
+class DeviceKey(BaseModel):
+    """A P-256 public key as a JWK's coordinates."""
+
+    x: str = Field(..., min_length=40, max_length=50)
+    y: str = Field(..., min_length=40, max_length=50)
+
+
+class RunnerPair(BaseModel):
+    """A device asking to pair with the machine that printed a code.
+
+    Only the code's first four characters are sent, to find the machine; the
+    rest keys ``proof``, an HMAC over the device's name and key, which only
+    the machine can check.
+    """
+
+    code_id: str = Field(..., min_length=4, max_length=4)
+    name: str = Field(..., min_length=1, max_length=40)
+    key: DeviceKey
+    proof: str = Field(..., min_length=40, max_length=50)
 
 
 class RunnerSyncRead(BaseModel):
@@ -859,11 +920,17 @@ class RunnerHello(BaseModel):
     machine: MachineReportRead | None = None
     #: How its sync pass is doing. None from a runner from before it sent one.
     sync: RunnerSyncRead | None = None
+    #: Devices whose signed requests it starts without asking.
+    pairings: list[RunnerPairingRead] = Field(default_factory=list)
+    #: The public ids of its live pairing codes, for routing a pair request.
+    pairing_offers: list[str] = Field(default_factory=list, max_length=8)
 
 
 class RunnerRead(RunnerHello):
     """A runner as the app sees it."""
 
+    #: Not shown: anyone listing runners could otherwise use up a code's tries.
+    pairing_offers: SkipJsonSchema[list[str]] = Field(default_factory=list, exclude=True)
     connected: bool
     last_seen: datetime
     started_at: datetime
@@ -882,6 +949,8 @@ class RunnerJobRead(BaseModel):
     created_by: str | None = None
     created_at: datetime
     updated_at: datetime
+    signature: DeviceSignature | None = None
+    pairing: PairingOutcome | None = None
 
 
 class RunnerJobReport(BaseModel):
@@ -890,6 +959,7 @@ class RunnerJobReport(BaseModel):
     status: RunnerJobStatus
     result: dict[str, Any] | None = None
     error: str | None = None
+    pairing: PairingOutcome | None = None
 
 
 class RunnerAgentLaunch(BaseModel):
@@ -904,6 +974,9 @@ class RunnerAgentLaunch(BaseModel):
     description: str = ""
     cwd: str | None = Field(None, description="Folder to start it in; inside one of the roots")
     created_by: str | None = None
+    signature: DeviceSignature | None = Field(
+        None, description="From a device paired with the machine: starts without asking there"
+    )
 
 
 # ── Join codes ───────────────────────────────────────────────────────────────
