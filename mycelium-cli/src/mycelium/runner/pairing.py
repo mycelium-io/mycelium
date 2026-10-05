@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Devices paired with this runner, so it can start what they ask without a yes here.
+"""Devices paired with this runner, whose signed requests start without approval.
 
-A runner asks the person at its machine before it starts anything a hub sent
-it (``approvals``), because a hub can't prove who asked. On a machine nobody
-sits at, a pairing stands in for that person: a device (a browser, the Mac
-app) holds a private key that never leaves it, and a job it signs is started
-without asking, within the limits set here when it was paired.
+A runner needs approval on its machine before it starts anything a hub sent
+(``approvals``), because a hub can't prove who asked. When no one is at the
+machine to approve, a paired device can be used instead: the device (a
+browser, the Mac app) holds a private key that never leaves it, and jobs it
+signs start without approval, within the limits set when it was paired.
 
 Pairing happens once, at this machine. ``mycelium runner pair`` writes an
 **offer** and prints its code; the first four characters are the offer's id,
@@ -321,7 +321,7 @@ def remove(name: str, *, base: Path | None = None) -> Pairing:
 def _clean_name(name: str) -> str:
     clean = " ".join("".join(c for c in name if c.isprintable()).split())[:NAME_MAX]
     if not clean:
-        raise PairingError("A device needs a name to pair, like 'work laptop'.")
+        raise PairingError("Give the computer a name to pair, like 'work laptop'.")
     return clean
 
 
@@ -391,12 +391,14 @@ def redeem(spec: dict[str, Any], *, base: Path | None = None) -> Pairing:
     with _lock:
         body = _offer(oid, base)
         if body is None:
-            raise PairingError("No pairing code here matches, or it expired. Make a new one.")
+            raise PairingError(
+                "No matching pairing code, or it expired. Run mycelium runner pair again."
+            )
         try:
             kid = key_id(x, y)
             _public_key(x, y)
         except ValueError as e:
-            raise PairingError("The device's key isn't one this machine can use.") from e
+            raise PairingError("The key sent isn't a valid P-256 key.") from e
         expected = hmac.new(bytes.fromhex(body["key"]), pair_message(oid, name, x, y), "sha256")
         if not hmac.compare_digest(b64url(expected.digest()), str(spec.get("proof") or "")):
             body["attempts"] = int(body.get("attempts", 0)) + 1
@@ -458,7 +460,7 @@ def signed(job: dict[str, Any], *, runner: str, base: Path | None = None) -> tup
     kid = str(envelope.get("key") or "")
     pairing = next((p for p in load(base=base) if p.key == kid), None) if _HEX.match(kid) else None
     if pairing is None:
-        raise Refused("the device that signed it isn't paired with this machine")
+        raise Refused("the computer that signed it isn't paired with this machine")
     if pairing.expired():
         raise Refused(f"the pairing with '{pairing.name}' expired")
     body = str(envelope.get("body") or "")
@@ -469,15 +471,15 @@ def signed(job: dict[str, Any], *, runner: str, base: Path | None = None) -> tup
         at = datetime.fromtimestamp(float(said["ts"]), UTC)
         nonce = str(said["nonce"])
     except (ValueError, KeyError, TypeError) as e:
-        raise Refused("the signature doesn't say what it signed") from e
+        raise Refused("the signature is malformed") from e
     if said.get("v") != 1 or said.get("runner") != runner or said.get("kind") != job.get("kind"):
-        raise Refused("it was signed for a different job")
+        raise Refused("the signed request doesn't match the job")
     now = _now()
     if at < now - FRESH or at > now + SKEW:
-        raise Refused("the signature is too old (or the device's clock is off)")
+        raise Refused("the signature has expired (or the computer's clock is wrong)")
     if not _HEX.match(nonce) or not _seen_once(nonce, at, base):
         raise Refused("the signature was already used")
     fields = said.get("job")
     if not isinstance(fields, dict):
-        raise Refused("the signature doesn't say what it signed")
+        raise Refused("the signature is malformed")
     return pairing, fields

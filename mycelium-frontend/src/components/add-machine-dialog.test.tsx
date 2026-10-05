@@ -83,7 +83,7 @@ describe("AddMachineDialog", () => {
 
   it("adds a machine you use by its id instead", () => {
     renderWithSWR(<AddMachineDialog open onClose={() => {}} />);
-    fireEvent.click(screen.getByRole("tab", { name: /Add one you use/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Add a machine/ }));
     expect(screen.getByDisplayValue("mycelium runner")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("morgans-mbp-3f2a")).toBeInTheDocument();
   });

@@ -908,7 +908,7 @@ def test_a_launch_a_paired_device_signed_starts_without_asking(
             "launch",
             {**LAUNCH, "cwd": None},
             {**LAUNCH, "handle": "b"},
-            "signed for a different job",
+            "doesn't match the job",
             id="a-job-the-hub-changed",
         ),
         pytest.param(
@@ -930,7 +930,7 @@ def test_a_launch_a_paired_device_signed_starts_without_asking(
                 "key": "k",
                 "episode": "e",
             },
-            "doesn't allow teams",
+            "doesn't allow swarms",
             id="a-team-without-teams",
         ),
     ],
@@ -966,7 +966,7 @@ def test_a_signature_is_good_once_and_only_while_fresh(make_runner, hub: Hub, qu
 
     old = _sign(key, "launch", {**LAUNCH, "cwd": None}, ts=time.time() - 3600)
     r.take({"id": "e3e3e3", "kind": "launch", "spec": LAUNCH, "signature": old})
-    assert "too old" in _until(lambda: _report(hub, "e3e3e3", "waiting"))["pairing"]["reason"]
+    assert "has expired" in _until(lambda: _report(hub, "e3e3e3", "waiting"))["pairing"]["reason"]
 
 
 def test_an_unpaired_or_ended_device_asks_like_anyone(make_runner, hub: Hub, quick: None):
@@ -988,7 +988,10 @@ def test_an_unpaired_or_ended_device_asks_like_anyone(make_runner, hub: Hub, qui
 
     other = _sign(key, "launch", {**LAUNCH, "cwd": None}, runner="someone-elses")
     r.take({"id": "f2f2f2", "kind": "launch", "spec": LAUNCH, "signature": other})
-    assert "different job" in _until(lambda: _report(hub, "f2f2f2", "waiting"))["pairing"]["reason"]
+    assert (
+        "doesn't match the job"
+        in _until(lambda: _report(hub, "f2f2f2", "waiting"))["pairing"]["reason"]
+    )
 
     pairing.remove("work laptop")
     r.take(

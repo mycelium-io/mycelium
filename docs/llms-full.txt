@@ -3153,51 +3153,51 @@ nobody else can reach it. A hub the app didn't start, such as a Docker one,
 still asks. For a hub you know nobody else can reach, `mycelium runner
 --trust-hub` skips the question.
 
-## A machine nobody sits at: pair a device
+## Pair a device to skip approvals on a remote machine
 
-A Mac mini on the desk or a box in a closet has nobody there to say yes.
-Pair the device you start agents from with it instead, once, at the machine:
+If no one is at a machine to approve requests (for example, a Mac mini or a
+home server), pair the computer you work from with it. Then requests you send
+from that computer start without approval.
+
+On the remote machine, run:
 
 ```bash
-mycelium runner --detach                          # if it isn't running yet
+mycelium runner --detach                          # if the runner isn't running
 mycelium runner pair --folder ~/code --cli opencode --days 30
 ```
 
-It prints a code like `K7QM-4XHD-9RWA`. On your laptop, open the app's
-**Machines** page, choose **Add machine → Pair**, and enter the code and a
-name for this device ("work laptop"). The machine then lists the device, and
-both show the same key, so you can check it's yours.
+This prints a code like `K7QM-4XHD-9RWA`. On your computer, open the
+**Machines** page, click **Add machine → Pair**, and enter the code and a
+name for your computer (for example, "work laptop"). Both sides then show
+the same key fingerprint; check that they match.
 
-From then on, a launch, a team or a restart this device asks for starts on
-that machine without the question, as long as it is inside what the pairing
-allows:
+The options set what paired requests can do:
 
-- `--folder`: the folders it may start agents in (default: every folder the
-  runner allows);
-- `--cli`: the agent CLIs it may start, by id (default: any);
-- `--swarms`: whether it may start teams (default: no);
-- `--days`: when it ends (default: 90; `0` for never).
+- `--folder`: folders agents can start in (default: all of the runner's folders).
+- `--cli`: agent CLIs it can start, by id (default: any).
+- `--swarms`: allow swarms (default: no).
+- `--days`: how long the pairing lasts (default: 90; `0` means no expiry).
 
-Anything else still waits for a yes: a request from any other device, one
-from a device the machine doesn't know, one outside those limits, an old or
-reused one, or one the hub changed on the way. The app says why
-("outside the folders this pairing allows"), and so does the question on
-the machine.
+Launches, swarms and restarts from the paired computer start right away if
+they're within these limits. Everything else still needs approval on the
+machine, including requests from other computers, requests outside the
+limits, and requests that were modified or replayed. The app shows the
+reason when a request needs approval.
+
+To manage pairings, run these on the remote machine:
 
 ```bash
-mycelium runner pairings                  # each device, what it covers, when it ends
-mycelium runner unpair "work laptop"      # its requests ask again, at once
+mycelium runner pairings                  # list pairings, their limits and expiry
+mycelium runner unpair "work laptop"      # remove a pairing
 ```
 
-How it holds: the device makes a key the first time you pair, in the browser
-(or the Mac app), and the private half can't be read out of it, not even by
-the page. The code shows the machine that whoever paired was told it there.
-Each request is signed by that key over the job itself, the machine checks
-the signature and the job before it starts anything, and the limits are
-written on the machine, so nothing over the network can add or widen a
-pairing. The hub only carries the request; it can't make one up. Every job
-started under a pairing is in `runner.log` with the device's name, and
-`mycelium doctor` lists the pairings and when each ends.
+**Security:** your computer creates a signing key the first time you pair.
+The browser (or Mac app) stores it so that it can't be exported. Every
+request is signed with this key, and the machine checks the signature
+before starting anything. The limits are stored on the machine, so they
+can't be changed over the network, and the hub can't create or alter a
+signed request. Jobs started under a pairing are logged in `runner.log`,
+and `mycelium doctor` lists pairings and when they expire.
 
 ## Only your machines are listed
 

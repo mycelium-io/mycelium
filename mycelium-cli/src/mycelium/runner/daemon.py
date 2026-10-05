@@ -731,7 +731,7 @@ class Runner:
         try:
             return self.folder(cwd)
         except JobError as e:
-            raise pairing.Refused("it was signed for a different job") from e
+            raise pairing.Refused("the signed request doesn't match the job") from e
 
     def _cli_of(self, kind: str | None) -> str | None:
         """The framework id for a herdr kind, which is how a pairing names an agent CLI."""
@@ -740,7 +740,7 @@ class Runner:
     def _within(self, paired: pairing.Pairing, job: dict[str, Any], fields: dict[str, Any]) -> None:
         """Refuse unless ``fields`` are ``job``'s and the pairing covers them."""
         kind, spec = job.get("kind"), job.get("spec") or {}
-        different = pairing.Refused("it was signed for a different job")
+        different = pairing.Refused("the signed request doesn't match the job")
         if kind == "restart":
             agents = [
                 {"handle": str(a.get("handle") or "").lower(), "room": a.get("room")}
@@ -764,7 +764,7 @@ class Runner:
                     )
             return
         if kind == "swarm" and not paired.limits.swarms:
-            raise pairing.Refused("this pairing doesn't allow teams")
+            raise pairing.Refused("this pairing doesn't allow swarms")
         same = (
             ("room", "handle", "framework") if kind == "launch" else ("room", "task", "framework")
         )
@@ -884,7 +884,9 @@ class Runner:
             question = self.question(job)
             if refused is not None:
                 log.info("job %s: a signature didn't start it: %s", job_id, refused)
-                question["message"] += f"\n\nIt was signed, but not started on its own: {refused}."
+                question["message"] += (
+                    f"\n\nSigned by a paired computer, but needs approval: {refused}."
+                )
                 question["pairing_refused"] = refused
             request = approvals.ask(job_id, question, base=self._requests_base)
         except (JobError, approvals.ApprovalError) as e:

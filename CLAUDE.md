@@ -461,8 +461,8 @@ is no litellm dependency.
   ask. The one exception is a hub the runner may trust: the Mac app's own,
   and only when its supervisor started it (it listens on 127.0.0.1 alone; a
   hub already on the port, like a Docker one publishing to the network, does
-  not count), or `--trust-hub` said by the person. A machine nobody sits at
-  takes a **pairing** instead (`mycelium/runner/pairing.py`): `mycelium runner
+  not count), or `--trust-hub` said by the person. A machine with no one
+  there to approve can use a **pairing** instead (`mycelium/runner/pairing.py`): `mycelium runner
   pair` there prints a code, the app sends its device key (WebCrypto P-256,
   non-extractable, in IndexedDB: `lib/device-key.ts`) with an HMAC keyed by
   the code, and a launch, swarm or restart that key signs (over the job's

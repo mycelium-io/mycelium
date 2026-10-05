@@ -8,7 +8,7 @@
  * status is read off its age (queued, then running, then done), so the app
  * shows the same progression without a runner. Finishing a launch puts the
  * agent on the machine and in the room's roster; finishing a stop marks it
- * stopped. A second machine, a Mac mini nobody sits at, is paired with a
+ * stopped. A second machine, a remote Mac mini, is paired with a
  * device; pairing this browser with it (any well-formed code) adds another.
  */
 
@@ -199,7 +199,7 @@ const runners: Runner[] = [
   },
 ];
 
-/** The unattended machine: it starts what a paired device asks for, without a yes. */
+/** A remote machine: it starts what a paired device asks for without approval. */
 export const MOCK_MINI_ID = "studio-mini";
 
 if (!isDemoScenario() && !isLearnScenario()) {

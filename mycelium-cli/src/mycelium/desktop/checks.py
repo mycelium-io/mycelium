@@ -173,23 +173,23 @@ def pairings() -> CheckResult | None:
     for p in found:
         ends = p.limits.expires_at
         if ends is None:
-            lines.append(f"{p.name}: never ends")
+            lines.append(f"{p.name}: no expiry")
             continue
         at = datetime.fromisoformat(ends)
         if at <= now:
             ending += 1
-            lines.append(f"{p.name}: ended {ends[:10]}")
+            lines.append(f"{p.name}: expired {ends[:10]}")
         else:
             ending += at <= soon
-            lines.append(f"{p.name}: ends {ends[:10]}")
+            lines.append(f"{p.name}: expires {ends[:10]}")
     n = len(found)
-    message = f"{n} device{'s' if n != 1 else ''} start agents here without asking"
+    message = f"{n} paired computer{'s' if n != 1 else ''}"
     if ending:
-        lines.append(
-            "Pair again with `mycelium runner pair`; unpair with `mycelium runner unpair`."
+        lines.append("Renew with `mycelium runner pair`, or remove with `mycelium runner unpair`.")
+        return CheckResult(
+            name="Paired computers", status="warning", message=message, details=lines
         )
-        return CheckResult(name="Paired devices", status="warning", message=message, details=lines)
-    return CheckResult(name="Paired devices", status="ok", message=message, details=lines)
+    return CheckResult(name="Paired computers", status="ok", message=message, details=lines)
 
 
 def herdr() -> CheckResult:

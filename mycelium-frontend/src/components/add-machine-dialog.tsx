@@ -6,9 +6,9 @@
 /**
  * Add a machine to the Machines page, one of two ways:
  *
- * - **Pair** a machine nobody sits at: `mycelium runner pair` there prints a
+ * - **Pair** a remote machine: `mycelium runner pair` there prints a
  *   code, and entering it here pairs this browser's device key with it, so
- *   what this browser asks for starts there without a yes (`device-key.ts`).
+ *   requests from this browser start there without approval (`device-key.ts`).
  * - **Add** a machine you use, by the id `mycelium runner` prints: it is
  *   listed here, and asks you there before it starts anything.
  */
@@ -37,15 +37,15 @@ export function AddMachineDialog({ open, onClose }: { open: boolean; onClose: ()
       <DialogContent className="sm:max-w-lg">
         <DialogTitle>Add a machine</DialogTitle>
         <DialogDescription>
-          A machine starts the agents you ask for here. Each asks the person at it first, unless this device is paired
-          with it.
+          Agents you start from here run on this machine. Each request needs approval on the machine, unless this
+          computer is paired with it.
         </DialogDescription>
         <div role="tablist" aria-label="How to add it" className="flex gap-1 rounded-lg bg-hairline p-0.5">
           <WayTab active={way === "pair"} onClick={() => setWay("pair")} icon={<KeyRound className="size-3.5" />}>
-            Pair a machine nobody sits at
+            Pair a remote machine
           </WayTab>
           <WayTab active={way === "add"} onClick={() => setWay("add")} icon={<Laptop className="size-3.5" />}>
-            Add one you use
+            Add a machine
           </WayTab>
         </div>
         {way === "pair" ? <PairForm onClose={onClose} /> : <AddForm />}
@@ -85,7 +85,7 @@ function WayTab({
 function AddForm() {
   return (
     <div className="space-y-2 text-label text-muted-foreground">
-      <p>Run this on it, with herdr open. It asks you there before it starts anything.</p>
+      <p>Run this on the machine, with herdr open. Each request will need your approval there.</p>
       <CopyField value={CONNECT_COMMAND} className="font-mono" />
       <AddMachineCode />
     </div>
@@ -139,8 +139,8 @@ function PairForm({ onClose }: { onClose: () => void }) {
         </p>
         <p className="text-micro leading-relaxed text-muted-foreground">
           Check that the machine printed the same key:{" "}
-          <span className="font-mono text-text">{fingerprint(result.key ?? "")}</span>. What you start on it from here
-          no longer waits for a yes there, inside what the pairing allows.
+          <span className="font-mono text-text">{fingerprint(result.key ?? "")}</span>. Requests from this computer
+          now start without approval, within the pairing&apos;s limits.
         </p>
         <div className="flex justify-end">
           <Button onClick={onClose}>Done</Button>
@@ -161,12 +161,12 @@ function PairForm({ onClose }: { onClose: () => void }) {
       }}
     >
       <div className="space-y-1.5 text-label text-muted-foreground">
-        <p>On that machine, with its runner running, run this. It prints a code that works once, for ten minutes.</p>
+        <p>Run this on the remote machine (its runner must be running). It prints a one-time code that expires in 10 minutes.</p>
         <CopyField value={PAIR_COMMAND} className="font-mono" />
         <p className="text-micro text-faint">
           Add <code className="font-mono">--folder</code>, <code className="font-mono">--cli</code>,{" "}
-          <code className="font-mono">--swarms</code> or <code className="font-mono">--days</code> there to set what
-          this device may start.
+          <code className="font-mono">--swarms</code> or <code className="font-mono">--days</code> there to limit what
+          this computer can start.
         </p>
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
@@ -183,7 +183,7 @@ function PairForm({ onClose }: { onClose: () => void }) {
           />
         </label>
         <label className="space-y-1">
-          <span className="block text-micro font-medium text-muted-foreground">This device&apos;s name</span>
+          <span className="block text-micro font-medium text-muted-foreground">This computer&apos;s name</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -197,12 +197,12 @@ function PairForm({ onClose }: { onClose: () => void }) {
       <p className="text-micro leading-relaxed text-faint">
         {keyId ? (
           <>
-            This device&apos;s key: <span className="font-mono text-muted-foreground">{fingerprint(keyId)}</span>.
+            This computer&apos;s key: <span className="font-mono text-muted-foreground">{fingerprint(keyId)}</span>.
           </>
         ) : (
-          "This device makes its key when it pairs."
+          "A key is created for this computer when you pair."
         )}{" "}
-        It stays in this browser and can&apos;t be read out of it; the machine keeps only the public half.
+        The private key stays in this browser and can&apos;t be exported; the machine stores only the public key.
       </p>
       {(error || failed) && (
         <p role="alert" className="text-micro text-red">

@@ -1081,10 +1081,10 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
-    "u": "guides.html#machines-a-machine-nobody-sits-at-pair-a-device",
-    "t": "A machine nobody sits at: pair a device",
+    "u": "guides.html#machines-pair-a-device-to-skip-approvals-on-a-remote-machine",
+    "t": "Pair a device to skip approvals on a remote machine",
     "s": "Agents › Start Agents From the App",
-    "x": "A Mac mini on the desk or a box in a closet has nobody there to say yes. Pair the device you start agents from with it instead, once, at the machine: mycelium runner --detach # if it isn't running yet mycelium runner pair --folder ~/code --cli opencode --days 30 It prints a code like K7QM-4XHD-9RWA. On your laptop, open the app's Machines page, choose Add machine → Pair, and enter the code and a name for this device ",
+    "x": "If no one is at a machine to approve requests (for example, a Mac mini or a home server), pair the computer you work from with it. Then requests you send from that computer start without approval. On the remote machine, run: mycelium runner --detach # if the runner isn't running mycelium runner pair --folder ~/code --cli opencode --days 30 This prints a code like K7QM-4XHD-9RWA. On your computer, open the Machines pa",
     "p": "Guides"
   },
   {

@@ -8,7 +8,7 @@
  * `mycelium runner`, what each found installed, what it is running, and what
  * it was last asked to do.
  *
- *   <MachinesScreen />            Add machine: pair one nobody sits at, or add one by id
+ *   <MachinesScreen />            Add machine: pair a remote one, or add one by id
  *     └─ <MachineCard /> per runner
  *          ├─ frameworks   the scan, with Rescan
  *          ├─ agents       started from the app, each with Stop
@@ -133,7 +133,7 @@ function MachineCard({ runner, keyId }: { runner: Runner; keyId: string | null }
         {mine && (
           <span
             className="inline-flex items-center gap-1 rounded bg-hairline px-1.5 text-micro text-text"
-            title="What this device asks for starts there without a yes, inside what the pairing allows."
+            title="Requests from this computer start without approval, within the pairing's limits."
           >
             <KeyRound className="size-3" />
             Paired as &ldquo;{mine.name}&rdquo;
@@ -214,7 +214,7 @@ function MachineCard({ runner, keyId }: { runner: Runner; keyId: string | null }
         </Section>
       )}
 
-      <Section title="Paired devices">
+      <Section title="Paired computers">
         <Pairings runner={runner} keyId={keyId} />
       </Section>
 
@@ -253,7 +253,7 @@ function Pairings({ runner, keyId }: { runner: Runner; keyId: string | null }) {
   if (pairings.length === 0) {
     return (
       <p className="text-label text-muted-foreground">
-        None. Everything asks for a yes on this machine. For one nobody sits at, run{" "}
+        None. Every request needs approval on this machine. To pair a computer, run{" "}
         <code className="font-mono text-micro text-text">{PAIR_COMMAND}</code> there, then Add machine → Pair.
       </p>
     );
@@ -264,7 +264,7 @@ function Pairings({ runner, keyId }: { runner: Runner; keyId: string | null }) {
         <PairingLine key={p.key} pairing={p} mine={p.key === keyId} />
       ))}
       <li className="pt-1 text-micro text-faint">
-        Unpair one on the machine: <code className="font-mono">mycelium runner unpair &quot;&lt;name&gt;&quot;</code>
+        To remove a pairing, run on this machine: <code className="font-mono">mycelium runner unpair &quot;&lt;name&gt;&quot;</code>
       </li>
     </ul>
   );
@@ -272,19 +272,19 @@ function Pairings({ runner, keyId }: { runner: Runner; keyId: string | null }) {
 
 function PairingLine({ pairing: p, mine }: { pairing: RunnerPairing; mine: boolean }) {
   const covers = [
-    p.folders.length ? p.folders.join(", ") : "every folder",
+    p.folders.length ? p.folders.join(", ") : "all runner folders",
     p.clis.length ? p.clis.join(", ") : "any agent CLI",
-    p.swarms ? "teams too" : "no teams",
+    p.swarms ? "swarms allowed" : "no swarms",
   ].join(" · ");
   return (
     <li className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-label">
       <span className="text-text">{p.name}</span>
-      {mine && <span className="text-micro text-accent">this device</span>}
+      {mine && <span className="text-micro text-accent">this computer</span>}
       <span className="font-mono text-micro text-faint">{fingerprint(p.key)}</span>
       <span className="text-micro text-muted-foreground">{covers}</span>
       {/* A machine lists only the pairings that haven't ended. */}
       <span className="ml-auto text-micro text-faint">
-        {p.expires_at === null ? "doesn't end" : `ends ${new Date(p.expires_at).toLocaleDateString()}`}
+        {p.expires_at === null ? "no expiry" : `expires ${new Date(p.expires_at).toLocaleDateString()}`}
       </span>
     </li>
   );

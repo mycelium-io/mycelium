@@ -705,7 +705,7 @@ function LaunchProgress({
   const steps: { label: string; state: StepState }[] = [
     { label: `@${handle} added to ${room}, with its notes`, state: "done" },
     { label: `${machine} picked it up`, state: status === "queued" ? "active" : "done" },
-    ...(paired ? [{ label: `Started without asking: paired with “${paired}”`, state: "done" as StepState }] : []),
+    ...(paired ? [{ label: `Started without approval (paired as “${paired}”)`, state: "done" as StepState }] : []),
     ...(asked
       ? [
           {

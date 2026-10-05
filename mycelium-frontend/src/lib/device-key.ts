@@ -6,8 +6,9 @@
 /**
  * This browser's device key, and what it signs for a machine it is paired with.
  *
- * A machine nobody sits at can't say yes to what a hub asks of it, so it
- * starts what a paired device signs instead (`mycelium/runner/pairing.py`).
+ * A runner normally needs approval on its machine before starting a job.
+ * A paired device's signed jobs start without approval instead
+ * (`mycelium/runner/pairing.py`).
  * The key is ECDSA P-256, made here by WebCrypto as non-extractable and kept
  * in IndexedDB: the page can sign with it but nothing, the page included, can
  * read the private half out. Inside the Mac app the same holds in its web

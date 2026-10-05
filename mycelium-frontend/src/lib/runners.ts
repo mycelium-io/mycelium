@@ -177,8 +177,8 @@ export function describeJob(job: RunnerJob): string {
 export function pairingNote(job: Pick<RunnerJob, "pairing">): string | null {
   const p = job.pairing;
   if (!p) return null;
-  if (p.accepted) return `Started without asking: this device is paired as “${p.name}”.`;
-  return p.reason ? `Signed by this device, but ${p.reason}, so it asks there.` : null;
+  if (p.accepted) return `Started without approval (paired as “${p.name}”).`;
+  return p.reason ? `Needs approval on the machine: ${p.reason}.` : null;
 }
 
 export const JOB_STATUS_LABEL: Record<RunnerJob["status"], string> = {
