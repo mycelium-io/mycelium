@@ -358,17 +358,22 @@ def start_local(
         return {**carried, "MYCELIUM_AGENT_HANDLE": handle, "MYCELIUM_ROOM_ID": room}
 
     dirs = {h: (_worktree(cwd, room, h) if worktree else cwd) for h in team}
-    workspace, first = bridge.create_workspace(room, cwd=str(dirs[team[0]]), env=env(team[0]))
-    local = LocalTeam(workspace=workspace, panes={team[0]: first})
-    last = first
-    for i, handle in enumerate(team[1:]):
-        last = bridge.split_pane(
-            last,
-            direction="right" if i % 2 == 0 else "down",
+
+    def place(handle: str, workspace: str | None) -> tuple[str, str]:
+        return bridge.place_pane(
+            room,
+            workspace,
+            handle=handle,
             cwd=str(dirs[handle]),
             env=env(handle),
+            per_tab=config.herdr.panes_per_tab,
         )
-        local.panes[handle] = last
+
+    workspace, first = place(team[0], None)
+    panes = {team[0]: first}
+    for handle in team[1:]:
+        workspace, panes[handle] = place(handle, workspace)
+    local = LocalTeam(workspace=workspace, panes=panes)
 
     for handle, pane in local.panes.items():
         _start_when_ready(bridge, handle, kind, pane)

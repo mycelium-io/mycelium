@@ -26,6 +26,7 @@ from mycelium.integrations.herdr import (
     build_wake_prompt,
 )
 from mycelium.protocol import AgentManifest
+from tests.herdr_layout import HerdrLayout
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -673,3 +674,96 @@ def test_collect_presence_maps_live_panes_per_room(
     assert _collect_presence(bridge, room_filter="ops") == {
         "ops": {"ci": {"status": "blocked", "title": "Fix CI"}}
     }
+
+
+# ── placing panes ──────────────────────────────────────────────────────────────
+
+
+class LayoutHerdr:
+    """herdr as ``place_pane`` sees it: workspaces, tabs and pane sizes."""
+
+    def __init__(self, *, width: int = 200, height: int = 50) -> None:
+        self.layout = HerdrLayout(width=width, height=height)
+        self.calls: list[list[str]] = []
+
+    def __call__(self, args: list[str]) -> subprocess.CompletedProcess:
+        self.calls.append(args)
+        result = self.layout.answer(args)
+        if result is None:
+            return _proc(stderr=json.dumps({"error": "unknown"}), returncode=1)
+        return _proc(_ok(result))
+
+    def labels(self) -> list[str]:
+        return [t["label"] for t in self.layout.tabs.values()]
+
+
+def _place(bridge: HerdrBridge, handles: list[str], *, per_tab: int = 4) -> str:
+    workspace = None
+    for handle in handles:
+        workspace, pane = bridge.place_pane("checkout", workspace, handle=handle, per_tab=per_tab)
+        bridge.registry.set(HerdrPaneMapping(room="checkout", handle=handle, pane=pane))
+    assert workspace is not None
+    return workspace
+
+
+def test_six_agents_fill_a_grid_then_a_second_tab(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    herdr = LayoutHerdr()
+    bridge = HerdrBridge(runner=herdr, registry=HerdrRegistry(tmp_path / "herdr.json"))
+
+    workspace = _place(bridge, ["a", "b", "c", "d", "e", "f"])
+
+    assert len([c for c in herdr.calls if c[:2] == ["workspace", "create"]]) == 1
+    tabs = [t for t, v in herdr.layout.tabs.items() if v["workspace"] == workspace]
+    assert [len(herdr.layout.in_tab(t)) for t in tabs] == [4, 2]
+    # The first tab is a 2x2 grid: no pane narrower or shorter than half the window.
+    first = [herdr.layout.panes[p]["rect"] for p in herdr.layout.in_tab(tabs[0])]
+    assert {(r["width"], r["height"]) for r in first} == {(100, 25)}
+    assert herdr.labels() == ["@a @b @c @d", "@e @f"]
+
+
+def test_a_tall_window_is_split_one_above_the_other(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    herdr = LayoutHerdr(width=80, height=60)
+    bridge = HerdrBridge(runner=herdr, registry=HerdrRegistry(tmp_path / "herdr.json"))
+    _place(bridge, ["a", "b"])
+    split = next(c for c in herdr.calls if c[:2] == ["pane", "split"])
+    assert split[split.index("--direction") + 1] == "down"
+
+
+def test_a_tab_a_person_named_keeps_its_name(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    herdr = LayoutHerdr()
+    bridge = HerdrBridge(runner=herdr, registry=HerdrRegistry(tmp_path / "herdr.json"))
+    herdr.layout.open_tab("w3", "w3:p1", "pr review")
+    bridge.place_pane("checkout", "w3", handle="a")
+    assert herdr.labels() == ["pr review"]
+
+
+def test_an_agent_that_moved_leaves_its_old_tabs_name(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    herdr = LayoutHerdr()
+    bridge = HerdrBridge(runner=herdr, registry=HerdrRegistry(tmp_path / "herdr.json"))
+    workspace = _place(bridge, ["a", "b"])
+    bridge.registry.set(HerdrPaneMapping(room="checkout", handle="a", pane="w8:p1"))
+    bridge.place_pane("checkout", workspace, handle="c")
+    assert herdr.labels() == ["@b @c"]
+
+
+def test_a_workspace_that_is_gone_is_opened_again(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    herdr = LayoutHerdr()
+    bridge = HerdrBridge(runner=herdr, registry=HerdrRegistry(tmp_path / "herdr.json"))
+    workspace, pane = bridge.place_pane("checkout", "w5", handle="a")
+    assert (workspace, pane) == ("w9", "w9:p1")
+    assert herdr.labels() == ["@a"]

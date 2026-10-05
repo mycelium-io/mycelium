@@ -28,7 +28,12 @@ from typing import TYPE_CHECKING, Any, Protocol
 import httpx
 from rich.console import Console
 
-from mycelium.integrations.herdr import HerdrBridge, HerdrError, HerdrPaneMapping
+from mycelium.integrations.herdr import (
+    PANES_PER_TAB,
+    HerdrBridge,
+    HerdrError,
+    HerdrPaneMapping,
+)
 from mycelium.runner.log import ms
 
 if TYPE_CHECKING:
@@ -133,9 +138,16 @@ class HerdrHost:
     joins = False
     gone_detail = "its herdr pane closed"
 
-    def __init__(self, bridge: HerdrBridge | None = None, *, sync_every_s: float = 3.0) -> None:
+    def __init__(
+        self,
+        bridge: HerdrBridge | None = None,
+        *,
+        sync_every_s: float = 3.0,
+        panes_per_tab: int = PANES_PER_TAB,
+    ) -> None:
         self.bridge = bridge or HerdrBridge()
         self._ttl_s = max(90.0, sync_every_s * 4)
+        self._per_tab = panes_per_tab
 
     def available(self) -> bool:
         return self.bridge.available()
@@ -144,20 +156,18 @@ class HerdrHost:
         return self.bridge.supported_kinds()
 
     def _open_pane(
-        self, state: State, room: str, cwd: Path, env: dict[str, str]
+        self, state: State, room: str, handle: str, cwd: Path, env: dict[str, str]
     ) -> tuple[str, str]:
-        """A new pane for ``room``: split from its workspace's last pane, or a new workspace."""
+        """A new pane for ``room``, placed in its workspace, or a new workspace."""
         held = state.workspaces.get(room)
-        if held is not None:
-            workspace, last = held
-            try:
-                pane = self.bridge.split_pane(last, direction="right", cwd=str(cwd), env=env)
-            except HerdrError:
-                pass
-            else:
-                state.workspaces[room] = (workspace, pane)
-                return workspace, pane
-        workspace, pane = self.bridge.create_workspace(room, cwd=str(cwd), env=env)
+        workspace, pane = self.bridge.place_pane(
+            room,
+            held[0] if held else None,
+            handle=handle,
+            cwd=str(cwd),
+            env=env,
+            per_tab=self._per_tab,
+        )
         state.workspaces[room] = (workspace, pane)
         return workspace, pane
 
@@ -174,7 +184,7 @@ class HerdrHost:
     ) -> Started:
         from mycelium.commands.swarm import _start_when_ready
 
-        workspace, pane = self._open_pane(state, room, cwd, env)
+        workspace, pane = self._open_pane(state, room, handle, cwd, env)
         try:
             _start_when_ready(self.bridge, handle, kind, pane)
         except HerdrError as e:
