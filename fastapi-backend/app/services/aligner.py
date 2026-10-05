@@ -235,7 +235,13 @@ class AlignerEngine:
             return
         self._active.add(room)
         scoped = self._scoped_participants(handle, co_summons)
-        task = asyncio.create_task(self._run_and_release(room, handle, scoped))
+        # The negotiation is held where it was asked for: a summon in a task's
+        # thread negotiates in that thread, one in the room in the room. So
+        # every turn it puts to an agent is answered with the flags that name
+        # that place (``respond --task <row>``, or a bare ``respond``).
+        summoned_in = envelope.header.message.episode if envelope.header.message else None
+        thread = summoned_in or l9.live_episode_urn(room)
+        task = asyncio.create_task(self._run_and_release(room, handle, scoped, thread))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
@@ -256,7 +262,11 @@ class AlignerEngine:
         return scoped or None
 
     async def _run_and_release(
-        self, room: str, engine_handle: str, scoped_participants: list[str] | None = None
+        self,
+        room: str,
+        engine_handle: str,
+        scoped_participants: list[str] | None = None,
+        thread: str | None = None,
     ) -> None:
         # A summon always drives a live NEGMAS SAO, running *as* the summoned
         # engine handle. There is one path — mediate — no mode to choose.
@@ -272,6 +282,7 @@ class AlignerEngine:
                 room,
                 engine_handle=engine_handle,
                 scoped_participants=scoped_participants,
+                episode=thread,
                 _rounds_out=_rounds,
             )
             # Derive outcome from the verdict committed to the channel.
@@ -310,9 +321,17 @@ class AlignerEngine:
         room: str,
         engine_handle: str | None = None,
         scoped_participants: list[str] | None = None,
+        episode: str | None = None,
         _rounds_out: list[int] | None = None,
     ) -> dict[str, Any] | None:
         """Run a NEGMAS SAO negotiation live over SLIM, terminating at agreement.
+
+        ``episode`` is the thread it was summoned in — a task's thread, or the
+        room when omitted — and the negotiation is held there: its questions,
+        the agents' answers and the verdict all land in that one place. Its
+        record is still an episode of its own (``log/episodes/{id}.md``),
+        nested in the task's thread (``within``) when there is one, and an
+        agreement reached inside a task files its compiled work under that row.
 
         Runs *as* ``engine_handle`` — the registered ``engine`` (kind ``aligner``)
         that was summoned — so that handle is excluded from the participant roster
@@ -356,11 +375,15 @@ class AlignerEngine:
                 room,
                 len(participants),
             )
-            await self._explain_stall(managed, room, me, participants)
+            await self._explain_stall(managed, room, me, participants, episode)
             return None
 
+        from app.services.tasks import row_of_episode
+
+        episode = episode or l9.live_episode_urn(room)
+        in_task = not l9.is_live_episode(room, episode)
+        row = row_of_episode(room, episode) if in_task else None
         episode_id = _new_episode_id()
-        episode = l9.episode_urn(room, episode_id)
         topic = l9.topic_urn(room)
 
         self._manager.open_episode(room, episode)
@@ -374,9 +397,13 @@ class AlignerEngine:
             joined_intents="aligner mediate: converge on the open question via SAO",
             engine_handle=me,
             opening_positions=positions,
+            episode=episode,
+            within=episode if in_task else None,
         )
         try:
-            raw_llm_session = self._open_llm_session(episode, room=room)
+            # The mediator's own memory is per negotiation, not per thread: a
+            # task's thread can host more than one negotiation over its life.
+            raw_llm_session = self._open_llm_session(l9.episode_urn(room, episode_id), room=room)
             llm_session = self._signalling(raw_llm_session, room, episode)
             positions = await self._clarify_terms(
                 managed, persister, ep, me, episode, topic, positions, llm_session
@@ -396,6 +423,7 @@ class AlignerEngine:
                     converged=False,
                     metrics=None,
                     text="✗ not converged — could not structure the discussion into issues.",
+                    task=row[0] if row else None,
                 )
 
             ep.issue_options = {i["name"]: [str(o) for o in i["options"]] for i in issues}
@@ -468,6 +496,7 @@ class AlignerEngine:
                 converged=converged,
                 metrics=metrics,
                 text=self._mediator_text(converged, assignments, mech.current_step),
+                task=row[0] if row else None,
             )
         finally:
             await self._manager.close_episode(room)
@@ -704,7 +733,12 @@ class AlignerEngine:
         )
 
     async def _explain_stall(
-        self, managed: ManagedRoomChannel, room: str, sender: str, participants: list[str]
+        self,
+        managed: ManagedRoomChannel,
+        room: str,
+        sender: str,
+        participants: list[str],
+        episode: str | None = None,
     ) -> None:
         """Post the aligner's own account of why it can't align yet.
 
@@ -740,15 +774,23 @@ class AlignerEngine:
                 "registered here besides me. Add another agent to the room, then "
                 "summon me again."
             )
-        await self._say(managed, room, sender, text)
+        await self._say(managed, room, sender, text, episode)
 
-    async def _say(self, managed: ManagedRoomChannel, room: str, sender: str, text: str) -> None:
-        """Broadcast a plain message from the aligner (not a verdict envelope). Any
-        ``@`` tokens are stripped so the notice can't spuriously summon anyone."""
+    async def _say(
+        self,
+        managed: ManagedRoomChannel,
+        room: str,
+        sender: str,
+        text: str,
+        episode: str | None = None,
+    ) -> None:
+        """Post a plain message from the aligner (not a verdict envelope) where it
+        was summoned, the room by default. Any ``@`` tokens are stripped so the
+        notice can't spuriously summon anyone."""
         safe = _AT_MENTION.sub("", text)
         env = l9.build_envelope(
             kind=l9.Kind.exchange,
-            episode=l9.episode_urn(room, "live"),
+            episode=episode or l9.live_episode_urn(room),
             sender=sender,
             topic=l9.topic_urn(room),
             payload_type="message",
@@ -833,14 +875,16 @@ class AlignerEngine:
         converged: bool,
         metrics: dict[str, Any] | None,
         text: str | None = None,
+        task: str | None = None,
     ) -> dict[str, Any]:
         """Broadcast the ``commit`` envelope and record it once locally.
 
         Emitting a ``commit:converged`` here is exactly the plan-compile trigger
         the persister watches — ``on_converged`` is wired to ``task_compiler``.
+        ``task`` is the row the negotiation was held in, carried as ``within``.
         """
         env_dict = l9_episode.build_consensus_envelope(
-            ep, broken=not converged, assignments=assignments, metrics=metrics
+            ep, broken=not converged, assignments=assignments, metrics=metrics, task=task
         )
         # The verdict is a *broadcast* terminal statement. Its record-side parents
         # (built above: the episode's synthesized reply ids) are never on the

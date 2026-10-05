@@ -77,6 +77,29 @@ async def test_summon_fires_only_for_the_reserved_handle():
 
 
 @pytest.mark.asyncio
+async def test_a_summon_negotiates_in_the_thread_it_was_made_in():
+    """The thread the summon was posted in is where the negotiation is held, so
+    an agent answers the aligner with the same flags as anything else said
+    there; a summon in the room is held in the room."""
+    managed = FakeManaged(_ROOM, "mycelium", FakeChannel(), FakePersister())
+    engine = _engine(FakeManager(managed, []))
+    held_in: list[str | None] = []
+
+    async def fake_mediate(room: str, episode: str | None = None, **_kwargs: object) -> None:
+        held_in.append(episode)
+
+    engine.mediate = fake_mediate  # type: ignore[method-assign]
+    thread = l9.episode_urn(_ROOM, "t3aa11bb")
+    for where in (thread, l9.live_episode_urn(_ROOM)):
+        summon = l9.build_envelope(
+            kind=Kind.exchange, episode=where, sender="human", topic=_TOPIC, payload_type="message"
+        )
+        engine.handle_summon(_ROOM, "aligner", summon)
+        await asyncio.sleep(0.02)
+    assert held_in == [thread, l9.live_episode_urn(_ROOM)]
+
+
+@pytest.mark.asyncio
 async def test_mediate_explains_when_too_few_participants():
     """Summoned with fewer than two participants, the aligner posts a
     LLM-authored explanation to the room instead of silently opening and

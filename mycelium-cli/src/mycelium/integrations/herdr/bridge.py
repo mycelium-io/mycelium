@@ -180,13 +180,14 @@ def build_mention_prompt(room: str, handle: str) -> str:
     h = handle.lstrip("@")
     # Read through ``await``, not the room's message list: it hands over the
     # mention and everything said before it, tells the room this agent is
-    # responding, and lets the reply land in the thread it was asked in.
+    # responding, and names the task a turn was asked in.
     return (
         f"[mycelium] You were mentioned in room '{room}'. "
         f"Run `mycelium await --room {room} --handle {h} --json --timeout 5` to read it "
         f"with everything said since your last turn, then reply with "
         f'`mycelium respond --room {room} --handle {h} --body "..."`. '
-        f"Your reply lands where you were asked."
+        f"That lands in the room; if the turn names a task, add `--task <task>` "
+        f"to answer in its thread."
     )
 
 

@@ -202,7 +202,8 @@ def live_episode_summary(room_name: str) -> dict[str, Any] | None:
         "message_count": message_count,
         "updated_at": "",
         "updated_by": "",
-        "within": None,
+        # A negotiation held in a task's thread is nested in it.
+        "within": None if l9.is_live_episode(room_name, urn) else urn,
         "flow": None,
         "trace": [],
         "current_step": None,

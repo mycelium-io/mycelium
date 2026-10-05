@@ -168,6 +168,14 @@ def _said_earlier(room: str, handle: str, records: list[Any], at: int) -> list[d
     return earlier
 
 
+def _task_of(room: str, episode: str | None) -> str | None:
+    """The key of the row whose thread ``episode`` is, or ``None``."""
+    if not episode or l9.is_live_episode(room, episode):
+        return None
+    row = tasks.row_of_episode(room, episode)
+    return row[0] if row else None
+
+
 def _describe(
     room: str, handle: str, record: Any, *, earlier: list[dict[str, Any]] | None = None
 ) -> dict[str, Any]:
@@ -175,12 +183,17 @@ def _describe(
     header = (content.get("l9") or {}).get("header") or {}
     message = header.get("message") or {}
     context = header.get("context") or {}
+    episode = message.get("episode")
     return {
         "room": room,
         "handle": handle,
         "prompt": content.get("content") or "",
         "sender": record.sender,
-        "episode": message.get("episode"),
+        "episode": episode,
+        # The row whose thread this was asked in, so the caller can answer there
+        # with ``respond --task``; ``None`` when it was asked in the room (or in
+        # a thread no row carries), where a bare ``respond`` lands.
+        "task": _task_of(room, episode),
         "topic": context.get("topic"),
         "message_id": record.message_id,
         # What was said here before the message that addressed the handle.
@@ -315,8 +328,8 @@ class ReplyBody(BaseModel):
     episode: str | None = Field(
         None,
         description=(
-            "Thread to reply into (an episode URN). Overrides the episode inherited "
-            "from the tick that woke the handle; omit to answer where you were asked."
+            "Thread to reply into (an episode URN). Omit to reply in the room itself; "
+            "the reply never follows the turn that woke the handle."
         ),
     )
 
@@ -351,18 +364,18 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
     tick_sender = (
         woke_actors[0].get("id") if woke_actors and isinstance(woke_actors[0], dict) else None
     )
-    # Where the tick was asked, and where this reply lands. Read once: two
-    # accessors of the same field drift, and the answer decides both the target
-    # and whether the causal edge below survives.
+    # Where this reply lands is what the caller named, and nothing else: a
+    # thread when ``episode`` is given, the room when it is not. It is never
+    # inferred from the last awaited turn — that turn may be an older one, or
+    # one asked elsewhere than the mention the caller is answering, and a reply
+    # that quietly went somewhere else reads, from where it was expected, as no
+    # reply at all.
     tick_episode = woke_msg.get("episode") or l9.live_episode_urn(room_name)
-    # An explicit target wins over the inherited one: a reply answers where it was
-    # asked by default, which is what keeps a resident loop threaded without the
-    # agent tracking URNs — but a caller that names a thread means that thread.
-    episode = body.episode or tick_episode
+    episode = body.episode or l9.live_episode_urn(room_name)
     _refuse_thread_write(tasks.thread_write_refusal(room_name, handle, episode))
     topic = ((woke_header.get("context") or {}).get("topic")) or l9.topic_urn(room_name)
     # Parent onto the tick only when the reply lands where the tick did. A reply
-    # redirected into another thread is not an answer to that tick, and a causal
+    # posted somewhere else is not an answer to that tick, and a causal
     # edge reaching across threads would put one thread's message in another's
     # chain — read back as a conversation that never happened.
     answers_the_tick = tick_episode == episode

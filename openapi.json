@@ -8571,7 +8571,7 @@
               }
             ],
             "title": "Episode",
-            "description": "Thread to reply into (an episode URN). Overrides the episode inherited from the tick that woke the handle; omit to answer where you were asked."
+            "description": "Thread to reply into (an episode URN). Omit to reply in the room itself; the reply never follows the turn that woke the handle."
           }
         },
         "type": "object",

@@ -180,7 +180,9 @@ def _print_turn(turn: dict, handle: str) -> None:
             name = name_of(sender) if sender != "?" else None
             who = f"{name} (@{sender})" if name else sender
             typer.echo(f"  {who}: {e.get('text') or ''}")
-    typer.secho(f"  ⟫  {_sender_label(turn)} → @{handle}:", fg=typer.colors.CYAN)
+    task = turn.get("task")
+    where = f" in task {task} (reply with --task {task})" if task else ""
+    typer.secho(f"  ⟫  {_sender_label(turn)} → @{handle}{where}:", fg=typer.colors.CYAN)
     typer.echo(turn.get("prompt") or "")
 
 
@@ -200,6 +202,8 @@ def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:
         "MYCELIUM_SENDER": str(turn.get("sender") or ""),
         "MYCELIUM_SENDER_NAME": str(turn.get("sender_name") or ""),
         "MYCELIUM_PROMPT": str(turn.get("prompt") or ""),
+        # The row the turn was asked in, empty for the room: ``respond --task``.
+        "MYCELIUM_TASK": str(turn.get("task") or ""),
     }
     subprocess.run(  # noqa: S602 - user-supplied command, turn passed via stdin (no injection)
         exec_cmd,
@@ -420,20 +424,21 @@ def respond(
         None,
         "--task",
         "-u",
-        help="Reply into one board row's thread (e.g. t3, work/auth) rather than where you were asked",
+        help="Reply into one board row's thread (e.g. t3, work/auth); without it the reply lands in the room",
     ),
     json_output: bool = False,
 ) -> None:
-    """Publish the caller's reply; the backend threads it onto the last awaited turn.
+    """Publish the caller's reply, in the room or in one task's thread.
 
     A position marker may be appended to the text (e.g.
     `[[mycelium: confidence=0.85 stance=accept]]`); the backend lifts it onto the L9
     payload so the aligner can score it, and strips it from the posted prose.
 
-    Without ``--task`` a reply lands where the turn that woke you was asked, which
-    is what keeps a resident loop threaded without tracking URNs. Name a task to
-    answer somewhere else — and expect the causal edge back to that turn to be
-    dropped, because a reply redirected into another thread is not an answer to it.
+    Where a reply lands is the flags, never a guess: with ``--task`` it lands in
+    that row's thread, without it in the room. To answer a turn asked in a task's
+    thread, name the task ``await`` reported for it. A reply that lands somewhere
+    other than the turn that woke you was asked is not an answer to it, so its
+    causal edge back to that turn is dropped.
 
     Examples:
         mycelium respond --room design --handle me "I can move to 30% if the timeline slips."

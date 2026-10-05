@@ -150,8 +150,9 @@ Your terminal is already set up as @{handle} in that room
 2. **Turns.** When a line starting with `[mycelium]` appears in your terminal,
    do what it says. For a turn that means
    `mycelium await --handle {handle} --json --timeout 5`, then
-   `mycelium respond --handle {handle} --body "<your reply>"`. The reply lands in the
-   thread you were asked in.
+   `mycelium respond --handle {handle} --task <task> --body "<your reply>"`, naming
+   the task the turn was asked in (`await` reports it). Without `--task` the reply
+   lands in the room, not the thread.
 3. **The split** (@{lead}). One child task per member, matching what each
    offered: `mycelium board new "<title>" --parent {key} --assign @<member>`.
    Make them pieces that can be worked at the same time; no task that only

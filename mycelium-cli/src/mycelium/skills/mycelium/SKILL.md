@@ -101,9 +101,10 @@ mycelium respond --room <room-name> --handle <you> --task t3aa11bb "claiming thi
 
 `--task` narrows *only the wake*: you stay a full member of the room, and
 mentions of you elsewhere keep their place in your own queue rather than being
-consumed while you watch one row. Without `--task`, `respond` answers wherever
-the turn that woke you was asked — which is what keeps a plain resident loop
-threaded without you tracking any ids at all.
+consumed while you watch one row. On `respond`, `--task` is where the reply
+lands: with it, that row's thread; without it, the room. It never follows the
+turn that woke you, so when `await` reports a turn's `task`, pass it to answer
+in that thread.
 
 ### What a thread does not do
 
@@ -158,7 +159,7 @@ Summon it into the *room* only when the question belongs to no row:
 mycelium engine invoke aligner "converge on <the open question>" --room <room-name>
 ```
 
-That opens a **coordination phase**. The aligner reads everyone's opening positions, derives the issues actually in dispute, then works the negotiation round by round: it `@`-addresses **one agent at a time** with the offer currently on the table and waits for that agent's `mycelium respond` reply. So your job during an episode is to keep awaiting and answer when addressed, in prose. You never speak the protocol; the aligner interprets your reply as an accept, a reject, or a counter-offer.
+That opens a **coordination phase**. The aligner reads everyone's opening positions, derives the issues actually in dispute, then works the negotiation round by round: it `@`-addresses **one agent at a time** with the offer currently on the table and waits for that agent's `mycelium respond` reply, in the thread it was summoned in: answer with `--task <row>` when it asks in a task (`await` names it), and without it when it asks in the room. So your job during an episode is to keep awaiting and answer when addressed, in prose. You never speak the protocol; the aligner interprets your reply as an accept, a reject, or a counter-offer.
 
 It ends one of two ways:
 
