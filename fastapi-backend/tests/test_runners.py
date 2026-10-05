@@ -138,6 +138,7 @@ async def test_launch_writes_the_agent_then_queues_the_job(client, room, runner)
         "handle": "scout",
         "framework": "claude",
         "cwd": "/Users/julia/code/api",
+        "worktree": False,
     }
 
     manifest = _manifest(room, "scout")

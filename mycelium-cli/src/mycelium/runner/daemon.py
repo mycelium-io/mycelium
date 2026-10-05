@@ -593,6 +593,13 @@ class Runner:
             running = self.state.agents.get(key)
             if running is not None and running.live and self.host.alive(running.pane):
                 return {"pane": running.pane, "already": True}
+        if spec.get("worktree") and not self.host.worktrees:
+            from mycelium.commands.swarm import SwarmError, member_worktree
+
+            try:
+                cwd = member_worktree(cwd, room, handle)
+            except SwarmError as e:
+                raise JobError(str(e)) from e
 
         join = (
             (self.join_code(room, handle), self.config.server.api_url) if self.host.joins else None
@@ -772,10 +779,9 @@ class Runner:
         )
         if any(str(fields.get(k)) != str(spec.get(k)) for k in same):
             raise different
-        if kind == "swarm" and (
-            fields.get("size") != len(spec.get("team") or [])
-            or bool(fields.get("worktree")) != bool(spec.get("worktree"))
-        ):
+        if bool(fields.get("worktree")) != bool(spec.get("worktree")):
+            raise different
+        if kind == "swarm" and fields.get("size") != len(spec.get("team") or []):
             raise different
         cwd = self.folder(spec.get("cwd"))
         if self._signed_folder(fields.get("cwd")) != cwd:

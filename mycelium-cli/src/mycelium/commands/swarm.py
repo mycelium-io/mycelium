@@ -287,7 +287,7 @@ class LocalTeam:
     panes: dict[str, str] = field(default_factory=dict)
 
 
-def _worktree(repo: Path, room: str, handle: str) -> Path:
+def member_worktree(repo: Path, room: str, handle: str) -> Path:
     """A git worktree of ``repo`` for one member, on a branch of its own."""
     path = repo.parent / f"{repo.name}-{room}-{handle}"
     if path.exists():
@@ -358,7 +358,7 @@ def start_local(
     def env(handle: str) -> dict[str, str]:
         return {**carried, "MYCELIUM_AGENT_HANDLE": handle, "MYCELIUM_ROOM_ID": room}
 
-    dirs = {h: (_worktree(cwd, room, h) if worktree else cwd) for h in team}
+    dirs = {h: (member_worktree(cwd, room, h) if worktree else cwd) for h in team}
 
     def place(handle: str, workspace: str | None) -> tuple[str, str]:
         return bridge.place_pane(

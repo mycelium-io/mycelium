@@ -322,6 +322,7 @@ async def launch_agent(
         "handle": handle,
         "framework": payload.framework,
         "cwd": cwd,
+        "worktree": payload.worktree,
     }
     job = registry.enqueue(runner_id, "launch", spec, created_by=me, signature=payload.signature)
     logger.info(

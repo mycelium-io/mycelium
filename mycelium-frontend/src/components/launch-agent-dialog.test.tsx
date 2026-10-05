@@ -119,10 +119,35 @@ describe("LaunchAgentForm", () => {
       framework: "opencode",
       instructions: "Review every change for correctness.",
       cwd: "/Users/julia/code/atlas/api",
+      worktree: false,
       created_by: "julia",
     });
     expect(await screen.findByText(/Running on julias-mbp/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add another" })).toBeInTheDocument();
+  });
+
+  it("starts the agent in its own worktree when asked", async () => {
+    connected = [runner()];
+    launchRunnerAgent.mockResolvedValue(job());
+    fetchRunnerJob.mockResolvedValue(job());
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Own worktree" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+
+    await waitFor(() =>
+      expect(launchRunnerAgent).toHaveBeenCalledWith(
+        "julias-mbp",
+        expect.objectContaining({ handle: "scout", worktree: true }),
+      ),
+    );
+  });
+
+  it("doesn't offer a worktree on a host that makes its own", () => {
+    connected = [runner({ host: "omnigent" })];
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    expect(screen.queryByRole("checkbox", { name: "Own worktree" })).not.toBeInTheDocument();
   });
 
   it("shows the machine's reason when it could not start the agent", async () => {

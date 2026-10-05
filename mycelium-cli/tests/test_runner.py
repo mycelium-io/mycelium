@@ -272,6 +272,59 @@ def test_a_launch_opens_a_pane_starts_the_agent_and_tells_it_who_it_is(
     assert r.hello_body()["agents"][0]["status"] == "idle"
 
 
+def test_a_launch_with_a_worktree_starts_the_agent_on_its_own_branch(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path
+):
+    repo = tmp_path / "api"
+    repo.mkdir()
+    for args in (["init", "-q"], ["commit", "-q", "--allow-empty", "-m", "first"]):
+        subprocess.run(  # noqa: S603
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(repo), *args],  # noqa: S607
+            check=True,
+        )
+    r = make_runner()
+
+    r.launch(
+        {
+            "room": "eng",
+            "handle": "scout",
+            "framework": "claude",
+            "cwd": str(repo),
+            "worktree": True,
+        }
+    )
+
+    tree = tmp_path / "api-eng-scout"
+    create = herdr.of("workspace create")[0]
+    assert create[create.index("--cwd") + 1] == str(tree.resolve())
+    branch = subprocess.run(  # noqa: S603
+        ["git", "-C", str(tree), "branch", "--show-current"],  # noqa: S607
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert branch.stdout.strip() == "swarm/eng/scout"
+    assert r.hello_body()["agents"][0]["cwd"] == str(tree.resolve())
+
+
+def test_a_worktree_outside_a_repository_is_refused(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path
+):
+    (tmp_path / "plain").mkdir()
+    r = make_runner()
+    with pytest.raises(daemon.JobError, match="could not create a worktree"):
+        r.launch(
+            {
+                "room": "eng",
+                "handle": "scout",
+                "framework": "claude",
+                "cwd": str(tmp_path / "plain"),
+                "worktree": True,
+            }
+        )
+    assert herdr.of("agent start") == []
+
+
 def test_the_next_agent_in_a_room_shares_its_workspace(make_runner, herdr: Herdr, hub: Hub):
     r = make_runner()
     r.launch({"room": "eng", "handle": "one", "framework": "claude"})

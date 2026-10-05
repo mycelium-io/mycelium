@@ -67,6 +67,9 @@ class AgentHost(Protocol):
     #: The agent learns who it is from a join code in its first message, rather
     #: than from the environment of where it runs.
     joins: bool
+    #: The host gives each agent its own git worktree itself, so the runner
+    #: makes none when a launch asks for one.
+    worktrees: bool
     #: Why an agent the host no longer has reads as stopped, for a person.
     gone_detail: str
 
@@ -136,6 +139,7 @@ class HerdrHost:
 
     name = "herdr"
     joins = False
+    worktrees = False
     gone_detail = "its herdr pane closed"
 
     def __init__(
@@ -288,6 +292,7 @@ class OmnigentHost:
 
     name = "omnigent"
     joins = True
+    worktrees = True
     gone_detail = "its Omnigent session ended"
 
     def __init__(
