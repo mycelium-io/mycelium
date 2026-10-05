@@ -54,7 +54,7 @@ export function MachinesScreen() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
-        <div className="flex flex-wrap items-start gap-3 px-1">
+        <div className="flex flex-wrap items-center gap-3 px-1">
           <p className="min-w-0 max-w-2xl flex-1 text-micro leading-relaxed text-muted-foreground">
             {desktop ? (
               <>This Mac, and any other computer of yours connected with </>
