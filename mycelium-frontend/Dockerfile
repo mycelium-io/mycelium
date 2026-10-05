@@ -13,21 +13,15 @@
 #
 #   docker run -e MYCELIUM_INTERNAL_API_URL=http://host.docker.internal:8000 ...
 
-# ─── base ─────────────────────────────────────────────────────────────────────
-# Every stage starts here, so the npm in the shipped image is the pinned one,
-# not whichever the node image bundles.
-FROM node:22-alpine AS base
-RUN npm install -g npm@11.21.0 && npm cache clean --force
-
 # ─── deps ─────────────────────────────────────────────────────────────────────
-FROM base AS deps
+FROM node:22-alpine AS deps
 WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci
 
 # ─── build ────────────────────────────────────────────────────────────────────
-FROM base AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -36,8 +30,21 @@ COPY . .
 RUN npm run build
 
 # ─── runtime ──────────────────────────────────────────────────────────────────
-FROM base AS runner
+FROM node:22-alpine AS runner
 WORKDIR /app
+
+# The npm this image ships is pinned. It is unpacked from the registry's
+# tarball rather than installed with `npm install -g npm`: that runs npm
+# itself, which under the arm64 emulator a release builds with can stall
+# for an hour. Only this stage changes, so the build stages above keep
+# their cache.
+ARG NPM_VERSION=11.21.0
+RUN wget -qO /tmp/npm.tgz "https://registry.npmjs.org/npm/-/npm-${NPM_VERSION}.tgz" \
+ && rm -rf /usr/local/lib/node_modules/npm \
+ && mkdir -p /usr/local/lib/node_modules/npm \
+ && tar -xzf /tmp/npm.tgz -C /usr/local/lib/node_modules/npm --strip-components=1 \
+ && rm /tmp/npm.tgz \
+ && npm --version | grep -qx "${NPM_VERSION}"
 
 ENV NODE_ENV=production
 ENV PORT=3000
