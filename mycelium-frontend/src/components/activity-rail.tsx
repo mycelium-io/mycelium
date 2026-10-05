@@ -70,8 +70,9 @@ const STANDING: Record<string, { word: string; tone: string }> = {
 /** A row that has only been written to, not moved on the board. */
 const ACTIVE = { word: "Active", tone: "var(--muted-foreground)" };
 
-/** The states the header counts: what's live. Done work isn't news. */
-const TALLIED = ["claimed", "blocked", "filed", "released", "expired"] as const;
+/** The states the header counts: what's live. Done work isn't news, and
+ *  neither is a lease running out on work its holder is still doing. */
+const TALLIED = ["blocked", "claimed", "filed", "released"] as const;
 
 function standingOf(item: ActivityItem) {
   return (item.standing && STANDING[item.standing]) || ACTIVE;
@@ -109,6 +110,15 @@ function useNow(everyMs = 30_000): number {
     return () => clearInterval(id);
   }, [everyMs]);
   return now;
+}
+
+/** The last thing that happened to a task, as a short sentence:
+ *  "@ana posted in the thread", "@sam edited its notes", "claimed by @ana". */
+export function lastChange(update: ActivityUpdate): string {
+  const who = update.detail.match(/@[\w.@-]+/g)?.join(", ") ?? "";
+  if (update.label === "Activity") return who ? `${who} posted in the thread` : "a message in the thread";
+  if (update.label === "Knowledge") return who ? `${who} edited its notes` : "its notes changed";
+  return `${update.label.toLowerCase()}${who ? ` by ${who}` : ""}`;
 }
 
 function Dot({ tone }: { tone: string }) {
@@ -176,8 +186,14 @@ export function ActivityRail({
     );
   }
 
-  const shown = showAll ? items : items.slice(0, SHOWN);
-  const rest = items.slice(SHOWN);
+  // Finished work steps back behind one line: the four rows on show are the
+  // ones still moving, so a merged task never takes a slot from a live one.
+  const live = items.filter((item) => item.standing !== "resolved");
+  const done = items.filter((item) => item.standing === "resolved");
+  const ordered = [...live, ...done];
+  const shown = showAll ? ordered : live.slice(0, SHOWN);
+  const rest = ordered.slice(shown.length);
+  const restLive = live.slice(SHOWN);
 
   return (
     <div className="@container flex-shrink-0 border-b border-border bg-surface px-3 pb-1 sm:px-4">
@@ -196,7 +212,7 @@ export function ActivityRail({
         </span>
       </div>
       <ul className={cn("flex flex-col", showAll && "max-h-[12.5rem] overflow-y-auto")}>{shown.map(row)}</ul>
-      {rest.length > 0 && (
+      {(rest.length > 0 || showAll) && (
         <div className="flex h-7 items-center gap-3 text-micro">
           <button
             type="button"
@@ -209,9 +225,10 @@ export function ActivityRail({
           </button>
           {!showAll && (
             <span className="min-w-0 truncate text-faint">
-              {tally(rest)
-                .map((t) => `${t.n} ${t.word}`)
-                .join(" · ")}
+              {[
+                ...tally(restLive).map((t) => `${t.n} ${t.word}`),
+                ...(done.length ? [`${done.length} done`] : []),
+              ].join(" · ")}
             </span>
           )}
         </div>
@@ -238,6 +255,10 @@ function ActivityRow({
   const standing = standingOf(item);
   const done = item.standing === "resolved";
   const count = item.updates.length;
+  // What changed, not only when: what its holder said, else the last thing
+  // that happened to it, so two rows from the same hour don't read the same.
+  const last = item.updates[item.updates.length - 1];
+  const changed = item.note ?? (last ? `${lastChange(last)}${count > 1 ? ` · ${count} updates` : ""}` : null);
   const canOpen = Boolean((item.memoryKey && onOpenMemory) || (item.episode && onOpenThread));
   return (
     <li>
@@ -277,9 +298,9 @@ function ActivityRow({
           >
             {item.title}
           </button>
-          {item.note && (
-            <span className="hidden min-w-0 truncate text-faint @[36rem]:inline" title={item.note}>
-              {item.note}
+          {changed && (
+            <span className="hidden min-w-0 truncate text-faint @[36rem]:inline" title={changed}>
+              {changed}
             </span>
           )}
         </span>
