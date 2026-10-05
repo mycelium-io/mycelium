@@ -123,7 +123,8 @@ export function lastChange(update: ActivityUpdate): string {
   // Whose turn it is in the thread: the holder alone, the handles it gave the
   // floor to, or the floor opening back up.
   if (update.label === "Floor") {
-    if (/\breleased\b/.test(update.detail)) return "floor open";
+    // The detail is "<task> · <turn>"; only the part after the title says it.
+    if (update.detail.split(" · ").pop() === "released") return "floor open";
     const holder = update.detail.match(/held by (@[\w.@-]+)/)?.[1];
     const turn = holder ?? who;
     if (!turn) return "the floor moved";

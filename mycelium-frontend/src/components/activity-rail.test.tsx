@@ -73,5 +73,7 @@ describe("<ActivityRail />", () => {
     expect(lastChange(update("Floor", "Ship it · @api, @sec", "floor"))).toBe("turn for @api, @sec");
     expect(lastChange(update("Floor", "Ship it · held by @conductor", "floor"))).toBe("@conductor's turn");
     expect(lastChange(update("Floor", "Ship it · released", "floor"))).toBe("floor open");
+    // A task title that happens to say "released" is not the floor opening.
+    expect(lastChange(update("Floor", "Fix released builds · @api", "floor"))).toBe("@api's turn");
   });
 });

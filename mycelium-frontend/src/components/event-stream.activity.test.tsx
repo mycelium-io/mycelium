@@ -204,6 +204,32 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps the floor moving and a lease running out on the rail, out of the chat", async () => {
+    // A flow moves the floor on every step and a lease drains by the clock;
+    // neither is news for the people reading the chat.
+    await stream([
+      notice("floor", "conductor"),
+      notice("expired", "growth", 100),
+      said("still on it", "growth", 400),
+    ]);
+
+    expect(await screen.findByText("still on it")).toBeInTheDocument();
+    const outsideRail = (text: string) => screen.queryAllByText(text).filter((el) => !rail().contains(el));
+    expect(outsideRail("Floor")).toHaveLength(0);
+    expect(outsideRail("Expired")).toHaveLength(0);
+  });
+
+  it("doesn't let a ping it can't quote split one sender's messages", async () => {
+    await stream([
+      said("first thought", "operator", 0),
+      ping("operator", "not-loaded", 100),
+      said("and a second one", "operator", 200),
+    ]);
+
+    expect(await screen.findByText("and a second one")).toBeInTheDocument();
+    expect(screen.getAllByText("operator")).toHaveLength(1);
+  });
+
   it("quotes the first line of what a thread said, one line per run", async () => {
     // A thread moving reaches the room as who, where and the first line they
     // wrote, so the headline is visible without opening the task. A burst from

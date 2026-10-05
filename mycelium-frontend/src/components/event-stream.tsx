@@ -269,18 +269,18 @@ function isActivity(event: Event): boolean {
 }
 
 /**
- * Activity the chat shows as well: a new task. Work being filed is the room's
- * news, the thing people in the chat need to see to pick it up, so it gets a
- * line where they are reading. It stays on the rail too, where the task's later
- * activity collects. Every other board event (claimed, resolved, the floor
- * moving) stays on the rail alone.
+ * Activity the chat shows as well: a task's arrival and its finish, and what its
+ * thread said (a ping, drawn as a quoted line when there is one to quote). Those
+ * are the room's news, so they get a line where people are reading; each stays
+ * on the rail too, where the task's whole life collects. Every other board event
+ * (claimed, released, expired, blocked, the floor moving on each step of a flow)
+ * stays on the rail alone.
  */
 function isAlsoInChat(event: Event): boolean {
-  // What a task's thread said, and its arrival and finish, read in the chat as
-  // a line, so a person watching the room sees work happen there. Who picked
-  // it up stays on its rail row.
   if (event.type === PING_TYPE) return true;
-  return event.type === NOTICE_TYPE && event.raw.subkind !== "claimed";
+  if (event.type !== NOTICE_TYPE) return false;
+  const subkind = (event.raw.subkind as string) || "filed";
+  return subkind === "filed" || subkind === "resolved";
 }
 
 /**
@@ -723,36 +723,43 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     [events, roomName],
   );
 
-  const visible = useMemo(
+  const candidates = useMemo(
     () => inChannel.filter(e => !isActivity(e) || isAlsoInChat(e)),
     [inChannel],
   );
 
-  // A thread's activity reads in the channel as one line per run: a ping
-  // followed by another from the same thread folds into the later one, which
-  // says how many it stands for and quotes the newest of their messages that
-  // is loaded.
-  const pingRuns = useMemo(() => {
-    const folded = new Set<string>();
-    const messages = new Map<string, string[]>();
-    let run: string[] = [];
-    visible.forEach((ev, i) => {
-      if (ev.type !== PING_TYPE) return;
-      run.push((ev.raw.pingMessage as string | undefined) ?? "");
-      const next = visible[i + 1];
-      if (next?.type === PING_TYPE && next.thread === ev.thread) folded.add(ev.id);
-      else {
-        messages.set(ev.id, run);
-        run = [];
-      }
-    });
-    return { folded, messages };
-  }, [visible]);
   const saidById = useMemo(() => {
     const said = new Map<string, Event>();
     for (const ev of events) if (ev.messageId && CHAT_TYPES.has(ev.type)) said.set(ev.messageId, ev);
     return said;
   }, [events]);
+
+  // A thread's activity reads in the channel as one line per run: a ping
+  // followed by another from the same thread folds into the later one, which
+  // says how many it stands for and quotes the newest of their messages that
+  // is loaded. A run with nothing loaded to quote is left to the rail.
+  const pingLines = useMemo(() => {
+    const lines = new Map<string, { said: Event; quote: string; count: number }>();
+    let run: string[] = [];
+    candidates.forEach((ev, i) => {
+      if (ev.type !== PING_TYPE) return;
+      run.push((ev.raw.pingMessage as string | undefined) ?? "");
+      const next = candidates[i + 1];
+      if (next?.type === PING_TYPE && next.thread === ev.thread) return;
+      const said = [...run].reverse().map((id) => saidById.get(id)).find(Boolean);
+      const quote = said?.content.split("\n").find((line) => line.trim())?.trim();
+      if (said && quote) lines.set(ev.id, { said, quote, count: run.length });
+      run = [];
+    });
+    return lines;
+  }, [candidates, saidById]);
+
+  // What the channel draws, row for row: a ping that draws nothing is not
+  // here, so it neither splits a sender's messages nor breaks a run of notices.
+  const visible = useMemo(
+    () => candidates.filter(e => e.type !== PING_TYPE || pingLines.has(e.id)),
+    [candidates, pingLines],
+  );
 
   // What the room has been doing, one entry per task rather than one per frame.
   // No window here: the rail is the room's current state, so a task that has
@@ -1208,16 +1215,13 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
               // system notices — quiet dividers woven into the conversation,
               // not loud rows. Chat messages group under one sender header.
               if (ev.type === PING_TYPE && ev.thread) {
-                if (pingRuns.folded.has(ev.id)) return null;
+                // Only a run's last ping with something to quote is in `visible`.
+                const line = pingLines.get(ev.id);
+                if (!line) return null;
+                const { said, quote, count: n } = line;
                 const thread = ev.thread;
                 const shortId = threadShortId(thread) ?? "thread";
                 const owner = threads.get(thread);
-                const run = pingRuns.messages.get(ev.id) ?? [];
-                const n = Math.max(run.length, 1);
-                const said = [...run].reverse().map((id) => saidById.get(id)).find(Boolean);
-                const quote = said?.content.split("\n").find((line) => line.trim())?.trim();
-                // Nothing to quote: the rail row already says the thread moved.
-                if (!quote) return null;
                 // One line from the thread: who, where, and the first line of
                 // what they said. The argument stays in the thread.
                 return (
@@ -1227,7 +1231,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                     at={ev.at}
                     prevAt={prevAt}
                     dot="var(--accent)"
-                    label={`@${said?.sender ?? ev.pingSenders[0] ?? "someone"}`}
+                    label={`@${said.sender || ev.pingSenders[0] || "someone"}`}
                     labelColor="var(--text)"
                   >
                     <span>in</span>
