@@ -392,7 +392,8 @@ export function useKeyReveal(): boolean {
 }
 
 /** The status-bar affordances that make `?` and ⌘K findable without knowing
- *  either. The palette is itself the discovery surface for everything else, so
+ *  either: the caps, with their names beside them where the bar has room. The
+ *  palette is itself the discovery surface for everything else, so
  *  it earns a permanent seat next to the cheatsheet. */
 export function KeymapHelpButton() {
   const api = useContext(KeymapContext);
@@ -402,9 +403,11 @@ export function KeymapHelpButton() {
       <button
         type="button"
         onClick={api.openHelp}
-        className="hidden flex-shrink-0 items-center gap-1.5 rounded px-1 text-micro text-muted-foreground transition-colors hover:text-text sm:flex"
+        aria-label="Keyboard shortcuts"
+        className="hidden flex-shrink-0 items-center rounded px-0.5 text-micro text-muted-foreground transition-colors hover:text-text sm:flex"
       >
-        <KbdChord size="xs" tone="muted" action="help.keys" /> keys
+        <KbdChord size="xs" tone="muted" action="help.keys" />
+        <span className="ml-1 hidden xl:inline">keys</span>
       </button>
     </Tooltip>
   );
@@ -419,9 +422,11 @@ export function CommandPaletteButton() {
       <button
         type="button"
         onClick={api.openPalette}
-        className="hidden flex-shrink-0 items-center gap-1.5 rounded px-1 text-micro text-muted-foreground transition-colors hover:text-text sm:flex"
+        aria-label="Command palette"
+        className="hidden flex-shrink-0 items-center rounded px-0.5 text-micro text-muted-foreground transition-colors hover:text-text sm:flex"
       >
-        <KbdChord size="xs" tone="muted" action="palette.open" mac={mac} /> commands
+        <KbdChord size="xs" tone="muted" action="palette.open" mac={mac} />
+        <span className="ml-1 hidden xl:inline">commands</span>
       </button>
     </Tooltip>
   );

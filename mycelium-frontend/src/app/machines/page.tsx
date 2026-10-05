@@ -5,11 +5,10 @@
 
 import { AppShell } from "@/components/app-shell";
 import { MachinesScreen } from "@/components/machines-screen";
-import { GlobalStatusItems } from "@/components/status-items";
 
 export default function MachinesPage() {
   return (
-    <AppShell activeRoom={null} title="Machines" statusLeft={<span>Machines</span>} statusRight={<GlobalStatusItems />}>
+    <AppShell activeRoom={null} title="Machines">
       <MachinesScreen />
     </AppShell>
   );

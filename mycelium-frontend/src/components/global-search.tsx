@@ -75,13 +75,14 @@ export function GlobalSearchButton() {
         type="button"
         onClick={openSearch}
         aria-label="Search everything"
-        className="flex flex-shrink-0 items-center gap-1.5 rounded px-1 text-micro text-muted-foreground transition-colors hover:text-text"
+        className="flex flex-shrink-0 items-center rounded px-0.5 text-micro text-muted-foreground transition-colors hover:text-text"
       >
         {/* The chord is the affordance on a keyboard and noise without one, so
             below `sm` the cell falls back to the icon it always had. */}
         <Search className="size-3.5 sm:hidden" />
-        <span className="hidden items-center gap-1.5 sm:flex">
-          <KbdChord size="xs" tone="muted" action="search.open" /> search
+        <span className="hidden items-center sm:flex">
+          <KbdChord size="xs" tone="muted" action="search.open" />
+          <span className="ml-1 hidden xl:inline">search</span>
         </span>
       </button>
     </Tooltip>

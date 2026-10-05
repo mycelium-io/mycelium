@@ -5,14 +5,11 @@
 
 import { AppShell } from "@/components/app-shell";
 import { HomeDashboard } from "@/components/home-dashboard";
-import { GlobalStatusItems } from "@/components/status-items";
 
 export default function Home() {
   return (
     <AppShell
       activeRoom={null}
-      statusLeft={<span>Home</span>}
-      statusRight={<GlobalStatusItems />}
     >
       <HomeDashboard />
     </AppShell>

@@ -43,13 +43,17 @@ export function useRoomStatus(roomName: string): RoomStatus {
 
 export interface GlobalStatus {
   model: string | null;
+  /** `/health`'s config check for that model: `ok`, `not_configured`, … */
+  llmStatus: string | null;
+  /** The hub's sentence about it, shown when the model is not usable. */
+  llmMessage: string | null;
   healthy: boolean | null;
 }
 
 /** The slice of `/health` the status bar reads: the hub answered at all, and
  *  which model its cognition is configured against. */
 interface HubHealth {
-  llm?: { model?: string | null } | null;
+  llm?: { model?: string | null; status?: string | null; message?: string | null } | null;
 }
 
 /** One `/health` read, shared by every caller. Resolves to `null` when the hub
@@ -86,7 +90,9 @@ export function useBackendHealth(refreshInterval: number = HEALTH_POLL): boolean
 export function useGlobalStatus(): GlobalStatus {
   const { data } = useHubHealth(HEALTH_POLL);
   return {
-    model: data?.llm?.model ?? null,
+    model: data?.llm?.model || null,
+    llmStatus: data?.llm?.status ?? null,
+    llmMessage: data?.llm?.message ?? null,
     healthy: data === undefined ? null : data !== null,
   };
 }

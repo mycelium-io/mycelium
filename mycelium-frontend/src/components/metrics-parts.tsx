@@ -22,18 +22,21 @@ export function Dot({ color }: { color: string }) {
  *  hairline rather than boxed in a card. Every section of the page is one, so
  *  one with nothing to show still holds its place and explains itself. */
 export function Panel({
+  id,
   title,
   meta,
   children,
   className = "",
 }: {
+  /** An anchor, so a link elsewhere can land on this panel. */
+  id?: string;
   title: string;
   meta?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
   return (
-    <section className={`min-w-0 overflow-hidden border-t border-border ${className}`}>
+    <section id={id} className={`min-w-0 scroll-mt-4 overflow-hidden border-t border-border ${className}`}>
       <header className="flex h-8 items-center justify-between gap-3 px-4">
         <Label>{title}</Label>
         {meta && <div className="flex items-center gap-1.5 text-micro text-muted-foreground">{meta}</div>}

@@ -17,7 +17,7 @@ import { RoomChatBox } from "@/components/room-chat-box";
 import { ThreadView } from "@/components/thread-view";
 import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
-import { GlobalStatusItems, StatusButton } from "@/components/status-items";
+import { StatusButton } from "@/components/status-items";
 import { episodeUrn } from "@/lib/threads";
 import { useCommands, useKeyAction, useKeyScope } from "@/components/keymap-provider";
 import type { PaletteCommand } from "@/lib/commands";
@@ -384,14 +384,10 @@ function RoomWorkspace() {
         // actually connected — the screenshot pipeline gates on this rather
         // than on the label text, which is a translation away from breaking.
         data-connection={connected ? "live" : "reconnecting"}
-        className="flex-shrink-0 rounded px-1.5 py-0.5 text-micro font-medium"
-        style={{
-          color: connected ? "var(--green)" : "var(--yellow)",
-          background: connected
-            ? "color-mix(in srgb, var(--green) 14%, transparent)"
-            : "color-mix(in srgb, var(--yellow) 14%, transparent)",
-        }}
+        className="flex flex-shrink-0 items-center gap-1.5 px-1.5 font-medium"
+        style={{ color: connected ? "var(--green)" : "var(--yellow)" }}
       >
+        <span aria-hidden className="inline-block size-1.5 rounded-full bg-current" />
         {connected ? "Live" : "Reconnecting…"}
       </span>
       {episodeLabel && (
@@ -402,18 +398,16 @@ function RoomWorkspace() {
         </span>
       )}
       {openTasks !== null && openTasks > 0 && (
-        <span className="flex-shrink-0 px-1.5 tabular">
-          <span className="sm:hidden">{openTasks} open</span>
-          <span className="hidden sm:inline">
-            {openTasks} open task{openTasks === 1 ? "" : "s"}
-          </span>
-        </span>
+        <StatusButton
+          onClick={() => showView("board")}
+          tooltip="Open the board"
+          action="pane.board"
+          className="flex-shrink-0"
+        >
+          <span className="tabular">{openTasks}</span>
+          <span className="text-faint">open task{openTasks === 1 ? "" : "s"}</span>
+        </StatusButton>
       )}
-    </>
-  );
-
-  const statusRight = (
-    <>
       {agents !== null && (
         <StatusButton
           onClick={() => openTab("agents")}
@@ -421,10 +415,10 @@ function RoomWorkspace() {
           action="rail.agents"
           className="flex-shrink-0"
         >
-          <span className="tabular">{agents} agent{agents === 1 ? "" : "s"}</span>
+          <span className="tabular">{agents}</span>
+          <span className="text-faint">agent{agents === 1 ? "" : "s"}</span>
         </StatusButton>
       )}
-      <GlobalStatusItems />
     </>
   );
 
@@ -454,7 +448,6 @@ function RoomWorkspace() {
       activeRoom={roomName}
       header={header}
       statusLeft={statusLeft}
-      statusRight={statusRight}
     >
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <ResizablePanelGroup

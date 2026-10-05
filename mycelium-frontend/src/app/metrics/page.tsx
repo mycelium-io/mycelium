@@ -5,11 +5,10 @@
 
 import { AppShell } from "@/components/app-shell";
 import { MetricsScreen } from "@/components/metrics-screen";
-import { GlobalStatusItems } from "@/components/status-items";
 
 export default function MetricsPage() {
   return (
-    <AppShell activeRoom={null} title="Metrics" statusLeft={<span>Metrics</span>} statusRight={<GlobalStatusItems />}>
+    <AppShell activeRoom={null} title="Metrics">
       <MetricsScreen />
     </AppShell>
   );

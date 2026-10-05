@@ -8,7 +8,6 @@ import { useParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { MemoryGraphView } from "@/components/memory-graph-view";
-import { GlobalStatusItems } from "@/components/status-items";
 import { parseRoomNameParam } from "@/lib/memory-routes";
 
 /** Dedicated full-page memory graph route: `/room/{room}/graph`. */
@@ -19,8 +18,6 @@ export default function MemoryGraphPage() {
   return (
     <AppShell
       activeRoom={roomName}
-      statusLeft={<span className="text-micro text-muted-foreground">Memory graph</span>}
-      statusRight={<GlobalStatusItems />}
     >
       {/* Mirrors the room page's header so the graph reads as a surface of this
           room rather than a page of its own — same height, same identity line —
