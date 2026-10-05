@@ -824,7 +824,7 @@ def test_a_code_from_this_machine_pairs_a_device(make_runner, hub: Hub):
         }
     )
 
-    done = _report(hub, "a0a0a0", "done")
+    done = _until(lambda: _report(hub, "a0a0a0", "done"))
     assert done["result"]["name"] == "work laptop"
     assert done["result"]["key"] == pairing.key_id(x, y)
     assert done["result"]["clis"] == ["opencode"]
@@ -843,8 +843,11 @@ def test_a_wrong_proof_pairs_nothing_and_burns_the_code(make_runner, hub: Hub):
         wrong = pairing.proof("ZZZZ-ZZZZ-ZZZZ", "work laptop", x, y)
         spec = {"offer": code[:4], "name": "work laptop", "key": {"x": x, "y": y}, "proof": wrong}
         r.take({"id": f"b{n}b0b0", "kind": "pair", "spec": spec})
-    assert "wrong" in _report(hub, "b0b0b0", "failed")["error"]
-    assert "too often" in _report(hub, f"b{pairing.MAX_ATTEMPTS - 1}b0b0", "failed")["error"]
+    assert "wrong" in _until(lambda: _report(hub, "b0b0b0", "failed"))["error"]
+    assert (
+        "too often"
+        in _until(lambda: _report(hub, f"b{pairing.MAX_ATTEMPTS - 1}b0b0", "failed"))["error"]
+    )
     assert pairing.load() == []
     assert pairing.live_offers() == []
 
