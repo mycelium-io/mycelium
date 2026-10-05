@@ -52,7 +52,6 @@ export interface HubHealth {
   status?: string | null;
   issues?: string[] | null;
   version?: string | null;
-  llm?: (HealthPart & { model?: string | null }) | null;
   embedding?: (HealthPart & { model?: string | null }) | null;
   storage?: (HealthPart & { path?: string | null; host_path?: string | null }) | null;
   identity?: (HealthPart & { mode?: string | null }) | null;

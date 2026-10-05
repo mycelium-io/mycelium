@@ -266,11 +266,10 @@ export function AppShell({
               the cells that only name a keyboard drop out where there is no
               keyboard to name.
 
-              Three zones, read left to right as near to far: where agents run
-              (the docks and this person's machines), what the page is showing
-              (`statusLeft`, e.g. the room's connection and counts), then the
-              hub as a whole and the keys. Every value carries a word saying
-              what it is; the keys are caps alone, named in their tooltips. */}
+              Left to right: the hub and the machines that run agents for it,
+              then what the page is showing (`statusLeft`, e.g. the room's
+              connection and counts), then metrics and the keys. Every value
+              carries a word saying what it is. */}
           <footer className="flex h-6 flex-shrink-0 items-center gap-3 overflow-x-auto border-t border-border bg-surface px-2 text-micro whitespace-nowrap text-muted-foreground [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <DockToggle
               label={roomsOpen ? "Hide rooms" : "Show rooms"}
@@ -280,6 +279,7 @@ export function AppShell({
             >
               <PanelLeft className="size-3.5" />
             </DockToggle>
+            <HubStatus />
             <MachinesStatusLink />
             {statusLeft && (
               <>
@@ -289,7 +289,6 @@ export function AppShell({
             )}
             <div className="ml-auto flex flex-shrink-0 items-center gap-3">
               {statusRight}
-              <HubStatus />
               <MetricsStatusLink />
               <span aria-hidden className="hidden h-3 w-px flex-shrink-0 bg-border sm:block" />
               <div className="flex items-center gap-1 xl:gap-2.5">

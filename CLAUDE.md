@@ -485,7 +485,7 @@ is no litellm dependency.
   (agents live in it), and writes everything to
   `~/.mycelium/logs/desktop.log`. Programs are found in the app bundle, then
   a checkout, then PATH. `mycelium-desktop/` (Tauri 2) adds first run, the
-  menu bar, `mycelium://join|terminal` links and an agents terminal that can
+  menu bar, `mycelium://join|terminal|settings` links and an agents terminal that can
   start only herdr; the hub's pages get no IPC and reach the app only by
   those links. The web UI knows it is inside the app by the
   `MyceliumDesktop/` user agent. `doctor --mode desktop`

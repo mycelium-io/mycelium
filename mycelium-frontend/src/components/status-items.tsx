@@ -11,8 +11,6 @@ import type { Runner } from "@/lib/api";
 import { useRunners } from "@/lib/runners";
 import { useHubHealth, type HubHealth } from "@/lib/use-status";
 import { useHubLabel } from "@/components/title-bar";
-import { DOCS_URL } from "@/lib/install";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip } from "@/components/ui/tooltip";
 import { KbdChord } from "@/components/ui/kbd";
 
@@ -65,16 +63,16 @@ export function StatusButton({ onClick, tooltip, action, className, children }: 
   );
 }
 
-type Tone = "ok" | "warn" | "bad" | "off";
+export type Tone = "ok" | "warn" | "bad" | "off";
 
-const TONE_COLOR: Record<Tone, string> = {
+export const TONE_COLOR: Record<Tone, string> = {
   ok: "var(--green)",
   warn: "var(--yellow)",
   bad: "var(--red)",
   off: "var(--faint)",
 };
 
-function Dot({ tone }: { tone: Tone }) {
+export function StatusDot({ tone }: { tone: Tone }) {
   return (
     <span
       aria-hidden
@@ -141,7 +139,7 @@ export function MachinesStatusLink() {
       ) : (
         runners.map(r => (
           <span key={r.id} className="flex items-center gap-1.5 text-muted-foreground">
-            <Dot tone={!r.connected ? "bad" : r.machine?.problems.length ? "warn" : "ok"} />
+            <StatusDot tone={!r.connected ? "bad" : r.machine?.problems.length ? "warn" : "ok"} />
             <span className="text-text">{r.label || r.id}</span>
             <span>{machineLine(r)}</span>
           </span>
@@ -165,7 +163,7 @@ export function MachinesStatusLink() {
           </CellLabel>
         )}
         {!loading && <span className="max-w-32 truncate">{summary.text}</span>}
-        {!loading && runners.length > 0 && <Dot tone={summary.tone} />}
+        {!loading && runners.length > 0 && <StatusDot tone={summary.tone} />}
         {summary.problems > 0 && (
           <span className="tabular" style={{ color: TONE_COLOR.warn }}>
             {summary.problems} to fix
@@ -176,138 +174,49 @@ export function MachinesStatusLink() {
   );
 }
 
-/** `/health` part statuses that mean the part works. */
-const USABLE = new Set(["ok", "unchecked"]);
-
 export interface HubSummary {
   tone: Tone;
-  /** One word for the cell when the hub needs attention; null when healthy. */
-  problem: string | null;
+  /** What the dot means, in a word or two. */
+  text: string;
 }
 
-/** How the hub reads at a glance: unreachable, degraded (naming what), its
- *  model unusable, or fine. `undefined` health is a probe still in flight. */
+/** How the hub reads at a glance. `undefined` health is a probe in flight. */
 export function hubSummary(health: HubHealth | null | undefined): HubSummary {
-  if (health === undefined) return { tone: "off", problem: null };
-  if (health === null) return { tone: "bad", problem: "unreachable" };
-  if (health.llm?.status && !USABLE.has(health.llm.status)) return { tone: "warn", problem: "LLM not ready" };
-  if (health.status === "degraded") return { tone: "warn", problem: "degraded" };
-  return { tone: "ok", problem: null };
+  if (health === undefined) return { tone: "off", text: "checking…" };
+  if (health === null) return { tone: "bad", text: "unreachable" };
+  if (health.status === "degraded") {
+    const issues = health.issues?.length ? `: ${health.issues.join(", ")}` : "";
+    return { tone: "warn", text: `degraded${issues}` };
+  }
+  return { tone: "ok", text: "healthy" };
 }
 
-function HubRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <>
-      <dt className="text-faint">{label}</dt>
-      <dd className="min-w-0 text-text">{children}</dd>
-    </>
-  );
-}
-
-/** The hub, as one cell: whether it is up, and the model its engines think
- *  with, which is the hub's configuration rather than anything of this page.
- *  Opens a card with the rest of how the hub is set up. */
+/** The hub this page talks to, beside the machines that run agents for it:
+ *  its name and whether it is up. Opens Settings, which says how it is set up. */
 export function HubStatus() {
   const { data: health } = useHubHealth();
   const hub = useHubLabel();
+  const active = usePathname() === "/settings";
   const summary = hubSummary(health);
-  const model = health?.llm?.model || null;
-  const shortModel = model ? model.slice(model.indexOf("/") + 1) : null;
-  const llmUsable = !health?.llm?.status || USABLE.has(health.llm.status);
-  const store = health?.storage?.host_path || health?.storage?.path || null;
-
   return (
-    <Popover>
-      <Tooltip content="How this hub is set up" side="top">
-        <PopoverTrigger
-          aria-label="Hub"
-          className={`${CELL} flex-shrink-0 ${summary.tone === "bad" ? "text-red" : ""}`}
-        >
-          <Server className="size-3.5" />
-          <span>hub</span>
-          <Dot tone={summary.tone} />
-          {summary.problem ? (
-            <span style={{ color: TONE_COLOR[summary.tone] }}>{summary.problem}</span>
-          ) : (
-            shortModel && (
-              <span className="hidden max-w-48 truncate font-mono text-faint lg:inline">{shortModel}</span>
-            )
-          )}
-        </PopoverTrigger>
-      </Tooltip>
-      <PopoverContent side="top" align="end" className="w-96 p-0 text-label">
-        <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-          <Server className="size-3.5 text-muted-foreground" />
-          <span className="font-medium">Hub</span>
-          {hub && <span className="truncate text-muted-foreground">{hub}</span>}
-          <span className="ml-auto flex items-center gap-1.5 text-micro" style={{ color: TONE_COLOR[summary.tone] }}>
-            <Dot tone={summary.tone} />
-            {health === null
-              ? "unreachable"
-              : health?.status === "degraded"
-                ? `degraded${health.issues?.length ? `: ${health.issues.join(", ")}` : ""}`
-                : health
-                  ? "healthy"
-                  : "checking…"}
-          </span>
-        </div>
-        {health ? (
-          <dl className="grid grid-cols-[6.5rem_1fr] gap-x-3 gap-y-1.5 px-3 py-2.5 text-micro">
-            <HubRow label="LLM">
-              <span className="flex items-center gap-1.5">
-                <span className="truncate font-mono">{model ?? "not set"}</span>
-                <Link href="/metrics#cognition" className="ml-auto flex-shrink-0 text-accent hover:underline">
-                  usage
-                </Link>
-              </span>
-              <span className="block text-muted-foreground">
-                What the aligner, personas, workers and the task compiler think with.
-              </span>
-              {!llmUsable && health.llm?.message && (
-                <span className="block" style={{ color: TONE_COLOR.warn }}>
-                  {health.llm.message}
-                </span>
-              )}
-            </HubRow>
-            {health.embedding?.model && (
-              <HubRow label="Search">
-                <span className="font-mono">{health.embedding.model}</span>
-              </HubRow>
-            )}
-            {health.coordination?.channels_live != null && (
-              <HubRow label="Channels">{health.coordination.channels_live} live</HubRow>
-            )}
-            {health.identity?.mode && <HubRow label="Identity">{health.identity.mode}</HubRow>}
-            {health.auth && <HubRow label="API auth">{health.auth.enabled ? "on" : "off"}</HubRow>}
-            {health.version && <HubRow label="Version">{health.version}</HubRow>}
-            {store && (
-              <HubRow label="Store">
-                <span className="block truncate font-mono" title={store}>
-                  {store}
-                </span>
-              </HubRow>
-            )}
-          </dl>
-        ) : (
-          <p className="px-3 py-2.5 text-micro text-muted-foreground">
-            {health === null ? "The hub is not answering. Start it with `mycelium up`." : "Checking the hub…"}
-          </p>
+    <Tooltip content={`Hub: ${summary.text}`} side="top" align="start">
+      <Link
+        href="/settings"
+        aria-label="Hub settings"
+        aria-current={active ? "page" : undefined}
+        className={`${CELL} flex-shrink-0 ${active ? "text-text" : ""}`}
+      >
+        <Server className="size-3.5" />
+        <CellLabel>
+          <span className="hidden md:inline">hub</span>
+        </CellLabel>
+        <span className="max-w-40 truncate">{hub || "hub"}</span>
+        <StatusDot tone={summary.tone} />
+        {(summary.tone === "bad" || summary.tone === "warn") && (
+          <span style={{ color: TONE_COLOR[summary.tone] }}>{health === null ? "unreachable" : "degraded"}</span>
         )}
-        <div className="border-t border-border px-3 py-2 text-micro text-muted-foreground">
-          Set on the hub&apos;s machine:{" "}
-          <span className="font-mono text-text">mycelium config set llm.model provider/model</span>, then{" "}
-          <span className="font-mono text-text">mycelium config apply</span>.{" "}
-          <a
-            href={`${DOCS_URL}/reference.html#config-llm`}
-            target="_blank"
-            rel="noreferrer"
-            className="text-accent hover:underline"
-          >
-            Every setting
-          </a>
-        </div>
-      </PopoverContent>
-    </Popover>
+      </Link>
+    </Tooltip>
   );
 }
 
