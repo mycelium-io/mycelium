@@ -400,6 +400,8 @@ class Runner:
         self.last_pass_at: str | None = None
         self.last_pass_ms: int | None = None
         self.sync_error: str | None = None
+        #: ``{workspace: (room, error)}`` for each binding the last pass couldn't sync.
+        self.failing_bindings: dict[str, tuple[str, str]] = {}
 
     # ── what this machine has ────────────────────────────────────────────────
 
@@ -1051,14 +1053,22 @@ class Runner:
                 log.warning("sync pass finished after %dms; wakes go out again", ms(started))
 
     def _sync_once(self) -> None:
+        from mycelium.commands.herdr import BindingSyncError
+
         try:
             self.host.sync(self.config, self.state, self.log)
+        except BindingSyncError as e:
+            # The pass ran; only these bindings didn't. Each is logged as it fails.
+            self.sync_error = str(e)
+            self.failing_bindings = e.failed
         except Exception as e:  # noqa: BLE001 - a missed pass is retried on the next
             self.sync_error = str(e)
+            self.failing_bindings = {}
             failing(log, f"{self.host.name} sync", f"{self.host.name} sync failed: {e!r}")
             self.log.print(f"[dim]{self.host.name} sync: {e}[/dim]")
         else:
             self.sync_error = None
+            self.failing_bindings = {}
             recovered(log, f"{self.host.name} sync")
 
     def sync_health(self) -> dict[str, Any]:
@@ -1070,6 +1080,10 @@ class Runner:
             "running_s": round(time.monotonic() - running[1], 1) if running else None,
             "stall_s": SYNC_STALL_S,
             "error": self.sync_error,
+            "bindings": [
+                {"workspace": ws, "room": room, "error": err}
+                for ws, (room, err) in self.failing_bindings.items()
+            ],
         }
 
     def watch(self) -> None:
