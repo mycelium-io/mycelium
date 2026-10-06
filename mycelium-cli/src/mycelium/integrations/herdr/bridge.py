@@ -453,6 +453,37 @@ class HerdrBridge:
         agent = result.get("agent", result)
         return agent if isinstance(agent, dict) and agent.get("pane_id") else None
 
+    def read_pane(self, pane: str, *, lines: int = 6) -> str | None:
+        """The last non-blank lines on ``pane``'s screen, to show a person; ``None`` if unread.
+
+        Never parsed for meaning: what an agent's prompt says is the agent's own
+        and changes with its version.
+        """
+        if not self.binary_present():
+            return None
+        args = ["pane", "read", pane, "--source", "visible", "--lines", str(lines)]
+        try:
+            proc = self._invoke(args)
+        except OSError:
+            return None
+        if proc.returncode != 0:
+            return None
+        text = proc.stdout or ""
+        try:
+            parsed = json.loads(text)
+        except ValueError:
+            pass
+        else:
+            result = parsed.get("result", parsed) if isinstance(parsed, dict) else None
+            found = (
+                next((result[k] for k in ("text", "content", "lines") if k in result), None)
+                if isinstance(result, dict)
+                else None
+            )
+            text = "\n".join(map(str, found)) if isinstance(found, list) else str(found or "")
+        kept = [line.rstrip() for line in text.splitlines() if line.strip()]
+        return "\n".join(kept[-lines:]) or None
+
     def prompt(
         self,
         target: str,

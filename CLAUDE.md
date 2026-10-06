@@ -405,7 +405,22 @@ is no litellm dependency.
   an interactive session, prompted to read its notes; there is no headless or
   one-shot mode, and a machine whose host isn't up starts nothing. herdr is
   the default host: a runner-started agent's pane mapping is not `managed`,
-  so a closed pane stops it without deleting it from the room. A host that
+  so a closed pane stops it without deleting it from the room. An agent that
+  comes up stopped at a prompt (herdr's `blocked`, a first-run one included) is
+  started, not failed: its pane stays open, the app shows it waiting for input
+  on that machine with its last screen lines, and its introduction is handed
+  over once it is idle; only a start with no agent on the pane closes it.
+  Everything known about an agent CLI lives in one package,
+  `integrations/agents/`: the table the scan reads (`KNOWN`: name, binaries,
+  herdr kind), an `AgentKind` per CLI with what it starts with
+  (`launch_args`) and what it commonly waits for (`blocked_hint`), and the
+  manifest family its agents are recorded under (`ResidentIntegration`, the
+  persisted `claude_code`, unless a CLI has its own, like Cursor's workspace
+  rule). A CLI with something of its own has a module there (`claude.py`,
+  `cursor/`); herdr, Omnigent, swarm, the scan and `agent create` ask
+  `agents.of_kind`/`by_id`/`adapter_for`, and nothing outside it names a CLI
+  (`tests/test_agent_kinds.py`). `engine` and `a2a` are members that are not
+  CLIs and keep their own packages. A host that
   can't pass an agent an environment (`joins`) gets a join code in the
   agent's introduction instead; see the next point. A swarm with `runner` set has the hub
   register the conductor, write the members and file the task, and the runner
