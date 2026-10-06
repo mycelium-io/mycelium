@@ -775,7 +775,9 @@
       </ul>
       <p>The hub can&#x27;t reach herdr on your machine, so the runner is what passes the wake-ups along: run <code>mycelium runner --detach</code> (the Mac app runs it for you). <code>mycelium herdr sync</code> runs one pass straight away, so a workspace&#x27;s agents join the room at once, and says whether the runner is running.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span>                        # one pass over every connected workspace
-<span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--kind</span> &lt;kind&gt;          # only add agents of one kind</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--kind</span> &lt;kind&gt;          # only add agents of one kind
+<span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">unbind</span> w2                   # stop syncing w2; its agents stay in the room</code></pre>
+      <p>A workspace that fails to sync doesn&#x27;t hold up the others: their members are still added, and every wake-up is still delivered. <code>mycelium machine</code> names the failing workspace, the room it is connected to and the hub&#x27;s error.</p>
       <h2 id="herdr-connecting-single-agents-and-autowake">Connecting single agents, and autowake</h2>
       <p>To connect individual agents instead of a whole workspace, map each handle to a pane. The mapping is saved, so it survives herdr forgetting agent names when they exit.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">map</span> planner w2:pV           # connect @planner to pane w2:pV

@@ -3,6 +3,7 @@
 
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { act, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { SWRTestCache } from "@/test/swr";
 import { MemoryEditor } from "@/components/memory-editor";
@@ -84,12 +85,113 @@ function renderEditor(overrides?: {
 
 describe("MemoryEditor", () => {
   beforeEach(() => {
-    vi.mocked(createMemories).mockResolvedValue(undefined);
+    vi.mocked(createMemories).mockReset().mockResolvedValue(undefined);
+    localStorage.clear();
+  });
+
+  it("saves on ⌘S", async () => {
+    const { onSaved } = renderEditor();
+    fireEvent.keyDown(window, { key: "s", metaKey: true });
+    await waitFor(() => expect(createMemories).toHaveBeenCalledOnce());
+    expect(onSaved).toHaveBeenCalledOnce();
+  });
+
+  it("reads clean again when an edit is undone by hand", async () => {
+    const { onDirtyChange } = renderEditor();
+    const body = screen.getByTestId("md-editor");
+    fireEvent.change(body, { target: { value: "Hello world!" } });
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    fireEvent.change(body, { target: { value: "Hello world" } });
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+  });
+
+  it("goes full screen over the app and comes back on Esc, keeping the edit", async () => {
+    const user = userEvent.setup();
+    renderEditor();
+    fireEvent.change(screen.getByTestId("md-editor"), { target: { value: "Hello there" } });
+    await user.click(screen.getByRole("button", { name: "Full screen" }));
+
+    const screenDialog = screen.getByRole("dialog", { name: "Editing context/overview" });
+    expect(screenDialog.parentElement).toBe(document.body);
+    // A new editor, built from what was written.
+    expect(screen.getByTestId("md-editor")).toHaveValue("Hello there");
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByTestId("md-editor")).toHaveValue("Hello there");
+  });
+
+  it("toggles full screen with ⌘⇧F", () => {
+    renderEditor();
+    fireEvent.keyDown(window, { key: "F", metaKey: true, shiftKey: true });
+    expect(screen.getByRole("button", { name: "Exit full screen" })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "F", metaKey: true, shiftKey: true });
+    expect(screen.getByRole("button", { name: "Full screen" })).toBeInTheDocument();
+  });
+
+  it("previews the body as readers will see it", async () => {
+    const user = userEvent.setup();
+    renderEditor({ memory: { ...baseMemory, content_text: "## Plan\n\nShip it." } });
+    await user.click(screen.getByRole("radio", { name: "Preview" }));
+    expect(screen.getByRole("heading", { name: "Plan" })).toBeInTheDocument();
+    expect(screen.queryByTestId("md-editor")).not.toBeInTheDocument();
+    // Formatting has nothing to act on in the preview.
+    expect(screen.getByRole("button", { name: "Bold" })).toBeDisabled();
+  });
+
+  it("lists the body's links and calls out the ones that go nowhere", () => {
+    renderEditor({ memory: { ...baseMemory, content_text: "See [[decisions/nope]] and ![[context/missing]]." } });
+    expect(screen.getByText("decisions/nope")).toBeInTheDocument();
+    expect(screen.getByText("2 not found", { exact: false })).toBeInTheDocument();
+  });
+
+  it("keeps an unsaved edit in this browser and offers it back", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const first = render(
+        <SWRTestCache>
+          <MemoryEditor memory={baseMemory} roomName="test-room" onSaved={vi.fn()} onCancel={vi.fn()} />
+        </SWRTestCache>,
+      );
+      fireEvent.change(screen.getByTestId("md-editor"), { target: { value: "Half a thought" } });
+      await act(async () => {
+        vi.advanceTimersByTime(500);
+      });
+      first.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const user = userEvent.setup();
+    renderEditor();
+    expect(screen.getByText(/You left unsaved changes here/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Restore" }));
+    expect(screen.getByTestId("md-editor")).toHaveValue("Half a thought");
+    expect(screen.queryByText(/You left unsaved changes here/)).not.toBeInTheDocument();
+  });
+
+  it("forgets the kept edit once it is saved", async () => {
+    const user = userEvent.setup();
+    renderEditor();
+    fireEvent.change(screen.getByTestId("md-editor"), { target: { value: "Saved for real" } });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(createMemories).toHaveBeenCalled());
+    expect(localStorage.length).toBe(0);
+  });
+
+  it("offers the text for copying when someone else saved first", async () => {
+    const { ApiError } = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
+    vi.mocked(createMemories).mockRejectedValueOnce(new ApiError("conflict", 409));
+    const user = userEvent.setup();
+    renderEditor();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("button", { name: "Copy my text" })).toBeInTheDocument();
   });
 
   it("shows the memory key read-only and the editor body", () => {
     renderEditor();
-    expect(screen.getByText("context/overview")).toBeInTheDocument();
+    expect(screen.getByTitle("context/overview")).toHaveTextContent("context/overview");
     expect(screen.getByTestId("md-editor")).toHaveValue("Hello world");
   });
 

@@ -674,11 +674,15 @@ def test_the_runner_syncs_every_bound_workspace_not_only_its_own(
     r = make_runner()
     r.state.owned = {"w9": "eng"}
     r.bridge.registry.bind("w5", "tome")
+    from mycelium.commands.herdr import SyncResult
+
     synced: list[list[tuple[str, str]]] = []
-    monkeypatch.setattr(
-        "mycelium.commands.herdr.sync_pass",
-        lambda _config, _bridge, targets, **_kw: synced.append(sorted(targets)),
-    )
+
+    def sync_pass(_config: Any, _bridge: Any, targets: list, **_kw: Any) -> SyncResult:
+        synced.append(sorted(targets))
+        return SyncResult(0, 0, 0, {})
+
+    monkeypatch.setattr("mycelium.commands.herdr.sync_pass", sync_pass)
     r.host.sync(r.config, r.state, r.log)
     assert synced == [[("w5", "tome"), ("w9", "eng")]]
 
@@ -1197,3 +1201,43 @@ def test_a_pairing_proof_is_the_one_the_browser_makes():
 
     proof = pairing.proof("K7QM-4XHD-9RWA", "work laptop", "A" * 43, "B" * 43)
     assert proof == "zakRBGwNeLR_W1E702hnTIRWyo1daHS8tqBe3QmCZOc"
+
+
+def test_a_binding_that_fails_leaves_the_others_and_the_wakes_going(
+    make_runner, hub: Hub, quiet_hub: list[dict], monkeypatch: pytest.MonkeyPatch
+):
+    from mycelium.commands import herdr as herdr_cmd
+    from mycelium_backend_client.errors import UnexpectedStatus
+
+    r = make_runner()
+    r.launch(LAUNCH)
+    # Bound first, so a pass that stopped at it would never reach the runner's own.
+    r.bridge.registry.bind("w0", "broken")
+    reconcile = herdr_cmd._reconcile_workspace
+
+    def flaky(config: Any, bridge: Any, ws: str, room: str, **kw: Any):
+        if ws == "w0":
+            raise UnexpectedStatus(404, b'{"detail":"Memory not found"}')
+        return reconcile(config, bridge, ws, room, **kw)
+
+    monkeypatch.setattr(herdr_cmd, "_reconcile_workspace", flaky)
+    quiet_hub.append({"room": "eng", "handle": "a", "reason": "mention"})
+    r.sync_pass()
+
+    log = _log()
+    assert "binding w0 -> broken failed" in log
+    assert re.search(r"wake @a \(mention\) -> w9:p1 ok", log)
+    health = r.sync_health()
+    assert health["bindings"] == [
+        {"workspace": "w0", "room": "broken", "error": "the hub answered 404: Memory not found"}
+    ]
+    assert "w0 → broken" in health["error"]
+    [bad] = [p for p in r.hello_body()["machine"]["problems"] if p["kind"] == "binding_failing"]
+    assert bad["fix"] == "mycelium herdr unbind w0"
+    assert "can't sync with broken: the hub answered 404" in bad["text"]
+
+    monkeypatch.setattr(herdr_cmd, "_reconcile_workspace", reconcile)
+    r.bridge.registry.unbind("w0")
+    r.sync_pass()
+    assert r.sync_health()["bindings"] == []
+    assert r.sync_health()["error"] is None

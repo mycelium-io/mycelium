@@ -3304,7 +3304,12 @@ join the room at once, and says whether the runner is running.
 ```bash
 mycelium herdr sync                        # one pass over every connected workspace
 mycelium herdr sync --kind <kind>          # only add agents of one kind
+mycelium herdr unbind w2                   # stop syncing w2; its agents stay in the room
 ```
+
+A workspace that fails to sync doesn't hold up the others: their members are
+still added, and every wake-up is still delivered. `mycelium machine` names
+the failing workspace, the room it is connected to and the hub's error.
 
 ## Connecting single agents, and autowake
 

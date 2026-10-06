@@ -880,6 +880,7 @@ export interface MachineProblem {
     | "lost"
     | "runner_down"
     | "wakes_stalled"
+    | "binding_failing"
     | "no_restore"
     | "herdr_update"
     | "herdr_down";
