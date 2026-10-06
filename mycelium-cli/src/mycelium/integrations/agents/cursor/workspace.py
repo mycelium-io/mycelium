@@ -31,7 +31,7 @@ from mycelium.integrations._resources import _resolve_asset
 
 # ── constants ────────────────────────────────────────────────────────────────
 
-#: Bundled-asset subpath (inside ``mycelium/integrations/cursor/assets/``)
+#: Bundled-asset subpath (inside ``mycelium/integrations/agents/cursor/assets/``)
 #: holding the ``mycelium.mdc`` Cursor rule file. Stored under
 #: ``cursor_rules/`` rather than ``.cursor/rules/`` because setuptools +
 #: ``importlib.resources`` handle dot-prefixed directories inconsistently;
@@ -63,7 +63,7 @@ def _read_bundled_rule() -> str:
     Reads from the relocated non-dotted asset path; the on-disk target is
     rewritten to ``.cursor/rules/`` in :func:`install_workspace_assets`.
     """
-    src = _resolve_asset(_CURSOR_RULE_ASSET, family="cursor") / _CURSOR_RULE_FILENAME
+    src = _resolve_asset(_CURSOR_RULE_ASSET, family="agents.cursor") / _CURSOR_RULE_FILENAME
     return src.read_text(encoding="utf-8")
 
 
@@ -74,7 +74,7 @@ def _read_bundled_agents_section() -> str:
     ``<!-- mycelium:start -->`` / ``<!-- mycelium:end -->`` so the merge in
     :func:`_write_agents_md_section` has one source of truth.
     """
-    src = _resolve_asset(_CURSOR_AGENTS_ASSET, family="cursor")
+    src = _resolve_asset(_CURSOR_AGENTS_ASSET, family="agents.cursor")
     # _resolve_asset returns the assets root when *subpath* is a file name
     # without intermediate directories. Read the file directly off the path.
     candidate = src if src.is_file() else src / _CURSOR_AGENTS_ASSET

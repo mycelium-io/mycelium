@@ -881,6 +881,7 @@ export interface MachineProblem {
     | "lost"
     | "runner_down"
     | "wakes_stalled"
+    | "binding_failing"
     | "no_restore"
     | "herdr_update"
     | "herdr_down";
@@ -1008,6 +1009,8 @@ export interface RunnerAgentLaunch {
   instructions?: string;
   description?: string;
   cwd?: string;
+  /** Start it in its own git worktree of `cwd`, on a branch of its own. */
+  worktree?: boolean;
   created_by?: string;
   /** From a device paired with the machine: it starts without asking there. */
   signature?: DeviceSignature;

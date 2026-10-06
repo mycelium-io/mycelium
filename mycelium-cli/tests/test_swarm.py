@@ -455,6 +455,9 @@ def test_an_agent_is_started_again_while_its_pane_comes_up(monkeypatch: pytest.M
                 raise HerdrError("pane is not at a shell prompt")
             return {}
 
+        def get_agent(self, pane: str) -> dict | None:
+            return None
+
     swarm._start_when_ready(_Bridge(), "agent-1", "claude", "w9:p1")
     assert attempts == ["w9:p1", "w9:p1"]
 

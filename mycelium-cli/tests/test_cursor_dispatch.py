@@ -22,12 +22,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from mycelium.config import MyceliumConfig
-from mycelium.integrations.base import AddOptions
-from mycelium.integrations.cursor.dispatch import CursorIntegration
-from mycelium.integrations.cursor.install import (
+from mycelium.integrations.agents.cursor import CursorIntegration
+from mycelium.integrations.agents.cursor.workspace import (
     _AGENTS_SECTION_START,
     _CURSOR_RULE_FILENAME,
 )
+from mycelium.integrations.base import AddOptions
 from mycelium.protocol import AgentManifest
 
 

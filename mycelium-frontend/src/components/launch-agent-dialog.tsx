@@ -34,6 +34,7 @@ import {
 import { useRoomRevalidate } from "@/lib/room-data";
 import { useCurrentUser } from "@/components/current-user";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Monogram } from "@/components/ui/monogram";
 import {
   ConnectMachine,
@@ -87,6 +88,7 @@ export function LaunchAgentForm({
   const [runnerPick, setRunnerPick] = useState<string | null>(null);
   const [frameworkPick, setFrameworkPick] = useState<string | null>(null);
   const [folderTyped, setFolderTyped] = useState<string | null>(null);
+  const [worktreePick, setWorktreePick] = useState(false);
   const [role, setRole] = useState<string | null>(null);
   const [handle, setHandle] = useState("");
   const [handleTouched, setHandleTouched] = useState(false);
@@ -100,6 +102,8 @@ export function LaunchAgentForm({
   const startable = useMemo(() => (runner ? launchable(runner) : []), [runner]);
   const framework = startable.find((f) => f.id === frameworkPick) ?? startable[0];
   const folderShown = folderTyped ?? tildePath(runner?.roots[0] ?? "");
+  // Only herdr needs asking: an Omnigent session gets its own worktree anyway.
+  const worktree = worktreePick && !!runner && startsInHerdr(runner);
 
   const { job } = useRunnerJob(runner?.id ?? null, jobId);
   const trimmed = handle.trim().replace(/^@/, "").toLowerCase();
@@ -131,7 +135,7 @@ export function LaunchAgentForm({
       const folder = expandPath(folderShown.trim(), runner.roots);
       const signature = await signFor(runner, {
         kind: "launch",
-        job: { room: roomName, handle: trimmed, framework: framework.id, cwd: folder || null },
+        job: { room: roomName, handle: trimmed, framework: framework.id, cwd: folder || null, worktree },
       });
       const queued = await launchRunnerAgent(runner.id, {
         room: roomName,
@@ -139,6 +143,7 @@ export function LaunchAgentForm({
         framework: framework.id,
         instructions: instructions.trim() || undefined,
         cwd: folder || undefined,
+        worktree,
         created_by: principal.trim() || undefined,
         signature,
       });
@@ -234,12 +239,14 @@ export function LaunchAgentForm({
         runner={runner}
         frameworkId={framework?.id ?? null}
         folder={folderShown}
+        worktree={worktree}
         onRunner={(id) => {
           setRunnerPick(id);
           setFolderTyped(null);
         }}
         onFramework={setFrameworkPick}
         onFolder={setFolderTyped}
+        onWorktree={setWorktreePick}
       >
         <Button onClick={submit} disabled={!canSubmit}>
           {/* A fixed label: the handle is in the field above, and a button that
@@ -577,18 +584,22 @@ function RunsOn({
   runner,
   frameworkId,
   folder,
+  worktree,
   onRunner,
   onFramework,
   onFolder,
+  onWorktree,
   children,
 }: {
   runners: Runner[];
   runner: Runner;
   frameworkId: string | null;
   folder: string;
+  worktree: boolean;
   onRunner: (id: string) => void;
   onFramework: (id: string) => void;
   onFolder: (folder: string) => void;
+  onWorktree: (worktree: boolean) => void;
   children: React.ReactNode;
 }) {
   const startable = launchable(runner);
@@ -668,6 +679,15 @@ function RunsOn({
           <option key={r} value={r} />
         ))}
       </datalist>
+      {startsInHerdr(runner) && (
+        <label
+          className="flex flex-shrink-0 items-center gap-1.5 text-micro text-muted-foreground"
+          title="Start it in a git worktree of this folder, on a branch of its own"
+        >
+          <Checkbox checked={worktree} onCheckedChange={(v) => onWorktree(v === true)} />
+          Own worktree
+        </label>
+      )}
     </MemberFooter>
   );
 }
@@ -697,6 +717,8 @@ function LaunchProgress({
   const status = job?.status ?? "queued";
   const failed = status === "failed";
   const machine = runnerName(runner);
+  // Started, but stopped at a prompt only the person at that machine can answer.
+  const waiting = status === "done" && typeof job?.result?.waiting === "string" ? job.result.waiting : null;
   // A machine asks the person there before starting what a hub sent it,
   // except the app's own hub; the step shows only once it has asked.
   const [asked, setAsked] = useState(false);
@@ -726,7 +748,9 @@ function LaunchProgress({
         <div>
           <p className="font-mono text-ui text-text">@{handle}</p>
           <p className="text-micro text-muted-foreground">
-            {status === "done"
+            {waiting
+              ? `Started on ${machine}, and waiting for input there before it reads its notes.`
+              : status === "done"
               ? startsInHerdr(runner)
                 ? `Running on ${machine}, in herdr workspace ${room}.`
                 : `Running on ${machine}, in ${hostOf(runner).where}.`
@@ -747,6 +771,11 @@ function LaunchProgress({
           </li>
         ))}
       </ol>
+      {waiting && (
+        <p className="mt-4 whitespace-pre-line break-words rounded-lg border border-yellow/30 bg-yellow/5 px-3 py-2 text-label text-text">
+          {waiting}
+        </p>
+      )}
       {failed && (
         <p role="alert" className="mt-4 break-words rounded-lg border border-red/30 bg-red/5 px-3 py-2 text-label text-red">
           {job?.error ?? "The machine could not start it."}

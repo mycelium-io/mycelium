@@ -136,12 +136,6 @@ export function MemoryTab({
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-paper">
-      {editing && (
-        <div className="flex h-8 flex-shrink-0 items-center gap-2 border-b border-border px-6 text-micro text-muted-foreground md:px-8">
-          <span className="min-w-0 truncate font-mono text-text">{memory.key}</span>
-          <div className="ml-auto flex flex-shrink-0 items-center gap-2">{actions}</div>
-        </div>
-      )}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {editing ? (
           <MemoryEditor
@@ -150,6 +144,8 @@ export function MemoryTab({
             roomName={roomName}
             actor={principal}
             onDirtyChange={setDirty}
+            onNavigate={onOpenMemory}
+            headerExtra={actions}
             onSaved={() => {
               revalidate();
               setEditing(false);

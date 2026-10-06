@@ -6875,6 +6875,7 @@
               "lost",
               "runner_down",
               "wakes_stalled",
+              "binding_failing",
               "no_restore",
               "herdr_update",
               "herdr_down"
@@ -9174,6 +9175,12 @@
             ],
             "title": "Cwd",
             "description": "Folder to start it in; inside one of the roots"
+          },
+          "worktree": {
+            "type": "boolean",
+            "title": "Worktree",
+            "description": "Start it in its own git worktree of cwd",
+            "default": false
           },
           "created_by": {
             "anyOf": [

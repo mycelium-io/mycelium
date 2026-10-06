@@ -188,7 +188,10 @@ export function pairingWith(runner: Pick<Runner, "pairings">, keyId: string | nu
 
 /** The fields a job is signed over, by kind: what the runner checks against the job it gets. */
 export type SignedJob =
-  | { kind: "launch"; job: { room: string; handle: string; framework: string; cwd: string | null } }
+  | {
+      kind: "launch";
+      job: { room: string; handle: string; framework: string; cwd: string | null; worktree: boolean };
+    }
   | {
       kind: "swarm";
       job: { room: string; task: string; framework: string; cwd: string | null; size: number; worktree: boolean };

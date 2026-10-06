@@ -794,6 +794,7 @@ class MachineProblemRead(BaseModel):
         "lost",
         "runner_down",
         "wakes_stalled",
+        "binding_failing",
         "no_restore",
         "herdr_update",
         "herdr_down",
@@ -973,6 +974,7 @@ class RunnerAgentLaunch(BaseModel):
     )
     description: str = ""
     cwd: str | None = Field(None, description="Folder to start it in; inside one of the roots")
+    worktree: bool = Field(False, description="Start it in its own git worktree of cwd")
     created_by: str | None = None
     signature: DeviceSignature | None = Field(
         None, description="From a device paired with the machine: starts without asking there"

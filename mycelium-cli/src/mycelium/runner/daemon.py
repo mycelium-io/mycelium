@@ -65,6 +65,7 @@ from mycelium import machine as this_machine
 from mycelium.client import hub_client
 from mycelium.config import MyceliumConfig
 from mycelium.filesystem import get_mycelium_dir
+from mycelium.integrations import agents
 from mycelium.integrations.herdr import HerdrBridge, HerdrError
 from mycelium.runner import approvals, frameworks, pairing
 from mycelium.runner.hosts import AgentHost, HerdrHost, HostError, OmnigentHost
@@ -89,6 +90,9 @@ SYNC_STALL_S = 30.0
 WATCH_S = 5.0
 #: A stopped agent is still listed for this long, so the app can start it again.
 KEEP_STOPPED = timedelta(hours=24)
+#: An agent waiting for input this long says how long, so the person knows it
+#: is still waiting; nothing closes it, that is theirs to decide.
+WAITING_LONG = timedelta(minutes=10)
 
 _SLUG = re.compile(r"[^a-z0-9]+")
 #: A UUID-shaped identity: an id, not a handle anyone reads.
@@ -254,6 +258,12 @@ class Tracked:
     detail: str | None = None
     stopped_at: str | None = None
     workspace: str | None = None
+    #: Its introduction, until it is idle enough to be handed it.
+    intro: str | None = None
+    #: Since when it has been waiting for input (``blocked``), and what its host
+    #: said would help the person answer it.
+    waiting_since: str | None = None
+    waiting_note: str | None = None
 
     @property
     def live(self) -> bool:
@@ -400,6 +410,8 @@ class Runner:
         self.last_pass_at: str | None = None
         self.last_pass_ms: int | None = None
         self.sync_error: str | None = None
+        #: ``{workspace: (room, error)}`` for each binding the last pass couldn't sync.
+        self.failing_bindings: dict[str, tuple[str, str]] = {}
 
     # ── what this machine has ────────────────────────────────────────────────
 
@@ -568,15 +580,23 @@ class Runner:
                     self.host.gone(agent)
                     changed = True
                     continue
-                if found != (agent.status, agent.detail):
+                before = (agent.status, agent.detail, agent.intro)
+                if found[0] == "blocked":
+                    self._mark_waiting(agent)
+                else:
                     agent.status, agent.detail = found
+                    agent.waiting_since = agent.waiting_note = None
+                    # Not mid-turn: what herdr reads as idle, or can't read at all.
+                    if found[0] in ("idle", "running"):
+                        self._hand_intro(agent)
+                if (agent.status, agent.detail, agent.intro) != before:
                     changed = True
             if changed:
                 self.host.release(self.state)
                 self.state.save(self._state_path)
 
-    def framework(self, framework_id: str) -> frameworks.Known:
-        known = frameworks.by_id(framework_id)
+    def framework(self, framework_id: str) -> agents.AgentKind:
+        known = agents.by_id(framework_id)
         found = next((f for f in self.found if f.id == framework_id), None)
         if known is None or found is None or not found.installed:
             raise JobError(f"{framework_id} is not installed on {self.label}.")
@@ -649,6 +669,13 @@ class Runner:
             running = self.state.agents.get(key)
             if running is not None and running.live and self.host.alive(running.pane):
                 return {"pane": running.pane, "already": True}
+        if spec.get("worktree") and not self.host.worktrees:
+            from mycelium.commands.swarm import SwarmError, member_worktree
+
+            try:
+                cwd = member_worktree(cwd, room, handle)
+            except SwarmError as e:
+                raise JobError(str(e)) from e
 
         join = (
             (self.join_code(room, handle), self.config.server.api_url) if self.host.joins else None
@@ -666,23 +693,63 @@ class Runner:
             )
         except HostError as e:
             raise JobError(f"{self.host.name} could not start {known.name}: {e}") from e
+        agent = Tracked(
+            handle=handle,
+            room=room,
+            framework=known.id,
+            pane=started.ref,
+            cwd=started.cwd or str(cwd),
+            started_at=_now(),
+            status=started.status or "running",
+            workspace=started.workspace,
+            intro=intro if started.intro_pending else None,
+        )
+        if agent.status == "blocked":
+            self._mark_waiting(agent)
         with self._lock:
-            self.state.agents[key] = Tracked(
-                handle=handle,
-                room=room,
-                framework=known.id,
-                pane=started.ref,
-                cwd=started.cwd or str(cwd),
-                started_at=_now(),
-                status="running",
-                workspace=started.workspace,
-            )
+            self.state.agents[key] = agent
             self.state.save(self._state_path)
-        self.log.print(f"[green]started[/green] @{handle} ({known.name}) in {room} → {started.ref}")
         result = {"pane": started.ref}
         if started.workspace:
             result["workspace"] = started.workspace
+        if agent.status == "blocked":
+            result["waiting"] = agent.detail or f"waiting for input on {self.label}"
+            self.log.print(
+                f"[yellow]started[/yellow] @{handle} ({known.name}) in {room} → {started.ref}, "
+                "waiting for input there"
+            )
+        else:
+            self.log.print(
+                f"[green]started[/green] @{handle} ({known.name}) in {room} → {started.ref}"
+            )
         return result
+
+    def _mark_waiting(self, agent: Tracked) -> None:
+        """Say ``agent`` is waiting for input, on which machine, and for how long once that's long."""
+        if agent.waiting_since is None:
+            agent.waiting_since = _now()
+            known = agents.by_id(agent.framework)
+            kind = (known.herdr_kind if known else None) or agent.framework
+            agent.waiting_note = self.host.blocker(agent.pane, kind)
+        waited = datetime.now(UTC) - datetime.fromisoformat(agent.waiting_since)
+        line = f"waiting for input on {self.label}"
+        if waited >= WAITING_LONG:
+            line += f" for {int(waited.total_seconds() // 60)} min"
+        agent.status = "blocked"
+        agent.detail = f"{line}\n{agent.waiting_note}" if agent.waiting_note else line
+
+    def _hand_intro(self, agent: Tracked) -> None:
+        """Give an agent that came up waiting the introduction it was kept from."""
+        if agent.intro is None:
+            return
+        try:
+            self.host.wake(agent.pane, agent.intro)
+        except HostError as e:
+            log.warning("@%s: couldn't hand over its introduction yet: %s", agent.handle, e)
+            return
+        log.info("@%s: answered; handed its introduction -> %s", agent.handle, agent.pane)
+        self.log.print(f"[green]introduced[/green] @{agent.handle} → {agent.pane}")
+        agent.intro = None
 
     def stop_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
         key = f"{spec['room']}/{spec['handle']}"
@@ -793,7 +860,7 @@ class Runner:
 
     def _cli_of(self, kind: str | None) -> str | None:
         """The framework id for a herdr kind, which is how a pairing names an agent CLI."""
-        return next((k.id for k in frameworks.KNOWN if kind and k.herdr_kind == kind), kind)
+        return next((k.id for k in agents.KNOWN if kind and k.herdr_kind == kind), kind)
 
     def _within(self, paired: pairing.Pairing, job: dict[str, Any], fields: dict[str, Any]) -> None:
         """Refuse unless ``fields`` are ``job``'s and the pairing covers them."""
@@ -828,10 +895,9 @@ class Runner:
         )
         if any(str(fields.get(k)) != str(spec.get(k)) for k in same):
             raise different
-        if kind == "swarm" and (
-            fields.get("size") != len(spec.get("team") or [])
-            or bool(fields.get("worktree")) != bool(spec.get("worktree"))
-        ):
+        if bool(fields.get("worktree")) != bool(spec.get("worktree")):
+            raise different
+        if kind == "swarm" and fields.get("size") != len(spec.get("team") or []):
             raise different
         cwd = self.folder(spec.get("cwd"))
         if self._signed_folder(fields.get("cwd")) != cwd:
@@ -1051,14 +1117,22 @@ class Runner:
                 log.warning("sync pass finished after %dms; wakes go out again", ms(started))
 
     def _sync_once(self) -> None:
+        from mycelium.commands.herdr import BindingSyncError
+
         try:
             self.host.sync(self.config, self.state, self.log)
+        except BindingSyncError as e:
+            # The pass ran; only these bindings didn't. Each is logged as it fails.
+            self.sync_error = str(e)
+            self.failing_bindings = e.failed
         except Exception as e:  # noqa: BLE001 - a missed pass is retried on the next
             self.sync_error = str(e)
+            self.failing_bindings = {}
             failing(log, f"{self.host.name} sync", f"{self.host.name} sync failed: {e!r}")
             self.log.print(f"[dim]{self.host.name} sync: {e}[/dim]")
         else:
             self.sync_error = None
+            self.failing_bindings = {}
             recovered(log, f"{self.host.name} sync")
 
     def sync_health(self) -> dict[str, Any]:
@@ -1070,6 +1144,10 @@ class Runner:
             "running_s": round(time.monotonic() - running[1], 1) if running else None,
             "stall_s": SYNC_STALL_S,
             "error": self.sync_error,
+            "bindings": [
+                {"workspace": ws, "room": room, "error": err}
+                for ws, (room, err) in self.failing_bindings.items()
+            ],
         }
 
     def watch(self) -> None:
