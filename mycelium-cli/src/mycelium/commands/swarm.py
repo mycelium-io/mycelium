@@ -314,12 +314,12 @@ def _start_when_ready(bridge: Any, handle: str, kind: str, pane: str) -> dict | 
     find the name taken: that agent is returned, for the caller to read its
     state. ``None`` means it started and is ready.
     """
+    from mycelium.integrations.agents import of_kind
     from mycelium.integrations.herdr import HerdrError
-    from mycelium.integrations.herdr.kinds import agent_args
 
     for attempt in range(1, START_ATTEMPTS + 1):
         try:
-            bridge.start_agent(handle, kind, pane, agent_args=agent_args(kind))
+            bridge.start_agent(handle, kind, pane, agent_args=of_kind(kind).launch_args() or None)
         except HerdrError:
             if (agent := bridge.get_agent(pane)) is not None:
                 return agent

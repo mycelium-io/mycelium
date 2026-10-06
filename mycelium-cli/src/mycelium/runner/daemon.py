@@ -65,6 +65,7 @@ from mycelium import machine as this_machine
 from mycelium.client import hub_client
 from mycelium.config import MyceliumConfig
 from mycelium.filesystem import get_mycelium_dir
+from mycelium.integrations import agents
 from mycelium.integrations.herdr import HerdrBridge, HerdrError
 from mycelium.runner import approvals, frameworks, pairing
 from mycelium.runner.hosts import AgentHost, HerdrHost, HostError, OmnigentHost
@@ -594,8 +595,8 @@ class Runner:
                 self.host.release(self.state)
                 self.state.save(self._state_path)
 
-    def framework(self, framework_id: str) -> frameworks.Known:
-        known = frameworks.by_id(framework_id)
+    def framework(self, framework_id: str) -> agents.AgentKind:
+        known = agents.by_id(framework_id)
         found = next((f for f in self.found if f.id == framework_id), None)
         if known is None or found is None or not found.installed:
             raise JobError(f"{framework_id} is not installed on {self.label}.")
@@ -720,7 +721,7 @@ class Runner:
         """Say ``agent`` is waiting for input, on which machine, and for how long once that's long."""
         if agent.waiting_since is None:
             agent.waiting_since = _now()
-            known = frameworks.by_id(agent.framework)
+            known = agents.by_id(agent.framework)
             kind = (known.herdr_kind if known else None) or agent.framework
             agent.waiting_note = self.host.blocker(agent.pane, kind)
         waited = datetime.now(UTC) - datetime.fromisoformat(agent.waiting_since)
@@ -852,7 +853,7 @@ class Runner:
 
     def _cli_of(self, kind: str | None) -> str | None:
         """The framework id for a herdr kind, which is how a pairing names an agent CLI."""
-        return next((k.id for k in frameworks.KNOWN if kind and k.herdr_kind == kind), kind)
+        return next((k.id for k in agents.KNOWN if kind and k.herdr_kind == kind), kind)
 
     def _within(self, paired: pairing.Pairing, job: dict[str, Any], fields: dict[str, Any]) -> None:
         """Refuse unless ``fields`` are ``job``'s and the pairing covers them."""

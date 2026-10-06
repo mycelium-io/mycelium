@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-from mycelium.integrations.cursor.install import (
+from mycelium.integrations.agents.cursor.workspace import (
     _AGENTS_SECTION_END,
     _AGENTS_SECTION_START,
     _CURSOR_RULE_FILENAME,

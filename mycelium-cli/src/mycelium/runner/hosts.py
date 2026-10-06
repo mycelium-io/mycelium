@@ -242,9 +242,9 @@ class HerdrHost:
         }
 
     def blocker(self, ref: str, kind: str) -> str | None:
-        from mycelium.integrations.herdr.kinds import blocked_hint
+        from mycelium.integrations.agents import of_kind
 
-        parts = [self.bridge.read_pane(ref, lines=_BLOCKER_LINES), blocked_hint(kind)]
+        parts = [self.bridge.read_pane(ref, lines=_BLOCKER_LINES), of_kind(kind).blocked_hint()]
         parts.append(f"Answer it in its pane: herdr agent focus {ref}")
         return "\n".join(p for p in parts if p)
 
@@ -420,7 +420,7 @@ class OmnigentHost:
         env: dict[str, str],  # noqa: ARG002 - a session takes no environment; the join code carries it
         intro: str,
     ) -> Started:
-        from mycelium.integrations.herdr.kinds import agent_args
+        from mycelium.integrations.agents import of_kind
 
         if kind not in self._agents:
             self.kinds()
@@ -438,7 +438,7 @@ class OmnigentHost:
         if (cwd / ".git").exists():
             # Its own worktree, so its own folder, so its own membership.
             body["git"] = {"branch_name": branch_for(room, handle)}
-        if args := agent_args(kind):
+        if args := of_kind(kind).launch_args():
             body["terminal_launch_args"] = list(args)
         session = self._post("/v1/sessions", body)
         ref = str(session.get("id") or session.get("session_id") or "")

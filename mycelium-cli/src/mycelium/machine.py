@@ -629,7 +629,7 @@ def _remember(answer: Literal["yes", "no"]) -> None:
 
 def _installed_kinds() -> set[str]:
     """The herdr kinds of the agent CLIs found on PATH here."""
-    from mycelium.runner.frameworks import KNOWN
+    from mycelium.integrations.agents import KNOWN
 
     return {
         k.herdr_kind for k in KNOWN if k.herdr_kind and any(shutil.which(b) for b in k.binaries)

@@ -61,7 +61,7 @@ Run all quality checks on the mycelium codebase. Auto-fix issues where possible.
    - `docs/demo-script.md` — live demo script
    - `README.md` — quickstart and overview
    - `mycelium-cli/src/mycelium/docs/` — built-in CLI docs
-   - The agent skill (`mycelium-cli/src/mycelium/skills/mycelium/SKILL.md`) and cursor's workspace assets (`mycelium-cli/src/mycelium/integrations/cursor/assets/`)
+   - The agent skill (`mycelium-cli/src/mycelium/skills/mycelium/SKILL.md`) and cursor's workspace assets (`mycelium-cli/src/mycelium/integrations/agents/cursor/assets/`)
 
 8. **Doctor sanity check** — If `mycelium-cli/src/mycelium/commands/doctor.py` was changed, run `mycelium doctor` to verify every check still passes against the current install:
    ```bash
