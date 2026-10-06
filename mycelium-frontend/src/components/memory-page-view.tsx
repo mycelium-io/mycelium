@@ -149,6 +149,7 @@ export function MemoryPageView({ roomName, memoryKey }: Props) {
             roomName={roomName}
             actor={principal}
             onDirtyChange={setDirty}
+            onNavigate={key => guard(() => onNavigate(key))}
             onSaved={() => {
               // revalidate() refreshes every SWR-backed room resource. The
               // memory and its expanded body are local state, so refetch those

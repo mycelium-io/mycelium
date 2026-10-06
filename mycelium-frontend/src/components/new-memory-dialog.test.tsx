@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -59,6 +59,64 @@ describe("<NewMemoryDialog />", () => {
   beforeEach(() => {
     createMemories.mockReset().mockResolvedValue(undefined);
     revalidate.mockReset();
+    localStorage.clear();
+  });
+
+  it("goes full screen, and Esc there leaves full screen rather than closing", async () => {
+    const { onOpenChange } = open();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.className).not.toContain("h-dvh");
+
+    await userEvent.click(screen.getByRole("button", { name: "Full screen" }));
+    expect(dialog.className).toContain("h-dvh");
+
+    await userEvent.keyboard("{Escape}");
+    expect(dialog.className).not.toContain("h-dvh");
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it("marks it embeddable when asked", async () => {
+    open();
+    await userEvent.type(screen.getByLabelText("Title"), "Glossary");
+    await userEvent.click(screen.getByRole("checkbox", { name: /expandable/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Save memory" }));
+    await waitFor(() => expect(createMemories).toHaveBeenCalled());
+    expect(createMemories.mock.calls[0][1][0]).toMatchObject({ meta: { expandable: true } });
+  });
+
+  it("saves on ⌘S as well as ⌘↵", async () => {
+    open();
+    await userEvent.type(screen.getByLabelText("Title"), "Quick note");
+    fireEvent.keyDown(window, { key: "s", metaKey: true });
+    await waitFor(() => expect(createMemories).toHaveBeenCalledOnce());
+  });
+
+  it("offers back what was written when it was closed without saving", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const first = render(<NewMemoryDialog open onOpenChange={vi.fn()} roomName="atlas" />);
+    try {
+      fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Retry policy" } });
+      fireEvent.change(screen.getByLabelText("Body"), { target: { value: "Back off exponentially." } });
+      await act(async () => {
+        vi.advanceTimersByTime(500);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    first.unmount();
+
+    open();
+    expect(screen.getByText(/You left unsaved changes here/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Restore" }));
+    expect(screen.getByLabelText("Title")).toHaveValue("Retry policy");
+    expect(screen.getByLabelText("Name")).toHaveValue("retry-policy");
+  });
+
+  it("keeps nothing after Cancel", async () => {
+    open();
+    await userEvent.type(screen.getByLabelText("Title"), "Throwaway");
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(localStorage.length).toBe(0);
   });
 
   it("names the memory from its title and shows where it will sit", async () => {
