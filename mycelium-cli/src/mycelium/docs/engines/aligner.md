@@ -25,7 +25,8 @@ mycelium engine invoke aligner "agree on the budget split and the cap" -r sprint
 The [conductor](#conductor) has another way to get agents to agree, the
 `concord` flow: everyone suggests and rates options, and code picks the one
 the least happy agent likes best, with a scorecard in the thread after each
-round. See [Helping members agree](#conductor-helping-members-agree).
+round. Its decision is saved to the room's memory rather than filed as tasks.
+See [Helping members agree](#conductor-helping-members-agree).
 
 ## How a negotiation goes
 

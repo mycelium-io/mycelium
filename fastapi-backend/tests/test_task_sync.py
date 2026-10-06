@@ -13,12 +13,18 @@ agent can pick up. A row carries an owner, a status and a lease; a line in a
 shared document carries none of them.
 """
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.services import l9, task_sync, tasks
-from app.services.filesystem import EPISODE_META, get_room_dir, read_memory_file
+from app.services.filesystem import (
+    EPISODE_META,
+    get_room_dir,
+    list_memory_files,
+    read_memory_file,
+)
 from app.services.l9_models import L9, Kind
 from app.services.task_compiler import CompiledTask
 from tests.fakes import FakeManager
@@ -26,7 +32,7 @@ from tests.fakes import FakeManager
 
 def _converged(assignments: dict, within: str | None = None) -> L9:
     """A ``commit:converged`` envelope carrying ``assignments`` (aligner output),
-    and the task it was reached in when one is named (a concord run's)."""
+    and the task it was reached in when one is named."""
     data: dict = {"assignments": assignments, "metrics": {"mpc": 0.82}}
     if within:
         data["within"] = within
@@ -246,3 +252,35 @@ class TestFiledUnderTheTask:
         )
         meta, _ = _row("r12", "work/send-the-offer")
         assert task_sync.PARENT_RELATION not in meta
+
+
+@pytest.mark.asyncio
+class TestOnlyTheAlignersAgreementIsCompiled:
+    """A conductor's converged commit carries no ``assignments``: its decision
+    is saved to memory, so the compile seam has nothing to file for it."""
+
+    async def test_a_converged_commit_without_assignments_compiles_nothing(self):
+        engine = task_sync.TaskSyncEngine(FakeManager())  # type: ignore[arg-type]
+        commit = l9.build_envelope(
+            kind=Kind.commit,
+            subkind="converged",
+            episode=l9.episode_urn("r13", "t1"),
+            recipients=["a", "b"],
+            topic=l9.topic_urn("r13"),
+            payload_type="outcome",
+            payload_data={"protocol": "concord", "memory": "context/decision/x"},
+        )
+        compile_ = AsyncMock()
+        with patch.object(task_sync.task_compiler, "compile_tasks", compile_):
+            engine.handle_converged("r13", commit)
+            await asyncio.sleep(0)
+        assert not engine._tasks
+        compile_.assert_not_called()
+        assert not list_memory_files(get_room_dir("r13"), prefix="work/")
+
+    async def test_the_aligners_agreement_still_compiles(self):
+        engine = task_sync.TaskSyncEngine(FakeManager())  # type: ignore[arg-type]
+        with patch.object(engine, "compile_and_write", AsyncMock(return_value=[])) as compiled:
+            engine.handle_converged("r14", _converged({"price": "15%"}))
+            await asyncio.gather(*engine._tasks)
+        compiled.assert_awaited_once()

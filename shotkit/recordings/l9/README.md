@@ -19,11 +19,14 @@ You need Docker, `uv`, `pnpm`, a full `ffmpeg` on your PATH (for mp4), and a
 model key in `~/.mycelium/.env` (the personas and the conductor's teammates
 run on it; the videos used `anthropic/claude-haiku-4-5`).
 
-1. **Start a recording stack.** It uses port 8000, so stop your everyday stack
-   first (`mycelium down`). Its data lives in `~/.mycelium-l9`, apart from your own.
+1. **Start a recording stack.** Its data lives in `~/.mycelium-l9`, apart from
+   your own. It runs on ports 8100 (the hub) and 46457 (SLIM), so it sits beside
+   a hub you already run on 8000, such as the Mac app's.
 
    ```bash
-   MYCELIUM_DATA_DIR=~/.mycelium-l9 docker compose -p mycelium-l9 \
+   MYCELIUM_REPO_ROOT=$PWD MYCELIUM_DATA_DIR=~/.mycelium-l9 \
+   MYCELIUM_BACKEND_PORT=8100 MYCELIUM_SLIM_PORT=46457 \
+   docker compose -p mycelium-l9 \
      -f mycelium-cli/src/mycelium/docker/compose.yml \
      -f mycelium-cli/src/mycelium/docker/compose-dev.yml \
      -f shotkit/recordings/l9/compose-l9.yml \
@@ -34,13 +37,15 @@ run on it; the videos used `anthropic/claude-haiku-4-5`).
 
    ```bash
    cd mycelium-frontend
-   MYCELIUM_INTERNAL_API_URL=http://localhost:8000 pnpm exec next dev -p 51268
+   MYCELIUM_INTERNAL_API_URL=http://localhost:8100 pnpm exec next dev -p 51268
    ```
 
-3. **Record.** From the repo root, with the app's address:
+3. **Record.** From the repo root, with the app's address and the recording
+   hub's. Always set `HUB`: setup deletes every `acme-*` room on the hub it is
+   pointed at.
 
    ```bash
-   export APP_URL=http://localhost:51268
+   export APP_URL=http://localhost:51268 HUB=http://localhost:8100
    bash shotkit/recordings/l9/record.sh concord acme-renewal-q4 acme-renewal-2027 acme-q4-renewal
    bash shotkit/recordings/l9/record.sh accord acme-handoff acme-renewal-handoff
    ```
@@ -55,26 +60,26 @@ run on it; the videos used `anthropic/claude-haiku-4-5`).
    ffmpeg -i .shotkit/l9-concord-acme-renewal-q4.mp4 -vf "fps=1/3,scale=720:-1,tile=4x4" -frames:v 1 sheet.png
    ```
 
-5. **Put it on the page.** Videos aren't committed. Drag the mp4 into a comment on
-   the pull request, and GitHub gives it a `github.com/user-attachments/assets/...`
-   address. Put that address in the `<video src>` in `docs/l9-integration.html`,
-   and update the step table under the video if the run went differently.
+5. **Put it on the page.** Copy the kept take to `docs/l9-concord.mp4` or
+   `docs/l9-accord.mp4` (committed through Git LFS, like every video under
+   `docs/`), take a poster frame for `docs/l9-<flow>-poster.jpg`, and update the
+   step table under the video in `docs/l9-integration.html` from the run's record.
 
 ## Why takes can fail, and why room names matter
 
 A take is a live run, so it can end without agreement ("Couldn't get everyone
-there" for Concord, a stopped run for Accord). Then the closing captions aren't
+there" for Concord, a run where nobody gave any points for Accord). Then the closing captions aren't
 true, and `record.sh` moves on to the next room name.
 
-With the same room name, the same prompts and a fresh backend, the model gives
-the same run word for word. So repeating a failed take under the same name
-fails the same way, and a name that worked before gives the same take again.
-`acme-renewal-q4` gave the Concord video (agreement on option F after two
-fixes) and `acme-handoff` gave the Accord video.
+With the same room name, the same prompts and a fresh backend, runs often come
+out alike, but not reliably word for word: repeated Accord tries on one name
+gave different points each time. `acme-renewal-2027` gave the current Concord
+video (agreement on option F after two fixes, where `acme-renewal-q4` ended
+without one) and `acme-handoff` gave the Accord video.
 
-The backend restart before each try matters for the same reason: persona
-teammates keep a model session per room and handle, so a room recreated under
-an old name would otherwise remember the last take.
+The backend restart before each try matters because persona teammates keep a
+model session per room and handle, so a room recreated under an old name would
+otherwise remember the last take.
 
 ## When you're done
 

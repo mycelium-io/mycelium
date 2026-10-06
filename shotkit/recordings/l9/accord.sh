@@ -16,29 +16,32 @@ node shotkit/bin/shot.mjs video "/room/${ROOM:-acme-renewal}" \
   --do "hold:2600" \
   --do "click:Board" \
   --do "click:[data-board-row=\"memory:work/acme-renewal-handoff\"]" \
-  --do "caption:One message starts Accord. The first person named leads." \
+  --do "caption:One message starts Accord. Nobody leads it." \
   --do "click:textarea[placeholder^=\"Reply in\"]" \
   --do "typekeys:@conductor accord @sales @success @finance @legal: Plan the Acme renewal handoff." \
   --do "press:Enter" \
-  --do "caption:Everyone says what the task is, what's out of scope, and what done means." \
+  --do "caption:Everyone labels what they think the task is: its aim, its limits, what's out of scope." \
   --do "speed:5" \
-  --do "wait:text=/merge → /" \
+  --do "wait:text=/Round 1: \\d+ new point/" \
+  --do "speed:1" \
+  --do "caption:Code merges the points and shows them. Everyone adds what's missing." \
+  --do "zoom:text=/Round 1: \\d+ new point/@1.4" \
+  --do "hold:3500" \
+  --do "zoomout" \
+  --do "speed:5" \
+  --do "wait:text=/Nobody added anything new|Points were still coming/" \
   --do "speed:1" \
   --do "hold:1500" \
-  --do "caption:The lead combines them into one shared summary." \
-  --do "speed:5" \
-  --do "wait:text=/on to lock/" \
-  --do "speed:1" \
-  --do "zoom:xpath=(//div[@data-testid='conductor-row'][contains(., 'on to lock')])[1]/preceding-sibling::div[1]@1.25" \
-  --do "hold:5000" \
-  --do "zoomout" \
-  --do "caption:Then everyone accepts it or objects. An objection sends it back to the lead." \
+  --do "caption:Then the words: a word two people mean differently is flagged, not settled." \
   --do "speed:5" \
   --do "wait:text=/accord (done|rejected)/" \
   --do "speed:1" \
   --do "hold:1500" \
-  --do "caption:Once nobody objects, the summary is agreed and work can start." \
-  --do "zoom:text=/accord (done|rejected)/@1.4" \
-  --do "hold:3800" \
+  --do "caption:Nobody leads and nobody votes. What doesn't line up becomes an open item." \
+  --do "zoom:text=/Shared summary: /@1.4" \
+  --do "hold:4000" \
   --do "zoomout" \
+  --do "caption:The shared summary is saved to the room's memory, next to the task." \
+  --do "click:context/summary/acme-renewal-handoff" \
+  --do "hold:5000" \
   --do "hold:2500"

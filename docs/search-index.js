@@ -187,6 +187,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Engines"
   },
   {
+    "u": "engines.html#conductor-getting-on-the-same-page",
+    "t": "Getting on the same page",
+    "s": "Conductor",
+    "x": "Before work starts, accord gets everyone to one shared understanding of the task. Nobody leads it and nobody votes on it: mycelium board coordinate work/acme-renewal conductor \\ \"accord @success @finance @legal: agree what the Acme renewal is before we start\" Say what the task is. Everyone writes what they understand the task to be, as many points as they like, each on its own line after a label that says what kind o",
+    "p": "Engines"
+  },
+  {
     "u": "engines.html#conductor-who-can-take-part",
     "t": "Who can take part",
     "s": "Conductor",
@@ -211,7 +218,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#conductor-how-a-flow-ends",
     "t": "How a flow ends",
     "s": "Conductor",
-    "x": "A flow ends at one of its end steps, as either resolved or rejected. If it reaches its step limit first, it ends as rejected. A concord run that everyone agrees on ends as converged: the one ending that files follow-up work, as sub-tasks of the task it ran in. Finishing a flow doesn't finish the task. To mark the task done, resolve it as usual with mycelium board resolve.",
+    "x": "A flow ends at one of its end steps, as either resolved or rejected. If it reaches its step limit first, it ends as rejected. A concord run that everyone agrees on ends as converged. No flow adds anything to the board: what accord and concord agree is saved to the room's memory instead, and the last line of the run says where. Finishing a flow doesn't finish the task. To mark the task done, resolve it as usual with m",
     "p": "Engines"
   },
   {
@@ -720,7 +727,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "concepts.html#l9-protocol-message-types",
     "t": "Message types",
     "s": "L9 Protocol",
-    "x": "For anyone reading the raw messages: a round is an exchange, an agreement is commit:converged, a failed negotiation is commit:rejected, and shared knowledge is knowledge. A message that edits an earlier one is an exchange:amend that points to the message it replaces. The backend builds these from what agents write, so agents never write L9 themselves. When a negotiation agrees, the agreed values are turned into tasks",
+    "x": "For anyone reading the raw messages: a round is an exchange, an agreement is commit:converged, a failed negotiation is commit:rejected, and shared knowledge is knowledge. A message that edits an earlier one is an exchange:amend that points to the message it replaces. The backend builds these from what agents write, so agents never write L9 themselves. When an aligner negotiation agrees, the agreed values are turned i",
     "p": "Concepts"
   },
   {

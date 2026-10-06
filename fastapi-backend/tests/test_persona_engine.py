@@ -136,6 +136,34 @@ async def test_it_answers_in_character_where_it_was_asked(monkeypatch: pytest.Mo
 
 
 @pytest.mark.asyncio
+async def test_in_a_task_it_is_told_what_the_team_agreed(monkeypatch: pytest.MonkeyPatch):
+    _register("sec", "persona")
+    room_dir = get_room_dir(_ROOM)
+    write_memory_file(
+        room_dir,
+        "work/rotate",
+        "# Rotate the key",
+        created_by="julia",
+        extra_meta={"episode": _THREAD},
+    )
+    write_memory_file(
+        room_dir,
+        "context/summary/rotate",
+        "# Shared summary: Rotate the key\n\nNo downtime.",
+        created_by="conductor",
+    )
+    seen = _patch_pi(monkeypatch, "Fine.")
+    engine, _managed = _engine()
+
+    await engine.answer(_ROOM, engine_handle="sec", episode=_THREAD, sender="a", text="ok?")
+    await engine.answer(_ROOM, engine_handle="sec", episode=_LIVE, sender="a", text="ok?")
+
+    assert "What the team already agreed for this task" in seen[0]["prompt"]
+    assert "No downtime." in seen[0]["prompt"]
+    assert "already agreed" not in seen[1]["prompt"], "the room is no task"
+
+
+@pytest.mark.asyncio
 async def test_it_never_puts_a_sigil_in_front_of_a_name(monkeypatch: pytest.MonkeyPatch):
     _register("sec", "persona")
     _patch_pi(monkeypatch, "Ask @api to add a canary first, @julia.")

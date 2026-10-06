@@ -39,6 +39,8 @@ export type ConductorLine =
     }
   | { event: "edge"; step: string; who: string; stance: string | null; next: string }
   | { event: "select"; step: string; next: string | null; select: PickRecord }
+  | { event: "tally"; step: string; next: string | null; tally: TallyRecord }
+  | { event: "lock"; step: string; next: string | null; lock: LockRecord }
   | {
       event: "close";
       protocol: string;
@@ -48,7 +50,56 @@ export type ConductorLine =
       /** The option a run that picked ended on. */
       pick?: string;
       text?: string;
+      /** The memory the run saved what it settled to (a shared summary, a
+       *  decision); `null` when saving it failed, absent when nothing was saved. */
+      memory?: string | null;
     };
+
+/** A count the conductor made in code, asking nobody: of the points members
+ *  have given so far, or of the words they gave different meanings to. */
+export type TallyRecord =
+  | {
+      of: "points";
+      round: number;
+      max_rounds: number;
+      outcome: "grew" | "settled" | "empty";
+      /** Points this round added. */
+      added: number;
+      /** Points in all. */
+      points: number;
+      /** The rounds ran out while points were still coming. */
+      capped: boolean;
+    }
+  | {
+      of: "terms";
+      round: number;
+      max_rounds: number;
+      outcome: "contested" | "clear";
+      /** Words that were given a meaning. */
+      words: number;
+      /** Words used in different senses. */
+      contested: string[];
+      /** Who is asked to restate them. */
+      asked?: string[];
+    };
+
+/** The shared summary the points were merged into, and where it was saved. */
+export interface LockRecord {
+  outcome: "locked" | "empty";
+  memory: string | null;
+  saved: boolean;
+  points: number;
+  /** Points stated by more than one member. */
+  shared: number;
+  /** Words still used in different senses. */
+  contested: number;
+  /** How done reads, as checks. */
+  checks: number;
+  /** Open items: everything flagged rather than settled. */
+  flagged: number;
+  /** Members who gave nothing. */
+  quiet: string[];
+}
 
 /** One pick among the options, as a select step records it: the ratings
  *  table, the pick, and who is short of the bar. */
@@ -73,7 +124,7 @@ export function isSuccess(outcome: string): boolean {
   return outcome === "resolved" || outcome === "converged";
 }
 
-const EVENTS = new Set(["open", "turn", "edge", "select", "close"]);
+const EVENTS = new Set(["open", "turn", "edge", "select", "tally", "lock", "close"]);
 
 function asLine(value: unknown): ConductorLine | null {
   if (!value || typeof value !== "object") return null;
@@ -129,16 +180,60 @@ export function describeConductorLine(line: ConductorLine): string {
     }
     case "select":
       return `${line.step}: ${pickSummary(line.select)}`;
-    case "close":
+    case "tally":
+      return tallySummary(line.tally);
+    case "lock":
+      return lockSummary(line.lock);
+    case "close": {
+      let said: string;
       if (line.pick) {
-        return line.outcome === "converged"
-          ? `Everyone's on board: going with ${line.pick}`
-          : `Couldn't get everyone there · best was ${line.pick}`;
+        said =
+          line.outcome === "converged"
+            ? `Everyone's on board: going with ${line.pick}`
+            : `Couldn't get everyone there · best was ${line.pick}`;
+      } else {
+        said = isSuccess(line.outcome)
+          ? `${line.protocol} done · ${line.steps} step${line.steps === 1 ? "" : "s"}`
+          : `${line.protocol} ${line.outcome} · ${line.reason}`;
       }
-      return isSuccess(line.outcome)
-        ? `${line.protocol} done · ${line.steps} step${line.steps === 1 ? "" : "s"}`
-        : `${line.protocol} ${line.outcome} · ${line.reason}`;
+      if (line.memory) return `${said} · saved as ${line.memory}`;
+      if (line.memory === null) return `${said} · could not be saved`;
+      return said;
+    }
   }
+}
+
+function count(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** Where a count stands, in plain words: "Round 1: 4 new points, 4 in all". */
+export function tallySummary(tally: TallyRecord): string {
+  if (tally.of === "points") {
+    if (tally.outcome === "empty") return "Nobody gave any points";
+    if (tally.capped) return `Points were still coming when the rounds ran out: ${tally.points} in all`;
+    if (tally.outcome === "settled") return `Nobody added anything new: ${count(tally.points, "point")}`;
+    return `Round ${tally.round}: ${count(tally.added, "new point")}, ${tally.points} in all`;
+  }
+  const words = tally.contested.join(", ");
+  if (tally.outcome === "contested") {
+    const asked = tally.asked?.length ? `. Asking ${tally.asked.join(", ")} again` : "";
+    return `Words used in different senses: ${words}${asked}`;
+  }
+  return tally.contested.length
+    ? `Still used in different senses: ${words}`
+    : "No word used in different senses";
+}
+
+/** What the shared summary holds: "5 points, 1 stated by more than one person, …". */
+export function lockSummary(lock: LockRecord): string {
+  if (lock.outcome === "empty") return "Nothing to put in a shared summary";
+  const parts = [count(lock.points, "point"), `${lock.shared} stated by more than one person`];
+  if (lock.contested) parts.push(count(lock.contested, "word used in different senses", "words used in different senses"));
+  if (lock.checks) parts.push(count(lock.checks, "check"));
+  if (lock.flagged) parts.push(count(lock.flagged, "open item"));
+  const quiet = lock.quiet.length ? ` · no answer from ${lock.quiet.join(", ")}` : "";
+  return `Shared summary: ${parts.join(", ")}${quiet}`;
 }
 
 /** Where a pick stands, in plain words: "B, everyone at 70+" or "B, @finance at 55". */

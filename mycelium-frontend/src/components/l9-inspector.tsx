@@ -83,8 +83,24 @@ function conductorSummary(line: Record<string, unknown>): string | null {
       const who = pick.least_happy ? ` (${pick.least_happy})` : "";
       return `${chose}${lowest}${who} → ${String(line.next ?? pick.outcome ?? "?")}`;
     }
+    case "tally": {
+      const tally = asRecord(line.tally);
+      const round = tally.round != null ? ` · round ${tally.round} of ${String(tally.max_rounds ?? "?")}` : "";
+      const counted =
+        tally.of === "terms"
+          ? Array.isArray(tally.contested) && tally.contested.length
+            ? `different senses: ${tally.contested.join(", ")}`
+            : "no word used in different senses"
+          : `${String(tally.points ?? 0)} points, ${String(tally.added ?? 0)} new`;
+      return `${step}: ${counted}${round} → ${String(line.next ?? tally.outcome ?? "?")}`;
+    }
+    case "lock": {
+      const lock = asRecord(line.lock);
+      const saved = lock.memory ? ` · saved as ${String(lock.memory)}` : lock.outcome === "locked" ? " · not saved" : "";
+      return `shared summary: ${String(lock.points ?? 0)} points${saved} → ${String(line.next ?? lock.outcome ?? "?")}`;
+    }
     case "close":
-      return `${String(line.outcome ?? "done")}${line.pick ? ` on ${line.pick}` : ""} after ${String(line.steps ?? "?")} steps`;
+      return `${String(line.outcome ?? "done")}${line.pick ? ` on ${line.pick}` : ""} after ${String(line.steps ?? "?")} steps${line.memory ? ` · saved as ${String(line.memory)}` : ""}`;
     default:
       return null;
   }

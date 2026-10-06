@@ -208,6 +208,15 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
         if len(mine) > TASKS_SHOWN:
             lines.append(f"         and {len(mine) - TASKS_SHOWN} more")
     lines.append(f"Board:   {tally}")
+    # What the team agreed for the task it's about, so it works to that.
+    task_key = wake.get("key") if reason == "assigned" else (where[0] if where else None)
+    if task_key:
+        from app.services import agreed
+
+        pointers = agreed.pointer(room, str(task_key))
+        if pointers:
+            lines.append(f"Agreed:  {pointers[0]}")
+            lines.extend(f"         {p}" for p in pointers[1:])
 
     # The messages that asked for it, newest kept, the latest given the most room.
     shown = asked[-SHOWN:]

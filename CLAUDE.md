@@ -319,13 +319,29 @@ is no litellm dependency.
   rating counted as 0 for ranking and never recorded as 0; the least happy
   rater is `to: bottleneck` for a fix, bounded by `max_repairs`, and the
   step branches `feasible` / `infeasible` / `stuck`. A step's `require`
-  (stance or scores) re-asks a reply that lacks it once; an unmarked stance
-  after that counts as reject. **A run ending on a pick's `feasible` edge is
-  the one conductor path that commits `converged`**, with the decision as
-  `assignments` and the task as `within`, so `task_sync` compiles rows filed
-  `part-of` that task; every other flow ends `resolved` / `rejected` and
-  compiles nothing. Every post it makes carries a structured line in
-  its payload under `conductor` (`open`, `turn`, `edge`, `select`, `close`) beside the
+  (stance, scores or pieces) re-asks a reply that lacks it once; an unmarked
+  stance after that counts as reject, and an unlabelled reply is kept whole as
+  one `statement`. **A run ending on a pick's `feasible` edge is the one
+  conductor path that commits `converged`**; every other flow ends
+  `resolved` / `rejected`. **No conductor run files board rows**: the commit
+  carries no `assignments` (and `task_sync` skips a converged commit without
+  them); a converged pick's decision is saved to `context/decision/<task>`
+  instead (`app/services/agreed.py`), and the commit's `memory` points at it.
+  **`accord` builds a shared summary in code, with no lead and no vote:**
+  members label their own text with markers (`[[mycelium: constraint]] …`,
+  `term=<word>`, `check covers=p1,p2`; `markers.labelled`, lifted onto the
+  payload as `pieces`), `collect: pieces` merges them in `app/services/frame.py`
+  (equal text, or embedding similarity when the hub has a model; support and
+  authors kept; `single` / `conflict` / `ambiguous` / `unchecked` /
+  `quiet_member` flagged, never resolved), `kind: tally` steps branch on the
+  frame (`of: points`: grew / settled / empty; `of: terms`: contested / clear,
+  re-asking `to: contested` once), and `kind: lock` saves the result to
+  `context/summary/<task>` (`relates-to` the task; structured in frontmatter,
+  readable in the body). Later work in the task is pointed at what was saved:
+  `{agreed}` in a flow's prompts, an `Agreed:` line in the wake digest, and
+  persona and worker turn prompts (a child row reads its nearest ancestor's).
+  Every post it makes carries a structured line in its payload under
+  `conductor` (`open`, `turn`, `edge`, `select`, `tally`, `lock`, `close`) beside the
   prose its members read; the history read copies it into the message's
   `metadata`, and the app (`task/conductor-row.tsx`) and `swarm`'s view draw
   the line, keeping the prompt behind a toggle. A run ending `resolved` is a
@@ -691,7 +707,9 @@ is no litellm dependency.
   recorded, in the background: the rows land just after the consensus is
   announced, and each raises its own `filed` notice, which is what wakes the
   agent it is for. A converged commit that names a task in `within` files its
-  rows `part-of` it (and loose if that row is gone). The model still writes `- [ ] text @handle` lines because
+  rows `part-of` it (and loose if that row is gone). Only a commit carrying
+  `assignments` (the aligner's) is compiled; a conductor's agreement is saved
+  to memory instead. The model still writes `- [ ] text @handle` lines because
   that is the shape it is good at; parsing them into rows is the compiler's job
   and the line format never leaves it. A task carries `assignee`, never `owner`
   — `assignee` is who the task is *for*, the `assignment` field is who is

@@ -22,9 +22,16 @@ mycelium respond --room design --handle me \
 
 The same marker carries ratings when a flow asks for them: one capital letter
 per option and a whole number from 0 to 100, as in `[[mycelium: A=82 B=41]]`.
-Confidence is 0.0 to 1.0; a rating is 0 to 100. Two of L9's protocols run as
-[conductor](#conductor) flows: `accord` (get on the same page before work
-starts) and `concord` (help members agree, see
+Confidence is 0.0 to 1.0; a rating is 0 to 100. A marker can also label the
+text after it, up to the next marker or a blank line, so code can tell what
+kind of thing it is: a point (`[[mycelium: constraint]] At most 15% off.`),
+what a word means (`[[mycelium: term=renewal]] A new 12-month term.`) or how
+points would be checked (`[[mycelium: check covers=p1,p2]] Finance signs.`).
+The label is removed and the text stays where it was written. Two of L9's
+protocols run as [conductor](#conductor) flows: `accord` (get on the same
+page before work starts, see
+[Getting on the same page](#conductor-getting-on-the-same-page)) and
+`concord` (help members agree, see
 [Helping members agree](#conductor-helping-members-agree)).
 
 An agent accepting only to move things along says so in the reply:
@@ -92,6 +99,7 @@ For anyone reading the raw messages: a round is an `exchange`, an agreement is
 `commit:converged`, a failed negotiation is `commit:rejected`, and shared
 knowledge is `knowledge`. A message that edits an earlier one is an
 `exchange:amend` that points to the message it replaces. The backend builds
-these from what agents write, so agents never write L9 themselves. When a
-negotiation agrees, the agreed values are turned into tasks under `work/` and
-saved as a `knowledge` memory.
+these from what agents write, so agents never write L9 themselves. When an
+aligner negotiation agrees, the agreed values are turned into tasks under
+`work/` and saved as a `knowledge` memory. A conductor flow adds no tasks:
+what `accord` and `concord` agree is saved under `context/` instead.

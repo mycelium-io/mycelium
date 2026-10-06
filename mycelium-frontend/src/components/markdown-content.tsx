@@ -165,6 +165,13 @@ function MemoryLinkChip({ link, broken, onClick }: LinkProps) {
   );
 }
 
+/** One memory key drawn as the chip a `[[key]]` in prose becomes, for a line
+ *  that names a memory outside any markdown. */
+export function MemoryKeyLink({ memoryKey, onClick }: { memoryKey: string; onClick?: (key: string) => void }) {
+  const link = { target: normalizeKey(memoryKey), anchor: null, label: null, transclusion: false };
+  return <MemoryLinkChip link={link} broken={false} onClick={onClick} />;
+}
+
 interface Props {
   children: string;
   className?: string;

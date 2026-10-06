@@ -1026,8 +1026,9 @@ def board_coordinate(
     The engine opens a **separate** negotiation episode to run in — a task's
     thread is a container that outlives what happens inside it, so an exchange
     with a frozen roster is not the same conversation as the row's. What comes
-    back to the row is the outcome: the work the agreement compiles into, and
-    the thread state the board folds onto it.
+    back to the row is the outcome: the work an aligner agreement compiles
+    into, or the memory a conductor flow saves what it agreed to, and the
+    thread state the board folds onto it.
     """
     from mycelium.client import typed_client
     from mycelium.commands.agent import _load_manifest_remote

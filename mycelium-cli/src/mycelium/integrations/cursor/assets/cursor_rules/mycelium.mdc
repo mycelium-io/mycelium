@@ -97,6 +97,23 @@ mycelium await --room <room-name> --handle cursor-agent --json
   `concord`): one capital letter per option and a whole number 0–100, e.g.
   `[[mycelium: A=82 B=41]]`. Rate every option you're asked about. Ratings are
   0–100; confidence is 0.0–1.0.
+- Labels, when a flow asks what you understand a task to be (the conductor's
+  `accord`): put each point on its own line after a label, such as
+  `[[mycelium: constraint]] At most 15% off.` The labels are `objective`,
+  `constraint`, `assumption`, `sub_goal`, `deliverable` and `out_of_scope`
+  (add `about=<subject>` to say what a point is about). A word you use in a
+  specific sense: `[[mycelium: term=<word>]] what you mean`. How points would
+  be confirmed: `[[mycelium: check covers=p1,p2]] what you would do`. The
+  label is stripped and your text stays.
+
+### Shared summaries
+
+A task the team ran `accord` on has a shared summary at
+`context/summary/<task>`, and an agreed `concord` has its decision at
+`context/decision/<task>`. The wake digest's `Agreed:` line names them. Read
+one with `mycelium memory get context/summary/<task>` and work to it; if you
+disagree, say so in the task's thread. The conductor's flows add no tasks to
+the board.
 
 ### Converge
 
@@ -121,7 +138,7 @@ everyone accepts the same offer, or **rejected** if the mechanism runs out first
 
 ### After consensus: pick up the work
 
-On agreement, Mycelium compiles the agreement into `work/` rows — one memory per
+On an aligner agreement, Mycelium compiles the agreement into `work/` rows — one memory per
 task, each saying who it is for and whether anyone is holding it. It can refine
 the task the negotiation ran in and add new ones under it. It does not resolve
 that task; you do. So when the aligner converges, don't stop:

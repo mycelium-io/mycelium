@@ -161,10 +161,10 @@ describe("laying out an agreement flow", () => {
   it("draws the pick as a pick, and the fix as the least happy member's", () => {
     const layout = layoutFlow(concord);
     const node = (id: string) => layout.nodes.find((n) => n.id === id)!;
-    expect(node("pick").select).toBe(true);
+    expect(node("pick").code).toBe(true);
     expect(node("pick").what).toBe("picks · bar 70");
     expect(node("pick").who).toBeNull();
-    expect(node("score").select).toBe(false);
+    expect(node("score").code).toBe(false);
     expect(node("repair").what).toBe("asks the least happy");
     expect(node("repair").who).toBeNull();
     expect(node("agreed").end).toBe("converged");
@@ -193,5 +193,100 @@ describe("laying out an agreement flow", () => {
     ];
     expect(stepStates(concord, run, null, "converged").get("agreed")).toBe("reached");
     expect([...takenEdges(run)]).toEqual(["propose→score", "score→pick", "pick→agreed"]);
+  });
+});
+
+// The accord built-in as `protocols.spec_of` hands it over (prompts left
+// out): two counts and the shared summary, all made in code, and a restating
+// step put to whoever used a word in a different sense.
+const accord: EpisodeFlow = {
+  name: "accord",
+  roles: [],
+  bound: {},
+  cast: ["a", "b", "c"],
+  max_steps: 8,
+  steps: [
+    { id: "frame", to: "all", collect: "pieces", require: "pieces", next: "added" },
+    { id: "added", kind: "tally", of: "points", max_rounds: 3, next: { grew: "more", settled: "ground", empty: "nothing" } },
+    { id: "more", to: "all", collect: "pieces", next: "added" },
+    { id: "ground", to: "all", collect: "pieces", next: "words" },
+    { id: "words", kind: "tally", of: "terms", max_rounds: 2, next: { contested: "restate", clear: "lock" } },
+    { id: "restate", to: "contested", collect: "pieces", next: "words" },
+    { id: "lock", kind: "lock", next: { locked: "locked", empty: "nothing" } },
+    { id: "locked", end: "resolved" },
+    { id: "nothing", end: "rejected" },
+  ],
+};
+
+describe("laying out a shared-summary flow", () => {
+  const layout = layoutFlow(accord);
+  const node = (id: string) => layout.nodes.find((n) => n.id === id)!;
+  const edge = (from: string, to: string) => layout.edges.find((e) => e.from === from && e.to === to);
+
+  it("draws the counts and the summary as made in code, asking nobody", () => {
+    expect(["added", "words", "lock"].map((id) => node(id).code)).toEqual([true, true, true]);
+    expect(["frame", "more", "restate", "locked"].map((id) => node(id).code)).toEqual([false, false, false, false]);
+    expect(node("added").what).toBe("counts new points · up to 3 rounds");
+    expect(node("words").what).toBe("checks the words");
+    expect(node("lock").what).toBe("saves the shared summary");
+    expect(node("added").who).toBeNull();
+    expect(node("frame").who).toBe("a, b, c");
+  });
+
+  it("puts the restating to those who differ, named only at run time", () => {
+    expect(node("restate").what).toBe("asks those who differ");
+    expect(node("restate").who).toBeNull();
+    expect(stepWho({ id: "x", to: "contested" }, accord)).toBeNull();
+  });
+
+  it("labels the ways out of each count and of the summary", () => {
+    expect(edge("added", "more")?.label).toBe("grew");
+    expect(edge("added", "ground")?.label).toBe("settled");
+    expect(edge("added", "nothing")?.label).toBe("empty");
+    expect(edge("words", "restate")?.label).toBe("contested");
+    expect(edge("words", "lock")?.label).toBe("clear");
+    expect(edge("lock", "locked")?.label).toBe("locked");
+    expect(edge("lock", "nothing")?.label).toBe("empty");
+    expect(edge("more", "added")?.back).toBe(true);
+    expect(edge("restate", "words")?.back).toBe(true);
+  });
+
+  it("reaches the resolved end through the counts and the summary", () => {
+    const run: FlowTraceEntry[] = [
+      { step: "frame", turn: 1, asked: ["a", "b", "c"], next: "added" },
+      {
+        step: "added",
+        turn: 1,
+        tally: { of: "points", round: 1, max_rounds: 3, outcome: "settled", added: 0, points: 4, capped: false },
+        next: "ground",
+      },
+      { step: "ground", turn: 2, asked: ["a", "b", "c"], next: "words" },
+      {
+        step: "words",
+        turn: 2,
+        tally: { of: "terms", round: 1, max_rounds: 2, outcome: "clear", words: 1, contested: [] },
+        next: "lock",
+      },
+      {
+        step: "lock",
+        turn: 2,
+        lock: {
+          outcome: "locked",
+          memory: "context/summary/x",
+          saved: true,
+          points: 4,
+          shared: 2,
+          contested: 0,
+          checks: 0,
+          flagged: 2,
+          quiet: [],
+        },
+        next: "locked",
+      },
+    ];
+    const states = stepStates(accord, run, null, "resolved");
+    expect(states.get("locked")).toBe("reached");
+    expect(states.get("more")).toBe("untouched");
+    expect([...takenEdges(run)]).toEqual(["frame→added", "added→ground", "ground→words", "words→lock", "lock→locked"]);
   });
 });

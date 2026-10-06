@@ -537,6 +537,14 @@ function handoff(line: ConductorLine, me: string): string | null {
       return null;
     case "select":
       return line.select.pick ? `picked option ${line.select.pick}` : "no option cleared the bar";
+    case "tally":
+      if (line.tally.of === "points") {
+        if (line.tally.outcome === "empty") return "nobody gave any points";
+        return line.tally.outcome === "grew" ? `${line.tally.points} points so far` : "nobody added anything new";
+      }
+      return line.tally.outcome === "contested" ? "a word used in different senses" : null;
+    case "lock":
+      return line.lock.outcome === "locked" ? "shared summary written" : "nothing to put in a shared summary";
     case "close":
       return isSuccess(line.outcome) ? "done" : `ended · ${line.outcome}`;
   }

@@ -11,6 +11,7 @@ import type { MessageSearchResponse } from "@/lib/message-search";
 import { encodeMemoryKeyPath } from "@/lib/memory-routes";
 import type { RoomStatus } from "@/lib/board/upstream";
 import type { RoomFolders } from "@/lib/room-folders";
+import type { LockRecord, TallyRecord } from "@/lib/conductor-line";
 
 /**
  * Attach to a fetch `.catch` to surface network failures in the browser console.
@@ -1348,23 +1349,33 @@ export interface EpisodeSummary {
 /** One step of an episode's interaction flow, as the record carries it. */
 export interface FlowStep {
   id: string;
-  /** `select` picks among the options by the ratings given, asking nobody.
-   *  Absent means an ordinary step that asks someone. */
-  kind?: "ask" | "select";
-  /** A role, or each / all / workers / bottleneck. Absent on an end or select step. */
+  /** `select` picks among the options by the ratings given, `tally` counts
+   *  the points or the words given so far, `lock` merges the points into a
+   *  shared summary and saves it; none of the three asks anybody. Absent
+   *  means an ordinary step that asks someone. */
+  kind?: "ask" | "select" | "tally" | "lock";
+  /** A role, or each / all / workers / bottleneck / contested (everyone who
+   *  gave a meaning to a word used in different senses). Absent on an end or
+   *  a step that asks nobody. */
   to?: string | null;
   prompt?: string;
   wait?: "reply" | "none";
   rounds?: number;
-  /** What the replies add to the run: suggestions, or ratings of them. */
-  collect?: "options" | "scores" | null;
+  /** What the replies add to the run: suggestions, ratings of them, or
+   *  pieces of the shared summary (points and the meanings of words). */
+  collect?: "options" | "scores" | "pieces" | null;
   /** What every reply must carry; a reply without it is asked once more. */
-  require?: "stance" | "scores" | null;
+  require?: "stance" | "scores" | "pieces" | null;
   /** A select step's bar, 0-1, and how many fixes it sends for. */
   threshold?: number | null;
   max_repairs?: number | null;
+  /** What a tally step counts, and how many times it may send back for more. */
+  of?: "points" | "terms" | null;
+  max_rounds?: number | null;
   /** One step id, or a branch by stance (accept / reject / silent / default),
-   *  or, on a select, by how the pick went (feasible / infeasible / stuck). */
+   *  or, on a select, by how the pick went (feasible / infeasible / stuck),
+   *  on a tally of points by grew / settled / empty, on a tally of terms by
+   *  contested / clear, and on a lock by locked / empty. */
   next?: string | Record<string, string> | null;
   /** `converged` is an agreement a select step certified. */
   end?: "resolved" | "rejected" | "converged" | null;
@@ -1399,6 +1410,10 @@ export interface FlowTraceEntry {
     missing: string[];
     least_happy: string | null;
   };
+  /** A tally step's count, as its conductor line carries it. */
+  tally?: TallyRecord;
+  /** A lock step's shared summary, as its conductor line carries it. */
+  lock?: LockRecord;
   /** A second asking of the members who replied without what the step requires. */
   again?: boolean;
   next: string;

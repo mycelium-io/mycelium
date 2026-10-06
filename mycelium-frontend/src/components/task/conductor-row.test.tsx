@@ -93,4 +93,103 @@ describe("ConductorRow", () => {
     expect(row).toContain("✓ Everyone's on board: going with C");
     expect(row).toContain("15% off for two years");
   });
+
+  it("draws a count of points and of words as one plain line", () => {
+    const { rerender } = render(
+      <ConductorRow
+        line={{
+          event: "tally",
+          step: "added",
+          next: "ground",
+          tally: { of: "points", round: 2, max_rounds: 3, outcome: "settled", added: 0, points: 5, capped: false },
+        }}
+        text="Nobody added anything new."
+      />,
+    );
+    expect(screen.getByTestId("conductor-row").textContent).toBe("added: Nobody added anything new: 5 points");
+    expect(screen.queryByRole("button")).toBeNull();
+
+    rerender(
+      <ConductorRow
+        line={{
+          event: "tally",
+          step: "words",
+          next: "restate",
+          tally: {
+            of: "terms",
+            round: 1,
+            max_rounds: 2,
+            outcome: "contested",
+            words: 2,
+            contested: ["renewal"],
+            asked: ["a", "b"],
+          },
+        }}
+        text="…"
+      />,
+    );
+    expect(screen.getByTestId("conductor-row").textContent).toContain(
+      "Words used in different senses: renewal. Asking a, b again",
+    );
+  });
+
+  const lock = {
+    outcome: "locked" as const,
+    memory: "context/summary/acme-renewal",
+    saved: true,
+    points: 5,
+    shared: 1,
+    contested: 0,
+    checks: 1,
+    flagged: 4,
+    quiet: [],
+  };
+
+  it("draws the shared summary with a link that opens the memory it was saved to", () => {
+    const opened: string[] = [];
+    render(
+      <ConductorRow
+        line={{ event: "lock", step: "lock", next: "locked", lock }}
+        text="…"
+        onOpenMemory={(key) => opened.push(key)}
+      />,
+    );
+    const row = screen.getByTestId("conductor-row").textContent;
+    expect(row).toContain("Shared summary: 5 points, 1 stated by more than one person, 1 check, 4 open items");
+    fireEvent.click(screen.getByRole("button", { name: "context/summary/acme-renewal" }));
+    expect(opened).toEqual(["context/summary/acme-renewal"]);
+  });
+
+  it("says a shared summary that could not be saved, and draws an empty one without a link", () => {
+    const { rerender } = render(
+      <ConductorRow line={{ event: "lock", step: "lock", next: "locked", lock: { ...lock, memory: null, saved: false } }} text="…" />,
+    );
+    expect(screen.getByTestId("conductor-row").textContent).toContain("could not be saved");
+
+    rerender(
+      <ConductorRow
+        line={{ event: "lock", step: "lock", next: "nothing", lock: { ...lock, outcome: "empty", memory: null, saved: false, points: 0 } }}
+        text="…"
+      />,
+    );
+    expect(screen.getByTestId("conductor-row").textContent).toBe("Nothing to put in a shared summary");
+  });
+
+  it("links the end of a run to what it saved, or says it could not be saved", () => {
+    const close = { event: "close" as const, protocol: "accord", outcome: "resolved", steps: 4, reason: "reached `locked`" };
+    const opened: string[] = [];
+    const { rerender } = render(
+      <ConductorRow line={{ ...close, memory: "context/summary/acme-renewal" }} text="✓" onOpenMemory={(k) => opened.push(k)} />,
+    );
+    expect(screen.getByTestId("conductor-row").textContent).toContain("accord done");
+    fireEvent.click(screen.getByRole("button", { name: "context/summary/acme-renewal" }));
+    expect(opened).toEqual(["context/summary/acme-renewal"]);
+
+    rerender(<ConductorRow line={{ ...close, memory: null }} text="✓" />);
+    expect(screen.getByTestId("conductor-row").textContent).toContain("could not be saved");
+
+    // A run from before anything was saved carries no memory, and says nothing about one.
+    rerender(<ConductorRow line={close} text="✓" />);
+    expect(screen.getByTestId("conductor-row").textContent).not.toContain("saved");
+  });
 });

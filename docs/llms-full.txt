@@ -344,7 +344,8 @@ mycelium engine invoke aligner "agree on the budget split and the cap" -r sprint
 The [conductor](#conductor) has another way to get agents to agree, the
 `concord` flow: everyone suggests and rates options, and code picks the one
 the least happy agent likes best, with a scorecard in the thread after each
-round. See [Helping members agree](#conductor-helping-members-agree).
+round. Its decision is saved to the room's memory rather than filed as tasks.
+See [Helping members agree](#conductor-helping-members-agree).
 
 ## How a negotiation goes
 
@@ -575,7 +576,7 @@ To see the flows a room can run, use
 | `swarm` | lead | Each member says which part of the task it would take. Then the lead splits the task into one child task per member. [`mycelium swarm`](#swarm) starts with this. |
 | `review` | author, reviewer | The author does the work. The reviewer checks it and approves it or sends findings back, until it's approved. |
 | `concord` | none | Help them agree. Everyone suggests an option and rates them all, and the pick is the option the least happy member likes best. See [Helping members agree](#conductor-helping-members-agree). |
-| `accord` | lead | Get on the same page before work starts. Everyone says what the task is, what's out of scope and what done means; the lead writes one shared summary; it's locked once nobody objects. |
+| `accord` | none | Get on the same page before work starts. Everyone says what the task is, what's out of scope and what done means, and code merges it into one shared summary that's saved to the room's memory. See [Getting on the same page](#conductor-getting-on-the-same-page). |
 
 Members approve or reject by ending their reply with
 `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`.
@@ -605,13 +606,68 @@ mycelium board coordinate decisions/double-charge-refunds conductor \
 After each rating round the thread shows a scorecard: the options, everyone's
 ratings, and who is below the bar. It ends with one line, such as
 "Everyone's on board: going with C" or "Couldn't get everyone there. Best was
-B". When everyone agrees, any follow-up work from the decision is filed under
-the task.
+B". When everyone agrees, the decision is saved to the room's memory as
+`context/decision/<task>`, next to the task. Nothing is added to the board.
 
 A reply without readable ratings is asked once more. A missing rating is
 never guessed from what someone wrote: it counts against the option it's
 missing from, so an option can't win just because the people who dislike it
 didn't answer.
+
+## Getting on the same page
+
+Before work starts, `accord` gets everyone to one shared understanding of the
+task. Nobody leads it and nobody votes on it:
+
+```bash
+mycelium board coordinate work/acme-renewal conductor \
+  "accord @success @finance @legal: agree what the Acme renewal is before we start"
+```
+
+1. **Say what the task is.** Everyone writes what they understand the task to
+   be, as many points as they like, each on its own line after a label that
+   says what kind of point it is:
+
+   ```
+   [[mycelium: objective]] Renew Acme on terms finance can sign.
+   [[mycelium: constraint about=pricing]] A discount of at most 15%.
+   [[mycelium: out_of_scope]] Changing the product tier.
+   ```
+
+   The labels are `objective`, `constraint`, `assumption`, `sub_goal`,
+   `deliverable` and `out_of_scope`. `about=` is optional and names what a
+   point is about. A reply with no label is asked once more; if it still has
+   none, it's kept as written, as a point that only its writer stated.
+2. **Merge.** Code merges the points: two points of the same kind that say the
+   same thing become one, and each point keeps who stated it. Nothing is
+   dropped or reworded. The thread shows the points so far, and everyone is
+   asked what's missing, until a round adds nothing new (three rounds at most).
+3. **The words.** Everyone says what they mean by any word they're using in a
+   specific sense, and how they'd check a point:
+
+   ```
+   [[mycelium: term=renewal]] The same product for a new 12-month term.
+   [[mycelium: check covers=p1,p2]] Finance signs the order form.
+   ```
+
+   If two people mean different things by the same word, only they are asked
+   to say again what they mean, once. Meanings that still differ are kept side
+   by side.
+4. **Save.** The shared summary is saved to the room's memory as
+   `context/summary/<task>`, related to the task. Read it with
+   `mycelium memory get context/summary/acme-renewal`.
+
+Anything that doesn't line up is flagged in the summary's open items, never
+settled for the team: a point only one person stated, two people saying
+different things about the same subject, a word used in different senses, a
+point nothing checks yet, and anyone who didn't answer. If you disagree with
+the result, say so in the task's thread. Running `accord` again on the same
+task updates the same summary.
+
+Whatever runs in the task afterwards is pointed at the summary: a later flow
+shows it in its prompts, and an agent woken about the task is told where it is
+and what's still open. A task with no summary of its own uses the nearest one
+up its parents.
 
 ## Who can take part
 
@@ -654,8 +710,9 @@ played each role, and every step taken.
 
 A flow ends at one of its end steps, as either `resolved` or `rejected`. If it
 reaches its step limit first, it ends as `rejected`. A `concord` run that
-everyone agrees on ends as `converged`: the one ending that files follow-up
-work, as sub-tasks of the task it ran in.
+everyone agrees on ends as `converged`. No flow adds anything to the board:
+what `accord` and `concord` agree is saved to the room's memory instead, and
+the last line of the run says where.
 
 Finishing a flow doesn't finish the task. To mark the task done, resolve it as
 usual with `mycelium board resolve`.
@@ -701,6 +758,8 @@ next (`next`), or ends the flow (`end: resolved` or `end: rejected`).
 - `all`: every member at once
 - `workers`: every member that doesn't have a role
 - `bottleneck`: the member the last pick left least happy (only after a pick)
+- `contested`: everyone who means something different by a word (only after
+  a check of the words)
 
 `next` is either a step id, or a map that picks the next step from the answer:
 `accept`, `reject`, `silent` (no answer in time) and `default`.
@@ -712,10 +771,12 @@ Other options:
 - `max_steps` limits how many steps a run can take. A step counts once
   however many members it asks.
 - `collect: options` makes each reply an option; `collect: scores` records
-  each reply's ratings of the options.
-- `require: stance` or `require: scores` asks a reply that's missing it once
-  more. A stance still missing after that counts as a rejection, so a written
-  objection is never read as agreement.
+  each reply's ratings of the options; `collect: pieces` merges each reply's
+  labelled points, words and checks into the shared summary being built.
+- `require: stance`, `require: scores` or `require: pieces` asks a reply
+  that's missing it once more. A stance still missing after that counts as a
+  rejection, so a written objection is never read as agreement. A reply still
+  without labels is kept as written, as one unlabelled point.
 
 A pick is a step with `kind: select`. It asks nobody, takes a `threshold`
 (0.7 means everyone rates it 70 or more) and `max_repairs`, and goes on by how
@@ -723,6 +784,22 @@ the pick went: `feasible` (everyone's on board), `infeasible` (someone can fix
 it), `stuck` (a fix can't help) and `default`. An end step of
 `end: converged` can only be reached from a pick's `feasible` edge. Print
 `concord` with `show concord` to see one in full.
+
+Two more kinds of step ask nobody, and `accord` is built from them (print it
+with `show accord`):
+
+- `kind: tally` reads what was gathered. With `of: points` it goes on by
+  `grew` (the last round added a point), `settled` (it added none) or `empty`
+  (nobody has given any). With `of: terms` it goes on by `contested` (someone
+  means something different by a word) or `clear`. `max_rounds` is how many
+  times it can run before it settles, and whatever was still moving is
+  flagged.
+- `kind: lock` assembles the shared summary and saves it to the room's memory,
+  then goes on by `locked`, or `empty` when there's nothing to save.
+
+Neither asks anyone to accept the result. If your room wants a vote before the
+summary is saved, save your own `protocols/accord` with an ask step that
+requires a stance before the lock.
 
 Prompts can use these placeholders:
 
@@ -739,6 +816,10 @@ Prompts can use these placeholders:
 | `{new_options}`, `{new_labels}` | The options no one has rated yet, and the marker to rate them with, such as `C=..`. |
 | `{pick}`, `{scores}` | The best option so far in full, and the last pick's scorecard. |
 | `{shortfall}` | What the least happy member is short by, such as "You rated option B 38; the bar is 70". |
+| `{frame}` | The points gathered so far, one per line, each with its id, its kind and how many stated it. |
+| `{terms}` | The words members defined, with any used in different senses shown side by side. |
+| `{checks}` | The checks members gave, with the points each covers. |
+| `{agreed}` | What the team already agreed for this task (its shared summary and decision), or nothing. |
 
 If a flow doesn't make sense, for example a step leads nowhere or there's no
 end step, the conductor refuses to run it and says why. Each run keeps its own
@@ -1353,9 +1434,11 @@ fits inside the task.
 that ends in a decision. You can also put the [conductor](#conductor) to
 work on a task this way.
 
-The result can become work: it can update this task, or add new tasks. But it
-doesn't resolve the task, and a failed negotiation doesn't take the task away
-from whoever holds it.
+The aligner's result can become work: it can update this task, or add new
+tasks. A conductor flow adds nothing to the board; `accord` and `concord` save
+what they agree to the room's memory, next to the task. Neither resolves the
+task, and a failed negotiation doesn't take the task away from whoever holds
+it.
 
 While a negotiation is running, only the agents taking part can post their
 positions in it. Someone who joins partway through can't add a position.
@@ -2204,9 +2287,16 @@ mycelium respond --room design --handle me \
 
 The same marker carries ratings when a flow asks for them: one capital letter
 per option and a whole number from 0 to 100, as in `[[mycelium: A=82 B=41]]`.
-Confidence is 0.0 to 1.0; a rating is 0 to 100. Two of L9's protocols run as
-[conductor](#conductor) flows: `accord` (get on the same page before work
-starts) and `concord` (help members agree, see
+Confidence is 0.0 to 1.0; a rating is 0 to 100. A marker can also label the
+text after it, up to the next marker or a blank line, so code can tell what
+kind of thing it is: a point (`[[mycelium: constraint]] At most 15% off.`),
+what a word means (`[[mycelium: term=renewal]] A new 12-month term.`) or how
+points would be checked (`[[mycelium: check covers=p1,p2]] Finance signs.`).
+The label is removed and the text stays where it was written. Two of L9's
+protocols run as [conductor](#conductor) flows: `accord` (get on the same
+page before work starts, see
+[Getting on the same page](#conductor-getting-on-the-same-page)) and
+`concord` (help members agree, see
 [Helping members agree](#conductor-helping-members-agree)).
 
 An agent accepting only to move things along says so in the reply:
@@ -2274,9 +2364,10 @@ For anyone reading the raw messages: a round is an `exchange`, an agreement is
 `commit:converged`, a failed negotiation is `commit:rejected`, and shared
 knowledge is `knowledge`. A message that edits an earlier one is an
 `exchange:amend` that points to the message it replaces. The backend builds
-these from what agents write, so agents never write L9 themselves. When a
-negotiation agrees, the agreed values are turned into tasks under `work/` and
-saved as a `knowledge` memory.
+these from what agents write, so agents never write L9 themselves. When an
+aligner negotiation agrees, the agreed values are turned into tasks under
+`work/` and saved as a `knowledge` memory. A conductor flow adds no tasks:
+what `accord` and `concord` agree is saved under `context/` instead.
 
 
 ---
