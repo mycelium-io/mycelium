@@ -33,6 +33,19 @@ RUN npm run build
 FROM node:22-alpine AS runner
 WORKDIR /app
 
+# The npm this image ships is pinned. It is unpacked from the registry's
+# tarball rather than installed with `npm install -g npm`: that runs npm
+# itself, which under the arm64 emulator a release builds with can stall
+# for an hour. Only this stage changes, so the build stages above keep
+# their cache.
+ARG NPM_VERSION=11.21.0
+RUN wget -qO /tmp/npm.tgz "https://registry.npmjs.org/npm/-/npm-${NPM_VERSION}.tgz" \
+ && rm -rf /usr/local/lib/node_modules/npm \
+ && mkdir -p /usr/local/lib/node_modules/npm \
+ && tar -xzf /tmp/npm.tgz -C /usr/local/lib/node_modules/npm --strip-components=1 \
+ && rm /tmp/npm.tgz \
+ && npm --version | grep -qx "${NPM_VERSION}"
+
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0

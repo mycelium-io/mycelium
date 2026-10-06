@@ -1,7 +1,9 @@
 # Run it on a server instead
 
-On Linux, on a server your team shares, or if you'd rather use a terminal,
-run Mycelium with the CLI. It starts the hub with Docker.
+On Linux, on a server your team shares, or anywhere you'd rather run the hub
+in Docker, run Mycelium with the CLI. It starts the hub with Docker. (On a
+Mac the installer below installs [the Mac app](#desktop) instead, which needs
+no Docker; pass `--docker` to get this path there.)
 
 ## Start with a prompt
 
@@ -13,7 +15,8 @@ Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform th
 ```
 
 It reads [agents.md](agents.md), a setup guide written for agents, and does
-the whole setup: starts the server with Docker, configures your model,
+the whole setup: starts the server (the app on a Mac, Docker elsewhere),
+configures your model,
 creates a room and adds itself to it. When it's done, open the app to see
 what's going on.
 
@@ -28,6 +31,10 @@ team wants a shared server, move it there.
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 mycelium install
 ```
+
+On a Mac, add `--docker` to the installer (`curl -fsSL
+https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --docker`), or
+it installs the Mac app instead of the CLI for Docker.
 
 `install` sets up the CLI and starts the server: a SLIM messaging node, the
 backend, and the app. There's no database; rooms and memory are files.

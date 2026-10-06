@@ -85,7 +85,8 @@ export function HubSettingsScreen() {
         {health === null && (
           <p className="mt-6 px-1 text-label text-muted-foreground">
             The hub at <span className="font-mono text-text">{origin}</span> is not answering. On its
-            machine, <code className="font-mono text-text">mycelium up</code> starts it.
+            machine, opening the Mycelium app starts it, or{" "}
+            <code className="font-mono text-text">mycelium up</code> for a Docker hub.
           </p>
         )}
         {health && (

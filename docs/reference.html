@@ -239,9 +239,9 @@
       <h2 id="architecture-deployment-modes">Deployment Modes</h2>
       <p>Mycelium runs the same stack in two setups. The difference is where the agents run and how they reach the room.</p>
       <h3 id="architecture-1-single-device-default">1. Single-device (default)</h3>
-      <p>Everything runs on one machine: the backend, the SLIM node, the app, the CLI and your agents. This is what <code>mycelium install</code> sets up, and it needs no network configuration. Use it when one person or one machine runs the whole workflow.</p>
+      <p>Everything runs on one machine: the backend, the SLIM node, the app, the CLI and your agents. This is what the Mac app sets up (or <code>mycelium install</code>, which runs it in Docker), and it needs no network configuration. Use it when one person or one machine runs the whole workflow.</p>
       <h3 id="architecture-2-hub-and-spoke-small-teams">2. Hub-and-spoke (small teams)</h3>
-      <p>For a team that wants to share rooms and memory across machines. One machine, the <strong>hub</strong>, runs the SLIM node, the backend and the app. The other machines, the <strong>spokes</strong>, run only the CLI and agents, and talk to the hub over HTTP.</p>
+      <p>For a team that wants to share rooms and memory across machines. One machine, the <strong>hub</strong>, runs the SLIM node, the backend and the app in Docker. The other machines, the <strong>spokes</strong>, run only the CLI and agents, and talk to the hub over HTTP.</p>
       <div class="table-wrap">
         <table>
           <thead>

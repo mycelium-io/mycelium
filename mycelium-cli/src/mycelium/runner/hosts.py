@@ -59,6 +59,11 @@ class Started:
     workspace: str | None = None
     #: The folder it works in, when the host chose another (an Omnigent worktree).
     cwd: str | None = None
+    #: Its state in the app's words, when it isn't plain running: ``blocked`` is
+    #: an agent that came up waiting for input from the person at the machine.
+    status: str | None = None
+    #: Its introduction wasn't handed over: the runner gives it once the agent is idle.
+    intro_pending: bool = False
 
 
 class AgentHost(Protocol):
@@ -106,6 +111,15 @@ class AgentHost(Protocol):
         """
         ...
 
+    def blocker(self, ref: str, kind: str) -> str | None:
+        """What a person needs to answer the ``blocked`` agent at ``ref``: what its
+        screen shows and how to get to it. ``None`` when the host can't say."""
+        ...
+
+    def wake(self, ref: str, text: str) -> None:
+        """Hand the agent at ``ref`` a message. Raises :class:`HostError`."""
+        ...
+
     def stop(self, agent: Tracked) -> None:
         """End the agent. Best-effort: one that's already gone is stopped."""
         ...
@@ -127,6 +141,8 @@ class AgentHost(Protocol):
 
 #: herdr states as the app reads them.
 _HERDR_STATUS = {"idle": "idle", "done": "idle", "working": "working", "blocked": "blocked"}
+#: How many of a blocked agent's last screen lines the app is shown.
+_BLOCKER_LINES = 6
 
 
 class HerdrHost:
@@ -190,8 +206,9 @@ class HerdrHost:
 
         workspace, pane = self._open_pane(state, room, handle, cwd, env)
         try:
-            _start_when_ready(self.bridge, handle, kind, pane)
+            came_up = _start_when_ready(self.bridge, handle, kind, pane)
         except HerdrError as e:
+            # No agent on the pane: nothing started, so nothing is left open.
             self._close_quietly(pane)
             raise HostError(str(e)) from e
         # Not ``managed``: a closed pane stops the agent, it does not delete it
@@ -201,8 +218,14 @@ class HerdrHost:
             HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=kind, cwd=str(cwd))
         )
         self.bridge.registry.bind(workspace, room)
-        self.bridge.prompt(pane, intro, wait=False)
         state.owned[workspace] = room
+        if came_up is not None:
+            # It started but never read as ready, most often stopped at a prompt.
+            # The pane stays open for the person to answer, and the introduction
+            # waits until the agent is idle rather than being typed into it.
+            status = _HERDR_STATUS.get(str(came_up.get("agent_status") or ""), "running")
+            return Started(ref=pane, workspace=workspace, status=status, intro_pending=True)
+        self.bridge.prompt(pane, intro, wait=False)
         return Started(ref=pane, workspace=workspace)
 
     def alive(self, ref: str) -> bool:
@@ -221,6 +244,19 @@ class HerdrHost:
             for a in agents
             if a.get("pane_id")
         }
+
+    def blocker(self, ref: str, kind: str) -> str | None:
+        from mycelium.integrations.agents import of_kind
+
+        parts = [self.bridge.read_pane(ref, lines=_BLOCKER_LINES), of_kind(kind).blocked_hint()]
+        parts.append(f"Answer it in its pane: herdr agent focus {ref}")
+        return "\n".join(p for p in parts if p)
+
+    def wake(self, ref: str, text: str) -> None:
+        try:
+            self.bridge.prompt(ref, text, wait=False)
+        except HerdrError as e:
+            raise HostError(str(e)) from e
 
     def _close_quietly(self, pane: str) -> None:
         try:
@@ -251,7 +287,7 @@ class HerdrHost:
                 del state.workspaces[room]
 
     def sync(self, config: MyceliumConfig, state: State, log: Console) -> None:
-        from mycelium.commands.herdr import sync_pass
+        from mycelium.commands.herdr import BindingSyncError, sync_pass
 
         # Every workspace bound to a room on this machine: the ones this runner
         # opened and any a person bound (`mycelium herdr sync --workspace …`).
@@ -259,7 +295,7 @@ class HerdrHost:
         targets = dict(state.owned) | self.bridge.registry.bindings()
         if not targets:
             return
-        sync_pass(
+        result = sync_pass(
             config,
             self.bridge,
             list(targets.items()),
@@ -268,6 +304,8 @@ class HerdrHost:
             log=log,
             wait=False,
         )
+        if result.failed:
+            raise BindingSyncError(result.failed)
 
 
 # ── Omnigent ─────────────────────────────────────────────────────────────────
@@ -387,7 +425,7 @@ class OmnigentHost:
         env: dict[str, str],  # noqa: ARG002 - a session takes no environment; the join code carries it
         intro: str,
     ) -> Started:
-        from mycelium.commands.swarm import AGENT_ARGS
+        from mycelium.integrations.agents import of_kind
 
         if kind not in self._agents:
             self.kinds()
@@ -405,7 +443,7 @@ class OmnigentHost:
         if (cwd / ".git").exists():
             # Its own worktree, so its own folder, so its own membership.
             body["git"] = {"branch_name": branch_for(room, handle)}
-        if args := AGENT_ARGS.get(kind):
+        if args := of_kind(kind).launch_args():
             body["terminal_launch_args"] = list(args)
         session = self._post("/v1/sessions", body)
         ref = str(session.get("id") or session.get("session_id") or "")
@@ -439,6 +477,9 @@ class OmnigentHost:
             status = _OMNIGENT_STATUS.get(str(row.get("status") or ""), "working")
             out[str(row["id"])] = (status, row.get("title"))
         return out
+
+    def blocker(self, ref: str, kind: str) -> str | None:  # noqa: ARG002
+        return None
 
     def wake(self, ref: str, text: str) -> None:
         self._post(

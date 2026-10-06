@@ -6,7 +6,8 @@
 A framework is found by its executable on ``PATH``. Whether it can be started
 is herdr's call, read from ``herdr agent start --help`` rather than listed
 here, so a herdr that learns a new kind makes it startable with no change to
-this file. The table below only names what to look for and what to call it.
+this file. What to look for and what to call it is the table in
+:mod:`mycelium.integrations.agents`.
 """
 
 from __future__ import annotations
@@ -16,39 +17,10 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 
+from mycelium.integrations.agents import KNOWN
+
 #: How long one ``--version`` may take before the scan gives up on it.
 VERSION_TIMEOUT_S = 4.0
-
-
-@dataclass(frozen=True)
-class Known:
-    """An agent CLI the scan looks for."""
-
-    id: str
-    name: str
-    #: Executables that mean it is installed, first match wins.
-    binaries: tuple[str, ...]
-    #: The kind herdr starts it as, when herdr has one.
-    herdr_kind: str | None
-
-
-KNOWN: tuple[Known, ...] = (
-    Known("claude", "Claude Code", ("claude",), "claude"),
-    Known("codex", "Codex", ("codex",), "codex"),
-    Known("gemini", "Gemini CLI", ("gemini",), "gemini"),
-    Known("cursor", "Cursor Agent", ("cursor-agent",), "cursor"),
-    Known("opencode", "OpenCode", ("opencode",), "opencode"),
-    Known("pi", "Pi", ("pi",), "pi"),
-    Known("copilot", "GitHub Copilot CLI", ("copilot",), "copilot"),
-    Known("amp", "Amp", ("amp",), "amp"),
-    Known("droid", "Droid", ("droid",), "droid"),
-    Known("cline", "Cline", ("cline",), "cline"),
-    Known("kiro", "Kiro", ("kiro-cli", "kiro"), "kiro"),
-    Known("kimi", "Kimi", ("kimi",), "kimi"),
-    Known("grok", "Grok", ("grok",), "grok"),
-    Known("goose", "Goose", ("goose",), None),
-    Known("aider", "Aider", ("aider",), None),
-)
 
 
 @dataclass
@@ -84,10 +56,6 @@ def _version(path: str) -> str | None:
         (ln.strip() for ln in (proc.stdout or proc.stderr or "").splitlines() if ln.strip()), ""
     )
     return line[:60] or None
-
-
-def by_id(framework_id: str) -> Known | None:
-    return next((k for k in KNOWN if k.id == framework_id), None)
 
 
 def scan(kinds: set[str] | None, *, host: str = "herdr") -> list[Found]:

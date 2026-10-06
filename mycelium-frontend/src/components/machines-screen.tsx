@@ -330,7 +330,9 @@ function AgentLine({ runner, agent }: { runner: Runner; agent: RunnerAgent }) {
         {agent.room}
       </Link>
       <span className="text-micro text-faint">{agent.framework}</span>
-      <span className={`text-micro ${STATUS_TONE[agent.status]}`}>{agent.status}</span>
+      <span className={`text-micro ${STATUS_TONE[agent.status]}`}>
+        {agent.status === "blocked" ? "waiting for input" : agent.status}
+      </span>
       {agent.pane && (
         <span className="font-mono text-micro text-faint">
           {startsInHerdr(runner) ? "pane" : "session"} {agent.pane}
@@ -362,7 +364,12 @@ function AgentLine({ runner, agent }: { runner: Runner; agent: RunnerAgent }) {
           </Button>
         )}
       </span>
-      {agent.detail && <span className="basis-full text-micro text-muted-foreground">{agent.detail}</span>}
+      {/* A waiting agent's detail is several lines: its screen, and how to get to it. */}
+      {agent.detail && (
+        <span className="basis-full whitespace-pre-line break-words text-micro text-muted-foreground">
+          {agent.detail}
+        </span>
+      )}
     </li>
   );
 }

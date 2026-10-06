@@ -4,22 +4,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import type { EditorView } from "@codemirror/view";
-import { MarkdownEditor, type MarkdownEditorHandle } from "@fedoup/markdown-editor";
-import {
-  Bold,
-  Code,
-  FileText,
-  Folder,
-  FolderPlus,
-  Heading2,
-  Italic,
-  Link2,
-  List,
-  Loader2,
-  type LucideIcon,
-} from "lucide-react";
+import type { MarkdownEditorHandle } from "@fedoup/markdown-editor";
+import { FileText, Folder, FolderPlus, Loader2, type LucideIcon } from "lucide-react";
 import { ApiError, createMemories } from "@/lib/api";
 import { useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
 import { usePrincipal } from "@/components/current-user";
@@ -27,8 +13,17 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { TagInput } from "@/components/ui/tag-input";
-import { WikilinkDropdown } from "@/components/memory-editor";
-import { filterWikilinkCandidates, wikilinkDetector, type WikilinkMatch } from "@/lib/wikilink-completions";
+import {
+  DraftBanner,
+  DraftLinks,
+  FullscreenButton,
+  MemoryBodyEditor,
+  useBodyCursor,
+  useFullscreen,
+  type BodyMode,
+} from "@/components/memory-body-editor";
+import { useIsMac } from "@/lib/client-hooks";
+import { clearDraft, draftId, loadDraft, saveDraft, type MemoryDraft } from "@/lib/memory-drafts";
 import {
   BOARD_FOLDERS,
   cleanFolder,
@@ -57,23 +52,54 @@ interface Props {
 /**
  * Writing a new memory: a title, where it goes, and what it says.
  *
- * The body is the same Live Preview editor memories are edited in, so markdown
- * renders as it's typed, with a small toolbar and `[[` completion for links to
- * other memories. Beside it, the room's tree is drawn around the spot the
- * memory will take, so its place is seen before it's written.
+ * The body is the same editor memories are edited in (`MemoryBodyEditor`), so
+ * markdown renders as it's typed, with a toolbar, `[[` completion and a
+ * preview. Beside it, the room's tree is drawn around the spot the memory will
+ * take, so its place is seen before it's written. Full screen (⌘⇧F) gives the
+ * body the whole window; what's written is kept in this browser until it's
+ * saved, so a dialog closed by accident offers it back next time.
  */
 export function NewMemoryDialog({ open, onOpenChange, roomName, initialTitle = "", initialFolder = "context", onCreated }: Props) {
+  const [fullscreen, setFullscreen] = useFullscreen(open);
+  const [hasContent, setHasContent] = useState(false);
+  const close = () => {
+    setFullscreen(false);
+    onOpenChange(false);
+  };
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="grid-cols-1 gap-0 overflow-hidden p-0 sm:max-w-4xl [&>*]:min-w-0">
+    <Dialog
+      open={open}
+      onOpenChange={(next, details) => {
+        if (next) return onOpenChange(true);
+        // Esc steps out of full screen first, and a stray click outside
+        // doesn't throw away something half written.
+        if ((details.reason === "escape-key" && fullscreen) || (details.reason === "outside-press" && hasContent)) {
+          details.cancel();
+          if (details.reason === "escape-key") setFullscreen(false);
+          return;
+        }
+        close();
+      }}
+    >
+      <DialogContent
+        className={cn(
+          "flex flex-col gap-0 overflow-hidden p-0 [&>*]:min-w-0",
+          fullscreen
+            ? "top-0 left-0 h-dvh w-screen max-w-none translate-x-0 translate-y-0 rounded-none ring-0 sm:max-w-none data-open:zoom-in-100"
+            : "max-h-[calc(100dvh-2rem)] sm:max-w-4xl",
+        )}
+      >
         {/* Remounted per opening, so each starts from what it was opened with. */}
         {open && (
           <NewMemoryForm
             roomName={roomName}
             initialTitle={initialTitle}
             initialFolder={initialFolder}
+            fullscreen={fullscreen}
+            onToggleFullscreen={() => setFullscreen((v) => !v)}
+            onContentChange={setHasContent}
             onDone={(key) => {
-              onOpenChange(false);
+              close();
               if (key) onCreated?.(key);
             }}
           />
@@ -87,13 +113,20 @@ function NewMemoryForm({
   roomName,
   initialTitle,
   initialFolder,
+  fullscreen,
+  onToggleFullscreen,
+  onContentChange,
   onDone,
 }: {
   roomName: string;
   initialTitle: string;
   initialFolder: string;
+  fullscreen: boolean;
+  onToggleFullscreen: () => void;
+  onContentChange: (has: boolean) => void;
   onDone: (key: string | null) => void;
 }) {
+  const mac = useIsMac();
   const principal = usePrincipal();
   const revalidate = useRoomRevalidate(roomName);
   const { memories } = useRoomMemories(roomName);
@@ -104,9 +137,11 @@ function NewMemoryForm({
   const [name, setName] = useState(slugify(initialTitle));
   const [nameTouched, setNameTouched] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
+  const [expandable, setExpandable] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasBody, setHasBody] = useState(false);
+  const [text, setText] = useState("");
+  const hasBody = text.trim().length > 0;
 
   const key = joinKey(folder, name);
   const problem = name ? keyProblem(key) : null;
@@ -115,36 +150,69 @@ function NewMemoryForm({
   const choices = useMemo(() => folderChoices(keys).slice(0, 6), [keys]);
   const allFolders = useMemo(() => [...folderCounts(keys).keys()].sort(), [keys]);
   const topFolder = cleanFolder(folder).split("/")[0] ?? "";
+  const keySet = useMemo(() => new Set(keys), [keys]);
+  const expandableKeys = useMemo(() => memories.filter((m) => m.expandable).map((m) => m.key), [memories]);
+  const roomTags = useMemo(() => [...new Set(memories.flatMap((m) => m.tags ?? []))].sort(), [memories]);
 
   // ── the body ──────────────────────────────────────────────────────────────
   const editorRef = useRef<MarkdownEditorHandle | null>(null);
-  const [wikilinkMatch, setWikilinkMatch] = useState<WikilinkMatch | null>(null);
-  // Built once: a new array would reconfigure the editor mid-edit, and the
-  // setter never changes.
-  const extensions = useMemo(() => [wikilinkDetector(setWikilinkMatch)], [setWikilinkMatch]);
-  const candidates = useMemo(
-    () => (wikilinkMatch ? filterWikilinkCandidates(keys, wikilinkMatch.query) : []),
-    [wikilinkMatch, keys],
-  );
-  const applyWikilink = useCallback(
-    (target: string) => {
-      const view = editorRef.current?.view;
-      if (!view || !wikilinkMatch) return;
-      const insert = `${wikilinkMatch.sigil}${target}]]`;
-      const to = Math.max(view.state.selection.main.head, wikilinkMatch.from);
-      view.dispatch({
-        changes: { from: wikilinkMatch.from, to, insert },
-        selection: { anchor: wikilinkMatch.from + insert.length },
-      });
-      setWikilinkMatch(null);
-      view.focus();
+  const cursor = useBodyCursor();
+  const [mode, setMode] = useState<BodyMode>("write");
+  const [generation, setGeneration] = useState(0);
+
+  // ── what's written, kept in this browser until it's saved ──────────────────
+  const slot = draftId(roomName, null);
+  const [stored, setStored] = useState<MemoryDraft | null>(() => {
+    const d = loadDraft(slot);
+    return d && (d.body.trim() || d.title?.trim()) ? d : null;
+  });
+  const hasContent = title.trim() !== initialTitle.trim() || hasBody || tags.length > 0;
+  useEffect(() => onContentChange(hasContent), [hasContent, onContentChange]);
+  const saved = useRef(false);
+  const pending = useRef<Omit<MemoryDraft, "savedAt"> | null>(null);
+  useEffect(() => {
+    // An earlier draft is offered back first; this one only replaces it once that's answered.
+    if (stored || saved.current || !hasContent) return;
+    pending.current = { body: text, title, folder, name, tags, expandable };
+    const t = setTimeout(() => {
+      if (pending.current) saveDraft(slot, pending.current);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [stored, hasContent, slot, text, title, folder, name, tags, expandable]);
+  // Closed by Esc, a click outside or the corner's ×: keep the last keystrokes too.
+  useEffect(
+    () => () => {
+      if (pending.current && !saved.current) saveDraft(slot, pending.current);
     },
-    [wikilinkMatch, setWikilinkMatch],
+    [slot],
   );
+  /** Cancel means it: nothing is kept. */
+  const discard = () => {
+    saved.current = true;
+    clearDraft(slot);
+    onDone(null);
+  };
+
+  const restore = () => {
+    if (!stored) return;
+    setText(stored.body);
+    setTitle(stored.title ?? "");
+    if (stored.folder) setFolder(stored.folder);
+    if (stored.name) {
+      setName(stored.name);
+      setNameTouched(stored.name !== slugify(stored.title ?? ""));
+    } else {
+      setName(slugify(stored.title ?? ""));
+    }
+    setTags(stored.tags ?? []);
+    setExpandable(stored.expandable ?? false);
+    setGeneration((g) => g + 1);
+    setStored(null);
+  };
 
   const create = useCallback(async () => {
     if (saving) return;
-    const written = (editorRef.current?.getValue() ?? "").trim();
+    const written = text.trim();
     const heading = title.trim();
     if (!name) return setError("Give it a name.");
     if (problem) return setError(problem);
@@ -161,10 +229,13 @@ function NewMemoryForm({
           content_text: body,
           created_by: principal.trim() || "user",
           ...(tags.length > 0 && { tags }),
+          ...(expandable && { meta: { expandable: true } }),
           // Replacing one on purpose: only the version this dialog saw.
           ...(existing && { base_version: existing.version }),
         },
       ]);
+      saved.current = true;
+      clearDraft(slot);
       revalidate();
       onDone(key);
     } catch (err) {
@@ -177,12 +248,13 @@ function NewMemoryForm({
       );
       setSaving(false);
     }
-  }, [saving, title, name, problem, roomName, key, principal, tags, existing, revalidate, onDone]);
+  }, [saving, text, title, name, problem, roomName, key, principal, tags, expandable, existing, slot, revalidate, onDone]);
 
-  // ⌘↵ / Ctrl+↵ creates it from anywhere in the dialog.
+  // ⌘↵ / ⌘S creates it from anywhere in the dialog.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+      if (e.key === "Enter" || e.key.toLowerCase() === "s") {
         e.preventDefault();
         void create();
       }
@@ -193,18 +265,41 @@ function NewMemoryForm({
 
   return (
     <>
-      <div className="border-b border-border px-5 pt-4 pb-3">
-        <DialogTitle className="text-ui font-semibold text-text">
-          New memory in <span className="font-mono">{roomName}</span>
-        </DialogTitle>
-        <DialogDescription className="mt-1 text-label text-muted-foreground">
-          Something the room should keep: a decision, how something works, where things stand. Everyone in the
-          room can read it and find it by what it means.
-        </DialogDescription>
+      <div className="flex flex-shrink-0 items-start gap-3 border-b border-border px-5 pt-4 pb-3">
+        <div className="min-w-0 flex-1">
+          <DialogTitle className="text-ui font-semibold text-text">
+            New memory in <span className="font-mono">{roomName}</span>
+          </DialogTitle>
+          <DialogDescription className="mt-1 text-label text-muted-foreground">
+            Something the room should keep: a decision, how something works, where things stand. Everyone in the
+            room can read it and find it by what it means.
+          </DialogDescription>
+        </div>
+        {/* Beside the dialog's own close button, which sits in the corner. */}
+        <div className="mr-7 flex-shrink-0">
+          <FullscreenButton on={fullscreen} onToggle={onToggleFullscreen} />
+        </div>
       </div>
 
-      <div className="grid min-h-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_260px]">
-        <div className="flex min-w-0 flex-col gap-3 px-5 py-4">
+      {stored && (
+        <DraftBanner
+          draft={stored}
+          note={stored.title?.trim() ? `"${stored.title.trim()}"` : undefined}
+          onRestore={restore}
+          onDiscard={() => {
+            clearDraft(slot);
+            setStored(null);
+          }}
+        />
+      )}
+
+      <div
+        className={cn(
+          "grid min-h-0 flex-1 grid-cols-1 overflow-y-auto md:grid-cols-[minmax(0,1fr)_260px]",
+          fullscreen && "md:grid-cols-[minmax(0,1fr)_300px] md:overflow-hidden",
+        )}
+      >
+        <div className={cn("flex min-w-0 flex-col gap-3 px-5 py-4", fullscreen && "min-h-0 md:overflow-y-auto")}>
           <input
             autoFocus
             value={title}
@@ -215,6 +310,7 @@ function NewMemoryForm({
             onKeyDown={(e) => {
               if (e.key === "Enter" && !(e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
+                if (mode === "preview") setMode("write");
                 editorRef.current?.focus();
               }
             }}
@@ -243,17 +339,23 @@ function NewMemoryForm({
               ))}
             </div>
             <div className="flex min-w-0 items-center rounded-lg border border-border bg-bg font-mono text-label transition-colors focus-within:border-accent">
-              <input
-                value={folder}
-                onChange={(e) => setFolder(e.target.value)}
-                list="new-memory-folders"
-                aria-label="Folder"
-                placeholder="folder"
-                spellCheck={false}
-                // Sized to what's typed, so the name follows the folder's slash.
-                style={{ width: `calc(${Math.max(folder.length, 6)}ch + 1rem)` }}
-                className="min-w-0 max-w-[50%] shrink-0 bg-transparent py-2 pl-3 text-muted-foreground outline-none placeholder:text-faint"
-              />
+              {/* Sized to what's typed, so the name follows the folder's slash: an
+                  invisible copy of the text sets the cell's width. */}
+              <span className="inline-grid min-w-0 max-w-[50%] shrink-0 py-2 pl-3">
+                <span aria-hidden className="invisible col-start-1 row-start-1 whitespace-pre pr-5">
+                  {folder || "folder"}
+                </span>
+                <input
+                  value={folder}
+                  onChange={(e) => setFolder(e.target.value)}
+                  list="new-memory-folders"
+                  aria-label="Folder"
+                  placeholder="folder"
+                  spellCheck={false}
+                  size={1}
+                  className="col-start-1 row-start-1 w-full min-w-0 bg-transparent text-muted-foreground outline-none placeholder:text-faint"
+                />
+              </span>
               <span className="text-faint">/</span>
               <input
                 value={name}
@@ -266,6 +368,18 @@ function NewMemoryForm({
                 spellCheck={false}
                 className="min-w-0 flex-1 bg-transparent py-2 pr-3 text-text outline-none placeholder:text-faint"
               />
+              {nameTouched && title.trim() && name !== slugify(title) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setName(slugify(title));
+                    setNameTouched(false);
+                  }}
+                  className="mr-1.5 shrink-0 rounded px-1.5 py-0.5 font-sans text-micro text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+                >
+                  Use title
+                </button>
+              )}
               <datalist id="new-memory-folders">
                 {allFolders.map((f) => (
                   <option key={f} value={f} />
@@ -282,40 +396,68 @@ function NewMemoryForm({
             ) : null}
           </div>
 
-          <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-bg focus-within:border-border2">
-            <FormatBar editor={editorRef} />
-            <div className="max-h-[320px] min-h-[200px] overflow-y-auto">
-              <MarkdownEditor
-                ref={editorRef}
-                initialValue=""
-                placeholder="Write it down. Markdown works, and [[ links to another memory."
-                onChange={(next) => setHasBody(next.trim().length > 0)}
-                extraExtensions={extensions}
-                className="min-h-[200px] w-full px-4 py-3"
-              />
-            </div>
-          </div>
+          <MemoryBodyEditor
+            editorRef={editorRef}
+            value={text}
+            onChange={setText}
+            cursor={cursor}
+            mode={mode}
+            onModeChange={setMode}
+            keys={keys}
+            expandableKeys={expandableKeys}
+            generation={generation}
+            placeholder="Write it down. Markdown works, and [[ links to another memory."
+            className={fullscreen ? "min-h-[50vh] flex-1" : undefined}
+            bodyClassName={fullscreen ? undefined : "max-h-[340px] min-h-[220px]"}
+          />
 
-          <TagInput value={tags} onChange={setTags} placeholder="Add tag…" ariaLabel="Tags" />
+          <TagInput value={tags} onChange={setTags} suggestions={roomTags} placeholder="Add tag…" ariaLabel="Tags" />
         </div>
 
-        <aside className="border-t border-border bg-surface/40 px-4 py-4 md:border-l md:border-t-0">
-          <p className="mb-3 text-micro font-medium text-faint">Where it goes</p>
-          <TreePreview roomName={roomName} slice={slice} version={existing?.version ?? null} />
+        <aside
+          className={cn(
+            "flex flex-col gap-5 border-t border-border bg-surface/40 px-4 py-4 md:border-l md:border-t-0",
+            fullscreen && "min-h-0 md:overflow-y-auto",
+          )}
+        >
+          <section>
+            <p className="mb-3 text-micro font-medium text-faint">Where it goes</p>
+            <TreePreview roomName={roomName} slice={slice} version={existing?.version ?? null} />
+          </section>
+          <label className="flex cursor-pointer select-none items-start gap-2">
+            <input
+              type="checkbox"
+              checked={expandable}
+              onChange={(e) => setExpandable(e.target.checked)}
+              className="mt-0.5 rounded border-border text-accent accent-accent"
+            />
+            <span className="text-label text-text">
+              Expandable
+              <span className="block text-micro text-muted-foreground">
+                Other memories can embed it whole with <span className="font-mono">![[…]]</span>.
+              </span>
+            </span>
+          </label>
+          <DraftLinks text={text} keys={keySet} />
         </aside>
       </div>
 
-      <div className="flex items-center gap-3 border-t border-border px-5 py-2.5">
+      <div className="flex flex-shrink-0 items-center gap-3 border-t border-border px-5 py-2.5">
         {error ? (
           <p role="alert" className="min-w-0 flex-1 truncate text-label text-red">
             {error}
           </p>
         ) : (
-          <span className="flex flex-1 items-center gap-1.5 text-micro text-faint">
-            <Kbd size="xs" tone="muted">⌘↵</Kbd> to save
+          <span className="flex min-w-0 flex-1 items-center gap-3 text-micro text-faint">
+            <span className="flex items-center gap-1.5">
+              <Kbd size="xs" tone="muted">{mac ? "⌘↵" : "Ctrl+↵"}</Kbd> to save
+            </span>
+            <span className="hidden items-center gap-1.5 sm:flex">
+              <Kbd size="xs" tone="muted">{mac ? "⌘⇧F" : "Ctrl+Shift+F"}</Kbd> {fullscreen ? "leave full screen" : "full screen"}
+            </span>
           </span>
         )}
-        <Button variant="ghost" size="sm" onClick={() => onDone(null)} disabled={saving}>
+        <Button variant="ghost" size="sm" onClick={discard} disabled={saving}>
           Cancel
         </Button>
         <Button
@@ -327,19 +469,6 @@ function NewMemoryForm({
           {existing ? `Replace ${key}` : "Save memory"}
         </Button>
       </div>
-
-      {typeof document !== "undefined" &&
-        wikilinkMatch &&
-        candidates.length > 0 &&
-        createPortal(
-          <WikilinkDropdown
-            match={wikilinkMatch}
-            candidates={candidates}
-            onSelect={applyWikilink}
-            onDismiss={() => setWikilinkMatch(null)}
-          />,
-          document.body,
-        )}
     </>
   );
 }
@@ -431,78 +560,6 @@ function TreeRow({
     >
       {Icon ? <Icon className="size-3.5 shrink-0 opacity-70" /> : <span className="w-3.5 shrink-0" />}
       <span className="truncate">{children}</span>
-    </div>
-  );
-}
-
-// ── the toolbar ────────────────────────────────────────────────────────────
-
-/** Wrap the selection in `before`/`after`, or insert them around a placeholder. */
-function wrap(view: EditorView, before: string, after: string, placeholder: string) {
-  const { from, to } = view.state.selection.main;
-  const selected = view.state.sliceDoc(from, to);
-  const text = selected || placeholder;
-  view.dispatch({
-    changes: { from, to, insert: `${before}${text}${after}` },
-    selection: { anchor: from + before.length, head: from + before.length + text.length },
-  });
-  view.focus();
-}
-
-/** Start the line the cursor is on with `prefix` (a heading or a list item). */
-function prefixLine(view: EditorView, prefix: string) {
-  const line = view.state.doc.lineAt(view.state.selection.main.from);
-  if (line.text.startsWith(prefix)) {
-    view.focus();
-    return;
-  }
-  view.dispatch({ changes: { from: line.from, insert: prefix } });
-  view.focus();
-}
-
-const FORMATS: { label: string; icon: LucideIcon; keys?: string; run: (v: EditorView) => void }[] = [
-  { label: "Heading", icon: Heading2, run: (v) => prefixLine(v, "## ") },
-  { label: "Bold", icon: Bold, keys: "⌘B", run: (v) => wrap(v, "**", "**", "bold") },
-  { label: "Italic", icon: Italic, keys: "⌘I", run: (v) => wrap(v, "_", "_", "italic") },
-  { label: "Code", icon: Code, keys: "⌘E", run: (v) => wrap(v, "`", "`", "code") },
-  { label: "Link to a memory", icon: Link2, run: (v) => wrap(v, "[[", "]]", "") },
-  { label: "List", icon: List, run: (v) => prefixLine(v, "- ") },
-];
-
-function FormatBar({ editor }: { editor: React.RefObject<MarkdownEditorHandle | null> }) {
-  // The shortcuts work while the editor has focus; the buttons for everyone else.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const view = editor.current?.view;
-      if (!view || !view.hasFocus || !(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
-      const format = { b: FORMATS[1], i: FORMATS[2], e: FORMATS[3] }[e.key.toLowerCase()];
-      if (!format) return;
-      e.preventDefault();
-      format.run(view);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [editor]);
-
-  return (
-    <div className="flex items-center gap-0.5 border-b border-border px-1.5 py-1">
-      {FORMATS.map((f) => (
-        <button
-          key={f.label}
-          type="button"
-          title={f.keys ? `${f.label} (${f.keys})` : f.label}
-          aria-label={f.label}
-          // Keep the editor's selection: a click on the bar must not blur it.
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => {
-            const view = editor.current?.view;
-            if (view) f.run(view);
-          }}
-          className="flex size-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-        >
-          <f.icon className="size-3.5" />
-        </button>
-      ))}
     </div>
   );
 }

@@ -50,16 +50,17 @@ The full list of environment variables is in
 
 ## Install the CLI without Docker
 
-The normal installer sets up the whole Mycelium stack, which needs Docker. An
-ephemeral agent only talks to an existing hub, so it only needs the CLI:
+The normal installer sets up a hub on the machine: the Mac app on a Mac, or the
+CLI for the Docker stack anywhere else. An ephemeral agent only talks to an
+existing hub, so it only needs the CLI:
 
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only
 ```
 
-With `--client-only`, the installer doesn't check for Docker. If the
-container's `python3` is older than 3.12, it installs Python 3.12 for the CLI
-instead of failing. Many base images have an older Python and no Docker, so
+With `--client-only`, the installer neither installs the app nor checks for
+Docker. If the container's `python3` is older than 3.12, it installs Python
+3.12 for the CLI instead of failing. Many base images have an older Python and no Docker, so
 this is usually what you want.
 
 You can set `MYCELIUM_CLIENT_ONLY=1` instead of passing the flag. If

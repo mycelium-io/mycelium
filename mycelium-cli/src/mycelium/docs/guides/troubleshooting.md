@@ -10,9 +10,10 @@ mycelium logs --tail 50  # recent logs
 ```
 
 `mycelium doctor` is the first thing to run for almost any problem. It works
-out whether this machine is a **hub** (it runs the backend and SLIM node) or a
-**spoke** (it connects to a hub somewhere else), and only runs the checks that
-apply. To choose yourself, pass `--mode hub` or `--mode spoke`.
+out whether this machine runs **the Mac app**, is a **hub** (it runs the
+backend and SLIM node in Docker) or a **spoke** (it connects to a hub somewhere
+else), and only runs the checks that apply. To choose yourself, pass
+`--mode desktop`, `--mode hub` or `--mode spoke`.
 
 ---
 
@@ -20,7 +21,9 @@ apply. To choose yourself, pass `--mode hub` or `--mode spoke`.
 
 ### `mycelium: command not found`
 
-The CLI isn't installed, or isn't on your `PATH`. Install it:
+The CLI isn't installed, or isn't on your `PATH`. Install it (on an Apple
+silicon Mac this installs the Mac app, whose CLI it links into `~/.local/bin`;
+add `bash -s -- --client-only` for the CLI alone):
 
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
@@ -328,11 +331,16 @@ mycelium --verbose status           # extra detail from the CLI
 
 This deletes all your rooms, memories and config.
 
+With the Docker stack:
+
 ```bash
 mycelium down --volumes   # stop everything and delete its data
 rm -rf ~/.mycelium        # remove config and room files
 mycelium install          # install again
 ```
+
+With the Mac app, quit it from its menu bar icon, remove `~/.mycelium`, and
+open it again: it starts at its first screen.
 
 ---
 

@@ -93,7 +93,7 @@
   .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
   /* Four courses between the bookends read as two rows of two, not three and one. */
   .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .card { display: flex; flex-direction: column; overflow: hidden; color: inherit;
+  .card { display: flex; flex-direction: column; overflow: hidden; color: inherit; padding: 0;
     transition: transform 140ms ease, border-color 140ms ease; }
   .thumb { position: relative; aspect-ratio: 16 / 9; overflow: hidden; background: #0b0d10; }
   .thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 62% 12%;
@@ -201,13 +201,33 @@
   .finished p { margin: 0; color: var(--muted-foreground); font-size: var(--text-body); }
 
   @media (max-width: 980px) {
-    .hero, .course-hero, .course-body, .lesson, .featured { grid-template-columns: 1fr; }
+    .hero, .course-hero, .course-body, .lesson, .featured, .featured.mirrored { grid-template-columns: 1fr; }
     .stage { min-height: 260px; }
-    .grid { grid-template-columns: 1fr; }
+    .grid, .grid.two { grid-template-columns: 1fr; }
+    /* Stacked, a wide card is a tall card: the thumb goes on top at the
+       same 16:9 the other cards use, the capstone's included. */
+    .featured .thumb { aspect-ratio: 16 / 9; min-height: 0; }
+    .featured.mirrored .thumb { order: 0; }
+    .featured h3 { font-size: 1.35rem; }
     .side, .lesson-nav { position: static; max-height: none; }
     .ticks { grid-template-columns: 1fr; }
     .featured .body, .block, .lesson-main { padding: 24px 20px; }
     .learn { padding-left: 16px; padding-right: 16px; }
+    /* The veil bleeds past its text by its own padding; at the page's 16px
+       gutter that bleed would scroll the page sideways. */
+    .veil { padding: 20px 16px; margin: -20px -16px; }
+  }
+  @media (max-width: 640px) {
+    .learn { padding-top: calc(var(--topbar-height) + 20px); }
+    .hero { gap: 24px; margin-bottom: 40px; }
+    .hero p.lede { font-size: 1rem; }
+    .hero .actions .btn { width: 100%; }
+    .hero .stats { flex-wrap: wrap; gap: 8px 18px; }
+    .stage { min-height: 0; aspect-ratio: 16 / 10; }
+    .stage .front { top: 18%; }
+    .section-head h2 { font-size: 1.4rem; }
+    .course-hero { margin-top: 12px; }
+    .lesson-main h1 { font-size: 1.8rem; }
   }
 </style>
 </head>

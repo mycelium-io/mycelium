@@ -794,6 +794,7 @@ class MachineProblemRead(BaseModel):
         "lost",
         "runner_down",
         "wakes_stalled",
+        "binding_failing",
         "no_restore",
         "herdr_update",
         "herdr_down",

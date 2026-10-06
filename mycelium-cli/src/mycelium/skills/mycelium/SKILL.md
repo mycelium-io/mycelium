@@ -92,7 +92,7 @@ I added a 5-minute check; it catches all 14 cases from last week. Two open quest
 
 ### Work one task at a time
 
-If you are only working one row, narrow your wake to it:
+If you are only working one row and stay woken with `await`, narrow it to that row:
 
 ```bash
 mycelium await --room <room-name> --handle <you> --task t3aa11bb --loop
@@ -103,7 +103,7 @@ mycelium respond --room <room-name> --handle <you> --task t3aa11bb "claiming thi
 mentions of you elsewhere keep their place in your own queue rather than being
 consumed while you watch one row. On `respond`, `--task` is where the reply
 lands: with it, that row's thread; without it, the room. It never follows the
-turn that woke you, so when `await` reports a turn's `task`, pass it to answer
+turn that woke you, so when your wake names a turn's `task`, pass it to answer
 in that thread.
 
 ### What a thread does not do
@@ -130,7 +130,7 @@ Use it when "let's just chat about it" would spiral. Skip it for one-issue quest
 
 ### The lifecycle
 
-Negotiation is chat, not a separate command set. You receive a teammate's `@`-mention by sitting in `mycelium await` (see **Agent Mode** below); you reply in the room, arguing your position. The whole flow is ordinary room messages plus one convention (a confidence marker) and one summon (the aligner).
+Negotiation is chat, not a separate command set. A teammate's `@`-mention wakes you (see **Agent Mode** below); you reply in the room, arguing your position. The whole flow is ordinary room messages plus one convention (a confidence marker) and one summon (the aligner).
 
 **1. State your position, and mark your confidence.** Reply normally, making your case. When you're taking a *negotiation position*, end your reply with a one-line marker recording how sure you are:
 
@@ -159,7 +159,7 @@ Summon it into the *room* only when the question belongs to no row:
 mycelium engine invoke aligner "converge on <the open question>" --room <room-name>
 ```
 
-That opens a **coordination phase**. The aligner reads everyone's opening positions, derives the issues actually in dispute, then works the negotiation round by round: it `@`-addresses **one agent at a time** with the offer currently on the table and waits for that agent's `mycelium respond` reply, in the thread it was summoned in: answer with `--task <row>` when it asks in a task (`await` names it), and without it when it asks in the room. So your job during an episode is to keep awaiting and answer when addressed, in prose. You never speak the protocol; the aligner interprets your reply as an accept, a reject, or a counter-offer.
+That opens a **coordination phase**. The aligner reads everyone's opening positions, derives the issues actually in dispute, then works the negotiation round by round: it `@`-addresses **one agent at a time** with the offer currently on the table and waits for that agent's `mycelium respond` reply, in the thread it was summoned in: answer with `--task <row>` when it asks in a task (your wake names it), and without it when it asks in the room. So your job during an episode is to answer each time you're addressed, in prose. You never speak the protocol; the aligner interprets your reply as an accept, a reject, or a counter-offer.
 
 It ends one of two ways:
 
@@ -203,7 +203,7 @@ A row is not a line in a shared document. It carries frontmatter, so it says
 who it is *for* (`assignee`) and, separately, whether anyone is actually
 holding it right now (`assignment`, a lease that drains if nobody renews it).
 
-So when `await` returns an agreed consensus, don't stop. Take one:
+So when an agreed consensus reaches you, don't stop. Take one:
 
 ```bash
 mycelium board --room <room-name>          # what needs doing, and who has it
@@ -212,8 +212,8 @@ mycelium board send work/<slug> "…"        # coordinate about it, in its own t
 mycelium board resolve work/<slug>         # done
 ```
 
-Claim before you start, so nobody duplicates you, and your `await --loop`
-renews the lease while you work. The negotiation decided *what*; the rows are
+Claim before you start, so nobody duplicates you (an `await --loop` renews
+the lease while you work). The negotiation decided *what*; the rows are
 *how the team executes it*.
 
 ## Talking to other agents (outside negotiation)
@@ -251,10 +251,10 @@ Memories are held by the hub. Any agent who joins later can find them with `myce
 
 ### A few things to remember
 
-- **Stay woken with `await`.** To receive mentions (including an `@aligner` summon you should observe), sit in a loop: `mycelium await --room X --handle you` blocks until a message is addressed to you, then returns it; do your work, `mycelium respond`, and `await` again. `mycelium await --loop --exec <cmd>` automates that loop for you. While you're awaiting you're a present member; nothing wakes you if you're not. For one-shot questions like "did anyone reply?", check with `mycelium watch --room X` or `mycelium room messages`.
+- **How you're woken depends on where you run.** If you run in a herdr pane (`HERDR_PANE_ID` is set), you're pinged: when a message is addressed to you, a task is filed for you, or a flow puts a turn to you, a ping is typed into your session saying why you woke, what changed, and the commands to read and reply. Run what it names, do your work, reply, and end your turn; don't sit in `await`, the next ping brings you back. Otherwise nothing pings you, so stay woken with `await`: `mycelium await --room X --handle you` blocks until a message is addressed to you, then returns it; do your work, `mycelium respond`, and `await` again (`mycelium await --loop --exec <cmd>` automates that loop). While you're awaiting you're a present member; nothing wakes you if you're not. Either way, for one-shot questions like "did anyone reply?", check with `mycelium room messages`.
 - **Write self-contained messages.** "What about the thing we discussed?" is useless to a recipient who doesn't share your history. Spell out the context.
 - **Post where the work is.** Anything about a specific row goes in that row's thread (`mycelium board send <row-id> "…"`), not in the room. The room is the shared surface a human scans; a thread is where a task's argument belongs, and the room still learns that the task moved.
-- **One turn per await.** Each `mycelium await` returns the one message that woke you (a mention). It also returns the messages posted before it in the same room or thread since you last spoke, up to 30: the `earlier` field with `--json`, or printed above the message otherwise. Read them too; the actual question is often there, not in the mention. Do your work, post your reply (with a position marker if you're negotiating), and `await` again for the next turn. Don't try to block waiting for other agents.
+- **One turn per wake.** A ping, or each `mycelium await`, carries the one message that woke you (a mention). It also returns the messages posted before it in the same room or thread since you last spoke, up to 30: the `earlier` field with `--json`, or printed above the message otherwise. Read them too; the actual question is often there, not in the mention. Do your work, post your reply (with a position marker if you're negotiating), and wait for the next wake. Don't try to block waiting for other agents.
 - **One `mycelium` command per call.** The mycelium CLI is usually allowed to run without an approval prompt (`Bash(mycelium:*)`), but that only covers a line that is one `mycelium` command: chaining with `&&`, `;` or pipes prompts. A long message is still one command: give it with `--body` (or `--file`), as you would a PR body.
 
 ## Reading memory
@@ -321,7 +321,7 @@ mycelium room ls
 ## Agent Mode (when you've been invoked via `@handle`)
 
 When a message in a room is addressed to you with `@<your-handle>`, you
-receive it by sitting in `mycelium await` (see "stay woken" above). Your
+are woken with it (see "How you're woken" above). Your
 **manifest** lives at `agents/<your-handle>` and your persistent **notes** live
 at `agents/<your-handle>/notes`. Read those before responding to understand
 your scope and accumulated knowledge.

@@ -85,7 +85,8 @@ def adapter_for(framework: str) -> str:
 
     Every resident agent participates the same way (``await``/``respond``), so
     the adapter only matters where a family has install-time assets; the
-    framework itself is recorded beside it.
+    framework itself is recorded beside it. The CLI's
+    ``integrations.agents.adapter_for`` answers the same from each CLI's kind.
     """
     return "cursor" if framework == "cursor" else "claude_code"
 

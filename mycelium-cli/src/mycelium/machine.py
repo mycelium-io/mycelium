@@ -98,7 +98,14 @@ class Workspace:
 
 
 ProblemKind = Literal[
-    "stopped", "lost", "runner_down", "wakes_stalled", "no_restore", "herdr_update", "herdr_down"
+    "stopped",
+    "lost",
+    "runner_down",
+    "wakes_stalled",
+    "binding_failing",
+    "no_restore",
+    "herdr_update",
+    "herdr_down",
 ]
 
 
@@ -369,6 +376,20 @@ def _problems(
                 [a.handle for a in live],
             )
         )
+    for bad in _failing_bindings(sync):
+        ws, room, error = bad["workspace"], bad["room"], bad["error"]
+        here = next((w for w in workspaces if w.id == ws), None)
+        problems.append(
+            Problem(
+                "binding_failing",
+                f"Workspace {here.label if here else ws} can't sync with {room}: {error}. "
+                "Agents opened there aren't added to the room, and closed ones aren't "
+                "removed, until it syncs. Unbinding stops the runner syncing it; its "
+                "agents stay in the room.",
+                f"mycelium herdr unbind {ws}",
+                [a.handle for a in here.agents] if here else [],
+            )
+        )
     if missing:
         without = [a for a in agents if a.restores is False]
         problems.append(
@@ -385,6 +406,18 @@ def _problems(
     if (update := _herdr_update(server if herdr_up else None, client)) is not None:
         problems.append(update)
     return problems
+
+
+def _failing_bindings(sync: dict[str, Any] | None) -> list[dict[str, str]]:
+    """The bound workspaces the runner's last sync pass couldn't reconcile."""
+    found = (sync or {}).get("bindings")
+    if not isinstance(found, list):
+        return []
+    return [
+        {k: str(b[k]) for k in ("workspace", "room", "error")}
+        for b in found
+        if isinstance(b, dict) and all(b.get(k) for k in ("workspace", "room", "error"))
+    ]
 
 
 def _stalled(sync: dict[str, Any] | None) -> str | None:
@@ -463,7 +496,7 @@ def restart(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None 
     in its environment first, as a pane the runner opens would, and its
     workspace is bound to the room again, so the runner syncs it.
     """
-    from mycelium.commands.swarm import _start_when_ready
+    from mycelium.commands.swarm import _start_unblocked
 
     if not agent.restartable:
         if agent.state not in ("stopped", "gone"):
@@ -484,7 +517,7 @@ def restart(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None 
             workspace = agent.workspace
         else:
             workspace, pane = _new_pane(bridge, agent, folder, env, config.herdr.panes_per_tab)
-        _start_when_ready(bridge, agent.handle, kind, pane)
+        _start_unblocked(bridge, agent.handle, kind, pane)
         bridge.prompt(pane, restart_prompt(agent), wait=False)
     except HerdrError as e:
         raise MachineError(f"herdr couldn't restart @{agent.handle}: {e}") from e
@@ -596,7 +629,7 @@ def _remember(answer: Literal["yes", "no"]) -> None:
 
 def _installed_kinds() -> set[str]:
     """The herdr kinds of the agent CLIs found on PATH here."""
-    from mycelium.runner.frameworks import KNOWN
+    from mycelium.integrations.agents import KNOWN
 
     return {
         k.herdr_kind for k in KNOWN if k.herdr_kind and any(shutil.which(b) for b in k.binaries)

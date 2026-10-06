@@ -772,6 +772,7 @@ export function MemoryPanel({
               roomName={roomName}
               actor={principal}
               onDirtyChange={setDirty}
+              onNavigate={key => guard(() => { setIsEditing(false); void openMemoryByKey(key); })}
               onSaved={() => {
                 revalidate();
                 setIsEditing(false);

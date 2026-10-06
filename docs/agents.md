@@ -1,8 +1,8 @@
 ---
 name: mycelium-setup
-description: Set up and maintain Mycelium (install the CLI, bring up the stack, connect your agent runtime)
+description: Set up and maintain Mycelium (install the Mac app or the CLI, bring up a hub, connect your agent runtime)
 user-invocable: true
-allowed-tools: Bash(command:*), Bash(curl:*), Bash(docker:*), Bash(mycelium:*), Bash(uv:*)
+allowed-tools: Bash(command:*), Bash(curl:*), Bash(docker:*), Bash(mycelium:*), Bash(uname:*), Bash(sysctl:*), Bash(uv:*)
 metadata:
   author: mycelium
 ---
@@ -11,17 +11,46 @@ metadata:
 
 Set up or maintain Mycelium with minimal friction. If you are running this
 prompt, you are an agent: your goal is to follow the steps below and connect the
-user to Mycelium (the CLI, optionally the stack, and your own runtime) so the
+user to Mycelium (the CLI, optionally a hub, and your own runtime) so the
 user can put you and other agents in a shared room to coordinate.
 
 Mycelium is a shared space for humans and agents: persistent rooms, shared
 markdown memory, and a place for agents to coordinate over an encrypted SLIM
-channel. It runs on a server (the hub) that a team connects to, brought up with
+channel. It runs on a hub that a team connects to: on a Mac, the Mycelium app
+runs one with no Docker; on Linux or a server, the CLI brings one up with
 Docker. The user might be standing up that hub, or just joining one someone else
 already runs. Full docs: <https://mycelium-io.github.io/mycelium/> (LLM-friendly
 single file: <https://mycelium-io.github.io/mycelium/llms-full.txt>).
 
-## Step 1: Install or upgrade the CLI
+## Step 1: Ask which path applies
+
+Before touching anything, ask the user which of these describes what they want.
+Ask explicitly; do not infer it from what happens to be installed (a machine can
+have Docker, or the app, for unrelated reasons).
+
+1. **Client only.** They are joining a hub someone else already runs. No app,
+   no Docker, no local hub; just point the CLI at the hub and connect your
+   runtime. Do **Step 2** with `--client-only`, then **Step 4**, then continue
+   at Step 5.
+2. **Host the service.** They are standing up a new hub on this machine. Do
+   **Step 2**, then **Step 3**, then continue at Step 5.
+3. **Both.** Host the hub *and* use it from this machine as a client. Same as
+   host: Step 4 resolves to a no-op because the CLI already points at the hub
+   on this machine. You can skip Step 4 in this case.
+
+Steps 2 (install), 5 (your runtime), and 6 (room + UI) are common to all three
+paths. Only "bring up a hub" (Step 3) and "point at an existing hub" (Step 4)
+are conditional.
+
+The frontend offers a guided version of this, reachable via the "Install CLI"
+button in its header. It only covers the client-only path (Steps 2 + 4, plus
+`mycelium login` if the hub is gated): install the CLI, point it at this hub,
+sign in if asked. It never guides "host the service" (Step 3), since the page
+showing that guidance is itself served by a hub that already exists, and a
+browser can't stand one up. If that hub is unreachable, the UI shows an error
+instead, since that's an operator problem the visitor's CLI commands can't fix.
+
+## Step 2: Install or upgrade
 
 Check whether the CLI exists:
 
@@ -29,15 +58,39 @@ Check whether the CLI exists:
 command -v mycelium
 ```
 
-If missing, install it:
+If it is missing, install it. On the **client only** path:
+
+```bash
+curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only
+```
+
+On the **host** and **both** paths:
 
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 ```
 
-The installer places a standalone `mycelium` binary on the PATH (it may ask
-you to open a new shell or source your shell profile; do that before
-continuing). If `mycelium` is already present, make sure it is current:
+What that installs depends on the machine. On an Apple silicon Mac
+(`uname -s` says `Darwin` and `sysctl -n hw.optional.arm64` says `1`) it
+installs **Mycelium for Mac** into Applications, links the app's `mycelium` CLI
+into `~/.local/bin`, and opens the app: the hub is the app's, and Docker is not
+involved. Anywhere else (Linux, a server, an Intel Mac) it installs the CLI, and
+the hub is the Docker stack. If the user asks for the Docker stack on a Mac,
+pass `--docker` (`... | bash -s -- --docker`).
+
+The installer may ask you to open a new shell or source your shell profile so
+`~/.local/bin` is on the PATH; do that before continuing.
+
+On the **host** and **both** paths on an Apple silicon Mac, a `mycelium` already
+present may be a CLI installed before the app existed: if neither
+`/Applications/Mycelium.app` nor `~/Applications/Mycelium.app` exists, run the
+installer above anyway. It installs the app and puts the app's CLI in place of
+the old one.
+
+If `mycelium` is already present, make sure it is current. When it is the Mac
+app's (`readlink "$(command -v mycelium)"` points inside `Mycelium.app`), the app
+updates itself: tell the user to use **Check for Updates…** in its menu bar icon.
+Otherwise:
 
 ```bash
 mycelium upgrade --check   # report whether a newer release exists
@@ -46,36 +99,33 @@ mycelium upgrade           # fetch it
 
 Verify with `mycelium --version`.
 
-## Step 2: Ask which path applies
-
-Before touching anything, ask the user which of these describes what they want.
-Ask explicitly; do not infer it from whether Docker happens to be installed (a
-machine can have Docker for unrelated reasons).
-
-1. **Client only.** They are joining a hub someone else already runs. No
-   Docker, no local stack; just point the CLI at the hub and connect your
-   runtime. Do **Step 4**, then continue at Step 5.
-2. **Host the service.** They are standing up a new hub for their team on this
-   machine. Do **Step 3** (the Docker-backed stack), then continue at Step 5.
-3. **Both.** Host the hub *and* use it from this machine as a client. Do
-   **Step 3**; Step 4 then resolves to a no-op because `server.api_url` already
-   points at localhost. You can skip Step 4 in this case.
-
-Steps 1 (CLI), 5 (your runtime), and 6 (room + UI) are common to all three paths.
-Only "bring up a backend" (Step 3) and "point at an existing hub" (Step 4) are
-conditional.
-
-The frontend offers a guided version of this, reachable via the "Install CLI"
-button in its header. It only covers the client-only path (Steps 1 + 4, plus
-`mycelium login` if the hub is gated): install the CLI, point it at this hub,
-sign in if asked. It never guides "host the service" (Step 3), since the page
-showing that guidance is itself served by a hub that already exists, and a
-browser can't stand one up. If that hub is unreachable, the UI shows an error
-instead, since that's an operator problem the visitor's CLI commands can't fix.
-
-## Step 3 (host the service): Bring up the stack
+## Step 3 (host the service): Bring up a hub
 
 Skip this step entirely on the **client only** path.
+
+### On a Mac with the app
+
+The installer opened Mycelium. On its first run it shows a short setup window,
+and the person has to answer it; you can't click it for them. Tell the user to:
+
+1. choose **On this Mac** for where rooms live,
+2. pick the folder agents may start in,
+3. press **Start Mycelium**,
+4. then add a model and its API key in the app's **Settings** (⌘,), since some
+   of Mycelium's coordination features use an LLM.
+
+The app then runs the SLIM node, the hub (at `http://127.0.0.1:8000`), the UI
+and the runner itself, and points the CLI at its hub. Once they say it has
+started, **verify**:
+
+```bash
+mycelium doctor --mode desktop
+```
+
+It checks what the app runs and says what to fix. Don't proceed until the hub
+is reachable. Then skip Step 4 and go to Step 5.
+
+### Anywhere else: the Docker stack
 
 The stack runs as containers, so Docker with the compose plugin must be
 available:
@@ -88,9 +138,7 @@ docker compose version
 If either fails, stop and tell the user to install or start Docker first. Do
 not attempt to install Docker yourself.
 
-Then bring up the stack:
-
-First check whether Mycelium is already installed on this machine:
+First check whether Mycelium is already running on this machine:
 
 ```bash
 mycelium status
@@ -142,7 +190,7 @@ fixes without prompting). Don't proceed until the backend is reachable. On the
 Skip this step on the **host** path, and on **both** (the host flow already
 pointed `server.api_url` at localhost, so this is a no-op).
 
-A spoke needs no Docker and no local stack: it just points the CLI at the hub
+A spoke needs no app, no Docker and no local stack: it just points the CLI at the hub
 the team already runs. Ask the user for the hub's API URL, then:
 
 ```bash
