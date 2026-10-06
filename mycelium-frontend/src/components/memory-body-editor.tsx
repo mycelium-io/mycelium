@@ -52,6 +52,7 @@ import {
   toggleLinePrefix,
   toggleWrap,
 } from "@/lib/markdown-format";
+import { headingGutter } from "@/lib/heading-gutter";
 import { filterWikilinkCandidates, wikilinkDetector, type WikilinkMatch } from "@/lib/wikilink-completions";
 import { cn } from "@/lib/utils";
 
@@ -213,6 +214,7 @@ export function MemoryBodyEditor({
   const extensions = useMemo(
     () => [
       wikilinkDetector(setWikilinkMatch),
+      headingGutter,
       Prec.high(
         keymap.of(
           // Undo and redo are CodeMirror's own keys already.
@@ -348,7 +350,11 @@ export function MemoryBodyEditor({
             placeholder={placeholder}
             onChange={onChange}
             extraExtensions={extensions}
-            className={cn("h-full min-h-[200px] w-full px-4 py-3", mode === "source" && "font-mono")}
+            // Room on the left for each heading's level (`heading-gutter.ts`).
+            className={cn(
+              "h-full min-h-[200px] w-full px-4 py-3 [&_.cm-content]:!pl-7",
+              mode === "source" && "font-mono",
+            )}
           />
         )}
       </div>
