@@ -405,7 +405,14 @@ is no litellm dependency.
   an interactive session, prompted to read its notes; there is no headless or
   one-shot mode, and a machine whose host isn't up starts nothing. herdr is
   the default host: a runner-started agent's pane mapping is not `managed`,
-  so a closed pane stops it without deleting it from the room. A host that
+  so a closed pane stops it without deleting it from the room. An agent that
+  comes up stopped at a prompt (herdr's `blocked`, a first-run one included) is
+  started, not failed: its pane stays open, the app shows it waiting for input
+  on that machine with its last screen lines, and its introduction is handed
+  over once it is idle; only a start with no agent on the pane closes it.
+  What differs per agent kind (Claude Code's arguments, wording for its
+  prompts) lives in `integrations/herdr/<kind>.py`, reached through
+  `integrations/herdr/kinds.py`, never in the generic host. A host that
   can't pass an agent an environment (`joins`) gets a join code in the
   agent's introduction instead; see the next point. A swarm with `runner` set has the hub
   register the conductor, write the members and file the task, and the runner

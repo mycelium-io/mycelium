@@ -697,6 +697,8 @@ function LaunchProgress({
   const status = job?.status ?? "queued";
   const failed = status === "failed";
   const machine = runnerName(runner);
+  // Started, but stopped at a prompt only the person at that machine can answer.
+  const waiting = status === "done" && typeof job?.result?.waiting === "string" ? job.result.waiting : null;
   // A machine asks the person there before starting what a hub sent it,
   // except the app's own hub; the step shows only once it has asked.
   const [asked, setAsked] = useState(false);
@@ -726,7 +728,9 @@ function LaunchProgress({
         <div>
           <p className="font-mono text-ui text-text">@{handle}</p>
           <p className="text-micro text-muted-foreground">
-            {status === "done"
+            {waiting
+              ? `Started on ${machine}, and waiting for input there before it reads its notes.`
+              : status === "done"
               ? startsInHerdr(runner)
                 ? `Running on ${machine}, in herdr workspace ${room}.`
                 : `Running on ${machine}, in ${hostOf(runner).where}.`
@@ -747,6 +751,11 @@ function LaunchProgress({
           </li>
         ))}
       </ol>
+      {waiting && (
+        <p className="mt-4 whitespace-pre-line break-words rounded-lg border border-yellow/30 bg-yellow/5 px-3 py-2 text-label text-text">
+          {waiting}
+        </p>
+      )}
       {failed && (
         <p role="alert" className="mt-4 break-words rounded-lg border border-red/30 bg-red/5 px-3 py-2 text-label text-red">
           {job?.error ?? "The machine could not start it."}

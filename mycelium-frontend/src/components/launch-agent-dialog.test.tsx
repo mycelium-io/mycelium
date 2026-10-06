@@ -125,6 +125,24 @@ describe("LaunchAgentForm", () => {
     expect(screen.getByRole("button", { name: "Add another" })).toBeInTheDocument();
   });
 
+  it("says an agent that started at a prompt is waiting for input on the machine", async () => {
+    connected = [runner()];
+    launchRunnerAgent.mockResolvedValue(job());
+    fetchRunnerJob.mockResolvedValue(
+      job({
+        status: "done",
+        result: { pane: "w9:p1", waiting: "waiting for input on julias-mbp\nAnswer it in its pane: herdr agent focus w9:p1" },
+      }),
+    );
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "reviewer" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+
+    expect(await screen.findByText(/waiting for input there/)).toBeInTheDocument();
+    expect(screen.getByText(/herdr agent focus w9:p1/)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("shows the machine's reason when it could not start the agent", async () => {
     connected = [runner()];
     launchRunnerAgent.mockResolvedValue(job());

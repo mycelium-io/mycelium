@@ -463,7 +463,7 @@ def restart(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None 
     in its environment first, as a pane the runner opens would, and its
     workspace is bound to the room again, so the runner syncs it.
     """
-    from mycelium.commands.swarm import _start_when_ready
+    from mycelium.commands.swarm import _start_unblocked
 
     if not agent.restartable:
         if agent.state not in ("stopped", "gone"):
@@ -484,7 +484,7 @@ def restart(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None 
             workspace = agent.workspace
         else:
             workspace, pane = _new_pane(bridge, agent, folder, env, config.herdr.panes_per_tab)
-        _start_when_ready(bridge, agent.handle, kind, pane)
+        _start_unblocked(bridge, agent.handle, kind, pane)
         bridge.prompt(pane, restart_prompt(agent), wait=False)
     except HerdrError as e:
         raise MachineError(f"herdr couldn't restart @{agent.handle}: {e}") from e

@@ -60,6 +60,11 @@ class Herdr:
         self.panes: list[str] = []
         self._panes = 0
         self.fail_start = False
+        #: ``agent start`` fails, but leaves an agent on the pane in this state,
+        #: the way one stopped at a first-run prompt never reads as ready.
+        self.start_leaves: str | None = None
+        #: What ``pane read`` shows.
+        self.screen = "Do you trust the files in this folder?\n\n  1. Yes, proceed\n  2. No, exit\n"
         self.layout = HerdrLayout(self._pane)
 
     def _pane(self, workspace: str = "w9") -> str:
@@ -81,6 +86,13 @@ class Herdr:
         if (result := self.layout.answer(args)) is not None:
             return _proc(_ok(result))
         if head == "agent start":
+            pane = args[args.index("--pane") + 1]
+            if pane in self.live:
+                taken = f"agent name {args[2]} is already used; candidates: pane_id={pane}"
+                return _proc(stderr=json.dumps({"error": taken}), returncode=1)
+            if self.start_leaves:
+                self.live[pane] = self.start_leaves
+                return _proc(stderr=json.dumps({"error": "agent never became ready"}), returncode=1)
             if self.fail_start:
                 return _proc(stderr=json.dumps({"error": "agent never became ready"}), returncode=1)
             self.live[args[args.index("--pane") + 1]] = "idle"
@@ -93,6 +105,8 @@ class Herdr:
                 for p, s in self.live.items()
             ]
             return _proc(_ok({"agents": agents}))
+        if head == "pane read":
+            return _proc(_ok({"text": self.screen}))
         if head == "pane run":
             return _proc("")
         if head == "agent get":
@@ -376,6 +390,82 @@ def test_an_agent_herdr_could_not_start_leaves_no_pane(make_runner, herdr: Herdr
         r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
     assert [c[2] for c in herdr.of("pane close")] == ["w9:p1"]
     assert r.hello_body()["agents"] == []
+
+
+def test_a_launch_stopped_at_a_prompt_keeps_its_pane_and_waits_for_the_person(
+    make_runner, herdr: Herdr, hub: Hub
+):
+    herdr.start_leaves = "blocked"
+    r = make_runner()
+
+    result = r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+
+    # Started once, not again into a name it already holds, and the pane is left open.
+    assert len(herdr.of("agent start")) == 1
+    assert herdr.of("pane close") == []
+    assert result["pane"] == "w9:p1"
+    assert result["waiting"].startswith("waiting for input on ")
+    # Nothing is typed into the prompt it is stopped at.
+    assert herdr.of("agent prompt") == []
+    agent = r.hello_body()["agents"][0]
+    assert agent["status"] == "blocked"
+    assert "2. No, exit" in agent["detail"]
+    assert "Claude Code asks before" in agent["detail"]
+    assert "herdr agent focus w9:p1" in agent["detail"]
+    assert r.bridge.registry.get("eng", "scout") is not None
+
+    # Still waiting: it says so again, and still hands nothing over.
+    r.refresh()
+    assert r.hello_body()["agents"][0]["status"] == "blocked"
+    assert herdr.of("agent prompt") == []
+
+    # Answered: it gets its introduction once, as soon as it is idle.
+    herdr.live["w9:p1"] = "idle"
+    r.refresh()
+    r.refresh()
+    prompts = herdr.of("agent prompt")
+    assert len(prompts) == 1
+    assert "You are @scout" in prompts[0][3]
+    agent = r.hello_body()["agents"][0]
+    assert agent["status"] == "idle"
+    assert "waiting for input" not in (agent["detail"] or "")
+
+
+def test_an_agent_waiting_a_long_time_says_how_long_and_stays_open(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    herdr.start_leaves = "blocked"
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    monkeypatch.setattr(daemon, "WAITING_LONG", daemon.timedelta(0))
+    r.refresh()
+    assert r.hello_body()["agents"][0]["detail"].startswith("waiting for input on ")
+    assert " for 0 min" in r.hello_body()["agents"][0]["detail"].splitlines()[0]
+    assert herdr.of("pane close") == []
+
+
+def test_a_waiting_agent_of_another_kind_is_told_nothing_about_claude(
+    make_runner, herdr: Herdr, hub: Hub
+):
+    herdr.start_leaves = "blocked"
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "opencode"})
+    detail = r.hello_body()["agents"][0]["detail"]
+    assert "herdr agent focus w9:p1" in detail
+    assert "Claude" not in detail
+
+
+def test_a_start_herdr_calls_failed_with_its_agent_up_is_a_start(
+    make_runner, herdr: Herdr, hub: Hub
+):
+    herdr.start_leaves = "idle"
+    r = make_runner()
+    result = r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    assert "waiting" not in result
+    assert herdr.of("pane close") == []
+    assert len(herdr.of("agent start")) == 1
+    r.refresh()
+    assert "You are @scout" in herdr.of("agent prompt")[0][3]
 
 
 # ── after it is running ──────────────────────────────────────────────────────
