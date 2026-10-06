@@ -5,15 +5,28 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { MarkdownEditor, type MarkdownEditorHandle } from "@fedoup/markdown-editor";
+import type { MarkdownEditorHandle } from "@fedoup/markdown-editor";
+import { Check, Copy, Loader2, Pencil } from "lucide-react";
 import { ApiError, createMemories, type Memory, type MemoryCreate } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
 import { TagInput } from "@/components/ui/tag-input";
-import { useRoomMemories } from "@/lib/room-data";
 import {
-  filterWikilinkCandidates,
-  wikilinkDetector,
-  type WikilinkMatch,
-} from "@/lib/wikilink-completions";
+  DraftBanner,
+  DraftLinks,
+  FullscreenButton,
+  MemoryBodyEditor,
+  useBodyCursor,
+  useFullscreen,
+  type BodyMode,
+} from "@/components/memory-body-editor";
+import { useRoomMemories } from "@/lib/room-data";
+import { useIsMac } from "@/lib/client-hooks";
+import { clearDraft, draftId, loadDraft, saveDraft, type MemoryDraft } from "@/lib/memory-drafts";
+import { fmtAgo } from "@/lib/metrics-format";
+import { cn } from "@/lib/utils";
+
+export { WikilinkDropdown } from "@/components/wikilink-dropdown";
 
 interface Props {
   memory: Memory;
@@ -26,20 +39,10 @@ interface Props {
   actor?: string;
   /** Reports whether the editor holds edits that have not been saved. */
   onDirtyChange?: (dirty: boolean) => void;
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-micro uppercase tracking-wide text-faint">{label}</label>
-      {children}
-    </div>
-  );
-}
-
-/** Read existing tags from the top-level `memory.tags` field. */
-function extractTags(mem: Memory): string[] {
-  return mem.tags ?? [];
+  /** Opens another memory, from a link in the preview or the links list. */
+  onNavigate?: (key: string) => void;
+  /** More controls at the end of the editor's header (a tab's View toggle). */
+  headerExtra?: React.ReactNode;
 }
 
 /**
@@ -59,103 +62,15 @@ function structuredValue(mem: Memory): Record<string, unknown> | null {
   return Object.keys(fields).some(k => k !== "text") ? fields : null;
 }
 
-// ---------------------------------------------------------------------------
-// Wikilink autocomplete dropdown
-// ---------------------------------------------------------------------------
+const sameTags = (a: string[], b: string[]) => a.length === b.length && a.every((t, i) => t === b[i]);
 
 /**
- * Keyboard-navigable completion list rendered as a React portal in
- * `document.body`, bypassing any overflow/z-index constraints on the editor's
- * ancestor elements.
- */
-export function WikilinkDropdown({
-  match,
-  candidates,
-  onSelect,
-  onDismiss,
-}: {
-  match: WikilinkMatch;
-  candidates: string[];
-  onSelect: (key: string) => void;
-  onDismiss: () => void;
-}) {
-  // A fresh candidate list starts the highlight at the top. Comparing in render
-  // rather than resetting in an effect, so no stale row is ever painted.
-  const [prevCandidates, setPrevCandidates] = useState(candidates);
-  const [activeIdx, setActiveIdx] = useState(0);
-  if (prevCandidates !== candidates) {
-    setPrevCandidates(candidates);
-    setActiveIdx(0);
-  }
-  const listRef = useRef<HTMLDivElement>(null);
-
-  // Keep the highlighted row visible when arrowing past the scroll fold.
-  useEffect(() => {
-    listRef.current?.children[activeIdx]?.scrollIntoView({ block: "nearest" });
-  }, [activeIdx]);
-
-  // Keyboard nav in capture phase so we intercept before CM6 keymaps.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault(); e.stopPropagation(); onDismiss();
-      } else if (e.key === "ArrowDown") {
-        e.preventDefault(); e.stopPropagation();
-        setActiveIdx(i => Math.min(i + 1, candidates.length - 1));
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault(); e.stopPropagation();
-        setActiveIdx(i => Math.max(i - 1, 0));
-      } else if (e.key === "Enter" || e.key === "Tab") {
-        const chosen = candidates[activeIdx];
-        if (chosen) { e.preventDefault(); e.stopPropagation(); onSelect(chosen); }
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [candidates, activeIdx, onSelect, onDismiss]);
-
-  // Dismiss on click outside.
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      if (listRef.current && !listRef.current.contains(e.target as Node)) onDismiss();
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [onDismiss]);
-
-  if (candidates.length === 0) return null;
-
-  return (
-    <div
-      ref={listRef}
-      style={{ position: "fixed", left: match.x, top: match.y + 4, zIndex: 9999 }}
-      className="min-w-[200px] max-w-xs max-h-52 overflow-y-auto rounded-md border border-border bg-background shadow-lg"
-      onMouseDown={e => e.preventDefault()}
-    >
-      {candidates.map((k, i) => (
-        <button
-          key={k}
-          type="button"
-          className={`w-full text-left px-3 py-1.5 text-label font-mono truncate ${
-            i === activeIdx ? "bg-accent text-white" : "text-text hover:bg-hairline"
-          }`}
-          onMouseDown={e => { e.preventDefault(); onSelect(k); }}
-        >
-          {k}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// MemoryEditor
-// ---------------------------------------------------------------------------
-
-/**
- * Inline editor for a memory: a structured frontmatter panel (tags,
- * expandable) above a fedoup Live Preview body editor with wikilink
- * autocomplete rendered as a React portal.
+ * Editing a memory: its body in the same editor new memories are written in,
+ * its properties (tags, whether it can be embedded) beside it, and where it
+ * stands (what changed, which links resolve) always in view. Full screen
+ * (⌘⇧F) lifts the whole screen over the app; ⌘S saves. Unsaved edits are kept
+ * in this browser as a draft, so a reload or a link followed mid-edit offers
+ * them back the next time the memory is opened for editing.
  *
  * All edit state is seeded on mount, so callers must pass `key={memory.key}`
  * to get a fresh editor when they switch memories.
@@ -167,56 +82,82 @@ export function MemoryEditor({
   onCancel,
   actor,
   onDirtyChange,
+  onNavigate,
+  headerExtra,
 }: Props) {
-  const [tags, setTags] = useState<string[]>(extractTags(memory));
-  const [expandable, setExpandable] = useState(memory.expandable ?? false);
+  const original = memory.content_text ?? (typeof memory.value === "string" ? memory.value : "");
+  const originalTags = useMemo(() => memory.tags ?? [], [memory.tags]);
+  const originalExpandable = memory.expandable ?? false;
+
+  const [tags, setTags] = useState<string[]>(originalTags);
+  const [expandable, setExpandable] = useState(originalExpandable);
+  const [text, setText] = useState(original);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [wikilinkMatch, setWikilinkMatch] = useState<WikilinkMatch | null>(null);
+  const [error, setError] = useState<{ message: string; conflict: boolean } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [mode, setMode] = useState<BodyMode>("write");
+  const [generation, setGeneration] = useState(0);
+  const [fullscreen, setFullscreen] = useFullscreen();
+  const mac = useIsMac();
 
   const editorRef = useRef<MarkdownEditorHandle | null>(null);
+  const cursor = useBodyCursor();
 
-  // The body is uncontrolled (fedoup owns the CM6 state), so dirtiness is a
-  // flag set on the first edit rather than a diff against the original text.
-  const [dirty, setDirty] = useState(false);
+  // Dirty against what was opened, so undoing an edit by hand reads as clean.
+  const dirty = text !== original || !sameTags(tags, originalTags) || expandable !== originalExpandable;
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
+
+  // ── the draft kept in this browser ─────────────────────────────────────────
+  const slot = draftId(roomName, memory.key);
+  const [stored, setStored] = useState<MemoryDraft | null>(() => {
+    const d = loadDraft(slot);
+    return d && (d.body !== original || !sameTags(d.tags ?? [], originalTags) || (d.expandable ?? false) !== originalExpandable)
+      ? d
+      : null;
+  });
+  const saved = useRef(false);
+  const pending = useRef<Omit<MemoryDraft, "savedAt"> | null>(null);
+  useEffect(() => {
+    // Offered back first; only once it is answered does this session's edit replace it.
+    if (stored || saved.current) return;
+    if (!dirty) {
+      pending.current = null;
+      clearDraft(slot);
+      return;
+    }
+    pending.current = { body: text, tags, expandable, baseVersion: memory.version };
+    const t = setTimeout(() => {
+      if (pending.current) saveDraft(slot, pending.current);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [stored, dirty, slot, text, tags, expandable, memory.version]);
+  // Leaving mid-edit (a link followed, the tab switched) keeps the last keystrokes too.
+  useEffect(
+    () => () => {
+      if (pending.current && !saved.current) saveDraft(slot, pending.current);
+    },
+    [slot],
+  );
+
+  const restore = () => {
+    if (!stored) return;
+    setText(stored.body);
+    setTags(stored.tags ?? []);
+    setExpandable(stored.expandable ?? false);
+    setGeneration(g => g + 1);
+    if (mode === "preview") setMode("write");
+    setStored(null);
+  };
 
   const { memories } = useRoomMemories(roomName);
   const allKeys = useMemo(() => memories.map(m => m.key), [memories]);
-  const expandableKeys = useMemo(
-    () => memories.filter(m => m.expandable).map(m => m.key),
-    [memories],
-  );
-
-  // Built once and never rebuilt: a new extension array would reconfigure CM6
-  // mid-edit. Safe because the state setter identity is stable for the life of
-  // the component.
-  const extensions = useMemo(() => [wikilinkDetector(setWikilinkMatch)], []);
-
-  const wikilinkCandidates = useMemo(() => {
-    if (!wikilinkMatch) return [];
-    const pool = wikilinkMatch.sigil === "![[" ? expandableKeys : allKeys;
-    return filterWikilinkCandidates(pool, wikilinkMatch.query);
-  }, [wikilinkMatch, allKeys, expandableKeys]);
-
-  const applyWikilink = useCallback((key: string) => {
-    const view = editorRef.current?.view;
-    if (!view || !wikilinkMatch) return;
-    const insert = `${wikilinkMatch.sigil}${key}]]`;
-    // Replace through the live cursor rather than the position captured when
-    // the match was made — a keystroke landing between the two would otherwise
-    // be left stranded after the inserted link.
-    const to = Math.max(view.state.selection.main.head, wikilinkMatch.from);
-    view.dispatch({
-      changes: { from: wikilinkMatch.from, to, insert },
-      selection: { anchor: wikilinkMatch.from + insert.length },
-    });
-    setWikilinkMatch(null);
-    view.focus();
-  }, [wikilinkMatch]);
+  const keySet = useMemo(() => new Set(allKeys), [allKeys]);
+  const expandableKeys = useMemo(() => memories.filter(m => m.expandable).map(m => m.key), [memories]);
+  const roomTags = useMemo(() => [...new Set(memories.flatMap(m => m.tags ?? []))].sort(), [memories]);
 
   const handleSave = useCallback(async () => {
-    const body = editorRef.current?.getValue() ?? memory.content_text ?? "";
+    if (saving) return;
+    const body = text;
     setSaving(true);
     setError(null);
 
@@ -238,94 +179,226 @@ export function MemoryEditor({
 
     try {
       await createMemories(roomName, [item]);
-      setDirty(false);
+      saved.current = true;
+      clearDraft(slot);
+      setSaving(false);
+      onDirtyChange?.(false);
       onSaved();
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        setError("This memory was edited by someone else. Reload to see the latest version.");
-      } else {
-        setError(err instanceof Error ? err.message : "Save failed.");
-      }
-    } finally {
       setSaving(false);
+      if (err instanceof ApiError && err.status === 409) {
+        setError({
+          message:
+            "This memory was edited by someone else while you worked. Your text is still here: copy it, then reopen the memory to merge.",
+          conflict: true,
+        });
+      } else {
+        setError({ message: err instanceof Error ? err.message : "Save failed.", conflict: false });
+      }
     }
-  }, [memory, roomName, actor, tags, expandable, onSaved]);
+  }, [saving, text, memory, roomName, actor, tags, expandable, slot, onDirtyChange, onSaved]);
 
-  const body = memory.content_text ?? (typeof memory.value === "string" ? memory.value : "");
+  // ⌘S / ⌘↵ save from anywhere on the screen.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+      if (e.key.toLowerCase() === "s" || e.key === "Enter") {
+        e.preventDefault();
+        void handleSave();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [handleSave]);
 
-  return (
-    <div className="flex flex-col gap-0 h-full">
-      {/* Frontmatter panel */}
-      <div className="border-b border-border px-5 py-4 space-y-4">
-        <Field label="Key">
-          <span className="font-mono text-label text-text break-all">{memory.key}</span>
-        </Field>
+  const copyText = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard refused; the text is still in the editor.
+    }
+  };
 
-        <Field label="Tags">
-          <TagInput
-            value={tags}
-            onChange={next => { setTags(next); setDirty(true); }}
-            placeholder="Add tag…"
-            ariaLabel="Memory tags"
-          />
-        </Field>
+  const crumbs = memory.key.split("/");
 
-        <label className="flex items-center gap-2 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={expandable}
-            onChange={e => { setExpandable(e.target.checked); setDirty(true); }}
-            className="rounded border-border text-accent accent-accent"
-          />
-          <span className="text-label text-text">Expandable (allow transclusion)</span>
-        </label>
-
-        <div className="flex items-center gap-2 pt-1">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="rounded-md bg-accent px-3 py-1.5 text-label font-medium text-white transition-opacity disabled:opacity-50 hover:opacity-90"
+  const screen = (
+    <div
+      className={cn(
+        "@container flex flex-col",
+        fullscreen ? "fixed inset-0 z-50 bg-paper" : "h-full",
+      )}
+      role={fullscreen ? "dialog" : undefined}
+      aria-modal={fullscreen || undefined}
+      aria-label={fullscreen ? `Editing ${memory.key}` : undefined}
+    >
+      <header
+        className={cn(
+          "z-10 flex flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-paper/95 px-5 py-2 backdrop-blur-sm",
+          !fullscreen && "sticky top-0",
+        )}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Pencil className="size-3.5 flex-shrink-0 text-accent" />
+          <span className="min-w-0 truncate font-mono text-label text-text" title={memory.key}>
+            {crumbs.map((part, i) => (
+              <span key={i}>
+                {i > 0 && <span className="text-faint">/</span>}
+                {part}
+              </span>
+            ))}
+          </span>
+          <span className="flex-shrink-0 text-micro text-faint tabular">v{memory.version}</span>
+          <span
+            className={cn(
+              "flex flex-shrink-0 items-center gap-1 text-micro",
+              dirty ? "text-yellow" : "text-faint",
+            )}
           >
-            {saving ? "Saving…" : "Save"}
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={saving}
-            className="rounded-md border border-border px-3 py-1.5 text-label font-medium text-text transition-colors hover:bg-hairline disabled:opacity-50"
-          >
+            <span aria-hidden className={cn("size-1.5 rounded-full", dirty ? "bg-yellow" : "bg-border2")} />
+            {dirty ? "Unsaved changes" : "No changes"}
+          </span>
+        </div>
+        <div className="flex flex-shrink-0 items-center gap-1.5">
+          {headerExtra && <div className="mr-1 flex items-center gap-2 text-micro text-muted-foreground">{headerExtra}</div>}
+          <FullscreenButton on={fullscreen} onToggle={() => setFullscreen(v => !v)} />
+          <Button variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
             Cancel
-          </button>
-          {error && (
-            <span className="text-label text-red">{error}</span>
+          </Button>
+          <Button size="sm" onClick={() => void handleSave()} disabled={saving}>
+            {saving && <Loader2 className="size-3.5 animate-spin" />}
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </div>
+      </header>
+
+      {stored && (
+        <DraftBanner
+          draft={stored}
+          note={
+            stored.baseVersion !== undefined && stored.baseVersion !== memory.version
+              ? `made on v${stored.baseVersion}; it's v${memory.version} now`
+              : undefined
+          }
+          onRestore={restore}
+          onDiscard={() => {
+            clearDraft(slot);
+            setStored(null);
+          }}
+        />
+      )}
+
+      {error && (
+        <div role="alert" className="flex flex-shrink-0 items-center gap-3 border-b border-red/30 bg-red/5 px-5 py-2 text-label text-red">
+          <span className="min-w-0 flex-1">{error.message}</span>
+          {error.conflict && (
+            <Button variant="outline" size="sm" onClick={() => void copyText()}>
+              {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+              {copied ? "Copied" : "Copy my text"}
+            </Button>
           )}
         </div>
-      </div>
+      )}
 
-      {/* Body editor — uncontrolled; fedoup owns CM6 state */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        <MarkdownEditor
-          ref={editorRef}
-          initialValue={body}
-          onChange={() => setDirty(true)}
-          extraExtensions={extensions}
-          className="min-h-[200px] w-full px-5 py-4"
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-4 px-5 py-4 @2xl:grid-cols-[minmax(0,1fr)_240px]",
+          fullscreen && "min-h-0 flex-1 overflow-y-auto @2xl:overflow-hidden",
+        )}
+      >
+        <MemoryBodyEditor
+          editorRef={editorRef}
+          value={text}
+          onChange={setText}
+          cursor={cursor}
+          mode={mode}
+          onModeChange={setMode}
+          keys={allKeys}
+          expandableKeys={expandableKeys}
+          generation={generation}
+          onNavigate={onNavigate}
+          autoFocus
+          className={fullscreen ? "min-h-[60vh] @2xl:min-h-0" : undefined}
+          bodyClassName={fullscreen ? undefined : "min-h-[320px]"}
         />
+
+        <aside className={cn("flex min-w-0 flex-col gap-5", fullscreen && "@2xl:overflow-y-auto")}>
+          <section className="flex flex-col gap-1.5">
+            <h3 className="text-micro font-medium text-faint">Tags</h3>
+            <TagInput
+              value={tags}
+              onChange={setTags}
+              suggestions={roomTags}
+              placeholder="Add tag…"
+              ariaLabel="Memory tags"
+            />
+          </section>
+
+          <section className="flex flex-col gap-1.5">
+            <h3 className="text-micro font-medium text-faint">Embedding</h3>
+            <label className="flex cursor-pointer select-none items-start gap-2">
+              <input
+                type="checkbox"
+                checked={expandable}
+                onChange={e => setExpandable(e.target.checked)}
+                className="mt-0.5 rounded border-border text-accent accent-accent"
+              />
+              <span className="text-label text-text">
+                Expandable
+                <span className="block text-micro text-muted-foreground">
+                  Other memories can embed it whole with <span className="font-mono">![[{memory.key}]]</span>.
+                </span>
+              </span>
+            </label>
+          </section>
+
+          <DraftLinks text={text} keys={keySet} onNavigate={onNavigate} />
+
+          <section className="flex flex-col gap-1 text-micro text-muted-foreground">
+            <h3 className="font-medium text-faint">About</h3>
+            <span>
+              Written by <span className="text-text">{memory.created_by}</span>
+            </span>
+            {memory.updated_at && (
+              <span>
+                Last saved {fmtAgo(memory.updated_at)}
+                {memory.updated_by && (
+                  <>
+                    {" "}by <span className="text-text">{memory.updated_by}</span>
+                  </>
+                )}
+              </span>
+            )}
+            {memory.file_path && (
+              <span className="truncate font-mono text-faint" title={memory.file_path}>
+                {memory.file_path}
+              </span>
+            )}
+          </section>
+        </aside>
       </div>
 
-      {/* Wikilink dropdown — portal so overflow/z-index can't clip it */}
-      {typeof document !== "undefined" && wikilinkMatch && wikilinkCandidates.length > 0 &&
-        createPortal(
-          <WikilinkDropdown
-            match={wikilinkMatch}
-            candidates={wikilinkCandidates}
-            onSelect={applyWikilink}
-            onDismiss={() => setWikilinkMatch(null)}
-          />,
-          document.body,
-        )
-      }
+      <footer
+        className={cn(
+          "flex flex-shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-5 py-1.5 text-micro text-faint",
+          !fullscreen && "mt-auto",
+        )}
+      >
+        <span className="flex items-center gap-1.5">
+          <Kbd size="xs" tone="muted">{mac ? "⌘S" : "Ctrl+S"}</Kbd> save
+        </span>
+        <span className="flex items-center gap-1.5">
+          <Kbd size="xs" tone="muted">{mac ? "⌘⇧F" : "Ctrl+Shift+F"}</Kbd> {fullscreen ? "leave full screen" : "full screen"}
+        </span>
+        {fullscreen && (
+          <span className="flex items-center gap-1.5">
+            <Kbd size="xs" tone="muted">Esc</Kbd> back
+          </span>
+        )}
+      </footer>
     </div>
   );
+
+  return fullscreen && typeof document !== "undefined" ? createPortal(screen, document.body) : screen;
 }
