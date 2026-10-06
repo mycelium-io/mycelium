@@ -35,6 +35,17 @@ def settings() -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def app_hub() -> bool:
+    """Whether the Mac app runs this machine's hub: set up, and not joining one elsewhere."""
+    s = settings()
+    return s is not None and s.get("mode") != "client"
+
+
+def start_hub() -> str:
+    """How to start the hub here: the app when it runs it, else the Docker stack."""
+    return "open the Mycelium app" if app_hub() else "mycelium up"
+
+
 def app_setting() -> CheckResult:
     s = settings()
     if s is None:

@@ -8,14 +8,14 @@ run and how they reach the room.
 ### 1. Single-device (default)
 
 Everything runs on one machine: the backend, the SLIM node, the app, the CLI
-and your agents. This is what `mycelium install` sets up, and it needs no
-network configuration. Use it when one person or one machine runs the whole
+and your agents. This is what the Mac app sets up (or `mycelium install`, which
+runs it in Docker), and it needs no network configuration. Use it when one person or one machine runs the whole
 workflow.
 
 ### 2. Hub-and-spoke (small teams)
 
 For a team that wants to share rooms and memory across machines. One machine,
-the **hub**, runs the SLIM node, the backend and the app. The other machines,
+the **hub**, runs the SLIM node, the backend and the app in Docker. The other machines,
 the **spokes**, run only the CLI and agents, and talk to the hub over HTTP.
 
 | Role  | What runs on it | Used for |

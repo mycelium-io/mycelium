@@ -59,6 +59,23 @@ def _container_running(name: str) -> bool:
     return r.returncode == 0 and name in r.stdout.strip().splitlines()
 
 
+def _open_app_ui() -> None:
+    """Open the UI the Mac app serves, or the app itself when it isn't up."""
+    from mycelium.desktop.supervisor import HOST, UI_PORT, port_open
+
+    url = f"http://{HOST}:{UI_PORT}"
+    if port_open(UI_PORT):
+        typer.echo(f"Opening {url}")
+        webbrowser.open(url)
+        return
+    typer.secho("⚠ The Mycelium app isn't serving its UI.", fg=typer.colors.YELLOW)
+    if shutil.which("open"):
+        typer.echo("  Opening the Mycelium app…")
+        subprocess.run(["open", "-b", "io.mycelium.desktop"], check=False)  # noqa: S607
+    else:
+        typer.echo("  Open the Mycelium app to start it.")
+
+
 @doc_ref(
     usage="mycelium ui open [-y]",
     desc="Open the frontend in your default browser.",
@@ -71,14 +88,20 @@ def ui_open(
 ) -> None:
     """Open the frontend in your default browser.
 
-    If the frontend container isn't running, offers to start the stack with
-    `mycelium up` first. Pass `-y` to skip the prompt and start it
-    automatically.
+    When the Mac app runs this machine's hub, opens the app's UI (or the
+    app, when it isn't running). Otherwise, if the frontend container isn't
+    running, offers to start the stack with `mycelium up` first. Pass `-y`
+    to skip the prompt and start it automatically.
 
     Examples:
         mycelium ui open
         mycelium ui open -y
     """
+    from mycelium.desktop.checks import app_hub
+
+    if app_hub():
+        _open_app_ui()
+        return
     url = _ui_url()
     if not _container_running(_FRONTEND_CONTAINER):
         typer.secho(
@@ -129,7 +152,9 @@ def ui_status(as_json: bool = False) -> None:
         typer.echo(f"  URL: {url}")
     else:
         typer.secho(f"✗ {_FRONTEND_CONTAINER} is not running", fg=typer.colors.RED)
-        typer.echo("  Start it with: mycelium up")
+        from mycelium.desktop.checks import start_hub
+
+        typer.echo(f"  Start it with: {start_hub()}")
         # Surface the configured backend so the user can sanity-check.
         try:
             cfg = MyceliumConfig.load()

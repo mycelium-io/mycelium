@@ -915,13 +915,15 @@ is no litellm dependency.
 
 > **This section is for contributors iterating on the backend source.** End users
 > follow the normal install path:
-> `curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash` then
-> `mycelium install`.
+> `curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash`, which on
+> an Apple silicon Mac installs and opens Mycelium for Mac (no Docker) and
+> elsewhere installs the CLI for `mycelium install` (`--docker` picks that on a
+> Mac, `--client-only` the CLI alone).
 
 ### Starting the stack
 
-The normal `mycelium up` / `mycelium install` flow uses `compose.yml` with
-`pull_policy: always` (released images), the correct path for end users. For dev,
+The `mycelium up` / `mycelium install` flow uses `compose.yml` with
+`pull_policy: always` (released images), the correct Docker path for end users. For dev,
 add `compose-dev.yml`, which builds `mycelium-backend` from local source and wires
 `~/.mycelium/.env` into the containers. The stack is a SLIM node + the backend (+
 the frontend, plus an optional collector), with **no database**. Always run

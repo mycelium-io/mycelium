@@ -393,15 +393,15 @@ jobs:
 
             **On a Mac:** download [Mycelium for Mac](https://github.com/mycelium-io/mycelium/releases/download/${{ github.ref_name }}/Mycelium-macos-arm64.dmg) (Apple silicon), drag it into Applications and open it. Already have it? It offers the update itself, or use Check for Updates… in its menu.
 
-            **On Linux, a server, or from a terminal:**
+            **From a terminal:** on an Apple silicon Mac this installs the same app (no Docker) and links its `mycelium` CLI; on Linux or a server it installs the CLI, and `mycelium install` brings up the Docker stack (`--docker` picks that on a Mac too).
 
             ```bash
-            curl -fsSL https://raw.githubusercontent.com/mycelium-io/mycelium/main/install.sh | bash
+            curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
             ```
 
-            Or install a specific version:
+            Or install this version:
             ```bash
-            uv tool install mycelium-cli==${{ steps.version.outputs.version }}
+            curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --version ${{ steps.version.outputs.version }}
             ```
 
             ## What's changed

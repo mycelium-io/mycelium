@@ -151,6 +151,12 @@ def _check_mycelium_dir_ownership() -> CheckResult:
     )
 
 
+def _start_hub() -> str:
+    from mycelium.desktop.checks import start_hub
+
+    return start_hub()
+
+
 def _check_llm_connectivity(
     *,
     set_up: str = "Run: mycelium install --force",
@@ -210,7 +216,7 @@ def _check_llm_connectivity(
             name="LLM connectivity",
             status="warning",
             message="Skipped (backend unreachable)",
-            details=[str(exc), "Start the backend: mycelium up"],
+            details=[str(exc), f"Start the backend: {_start_hub()}"],
         )
 
     if resp.status_code >= 500:
@@ -453,7 +459,7 @@ def _check_backend_reachable(*, local_backend: bool = True) -> CheckResult:
             message=f"{api_url} returned HTTP {resp.status_code}",
         )
     except Exception as exc:
-        hint = "Run: mycelium up" if local_backend else f"Check the remote backend at {api_url}"
+        hint = f"Run: {_start_hub()}" if local_backend else f"Check the remote backend at {api_url}"
         return CheckResult(
             name="Backend reachable",
             status="error",
@@ -793,13 +799,14 @@ def doctor(
     Single-device installs (the default) run the backend locally and
     exercise all checks. In the optional hub-and-spoke deployment mode
     spoke nodes talk to a remote backend and don't run Docker containers
-    locally. When --mode is 'auto' (the default), doctor detects spoke
-    mode from server.api_url: if it points to a non-local host the
-    Docker, runtime-drift, and port-drift checks are skipped automatically.
+    locally. When --mode is 'auto' (the default), doctor checks what the
+    Mac app runs if the app is set up on this machine, and otherwise
+    detects spoke mode from server.api_url: if it points to a non-local
+    host the Docker, runtime-drift, and port-drift checks are skipped.
 
     \b
     Examples:
-        mycelium doctor              # interactive; auto-detects hub vs spoke
+        mycelium doctor              # interactive; auto-detects app, hub or spoke
         mycelium doctor --fix        # auto-fix all fixable issues
         mycelium doctor --mode spoke # force spoke mode (skip local-only checks)
         mycelium doctor --mode hub   # force hub mode (run all checks)
@@ -816,6 +823,12 @@ def doctor(
         except Exception:
             api_url = "http://localhost:8000"
 
+        from mycelium.desktop.checks import settings as desktop_settings
+
+        if mode == "auto" and desktop_settings() is not None:
+            # The Mac app is set up here: it runs no containers, so check
+            # what it does run.
+            mode = "desktop"
         if mode == "auto":
             local = _is_local_backend(api_url)
         elif mode in ("hub", "desktop"):

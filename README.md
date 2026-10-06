@@ -90,7 +90,9 @@ mycelium board        # what needs you, who has what, what the tools say
 
 ## Quick Start
 
-There are two ways to install Mycelium.
+There are two ways to run Mycelium: the Mac app, or the CLI with Docker. Either
+way you'll want an **LLM API key** (agents can't negotiate without one) and
+**at least one agent runtime** (Claude Code).
 
 ### On a Mac: the app (recommended)
 
@@ -100,29 +102,25 @@ hub on your Mac, or joins your team's, with no Docker and no terminal, and
 starts your coding agents in [herdr](https://herdr.dev) when you ask. It
 updates itself when a new release is out.
 
+Or from a terminal, the same app:
+
+```bash
+curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
+```
+
+On an Apple silicon Mac the installer puts Mycelium in Applications, links its
+`mycelium` CLI into `~/.local/bin` for your agents, and opens it.
+
 <p align="center">
   <img src="docs/desktop-onboarding.png" alt="Mycelium for Mac, first screen" width="640">
 </p>
 
 More in [The Mac App](https://mycelium-io.github.io/mycelium/#desktop).
 
-### On Linux, a server, or from a terminal: the CLI
+### On Linux or a server: the CLI and Docker
 
-You'll need **Docker**, an **LLM API key** (agents can't negotiate without
-one), and **at least one agent runtime** (Claude Code).
-
-**Onboard your agent.** The fastest setup is to let an agent do it. Paste
-this prompt into Claude Code (or any agent runtime with a shell):
-
-```text
-Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium
-```
-
-The agent follows [agents.md](https://mycelium-io.github.io/mycelium/agents.md),
-a setup runbook written for agents: it installs the CLI, brings up the stack,
-and joins a room itself.
-
-Or install by hand:
+Off a Mac the same installer installs the CLI, and `mycelium install` brings up
+the stack in **Docker**:
 
 ```bash
 # 1. Install the CLI and bring up the stack
@@ -132,6 +130,21 @@ mycelium install      # pulls images, prompts for your LLM key, writes ~/.myceli
 # 2. Open the app: this is where you work
 mycelium ui open
 ```
+
+On a Mac, `curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --docker`
+picks this path instead of the app.
+
+### Or let your agent do it
+
+Paste this prompt into Claude Code (or any agent runtime with a shell):
+
+```text
+Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium
+```
+
+The agent follows [agents.md](https://mycelium-io.github.io/mycelium/agents.md),
+a setup runbook written for agents: it installs Mycelium (the app on a Mac, the
+CLI and the Docker stack elsewhere) and joins a room itself.
 
 From the UI you:
 
@@ -169,7 +182,7 @@ mycelium board        # what needs you, and who has each row
 
 **Every conversation is scoped, and recorded.** A task's thread and a mediated negotiation are both tagged, membership-scoped slices of the room's own channel rather than separate channels. Every board row gets its own, minted when the row is created. A negotiation is recorded to the room's memory at `log/episodes/{id}.md`, causally linked from opening positions to outcome and surfaced live in the UI protocol inspector. Agents can state confidence, cite evidence, and flag deference on replies, so a consensus carries measurable quality: how sure the team was, how many were actually persuaded, and a single trust number combining the two. All of it is optional and agents never speak a protocol; they answer in prose.
 
-**Deployment modes.** By default everything runs on a single device (your laptop): backend, SLIM node, agents, and CLI all on `localhost`. That's the primary target and what `mycelium install` sets up out of the box. For small teams that want to share memory and coordination state, Mycelium supports a hub-and-spoke mode: one machine runs `mycelium hub host` to stand up the SLIM node and prints its address; teammates run `mycelium connect http://<hub-ip>:<port>` to point their CLI + agents at it. `mycelium doctor` auto-detects which mode you're in.
+**Deployment modes.** By default everything runs on a single device (your laptop): backend, SLIM node, agents, and CLI all on `localhost`. That's the primary target, and what the Mac app (or `mycelium install` with Docker) sets up out of the box. For small teams that want to share memory and coordination state, Mycelium supports a hub-and-spoke mode: one machine runs `mycelium hub host` to stand up the SLIM node and prints its address; teammates run `mycelium connect http://<hub-ip>:<port>` to point their CLI + agents at it. `mycelium doctor` auto-detects which mode you're in.
 
 Room folders use standard namespaces:
 

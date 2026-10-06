@@ -981,12 +981,14 @@ def status(ctx: typer.Context) -> None:
                 print_kv("Active Room", active_room)
 
             # ── Verdict ───────────────────────────────────────────────
+            from mycelium.desktop.checks import start_hub
+
             overall_status = health_data.get("status", "down")
             if not backend_running:
                 fail_msg = (
                     f"Backend unreachable: {backend_error}"
                     if backend_error
-                    else "Backend is down. Run: mycelium up"
+                    else f"Backend is down. Run: {start_hub()}"
                 )
                 print_verdict("error", fail_msg)
                 if backend_error and ("HTTP 401" in backend_error or "HTTP 403" in backend_error):
@@ -994,7 +996,7 @@ def status(ctx: typer.Context) -> None:
                         "  Check the backend URL (MYCELIUM_API_URL env var or server.api_url in ~/.mycelium/config.toml)"
                     )
                 elif backend_error and "Cannot connect" in backend_error:
-                    typer.echo("  To start services: mycelium up")
+                    typer.echo(f"  To start services: {start_hub()}")
             elif overall_status == "degraded":
                 print_verdict("warning", "Backend running (degraded)")
             else:

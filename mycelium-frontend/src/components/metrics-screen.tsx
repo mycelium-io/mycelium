@@ -567,8 +567,9 @@ function BackendDown() {
       <div className="max-w-lg">
         <Label className="text-yellow">Backend unreachable</Label>
         <p className="mt-2 text-label leading-relaxed text-muted-foreground">
-          Nothing answered <span className="font-mono text-text">GET /api/observability</span>. Bring
-          the stack up with <span className="font-mono text-text">mycelium up</span>, or run{" "}
+          Nothing answered <span className="font-mono text-text">GET /api/observability</span>. Open the
+          Mycelium app (or run <span className="font-mono text-text">mycelium up</span> for the
+          Docker stack), or run{" "}
           <span className="font-mono text-text">mycelium doctor</span> to find out what is holding it
           down.
         </p>

@@ -13,8 +13,9 @@
 
 export const DOCS_URL = "https://mycelium-io.github.io/mycelium";
 
-/** Step 1: fetch the CLI, the same one-liner the README and docs site carry. */
-export const CLI_INSTALL_COMMAND = `curl -fsSL ${DOCS_URL}/install.sh | bash`;
+/** Step 1: fetch the CLI alone. The README's one-liner without a flag installs
+ * the Mac app on a Mac, which runs a hub of its own; this page's hub exists. */
+export const CLI_INSTALL_COMMAND = `curl -fsSL ${DOCS_URL}/install.sh | bash -s -- --client-only`;
 
 /** Point the CLI at the hub this page is served from. */
 export function configSetCommand(hubUrl: string): string {

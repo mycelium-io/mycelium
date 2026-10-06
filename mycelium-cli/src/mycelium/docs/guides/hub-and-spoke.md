@@ -47,9 +47,12 @@ them. It has to, so it can keep the transcript, run engines and save memory.
 
 ## Step 1: Set up the hub
 
-On the hub machine, install Mycelium and start the SLIM node:
+The hub here is the Docker stack. (The Mac app's hub listens on 127.0.0.1
+only, so it's for the Mac it runs on, not one spokes can reach.) On the hub
+machine, install the CLI and the stack, and start the SLIM node:
 
 ```bash
+curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash   # on a Mac: bash -s -- --docker
 mycelium install
 mycelium hub host
 ```
@@ -116,11 +119,15 @@ doesn't.
 
 ## Step 2: Connect each spoke
 
-On each spoke, install the CLI:
+On each spoke, install the CLI alone (`--client-only` skips the Mac app and
+Docker, neither of which a spoke needs):
 
 ```bash
-curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
+curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only
 ```
+
+A Mac spoke can use the Mac app instead: on its first screen, choose **On my
+team's hub** and enter the hub's address.
 
 Point it at the hub's API:
 

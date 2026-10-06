@@ -8,7 +8,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "index.html#quickstart",
     "t": "Quick Start",
-    "x": "On a Mac, four steps: Download Mycelium for Mac, open it, and choose Run a hub on this Mac. Press + next to Rooms to create a room. Open Members, press Add, and add a coding agent from Your machine. Hand it a task: type /task Add a gift message to orders @builder into the message box. New to this? Walk through it step by step, with a screenshot at each step. On Linux or a server your team shares, use the CLI instead:",
+    "x": "On a Mac, four steps: Download Mycelium for Mac, open it, and choose On this Mac. Press + next to Rooms to create a room. Open Members, press Add, and add a coding agent from Your machine. Hand it a task: type /task Add a gift message to orders @builder into the message box. New to this? Walk through it step by step, with a screenshot at each step. Rather use a terminal? This installs the same app into Applications, ",
     "p": "Get Started"
   },
   {
@@ -238,7 +238,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#worker-where-it-works",
     "t": "Where it works",
     "s": "Worker",
-    "x": "Each room with workers has a git repository on the hub. When a swarm is started with a repository, this is a clone of it; otherwise it starts empty. Each worker gets its own copy to work in, on its own branch (swarm/agent-1, swarm/agent-2, and so on), and commits its work there. Reviewers look at the author's branch. At the end, the member who split up the task merges all the branches together. On a hub started with ",
+    "x": "Each room with workers has a git repository on the hub. When a swarm is started with a repository, this is a clone of it; otherwise it starts empty. Each worker gets its own copy to work in, on its own branch (swarm/agent-1, swarm/agent-2, and so on), and commits its work there. Reviewers look at the author's branch. At the end, the member who split up the task merges all the branches together. On a hub on your own m",
     "p": "Engines"
   },
   {
@@ -727,21 +727,21 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#on-a-server",
     "t": "Run It on a Server",
     "s": "Setup",
-    "x": "On Linux, on a server your team shares, or if you'd rather use a terminal, run Mycelium with the CLI. It starts the hub with Docker.",
+    "x": "On Linux, on a server your team shares, or anywhere you'd rather run the hub in Docker, run Mycelium with the CLI. It starts the hub with Docker. (On a Mac the installer below installs the Mac app instead, which needs no Docker; pass --docker to get this path there.)",
     "p": "Guides"
   },
   {
     "u": "guides.html#on-a-server-start-with-a-prompt",
     "t": "Start with a prompt",
     "s": "Setup › Run It on a Server",
-    "x": "The easiest way is to ask your coding agent to do it. Paste this into any coding agent that can run shell commands: Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium It reads agents.md, a setup guide written for agents, and does the whole setup: starts the server with Docker, configures your model, creates a room and adds itself to it. When it's done, open the",
+    "x": "The easiest way is to ask your coding agent to do it. Paste this into any coding agent that can run shell commands: Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium It reads agents.md, a setup guide written for agents, and does the whole setup: starts the server (the app on a Mac, Docker elsewhere), configures your model, creates a room and adds itself to it.",
     "p": "Guides"
   },
   {
     "u": "guides.html#on-a-server-start-the-server",
     "t": "Start the server",
     "s": "Setup › Run It on a Server",
-    "x": "Start it on a machine you trust. Your laptop is fine to begin with. When your team wants a shared server, move it there. curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash mycelium install install sets up the CLI and starts the server: a SLIM messaging node, the backend, and the app. There's no database; rooms and memory are files. It asks for a model provider and API key along the way. Rooms and mem",
+    "x": "Start it on a machine you trust. Your laptop is fine to begin with. When your team wants a shared server, move it there. curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash mycelium install On a Mac, add --docker to the installer (curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --docker), or it installs the Mac app instead of the CLI for Docker. install sets up the CLI and st",
     "p": "Guides"
   },
   {
@@ -832,7 +832,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#desktop-the-command-line",
     "t": "The command line",
     "s": "Setup › The Mac App",
-    "x": "Everything the app does is also a command, for a Linux machine, a server, or if you'd rather use a terminal: mycelium desktop serve runs the same hub without the window. See Run it on a server instead for the full CLI setup.",
+    "x": "The installer on the docs site installs the app too, from a terminal: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash puts it in Applications, links its mycelium CLI into ~/.local/bin, and opens it. Everything the app does is also a command, for a Linux machine, a server, or if you'd rather use a terminal: mycelium desktop serve runs the same hub without the window. See Run it on a server instead ",
     "p": "Guides"
   },
   {
@@ -853,7 +853,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#hub-and-spoke-step-1-set-up-the-hub",
     "t": "Step 1: Set up the hub",
     "s": "Setup › Hub & Spoke",
-    "x": "On the hub machine, install Mycelium and start the SLIM node: mycelium install mycelium hub host mycelium hub host starts the SLIM node and prints its addresses: SLIM node running. local → http://127.0.0.1:46357 (this machine, saved to config) for peers → http://192.168.1.20:46357 Make sure the backend is running too (mycelium up starts it if it isn't), then check everything: mycelium doctor doctor works out whether ",
+    "x": "The hub here is the Docker stack. (The Mac app's hub listens on 127.0.0.1 only, so it's for the Mac it runs on, not one spokes can reach.) On the hub machine, install the CLI and the stack, and start the SLIM node: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash # on a Mac: bash -s -- --docker mycelium install mycelium hub host mycelium hub host starts the SLIM node and prints its addresses: SLIM ",
     "p": "Guides"
   },
   {
@@ -874,7 +874,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#hub-and-spoke-step-2-connect-each-spoke",
     "t": "Step 2: Connect each spoke",
     "s": "Setup › Hub & Spoke",
-    "x": "On each spoke, install the CLI: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash Point it at the hub's API: mycelium config set server.api_url http://192.168.1.20:8000 or do it when you set up the CLI: mycelium init --api-url http://192.168.1.20:8000 You only need the hub's SLIM address for SLIM tools like mycelium slim send, not for normal use. To save it anyway: mycelium connect http://192.168.1.",
+    "x": "On each spoke, install the CLI alone (--client-only skips the Mac app and Docker, neither of which a spoke needs): curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only A Mac spoke can use the Mac app instead: on its first screen, choose On my team's hub and enter the hub's address. Point it at the hub's API: mycelium config set server.api_url http://192.168.1.20:8000 or do it when y",
     "p": "Guides"
   },
   {
@@ -1168,7 +1168,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#ephemeral-agents-install-the-cli-without-docker",
     "t": "Install the CLI without Docker",
     "s": "Agents › Ephemeral Agents",
-    "x": "The normal installer sets up the whole Mycelium stack, which needs Docker. An ephemeral agent only talks to an existing hub, so it only needs the CLI: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only With --client-only, the installer doesn't check for Docker. If the container's python3 is older than 3.12, it installs Python 3.12 for the CLI instead of failing. Many base images h",
+    "x": "The normal installer sets up a hub on the machine: the Mac app on a Mac, or the CLI for the Docker stack anywhere else. An ephemeral agent only talks to an existing hub, so it only needs the CLI: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only With --client-only, the installer neither installs the app nor checks for Docker. If the container's python3 is older than 3.12, it inst",
     "p": "Guides"
   },
   {
@@ -1651,7 +1651,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-start-with-mycelium-doctor",
     "t": "Start with mycelium doctor",
     "s": "Help › Troubleshooting",
-    "x": "mycelium doctor # checks config, backend, model and SLIM mycelium doctor --fix # fixes whatever it can without asking mycelium status # a quick look at the services mycelium logs --tail 50 # recent logs mycelium doctor is the first thing to run for almost any problem. It works out whether this machine is a hub (it runs the backend and SLIM node) or a spoke (it connects to a hub somewhere else), and only runs the chec",
+    "x": "mycelium doctor # checks config, backend, model and SLIM mycelium doctor --fix # fixes whatever it can without asking mycelium status # a quick look at the services mycelium logs --tail 50 # recent logs mycelium doctor is the first thing to run for almost any problem. It works out whether this machine runs the Mac app, is a hub (it runs the backend and SLIM node in Docker) or a spoke (it connects to a hub somewhere e",
     "p": "Guides"
   },
   {
@@ -1665,7 +1665,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-mycelium-command-not-found",
     "t": "mycelium: command not found",
     "s": "Help › Troubleshooting",
-    "x": "The CLI isn't installed, or isn't on your PATH. Install it: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash If it's installed but your shell can't find it, add its folder to your PATH: export PATH=\"$HOME/.local/bin:$PATH\"",
+    "x": "The CLI isn't installed, or isn't on your PATH. Install it (on an Apple silicon Mac this installs the Mac app, whose CLI it links into ~/.local/bin; add bash -s -- --client-only for the CLI alone): curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash If it's installed but your shell can't find it, add its folder to your PATH: export PATH=\"$HOME/.local/bin:$PATH\"",
     "p": "Guides"
   },
   {
@@ -1784,7 +1784,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-starting-over",
     "t": "Starting over",
     "s": "Help › Troubleshooting",
-    "x": "This deletes all your rooms, memories and config. mycelium down --volumes # stop everything and delete its data rm -rf ~/.mycelium # remove config and room files mycelium install # install again",
+    "x": "This deletes all your rooms, memories and config. With the Docker stack: mycelium down --volumes # stop everything and delete its data rm -rf ~/.mycelium # remove config and room files mycelium install # install again With the Mac app, quit it from its menu bar icon, remove ~/.mycelium, and open it again: it starts at its first screen.",
     "p": "Guides"
   },
   {
@@ -1812,14 +1812,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#architecture-1-single-device-default",
     "t": "1. Single-device (default)",
     "s": "Architecture",
-    "x": "Everything runs on one machine: the backend, the SLIM node, the app, the CLI and your agents. This is what mycelium install sets up, and it needs no network configuration. Use it when one person or one machine runs the whole workflow.",
+    "x": "Everything runs on one machine: the backend, the SLIM node, the app, the CLI and your agents. This is what the Mac app sets up (or mycelium install, which runs it in Docker), and it needs no network configuration. Use it when one person or one machine runs the whole workflow.",
     "p": "Reference"
   },
   {
     "u": "reference.html#architecture-2-hub-and-spoke-small-teams",
     "t": "2. Hub-and-spoke (small teams)",
     "s": "Architecture",
-    "x": "For a team that wants to share rooms and memory across machines. One machine, the hub, runs the SLIM node, the backend and the app. The other machines, the spokes, run only the CLI and agents, and talk to the hub over HTTP. Role What runs on it Used for Hub The SLIM node, the backend and the app. The team's shared server. One per team. Spoke The CLI and agents, with server.api_url pointing at the hub. Each teammate's",
+    "x": "For a team that wants to share rooms and memory across machines. One machine, the hub, runs the SLIM node, the backend and the app in Docker. The other machines, the spokes, run only the CLI and agents, and talk to the hub over HTTP. Role What runs on it Used for Hub The SLIM node, the backend and the app. The team's shared server. One per team. Spoke The CLI and agents, with server.api_url pointing at the hub. Each ",
     "p": "Reference"
   },
   {

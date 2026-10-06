@@ -38,9 +38,9 @@ describe("detectPlatform", () => {
 });
 
 describe("install content", () => {
-  it("carries the same install one-liner the README and docs site publish", () => {
+  it("installs the CLI alone, since this page's hub already exists", () => {
     expect(CLI_INSTALL_COMMAND).toBe(
-      "curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash",
+      "curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only",
     );
   });
 
