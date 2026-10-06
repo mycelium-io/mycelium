@@ -25,9 +25,11 @@ import json
 import logging
 import re
 import time
+from typing import NamedTuple
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from mycelium.cli_options import emits_json, in_room
@@ -742,6 +744,39 @@ def _drain_wakes(
     return woke
 
 
+def _reason(err: Exception) -> str:
+    """One line saying why a binding failed: the hub's own message when it answered."""
+    from mycelium.client import hub_error_detail
+    from mycelium_backend_client.errors import UnexpectedStatus
+
+    if isinstance(err, UnexpectedStatus):
+        return f"the hub answered {err.status_code}: {hub_error_detail(err.content)}"
+    return " ".join(str(err).split()) or type(err).__name__
+
+
+class SyncResult(NamedTuple):
+    """What one :func:`sync_pass` did, and the bindings it couldn't reconcile."""
+
+    enrolled: int
+    retired: int
+    states: int
+    #: ``{workspace: (room, error)}`` for each binding whose reconcile raised.
+    failed: dict[str, tuple[str, str]]
+
+
+class BindingSyncError(Exception):
+    """Some bound workspaces couldn't be reconciled; the rest of the pass still ran.
+
+    Raised by the runner's herdr host after the pass, so the runner reports
+    which bindings fail (``Runner.sync_health``) and ``mycelium machine`` can
+    name them.
+    """
+
+    def __init__(self, failed: dict[str, tuple[str, str]]) -> None:
+        self.failed = failed
+        super().__init__("; ".join(f"{ws} → {r}: {err}" for ws, (r, err) in failed.items()))
+
+
 def sync_pass(
     config: MyceliumConfig,
     bridge: HerdrBridge,
@@ -754,19 +789,30 @@ def sync_pass(
     kind: str | None = None,
     log: Console | None = None,
     wait: bool = True,
-) -> tuple[int, int, int]:
+) -> SyncResult:
     """One reconcile of the bound workspaces: membership, liveness up, wakes down.
 
-    Returns ``(enrolled, retired, states pushed)``. Shared by ``herdr sync``
-    and ``swarm``, which runs it on a background thread while it shows the room
-    and does not wait on a woken agent (``wait``), since its members work at once.
+    A binding that fails to reconcile is logged and reported in ``failed``; the
+    other bindings, presence and wakes still go ahead, so one bad binding can't
+    leave every agent on the machine unwoken. Shared by ``herdr sync`` and
+    ``swarm``, which runs it on a background thread while it shows the room and
+    does not wait on a woken agent (``wait``), since its members work at once.
     """
     out = log if log is not None else console
     enrolled = retired = 0
+    failed: dict[str, tuple[str, str]] = {}
     for ws, r in targets:
-        e, x = _reconcile_workspace(
-            config, bridge, ws, r, name_from=name_from, prefix=prefix, kind=kind
-        )
+        what = f"binding {ws} -> {r}"
+        try:
+            e, x = _reconcile_workspace(
+                config, bridge, ws, r, name_from=name_from, prefix=prefix, kind=kind
+            )
+        except Exception as err:  # noqa: BLE001 - one binding must not stop the others
+            failed[ws] = (r, _reason(err))
+            failing(_sync, what, f"{what} failed: {err!r}")
+            out.print(f"[red]✗ {escape(ws)} → {escape(r)}[/red] [dim]{escape(failed[ws][1])}[/dim]")
+            continue
+        recovered(_sync, what)
         for h in e:
             _sync.info("enrolled @%s (%s -> %s)", h, ws, r)
             out.print(f"[green]＋ enrolled[/green] @{h} [dim]({ws} → {r})[/dim]")
@@ -780,7 +826,7 @@ def sync_pass(
         _push_presence(config, r, statuses, ttl_s)
     for r in {r for _, r in targets} | set(view):
         _drain_wakes(config, bridge, r, log=out, wait=wait)
-    return enrolled, retired, sum(len(v) for v in view.values())
+    return SyncResult(enrolled, retired, sum(len(v) for v in view.values()), failed)
 
 
 #: How long one pass's liveness stands on the hub; the runner's next pass renews it.
@@ -861,7 +907,7 @@ def herdr_sync(
             )
             raise typer.Exit(1)
 
-        enrolled, retired, states = sync_pass(
+        enrolled, retired, states, failed = sync_pass(
             config,
             bridge,
             targets,
@@ -875,6 +921,11 @@ def herdr_sync(
             f"[green]Synced[/green] {states} live state(s) across {len(targets)} binding(s) "
             f"[dim](+{enrolled} enrolled, -{retired} retired)[/dim]"
         )
+        if failed:
+            console.print(
+                f"[red]{len(failed)} binding(s) failed to sync[/red] (listed above). "
+                "Unbind one with [cyan]mycelium herdr unbind <workspace>[/cyan]."
+            )
         if running_pid():
             console.print("[dim]This machine's runner keeps them synced from here.[/dim]")
         else:
@@ -883,6 +934,38 @@ def herdr_sync(
                 "mentions until the runner is running. Start it with "
                 "[cyan]mycelium runner --detach[/cyan]."
             )
+        if failed:
+            raise typer.Exit(1)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        print_error(e, verbose=bool(ctx.obj and ctx.obj.get("verbose")))
+        raise typer.Exit(1) from None
+
+
+@doc_ref(
+    usage="mycelium herdr unbind <workspace>",
+    desc="Stop syncing a herdr workspace with its room; its agents stay in the room.",
+    group="agent",
+)
+@app.command("unbind")
+def herdr_unbind(
+    ctx: typer.Context,
+    workspace: str = typer.Argument(..., help="herdr workspace id to unbind (e.g. w2)."),
+) -> None:
+    """Forget a ``workspace -> room`` binding, so the runner stops syncing it.
+
+    Its members stay in the room and their handle↔pane mappings stay; nothing
+    enrolls or retires them until the workspace is bound again.
+    """
+    try:
+        bridge = _bridge()
+        room = bridge.registry.bindings().get(workspace)
+        if room is None:
+            console.print(f"[yellow]No binding[/yellow] for workspace {escape(workspace)}")
+            raise typer.Exit(1)
+        bridge.registry.unbind(workspace)
+        console.print(f"[green]Unbound[/green] {escape(workspace)} [dim]from {escape(room)}[/dim]")
     except typer.Exit:
         raise
     except Exception as e:

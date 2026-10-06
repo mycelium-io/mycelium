@@ -247,7 +247,7 @@ class HerdrHost:
                 del state.workspaces[room]
 
     def sync(self, config: MyceliumConfig, state: State, log: Console) -> None:
-        from mycelium.commands.herdr import sync_pass
+        from mycelium.commands.herdr import BindingSyncError, sync_pass
 
         # Every workspace bound to a room on this machine: the ones this runner
         # opened and any a person bound (`mycelium herdr sync --workspace …`).
@@ -255,7 +255,7 @@ class HerdrHost:
         targets = dict(state.owned) | self.bridge.registry.bindings()
         if not targets:
             return
-        sync_pass(
+        result = sync_pass(
             config,
             self.bridge,
             list(targets.items()),
@@ -264,6 +264,8 @@ class HerdrHost:
             log=log,
             wait=False,
         )
+        if result.failed:
+            raise BindingSyncError(result.failed)
 
 
 # ── Omnigent ─────────────────────────────────────────────────────────────────

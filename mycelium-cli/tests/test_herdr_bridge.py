@@ -767,3 +767,57 @@ def test_a_workspace_that_is_gone_is_opened_again(
     workspace, pane = bridge.place_pane("checkout", "w5", handle="a")
     assert (workspace, pane) == ("w9", "w9:p1")
     assert herdr.labels() == ["@a"]
+
+
+def test_retiring_a_member_the_hub_already_forgot_still_retires_it(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    """A 404 on the manifest delete means it is already gone. Raising instead
+    kept the mapping, so the same delete failed on every later pass."""
+    from contextlib import nullcontext
+
+    from mycelium.commands import agent as agent_cmd
+    from mycelium.filesystem import get_room_dir
+    from mycelium_backend_client.api.memory import (
+        delete_memory_api_rooms_room_name_memory_key_delete as delete_api,
+    )
+    from mycelium_backend_client.errors import UnexpectedStatus
+
+    status = 404
+
+    def delete(**_kw: object) -> None:
+        raise UnexpectedStatus(status, b'{"detail":"Memory not found"}')
+
+    monkeypatch.setattr(delete_api, "sync_detailed", delete)
+    monkeypatch.setattr(agent_cmd, "_typed_client", lambda *_a, **_kw: nullcontext())
+    mirror = get_room_dir("r") / "agents" / "old.md"
+    mirror.parent.mkdir(parents=True, exist_ok=True)
+    mirror.write_text("---\n---\n")
+    manifest = cast("AgentManifest", type("M", (), {"memory_key": "agents/old"})())
+
+    agent_cmd._delete_manifest(cast("MyceliumConfig", _Cfg()), "r", manifest)
+    assert not mirror.exists()
+
+    status = 500
+    with pytest.raises(UnexpectedStatus):
+        agent_cmd._delete_manifest(cast("MyceliumConfig", _Cfg()), "r", manifest)
+
+
+def test_herdr_unbind_forgets_the_workspace_and_keeps_its_members(isolated_home: Path) -> None:
+    from typer.testing import CliRunner
+
+    from mycelium.commands import herdr as herdr_cmd
+
+    reg = HerdrRegistry()
+    reg.bind("w2", "r")
+    reg.set(HerdrPaneMapping(room="r", handle="a", pane="w2:p1", managed=True))
+
+    result = CliRunner().invoke(herdr_cmd.app, ["unbind", "w2"])
+    assert result.exit_code == 0, result.output
+    assert "Unbound w2 from r" in result.output
+    assert reg.bindings() == {}
+    assert reg.get("r", "a") is not None
+
+    again = CliRunner().invoke(herdr_cmd.app, ["unbind", "w2"])
+    assert again.exit_code == 1
+    assert "No binding" in again.output

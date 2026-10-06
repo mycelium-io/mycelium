@@ -98,7 +98,14 @@ class Workspace:
 
 
 ProblemKind = Literal[
-    "stopped", "lost", "runner_down", "wakes_stalled", "no_restore", "herdr_update", "herdr_down"
+    "stopped",
+    "lost",
+    "runner_down",
+    "wakes_stalled",
+    "binding_failing",
+    "no_restore",
+    "herdr_update",
+    "herdr_down",
 ]
 
 
@@ -369,6 +376,20 @@ def _problems(
                 [a.handle for a in live],
             )
         )
+    for bad in _failing_bindings(sync):
+        ws, room, error = bad["workspace"], bad["room"], bad["error"]
+        here = next((w for w in workspaces if w.id == ws), None)
+        problems.append(
+            Problem(
+                "binding_failing",
+                f"Workspace {here.label if here else ws} can't sync with {room}: {error}. "
+                "Agents opened there aren't added to the room, and closed ones aren't "
+                "removed, until it syncs. Unbinding stops the runner syncing it; its "
+                "agents stay in the room.",
+                f"mycelium herdr unbind {ws}",
+                [a.handle for a in here.agents] if here else [],
+            )
+        )
     if missing:
         without = [a for a in agents if a.restores is False]
         problems.append(
@@ -385,6 +406,18 @@ def _problems(
     if (update := _herdr_update(server if herdr_up else None, client)) is not None:
         problems.append(update)
     return problems
+
+
+def _failing_bindings(sync: dict[str, Any] | None) -> list[dict[str, str]]:
+    """The bound workspaces the runner's last sync pass couldn't reconcile."""
+    found = (sync or {}).get("bindings")
+    if not isinstance(found, list):
+        return []
+    return [
+        {k: str(b[k]) for k in ("workspace", "room", "error")}
+        for b in found
+        if isinstance(b, dict) and all(b.get(k) for k in ("workspace", "room", "error"))
+    ]
 
 
 def _stalled(sync: dict[str, Any] | None) -> str | None:
