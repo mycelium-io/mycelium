@@ -64,7 +64,7 @@ After each rating round the thread shows a scorecard: the options, everyone's
 ratings, and who is below the bar. It ends with one line, such as
 "Everyone's on board: going with C" or "Couldn't get everyone there. Best was
 B". When everyone agrees, the decision is saved to the room's memory as
-`context/decision/<task>`, next to the task. Nothing is added to the board.
+`context/decision/<task>`, next to the task.
 
 A reply without readable ratings is asked once more. A missing rating is
 never guessed from what someone wrote: it counts against the option it's
@@ -73,17 +73,17 @@ didn't answer.
 
 ## Getting on the same page
 
-Before work starts, `accord` gets everyone to one shared understanding of the
-task. Nobody leads it and nobody votes on it:
+Before work starts, `accord` gets everyone to the same understanding of the
+task. Everyone takes part the same way:
 
 ```bash
 mycelium board coordinate work/acme-renewal conductor \
   "accord @success @finance @legal: agree what the Acme renewal is before we start"
 ```
 
-1. **Say what the task is.** Everyone writes what they understand the task to
-   be, as many points as they like, each on its own line after a label that
-   says what kind of point it is:
+1. **Say what the task is.** Each member gives the few points that matter most
+   to them, each on its own line after a label that says what kind of point it
+   is:
 
    ```
    [[mycelium: objective]] Renew Acme on terms finance can sign.
@@ -92,39 +92,37 @@ mycelium board coordinate work/acme-renewal conductor \
    ```
 
    The labels are `objective`, `constraint`, `assumption`, `sub_goal`,
-   `deliverable` and `out_of_scope`. `about=` is optional and names what a
-   point is about. A reply with no label is asked once more; if it still has
-   none, it's kept as written, as a point that only its writer stated.
-2. **Merge.** Code merges the points: two points of the same kind that say the
-   same thing become one, and each point keeps who stated it. Nothing is
-   dropped or reworded. The thread shows the points so far, and everyone is
-   asked what's missing, until a round adds nothing new (three rounds at most).
-3. **The words.** Everyone says what they mean by any word they're using in a
-   specific sense, and how they'd check a point:
+   `deliverable` and `out_of_scope`. You can add `about=` to say what a point
+   is about. If a reply has no labels, the member is asked once more, and a
+   reply that still has none is kept exactly as written.
+2. **Merge.** Points of the same kind that say the same thing are combined,
+   and each point records who said it. The thread shows the points so far, and
+   everyone adds anything important that's missing. This repeats until a round
+   brings nothing new, for up to three rounds.
+3. **Define the words.** Everyone says what they mean by any word they use in
+   a specific sense, and how they would check a point:
 
    ```
    [[mycelium: term=renewal]] The same product for a new 12-month term.
    [[mycelium: check covers=p1,p2]] Finance signs the order form.
    ```
 
-   If two people mean different things by the same word, only they are asked
-   to say again what they mean, once. Meanings that still differ are kept side
-   by side.
+   If two people mean different things by the same word, those two are asked
+   to say what they mean once more. Both meanings go into the summary.
 4. **Save.** The shared summary is saved to the room's memory as
-   `context/summary/<task>`, related to the task. Read it with
+   `context/summary/<task>`. Read it with
    `mycelium memory get context/summary/acme-renewal`.
 
-Anything that doesn't line up is flagged in the summary's open items, never
-settled for the team: a point only one person stated, two people saying
-different things about the same subject, a word used in different senses, a
-point nothing checks yet, and anyone who didn't answer. If you disagree with
-the result, say so in the task's thread. Running `accord` again on the same
-task updates the same summary.
+The summary ends with a list of open items: points only one person made, two
+people saying different things about the same subject, words used in
+different senses, points nobody has said how to check, and anyone who didn't
+answer. To disagree with something in the summary, say so in the task's
+thread. Running `accord` on the same task again updates the summary.
 
-Whatever runs in the task afterwards is pointed at the summary: a later flow
-shows it in its prompts, and an agent woken about the task is told where it is
-and what's still open. A task with no summary of its own uses the nearest one
-up its parents.
+Everything that runs on the task afterwards sees the summary. Later flows
+include it in their prompts, and an agent woken about the task is told where
+the summary is and what's still open. A subtask with no summary of its own
+uses its parent's.
 
 ## Who can take part
 
@@ -167,9 +165,8 @@ played each role, and every step taken.
 
 A flow ends at one of its end steps, as either `resolved` or `rejected`. If it
 reaches its step limit first, it ends as `rejected`. A `concord` run that
-everyone agrees on ends as `converged`. No flow adds anything to the board:
-what `accord` and `concord` agree is saved to the room's memory instead, and
-the last line of the run says where.
+everyone agrees on ends as `converged`. What `accord` and `concord` agree is
+saved to the room's memory, and the last line of the run says where.
 
 Finishing a flow doesn't finish the task. To mark the task done, resolve it as
 usual with `mycelium board resolve`.
@@ -232,8 +229,8 @@ Other options:
   labelled points, words and checks into the shared summary being built.
 - `require: stance`, `require: scores` or `require: pieces` asks a reply
   that's missing it once more. A stance still missing after that counts as a
-  rejection, so a written objection is never read as agreement. A reply still
-  without labels is kept as written, as one unlabelled point.
+  rejection, so a written objection is never read as agreement. A reply that
+  still has no labels is kept exactly as written.
 
 A pick is a step with `kind: select`. It asks nobody, takes a `threshold`
 (0.7 means everyone rates it 70 or more) and `max_repairs`, and goes on by how
@@ -242,21 +239,20 @@ it), `stuck` (a fix can't help) and `default`. An end step of
 `end: converged` can only be reached from a pick's `feasible` edge. Print
 `concord` with `show concord` to see one in full.
 
-Two more kinds of step ask nobody, and `accord` is built from them (print it
-with `show accord`):
+Two more kinds of step ask nobody. `accord` is built from them; print it with
+`show accord` to see how:
 
-- `kind: tally` reads what was gathered. With `of: points` it goes on by
-  `grew` (the last round added a point), `settled` (it added none) or `empty`
-  (nobody has given any). With `of: terms` it goes on by `contested` (someone
-  means something different by a word) or `clear`. `max_rounds` is how many
-  times it can run before it settles, and whatever was still moving is
-  flagged.
-- `kind: lock` assembles the shared summary and saves it to the room's memory,
-  then goes on by `locked`, or `empty` when there's nothing to save.
+- `kind: tally` looks at what has been gathered so far. With `of: points` it
+  goes on by `grew` (the last round added a point), `settled` (it added none)
+  or `empty` (nobody has given any). With `of: terms` it goes on by
+  `contested` (two people mean different things by a word) or `clear`.
+  `max_rounds` is how many times it can run before it moves on.
+- `kind: lock` puts the shared summary together and saves it to the room's
+  memory, then goes on by `locked`, or by `empty` when there's nothing to
+  save.
 
-Neither asks anyone to accept the result. If your room wants a vote before the
-summary is saved, save your own `protocols/accord` with an ask step that
-requires a stance before the lock.
+To have everyone approve the summary before it's saved, save your own
+`protocols/accord` with an ask step before the lock that requires a stance.
 
 Prompts can use these placeholders:
 

@@ -323,11 +323,11 @@ is no litellm dependency.
   stance after that counts as reject, and an unlabelled reply is kept whole as
   one `statement`. **A run ending on a pick's `feasible` edge is the one
   conductor path that commits `converged`**; every other flow ends
-  `resolved` / `rejected`. **No conductor run files board rows**: the commit
-  carries no `assignments` (and `task_sync` skips a converged commit without
-  them); a converged pick's decision is saved to `context/decision/<task>`
-  instead (`app/services/agreed.py`), and the commit's `memory` points at it.
-  **`accord` builds a shared summary in code, with no lead and no vote:**
+  `resolved` / `rejected`. **What a conductor run agrees goes to memory:** a
+  converged pick's decision is saved to `context/decision/<task>`
+  (`app/services/agreed.py`) and the commit's `memory` points at it. The commit
+  carries no `assignments`, and `task_sync` compiles only commits that do.
+  **`accord` builds a shared summary in code; every member takes part the same way:**
   members label their own text with markers (`[[mycelium: constraint]] …`,
   `term=<word>`, `check covers=p1,p2`; `markers.labelled`, lifted onto the
   payload as `pieces`), `collect: pieces` merges them in `app/services/frame.py`
@@ -724,7 +724,7 @@ is no litellm dependency.
   agent it is for. A converged commit that names a task in `within` files its
   rows `part-of` it (and loose if that row is gone). Only a commit carrying
   `assignments` (the aligner's) is compiled; a conductor's agreement is saved
-  to memory instead. The model still writes `- [ ] text @handle` lines because
+  to memory. The model still writes `- [ ] text @handle` lines because
   that is the shape it is good at; parsing them into rows is the compiler's job
   and the line format never leaves it. A task carries `assignee`, never `owner`
   — `assignee` is who the task is *for*, the `assignment` field is who is

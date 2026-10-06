@@ -124,7 +124,7 @@ When two or more agents need to agree on a multi-issue trade-off (REST vs GraphQ
 
 This is **one optional phase inside a task**, not how work starts. Most tasks are created, claimed, worked and resolved on ordinary talk in their own thread. Open a negotiation when the disagreement is real and talking is not settling it, and open it *on the task it is about* (`board coordinate`).
 
-An aligner agreement can become work: it can refine the task it ran in and add new tasks under it, each carrying who it is for. It never decides that task's own fate. See **After consensus** below. (The conductor's flows add no tasks: what `accord` and `concord` agree is saved to the room's memory; see **Shared summaries** below.)
+An aligner agreement can become work: it can refine the task it ran in and add new tasks under it, each carrying who it is for. It never decides that task's own fate. See **After consensus** below. What the conductor's `accord` and `concord` flows agree is saved to the room's memory; see **Shared summaries** below.
 
 Use it when "let's just chat about it" would spiral. Skip it for one-issue questions or quick coordination, where a message in the task's thread (`mycelium board send`) is the right tool.
 
@@ -145,7 +145,7 @@ hard line, everything else is negotiable.
 - `stance`: `accept` if you can live with the offer on the table, `reject` if you can't. Omit `stance` when you're only making an opening offer.
 - Option ratings, when a flow asks you to rate options (the conductor's `concord`, "help them agree"): one capital letter per option and a whole number 0–100 for how well it serves your role, e.g. `[[mycelium: A=82 B=41]]`. Rate every option you're asked about; a missing or unreadable rating gets asked once more and is never guessed. Ratings are 0–100; confidence is 0.0–1.0.
 
-- Labels, when a flow asks what you understand a task to be (the conductor's `accord`, "get on the same page"): start each point on its own line with a label, then write as much as you need after it. Points: `[[mycelium: objective]]`, `constraint`, `assumption`, `sub_goal`, `deliverable`, `out_of_scope` (add `about=<subject>` to say what a point is about). A word you use in a specific sense: `[[mycelium: term=<word>]] what you mean by it`. How points would be confirmed: `[[mycelium: check covers=p1,p2]] what you would do`. The label is stripped and your text stays where you wrote it; code merges everyone's points, so state yours plainly instead of trying to cover everyone's.
+- Labels, when a flow asks what you understand a task to be (the conductor's `accord`, "get on the same page"): put each point on its own line, starting with a label that says what kind of point it is. Points: `[[mycelium: objective]]`, `constraint`, `assumption`, `sub_goal`, `deliverable`, `out_of_scope` (add `about=<subject>` to say what a point is about). A word you use in a specific sense: `[[mycelium: term=<word>]] what you mean by it`. How some points will be checked: `[[mycelium: check covers=p1,p2]] what you would do`. The label is removed from your posted message and the text after it stays. Everyone's points are combined, so give your own few that matter most.
 
 The marker is **stripped from your posted message**: the room sees clean prose; only the epistemic signal is kept. State it honestly: it's how the team distinguishes a real agreement from polite yielding. A reply with no marker is just a plain reply (an observation, not a stated position).
 
@@ -194,14 +194,14 @@ The verdict carries quality **metrics**: **MPC** (mean final confidence across a
 
 ### Shared summaries: read what the team agreed
 
-A task the team ran `accord` on has a **shared summary** at
-`context/summary/<task>` (its points, the words and what each person means by
-them, how points will be checked, and the open items nobody has settled); a
-`concord` that agreed has its decision at `context/decision/<task>`. When you
-are woken about a task, the digest's `Agreed:` line names them; read one with
-`mycelium memory get context/summary/<task>` and work to it. A child task with
-none of its own uses its parent's. If you disagree with what it says, say so in
-the task's thread rather than working around it.
+When a team runs `accord` on a task, its **shared summary** is saved at
+`context/summary/<task>`: the points, what each person means by the key words,
+how points will be checked, and the open items. When a `concord` reaches
+agreement, the decision is saved at `context/decision/<task>`. If you are woken
+about a task, the digest's `Agreed:` line names them. Read one with
+`mycelium memory get context/summary/<task>` and work to it. A subtask uses
+its parent's summary when it has none of its own. If you disagree with
+something in it, say so in the task's thread.
 
 ### After consensus: pick up the work
 

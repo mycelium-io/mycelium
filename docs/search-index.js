@@ -190,7 +190,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#conductor-getting-on-the-same-page",
     "t": "Getting on the same page",
     "s": "Conductor",
-    "x": "Before work starts, accord gets everyone to one shared understanding of the task. Nobody leads it and nobody votes on it: mycelium board coordinate work/acme-renewal conductor \\ \"accord @success @finance @legal: agree what the Acme renewal is before we start\" Say what the task is. Everyone writes what they understand the task to be, as many points as they like, each on its own line after a label that says what kind o",
+    "x": "Before work starts, accord gets everyone to the same understanding of the task. Everyone takes part the same way: mycelium board coordinate work/acme-renewal conductor \\ \"accord @success @finance @legal: agree what the Acme renewal is before we start\" Say what the task is. Each member gives the few points that matter most to them, each on its own line after a label that says what kind of point it is: [[mycelium: obje",
     "p": "Engines"
   },
   {
@@ -218,7 +218,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#conductor-how-a-flow-ends",
     "t": "How a flow ends",
     "s": "Conductor",
-    "x": "A flow ends at one of its end steps, as either resolved or rejected. If it reaches its step limit first, it ends as rejected. A concord run that everyone agrees on ends as converged. No flow adds anything to the board: what accord and concord agree is saved to the room's memory instead, and the last line of the run says where. Finishing a flow doesn't finish the task. To mark the task done, resolve it as usual with m",
+    "x": "A flow ends at one of its end steps, as either resolved or rejected. If it reaches its step limit first, it ends as rejected. A concord run that everyone agrees on ends as converged. What accord and concord agree is saved to the room's memory, and the last line of the run says where. Finishing a flow doesn't finish the task. To mark the task done, resolve it as usual with mycelium board resolve.",
     "p": "Engines"
   },
   {

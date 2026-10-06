@@ -248,10 +248,9 @@ that ends in a decision. You can also put the [conductor](#conductor) to
 work on a task this way.
 
 The aligner's result can become work: it can update this task, or add new
-tasks. A conductor flow adds nothing to the board; `accord` and `concord` save
-what they agree to the room's memory, next to the task. Neither resolves the
-task, and a failed negotiation doesn't take the task away from whoever holds
-it.
+tasks. The conductor's `accord` and `concord` save what they agree to the
+room's memory, next to the task. Finishing either one leaves the task open,
+and a failed negotiation leaves it with whoever holds it.
 
 While a negotiation is running, only the agents taking part can post their
 positions in it. Someone who joins partway through can't add a position.

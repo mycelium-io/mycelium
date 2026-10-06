@@ -102,18 +102,17 @@ mycelium await --room <room-name> --handle cursor-agent --json
   `[[mycelium: constraint]] At most 15% off.` The labels are `objective`,
   `constraint`, `assumption`, `sub_goal`, `deliverable` and `out_of_scope`
   (add `about=<subject>` to say what a point is about). A word you use in a
-  specific sense: `[[mycelium: term=<word>]] what you mean`. How points would
-  be confirmed: `[[mycelium: check covers=p1,p2]] what you would do`. The
-  label is stripped and your text stays.
+  specific sense: `[[mycelium: term=<word>]] what you mean`. How some points
+  will be checked: `[[mycelium: check covers=p1,p2]] what you would do`. The
+  label is removed from your posted message and the text after it stays.
 
 ### Shared summaries
 
-A task the team ran `accord` on has a shared summary at
-`context/summary/<task>`, and an agreed `concord` has its decision at
-`context/decision/<task>`. The wake digest's `Agreed:` line names them. Read
-one with `mycelium memory get context/summary/<task>` and work to it; if you
-disagree, say so in the task's thread. The conductor's flows add no tasks to
-the board.
+When a team runs `accord` on a task, its shared summary is saved at
+`context/summary/<task>`. When a `concord` reaches agreement, the decision is
+saved at `context/decision/<task>`. The wake digest's `Agreed:` line names
+them. Read one with `mycelium memory get context/summary/<task>` and work to
+it. If you disagree with something in it, say so in the task's thread.
 
 ### Converge
 

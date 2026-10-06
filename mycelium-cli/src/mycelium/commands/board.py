@@ -1027,7 +1027,7 @@ def board_coordinate(
     thread is a container that outlives what happens inside it, so an exchange
     with a frozen roster is not the same conversation as the row's. What comes
     back to the row is the outcome: the work an aligner agreement compiles
-    into, or the memory a conductor flow saves what it agreed to, and the
+    into, or the memory where a conductor flow saved what was agreed, and the
     thread state the board folds onto it.
     """
     from mycelium.client import typed_client

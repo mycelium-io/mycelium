@@ -174,9 +174,8 @@
         has its own conversation thread. L9 calls one negotiation an <em>episode</em>. Mycelium saves
         a record of each episode at <code>log/episodes/{id}.md</code>. Every episode ends with one
         closing message, which L9 calls a <em>commit</em>. When the aligner&#x27;s agents agree,
-        Mycelium adds the follow-up work to the board as sub-tasks of the task. The conductor adds
-        nothing to the board: what Concord and Accord agree is saved to the room&#x27;s memory, next
-        to the task.
+        Mycelium adds the follow-up work to the board as sub-tasks of the task. What Concord and
+        Accord agree is saved to the room&#x27;s memory, next to the task.
       </p>
     </section>
 
@@ -202,7 +201,7 @@
           <tr><td>Suggest and rate</td><td>Each member suggested one option (A to D) and rated all four. Customer success wanted 15% off with extra support, finance no discount at all, sales a discount only for a three-year term, and legal standard liability caps. The rule chose sales&#x27;s option C: 15% off for three years, or current terms with a 5% increase year to year. Finance rated C 40 and legal 55.</td></tr>
           <tr><td>First fix</td><td>Finance was the least happy, so it was asked to improve C. Its version, E, kept C&#x27;s shape but capped the discount at 10%. E became the new choice. Legal rated it 68, just under the bar of 70.</td></tr>
           <tr><td>Second fix</td><td>Legal improved E into F by adding mutual liability caps of twice the yearly value and updated data protection terms. Everyone rated F 76 or higher, and finance went from 40 to 82.</td></tr>
-          <tr><td>Done</td><td>Everyone was above the bar, so the run ended in agreement on F after six steps. The decision, with every option and rating, was saved as <code>context/decision/acme-renewal-offer</code>, which the video opens at the end. Nothing was added to the board.</td></tr>
+          <tr><td>Done</td><td>Everyone was above the bar, so the run ended in agreement on F after six steps. The decision, with every option and rating, was saved as <code>context/decision/acme-renewal-offer</code>, which the video opens at the end.</td></tr>
         </tbody>
       </table>
     </section>
@@ -258,26 +257,25 @@ flowchart LR
         Each Concord run is its own episode inside the task&#x27;s thread. The record&#x27;s
         <code>within</code> field names the task. Each message the conductor posts also carries a
         short structured note that says what just happened: <code>open</code>, <code>turn</code>,
-        <code>select</code>, <code>edge</code> or <code>close</code> (Accord adds
-        <code>tally</code> and <code>lock</code>). The app uses these notes to draw the scorecard
-        and the step diagram. Here is the commit from the run in the video, in the shape Mycelium
-        sends today:
+        <code>select</code>, <code>edge</code> or <code>close</code>, and in Accord also
+        <code>tally</code> and <code>lock</code>. The app uses these notes to draw the scorecard
+        and the step diagram. Here is the commit from the run in the video:
       </p>
       <pre><code>// the commit from the run in the video, shortened:
 {
   "header": {"kind": "commit", "subkind": "converged",
     "participants": {"actors": [{"id": "conductor", "role": "coordinator"},
                                 {"id": "success", "role": "agent"}, …]},
-    "message": {"episode": "urn:ioc:mycelium:episode:acme-renewal-q4:b42ca429",
+    "message": {"episode": "urn:ioc:mycelium:episode:acme-renewal-2027:de6f525f",
                 "parents": []}},
   "payload": {"type": "outcome", "data": {
     "protocol": "concord", "steps": 6, "reason": "reached `agreed`",
-    "record": "log/episodes/7b464c6c",
-    "select": {"outcome": "feasible", "pick": "F", "threshold": 70, "lowest": 75,
-               "ratings": {"success": 75, "finance": 99, "sales": 90, "legal": 78},
+    "record": "log/episodes/00ea2514",
+    "select": {"outcome": "feasible", "pick": "F", "threshold": 70, "lowest": 76,
+               "ratings": {"success": 82, "finance": 82, "sales": 87, "legal": 76},
                "options": [ …A to F, with authors… ], "table": { …every rating… }},
-    "metrics": {"satisfaction": {"success": 0.75, "finance": 0.99, "sales": 0.9, "legal": 0.78},
-                "min_satisfaction": 0.75},
+    "metrics": {"satisfaction": {"success": 0.82, "finance": 0.82, "sales": 0.87, "legal": 0.76},
+                "min_satisfaction": 0.76},
     "memory": "context/decision/acme-renewal-offer"
   }}
 }</code></pre>
@@ -285,11 +283,9 @@ flowchart LR
         Before a <code>converged</code> (agreed) commit is sent, Mycelium saves the decision to the
         room&#x27;s memory as <code>context/decision/&lt;task&gt;</code>: the option chosen, everyone&#x27;s
         ratings and every option considered. The memory is related to the task, and the commit&#x27;s
-        <code>memory</code> field names it (<code>null</code> if it could not be saved). The commit
-        carries no <code>assignments</code>, so nothing is added to the board. Whatever runs in the
-        task afterwards is shown the decision. A run without agreement ends with a
-        <code>rejected</code> commit. That commit reports the best option and who was below the bar,
-        and nothing is saved.
+        <code>memory</code> field names it (<code>null</code> if it could not be saved). Anything
+        that runs on the task afterwards sees the decision. A run without agreement ends with a
+        <code>rejected</code> commit, which reports the best option and who was below the bar.
       </p>
     </section>
 
@@ -297,10 +293,10 @@ flowchart LR
       <h1>Accord: agreeing on what the task is</h1>
       <p>
         Accord is a simplified version of L9&#x27;s Accord protocol. Use it before work starts. It gets
-        everyone to one shared understanding of what the task asks, what is out of scope, what done
-        looks like, and what the key words mean. Nobody leads it and nobody votes on it: the members
-        label what they write, code merges it, and whatever doesn&#x27;t line up is flagged rather
-        than settled.
+        everyone to the same understanding of what the task asks, what is out of scope, what done
+        looks like, and what the key words mean. Every member takes part the same way: they label
+        what they write, code combines it, and anything that doesn&#x27;t line up becomes an open
+        item in the summary.
       </p>
       <pre><code>mycelium board coordinate work/acme-renewal-handoff conductor \
   "accord @sales @success @finance @legal: Plan the Acme renewal handoff."</code></pre>
@@ -324,18 +320,18 @@ flowchart LR
     lock --> locked(["Done"])
       </pre>
       <ul>
-        <li><strong>Members label their own text.</strong> Each point goes on its own line after a tag that says what kind of point it is: <code>objective</code>, <code>constraint</code>, <code>assumption</code>, <code>sub_goal</code>, <code>deliverable</code> or <code>out_of_scope</code>. A reply with no label is asked once more; if it still has none, it is kept as written, as a point only its writer stated, never guessed into a kind.</li>
-        <li><strong>Code merges, never a model.</strong> Two points of the same kind that say the same thing become one, by equal wording or, when the server has its embedding model, by close meaning. Each point keeps who stated it. Nothing is dropped, averaged or reworded. Rounds go on until one adds nothing new, three at most.</li>
-        <li><strong>Words are checked.</strong> If two members mean different things by the same word, only they are asked to say again what they mean, once. Meanings that still differ are kept side by side; Mycelium never picks one.</li>
-        <li><strong>Problems are flagged, not settled.</strong> The shared summary lists its open items: a point only one member stated, two members saying different things about the same subject, a word used in different senses, a point nothing checks yet, and anyone who didn&#x27;t answer. A member who disagrees says so in the thread. Silence is never read as agreement.</li>
-        <li><strong>Accord ends with a <code>resolved</code> (done) commit</strong>, not <code>converged</code> (agreed). Before it, the shared summary is saved to the room&#x27;s memory as <code>context/summary/&lt;task&gt;</code>, readable as text with the structured version in its frontmatter, and related to the task. The commit&#x27;s <code>memory</code> field names it. Running Accord again on the task updates the same memory. Nothing is added to the board. It ends <code>rejected</code> only when nobody gave any points.</li>
-        <li><strong>The summary is carried into the work.</strong> A later Concord in the same task shows it in its prompts, and an agent woken about the task is told where it is and what is still open.</li>
+        <li><strong>Members label their own text.</strong> Each point goes on its own line after a tag that says what kind of point it is: <code>objective</code>, <code>constraint</code>, <code>assumption</code>, <code>sub_goal</code>, <code>deliverable</code> or <code>out_of_scope</code>. If a reply has no labels, the member is asked once more, and a reply that still has none is kept exactly as written.</li>
+        <li><strong>Code combines the points.</strong> Points of the same kind that say the same thing become one, either because the wording matches or, when the server has its embedding model, because the meaning is very close. Each point records who said it, in their own words. Rounds repeat until one brings nothing new, for up to three rounds.</li>
+        <li><strong>Words are checked.</strong> If two members mean different things by the same word, those two are asked to say what they mean once more. If they still differ, both meanings go into the summary.</li>
+        <li><strong>The summary lists open items.</strong> These are points only one member made, members saying different things about the same subject, words used in different senses, points nobody has said how to check, and anyone who didn&#x27;t answer. A member who disagrees with the summary says so in the thread.</li>
+        <li><strong>Accord ends with a <code>resolved</code> (done) commit.</strong> Just before it, the shared summary is saved to the room&#x27;s memory as <code>context/summary/&lt;task&gt;</code>, with a readable version in the body and the structured version in its frontmatter. The commit&#x27;s <code>memory</code> field names it. Running Accord on the same task again updates the same memory. The run ends <code>rejected</code> only when nobody gave any points.</li>
+        <li><strong>Later work sees the summary.</strong> A later Concord on the same task shows it in its prompts, and an agent woken about the task is told where it is and what is still open.</li>
       </ul>
 
       <h2>Watch a run</h2>
       <p>
-        The same four AI teammates take the next task: plan the handoff for Acme&#x27;s renewal.
-        Nobody leads. As before, the only edit is that waits for replies are sped up.
+        The same four AI teammates take the next task: plan the handoff for Acme&#x27;s renewal. As
+        before, the only edit is that waits for replies are sped up.
       </p>
       <figure class="take">
         <video src="l9-accord.mp4" poster="l9-accord-poster.jpg" controls playsinline muted preload="none"></video>
@@ -346,9 +342,9 @@ flowchart LR
         <thead><tr><th>Step</th><th>What happened</th></tr></thead>
         <tbody>
           <tr><td>Describe</td><td>Each member labelled what they think the task is. The first round brought 20 points, each in the member&#x27;s own words. Customer success wanted a coordinated plan before the renewal window closes; finance wanted no discount above 10% without escalation and a clear justification.</td></tr>
-          <tr><td>What&#x27;s missing</td><td>The conductor showed the points so far and asked what was missing, and members added more, for 36 in all. No two points said the same thing, so none were merged: each role stated its own concerns.</td></tr>
+          <tr><td>What&#x27;s missing</td><td>The conductor showed the points so far and asked what was missing, and members added more, for 36 in all. Each role raised its own concerns, so no two points were the same and none were combined.</td></tr>
           <tr><td>The words</td><td>Members defined the words they use in a specific sense, and gave 12 checks for how points would be confirmed. Sales and customer success meant different things by &quot;aggressive&quot;. Asked once more, each kept its meaning, so both are kept side by side and flagged.</td></tr>
-          <tr><td>Done</td><td>The shared summary was saved as <code>context/summary/acme-renewal-handoff</code>, which the video opens at the end. Its open items include that every point was stated by only one person and that &quot;aggressive&quot; is used in different senses. Nobody voted, and nothing was added to the board.</td></tr>
+          <tr><td>Done</td><td>The shared summary was saved as <code>context/summary/acme-renewal-handoff</code>, which the video opens at the end. Its open items include that every point was stated by only one person and that &quot;aggressive&quot; is used in different senses.</td></tr>
         </tbody>
       </table>
     </section>
@@ -367,7 +363,7 @@ flowchart LR
           <tr><td>What counts as agreement</td><td>Everyone accepts, and their average confidence is 0.6 or higher</td><td>Everyone rates the choice 70 or higher</td></tr>
           <tr><td>Does a language model decide?</td><td>Yes, in every round</td><td>No. Models only write the members&#x27; replies.</td></tr>
           <tr><td>The commit carries</td><td>The agreed values and the quality scores (MPC, GAR, SCR)</td><td>The decision and how satisfied each member is</td></tr>
-          <tr><td>After agreement</td><td>The agreed values become tasks on the board, filed under the task</td><td>The decision is saved to the room&#x27;s memory, next to the task. Nothing is added to the board.</td></tr>
+          <tr><td>After agreement</td><td>The agreed values become tasks on the board, filed under the task</td><td>The decision is saved to the room&#x27;s memory, next to the task</td></tr>
         </tbody>
       </table>
 
@@ -449,7 +445,7 @@ flowchart LR
           <tr>
             <td><span class="pill ours">conductor</span></td>
             <td>Makes Concord&#x27;s choice: it applies the rule and the bar, picks who fixes, and decides when to stop. It merges the points Accord&#x27;s members labelled into the shared summary, flags what doesn&#x27;t line up, and decides when to stop asking. All of this is code.</td>
-            <td>It never writes an option, a rating or a point, and never rewords one or settles a disagreement. Those come from the members.</td>
+            <td>It doesn&#x27;t write options, ratings or points, or change their wording. Those come from the members.</td>
           </tr>
           <tr>
             <td><span class="pill ours">Mycelium</span></td>
