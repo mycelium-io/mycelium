@@ -34,6 +34,7 @@ import {
 import { useRoomRevalidate } from "@/lib/room-data";
 import { useCurrentUser } from "@/components/current-user";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Monogram } from "@/components/ui/monogram";
 import {
   ConnectMachine,
@@ -87,6 +88,7 @@ export function LaunchAgentForm({
   const [runnerPick, setRunnerPick] = useState<string | null>(null);
   const [frameworkPick, setFrameworkPick] = useState<string | null>(null);
   const [folderTyped, setFolderTyped] = useState<string | null>(null);
+  const [worktreePick, setWorktreePick] = useState(false);
   const [role, setRole] = useState<string | null>(null);
   const [handle, setHandle] = useState("");
   const [handleTouched, setHandleTouched] = useState(false);
@@ -100,6 +102,8 @@ export function LaunchAgentForm({
   const startable = useMemo(() => (runner ? launchable(runner) : []), [runner]);
   const framework = startable.find((f) => f.id === frameworkPick) ?? startable[0];
   const folderShown = folderTyped ?? tildePath(runner?.roots[0] ?? "");
+  // Only herdr needs asking: an Omnigent session gets its own worktree anyway.
+  const worktree = worktreePick && !!runner && startsInHerdr(runner);
 
   const { job } = useRunnerJob(runner?.id ?? null, jobId);
   const trimmed = handle.trim().replace(/^@/, "").toLowerCase();
@@ -131,7 +135,7 @@ export function LaunchAgentForm({
       const folder = expandPath(folderShown.trim(), runner.roots);
       const signature = await signFor(runner, {
         kind: "launch",
-        job: { room: roomName, handle: trimmed, framework: framework.id, cwd: folder || null },
+        job: { room: roomName, handle: trimmed, framework: framework.id, cwd: folder || null, worktree },
       });
       const queued = await launchRunnerAgent(runner.id, {
         room: roomName,
@@ -139,6 +143,7 @@ export function LaunchAgentForm({
         framework: framework.id,
         instructions: instructions.trim() || undefined,
         cwd: folder || undefined,
+        worktree,
         created_by: principal.trim() || undefined,
         signature,
       });
@@ -234,12 +239,14 @@ export function LaunchAgentForm({
         runner={runner}
         frameworkId={framework?.id ?? null}
         folder={folderShown}
+        worktree={worktree}
         onRunner={(id) => {
           setRunnerPick(id);
           setFolderTyped(null);
         }}
         onFramework={setFrameworkPick}
         onFolder={setFolderTyped}
+        onWorktree={setWorktreePick}
       >
         <Button onClick={submit} disabled={!canSubmit}>
           {/* A fixed label: the handle is in the field above, and a button that
@@ -577,18 +584,22 @@ function RunsOn({
   runner,
   frameworkId,
   folder,
+  worktree,
   onRunner,
   onFramework,
   onFolder,
+  onWorktree,
   children,
 }: {
   runners: Runner[];
   runner: Runner;
   frameworkId: string | null;
   folder: string;
+  worktree: boolean;
   onRunner: (id: string) => void;
   onFramework: (id: string) => void;
   onFolder: (folder: string) => void;
+  onWorktree: (worktree: boolean) => void;
   children: React.ReactNode;
 }) {
   const startable = launchable(runner);
@@ -668,6 +679,15 @@ function RunsOn({
           <option key={r} value={r} />
         ))}
       </datalist>
+      {startsInHerdr(runner) && (
+        <label
+          className="flex flex-shrink-0 items-center gap-1.5 text-micro text-muted-foreground"
+          title="Start it in a git worktree of this folder, on a branch of its own"
+        >
+          <Checkbox checked={worktree} onCheckedChange={(v) => onWorktree(v === true)} />
+          Own worktree
+        </label>
+      )}
     </MemberFooter>
   );
 }

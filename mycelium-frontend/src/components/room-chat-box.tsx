@@ -500,7 +500,7 @@ export function RoomChatBox({
       const cwd = folder ? expandPath(folder, runner.roots) : undefined;
       const signature = await signFor(runner, {
         kind: "launch",
-        job: { room: roomName, handle, framework: framework.id, cwd: cwd ?? null },
+        job: { room: roomName, handle, framework: framework.id, cwd: cwd ?? null, worktree: false },
       });
       const job = await launchRunnerAgent(runner.id, {
         room: roomName,
