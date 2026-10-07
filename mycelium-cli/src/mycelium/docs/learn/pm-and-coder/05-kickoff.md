@@ -17,5 +17,5 @@ hand it to the PM:
 
 > @pm this is yours. Write the checks first, then hand it to @coder.
 
-From here the PM posts its checks, the coder starts on the first piece, and
-the review loop begins. You can leave.
+From here the PM posts its checks and the coder starts on the first piece. Then
+the review loop begins, and you can leave.

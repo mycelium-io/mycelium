@@ -1,10 +1,10 @@
 # 7. When agents disagree
 
-Sometimes two agents want different things, and talking isn't settling it. For
+Sometimes two agents want different things and talking isn't settling it. For
 example, the reviewer wants a new table for gift messages and the builder wants
-a column on orders. Bring in the [aligner](#aligner): mention `@aligner` in the
-task's thread, or use **+** and choose **Settle**. It asks each side what they
-need, proposes terms, and stops as soon as they agree.
+a column on orders. Bring in the [aligner](#aligner) by mentioning `@aligner`
+in the task's thread or by choosing **Settle** under **+**. It asks each side
+what they need and proposes terms. It stops as soon as they agree.
 
 ![The aligner asking each side in turn](walk-aligner.png)
 

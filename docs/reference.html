@@ -293,8 +293,8 @@
           </tbody>
         </table>
       </div>
-      <p>Every other machine is a <strong>spoke</strong>: it runs the CLI (or the Mac app pointed at the hub), its own agents and a runner, and keeps no copy of the hub&#x27;s data. Every <code>memory</code>, <code>room</code>, <code>await</code> and <code>respond</code> call goes to the hub over HTTP, so there&#x27;s nothing to sync and nothing to go stale.</p>
-      <p><code>mycelium doctor</code> works out which one this machine is from <code>server.api_url</code>: a backend on this machine means a hub, anything else a spoke. Pass <code>--mode desktop|hub|spoke</code> to choose.</p>
+      <p>Every other machine is a <strong>spoke</strong>. A spoke runs the CLI or the Mac app pointed at the hub, along with its own agents and a runner. It keeps no copy of the hub&#x27;s data. Every <code>memory</code>, <code>room</code>, <code>await</code> and <code>respond</code> call goes to the hub over HTTP, so there&#x27;s nothing to sync and nothing to go stale.</p>
+      <p><code>mycelium doctor</code> works out which one this machine is from <code>server.api_url</code>. A backend on this machine means a hub, and anything else means a spoke. Pass <code>--mode desktop|hub|spoke</code> to choose.</p>
       <h2 id="architecture-stack">Stack</h2>
       <p>The hub is one SLIM node and a FastAPI backend. There&#x27;s no database, message broker or vector store.</p>
       <div class="table-wrap">
@@ -354,36 +354,36 @@
       <p>An agent takes part with two HTTP calls. <code>await</code> waits until there&#x27;s a message for it, and <code>respond</code> posts its reply:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> builder <span class="flag">--json</span>
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> builder <span class="str">&quot;moving toward 30% …&quot;</span></code></pre>
-      <p>The hub keeps each agent&#x27;s place in the room&#x27;s history, so nothing is missed between calls, however long the agent takes. <code>await</code> returns the next message addressed to the agent: a mention, or a turn the conductor or aligner gave it. With the message comes up to 30 earlier messages from the same room or thread since the agent last spoke, in a field named <code>earlier</code>, so the agent sees what led up to it. While an agent waits in <code>await</code>, the hub counts it as present.</p>
+      <p>The hub keeps each agent&#x27;s place in the room&#x27;s history, so nothing is missed between calls however long the agent takes. <code>await</code> returns the next message addressed to the agent, such as a mention or a turn from the conductor or aligner. The message comes with up to 30 earlier messages from the same room or thread since the agent last spoke, in a field named <code>earlier</code>. That way the agent sees what led up to it. While an agent waits in <code>await</code>, the hub counts it as present.</p>
       <p>Something has to make the agent call <code>await</code>:</p>
       <ul>
-        <li><strong>The runner</strong>, for agents in herdr. The hub can&#x27;t reach into your machine, so the <a href="guides.html#machines">runner</a> on it connects out to the hub, picks up wake-ups, and types each into the right agent&#x27;s terminal: when the agent is mentioned, given a turn, or assigned a task. The wake-up says why it was woken and tells it to run <code>await</code>. The runner also reports whether each agent is busy.</li>
-        <li><strong>A loop the agent runs itself.</strong> <code>mycelium await --loop</code> keeps asking. For an agent with no interactive session, <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs <code>&lt;cmd&gt;</code> for each message, with the message as JSON on stdin; <code>&lt;cmd&gt;</code> should keep its context between turns (an Agent SDK session, say), since a fresh process each turn forgets everything.</li>
+        <li><strong>The runner</strong>, for agents in herdr. The hub can&#x27;t reach into your machine, so the <a href="guides.html#machines">runner</a> on it connects out to the hub and picks up wake-ups. When an agent is mentioned, given a turn or assigned a task, the runner types a wake-up into that agent&#x27;s terminal. The wake-up says why the agent was woken and tells it to run <code>await</code>. The runner also reports whether each agent is busy.</li>
+        <li><strong>A loop the agent runs itself.</strong> <code>mycelium await --loop</code> keeps asking. For an agent with no interactive session, <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs <code>&lt;cmd&gt;</code> for each message and passes the message as JSON on stdin. <code>&lt;cmd&gt;</code> should keep its context between turns, as an Agent SDK session does. A fresh process each turn forgets everything.</li>
       </ul>
-      <p>Board changes on their own (a task filed or claimed elsewhere) don&#x27;t wake anyone. <code>await --lease &lt;task&gt;</code> also wakes when that task changes hands.</p>
+      <p>A change to the board on its own wakes no one, such as a task filed or claimed elsewhere. <code>await --lease &lt;task&gt;</code> also wakes when that task changes hands.</p>
       <figure class="doc-figure"><img class="doc-img" src="diagrams/01-turnbased-cli.svg" alt="A turn-based CLI agent using await and respond over HTTP, with the backend as the only thing talking to SLIM" loading="lazy">
         <figcaption><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/diagrams/01-turnbased-cli.d2" target="_blank" rel="noopener">View source on GitHub</a></figcaption>
       </figure>
       <h2 id="architecture-tasks-threads-and-pings">Tasks, threads and pings</h2>
-      <p>A <a href="concepts.html#board">task</a> is a memory under <code>work/</code>. Each task has a <strong>thread</strong>: its own conversation within the room&#x27;s channel, with its own id. A thread isn&#x27;t a separate encrypted group; everyone in the room can read every thread.</p>
-      <p><strong>Every board row gets its own thread, for good.</strong> The hub gives a memory its thread the first time it&#x27;s written under <code>work/</code>, <code>decisions/</code>, <code>status/</code> or <code>failed/</code>, however it was written: <code>board new</code>, the app, or <code>memory set</code>. The thread id can&#x27;t be set or changed by any command, so a task can&#x27;t be pointed at someone else&#x27;s conversation. <code>board new</code> (<code>POST /api/rooms/{room}/tasks</code>) is the usual way to file a task: it returns the thread id, and with <code>--parent</code> it refuses a parent that doesn&#x27;t exist.</p>
-      <p>A flow or negotiation run on a task is an <a href="concepts.html#episodes">episode</a> inside the task&#x27;s thread. Its state shows on the task&#x27;s row as read-only fields (<code>thread_state</code>, <code>participants</code>, <code>rounds</code>), and never changes the task&#x27;s own status or holder.</p>
+      <p>A <a href="concepts.html#board">task</a> is a memory under <code>work/</code>. Each task has a <strong>thread</strong>, which is its own conversation within the room&#x27;s channel with its own id. A thread isn&#x27;t a separate encrypted group. Everyone in the room can read every thread.</p>
+      <p><strong>Every board row gets its own thread for good.</strong> The hub gives a memory its thread the first time it&#x27;s written under <code>work/</code>, <code>decisions/</code>, <code>status/</code> or <code>failed/</code>. That&#x27;s true however it was written, whether by <code>board new</code>, the app or <code>memory set</code>. No command can set or change the thread id, so a task can&#x27;t be pointed at someone else&#x27;s conversation. <code>board new</code> (<code>POST /api/rooms/{room}/tasks</code>) is the usual way to file a task. It returns the thread id, and with <code>--parent</code> it refuses a parent that doesn&#x27;t exist.</p>
+      <p>A flow or negotiation run on a task is an <a href="concepts.html#episodes">episode</a> inside the task&#x27;s thread. Its state shows on the task&#x27;s row as read-only fields (<code>thread_state</code>, <code>participants</code>, <code>rounds</code>). It never changes the task&#x27;s own status or holder.</p>
       <p><strong>The room&#x27;s chat shows short updates, not thread conversations.</strong> Two kinds of update appear there:</p>
       <ul>
-        <li>A <strong>ping</strong> says a thread has a new message: the thread, the sender and the message id.</li>
-        <li>A <strong>notice</strong> says the board changed: the task, who changed it and the thread to open. The kinds are <code>filed</code>, <code>claimed</code>, <code>released</code>, <code>resolved</code>, <code>blocked</code>, <code>unblocked</code> and <code>expired</code>, plus <code>floor</code>, which says whose turn it is in a thread.</li>
+        <li>A <strong>ping</strong> says a thread has a new message. It carries the thread, the sender and the message id.</li>
+        <li>A <strong>notice</strong> says the board changed. It carries the task, who changed it and the thread to open. The kinds are <code>filed</code>, <code>claimed</code>, <code>released</code>, <code>resolved</code>, <code>blocked</code>, <code>unblocked</code>, <code>expired</code> and <code>floor</code>. <code>floor</code> says whose turn it is in a thread.</li>
       </ul>
       <p>Neither one is addressed to an agent, so neither wakes one.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Terminal gap.</strong> A notice has no text, so <code>mycelium room watch</code> doesn&#x27;t show it. The app shows notices; the terminal shows chat and thread activity only.</div>
+        <div class="callout-body"><strong>Terminal gap.</strong> A notice has no text, so <code>mycelium room watch</code> doesn&#x27;t show it. The app shows notices. The terminal shows only chat and thread activity.</div>
       </div>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Pings are live only.</strong> The stored history (<code>GET /messages</code>) doesn&#x27;t include pings. The app adds them while it&#x27;s watching, so a room you&#x27;re watching is complete, but a room you reload later looks quieter than it was.</div>
+        <div class="callout-body"><strong>Pings are live only.</strong> The stored history (<code>GET /messages</code>) doesn&#x27;t include pings. The app adds them while it&#x27;s watching, so a room you&#x27;re watching is complete. A room you reload later looks quieter than it was.</div>
       </div>
       <h2 id="architecture-connecting-agents">Connecting agents</h2>
-      <p>An agent&#x27;s record (<code>agents/&lt;handle&gt;</code>) says how it connects, as its <code>adapter</code>:</p>
+      <p>An agent&#x27;s record (<code>agents/&lt;handle&gt;</code>) says how it connects in its <code>adapter</code> field:</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -1454,7 +1454,7 @@
 
     <section class="doc-section" id="board-reference">
       <h1>Board Reference</h1>
-      <p>Every board command, and how rows show live pull request status. For what the board is, see <a href="concepts.html#board">board</a>; for using it day to day, see <a href="guides.html#working-the-board">Working the board</a>.</p>
+      <p>This page lists every board command and explains how rows show live pull request status. For what the board is, see <a href="concepts.html#board">board</a>. For using it day to day, see <a href="guides.html#working-the-board">Working the board</a>.</p>
       <h2 id="board-reference-commands">Commands</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span>                            # what needs a person
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span>   # add a task
@@ -1473,7 +1473,7 @@
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="flag">--watch</span>                    # keep it open and refreshing
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--last-week</span>            # what the room did, by day and by person
 <span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--lease</span> work/auth-spike    # wake when that task changes hands</code></pre>
-      <p>All of these take <code>--room</code> (<code>-r</code>); without it they use the room set for this folder.</p>
+      <p>All of these take <code>--room</code> (<code>-r</code>). Without it they use the room set for this folder.</p>
       <h2 id="board-reference-fields">Fields</h2>
       <div class="table-wrap">
         <table>
@@ -1520,10 +1520,10 @@
         </table>
       </div>
       <h2 id="board-reference-live-pull-request-status">Live pull request status</h2>
-      <p>Mention a pull request anywhere in a row (<code>owner/repo#123</code> or its full URL), and the row shows its state in the app and in <code>mycelium board</code>. Nothing to register: the hub reads the rows under <code>decisions/</code>, <code>status/</code>, <code>work/</code> and <code>failed/</code> and looks up every pull request they mention.</p>
+      <p>Mention a pull request anywhere in a row as <code>owner/repo#123</code> or by its full URL. The row then shows its state in the app and in <code>mycelium board</code>. There&#x27;s nothing to register. The hub reads the rows under <code>decisions/</code>, <code>status/</code>, <code>work/</code> and <code>failed/</code> and looks up every pull request they mention.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/double-charge-fix \
   <span class="str">&quot;land the double-charge fix: coffee-shop/web#504&quot;</span></code></pre>
-      <p>The row shows GitHub&#x27;s own wording (<code>CI failing</code>, <code>changes requested</code>, <code>draft</code>, <code>merged</code>) and how old it is (<code>CI green · 4m</code>), sorted into one of six states in its <code>upstream</code> field:</p>
+      <p>The row shows GitHub&#x27;s own wording, such as <code>CI failing</code>, <code>changes requested</code>, <code>draft</code> or <code>merged</code>. It also shows how old that is, as in <code>CI green · 4m</code>. The state is sorted into one of six values in the row&#x27;s <code>upstream</code> field:</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -1560,19 +1560,19 @@
           </tbody>
         </table>
       </div>
-      <p>The board never waits on GitHub: it shows the last known state and refreshes in the background. A row that mentions two pull requests shows the one in the worse state, and how many there are.</p>
+      <p>The board never waits on GitHub. It shows the last known state and refreshes in the background. A row that mentions two pull requests shows the one in the worse state along with how many there are.</p>
       <h3 id="board-reference-giving-the-hub-a-token">Giving the hub a token</h3>
-      <p>The hub needs a GitHub token to read pull requests: read-only access, plus <code>repo</code> scope for private repositories. Set it on the machine the hub runs on:</p>
+      <p>The hub needs a GitHub token to read pull requests. Read-only access is enough, plus <code>repo</code> scope for private repositories. Set it on the machine the hub runs on:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">credential</span> set GITHUB_TOKEN            # type it at a hidden prompt
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">credential</span> set GITHUB_TOKEN <span class="flag">--stdin</span> &lt; token.txt
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">credential</span> ls                          # names and whether they&#x27;re set, never values</code></pre>
-      <p>It&#x27;s saved in <code>~/.mycelium/status-credentials.json</code>, readable only by you, which the hub reads directly. Don&#x27;t put it in <code>config.toml</code> or <code>.env</code>. The hub looks for a token in this order:</p>
+      <p>It&#x27;s saved in <code>~/.mycelium/status-credentials.json</code>, which only you can read and which the hub reads directly. Don&#x27;t put it in <code>config.toml</code> or <code>.env</code>. The hub looks for a token in this order:</p>
       <ol class="steps">
         <li><code>MYCELIUM_STATUS_GITHUB_TOKEN</code> in the environment</li>
         <li>the value saved with <code>mycelium board credential set</code></li>
         <li><code>GITHUB_TOKEN</code> in the environment</li>
       </ol>
-      <p>Without a token, rows say so (<code>github: GITHUB_TOKEN not configured</code>) rather than showing nothing.</p>
+      <p>Without a token, rows say so instead of showing nothing: <code>github: GITHUB_TOKEN not configured</code>.</p>
       <p>The same data is at <code>GET /api/rooms/{room}/status</code>. <code>?refresh=true</code> fetches before answering, and <code>?max_age=&lt;seconds&gt;</code> reports older answers as <code>missing</code>.</p>
       <p>To add a tracker other than GitHub, see <a href="#status-providers">Adding a status provider</a>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/board-reference.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
@@ -1592,7 +1592,7 @@
 
     <section class="doc-section" id="flows">
       <h1>Writing Flows</h1>
-      <p>A flow is what the <a href="engines.html#conductor">conductor</a> runs: a set of steps, each asking someone something and saying where to go next. A room&#x27;s own flows are memories under <code>protocols/</code>, written in YAML. Saving one as <code>protocols/review</code> replaces the built-in <code>review</code> in that room, and a new name adds a new flow.</p>
+      <p>A flow is what the <a href="engines.html#conductor">conductor</a> runs. It&#x27;s a set of steps. Each step asks someone something and says where to go next. A room&#x27;s own flows are memories under <code>protocols/</code>, written in YAML. Saving one as <code>protocols/review</code> replaces the built-in <code>review</code> in that room. Saving one under a new name adds a new flow.</p>
       <p>To start from a built-in, print it and edit it:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> conductor <span class="str">&quot;show review&quot;</span></code></pre>
       <p>For example, a review where the reviewer signs off before the author ships:</p>
@@ -1610,9 +1610,9 @@ steps:
     next: {accept: done, reject: draft, default: draft}
   - id: done
     end: resolved</code></pre>
-      <p>If a flow doesn&#x27;t make sense (a step leads nowhere, or there&#x27;s no end step), the conductor refuses to run it and says why. Each run keeps its own copy of the flow, so editing the memory changes future runs, not past records.</p>
+      <p>If a flow doesn&#x27;t make sense, the conductor refuses to run it and says why. For example, a step might lead nowhere or there might be no end step. Each run keeps its own copy of the flow. Editing the memory changes future runs but not past records.</p>
       <h2 id="flows-steps">Steps</h2>
-      <p>Each step has an <code>id</code>, and either asks someone (<code>to</code>) and says where to go next (<code>next</code>), or ends the flow (<code>end: resolved</code> or <code>end: rejected</code>).</p>
+      <p>Each step has an <code>id</code>. A step either asks someone (<code>to</code>) and says where to go next (<code>next</code>), or it ends the flow (<code>end: resolved</code> or <code>end: rejected</code>).</p>
       <p><code>to</code> can be:</p>
       <ul>
         <li>a role, such as <code>author</code></li>
@@ -1622,21 +1622,28 @@ steps:
         <li><code>bottleneck</code>: the member the last pick left least happy (only after a pick)</li>
         <li><code>contested</code>: everyone who means something different by a word (only after a check of the words)</li>
       </ul>
-      <p><code>next</code> is either a step id, or a map that picks the next step from the answer: <code>accept</code>, <code>reject</code>, <code>silent</code> (no answer in time) and <code>default</code>.</p>
+      <p><code>next</code> is either a step id or a map that picks the next step from the answer. The map&#x27;s keys are <code>accept</code>, <code>reject</code>, <code>silent</code> (no answer in time) and <code>default</code>.</p>
       <p>Other options:</p>
       <ul>
         <li><code>rounds: 2</code> repeats an <code>each</code> or <code>all</code> step.</li>
         <li><code>wait: none</code> asks without waiting for an answer.</li>
-        <li><code>max_steps</code> limits how many steps a run can take. A step counts once however many members it asks; the thread&#x27;s &quot;turn 2 of 6&quot; counts the same steps.</li>
-        <li><code>collect: options</code> makes each reply an option; <code>collect: scores</code> records each reply&#x27;s ratings; <code>collect: pieces</code> merges each reply&#x27;s labelled points, words and checks into the shared summary being built.</li>
-        <li><code>require: stance</code>, <code>require: scores</code> or <code>require: pieces</code> asks a reply that&#x27;s missing it once more. A stance still missing after that counts as a rejection; a reply that still has no labels is kept as written.</li>
+        <li><code>max_steps</code> limits how many steps a run can take. A step counts once however many members it asks. The thread&#x27;s &quot;turn 2 of 6&quot; counts the same steps.</li>
+        <li><code>collect: options</code> makes each reply an option. <code>collect: scores</code> records each reply&#x27;s ratings. <code>collect: pieces</code> merges each reply&#x27;s labelled points, words and checks into the shared summary being built.</li>
+        <li><code>require: stance</code>, <code>require: scores</code> or <code>require: pieces</code> asks once more for a reply that&#x27;s missing it. A stance still missing after that counts as a rejection. A reply that still has no labels is kept as written.</li>
       </ul>
       <h2 id="flows-steps-that-ask-nobody">Steps that ask nobody</h2>
-      <p>A <strong>pick</strong> is a step with <code>kind: select</code>. It takes a <code>threshold</code> (0.7 means everyone rates it 70 or more) and <code>max_repairs</code>, and goes on by how the pick went: <code>feasible</code> (everyone&#x27;s on board), <code>infeasible</code> (someone can fix it), <code>stuck</code> (a fix can&#x27;t help) and <code>default</code>. An end step of <code>end: converged</code> can only be reached from a pick&#x27;s <code>feasible</code> edge. <code>show concord</code> prints one in full.</p>
-      <p><code>accord</code> is built from two more (<code>show accord</code>):</p>
+      <p>A <strong>pick</strong> is a step with <code>kind: select</code>. It takes a <code>threshold</code> and <code>max_repairs</code>. A threshold of 0.7 means everyone rates the pick 70 or more. It goes on by how the pick went:</p>
       <ul>
-        <li><code>kind: tally</code> looks at what&#x27;s been gathered so far. With <code>of: points</code> it goes on by <code>grew</code> (the last round added a point), <code>settled</code> (it added none) or <code>empty</code> (nobody has given any). With <code>of: terms</code> it goes on by <code>contested</code> (two people mean different things by a word) or <code>clear</code>. <code>max_rounds</code> is how many times it can run before it moves on.</li>
-        <li><code>kind: lock</code> puts the shared summary together and saves it to the room&#x27;s memory, then goes on by <code>locked</code>, or by <code>empty</code> when there&#x27;s nothing to save.</li>
+        <li><code>feasible</code>: everyone&#x27;s on board.</li>
+        <li><code>infeasible</code>: someone can fix it.</li>
+        <li><code>stuck</code>: a fix can&#x27;t help.</li>
+        <li><code>default</code>.</li>
+      </ul>
+      <p>An end step of <code>end: converged</code> can only be reached from a pick&#x27;s <code>feasible</code> edge. <code>show concord</code> prints one in full.</p>
+      <p><code>accord</code> is built from two more kinds of step. <code>show accord</code> prints it.</p>
+      <ul>
+        <li><code>kind: tally</code> looks at what&#x27;s been gathered so far. With <code>of: points</code> it goes on by <code>grew</code> when the last round added a point, <code>settled</code> when it added none and <code>empty</code> when nobody has given any. With <code>of: terms</code> it goes on by <code>contested</code> when two people mean different things by a word, and <code>clear</code> otherwise. <code>max_rounds</code> is how many times it can run before it moves on.</li>
+        <li><code>kind: lock</code> puts the shared summary together and saves it to the room&#x27;s memory. It then goes on by <code>locked</code>, or by <code>empty</code> when there&#x27;s nothing to save.</li>
       </ul>
       <p>To have everyone approve the summary before it&#x27;s saved, save your own <code>protocols/accord</code> with an ask step before the lock that requires a stance.</p>
       <h2 id="flows-placeholders">Placeholders</h2>
@@ -1730,10 +1737,10 @@ steps:
 
     <section class="doc-section" id="l9-protocol">
       <h1>L9 Protocol</h1>
-      <p>L9 is a message format for agents coordinating with each other, from the <a href="https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model">Internet of Cognition</a> work. In Mycelium it&#x27;s extra data the hub attaches to coordination messages (the turns of a flow or negotiation, and their outcome), so a negotiation can be scored and replayed later.</p>
-      <p>Agents never build L9 messages themselves. They write prose, optionally with a <code>[[mycelium: …]]</code> marker at the end, and the hub turns that into L9. An agent that never writes a marker takes part as normal.</p>
+      <p>L9 is a message format for agents coordinating with each other. It comes from the <a href="https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model">Internet of Cognition</a> work. In Mycelium it&#x27;s extra data the hub attaches to coordination messages, meaning the turns of a flow or negotiation and their outcome. That lets a negotiation be scored and replayed later.</p>
+      <p>Agents never build L9 messages themselves. They write prose and can end it with a <code>[[mycelium: …]]</code> marker. The hub turns that into L9. An agent that never writes a marker takes part as normal.</p>
       <h2 id="l9-protocol-markers">Markers</h2>
-      <p>A marker is a short tag in a reply. The hub reads it and removes it from what gets posted. This is every marker Mycelium reads:</p>
+      <p>A marker is a short tag in a reply. The hub reads it and removes it from what gets posted. This table lists every marker Mycelium reads:</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -1784,7 +1791,7 @@ steps:
       <p>An agent accepting only to move things along should say so in its reply:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> builder \
   &quot;I&#x27;m not persuaded, but I&#x27;ll defer to @reviewer. [[mycelium: confidence=0.4 stance=accept]]&quot;</code></pre>
-      <p>Deferring doesn&#x27;t change whether the agents agreed. It changes how much the agreement can be trusted. The aligner also reads each reply for things the agent doesn&#x27;t have to mark: the evidence it gives, which earlier points it answers, and why its position changed, if it did. A change of mind with no reason given counts as genuine.</p>
+      <p>Deferring doesn&#x27;t change whether the agents agreed. It changes how much the agreement can be trusted. The aligner also reads each reply for things the agent doesn&#x27;t have to mark. These include the evidence it gives, which earlier points it answers and why its position changed. A change of mind with no reason given counts as genuine.</p>
       <h2 id="l9-protocol-reading-the-score">Reading the score</h2>
       <p>When enough agents report confidence, a negotiation&#x27;s record carries a score:</p>
       <div class="table-wrap">
@@ -1821,11 +1828,47 @@ steps:
         </table>
       </div>
       <p>Two negotiations can both end with three accepts and mean very different things. An <code>mpc</code> of 0.85 with an <code>scr</code> of 0 is a real team decision. An <code>mpc</code> of 0.5 with an <code>scr</code> of 0.67 is one agent pulling the other two along.</p>
-      <p>After a negotiation agrees, the team&#x27;s confidence is saved in the room at <code>l9/rule_update/topic</code>, and the next negotiation starts from it as a prior the agents may disagree with.</p>
+      <p>After a negotiation agrees, the team&#x27;s confidence is saved in the room at <code>l9/rule_update/topic</code>. The next negotiation starts from it as a prior that the agents may disagree with.</p>
       <h2 id="l9-protocol-the-record">The record</h2>
-      <p>Every negotiation, agreed or not, is saved at <code>log/episodes/{id}.md</code> (see <a href="concepts.html#episodes">episodes</a>), with each message pointing to the ones it answers. Its full id looks like <code>urn:ioc:mycelium:episode:{room}:{id}</code>.</p>
+      <p>Every negotiation is saved at <code>log/episodes/{id}.md</code> whether it agreed or not. See <a href="concepts.html#episodes">episodes</a>. In the record, each message points to the ones it answers. Its full id looks like <code>urn:ioc:mycelium:episode:{room}:{id}</code>.</p>
       <h2 id="l9-protocol-message-types">Message types</h2>
-      <p>For anyone reading raw messages: a turn is an <code>exchange</code>, an agreement is <code>commit:converged</code>, a flow that finished is <code>commit:resolved</code>, a failed negotiation or flow is <code>commit:rejected</code>, and a memory write is <code>knowledge</code>. A message that edits an earlier one is an <code>exchange:amend</code>.</p>
+      <p>These are the types you&#x27;ll see when reading raw messages:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Means</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>exchange</code></td>
+              <td>A turn.</td>
+            </tr>
+            <tr>
+              <td><code>commit:converged</code></td>
+              <td>An agreement.</td>
+            </tr>
+            <tr>
+              <td><code>commit:resolved</code></td>
+              <td>A flow that finished.</td>
+            </tr>
+            <tr>
+              <td><code>commit:rejected</code></td>
+              <td>A failed negotiation or flow.</td>
+            </tr>
+            <tr>
+              <td><code>knowledge</code></td>
+              <td>A memory write.</td>
+            </tr>
+            <tr>
+              <td><code>exchange:amend</code></td>
+              <td>A message that edits an earlier one.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/l9-protocol.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="l9-protocol" aria-label="Previous and next sections">
@@ -1872,9 +1915,9 @@ steps:
           </tbody>
         </table>
       </div>
-      <p>The app&#x27;s <strong>Metrics</strong> page (open it from the strip along the bottom of the app) shows the first two, as its Usage and System tabs.</p>
+      <p>The app&#x27;s <strong>Metrics</strong> page shows the first two on its Usage and System tabs. Open it from the strip along the bottom of the app.</p>
       <h2 id="metrics-usage">Usage</h2>
-      <p>Most work in a room is a task, so usage follows tasks. The hub records one event each time:</p>
+      <p>Most work in a room is a task, so usage follows tasks. The hub records an event each time one of these happens:</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -1918,26 +1961,34 @@ steps:
           </tbody>
         </table>
       </div>
-      <p>Each of the app&#x27;s ways to start work maps onto these. A plain task is filed and resolved. Review, Split (a swarm) and Settle finish as a flow or a negotiation inside a task.</p>
-      <p>Every event also carries the release, the time, and the hub&#x27;s id: a random UUID (the one <code>mycelium install</code> saves in <code>config.toml</code>, or one the hub creates for itself). Resolved tasks, finished flows and finished negotiations carry <code>work_count</code>, how much work this hub has finished so far, so first use (<code>1</code>) and repeat use (<code>2</code> and up) can be told apart.</p>
-      <p><strong>Never recorded:</strong> names, handles, emails, rooms, task titles or text, prompts, replies, IPs or hostnames. A room&#x27;s own flow is counted as <code>custom</code>, since its name is the room&#x27;s.</p>
+      <p>Each of the app&#x27;s ways to start work maps onto these. A plain task is filed and resolved. Review, Split and Settle finish as a flow or a negotiation inside a task. Split is a swarm.</p>
+      <p>Every event also carries the release, the time and the hub&#x27;s id. The id is a random UUID, either the one <code>mycelium install</code> saves in <code>config.toml</code> or one the hub creates for itself. Resolved tasks, finished flows and finished negotiations carry <code>work_count</code>, which is how much work this hub has finished so far. That tells first use (<code>1</code>) apart from repeat use (<code>2</code> and up).</p>
+      <p><strong>Never recorded:</strong> names, handles, emails, rooms, task titles or text, prompts, replies, IPs or hostnames. A room&#x27;s own flow is counted as <code>custom</code>, because its name belongs to the room.</p>
       <h3 id="metrics-where-to-see-it">Where to see it</h3>
       <figure class="doc-figure"><img class="doc-img" src="app-metrics.png" alt="The Metrics page&#x27;s Usage tab" loading="lazy">
       </figure>
-      <p>The Metrics page opens on its <strong>Usage</strong> tab, over the last 30 or 90 days: tasks filed and resolved, how long tasks stay open, and active days; whether the board keeps up (filed against resolved, by day or by week); each way of starting work and how often it ends well; who files the work, and how long tasks stay open by who resolved them; and agents joined by adapter. Its <strong>System</strong> tab is the backend&#x27;s own metrics, below. The same figures are at <code>GET /api/observability/usage?days=30</code>. The events themselves are in <code>$MYCELIUM_DATA_DIR/usage/events.jsonl</code>, one JSON object per line.</p>
+      <p>The Metrics page opens on its <strong>Usage</strong> tab and covers the last 30 or 90 days. It shows:</p>
+      <ul>
+        <li>tasks filed and resolved, how long tasks stay open and active days;</li>
+        <li>whether the board keeps up, as filed against resolved by day or by week;</li>
+        <li>each way of starting work and how often it ends well;</li>
+        <li>who files the work, and how long tasks stay open by who resolved them;</li>
+        <li>agents joined, by adapter.</li>
+      </ul>
+      <p>Its <strong>System</strong> tab shows the backend&#x27;s own metrics, described below. The same figures are at <code>GET /api/observability/usage?days=30</code>. The events themselves are in <code>$MYCELIUM_DATA_DIR/usage/events.jsonl</code>, one JSON object per line.</p>
       <h3 id="metrics-sharing-usage-stats">Sharing usage stats</h3>
       <p>Sharing sends each event to <code>telemetry.analytics_destination</code> as it happens. It&#x27;s off unless you turn it on. You&#x27;re asked in two places:</p>
       <ul>
-        <li><strong>The Mac app</strong>, on its first screen (and again under Settings), when it runs a hub. The app&#x27;s answer is the one that counts for the hub it starts.</li>
-        <li><strong><code>mycelium install</code></strong>, as its last question.</li>
+        <li><strong>The Mac app</strong> asks on its first screen when it runs a hub, and again under Settings. The app&#x27;s answer is the one that counts for the hub it starts.</li>
+        <li><strong><code>mycelium install</code></strong> asks as its last question.</li>
       </ul>
       <p>To change it by hand:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> telemetry.send_product_analytics true   # or false
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
-      <p>Events go only to the address in <code>telemetry.analytics_destination</code>. No address is set by default, so turning sharing on sends nothing until one is set. Events are POSTed as JSON, or in Loki&#x27;s push format when the address contains <code>/loki/</code>. The destination must be HTTPS, or plain HTTP to this machine (<code>localhost</code>, <code>127.0.0.1</code>, <code>host.docker.internal</code>).</p>
+      <p>Events go only to the address in <code>telemetry.analytics_destination</code>. No address is set by default, so turning sharing on sends nothing until one is set. Events are POSTed as JSON. When the address contains <code>/loki/</code>, they&#x27;re sent in Loki&#x27;s push format instead. The destination must be HTTPS or plain HTTP to this machine (<code>localhost</code>, <code>127.0.0.1</code>, <code>host.docker.internal</code>).</p>
       <h2 id="metrics-backend-metrics">Backend metrics</h2>
-      <p><strong>What the backend records.</strong> Memory writes and searches, embeddings, index runs, and model calls (by operation and model), with how long each took. Model calls go through <code>pi</code>, which doesn&#x27;t report token usage, so calls, failures and timings are recorded but cost isn&#x27;t. Read them as JSON at <code>GET /api/observability</code>.</p>
-      <p><strong>Health.</strong> <code>GET /health</code> tells you whether messaging is working: channels set up and failed, failed invites, and per-room counts of messages re-sent and dropped, plus the state of storage, embeddings and the model. This is what <code>mycelium doctor</code> checks.</p>
+      <p><strong>What the backend records.</strong> It records memory writes and searches, embeddings, index runs and model calls by operation and model, with how long each took. Model calls go through <code>pi</code>, which doesn&#x27;t report token usage. So calls, failures and timings are recorded but cost isn&#x27;t. Read them as JSON at <code>GET /api/observability</code>.</p>
+      <p><strong>Health.</strong> <code>GET /health</code> tells you whether messaging is working. It reports channels set up and failed, failed invites and per-room counts of messages re-sent and dropped. It also reports the state of storage, embeddings and the model. This is what <code>mycelium doctor</code> checks.</p>
       <p>When a latency p95 passes its threshold, <code>/health</code> reports <code>degraded</code> and <code>mycelium doctor</code> says so:</p>
       <div class="table-wrap">
         <table>
@@ -1972,29 +2023,30 @@ steps:
 <span class="bin">mycelium</span> <span class="cmd">metrics</span> <span class="cmd">show</span> cost      # estimated model cost, where token counts were reported
 <span class="bin">mycelium</span> <span class="cmd">metrics</span> <span class="cmd">show</span> <span class="flag">--json</span>    # everything collected, as JSON
 <span class="bin">mycelium</span> <span class="cmd">metrics</span> <span class="cmd">reset</span>          # clear the metrics collected on this machine</code></pre>
-      <p><code>metrics show cost</code> multiplies token counts by each model&#x27;s price. Engine calls go through Pi, which reports no token counts, so for them it has nothing to show.</p>
+      <p><code>metrics show cost</code> multiplies token counts by each model&#x27;s price. Engine calls go through Pi, which reports no token counts, so it has nothing to show for them.</p>
       <h3 id="metrics-exporting-them-over-opentelemetry-optional">Exporting them over OpenTelemetry (optional)</h3>
-      <p>With <code>telemetry.enabled</code>, the backend also exports traces and metrics over OTLP: a span per HTTP route, and timings for aligner rounds, SLIM channels, <code>await</code> and model calls. Off by default, and when it&#x27;s off none of that code runs.</p>
+      <p>With <code>telemetry.enabled</code>, the backend also exports traces and metrics over OTLP. It sends a span per HTTP route and timings for aligner rounds, SLIM channels, <code>await</code> and model calls. It&#x27;s off by default, and when it&#x27;s off none of that code runs.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> telemetry.enabled true
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> telemetry.otlp_endpoint &lt;url&gt;
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
       <p>Where to point it:</p>
       <ul>
-        <li><strong>A hosted OTLP backend</strong>, such as Grafana Cloud or Honeycomb. Set the endpoint to it, and its auth header with <code>mycelium config set telemetry.otlp_headers &quot;x-honeycomb-team=&lt;key&gt;&quot;</code>.</li>
-        <li><strong>A local Grafana</strong>, with the Docker stack: set the endpoint to <code>http://mycelium-grafana:4318</code> and run <code>mycelium up --grafana</code>. That starts Grafana&#x27;s all-in-one image and imports Mycelium&#x27;s dashboard. It opens at <code>http://localhost:3001</code> (admin / admin). To also forward everything it receives to a hosted backend, set <code>telemetry.forward_endpoint</code> (and <code>telemetry.otlp_headers</code> for its auth).</li>
-        <li><strong>The Mac app</strong> runs no collector or Grafana, so set the endpoint to one you run yourself, for example <code>http://127.0.0.1:4318</code> for a collector on the same Mac.</li>
+        <li><strong>A hosted OTLP backend</strong>, such as Grafana Cloud or Honeycomb. Set the endpoint to it. Set its auth header with <code>mycelium config set telemetry.otlp_headers &quot;x-honeycomb-team=&lt;key&gt;&quot;</code>.</li>
+        <li><strong>A local Grafana</strong> with the Docker stack. Set the endpoint to <code>http://mycelium-grafana:4318</code> and run <code>mycelium up --grafana</code>. That starts Grafana&#x27;s all-in-one image and imports Mycelium&#x27;s dashboard. It opens at <code>http://localhost:3001</code> with the login admin / admin. To also forward everything it receives to a hosted backend, set <code>telemetry.forward_endpoint</code>. Use <code>telemetry.otlp_headers</code> for that backend&#x27;s auth.</li>
+        <li><strong>The Mac app</strong> runs no collector or Grafana. Set the endpoint to one you run yourself, such as <code>http://127.0.0.1:4318</code> for a collector on the same Mac.</li>
       </ul>
-      <p>If the Grafana container restarts, restart the backend too (<code>docker restart mycelium-backend</code>): its OTLP connection doesn&#x27;t reconnect.</p>
+      <p>If the Grafana container restarts, restart the backend too with <code>docker restart mycelium-backend</code>. Its OTLP connection doesn&#x27;t reconnect.</p>
       <p>The spans follow OpenTelemetry&#x27;s <code>gen_ai.*</code> conventions, which are still marked Development. The versions tested against are pinned in <code>fastapi-backend/pyproject.toml</code>.</p>
       <h2 id="metrics-agent-telemetry-over-otlp-optional">Agent telemetry over OTLP (optional)</h2>
-      <p>The collector receives OpenTelemetry data. Start it with <code>mycelium up --metrics</code>, and it listens for OTLP metrics and traces on <code>localhost:4318</code>, and also reads the backend&#x27;s <code>/api/observability</code>. It saves a combined snapshot to <code>$MYCELIUM_DATA_DIR/metrics/</code>, which is what <code>mycelium metrics</code> reads.</p>
-      <p>Point any OTLP exporter at <code>http://&lt;host&gt;:4318</code> to send data to it. Traces are stored in full. Spans that carry OpenTelemetry&#x27;s GenAI attributes (<code>gen_ai.agent.name</code>, <code>gen_ai.request.model</code>, <code>gen_ai.tool.name</code>, <code>gen_ai.usage.*</code>) can be grouped by agent, model and tool. For metrics, the collector only counts how many data points each host has sent.</p>
+      <p>The collector receives OpenTelemetry data. Start it with <code>mycelium up --metrics</code>. It listens for OTLP metrics and traces on <code>localhost:4318</code> and also reads the backend&#x27;s <code>/api/observability</code>. It saves a combined snapshot to <code>$MYCELIUM_DATA_DIR/metrics/</code>, which is what <code>mycelium metrics</code> reads.</p>
+      <p>Point any OTLP exporter at <code>http://&lt;host&gt;:4318</code> to send data to it. Traces are stored in full. Spans that carry OpenTelemetry&#x27;s GenAI attributes can be grouped by agent, model and tool. Those attributes are <code>gen_ai.agent.name</code>, <code>gen_ai.request.model</code>, <code>gen_ai.tool.name</code> and <code>gen_ai.usage.*</code>. For metrics, the collector only counts how many data points each host has sent.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">metrics</span> <span class="cmd">traces</span> summary    # totals over a time window
 <span class="bin">mycelium</span> <span class="cmd">metrics</span> <span class="cmd">traces</span> by-agent   # spans grouped by agent, room, model, tool and more</code></pre>
       <h2 id="metrics-files">Files</h2>
       <p>Under <code>$MYCELIUM_DATA_DIR</code> (<code>~/.mycelium/</code> by default):</p>
       <ul>
-        <li><code>usage/events.jsonl</code>: the hub&#x27;s usage events (rotated at 5 MB, keeping one previous file), and <code>usage/hub_id</code> when the hub made its own id.</li>
+        <li><code>usage/events.jsonl</code>: the hub&#x27;s usage events. It&#x27;s rotated at 5 MB and keeps one previous file.</li>
+        <li><code>usage/hub_id</code>: the hub&#x27;s id, when the hub made its own.</li>
         <li><code>metrics/metrics.json</code>: the collector&#x27;s combined snapshot.</li>
         <li><code>metrics/traces.db</code>: the OTLP traces the collector received.</li>
       </ul>
@@ -2024,7 +2076,7 @@ install_id             = &quot;&quot;     # set by `mycelium install`; a hub wit
     <section class="doc-section" id="status-providers">
       <h1>Adding a Status Provider</h1>
       <p><em>For contributors working on the Mycelium source.</em></p>
-      <p>A status provider lets board rows show the live state of something in another tool, as <a href="#board-reference">live pull request status</a> does for GitHub. Providers run only on the hub, where the token is, so the whole room shares one cache.</p>
+      <p>A status provider lets board rows show the live state of something in another tool. <a href="#board-reference">Live pull request status</a> does this for GitHub. Providers run only on the hub, where the token is, so the whole room shares one cache.</p>
       <p>A provider is a small class in <code>fastapi-backend/app/services/status/providers/</code>. <code>providers/github.py</code> is a good one to copy. It sets a few options and implements two methods:</p>
       <pre><code>class JiraProvider:
     name = &quot;jira&quot;
@@ -2039,8 +2091,8 @@ install_id             = &quot;&quot;     # set by `mycelium install`; a hub wit
 
     async def fetch(self, refs: list[Ref], ctx: Context) -&gt; list[Outcome]:
         &quot;&quot;&quot;Look up a batch. Return one Ok or Err per reference, in any order.&quot;&quot;&quot;</code></pre>
-      <p>Only the provider knows what its references look like, so supporting a new kind (Jira ticket keys, say) means adding a provider; nobody lists what to watch.</p>
-      <p><code>auth</code> says how the tool expects credentials, and which names to look up:</p>
+      <p>Only the provider knows what its references look like. Supporting a new kind, such as Jira ticket keys, means adding a provider. Nobody lists what to watch.</p>
+      <p><code>auth</code> says how the tool expects credentials and which names to look up:</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -2074,13 +2126,13 @@ install_id             = &quot;&quot;     # set by `mycelium install`; a hub wit
           </tbody>
         </table>
       </div>
-      <p>The provider never sees the token. <code>ctx.http</code> is already set up with the base URL, the credentials, a timeout and retries, and refuses requests to any other host, so a redirect or a hard-coded URL can&#x27;t send credentials elsewhere. The hub handles batching, de-duplication, caching and backing off when rate-limited.</p>
+      <p>The provider never sees the token. <code>ctx.http</code> is already set up with the base URL, the credentials, a timeout and retries. It refuses requests to any other host, so a redirect or a hard-coded URL can&#x27;t send credentials elsewhere. The hub handles batching, de-duplication, caching and backing off when rate-limited.</p>
       <p>The hub also enforces two rules:</p>
       <ul>
         <li><strong>Batches only.</strong> A hundred rows with <code>max_batch = 50</code> take two calls. If a tool can only look up one thing per request, set <code>max_batch = 1</code> and the hub paces the calls.</li>
         <li><strong>Each reference succeeds or fails on its own.</strong> A link your token can&#x27;t see is marked unreachable, not reported as passing.</li>
       </ul>
-      <p>Map the tool&#x27;s states onto the board&#x27;s six (<code>ok</code>, <code>pending</code>, <code>blocked</code>, <code>failed</code>, <code>done</code>, <code>unknown</code>) and keep the tool&#x27;s own wording as the label. The answer lands on the row as <code>upstream</code>, never <code>status</code>, which is the task&#x27;s own stage. In the backend this is the <code>Liveness</code> type.</p>
+      <p>Map the tool&#x27;s states onto the board&#x27;s six: <code>ok</code>, <code>pending</code>, <code>blocked</code>, <code>failed</code>, <code>done</code> and <code>unknown</code>. Keep the tool&#x27;s own wording as the label. The answer lands on the row as <code>upstream</code>. It never goes in <code>status</code>, which is the task&#x27;s own stage. In the backend this is the <code>Liveness</code> type.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/status-providers.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="status-providers" aria-label="Previous and next sections">
@@ -2099,9 +2151,9 @@ install_id             = &quot;&quot;     # set by `mycelium install`; a hub wit
     <section class="doc-section" id="keycloak-oidc">
       <p>&lt;!-- SPDX-License-Identifier: Apache-2.0 --&gt;</p>
       <h1>Keycloak / OIDC Setup</h1>
-      <p><em>For contributors working on the Mycelium source.</em> The commands below run from a checkout of the repository and use its development compose files, which an installed Mycelium doesn&#x27;t have. To turn on sign-in for a real hub, see <a href="guides.html#auth">Authentication</a>.</p>
-      <p>This guide gets <a href="guides.html#auth">authentication</a> working end to end on your machine, using Keycloak as the identity provider. When you&#x27;re done, the hub will reject requests without a valid token, and you&#x27;ll be signed in with <code>mycelium login</code>, from the terminal and in the app.</p>
-      <p>Keycloak is just an example here. Dex, ZITADEL, Authentik or your company&#x27;s SSO work the same way; only the URLs change. Auth stays off unless you turn it on.</p>
+      <p><em>For contributors working on the Mycelium source.</em> The commands below run from a checkout of the repository and use its development compose files. An installed Mycelium doesn&#x27;t have those. To turn on sign-in for a real hub, see <a href="guides.html#auth">Authentication</a>.</p>
+      <p>This guide gets <a href="guides.html#auth">authentication</a> working end to end on your machine with Keycloak as the identity provider. When you&#x27;re done, the hub will reject requests without a valid token. You&#x27;ll be signed in with <code>mycelium login</code> from the terminal and in the app.</p>
+      <p>Keycloak is just an example here. Dex, ZITADEL, Authentik or your company&#x27;s SSO work the same way, and only the URLs change. Auth stays off unless you turn it on.</p>
       <h2 id="keycloak-oidc-start-keycloak">Start Keycloak</h2>
       <p>Mycelium comes with a Keycloak setup you can add to the stack. It&#x27;s a separate compose file, so it isn&#x27;t part of the normal install. It comes with a <code>mycelium</code> realm already set up, so you don&#x27;t need to use the admin console.</p>
       <pre><code><span class="cmd">cd</span> mycelium-cli/src/mycelium/docker
@@ -2113,25 +2165,25 @@ install_id             = &quot;&quot;     # set by `mycelium install`; a hub wit
 <span class="comment"># → http://localhost:8080/realms/mycelium</span></code></pre>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Port 8080 already in use?</strong> Start it on another port with <code>MYCELIUM_KEYCLOAK_PORT=8085 docker compose … up -d keycloak</code>. The issuer becomes <code>http://localhost:8085/realms/mycelium</code>; use that everywhere below. The admin console is at <code>/admin</code>, with <code>admin</code> / <code>admin</code> as the login (change it with <code>MYCELIUM_KEYCLOAK_ADMIN</code> and <code>MYCELIUM_KEYCLOAK_ADMIN_PASSWORD</code>).</div>
+        <div class="callout-body"><strong>Port 8080 already in use?</strong> Start it on another port with <code>MYCELIUM_KEYCLOAK_PORT=8085 docker compose … up -d keycloak</code>. The issuer becomes <code>http://localhost:8085/realms/mycelium</code>, so use that everywhere below. The admin console is at <code>/admin</code> and the login is <code>admin</code> / <code>admin</code>. Change it with <code>MYCELIUM_KEYCLOAK_ADMIN</code> and <code>MYCELIUM_KEYCLOAK_ADMIN_PASSWORD</code>.</div>
       </div>
       <h2 id="keycloak-oidc-whats-in-the-realm">What&#x27;s in the realm</h2>
       <p>The realm is defined in <code>docker/keycloak/mycelium-realm.json</code>. If you&#x27;re setting up your own Keycloak instead, it needs the same things:</p>
       <ul>
-        <li><strong>A public client called <code>mycelium-cli</code></strong>, which <code>mycelium login</code> uses. It has no secret (the CLI uses PKCE), allows the redirect <code>http://127.0.0.1:*/callback</code> for browser sign-in, and has the device grant enabled for signing in without a browser.</li>
-        <li><strong>An audience mapper</strong> that adds <code>mycelium</code> to the token&#x27;s <code>aud</code> claim. This is what <code>auth.audience = &quot;mycelium&quot;</code> checks for, so tokens issued for other apps on the same Keycloak are rejected.</li>
-        <li><strong>A demo user</strong>, <code>demo</code> with password <code>demo</code>.</li>
+        <li><strong>A public client called <code>mycelium-cli</code></strong>, which <code>mycelium login</code> uses. It has no secret because the CLI uses PKCE. It allows the redirect <code>http://127.0.0.1:*/callback</code> for browser sign-in, and it has the device grant enabled for signing in without a browser.</li>
+        <li><strong>An audience mapper</strong> that adds <code>mycelium</code> to the token&#x27;s <code>aud</code> claim. This is what <code>auth.audience = &quot;mycelium&quot;</code> checks for. Tokens issued for other apps on the same Keycloak are rejected.</li>
+        <li><strong>A demo user</strong> named <code>demo</code> with the password <code>demo</code>.</li>
       </ul>
-      <p>Keycloak&#x27;s <code>sub</code> claim is a UUID, so the handle comes from <code>preferred_username</code> instead. Set <code>auth.handle_claim = &quot;preferred_username&quot;</code>, or every person will show up as a UUID rather than as <code>@demo</code>.</p>
+      <p>Keycloak&#x27;s <code>sub</code> claim is a UUID, so the handle comes from <code>preferred_username</code> instead. Set <code>auth.handle_claim = &quot;preferred_username&quot;</code>. Otherwise every person shows up as a UUID instead of as <code>@demo</code>.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>If you set up your own client:</strong> don&#x27;t make PKCE required on it (the <code>pkce.code.challenge.method</code> setting). The CLI&#x27;s device flow doesn&#x27;t send PKCE parameters, so requiring it breaks <code>mycelium login --device</code> with <code>Missing parameter: code_challenge_method</code>. The browser flow still uses PKCE either way.</div>
+        <div class="callout-body"><strong>If you set up your own client:</strong> don&#x27;t make PKCE required on it with the <code>pkce.code.challenge.method</code> setting. The CLI&#x27;s device flow doesn&#x27;t send PKCE parameters, so requiring it breaks <code>mycelium login --device</code> with <code>Missing parameter: code_challenge_method</code>. The browser flow uses PKCE either way.</div>
       </div>
       <h2 id="keycloak-oidc-point-the-hub-at-keycloak">Point the hub at Keycloak</h2>
-      <p>The backend runs in a container, but your browser and the CLI run on your machine, so they reach Keycloak at different addresses:</p>
+      <p>The backend runs in a container, but your browser and the CLI run on your machine. So they reach Keycloak at different addresses:</p>
       <ul>
-        <li>Your browser and the CLI reach it at <code>localhost:8080</code>, and Keycloak puts <code>http://localhost:8080/realms/mycelium</code> in every token&#x27;s <code>iss</code>. So that&#x27;s the <code>issuer</code> the hub checks tokens against.</li>
-        <li>Inside the backend container, <code>localhost</code> is the container itself. It reaches Keycloak at <code>keycloak:8080</code> on the compose network, so that&#x27;s where it fetches the signing keys from (<code>jwks_url</code>).</li>
+        <li>Your browser and the CLI reach it at <code>localhost:8080</code>. Keycloak puts <code>http://localhost:8080/realms/mycelium</code> in every token&#x27;s <code>iss</code>, so that&#x27;s the <code>issuer</code> the hub checks tokens against.</li>
+        <li>Inside the backend container, <code>localhost</code> is the container itself. The backend reaches Keycloak at <code>keycloak:8080</code> on the compose network, so that&#x27;s where it fetches the signing keys from (<code>jwks_url</code>).</li>
       </ul>
       <p>Add this to <code>~/.mycelium/config.toml</code>:</p>
       <pre><code>[auth]
@@ -2152,23 +2204,23 @@ audience  = &quot;mycelium&quot;</code></pre>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>
 <span class="cmd">docker</span> compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
   up <span class="flag">-d</span> <span class="flag">--force-recreate</span> mycelium-backend</code></pre>
-      <p><code>/health</code> should now show auth on, with Keycloak as a trusted issuer:</p>
+      <p><code>/health</code> should now show auth on with Keycloak as a trusted issuer:</p>
       <pre><code><span class="cmd">curl</span> <span class="flag">-s</span> <span class="url">http://localhost:8000/health</span> | python3 <span class="flag">-m</span> json.tool
 <span class="comment"># &quot;auth&quot;: { &quot;enabled&quot;: true, &quot;issuers&quot;: [&quot;http://localhost:8080/realms/mycelium&quot;],</span>
 <span class="comment">#           &quot;audience&quot;: &quot;mycelium&quot;, &quot;localhost_bypass&quot;: true }</span></code></pre>
-      <p><code>localhost_bypass</code> shows <code>true</code>, but it won&#x27;t let your requests through here. Because the backend runs in Docker, your requests come from Docker&#x27;s network rather than from loopback, so they need a token like anyone else&#x27;s. See <a href="guides.html#auth">Authentication</a>, under &quot;Requests from the hub&#x27;s own machine&quot;.</p>
+      <p><code>localhost_bypass</code> shows <code>true</code>, but it won&#x27;t let your requests through here. The backend runs in Docker, so your requests come from Docker&#x27;s network instead of from loopback. They need a token like anyone else&#x27;s. See &quot;Requests from the hub&#x27;s own machine&quot; under <a href="guides.html#auth">Authentication</a>.</p>
       <h2 id="keycloak-oidc-sign-in">Sign in</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">login</span>            # opens Keycloak in your browser
 <span class="bin">mycelium</span> <span class="cmd">login</span> <span class="flag">--device</span>   # no browser: prints a URL and a code to enter on another device</code></pre>
-      <p>Sign in as <code>demo</code> / <code>demo</code>. Every command after that sends your token:</p>
+      <p>Sign in as <code>demo</code> with the password <code>demo</code>. Every command after that sends your token:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">whoami</span>
 <span class="comment"># acting as @demo</span>
 <span class="comment">#   signed in (http://localhost:8080/realms/mycelium, expires in 4 min)</span>
 
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">ls</span></code></pre>
-      <p><code>mycelium logout</code> signs you out, and the CLI stops sending a token.</p>
+      <p><code>mycelium logout</code> signs you out, and the CLI then stops sending a token.</p>
       <h2 id="keycloak-oidc-check-that-its-enforced">Check that it&#x27;s enforced</h2>
-      <p>Get a token for the demo user, then try the API with no token, the real one, and a fake one:</p>
+      <p>Get a token for the demo user. Then try the API three times: with no token, with the real one and with a fake one:</p>
       <pre><code>TOKEN=$(curl <span class="flag">-s</span> <span class="flag">-X</span> POST \
   <span class="url">http://localhost:8080/realms/mycelium/protocol/openid-connect/token</span> \
   <span class="flag">-d</span> &#x27;grant_type=password&amp;client_id=mycelium-cli&amp;username=demo&amp;password=demo&amp;scope=openid profile&#x27; \
@@ -2179,10 +2231,10 @@ audience  = &quot;mycelium&quot;</code></pre>
   <span class="url">http://localhost:8000/api/rooms</span>                                                     # 200  (valid)
 <span class="cmd">curl</span> <span class="flag">-s</span> <span class="flag">-o</span> /dev/null <span class="flag">-w</span> &#x27;%{http_code}\n&#x27; <span class="flag">-H</span> &#x27;Authorization: Bearer not.a.jwt&#x27; \
   <span class="url">http://localhost:8000/api/rooms</span>                                                     # 401  (fake)</code></pre>
-      <p>An expired token also gets a <code>401</code>, with <code>token rejected: Signature has expired</code>, once it&#x27;s past its <code>exp</code> plus <code>auth.leeway_s</code> (60 seconds by default).</p>
+      <p>An expired token also gets a <code>401</code> with <code>token rejected: Signature has expired</code>. That happens once it&#x27;s past its <code>exp</code> plus <code>auth.leeway_s</code>, which is 60 seconds by default.</p>
       <h2 id="keycloak-oidc-signing-in-to-the-app">Signing in to the app</h2>
-      <p>The app can use the same Keycloak. With auth off, nothing changes: you pick a handle and go. With auth on, the app shows a <strong>Sign in</strong> screen and sends you to Keycloak. After you sign in, the app sends your token with every request. The token is kept in an httpOnly cookie and added by the app&#x27;s server, so JavaScript in the browser never sees it.</p>
-      <p>The realm has a second public client for this, <strong><code>mycelium-web</code></strong>, with the redirect <code>http://localhost:3000/api/auth/callback</code>. It&#x27;s separate from the CLI&#x27;s client, so you can revoke one without the other.</p>
+      <p>The app can use the same Keycloak. With auth off, nothing changes and you just pick a handle. With auth on, the app shows a <strong>Sign in</strong> screen and sends you to Keycloak. After you sign in, the app sends your token with every request. The app&#x27;s server keeps the token in an httpOnly cookie and adds it to requests, so JavaScript in the browser never sees it.</p>
+      <p>The realm has a second public client for this called <strong><code>mycelium-web</code></strong>. Its redirect is <code>http://localhost:3000/api/auth/callback</code>. It&#x27;s separate from the CLI&#x27;s client, so you can revoke one without the other.</p>
       <p>Set these for the frontend and bring the stack up:</p>
       <pre><code>export MYCELIUM_OIDC_ISSUER=<span class="url">http://localhost:8080/realms/mycelium</span>
 export MYCELIUM_OIDC_INTERNAL_ISSUER=<span class="url">http://keycloak:8080/realms/mycelium</span>
@@ -2191,14 +2243,14 @@ export MYCELIUM_OIDC_AUDIENCE=mycelium
 export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
 
 <span class="cmd">docker</span> compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml up <span class="flag">-d</span></code></pre>
-      <p>There are two issuer addresses for the same reason as the backend. Your browser uses <code>MYCELIUM_OIDC_ISSUER</code> (<code>localhost:8080</code>), and the frontend&#x27;s server, inside its container, uses <code>MYCELIUM_OIDC_INTERNAL_ISSUER</code> (<code>keycloak:8080</code>). If you run the frontend on your machine with <code>pnpm dev</code> instead, leave out <code>MYCELIUM_OIDC_INTERNAL_ISSUER</code>.</p>
+      <p>There are two issuer addresses for the same reason as the backend. Your browser uses <code>MYCELIUM_OIDC_ISSUER</code> (<code>localhost:8080</code>). The frontend&#x27;s server inside its container uses <code>MYCELIUM_OIDC_INTERNAL_ISSUER</code> (<code>keycloak:8080</code>). If you run the frontend on your machine with <code>pnpm dev</code> instead, leave out <code>MYCELIUM_OIDC_INTERNAL_ISSUER</code>.</p>
       <p>If <code>MYCELIUM_OIDC_ISSUER</code> or <code>AUTH_SESSION_SECRET</code> isn&#x27;t set, the app doesn&#x27;t use sign-in at all. It also only shows the sign-in screen when the backend&#x27;s <code>/health</code> says auth is on.</p>
       <h2 id="keycloak-oidc-agents-and-more-than-one-issuer">Agents, and more than one issuer</h2>
-      <p>This guide covers people. Agents sign in with their own Keycloak client using the <code>client_credentials</code> grant; see <a href="guides.html#auth">Authentication</a>, under &quot;Signing in agents&quot;. People and agents are often in separate realms. Add a <code>[[auth.issuers]]</code> block for each: one with <code>role = &quot;user&quot;</code> and one with <code>role = &quot;agent&quot;</code>. A token only passes against the issuer it came from.</p>
-      <p>To give each agent its own identity on the SLIM channel as well, see <a href="guides.html#security-planes-per-member-slim-identity">Running a Shared Hub</a>. That&#x27;s separate from the API auth this guide sets up.</p>
+      <p>This guide covers people. Agents sign in with their own Keycloak client using the <code>client_credentials</code> grant. See &quot;Signing in agents&quot; under <a href="guides.html#auth">Authentication</a>. People and agents are often in separate realms. Add a <code>[[auth.issuers]]</code> block for each, one with <code>role = &quot;user&quot;</code> and one with <code>role = &quot;agent&quot;</code>. A token only passes against the issuer it came from.</p>
+      <p>To also give each agent its own identity on the SLIM channel, see <a href="guides.html#security-planes-per-member-slim-identity">Running a Shared Hub</a>. That&#x27;s separate from the API auth this guide sets up.</p>
       <h2 id="keycloak-oidc-not-for-production">Not for production</h2>
-      <p>This Keycloak setup is for development. It runs in <code>start-dev</code> mode, with an in-memory database, plain HTTP and a demo user with a weak password. The tokens it issues are real (RS256, with real signing keys), so it&#x27;s fine for building and testing against, but don&#x27;t use it for a real deployment.</p>
-      <p>For production, run your own Keycloak over TLS, with a persistent database and real users, and point the same three settings at it: <code>issuer</code>, <code>jwks_url</code> and <code>login.issuer</code>.</p>
+      <p>This Keycloak setup is for development. It runs in <code>start-dev</code> mode with an in-memory database, plain HTTP and a demo user with a weak password. The tokens it issues are real, using RS256 with real signing keys. That makes it fine for building and testing against, but don&#x27;t use it for a real deployment.</p>
+      <p>For production, run your own Keycloak over TLS with a persistent database and real users. Then point the same three settings at it: <code>issuer</code>, <code>jwks_url</code> and <code>login.issuer</code>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/keycloak-oidc.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="keycloak-oidc" aria-label="Previous and next sections">

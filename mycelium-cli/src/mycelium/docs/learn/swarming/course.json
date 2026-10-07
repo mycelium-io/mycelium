@@ -1,20 +1,20 @@
 {
   "order": 5,
   "title": "Swarm a task effectively",
-  "tagline": "Put a team of agents on one task: they split it, build the parts, review each other, and hand back one result.",
+  "tagline": "Put a team of agents on one task. They split it, build the parts, review each other and hand back one result.",
   "track": "Capstone",
   "thumb": "app-swarm.png",
   "needs": [
-    "The core workflow under your belt: a swarm is several pairs, each part reviewed by another member",
+    "The core workflow under your belt. A swarm is several pairs, with each part reviewed by another member.",
     "A task with parts that can be built at the same time"
   ],
-  "takeaway": "A sense of which tasks a team should take, and a way to write them so the split comes out right.",
+  "takeaway": "A sense of which tasks a team should take and a way to write them so the split comes out right.",
   "outcomes": [
     "Tell a task worth swarming from one a pair should take",
     "Write a task that splits cleanly into parts",
     "Pick the size and where the team runs",
     "Set up a self-organizing team that hands work to itself, so only decisions reach you",
-    "Watch, steer, and recover a swarm that goes sideways"
+    "Watch, steer and recover a swarm that goes sideways"
   ],
   "modules": [
     {
@@ -28,11 +28,11 @@
             "question": "Which of these should you swarm?",
             "options": [
               "Rename a function used in forty files",
-              "Add an export feature: an API endpoint, a settings screen, and its tests",
+              "Add an export feature with an API endpoint, a settings screen and its tests",
               "Track down one bug in a single module"
             ],
             "answer": 1,
-            "why": "The export feature has parts that can be built at the same time by different agents. The other two are one coherent change: a pair, or one agent, does them better."
+            "why": "The export feature has parts that different agents can build at the same time. The other two are each one coherent change, which a pair or one agent does better."
           }
         },
         {
@@ -48,7 +48,7 @@
       ],
       "video": {
         "take": "swarm-task",
-        "about": "Writing a task that names its parts, and starting a team on it from the board."
+        "about": "Writing a task that names its parts and starting a team on it from the board."
       }
     },
     {
@@ -72,14 +72,14 @@
       ],
       "video": {
         "take": "swarm-run",
-        "about": "The team checking in, the lead splitting the task, and a part reviewed in its own thread."
+        "about": "The team checks in and the lead splits the task. Then a part is reviewed in its own thread."
       }
     },
     {
       "title": "A self-organizing team",
       "video": {
         "take": "relay",
-        "about": "One task handed to a PM, and the team organizes itself: the agents wake each other through tasks and mentions, a tester files a fix for the coder, and only one decision reaches you."
+        "about": "One task is handed to a PM and the team organizes itself. The agents wake each other through tasks and mentions. A tester files a fix for the coder. Only one decision reaches you."
       },
       "lessons": [
         {
@@ -99,7 +99,7 @@
               "The PM files the help page task again"
             ],
             "answer": 1,
-            "why": "Resolving a task tells the board, not the agent waiting on it. A mention (or a task filed for it) is what wakes an agent, so whoever finishes says who's next."
+            "why": "Resolving a task tells the board, not the agent waiting on it. A mention or a task filed for it is what wakes an agent. So whoever finishes says who's next."
           }
         },
         {
@@ -125,11 +125,11 @@
             "question": "Two members keep undoing each other's changes. What helps most?",
             "options": [
               "Add a fourth member to referee",
-              "Give each member its own worktree, and split the task by files or areas that don't overlap",
+              "Give each member its own worktree and split the task by files or areas that don't overlap",
               "Lower the number of review rounds"
             ],
             "answer": 1,
-            "why": "Members colliding is a split problem and a checkout problem. --worktree gives each its own branch, and a task that names separate areas keeps their parts apart."
+            "why": "Members colliding is a split problem and a checkout problem. --worktree gives each member its own branch. A task that names separate areas keeps their parts apart."
           }
         },
         {
@@ -140,7 +140,7 @@
       ],
       "video": {
         "take": "swarm-steer",
-        "about": "Answering the question a quiet part was waiting on, and reading the lead's combined result."
+        "about": "Answering the question a quiet part was waiting on and reading the lead's combined result."
       }
     }
   ]

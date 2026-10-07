@@ -5,13 +5,13 @@
   "track": "Parallel work",
   "thumb": "app-board-columns.png",
   "needs": [
-    "The core workflow running, or any long task you don't want interrupted",
+    "The core workflow running or any long task you don't want interrupted",
     "A repository you can add git worktrees to, inside a folder your runner allows"
   ],
   "takeaway": "A habit for clearing small tasks without breaking anyone's focus, yours included.",
   "outcomes": [
     "Hand off small fixes without interrupting the main work",
-    "Run each in its own worktree and branch, so nothing collides",
+    "Run each in its own worktree and branch so nothing collides",
     "Land each as its own small pull request"
   ],
   "modules": [
@@ -40,13 +40,13 @@
               "Mycelium requires it"
             ],
             "answer": 1,
-            "why": "A worktree is its own folder on its own branch, so the side quest can't touch the pair's work, and it lands as its own small pull request."
+            "why": "A worktree is its own folder on its own branch, so the side quest can't touch the pair's work. It lands as its own small pull request."
           }
         }
       ],
       "video": {
         "take": "side-quest",
-        "about": "A fixer started in its own worktree, handed a task of its own, done without touching the pair."
+        "about": "A fixer starts in its own worktree with a task of its own and finishes without touching the pair."
       }
     }
   ]

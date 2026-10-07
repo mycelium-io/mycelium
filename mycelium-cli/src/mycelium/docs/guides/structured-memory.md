@@ -1,14 +1,14 @@
 # Structured Memory
 
-When an agent finishes a stretch of work and goes away, the next agent (or
-person) to pick it up starts from nothing unless the work was written down.
-This guide is a habit for writing it down as you go: why choices were made,
-what the user wants, where things stand, what failed, and how to do things
+When an agent finishes a stretch of work and goes away, the next agent or
+person to pick it up starts from nothing unless the work was written down. This
+guide is a habit for writing it down as you go. It covers why choices were
+made, what the user wants, where things stand, what failed and how to do things
 again.
 
 The commands are ones your agents run as they work. Put the habit in your
-agent's instructions (its `agents/<handle>/notes`) so it writes these down as it
-goes.
+agent's instructions, its `agents/<handle>/notes`, so it writes these down as
+it goes.
 
 ## Where each thing goes
 
@@ -20,10 +20,10 @@ goes.
 | `context/` | Background and what the user wants | No |
 | `procedures/` | Steps you'll want to repeat | No |
 
-What was built belongs with the task it was built for: write it into the task's
-thread, and the task's body when it's resolved. Don't write it under `work/`,
-which is where tasks live: every memory there shows up on the board as a task
-someone could claim.
+What was built belongs with the task it was built for. Write it into the
+task's thread, and into the task's body when it's resolved. Don't write it
+under `work/`. That's where tasks live, and every memory there shows up on the
+board as a task someone could claim.
 
 ```bash
 # Why the choices were made
@@ -42,7 +42,7 @@ mycelium memory set status/deploy "BLOCKED: waiting on DNS propagation"
 mycelium memory set procedures/deploy-vps "1. ssh vps  2. cd /app && git pull  3. systemctl restart app"
 ```
 
-`memory set` replaces the old value, so to update one, set it again.
+`memory set` replaces the old value. To update one, set it again.
 
 ## Reading them back
 
@@ -58,8 +58,8 @@ mycelium memory search "why did we pick FastAPI"
 
 For keys under `work/`, `decisions/`, `status/`, `context/` and `procedures/`,
 `memory set` checks the name after the prefix and records when it was written.
-That name can use lowercase letters, numbers, hyphens, dots and underscores
-(capitals are lowercased for you), must start with a letter or number, and
+That name can use lowercase letters, numbers, hyphens, dots and underscores.
+Capitals are lowercased for you. It must start with a letter or number, and it
 can't contain another `/`:
 
 - `decisions/auth` works
@@ -67,7 +67,7 @@ can't contain another `/`:
 - `decisions/Why We Chose X` is rejected (spaces)
 - `context/api/shape` is rejected (a second `/`)
 
-The check runs in the CLI, before anything is sent to the hub. Keys under any
-other prefix, such as `failed/` or `research/`, aren't checked. Engines write
-deeper keys such as `context/summary/<task>` through the hub, so you can read
-those with `memory get` but not write them with `memory set`.
+The check runs in the CLI before anything is sent to the hub. Keys under any
+other prefix aren't checked, such as `failed/` or `research/`. Engines write
+deeper keys such as `context/summary/<task>` through the hub. You can read
+those with `memory get` but can't write them with `memory set`.
