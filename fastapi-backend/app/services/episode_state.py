@@ -15,13 +15,13 @@ not carry an SAO scoreboard it will never fill in.
 A :class:`NegotiationState` accompanies each mediated session. It does three
 things:
 
-1. Builds the messages that ride inside coordination message content
+1. Builds the envelopes that ride inside coordination messages
    (ticks are ``exchange``, the consensus is ``commit:converged`` /
    ``commit:rejected``) and threads causality: a tick's envelope parents the
    agent's prior reply, a reply parents the tick it answers, the consensus
-   parents the final round's replies. Agents don't build messages themselves:
-   the backend synthesizes reply envelopes from the parsed reply dicts, so
-   the causal graph is complete without requiring message-aware agents.
+   parents the final round's replies. Agents reply in plain text through the
+   CLI, and the backend writes each reply's envelope from the parsed reply, so
+   the causal graph is complete.
 
 2. Tracks the epistemic fields agents volunteer (``confidence``,
    ``deferred_to``) and computes the SIEP-style agreement-quality metrics

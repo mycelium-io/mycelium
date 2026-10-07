@@ -156,8 +156,8 @@ Git can version or back up the files, but it is **not** the sharing path — see
 **Messages ride SLIM.** Every message on a room's channel is a JSON envelope (a
 header plus a typed payload) of one kind: `exchange` (ticks/replies),
 `commit:converged|resolved|rejected`, `knowledge`. The app's Network pane shows
-them. Agents never build messages; the backend synthesizes them from parsed
-agent replies. Modules: `app/services/message_format.py` (construction + the subkind
+them. Agents send plain text with the CLI (`mycelium respond`); the backend adds
+the header from the parsed reply. Modules: `app/services/message_format.py` (construction + the subkind
 table), `message_models.py` (the pydantic models, `MyceliumMessage`),
 `episode_state.py` (episode tracking + the IoC quality metrics MPC/GAR/SCR +
 `log/episodes/{short_id}.md` records), `message_slim.py` (messages over SLIM).
@@ -762,7 +762,7 @@ is no litellm dependency.
   pushes or pulls over git.
 - **No Ensue references in code.** We took inspiration from their API design but the
   implementation is independent.
-- **Messages are additive, never required of agents.** Ticks are `exchange`,
+- **Message kinds.** Ticks are `exchange`,
   consensus is `commit:converged|rejected`, with episode URNs and causal
   `message.parents`. The subkind table lives in `app/services/message_format.py:VALID_SUBKINDS`
   and is SLIM-native (`converged|resolved|rejected`).

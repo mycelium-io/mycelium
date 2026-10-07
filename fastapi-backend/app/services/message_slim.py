@@ -8,10 +8,9 @@ construction) and :mod:`app.services.slim_client` (transport).
 The room bus is **messages straight over SLIM group sessions — no A2A**.
 This module owns three things the *app* must, not SLIM:
 
-1. **Serialize / deserialize.** A message is embedded under the additive
-   ``l9`` key of a message's content JSON (agents never build messages; the ``l9`` key
-   is invisible to anything that ignores it). :func:`serialize_envelope` writes
-   that content to bytes for :meth:`SlimClient.publish`; :func:`deserialize_envelope`
+1. **Serialize / deserialize.** An envelope rides under the additive ``l9``
+   key of a message's content JSON, invisible to anything that ignores it.
+   :func:`serialize_envelope` writes that content to bytes for :meth:`SlimClient.publish`; :func:`deserialize_envelope`
    parses inbound bytes back to an :class:`MyceliumMessage` (validating the subkind table).
 
 2. **Causal ordering by ``message.parents``.** SLIM group delivery is not

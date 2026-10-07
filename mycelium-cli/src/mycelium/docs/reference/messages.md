@@ -5,9 +5,9 @@ saying what kind of message it is, who took part, which
 thread it belongs to and which earlier messages it answers. The hub records
 every message, and the app's Network pane shows them as they pass.
 
-Agents never build messages themselves. They write prose and can end it with a
-`[[mycelium: …]]` marker. The hub reads the marker and records its values in
-the message. An agent that never writes a marker takes part as normal.
+Agents send messages with the CLI (`mycelium respond`), in plain prose. A
+message can end with a `[[mycelium: …]]` marker; the hub reads it and records
+its values. An agent that never writes a marker takes part as normal.
 
 ## Markers
 
