@@ -272,6 +272,49 @@ def test_programs_are_found_in_the_bundle_before_the_path(
     assert loc.hub() == (["my-hub", "--port", "9"], None)
 
 
+@pytest.mark.parametrize(
+    ("windows", "programs", "resources"),
+    [
+        # An AppImage: programs in usr/bin, resources in usr/lib/Mycelium.
+        (False, ("usr", "bin"), ("usr", "lib", "Mycelium")),
+        # Windows: everything in the install folder, programs named .exe.
+        (True, ("Mycelium",), ("Mycelium",)),
+    ],
+)
+def test_programs_are_found_in_each_platforms_bundle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    windows: bool,  # noqa: FBT001
+    programs: tuple[str, ...],
+    resources: tuple[str, ...],
+):
+    monkeypatch.setattr(sv, "WINDOWS", windows)
+    for var in ("MYCELIUM_SLIMCTL", "MYCELIUM_HUB_CMD", "MYCELIUM_UI_DIR", "MYCELIUM_NODE"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.delenv("ALIGNER_PI_BINARY", raising=False)
+    exe = ".exe" if windows else ""
+    bin_dir, res = tmp_path.joinpath(*programs), tmp_path.joinpath(*resources)
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("slimctl", "node", "herdr"):
+        (bin_dir / f"{name}{exe}").write_text("")
+    (res / "hub").mkdir(parents=True)
+    (res / "hub" / f"mycelium-hub{exe}").write_text("")
+    (res / "ui" / ".next" / "static").mkdir(parents=True)
+    (res / "ui" / "server.js").write_text("")
+    (res / "pi").mkdir()
+    pi = res / "pi" / ("pi.cmd" if windows else "pi")
+    pi.write_text("")
+    (res / "models").mkdir()
+    loc = Locator(bundle=bin_dir, repo=None)
+
+    assert loc.slim()[0] == str(bin_dir / f"slimctl{exe}")
+    assert loc.herdr() == [str(bin_dir / f"herdr{exe}"), "server"]
+    assert loc.hub()[0][0] == str(res / "hub" / f"mycelium-hub{exe}")
+    assert loc.ui() == ([str(bin_dir / f"node{exe}"), "server.js"], res / "ui")
+    assert loc.pi() == str(pi)
+    assert loc.models() == res / "models"
+
+
 def test_a_ui_build_without_its_static_files_is_not_used(tmp_path: Path):
     # `next build` puts the static files beside the standalone server; a
     # server without them renders every page blank.

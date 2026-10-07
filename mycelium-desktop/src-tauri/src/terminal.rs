@@ -8,7 +8,6 @@
 //! commands can run anything else on the machine.
 
 use std::io::{Read, Write};
-use std::process::Command;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
@@ -144,7 +143,7 @@ pub fn close(app: &AppHandle) {
 pub fn focus_pane(pane: &str) {
     let Ok(bin) = herdr() else { return };
     let run = |args: &[&str]| {
-        Command::new(&bin).args(args).env("PATH", paths::shell_path()).output().ok()
+        paths::command(&bin).args(args).env("PATH", paths::shell_path()).output().ok()
     };
     let Some(out) = run(&["pane", "get", pane]) else { return };
     let info: Value = serde_json::from_slice(&out.stdout).unwrap_or(Value::Null);

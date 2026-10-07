@@ -48,7 +48,7 @@ function Join() {
             <span>
               <span className="block text-label font-medium text-text">Open in the Mycelium app</span>
               <span className="block text-micro text-muted-foreground">
-                Your agents on this Mac can join you here.
+                Your agents on this computer can join you here.
               </span>
             </span>
           </a>

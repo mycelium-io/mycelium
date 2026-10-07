@@ -101,17 +101,33 @@ fn stop_child(inner: &mut Inner) {
     // still there after the grace period is killed.
     inner.stdin.take();
     if let Some(pid) = inner.pid.take() {
-        unsafe {
-            libc::kill(pid, libc::SIGTERM);
-        }
+        signal(pid, false);
         thread::spawn(move || {
             thread::sleep(STOP_GRACE);
-            unsafe {
-                if libc::kill(pid, 0) == 0 {
-                    libc::kill(pid, libc::SIGKILL);
-                }
-            }
+            signal(pid, true);
         });
+    }
+}
+
+#[cfg(unix)]
+fn signal(pid: i32, kill: bool) {
+    unsafe {
+        if !kill {
+            libc::kill(pid, libc::SIGTERM);
+        } else if libc::kill(pid, 0) == 0 {
+            libc::kill(pid, libc::SIGKILL);
+        }
+    }
+}
+
+/// Windows has no SIGTERM to ask with: closing stdin is the ask, and after
+/// the grace period the supervisor and what it started are ended as a tree.
+#[cfg(windows)]
+fn signal(pid: i32, kill: bool) {
+    if kill {
+        let _ = paths::command("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .output();
     }
 }
 
@@ -135,10 +151,10 @@ fn command(settings: &Settings) -> Result<Command, String> {
     let program = match std::env::var_os("MYCELIUM_DESKTOP_SUPERVISOR") {
         Some(p) => p.into(),
         None => paths::resolve("mycelium").ok_or_else(|| {
-            "The mycelium program isn't in this app or on this Mac. Reinstall Mycelium.".to_string()
+            "The mycelium program isn't in this app or on this computer. Reinstall Mycelium.".to_string()
         })?,
     };
-    let mut cmd = Command::new(program);
+    let mut cmd = paths::command(program);
     cmd.args(["desktop", "serve", "--mode", settings.mode.as_str(), "--json"]);
     if let Some(hub) = &settings.hub_url {
         cmd.args(["--hub-url", hub]);
@@ -154,6 +170,7 @@ fn command(settings: &Settings) -> Result<Command, String> {
     if let Some(slimctl) = paths::bundled("slimctl") {
         cmd.env("MYCELIUM_SLIMCTL", slimctl);
     }
+    without_appimage_env(&mut cmd);
     // stdin stays piped and open for the supervisor's whole life: it stops
     // when it closes, which is how it goes away even if this app is killed.
     cmd.env("PATH", paths::shell_path())
@@ -163,6 +180,39 @@ fn command(settings: &Settings) -> Result<Command, String> {
         .stderr(Stdio::piped());
     Ok(cmd)
 }
+
+/// What an AppImage's launcher sets for the app's own GTK (its theme, its
+/// modules, its data folder first), kept from the supervisor, which passes
+/// its environment on to herdr and the agents it starts.
+#[cfg(target_os = "linux")]
+fn without_appimage_env(cmd: &mut Command) {
+    let Some(appdir) = std::env::var_os("APPDIR") else { return };
+    for var in [
+        "GTK_DATA_PREFIX",
+        "GTK_THEME",
+        "GTK_EXE_PREFIX",
+        "GTK_PATH",
+        "GTK_IM_MODULE_FILE",
+        "GDK_PIXBUF_MODULE_FILE",
+        "GSETTINGS_SCHEMA_DIR",
+        "GI_TYPELIB_PATH",
+        "GIO_MODULE_DIR",
+        "WEBKIT_DISABLE_DMABUF_RENDERER",
+    ] {
+        cmd.env_remove(var);
+    }
+    if let Some(dirs) = std::env::var_os("XDG_DATA_DIRS") {
+        let inside = std::path::Path::new(&appdir);
+        let kept: Vec<_> = std::env::split_paths(&dirs).filter(|d| !d.starts_with(inside)).collect();
+        match std::env::join_paths(kept) {
+            Ok(joined) if !joined.is_empty() => cmd.env("XDG_DATA_DIRS", joined),
+            _ => cmd.env_remove("XDG_DATA_DIRS"),
+        };
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn without_appimage_env(_cmd: &mut Command) {}
 
 fn run(app: AppHandle, settings: Settings, generation: u64) {
     let mut backoff = Duration::from_secs(1);

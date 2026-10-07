@@ -29,8 +29,8 @@ on its port (its owner, version and data folder) in its status. It never
 stops one: that hub may be someone's on purpose, so the person decides.
 
 Where each program comes from, first found wins: an environment override,
-the app bundle (the directory this binary runs from, and its ``Resources``),
-then a checkout of the repository, then ``PATH``.
+the app bundle (the directory this binary runs from, and where each platform's
+bundle keeps its resources), then a checkout of the repository, then ``PATH``.
 """
 
 from __future__ import annotations
@@ -72,6 +72,7 @@ TICK_S = 0.5
 TAIL_LINES = 40
 #: Everything the supervisor says, for when something goes wrong.
 LOG_PATH = Path.home() / ".mycelium" / "logs" / "desktop.log"
+WINDOWS = sys.platform == "win32"
 
 
 class LocateError(Exception):
@@ -113,18 +114,30 @@ class Locator:
     repo: Path | None = field(default_factory=repo_root)
 
     def _bundled(self, name: str) -> Path | None:
+        """A file the app carries. Programs sit beside this one; resources are
+        there too on Windows, in ``Contents/Resources`` on a Mac, and in
+        ``usr/lib/Mycelium`` in a Linux AppImage."""
         if self.bundle is None:
             return None
-        for place in (self.bundle, self.bundle.parent / "Resources"):
+        places = (
+            self.bundle,
+            self.bundle.parent / "Resources",
+            self.bundle.parent / "lib" / "Mycelium",
+        )
+        for place in places:
             candidate = place / name
             if candidate.exists():
                 return candidate
         return None
 
+    def _program(self, name: str) -> Path | None:
+        """A program the app carries, by the name it has on this platform."""
+        return self._bundled(f"{name}.exe" if WINDOWS else name)
+
     def slim(self) -> list[str]:
         exe = (
             os.environ.get("MYCELIUM_SLIMCTL")
-            or self._bundled("slimctl")
+            or self._program("slimctl")
             or shutil.which("slimctl")
         )
         if not exe:
@@ -138,7 +151,7 @@ class Locator:
     def hub(self) -> tuple[list[str], Path | None]:
         if cmd := os.environ.get("MYCELIUM_HUB_CMD"):
             return shlex.split(cmd), None
-        if bundled := self._bundled("hub/mycelium-hub") or self._bundled("mycelium-hub"):
+        if bundled := self._program("hub/mycelium-hub") or self._program("mycelium-hub"):
             return [str(bundled), "--host", HOST, "--port", str(HUB_PORT)], None
         if self.repo is not None and shutil.which("uv"):
             backend = self.repo / "fastapi-backend"
@@ -150,7 +163,7 @@ class Locator:
         )
 
     def herdr(self) -> list[str]:
-        exe = self._bundled("herdr") or shutil.which("herdr")
+        exe = self._program("herdr") or shutil.which("herdr")
         if not exe:
             raise LocateError(
                 "herdr isn't installed, so no agent can start here. See https://herdr.dev"
@@ -161,7 +174,11 @@ class Locator:
         """Pi, which the engines think with: the app's own, else one on PATH."""
         return (
             os.environ.get("ALIGNER_PI_BINARY")
-            or (str(bundled) if (bundled := self._bundled("pi/pi")) else None)
+            or (
+                str(bundled)
+                if (bundled := self._bundled("pi/pi.cmd" if WINDOWS else "pi/pi"))
+                else None
+            )
             or shutil.which("pi")
         )
 
@@ -173,7 +190,7 @@ class Locator:
         return self._bundled("models") or Path.home() / ".mycelium" / "models"
 
     def ui(self) -> tuple[list[str], Path | None]:
-        node = os.environ.get("MYCELIUM_NODE") or self._bundled("node") or shutil.which("node")
+        node = os.environ.get("MYCELIUM_NODE") or self._program("node") or shutil.which("node")
         ui_dir = os.environ.get("MYCELIUM_UI_DIR") or self._bundled("ui")
         if ui_dir and node and runnable_ui(Path(ui_dir)):
             return [str(node), "server.js"], Path(ui_dir)
@@ -195,6 +212,24 @@ class Locator:
 
 
 # ── one process ──────────────────────────────────────────────────────────────
+
+
+def _own_group() -> dict[str, Any]:
+    """Start a program in a group of its own, so stopping it stops what it started."""
+    if WINDOWS:
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def _signal_group(proc: subprocess.Popen[str], *, force: bool) -> None:
+    """Ask a program and everything it started to stop; ``force`` kills them."""
+    if WINDOWS:
+        # Windows has no process groups to signal; taskkill walks the tree.
+        argv = ["taskkill", "/PID", str(proc.pid), "/T", *(["/F"] if force else [])]
+        subprocess.run(argv, capture_output=True, check=False)  # noqa: S603, S607
+        return
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(proc.pid, 9 if force else 15)
 
 
 def port_open(port: int, host: str = HOST, timeout: float = 0.3) -> bool:
@@ -435,7 +470,7 @@ class Supervisor:
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
                 text=True,
-                start_new_session=True,
+                **_own_group(),
             )
         except OSError as e:
             self._set(c, "failed", f"could not start {c.name}: {e}")
@@ -494,13 +529,11 @@ class Supervisor:
         proc, c.proc = c.proc, None
         if proc is None or proc.poll() is not None:
             return
-        with contextlib.suppress(ProcessLookupError, PermissionError):
-            os.killpg(proc.pid, 15)
+        _signal_group(proc, force=False)
         try:
             proc.wait(timeout=grace_s)
         except subprocess.TimeoutExpired:
-            with contextlib.suppress(ProcessLookupError, PermissionError):
-                os.killpg(proc.pid, 9)
+            _signal_group(proc, force=True)
 
     # ── the runner ───────────────────────────────────────────────────────────
 

@@ -642,7 +642,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#desktop",
     "t": "The Mac App",
     "s": "Setup",
-    "x": "Mycelium for Mac is the quickest way to get going. It runs everything Mycelium needs on your Mac with no Docker and no setup in a terminal. It also starts your coding agents for you when you ask. Download Mycelium for Mac (Apple silicon, macOS 13 or later)",
+    "x": "Mycelium for Mac is the quickest way to get going. It runs everything Mycelium needs on your Mac with no Docker and no setup in a terminal. It also starts your coding agents for you when you ask. Download Mycelium for Mac (Apple silicon, macOS 13 or later) The same app runs on Linux and Windows, as a preview: Linux AppImage (x86-64, glibc 2.35 or later: Ubuntu 22.04, Fedora 36, Debian 12 and newer). Make it executabl",
     "p": "Guides"
   },
   {

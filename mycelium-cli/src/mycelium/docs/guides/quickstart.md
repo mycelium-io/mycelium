@@ -24,7 +24,8 @@ its `mycelium` CLI on your PATH and opens it:
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 ```
 
-The Mac app is built for Apple silicon only. On Linux, on an Intel Mac or on a
-server your team shares, the same script installs the CLI instead. Then
-`mycelium install` runs the hub in Docker. See
+The Mac app is built for Apple silicon only. On a Linux or Windows desktop, the
+same app is in preview: see [the desktop app](#desktop) for the downloads. On an
+Intel Mac or on a server your team shares, the script installs the CLI instead.
+Then `mycelium install` runs the hub in Docker. See
 [Run it on a server instead](#on-a-server).

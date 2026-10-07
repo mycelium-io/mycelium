@@ -7,6 +7,20 @@ your coding agents for you when you ask.
 **[Download Mycelium for Mac](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg)**
 (Apple silicon, macOS 13 or later)
 
+The same app runs on Linux and Windows, as a preview:
+
+- **[Linux AppImage](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage)**
+  (x86-64, glibc 2.35 or later: Ubuntu 22.04, Fedora 36, Debian 12 and
+  newer). Make it executable (`chmod +x Mycelium-linux-x86_64.AppImage`) and
+  run it. Nothing is installed.
+- **[Windows installer](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-windows-x86_64-setup.exe)**
+  (x64, Windows 10 or later). It installs for you alone, with no
+  administrator prompt. It isn't code-signed yet, so the first time Windows
+  asks: choose **More info**, then **Run anyway**.
+
+Everything below works the same there. Where this page says "this Mac", read
+"this computer", and ⌘ is Ctrl.
+
 ## Install
 
 1. Open the download and drag **Mycelium** into **Applications**.

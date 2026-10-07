@@ -1,0 +1,178 @@
+name: Desktop app
+
+# Mycelium for Mac, Linux and Windows: the desktop app with the hub, UI, SLIM
+# node, herdr and Pi inside (mycelium-desktop/scripts/stage-sidecars.sh), one
+# job per platform:
+#
+#   macos-arm64     Mycelium-macos-arm64.dmg, signed with the project's
+#                   Developer ID and notarized by Apple
+#   linux-x86_64    Mycelium-linux-x86_64.AppImage
+#   windows-x86_64  Mycelium-windows-x86_64-setup.exe, a per-user installer
+#
+# release.yml calls this with the release's version, and attaches what it
+# builds under those fixed names, so releases/latest/download/<name> always
+# resolves. Each platform also writes its part of the updater's latest.json
+# (updater-<platform>.json), signed with the updater key; the release merges
+# them. Run by hand (Actions → Desktop app → Run workflow) to build all three
+# from a branch without releasing: versioned 0.0.0-dev, with no update
+# manifest, and kept as the run's artifacts.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The release's version (the tag without its v)
+        required: true
+        type: string
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Mycelium for ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    # Linux and Windows are new: a failure there is reported, but doesn't
+    # hold back a release the Mac app is ready for. Drop this once a release
+    # has shipped them.
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-arm64
+            runner: macos-latest
+            out: Mycelium-macos-arm64.dmg
+            experimental: false
+          # The oldest supported Ubuntu: an AppImage runs on systems with the
+          # glibc it was built against or newer.
+          - platform: linux-x86_64
+            runner: ubuntu-22.04
+            out: Mycelium-linux-x86_64.AppImage
+            experimental: true
+          - platform: windows-x86_64
+            runner: windows-latest
+            out: Mycelium-windows-x86_64-setup.exe
+            experimental: true
+    defaults:
+      run:
+        # Git Bash on Windows, so the scripts are the same everywhere.
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Install Tauri's Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+            librsvg2-dev libxdo-dev libssl-dev patchelf file
+
+      - name: Set the version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          # A hand-run build has no release to be.
+          VERSION="${VERSION:-0.0.0.dev0}"
+          # Tauri wants semver; a PEP 440 prerelease (0.2.0rc1) becomes 0.2.0-rc1.
+          SEMVER="$(echo "$VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+)\.?([a-z].*)$/\1-\2/')"
+          sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$SEMVER\"/" mycelium-desktop/src-tauri/tauri.conf.json
+          # The bundled hub and CLI report the version in their pyproject.toml.
+          sed -i.bak "s/^version = .*/version = \"$VERSION\"/" fastapi-backend/pyproject.toml mycelium-cli/pyproject.toml
+          rm -f mycelium-desktop/src-tauri/tauri.conf.json.bak fastapi-backend/pyproject.toml.bak mycelium-cli/pyproject.toml.bak
+          echo "building $SEMVER"
+
+      - name: Stage what the app carries
+        working-directory: mycelium-desktop
+        run: |
+          npm install --no-audit --no-fund
+          bash scripts/stage-sidecars.sh
+
+      # The Developer ID certificate goes into a keychain that lives only for
+      # this job, beside Apple's intermediate, and the notarization key into a
+      # file. Without the secrets (a fork) the app is signed ad hoc.
+      - name: Set up signing and notarization
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "no Developer ID certificate; the app will be signed ad hoc"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(openssl rand -base64 24)"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          curl -fsSL -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -f pkcs12 \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          # The .p12 usually carries Apple's intermediate already; importing it
+          # again is refused as a duplicate, which is fine.
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$keychain" 2>/dev/null \
+            || echo "Apple's intermediate is already in the keychain"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/developer-id.p12"
+          identity="$(security find-identity -v -p codesigning "$keychain" \
+            | awk '/Developer ID Application/ { print $2; exit }')"
+          if [ -z "$identity" ]; then
+            echo "the certificate didn't import as a valid signing identity" >&2
+            exit 1
+          fi
+          echo "SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+          if [ -n "$APPLE_API_KEY" ]; then
+            printf '%s' "$APPLE_API_KEY" > "$RUNNER_TEMP/notary.p8"
+            {
+              echo "APPLE_API_KEY=$RUNNER_TEMP/notary.p8"
+              echo "APPLE_API_KEY_ID=$APPLE_API_KEY_ID"
+              echo "APPLE_API_ISSUER=$APPLE_API_ISSUER"
+            } >> "$GITHUB_ENV"
+          fi
+
+      - name: Build and package
+        working-directory: mycelium-desktop
+        env:
+          # Signs what the app's updater installs, for a release only: a
+          # hand-run build has no release for latest.json to point at.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.version != '' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ inputs.version != '' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+          OUT: ${{ matrix.out }}
+        run: |
+          out="$PWD/../dist/desktop/$OUT"
+          case "$RUNNER_OS" in
+            macOS)
+              npx tauri build --bundles app --config src-tauri/tauri.bundle.conf.json
+              # Signs every program and the app with the Developer ID
+              # (SIGN_IDENTITY), notarizes the app and the disk image, and
+              # makes the disk image with its layout written directly, no Finder.
+              bash scripts/package-mac.sh "$out"
+              ;;
+            Linux) bash scripts/package-linux.sh "$out" ;;
+            Windows) bash scripts/package-windows.sh "$out" ;;
+          esac
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mycelium-desktop-${{ matrix.platform }}
+          path: |
+            dist/desktop/Mycelium-*
+            dist/desktop/updater-*.json
+          if-no-files-found: error

@@ -2,7 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { describe, expect, it } from "vitest";
-import { appJoinLink, desktopVersion, inviteLink, isDesktop, settingsLink, terminalLink } from "@/lib/desktop";
+import { appJoinLink, desktopMachine, desktopVersion, inviteLink, isDesktop, settingsLink, terminalLink } from "@/lib/desktop";
 
 describe("desktop links", () => {
   it("knows the app by its user agent", () => {
@@ -31,5 +31,11 @@ describe("desktop links", () => {
       "https://hub.example.com/join?room=atlas+migration",
     );
     expect(inviteLink("http://127.0.0.1:3717")).toBe("http://127.0.0.1:3717/join");
+  });
+
+  it("calls the machine a Mac on a Mac, and a computer elsewhere", () => {
+    expect(desktopMachine("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) MyceliumDesktop/1.0")).toBe("Mac");
+    expect(desktopMachine("Mozilla/5.0 (X11; Linux x86_64) MyceliumDesktop/1.0")).toBe("computer");
+    expect(desktopMachine("Mozilla/5.0 (Windows NT 10.0; Win64; x64) MyceliumDesktop/1.0")).toBe("computer");
   });
 });

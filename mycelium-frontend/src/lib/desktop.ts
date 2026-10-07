@@ -20,6 +20,11 @@ export function desktopVersion(userAgent: string = globalThis.navigator?.userAge
   return /\bMyceliumDesktop\/([\w.+-]+)/.exec(userAgent)?.[1] ?? null;
 }
 
+/** What copy calls the machine the app runs on: a Mac, or (Linux, Windows) a computer. */
+export function desktopMachine(userAgent: string = globalThis.navigator?.userAgent ?? ""): "Mac" | "computer" {
+  return /\bMacintosh\b/.test(userAgent) ? "Mac" : "computer";
+}
+
 const noSubscribe = () => () => {};
 
 /** Whether this page is inside the desktop app. Always false while rendering on the server. */
