@@ -22,9 +22,11 @@ coding agents for you when you ask.
      from Mycelium may work in, and whether herdr should bring your agents back
      after it restarts (this adds a hook to each agent CLI's settings, so it's
      your choice).
-   - **Usage stats**, for a hub on this Mac: whether to share anonymous counts
-     of tasks, flows and agents with the people building Mycelium. Off unless
-     you tick it; see [Metrics](#metrics) for exactly what's sent.
+   - **Usage stats**, for a hub on this Mac: whether the hub may send anonymous
+     counts of tasks, flows and agents to an analytics address. Off unless you
+     tick it, and nothing is sent until an address is set in the hub's config
+     (`telemetry.analytics_destination`); the app doesn't set one. See
+     [Metrics](#metrics) for exactly what would be sent.
    - **Ready to start**: what you chose, then **Start Mycelium**.
 
 ![The first step: where your rooms live](desktop-onboarding.png)

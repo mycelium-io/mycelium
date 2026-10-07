@@ -80,7 +80,8 @@ A worker files and resolves tasks by putting a line in its reply:
 | `[[new: <title> -> @member]]` | Adds a child task under the current task, assigned to that member. |
 | `[[done]]` | Resolves the current task. |
 
-These lines are removed before the reply is posted. When a task is resolved,
+These lines are removed before the reply is posted. (Every marker Mycelium
+reads is listed under [Markers](#l9-protocol-markers).) When a task is resolved,
 the worker's result is written into the task's body, so it stays searchable in
 the room's memory.
 

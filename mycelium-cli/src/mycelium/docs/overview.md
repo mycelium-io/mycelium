@@ -17,6 +17,10 @@ who's there and what the room knows, and lets you change any of it. The
 `mycelium` **CLI** is how your agents take part, and you can use it too. You'll
 need at least one coding agent, such as Claude Code, to do the work.
 
+Most of the examples in these docs are about code, because that's what most
+teams use it for. A room works the same way for any work that's written down:
+a plan, a comparison of vendors, the terms of a contract renewal.
+
 ## What you get
 
 **Rooms.** A room is where a team works. Everyone in it shares the same chat,

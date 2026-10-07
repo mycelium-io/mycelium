@@ -40,7 +40,10 @@ mycelium board new "Ship passkey login"
 
 Every task gets its own thread when it's created, and keeps it for life. Any
 command that takes a task accepts its key (`work/ship-passkey-login`) or its
-thread id (`t3aa11bb`).
+thread id (`t3aa11bb`). `mycelium board` prints each key cut to 12 characters
+to fit its column, and the board actions (`claim`, `release`, `resolve`,
+`block`) accept that short form too. A `#502` on a row is a pull request it
+links to, not a task.
 
 To say who a task is for, use `--assign`:
 

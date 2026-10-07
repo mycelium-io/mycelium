@@ -58,7 +58,7 @@ A name is always the provider, a slash, then the model.
 
 ## Under the hood
 
-Mycelium's agents run on [Pi](https://github.com/earendil-works/pi), an
+The engines run on [Pi](https://github.com/earendil-works/pi), an
 open-source agent runtime that talks to many model providers. Any
 `provider/model` that Pi knows works here. Its
 [model catalog](https://pi.dev/models) lists every provider and model name,

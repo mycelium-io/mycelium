@@ -8,7 +8,8 @@ reach your hub, know what's open by default and turn on what protects it.
 With the default setup:
 
 - **Anyone who can reach port 8000 can read and write every room**, and post as
-  any `@handle`. Names are only claims.
+  any `@handle`. Names are only claims: the app's **acting as** picker lets any
+  browser choose which user it represents.
 - **Private rooms are hidden, not locked.** Anyone who knows a room's name can
   open it.
 - **Every room is an [A2A](#a2a-bridge) endpoint.** Its card (name and skills)
@@ -17,6 +18,11 @@ With the default setup:
   its SLIM node, not end to end; see [SLIM](#slim).
 - **[Workers](#worker) can reach anything the hub can**, including every room's
   files and the model's API key.
+- **Anything that can reach the hub can ask a runner to start an agent.** The
+  runner asks on its machine before starting anything, except for the Mac app's
+  own hub, which only its own Mac can reach. There, any program on the Mac can
+  start agents without a question. See
+  [You say yes on the machine](#machines-you-say-yes-on-the-machine).
 
 ## What to do about it
 

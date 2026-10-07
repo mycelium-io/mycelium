@@ -38,7 +38,7 @@ a room can run, use `mycelium engine invoke conductor "list"`.
 Members approve or reject by ending their reply with
 `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`. A reply with no
 stance takes the step's default path, which in `gated` and `review` sends the
-work back.
+work back. Every marker is listed under [Markers](#l9-protocol-markers).
 
 To change a built-in flow or add your own, see [Writing flows](#flows).
 
