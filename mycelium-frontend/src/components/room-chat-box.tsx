@@ -84,8 +84,10 @@ interface Props {
   onOpenMemory?: (key: string) => void;
 }
 
-/** What the composer's + adds to the room. */
+/** What the composer's + adds. Files ride on the message, so they're offered
+ *  in a thread too; the rest add to the room, so only its own composer has them. */
 const ADD_ITEMS = [
+  { kind: "files", label: "Files…", about: "attach to this message", icon: Paperclip },
   { kind: "task", label: "Task or flow…", about: "work for someone to pick up", icon: ListTodo },
   { kind: "memory", label: "Memory…", about: "something the room should keep", icon: FileText },
   { kind: "member", label: "Agent…", about: "bring an agent or a person in", icon: UserPlus },
@@ -790,53 +792,43 @@ export function RoomChatBox({
             disabled={sending}
           />
           <div className="flex items-center gap-2 px-1.5 pb-1.5">
-            {/* In the room's own composer: add what a room holds, a task or
-                flow, a memory or a member, without knowing which verb does it. */}
-            {!episode && (
-              <Popover open={adding} onOpenChange={setAdding}>
-                <PopoverTrigger
-                  aria-label="Add to the room"
-                  title="Add to the room"
-                  className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent-soft hover:text-accent data-[popup-open]:bg-accent-soft data-[popup-open]:text-accent"
-                >
-                  <Plus className="size-4" />
-                </PopoverTrigger>
-                <PopoverContent side="top" align="start" className="w-64 p-1">
-                  {ADD_ITEMS.map((item) => (
-                    <button
-                      key={item.label}
-                      type="button"
-                      onClick={() => {
-                        setAdding(false);
-                        if (item.kind === "task") setStarting(true);
-                        else if (item.kind === "memory") {
-                          setMemoryFolder("context");
-                          setMemoryTitle("");
-                        }
-                        else setAddingMember(true);
-                      }}
-                      className="flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-hairline"
-                    >
-                      <item.icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0">
-                        <span className="block text-label text-text">{item.label}</span>
-                        <span className="block text-micro text-faint">{item.about}</span>
-                      </span>
-                    </button>
-                  ))}
-                </PopoverContent>
-              </Popover>
-            )}
-            {/* Files ride on a message, in the room or a thread alike. */}
-            <button
-              type="button"
-              aria-label="Attach files"
-              title="Attach files"
-              onClick={() => fileInput.current?.click()}
-              className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent-soft hover:text-accent"
-            >
-              <Paperclip className="size-4" />
-            </button>
+            {/* Add what a message or a room holds, without knowing which verb
+                does it: files to the message, and in the room's own composer a
+                task or flow, a memory or a member. */}
+            <Popover open={adding} onOpenChange={setAdding}>
+              <PopoverTrigger
+                aria-label={episode ? "Add to this thread" : "Add to the room"}
+                title={episode ? "Add to this thread" : "Add to the room"}
+                className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent-soft hover:text-accent data-[popup-open]:bg-accent-soft data-[popup-open]:text-accent"
+              >
+                <Plus className="size-4" />
+              </PopoverTrigger>
+              <PopoverContent side="top" align="start" className="w-64 p-1">
+                {ADD_ITEMS.filter((item) => !episode || item.kind === "files").map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => {
+                      setAdding(false);
+                      if (item.kind === "files") fileInput.current?.click();
+                      else if (item.kind === "task") setStarting(true);
+                      else if (item.kind === "memory") {
+                        setMemoryFolder("context");
+                        setMemoryTitle("");
+                      }
+                      else setAddingMember(true);
+                    }}
+                    className="flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-hairline"
+                  >
+                    <item.icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0">
+                      <span className="block text-label text-text">{item.label}</span>
+                      <span className="block text-micro text-faint">{item.about}</span>
+                    </span>
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
             <input
               ref={fileInput}
               type="file"

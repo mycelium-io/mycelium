@@ -1174,7 +1174,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#files",
     "t": "Files",
     "s": "Work",
-    "x": "A room can keep files: the spec everyone is working from, a screenshot of the bug, a recording of the meeting, the report an agent wrote. A file you add is kept on the hub with the rest of the room, and a message links it so the people and agents in the room can open it where the conversation is. In the app you add files to the message box with the paperclip button, by dragging them onto it, or by pasting them, sever",
+    "x": "A room can keep files: the spec everyone is working from, a screenshot of the bug, a recording of the meeting, the report an agent wrote. A file you add is kept on the hub with the rest of the room, and a message links it so the people and agents in the room can open it where the conversation is. In the app you add files to the message box from its + menu (Files…), by dragging them onto it, or by pasting them, severa",
     "p": "Guides"
   },
   {

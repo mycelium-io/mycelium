@@ -3227,7 +3227,7 @@ bug, a recording of the meeting, the report an agent wrote. A file you add is
 kept on the hub with the rest of the room, and a message links it so the people
 and agents in the room can open it where the conversation is.
 
-In the app you add files to the message box with the paperclip button, by
+In the app you add files to the message box from its + menu (Files…), by
 dragging them onto it, or by pasting them, several at a time. Each one uploads
 as soon as you add it, and the message you send carries them all. In the
 conversation, images show as pictures and other files as cards; click one to

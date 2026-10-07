@@ -147,6 +147,16 @@ describe("<RoomChatBox /> attachments", () => {
     await waitFor(() => expect(screen.queryByLabelText("Remove a.png")).not.toBeInTheDocument());
   });
 
+  it("offers only files from a thread's +, and opens the picker from it", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithSWR(<RoomChatBox roomName="demo" episode="urn:e:t1" />);
+    const clicked = vi.spyOn(picker(container), "click");
+    await user.click(await screen.findByRole("button", { name: "Add to this thread" }));
+    expect(screen.queryByRole("button", { name: /Task or flow…/ })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: /Files…/ }));
+    expect(clicked).toHaveBeenCalled();
+  });
+
   it("sends files with no text", async () => {
     const user = userEvent.setup();
     const { container } = renderWithSWR(<RoomChatBox roomName="demo" />);
@@ -424,11 +434,12 @@ describe("<RoomChatBox /> commands", () => {
     expect(createMemories).not.toHaveBeenCalled();
   });
 
-  it("offers a task, a memory or an agent from the +", async () => {
+  it("offers files, a task, a memory or an agent from the +", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     await userEvent.click(await screen.findByRole("button", { name: "Add to the room" }));
 
-    expect(await screen.findByRole("button", { name: /Task or flow…/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Files…/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Task or flow…/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Agent…/ })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Memory…/ }));
     expect(await screen.findByRole("dialog", { name: /New memory in/ })).toBeInTheDocument();
