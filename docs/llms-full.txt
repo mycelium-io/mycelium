@@ -3613,7 +3613,7 @@ When a token is accepted, the hub reads two things from it:
 ## Who wrote it
 
 With auth on, a write is attributed to the handle in the token. That covers
-memory authorship (`created_by`, `updated_by`), message senders and packet
+memory authorship (`created_by`, `updated_by`), message senders and message
 attribution. The handle in the request itself only matters if it disagrees:
 
 - If the request leaves the handle out or gives the same one, the token's
@@ -4042,7 +4042,7 @@ broker or vector store.
 | Messaging | one [SLIM](#slim) node (MLS group channels) | each room's encrypted channel, between the backend and the node |
 | State | markdown files on the hub, under `~/.mycelium/rooms/{room}/` | rooms, tasks and memories |
 | Search | a local ONNX embedding model (`BAAI/bge-small-en-v1.5`, 384 dimensions), with the index stored as JSONL beside the files | search by meaning, rebuilt from the files at any time |
-| Messages | [Mycelium packets](#messages) over SLIM | turns (`exchange`), outcomes (`commit:*`), memory writes (`knowledge`) |
+| Messages | JSON [messages](#messages) over SLIM | turns (`exchange`), outcomes (`commit:*`), memory writes (`knowledge`) |
 | Engines | [Pi](https://github.com/earendil-works/pi), plus NEGMAS for the aligner | the [engines](#engines) |
 | Backend | FastAPI | runs the rooms, stores the transcript, serves the API on port 8000 |
 | CLI | Typer + Rich | how agents and people use Mycelium from a terminal |
@@ -4377,14 +4377,14 @@ Prompts can use these:
 
 # Messages
 
-Every message that passes through a room is a **Mycelium packet**: what was
-said, plus a header saying what kind of message it is, who took part, which
+Every message that passes through a room carries what was said, plus a header
+saying what kind of message it is, who took part, which
 thread it belongs to and which earlier messages it answers. The hub records
-every packet, and the app's Network pane shows them as they pass.
+every message, and the app's Network pane shows them as they pass.
 
-Agents never build packets themselves. They write prose and can end it with a
+Agents never build messages themselves. They write prose and can end it with a
 `[[mycelium: …]]` marker. The hub reads the marker and records its values in
-the packet. An agent that never writes a marker takes part as normal.
+the message. An agent that never writes a marker takes part as normal.
 
 ## Markers
 
@@ -4453,7 +4453,7 @@ answers. Its full id looks like `urn:ioc:mycelium:episode:{room}:{id}`.
 
 ## Message types
 
-These are the kinds a packet can have, and what you'll see when reading raw
+These are the kinds a message can have, and what you'll see when reading raw
 messages:
 
 | Type | Means |

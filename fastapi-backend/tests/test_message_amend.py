@@ -13,20 +13,20 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.routes.messages import _read_messages
-from app.services import in_memory_store, packet, persister
+from app.services import in_memory_store, message_format, persister
 from app.services.filesystem import get_room_dir
-from app.services.packet_models import Kind
-from app.services.packet_slim import serialize_content
+from app.services.message_models import Kind
+from app.services.message_slim import serialize_content
 
 
 def _record(message_id: str, *, sender: str, text: str, amends: str | None = None):
-    env = packet.build_envelope(
+    env = message_format.build_envelope(
         kind=Kind.exchange,
-        subkind=packet.AMEND_SUBKIND if amends else None,
+        subkind=message_format.AMEND_SUBKIND if amends else None,
         episode="urn:ioc:mycelium:episode:r:s",
         parents=[amends] if amends else None,
         sender=sender,
-        recipients=[packet.SYSTEM_ACTOR_ID],
+        recipients=[message_format.SYSTEM_ACTOR_ID],
         topic="urn:concept:mycelium:r",
         message_id=message_id,
         payload_type="reply",
@@ -47,7 +47,7 @@ def _row(sender: str, text: str, *, amends: str | None = None, minutes: int = 0)
 
 
 def test_amend_is_a_valid_exchange_subkind():
-    packet.validate_subkind(Kind.exchange, packet.AMEND_SUBKIND)
+    message_format.validate_subkind(Kind.exchange, message_format.AMEND_SUBKIND)
 
 
 def test_the_transcript_keeps_every_version(tmp_path, monkeypatch):

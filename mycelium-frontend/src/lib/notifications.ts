@@ -84,7 +84,7 @@ function mentionsHandle(text: string, handle: string): boolean {
   return parseMentions(text).some((h) => h.toLowerCase() === handle);
 }
 
-/** Whether an packet actor id names this handle: bare, `@`-prefixed, or as the
+/** Whether a message actor id names this handle: bare, `@`-prefixed, or as the
  *  last segment of a URN. */
 function isHandle(id: string | undefined, handle: string): boolean {
   if (!id || !handle) return false;
@@ -139,8 +139,8 @@ export function classify(raw: Record<string, unknown>, principal: string): Class
       };
     }
     case "l9_commit": {
-      const packet = (content.l9 as Record<string, unknown> | undefined) ?? {};
-      const header = (packet.header as Record<string, unknown> | undefined) ?? {};
+      const envelope = (content.l9 as Record<string, unknown> | undefined) ?? {};
+      const header = (envelope.header as Record<string, unknown> | undefined) ?? {};
       const converged = header.subkind === "converged";
       const fallback = converged ? "Consensus reached" : "Negotiation ended without agreement";
       const text = (content.content as string) || fallback;

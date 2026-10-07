@@ -26,9 +26,9 @@ from typing import Any
 
 import pytest
 
-from app.services import aligner, packet, task_sync
+from app.services import aligner, message_format, task_sync
 from app.services.filesystem import ensure_room_structure, get_room_dir, read_memory_file
-from app.services.packet_models import Kind
+from app.services.message_models import Kind
 from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister, position_record
 
 _ROOM = "cognition-live"
@@ -139,12 +139,12 @@ async def test_negotiation_converges_and_compiles_work(monkeypatch: pytest.Monke
     assert len(channel.sent) > 2, "no rounds were brokered"
 
     # ── work ── the real compiler, against the real agreement.
-    converged = packet.build_envelope(
+    converged = message_format.build_envelope(
         kind=Kind.commit,
         subkind="converged",
-        episode=packet.episode_urn(_ROOM, "live"),
+        episode=message_format.episode_urn(_ROOM, "live"),
         recipients=list(_SCRIPTS),
-        topic=packet.topic_urn(_ROOM),
+        topic=message_format.topic_urn(_ROOM),
         payload_type="consensus",
         payload_data={"assignments": assignments},
     )

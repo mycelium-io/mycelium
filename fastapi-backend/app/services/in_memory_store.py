@@ -82,7 +82,7 @@ class StoredMessage:
     # casual reply carries the room's default). Lets the UI group/fold a
     # negotiation's turns under their episode instead of interleaving them inline.
     episode: str | None = None
-    # The packet id when this message rode the channel (respond / broadcast /
+    # The message id when this message rode the channel (respond / broadcast /
     # agent reply). A cross-store correlation key: the same message can surface
     # from the durable transcript and this in-memory store, and they dedup by this
     # id (``StoredMessage.id`` is a distinct id space). ``None`` for a message that

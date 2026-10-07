@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-# Mycelium's packet models: the shape of every message the hub records.
+# Mycelium's message models: the shape of every message the hub records.
 
 from __future__ import annotations
 
@@ -12,11 +12,11 @@ from typing import Any
 from pydantic import BaseModel, Field, RootModel
 
 
-class PacketSchema(RootModel[Any]):
+class MessageSchema(RootModel[Any]):
     root: Any = Field(
         ...,
-        description="Combined JSON Schema for the packet models.",
-        title="PacketSchema",
+        description="Combined JSON Schema for the message models.",
+        title="MessageSchema",
     )
 
 
@@ -46,7 +46,7 @@ class Context(BaseModel):
     semantic: Semantic | None = None
 
 
-class Message(BaseModel):
+class MessageRef(BaseModel):
     id: str = Field(..., title="Id")
     parents: list[str] = Field(
         ...,
@@ -58,7 +58,7 @@ class Message(BaseModel):
 
 class Episode(BaseModel):
     id: str = Field(..., title="Id")
-    messages: list[Message] = Field(..., title="Messages")
+    messages: list[MessageRef] = Field(..., title="Messages")
 
 
 class ParticipantSet(BaseModel):
@@ -94,24 +94,24 @@ class Kind(Enum):
     knowledge = "knowledge"
 
 
-class PacketHeader(BaseModel):
+class MessageHeader(BaseModel):
     protocol: str = Field(..., title="Protocol")
     subprotocol: str = Field(..., title="Subprotocol")
     version: str = Field(..., title="Version")
     kind: Kind
     subkind: str | None = Field(None, title="Subkind")
     participants: ParticipantSet
-    message: Message | None = None
+    message: MessageRef | None = None
     policy: PolicyLabel | None = None
     attributes: dict[str, Any] | None = Field(None, title="Attributes")
     context: Context | None = None
 
 
-class PacketPayload(BaseModel):
+class MessagePayload(BaseModel):
     type: str = Field(..., title="Type")
     data: dict[str, Any] = Field(..., title="Data")
 
 
-class MyceliumPacket(BaseModel):
-    header: PacketHeader
-    payload: PacketPayload
+class MyceliumMessage(BaseModel):
+    header: MessageHeader
+    payload: MessagePayload

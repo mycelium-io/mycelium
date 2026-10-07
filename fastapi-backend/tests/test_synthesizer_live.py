@@ -17,10 +17,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.services import packet, persister, synthesizer
+from app.services import message_format, persister, synthesizer
 from app.services.filesystem import get_room_dir, read_memory_file
-from app.services.packet_models import Kind
-from app.services.packet_slim import serialize_content
+from app.services.message_models import Kind
+from app.services.message_slim import serialize_content
 from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
 
 _ROOM = "synth-live"
@@ -28,12 +28,12 @@ _T0 = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
 
 
 def _say(message_id: str, *, sender: str, text: str, minute: int) -> None:
-    env = packet.build_envelope(
+    env = message_format.build_envelope(
         kind=Kind.exchange,
-        episode=packet.episode_urn(_ROOM, "live"),
+        episode=message_format.episode_urn(_ROOM, "live"),
         sender=sender,
-        recipients=[packet.SYSTEM_ACTOR_ID],
-        topic=packet.topic_urn(_ROOM),
+        recipients=[message_format.SYSTEM_ACTOR_ID],
+        topic=message_format.topic_urn(_ROOM),
         message_id=message_id,
         payload_type="message",
     )

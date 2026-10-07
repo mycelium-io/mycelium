@@ -34,8 +34,8 @@ from app.schemas import (
 from app.services import (
     actor,
     in_memory_store,
+    message_format,
     message_search,
-    packet,
     persister,
     principals,
     room_channels,
@@ -78,7 +78,7 @@ def _room_episode(
     """
     if coord is not None:
         return episode
-    return episode or packet.live_episode_urn(room)
+    return episode or message_format.live_episode_urn(room)
 
 
 @router.post("", response_model=MessageRead, status_code=201)
@@ -104,7 +104,7 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     # A thread write has to name a thread the room has, and stay out of a
     # negotiation it is not part of. Refused before anything is stored, so a
     # rejected write leaves nothing behind.
-    if payload.episode and not packet.is_live_episode(base_room, payload.episode):
+    if payload.episode and not message_format.is_live_episode(base_room, payload.episode):
         if coord is not None:
             raise HTTPException(
                 status_code=409,
@@ -351,7 +351,7 @@ async def list_wire(
 ) -> list[dict]:
     """The room's wire feed, replayed from the transcript (oldest first).
 
-    Backfills the live packet inspector: the SSE bus carries no history, so a freshly
+    Backfills the live message inspector: the SSE bus carries no history, so a freshly
     opened tab would otherwise start empty. Frames are the exact shape the bus
     pushes, so the client projects backfill and live frames identically.
 
@@ -458,7 +458,7 @@ async def amend_message(
             channel,
             sender=sender_handle,
             text=payload.content,
-            subkind=packet.AMEND_SUBKIND,
+            subkind=message_format.AMEND_SUBKIND,
             parents=[amends],
             episode=target.episode,
         )

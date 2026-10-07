@@ -31,7 +31,7 @@ const LIVE = "urn:ioc:mycelium:episode:atlas:live";
 const THREAD = "urn:ioc:mycelium:episode:atlas:t3aa11bb";
 const CREATED = "2026-08-04T10:00:00.000000+00:00";
 
-/** A message as the live stream carries it: prose inside an exchange packet. */
+/** A message as the live stream carries it: prose inside an exchange envelope. */
 function said(text: string, episode: string | null, sender = "growth") {
   return {
     id: `m-${text.length}-${sender}`,

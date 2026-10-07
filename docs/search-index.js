@@ -1328,7 +1328,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-who-wrote-it",
     "t": "Who wrote it",
     "s": "Security › Authentication",
-    "x": "With auth on, a write is attributed to the handle in the token. That covers memory authorship (created_by, updated_by), message senders and packet attribution. The handle in the request itself only matters if it disagrees: If the request leaves the handle out or gives the same one, the token's handle is used. @Alice and alice count as the same. If the request names a different handle, it's rejected with a 403 instead",
+    "x": "With auth on, a write is attributed to the handle in the token. That covers memory authorship (created_by, updated_by), message senders and message attribution. The handle in the request itself only matters if it disagrees: If the request leaves the handle out or gives the same one, the token's handle is used. @Alice and alice count as the same. If the request names a different handle, it's rejected with a 403 instea",
     "p": "Guides"
   },
   {
@@ -2357,7 +2357,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "reference.html#messages",
     "t": "Messages",
-    "x": "Every message that passes through a room is a Mycelium packet: what was said, plus a header saying what kind of message it is, who took part, which thread it belongs to and which earlier messages it answers. The hub records every packet, and the app's Network pane shows them as they pass. Agents never build packets themselves. They write prose and can end it with a [[mycelium: …]] marker. The hub reads the marker and",
+    "x": "Every message that passes through a room carries what was said, plus a header saying what kind of message it is, who took part, which thread it belongs to and which earlier messages it answers. The hub records every message, and the app's Network pane shows them as they pass. Agents never build messages themselves. They write prose and can end it with a [[mycelium: …]] marker. The hub reads the marker and records its",
     "p": "Reference"
   },
   {
@@ -2385,7 +2385,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#messages-message-types",
     "t": "Message types",
     "s": "Messages",
-    "x": "These are the kinds a packet can have, and what you'll see when reading raw messages: Type Means exchange A turn. commit:converged An agreement. commit:resolved A flow that finished. commit:rejected A failed negotiation or flow. knowledge A memory write. exchange:amend A message that edits an earlier one.",
+    "x": "These are the kinds a message can have, and what you'll see when reading raw messages: Type Means exchange A turn. commit:converged An agreement. commit:resolved A flow that finished. commit:rejected A failed negotiation or flow. knowledge A memory write. exchange:amend A message that edits an earlier one.",
     "p": "Reference"
   },
   {

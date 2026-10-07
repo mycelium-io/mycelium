@@ -51,7 +51,7 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
-from app.services import activity, episode_state, packet, turns
+from app.services import activity, episode_state, message_format, turns
 from app.services.agent_registry import norm_handle
 from app.services.room_channels import BACKEND_AGENT
 
@@ -59,7 +59,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from app.services.episode_state import NegotiationState
-    from app.services.packet_models import MyceliumPacket
+    from app.services.message_models import MyceliumMessage
     from app.services.persister import RoomPersister, TranscriptRecord
     from app.services.room_channels import ManagedRoomChannel, RoomChannelManager
 
@@ -68,7 +68,7 @@ logger = logging.getLogger(__name__)
 
 # Handles that are never a participant position: the engine itself, the backend
 # moderator, and the system actor the backend signs its own envelopes with.
-_NON_PARTICIPANTS = frozenset({BACKEND_AGENT, packet.SYSTEM_ACTOR_ID})
+_NON_PARTICIPANTS = frozenset({BACKEND_AGENT, message_format.SYSTEM_ACTOR_ID})
 
 #: Engine kinds that play a teammate, and so can be a party to a deal when a
 #: summon names them. The rest (the aligner, the synthesizer, the conductor)
@@ -196,7 +196,7 @@ class AlignerEngine:
         self,
         room: str,
         handle: str,
-        envelope: MyceliumPacket,
+        envelope: MyceliumMessage,
         co_summons: list[str] | None = None,
         message_text: str = "",
     ) -> None:
@@ -240,7 +240,7 @@ class AlignerEngine:
         # every turn it puts to an agent is answered with the flags that name
         # that place (``respond --task <row>``, or a bare ``respond``).
         summoned_in = envelope.header.message.episode if envelope.header.message else None
-        thread = summoned_in or packet.live_episode_urn(room)
+        thread = summoned_in or message_format.live_episode_urn(room)
         task = asyncio.create_task(self._run_and_release(room, handle, scoped, thread))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
@@ -286,7 +286,7 @@ class AlignerEngine:
                 _rounds_out=_rounds,
             )
             # Derive outcome from the verdict committed to the channel.
-            # ``mediate`` returns the packet dict from ``_emit_verdict``;
+            # ``mediate`` returns the message dict from ``_emit_verdict``;
             # convergence is encoded as ``header.subkind`` ("converged" /
             # "rejected"), not a top-level "converged" key.
             if result is None:
@@ -380,11 +380,11 @@ class AlignerEngine:
 
         from app.services.tasks import row_of_episode
 
-        episode = episode or packet.live_episode_urn(room)
-        in_task = not packet.is_live_episode(room, episode)
+        episode = episode or message_format.live_episode_urn(room)
+        in_task = not message_format.is_live_episode(room, episode)
         row = row_of_episode(room, episode) if in_task else None
         episode_id = _new_episode_id()
-        topic = packet.topic_urn(room)
+        topic = message_format.topic_urn(room)
 
         self._manager.open_episode(room, episode)
         positions = self._opening_positions(persister, participants)
@@ -404,7 +404,7 @@ class AlignerEngine:
             # The mediator's own memory is per negotiation, not per thread: a
             # task's thread can host more than one negotiation over its life.
             raw_llm_session = self._open_llm_session(
-                packet.episode_urn(room, episode_id), room=room
+                message_format.episode_urn(room, episode_id), room=room
             )
             llm_session = self._signalling(raw_llm_session, room, episode)
             positions = await self._clarify_terms(
@@ -761,7 +761,7 @@ class AlignerEngine:
         )
         text = ""
         try:
-            one_shot = packet.episode_urn(room, _new_episode_id())
+            one_shot = message_format.episode_urn(room, _new_episode_id())
             llm_session = self._signalling(
                 self._open_llm_session(one_shot, room=room), room, one_shot
             )
@@ -790,11 +790,11 @@ class AlignerEngine:
         was summoned, the room by default. Any ``@`` tokens are stripped so the
         notice can't spuriously summon anyone."""
         safe = _AT_MENTION.sub("", text)
-        env = packet.build_envelope(
-            kind=packet.Kind.exchange,
-            episode=episode or packet.live_episode_urn(room),
+        env = message_format.build_envelope(
+            kind=message_format.Kind.exchange,
+            episode=episode or message_format.live_episode_urn(room),
             sender=sender,
-            topic=packet.topic_urn(room),
+            topic=message_format.topic_urn(room),
             payload_type="message",
         )
         await managed.post(env, safe)
@@ -825,7 +825,7 @@ class AlignerEngine:
         # The wire move type, kept distinct from the collapsed metric ``action``
         # above: the mediator's raw verb when it's one of the closed vocabulary,
         # else a bare offer is a ``counter`` (the opening position included).
-        if isinstance(action, str) and action in packet.EXCHANGE_MOVE_SUBKINDS:
+        if isinstance(action, str) and action in message_format.EXCHANGE_MOVE_SUBKINDS:
             reply["move"] = action
         elif isinstance(offer, dict):
             reply["move"] = "counter"
@@ -897,7 +897,7 @@ class AlignerEngine:
         # the full causal chain stays intact in the episode record (ep.messages).
         wire_dict = copy.deepcopy(env_dict)
         wire_dict["header"]["message"]["parents"] = []
-        envelope = packet.parse_envelope(wire_dict)
+        envelope = message_format.parse_envelope(wire_dict)
         if text is None:
             text = self._verdict_text(converged, metrics)
         # Record + trigger locally (deduped by message id), so the transcript,

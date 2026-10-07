@@ -36,7 +36,7 @@ This module is that consumer, and it does four things as each message flows past
 The pure pieces (:class:`DeliveryLog`, the transcript read/write, the trigger
 detection) carry no SLIM dependency and are unit-tested without a node;
 :class:`RoomPersister` is the thin async loop that drives them over a live
-:class:`~app.services.packet_slim.PacketChannel`.
+:class:`~app.services.message_slim.MessageChannel`.
 """
 
 from __future__ import annotations
@@ -54,8 +54,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from app.schemas import MessageType
-from app.services import memory_sync, packet
-from app.services.packet_slim import ChannelReceiveTimeout
+from app.services import memory_sync, message_format
+from app.services.message_slim import ChannelReceiveTimeout
 
 # Stable namespace so a transcript record maps to the same synthetic
 # ``StoredMessage.id`` on every read (the envelope id is the seed).
@@ -65,8 +65,8 @@ if TYPE_CHECKING:
     import slim_bindings
 
     from app.services.in_memory_store import StoredMessage
-    from app.services.packet_models import MyceliumPacket
-    from app.services.packet_slim import PacketChannel
+    from app.services.message_models import MyceliumMessage
+    from app.services.message_slim import MessageChannel
 
 logger = logging.getLogger(__name__)
 
@@ -87,19 +87,19 @@ _SILENT_RE = re.compile(r"(?:^|(?<=[\s(<]))@~([A-Za-z0-9][\w-]*)")
 # ── Envelope helpers ─────────────────────────────────────────────────────────
 
 
-def envelope_sender(envelope: MyceliumPacket) -> str | None:
+def envelope_sender(envelope: MyceliumMessage) -> str | None:
     """The sending handle of an envelope (first actor), or None."""
     actors = envelope.header.participants.actors
     return actors[0].id if actors else None
 
 
-def envelope_recipients(envelope: MyceliumPacket) -> list[str]:
+def envelope_recipients(envelope: MyceliumMessage) -> list[str]:
     """The addressed recipients of an envelope (every actor after the sender)."""
     actors = envelope.header.participants.actors
     return [a.id for a in actors[1:]] if len(actors) > 1 else []
 
 
-def envelope_message_id(envelope: MyceliumPacket) -> str | None:
+def envelope_message_id(envelope: MyceliumMessage) -> str | None:
     message = envelope.header.message
     return message.id if message is not None else None
 
@@ -107,11 +107,11 @@ def envelope_message_id(envelope: MyceliumPacket) -> str | None:
 #: Payloads an exchange carries that are signals rather than turns: nothing
 #: to answer, so the addressed hook never fires for them.
 _SIGNAL_PAYLOADS = frozenset(
-    {"presence", "keepalive", packet.PING_PAYLOAD_TYPE, packet.NOTICE_PAYLOAD_TYPE}
+    {"presence", "keepalive", message_format.PING_PAYLOAD_TYPE, message_format.NOTICE_PAYLOAD_TYPE}
 )
 
 
-def is_addressed_turn(envelope: MyceliumPacket) -> bool:
+def is_addressed_turn(envelope: MyceliumMessage) -> bool:
     """True for an ``exchange`` that puts something to its recipients."""
     header = envelope.header
     if header.kind.value != "exchange":
@@ -119,7 +119,7 @@ def is_addressed_turn(envelope: MyceliumPacket) -> bool:
     return envelope.payload.type not in _SIGNAL_PAYLOADS
 
 
-def is_converged(envelope: MyceliumPacket) -> bool:
+def is_converged(envelope: MyceliumMessage) -> bool:
     """True for a ``commit:converged`` envelope (the plan-compile trigger)."""
     header = envelope.header
     return header.kind.value == "commit" and header.subkind == "converged"
@@ -141,7 +141,7 @@ def parse_mentions(text: str) -> list[str]:
     """Handles ``@``-mentioned in one plain-text string.
 
     The backend's ``@``-parse: map ``@agent-x`` tokens in a human's
-    message to packet recipients. De-duplicated preserving first-seen order. A bare
+    message to message recipients. De-duplicated preserving first-seen order. A bare
     ``word@host`` is **not** a mention (the ``@`` must start the string or follow
     whitespace / ``(`` / ``<``), so an email address never wakes an agent.
     """
@@ -155,7 +155,7 @@ def parse_silent_mentions(text: str) -> list[str]:
     """Handles named with a silent ``@~handle`` in one plain-text string.
 
     A silent mention refers to a member without asking anything of it: it is
-    searchable as ``mentions:`` and drawn as a member, but it is no packet recipient,
+    searchable as ``mentions:`` and drawn as a member, but it is no message recipient,
     rings no doorbell and summons no engine. Same boundary rule and order as
     :func:`parse_mentions`.
     """
@@ -374,7 +374,7 @@ def record_episode(record: TranscriptRecord) -> str | None:
 
 
 def record_from(
-    envelope: MyceliumPacket, content: dict[str, Any], *, now: str | None = None
+    envelope: MyceliumMessage, content: dict[str, Any], *, now: str | None = None
 ) -> TranscriptRecord:
     """Build a :class:`TranscriptRecord` from a released envelope + its content."""
     return TranscriptRecord(
@@ -449,7 +449,7 @@ def write_transcript(room: str, records: list[TranscriptRecord]) -> None:
         logger.exception("transcript write failed for room %s", room)
 
 
-# packet record kinds promoted into the room chat view on a cold read, mirroring the
+# message record kinds promoted into the room chat view on a cold read, mirroring the
 # frontend's ``L9_RAISE_UP_TYPES`` (contracts/channel-surface.json): ``knowledge`` (a
 # memory push, e.g. a distilled extraction or the synced plan) and ``commit`` (an
 # aligner consensus). Chat itself (an ``exchange`` with a ``message``/``reply``
@@ -491,7 +491,7 @@ def amended_target(subkind: str | None, parents: Any) -> str | None:
     supersede link is the existing ``message.parents`` field rather than a new
     one. Anything else (a different subkind, no parent) is not an amendment.
     """
-    if subkind != packet.AMEND_SUBKIND or not isinstance(parents, list) or not parents:
+    if subkind != message_format.AMEND_SUBKIND or not isinstance(parents, list) or not parents:
         return None
     target = parents[0]
     return target if isinstance(target, str) and target else None
@@ -588,7 +588,7 @@ def stored_message_from_record(
     line = data.get("conductor") if isinstance(data, dict) else None
     msg = StoredMessage(
         room_name=room,
-        sender_handle=record.sender or packet.SYSTEM_ACTOR_ID,
+        sender_handle=record.sender or message_format.SYSTEM_ACTOR_ID,
         message_type=message_type,
         content=content,
         event_metadata={"conductor": line} if isinstance(line, dict) else None,
@@ -708,7 +708,7 @@ def prose_messages(room: str) -> list[StoredMessage]:
 def bus_frame(room: str, record: TranscriptRecord) -> dict[str, Any]:
     """Project a transcript record into the wire frame the SSE bus carries.
 
-    The single shape the frontend packet inspector reads (``l9_<kind>`` + the full
+    The single shape the frontend message inspector reads (``l9_<kind>`` + the full
     ``content`` envelope). Shared by the live push (:meth:`Persister._publish_to_bus`)
     and the history replay (:func:`l9_wire_history`) so backfilled and live frames
     are byte-identical.
@@ -716,7 +716,7 @@ def bus_frame(room: str, record: TranscriptRecord) -> dict[str, Any]:
     episode = record.content.get("l9", {}).get("header", {}).get("message", {}).get("episode")
     return {
         "id": record.message_id,
-        "sender_handle": record.sender or packet.SYSTEM_ACTOR_ID,
+        "sender_handle": record.sender or message_format.SYSTEM_ACTOR_ID,
         "message_type": f"l9_{record.kind}",
         "content": json.dumps(record.content),
         "created_at": record.recorded_at,
@@ -823,13 +823,13 @@ def write_episode_cursors(room: str, cursors: dict[str, dict[str, int]]) -> None
 
 # ── The receive loop ─────────────────────────────────────────────────────────
 
-SummonHook = Callable[[str, "MyceliumPacket", list[str], str], None]
-# Called once per packet recipient of an exchange that named nobody in its text —
+SummonHook = Callable[[str, "MyceliumMessage", list[str], str], None]
+# Called once per message recipient of an exchange that named nobody in its text —
 # an addressed turn, the way the aligner and the conductor put a question to
 # one member. A mention in the text is a summon and fires the summon hook
 # instead, so a handle is never told twice about one message.
-AddressedHook = Callable[[str, "MyceliumPacket", str], None]
-ConvergedHook = Callable[["MyceliumPacket"], None]
+AddressedHook = Callable[[str, "MyceliumMessage", str], None]
+ConvergedHook = Callable[["MyceliumMessage"], None]
 # Called with the handle of a member that dropped off the channel, so the
 # moderator can update its membership — presence, not a fatal error.
 MemberLeftHook = Callable[[str], None]
@@ -889,12 +889,12 @@ def _handle_from_disconnect(message: str) -> str | None:
 
 
 def _default_summon_hook(
-    handle: str, envelope: MyceliumPacket, co_summons: list[str], message_text: str = ""
+    handle: str, envelope: MyceliumMessage, co_summons: list[str], message_text: str = ""
 ) -> None:
     logger.info("summon hook (skeleton): @%s summoned", handle)
 
 
-def _default_converged_hook(envelope: MyceliumPacket) -> None:
+def _default_converged_hook(envelope: MyceliumMessage) -> None:
     # Log-only default for a persister with no plan-sync consumer wired (task
     # tests / a bare backend).
     logger.info(
@@ -916,7 +916,7 @@ class RoomPersister:
     def __init__(
         self,
         room: str,
-        channel: PacketChannel,
+        channel: MessageChannel,
         *,
         members_provider: Callable[[], Iterable[str]],
         on_summon: SummonHook | None = None,
@@ -1152,7 +1152,7 @@ class RoomPersister:
                 self._ingest(envelope, content)
 
     def ingest_local(
-        self, envelope: MyceliumPacket, content: dict[str, Any], *, list_write: bool = False
+        self, envelope: MyceliumMessage, content: dict[str, Any], *, list_write: bool = False
     ) -> None:
         """Ingest a message the moderator published itself (locally originated).
 
@@ -1178,7 +1178,7 @@ class RoomPersister:
         self._ingest(envelope, content, list_write=list_write)
 
     def _ingest(
-        self, envelope: MyceliumPacket, content: dict[str, Any], *, list_write: bool = True
+        self, envelope: MyceliumMessage, content: dict[str, Any], *, list_write: bool = True
     ) -> None:
         # Keepalive pings exist only to reset a member's SLIM liveness (which the
         # datapath already did before this message reached us), so they carry no
@@ -1230,7 +1230,7 @@ class RoomPersister:
         if memory_sync.is_knowledge(envelope):
             self._schedule_knowledge_apply(envelope)
 
-    def _schedule_knowledge_apply(self, envelope: MyceliumPacket) -> None:
+    def _schedule_knowledge_apply(self, envelope: MyceliumMessage) -> None:
         """Apply an inbound ``knowledge`` write off the ingest path.
 
         Fires for a real SLIM arrival and for the sender's own

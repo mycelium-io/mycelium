@@ -1,8 +1,8 @@
 {
   "_comment": [
     "Frozen SLIM+wire-compat contract constants — the single source of truth both",
-    "the FastAPI backend (fastapi-backend/app/services/{slim_client,packet,packet_slim}.py)",
-    "and the CLI's own copy (mycelium-cli/src/mycelium/slim/{naming,client,packet,identity}.py)",
+    "the FastAPI backend (fastapi-backend/app/services/{slim_client,message_format,message_slim}.py)",
+    "and the CLI's own copy (mycelium-cli/src/mycelium/slim/{naming,client,message_format,identity}.py)",
     "MUST reproduce byte-for-byte. The copy exists because the thin uv-tool CLI",
     "cannot import the backend.",
     "",
@@ -38,7 +38,7 @@
   },
 
   "valid_subkinds": {
-    "_comment": "Kind -> allowed subkinds. Backend: app.services.packet.VALID_SUBKINDS (keyed by the Kind enum). CLI: mycelium.slim.packet.VALID_SUBKINDS (keyed by the plain string, since the hidden `packet send`/`slim send` plumbing takes a raw --kind string). An empty/None subkind is always valid for any kind. The exchange move subkinds counter/accept/reject are the closed negotiation-move vocabulary a coordination reply carries on the wire (counter = any offer incl. the opening one; accept/reject respond to the standing offer); team-formation predates them. ``amend`` revises an earlier message: parents carries the amended message's id, the payload carries the new text, and the read path folds the chain to the newest text.",
+    "_comment": "Kind -> allowed subkinds. Backend: app.services.message_format.VALID_SUBKINDS (keyed by the Kind enum). CLI: mycelium.slim.message_format.VALID_SUBKINDS (keyed by the plain string, since the hidden `message send`/`slim send` plumbing takes a raw --kind string). An empty/None subkind is always valid for any kind. The exchange move subkinds counter/accept/reject are the closed negotiation-move vocabulary a coordination reply carries on the wire (counter = any offer incl. the opening one; accept/reject respond to the standing offer); team-formation predates them. ``amend`` revises an earlier message: parents carries the amended message's id, the payload carries the new text, and the read path folds the chain to the newest text.",
     "knowledge": ["distillation", "extraction", "feedback", "query"],
     "commit": ["converged", "rejected", "resolved"],
     "intent": ["coordinator-assignment", "mission"],
@@ -47,13 +47,13 @@
   },
 
   "ping": {
-    "_comment": "The payload type a thread's activity surfaces into the room as. The backend PRODUCES it (room_channels.raise_ping, off app.services.packet.PING_PAYLOAD_TYPE) on every write into a thread; the CLI READS it (mycelium.slim.packet.ping_of) to draw the one activity line `room watch` shows when a task moves. A ping deliberately carries no prose \u2014 only which thread moved, who wrote it and the message id \u2014 so payload_fields is the whole of it, and a reader expecting text would draw an empty line instead of the argument the thread exists to absorb. It is also what the backend's participate._addressed_to excludes, so a resident agent consumes a ping silently rather than spending a turn on it: rename the type on one side only and every agent in the room wakes on every thread write. The GUI is the third reader (mycelium-frontend/src/lib/threads.ts, ping_of + PING_PAYLOAD_TYPE): it draws the coalesced 'activity in <task>' notice the room sees in place of the thread's prose, so a drift here empties the channel of any sign its threads moved.",
+    "_comment": "The payload type a thread's activity surfaces into the room as. The backend PRODUCES it (room_channels.raise_ping, off app.services.message_format.PING_PAYLOAD_TYPE) on every write into a thread; the CLI READS it (mycelium.slim.message_format.ping_of) to draw the one activity line `room watch` shows when a task moves. A ping deliberately carries no prose \u2014 only which thread moved, who wrote it and the message id \u2014 so payload_fields is the whole of it, and a reader expecting text would draw an empty line instead of the argument the thread exists to absorb. It is also what the backend's participate._addressed_to excludes, so a resident agent consumes a ping silently rather than spending a turn on it: rename the type on one side only and every agent in the room wakes on every thread write. The GUI is the third reader (mycelium-frontend/src/lib/threads.ts, ping_of + PING_PAYLOAD_TYPE): it draws the coalesced 'activity in <task>' notice the room sees in place of the thread's prose, so a drift here empties the channel of any sign its threads moved.",
     "payload_type": "ping",
     "payload_fields": ["episode", "sender", "message"]
   },
 
   "notice": {
-    "_comment": "The payload type the room's board events surface into its timeline as. Where a ping says a thread moved, a notice says the board did: a task filed, claimed, handed back or resolved. The backend PRODUCES it (room_channels.raise_notice, off app.services.packet.NOTICE_PAYLOAD_TYPE) at each seam — leases.claim/release/resolve, the memory upsert on a board-row create, and the lease sweep (lease_sweep.py) when a held lease drains past its TTL (`expired`, raised once per lease); the GUI READS it (mycelium-frontend/src/lib/threads.ts, notice_of + NOTICE_PAYLOAD_TYPE) to draw the 'New task'/'Claimed'/'Resolved' line the channel shows in sequence with the chat. Like a ping it is excluded from participate._addressed_to, so a resident agent consumes a notice silently rather than waking on it: rename the type on one side and either the timeline goes quiet or every agent wakes on every board write. `data.subkind` is one of `subkinds` (a closed set); `data` always carries `subkind` and `key`, and a `filed` notice also carries the board `kind` so the line reads 'New decision' not always 'New task'. `floor` is the one notice about a thread rather than a task: raised by room_channels.hold_floor/release_floor when whose turn it is changes, with `key` the thread's short id, `by` the holder, `speakers` the comma-joined handles given the floor (absent when the holder alone has it) and `released` set when it opens back up.",
+    "_comment": "The payload type the room's board events surface into its timeline as. Where a ping says a thread moved, a notice says the board did: a task filed, claimed, handed back or resolved. The backend PRODUCES it (room_channels.raise_notice, off app.services.message_format.NOTICE_PAYLOAD_TYPE) at each seam — leases.claim/release/resolve, the memory upsert on a board-row create, and the lease sweep (lease_sweep.py) when a held lease drains past its TTL (`expired`, raised once per lease); the GUI READS it (mycelium-frontend/src/lib/threads.ts, notice_of + NOTICE_PAYLOAD_TYPE) to draw the 'New task'/'Claimed'/'Resolved' line the channel shows in sequence with the chat. Like a ping it is excluded from participate._addressed_to, so a resident agent consumes a notice silently rather than waking on it: rename the type on one side and either the timeline goes quiet or every agent wakes on every board write. `data.subkind` is one of `subkinds` (a closed set); `data` always carries `subkind` and `key`, and a `filed` notice also carries the board `kind` so the line reads 'New decision' not always 'New task'. `floor` is the one notice about a thread rather than a task: raised by room_channels.hold_floor/release_floor when whose turn it is changes, with `key` the thread's short id, `by` the holder, `speakers` the comma-joined handles given the floor (absent when the holder alone has it) and `released` set when it opens back up.",
     "payload_type": "notice",
     "subkinds": ["filed", "claimed", "released", "resolved", "blocked", "unblocked", "expired", "floor"]
   },
@@ -67,7 +67,7 @@
   },
 
   "urn": {
-    "_comment": "Room-scoped episode/topic URN forms. Backend: packet.episode_urn(room, session) / packet.topic_urn(room). CLI connector: _room_episode(room) / _room_topic(room) with the 'live' session literal. Frontend: mycelium-frontend/src/lib/threads.ts liveEpisodeUrn(room), which is how the channel tells the room's own messages from a thread's.",
+    "_comment": "Room-scoped episode/topic URN forms. Backend: message_format.episode_urn(room, session) / message_format.topic_urn(room). CLI connector: _room_episode(room) / _room_topic(room) with the 'live' session literal. Frontend: mycelium-frontend/src/lib/threads.ts liveEpisodeUrn(room), which is how the channel tells the room's own messages from a thread's.",
     "room": "acme",
     "session": "live",
     "expected_episode": "urn:ioc:mycelium:episode:acme:live",
@@ -75,7 +75,7 @@
   },
 
   "envelope": {
-    "_comment": "A frozen serialized 'exchange' packet content dict. The backend produces this via packet.envelope_to_dict(packet.build_envelope(kind=exchange, ...)); the CLI produces the same dict via packet.build_reply_content(...). The two serializers must agree byte-for-byte or a connector's reply fails the backend persister's parse_envelope.",
+    "_comment": "A frozen serialized 'exchange' message content dict. The backend produces this via message_format.envelope_to_dict(message_format.build_envelope(kind=exchange, ...)); the CLI produces the same dict via message_format.build_reply_content(...). The two serializers must agree byte-for-byte or a connector's reply fails the backend persister's parse_envelope.",
     "inputs": {
       "sender": "alice",
       "recipients": ["bob"],
@@ -117,7 +117,7 @@
   },
 
   "knowledge": {
-    "_comment": "A frozen serialized 'knowledge:distillation' packet — the memory-sync wire shape. The backend PRODUCES it via memory_sync.build_knowledge_envelope(room, write, recipients) + KnowledgeWrite.to_payload() (serialized with packet.envelope_to_dict); the CLI PARSES it via slim/packet.payload_data_of. The two must agree byte-for-byte on the payload.data write fields or cross-machine memory sync silently drifts. build_knowledge_envelope mints a fresh random message.id per call, so 'expected_envelope.header.message.id' is the sentinel 'MESSAGE_ID_PLACEHOLDER' — the backend test normalizes the produced id to it before comparing (the id is not part of the shared contract; every other field is).",
+    "_comment": "A frozen serialized 'knowledge:distillation' message — the memory-sync wire shape. The backend PRODUCES it via memory_sync.build_knowledge_envelope(room, write, recipients) + KnowledgeWrite.to_payload() (serialized with message_format.envelope_to_dict); the CLI PARSES it via slim/message_format.payload_data_of. The two must agree byte-for-byte on the payload.data write fields or cross-machine memory sync silently drifts. build_knowledge_envelope mints a fresh random message.id per call, so 'expected_envelope.header.message.id' is the sentinel 'MESSAGE_ID_PLACEHOLDER' — the backend test normalizes the produced id to it before comparing (the id is not part of the shared contract; every other field is).",
     "room": "acme",
     "recipients": ["bob"],
     "message_id_placeholder": "MESSAGE_ID_PLACEHOLDER",

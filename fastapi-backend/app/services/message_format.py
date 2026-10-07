@@ -2,14 +2,14 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Mycelium packets: construction and validation.
+The message format: construction and validation.
 
-A packet is Mycelium's own message envelope: a fixed header (kind/subkind,
-participants, episode URN, message id + causal parents, topic) plus a typed
-payload. It is how the hub labels and records what passes through a room,
-which is what the Network pane shows.
+Every message on a room's channel carries an envelope: a fixed header
+(kind/subkind, participants, episode URN, message id + causal parents, topic)
+plus a typed payload. It is how the hub labels and records what passes through
+a room, which is what the Network pane shows.
 
-Every message's content JSON carries its packet under the ``l9`` key. The key
+A message's content JSON carries its envelope under the ``l9`` key. The key
 is additive: agents and UIs that ignore it keep working.
 
 In the subkind vocabulary below, a failed negotiation commits as ``rejected``.
@@ -21,14 +21,14 @@ import json
 import uuid
 from typing import Any
 
-from app.services.packet_models import (
+from app.services.message_models import (
     Actor,
     Context,
     Kind,
-    Message,
-    MyceliumPacket,
-    PacketHeader,
-    PacketPayload,
+    MessageHeader,
+    MessagePayload,
+    MessageRef,
+    MyceliumMessage,
     ParticipantSet,
 )
 
@@ -105,8 +105,8 @@ NOTICE_SUBKINDS = frozenset(
 )
 
 
-class PacketValidationError(ValueError):
-    """A packet violates the header structure or the subkind table."""
+class MessageValidationError(ValueError):
+    """A message violates the header structure or the subkind table."""
 
 
 def episode_urn(parent_room: str, session_id: str) -> str:
@@ -138,7 +138,7 @@ def validate_subkind(kind: Kind, subkind: str | None) -> None:
         return
     allowed = VALID_SUBKINDS.get(kind, frozenset())
     if subkind not in allowed:
-        raise PacketValidationError(
+        raise MessageValidationError(
             f"invalid subkind {subkind!r} for kind={kind.value} (allowed: {sorted(allowed)})"
         )
 
@@ -164,8 +164,8 @@ def build_envelope(
     payload_type: str = "data",
     payload_data: dict[str, Any] | None = None,
     message_id: str | None = None,
-) -> MyceliumPacket:
-    """Build a validated packet.
+) -> MyceliumMessage:
+    """Build a validated message.
 
     ``workspace_id``/``mas_id`` land in ``participants.groups``: the Go CFN's
     content-based routing extracts them from there, so both are required for
@@ -185,26 +185,26 @@ def build_envelope(
         if mas_id:
             groups["mas_id"] = mas_id
 
-    return MyceliumPacket(
-        header=PacketHeader(
+    return MyceliumMessage(
+        header=MessageHeader(
             protocol=PROTOCOL,
             subprotocol=SUBPROTOCOL_MYCELIUM,
             version=VERSION,
             kind=kind,
             subkind=subkind,
             participants=ParticipantSet(actors=actors, groups=groups),
-            message=Message(
+            message=MessageRef(
                 id=message_id or str(uuid.uuid4()),
                 parents=parents or [],
                 episode=episode,
             ),
             context=Context(topic=topic) if topic else None,
         ),
-        payload=PacketPayload(type=payload_type, data=payload_data or {}),
+        payload=MessagePayload(type=payload_type, data=payload_data or {}),
     )
 
 
-def envelope_to_dict(envelope: MyceliumPacket) -> dict[str, Any]:
+def envelope_to_dict(envelope: MyceliumMessage) -> dict[str, Any]:
     """Serialize for embedding in a message's content JSON (drops None keys)."""
     data = envelope.model_dump(mode="json", exclude_none=True)
     # participants.groups is required-but-nullable in the schema; exclude_none
@@ -213,17 +213,17 @@ def envelope_to_dict(envelope: MyceliumPacket) -> dict[str, Any]:
     return data
 
 
-def parse_envelope(raw: dict[str, Any] | str) -> MyceliumPacket:
+def parse_envelope(raw: dict[str, Any] | str) -> MyceliumMessage:
     """Parse and validate an envelope from content JSON (raises on invalid)."""
     if isinstance(raw, str):
         raw = json.loads(raw)
-    envelope = MyceliumPacket.model_validate(raw)
+    envelope = MyceliumMessage.model_validate(raw)
     validate_subkind(envelope.header.kind, envelope.header.subkind)
     return envelope
 
 
 def extract_parent_id(content: str | dict[str, Any]) -> str | None:
-    """Pull the packet message id out of a coordination message's content, if any.
+    """Pull the message id out of a coordination message's content, if any.
 
     Used to thread causality: a reply's envelope lists the tick's id in
     ``message.parents``; the consensus lists the final replies' ids.

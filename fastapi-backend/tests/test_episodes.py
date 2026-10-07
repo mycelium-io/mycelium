@@ -92,7 +92,7 @@ async def test_get_episode_returns_causal_chain(client):
     episode = resp.json()
 
     messages = episode["messages"]
-    assert messages, "expected the full packet chain"
+    assert messages, "expected the full message chain"
     kinds = [m["header"]["kind"] for m in messages]
     assert kinds[0] == "intent"
     assert "exchange" in kinds

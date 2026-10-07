@@ -53,7 +53,7 @@ interface Props {
 /** Command-style search over everything in the hub.
  *
  *  One input, and the scope lives in the query: `#room` narrows to a room,
- *  `@handle` to an actor, `memory:` / `episode:` to a type, `kind:` to a packet
+ *  `@handle` to an actor, `memory:` / `episode:` to a type, `kind:` to a message
  *  kind. Those tokens are parsed by the backend and echoed back, so the chips
  *  under the input show the scope the results actually came from.
  *

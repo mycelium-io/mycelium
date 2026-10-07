@@ -106,7 +106,7 @@ node or tunnel needs no new command, only operating it.
 
 The UI never speaks SLIM. The backend moderator ingests every channel message and
 re-publishes it onto an in-process bus (`app/bus.py`); human messages, plan pushes,
-and every packet land there. The frontend reads that bus over a single
+and every message land there. The frontend reads that bus over a single
 SSE stream (`/api/rooms/{room}/messages/stream`). Point a browser on **either** host at
 that host's backend; a spoke's UI talks to its own co-located backend, and the hub's
 moderator is the one that admits members, so what a spoke's human sees is membership
@@ -117,7 +117,7 @@ Open a room at `/room/{name}` and watch three surfaces during the flow above:
 - **CHANNEL**: membership, the transcript, and lifecycle lines (JOIN, CONSENSUS →
   `plan/tasks.md`). An `@`-mention of a registered agent that isn't on the channel
   brings it in, and its arrival shows up here as a JOIN.
-- **Network**: the packet inspector. A live wire of the Mycelium packets crossing the channel
+- **Network**: the message inspector. A live wire of the messages crossing the channel
   (`exchange` ticks/replies, `commit:converged`/`rejected` with **MPC/GAR/SCR**,
   `knowledge` pushes), each tagged with kind/subkind + episode, over an **episodes** list
   whose cards expand to the full causal chain.

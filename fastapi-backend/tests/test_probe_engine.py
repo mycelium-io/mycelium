@@ -16,14 +16,14 @@ from typing import Any
 import pytest
 import yaml
 
-from app.services import packet, probe_engine
+from app.services import message_format, probe_engine
 from app.services.filesystem import get_room_dir, list_memory_files, write_memory_file
-from app.services.packet_models import Kind
+from app.services.message_models import Kind
 from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
 
 _ROOM = "hello-room"
-_EPISODE = packet.episode_urn(_ROOM, "live")
-_TOPIC = packet.topic_urn(_ROOM)
+_EPISODE = message_format.episode_urn(_ROOM, "live")
+_TOPIC = message_format.topic_urn(_ROOM)
 
 
 def _engine() -> tuple[probe_engine.ProbeEngine, FakeManaged]:
@@ -32,7 +32,7 @@ def _engine() -> tuple[probe_engine.ProbeEngine, FakeManaged]:
 
 
 def _env(sender: str) -> Any:
-    return packet.build_envelope(
+    return message_format.build_envelope(
         kind=Kind.exchange,
         episode=_EPISODE,
         sender=sender,

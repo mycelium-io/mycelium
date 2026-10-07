@@ -22,14 +22,14 @@ import pytest
 from starlette.requests import Request
 
 from app.routes import participate
-from app.services import packet, persister, room_channels, tasks
+from app.services import message_format, persister, room_channels, tasks
 from app.services.filesystem import get_room_dir
-from app.services.packet_models import Kind
-from app.services.packet_slim import serialize_content
+from app.services.message_models import Kind
+from app.services.message_slim import serialize_content
 
 ROOM = "threaded"
-THREAD = packet.episode_urn(ROOM, "t3")
-OTHER_THREAD = packet.episode_urn(ROOM, "t9")
+THREAD = message_format.episode_urn(ROOM, "t3")
+OTHER_THREAD = message_format.episode_urn(ROOM, "t9")
 
 _REQUEST = Request({"type": "http", "method": "GET", "path": "/await", "headers": []})
 
@@ -43,13 +43,13 @@ async def _unit_thread(room: str, title: str) -> str:
 
 def _record(message_id: str, *, to: str, episode: str, sender: str = "avery"):
     """A human exchange @-addressed to ``to``, riding ``episode``."""
-    env = packet.build_envelope(
+    env = message_format.build_envelope(
         kind=Kind.exchange,
         episode=episode,
         sender=sender,
         sender_role="human",
         recipients=[to],
-        topic=packet.topic_urn(ROOM),
+        topic=message_format.topic_urn(ROOM),
         message_id=message_id,
         payload_type="message",
     )
@@ -119,7 +119,7 @@ class TestScopedAwait:
             _record("m1", to="api", episode=OTHER_THREAD), delivered_to=set(), recipients=["api"]
         )
         log.record(
-            _record("m2", to="api", episode=packet.live_episode_urn(ROOM)),
+            _record("m2", to="api", episode=message_format.live_episode_urn(ROOM)),
             delivered_to=set(),
             recipients=["api"],
         )
@@ -139,7 +139,7 @@ class TestScopedAwait:
         """
         log = persister.DeliveryLog()
         log.record(
-            _record("room-1", to="api", episode=packet.live_episode_urn(ROOM)),
+            _record("room-1", to="api", episode=message_format.live_episode_urn(ROOM)),
             delivered_to=set(),
             recipients=["api"],
         )
@@ -252,7 +252,10 @@ class TestThreadWriteAuthorization:
 
     def test_the_room_itself_is_always_writable(self):
         assert tasks.episode_write_rejection(ROOM, "api", None) is None
-        assert tasks.episode_write_rejection(ROOM, "api", packet.live_episode_urn(ROOM)) is None
+        assert (
+            tasks.episode_write_rejection(ROOM, "api", message_format.live_episode_urn(ROOM))
+            is None
+        )
 
     def test_an_invented_thread_is_refused(self):
         refusal = tasks.episode_write_rejection(ROOM, "api", THREAD)
@@ -332,7 +335,7 @@ class _RecordingPersister:
         return [
             (env, content)
             for env, content, _ in self.ingested
-            if env.payload.type == packet.PING_PAYLOAD_TYPE
+            if env.payload.type == message_format.PING_PAYLOAD_TYPE
         ]
 
 
@@ -397,7 +400,7 @@ class TestPing:
 
         assert len(live.persister.pings) == 1
         ping, _content = live.persister.pings[0]
-        assert ping.header.message.episode == packet.live_episode_urn(ROOM)
+        assert ping.header.message.episode == message_format.live_episode_urn(ROOM)
         assert ping.payload.data["episode"] == thread
 
     @pytest.mark.asyncio
@@ -428,7 +431,7 @@ class TestPing:
         await self._post(client, episode=thread)
 
         sent = [call.args[0] for call in live.channel.send.call_args_list]
-        assert [e for e in sent if e.payload.type == packet.PING_PAYLOAD_TYPE] == []
+        assert [e for e in sent if e.payload.type == message_format.PING_PAYLOAD_TYPE] == []
         assert len(sent) == 1  # the thread message itself, and only that
         assert sent[0].header.message.episode == thread  # a tag, not a second channel
 
@@ -446,7 +449,9 @@ class TestPing:
     @pytest.mark.asyncio
     async def test_a_message_to_the_room_pings_nothing(self, client, room, live):
         assert (await self._post(client, episode=None)).status_code == 201
-        assert (await self._post(client, episode=packet.live_episode_urn(ROOM))).status_code == 201
+        assert (
+            await self._post(client, episode=message_format.live_episode_urn(ROOM))
+        ).status_code == 201
         assert live.persister.pings == []
 
     @pytest.mark.asyncio
@@ -491,7 +496,7 @@ class TestPing:
         channel, frame = published[0]
         assert channel == room_channel(ROOM)
         assert frame["message_type"] == "l9_exchange"
-        assert frame["episode"] == packet.live_episode_urn(ROOM)
+        assert frame["episode"] == message_format.live_episode_urn(ROOM)
         assert THREAD in frame["content"]
 
 
@@ -525,12 +530,12 @@ class TestReplyTargeting:
     @staticmethod
     def _woke(episode: str, *, sender: str = "aligner", message_id: str = "tick-1") -> None:
         """Stand the caller where an ``await`` on ``episode`` would have left it."""
-        env = packet.build_envelope(
+        env = message_format.build_envelope(
             kind=Kind.exchange,
             episode=episode,
             sender=sender,
             recipients=["api"],
-            topic=packet.topic_urn(ROOM),
+            topic=message_format.topic_urn(ROOM),
             message_id=message_id,
             payload_type="message",
         )
@@ -566,7 +571,7 @@ class TestReplyTargeting:
 
         assert (await self._reply(client)).status_code == 200
         env = self._replied(replying)
-        assert env.header.message.episode == packet.live_episode_urn(ROOM)
+        assert env.header.message.episode == message_format.live_episode_urn(ROOM)
         # It is not an answer to the thread's tick, so no edge reaches across.
         assert env.header.message.parents == []
         assert replying.persister.pings == []
@@ -604,7 +609,10 @@ class TestReplyTargeting:
         await self._reply(client, episode=other)
         env = self._replied(replying)
         assert env.header.message.parents == []
-        assert [a.id for a in env.header.participants.actors] == ["api", packet.SYSTEM_ACTOR_ID]
+        assert [a.id for a in env.header.participants.actors] == [
+            "api",
+            message_format.SYSTEM_ACTOR_ID,
+        ]
 
     @pytest.mark.asyncio
     async def test_naming_the_same_thread_keeps_the_edge(self, client, replying):
@@ -626,15 +634,17 @@ class TestReplyTargeting:
 
     @pytest.mark.asyncio
     async def test_a_reply_to_the_room_pings_nothing(self, client, replying):
-        self._woke(packet.live_episode_urn(ROOM))
+        self._woke(message_format.live_episode_urn(ROOM))
 
         await self._reply(client)
-        assert self._replied(replying).header.message.episode == packet.live_episode_urn(ROOM)
+        assert self._replied(replying).header.message.episode == message_format.live_episode_urn(
+            ROOM
+        )
         assert replying.persister.pings == []
 
     @pytest.mark.asyncio
     async def test_a_reply_into_an_invented_thread_is_refused(self, client, replying):
-        self._woke(packet.live_episode_urn(ROOM))
+        self._woke(message_format.live_episode_urn(ROOM))
 
         resp = await self._reply(client, episode=THREAD)
         assert resp.status_code == 404
@@ -651,7 +661,7 @@ class TestReplyTargeting:
         else comes to hold a thread's floor has to keep this exact shape."""
         thread = await _unit_thread(ROOM, "pick a token store")
         replying.lifecycle.open(thread, {"aligner", "sec"}, negotiation=True)
-        self._woke(packet.live_episode_urn(ROOM))
+        self._woke(message_format.live_episode_urn(ROOM))
 
         resp = await self._reply(client, episode=thread)
         assert resp.status_code == 403
@@ -711,7 +721,7 @@ class TestReplyTargeting:
         """A floor narrows one thread; the room itself takes every write."""
         thread = await _unit_thread(ROOM, "pick a token store")
         room_channels.manager.hold_floor(ROOM, thread, holder="conductor", speakers=["sec"])
-        self._woke(packet.live_episode_urn(ROOM))
+        self._woke(message_format.live_episode_urn(ROOM))
 
         assert (await self._reply(client)).status_code == 200
 
@@ -824,7 +834,7 @@ class TestWriteRoutes:
         # room without its threads. A row posted with no thread carries the
         # ``live`` URN rather than a bare null, so this filter is answerable.
         in_room = await client.get(
-            f"/api/rooms/{room}/messages", params={"episode": packet.live_episode_urn(room)}
+            f"/api/rooms/{room}/messages", params={"episode": message_format.live_episode_urn(room)}
         )
         assert [m["content"] for m in in_room.json()["messages"]] == ["in the room"]
 
@@ -856,7 +866,7 @@ class TestWriteRoutes:
         assert [m["content"] for m in in_thread.json()["messages"]] == ["in the keychain"]
 
         in_room = await client.get(
-            f"/api/rooms/{room}/messages", params={"episode": packet.live_episode_urn(room)}
+            f"/api/rooms/{room}/messages", params={"episode": message_format.live_episode_urn(room)}
         )
         assert in_room.json()["messages"] == []
         assert "keychain" not in json.dumps(in_room.json())

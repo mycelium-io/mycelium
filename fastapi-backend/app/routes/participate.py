@@ -14,7 +14,7 @@ delivery queue. The agent participates with two plain, stateless HTTP calls:
   per-handle cursor**, then return it. Because the cursor rides the durable
   transcript, a tick is *never missed* in the gap between one await and the next —
   which is exactly what the client-held one-shot ``await`` could not guarantee.
-* ``POST /rooms/{room}/reply`` — publish the agent's reply as an ``exchange`` packet
+* ``POST /rooms/{room}/reply`` — publish the agent's reply as an ``exchange`` message
   (role ``agent``) recorded into the transcript, which the aligner's poll scores
   as a position.
 
@@ -38,11 +38,11 @@ from typing import Annotated, Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from app.services import activity, actor, markers, packet, principals, room_channels, tasks
+from app.services import activity, actor, markers, message_format, principals, room_channels, tasks
 from app.services.agent_registry import norm_handle
 from app.services.filesystem import room_exists
-from app.services.packet_models import Kind
-from app.services.packet_slim import serialize_content, serialize_envelope
+from app.services.message_models import Kind
+from app.services.message_slim import serialize_content, serialize_envelope
 from app.services.persister import _conversational_text, record_episode
 
 router = APIRouter(prefix="/rooms/{room_name}", tags=["participate"])
@@ -65,7 +65,7 @@ _MAX_WAIT_S = 3600.0
 # resolved) — all nudges to look, not turns to take. Excluded structurally here so
 # a resident loop consumes one silently rather than reasoning about it.
 _UNADDRESSED_PAYLOADS = frozenset(
-    {"presence", "keepalive", packet.PING_PAYLOAD_TYPE, packet.NOTICE_PAYLOAD_TYPE}
+    {"presence", "keepalive", message_format.PING_PAYLOAD_TYPE, message_format.NOTICE_PAYLOAD_TYPE}
 )
 
 
@@ -75,14 +75,14 @@ def _norm(handle: str) -> str:
 
 # An agent may end a reply with a position marker like
 # ``[[mycelium: confidence=0.85 stance=accept]]``; those fields are lifted onto the
-# packet payload so the aligner can score convergence, and stripped from the prose.
+# message payload so the aligner can score convergence, and stripped from the prose.
 _parse_marker = markers.parse_marker
 
 
 def _addressed_to(content: dict[str, Any], handle: str) -> bool:
     """True when a transcript record is an exchange addressed to ``handle``.
 
-    Addressed = the handle is a packet recipient, or ``@handle`` appears in the human
+    Addressed = the handle is a message recipient, or ``@handle`` appears in the human
     text — and the sender is not the handle itself (loop guard). Presence/keepalive
     are never addressed turns.
     """
@@ -140,7 +140,7 @@ def _said_earlier(room: str, handle: str, records: list[Any], at: int) -> list[d
 
     def place(record: Any) -> str | None:
         ep = record_episode(record)
-        return None if not ep or packet.is_live_episode(room, ep) else ep
+        return None if not ep or message_format.is_live_episode(room, ep) else ep
 
     here = place(records[at])
     earlier: list[dict[str, Any]] = []
@@ -170,7 +170,7 @@ def _said_earlier(room: str, handle: str, records: list[Any], at: int) -> list[d
 
 def _task_of(room: str, episode: str | None) -> str | None:
     """The key of the row whose thread ``episode`` is, or ``None``."""
-    if not episode or packet.is_live_episode(room, episode):
+    if not episode or message_format.is_live_episode(room, episode):
         return None
     row = tasks.row_of_episode(room, episode)
     return row[0] if row else None
@@ -256,7 +256,7 @@ async def await_message(
     # A thread-scoped call reads and commits a *different* cursor over the same
     # transcript — the thread's — so watching one task consumes nothing from the
     # handle's room inbox, and vice versa.
-    scoped = episode if episode and not packet.is_live_episode(room_name, episode) else None
+    scoped = episode if episode and not message_format.is_live_episode(room_name, episode) else None
 
     def _position() -> int:
         return (
@@ -280,7 +280,7 @@ async def await_message(
             ep = record_episode(record)
             if scoped and ep != scoped:
                 continue
-            if not scoped and ep and not packet.is_live_episode(room_name, ep):
+            if not scoped and ep and not message_format.is_live_episode(room_name, ep):
                 # Already served to this handle via a --task-scoped read of this
                 # same thread (that path never advances the room cursor, on
                 # purpose — see test_watching_a_thread_leaves_the_room_inbox_alone).
@@ -336,11 +336,11 @@ class ReplyBody(BaseModel):
 
 @router.post("/reply")
 async def post_reply(room_name: str, body: ReplyBody, request: Request):
-    """Publish ``handle``'s reply as an agent exchange packet the aligner scores."""
+    """Publish ``handle``'s reply as an agent exchange message the aligner scores."""
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
     # A verified token names the replier; unauthenticated, the body's handle does.
-    # Either way it is resolved here, so the transcript sender and the packet actor
+    # Either way it is resolved here, so the transcript sender and the message actor
     # below are the same handle the room-membership guard passed. Delegation-aware
     # (owner/allow_from), matching await_message's authorize_handle just below —
     # an agent's owner can reply on its behalf, not just watch for its turns.
@@ -370,19 +370,21 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
     # one asked elsewhere than the mention the caller is answering, and a reply
     # that quietly went somewhere else reads, from where it was expected, as no
     # reply at all.
-    tick_episode = woke_msg.get("episode") or packet.live_episode_urn(room_name)
-    episode = body.episode or packet.live_episode_urn(room_name)
+    tick_episode = woke_msg.get("episode") or message_format.live_episode_urn(room_name)
+    episode = body.episode or message_format.live_episode_urn(room_name)
     _refuse_thread_write(tasks.thread_write_refusal(room_name, handle, episode))
-    topic = ((woke_header.get("context") or {}).get("topic")) or packet.topic_urn(room_name)
+    topic = ((woke_header.get("context") or {}).get("topic")) or message_format.topic_urn(room_name)
     # Parent onto the tick only when the reply lands where the tick did. A reply
     # posted somewhere else is not an answer to that tick, and a causal
     # edge reaching across threads would put one thread's message in another's
     # chain — read back as a conversation that never happened.
     answers_the_tick = tick_episode == episode
     parents = [woke_msg["id"]] if answers_the_tick and woke_msg.get("id") else []
-    recipients = [tick_sender] if answers_the_tick and tick_sender else [packet.SYSTEM_ACTOR_ID]
+    recipients = (
+        [tick_sender] if answers_the_tick and tick_sender else [message_format.SYSTEM_ACTOR_ID]
+    )
 
-    envelope = packet.build_envelope(
+    envelope = message_format.build_envelope(
         kind=Kind.exchange,
         episode=episode,
         sender=handle,

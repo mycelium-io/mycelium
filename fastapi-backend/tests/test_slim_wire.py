@@ -23,9 +23,9 @@ from pathlib import Path
 
 import pytest
 
-from app.services import packet, slim_identity
+from app.services import message_format, slim_identity
 from app.services.memory_sync import KnowledgeWrite, build_knowledge_envelope
-from app.services.packet_models import Kind
+from app.services.message_models import Kind
 from app.services.slim_client import (
     _DEV_MASTER_SECRET,
     DEFAULT_CHANNEL_TOPIC,
@@ -88,15 +88,15 @@ def test_retired_spire_tier_is_absent_from_contract():
 def test_episode_and_topic_urns_match_contract():
     """The episode/topic URN forms the connector must mirror."""
     g = _contract()["urn"]
-    assert packet.episode_urn(g["room"], g["session"]) == g["expected_episode"]
-    assert packet.topic_urn(g["room"]) == g["expected_topic"]
+    assert message_format.episode_urn(g["room"], g["session"]) == g["expected_episode"]
+    assert message_format.topic_urn(g["room"]) == g["expected_topic"]
 
 
 def test_exchange_envelope_serializes_to_contract():
     """The backend's serialized exchange envelope is byte-for-byte the contract."""
     g = _contract()["envelope"]
     i = g["inputs"]
-    envelope = packet.build_envelope(
+    envelope = message_format.build_envelope(
         kind=Kind.exchange,
         episode=i["episode"],
         parents=i["parents"],
@@ -109,7 +109,7 @@ def test_exchange_envelope_serializes_to_contract():
         payload_data={},
         message_id=i["message_id"],
     )
-    content = {"content": i["text"], "l9": packet.envelope_to_dict(envelope)}
+    content = {"content": i["text"], "l9": message_format.envelope_to_dict(envelope)}
     assert content == g["expected_content"]
 
 
@@ -139,7 +139,7 @@ def test_knowledge_envelope_serializes_to_contract():
         write=write,
         recipients=g["recipients"],
     )
-    produced = packet.envelope_to_dict(envelope)
+    produced = message_format.envelope_to_dict(envelope)
     # The message id is a fresh UUID per build — freeze everything else, and check
     # the id is a non-empty string separately (not a shared-contract value).
     assert isinstance(produced["header"]["message"]["id"], str)
@@ -151,9 +151,9 @@ def test_knowledge_envelope_serializes_to_contract():
 def test_valid_subkinds_match_contract():
     """The backend's subkind table matches the frozen contract the CLI mirrors."""
     g = {k: v for k, v in _contract()["valid_subkinds"].items() if k != "_comment"}
-    assert {k.value for k in packet.VALID_SUBKINDS} == set(g)
+    assert {k.value for k in message_format.VALID_SUBKINDS} == set(g)
     for kind, allowed in g.items():
-        assert packet.VALID_SUBKINDS[Kind(kind)] == frozenset(allowed)
+        assert message_format.VALID_SUBKINDS[Kind(kind)] == frozenset(allowed)
 
 
 def test_ping_payload_matches_contract():
@@ -171,7 +171,7 @@ def test_ping_payload_matches_contract():
     from app.services.room_channels import RoomChannelManager
 
     g = _contract()["ping"]
-    assert g["payload_type"] == packet.PING_PAYLOAD_TYPE
+    assert g["payload_type"] == message_format.PING_PAYLOAD_TYPE
 
     published: list[dict] = []
     original = bus.publish
@@ -182,7 +182,10 @@ def test_ping_payload_matches_contract():
         )
         asyncio.run(
             manager.raise_ping(
-                "acme", episode=packet.episode_urn("acme", "t3"), sender="avery", message_id="m1"
+                "acme",
+                episode=message_format.episode_urn("acme", "t3"),
+                sender="avery",
+                message_id="m1",
             )
         )
     finally:
@@ -210,8 +213,8 @@ def test_notice_payload_matches_contract():
     from app.services.room_channels import RoomChannelManager
 
     g = _contract()["notice"]
-    assert g["payload_type"] == packet.NOTICE_PAYLOAD_TYPE
-    assert set(g["subkinds"]) == set(packet.NOTICE_SUBKINDS)
+    assert g["payload_type"] == message_format.NOTICE_PAYLOAD_TYPE
+    assert set(g["subkinds"]) == set(message_format.NOTICE_SUBKINDS)
 
     published: list[dict] = []
     original = bus.publish
@@ -226,7 +229,7 @@ def test_notice_payload_matches_contract():
                 subkind="filed",
                 key="work/ship-auth",
                 title="ship auth",
-                episode=packet.episode_urn("acme", "t3"),
+                episode=message_format.episode_urn("acme", "t3"),
                 by="avery",
                 kind="action",
             )

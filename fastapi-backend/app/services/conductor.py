@@ -48,20 +48,20 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from app.config import settings
-from app.services import agreed, episode_state, markers, packet, protocols, tasks, turns
+from app.services import agreed, episode_state, markers, message_format, protocols, tasks, turns
 from app.services import frame as framing
 from app.services import select as choosing
 from app.services.agent_registry import norm_handle
 from app.services.aligner import _NON_PARTICIPANTS, _registered_engine_kind
 from app.services.episode_records import EPISODES_PREFIX
-from app.services.packet_models import Kind
+from app.services.message_models import Kind
 from app.services.persister import record_episode
 from app.services.tasks import mint_episode_id
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from app.services.packet_models import MyceliumPacket
+    from app.services.message_models import MyceliumMessage
     from app.services.persister import TranscriptRecord
     from app.services.protocols import Protocol, Step
     from app.services.room_channels import ManagedRoomChannel, RoomChannelManager
@@ -79,7 +79,13 @@ SHOW_DIRECTIVES = frozenset({"show", "spec"})
 
 #: Payloads that are never a member's answer to a step.
 _NOT_A_REPLY = frozenset(
-    {"presence", "keepalive", "tick", packet.PING_PAYLOAD_TYPE, packet.NOTICE_PAYLOAD_TYPE}
+    {
+        "presence",
+        "keepalive",
+        "tick",
+        message_format.PING_PAYLOAD_TYPE,
+        message_format.NOTICE_PAYLOAD_TYPE,
+    }
 )
 
 _MENTION = re.compile(r"@[\w.@-]+")
@@ -418,7 +424,7 @@ class ConductorEngine:
         self,
         room: str,
         handle: str,
-        envelope: MyceliumPacket,
+        envelope: MyceliumMessage,
         co_summons: list[str] | None = None,
         message_text: str = "",
     ) -> None:
@@ -435,7 +441,7 @@ class ConductorEngine:
         if sender is not None and _norm(sender) in {_norm(self._handle), _norm(handle)}:
             return
         summoned_in = (envelope.header.message.episode if envelope.header.message else None) or ""
-        thread = summoned_in or packet.live_episode_urn(room)
+        thread = summoned_in or message_format.live_episode_urn(room)
         key = (room, thread)
         if key in self._active:
             logger.debug("conductor already running in %s; ignoring re-summon", thread)
@@ -449,7 +455,7 @@ class ConductorEngine:
         # else on the loop runs: a member the summon woke cannot slip a reply
         # in ahead of the first step, and a persona mentioned as a role is not
         # asked a question. The room itself never holds a floor.
-        if not packet.is_live_episode(room, thread):
+        if not message_format.is_live_episode(room, thread):
             self._manager.hold_floor(room, thread, holder=handle)
         self._active.add(key)
         task = asyncio.create_task(
@@ -479,7 +485,7 @@ class ConductorEngine:
             logger.exception("conductor @%s failed in %s", engine_handle, thread)
         finally:
             # A run that never started still took the floor at the summon.
-            if not packet.is_live_episode(room, thread):
+            if not message_format.is_live_episode(room, thread):
                 self._manager.release_floor(room, thread)
             self._active.discard(key)
 
@@ -508,8 +514,8 @@ class ConductorEngine:
             logger.info("conductor summoned for %s but no live channel", room)
             return None
         me = engine_handle or self._handle
-        thread = episode or packet.live_episode_urn(room)
-        in_task = not packet.is_live_episode(room, thread)
+        thread = episode or message_format.live_episode_urn(room)
+        in_task = not message_format.is_live_episode(room, thread)
 
         name, ask = split_directive(directive)
         if name in LIST_DIRECTIVES:
@@ -575,7 +581,7 @@ class ConductorEngine:
         run.agreed = await asyncio.to_thread(agreed.for_prompt, room, run.task)
         ep = episode_state.EpisodeState(
             episode=thread,
-            topic=packet.topic_urn(room),
+            topic=message_format.topic_urn(room),
             parent_room=room,
             short_id=mint_episode_id(),
             workspace_id=managed.workspace,
@@ -585,7 +591,7 @@ class ConductorEngine:
             flow=run.flow(),
             within=thread,
         )
-        intent = packet.build_envelope(
+        intent = message_format.build_envelope(
             kind=Kind.intent,
             subkind="mission",
             episode=thread,
@@ -596,7 +602,7 @@ class ConductorEngine:
             payload_data={"content": f"run {protocol.name}: {ask}", "roles": bound},
         )
         ep.intent_id = intent.header.message.id if intent.header.message else ""
-        ep.messages.append(packet.envelope_to_dict(intent))
+        ep.messages.append(message_format.envelope_to_dict(intent))
         logger.info("conductor @%s runs %s in %s over %s", me, protocol.name, thread, handles)
         # The floor is the run's from the first instant. (The summon seam
         # already held it; a direct call takes it here.)
@@ -1308,7 +1314,7 @@ class ConductorEngine:
             is_reply=is_reply,
             timeout_s=self._step_timeout_s,
             poll_interval_s=self._poll_interval_s,
-            on_tick=lambda env: ep.messages.append(packet.envelope_to_dict(env)),
+            on_tick=lambda env: ep.messages.append(message_format.envelope_to_dict(env)),
             on_reply=on_reply,
         )
         if not answered:
@@ -1329,7 +1335,7 @@ class ConductorEngine:
         data: dict[str, Any],
     ) -> None:
         """A fire-and-forget step: say it to one member and move on."""
-        env = packet.build_envelope(
+        env = message_format.build_envelope(
             kind=Kind.exchange,
             episode=run.episode,
             sender=me,
@@ -1338,7 +1344,7 @@ class ConductorEngine:
             payload_type="message",
             payload_data=data,
         )
-        ep.messages.append(packet.envelope_to_dict(env))
+        ep.messages.append(message_format.envelope_to_dict(env))
         try:
             await managed.post(env, turns.neutralize_mentions(prompt))
         except Exception:
@@ -1385,7 +1391,7 @@ class ConductorEngine:
             # Where the shared summary or the decision was saved; null when the
             # write failed, so a reader can tell that from a run that saved none.
             data["memory"] = run.saved_to
-        commit = packet.build_envelope(
+        commit = message_format.build_envelope(
             kind=Kind.commit,
             subkind=outcome,
             episode=run.episode,
@@ -1395,7 +1401,7 @@ class ConductorEngine:
             payload_type="outcome",
             payload_data=data,
         )
-        ep.messages.append(packet.envelope_to_dict(commit))
+        ep.messages.append(message_format.envelope_to_dict(commit))
         text = f"{self._result_line(run, outcome, why)} Record: {EPISODES_PREFIX}{ep.short_id}."
         try:
             # A mention in a post would summon whoever it names; the close
@@ -1465,11 +1471,11 @@ class ConductorEngine:
         line: dict[str, Any] | None = None,
     ) -> None:
         """Post a plain message from the engine into ``episode``, with its line when it has one."""
-        env = packet.build_envelope(
+        env = message_format.build_envelope(
             kind=Kind.exchange,
             episode=episode,
             sender=sender,
-            topic=packet.topic_urn(managed.room),
+            topic=message_format.topic_urn(managed.room),
             payload_type="message",
             payload_data={LINE_KEY: line} if line else None,
         )

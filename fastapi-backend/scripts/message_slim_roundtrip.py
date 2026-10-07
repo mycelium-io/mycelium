@@ -1,24 +1,24 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""A packet round-trips over a SLIM group channel.
+"""A message round-trips over a SLIM group channel.
 
 Runs a moderator and a participant in one process against a running ``slim``
 node. The moderator creates a room channel and invites the participant; the
-participant publishes two causally-linked ``exchange`` packets (a root and a
-child parented on it); the moderator receives them through :class:`PacketChannel`
+participant publishes two causally-linked ``exchange`` messages (a root and a
+child parented on it); the moderator receives them through :class:`MessageChannel`
 and parses them back, in causal order, with the envelope intact. Prints ``OK``
 and exits 0 on success.
 
 Usage (with a node on :46357, e.g. via ``mycelium hub host``)::
 
     cd fastapi-backend
-    uv run python scripts/packet_slim_roundtrip.py
+    uv run python scripts/message_slim_roundtrip.py
     # or point at another node:
-    uv run python scripts/packet_slim_roundtrip.py http://127.0.0.1:46357
+    uv run python scripts/message_slim_roundtrip.py http://127.0.0.1:46357
 
 This is a manual aid; the guarded pytest equivalent lives in
-``tests/test_packet_over_slim_roundtrip.py``.
+``tests/test_message_over_slim_roundtrip.py``.
 """
 
 from __future__ import annotations
@@ -27,12 +27,12 @@ import asyncio
 import sys
 from pathlib import Path
 
-# Allow `python scripts/packet_slim_roundtrip.py` from the backend root.
+# Allow `python scripts/message_slim_roundtrip.py` from the backend root.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.services import packet
-from app.services.packet_models import Kind, MyceliumPacket
-from app.services.packet_slim import PacketChannel
+from app.services import message_format
+from app.services.message_models import Kind, MyceliumMessage
+from app.services.message_slim import MessageChannel
 from app.services.room_channels import RoomChannelManager
 from app.services.slim_client import (
     DEFAULT_NODE_ENDPOINT,
@@ -44,14 +44,14 @@ from app.services.slim_client import (
 
 _WORKSPACE = "acme"
 _ROOM = "l9-room"
-_EPISODE = packet.episode_urn(_ROOM, "roundtrip")
-_TOPIC = packet.topic_urn(_ROOM)
+_EPISODE = message_format.episode_urn(_ROOM, "roundtrip")
+_TOPIC = message_format.topic_urn(_ROOM)
 _ROOT_ID = "root-envelope-id"
 _CHILD_ID = "child-envelope-id"
 
 
-def _root_envelope() -> MyceliumPacket:
-    return packet.build_envelope(
+def _root_envelope() -> MyceliumMessage:
+    return message_format.build_envelope(
         kind=Kind.exchange,
         episode=_EPISODE,
         topic=_TOPIC,
@@ -61,8 +61,8 @@ def _root_envelope() -> MyceliumPacket:
     )
 
 
-def _child_envelope() -> MyceliumPacket:
-    return packet.build_envelope(
+def _child_envelope() -> MyceliumMessage:
+    return message_format.build_envelope(
         kind=Kind.exchange,
         episode=_EPISODE,
         parents=[_ROOT_ID],
@@ -73,25 +73,25 @@ def _child_envelope() -> MyceliumPacket:
     )
 
 
-async def run_roundtrip(endpoint: str = DEFAULT_NODE_ENDPOINT) -> list[MyceliumPacket]:
-    """Exchange two packets participant→moderator; return what the moderator parsed."""
+async def run_roundtrip(endpoint: str = DEFAULT_NODE_ENDPOINT) -> list[MyceliumMessage]:
+    """Exchange two messages participant→moderator; return what the moderator parsed."""
     moderator = await SlimClient(SlimIdentity(_WORKSPACE, _ROOM, "backend")).connect(endpoint)
     participant = await SlimClient(SlimIdentity(_WORKSPACE, _ROOM, "agent-a")).connect(endpoint)
 
     channel = to_channel_name(_WORKSPACE, _ROOM)
     session = await moderator.create_group(channel)
-    mod_channel = PacketChannel(moderator, session)
+    mod_channel = MessageChannel(moderator, session)
 
     participant_name = to_slim_name(_WORKSPACE, _ROOM, "agent-a")
 
     async def participant_side() -> None:
         joined = await participant.listen_for_session()
-        part_channel = PacketChannel(participant, joined)
+        part_channel = MessageChannel(participant, joined)
         await part_channel.send(_root_envelope())
         await part_channel.send(_child_envelope())
 
     participant_task = asyncio.create_task(participant_side())
-    received: list[MyceliumPacket] = []
+    received: list[MyceliumMessage] = []
     try:
         await moderator.invite(session, participant_name)
         # Two publishes → collect until both root and child have been released.
@@ -106,10 +106,10 @@ async def run_roundtrip(endpoint: str = DEFAULT_NODE_ENDPOINT) -> list[MyceliumP
 
 
 _ABORT_ROOM = "l9-abort-room"
-_ABORT_EPISODE = packet.episode_urn(_ABORT_ROOM, "abort-run")
+_ABORT_EPISODE = message_format.episode_urn(_ABORT_ROOM, "abort-run")
 
 
-async def run_episode_abort(endpoint: str = DEFAULT_NODE_ENDPOINT) -> MyceliumPacket:
+async def run_episode_abort(endpoint: str = DEFAULT_NODE_ENDPOINT) -> MyceliumMessage:
     """Prove episode-abort-on-membership-change end-to-end.
 
     The backend (via :class:`RoomChannelManager`) provisions a channel, invites
@@ -129,7 +129,7 @@ async def run_episode_abort(endpoint: str = DEFAULT_NODE_ENDPOINT) -> MyceliumPa
         a_listen = asyncio.create_task(agent_a.listen_for_session())
         await manager.invite(_ABORT_ROOM, "agent-a")
         a_session = await a_listen
-        a_channel = PacketChannel(agent_a, a_session)
+        a_channel = MessageChannel(agent_a, a_session)
 
         # Open an episode frozen over {agent-a}; then agent-b joins mid-episode.
         manager.open_episode(_ABORT_ROOM, _ABORT_EPISODE)
@@ -138,7 +138,7 @@ async def run_episode_abort(endpoint: str = DEFAULT_NODE_ENDPOINT) -> MyceliumPa
         await b_listen  # ensure b is fully in the group
 
         # The membership change published a commit:rejected onto the channel.
-        received: list[MyceliumPacket] = []
+        received: list[MyceliumMessage] = []
         while not received:
             received.extend(await a_channel.receive(timeout_s=15.0))
         return received[0]
@@ -149,18 +149,18 @@ async def run_episode_abort(endpoint: str = DEFAULT_NODE_ENDPOINT) -> MyceliumPa
 
 
 _INBOX_ROOM = "durable-inbox-room"
-_INBOX_EPISODE = packet.episode_urn(_INBOX_ROOM, "inbox-run")
+_INBOX_EPISODE = message_format.episode_urn(_INBOX_ROOM, "inbox-run")
 _HELLO_ID = "hello-from-a"
 _MISSED_ID = "missed-while-offline"
 
 
-def _agent_reply(sender: str, message_id: str) -> MyceliumPacket:
-    return packet.build_envelope(
+def _agent_reply(sender: str, message_id: str) -> MyceliumMessage:
+    return message_format.build_envelope(
         kind=Kind.exchange,
         episode=_INBOX_EPISODE,
         sender=sender,
-        recipients=[packet.SYSTEM_ACTOR_ID],
-        topic=packet.topic_urn(_INBOX_ROOM),
+        recipients=[message_format.SYSTEM_ACTOR_ID],
+        topic=message_format.topic_urn(_INBOX_ROOM),
         message_id=message_id,
         payload_type="reply",
         payload_data={"action": "offer"},
@@ -177,7 +177,7 @@ async def _wait_for(pred, *, timeout: float = 10.0) -> None:
         waited += 0.1
 
 
-async def run_durable_inbox(endpoint: str = DEFAULT_NODE_ENDPOINT) -> list[MyceliumPacket]:
+async def run_durable_inbox(endpoint: str = DEFAULT_NODE_ENDPOINT) -> list[MyceliumMessage]:
     """Verify the durable inbox end-to-end.
 
     The backend provisions a channel (starting its persister). ``agent-a`` joins
@@ -201,7 +201,7 @@ async def run_durable_inbox(endpoint: str = DEFAULT_NODE_ENDPOINT) -> list[Mycel
         a_listen = asyncio.create_task(agent_a.listen_for_session())
         await manager.invite(_INBOX_ROOM, "agent-a")
         a_session = await a_listen
-        await PacketChannel(agent_a, a_session).send(_agent_reply("agent-a", _HELLO_ID))
+        await MessageChannel(agent_a, a_session).send(_agent_reply("agent-a", _HELLO_ID))
         await _wait_for(lambda: "agent-a" in persister._contexts)
 
         # agent-a goes offline: dropped from the channel membership.
@@ -211,7 +211,7 @@ async def run_durable_inbox(endpoint: str = DEFAULT_NODE_ENDPOINT) -> list[Mycel
         b_listen = asyncio.create_task(agent_b.listen_for_session())
         await manager.invite(_INBOX_ROOM, "agent-b")
         b_session = await b_listen
-        await PacketChannel(agent_b, b_session).send(_agent_reply("agent-b", _MISSED_ID))
+        await MessageChannel(agent_b, b_session).send(_agent_reply("agent-b", _MISSED_ID))
         await _wait_for(
             lambda: any(r.message_id == _MISSED_ID for r in persister.log.undelivered("agent-a"))
         )
@@ -221,9 +221,9 @@ async def run_durable_inbox(endpoint: str = DEFAULT_NODE_ENDPOINT) -> list[Mycel
         a_relisten = asyncio.create_task(agent_a.listen_for_session())
         await manager.invite(_INBOX_ROOM, "agent-a")
         a_session2 = await a_relisten
-        a_channel2 = PacketChannel(agent_a, a_session2)
+        a_channel2 = MessageChannel(agent_a, a_session2)
 
-        received: list[MyceliumPacket] = []
+        received: list[MyceliumMessage] = []
         while not received:
             received.extend(await a_channel2.receive(timeout_s=15.0))
         return received

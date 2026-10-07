@@ -33,7 +33,7 @@ from mycelium.error_handler import print_error
 from mycelium.exceptions import MyceliumError
 from mycelium.identity import resolve_actor
 from mycelium.names import who
-from mycelium.slim.packet import room_episode
+from mycelium.slim.message_format import room_episode
 from mycelium.text_input import takes_text
 
 # The "raise-up" whitelist: message types promoted onto the primary channel
@@ -528,7 +528,7 @@ def frame_episode(mtype: str, msg: dict, data: dict) -> str | None:
     """The episode a tail frame belongs to, however it reached the tail.
 
     Chat arrives two ways — the history replay's folded row, which carries the
-    episode as a plain field, and the live stream's raw packet, which
+    episode as a plain field, and the live stream's raw message, which
     carries it in the header — so the question "which conversation is this?" has
     to be asked of both shapes to be worth asking at all.
     """
@@ -565,7 +565,7 @@ def _ping_line(data: dict, stamp: str) -> str | None:
     a line that has already scrolled past is what this surface declines to do
     for an amendment too.
     """
-    from mycelium.slim.packet import ping_of
+    from mycelium.slim.message_format import ping_of
 
     ping = ping_of(data)
     if ping is None:
@@ -584,7 +584,7 @@ def chat_line(mtype: str, msg: dict, data: dict, sender: str, stamp: str, own: s
     Chat reaches the tail two ways: the history replay hands back a plain
     ``broadcast`` the backend has already folded (so a revised message arrives as
     its newest text, stamped ``edited_at``), while the live stream carries the raw
-    packet — including an amendment, which arrives as the message it is. A
+    message — including an amendment, which arrives as the message it is. A
     tail is a tail: it shows the amendment as it lands rather than rewriting a line
     that already scrolled past, but marks it an edit and names what it revises.
     """
@@ -703,9 +703,9 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
             return "\n".join(lines)
 
         if mtype == "l9_knowledge":
-            packet_payload = data.get("l9", {}).get("payload", {}).get("data", {})
-            key = packet_payload.get("key", "memory")
-            by = packet_payload.get("updated_by")
+            message_payload = data.get("l9", {}).get("payload", {}).get("data", {})
+            key = message_payload.get("key", "memory")
+            by = message_payload.get("updated_by")
             text = data.get("content") or f"{key} updated"
             suffix = f" [dim]by {by}[/]" if by else ""
             return f"  {ts()}  [yellow]knowledge[/] {text}{suffix}"

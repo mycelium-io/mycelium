@@ -180,7 +180,7 @@ async def test_an_update_records_the_token_as_updated_by(client: AsyncClient, as
     assert body["updated_by"] == "alice"
 
 
-# ── transcript sender + packet actor ──────────────────────────────────────────────
+# ── transcript sender + message actor ──────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -280,7 +280,7 @@ async def test_reply_as_an_owned_agent_is_allowed(client: AsyncClient, as_princi
 
 
 @pytest.mark.asyncio
-async def test_reply_stamps_the_token_handle_on_the_packet_actor(
+async def test_reply_stamps_the_token_handle_on_the_message_actor(
     client: AsyncClient, as_principal, monkeypatch
 ):
     """The published envelope names the token's handle, whatever the body said."""

@@ -39,7 +39,7 @@ members: Other MLS members\n(custodial sessions,\nother hubs, aligner) {class: c
 # --- Outbound turn: respond ---
 cli -> hub.route: "1. POST /api/rooms/<room>/reply  (handle, text)" {class: http}
 hub.route -> hub.persist: "2. ingest_local (durable record)" {class: http}
-hub.route -> hub.mod: "3. build packet -> channel.send" {class: http}
+hub.route -> hub.mod: "3. build message -> channel.send" {class: http}
 hub.mod -> slim: "4. SlimClient.publish  (MLS ciphertext)\nslim_client.py:482-489" {class: slim}
 slim -> members: "5. group multicast" {class: slim}
 

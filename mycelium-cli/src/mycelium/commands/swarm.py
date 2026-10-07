@@ -56,7 +56,7 @@ from mycelium.client import hub_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.names import who
-from mycelium.slim.packet import payload_data_of, payload_type_of
+from mycelium.slim.message_format import payload_data_of, payload_type_of
 
 console = Console()
 

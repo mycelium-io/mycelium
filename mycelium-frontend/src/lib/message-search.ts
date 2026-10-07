@@ -75,7 +75,7 @@ export const FIELDS: FieldDoc[] = [
   { name: "task", value: "<task>", about: "said in this task's thread, by key or title" },
   { name: "in", value: "channel|thread", about: "said in the room, or inside a task" },
   { name: "type", value: "<type>", about: "the message's type" },
-  { name: "kind", value: "<kind>", about: "an event's kind, or the packet subkind it rode" },
+  { name: "kind", value: "<kind>", about: "an event's kind, or the message subkind it rode" },
   { name: "status", value: "<status>", about: "an event's ledger status" },
   { name: "stance", value: "accept|reject", about: "how the message landed" },
   { name: "step", value: "<step>", about: "the conductor step it belongs to" },

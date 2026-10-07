@@ -7,7 +7,7 @@
  * Every surface that renders a room message as prose — the channel feed, the
  * board's daily log — reads it through {@link parseEvent}, and every surface
  * that needs the parsed envelope without the prose (the notification
- * classifier, the packet inspector) shares {@link unwrapContent}, the
+ * classifier, the message inspector) shares {@link unwrapContent}, the
  * parse-and-fall-back preamble: content may be a JSON string or an object,
  * the payload may be nested under `.payload`, fall back rather than throw.
  * A change to a payload's shape lands here once, not once per surface.
@@ -178,7 +178,7 @@ export function parseEvent(msg: Record<string, unknown>): Event {
         };
         break;
       }
-      // The live SSE stream wraps human/agent messages as an exchange packet
+      // The live SSE stream wraps human/agent messages as an exchange message
       // envelope, while the REST snapshot (loaded on mount/refresh) delivers the
       // same message as a plain "broadcast". Unwrap the prose and normalize to
       // the chat shape so the live feed matches a refresh instead of silently
@@ -188,11 +188,11 @@ export function parseEvent(msg: Record<string, unknown>): Event {
       break;
     }
     case "l9_commit": {
-      // Unwrap the commit packet envelope into the coordination_consensus shape
-      // the channel notice row and the packet inspector both read.
-      const packet = (raw.l9 as Record<string, unknown> | undefined) ?? {};
-      const header = (packet.header as Record<string, unknown> | undefined) ?? {};
-      const payload = (packet.payload as Record<string, unknown> | undefined) ?? {};
+      // Unwrap the commit message envelope into the coordination_consensus shape
+      // the channel notice row and the message inspector both read.
+      const envelope = (raw.l9 as Record<string, unknown> | undefined) ?? {};
+      const header = (envelope.header as Record<string, unknown> | undefined) ?? {};
+      const payload = (envelope.payload as Record<string, unknown> | undefined) ?? {};
       const data = (payload.data as Record<string, unknown> | undefined) ?? {};
       const message = header.message as Record<string, unknown> | undefined;
       content = (raw.content as string) || "";
@@ -213,10 +213,10 @@ export function parseEvent(msg: Record<string, unknown>): Event {
     }
     case "l9_knowledge": {
       // A memory push (e.g. a compiled task landing in the room) rides as
-      // a "knowledge" packet envelope. Recognized as its own system notice rather
+      // a "knowledge" message envelope. Recognized as its own system notice rather
       // than falling to the unhandled-type fallback.
-      const packet = (raw.l9 as Record<string, unknown> | undefined) ?? {};
-      const payload = (packet.payload as Record<string, unknown> | undefined) ?? {};
+      const envelope = (raw.l9 as Record<string, unknown> | undefined) ?? {};
+      const payload = (envelope.payload as Record<string, unknown> | undefined) ?? {};
       const data = (payload.data as Record<string, unknown> | undefined) ?? {};
       content = (raw.content as string) || `${(data.key as string) ?? "memory"} updated`;
       raw = { ...raw, key: data.key, updated_by: data.updated_by, version: data.version };
@@ -241,14 +241,14 @@ export function parseEvent(msg: Record<string, unknown>): Event {
       | undefined)?.episode as string ||
     null;
 
-  // An amendment names the message it revises: over SSE that's the packet's
+  // An amendment names the message it revises: over SSE that's the message's
   // subkind + parents, on the REST snapshot the backend has already folded it and
   // only the `edited_at` stamp survives.
-  const packetHeader = ((raw.l9 as Record<string, unknown> | undefined)?.header ??
+  const envelopeHeader = ((raw.l9 as Record<string, unknown> | undefined)?.header ??
     {}) as Record<string, unknown>;
-  const parents = (packetHeader.message as Record<string, unknown> | undefined)?.parents;
+  const parents = (envelopeHeader.message as Record<string, unknown> | undefined)?.parents;
   const amends =
-    packetHeader.subkind === "amend" && Array.isArray(parents) && typeof parents[0] === "string"
+    envelopeHeader.subkind === "amend" && Array.isArray(parents) && typeof parents[0] === "string"
       ? (parents[0] as string)
       : typeof msg.amends === "string"
         ? msg.amends

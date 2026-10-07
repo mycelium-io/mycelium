@@ -44,17 +44,17 @@ from a2a.client import ClientConfig, ClientFactory
 from a2a.client.errors import A2AClientError
 from a2a.types import Message, Part, Role, SendMessageRequest, StreamResponse
 
-from app.services import a2a_activity, packet
+from app.services import a2a_activity, message_format
 from app.services.a2a_card import A2aCardError, resolve_raw_card
 from app.services.agent_registry import norm_handle
 from app.services.persister import envelope_message_id, envelope_sender
 
 
 def _bare_sender(value: str | None) -> str | None:
-    """Normalize a packet sender to a bare slug, stripping any ``#session`` qualifier.
+    """Normalize a message sender to a bare slug, stripping any ``#session`` qualifier.
 
     Stored slugs (allow_from, owner, agent handles) carry no session suffix;
-    packet actor ids may carry one (``alice#a8f3``). Stripping before any comparison
+    message actor ids may carry one (``alice#a8f3``). Stripping before any comparison
     against stored values ensures session-qualified senders are treated as their
     underlying handle.
     """
@@ -64,7 +64,7 @@ def _bare_sender(value: str | None) -> str | None:
 
 
 if TYPE_CHECKING:
-    from app.services.packet_models import MyceliumPacket
+    from app.services.message_models import MyceliumMessage
     from app.services.room_channels import RoomChannelManager
 
 logger = logging.getLogger(__name__)
@@ -277,7 +277,7 @@ class A2aResponder:
         self,
         room: str,
         handle: str,
-        envelope: MyceliumPacket,
+        envelope: MyceliumMessage,
         co_summons: list[str] | None = None,
         message_text: str = "",
     ) -> None:
@@ -286,7 +286,7 @@ class A2aResponder:
             return  # not an a2a agent — let the engines / a teammate handle it
         sender = envelope_sender(envelope)
         # Strip any #session qualifier from the sender before all comparisons
-        # against stored slugs — manifests store bare handles, packet actor ids may
+        # against stored slugs — manifests store bare handles, message actor ids may
         # carry a qualifier (alice#a8f3).
         sender_bare = _bare_sender(sender)
         if sender_bare == norm_handle(handle):
@@ -359,7 +359,7 @@ class A2aResponder:
         handle: str,
         ref: A2aAgentRef,
         prompt: str,
-        envelope: MyceliumPacket,
+        envelope: MyceliumMessage,
         key: tuple[str, str | None, str],
         auth_token: str | None = None,
     ) -> None:
@@ -408,7 +408,7 @@ class A2aResponder:
             self._active.discard(key)
 
     async def _respond(
-        self, room: str, handle: str, text: str, in_reply_to: MyceliumPacket
+        self, room: str, handle: str, text: str, in_reply_to: MyceliumMessage
     ) -> None:
         """Post ``text`` into the room as ``handle``, addressed to the summoner."""
         managed = self._manager.get(room)
@@ -417,15 +417,17 @@ class A2aResponder:
         summoner = envelope_sender(in_reply_to)
         parent = envelope_message_id(in_reply_to)
         msg = in_reply_to.header.message
-        episode = (msg.episode if msg and msg.episode else None) or packet.episode_urn(room, "live")
-        env = packet.build_envelope(
-            kind=packet.Kind.exchange,
+        episode = (msg.episode if msg and msg.episode else None) or message_format.episode_urn(
+            room, "live"
+        )
+        env = message_format.build_envelope(
+            kind=message_format.Kind.exchange,
             episode=episode,
             parents=[parent] if parent else None,
             sender=handle,
             sender_role="agent",
             recipients=[summoner] if summoner else None,
-            topic=packet.topic_urn(room),
+            topic=message_format.topic_urn(room),
             payload_type="reply",
         )
         await managed.post(env, text, list_write=True)

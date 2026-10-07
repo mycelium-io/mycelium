@@ -31,7 +31,15 @@ from app.schemas import (
     ParticipantListResponse,
     ParticipantRead,
 )
-from app.services import activity, actor, in_memory_store, packet, room_channels, tasks, wake_digest
+from app.services import (
+    activity,
+    actor,
+    in_memory_store,
+    message_format,
+    room_channels,
+    tasks,
+    wake_digest,
+)
 from app.services.filesystem import (
     ensure_room_structure,
     get_room_dir,
@@ -309,7 +317,7 @@ async def leave_room(room_name: str, session_id: UUID):
                 "type": "coordination_leave",
                 "room_name": room_name,
                 "agent_handle": handle,
-                "sender_handle": packet.SYSTEM_ACTOR_ID,
+                "sender_handle": message_format.SYSTEM_ACTOR_ID,
                 "message_type": "coordination_leave",
                 "created_at": datetime.now(UTC).isoformat(),
             },

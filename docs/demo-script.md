@@ -197,7 +197,7 @@ mycelium respond --room design-review --handle avery-agent \
 ```
 
 Repeat `await` → `respond` until the aligner reaches consensus. Agents never speak
-SLIM or build packets; two stateless HTTP calls carry the whole loop.
+SLIM or build messages; two stateless HTTP calls carry the whole loop.
 
 ### Consensus → plan → work
 

@@ -12,7 +12,7 @@ live node, but a connector never creates a group: one moderator per room, and
 it's the backend.
 
 ``slim_bindings`` is imported **lazily** (native Rust wheel, per-platform): the
-pure packet helpers and the daemon's dispatch logic import cleanly where no wheel
+pure message helpers and the daemon's dispatch logic import cleanly where no wheel
 exists, and a missing wheel degrades to a clear :class:`SlimUnavailableError`
 rather than an import-time crash.
 """

@@ -28,7 +28,7 @@ from typing import Any, Literal
 
 from app.bus import bus, room_channel
 
-#: The frame's ``type``/``message_type``. Not an packet kind and not a raise-up type:
+#: The frame's ``type``/``message_type``. Not a message kind and not a raise-up type:
 #: the GUI intercepts it before its message parser, the CLI's ``room watch``
 #: drops a frame with no ``content``, and the notification classifier ignores
 #: what it does not name.

@@ -14,10 +14,10 @@ from urllib.parse import quote
 
 import pytest
 
-from app.services import packet, persister
+from app.services import message_format, persister
 from app.services.filesystem import get_room_dir
-from app.services.packet_models import Kind
-from app.services.packet_slim import serialize_content
+from app.services.message_models import Kind
+from app.services.message_slim import serialize_content
 
 ROOM = "paging-room"
 START = datetime(2026, 8, 20, 9, 0, tzinfo=UTC)
@@ -25,11 +25,11 @@ START = datetime(2026, 8, 20, 9, 0, tzinfo=UTC)
 
 def _record(index: int):
     """One transcript line, a minute after the one before it."""
-    env = packet.build_envelope(
+    env = message_format.build_envelope(
         kind=Kind.exchange,
         episode=f"urn:ioc:mycelium:episode:{ROOM}:live",
         sender="julia",
-        recipients=[packet.SYSTEM_ACTOR_ID],
+        recipients=[message_format.SYSTEM_ACTOR_ID],
         topic=f"urn:concept:mycelium:{ROOM}",
         message_id=f"m-{index:03d}",
         payload_type="reply",
@@ -105,7 +105,7 @@ async def test_paging_back_reaches_the_start_and_stops(client, transcript):
 
 
 @pytest.mark.asyncio
-async def test_the_packet_replay_takes_the_same_cursor(client, transcript):
+async def test_the_message_replay_takes_the_same_cursor(client, transcript):
     """The channel's feed is both reads merged, so paging only the prose would
     hand back older pages with the pings and board notices missing."""
     frames = (await client.get(f"/api/rooms/{ROOM}/messages/wire?limit=4")).json()

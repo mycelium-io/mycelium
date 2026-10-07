@@ -33,19 +33,19 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
-from app.services import packet, task_compiler
+from app.services import message_format, task_compiler
 from app.services.filesystem import get_room_dir, list_memory_files, read_memory_file
 from app.services.tasks import ASSIGNEE_FIELD, TASK_KIND, WORK_NAMESPACE, slugify
 
 if TYPE_CHECKING:
-    from app.services.packet_models import MyceliumPacket
+    from app.services.message_models import MyceliumMessage
     from app.services.room_channels import RoomChannelManager
     from app.services.task_compiler import CompiledTask
 
 logger = logging.getLogger(__name__)
 
 
-def _assignments_from(envelope: MyceliumPacket) -> dict[str, str]:
+def _assignments_from(envelope: MyceliumMessage) -> dict[str, str]:
     """The ``assignments`` map the aligner put on the converged envelope.
 
     Coerced to ``{issue: str}`` — a value may be an ``offer`` dict, which the
@@ -64,7 +64,7 @@ def _assignments_from(envelope: MyceliumPacket) -> dict[str, str]:
 PARENT_RELATION = "part-of"
 
 
-def _parent_from(room: str, envelope: MyceliumPacket) -> str | None:
+def _parent_from(room: str, envelope: MyceliumMessage) -> str | None:
     """The task an agreement was reached in (``within`` on the envelope), when
     that row still exists. A row deleted mid-run is not pointed at, the same
     refusal ``board new --parent`` gives a missing parent."""
@@ -119,7 +119,7 @@ class TaskSyncEngine:
 
     # -- the on_converged seam (sync; room-bound by the manager's adapter) --
 
-    def handle_converged(self, room: str, envelope: MyceliumPacket) -> None:
+    def handle_converged(self, room: str, envelope: MyceliumMessage) -> None:
         """Schedule the compile run for a room's converged verdict.
 
         Only a verdict that carries ``assignments`` (the aligner's) is work to
@@ -139,7 +139,7 @@ class TaskSyncEngine:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
-    async def _run_and_release(self, room: str, envelope: MyceliumPacket) -> None:
+    async def _run_and_release(self, room: str, envelope: MyceliumMessage) -> None:
         try:
             await self.compile_and_write(room, envelope)
         except Exception:
@@ -149,7 +149,7 @@ class TaskSyncEngine:
 
     # -- the run --
 
-    async def compile_and_write(self, room: str, envelope: MyceliumPacket) -> list[str]:
+    async def compile_and_write(self, room: str, envelope: MyceliumMessage) -> list[str]:
         """Compile the verdict into ``work/`` rows and return the keys written."""
         assignments = _assignments_from(envelope)
         tasks = await self._compile(room, assignments)
@@ -215,7 +215,7 @@ class TaskSyncEngine:
                     MemoryCreate(
                         key=key,
                         value=task.title,
-                        created_by=packet.SYSTEM_ACTOR_ID,
+                        created_by=message_format.SYSTEM_ACTOR_ID,
                         meta=meta,
                     )
                 ]

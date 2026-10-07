@@ -16,10 +16,10 @@ fields a message has:
 
 =============  ================================================================
 ``from:``      who said it (``@handle`` is shorthand; ``sender:``, ``by:``)
-``to:``        who it was addressed to: a direct recipient or a packet recipient
+``to:``        who it was addressed to: a direct recipient or a message recipient
 ``mentions:``  who it ``@``-mentions in its text, silent ``@~`` ones included
 ``type:``      message type (``broadcast``, ``direct``, ``announce`` …)
-``kind:``      an event's kind, or the packet subkind it rode (``amend`` …)
+``kind:``      an event's kind, or the message subkind it rode (``amend`` …)
 ``status:``    an event's ledger status
 ``task:``      the board row whose thread it was said in, by key or title
 ``thread:``    the episode URN, or its short id
@@ -45,7 +45,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from app.schemas import PROSE_MESSAGE_TYPES
-from app.services import facet_query, markers, packet, persister
+from app.services import facet_query, markers, message_format, persister
 from app.services.facet_query import FacetQuery, Field
 
 if TYPE_CHECKING:
@@ -144,7 +144,7 @@ def _side_of(record: persister.TranscriptRecord) -> Side:
     header = (record.content.get("l9") or {}).get("header") or {}
     actors = ((header.get("participants") or {}).get("actors")) or []
     ids = [a.get("id") for a in actors if isinstance(a, dict) and isinstance(a.get("id"), str)]
-    recipients = tuple(h for h in ids[1:] if h and h != packet.SYSTEM_ACTOR_ID)
+    recipients = tuple(h for h in ids[1:] if h and h != message_format.SYSTEM_ACTOR_ID)
     return Side(
         recipients=recipients,
         stance=markers.stance_of(record.content),
@@ -352,7 +352,7 @@ def search(
     sides = transcript_sides(room)
     rows = thread_rows(room)
     titles = {key: title for key, title in rows.values()}
-    live = packet.live_episode_urn(room)
+    live = message_format.live_episode_urn(room)
 
     named_types = {c.value.lower() for c in query.clauses if c.field == "type" and not c.negate}
     timeline = sorted(

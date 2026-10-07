@@ -13,14 +13,14 @@ each one's notes, and the room has members that answer without a resident
 session behind any of them.
 
 It answers on two seams. A text ``@``-mention is a summon, like any engine's.
-An **addressed turn** — an exchange naming it as a packet recipient with nobody
+An **addressed turn** — an exchange naming it as a message recipient with nobody
 mentioned in the text, which is how the aligner and the conductor put a
 question to one member — reaches it through the persister's addressed hook,
 so a persona can fill a protocol role or a negotiation seat. Either way it
 answers where it was asked, in the thread the turn rode.
 
 A reply ending in a position marker is lifted the way the reply route lifts
-one: the stance lands on the packet payload and the prose is posted clean, so a
+one: the stance lands on the message payload and the prose is posted clean, so a
 guardian played by a persona blocks a gated step the same as a resident agent
 would. Every ``@`` in what it says is neutralized before posting, so a persona
 can never summon anything, and two personas cannot ping-pong.
@@ -39,13 +39,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
-from app.services import activity, markers, packet, turns
+from app.services import activity, markers, message_format, turns
 from app.services.aligner import _norm, _registered_engine_kind
-from app.services.packet_models import Kind
+from app.services.message_models import Kind
 from app.services.synthesizer import _strip_fences
 
 if TYPE_CHECKING:
-    from app.services.packet_models import MyceliumPacket
+    from app.services.message_models import MyceliumMessage
     from app.services.room_channels import ManagedRoomChannel, RoomChannelManager
 
 logger = logging.getLogger(__name__)
@@ -87,7 +87,7 @@ def _build_prompt(
 
 def _agreed_in(room: str, episode: str) -> str:
     """What the team agreed for the task whose thread ``episode`` is, or ``""``."""
-    if packet.is_live_episode(room, episode):
+    if message_format.is_live_episode(room, episode):
         return ""
     from app.services import agreed, tasks
 
@@ -175,7 +175,7 @@ class PersonaEngine:
         self,
         room: str,
         handle: str,
-        envelope: MyceliumPacket,
+        envelope: MyceliumMessage,
         co_summons: list[str] | None = None,
         message_text: str = "",
     ) -> None:
@@ -195,12 +195,12 @@ class PersonaEngine:
         self._fire(room, handle, envelope, message_text)
 
     def handle_addressed(
-        self, room: str, handle: str, envelope: MyceliumPacket, message_text: str
+        self, room: str, handle: str, envelope: MyceliumMessage, message_text: str
     ) -> None:
         """An addressed turn naming a registered persona as recipient: answer it."""
         self._fire(room, handle, envelope, message_text)
 
-    def _fire(self, room: str, handle: str, envelope: MyceliumPacket, message_text: str) -> None:
+    def _fire(self, room: str, handle: str, envelope: MyceliumMessage, message_text: str) -> None:
         if _registered_engine_kind(room, handle) != ENGINE_KIND:
             return
         if settings.ENGINE_RUNTIME == "host":
@@ -220,7 +220,7 @@ class PersonaEngine:
         text = turns.neutralize_mentions(message_text).strip()
         task = asyncio.create_task(
             self._run_and_release(
-                room, handle, episode or packet.live_episode_urn(room), sender, text, key
+                room, handle, episode or message_format.live_episode_urn(room), sender, text, key
             )
         )
         self._tasks.add(task)
@@ -261,8 +261,8 @@ class PersonaEngine:
         """
         me = engine_handle or self._handle
         managed = self._manager.get(room)
-        where = episode or packet.live_episode_urn(room)
-        in_thread = not packet.is_live_episode(room, where)
+        where = episode or message_format.live_episode_urn(room)
+        in_thread = not message_format.is_live_episode(room, where)
         system = _persona_text(room, me)
         said = await asyncio.to_thread(_agreed_in, room, where)
         prompt = _build_prompt(room, me, sender, text, in_thread=in_thread, agreed=said)
@@ -311,12 +311,12 @@ class PersonaEngine:
         if floor is not None and not floor.admits(sender):
             logger.info("persona @%s is off the floor in %s; not posting", sender, episode)
             return
-        env = packet.build_envelope(
+        env = message_format.build_envelope(
             kind=Kind.exchange,
             episode=episode,
             sender=sender,
             sender_role="agent",
-            topic=packet.topic_urn(managed.room),
+            topic=message_format.topic_urn(managed.room),
             payload_type="reply",
             payload_data=payload or {"action": "reply"},
         )

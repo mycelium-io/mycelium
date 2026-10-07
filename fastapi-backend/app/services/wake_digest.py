@@ -25,7 +25,7 @@ from collections import Counter
 from datetime import UTC, datetime
 from typing import Any
 
-from app.services import assignments, packet
+from app.services import assignments, message_format
 from app.services.agent_registry import norm_handle
 from app.services.persister import _conversational_text, parse_recorded_at, record_episode
 
@@ -73,7 +73,7 @@ def cut(text: str, limit: int) -> str:
 
 def _where(room: str, episode: str | None) -> tuple[str, str] | None:
     """The ``(key, title)`` of the task a thread belongs to; ``None`` for the room."""
-    if not episode or packet.is_live_episode(room, episode):
+    if not episode or message_format.is_live_episode(room, episode):
         return None
     from app.services.tasks import row_of_episode
 
@@ -159,7 +159,7 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
 
     def place_of(record: Any) -> str | None:
         ep = record_episode(record)
-        return None if not ep or packet.is_live_episode(room, ep) else ep
+        return None if not ep or message_format.is_live_episode(room, ep) else ep
 
     here = place_of(asked[-1]) if asked else None
     said = [r for r in since if _conversational_text(r.content)]
@@ -169,7 +169,7 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
         1
         for r in since
         if ((r.content.get("l9") or {}).get("payload") or {}).get("type")
-        == packet.NOTICE_PAYLOAD_TYPE
+        == message_format.NOTICE_PAYLOAD_TYPE
     )
     by = Counter(r.sender for r in in_here if r.sender)
 

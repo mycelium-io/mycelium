@@ -18,14 +18,14 @@ from typing import Any
 import pytest
 import yaml
 
-from app.services import packet, persona_engine
+from app.services import message_format, persona_engine
 from app.services.filesystem import get_room_dir, write_memory_file
-from app.services.packet_models import Kind
+from app.services.message_models import Kind
 from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
 
 _ROOM = "persona-room"
-_LIVE = packet.live_episode_urn(_ROOM)
-_THREAD = packet.episode_urn(_ROOM, "t1")
+_LIVE = message_format.live_episode_urn(_ROOM)
+_THREAD = message_format.episode_urn(_ROOM, "t1")
 
 
 def _engine() -> tuple[persona_engine.PersonaEngine, FakeManaged]:
@@ -47,12 +47,12 @@ def _notes(handle: str, text: str) -> None:
 
 
 def _env(sender: str, *, episode: str = _LIVE, recipients: list[str] | None = None) -> Any:
-    return packet.build_envelope(
+    return message_format.build_envelope(
         kind=Kind.exchange,
         episode=episode,
         sender=sender,
         recipients=recipients,
-        topic=packet.topic_urn(_ROOM),
+        topic=message_format.topic_urn(_ROOM),
         payload_type="tick" if recipients else "message",
     )
 

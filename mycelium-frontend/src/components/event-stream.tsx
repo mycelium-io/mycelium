@@ -34,7 +34,7 @@ import { RoomBoard } from "@/components/board/room-board";
 import { ActivityRail, type ActivityItem } from "@/components/activity-rail";
 import { Ago, NowProvider } from "@/lib/relative-time";
 import { EpisodeTag } from "@/components/episode-tag";
-import { PacketInspector } from "@/components/packet-inspector";
+import { MessageInspector } from "@/components/message-inspector";
 import { RoomA2aView } from "@/components/room-a2a";
 import { RoomSlimView } from "@/components/room-slim";
 import { EmptyState } from "@/components/empty-state";
@@ -70,7 +70,7 @@ function rowNode(root: HTMLElement | null, id: string): HTMLElement | null {
   return null;
 }
 
-// The "raise-up" whitelist: message types promoted from the packet inspector
+// The "raise-up" whitelist: message types promoted from the message inspector
 // into the primary channel/chat surface. This must mirror
 // contracts/channel-surface.json's `raise_up_types` byte-for-byte — the CLI
 // (mycelium-cli/src/mycelium/commands/room.py) carries an independent copy,
@@ -1118,7 +1118,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
       ) : view === "network" ? (
         // Unified Network pane: SLIM channel diagnostics as a rail on top, the
         // A2A bridge (the room's off-channel traffic) beneath it when there is
-        // one, and the live packet feed filling the rest.
+        // one, and the live message feed filling the rest.
         <div className="flex flex-1 min-h-0 flex-col">
           <div className="shrink-0 border-b border-border bg-surface/40">
             <RoomSlimView roomName={roomName} layout="rail" />
@@ -1127,7 +1127,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
             <RoomA2aView roomName={roomName} />
           </div>
           <div className="flex-1 min-h-0">
-            <PacketInspector roomName={roomName} />
+            <MessageInspector roomName={roomName} />
           </div>
         </div>
       ) : (

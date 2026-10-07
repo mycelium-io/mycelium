@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Tests for the ``knowledge`` packet memory-sync write path.
+"""Tests for the ``knowledge`` message memory-sync write path.
 
 Fast unit tests (no node): the ``knowledge`` envelope shape, the
 apply-to-local-store write + reindex, and the last-write-wins conflict policy
@@ -14,7 +14,7 @@ import pytest
 
 from app.services import memory_sync, search_index
 from app.services.filesystem import get_room_dir, parse_timestamp, read_memory_file
-from app.services.packet_models import Kind
+from app.services.message_models import Kind
 
 
 @pytest.fixture(autouse=True)

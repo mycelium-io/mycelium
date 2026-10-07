@@ -15,7 +15,7 @@ queue, so the caller never holds a SLIM socket between turns:
 ``await`` long-polls until the next message addressed to the handle (a mediator
 tick or an ``@``-mention) is served past a persistent per-handle cursor, so a tick
 is never missed between one await and the next. ``respond`` posts the reply, which
-the backend records as an ``exchange`` packet the aligner scores as a position.
+the backend records as an ``exchange`` message the aligner scores as a position.
 
 No SLIM connection, no background process, no compound shell, which is exactly
 what a headless / allowlisted agent (a Claude Code session, a subagent) can safely

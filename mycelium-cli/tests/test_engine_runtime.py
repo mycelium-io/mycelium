@@ -20,7 +20,7 @@ import pytest
 pytest.importorskip("negmas", reason="negmas not installed; install mycelium[engine]")
 
 from mycelium.engine.runtime import NegotiationRunner
-from mycelium.slim import packet
+from mycelium.slim import message_format
 
 
 def _fake_brain(prompt: str, *, system: str = "", temperature: float = 0.3) -> str:
@@ -42,11 +42,11 @@ class _FakeChannel:
 
     async def publish(self, content: dict[str, Any]) -> None:
         self.published.append(content)
-        data = packet.payload_data_of(content) or {}
+        data = message_format.payload_data_of(content) or {}
         if data.get("action") == "position":  # a mediator prompt → enqueue the agent's reply
-            for handle in packet.recipients_of(content):
+            for handle in message_format.recipients_of(content):
                 self._inbox.append(
-                    packet.build_reply_content(
+                    message_format.build_reply_content(
                         sender=handle,
                         recipients=["mediator-1"],
                         episode="ep",
@@ -82,16 +82,16 @@ async def test_drive_converges_and_emits_commit() -> None:
     commits = [
         c
         for c in channel.published
-        if (packet.envelope_of(c) or {}).get("header", {}).get("kind") == "commit"
+        if (message_format.envelope_of(c) or {}).get("header", {}).get("kind") == "commit"
     ]
     assert len(commits) == 1
     assert commits[0]["l9"]["header"]["subkind"] == "converged"
-    assert packet.payload_data_of(commits[0])["assignments"] == {"cap": "30"}
+    assert message_format.payload_data_of(commits[0])["assignments"] == {"cap": "30"}
     # It addressed the agents (published prompts) but stopped below the cap.
     prompts = [
         c
         for c in channel.published
-        if (packet.payload_data_of(c) or {}).get("action") == "position"
+        if (message_format.payload_data_of(c) or {}).get("action") == "position"
     ]
     assert 0 < len(prompts) < 12
 
@@ -114,6 +114,6 @@ async def test_drive_rejects_when_no_issues() -> None:
     commits = [
         c
         for c in channel.published
-        if (packet.envelope_of(c) or {}).get("header", {}).get("kind") == "commit"
+        if (message_format.envelope_of(c) or {}).get("header", {}).get("kind") == "commit"
     ]
     assert commits and commits[0]["l9"]["header"]["subkind"] == "rejected"

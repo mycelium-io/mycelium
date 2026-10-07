@@ -192,7 +192,7 @@ def read_memory(base_dir: Path, key: str) -> tuple[dict[str, Any], str] | None:
 
 
 # ── Knowledge sync ───────────────────────────────────────────────────────────
-# The receiver half of the ``knowledge`` packet write path: a connector applies a
+# The receiver half of the ``knowledge`` message write path: a connector applies a
 # carried memory write into its local store. Mirrors the backend's
 # ``app.services.memory_sync.apply_knowledge_to_dir``, kept as a tiny local copy
 # because the CLI does not import the backend package. Conflict policy:

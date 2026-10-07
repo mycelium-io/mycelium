@@ -16,13 +16,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services import packet, tasks
+from app.services import message_format, tasks
 from app.services.floor import Floor
 from app.services.room_channels import ManagedRoomChannel, RoomChannelManager
 
 ROOM = "floored"
-THREAD = packet.episode_urn(ROOM, "t3")
-OTHER = packet.episode_urn(ROOM, "t9")
+THREAD = message_format.episode_urn(ROOM, "t3")
+OTHER = message_format.episode_urn(ROOM, "t9")
 
 
 def _manager() -> tuple[RoomChannelManager, ManagedRoomChannel]:
@@ -70,7 +70,10 @@ class TestHoldingTheFloor:
 
     def test_the_room_itself_never_holds_a_floor(self):
         manager, managed = _manager()
-        assert manager.hold_floor(ROOM, packet.live_episode_urn(ROOM), holder="conductor") is None
+        assert (
+            manager.hold_floor(ROOM, message_format.live_episode_urn(ROOM), holder="conductor")
+            is None
+        )
         assert managed.floors == {}
 
     def test_holding_replaces_and_releasing_opens(self):
@@ -126,7 +129,7 @@ class TestTheWriteGate:
         assert self._refusal("sec", Floor(OTHER, "conductor", frozenset({"api"}))) is None
 
     def test_the_room_itself_is_never_floored(self):
-        live = packet.live_episode_urn(ROOM)
+        live = message_format.live_episode_urn(ROOM)
         floor = Floor(live, "conductor")
         assert tasks.episode_write_rejection(ROOM, "sec", live, floor=floor) is None
 

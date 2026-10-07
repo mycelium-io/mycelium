@@ -8,7 +8,7 @@ that puts a question to one member and needs that member's reply — a mediator
 round, a step of a protocol, a review gate — asks it the same way.
 
 Two properties are the whole contract. **One wake:** the prompt names exactly
-one packet recipient, and every ``@`` in the prose is neutralized, so the room reads
+one message recipient, and every ``@`` in the prose is neutralized, so the room reads
 who was asked while only that handle's ``await`` returns. **Silence yields
 nothing:** the wait is bounded, an empty string comes back on timeout, and the
 caller decides what silence means (the mediator reads it as a reject and never
@@ -22,14 +22,14 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any
 
-from app.services import packet
+from app.services import message_format
 from app.services.agent_registry import norm_handle
-from app.services.packet_models import Kind
+from app.services.message_models import Kind
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from app.services.packet_models import MyceliumPacket
+    from app.services.message_models import MyceliumMessage
     from app.services.persister import TranscriptRecord
 
 logger = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ async def addressed_turn(
     poll_interval_s: float,
     payload_type: str = "tick",
     payload_data: dict[str, Any] | None = None,
-    on_tick: Callable[[MyceliumPacket], None] | None = None,
+    on_tick: Callable[[MyceliumMessage], None] | None = None,
     on_reply: Callable[[TranscriptRecord], None] | None = None,
 ) -> str:
     """Post ``prompt`` to ``handle`` alone, wait for its reply, return the prose.
@@ -73,7 +73,7 @@ async def addressed_turn(
     episode record.
     """
     before = len(persister.log.records)
-    env = packet.build_envelope(
+    env = message_format.build_envelope(
         kind=Kind.exchange,
         episode=episode,
         sender=sender,

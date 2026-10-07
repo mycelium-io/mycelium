@@ -45,7 +45,7 @@ async def list_episodes(room_name: str, limit: int = 50):
 
 @router.get("/{short_id}", response_model=EpisodeDetailRead)
 async def get_episode(room_name: str, short_id: str):
-    """Return one episode: its summary plus the full packet chain."""
+    """Return one episode: its summary plus the full message chain."""
     _require_room(room_name)
     result = read_memory_file(get_room_dir(room_name), f"{EPISODES_PREFIX}{short_id}")
     if result is None:

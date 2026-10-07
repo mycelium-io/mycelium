@@ -153,14 +153,14 @@ client that reads and writes it over HTTP (see **The spoke is a thin client**).
 Git can version or back up the files, but it is **not** the sharing path — see
 **Sharing is the live channel** below.
 
-**Mycelium packets ride SLIM.** Every message on a room's channel is a **Mycelium
-packet**, Mycelium's own JSON envelope: `exchange` (ticks/replies),
-`commit:converged|resolved|rejected`, `knowledge`. It is what the app's Network
-pane shows. Agents never build packets; the backend synthesizes them from parsed
-agent replies. Modules: `app/services/packet.py` (construction + the subkind
-table), `packet_models.py` (the pydantic models, `MyceliumPacket`),
+**Messages ride SLIM.** Every message on a room's channel is a JSON envelope (a
+header plus a typed payload) of one kind: `exchange` (ticks/replies),
+`commit:converged|resolved|rejected`, `knowledge`. The app's Network pane shows
+them. Agents never build messages; the backend synthesizes them from parsed
+agent replies. Modules: `app/services/message_format.py` (construction + the subkind
+table), `message_models.py` (the pydantic models, `MyceliumMessage`),
 `episode_state.py` (episode tracking + the IoC quality metrics MPC/GAR/SCR +
-`log/episodes/{short_id}.md` records), `packet_slim.py` (packets over SLIM).
+`log/episodes/{short_id}.md` records), `message_slim.py` (messages over SLIM).
 Some stored names carry `l9`/`ioc` (the `l9` content key, `l9_<kind>` bus
 types, `urn:ioc:` episode URNs, `protocol: SSTP`); they are part of the stored
 format. IoC L9 is the conductor's Concord and Accord flows and the MPC/GAR/SCR
@@ -170,12 +170,12 @@ metrics.
 with two stateless HTTP calls (`app/routes/participate.py`): `mycelium await` (a
 long-poll; the server holds membership via a presence lease + durable transcript
 cursor, so a tick is never missed between turns) and `mycelium respond` (posts a
-reply the backend records as an `exchange` packet). An agent is a **resident** runtime —
+reply the backend records as an `exchange` message). An agent is a **resident** runtime —
 the user's own Claude Code / Cursor session — kept woken with `mycelium await
 --loop --exec <cmd>`, which loops `await` → reason → `respond`. The loop *is* the
 wake; there is no cold-spawn. Cold-start-on-demand, waking a handle when nothing is
 resident, is served by herdr plus per-agent identity (`mycelium herdr sync`).
-A herdr doorbell rings on a text mention, on a turn put to the handle as a packet
+A herdr doorbell rings on a text mention, on a turn put to the handle as a message
 recipient (`herdr_wake_addressed`), and on a row filed for it
 (`herdr_wake_assigned`), each carrying a `reason`. What the agent is told is a
 digest the hub builds when the wake is delivered (`app/services/wake_digest.py`):
@@ -274,7 +274,7 @@ is no litellm dependency.
   `persona` (`app/services/persona_engine.py`): the `agents/<handle>/notes`
   memory is its system prompt, its Pi session is kept per (room, handle) so it
   remembers, and it answers on two seams — a text mention (the summon hook)
-  and an **addressed turn** (`persister.on_addressed`, fired once per packet
+  and an **addressed turn** (`persister.on_addressed`, fired once per message
   recipient of an exchange that mentioned nobody in its text, which is how the
   aligner and the conductor address one member). The persona and the worker
   answer on the addressed seam (and it rings a herdr member's doorbell); the
@@ -713,7 +713,7 @@ is no litellm dependency.
   feature, kept behind `SYNTHESIZER_SOURCE=memory` rather than as the default.
   Three properties carry the direction: it reads **by message type**
   (`schemas.PROSE_MESSAGE_TYPES` → `persister.prose_messages`) so a serialized
-  packet never reaches the prompt; it is **incremental**, with the cursor
+  message never reaches the prompt; it is **incremental**, with the cursor
   living in the written memory's own frontmatter so position and text land in
   one write (`--all` in the summon text re-reads everything); and it **excludes
   its own posts** by sender, since it speaks its briefing into the room it reads.
@@ -762,12 +762,12 @@ is no litellm dependency.
   pushes or pulls over git.
 - **No Ensue references in code.** We took inspiration from their API design but the
   implementation is independent.
-- **Packets are additive, never required of agents.** Ticks are `exchange`,
+- **Messages are additive, never required of agents.** Ticks are `exchange`,
   consensus is `commit:converged|rejected`, with episode URNs and causal
-  `message.parents`. The subkind table lives in `app/services/packet.py:VALID_SUBKINDS`
+  `message.parents`. The subkind table lives in `app/services/message_format.py:VALID_SUBKINDS`
   and is SLIM-native (`converged|resolved|rejected`).
-- **CLI/backend SLIM+packet duplication is guarded by a contract test.** The thin `uv
-  tool` CLI can't import the backend, so `mycelium/slim/` copies the SLIM+packet
+- **CLI/backend SLIM+message duplication is guarded by a contract test.** The thin `uv
+  tool` CLI can't import the backend, so `mycelium/slim/` copies the SLIM+message
   primitives. `contracts/slim-wire.json` freezes the shared wire constants;
   both `fastapi-backend/tests/test_slim_wire.py` and
   `mycelium-cli/tests/test_slim_wire.py` assert against it, so neither copy can
@@ -816,9 +816,9 @@ is no litellm dependency.
   of art: *custodial* (the custodian holds your keys for you, like a custodial
   wallet); server-side is the custodial rung, client-held is the non-custodial one.
   `respond(@alice, …)` sends through @alice's session, so attribution is cryptographic
-  on the wire (not a backend-stamped packet field) and room access is MLS group
+  on the wire (not a backend-stamped message field) and room access is MLS group
   membership, not app logic. All sessions live in the backend process, so the
-  moderator App + aligner/memory/packets still read plaintext — cognition is
+  moderator App + aligner/memory/messages still read plaintext — cognition is
   preserved. **Under the PSK default nothing changes** (byte-for-byte;
   `MYCELIUM_CUSTODY_DISABLE=1` forces the single-moderator path even under identity),
   and persistence structurally requires the identity provider/verifier pair anyway (a

@@ -5,7 +5,7 @@
 // (`conductor.LINE_KEY` on the hub): the prose is what the members read, the
 // line is what a thread draws instead, so a run reads as its steps rather than
 // as the prompts behind them. The line arrives two ways, like every message: on
-// the live stream inside the packet's payload, and on a reload in the
+// the live stream inside the message's payload, and on a reload in the
 // message's `metadata`.
 
 export interface ConductorStep {

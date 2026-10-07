@@ -27,7 +27,7 @@ import type {
   EpisodeDetail,
   EpisodeSummary,
   FlowStep,
-  MyceliumPacket,
+  MyceliumMessage,
   MemoryGraph,
   MemoryGraphEdge,
   MemoryGraphNode,
@@ -111,7 +111,7 @@ export interface RoomFixture {
   /** The room's link graph (#599/#611) — undefined means "no link index yet",
    *  the same degrade-to-empty case the real backend serves for an unlinked room. */
   links?: MemoryGraph;
-  // Wire frames served at GET /messages/wire, feeding the Network pane's packet feed.
+  // Wire frames served at GET /messages/wire, feeding the Network pane's message feed.
   // Shaped like the persister's bus frames (a bare `{header, payload}` envelope
   // under `content`, plus the flat fields the inspector reads).
   wire?: Record<string, unknown>[];
@@ -176,7 +176,7 @@ const checkoutEpisode = (shortId: string): string =>
 // The launch-day call the aligner brokered. It is an *orphan* episode — no board
 // row is bound to it — because a task's thread is the task's own, not the
 // conversation that produced it. The two tasks it compiled each carry their own
-// thread below; this URN stays the negotiation's record (Episodes rail, packet feed).
+// thread below; this URN stays the negotiation's record (Episodes rail, message feed).
 const CHECKOUT_EPISODE = checkoutEpisode("e4f1a2");
 // The room's own channel. A message with no thread lands here, and a ping about
 // a thread is raised here — which is why the ping's own episode is this one and
@@ -197,9 +197,9 @@ const APPLE_PAY_THREAD = checkoutEpisode("d6f8b0");
 // email. A short, ordinary decision, not a set piece.
 //
 // The *chat* is the source. Each reply is a channel broadcast (`say`), and the
-// aligner reads it and emits the structured packets it implies. So one move drives
+// aligner reads it and emits the structured messages it implies. So one move drives
 // three things — the broadcast, the coordination_tick it interprets that from,
-// and the packet the Network feed shows — and they can't disagree. `ask`
+// and the message the Network feed shows — and they can't disagree. `ask`
 // is the aligner's prompt that precedes a reply (it addresses one at a time).
 const CHECKOUT_CONSENSUS = { launch: "friday am" };
 interface CheckoutMove {
@@ -224,7 +224,7 @@ const checkoutMoves: CheckoutMove[] = [
     say: "agreed." },
 ];
 
-const checkoutPacketChain: MyceliumPacket[] = [
+const checkoutPacketChain: MyceliumMessage[] = [
   ...checkoutMoves.map((m, i) => ({
     header: {
       protocol: "ioc",
@@ -262,7 +262,7 @@ const checkoutPacketChain: MyceliumPacket[] = [
 // aligner's optional prompt and the agent's reply (both chat broadcasts, shown
 // in the channel), then the coordination_tick the aligner emits from that reply
 // (feeds the Network pane, filtered out of the channel). Interleaved and
-// timestamped so the transcript reads in order — the chat drives the packets.
+// timestamped so the transcript reads in order — the chat drives the messages.
 const checkoutNegotiation: MockMessage[] = (() => {
   const out: MockMessage[] = [];
   let at = 46; // minutes ago; ticks down as the exchange proceeds
@@ -284,7 +284,7 @@ const checkoutNegotiation: MockMessage[] = (() => {
   return out;
 })();
 
-// The packet chain as persister bus frames: bare `{header, payload}` under content,
+// The message chain as persister bus frames: bare `{header, payload}` under content,
 // with the flat sender_handle/message_type/created_at the inspector reads.
 const checkoutWireFrames: Record<string, unknown>[] = checkoutPacketChain.map((env, i) => ({
   message_type: `l9_${env.header.kind}`,

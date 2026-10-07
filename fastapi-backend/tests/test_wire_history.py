@@ -3,7 +3,7 @@
 
 """``GET /rooms/{room}/messages/wire`` — transcript replay that backfills the inspector.
 
-The live packet inspector is fed only by the SSE bus (no history), so a freshly opened
+The live message inspector is fed only by the SSE bus (no history), so a freshly opened
 tab starts empty. This endpoint replays the durable transcript through the same
 frame shape the bus pushes, envelope intact — the part the conversational messages
 API drops.
@@ -21,10 +21,10 @@ async def _create_room(client, name: str) -> None:
     assert resp.status_code == 201, resp.text
 
 
-def _packet_record(
+def _message_record(
     message_id: str, sender: str, kind: str, text: str, data: dict
 ) -> TranscriptRecord:
-    """A transcript record carrying a packet, like a connector's reply."""
+    """A transcript record carrying a message, like a connector's reply."""
     return TranscriptRecord(
         message_id=message_id,
         sender=sender,
@@ -45,9 +45,11 @@ def _packet_record(
 
 
 @pytest.mark.asyncio
-async def test_packet_history_replays_frames_with_envelope(client) -> None:
+async def test_message_history_replays_frames_with_envelope(client) -> None:
     await _create_room(client, "wire")
-    append_transcript("wire", _packet_record("m1", "avery", "exchange", "cap at 30%", {"round": 1}))
+    append_transcript(
+        "wire", _message_record("m1", "avery", "exchange", "cap at 30%", {"round": 1})
+    )
 
     resp = await client.get("/api/rooms/wire/messages/wire")
     assert resp.status_code == 200
@@ -64,10 +66,10 @@ async def test_packet_history_replays_frames_with_envelope(client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_packet_history_orders_oldest_first_and_limits(client) -> None:
+async def test_message_history_orders_oldest_first_and_limits(client) -> None:
     await _create_room(client, "wire")
     for i in range(5):
-        append_transcript("wire", _packet_record(f"m{i}", "a", "exchange", f"t{i}", {"i": i}))
+        append_transcript("wire", _message_record(f"m{i}", "a", "exchange", f"t{i}", {"i": i}))
 
     rows = (await client.get("/api/rooms/wire/messages/wire?limit=3")).json()
     # Last 3 records, oldest-first.
@@ -76,6 +78,6 @@ async def test_packet_history_orders_oldest_first_and_limits(client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_packet_history_empty_for_room_without_traffic(client) -> None:
+async def test_message_history_empty_for_room_without_traffic(client) -> None:
     await _create_room(client, "quiet")
     assert (await client.get("/api/rooms/quiet/messages/wire")).json() == []

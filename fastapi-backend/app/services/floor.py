@@ -6,7 +6,7 @@
 A thread separates attention, not access — everyone who may write in the room
 may write in its threads. Two things narrow that, and both are held by backend
 code rather than chosen by a writer. A frozen negotiation admits only the roster
-it froze on (:class:`~app.services.packet_slim.EpisodeLifecycle`). A **floor**
+it froze on (:class:`~app.services.message_slim.EpisodeLifecycle`). A **floor**
 admits only the handles its holder has given it to, and it is how a protocol
 running inside a task says whose turn it is.
 

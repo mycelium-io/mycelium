@@ -156,7 +156,7 @@ class TeamPrior(BaseModel):
     """Optional ``team_prior`` block on an inbound tick payload.
 
     Injected by the backend when a knowledge query returns prior agreements
-    on the room's topic (knowledge packet path).
+    on the room's topic (knowledge message path).
     """
 
     confidence: float

@@ -1001,7 +1001,7 @@
           "messages"
         ],
         "summary": "List Wire",
-        "description": "The room's wire feed, replayed from the transcript (oldest first).\n\nBackfills the live packet inspector: the SSE bus carries no history, so a freshly\nopened tab would otherwise start empty. Frames are the exact shape the bus\npushes, so the client projects backfill and live frames identically.\n\n``before`` is the same backward cursor ``GET /messages`` takes, and the\nchannel needs both: its feed is those two reads merged, so paging only the\nprose would hand back older pages with the control frames missing.",
+        "description": "The room's wire feed, replayed from the transcript (oldest first).\n\nBackfills the live message inspector: the SSE bus carries no history, so a freshly\nopened tab would otherwise start empty. Frames are the exact shape the bus\npushes, so the client projects backfill and live frames identically.\n\n``before`` is the same backward cursor ``GET /messages`` takes, and the\nchannel needs both: its feed is those two reads merged, so paging only the\nprose would hand back older pages with the control frames missing.",
         "operationId": "list_wire_api_rooms__room_name__messages_wire_get",
         "parameters": [
           {
@@ -2512,7 +2512,7 @@
           "episodes"
         ],
         "summary": "Get Episode",
-        "description": "Return one episode: its summary plus the full packet chain.",
+        "description": "Return one episode: its summary plus the full message chain.",
         "operationId": "get_episode_api_rooms__room_name__episodes__short_id__get",
         "parameters": [
           {
@@ -2642,7 +2642,7 @@
           "participate"
         ],
         "summary": "Post Reply",
-        "description": "Publish ``handle``'s reply as an agent exchange packet the aligner scores.",
+        "description": "Publish ``handle``'s reply as an agent exchange message the aligner scores.",
         "operationId": "post_reply_api_rooms__room_name__reply_post",
         "parameters": [
           {
@@ -5742,6 +5742,234 @@
         "title": "EngineCreate",
         "description": "Request body to invite an engine into a room."
       },
+      "EnvelopeActorRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "role"
+        ],
+        "title": "EnvelopeActorRead"
+      },
+      "EnvelopeContextRead": {
+        "properties": {
+          "topic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic"
+          }
+        },
+        "type": "object",
+        "title": "EnvelopeContextRead"
+      },
+      "EnvelopeHeaderRead": {
+        "properties": {
+          "protocol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protocol"
+          },
+          "subprotocol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subprotocol"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "subkind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subkind"
+          },
+          "participants": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnvelopeParticipantsRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnvelopeMessageRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnvelopeContextRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "EnvelopeHeaderRead"
+      },
+      "EnvelopeMessageRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "default": ""
+          },
+          "parents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Parents"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode"
+          }
+        },
+        "type": "object",
+        "title": "EnvelopeMessageRef"
+      },
+      "EnvelopeParticipantsRead": {
+        "properties": {
+          "actors": {
+            "items": {
+              "$ref": "#/components/schemas/EnvelopeActorRead"
+            },
+            "type": "array",
+            "title": "Actors"
+          },
+          "groups": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groups"
+          }
+        },
+        "type": "object",
+        "title": "EnvelopeParticipantsRead"
+      },
+      "EnvelopePayloadRead": {
+        "properties": {
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "title": "EnvelopePayloadRead"
+      },
+      "EnvelopeRead": {
+        "properties": {
+          "header": {
+            "$ref": "#/components/schemas/EnvelopeHeaderRead"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnvelopePayloadRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "header"
+        ],
+        "title": "EnvelopeRead",
+        "description": "One faithful message in an episode's causal chain.\n\nThe sender is the first actor (`header.participants.actors[0].id`) by the\nbus convention in `app.services.message_format`; there is deliberately no flattened\n`sender_handle` on the wire envelope \u2014 the frontend derives it from actors."
+      },
       "EpisodeDetailRead": {
         "properties": {
           "short_id": {
@@ -5868,7 +6096,7 @@
           },
           "messages": {
             "items": {
-              "$ref": "#/components/schemas/PacketRead"
+              "$ref": "#/components/schemas/EnvelopeRead"
             },
             "type": "array",
             "title": "Messages"
@@ -7834,234 +8062,6 @@
         ],
         "title": "OwnedAgentRead",
         "description": "One agent bound to a principal, with its room."
-      },
-      "PacketActorRead": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "role": {
-            "type": "string",
-            "title": "Role"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "role"
-        ],
-        "title": "PacketActorRead"
-      },
-      "PacketContextRead": {
-        "properties": {
-          "topic": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Topic"
-          }
-        },
-        "type": "object",
-        "title": "PacketContextRead"
-      },
-      "PacketHeaderRead": {
-        "properties": {
-          "protocol": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Protocol"
-          },
-          "subprotocol": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subprotocol"
-          },
-          "version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Version"
-          },
-          "kind": {
-            "type": "string",
-            "title": "Kind"
-          },
-          "subkind": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subkind"
-          },
-          "participants": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PacketParticipantsRead"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "message": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PacketMessageRef"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "context": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PacketContextRead"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "kind"
-        ],
-        "title": "PacketHeaderRead"
-      },
-      "PacketMessageRef": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id",
-            "default": ""
-          },
-          "parents": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Parents"
-          },
-          "episode": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Episode"
-          }
-        },
-        "type": "object",
-        "title": "PacketMessageRef"
-      },
-      "PacketParticipantsRead": {
-        "properties": {
-          "actors": {
-            "items": {
-              "$ref": "#/components/schemas/PacketActorRead"
-            },
-            "type": "array",
-            "title": "Actors"
-          },
-          "groups": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Groups"
-          }
-        },
-        "type": "object",
-        "title": "PacketParticipantsRead"
-      },
-      "PacketPayloadRead": {
-        "properties": {
-          "type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Type"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Data"
-          }
-        },
-        "type": "object",
-        "title": "PacketPayloadRead"
-      },
-      "PacketRead": {
-        "properties": {
-          "header": {
-            "$ref": "#/components/schemas/PacketHeaderRead"
-          },
-          "payload": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PacketPayloadRead"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "header"
-        ],
-        "title": "PacketRead",
-        "description": "One faithful packet in an episode's causal chain.\n\nThe sender is the first actor (`header.participants.actors[0].id`) by the\nbus convention in `app.services.packet`; there is deliberately no flattened\n`sender_handle` on the wire envelope \u2014 the frontend derives it from actors."
       },
       "PairingOutcome": {
         "properties": {

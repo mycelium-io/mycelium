@@ -1288,25 +1288,25 @@ export async function fetchUsage(days = 30): Promise<UsageKpis | null> {
   });
 }
 
-// ── Packets / episodes ─────────────────────────────────────────────────────
-// Episodes are the persisted, causally-linked packet record of a coordination
+// ── Messages / episodes ─────────────────────────────────────────────────────
+// Episodes are the persisted, causally-linked message record of a coordination
 // session (one markdown file per session under `log/episodes/`). The protocol
 // inspector reads them for the rich causal chain + consensus metrics; wire
 // envelopes carry empty `message.parents` — the chain lives here instead.
 
-export interface PacketActor {
+export interface MessageActor {
   id: string;
   role: string;
 }
 
-export interface MyceliumPacket {
+export interface MyceliumMessage {
   header: {
     protocol?: string;
     subprotocol?: string;
     version?: string;
     kind: string;
     subkind?: string | null;
-    participants?: { actors?: PacketActor[]; groups?: Record<string, unknown> | null };
+    participants?: { actors?: MessageActor[]; groups?: Record<string, unknown> | null };
     message?: { id: string; parents?: string[]; episode?: string };
     context?: { topic?: string } | null;
   };
@@ -1424,7 +1424,7 @@ export interface FlowTraceEntry {
 }
 
 export interface EpisodeDetail extends EpisodeSummary {
-  messages: MyceliumPacket[];
+  messages: MyceliumMessage[];
 }
 
 /** Episode summaries for a room, newest first. */
@@ -1436,7 +1436,7 @@ export async function fetchEpisodes(roomName: string): Promise<EpisodeSummary[]>
   return data.episodes ?? [];
 }
 
-/** One episode plus its full packet chain, or null if unknown. */
+/** One episode plus its full message chain, or null if unknown. */
 export async function fetchEpisode(
   roomName: string,
   shortId: string,

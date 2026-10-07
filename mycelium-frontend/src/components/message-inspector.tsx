@@ -23,19 +23,19 @@ import {
   fetchWireHistory,
   logFetchError,
   type EpisodeMetrics,
-  type MyceliumPacket,
+  type MyceliumMessage,
 } from "@/lib/api";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { unwrapContent } from "@/lib/room-events";
 
-// The packet inspector renders the AOP layer legibly: the live packet payloads
+// The message inspector renders the AOP layer legibly: the live message payloads
 // crossing a room's channel (exchange ticks/replies, commit verdicts with
 // MPC/GAR/SCR, knowledge pushes) as a wire feed, plus the persisted episode
 // records and their causal chain.
 
 // ── frame model ────────────────────────────────────────────────────────────────
 
-export interface PacketFrame {
+export interface MessageFrame {
   id: string;
   kind: string; // exchange | commit | knowledge | intent | contingency
   subkind: string | null;
@@ -167,7 +167,7 @@ function frameSummary(
  * source of truth); falls back to the message_type when a raw event carries no
  * envelope.
  */
-export function toPacketFrame(msg: Record<string, unknown>): PacketFrame | null {
+export function toMessageFrame(msg: Record<string, unknown>): MessageFrame | null {
   const mtype = String(msg.message_type ?? msg.type ?? "");
   const created = String(msg.created_at ?? "");
   const time = created.length >= 19 ? created.slice(11, 19) : "";
@@ -177,8 +177,8 @@ export function toPacketFrame(msg: Record<string, unknown>): PacketFrame | null 
   // The envelope may be embedded under `l9`, OR be the content itself (the
   // persister feeds the bus a bare `{header, payload}` envelope as `l9_<kind>`),
   // OR be absent (route-level events like memory_changed carry only fields).
-  const embedded = content.l9 && typeof content.l9 === "object" ? (content.l9 as MyceliumPacket) : null;
-  const bare = content.header && typeof content.header === "object" ? (content as unknown as MyceliumPacket) : null;
+  const embedded = content.l9 && typeof content.l9 === "object" ? (content.l9 as MyceliumMessage) : null;
+  const bare = content.header && typeof content.header === "object" ? (content as unknown as MyceliumMessage) : null;
   const env = embedded ?? bare;
   const header = env?.header;
   // Sender: prefer the flat `sender_handle` the persister stamps on bus frames;
@@ -371,7 +371,7 @@ function FrameRow({
   frame,
   onExpandedChange,
 }: {
-  frame: PacketFrame;
+  frame: MessageFrame;
   onExpandedChange: (delta: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -452,8 +452,8 @@ interface Props {
 
 const MAX_FRAMES = 200;
 
-export function PacketInspector({ roomName }: Props) {
-  const [frames, setFrames] = useState<PacketFrame[]>([]);
+export function MessageInspector({ roomName }: Props) {
+  const [frames, setFrames] = useState<MessageFrame[]>([]);
   const connected = useRoomConnected(roomName);
   // Kinds toggled off; empty by default so new kinds auto-show.
   const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
@@ -482,9 +482,9 @@ export function PacketInspector({ roomName }: Props) {
     setFrames([]);
     fetchWireHistory(roomName).then((rows) => {
       if (canceled) return;
-      const seeded: PacketFrame[] = [];
+      const seeded: MessageFrame[] = [];
       for (const row of rows) {
-        const frame = toPacketFrame(row);
+        const frame = toMessageFrame(row);
         if (frame && !seenIds.current.has(frame.id)) {
           seenIds.current.add(frame.id);
           seeded.push(frame);
@@ -498,7 +498,7 @@ export function PacketInspector({ roomName }: Props) {
 
   // Live wire: the room feed the channel view reads, projected into envelopes.
   useRoomStream(roomName, (data) => {
-    const frame = toPacketFrame(data as Record<string, unknown>);
+    const frame = toMessageFrame(data as Record<string, unknown>);
     if (!frame || seenIds.current.has(frame.id)) return;
     seenIds.current.add(frame.id);
     setFrames((prev) => [...prev, frame].slice(-MAX_FRAMES));
@@ -542,7 +542,7 @@ export function PacketInspector({ roomName }: Props) {
   const filtered = frames.length > 0 && wire.length === 0;
 
   return (
-    <div className="flex flex-col h-full" data-testid="packet-inspector">
+    <div className="flex flex-col h-full" data-testid="message-inspector">
       {/* No title bar; pane tab already reads "Network". */}
       {!connected && (
         <div className="flex items-center gap-1.5 px-4 shrink-0 h-7 border-b border-border bg-paper label-mono-sm text-yellow">
@@ -553,7 +553,7 @@ export function PacketInspector({ roomName }: Props) {
 
       {frames.length > 0 && (
         <div className="flex h-8 items-center gap-3 px-4 border-b border-border shrink-0 bg-paper">
-          <span className="label-mono-sm text-faint">Mycelium packets</span>
+          <span className="label-mono-sm text-faint">Messages</span>
           <span className="h-3 w-px bg-border" aria-hidden />
           <div className="flex flex-wrap items-center gap-3">
             {kindsPresent.map((kind) => {
@@ -602,7 +602,7 @@ export function PacketInspector({ roomName }: Props) {
           <EmptyState
             className="h-full"
             icon={Radio}
-            title={filtered ? "No frames match the current filters" : "No packets yet"}
+            title={filtered ? "No frames match the current filters" : "No messages yet"}
             description={
               filtered
                 ? "Try clearing a kind toggle or switching episodes."

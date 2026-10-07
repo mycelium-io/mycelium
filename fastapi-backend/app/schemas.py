@@ -1100,59 +1100,59 @@ class SubscriptionRead(BaseModel):
 # The episode read API projects persisted episode records into JSON the UI
 # inspector renders. These models are the typed seam: the backend routes declare
 # them as `response_model`, so FastAPI validates + filters the raw parsed dicts
-# into exactly this shape. They mirror the frontend `MyceliumPacket` / `EpisodeDetail`
+# into exactly this shape. They mirror the frontend `MyceliumMessage` / `EpisodeDetail`
 # TypeScript interfaces 1:1, so neither side can silently read a field the other
 # doesn't send. Fields are permissive (most optional) because these records are
 # historical markdown files, not freshly minted objects — a single odd envelope
 # must not 500 the whole inspector. The one invariant: every envelope has a kind.
 
 
-class PacketActorRead(BaseModel):
+class EnvelopeActorRead(BaseModel):
     id: str
     role: str
 
 
-class PacketParticipantsRead(BaseModel):
-    actors: list[PacketActorRead] = Field(default_factory=list)
+class EnvelopeParticipantsRead(BaseModel):
+    actors: list[EnvelopeActorRead] = Field(default_factory=list)
     groups: dict | None = None
 
 
-class PacketMessageRef(BaseModel):
+class EnvelopeMessageRef(BaseModel):
     id: str = ""
     parents: list[str] = Field(default_factory=list)
     episode: str | None = None
 
 
-class PacketContextRead(BaseModel):
+class EnvelopeContextRead(BaseModel):
     topic: str | None = None
 
 
-class PacketHeaderRead(BaseModel):
+class EnvelopeHeaderRead(BaseModel):
     protocol: str | None = None
     subprotocol: str | None = None
     version: str | None = None
     kind: str
     subkind: str | None = None
-    participants: PacketParticipantsRead | None = None
-    message: PacketMessageRef | None = None
-    context: PacketContextRead | None = None
+    participants: EnvelopeParticipantsRead | None = None
+    message: EnvelopeMessageRef | None = None
+    context: EnvelopeContextRead | None = None
 
 
-class PacketPayloadRead(BaseModel):
+class EnvelopePayloadRead(BaseModel):
     type: str | None = None
     data: dict | None = None
 
 
-class PacketRead(BaseModel):
-    """One faithful packet in an episode's causal chain.
+class EnvelopeRead(BaseModel):
+    """One faithful message in an episode's causal chain.
 
     The sender is the first actor (`header.participants.actors[0].id`) by the
-    bus convention in `app.services.packet`; there is deliberately no flattened
+    bus convention in `app.services.message_format`; there is deliberately no flattened
     `sender_handle` on the wire envelope — the frontend derives it from actors.
     """
 
-    header: PacketHeaderRead
-    payload: PacketPayloadRead | None = None
+    header: EnvelopeHeaderRead
+    payload: EnvelopePayloadRead | None = None
 
 
 class EpisodeMetricsRead(BaseModel):
@@ -1193,7 +1193,7 @@ class EpisodeListResponse(BaseModel):
 
 
 class EpisodeDetailRead(EpisodeSummaryRead):
-    messages: list[PacketRead] = Field(default_factory=list)
+    messages: list[EnvelopeRead] = Field(default_factory=list)
 
 
 # ── Cross-entity search ───────────────────────────────────────────────────────

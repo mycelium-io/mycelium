@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, CornerDownLeft } from "lucide-react";
-import { highlightJson } from "@/components/packet-inspector";
+import { highlightJson } from "@/components/message-inspector";
 import { MarkdownContent } from "@/components/markdown-content";
 import { Expandable } from "@/components/ui/expandable";
 import { fetchMemoryLinks, type MemoryLink } from "@/lib/api";

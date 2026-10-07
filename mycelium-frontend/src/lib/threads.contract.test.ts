@@ -4,7 +4,7 @@
 // Contract drift guard for the thread/ping wire constants (frontend side).
 //
 // The backend produces a ping (`room_channels.raise_ping`), the CLI reads one
-// (`mycelium.slim.packet.ping_of`), and this is the third reader. All three carry
+// (`mycelium.slim.message_format.ping_of`), and this is the third reader. All three carry
 // their own copy — the frontend's Docker build context is mycelium-frontend/
 // only, so it cannot import the repo root at runtime — and each asserts its copy
 // against contracts/slim-wire.json here. Rename the payload type on one side

@@ -204,7 +204,7 @@ async def lifespan(app: FastAPI):
 
     room_channel_manager.on_summon = _dispatch_summon
 
-    # A turn whose text names nobody, put to one member as its packet recipient —
+    # A turn whose text names nobody, put to one member as its message recipient —
     # the way the aligner and the conductor address one member. The members
     # the hub plays (persona, worker) answer it; a member living in herdr gets
     # its doorbell rung, since it would otherwise only wake on a text mention.

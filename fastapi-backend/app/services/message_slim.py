@@ -2,17 +2,17 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Packet-over-SLIM binding — the seam between :mod:`app.services.packet` (envelope
+Messages over SLIM — the seam between :mod:`app.services.message_format` (envelope
 construction) and :mod:`app.services.slim_client` (transport).
 
-The room bus is **packets straight over SLIM group sessions — no A2A**.
+The room bus is **messages straight over SLIM group sessions — no A2A**.
 This module owns three things the *app* must, not SLIM:
 
-1. **Serialize / deserialize.** A packet is embedded under the additive
-   ``l9`` key of a message's content JSON (agents never build packets; the ``l9`` key
+1. **Serialize / deserialize.** A message is embedded under the additive
+   ``l9`` key of a message's content JSON (agents never build messages; the ``l9`` key
    is invisible to anything that ignores it). :func:`serialize_envelope` writes
    that content to bytes for :meth:`SlimClient.publish`; :func:`deserialize_envelope`
-   parses inbound bytes back to an :class:`MyceliumPacket` (validating the subkind table).
+   parses inbound bytes back to an :class:`MyceliumMessage` (validating the subkind table).
 
 2. **Causal ordering by ``message.parents``.** SLIM group delivery is not
    causally ordered, so :class:`CausalOrderBuffer` holds back an envelope until
@@ -26,7 +26,7 @@ This module owns three things the *app* must, not SLIM:
    (emitted as ``commit:rejected``), without tearing down the channel or the task
    the negotiation was happening inside.
 
-:class:`PacketChannel` composes 1-2 over a single SLIM group session: one call
+:class:`MessageChannel` composes 1-2 over a single SLIM group session: one call
 to :meth:`send` publishes an envelope; :meth:`receive` pulls one broadcast and
 returns the envelopes it makes deliverable (usually one, more when a held-back
 arrival unblocks).
@@ -38,24 +38,24 @@ import json
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from app.services import packet
-from app.services.packet_models import Kind
+from app.services import message_format
+from app.services.message_models import Kind
 
 if TYPE_CHECKING:
     import slim_bindings
 
-    from app.services.packet_models import MyceliumPacket
+    from app.services.message_models import MyceliumMessage
     from app.services.slim_client import SlimClient
 
-# The additive key a packet rides under inside a message's content JSON.
-CONTENT_PACKET_KEY = "l9"
+# The additive key a message rides under inside a message's content JSON.
+CONTENT_ENVELOPE_KEY = "l9"
 
 
-class PacketChannelError(RuntimeError):
-    """A message on the room channel could not be bound to/from a packet."""
+class MessageChannelError(RuntimeError):
+    """A message on the room channel could not be bound to/from a message."""
 
 
-class ChannelReceiveTimeout(PacketChannelError):
+class ChannelReceiveTimeout(MessageChannelError):
     """A receive timed out with no message — a benign idle tick, not a failure.
 
     The SLIM binding raises a generic ``SessionError`` both for a real transport
@@ -72,7 +72,7 @@ class ChannelReceiveTimeout(PacketChannelError):
 _RECEIVE_TIMEOUT_MARKER = "receive timeout"
 
 
-def serialize_envelope(envelope: MyceliumPacket, *, extra: dict[str, Any] | None = None) -> bytes:
+def serialize_envelope(envelope: MyceliumMessage, *, extra: dict[str, Any] | None = None) -> bytes:
     """Serialize ``envelope`` (plus any ``extra`` content) to publishable bytes.
 
     The envelope goes under the ``l9`` key so the wire shape matches every other
@@ -82,7 +82,7 @@ def serialize_envelope(envelope: MyceliumPacket, *, extra: dict[str, Any] | None
 
 
 def serialize_content(
-    envelope: MyceliumPacket, *, extra: dict[str, Any] | None = None
+    envelope: MyceliumMessage, *, extra: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     """The content dict an envelope rides in (``{**extra, "l9": <envelope>}``).
 
@@ -90,23 +90,23 @@ def serialize_content(
     the dict form to record and re-serve.
     """
     content: dict[str, Any] = dict(extra or {})
-    content[CONTENT_PACKET_KEY] = packet.envelope_to_dict(envelope)
+    content[CONTENT_ENVELOPE_KEY] = message_format.envelope_to_dict(envelope)
     return content
 
 
-def deserialize_envelope(data: bytes) -> tuple[MyceliumPacket, dict[str, Any]]:
+def deserialize_envelope(data: bytes) -> tuple[MyceliumMessage, dict[str, Any]]:
     """Parse published bytes back into ``(envelope, full_content_dict)``.
 
-    Raises :class:`PacketChannelError` if the bytes aren't JSON or carry no ``l9`` key;
-    re-raises :class:`packet.PacketValidationError` for a structurally-invalid envelope.
+    Raises :class:`MessageChannelError` if the bytes aren't JSON or carry no ``l9`` key;
+    re-raises :class:`message_format.MessageValidationError` for a structurally-invalid envelope.
     """
     try:
         content = json.loads(data.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise PacketChannelError("channel message is not JSON") from exc
-    if not isinstance(content, dict) or CONTENT_PACKET_KEY not in content:
-        raise PacketChannelError("channel message carries no packet")
-    envelope = packet.parse_envelope(content[CONTENT_PACKET_KEY])
+        raise MessageChannelError("channel message is not JSON") from exc
+    if not isinstance(content, dict) or CONTENT_ENVELOPE_KEY not in content:
+        raise MessageChannelError("channel message carries no message")
+    envelope = message_format.parse_envelope(content[CONTENT_ENVELOPE_KEY])
     return envelope, content
 
 
@@ -122,22 +122,22 @@ class CausalOrderBuffer:
 
     def __init__(self) -> None:
         self._delivered: set[str] = set()
-        self._pending: list[MyceliumPacket] = []
+        self._pending: list[MyceliumMessage] = []
 
-    def _ready(self, envelope: MyceliumPacket) -> bool:
+    def _ready(self, envelope: MyceliumMessage) -> bool:
         message = envelope.header.message
         parents = message.parents if message is not None else []
         return all(parent in self._delivered for parent in parents)
 
     @staticmethod
-    def _message_id(envelope: MyceliumPacket) -> str | None:
+    def _message_id(envelope: MyceliumMessage) -> str | None:
         message = envelope.header.message
         return message.id if message is not None else None
 
-    def add(self, envelope: MyceliumPacket) -> list[MyceliumPacket]:
+    def add(self, envelope: MyceliumMessage) -> list[MyceliumMessage]:
         """Buffer ``envelope`` and return everything it makes deliverable."""
         self._pending.append(envelope)
-        released: list[MyceliumPacket] = []
+        released: list[MyceliumMessage] = []
         progressed = True
         while progressed:
             progressed = False
@@ -240,9 +240,9 @@ def build_episode_abort_envelope(
     recipients: list[str],
     topic: str | None = None,
     reason: str = "membership_change",
-) -> MyceliumPacket:
+) -> MyceliumMessage:
     """The ``commit:rejected`` envelope that closes an aborted episode."""
-    return packet.build_envelope(
+    return message_format.build_envelope(
         kind=Kind.commit,
         subkind="rejected",
         episode=episode,
@@ -253,13 +253,13 @@ def build_episode_abort_envelope(
     )
 
 
-class PacketChannel:
-    """A packet pipe over one SLIM group session.
+class MessageChannel:
+    """A message pipe over one SLIM group session.
 
     Composes serialization + causal ordering: :meth:`send` publishes an envelope
     to the group; :meth:`receive` pulls one broadcast and returns the envelopes
-    it makes deliverable in causal order. Non-packet broadcasts on the channel raise
-    :class:`PacketChannelError` so callers can log and skip rather than crash.
+    it makes deliverable in causal order. Non-message broadcasts on the channel raise
+    :class:`MessageChannelError` so callers can log and skip rather than crash.
     """
 
     def __init__(self, client: SlimClient, session: slim_bindings.Session) -> None:
@@ -275,7 +275,7 @@ class PacketChannel:
     def session(self) -> slim_bindings.Session:
         return self._session
 
-    def note_delivered(self, envelope: MyceliumPacket) -> None:
+    def note_delivered(self, envelope: MyceliumMessage) -> None:
         """Mark ``envelope`` delivered in the causal buffer without receiving it.
 
         For messages the moderator ingests locally (never arriving via
@@ -286,7 +286,7 @@ class PacketChannel:
         if message is not None and message.id is not None:
             self._buffer.mark_delivered(message.id)
 
-    async def send(self, envelope: MyceliumPacket, *, extra: dict[str, Any] | None = None) -> None:
+    async def send(self, envelope: MyceliumMessage, *, extra: dict[str, Any] | None = None) -> None:
         """Serialize ``envelope`` and broadcast it to the group."""
         from app.services.slim_client import SlimClient
 
@@ -307,7 +307,7 @@ class PacketChannel:
 
         await SlimClient.publish_to(self._session, context, json.dumps(content).encode("utf-8"))
 
-    async def receive(self, *, timeout_s: float = 30.0) -> list[MyceliumPacket]:
+    async def receive(self, *, timeout_s: float = 30.0) -> list[MyceliumMessage]:
         """Pull one broadcast; return the envelopes it makes causally deliverable."""
         released, _arrived, _ctx = await self.receive_with_context(timeout_s=timeout_s)
         return [env for env, _content in released]
@@ -315,7 +315,7 @@ class PacketChannel:
     async def receive_with_context(
         self, *, timeout_s: float = 30.0
     ) -> tuple[
-        list[tuple[MyceliumPacket, dict[str, Any]]], MyceliumPacket, slim_bindings.MessageContext
+        list[tuple[MyceliumMessage, dict[str, Any]]], MyceliumMessage, slim_bindings.MessageContext
     ]:
         """Pull one message; return ``(released, arrived, context)``.
 
@@ -338,7 +338,7 @@ class PacketChannel:
         mid = arrived.header.message.id if arrived.header.message is not None else None
         if mid is not None:
             self._content_by_id[mid] = content
-        released: list[tuple[MyceliumPacket, dict[str, Any]]] = []
+        released: list[tuple[MyceliumMessage, dict[str, Any]]] = []
         for env in self._buffer.add(arrived):
             rid = env.header.message.id if env.header.message is not None else None
             paired = self._content_by_id.pop(rid, None) if rid is not None else None

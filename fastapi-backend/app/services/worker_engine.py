@@ -58,14 +58,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
-from app.services import activity, markers, packet
+from app.services import activity, markers, message_format
 from app.services.agreed import for_prompt as agreed_for_prompt
 from app.services.aligner import _norm, _registered_engine_kind
-from app.services.packet_models import Kind
+from app.services.message_models import Kind
 from app.services.synthesizer import _strip_fences
 
 if TYPE_CHECKING:
-    from app.services.packet_models import MyceliumPacket
+    from app.services.message_models import MyceliumMessage
     from app.services.room_channels import ManagedRoomChannel, RoomChannelManager
 
 logger = logging.getLogger(__name__)
@@ -481,7 +481,7 @@ class WorkerEngine:
         self,
         room: str,
         handle: str,
-        envelope: MyceliumPacket,
+        envelope: MyceliumMessage,
         co_summons: list[str] | None = None,
         message_text: str = "",
     ) -> None:
@@ -499,9 +499,9 @@ class WorkerEngine:
         self._answer(room, handle, envelope, message_text)
 
     def handle_addressed(
-        self, room: str, handle: str, envelope: MyceliumPacket, message_text: str
+        self, room: str, handle: str, envelope: MyceliumMessage, message_text: str
     ) -> None:
-        """A turn put to a worker as its packet recipient: answer it."""
+        """A turn put to a worker as its message recipient: answer it."""
         self._answer(room, handle, envelope, message_text)
 
     def handle_notice(self, room: str, notice: dict[str, str]) -> None:
@@ -534,7 +534,7 @@ class WorkerEngine:
     def _is_worker(room: str, handle: str) -> bool:
         return _registered_engine_kind(room, handle) == ENGINE_KIND
 
-    def _answer(self, room: str, handle: str, envelope: MyceliumPacket, message_text: str) -> None:
+    def _answer(self, room: str, handle: str, envelope: MyceliumMessage, message_text: str) -> None:
         if not self._is_worker(room, handle):
             return
         if settings.ENGINE_RUNTIME == "host":
@@ -546,7 +546,7 @@ class WorkerEngine:
         if sender is None or _norm(sender) == _norm(handle):
             return
         episode = (envelope.header.message.episode if envelope.header.message else None) or ""
-        where = episode or packet.live_episode_urn(room)
+        where = episode or message_format.live_episode_urn(room)
         ask = (
             f"{sender} said to you:\n\n{message_text.strip()}\n\n"
             f"Answer {sender}. If you were asked to review something, say plainly what "
@@ -864,12 +864,12 @@ class WorkerEngine:
         if floor is not None and not floor.admits(sender):
             logger.info("worker @%s is off the floor in %s; not posting", sender, episode)
             return
-        env = packet.build_envelope(
+        env = message_format.build_envelope(
             kind=Kind.exchange,
             episode=episode,
             sender=sender,
             sender_role="agent",
-            topic=packet.topic_urn(managed.room),
+            topic=message_format.topic_urn(managed.room),
             payload_type="reply",
             payload_data=payload or {"action": "reply"},
         )

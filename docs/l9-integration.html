@@ -151,27 +151,27 @@
         SIEP sub-protocol.
       </p>
       <p>
-        Every message in a room is a <em>Mycelium packet</em>. Each packet states its kind, who
-        took part, which conversation it belongs to, and which earlier messages it answers. It also carries a typed body. The Network
-        pane in the app shows the packets passing through a room.
+        Every message in a room states its kind, who took part, which conversation it belongs
+        to, and which earlier messages it answers. It also carries a typed body. The Network pane
+        in the app shows the messages passing through a room.
       </p>
       <p>Five parts work together:</p>
       <ul>
-        <li><strong>Mycelium packets</strong> are the message format.</li>
-        <li><strong>SLIM</strong> delivers the packets. Each room is one encrypted group channel.</li>
+        <li><strong>Messages</strong> are Mycelium&#x27;s own format.</li>
+        <li><strong>SLIM</strong> delivers the messages. Each room is one encrypted group channel.</li>
         <li><strong>The aligner</strong> is a negotiator built into Mycelium. It finds the points the agents disagree on and trades offers between them until they agree. It uses the NEGMAS negotiation library, and a language model (running in Pi) reads each reply.</li>
         <li><strong>The conductor</strong> is also built into Mycelium, but it has no language model. It runs a fixed series of steps inside a task and asks members in turn. Two of these series are simplified versions of L9 protocols: <strong>Concord</strong> helps members agree on a decision, and <strong>Accord</strong> helps them agree on what a task is before they start.</li>
-        <li><strong>The Mycelium server</strong> runs every room. It turns agents&#x27; replies into packets, keeps records, and calculates the scores.</li>
+        <li><strong>The Mycelium server</strong> runs every room. It turns agents&#x27; replies into messages, keeps records, and calculates the scores.</li>
       </ul>
       <p>
-        <strong>Agents never write packets themselves.</strong> They write ordinary text. They can end a
+        <strong>Agents never write messages themselves.</strong> They write ordinary text. They can end a
         reply with a short <em>tag</em> for the server to read. For example,
         <code>[[mycelium: confidence=0.8 stance=accept]]</code> says how sure the agent is and
         whether it agrees. <code>[[mycelium: A=82 B=41]]</code> rates options. A tag can also label the
         text that follows it, such as <code>[[mycelium: constraint]] At most 15% off.</code>,
         <code>[[mycelium: term=renewal]] A new 12-month term.</code> or
         <code>[[mycelium: check covers=p1,p2]] Finance signs the order form.</code>. The server removes
-        the tag from the text and copies its values into the packet. Labelled text stays where it
+        the tag from the text and copies its values into the message. Labelled text stays where it
         was written.
       </p>
       <p>
@@ -403,13 +403,13 @@ flowchart LR
         <thead><tr><th>Part</th><th>What it does</th><th>Where it is in the code</th></tr></thead>
         <tbody>
           <tr>
-            <td><strong>Mycelium packets</strong></td>
-            <td>Mycelium&#x27;s own message format: the header (kind, who took part, the episode, the messages it answers) and a typed body. Every message in a room is one, and the Network pane shows them.</td>
-            <td><code>app/services/packet.py</code> builds packets and checks them; <code>packet_models.py</code> holds their shape.</td>
+            <td><strong>Messages</strong></td>
+            <td>Mycelium&#x27;s own format: the header (kind, who took part, the episode, the messages it answers) and a typed body. The Network pane shows them.</td>
+            <td><code>app/services/message_format.py</code> builds messages and checks them; <code>message_models.py</code> holds their shape.</td>
           </tr>
           <tr>
             <td><strong>SLIM</strong></td>
-            <td>Delivers messages. Each room is one encrypted group channel, and packets travel on it as JSON. The aligner and the conductor run inside the Mycelium server, so nothing sits between them and Mycelium.</td>
+            <td>Delivers messages. Each room is one encrypted group channel, and messages travel on it as JSON. The aligner and the conductor run inside the Mycelium server, so nothing sits between them and Mycelium.</td>
             <td>The SLIM node the Mycelium server starts. Agents reach it through <code>mycelium await</code> and <code>mycelium respond</code>.</td>
           </tr>
           <tr>
@@ -424,8 +424,8 @@ flowchart LR
           </tr>
           <tr>
             <td><strong>The Mycelium server</strong></td>
-            <td>Runs each room. It reads replies, turns them into packets, keeps the episode records, calculates the scores, and turns the aligner&#x27;s agreements into tasks.</td>
-            <td><code>app/services/packet.py</code> (packets, and the list of message kinds in <code>VALID_SUBKINDS</code>), <code>episode_state.py</code> (episode records and scores), and <code>task_compiler.py</code> and <code>task_sync.py</code> (tasks).</td>
+            <td>Runs each room. It reads replies, turns them into messages, keeps the episode records, calculates the scores, and turns the aligner&#x27;s agreements into tasks.</td>
+            <td><code>app/services/message_format.py</code> (messages, and the list of message kinds in <code>VALID_SUBKINDS</code>), <code>episode_state.py</code> (episode records and scores), and <code>task_compiler.py</code> and <code>task_sync.py</code> (tasks).</td>
           </tr>
         </tbody>
       </table>
@@ -439,7 +439,7 @@ flowchart LR
         <tbody>
           <tr>
             <td><span class="pill cfn">SLIM</span></td>
-            <td>Delivers packets over each room&#x27;s encrypted channel.</td>
+            <td>Delivers messages over each room&#x27;s encrypted channel.</td>
             <td>It doesn&#x27;t track what anyone believes, calculate scores, or judge reasoning.</td>
           </tr>
           <tr>
@@ -486,7 +486,7 @@ sequenceDiagram
         MY->>AG: the offer, addressed to that agent
         Note over AG: mycelium await, then decide
         AG->>MY: mycelium respond: a reply,<br/>optionally ending with the tag
-        Note over MY: turn the reply into a packet<br/>record the tag's values
+        Note over MY: turn the reply into a message<br/>record the tag's values
         MY->>AL: the reply
         Note over AL: make the next offer,<br/>or stop because everyone agrees
     end
@@ -512,13 +512,13 @@ sequenceDiagram
         (done) and <code>rejected</code> (no agreement). The aligner and Concord end
         <code>converged</code> or <code>rejected</code>. Accord and the conductor&#x27;s other series
         end <code>resolved</code> or <code>rejected</code>. The list is <code>VALID_SUBKINDS</code>
-        in <code>app/services/packet.py</code>.
+        in <code>app/services/message_format.py</code>.
       </p>
     </section>
 
     <section class="doc-section" id="commands">
       <h1>What each command sends</h1>
-      <p>Each example shows what a person or agent types and the packet Mycelium writes from it. IDs are shortened with <code>&hellip;</code>, and empty fields are left out.</p>
+      <p>Each example shows what a person or agent types and the message Mycelium writes from it. IDs are shortened with <code>&hellip;</code>, and empty fields are left out.</p>
 
       <h2>Stating a position opens the negotiation</h2>
       <p>Each participant states a position in the task&#x27;s thread. Someone then starts the aligner there with <code>mycelium board coordinate &lt;task&gt; aligner "…"</code>. Mycelium opens a new episode record and writes its opening message, of kind <code>intent:mission</code>.</p>
@@ -544,8 +544,8 @@ sequenceDiagram
               "data": {"content": "- avery-agent: REST primary; GraphQL internal only"}}
 }</code></pre>
 
-      <h2>A reply becomes a packet</h2>
-      <p>The agent answers an offer in plain text and can end with the tag. Mycelium removes the tag and reads the text to decide whether the agent accepts, rejects or counters. It then writes a reply packet of kind <code>exchange</code> that points to the offer.</p>
+      <h2>A reply becomes a message</h2>
+      <p>The agent answers an offer in plain text and can end with the tag. Mycelium removes the tag and reads the text to decide whether the agent accepts, rejects or counters. It then writes a reply message of kind <code>exchange</code> that points to the offer.</p>
       <pre><code>mycelium respond --handle avery-agent --room api-design \
   "counter: transport=rest, it meets the latency target [[mycelium: confidence=0.8 stance=reject]]"</code></pre>
       <pre><code>// the reply message Mycelium writes:
@@ -646,14 +646,14 @@ sequenceDiagram
       <table class="l9">
         <thead><tr><th>Part</th><th>Version</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td>Mycelium packets</td><td>header <code>version</code> <code>"0.0.6"</code>, sub-protocol <code>mycelium</code></td><td><code>app/services/packet.py</code> builds the packets and holds the list of message kinds (<code>VALID_SUBKINDS</code>).</td></tr>
-          <tr><td>Packet models</td><td></td><td><code>packet_models.py</code> holds the shape of a packet.</td></tr>
+          <tr><td>Messages</td><td>header <code>version</code> <code>"0.0.6"</code>, sub-protocol <code>mycelium</code></td><td><code>app/services/message_format.py</code> builds the messages and holds the list of message kinds (<code>VALID_SUBKINDS</code>).</td></tr>
+          <tr><td>Message models</td><td></td><td><code>message_models.py</code> holds the shape of a message.</td></tr>
           <tr><td>Episode records</td><td></td><td><code>episode_state.py</code> keeps the records, the aligner&#x27;s scores, and the conductor&#x27;s steps (<code>flow</code> and <code>trace</code>). Records are saved at <code>log/episodes/{short_id}.md</code>.</td></tr>
           <tr><td>Concord and Accord</td><td>built in</td><td><code>protocols.py</code>, with Accord&#x27;s merging in <code>frame.py</code>. Post <code>@conductor show concord</code> or <code>@conductor show accord</code> anywhere in a room to see one written out as YAML. A room can replace a series by saving its own version as a <code>protocols/&lt;name&gt;</code> memory.</td></tr>
         </tbody>
       </table>
       <p>
-        Packets travel as JSON inside the room&#x27;s SLIM channel. Nothing depends on an outside
+        Messages travel as JSON inside the room&#x27;s SLIM channel. Nothing depends on an outside
         routing service.
       </p>
     </section>

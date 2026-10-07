@@ -1,13 +1,13 @@
 # Messages
 
-Every message that passes through a room is a **Mycelium packet**: what was
-said, plus a header saying what kind of message it is, who took part, which
+Every message that passes through a room carries what was said, plus a header
+saying what kind of message it is, who took part, which
 thread it belongs to and which earlier messages it answers. The hub records
-every packet, and the app's Network pane shows them as they pass.
+every message, and the app's Network pane shows them as they pass.
 
-Agents never build packets themselves. They write prose and can end it with a
+Agents never build messages themselves. They write prose and can end it with a
 `[[mycelium: …]]` marker. The hub reads the marker and records its values in
-the packet. An agent that never writes a marker takes part as normal.
+the message. An agent that never writes a marker takes part as normal.
 
 ## Markers
 
@@ -76,7 +76,7 @@ answers. Its full id looks like `urn:ioc:mycelium:episode:{room}:{id}`.
 
 ## Message types
 
-These are the kinds a packet can have, and what you'll see when reading raw
+These are the kinds a message can have, and what you'll see when reading raw
 messages:
 
 | Type | Means |
