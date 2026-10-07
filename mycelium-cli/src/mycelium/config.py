@@ -535,6 +535,75 @@ class A2aConfig(BaseModel):
     )
 
 
+class AlignerConfig(BaseModel):
+    """How the hub's aligner engine negotiates. Defaults match the backend's."""
+
+    handle: str = Field(
+        default="aligner",
+        description="The handle the hub's built-in aligner answers to when no aligner is registered.",
+    )
+    term_check: bool = Field(
+        default=True,
+        description="Check whether agents use a word in different senses before negotiating.",
+    )
+    round_timeout_s: float = Field(
+        default=30.0,
+        description="Seconds an agent has to answer a round before the aligner moves on without it.",
+    )
+    max_steps: int = Field(
+        default=20,
+        description="The most rounds one negotiation can run. Most finish well before this.",
+    )
+    pi_timeout_s: float = Field(
+        default=120.0,
+        description="Seconds one model call by the aligner can take.",
+    )
+
+
+class SynthesizerConfig(BaseModel):
+    """What the synthesizer engine summarizes."""
+
+    source: Literal["messages", "memory"] = Field(
+        default="messages",
+        description=(
+            "messages: summarize the room's conversation since the last summary. "
+            "memory: summarize every memory in the room each time."
+        ),
+    )
+
+
+class WorkerConfig(BaseModel):
+    """Limits on worker engines, the coding agents the hub runs."""
+
+    tools: bool = Field(
+        default=True,
+        description=(
+            "Let workers edit files and run commands. Off makes them write replies only, "
+            "which is safer on a hub other people can use."
+        ),
+    )
+    pi_timeout_s: float = Field(
+        default=600.0,
+        description="Seconds one worker request can take.",
+    )
+    max_turns_per_room: int = Field(
+        default=60,
+        description="Turns all workers in a room can take in total.",
+    )
+
+
+class BoardConfig(BaseModel):
+    """Board rules the hub enforces."""
+
+    dependency_gate: bool = Field(
+        default=False,
+        description=(
+            "Refuse a claim on a task that is still waiting on another task "
+            "(depends-on). `board claim --force` claims it anyway."
+        ),
+    )
+
+
 class PatternsConfig(BaseModel):
     """Design-pattern packs this hub offers (``/api/patterns``).
 
@@ -602,6 +671,21 @@ class TelemetryConfig(BaseModel):
             "http://mycelium-collector:4318, the collector's address in the Docker stack. "
             "The Mac app runs no collector, so set this there (for example "
             "http://127.0.0.1:4318 for a collector on the same Mac)."
+        ),
+    )
+    otlp_headers: str | None = Field(
+        default=None,
+        description=(
+            "Headers sent with every OTLP export, such as a hosted backend's auth "
+            '(for example "x-honeycomb-team=<key>"). Also used by the local Grafana '
+            "when it forwards. Rendered as OTEL_EXPORTER_OTLP_HEADERS."
+        ),
+    )
+    forward_endpoint: str | None = Field(
+        default=None,
+        description=(
+            "With the local Grafana (`mycelium up --grafana`), also forward everything it "
+            "receives to this OTLP endpoint. Rendered as OTEL_EXPORTER_OTLP_ENDPOINT."
         ),
     )
     send_product_analytics: bool = Field(
@@ -689,6 +773,10 @@ class MyceliumConfig(BaseModel):
     slim: SlimConfig = Field(default_factory=SlimConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     engine: EngineConfig = Field(default_factory=EngineConfig)
+    aligner: AlignerConfig = Field(default_factory=AlignerConfig)
+    synthesizer: SynthesizerConfig = Field(default_factory=SynthesizerConfig)
+    worker: WorkerConfig = Field(default_factory=WorkerConfig)
+    board: BoardConfig = Field(default_factory=BoardConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     login: LoginConfig = Field(default_factory=LoginConfig)
     agent_auth: AgentAuthConfig = Field(default_factory=AgentAuthConfig)

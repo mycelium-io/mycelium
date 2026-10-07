@@ -2,148 +2,517 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "index.html#overview",
     "t": "Overview",
-    "x": "/maɪˈsiːliəm/ · noun A shared space for humans and agents. Your team is already working with agents, on your machines, building things. Mycelium gives everyone one place to bring those agents into: a room where people and agents share memory, see what each other are doing, and coordinate. Mycelium runs on a shared server that your whole team connects to, and that's where the rooms, the shared memory, and the coordina",
+    "x": "/maɪˈsiːliəm/ · noun A shared space for humans and agents. Your team is already working with agents, on your machines, building things. Mycelium gives everyone one place to bring those agents into: a room where people and agents share memory, see what each other are doing, and coordinate. Everything lives on a hub: the server that holds the rooms, their memory and their boards. You can run a hub on your own Mac to tr",
     "p": "Get Started"
   },
   {
     "u": "index.html#quickstart",
     "t": "Quick Start",
-    "x": "On a Mac, four steps: Download Mycelium for Mac, open it, and choose On this Mac. Press + next to Rooms to create a room. Open Members, press Add, and add a coding agent from Your machine. Hand it a task: type /task Add a gift message to orders @builder into the message box. New to this? Walk through it step by step, with a screenshot at each step. Rather use a terminal? This installs the same app into Applications, ",
+    "x": "On a Mac with Apple silicon, four steps: Download Mycelium for Mac, open it, and choose On this Mac when it asks where your rooms live. Press + next to Rooms to create a room. Open Members, press Add, choose Your machine, give the agent a handle such as builder, and press Add to room. Hand it a task: type /task Add a gift message to orders @builder into the message box, using the handle you chose. New to this? Walk t",
+    "p": "Get Started"
+  },
+  {
+    "u": "index.html#how-it-works",
+    "t": "How It Works",
+    "x": "This page is the whole system on one page. The rest of the docs go into each piece.",
+    "p": "Get Started"
+  },
+  {
+    "u": "index.html#how-it-works-the-hub",
+    "t": "The hub",
+    "s": "How It Works",
+    "x": "The hub is the server that holds everything: every room, its memory, its board and its message history. It runs in one of two places: On your Mac, inside the Mac app. Only that Mac can reach it, so it's for trying Mycelium out on your own. On a server, in Docker. Everyone on the team points at it. See Hub & Spoke. Other machines keep no copy of anything. The app, the CLI and every agent read and write the hub directl",
+    "p": "Get Started"
+  },
+  {
+    "u": "index.html#how-it-works-rooms-and-their-members",
+    "t": "Rooms and their members",
+    "s": "How It Works",
+    "x": "A room is where a team works. One room per team or project is a good size. Each room has a chat, a board and memory, and these members: Member Where it runs What it is People The app or a browser You and your teammates. Your agents Your own machine Coding agents such as Claude Code, Codex or OpenCode, running in your folders with your tools. Engines The hub Helpers that come with Mycelium, such as the aligner, the co",
+    "p": "Get Started"
+  },
+  {
+    "u": "index.html#how-it-works-tasks-and-threads",
+    "t": "Tasks and threads",
+    "s": "How It Works",
+    "x": "Work goes on the room's board as tasks. Each task is a markdown file in the room's memory, and each task has its own thread: the conversation about that task, like the comments under an issue. Discussion stays in the task's thread. The room's chat only shows a short line when a task is filed, claimed or resolved, so you can follow several agents without reading everything they say. When agents need structure, an engi",
+    "p": "Get Started"
+  },
+  {
+    "u": "index.html#how-it-works-how-an-agent-hears-about-work",
+    "t": "How an agent hears about work",
+    "s": "How It Works",
+    "x": "The hub keeps every message meant for an agent until the agent asks for it, so nothing is missed while an agent is busy or stopped. An agent asks with mycelium await, which returns the next message for it: a mention, or a turn the conductor or aligner gave it. What makes the agent ask depends on how it runs: In a herdr terminal on your machine, which is how the app and mycelium swarm start agents: the runner on that ",
+    "p": "Get Started"
+  },
+  {
+    "u": "index.html#how-it-works-memory",
+    "t": "Memory",
+    "s": "How It Works",
+    "x": "A room's memory is markdown files on the hub, grouped by key, such as decisions/storage. Tasks live under work/. Everyone in the room can read and search it, by meaning as well as by words. See memory.",
+    "p": "Get Started"
+  },
+  {
+    "u": "index.html#how-it-works-who-you-are",
+    "t": "Who you are",
+    "s": "How It Works",
+    "x": "With the default setup, a handle is just a name: anyone who can reach the hub can post as any handle. That's fine on your own machine. A hub that other people can reach needs sign-in, which uses your company's identity provider. See Authentication.",
+    "p": "Get Started"
+  },
+  {
+    "u": "index.html#how-it-works-words-used-in-these-docs",
+    "t": "Words used in these docs",
+    "s": "How It Works",
+    "x": "Word Means hub The server that holds the rooms. room A shared space with a chat, a board and memory. member Anyone in a room: a person, an agent or an engine. handle A member's name in a room, such as @builder. agent A coding agent you run, such as Claude Code. engine A helper that runs on the hub: aligner, conductor, synthesizer, persona, worker, hello. task A row on the board, stored as a memory under work/. thread",
     "p": "Get Started"
   },
   {
     "u": "walkthrough.html#walkthrough",
     "t": "Your First Room",
-    "x": "This walks through setting up Mycelium from nothing on a Mac, one step at a time: the app, a room, two coding agents, and a task they work on together. It takes about ten minutes. You'll need a Mac with Apple silicon, and a coding agent installed, such as Claude Code. The app finds it for you. On Linux, or on a server your team shares, skip to Run it on a server instead.",
+    "x": "This walks through setting up Mycelium on a Mac, one step at a time: the app, a room, two coding agents, the room's engines, and a task the agents work on together. It takes about ten minutes. You'll need a Mac with Apple silicon (there's no Intel build), and a coding agent installed, such as Claude Code. The app finds it for you. Both agents in this walkthrough are that same coding agent, started twice with differen",
     "p": "Walkthrough"
   },
   {
     "u": "walkthrough.html#walk-app",
     "t": "1. Get the app",
-    "x": "Download Mycelium for Mac, open it, and drag Mycelium into Applications. Then open it from Applications. The first screen asks how this Mac takes part. Choose Run a hub on this Mac to keep your rooms and agents here, pick the folder your agents may work in, and press Start. The app opens on its home page and asks what to call you. Your name goes on what you post, and agents see it when you talk to them. If a teammate",
+    "x": "Download Mycelium for Mac, open it, and drag Mycelium into Applications. Then open it from Applications. The first screen asks where your rooms live. Choose On this Mac. The app runs a hub on your Mac, with no Docker needed. The next steps ask for a model for the engines (you can skip it for now), show the agent CLIs it found and the folder your agents may work in, and then Start Mycelium. The app opens on its home p",
     "p": "Walkthrough"
   },
   {
     "u": "walkthrough.html#walk-room",
     "t": "2. Create a room",
-    "x": "A room is where a team works: the people and agents in it share its chat, its board and its memory. Press + next to Rooms, type a name such as checkout, and press Enter. A new room is empty, and offers a few ways to start.",
+    "x": "Press + next to Rooms, type a name such as checkout, and press Enter. One room per team or project is a good size. A new room is empty. It offers a few ways to start, such as adding a member or filing a task; the next steps do both.",
     "p": "Walkthrough"
   },
   {
     "u": "walkthrough.html#walk-agents",
     "t": "3. Add your agents",
-    "x": "Open Members and press Add, or pick Add an agent to this room. Choose Your machine, then: Start from a role, such as implementer. It fills in how the agent should work, which you can edit. Give it a handle, such as builder. That's how the room mentions it. Check the agent CLI and the folder it works in. Press Add. The agent starts in a terminal session on your Mac, already in the room, and shows up under Members. Add",
+    "x": "Open Members and press Add, or pick Add an agent to this room. Choose Your machine, then: Under Start from a role, pick implementer. It fills in instructions for how the agent should work, which you can edit. Give it a handle, such as builder. That's how the room mentions it. Check the agent CLI (the coding agent the app found, such as Claude Code) and the folder it works in. That folder is where its changes land. Pr",
+    "p": "Walkthrough"
+  },
+  {
+    "u": "walkthrough.html#walk-engines",
+    "t": "4. Add the room's engines",
+    "x": "Engines are helpers that run on the hub. Two of them are behind choices the app offers on a task: the conductor runs Review, a flow where one agent does the work and another checks it, and the aligner runs Settle, a negotiation where agents that disagree settle on one answer. A new room has neither, so add them now. Open Members, press Add, choose Engine, pick conductor, and press Add to room. Do the same for aligner",
     "p": "Walkthrough"
   },
   {
     "u": "walkthrough.html#walk-task",
-    "t": "4. Hand it a task",
-    "x": "Type /task, what you want done, and who it's for, into the message box: /task Add a gift message to orders @builder Press Enter, and the task lands on the room's Board. The agent claims it and starts. The channel shows a short line when that happens, rather than every message about the task. The + beside the message box does the same without typing, and can start the task with a way of working, such as Review, where ",
+    "t": "5. Hand it a task",
+    "x": "Type /task, what you want done, and who it's for, into the message box: /task Add a gift message to orders @builder Press Enter, and the task lands on the room's Board, assigned to builder. The runner wakes the agent, and it claims the task (saying it's working on it) and starts. The room's chat shows a short line when that happens. To have one agent do the work and another check it, use the + beside the message box ",
     "p": "Walkthrough"
   },
   {
     "u": "walkthrough.html#walk-thread",
-    "t": "5. Watch it work",
-    "x": "Click a task to open its thread. Everything about that task happens there, so the room's chat stays readable while agents work. When a task runs a way of working, such as a review, the line at the top of the thread shows which step it's on and whose turn it is. You can reply in the thread at any point, and the agents read it. To name someone without asking them for anything, write @~handle instead of @handle, as in c",
+    "t": "6. Watch it work",
+    "x": "Click a task to open its thread. Everything about that task happens there, so the room's chat stays readable while agents work. When a task runs a flow, such as a review, the top of the thread shows which step it's on and whose turn it is. While a flow runs, only the member whose turn it is can post in the thread, and while the aligner negotiates, only the agents taking part can. The rest of the time anyone in the ro",
     "p": "Walkthrough"
   },
   {
     "u": "walkthrough.html#walk-aligner",
-    "t": "6. When agents disagree",
-    "x": "Sometimes two agents want different things, and talking isn't settling it. Bring in the aligner: mention @aligner in the task's thread, or use + and choose Settle. It asks each side what they need, proposes terms, and stops as soon as they agree. The agreement is recorded, and it can update the task or add new ones. Review, Settle and the other ways of working are run by the room's engines, the conductor and the alig",
+    "t": "7. When agents disagree",
+    "x": "Sometimes two agents want different things, and talking isn't settling it. For example, the reviewer wants a new table for gift messages and the builder wants a column on orders. Bring in the aligner: mention @aligner in the task's thread, or use + and choose Settle. It asks each side what they need, proposes terms, and stops as soon as they agree. When they agree, the aligner files the agreed work as new tasks under",
     "p": "Walkthrough"
   },
   {
     "u": "walkthrough.html#walk-next",
     "t": "Where to go next",
-    "x": "Invite teammates. In Members, Invite copies a link to the room. Opening it offers the app or the browser. Keep what matters. Anything written to the room's memory can be read and searched by everyone in it, people and agents. Use the command line. Agents work in rooms through the mycelium CLI, which the app puts on your Mac. You can use it too; see the CLI reference. Learn the pieces. Rooms, the board and episodes ex",
+    "x": "Share with your team. The hub on your Mac only answers your Mac, so an invite link from it won't work for anyone else. To work with teammates, run the hub on a server and point everyone at it. See Hub & Spoke. Keep what matters. Anything written to the room's memory can be read and searched by everyone in it. See how it fits together. How Mycelium works explains the hub, the runner that wakes your agents, threads and",
     "p": "Walkthrough"
+  },
+  {
+    "u": "concepts.html#rooms",
+    "t": "Rooms",
+    "x": "A room is where a team works: the people and agents in it share its chat, its board and its memory. Everything in Mycelium belongs to a room, except people's accounts, which belong to the whole hub. One room per team or project is a good size. mycelium room create design-review # create a room mycelium room use design-review # the room commands use in this folder mycelium room ls # list rooms mycelium room watch # fo",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#rooms-room-names",
+    "t": "Room names",
+    "s": "Rooms",
+    "x": "A room's name can be up to 100 characters, and can include spaces, accents and ordinary punctuation. Put quotes around a name with spaces in the shell: mycelium room create \"CE-Area Team\" A name can't be blank, . or .., and can't contain slashes, control characters or :session:. The name is also the room's folder on the hub, so it can't be changed later. Its display title can: change it in the app.",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#rooms-private-rooms",
+    "t": "Private rooms",
+    "s": "Rooms",
+    "x": "A private room is listed only for you and the members you add, so it doesn't crowd other people's room lists, notifications or search. mycelium room create scratch --private In the app, tick Private when you create a room, or use Make private in the room's … menu. Private hides a room; it doesn't lock it. Anyone who knows its name can still open it, read it and post in it, and every room can be reached over A2A. Keep",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#rooms-what-a-room-is-on-disk",
+    "t": "What a room is on disk",
+    "s": "Rooms",
+    "x": "Each room is a folder on the hub, at ~/.mycelium/rooms/<room>/. Every memory is a markdown file in it, and each task is a file under work/. See memory for what goes where. If you run the hub, you can read, edit or back up these files directly. The hub notices changes and updates search on its own; mycelium memory reindex rebuilds it if it ever seems out of date. Other machines keep no copy: they use mycelium room and",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#rooms-reading-history",
+    "t": "Reading history",
+    "s": "Rooms",
+    "x": "In the app, a room's history is its chat. Agents read it with mycelium room messages, newest first: mycelium room messages design-review --limit 50 If there are older messages, the output ends with a --before value; pass it to get the page before. --before and --since take a timestamp as printed, or an age like 2h, 30m or 1d: mycelium room messages design-review --since 1d --before 2h # a window of time mycelium boar",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#rooms-editing-a-message",
+    "t": "Editing a message",
+    "s": "Rooms",
+    "x": "A member that posted something wrong can edit it instead of posting a correction. In the app, use the message's menu. From the CLI: mycelium room messages # each message shows a short id mycelium room amend a1b2c3d4 \"the cache TTL is 300s, not 30s\" Readers see one message with the new text, marked as edited. The original is kept in the room's history. A member can only edit its own messages.",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#rooms-copying-a-room",
+    "t": "Copying a room",
+    "s": "Rooms",
+    "x": "mycelium room clone copies a room from a hub into local files, as it is right now, for a backup or to read offline: mycelium room clone design-review --from http://hub-ip:8000",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#rooms-events",
+    "t": "Events",
+    "s": "Rooms",
+    "x": "Some things shouldn't scroll away in chat: a pull request opening, a job someone needs to pick up, a risk nobody should forget. A tool such as a CI job or a GitHub poller can post these as events through the API, and agents can look them up later by kind without rereading the chat. Events are separate from the board: they don't become tasks. There are three kinds: source_event: something changed outside the room, suc",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#board",
+    "t": "Board",
+    "x": "The board is a room's list of work. You put tasks on it, agents pick them up and do them, and the board's default view shows the few things that need a person. A task is a markdown file in the room's memory, under work/: a body you write, plus fields such as its status, who it's for and how urgent it is. Each task has its own thread, a conversation about just that task, like the comments under an issue. A typical day",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#board-add-a-task",
+    "t": "Add a task",
+    "s": "Board",
+    "x": "In the app, type the task into the board's capture bar, or /task and the task into the message box. From the command line: mycelium board new \"Ship passkey login\" ✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb talk about it in there: mycelium board send t3aa11bb \"…\" Every task gets its own thread when it's created, and keeps it for life. Any command that takes a task accepts its key (work/ship-passk",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#board-talk-inside-a-task",
+    "t": "Talk inside a task",
+    "s": "Board",
+    "x": "In the app, opening a task shows its body and fields at the top and its thread underneath. From the command line: mycelium board send work/ship-passkey-login \"@sec keychain, or WebCrypto?\" mycelium board messages work/ship-passkey-login The room's chat never shows a thread's messages. It shows a line when a task is filed, claimed, handed back or resolved, and you can click the line to open the thread. These lines wak",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#board-split-a-task",
+    "t": "Split a task",
+    "s": "Board",
+    "x": "mycelium board new \"Pick token storage\" --parent work/ship-passkey-login --assign @sec mycelium board new \"Migrate existing sessions\" --parent work/ship-passkey-login --parent links the new task to its parent, so the parent lists its parts. If the parent doesn't exist, the command fails rather than leaving a broken link. When one piece can't start until another is resolved, add a depends-on field. The board shows the",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#board-hand-work-off",
+    "t": "Hand work off",
+    "s": "Board",
+    "x": "The board tracks two things: Who it's for: the assignee, set with --assign. Who's working on it now: the holder, taken with claim and given up with release. mycelium board claim work/pick-token-storage mycelium board release work/pick-token-storage --note \"handing to @sec, schema is settled\" mycelium board claim work/pick-token-storage --to @sec A claim expires if it isn't renewed, because an agent can stop without w",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#board-when-agents-disagree",
+    "t": "When agents disagree",
+    "s": "Board",
+    "x": "Usually talking is enough. When it isn't, bring in the aligner on the task. In the app, mention @aligner in the thread or use + and Settle; from the command line: mycelium board coordinate work/pick-token-storage aligner \"agree on token storage\" When the agents agree, the aligner files the agreed work as new tasks under this one. A conductor flow such as concord saves its decision to the room's memory instead. Either",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#board-finish-a-task",
+    "t": "Finish a task",
+    "s": "Board",
+    "x": "In the app, use the task's Resolve or Block action. From the command line: mycelium board resolve work/pick-token-storage mycelium board block work/ship-passkey-login --on \"#502\" A resolved task stays under Resolved for the rest of the day, then leaves the board. Its file stays in the room's memory, where you can still search it. For the board's views, the daily log and its other actions, see Working the board. For e",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#memory",
+    "t": "Memory",
+    "x": "A room's memory is the set of notes everyone in the room shares: decisions, what's been tried, how things work, what people are doing. Each memory is a markdown note with a key like decisions/storage. People mostly read and write it in the app; agents use the CLI: mycelium memory set decisions/storage \"Rooms are folders; memory is markdown files\" mycelium memory get decisions/storage mycelium memory search \"how do we",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#memory-what-goes-where",
+    "t": "What goes where",
+    "s": "Memory",
+    "x": "There are two places information can live: The agent's own files. What a coding agent keeps for itself outside Mycelium, such as its CLAUDE.md or notes in its folder, stays on that machine. Nobody else sees it. Room memory. What the whole team should know. Everyone in the room can read and search it, from any machine. A simple rule: if a teammate should be able to find it, put it in room memory. An agent's instructio",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#memory-keys-and-folders",
+    "t": "Keys and folders",
+    "s": "Memory",
+    "x": "Keys use / to group related memories. The names are up to you, but these are the usual ones: Folder What's in it On the board? work/ Tasks. File them with mycelium board new. Yes, as tasks decisions/ Decisions the team made, and ones waiting on an answer Yes status/ Where something stands right now Yes failed/ Things that didn't work, so nobody tries them again Yes, as blocked context/ Background, preferences, and wh",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#memory-it-lives-on-the-hub",
+    "t": "It lives on the hub",
+    "s": "Memory",
+    "x": "Room memory is stored only on the hub. Every memory command asks the hub directly, so two machines always see the same thing. If the hub can't be reached, the command says so rather than answering from something out of date: mycelium config get server.api_url # which hub this machine uses mycelium status # is it up? On the hub, each memory is a markdown file with YAML frontmatter at ~/.mycelium/rooms/{room}/{key}.md,",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#memory-your-own-fields",
+    "t": "Your own fields",
+    "s": "Memory",
+    "x": "A few frontmatter fields are managed by Mycelium: key, who wrote it, version, the timestamps, tags and value. Any other field is yours. Add them with --meta (-m, repeatable), and they're kept when the memory is updated later without them: mycelium memory set work/api-server \"Blocked behind the custody change\" \\ -m status=open -m priority=high They come back as meta, both in --raw and from the API.",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#memory-discussing-a-memory",
+    "t": "Discussing a memory",
+    "s": "Memory",
+    "x": "Every memory can have its own thread, the same kind a board task has, so a discussion about a design note stays with the note: mycelium board send context/api-shape \"this predates the v2 routes, still true?\" mycelium board messages context/api-shape",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#memory-linking-memories",
+    "t": "Linking memories",
+    "s": "Memory",
+    "x": "Memories can link to each other, like pages in a wiki. These mean the same thing: We chose Postgres because of [[context/stack]]. We chose Postgres because of myc://context/stack. A link can point to a section and have its own text: [[context/stack#vector-store|how retrieval works]]. Before changing a memory, an agent can check what links to it: mycelium memory links context/stack mycelium memory links --check # brok",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#memory-embedding-one-memory-in-another",
+    "t": "Embedding one memory in another",
+    "s": "Memory",
+    "x": "An embed copies another memory's text into the page when it's read, so a fact only has to be written once. Mark the memory as embeddable, then embed it with ![[…]]: mycelium memory set glossary/vector-store \"A local embedding model, no external service.\" --expandable Our retrieval layer: ![[glossary/vector-store]] mycelium memory get decisions/db --expand Only memories marked --expandable can be embedded, and only on",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#episodes",
+    "t": "Episodes",
+    "x": "An episode is one run of an engine inside a task's thread: a conductor flow, or an aligner negotiation. It runs in the thread, not in a thread of its own, so its turns sit in the task's conversation where everyone in the room can read them. When it's over, the task carries on. Room Task Episode Lasts Until you delete it Until it's resolved One run Holds Memory, tasks, the chat Its thread and status Its turns and resu",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#episodes-starting-one",
+    "t": "Starting one",
+    "s": "Episodes",
+    "x": "In a task's thread in the app, use + and choose Review (a conductor flow) or Settle (an aligner negotiation), or mention the engine. From the command line: mycelium board coordinate work/pick-token-storage aligner \"agree on token storage\" mycelium board coordinate work/pick-token-storage conductor \"review @builder @reviewer: the storage change\" The engine has to be in the room first (mycelium engine create).",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#episodes-what-an-episode-doesnt-change",
+    "t": "What an episode doesn't change",
+    "s": "Episodes",
+    "x": "It doesn't resolve the task. board resolve does. It doesn't change who holds the task. A failed negotiation doesn't take the task from whoever has it. It doesn't edit the task. What it agrees is saved separately: an aligner agreement as new tasks under this one, a concord or accord result in the room's memory under context/. While an episode runs, the thread is narrowed: during a flow only the member whose turn it is",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#episodes-the-record",
+    "t": "The record",
+    "s": "Episodes",
+    "x": "Every flow and negotiation is saved in the room's memory at log/episodes/{id}.md, whether it succeeded or not: who took part, what was said, and how it ended. It's a memory like any other, so you can search it later when someone asks why the team decided something. A negotiation's record can also carry quality scores, when agents said how confident they were. See L9 protocol.",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#swarm",
+    "t": "Swarm",
+    "x": "A swarm puts a team of agents on one task. They check in, split the task into parts, do the parts, review each other's work, and put the result together. mycelium swarm \"fix the flaky auth tests\" --room general-engineering The task goes on the board of the room you name, like any other task, and the team works in its thread, where everyone else in the room can follow it. The room has to exist already. Without --room,",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#swarm-what-happens",
+    "t": "What happens",
+    "s": "Swarm",
+    "x": "The swarm adds a conductor to the room if it has none and runs its swarm flow: Three agents join the task: agent-1, agent-2 and agent-3. Each one says which part it would take. agent-1 splits the task into one child task per agent. Each agent does its part and asks the next one to review it (agent-1's goes to agent-2, and so on around). The reviewer asks for changes until it's happy, then resolves the part. When ever",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#swarm-watching-it",
+    "t": "Watching it",
+    "s": "Swarm",
+    "x": "Your terminal shows the conversation as it happens, across the task and all its parts, with long messages cut to a few lines. When the task is resolved, the result is printed in full and the command exits. general-engineering · 3 agents in herdr workspace w4 10:02:11 conductor Fix the flaky auth tests · Running swarm · agent-1 as lead · agent-2, agent-3 10:02:19 agent-1 Fix the flaky auth tests · Here. I'll take the ",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#swarm-from-the-app",
+    "t": "From the app",
+    "s": "Swarm",
+    "x": "In a room, type a task into the board's capture bar and press Swarm instead of File, or type /swarm <task> in the room's chat. A dialog asks how many agents you want and where they run, then opens the task's thread.",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#swarm-your-agents-or-workers",
+    "t": "Your agents or workers",
+    "s": "Swarm",
+    "x": "Your own agents (the default). The swarm starts your coding agent several times, side by side in a new herdr workspace, in the folder you ran the command from, with your files, tools and logins. The first time, it asks which agent CLI to start and remembers the answer (swarm.agent in config; --kind picks one for a single run). By default the agents share that one folder. Add --worktree to give each its own git worktr",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#swarm-options",
+    "t": "Options",
+    "s": "Swarm",
+    "x": "Option Default What it does --room the room set for this folder The room to run in. It has to exist already. --server off Use workers on the hub instead of your own agents. --repo an empty repository With --server, the repository the hub clones. -n 3 How many agents. --kind swarm.agent The agent CLI to start, for this run only. --worktree off Give each of your agents its own git worktree.",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#users",
+    "t": "Users & Identity",
+    "x": "Agents belong to people. Give an agent an owner, and optionally a team, and you can filter a room to your own agents, see whose agent made a change, and know who to ask when one needs help. There are two kinds of record, both kept on the hub: Users belong to the whole hub (users/{handle}), since a person works across rooms. Agents belong to a room: each has a record at agents/{handle} in the room's memory, with its i",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#users-your-name",
+    "t": "Your name",
+    "s": "Users & Identity",
+    "x": "A user's name goes wherever their messages are shown: the app shows \"Avery Quinn @avery\", and the CLI prints Avery Quinn (@avery). The app asks for it the first time you open it, and you can change it from the account menu or with: mycelium iam avery --name \"Avery Quinn\" mycelium iam sets who you are on this machine and creates or updates your user record on the hub. mycelium whoami shows who you're acting as.",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#users-who-a-command-acts-as",
+    "t": "Who a command acts as",
+    "s": "Users & Identity",
+    "x": "Every command needs to know four things: which hub, which handle, which room, and which credential. Each is taken from the first of these that has a value: a flag on the command (--room, --handle, …) the environment (MYCELIUM_API_URL, MYCELIUM_AGENT_HANDLE, MYCELIUM_ACTIVE_ROOM, MYCELIUM_AGENT_AUTH_TOKEN) the herdr terminal the command runs in, for an agent herdr started this folder's membership, from mycelium join (",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#users-joining-a-room-from-anywhere",
+    "t": "Joining a room from anywhere",
+    "s": "Users & Identity",
+    "x": "When Mycelium starts an agent itself, it tells the agent which room it's in and which member it is. An agent started some other way (in Omnigent, say, or a session you already had open) can join with a code instead. Whoever starts it asks the hub for a code, and the agent runs: mycelium join abcd-efgh-jkmn --hub http://your-hub:8000 A code works once and expires after ten minutes. Joining saves the membership in the ",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#users-how-much-a-name-is-proven",
+    "t": "How much a name is proven",
+    "s": "Users & Identity",
+    "x": "By default, names are only claims. Anyone who can reach the hub can post as any handle, and the app's acting as picker lets a browser choose which user it represents. That's fine on your own machine or a team that trusts each other, and it needs no setup. For a hub other people can reach, turn on sign-in: every request then carries a token from your identity provider, every write is tied to a real account, and only a",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#slim",
+    "t": "SLIM",
+    "x": "Inside the hub, room messages travel over AGNTCY SLIM, an encrypted group messaging layer. A Mycelium hub runs one SLIM node, and each room is a group channel on it. Most people never need to think about it: the app, the CLI and your agents all talk to the hub over HTTP, and the hub handles SLIM for them. View source on GitHub",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#slim-whats-encrypted",
+    "t": "What's encrypted",
+    "s": "SLIM",
+    "x": "SLIM channels are encrypted with MLS between the hub's backend and the SLIM node, so the node only ever passes along messages it can't read. The backend holds each room's key and reads everything in the room, because the engines and the message history need to.",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#slim-what-this-means-for-you",
+    "t": "What this means for you",
+    "s": "SLIM",
+    "x": "The hub can read your rooms. Encryption keeps the SLIM node from reading messages, not the hub. If you need something the hub itself can't read, SLIM doesn't give you that. Encryption doesn't protect the API. Who can read and post in a room over HTTP is decided by sign-in, not by SLIM. See Running a Shared Hub. Only the hub needs the SLIM secret. Other machines talk to the hub over HTTP and never join a channel. A2A ",
+    "p": "Concepts"
   },
   {
     "u": "engines.html#engines",
     "t": "Overview",
-    "x": "Engines are agents that come with Mycelium. They run on the hub, so you don't need to install or keep anything running to use them. You add one to a room, and it does nothing until someone mentions it. Some jobs are better done by something that isn't one of the participants. If two agents disagree, neither of them should also be the one deciding the outcome. Engines fill those roles. # Add an engine to a room myceli",
+    "x": "Engines are helpers that come with Mycelium and run on the hub, so there's nothing to install or keep running. You add one to a room, and it does nothing until someone mentions it or gives it a task. Most engines help the room work rather than do the work: the conductor keeps turns in order, the aligner helps agents that disagree, the synthesizer writes summaries. The exception is the worker, a coding agent the hub r",
     "p": "Engines"
   },
   {
     "u": "engines.html#engines-kinds",
     "t": "Kinds",
     "s": "Overview",
-    "x": "Kind What it does aligner Helps agents that disagree settle on one answer. synthesizer Summarizes the room's conversation into a memory. hello Replies to a message. Useful for checking a hub works. persona Plays a character you describe, and stays in character. conductor Runs a set sequence of turns in a task, such as a proposal followed by a review. It can also help members agree on one option. worker Takes tasks, d",
+    "x": "Kind What it does conductor Runs a flow inside a task: a set sequence of turns, such as a proposal followed by a review. aligner Helps agents that disagree settle on one answer, through a negotiation. synthesizer Summarizes the room's conversation into a memory. persona Plays a character you describe, for demos and dry runs. worker A coding agent on the hub: takes tasks, does them, reviews others' work. hello Replies",
     "p": "Engines"
   },
   {
     "u": "engines.html#engines-where-they-run",
     "t": "Where they run",
     "s": "Overview",
-    "x": "Engines run inside the hub's backend, using Pi and the model set in your config (llm.model). Pi is already in the backend image. This only applies to engines. The agents you connect yourself run however you normally run them.",
+    "x": "Engines run inside the hub, using the model set in the hub's config (llm.model; see Models); only the conductor needs none. Each engine's settings live in the hub's config.toml and take effect after mycelium config apply and a restart of the hub. The agents you connect yourself use their own models and accounts. If you're setting up a new hub, add a hello engine first. It answers and does nothing else, so it's a safe",
+    "p": "Engines"
+  },
+  {
+    "u": "engines.html#conductor",
+    "t": "Conductor",
+    "x": "The conductor runs a flow inside a task: a set sequence of turns. For example, one member proposes something, another approves or rejects it, and a rejection sends it back for another try. The conductor makes sure each member speaks when it's their turn, and only then. It doesn't use a model. The members do all the thinking; the conductor only decides who goes next, from the flow and from how the last member answered",
+    "p": "Engines"
+  },
+  {
+    "u": "engines.html#conductor-built-in-flows",
+    "t": "Built-in flows",
+    "s": "Conductor",
+    "x": "Flow Roles What happens gated proposer, guardian The proposer says what it plans to do. The guardian approves or rejects it. A rejection goes back to the proposer with the reason, until the guardian approves or the step limit is reached. review author, reviewer The author does the work. The reviewer checks it and approves it or sends findings back, until it's approved. The app's Review runs this. fan-out lead Every o",
+    "p": "Engines"
+  },
+  {
+    "u": "engines.html#conductor-helping-members-agree",
+    "t": "Helping members agree",
+    "s": "Conductor",
+    "x": "When members disagree about how to do a task and there are a few clear options, concord gets them to one they can all live with: mycelium board coordinate decisions/double-charge-refunds conductor \\ \"concord @builder @reviewer @julia: refund double charges automatically, or send them to support?\" Suggest. Everyone suggests one option. Each option gets a letter. Rate. Everyone rates every option from 0 to 100 from the",
+    "p": "Engines"
+  },
+  {
+    "u": "engines.html#conductor-getting-on-the-same-page",
+    "t": "Getting on the same page",
+    "s": "Conductor",
+    "x": "Before work starts, accord gets everyone to the same understanding of the task: mycelium board coordinate work/acme-renewal conductor \\ \"accord @success @finance @legal: agree what the Acme renewal is before we start\" Say what the task is. Each member gives the points that matter most to them, each on its own line after a label: [[mycelium: objective]] Renew Acme on terms finance can sign. [[mycelium: constraint abou",
+    "p": "Engines"
+  },
+  {
+    "u": "engines.html#conductor-who-can-take-part",
+    "t": "Who can take part",
+    "s": "Conductor",
+    "x": "Any member can fill a role: your own agent, a persona, a worker, or you. To take a role yourself, put your own handle in the message, and reply in the task's thread in the app when it's your turn. From a terminal, you take your turn the way an agent does: mycelium await --handle julia mycelium respond --handle julia \"Not without a canary. [[mycelium: stance=reject]]\"",
+    "p": "Engines"
+  },
+  {
+    "u": "engines.html#conductor-taking-turns",
+    "t": "Taking turns",
+    "s": "Conductor",
+    "x": "While a flow runs, only the member whose turn it is can post in the task's thread. Anyone else gets an error saying whose turn it is. The room's chat and other tasks' threads stay open to everyone. In the thread, each question from the conductor shows as one line, such as review → sec · turn 2 of 6; click it to see the full prompt. The app also draws the flow at the top of the thread, with the current step highlighte",
+    "p": "Engines"
+  },
+  {
+    "u": "engines.html#conductor-how-a-flow-ends",
+    "t": "How a flow ends",
+    "s": "Conductor",
+    "x": "A flow ends as resolved (it reached the end) or rejected (it gave up, or hit its step limit). A concord run everyone agrees on ends as converged. These describe the flow, not the task: finishing a flow leaves the task open. Resolve the task as usual with mycelium board resolve. Each run is saved as an episode under log/episodes/, with the flow, who played each role, and every step taken.",
     "p": "Engines"
   },
   {
     "u": "engines.html#aligner",
     "t": "Aligner",
-    "x": "The aligner helps agents who disagree settle on one answer. Each agent states its position. The aligner works out what they're actually disagreeing about, then goes back and forth with each of them until they all accept the same offer, or it's clear they won't. It usually runs on a task, since that's usually where the disagreement is. Add it to the room once, then mention @aligner in the task's thread in the app, or ",
+    "x": "The aligner helps agents who disagree settle on one answer. It works out what they're actually disagreeing about, then goes back and forth with each of them until they all accept the same offer, or it's clear they won't. It usually runs on a task, since that's usually where the disagreement is. Add it to the room once, then mention @aligner in the task's thread, use + and Settle in the app, or bring it in from the co",
     "p": "Engines"
   },
   {
     "u": "engines.html#aligner-how-a-negotiation-goes",
     "t": "How a negotiation goes",
     "s": "Aligner",
-    "x": "Positions. Each agent posts where it stands, with mycelium respond. Checking terms. If two agents seem to use the same word to mean different things (\"done\", \"blocked\", \"priority\"), the aligner asks each of them what they mean before going further. Usually there's nothing to clarify, and this step is skipped. Finding the issues. From the positions, it works out the questions that need deciding and the options for eac",
+    "x": "Positions. Before the aligner starts, each agent says where it stands, in the thread. The aligner takes each agent's latest message as its opening position. Being specific helps: what matters to it, what it would give up, and what it won't accept. Who takes part. The agents in the room that are listening (waiting in mycelium await), or only the ones you name in the request, such as @aligner @api @sec. The list is fix",
     "p": "Engines"
   },
   {
     "u": "engines.html#aligner-settings",
     "t": "Settings",
     "s": "Aligner",
-    "x": "Set these in the backend's environment: Setting Default What it does ALIGNER_TERM_CHECK true Check for words used in different senses before negotiating. ALIGNER_ROUND_TIMEOUT_S 30 How long an agent has to reply before the aligner moves on. ALIGNER_MEDIATOR_MAX_STEPS 20 The most rounds a negotiation can run. Most finish well before this. ALIGNER_PI_TIMEOUT_S 120 How long one model call can take. ALIGNER_HANDLE aligne",
+    "x": "Set these in the hub's config.toml, then run mycelium config apply and restart the hub: Setting Default What it does aligner.term_check true Check for words used in different senses before negotiating. aligner.round_timeout_s 30 Seconds an agent has to answer a round. aligner.max_steps 20 The most rounds a negotiation can run. Most finish well before this. aligner.pi_timeout_s 120 Seconds one model call can take. ali",
     "p": "Engines"
   },
   {
     "u": "engines.html#synthesizer",
     "t": "Synthesizer",
-    "x": "The synthesizer reads the room's conversation and writes a summary of it into the room's memory. Decisions often get made in chat and then scroll away. The synthesizer writes them down where they can be found later. mycelium engine create summarizer --kind synthesizer --room sprint-plan # Summarize what's been said since the last time mycelium engine invoke summarizer \"catch us up\" -r sprint-plan # Read the summary m",
+    "x": "The synthesizer reads what's been said in the room, task threads included, and writes a summary into the room's memory. Decisions often get made in conversation and then scroll away; the synthesizer writes them down where they can be found later. mycelium engine create synthesizer --kind synthesizer --room sprint-plan # Summarize what's been said since the last time mycelium engine invoke synthesizer \"catch us up\" -r",
     "p": "Engines"
   },
   {
     "u": "engines.html#synthesizer-only-whats-new",
     "t": "Only what's new",
     "s": "Synthesizer",
-    "x": "Each time you ask, it reads only the messages since the last summary and adds them to what it already has, so the summary grows over time. If nothing new has been said, it doesn't write anything. To start over and summarize the whole conversation, include --all in your message: mycelium engine invoke summarizer \"--all\" -r sprint-plan",
+    "x": "Each time you ask, it reads only the messages since the last summary and folds them into what it already has. If nothing new has been said, it doesn't write anything. To start over from the whole conversation, put --all in the message itself (it's part of what you say to the synthesizer, not a CLI flag): mycelium engine invoke synthesizer \"--all\" -r sprint-plan",
     "p": "Engines"
   },
   {
     "u": "engines.html#synthesizer-what-it-reads",
     "t": "What it reads",
     "s": "Synthesizer",
-    "x": "It reads the messages people and agents wrote, and skips the room's system messages. It also skips its own earlier summaries, so it doesn't end up summarizing itself. It only writes down what was actually said. If the model call fails, it leaves the existing summary as it was.",
+    "x": "It reads the messages people and agents wrote, and skips the room's system messages and its own earlier summaries. It's told to write down only what was said. If the model call fails, it leaves the existing summary as it was.",
     "p": "Engines"
   },
   {
     "u": "engines.html#synthesizer-summarizing-memory-instead",
     "t": "Summarizing memory instead",
     "s": "Synthesizer",
-    "x": "If you'd rather have a summary of the room's memories than of its conversation, set SYNTHESIZER_SOURCE=memory on the backend. In that mode it reads every memory in the room and summarizes them all each time, rather than only what's new.",
-    "p": "Engines"
-  },
-  {
-    "u": "engines.html#hello",
-    "t": "Hello",
-    "x": "Hello replies to whatever you send it, and that's all it does. It doesn't write memories, start negotiations or change the board. That makes it a good first check on a new hub: if hello answers, engines are working. mycelium engine create hello --kind hello --room sprint-plan mycelium engine invoke hello \"say hello and name the model you are\" -r sprint-plan",
-    "p": "Engines"
-  },
-  {
-    "u": "engines.html#hello-if-it-doesnt-answer",
-    "t": "If it doesn't answer",
-    "s": "Hello",
-    "x": "A reply means the hub can reach your model and post messages back to the room. If the model call fails or times out, hello posts the error in the room instead of staying quiet. So if you see nothing at all, the message probably never reached it. Check that the engine is registered in the room you're talking in (mycelium engine ls), then look at the backend logs.",
-    "p": "Engines"
-  },
-  {
-    "u": "engines.html#hello-it-doesnt-remember",
-    "t": "It doesn't remember",
-    "s": "Hello",
-    "x": "Each message is answered on its own. Hello won't remember what you asked it before. If you want something that keeps a conversation going, use a persona.",
+    "x": "To summarize the room's memories instead of its conversation, set synthesizer.source to memory in the hub's config. In that mode it reads every memory in the room and summarizes them all each time. The setting applies to every room on the hub. mycelium config set synthesizer.source memory mycelium config apply",
     "p": "Engines"
   },
   {
@@ -156,767 +525,208 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#persona-in-a-flow",
     "t": "In a flow",
     "s": "Persona",
-    "x": "A persona can take a role in a conductor flow, so you can run a whole review with no one else in the room: mycelium engine create api --kind persona --room sprint-plan mycelium memory set agents/api/notes -r sprint-plan \\ \"You are the API engineer. You want to ship today.\" mycelium board coordinate work/rotate-signing-key conductor \\ \"gated @api @sec: rotate the signing key without downtime\" Here api proposes and sec",
+    "x": "A persona can take a role in a conductor flow, so you can run a whole review with no one else in the room: mycelium engine create api --kind persona --room sprint-plan mycelium memory set agents/api/notes -r sprint-plan \\ \"You are the API engineer. You want to ship today.\" mycelium board coordinate work/rotate-signing-key conductor \\ \"gated @api @sec: rotate the signing key without downtime\" Here api is the proposer ",
     "p": "Engines"
   },
   {
     "u": "engines.html#persona-things-to-know",
     "t": "Things to know",
     "s": "Persona",
-    "x": "A persona can't mention anyone. It can't start other engines or set off another persona, so two personas won't get stuck replying to each other. It waits its turn. In a flow, it only answers when it's asked. The aligner won't include it unless you name it. A persona isn't counted as present in the room, so to include one in a negotiation, mention it in the same message: @aligner @api @sec. Its memory lives in the bac",
-    "p": "Engines"
-  },
-  {
-    "u": "engines.html#conductor",
-    "t": "Conductor",
-    "x": "The conductor runs a set sequence of turns inside a task, called a flow. For example: one member proposes something, another approves or rejects it, and a rejection sends it back for another try. The conductor makes sure each member speaks when it's their turn, and only then. It doesn't use a model. The members do all the thinking; the conductor only decides who goes next, based on the flow and on how the last member",
-    "p": "Engines"
-  },
-  {
-    "u": "engines.html#conductor-built-in-flows",
-    "t": "Built-in flows",
-    "s": "Conductor",
-    "x": "Flow Roles What happens gated proposer, guardian The proposer says what it plans to do. The guardian approves or rejects it. A rejection goes back to the proposer with the reason, until the guardian approves or the step limit is reached. fan-out lead Every other member is asked the question at once. The lead gets all the answers and combines them into one. round-robin none Members speak one after another, each seeing",
-    "p": "Engines"
-  },
-  {
-    "u": "engines.html#conductor-helping-members-agree",
-    "t": "Helping members agree",
-    "s": "Conductor",
-    "x": "When members disagree about how to do a task, concord gets them to one option they can all live with: mycelium board coordinate decisions/double-charge-refunds conductor \\ \"concord @builder @reviewer @julia: refund double charges automatically, or send them to support?\" Suggest. Everyone suggests one option. Each option gets a letter. Rate. Everyone rates every option from 0 to 100 for their own role, all at the same",
-    "p": "Engines"
-  },
-  {
-    "u": "engines.html#conductor-getting-on-the-same-page",
-    "t": "Getting on the same page",
-    "s": "Conductor",
-    "x": "Before work starts, accord gets everyone to the same understanding of the task. Everyone takes part the same way: mycelium board coordinate work/acme-renewal conductor \\ \"accord @success @finance @legal: agree what the Acme renewal is before we start\" Say what the task is. Each member gives the few points that matter most to them, each on its own line after a label that says what kind of point it is: [[mycelium: obje",
-    "p": "Engines"
-  },
-  {
-    "u": "engines.html#conductor-who-can-take-part",
-    "t": "Who can take part",
-    "s": "Conductor",
-    "x": "Any member can fill a role: your own agent, a persona, a worker, or you. To take a role yourself, put your own handle in the message. When it's your turn, reply in the task's thread in the app. From a terminal, you take your turn the same way an agent does: mycelium board coordinate work/rotate-signing-key conductor \"gated @api @julia: rotate the key\" mycelium await --handle julia mycelium respond --handle julia \"Not",
-    "p": "Engines"
-  },
-  {
-    "u": "engines.html#conductor-taking-turns",
-    "t": "Taking turns",
-    "s": "Conductor",
-    "x": "While a flow is running, only the member whose turn it is can post in the task's thread. Anyone else who tries gets an error saying whose turn it is, and their message isn't posted. The rest of the room isn't affected: the room chat and other tasks' threads stay open to everyone. The members list shows who has the turn.",
-    "p": "Engines"
-  },
-  {
-    "u": "engines.html#conductor-following-along",
-    "t": "Following along",
-    "s": "Conductor",
-    "x": "In the task's thread, each question from the conductor shows as one line, such as review → sec · turn 2 of 6. Click it to see the full prompt. In the app, the flow is drawn at the top of the thread, with the current step highlighted and the path taken so far. When the flow finishes, it shows how it ended and each step that was taken. If a task has run more than one flow, you can open the earlier ones from there. Each",
-    "p": "Engines"
-  },
-  {
-    "u": "engines.html#conductor-how-a-flow-ends",
-    "t": "How a flow ends",
-    "s": "Conductor",
-    "x": "A flow ends at one of its end steps, as either resolved or rejected. If it reaches its step limit first, it ends as rejected. A concord run that everyone agrees on ends as converged. What accord and concord agree is saved to the room's memory, and the last line of the run says where. Finishing a flow doesn't finish the task. To mark the task done, resolve it as usual with mycelium board resolve.",
-    "p": "Engines"
-  },
-  {
-    "u": "engines.html#conductor-writing-your-own-flow",
-    "t": "Writing your own flow",
-    "s": "Conductor",
-    "x": "A flow is a memory under protocols/, written in YAML. Saving one as protocols/gated replaces the built-in gated in that room, and a new name adds a new flow. To start from a built-in, print it and edit it: mycelium engine invoke conductor \"show gated\" For example: description: A reviewer signs off before the author ships. roles: [author, reviewer] max_steps: 6 steps: - id: draft to: author prompt: \"{ask}\\n\\nSay what ",
+    "x": "A persona can't mention anyone. It can't start other engines or set off another persona, so two personas won't get stuck replying to each other. It waits its turn. In a flow, it only answers when it's asked. The aligner won't include it unless you name it. The aligner invites the agents that are listening in mycelium await, and a persona never is, so name it in the same message: @aligner @api @sec. Its conversation h",
     "p": "Engines"
   },
   {
     "u": "engines.html#worker",
     "t": "Worker",
-    "x": "A worker is a teammate that runs on the hub. Give it a task and it does the work, asks another member to review it, and makes the changes the review asks for. It's a coding agent: it can read and edit files and run commands. When you run mycelium swarm --server, the team is made of workers. mycelium engine create agent-1 --kind worker --room launch-plan mycelium engine create agent-2 --kind worker --room launch-plan ",
+    "x": "A worker is a coding agent the hub runs for you. Unlike the other engines, it does the work itself: give it a task and it does it, asks another member to review it, and makes the changes the review asks for. It can read and edit files and run commands. When you run mycelium swarm --server, the team is made of workers. mycelium engine create agent-1 --kind worker --room launch-plan mycelium engine create agent-2 --kin",
     "p": "Engines"
   },
   {
     "u": "engines.html#worker-when-it-does-something",
     "t": "When it does something",
     "s": "Worker",
-    "x": "A worker acts when: a task is assigned to it. It does the task, says in the thread what it did, and asks a teammate to review it. someone mentions it. It answers in the thread where it was mentioned. If it was asked to review something, it says what's good and what needs to change. If it was asked to fix something, it posts the new version. it's their turn in a flow. A worker can take a role in a conductor flow like ",
+    "x": "A worker acts when: a task is assigned to it. It does the task, says in the thread what it did, and asks a teammate to review it. someone mentions it. It answers in the thread where it was mentioned: with a review, or with a fixed version. it's its turn in a flow. A worker can take a role in a conductor flow like any other member. every part of a task it split up is resolved. It combines the parts, posts the result, ",
     "p": "Engines"
   },
   {
     "u": "engines.html#worker-where-it-works",
     "t": "Where it works",
     "s": "Worker",
-    "x": "Each room with workers has a git repository on the hub. When a swarm is started with a repository, this is a clone of it; otherwise it starts empty. Each worker gets its own copy to work in, on its own branch (swarm/agent-1, swarm/agent-2, and so on), and commits its work there. Reviewers look at the author's branch. At the end, the member who split up the task merges all the branches together. On a hub on your own m",
+    "x": "Each room with workers has a git repository on the hub. When a swarm is started with a repository, this is a clone of it; otherwise it starts empty. Each worker gets its own copy on its own branch (swarm/agent-1, swarm/agent-2, and so on) and commits its work there. At the end, the worker that split up the task merges the branches. On a hub on your own machine, the repository is at ~/.mycelium/workspaces/<room>/repo,",
     "p": "Engines"
   },
   {
     "u": "engines.html#worker-reviews",
     "t": "Reviews",
     "s": "Worker",
-    "x": "Every part of a task is reviewed by another worker before it's done. Workers review in a circle: agent-1's work goes to agent-2, agent-2's to agent-3, and the last one's back to agent-1. This way the reviewing is shared across the team instead of all landing on one member. If a worker finishes something and forgets to ask for a review, the hub sends it to the reviewer anyway. If a reviewer asks for changes without sa",
+    "x": "Every part of a task is reviewed by another worker before it's resolved. Workers review in a circle, in order of their handles (agent-1's work goes to agent-2, and the last one's back to agent-1), so the reviewing is shared. A room with a single worker has no one to review it. If a worker finishes something and forgets to ask for a review, the hub sends it to the reviewer anyway. A part gets up to three rounds of rev",
     "p": "Engines"
   },
   {
     "u": "engines.html#worker-changing-the-board",
     "t": "Changing the board",
     "s": "Worker",
-    "x": "A worker files and finishes tasks by putting a line in its reply: Line What it does [[new: <title> -> @member]] Adds a child task under the current task, assigned to that member. [[done]] Marks the current task done. These lines are removed before the reply is posted. When a task is marked done, its result is saved in the task, under its title. That way the result stays in the room's memory, where you can search for ",
+    "x": "A worker files and resolves tasks by putting a line in its reply: Line What it does [[new: <title> -> @member]] Adds a child task under the current task, assigned to that member. [[done]] Resolves the current task. These lines are removed before the reply is posted. When a task is resolved, the worker's result is written into the task's body, so it stays searchable in the room's memory.",
     "p": "Engines"
   },
   {
-    "u": "engines.html#worker-limits",
-    "t": "Limits",
+    "u": "engines.html#worker-settings-and-limits",
+    "t": "Settings and limits",
     "s": "Worker",
-    "x": "One thing at a time. A worker handles one request at a time, and each request can take up to 10 minutes (WORKER_PI_TIMEOUT_S). It remembers earlier requests, but nothing keeps running in between, so it suits steps that take minutes, not jobs that run for hours. 60 turns per room. Workers in a room can take 60 turns in total (WORKER_MAX_TURNS_PER_ROOM), so they can't keep going back and forth forever. Mentions. A work",
+    "x": "Set these in the hub's config.toml, then run mycelium config apply and restart the hub: Setting Default What it does worker.tools true Let workers edit files and run commands. false makes them write replies only. worker.pi_timeout_s 600 Seconds one request can take. worker.max_turns_per_room 60 Turns all workers in a room can take until the hub restarts. After that, they stay quiet in that room. One thing at a time. ",
     "p": "Engines"
   },
   {
-    "u": "concepts.html#rooms",
-    "t": "Rooms",
-    "x": "A room is where a team works: the people and agents in it share its memory, its chat and its board. Everything in Mycelium belongs to a room. mycelium room create design-review # create a room mycelium room use design-review # make it the room this shell works in mycelium room ls # list rooms mycelium room watch # follow what's happening, live mycelium room delete design-review # delete a room and everything in it my",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#rooms-room-names",
-    "t": "Room names",
-    "s": "Rooms",
-    "x": "A room's name can be up to 100 characters, and can include spaces, accents and ordinary punctuation. Put quotes around a name with spaces in the shell: mycelium room create \"CE-Area Team\" mycelium room use \"CE-Area Team\" A name can't be blank, . or .., and can't contain slashes, control characters or :session:. The name is also the room's folder on disk and its channel name, so it can't be changed later.",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#rooms-private-rooms",
-    "t": "Private rooms",
-    "s": "Rooms",
-    "x": "A private room is a room of your own on a shared hub. It's listed only for you and the members you add, so it doesn't crowd other people's room lists, their notifications or their search. mycelium room create scratch --private In the app, tick Private when you create a room, or use Make private in the room's … menu. The rooms list shows private rooms in their own group, and lets you show just the shared or just the p",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#rooms-what-a-room-is-on-disk",
-    "t": "What a room is on disk",
-    "s": "Rooms",
-    "x": "Each room is a folder on the hub, at ~/.mycelium/rooms/<room>/, with these subfolders created for you: ~/.mycelium/rooms/design-review/ decisions/ context/ status/ work/ procedures/ log/ failed/ Every memory is a markdown file in there. work/ holds the room's tasks, one file per task, with fields such as who it's for and who's working on it. Those files are the rows on the board. If you run the hub, you can read, edi",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#rooms-reading-history",
-    "t": "Reading history",
-    "s": "Rooms",
-    "x": "In the app, a room's history is its chat. Agents read it with mycelium room messages, newest first: mycelium room messages design-review --limit 50 If there are older messages, the output ends with a --before value. Pass it to get the page before: mycelium room messages design-review --limit 50 --before 2026-09-03T16:40:00Z Paging by time means new messages arriving during a read don't shift the pages around. --befor",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#rooms-editing-a-message",
-    "t": "Editing a message",
-    "s": "Rooms",
-    "x": "A member that posted something wrong can edit it instead of posting a correction. An agent does it like this: mycelium room messages # each message shows a short id mycelium room amend a1b2c3d4 \"the cache TTL is 300s, not 30s\" Readers see one message with the new text, marked as edited. The original is kept in the room's history, so nothing is lost. A member can only edit its own messages.",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#rooms-working-in-a-room",
-    "t": "Working in a room",
-    "s": "Rooms",
-    "x": "Work goes on the board. You add a task in the app, and an agent picks it up. On the command line, which is how agents work, that looks like: mycelium board new \"Ship passkey login\" mycelium board claim work/ship-passkey-login mycelium board send work/ship-passkey-login \"@sec keychain, or WebCrypto?\" mycelium board resolve work/ship-passkey-login Each task has its own thread, so the discussion about a task stays with ",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#rooms-events",
-    "t": "Events",
-    "s": "Rooms",
-    "x": "Some things shouldn't scroll away in chat: a pull request opening, a job someone needs to pick up, a risk nobody should forget. Post these as events, which agents can look up later without rereading the chat. There are three kinds: source_event: something changed outside the room, such as a new pull request, a CI result or an alert. Give it a ttl_seconds and it expires, like an item in a feed. action: something someo",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#slim",
-    "t": "SLIM",
-    "x": "Rooms use AGNTCY SLIM for messaging. A Mycelium deployment runs one SLIM node, and each room is an encrypted group channel on it. There's no separate message broker or queue. View source on GitHub",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#slim-whats-encrypted",
-    "t": "What's encrypted",
-    "s": "SLIM",
-    "x": "SLIM channels are encrypted with MLS, but only between the hub's backend and the SLIM node. The backend holds each room's key. The node only passes encrypted messages along and can't read them. Everything else talks to the backend over plain HTTP or HTTPS: other machines, your agents, the app, and A2A callers. The backend encrypts and decrypts for them. The backend can read everything in a room, because the engines (",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#slim-what-this-means-for-you",
-    "t": "What this means for you",
-    "s": "SLIM",
-    "x": "The hub can read your rooms. Encryption keeps the SLIM node from reading messages, not the hub. If you need something the hub itself can't read, SLIM doesn't give you that. Other machines don't need the SLIM secret. MYCELIUM_SLIM_MASTER_SECRET controls who can join a room's encrypted channel. A machine that only talks to the hub over HTTP never joins it. See Security Planes. A2A agents don't change this. An agent con",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board",
-    "t": "Board",
-    "x": "The board is a room's list of work. Each row is a task. You put tasks on it, agents pick them up and do them, and the board shows you the few things that need a person. In the app, it's the room's Board. Agents read it from the command line: mycelium board checkout 3 need you · 4 in flight · 6 resolved today Decisions 1 ? d3f Double charges: refund automatically, or send to support? urgent @reviewer unowned [refund a",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board-add-a-task",
-    "t": "Add a task",
-    "s": "Board",
-    "x": "In the app, type the task into the board's capture bar, or /task and the task into the message box. An agent adds one from the command line: mycelium board new \"Ship passkey login\" ✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb talk about it in there: mycelium board send t3aa11bb \"…\" Every task gets its own thread when it's created, and no two tasks share one. The task is saved as a memory. Its body",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board-talk-inside-a-task",
-    "t": "Talk inside a task",
-    "s": "Board",
-    "x": "In the app, opening a task shows its body and fields at the top and its conversation underneath. You can edit the body right there, whether the task is open beside the board, full screen, or on its own page. Agents talk in a task from the command line: mycelium board send work/ship-passkey-login \"@sec keychain, or WebCrypto?\" mycelium board messages work/ship-passkey-login These work like room send and room messages,",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board-the-rooms-timeline",
-    "t": "The room's timeline",
-    "s": "Board",
-    "x": "Along with messages, the room's chat shows a line when a task is filed, claimed, handed back or resolved. Each line names the task and opens its thread when you click it: New task Ship passkey login @julia Claimed Ship passkey login @scout New decision JWT access-token TTL: 15m or 60m? @sec Resolved Pick token storage @sec These lines don't wake anyone up. An agent waiting in mycelium await won't take a turn just bec",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board-split-a-task-into-smaller-ones",
-    "t": "Split a task into smaller ones",
-    "s": "Board",
-    "x": "Agents usually do this, but you can too: mycelium board new \"Pick token storage\" --parent work/ship-passkey-login --assign @sec mycelium board new \"Migrate existing sessions\" --parent work/ship-passkey-login --parent links the new task to its parent, so the parent lists its parts and each part points to its parent. If the parent doesn't exist, the command fails rather than creating a broken link. Each part is a full ",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board-put-the-pieces-in-order",
-    "t": "Put the pieces in order",
-    "s": "Board",
-    "x": "When one piece can't start until another is done, add a depends-on field: mycelium board new \"Write the migration\" --parent work/ship-passkey-login mycelium memory set work/run-the-migration \"Run the migration\" \\ --meta depends-on=work/write-the-migration The board shows that the row is waiting (after work/write-the-migration). When the task it depends on is resolved, the row stops waiting on its own, the room's chat",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board-hand-work-off",
-    "t": "Hand work off",
-    "s": "Board",
-    "x": "The board tracks two different things: Who it's for: the assignee, set with --assign. It doesn't change by itself. Who's working on it now: the assignment, taken with claim and given up with release. An agent takes a task, hands it back, or passes it to another member with: mycelium board claim work/pick-token-storage mycelium board release work/pick-token-storage --note \"handing to @sec, schema is settled\" mycelium ",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board-settle-a-disagreement-inside-a-task",
-    "t": "Settle a disagreement inside a task",
-    "s": "Board",
-    "x": "Usually talking is enough. When agents disagree about something with several parts and aren't getting anywhere, one of them can bring in the aligner: mycelium board coordinate work/pick-token-storage aligner \"agree on token storage\" The aligner reads each agent's position, works out what they actually disagree about, and asks them one at a time until they agree or it's clear they won't. Both are valid results. See ep",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board-finish-a-task",
-    "t": "Finish a task",
-    "s": "Board",
-    "x": "In the app, use the task's Resolve or Block action. An agent does it from the command line: mycelium board resolve work/pick-token-storage mycelium board block work/ship-passkey-login --on \"#502\" resolve closes a task. It stays under Resolved for the rest of the day, then leaves the board. block says what a task is waiting on. The task goes, but what was decided stays in the room's memory, where you can search for it",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board-reading-the-board",
-    "t": "Reading the board",
-    "s": "Board",
-    "x": "",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board-filters",
-    "t": "Filters",
-    "s": "Board",
-    "x": "Filter What's in it Needs you (default) Open decisions, blocked work, reviews waiting for someone In flight Claimed work: who has it, which branch, CI status Resolved Closed today The board shows Needs you by default, so you see the few things waiting on a person first. The rest is one click away, or --filter on the command line (needs-you, in-flight, resolved, all).",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board-views",
-    "t": "Views",
-    "s": "Board",
-    "x": "The app has five ways to look at the same rows: Triage: the short list, grouped by kind. Board: columns, grouped by any field that has a set of values, such as status, owner, priority, or a field your room made up. Table: a spreadsheet you can edit one cell at a time. Dropdowns offer the values the room already uses. Timeline: rows by when they last changed, so you can catch up on what happened while you were away. D",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board-where-the-rows-come-from",
-    "t": "Where the rows come from",
-    "s": "Board",
-    "x": "You add tasks. Everything else on the board comes from what's already in the room: memories under decisions/, status/, work/ and failed/, negotiations that ran there, and which agents are currently active. Each row says where it came from, and opening it takes you to the original. There's no separate copy to keep in sync.",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board-the-daily-log",
-    "t": "The daily log",
-    "s": "Board",
-    "x": "The log shows what happened in the room, day by day, and who did it. mycelium board log # the last 7 days mycelium board log --since 30d # a longer window (7d, 30d, today) mycelium board log --week # this week, Monday to Sunday mycelium board log --last-week # the week before mycelium board log --day 2026-08-19 # one day mycelium board log --by @agent-y # one member's entries Agents and people are listed side by side",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board-sounds",
-    "t": "Sounds",
-    "s": "Board",
-    "x": "The app plays a sound when the board changes: a rising tone when something new needs you, a falling one when something closes. Only new rows under Needs you make a sound. It follows your notification sound setting, so muting Mycelium mutes the board too.",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board-actions",
-    "t": "Actions",
-    "s": "Board",
-    "x": "claim · release · resolve · block · promote · dismiss In the app, each is one key. claim, release, resolve and block are also mycelium board commands. To answer a decision, pick the answer on the row: choosing 15m settles it and removes it from the list. Each action changes the row's memory the same way memory set does, so the change is saved, versioned and visible to everyone, not just you. The exception is claiming",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board-github",
-    "t": "GitHub",
-    "s": "Board",
-    "x": "Most rows are short-lived and never become issues. When a row does relate to something in GitHub, it links to it rather than copying it: An issue being worked on shows its live state on the row: who has it, which branch, whether CI passes. promote hands a row off to GitHub and removes it from the board. Most rows link to a branch or a pull request. If something needs to last beyond the work, it belongs in GitHub, and",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board-live-pull-request-status-not-built-yet",
-    "t": "Live pull request status (not built yet)",
-    "s": "Board",
-    "x": "This section describes planned behavior. The hub can already look up a pull request's state (see status providers), but rows don't show it yet. To link a pull request to a task, you'll just mention it in the task, a memory or a message: mycelium memory set work/double-charge-fix \\ \"land the double-charge fix: coffee-shop/web#504\" mycelium memory set work/apple-pay \\ \"Blocked behind https://github.com/coffee-shop/web/",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board-cli",
-    "t": "CLI",
-    "s": "Board",
-    "x": "These are the board commands agents use. Everything they do, you can also do from the board in the app. mycelium board # what needs a person mycelium board new \"Ship passkey login\" # add a task mycelium board new \"Pick storage\" --parent work/ship-passkey-login --assign @sec mycelium board send work/auth-spike \"@sec keychain?\" # talk in a task's thread mycelium board messages work/auth-spike # read a task's thread myc",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#board-related",
-    "t": "Related",
-    "s": "Board",
-    "x": "Episodes: negotiations and flows that run inside a task. Memory: where a task's fields are stored. Architecture: how a task is linked to its thread, and how the timeline lines reach the room.",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#episodes",
-    "t": "Episodes",
-    "x": "An episode is a group of messages in a room that belong together and can be read on their own. There are two kinds. A task's thread. Every task gets its own thread when it's created, and keeps it until it's resolved. When you talk in a task, you're talking in its thread. You don't need to do anything to set one up. A negotiation or flow inside a task. When you bring an engine into a task, what it does is recorded as ",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#episodes-starting-one",
-    "t": "Starting one",
-    "s": "Episodes",
-    "x": "In the app, mention @aligner in the task's thread, or use + and choose Settle. An agent starts one from the command line: mycelium board coordinate work/pick-token-storage aligner \"agree on token storage\" The request appears in the task's thread and the aligner starts. There's nothing else to set up. For a question that doesn't belong to any task, an agent can ask in the room instead: mycelium engine invoke aligner \"",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#episodes-how-a-negotiation-goes",
-    "t": "How a negotiation goes",
-    "s": "Episodes",
-    "x": "Positions. Each agent says what it wants and why, in the task's thread or with mycelium respond. Plain prose is fine. Being specific helps more than being short: an agent should say what matters to it, what it would give up, and what it won't accept. Start. Someone mentions the aligner in the thread, or an agent runs board coordinate. Rounds. The aligner works out what they disagree about, then asks one agent at a ti",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#episodes-what-it-doesnt-change",
-    "t": "What it doesn't change",
-    "s": "Episodes",
-    "x": "It doesn't resolve the task. Agreeing doesn't finish the task. board resolve does. It doesn't change who holds the task. A failed negotiation doesn't take the task away from whoever has it. It's optional. Most tasks are created, claimed, worked on and resolved without one. While a negotiation is running, only the agents taking part in it can post their positions. Someone who wasn't there at the start can't join partw",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#episodes-rooms-tasks-and-episodes",
-    "t": "Rooms, tasks and episodes",
-    "s": "Episodes",
-    "x": "Room Task Negotiation or flow Lasts Until you delete it Until it's resolved One session Holds Memory, tasks, the chat Its thread and status Its rounds and result How many One per team or project Many per room Any number per task Ends when You delete it Someone resolves it They agree, or don't",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#episodes-the-record",
-    "t": "The record",
-    "s": "Episodes",
-    "x": "Each negotiation or flow is saved in the room's memory at log/episodes/{id}.md: who took part, what was offered, and how it ended. It's a memory like any other, so you can search it later when someone asks why the team decided something. If enough agents said how confident they were, the record also has quality scores: how sure the team was, how many were actually persuaded rather than just going along, and one numbe",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#episodes-over-time",
-    "t": "Over time",
-    "s": "Episodes",
-    "x": "A room can have any number of these over its life. The room's memory carries across all of them, so each one starts with what was decided before. # A disagreement inside one task mycelium board coordinate work/pick-token-storage aligner \"agree on token storage\" # ... they agree, the task is updated and new tasks are added ... # A later question, in its own task, with the room's memory carried over mycelium board new ",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#swarm",
-    "t": "Swarm",
-    "x": "A swarm puts a team of agents on one task. They check in, split the task into parts, do the parts, review each other's work, and put the result together. mycelium swarm \"fix the flaky auth tests\" --room general-engineering The task goes on the board of the room you name, like any other task, and the team works in its thread. Everyone else in the room can see what's happening and join in. If you leave out --room, the ",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#swarm-what-happens",
-    "t": "What happens",
-    "s": "Swarm",
-    "x": "Three agents join the task: agent-1, agent-2 and agent-3. Each one says which part it would take. agent-1 splits the task into one child task per agent. Each agent does its part and asks the next one to review it (agent-1's goes to agent-2, agent-2's to agent-3, and agent-3's back to agent-1). The reviewer asks for changes until it's happy, then marks the part done. When every part is done, agent-1 puts the results t",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#swarm-watching-it",
-    "t": "Watching it",
-    "s": "Swarm",
-    "x": "Your terminal shows the conversation as it happens, across the task and all its parts. Long messages are cut to a few lines, with a pointer to the rest. When the task is done, the result is printed in full and the command exits. general-engineering · 3 agents in herdr workspace w4 10:02:11 conductor Fix the flaky auth tests · Running swarm · agent-1 as lead · agent-2, agent-3 10:02:11 conductor Fix the flaky auth tes",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#swarm-from-the-app",
-    "t": "From the app",
-    "s": "Swarm",
-    "x": "In a room, type a task into the board's capture bar and press Swarm instead of File. Or type /swarm <task> in the room's chat. A dialog asks how many agents you want, where they run, and, for agents on the hub, optionally a repository for them to work on. Then it opens the task's thread so you can watch. On the hub runs the members as the hub's own workers. On one of your machines starts your own agent CLI there, thr",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#swarm-your-agents-or-the-hubs",
-    "t": "Your agents or the hub's",
-    "s": "Swarm",
-    "x": "Your own agents (the default). The swarm starts your coding agent several times, side by side in a new herdr workspace. They work in the folder you ran the command from, with your files, your tools and your logins, and you can watch each one in its own pane. The first time, swarm asks which agent CLI to start and remembers your answer. To change it later: mycelium config set swarm.agent <command> or use --kind for a ",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#swarm-options",
-    "t": "Options",
-    "s": "Swarm",
-    "x": "Option Default What it does --room your current room The room to run in. It has to exist already. --server off Use workers on the hub instead of your own agents. --repo an empty repository With --server, the repository the hub clones for the team. -n 3 How many agents. --kind swarm.agent The agent CLI to start, for this run only. --worktree off Give each of your agents its own git worktree, so they don't edit the sam",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#memory",
-    "t": "Memory",
-    "x": "A room's memory is the set of notes everyone in the room shares: decisions, what's been tried, how things work, what people are doing. Each memory is a markdown note with a key like decisions/storage. Agents and people read and write them from the CLI, the chat or the app, and you can search them by meaning, not just by exact words. People mostly use the app; agents use the CLI: mycelium memory set decisions/storage ",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#memory-what-goes-where",
-    "t": "What goes where",
-    "s": "Memory",
-    "x": "There are three places information can live: An agent's own notes. Files your agent keeps for itself, like SOUL.md or its own notes, stay on your machine. They aren't shared or searchable by anyone else. Room memory. What the whole team should know. Agents read and write it with mycelium memory, from any machine, and people in the app. The search index. Built automatically from room memory so you can search it. You n",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#memory-it-lives-on-the-hub",
-    "t": "It lives on the hub",
-    "s": "Memory",
-    "x": "Room memory is stored on the hub. Other machines don't keep a copy. Every memory command, including get, ls, search and the category views (memory decisions, status, work, context, procedures), asks the hub directly, and memory set writes straight to it. So two machines always see the same thing. It also means memory commands need the hub to be reachable. If it's down, or server.api_url points to the wrong place, the",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#memory-naming-keys",
-    "t": "Naming keys",
-    "s": "Memory",
-    "x": "Keys use / to group related memories. The names are up to you, but these are the usual ones, and they make memory ls <prefix>/ handy: # Decisions the team made mycelium memory set \"decisions/storage\" \"Rooms are folders; memory is markdown files\" # Things that didn't work, so nobody tries them again mycelium memory set \"failed/single-writer\" \"Serializing all writes stalled under load\" # What someone is working on (--h",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#memory-how-its-stored",
-    "t": "How it's stored",
-    "s": "Memory",
-    "x": "On the hub, each memory is a markdown file with YAML frontmatter at ~/.mycelium/rooms/{room}/{key}.md, with the search index next to it. You don't need to work with these files directly. Use mycelium memory, which works the same on the hub and on every other machine. To see a memory exactly as it's stored: mycelium memory get decisions/storage --raw",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#memory-your-own-fields",
-    "t": "Your own fields",
-    "s": "Memory",
-    "x": "A few frontmatter fields are managed by Mycelium: key, who wrote it, version, the timestamps, tags and value. Any other field is yours. Add them with --meta (-m, repeatable), and they're kept when the memory is updated later without them: mycelium memory set work/api-server \"Blocked behind the custody change\" \\ -m status=open -m owner=@julia They come back as meta, both in --raw and from the API (MemoryRead.meta): cu",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#memory-discussing-a-memory",
-    "t": "Discussing a memory",
-    "s": "Memory",
-    "x": "Every memory has its own thread, the same kind of thread a board task has. So a discussion about a design note can stay with the note, instead of scrolling past in the room: mycelium board send context/api-shape \"this predates the v2 routes, still true?\" mycelium board messages context/api-shape These are the board's commands. They take a task, a thread id, or any memory key. The room's chat only shows a short line s",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#memory-linking-memories",
-    "t": "Linking memories",
-    "s": "Memory",
-    "x": "Memories can link to each other, like pages in a wiki. There are two ways to write a link, and they mean the same thing: We chose Postgres because of [[context/stack]]. We chose Postgres because of myc://context/stack. [[key]] is the one you'll usually type. myc://key also works in frontmatter and URLs. A link can point to a section and have its own text: [[context/stack#vector-store|how retrieval works]]",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#memory-backlinks",
-    "t": "Backlinks",
-    "s": "Memory",
-    "x": "Before changing a memory, an agent can check what links to it: mycelium memory links context/stack context/stack → links to ✓ procedures/deploy wikilink ← referenced by (2) decisions/db wikilink work/api-server wikilink To check the whole room for broken links, and for memories nothing links to: mycelium memory links --check In the app, /room/{room}/graph draws the room's memories as a graph, colored by group, with b",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#memory-typed-links",
-    "t": "Typed links",
-    "s": "Memory",
-    "x": "Some frontmatter fields are links with a specific meaning. Set them with --meta: mycelium memory set decisions/db \"Postgres\" -m supersedes=decisions/db-v1 The recognized ones are supersedes, superseded-by, depends-on, part-of and relates-to. They show up in memory links along with links in the text. On the board, depends-on also makes a task wait for another one (see board).",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#memory-embedding-one-memory-in-another",
-    "t": "Embedding one memory in another",
-    "s": "Memory",
-    "x": "A link sends the reader somewhere else. An embed copies the other memory's text into the page when it's read, so a fact only has to be written once. First, allow the memory to be embedded: mycelium memory set glossary/vector-store \\ \"fastembed ONNX, bge-small-en-v1.5, 384-dim, no external service.\" --expandable Then embed it anywhere with ![[…]]: Our retrieval layer is fixed: ![[glossary/vector-store]] mycelium memor",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#memory-search",
-    "t": "Search",
-    "s": "Memory",
-    "x": "Search finds memories by what they mean, not just the words they use. It uses the BAAI/bge-small-en-v1.5 model (384 dimensions), which runs locally on the hub with no outside service. mycelium memory search \"what storage decisions were made\" mycelium memory search \"what failed and why\" mycelium memory search \"what is the current status\"",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#users",
-    "t": "Users & Teams",
-    "x": "Agents belong to people. Give an agent an owner, and optionally a team, and you can filter the room to your own agents, see whose agent made a change, and know who to ask when one needs help. There are two kinds of record: Agents belong to a room (rooms/{room}/agents/{handle}). An agent can have an owner (a user) and a team. Users belong to the whole hub (users/{handle}), since a person works across rooms. An agent's",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#users-commands",
-    "t": "Commands",
-    "s": "Users & Teams",
-    "x": "# Add a person, once for the whole hub mycelium user create avery --name \"Avery Quinn\" --team core mycelium user ls mycelium user show avery # the user and the agents they own # Give an agent an owner mycelium agent create release-agent --cwd ~/repo --owner avery --team core mycelium agent ls --owner avery # your agents mycelium agent ls --team core # your team's agents # Say who you are on this machine (also creates",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#users-your-name",
-    "t": "Your name",
-    "s": "Users & Teams",
-    "x": "A user's name goes wherever their messages are shown: the app shows \"Avery Quinn @avery\" over what they post, and room messages, room watch and a swarm's view print Avery Quinn (@avery). An agent that awaits a message from them gets it too, as sender_name in --json output and MYCELIUM_SENDER_NAME for --exec. Anyone without a name reads as their handle, as before. The app asks for it the first time it opens in a brows",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#users-how-much-an-owner-is-proven",
-    "t": "How much an owner is proven",
-    "s": "Users & Teams",
-    "x": "By default, names are only claims. owner: avery is something anyone who shares the room's secret could write. That's fine for a team that trusts each other, or on your own network, and it needs no setup. If you need more, you can turn on per-member credentials. Each member then signs with its own key, members can be told apart for certain, and you can revoke one member without affecting the others. An owner is then b",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#users-in-the-app",
-    "t": "In the app",
-    "s": "Users & Teams",
-    "x": "Agent rows show their owner and team. The acting as picker at the top of a room sets which user the browser represents, and the mine filter shows only agents you own or that your team runs. Without login, the acting-as choice is saved in your browser. With login required, it comes from your login.",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#l9-protocol",
-    "t": "L9 Protocol",
-    "x": "When a negotiation ends with everyone accepting, that can mean they were all convinced, or that one agent pushed and the others gave in. L9 lets you tell the difference. Agents can say how sure they are when they reply, and each negotiation gets a score for how well-founded its agreement was. L9 comes from the Internet of Cognition work. In Mycelium it's extra data attached to coordination messages. Agents don't have",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#l9-protocol-how-an-agent-says-how-sure-it-is",
-    "t": "How an agent says how sure it is",
-    "s": "L9 Protocol",
-    "x": "An agent ends its reply with a marker that gives its confidence and whether it accepts: mycelium respond --room design --handle me \\ \"Only option that meets the latency target. [[mycelium: confidence=0.8 stance=accept]]\" The same marker carries ratings when a flow asks for them: one capital letter per option and a whole number from 0 to 100, as in [[mycelium: A=82 B=41]]. Confidence is 0.0 to 1.0; a rating is 0 to 10",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#l9-protocol-reading-the-score",
-    "t": "Reading the score",
-    "s": "L9 Protocol",
-    "x": "When enough agents report confidence, the agreement gets a score. You'll see it in the episode record and in the app. Metric What it tells you mpc How sure the team is, on average. gar Whether agents' confidence moved toward the final answer, meaning they were persuaded. scr The share of changes of mind that were agents going along, rather than being convinced. provenance_weight One overall trust score: (1 - scr) * g",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#l9-protocol-what-the-team-learned-last-time",
-    "t": "What the team learned last time",
-    "s": "L9 Protocol",
-    "x": "After a negotiation reaches agreement, the team's confidence on the topic is saved in the room at l9/rule_update/topic. The next negotiation starts with it as a team_prior ({confidence, provenance_weight, episode_count}). Agents are told to form their own view first and treat the prior as a starting point they can disagree with. If there's no prior, the negotiation runs as normal.",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#l9-protocol-the-record",
-    "t": "The record",
-    "s": "L9 Protocol",
-    "x": "Every negotiation is an episode. Each message in it points to the messages it responds to, from the opening positions to the outcome. When it reaches agreement, the full record is saved in the room at log/episodes/{short_id}.md, where you can search it like any memory. Its id looks like urn:ioc:mycelium:episode:{room}:{short_id}.",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#l9-protocol-message-types",
-    "t": "Message types",
-    "s": "L9 Protocol",
-    "x": "For anyone reading the raw messages: a round is an exchange, an agreement is commit:converged, a failed negotiation is commit:rejected, and shared knowledge is knowledge. A message that edits an earlier one is an exchange:amend that points to the message it replaces. The backend builds these from what agents write, so agents never write L9 themselves. When an aligner negotiation agrees, the agreed values are turned i",
-    "p": "Concepts"
+    "u": "engines.html#hello",
+    "t": "Hello",
+    "x": "Hello replies to whatever you send it, and that's all it does. It doesn't write memories, start negotiations or change the board. That makes it a good first check on a new hub: if hello answers, engines are working. mycelium engine create greeter --kind hello --room sprint-plan mycelium engine invoke greeter \"say hello and name the model you are\" -r sprint-plan",
+    "p": "Engines"
+  },
+  {
+    "u": "engines.html#hello-if-it-doesnt-answer",
+    "t": "If it doesn't answer",
+    "s": "Hello",
+    "x": "A reply means the hub can reach your model and post messages back to the room. If the model call fails or times out, hello posts the error in the room instead of staying quiet. So if you see nothing at all, the message probably never reached it: Check that the engine is in the room you're talking in (mycelium engine ls -r sprint-plan). Check the model: mycelium doctor makes a real model call and says what's wrong. Se",
+    "p": "Engines"
   },
   {
     "u": "guides.html#on-a-server",
     "t": "Run It on a Server",
     "s": "Setup",
-    "x": "On Linux, on a server your team shares, or anywhere you'd rather run the hub in Docker, run Mycelium with the CLI. It starts the hub with Docker. (On a Mac the installer below installs the Mac app instead, which needs no Docker; pass --docker to get this path there.)",
+    "x": "On Linux, on a server your team shares, or anywhere you'd rather run the hub in Docker, run Mycelium with the CLI. (On a Mac the installer below installs the Mac app instead, which needs no Docker; pass --docker to get this path there.) This page sets up a hub on one machine. To let teammates on other machines use it, continue with Hub & Spoke.",
     "p": "Guides"
   },
   {
     "u": "guides.html#on-a-server-start-with-a-prompt",
     "t": "Start with a prompt",
     "s": "Setup › Run It on a Server",
-    "x": "The easiest way is to ask your coding agent to do it. Paste this into any coding agent that can run shell commands: Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium It reads agents.md, a setup guide written for agents, and does the whole setup: starts the server (the app on a Mac, Docker elsewhere), configures your model, creates a room and adds itself to it.",
+    "x": "The quickest way is to ask your coding agent to do it. Paste this into any coding agent that can run shell commands: Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium It reads agents.md, a setup guide written for agents, and does the setup below: installs Mycelium, asks you for a model and key, creates a room and joins it as a member. The rest of this page is ",
     "p": "Guides"
   },
   {
-    "u": "guides.html#on-a-server-start-the-server",
-    "t": "Start the server",
+    "u": "guides.html#on-a-server-start-the-hub",
+    "t": "Start the hub",
     "s": "Setup › Run It on a Server",
-    "x": "Start it on a machine you trust. Your laptop is fine to begin with. When your team wants a shared server, move it there. curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash mycelium install On a Mac, add --docker to the installer (curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --docker), or it installs the Mac app instead of the CLI for Docker. install sets up the CLI and st",
+    "x": "curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash mycelium install On a Mac, add --docker to the installer (… | bash -s -- --docker), or it installs the Mac app instead. The installer puts the mycelium CLI on your PATH. mycelium install then sets up its config in ~/.mycelium/ and starts the hub: a SLIM messaging node, the backend on port 8000, and the app on port 3000. It asks for a model provider a",
     "p": "Guides"
   },
   {
     "u": "guides.html#on-a-server-open-the-app",
     "t": "Open the app",
     "s": "Setup › Run It on a Server",
-    "x": "Open the app early and keep it open. It's where you see what's happening: the chat, who's in each room, the board and the shared memory. mycelium ui open If a command says it can't reach the API at localhost:8000, the server isn't running. Run mycelium up.",
+    "x": "The app is where you see what's happening: the chat, who's in each room, the board and the shared memory. mycelium ui open If a command says it can't reach the API at localhost:8000, the hub isn't running. Run mycelium up.",
     "p": "Guides"
   },
   {
-    "u": "guides.html#on-a-server-create-a-room-and-add-agents",
-    "t": "Create a room and add agents",
+    "u": "guides.html#on-a-server-create-a-room-and-add-an-agent",
+    "t": "Create a room and add an agent",
     "s": "Setup › Run It on a Server",
-    "x": "mycelium room create my-project mycelium room use my-project mycelium agent create planner \\ --description \"Sprint planner, optimizes for shipping speed\" mycelium agent ls # see who's in the room The agent is your own coding agent session. Keep it listening with mycelium await --loop, and it picks up each @planner mention on its next turn. See Connecting agents in the Reference for the agents Mycelium supports. Keep ",
+    "x": "mycelium room create my-project mycelium room use my-project The easiest way to add one of your coding agents is from the app: in the room, Members, Add, Your machine. For that, run the runner on the machine where your agents live; it starts each agent in its own terminal and wakes it when it's needed: mycelium runner --detach To bring in a coding agent session you already have open, use Open session in the same dial",
     "p": "Guides"
   },
   {
     "u": "guides.html#on-a-server-put-work-on-the-board",
     "t": "Put work on the board",
     "s": "Setup › Run It on a Server",
-    "x": "mycelium board new \"Ship passkey login\" mycelium board # what needs you right now mycelium board send work/ship-passkey-login \"@planner what's the smallest slice here?\" mycelium board messages work/ship-passkey-login Each task has its own thread, so the discussion about it stays with it. To put a whole team of agents on one task, see Swarm.",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#on-a-server-share-memory",
-    "t": "Share memory",
-    "s": "Setup › Run It on a Server",
-    "x": "mycelium memory set \"decisions/scope\" \"One sprint, DB cutover deferred to sprint two\" mycelium memory search \"what scope decisions were made\" mycelium memory ls decisions/ See memory for how memories are stored and searched.",
+    "x": "mycelium board new \"Ship passkey login\" --assign @planner mycelium board # what needs you right now See board for the rest, and Swarm to put a whole team of agents on one task.",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop",
     "t": "The Mac App",
     "s": "Setup",
-    "x": "Mycelium for Mac is the quickest way to get going. It runs everything Mycelium needs on your Mac, with no Docker and no terminal, and starts your coding agents for you when you ask. Download Mycelium for Mac (Apple silicon, macOS 13 or later)",
+    "x": "Mycelium for Mac is the quickest way to get going. It runs everything Mycelium needs on your Mac, with no Docker and no setup in a terminal, and starts your coding agents for you when you ask. Download Mycelium for Mac (Apple silicon, macOS 13 or later)",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-install",
     "t": "Install",
     "s": "Setup › The Mac App",
-    "x": "Open the download and drag Mycelium into Applications. Open Mycelium from Applications. The first time, macOS asks whether to open an app downloaded from the internet; choose Open. A few short steps set it up: - Where should your rooms live? On this Mac keeps your rooms, notes and agents here; pick it to try Mycelium on your own or to give a demo. On my team's hub joins rooms someone else runs: paste the hub's addres",
+    "x": "Open the download and drag Mycelium into Applications. Open Mycelium from Applications. The first time, macOS asks whether to open an app downloaded from the internet; choose Open. A few short steps set it up: - Where your rooms live. On this Mac runs a hub on this Mac. On my team's hub joins rooms someone else runs: paste the hub's address, or open an invite link a teammate sent you. - A model, for a hub on this Mac",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-whats-inside",
     "t": "What's inside",
     "s": "Setup › The Mac App",
-    "x": "The app carries everything, pinned to versions tested together: the Mycelium hub and its UI; a SLIM node, for the rooms' messages; herdr, where your agents run as interactive sessions you can watch and type to; the mycelium CLI, which agents use to work in rooms; Pi, which engines like the aligner think with, and the model that powers memory search, so search works offline. It doesn't include an agent CLI. Install th",
+    "x": "The app carries everything, pinned to versions tested together: the Mycelium hub and its UI; a SLIM node, for the rooms' messages; herdr, where your agents run as terminals you can watch and type to; the mycelium CLI, which agents use to work in rooms; the runner, which starts your agents and wakes them; Pi, which the engines think with, and the model that powers memory search, so search works offline. It doesn't inc",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-adding-agents",
     "t": "Adding agents",
     "s": "Setup › The Mac App",
-    "x": "In a room, open Members and press Add. Pick Your machine, start from a role or write your own instructions, and add it. The agent opens in a herdr terminal, already a member of the room. The same dialog adds the other kinds of member: an engine the hub runs, an A2A service, or a coding agent you already have open. See Start Agents From the App for how the app starts agents on your machine. To watch or talk to an agen",
+    "x": "In a room, open Members and press Add. Pick Your machine, start from a role or write your own instructions, and press Add to room. The agent opens in a herdr terminal, already a member of the room. The same dialog adds engines, A2A services, and coding agent sessions you already have open. See Start Agents From the App. To watch or talk to an agent, use Agents terminal in the menu bar, or open the Machines page and c",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-the-menu-bar",
     "t": "The menu bar",
     "s": "Setup › The Mac App",
-    "x": "Mycelium lives in the menu bar while it runs. Closing the window leaves it running; Quit Mycelium stops the hub. Agents you started keep running in herdr either way. the state of the hub, the SLIM node and the runner; Open Mycelium and Agents terminal; Start at login; Health check…, below; Settings… (also Mycelium → Settings…, ⌘,): where rooms live and starting at login, the model, the agents' folder, and usage stats",
+    "x": "Mycelium lives in the menu bar while it runs. Closing the window leaves it running; Quit Mycelium stops the hub. Agents you started keep running in herdr either way, and pick up again when the hub is back. the state of the hub, the SLIM node and the runner; Open Mycelium, Agents terminal and Your agents…; Start at login; Health check…, which shows each part the app runs and whether it's working, with what to do when ",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-updates",
     "t": "Updates",
     "s": "Setup › The Mac App",
-    "x": "The app checks for a new release shortly after it opens, and when you choose Check for Updates…. If one is out, it asks before installing it, then restarts. Agents keep running in herdr through the restart. An update installs only if it carries the release's signature, so the app never installs anything the project didn't publish.",
+    "x": "The app checks for a new release shortly after it opens, and when you choose Check for Updates…. If one is out, it asks before installing it, then restarts. An update installs only if it carries the release's signature, so the app never installs anything the project didn't publish.",
     "p": "Guides"
   },
   {
-    "u": "guides.html#desktop-health-check",
-    "t": "Health check",
+    "u": "guides.html#desktop-logs",
+    "t": "Logs",
     "s": "Setup › The Mac App",
-    "x": "Health check… shows each part the app runs and whether it's working, with what to do when something isn't. It runs the same checks as mycelium doctor --mode desktop.",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#desktop-inviting-people",
-    "t": "Inviting people",
-    "s": "Setup › The Mac App",
-    "x": "In Members, Invite copies a link to the room. Opening it offers the app (which joins that hub and room), the download, or the browser.",
+    "x": "Everything the app runs writes to ~/.mycelium/logs/desktop.log.",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-the-command-line",
     "t": "The command line",
     "s": "Setup › The Mac App",
-    "x": "The installer on the docs site installs the app too, from a terminal: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash puts it in Applications, links its mycelium CLI into ~/.local/bin, and opens it. Everything the app does is also a command, for a Linux machine, a server, or if you'd rather use a terminal: mycelium desktop serve runs the same hub without the window. See Run it on a server instead ",
+    "x": "The installer on the docs site installs the app too: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash puts it in Applications, links its mycelium CLI into ~/.local/bin, and opens it. mycelium desktop serve runs the same hub without the window.",
     "p": "Guides"
   },
   {
     "u": "guides.html#hub-and-spoke",
     "t": "Hub & Spoke",
     "s": "Setup",
-    "x": "This guide sets up Mycelium across several machines, so a team can share rooms, memory and tasks. One machine runs Mycelium and holds all the data. That's the hub. The other machines, the spokes, only need the CLI and your agents, and they talk to the hub over HTTP. If everyone works on one machine, you don't need this. The normal install already does it; see the Quick Start.",
+    "x": "This guide shares rooms across a team's machines. One machine runs Mycelium and holds all the data: that's the hub. Everyone else's machine is a spoke: it needs only the CLI (or the Mac app) and its own agents, and talks to the hub over HTTP. ┌─────────────────────────────────────────────┐ │ Hub (one machine, Docker) │ │ │ │ ├─ backend (API) :8000 │ │ ├─ app (web UI) :3000 │ │ └─ SLIM node :46357 (hub only) │ │ rooms",
     "p": "Guides"
   },
   {
-    "u": "guides.html#hub-and-spoke-what-runs-where",
-    "t": "What runs where",
+    "u": "guides.html#hub-and-spoke-1-set-up-the-hub",
+    "t": "1. Set up the hub",
     "s": "Setup › Hub & Spoke",
-    "x": "┌─────────────────────────────────────────────┐ │ Hub (one machine) │ │ │ │ mycelium install │ │ mycelium hub host │ │ ├─ SLIM node :46357 │ │ └─ backend (API) :8000 │ │ rooms, memory, engines │ └──────────────────┬──────────────────────────┘ │ HTTP :8000 (memory, await, respond) │ ┌─────────────┴─────────────┐ │ │ ┌────┴──────┐ ┌─────┴─────┐ │ Spoke A │ │ Spoke B │ │ CLI │ │ CLI │ │ + agents │ │ + agents │ └────────",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#hub-and-spoke-step-1-set-up-the-hub",
-    "t": "Step 1: Set up the hub",
-    "s": "Setup › Hub & Spoke",
-    "x": "The hub here is the Docker stack. (The Mac app's hub listens on 127.0.0.1 only, so it's for the Mac it runs on, not one spokes can reach.) On the hub machine, install the CLI and the stack, and start the SLIM node: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash # on a Mac: bash -s -- --docker mycelium install mycelium hub host mycelium hub host starts the SLIM node and prints its addresses: SLIM ",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#hub-and-spoke-the-slim-secret",
-    "t": "The SLIM secret",
-    "s": "Setup › Hub & Spoke",
-    "x": "The hub's SLIM secret is kept in config.toml. The first time you run mycelium install or mycelium config apply, Mycelium generates it (slim.master_secret) if it isn't set, and passes it to the backend as MYCELIUM_SLIM_MASTER_SECRET. Running config apply again keeps the same secret. mycelium config apply # creates slim.master_secret if it's missing mycelium config show # shows it masked To change it: mycelium config s",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#hub-and-spoke-ports",
-    "t": "Ports",
-    "s": "Setup › Hub & Spoke",
-    "x": "Port Service Do spokes need it? Used for 8000 Backend API Yes Memory, await/respond, rooms 46357 SLIM node No SLIM on the hub; optionally mycelium slim send By default Docker publishes the backend only on the hub machine's loopback address, so spokes on other machines can't reach it. To serve them, turn on authentication first, then bind to all interfaces: mycelium config set runtime.bind_addr 0.0.0.0 mycelium config",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#hub-and-spoke-step-2-connect-each-spoke",
-    "t": "Step 2: Connect each spoke",
-    "s": "Setup › Hub & Spoke",
-    "x": "On each spoke, install the CLI alone (--client-only skips the Mac app and Docker, neither of which a spoke needs): curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only A Mac spoke can use the Mac app instead: on its first screen, choose On my team's hub and enter the hub's address. Point it at the hub's API: mycelium config set server.api_url http://192.168.1.20:8000 or do it when y",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#hub-and-spoke-securing-a-shared-hub",
-    "t": "Securing a shared hub",
-    "s": "Setup › Hub & Spoke",
-    "x": "When spokes reach the hub over a LAN or VPN, turn on authentication on the hub. Without it, anyone who can reach port 8000 can read and write memory and post as any @handle. The SLIM secret doesn't prevent this.",
+    "x": "The hub is the Docker stack. (The Mac app's hub only answers its own Mac, so it can't be a team's hub.) On the hub machine: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash # on a Mac: bash -s -- --docker mycelium install This starts the backend, the app and the SLIM node. Check it with: mycelium doctor By default the hub only listens on its own machine. Turn on sign-in first, then open it to the n",
     "p": "Guides"
   },
   {
     "u": "guides.html#hub-and-spoke-behind-an-https-proxy",
     "t": "Behind an HTTPS proxy",
     "s": "Setup › Hub & Spoke",
-    "x": "A public hub usually sits behind a reverse proxy (Caddy, nginx or a cloud load balancer) that handles HTTPS and forwards plain HTTP to the backend. The backend then thinks requests came in over http, and puts http:// in the links it gives out. For example, the A2A agent card advertises an http:// address for a hub that only works over https://. The proxy passes the original scheme in the X-Forwarded-Proto header. By ",
+    "x": "A hub reached over the internet should sit behind a reverse proxy (Caddy, nginx or a cloud load balancer) that handles HTTPS. The backend then sees plain HTTP and would put http:// in the links it gives out, such as a room's A2A card. Tell it to trust your proxy: mycelium config set runtime.trusted_proxies '*' mycelium config apply mycelium up Use '*' only when the backend can be reached through the proxy alone. If i",
     "p": "Guides"
   },
   {
-    "u": "guides.html#hub-and-spoke-step-3-use-a-room-from-a-spoke",
-    "t": "Step 3: Use a room from a spoke",
+    "u": "guides.html#hub-and-spoke-2-connect-each-spoke",
+    "t": "2. Connect each spoke",
     "s": "Setup › Hub & Spoke",
-    "x": "All the data lives on the hub, so a room created on the hub is available from every spoke. # On the hub mycelium room create portfolio mycelium room use portfolio On a spoke, just switch to it: mycelium room use portfolio Memory commands work as usual, and go to the hub: mycelium memory ls mycelium memory get decisions/allocation mycelium memory set decisions/allocation \"60/40 equities to bonds\" mycelium memory searc",
+    "x": "With the Mac app: on its first screen, choose On my team's hub and enter the hub's address, such as https://hub.example.com or http://192.168.1.20:8000. With the CLI: install the CLI alone, then point it at the hub: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only mycelium init --api-url http://192.168.1.20:8000 mycelium login # when the hub has sign-in on mycelium doctor # chec",
     "p": "Guides"
   },
   {
-    "u": "guides.html#hub-and-spoke-step-4-run-a-negotiation-across-machines",
-    "t": "Step 4: Run a negotiation across machines",
+    "u": "guides.html#hub-and-spoke-3-use-a-room",
+    "t": "3. Use a room",
     "s": "Setup › Hub & Spoke",
-    "x": "Add the aligner to the room once. It runs on the hub. Agents on the spokes take part over HTTP with await and respond. mycelium engine create aligner --kind aligner --room portfolio Each agent posts its position: # An agent on spoke A mycelium respond --room portfolio --handle alice \"I want 60% equities.\" # An agent on spoke B mycelium respond --room portfolio --handle bob \"No more than 40% equities.\" Start the negot",
+    "x": "A room created anywhere is on the hub, so every spoke sees it: mycelium room create portfolio # on any machine mycelium room use portfolio # on each spoke, in the folder you work in mycelium memory ls mycelium board If the hub can't be reached, these commands say so rather than showing old data.",
     "p": "Guides"
   },
   {
-    "u": "guides.html#hub-and-spoke-agent-identity",
-    "t": "Agent identity",
+    "u": "guides.html#hub-and-spoke-moving-a-hub",
+    "t": "Moving a hub",
     "s": "Setup › Hub & Spoke",
-    "x": "Every agent needs a handle that's unique across the whole setup. A command uses the first of these it finds: the handle you pass on the command (--handle on await and respond) the MYCELIUM_AGENT_HANDLE environment variable who the hub says you're signed in as, when authentication is on the name set with mycelium iam (identity.name in ~/.mycelium/config.toml) When authentication is on, the hub goes by who your token b",
+    "x": "To move a hub to another machine, stop it (mycelium down) and copy its ~/.mycelium/ folder, which holds the rooms, config and secrets, to the new machine. Then point each spoke at the new address with mycelium init --api-url.",
     "p": "Guides"
   },
   {
@@ -930,28 +740,28 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#hub-and-spoke-a-spoke-cant-reach-the-hub",
     "t": "A spoke can't reach the hub",
     "s": "Setup › Hub & Spoke",
-    "x": "Check the API first, since that's what spokes use: curl http://192.168.1.20:8000/health If that fails, check firewall rules, the VPN and any security groups. The hub has to accept connections on port 8000, which also means runtime.bind_addr must be 0.0.0.0 (the default is loopback only). Spokes don't need port 46357.",
+    "x": "Check the API from the spoke: curl http://192.168.1.20:8000/health If that fails, check firewalls, the VPN and any security groups, and that the hub's runtime.bind_addr is 0.0.0.0 (the default only answers the hub itself).",
     "p": "Guides"
   },
   {
     "u": "guides.html#hub-and-spoke-doctor-says-spoke-mode-on-the-hub",
     "t": "doctor says \"spoke mode\" on the hub",
     "s": "Setup › Hub & Spoke",
-    "x": "doctor decides the mode from server.api_url. If that points at another address, it assumes it's on a spoke. If the backend runs on this machine at a different address, set server.api_url to http://localhost:8000 in ~/.mycelium/config.toml, or run: mycelium doctor --mode hub See Troubleshooting for more, and Security Planes for how the API and SLIM are protected.",
+    "x": "doctor decides from server.api_url: a backend on this machine means it's the hub. If the backend runs here at a different address, set server.api_url to http://localhost:8000, or run mycelium doctor --mode hub. See Troubleshooting for more.",
     "p": "Guides"
   },
   {
     "u": "guides.html#models",
     "t": "Models",
     "s": "Setup",
-    "x": "Mycelium comes with agents of its own, and they need a model to think with. This page is about that one setting: what uses it, how to set it, and which models it can be.",
+    "x": "The hub's engines need a model to think with. This page is about that one setting: what uses it, how to set it, and which models it can be.",
     "p": "Guides"
   },
   {
     "u": "guides.html#models-what-uses-it",
     "t": "What uses it",
     "s": "Setup › Models",
-    "x": "The model is for the agents the hub runs itself: the aligner, which helps agents agree when they disagree; personas, which play a role in a room or a scenario; workers, which take tasks off the board and do them; the synthesizer, which keeps notes on what a room decided; the step that turns an agreement into tasks on the board. The conductor uses none: it follows a flow in code. Agents you bring, like Claude Code, Co",
+    "x": "One model, set on the hub, is used by every engine that thinks: the aligner, which helps agents agree when they disagree; personas, which play a character you describe; workers, which take tasks off the board and do them; the synthesizer, which writes summaries of a room; hello, which just replies; the step that turns an aligner agreement into tasks on the board. The conductor uses none: it follows a flow in code. Th",
     "p": "Guides"
   },
   {
@@ -986,175 +796,126 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#machines",
     "t": "Start Agents From the App",
     "s": "Agents",
-    "x": "The app can start coding agents on your own computer: one agent with its own instructions, or a whole swarm on a task. To let it, run the runner on that computer. mycelium runner Leave it running. It looks for the agent CLIs installed on the machine, tells the hub what it found, and starts agents in herdr when someone asks for one from the app. Agents it starts are ordinary interactive sessions in herdr panes, so you",
+    "x": "The app can start coding agents on your own computer: one agent with its own instructions, or a whole swarm on a task. The program that does it is the runner, which runs on that computer. It also keeps your agents in touch with the room: it wakes an agent when someone mentions it, gives it a turn or assigns it a task, and tells the hub whether each agent is busy. The Mac app runs the runner for you. Anywhere else, st",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-how-it-connects",
     "t": "How it connects",
     "s": "Agents › Start Agents From the App",
-    "x": "The runner only ever connects out to the hub. The app never talks to your machine directly: it asks the hub, and the hub hands the request to the runner the next time the runner checks in (a few seconds at most). So it works the same whether the hub is on your laptop or on a server somewhere else, and whether or not your laptop can be reached from outside. Before it starts anything, it asks you (below).",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#machines-what-it-finds",
-    "t": "What it finds",
-    "s": "Agents › Start Agents From the App",
-    "x": "On start, and whenever you press Rescan in the app, the runner checks your PATH for the agent CLIs it knows (Claude Code, Codex, Gemini CLI, Cursor Agent, OpenCode, Pi, GitHub Copilot CLI, Amp and others). Which of them it can start is up to herdr: the runner asks herdr which agent kinds it supports, so a newer herdr can start more of them with no change to Mycelium. See the same list from a terminal: mycelium runner",
+    "x": "The runner only ever connects out to the hub; the hub never reaches into your machine. When you ask for an agent in the app, the hub hands the request to the runner the next time it checks in (a few seconds at most). So it works the same whether the hub is on your laptop or on a server, and whether or not your laptop can be reached from outside. The runner looks on your PATH for the agent CLIs it knows (Claude Code, ",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-starting-an-agent",
     "t": "Starting an agent",
     "s": "Agents › Start Agents From the App",
-    "x": "In a room, open Members → Add → Your machine. The same dialog adds the other kinds of member too: an engine the hub runs, an A2A service, or a coding agent you already have open. For an agent on your machine, pick: a role to start from (reviewer, implementer, tester and so on), or a blank page. Instructions you write can be saved as a role of your own, kept in your browser; a handle, which is how the room addresses i",
+    "x": "In a room, open Members → Add → Your machine, and pick: Start from a role: starting instructions such as reviewer, implementer or tester, or a blank page. Instructions you write can be saved as a role of your own, kept in your browser; a handle, which is how the room mentions it (@scout); instructions, how the agent should work. They're saved in the room's memory as agents/<handle>/notes, which the agent reads when i",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-a-swarm-on-your-machine",
     "t": "A swarm on your machine",
     "s": "Agents › Start Agents From the App",
-    "x": "The Start a swarm dialog has a Where choice. Pick a connected machine instead of the hub, and the team is your own agent CLI in a new herdr workspace on that machine, started in the folder you choose (optionally with a git worktree per member). It is the same as running mycelium swarm in that folder, without the terminal.",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#machines-starting-agents-in-omnigent-instead",
-    "t": "Starting agents in Omnigent instead",
-    "s": "Agents › Start Agents From the App",
-    "x": "If you run agents with Omnigent, the runner can start them there instead of in herdr: mycelium config set runner.host omnigent mycelium runner This only works when Omnigent runs on the same machine as the runner. The runner talks to the Omnigent server on this machine, at http://127.0.0.1:6767 by default. Start that server with omnigent start. To use a different local address, set runner.omnigent_url. The agents you ",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#machines-joining-a-room-from-anywhere",
-    "t": "Joining a room from anywhere",
-    "s": "Agents › Start Agents From the App",
-    "x": "When Mycelium starts an agent itself, it tells the agent which room it is in and which member it is. An agent started some other way has no way to know that. A join code gives it that information. Whoever starts the agent asks the hub for a code. (The runner does this for you when it starts agents in Omnigent.) The agent then runs: mycelium join abcd-efgh-jkmn --hub http://your-hub:8000 A code works only once, and it",
+    "x": "The Start a swarm dialog has a Where choice. Pick a connected machine instead of the hub, and the team is your own agent CLI in a new herdr workspace on that machine, in the folder you choose (optionally with a git worktree per member). It's the same as running mycelium swarm in that folder.",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-which-folders",
     "t": "Which folders",
     "s": "Agents › Start Agents From the App",
-    "x": "The app can only start agents inside the folders the runner was given, and only with an agent CLI the scan found. It never sends a command to run. By default the allowed folder is the one you ran mycelium runner from; name others with --root: mycelium runner --root ~/code --root ~/work/api",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#machines-running-it-in-the-background",
-    "t": "Running it in the background",
-    "s": "Agents › Start Agents From the App",
-    "x": "mycelium runner --detach # start in the background mycelium runner status # is it running, and does the hub see it? mycelium runner stop # stop it; agents it started keep running The Machines page (the laptop icon beside the notification bell) lists your connected runners, what each found, the agents on it, and its recent requests.",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#machines-the-runner-keeps-your-agents-synced",
-    "t": "The runner keeps your agents synced",
-    "s": "Agents › Start Agents From the App",
-    "x": "An agent in herdr is a program in a terminal pane, and the hub can't see into your machine. So something on the machine has to keep telling the hub whether each agent is busy, and type a wake-up into an agent's pane when someone mentions it. That is the runner's job, for every herdr workspace connected to a room on this machine: the ones it opened, and any you connected yourself with mycelium herdr sync --workspace w",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#machines-your-agents-on-a-machine",
-    "t": "Your agents on a machine",
-    "s": "Agents › Start Agents From the App",
-    "x": "Every agent on a machine is listed in one place, whoever started it: the ones the runner started, the ones mycelium swarm started, and panes you connected to a room yourself. In the app, that's the Machines page: From a terminal on that machine: mycelium machine It lists the agents by herdr workspace, says what each is doing, and then what's wrong, with the command that fixes each. The Machines page shows the same li",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#machines-when-herdr-restarts",
-    "t": "When herdr restarts",
-    "s": "Agents › Start Agents From the App",
-    "x": "Restarting herdr's server (to update it, say) stops every agent running in it. herdr brings each one back in its own conversation if herdr's integration for that agent CLI is installed. herdr has one for most agent CLIs, including Claude Code, Codex, OpenCode and Pi. Without it, the panes come back empty and the agents show as stopped. mycelium machine integrations # which are installed mycelium machine integrations ",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#machines-restarting-agents",
-    "t": "Restarting agents",
-    "s": "Agents › Start Agents From the App",
-    "x": "An agent that stopped and didn't come back can be restarted. It starts again in its own folder, as the same member, with no memory of what it was doing: it reads its notes, then catches up from the room, which tells it what happened since its last turn. This works the same for every agent CLI. mycelium machine restart --all # every stopped agent mycelium machine restart reviewer # one On the Machines page, Restart sa",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#machines-other-fixes",
-    "t": "Other fixes",
-    "s": "Agents › Start Agents From the App",
-    "x": "mycelium machine rename reviewer \"review\" # its name in herdr mycelium machine unbind reviewer # forget its pane; it stays in the room mycelium machine unbind --gone # forget every pane that's gone Add --json to mycelium machine for the list as data.",
+    "x": "The app can only start agents inside the folders the runner was given, and only with an agent CLI the scan found; it never sends a command to run. By default the allowed folder is the one you ran mycelium runner from. Name others with --root: mycelium runner --root ~/code --root ~/work/api In the Mac app, it's the working folder you chose at first run (Settings to change it).",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-you-say-yes-on-the-machine",
     "t": "You say yes on the machine",
     "s": "Agents › Start Agents From the App",
-    "x": "Anyone who can reach a hub can ask it for an agent on any machine connected to it, and the hub can't prove who asked. So the runner asks you before it starts or restarts anything. It shows who the hub says asked, the agent CLI, the folder, and the start of the agent's instructions: in the Mac app, as a dialog with Start and Decline; from a terminal, in the runner's output, answered with a command: mycelium runner req",
+    "x": "Anyone who can reach a hub can ask it to start an agent on any machine connected to it, and the hub can't prove who asked. So the runner asks you on the machine before it starts or restarts anything, showing who the hub says asked, the agent CLI, the folder and the start of the instructions: in the Mac app, as a dialog with Start and Decline; from a terminal: mycelium runner requests # what is waiting mycelium runner",
     "p": "Guides"
   },
   {
-    "u": "guides.html#machines-pair-a-device-to-skip-approvals-on-a-remote-machine",
-    "t": "Pair a device to skip approvals on a remote machine",
+    "u": "guides.html#machines-pair-a-computer-to-skip-approvals",
+    "t": "Pair a computer to skip approvals",
     "s": "Agents › Start Agents From the App",
-    "x": "If no one is at a machine to approve requests (for example, a Mac mini or a home server), pair the computer you work from with it. Then requests you send from that computer start without approval. On the remote machine, run: mycelium runner --detach # if the runner isn't running mycelium runner pair --folder ~/code --cli opencode --days 30 This prints a code like K7QM-4XHD-9RWA. On your computer, open the Machines pa",
+    "x": "If no one is at a machine to approve requests (a Mac mini or a home server, say), pair the computer you work from with it, and requests from that computer start without asking, within limits you set on the machine. On the machine: mycelium runner pair --folder ~/code --cli opencode --days 30 This prints a code like K7QM-4XHD-9RWA. On your computer, open the Machines page, click Add machine → Pair, enter the code and ",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-only-your-machines-are-listed",
     "t": "Only your machines are listed",
     "s": "Agents › Start Agents From the App",
-    "x": "The Machines page and where it runs show only your own machines, never anyone else's. In the Mac app that is the Mac it runs on. In a browser, add a machine with the code mycelium runner prints when it starts. With the hub's sign-in turned on, the hub itself shows each person only the machines they own.",
+    "x": "The Machines page (the laptop icon beside the notification bell) and where it runs show only your own machines. In the Mac app that's the Mac it runs on. In a browser, add a machine with the code mycelium runner prints when it starts. With the hub's sign-in on, the hub itself shows each person only the machines they own. To see and fix the agents already running on a machine, see Your agents on a machine.",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#agents-on-a-machine",
+    "t": "Your Agents on a Machine",
+    "s": "Agents",
+    "x": "Every herdr agent on a machine is listed in one place, whoever started it: the runner, mycelium swarm, or you. In the app, that's the Machines page (in the Mac app, Your agents… in the menu bar). From a terminal on that machine: mycelium machine It lists the agents by herdr workspace, says what each is doing, and then what's wrong, with the command that fixes each problem. Add --json for the list as data. An agent is",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#agents-on-a-machine-when-herdr-restarts",
+    "t": "When herdr restarts",
+    "s": "Agents › Your Agents on a Machine",
+    "x": "Restarting herdr's server (to update it, say) stops every agent running in it. herdr brings each one back in its own conversation if herdr's integration for that agent CLI is installed. Without it, the terminals come back empty and the agents show as stopped. mycelium machine integrations # which are installed mycelium machine integrations --install # install them for the agent CLIs here Installing one adds a hook to",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#agents-on-a-machine-restarting-agents",
+    "t": "Restarting agents",
+    "s": "Agents › Your Agents on a Machine",
+    "x": "An agent that stopped and didn't come back can be restarted. It starts again in its own folder, as the same member, with no memory of what it was doing: it reads its notes, then catches up from the room. mycelium machine restart --all # every stopped agent mycelium machine restart reviewer # one On the Machines page, Restart says where each agent will start before anything does, and the runner asks you on the machine",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#agents-on-a-machine-other-fixes",
+    "t": "Other fixes",
+    "s": "Agents › Your Agents on a Machine",
+    "x": "mycelium machine rename reviewer \"review\" # its name in herdr mycelium machine unbind reviewer # forget its terminal; it stays in the room mycelium machine unbind --gone # forget every terminal that's gone",
     "p": "Guides"
   },
   {
     "u": "guides.html#herdr",
     "t": "Persistent Agents (herdr)",
     "s": "Agents",
-    "x": "herdr keeps coding-agent sessions running in named panes, even after you close the terminal. Used with Mycelium, a mention of an agent that isn't running at the moment can wake it up.",
+    "x": "herdr keeps coding-agent sessions running in named terminals (panes), even after you close the window you started them from. Mycelium uses it to run your agents and to wake them when the room needs them. The Mac app includes it; elsewhere, install herdr 0.9.3 or newer from herdr.dev and start its server. You don't need to set herdr up by hand if you start agents from the app or with mycelium swarm: both open a herdr ",
     "p": "Guides"
   },
   {
-    "u": "guides.html#herdr-why-you-might-want-it",
-    "t": "Why you might want it",
+    "u": "guides.html#herdr-why-it-matters",
+    "t": "Why it matters",
     "s": "Agents › Persistent Agents (herdr)",
-    "x": "Your agents take part in a room through their own live sessions. An agent only notices an @handle mention while its await loop is running (see Run it on a server instead). Close the terminal and the agent is still a member of the room, but nobody is there to answer. Mentions wait until you start the loop again. herdr fills that gap. It keeps your agent sessions open in panes, and Mycelium links each pane to a handle ",
+    "x": "An agent that runs mycelium await --loop hears about each message on its own: the hub keeps its place in the room, so it never misses one. But a coding agent sitting idle at its prompt isn't asking. herdr plus the runner fill that gap: when the agent is mentioned, given a turn by the conductor or aligner, or assigned a task, the runner types a wake-up into its pane saying why, and the agent answers on its next turn w",
     "p": "Guides"
   },
   {
-    "u": "guides.html#herdr-before-you-start",
-    "t": "Before you start",
+    "u": "guides.html#herdr-connecting-a-workspace",
+    "t": "Connecting a workspace",
     "s": "Agents › Persistent Agents (herdr)",
-    "x": "Install herdr 0.9.3 or newer and start its local server. See herdr.dev. (The Mac app includes it.) Install herdr's integration for your agent CLI (mycelium machine integrations --install), so herdr brings your agents back in their own conversations when its server restarts. See Your agents on a machine. Start one or more agents in a herdr workspace, and have a room to connect them to (mycelium room create …). Or let ",
+    "x": "Connect a herdr workspace to a room once: mycelium herdr sync --workspace w2 --room my-project From then on the runner keeps every connected workspace in step, every few seconds: Members. Every agent running in the workspace becomes a member of the room, with a handle taken from its herdr tab's name (plus the pane's id when two share a name; --name-from pane uses the pane id alone). When its pane closes, that member ",
     "p": "Guides"
   },
   {
-    "u": "guides.html#herdr-connecting-a-workspace-sync",
-    "t": "Connecting a workspace: sync",
+    "u": "guides.html#herdr-connecting-a-single-agent",
+    "t": "Connecting a single agent",
     "s": "Agents › Persistent Agents (herdr)",
-    "x": "Connect a herdr workspace to a room once, and Mycelium keeps them in step: # Connect herdr workspace w2 to the room my-project. mycelium herdr sync --workspace w2 --room my-project From then on the runner keeps every connected workspace in step, every few seconds. On each pass it: adds and removes members. Every agent running in the workspace becomes a member of the room, named after its herdr tab. When a pane closes",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#herdr-connecting-single-agents-and-autowake",
-    "t": "Connecting single agents, and autowake",
-    "s": "Agents › Persistent Agents (herdr)",
-    "x": "To connect individual agents instead of a whole workspace, map each handle to a pane. The mapping is saved, so it survives herdr forgetting agent names when they exit. mycelium herdr map planner w2:pV # connect @planner to pane w2:pV mycelium herdr ls # list the mappings mycelium herdr unmap planner # remove a mapping With handles mapped, you can turn on autowake, so agent invoke wakes the agent's pane when the agent",
+    "x": "To connect one agent instead of a whole workspace, map its handle to its pane: mycelium herdr map planner w2:pV # connect @planner to pane w2:pV mycelium herdr ls # list the mappings mycelium herdr unmap planner # remove a mapping mycelium herdr wake planner # wake @planner now mycelium agent invoke planner \"…\" posts a message to @planner from the command line. With herdr.autowake on, it also wakes the agent's pane s",
     "p": "Guides"
   },
   {
     "u": "guides.html#herdr-configuration",
     "t": "Configuration",
     "s": "Agents › Persistent Agents (herdr)",
-    "x": "Key Default What it does herdr.autowake false When agent invoke targets an agent that isn't running, wake its herdr pane. herdr.wake_timeout_ms 120000 How long (in ms) to wait for a wake-up to finish. herdr.panes_per_tab 4 How many agents share a tab in a room's workspace. A new agent splits the largest pane in half; past this many, it opens a new tab. Each tab is named after the agents in it.",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#herdr-what-herdr-isnt-needed-for",
-    "t": "What herdr isn't needed for",
-    "s": "Agents › Persistent Agents (herdr)",
-    "x": "Rooms, memory, the board and negotiations all work without herdr. Agents kept running with mycelium await --loop never miss a message, because the hub keeps their place in the room between turns (see Architecture). herdr only adds waking an agent that isn't running, so you don't have to be at the terminal for it to answer.",
+    "x": "Key Default What it does herdr.autowake false agent invoke wakes a mapped agent's pane directly. herdr.wake_timeout_ms 120000 How long (in ms) to wait for a wake-up to finish. herdr.panes_per_tab 4 How many agents share a tab in a room's workspace. A new agent splits the largest pane in half; past this many, it opens a new tab. To bring agents back after herdr's server restarts, see Your agents on a machine.",
     "p": "Guides"
   },
   {
     "u": "guides.html#ephemeral-agents",
     "t": "Ephemeral Agents",
     "s": "Agents",
-    "x": "An ephemeral agent is one that runs for a single job and then goes away: a Claude Code cloud session, a CI job, a docker run that exits when it's done. There's no .mycelium/ folder, no config.toml, usually no Docker, and nobody at a keyboard to run mycelium login. This guide shows how to let an agent like that post into a room. You'll end up with a container that installs the CLI, gets all its settings from environme",
+    "x": "An ephemeral agent is one that runs for a single job and then goes away: a Claude Code cloud session, a CI job, a docker run that exits when it's done. There's no .mycelium/ folder, no config.toml, usually no Docker, and nobody at a keyboard to sign in (mycelium login, see Authentication). This guide shows how to let an agent like that post into a room. You'll end up with a container that installs the CLI, gets all i",
     "p": "Guides"
   },
   {
@@ -1189,7 +950,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#ephemeral-agents-taking-part-not-just-posting",
     "t": "Taking part, not just posting",
     "s": "Agents › Ephemeral Agents",
-    "x": "room send only posts. For the agent to take a turn in a negotiation, where it's asked something and answers, use await and respond (see Rooms): mycelium await --handle ci-runner --timeout 120 mycelium respond --handle ci-runner \"I can hold the deploy until the bench lands.\" respond does need a registered handle, either an agent or a user. Register it once, from any machine that can reach the hub: mycelium user create",
+    "x": "room send only posts. For the agent to take a turn in a negotiation or flow, where it's asked something and answers, use await and respond. Keep in mind that a job has to stay up long enough to answer: the aligner gives each agent 30 seconds a round by default. mycelium await --handle ci-runner --timeout 120 mycelium respond --handle ci-runner \"I can hold the deploy until the bench lands.\" respond does need a registe",
     "p": "Guides"
   },
   {
@@ -1231,7 +992,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#ephemeral-agents-5-link-to-the-session",
     "t": "5. Link to the session",
     "s": "Agents › Ephemeral Agents",
-    "x": "A cloud session can link to its own transcript, so anyone reading the update can see how the work was done: mycelium room send \"$(cat <<EOF @team Retry backoff is in, CI is green. Session: https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID/#cse_/session_} EOF )\" The cloud environment sets CLAUDE_CODE_REMOTE_SESSION_ID. The substitution swaps its cse_ prefix for the session_ prefix the transcript link uses. If the",
+    "x": "A cloud session can link to its own transcript, so anyone reading the update can see how the work was done: mycelium room send \"$(cat <<EOF @reviewer Retry backoff is in, CI is green. Session: https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID/#cse_/session_} EOF )\" The cloud environment sets CLAUDE_CODE_REMOTE_SESSION_ID. The substitution swaps its cse_ prefix for the session_ prefix the transcript link uses. If",
     "p": "Guides"
   },
   {
@@ -1315,126 +1076,140 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#a2a-bridge-talking-to-a-room-over-a2a",
     "t": "Talking to a room over A2A",
     "s": "Agents › A2A Bridge",
-    "x": "Every room can be found and called as an A2A agent, with no setup. Its Agent Card is at: GET /api/rooms/{room}/.well-known/agent-card.json The card lists the room's name and its skills, taken from the room's skills/ memories. An A2A client sends the room a message with A2A JSON-RPC (message/send) at: POST /api/rooms/{room}/a2a The message is posted in the room like any other, and the call returns an acknowledgement. ",
+    "x": "Every room can be found and called as an A2A agent, with no setup. Its Agent Card is at: GET /api/rooms/{room}/.well-known/agent-card.json The card lists the room's name and its skills, taken from the room's skills/ memories. An A2A client sends the room a message with A2A JSON-RPC (message/send) at: POST /api/rooms/{room}/a2a The message is posted in the room like any other, and the call returns only an acknowledgem",
     "p": "Guides"
   },
   {
     "u": "guides.html#a2a-bridge-seeing-what-the-bridge-is-doing",
     "t": "Seeing what the bridge is doing",
     "s": "Agents › A2A Bridge",
-    "x": "mycelium network [room] shows the bridge for each room below the network table: the bridged agents with their URLs and skills, the room's own card and how often it's been read, and the most recent calls in each direction, with what came back or why it failed. mycelium network my-room In the app, the Network pane shows the same thing in a strip under the SLIM view. Rooms without a bridge don't show it. To get the raw ",
+    "x": "mycelium network [room] shows a room's members and connections, and below them its A2A bridge: the bridged agents with their URLs and skills, the room's own card and how often it's been read, and the most recent calls in each direction, with what came back or why it failed. mycelium network my-room In the app, a room's Network pane shows the same. Rooms without a bridge don't show that part. To get the raw data: GET ",
     "p": "Guides"
   },
   {
     "u": "guides.html#a2a-bridge-privacy",
     "t": "Privacy",
     "s": "Agents › A2A Bridge",
-    "x": "A bridged A2A agent can be mentioned and answers under its own name, but it isn't part of the room's encrypted group and never has the room's key. The hub reads the room's messages and sends them to the remote agent over HTTPS. The hub can already read everything in the room. It needs to, for engines to work (see SLIM). Adding an A2A agent means sending some of the room's content to another service as well, so add on",
+    "x": "A bridged A2A agent can be mentioned and answers under its own name, but it isn't part of the room's encrypted group and never has the room's key. Each time it's mentioned, the hub sends it the text of that message over HTTPS. The hub can already read everything in the room (see SLIM). Adding an A2A agent means sending what's said to it to another service as well, so add one the way you'd give any outside party acces",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#working-the-board",
+    "t": "Working the Board",
+    "s": "Work",
+    "x": "This guide covers reading and acting on a room's board: its filters and views, the daily log, and linking work to GitHub.",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#working-the-board-what-needs-you",
+    "t": "What needs you",
+    "s": "Work › Working the Board",
+    "x": "Filter What's in it Needs you (default) Open decisions, blocked work, reviews waiting for someone In flight Claimed work: who has it, which branch, CI status Resolved Closed today The board opens on Needs you, so you see what's waiting on a person first. The rest is one click away, or --filter on the command line (needs-you, in-flight, resolved, all): mycelium board checkout 3 need you · 4 in flight · 6 resolved toda",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#working-the-board-views",
+    "t": "Views",
+    "s": "Work › Working the Board",
+    "x": "The app has five ways to look at the same rows: Triage: the short list, grouped by kind. Board: columns, grouped by any field that has a set of values, such as status, priority, or a field your room made up. Table: a spreadsheet you can edit one cell at a time. Timeline: rows by when they last changed, to catch up after time away. Daily: the log, below. On the command line, --view takes list or table, and --group gro",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#working-the-board-the-daily-log",
+    "t": "The daily log",
+    "s": "Work › Working the Board",
+    "x": "The log shows what happened in the room, day by day, and who did it. Nobody writes it: it's built from messages, memory changes, resolved work and negotiations. mycelium board log # the last 7 days mycelium board log --since 30d # a longer window mycelium board log --last-week # the week before this one mycelium board log --by @builder # one member's entries It's a quick way for an agent coming back to a room to catc",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#working-the-board-actions",
+    "t": "Actions",
+    "s": "Work › Working the Board",
+    "x": "claim · release · resolve · block · promote · dismiss In the app each is one key. claim, release, resolve and block are also mycelium board commands. block records what a task is waiting on. promote marks a row as tracked somewhere longer-lived, such as a GitHub issue you've filed, and resolves it here. It doesn't file the issue for you. dismiss closes a row without doing it. Each action changes the row's memory, so ",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#working-the-board-github",
+    "t": "GitHub",
+    "s": "Work › Working the Board",
+    "x": "The board is for what's happening now. Anything that needs to last beyond the work belongs in GitHub, and the board links to it rather than copying it. Mention a pull request in a task's body (owner/repo#123 or its URL), give the hub a GitHub token, and the row shows the pull request's live state: approved, changes requested, CI failing, merged and so on. See live pull request status for the states and the token.",
     "p": "Guides"
   },
   {
     "u": "guides.html#structured-memory",
     "t": "Structured Memory",
-    "s": "Memory",
-    "x": "When an agent finishes a stretch of work and goes away, the next agent (or person) to pick it up starts from nothing unless the work was written down. This guide shows a simple set of key prefixes that makes that easy: what was built, why, what the user wants, where things stand, and how to do things again. The commands here are ones your agents run as they work. Put the habit in your agent's instructions so it write",
+    "s": "Work",
+    "x": "When an agent finishes a stretch of work and goes away, the next agent (or person) to pick it up starts from nothing unless the work was written down. This guide is a habit for writing it down as you go: why choices were made, what the user wants, where things stand, what failed, and how to do things again. The commands are ones your agents run as they work. Put the habit in your agent's instructions (its agents/<han",
     "p": "Guides"
   },
   {
-    "u": "guides.html#structured-memory-the-prefixes",
-    "t": "The prefixes",
-    "s": "Memory › Structured Memory",
-    "x": "work/ What was built or changed decisions/ Why choices were made context/ User preferences and background status/ Current state of ongoing work procedures/ Steps you'll want to repeat later When a key starts with one of these, memory set checks the rest of the key and adds a timestamp to the content. work/, decisions/ and status/ are also board namespaces, so memories there show up on the room's board too.",
+    "u": "guides.html#structured-memory-where-each-thing-goes",
+    "t": "Where each thing goes",
+    "s": "Work › Structured Memory",
+    "x": "Write it under When Shows on the board? decisions/ A choice was made, and why Yes failed/ Something didn't work, so nobody tries it again Yes, as blocked status/ Where something stands right now Yes context/ Background and what the user wants No procedures/ Steps you'll want to repeat No What was built belongs with the task it was built for: write it into the task's thread, and the task's body when it's resolved. Don",
     "p": "Guides"
   },
   {
-    "u": "guides.html#structured-memory-using-them",
-    "t": "Using them",
-    "s": "Memory › Structured Memory",
-    "x": "",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#structured-memory-1-pick-a-room",
-    "t": "1. Pick a room",
-    "s": "Memory › Structured Memory",
-    "x": "mycelium room create project-x mycelium room use project-x",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#structured-memory-2-write-things-down-along-the-way",
-    "t": "2. Write things down along the way",
-    "s": "Memory › Structured Memory",
-    "x": "# What was built mycelium memory set work/api-server \"Set up FastAPI with auth endpoints\" mycelium memory set work/database \"Created PostgreSQL schema, 3 tables\" # Why the choices were made mycelium memory set decisions/framework \"FastAPI over Flask: async + type hints\" mycelium memory set decisions/auth \"JWT tokens, 1hr expiry, refresh via cookie\" # What the user wants mycelium memory set context/goal \"Build MVP for",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#structured-memory-3-read-them-back",
-    "t": "3. Read them back",
-    "s": "Memory › Structured Memory",
-    "x": "mycelium memory status # everything under status/ mycelium memory work # what's been built mycelium memory decisions # why things are the way they are mycelium memory context # background and preferences mycelium memory procedures # how to do things again",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#structured-memory-4-update-as-things-change",
-    "t": "4. Update as things change",
-    "s": "Memory › Structured Memory",
-    "x": "memory set replaces the old value, so just set the new one: mycelium memory set status/deploy \"ACTIVE: deployed to vps.example.com\"",
+    "u": "guides.html#structured-memory-reading-them-back",
+    "t": "Reading them back",
+    "s": "Work › Structured Memory",
+    "x": "mycelium memory decisions # everything under decisions/ mycelium memory status # everything under status/ mycelium memory context mycelium memory procedures mycelium memory search \"why did we pick FastAPI\"",
     "p": "Guides"
   },
   {
     "u": "guides.html#structured-memory-key-rules",
     "t": "Key rules",
-    "s": "Memory › Structured Memory",
-    "x": "After the prefix, a key can use lowercase letters, numbers, hyphens, dots and underscores, and must start with a letter or number. Uppercase letters are lowercased for you. A key that breaks these rules is rejected before anything is sent to the hub. work/api-server works status/v2.deploy works decisions/Why We Chose X is rejected (spaces) Keys with any other prefix aren't checked: custom/anything research/index-perf",
+    "s": "Work › Structured Memory",
+    "x": "For keys under work/, decisions/, status/, context/ and procedures/, memory set checks the name after the prefix and records when it was written. That name can use lowercase letters, numbers, hyphens, dots and underscores (capitals are lowercased for you), must start with a letter or number, and can't contain another /: decisions/auth works status/v2.deploy works decisions/Why We Chose X is rejected (spaces) context/",
     "p": "Guides"
   },
   {
     "u": "guides.html#security-planes",
-    "t": "Security Planes",
+    "t": "Running a Shared Hub",
     "s": "Security",
-    "x": "Mycelium has two separate things to secure, and it's easy to mix them up: The HTTP API on port 8000. This is what spokes, people and agents use for memory, await and respond. You protect it with authentication. SLIM on port 46357. This carries the rooms' encrypted messages between SLIM members. On a normal setup, the only member is the hub's backend. You protect it with the SLIM secret. Securing one doesn't secure th",
+    "x": "Mycelium's defaults suit one person on one machine. Before other people can reach your hub, know what's open by default and turn on what protects it.",
     "p": "Guides"
   },
   {
-    "u": "guides.html#security-planes-side-by-side",
-    "t": "Side by side",
-    "s": "Security › Security Planes",
-    "x": "HTTP API SLIM Port 8000 46357 Used by Spokes, people and agents (memory, await, respond) The hub's backend; mycelium slim send for testing; native SLIM clients Protects Memory, taking part in rooms, who can post as which @handle Who can join a room's encrypted SLIM group Default Open, no token needed A shared secret, on the hub only Stronger option Authentication (auth.enabled) Per-member identity (slim.identity sign",
+    "u": "guides.html#security-planes-whats-open-by-default",
+    "t": "What's open by default",
+    "s": "Security › Running a Shared Hub",
+    "x": "With the default setup: Anyone who can reach port 8000 can read and write every room, and post as any @handle. Names are only claims. Private rooms are hidden, not locked. Anyone who knows a room's name can open it. Every room is an A2A endpoint. Its card (name and skills) is public, and without sign-in anyone can post into it as @a2a-guest. The hub reads everything. Room messages are encrypted between the hub and it",
     "p": "Guides"
   },
   {
-    "u": "guides.html#security-planes-what-the-slim-secret-does",
-    "t": "What the SLIM secret does",
-    "s": "Security › Security Planes",
-    "x": "The secret (MYCELIUM_SLIM_MASTER_SECRET) decides who can join a room's SLIM group. A key for each room is derived from it. It works per room, not per agent. Everyone who has the secret looks the same to SLIM. It doesn't encrypt messages itself. Once members are in, SLIM's MLS encryption handles that. It doesn't protect the API, memory, or who can post as which @handle. The repository ships a public development value ",
+    "u": "guides.html#security-planes-what-to-do-about-it",
+    "t": "What to do about it",
+    "s": "Security › Running a Shared Hub",
+    "x": "Turn on sign-in. Every request then needs a token from your identity provider, writes are tied to real accounts, and only an agent's owner can act for it. You need an OIDC provider, such as your company's SSO, Keycloak, Dex, ZITADEL or Authentik. There's no lighter option yet. Serve it over HTTPS, behind a reverse proxy. See Hub & Spoke. Keep workers to replies only (worker.tools = false), or don't add them, unless e",
     "p": "Guides"
   },
   {
-    "u": "guides.html#security-planes-what-protects-spokes",
-    "t": "What protects spokes",
-    "s": "Security › Security Planes",
-    "x": "For a hub with spokes, the setting that matters is authentication on the API: mycelium config set auth.enabled true mycelium config set auth.audience mycelium # … then set up [[auth.issuers]] … mycelium config apply See Authentication for setting it up for people and for agents. Without it, anyone who can reach port 8000 can read and write memory and post as any @handle, even if the hub has a private SLIM secret.",
+    "u": "guides.html#security-planes-two-separate-things-to-secure",
+    "t": "Two separate things to secure",
+    "s": "Security › Running a Shared Hub",
+    "x": "The hub has two network-facing parts, and securing one doesn't secure the other: HTTP API SLIM Port 8000 46357 Used by The app, the CLI and every agent The hub's backend only (and mycelium slim send, a debugging tool) Decides Who can read rooms and post as which @handle Who can join a room's encrypted channel Default Open A shared secret Protect it with Sign-in (auth.enabled) The SLIM secret (slim.master_secret), kep",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#security-planes-the-slim-secret",
+    "t": "The SLIM secret",
+    "s": "Security › Running a Shared Hub",
+    "x": "Each room's channel key is derived from the secret, slim.master_secret in the hub's config.toml. mycelium install generates a private one, and mycelium config apply generates one if it's missing; without one, the hub falls back to a public development value that protects nothing. To change it: mycelium config set slim.master_secret \"$(openssl rand -hex 32)\" mycelium config apply --restart",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#security-planes-per-member-slim-identity",
+    "t": "Per-member SLIM identity",
+    "s": "Security › Running a Shared Hub",
+    "x": "slim.identity = signerjwt gives each member its own key on the SLIM channel instead of the shared secret, so members are told apart on the channel and one can be removed without changing the room's key. Those keys are kept by the hub on each member's behalf, so the hub still reads everything, and it has no effect on the API: set up sign-in for that.",
     "p": "Guides"
   },
   {
     "u": "guides.html#security-planes-typical-setups",
     "t": "Typical setups",
-    "s": "Security › Security Planes",
-    "x": "Setup HTTP API SLIM (on the hub) Spokes Just you, one machine Open The development secret, unless one is set in config None A team on a LAN Authentication on The hub's generated slim.master_secret server.api_url set to the hub's port 8000, nothing else Hosted Authentication required A private secret, plus per-member identity Same as LAN; spokes never get the SLIM secret mycelium doctor shows whether authentication is",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#security-planes-slim-identity-options",
-    "t": "SLIM identity options",
-    "s": "Security › Security Planes",
-    "x": "Option Applies to Does a spoke need it? psk (the default) SLIM No. Only the hub's backend uses it. signerjwt SLIM Only if the spoke runs its own SLIM client. mycelium config set slim.identity signerjwt changes how machines identify themselves when they connect to SLIM directly. It doesn't turn on authentication for the API; set up [auth] for that separately.",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#security-planes-related-guides",
-    "t": "Related guides",
-    "s": "Security › Security Planes",
-    "x": "Hub & Spoke Setup: setting up a hub and its spokes Authentication: turning on authentication for the API",
+    "s": "Security › Running a Shared Hub",
+    "x": "Setup HTTP API SLIM Just you, one machine (the Mac app, or Docker on a laptop) Open; only this machine can reach it Shared secret A team on a LAN or VPN Sign-in on The hub's generated secret Reached over the internet Sign-in on, behind HTTPS A private secret; per-member identity if you need members told apart on the channel",
     "p": "Guides"
   },
   {
@@ -1494,10 +1269,17 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#auth-signing-in-to-the-app",
+    "t": "Signing in to the app",
+    "s": "Security › Authentication",
+    "x": "The web app signs people in through the same provider. Register a second public client for it, with the redirect http://<app address>/api/auth/callback, and set these in the environment of the machine that runs mycelium up: export MYCELIUM_OIDC_ISSUER=https://sso.example.com/realms/mycelium export MYCELIUM_OIDC_CLIENT_ID=mycelium-web export MYCELIUM_OIDC_AUDIENCE=mycelium export AUTH_SESSION_SECRET=$(openssl rand -he",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#auth-signing-in-agents",
     "t": "Signing in agents",
     "s": "Security › Authentication",
-    "x": "mycelium login is for people. An agent can't open a browser, so it signs in with its own OIDC client using the client_credentials grant. The client id becomes the agent's handle. Because each agent has its own credential, you can revoke one agent without affecting the others. Point the machine at the issuer your agents use, then give each agent its own client secret: mycelium config set agent_auth.issuer https://sso.",
+    "x": "mycelium login is for people. Agents have three ways in: Joined with a code. An agent that joined a room with mycelium join (see Joining a room from anywhere) gets a token from the hub itself, valid for 30 days. Nothing to register with your provider. Its own client. The agent signs in with its own OIDC client using the client_credentials grant. The client id becomes the agent's handle. A token from somewhere else, b",
     "p": "Guides"
   },
   {
@@ -1581,70 +1363,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-trying-it-locally",
     "t": "Trying it locally",
     "s": "Security › Authentication",
-    "x": "The Keycloak / OIDC Setup guide sets up a local provider, a client and mycelium login, end to end.",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#keycloak-oidc",
-    "t": "Keycloak / OIDC Setup",
-    "s": "Security",
-    "x": "<!-- SPDX-License-Identifier: Apache-2.0 --> This guide gets authentication working end to end on your machine, using Keycloak as the identity provider. When you're done, the hub will reject requests without a valid token, and you'll be signed in with mycelium login, from the terminal and in the app. Keycloak is just an example here. Dex, ZITADEL, Authentik or your company's SSO work the same way; only the URLs chang",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#keycloak-oidc-start-keycloak",
-    "t": "Start Keycloak",
-    "s": "Security › Keycloak / OIDC Setup",
-    "x": "Mycelium comes with a Keycloak setup you can add to the stack. It's a separate compose file, so it isn't part of the normal install. It comes with a mycelium realm already set up, so you don't need to use the admin console. cd mycelium-cli/src/mycelium/docker docker compose -f compose.yml -f compose-dev.yml -f compose-keycloak.yml \\ up -d keycloak It's ready when this prints the issuer URL: curl -s http://localhost:8",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#keycloak-oidc-whats-in-the-realm",
-    "t": "What's in the realm",
-    "s": "Security › Keycloak / OIDC Setup",
-    "x": "The realm is defined in docker/keycloak/mycelium-realm.json. If you're setting up your own Keycloak instead, it needs the same things: A public client called mycelium-cli, which mycelium login uses. It has no secret (the CLI uses PKCE), allows the redirect http://127.0.0.1:*/callback for browser sign-in, and has the device grant enabled for signing in without a browser. An audience mapper that adds mycelium to the to",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#keycloak-oidc-point-the-hub-at-keycloak",
-    "t": "Point the hub at Keycloak",
-    "s": "Security › Keycloak / OIDC Setup",
-    "x": "The backend runs in a container, but your browser and the CLI run on your machine, so they reach Keycloak at different addresses: Your browser and the CLI reach it at localhost:8080, and Keycloak puts http://localhost:8080/realms/mycelium in every token's iss. So that's the issuer the hub checks tokens against. Inside the backend container, localhost is the container itself. It reaches Keycloak at keycloak:8080 on th",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#keycloak-oidc-sign-in",
-    "t": "Sign in",
-    "s": "Security › Keycloak / OIDC Setup",
-    "x": "mycelium login # opens Keycloak in your browser mycelium login --device # no browser: prints a URL and a code to enter on another device Sign in as demo / demo. Every command after that sends your token: mycelium whoami # acting as @demo # signed in (http://localhost:8080/realms/mycelium, expires in 4 min) mycelium room ls mycelium logout signs you out, and the CLI stops sending a token.",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#keycloak-oidc-check-that-its-enforced",
-    "t": "Check that it's enforced",
-    "s": "Security › Keycloak / OIDC Setup",
-    "x": "Get a token for the demo user, then try the API with no token, the real one, and a fake one: TOKEN=$(curl -s -X POST \\ http://localhost:8080/realms/mycelium/protocol/openid-connect/token \\ -d 'grant_type=password&client_id=mycelium-cli&username=demo&password=demo&scope=openid profile' \\ | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"access_token\"])') curl -s -o /dev/null -w '%{http_code}\\n' http://localho",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#keycloak-oidc-signing-in-to-the-app",
-    "t": "Signing in to the app",
-    "s": "Security › Keycloak / OIDC Setup",
-    "x": "The app can use the same Keycloak. With auth off, nothing changes: you pick a handle and go. With auth on, the app shows a Sign in screen and sends you to Keycloak. After you sign in, the app sends your token with every request. The token is kept in an httpOnly cookie and added by the app's server, so JavaScript in the browser never sees it. The realm has a second public client for this, mycelium-web, with the redire",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#keycloak-oidc-agents-and-more-than-one-issuer",
-    "t": "Agents, and more than one issuer",
-    "s": "Security › Keycloak / OIDC Setup",
-    "x": "This guide covers people. Agents sign in with their own Keycloak client using the client_credentials grant; see Authentication, under \"Signing in agents\". People and agents are often in separate realms. Add a [[auth.issuers]] block for each: one with role = \"user\" and one with role = \"agent\". A token only passes against the issuer it came from. To give each agent its own identity on the SLIM channel as well, see Secu",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#keycloak-oidc-not-for-production",
-    "t": "Not for production",
-    "s": "Security › Keycloak / OIDC Setup",
-    "x": "This Keycloak setup is for development. It runs in start-dev mode, with an in-memory database, plain HTTP and a demo user with a weak password. The tokens it issues are real (RS256, with real signing keys), so it's fine for building and testing against, but don't use it for a real deployment. For production, run your own Keycloak over TLS, with a persistent database and real users, and point the same three settings a",
+    "x": "To try sign-in on one machine before setting up a real provider, the Keycloak / OIDC Setup guide runs a local Keycloak with a ready-made realm. It needs a checkout of the Mycelium source.",
     "p": "Guides"
   },
   {
@@ -1658,7 +1377,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-start-with-mycelium-doctor",
     "t": "Start with mycelium doctor",
     "s": "Help › Troubleshooting",
-    "x": "mycelium doctor # checks config, backend, model and SLIM mycelium doctor --fix # fixes whatever it can without asking mycelium status # a quick look at the services mycelium logs --tail 50 # recent logs mycelium doctor is the first thing to run for almost any problem. It works out whether this machine runs the Mac app, is a hub (it runs the backend and SLIM node in Docker) or a spoke (it connects to a hub somewhere e",
+    "x": "mycelium doctor # checks config, the hub, the model and SLIM mycelium doctor --fix # also runs the fixes it suggests, without asking first mycelium doctor is the first thing to run for almost any problem. It works out whether this machine runs the Mac app, is a hub (the Docker stack) or a spoke (it connects to a hub elsewhere), and runs only the checks that apply. To choose yourself, pass --mode desktop, --mode hub o",
     "p": "Guides"
   },
   {
@@ -1669,129 +1388,108 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#troubleshooting-an-agent-doesnt-answer",
+    "t": "An agent doesn't answer",
+    "s": "Help › Troubleshooting",
+    "x": "You see: you mention an agent, give it a task, or a flow waits on its turn, and nothing happens. Something has to tell the agent there's work for it. Check, in order: Is the runner running on the agent's machine? It delivers wake-ups to agents in herdr. The Mac app runs it; elsewhere: mycelium runner status mycelium runner --detach # start it if it isn't Is the agent itself running? mycelium machine lists every agent",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#troubleshooting-mycelium-command-not-found",
     "t": "mycelium: command not found",
     "s": "Help › Troubleshooting",
-    "x": "The CLI isn't installed, or isn't on your PATH. Install it (on an Apple silicon Mac this installs the Mac app, whose CLI it links into ~/.local/bin; add bash -s -- --client-only for the CLI alone): curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash If it's installed but your shell can't find it, add its folder to your PATH: export PATH=\"$HOME/.local/bin:$PATH\"",
+    "x": "The CLI isn't installed, or isn't on your PATH. Install it (on an Apple silicon Mac this installs the Mac app, which links its CLI into ~/.local/bin; add bash -s -- --client-only for the CLI alone): curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash If it's installed but your shell can't find it: export PATH=\"$HOME/.local/bin:$PATH\"",
     "p": "Guides"
   },
   {
-    "u": "guides.html#troubleshooting-the-backend-isnt-running",
-    "t": "The backend isn't running",
+    "u": "guides.html#troubleshooting-the-hub-isnt-running",
+    "t": "The hub isn't running",
     "s": "Help › Troubleshooting",
-    "x": "You see: commands can't connect to the hub at http://localhost:8000. Nothing in a room works without the backend. Check it and start it: mycelium status # quick check docker ps | grep mycelium-backend # is the container up? mycelium up # start the services mycelium logs mycelium-backend --tail 50",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#troubleshooting-no-config-yet",
-    "t": "No config yet",
-    "s": "Help › Troubleshooting",
-    "x": "You see: commands behave as if nothing is set up, or connect to the wrong hub. Create the config, either for a hub on this machine or pointing at one elsewhere: mycelium init # or, for a hub somewhere else: mycelium init --api-url http://your-hub:8000",
+    "x": "You see: commands can't connect to the hub at http://localhost:8000. With the Mac app, open it: the hub runs while the app does. Check its state in the menu bar, or with Health check…. With the Docker stack: mycelium status # quick check mycelium up # start the hub mycelium logs mycelium-backend --tail 50",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-a-spoke-cant-reach-the-hub",
     "t": "A spoke can't reach the hub",
     "s": "Help › Troubleshooting",
-    "x": "You see: from a spoke, memory, room ls, await or respond fail with \"can't reach the hub\", and mycelium doctor says the backend is unreachable. Spokes talk to the hub over HTTP, at server.api_url (port 8000 by default). They don't need the hub's SLIM node for normal use. Check what the spoke is pointing at, and whether it can reach it: mycelium doctor # checks the hub's /health mycelium config get server.api_url # sho",
+    "x": "You see: from another machine, commands fail with \"can't reach the hub\". mycelium config get server.api_url # should be the hub's address curl http://<hub-ip>:8000/health # run this from the spoke Common causes: server.api_url is wrong. Fix it with mycelium init --api-url http://<hub-ip>:8000. The hub only listens on its own machine. On the hub, set runtime.bind_addr to 0.0.0.0 (after turning on sign-in). See Hub & S",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-port-already-in-use",
     "t": "Port already in use",
     "s": "Help › Troubleshooting",
-    "x": "You see: bind: address already in use when starting the stack. Find what's using the port: lsof -i :8000 # backend lsof -i :46357 # SLIM node Then move Mycelium to other ports with config. Don't edit .env by hand: mycelium config set runtime.backend_port 8001 # MYCELIUM_BACKEND_PORT mycelium config set runtime.frontend_port 3001 # MYCELIUM_UI_PORT mycelium config set runtime.collector_port 4319 # MYCELIUM_METRICS_POR",
+    "x": "You see: bind: address already in use when starting the stack. lsof -i :8000 # the API lsof -i :3000 # the app Move Mycelium to other ports with config: mycelium config set runtime.backend_port 8001 mycelium config set runtime.frontend_port 3002 mycelium config apply mycelium down && mycelium up",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-no-model-configured",
     "t": "No model configured",
     "s": "Help › Troubleshooting",
-    "x": "You see: mycelium doctor says the model check is not configured or auth failed, or engines like the aligner don't answer. Engines need a model. Set it with config, not by editing .env: mycelium config set llm.model \"anthropic/claude-sonnet-4-6\" mycelium config set llm.api_key \"sk-ant-...\" mycelium config apply mycelium up # restart the backend with the new settings For a local Ollama: mycelium config set llm.model \"o",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#troubleshooting-engines-fail-with-pi-not-found-on-path",
-    "t": "Engines fail with \"pi not found on PATH\"",
-    "s": "Help › Troubleshooting",
-    "x": "You see: mentioning the aligner or another engine fails with an error saying pi isn't found. Engines run on Pi. The backend's Docker image includes it, so this only happens when you run the backend outside Docker, for example with uvicorn app.main:app while working on it. Install Pi on that machine: npm install -g @earendil-works/pi-coding-agent # or set ALIGNER_PI_BINARY to the path of an existing pi",
+    "x": "You see: mycelium doctor says the model check is not configured or auth failed, or engines like the aligner don't answer. In the Mac app, set it in Settings → Model. From the command line: mycelium config set llm.model \"anthropic/claude-sonnet-4-6\" mycelium config set llm.api_key \"sk-ant-...\" mycelium config apply mycelium up mycelium doctor makes a real model call, so it also catches a wrong model name or a missing ",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-memory-search-finds-nothing",
     "t": "Memory search finds nothing",
     "s": "Help › Troubleshooting",
-    "x": "You see: mycelium memory search returns nothing, but you know the memories exist. Search uses an index on the hub. Memories written with mycelium memory set are indexed right away, but files you edit or add directly (with an editor, cat, or an agent writing files) aren't indexed until you rebuild the index: mycelium memory ls # are the memories there? ls ~/.mycelium/rooms/ # are the files there? mycelium memory reind",
+    "x": "You see: mycelium memory search returns nothing, but the memories exist. mycelium memory ls # are the memories there? mycelium room ls # are you in the right room? mycelium memory reindex # rebuild the search index Files edited directly on the hub, outside mycelium memory set, are picked up while the hub runs; reindex catches anything it missed.",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-no-active-room",
     "t": "No active room",
     "s": "Help › Troubleshooting",
-    "x": "You see: No active room set., or No room specified and no active room set. Pick a room for this shell, or name one on the command: mycelium room ls mycelium room use <name> # or name it each time: mycelium memory ls --room <name>",
+    "x": "You see: No room specified and no active room set. Set the room for the folder you're in, or name it on each command: mycelium room use <name> mycelium memory ls --room <name>",
     "p": "Guides"
   },
   {
-    "u": "guides.html#troubleshooting-config-changes-dont-take-effect",
-    "t": "Config changes don't take effect",
+    "u": "guides.html#troubleshooting-a-setting-doesnt-take-effect",
+    "t": "A setting doesn't take effect",
     "s": "Help › Troubleshooting",
-    "x": "You see: you changed a setting and nothing happened, or mycelium doctor reports Config file drift or Runtime config drift. config.toml is where settings live. mycelium config apply writes ~/.mycelium/.env from it, so any hand edits to .env are overwritten the next time you apply. And the backend only picks up changes when it's restarted. mycelium config apply # rewrite .env from config.toml mycelium up # restart the ",
+    "x": "You see: you changed a setting and nothing happened, or mycelium doctor reports Config file drift or Runtime config drift. Settings live in ~/.mycelium/config.toml. mycelium config apply renders them into ~/.mycelium/.env, which the hub reads when it starts, so a change needs both steps and a restart: mycelium config apply mycelium up # with the Mac app, quit and reopen it Don't edit .env by hand: config apply rewrit",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#troubleshooting-engines-fail-with-pi-not-found-on-path",
+    "t": "Engines fail with \"pi not found on PATH\"",
+    "s": "Help › Troubleshooting",
+    "x": "Engines run on Pi, which the Mac app and the Docker image include. This only happens when you run the backend yourself from the source; install Pi there with npm install -g @earendil-works/pi-coding-agent.",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-permission-errors-in-mycelium",
     "t": "Permission errors in ~/.mycelium",
     "s": "Help › Troubleshooting",
-    "x": "You see: a PermissionError when writing memories or adding agents, or mycelium doctor flags files in ~/.mycelium owned by root. This usually happens when Mycelium was installed with sudo but later run without it, or when a container running as root wrote into your home directory. Take the files back: sudo chown -R $USER ~/.mycelium",
+    "x": "You see: a PermissionError, or mycelium doctor flags files in ~/.mycelium owned by root. This happens when Mycelium was run with sudo once. Take the files back: sudo chown -R $USER ~/.mycelium",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-the-hub-hands-out-http-links-behind-https",
     "t": "The hub hands out http:// links behind HTTPS",
     "s": "Help › Troubleshooting",
-    "x": "You see: the hub is served over https://, but links it gives out start with http://. The A2A agent card is where you'll notice it most: curl -s https://hub.example.com/api/rooms/my-room/.well-known/agent-card.json # \"url\": \"http://hub.example.com/api/rooms/my-room/a2a\" Why: a reverse proxy handles TLS and forwards plain HTTP to the backend. The proxy tells the backend the original scheme in X-Forwarded-Proto, but the",
+    "x": "The hub is served over https://, but links it gives out (such as a room's A2A card) start with http://. Tell it to trust your proxy; see Behind an HTTPS proxy.",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-settings-reference",
     "t": "Settings reference",
     "s": "Help › Troubleshooting",
-    "x": "",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#troubleshooting-cli-settings-myceliumconfigtoml",
-    "t": "CLI settings: ~/.mycelium/config.toml",
-    "s": "Help › Troubleshooting",
-    "x": "Setting Key Environment variable Hub URL server.api_url MYCELIUM_API_URL SLIM node address slim.node_endpoint (none) Active room rooms.active MYCELIUM_ACTIVE_ROOM Your handle identity.name MYCELIUM_AGENT_HANDLE",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#troubleshooting-backend-settings-myceliumenv",
-    "t": "Backend settings: ~/.mycelium/.env",
-    "s": "Help › Troubleshooting",
-    "x": "Variable What it is Default LLM_MODEL The model, as provider/model anthropic/claude-sonnet-4-6 LLM_API_KEY The provider's API key (none) LLM_BASE_URL A custom model endpoint, such as Ollama or vLLM (none) MYCELIUM_DATA_DIR Where rooms and memories are stored ~/.mycelium MYCELIUM_BIND_ADDR The address the stack's ports are published on (runtime.bind_addr) 127.0.0.1 MYCELIUM_BACKEND_PORT The backend's port on your mach",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#troubleshooting-agent-environment-variables",
-    "t": "Agent environment variables",
-    "s": "Help › Troubleshooting",
-    "x": "The CLI reads these to know which hub to use and who the agent is: Variable What it is MYCELIUM_API_URL The hub's URL (default http://localhost:8000) MYCELIUM_AGENT_HANDLE The agent's handle MYCELIUM_ACTIVE_ROOM The room to use when none is given mycelium await --exec also sets MYCELIUM_ROOM, MYCELIUM_HANDLE, MYCELIUM_SENDER, MYCELIUM_SENDER_NAME (the sender's name, when they gave one) and MYCELIUM_PROMPT for the com",
+    "x": "Every setting lives in ~/.mycelium/config.toml and is set with mycelium config set <key> <value>; see the configuration reference for the full list. These can also come from the environment, which wins over the file: Setting Key Environment variable Hub address server.api_url MYCELIUM_API_URL Room rooms.active (set by room use, per folder) MYCELIUM_ACTIVE_ROOM Your handle identity.name MYCELIUM_AGENT_HANDLE Token (fr",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-logs",
     "t": "Logs",
     "s": "Help › Troubleshooting",
-    "x": "mycelium logs # every service mycelium logs mycelium-backend # just the backend mycelium --verbose status # extra detail from the CLI",
+    "x": "mycelium logs # every service (Docker) mycelium logs mycelium-backend # just the backend (Docker) The Mac app writes everything to ~/.mycelium/logs/desktop.log.",
     "p": "Guides"
   },
   {
     "u": "guides.html#troubleshooting-starting-over",
     "t": "Starting over",
     "s": "Help › Troubleshooting",
-    "x": "This deletes all your rooms, memories and config. With the Docker stack: mycelium down --volumes # stop everything and delete its data rm -rf ~/.mycelium # remove config and room files mycelium install # install again With the Mac app, quit it from its menu bar icon, remove ~/.mycelium, and open it again: it starts at its first screen.",
+    "x": "This deletes all your rooms, memories, config, the SLIM secret, and saved sign-in tokens and agent credentials. With the Docker stack: mycelium down --volumes rm -rf ~/.mycelium mycelium install With the Mac app, quit it from its menu bar icon, remove ~/.mycelium, and open it again: it starts at its first screen. Agents still running in herdr keep running; close their terminals if you don't want them.",
     "p": "Guides"
   },
   {
@@ -1805,126 +1503,42 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#architecture",
     "t": "Architecture",
     "s": "Architecture",
-    "x": "",
+    "x": "This is the technical view of How Mycelium works.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#architecture-deployment-modes",
-    "t": "Deployment Modes",
+    "u": "reference.html#architecture-deployment",
+    "t": "Deployment",
     "s": "Architecture",
-    "x": "Mycelium runs the same stack in two setups. The difference is where the agents run and how they reach the room.",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#architecture-1-single-device-default",
-    "t": "1. Single-device (default)",
-    "s": "Architecture",
-    "x": "Everything runs on one machine: the backend, the SLIM node, the app, the CLI and your agents. This is what the Mac app sets up (or mycelium install, which runs it in Docker), and it needs no network configuration. Use it when one person or one machine runs the whole workflow.",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#architecture-2-hub-and-spoke-small-teams",
-    "t": "2. Hub-and-spoke (small teams)",
-    "s": "Architecture",
-    "x": "For a team that wants to share rooms and memory across machines. One machine, the hub, runs the SLIM node, the backend and the app in Docker. The other machines, the spokes, run only the CLI and agents, and talk to the hub over HTTP. Role What runs on it Used for Hub The SLIM node, the backend and the app. The team's shared server. One per team. Spoke The CLI and agents, with server.api_url pointing at the hub. Each ",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#architecture-reading-a-remote-room-spoke",
-    "t": "Reading a remote room (spoke)",
-    "s": "Architecture",
-    "x": "A spoke keeps no copy of the hub's data. mycelium memory and mycelium room read from the hub over HTTP every time, so there's nothing to sync and nothing to go stale. If you do want a local copy, for a backup or to read offline, room clone exports a snapshot of a room as it is right now: mycelium room clone my-project --from http://ec2-host:8000",
+    "x": "A hub runs in one of two ways: Mac app Docker Set up with The app's first screen, On this Mac mycelium install Runs The hub, the app, a SLIM node, herdr and the runner, as processes The hub, the app and a SLIM node, as containers Reachable from This Mac only Wherever you bind it (runtime.bind_addr) Use it for One person A team, with Hub & Spoke Every other machine is a spoke: it runs the CLI (or the Mac app pointed a",
     "p": "Reference"
   },
   {
     "u": "reference.html#architecture-stack",
     "t": "Stack",
     "s": "Architecture",
-    "x": "The hub is one SLIM node and a FastAPI backend. There's no database, message broker or vector store. Each room is an encrypted AGNTCY SLIM group channel, and the backend runs it. Agents on spokes, and people using the app, take part over HTTP; the backend keeps track of who is present and serves them messages from the stored transcript. Room contents are markdown files on the hub, searched with a local embedding inde",
+    "x": "The hub is one SLIM node and a FastAPI backend. There's no database, message broker or vector store. Layer Technology Used for Messaging one SLIM node (MLS group channels) each room's encrypted channel, between the backend and the node State markdown files on the hub, under ~/.mycelium/rooms/{room}/ rooms, tasks and memories Search a local ONNX embedding model (BAAI/bge-small-en-v1.5, 384 dimensions), with the index ",
     "p": "Reference"
   },
   {
-    "u": "reference.html#architecture-taking-part-in-a-room",
-    "t": "Taking part in a room",
+    "u": "reference.html#architecture-how-an-agent-takes-part",
+    "t": "How an agent takes part",
     "s": "Architecture",
-    "x": "An agent takes part with two HTTP calls. await waits until there's a message for it, and respond posts its reply: # Wait until a message is addressed to this handle mycelium await --room my-project --handle me --json # Post a reply mycelium respond --room my-project --handle me \"moving toward 30% …\" The backend remembers where each agent is up to, so nothing is missed between calls, even if the agent takes a while to",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#architecture-engines",
-    "t": "Engines",
-    "s": "Architecture",
-    "x": "Engines are agents that come with Mycelium and run on the hub. You add one to a room and mention it to use it. The aligner helps agents settle a disagreement, using a NEGMAS negotiation that ends as soon as they agree. The synthesizer summarizes the room's conversation into a memory. See also episodes.",
+    "x": "An agent takes part with two HTTP calls. await waits until there's a message for it, and respond posts its reply: mycelium await --room my-project --handle builder --json mycelium respond --room my-project --handle builder \"moving toward 30% …\" The hub keeps each agent's place in the room's history, so nothing is missed between calls, however long the agent takes. await returns the next message addressed to the agent",
     "p": "Reference"
   },
   {
     "u": "reference.html#architecture-tasks-threads-and-pings",
     "t": "Tasks, threads and pings",
     "s": "Architecture",
-    "x": "A task is a memory on the board, usually under work/. Each task has a thread: its own conversation within the room's channel, identified by an episode id. A thread isn't a separate encrypted group. Everyone in the room can see every thread; threads just keep conversations apart. Every task gets its own thread, for good. The backend gives a task its thread when the task is first written, for every board namespace (wor",
+    "x": "A task is a memory under work/. Each task has a thread: its own conversation within the room's channel, with its own id. A thread isn't a separate encrypted group; everyone in the room can read every thread. Every board row gets its own thread, for good. The hub gives a memory its thread the first time it's written under work/, decisions/, status/ or failed/, however it was written: board new, the app, or memory set.",
     "p": "Reference"
   },
   {
     "u": "reference.html#architecture-connecting-agents",
     "t": "Connecting agents",
     "s": "Architecture",
-    "x": "Whatever agent CLI it runs in, an agent does the same three things: join, await, respond. An agent's manifest records how it connects as its adapter: Adapter How it connects claude_code A Claude Code session running the await/respond loop cursor A Cursor session, with workspace rules, running the same loop a2a A remote Agent2Agent endpoint that the hub calls; nothing runs locally",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#architecture-claude-code",
-    "t": "Claude Code",
-    "s": "Architecture",
-    "x": "The runner, mycelium swarm and the Mac app start Claude Code as an interactive session and tell it who it is in its notes; each wake says what to run next. Nothing is installed into Claude Code for that. A session takes part by running mycelium await, working out its answer, and running mycelium respond. It picks up each @handle mention on its next turn. For an agent with no interactive session, use mycelium await --",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#architecture-cursor",
-    "t": "Cursor",
-    "s": "Architecture",
-    "x": "Works the same way as Claude Code: a Cursor session runs await, works out its answer, and runs respond. Creating the agent drops a Cursor rule and an AGENTS.md section into its workspace. cursor-agent login # once, interactively # Per agent. --cwd is the session's workspace folder (optional) mycelium agent create design-agent --adapter cursor \\ --cwd ~/repos/my-frontend --room my-project",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#architecture-a2a",
-    "t": "A2A",
-    "s": "Architecture",
-    "x": "An a2a agent doesn't run on your machine. It's a remote Agent2Agent endpoint that the hub calls for it. The hub fetches the agent's card when you register it, so a wrong URL fails straight away. mycelium agent create researcher --adapter a2a \\ --card https://research.example.com --room my-project It also works the other way. Every room is available as an A2A agent: its card is at GET /api/rooms/{room}/.well-known/age",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#architecture-backend-api",
-    "t": "Backend API",
-    "s": "Architecture",
-    "x": "Any agent that can make HTTP requests can use the REST API directly. When the backend is running, the interactive API docs are at http://localhost:8000/docs.",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#architecture-status-providers",
-    "t": "Status providers",
-    "s": "Architecture",
-    "x": "Agents connect to a room through the CLI. Status providers connect the tools your work already happens in. If a board row mentions a pull request, a status provider lets the row show whether that pull request is approved, blocked or failing, without anyone copying it across by hand. Give the hub a token, mention a pull request in a row, and the row shows its state in both the app and mycelium board. Nothing is polled",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#architecture-asking-for-status",
-    "t": "Asking for status",
-    "s": "Architecture",
-    "x": "GET /api/rooms/{room}/status You don't list which pull requests to watch. The hub reads the room's decisions/, status/, work/ and failed/ memories and asks each provider which references it recognizes. So a row that says land the custody seam: mycelium-io/mycelium#504 is already tracked. Only the provider knows what its references look like, so supporting a new kind (Jira ticket keys, say) means adding a provider. Th",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#architecture-giving-the-hub-a-token",
-    "t": "Giving the hub a token",
-    "s": "Architecture",
-    "x": "To read pull requests the hub needs a GitHub token. Read-only access is enough, plus repo scope for private repositories. Set it on the machine the backend runs on. The name to use is the one the provider asks for; GitHub's is GITHUB_TOKEN: mycelium board credential set GITHUB_TOKEN --stdin < token.txt mycelium board credential set GITHUB_TOKEN # or type it at a hidden prompt mycelium board credential ls # shows name",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#architecture-adding-a-provider",
-    "t": "Adding a provider",
-    "s": "Architecture",
-    "x": "A provider is a small class in app/services/status/providers/. providers/github.py is a good one to copy. It sets a few options and implements two methods: class JiraProvider: name = \"jira\" base_url = \"https://your-org.atlassian.net\" # ctx.http only talks to this host auth = Basic(\"JIRA_EMAIL\", \"JIRA_TOKEN\") # which credentials, by name; the hub supplies the values max_batch = 50 # most references to fetch in one cal",
+    "x": "An agent's record (agents/<handle>) says how it connects, as its adapter: Adapter How it connects claude_code A coding agent session running the await/respond loop. Despite the name, every agent CLI the runner starts (Claude Code, Codex, OpenCode, Gemini CLI and the rest) is recorded this way, except Cursor. cursor A Cursor session; creating the agent also writes a Cursor rule and an AGENTS.md section into its folder",
     "p": "Reference"
   },
   {
@@ -2673,6 +2287,101 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Reference"
   },
   {
+    "u": "reference.html#board-reference",
+    "t": "Board",
+    "x": "Every board command, and how rows show live pull request status. For what the board is, see board; for using it day to day, see Working the board.",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#board-reference-commands",
+    "t": "Commands",
+    "s": "Board",
+    "x": "mycelium board # what needs a person mycelium board new \"Ship passkey login\" # add a task mycelium board new \"Pick storage\" --parent work/ship-passkey-login --assign @sec mycelium board send work/auth-spike \"@sec keychain?\" # post in a task's thread mycelium board messages work/auth-spike # read a task's thread mycelium board coordinate work/auth-spike aligner \"agree on token storage\" mycelium board claim work/auth-s",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#board-reference-fields",
+    "t": "Fields",
+    "s": "Board",
+    "x": "Field Means status The row's own stage: open, in_review, resolved, dismissed. kind What the row is: action (a task), decision, concern, blocked. assignee Who the task is for. Set with --assign. assignment Whether someone holds it: unclaimed, held, released, expired, resolved. depends-on A task that must be resolved first. blocked_by What block said the task is waiting on. upstream The live state of a linked pull requ",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#board-reference-live-pull-request-status",
+    "t": "Live pull request status",
+    "s": "Board",
+    "x": "Mention a pull request anywhere in a row (owner/repo#123 or its full URL), and the row shows its state in the app and in mycelium board. Nothing to register: the hub reads the rows under decisions/, status/, work/ and failed/ and looks up every pull request they mention. mycelium memory set work/double-charge-fix \\ \"land the double-charge fix: coffee-shop/web#504\" The row shows GitHub's own wording (CI failing, chang",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#board-reference-giving-the-hub-a-token",
+    "t": "Giving the hub a token",
+    "s": "Board",
+    "x": "The hub needs a GitHub token to read pull requests: read-only access, plus repo scope for private repositories. Set it on the machine the hub runs on: mycelium board credential set GITHUB_TOKEN # type it at a hidden prompt mycelium board credential set GITHUB_TOKEN --stdin < token.txt mycelium board credential ls # names and whether they're set, never values It's saved in ~/.mycelium/status-credentials.json, readable",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#flows",
+    "t": "Writing Flows",
+    "x": "A flow is what the conductor runs: a set of steps, each asking someone something and saying where to go next. A room's own flows are memories under protocols/, written in YAML. Saving one as protocols/review replaces the built-in review in that room, and a new name adds a new flow. To start from a built-in, print it and edit it: mycelium engine invoke conductor \"show review\" For example, a review where the reviewer s",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#flows-steps",
+    "t": "Steps",
+    "s": "Writing Flows",
+    "x": "Each step has an id, and either asks someone (to) and says where to go next (next), or ends the flow (end: resolved or end: rejected). to can be: a role, such as author each: every member taking part, one at a time all: every member taking part, at once workers: every member taking part that isn't bound to a role, at once bottleneck: the member the last pick left least happy (only after a pick) contested: everyone wh",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#flows-steps-that-ask-nobody",
+    "t": "Steps that ask nobody",
+    "s": "Writing Flows",
+    "x": "A pick is a step with kind: select. It takes a threshold (0.7 means everyone rates it 70 or more) and max_repairs, and goes on by how the pick went: feasible (everyone's on board), infeasible (someone can fix it), stuck (a fix can't help) and default. An end step of end: converged can only be reached from a pick's feasible edge. show concord prints one in full. accord is built from two more (show accord): kind: tally",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#flows-placeholders",
+    "t": "Placeholders",
+    "s": "Writing Flows",
+    "x": "Prompts can use these: Placeholder Filled with {ask} The question from the message that started the flow. {task} The task's key, such as work/rotate-signing-key. {title} The task's title, such as \"Rotate the signing key\". {reply} The last answer. {replies} Every member's latest answer, one per line. {handles} The members taking part. {round}, {rounds} The current round and the total. {options}, {option_labels} Every ",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#l9-protocol",
+    "t": "L9 Protocol",
+    "x": "L9 is a message format for agents coordinating with each other, from the Internet of Cognition work. In Mycelium it's extra data the hub attaches to coordination messages (the turns of a flow or negotiation, and their outcome), so a negotiation can be scored and replayed later. Agents never build L9 messages themselves. They write prose, optionally with a [[mycelium: …]] marker at the end, and the hub turns that into",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#l9-protocol-markers",
+    "t": "Markers",
+    "s": "L9 Protocol",
+    "x": "A marker is a short tag at the end of a reply. The hub reads it and removes it from what gets posted. Marker Used for [[mycelium: stance=accept]] / stance=reject Approving or rejecting, in a flow step or a negotiation. agree and yes also mean accept; no and block also mean reject (this block has nothing to do with blocking a task on the board). [[mycelium: confidence=0.8]] How sure the agent is, from 0 to 1. Can be c",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#l9-protocol-reading-the-score",
+    "t": "Reading the score",
+    "s": "L9 Protocol",
+    "x": "When enough agents report confidence, a negotiation's record carries a score: Metric Stands for What it tells you mpc mean final confidence How sure the team is at the end, from 0 to 1. gar genuine agreement rate The share of agents whose confidence moved toward the final answer, meaning they were persuaded. 0 to 1. scr social compliance ratio The share of changes of mind that were agents going along rather than bein",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#l9-protocol-the-record",
+    "t": "The record",
+    "s": "L9 Protocol",
+    "x": "Every negotiation, agreed or not, is saved at log/episodes/{id}.md (see episodes), with each message pointing to the ones it answers. Its full id looks like urn:ioc:mycelium:episode:{room}:{id}.",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#l9-protocol-message-types",
+    "t": "Message types",
+    "s": "L9 Protocol",
+    "x": "For anyone reading raw messages: a turn is an exchange, an agreement is commit:converged, a flow that finished is commit:resolved, a failed negotiation or flow is commit:rejected, and a memory write is knowledge. A message that edits an earlier one is an exchange:amend.",
+    "p": "Reference"
+  },
+  {
     "u": "reference.html#metrics",
     "t": "Metrics",
     "s": "Observability",
@@ -2711,7 +2420,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#metrics-viewing-them",
     "t": "Viewing them",
     "s": "Observability › Metrics",
-    "x": "mycelium metrics status # is the collector running, and is the config right mycelium metrics show # an overview mycelium metrics show mycelium # the backend's activity in detail mycelium metrics show cost # estimated cost of the backend's model calls, by room mycelium metrics show --json # everything collected, as JSON mycelium metrics reset # clear the metrics collected on this machine",
+    "x": "mycelium metrics status # is the collector running, and is the config right mycelium metrics show # an overview mycelium metrics show mycelium # the backend's activity in detail mycelium metrics show cost # estimated model cost, where token counts were reported mycelium metrics show --json # everything collected, as JSON mycelium metrics reset # clear the metrics collected on this machine metrics show cost multiplies",
     "p": "Reference"
   },
   {
@@ -2733,6 +2442,76 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Files",
     "s": "Observability › Metrics",
     "x": "Under $MYCELIUM_DATA_DIR (~/.mycelium/ by default): usage/events.jsonl: the hub's usage events (rotated at 5 MB, keeping one previous file), and usage/hub_id when the hub made its own id. metrics/metrics.json: the collector's combined snapshot. metrics/traces.db: the OTLP traces the collector received. [telemetry] enabled = false # export backend traces and metrics over OTLP otlp_endpoint = \"\" # where to; the Docker ",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#status-providers",
+    "t": "Adding a Status Provider",
+    "s": "Contributing",
+    "x": "For contributors working on the Mycelium source. A status provider lets board rows show the live state of something in another tool, as live pull request status does for GitHub. Providers run only on the hub, where the token is, so the whole room shares one cache. A provider is a small class in fastapi-backend/app/services/status/providers/. providers/github.py is a good one to copy. It sets a few options and impleme",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#keycloak-oidc",
+    "t": "Keycloak / OIDC Setup",
+    "s": "Contributing",
+    "x": "<!-- SPDX-License-Identifier: Apache-2.0 --> For contributors working on the Mycelium source. The commands below run from a checkout of the repository and use its development compose files, which an installed Mycelium doesn't have. To turn on sign-in for a real hub, see Authentication. This guide gets authentication working end to end on your machine, using Keycloak as the identity provider. When you're done, the hub",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#keycloak-oidc-start-keycloak",
+    "t": "Start Keycloak",
+    "s": "Contributing › Keycloak / OIDC Setup",
+    "x": "Mycelium comes with a Keycloak setup you can add to the stack. It's a separate compose file, so it isn't part of the normal install. It comes with a mycelium realm already set up, so you don't need to use the admin console. cd mycelium-cli/src/mycelium/docker docker compose -f compose.yml -f compose-dev.yml -f compose-keycloak.yml \\ up -d keycloak It's ready when this prints the issuer URL: curl -s http://localhost:8",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#keycloak-oidc-whats-in-the-realm",
+    "t": "What's in the realm",
+    "s": "Contributing › Keycloak / OIDC Setup",
+    "x": "The realm is defined in docker/keycloak/mycelium-realm.json. If you're setting up your own Keycloak instead, it needs the same things: A public client called mycelium-cli, which mycelium login uses. It has no secret (the CLI uses PKCE), allows the redirect http://127.0.0.1:*/callback for browser sign-in, and has the device grant enabled for signing in without a browser. An audience mapper that adds mycelium to the to",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#keycloak-oidc-point-the-hub-at-keycloak",
+    "t": "Point the hub at Keycloak",
+    "s": "Contributing › Keycloak / OIDC Setup",
+    "x": "The backend runs in a container, but your browser and the CLI run on your machine, so they reach Keycloak at different addresses: Your browser and the CLI reach it at localhost:8080, and Keycloak puts http://localhost:8080/realms/mycelium in every token's iss. So that's the issuer the hub checks tokens against. Inside the backend container, localhost is the container itself. It reaches Keycloak at keycloak:8080 on th",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#keycloak-oidc-sign-in",
+    "t": "Sign in",
+    "s": "Contributing › Keycloak / OIDC Setup",
+    "x": "mycelium login # opens Keycloak in your browser mycelium login --device # no browser: prints a URL and a code to enter on another device Sign in as demo / demo. Every command after that sends your token: mycelium whoami # acting as @demo # signed in (http://localhost:8080/realms/mycelium, expires in 4 min) mycelium room ls mycelium logout signs you out, and the CLI stops sending a token.",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#keycloak-oidc-check-that-its-enforced",
+    "t": "Check that it's enforced",
+    "s": "Contributing › Keycloak / OIDC Setup",
+    "x": "Get a token for the demo user, then try the API with no token, the real one, and a fake one: TOKEN=$(curl -s -X POST \\ http://localhost:8080/realms/mycelium/protocol/openid-connect/token \\ -d 'grant_type=password&client_id=mycelium-cli&username=demo&password=demo&scope=openid profile' \\ | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"access_token\"])') curl -s -o /dev/null -w '%{http_code}\\n' http://localho",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#keycloak-oidc-signing-in-to-the-app",
+    "t": "Signing in to the app",
+    "s": "Contributing › Keycloak / OIDC Setup",
+    "x": "The app can use the same Keycloak. With auth off, nothing changes: you pick a handle and go. With auth on, the app shows a Sign in screen and sends you to Keycloak. After you sign in, the app sends your token with every request. The token is kept in an httpOnly cookie and added by the app's server, so JavaScript in the browser never sees it. The realm has a second public client for this, mycelium-web, with the redire",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#keycloak-oidc-agents-and-more-than-one-issuer",
+    "t": "Agents, and more than one issuer",
+    "s": "Contributing › Keycloak / OIDC Setup",
+    "x": "This guide covers people. Agents sign in with their own Keycloak client using the client_credentials grant; see Authentication, under \"Signing in agents\". People and agents are often in separate realms. Add a [[auth.issuers]] block for each: one with role = \"user\" and one with role = \"agent\". A token only passes against the issuer it came from. To give each agent its own identity on the SLIM channel as well, see Runn",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#keycloak-oidc-not-for-production",
+    "t": "Not for production",
+    "s": "Contributing › Keycloak / OIDC Setup",
+    "x": "This Keycloak setup is for development. It runs in start-dev mode, with an in-memory database, plain HTTP and a demo user with a weak password. The tokens it issues are real (RS256, with real signing keys), so it's fine for building and testing against, but don't use it for a real deployment. For production, run your own Keycloak over TLS, with a persistent database and real users, and point the same three settings a",
     "p": "Reference"
   }
 ];

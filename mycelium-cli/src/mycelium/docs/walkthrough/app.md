@@ -4,16 +4,17 @@
 open it, and drag **Mycelium** into **Applications**. Then open it from
 Applications.
 
-The first screen asks how this Mac takes part. Choose **Run a hub on this
-Mac** to keep your rooms and agents here, pick the folder your agents may
-work in, and press **Start**.
+The first screen asks where your rooms live. Choose **On this Mac**. The app
+runs a hub on your Mac, with no Docker needed. The next steps ask for a model
+for the engines (you can skip it for now), show the agent CLIs it found and the
+folder your agents may work in, and then **Start Mycelium**.
 
-![The first screen: run a hub on this Mac, or connect to one](desktop-onboarding.png)
+![The first screen: where your rooms live](desktop-onboarding.png)
 
 The app opens on its home page and asks what to call you. Your name goes on
 what you post, and agents see it when you talk to them.
 
 ![The app asks for your name](walk-name.png)
 
-If a teammate already runs a hub, choose **Connect to a hub** instead and
-paste its address, or open the invite link they sent you.
+If a teammate already runs a hub on a server, choose **On my team's hub**
+instead and paste its address, or open the invite link they sent you.

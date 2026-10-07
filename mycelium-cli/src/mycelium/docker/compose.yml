@@ -212,11 +212,11 @@ services:
         condition: service_healthy
     networks:
       - mycelium
-    # Option C (local Grafana + forward to remote): set OTEL_EXPORTER_OTLP_ENDPOINT
-    # in ~/.mycelium/.env to make the internal OTel Collector fan telemetry out to
-    # a remote OTLP backend (Grafana Cloud, Honeycomb, Datadog, Cisco, etc.).
-    # Set OTEL_EXPORTER_OTLP_HEADERS for auth (e.g. "x-honeycomb-team=<key>").
-    # Both are operator-managed env vars — not derived from config.toml.
+    # Option C (local Grafana + forward to remote): set telemetry.forward_endpoint
+    # in config.toml to make the internal OTel Collector fan telemetry out to a
+    # remote OTLP backend (Grafana Cloud, Honeycomb, Datadog, Cisco, etc.), and
+    # telemetry.otlp_headers for its auth (e.g. "x-honeycomb-team=<key>").
+    # `config apply` renders them as OTEL_EXPORTER_OTLP_ENDPOINT/_HEADERS.
     env_file:
       - path: ~/.mycelium/.env
         required: false

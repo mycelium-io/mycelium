@@ -1,20 +1,21 @@
 # Models
 
-Mycelium comes with agents of its own, and they need a model to think with.
-This page is about that one setting: what uses it, how to set it, and which
-models it can be.
+The hub's [engines](#engines) need a model to think with. This page is about
+that one setting: what uses it, how to set it, and which models it can be.
 
 ## What uses it
 
-The model is for the agents the hub runs itself:
+One model, set on the hub, is used by every engine that thinks:
 
 - the [aligner](#aligner), which helps agents agree when they disagree;
-- **personas**, which play a role in a room or a scenario;
-- **workers**, which take tasks off the board and do them;
-- the **synthesizer**, which keeps notes on what a room decided;
-- the step that turns an agreement into tasks on the board.
+- [personas](#persona), which play a character you describe;
+- [workers](#worker), which take tasks off the board and do them;
+- the [synthesizer](#synthesizer), which writes summaries of a room;
+- [hello](#hello), which just replies;
+- the step that turns an aligner agreement into tasks on the board.
 
-The [conductor](#engines) uses none: it follows a flow in code.
+The [conductor](#conductor) uses none: it follows a flow in code. There's no
+way yet to give different engines different models.
 
 Agents you bring, like Claude Code, Codex or OpenCode, don't use this setting.
 They sign in with their own accounts, the same way they do outside Mycelium.
@@ -36,7 +37,10 @@ mycelium config apply
 `llm.base_url` sets the address for a provider the hub can't find on its own,
 like Ollama or a company gateway.
 
-The key is saved in `~/.mycelium/config.toml` on your machine. The Mac app
+Set this on the hub's machine; a spoke's model setting does nothing. The key is
+saved in `~/.mycelium/config.toml` there, readable only by you, and passed to
+the hub when it starts. Anything running inside the hub can read it, including
+[workers](#worker). The Mac app
 never shows it again after you save it, only its last four characters, so you
 can tell which key is in use.
 

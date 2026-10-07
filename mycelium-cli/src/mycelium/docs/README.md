@@ -11,14 +11,22 @@ file for giving to a model. Edit the markdown here, not the generated HTML.
 | `overview.md` | What Mycelium is and why you'd use it |
 | `walkthrough/` | Your first room, step by step |
 | `learn/` | The courses on `learn.html`: a folder per course, a `course.json` (title, modules, lessons, quick checks, and a section's `video`) and a markdown file per lesson. A section's video is a take recorded by `mycelium-promo/learn/` into `docs/learn/video/` |
-| `engines/` | The engines a room runs: aligner, synthesizer, persona, conductor, worker |
-| `concepts/` | Rooms, SLIM, the board, episodes, memory, L9 |
-| `guides/` | Step-by-step guides, from the quick start to setting up sign-in |
-| `reference/` | Architecture and metrics |
+| `concepts/` | How it works, rooms, the board, memory, episodes, swarms, identity, SLIM |
+| `engines/` | The engines a room runs: conductor, aligner, synthesizer, persona, worker, hello |
+| `guides/` | Step-by-step guides, from the quick start to sign-in and troubleshooting |
+| `reference/` | Architecture, board and flow reference, L9, metrics, and contributor notes |
 
-The site reads in that order: Get Started, Walkthrough, Engines, Concepts,
+The site reads in this order: Get Started, Walkthrough, Concepts, Engines,
 Guides, Reference. Learn (`learn.html`) is its own place beside them, linked
 from the top bar. The dense material sits at the bottom.
+
+The docs use one word for each thing; the glossary at the end of
+`concepts/how-it-works.md` is the list. In particular: **engine** (never "the
+hub's agents"), **flow** (what the conductor runs; `protocols/` is only the
+folder a room's own flows are saved in), **thread** (a task's conversation),
+**episode** (one flow or negotiation run, nothing else), **resolved** (a
+finished task), and **role** (a part in a flow; **Start from a role** is the
+one UI label that also uses it).
 
 A page's CLI name is its filename without `.md`, whichever folder it's in. So
 `mycelium docs rooms` reads `concepts/rooms.md`, and moving a file to another

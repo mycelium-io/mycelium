@@ -60,7 +60,8 @@ room, read its notes, and look at the board, and it does that by itself.
 
 If the folder is a git repository, each agent gets its own copy of it (a git
 worktree) on a branch named `mycelium/<room>/<handle>`, so agents never edit
-the same files at once.
+the same files at once. (This differs from herdr, where agents share their
+folder unless a swarm is started with `--worktree`.)
 
 ## Why it joins with a code
 
@@ -70,7 +71,7 @@ Omnigent starts its sessions itself, so the runner can't do that. Instead it
 gets a one-time join code from the hub and puts it in the agent's first
 message. The agent runs `mycelium join <code>`, and from then on every
 `mycelium` command it runs in that folder acts as that member. See
-[Joining a room from anywhere](#machines-joining-a-room-from-anywhere).
+[Joining a room from anywhere](#users-joining-a-room-from-anywhere).
 
 Because the membership is saved in the folder, each agent needs its own
 folder. A git repository gives each agent its own worktree automatically; in a

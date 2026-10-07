@@ -309,6 +309,16 @@ def generate_env_file(
         # Where a registered `engine` runs its NEGMAS/Pi drive; backend-only.
         # Always `backend`.
         f"ENGINE_RUNTIME={config.engine.runtime}",
+        f"ALIGNER_HANDLE={config.aligner.handle}",
+        f"ALIGNER_TERM_CHECK={str(config.aligner.term_check).lower()}",
+        f"ALIGNER_ROUND_TIMEOUT_S={config.aligner.round_timeout_s}",
+        f"ALIGNER_MEDIATOR_MAX_STEPS={config.aligner.max_steps}",
+        f"ALIGNER_PI_TIMEOUT_S={config.aligner.pi_timeout_s}",
+        f"SYNTHESIZER_SOURCE={config.synthesizer.source}",
+        f"WORKER_TOOLS={str(config.worker.tools).lower()}",
+        f"WORKER_PI_TIMEOUT_S={config.worker.pi_timeout_s}",
+        f"WORKER_MAX_TURNS_PER_ROOM={config.worker.max_turns_per_room}",
+        f"BOARD_DEPENDENCY_GATE={str(config.board.dependency_gate).lower()}",
         "",
         "# ── Auth (HTTP-API JWT gate; off unless auth.enabled is set) ─────────────",
         f"AUTH_ENABLED={str(config.auth.enabled).lower()}",
@@ -376,6 +386,15 @@ def generate_env_file(
         # is the destination URL (resolved once #937 is decided).
         f"TELEMETRY_ENABLED={'true' if config.telemetry.enabled else 'false'}",
         f"TELEMETRY_OTLP_ENDPOINT={config.telemetry.otlp_endpoint or ''}",
+        # Read by the OTel SDK in the backend and by the local Grafana's collector,
+        # which forwards to OTEL_EXPORTER_OTLP_ENDPOINT when it is set. Emitted only
+        # when set: an empty endpoint is not the same as none to the SDK.
+        f"OTEL_EXPORTER_OTLP_HEADERS={config.telemetry.otlp_headers}"
+        if config.telemetry.otlp_headers
+        else "# OTEL_EXPORTER_OTLP_HEADERS not set",
+        f"OTEL_EXPORTER_OTLP_ENDPOINT={config.telemetry.forward_endpoint}"
+        if config.telemetry.forward_endpoint
+        else "# OTEL_EXPORTER_OTLP_ENDPOINT not set; the local Grafana forwards nowhere",
         f"TELEMETRY_SEND_PRODUCT_ANALYTICS={'true' if config.telemetry.send_product_analytics else 'false'}",
         f"TELEMETRY_ANALYTICS_DESTINATION={config.telemetry.analytics_destination or ''}",
         # install_id is rendered here (not LOCAL_ONLY) so the backend can emit

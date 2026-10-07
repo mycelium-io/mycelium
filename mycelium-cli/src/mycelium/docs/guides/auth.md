@@ -14,7 +14,7 @@ a network.
 > a shared network.
 
 This covers the hub's HTTP API. Encryption on the messaging layer (SLIM) is
-set up separately; see [Security Planes](#security-planes).
+set up separately; see [Running a Shared Hub](#security-planes).
 
 ## Turning it on
 
@@ -43,8 +43,13 @@ jwks_url = "https://sso.example.com/realms/mycelium/protocol/openid-connect/cert
 role     = "user"
 ```
 
-Run `mycelium config apply` again, and recreate the backend so it picks up the
-change.
+Run `mycelium config apply` again, then `mycelium up` to restart the hub with
+the change.
+
+On a Docker hub, sign in on the hub's own machine too (`mycelium login`, below):
+requests from it come through Docker's network, so the localhost exception
+described under [Requests from the hub's own machine](#auth-requests-from-the-hubs-own-machine)
+doesn't apply.
 
 ### Always set an audience
 
@@ -138,7 +143,7 @@ acting as @avery  (avery#a8f3)
 ```
 
 When auth is on, the hub attributes your writes to the handle in your token
-(see [Who wrote it](#auth)), so a different `identity.name` would get your
+(see [Who wrote it](#auth-who-wrote-it)), so a different `identity.name` would get your
 writes rejected. When you sign in, `login` sets `identity.name` to your
 token's handle and registers you as a user, the same as running
 `mycelium iam <handle>`. If it can't (the token has no usable handle, or the
@@ -164,11 +169,38 @@ Register the CLI with your provider as a **public client** (it uses PKCE with
 S256 and has no secret), allow `http://127.0.0.1:*/callback` as a redirect
 URI, and enable the device grant if you want `--device` to work.
 
+## Signing in to the app
+
+The web app signs people in through the same provider. Register a second public
+client for it, with the redirect `http://<app address>/api/auth/callback`, and
+set these in the environment of the machine that runs `mycelium up`:
+
+```bash
+export MYCELIUM_OIDC_ISSUER=https://sso.example.com/realms/mycelium
+export MYCELIUM_OIDC_CLIENT_ID=mycelium-web
+export MYCELIUM_OIDC_AUDIENCE=mycelium
+export AUTH_SESSION_SECRET=$(openssl rand -hex 32)
+mycelium up
+```
+
+The app then shows a **Sign in** screen whenever the hub's `/health` says
+sign-in is on, and keeps your token in a cookie its browser scripts can't read.
+If `MYCELIUM_OIDC_ISSUER` or `AUTH_SESSION_SECRET` isn't set, the app doesn't
+offer sign-in, and on a hub with sign-in on it can't load rooms.
+
 ## Signing in agents
 
-`mycelium login` is for people. An agent can't open a browser, so it signs in
-with its own OIDC client using the `client_credentials` grant. The client id
-becomes the agent's handle.
+`mycelium login` is for people. Agents have three ways in:
+
+- **Joined with a code.** An agent that joined a room with `mycelium join` (see
+  [Joining a room from anywhere](#users-joining-a-room-from-anywhere)) gets a
+  token from the hub itself, valid for 30 days. Nothing to register with your
+  provider.
+- **Its own client.** The agent signs in with its own OIDC client using the
+  `client_credentials` grant. The client id becomes the agent's handle.
+- **A token from somewhere else**, below.
+
+The rest of this section is about the second way.
 
 Because each agent has its own credential, you can revoke one agent without
 affecting the others.
@@ -361,5 +393,6 @@ provider's public key can't be misused as a shared secret to forge a token.
 
 ## Trying it locally
 
-The [Keycloak / OIDC Setup](#keycloak-oidc) guide sets up a local provider, a
-client and `mycelium login`, end to end.
+To try sign-in on one machine before setting up a real provider, the
+[Keycloak / OIDC Setup](#keycloak-oidc) guide runs a local Keycloak with a
+ready-made realm. It needs a checkout of the Mycelium source.
