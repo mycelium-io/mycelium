@@ -25,7 +25,7 @@ dependencies = [
     # update the pin when conventions stabilise — see docs/reference/metrics.md).
     "opentelemetry-sdk>=1.29.0,<2",
     "opentelemetry-exporter-otlp-proto-http>=1.29.0,<2",
-    "opentelemetry-instrumentation-fastapi>=0.50b0,<0.60",
+    "opentelemetry-instrumentation-fastapi>=0.50b0,<0.67",
     "pillow>=12.3.0",
 ]
 
