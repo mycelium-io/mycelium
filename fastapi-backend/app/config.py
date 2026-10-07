@@ -88,6 +88,8 @@ class Settings(BaseSettings):
     # (compose sets it from the bind mount's source). /health reports it so a
     # client can tell which folder on its machine this hub writes to.
     MYCELIUM_HOST_DATA_DIR: str | None = None
+    # The largest file a room takes as an upload (routes/uploads.py), in bytes.
+    UPLOADS_MAX_BYTES: int = 25 * 1024 * 1024
 
     # Metrics collector (for proxying /api/observability/collector and /traces)
     COLLECTOR_URL: str = "http://mycelium-collector:4318"

@@ -36,6 +36,7 @@ import {
   fetchProtocols,
   fetchRooms,
   fetchSkills,
+  fetchUploads,
   logFetchError,
   saveRoomFolders,
   searchMessages,
@@ -51,6 +52,7 @@ import {
   type RoomPresence,
   type RoomMessage,
   type Skill,
+  type UploadList,
 } from "@/lib/api";
 import { floorsByHandle } from "@/lib/floors";
 import { latestPreview } from "@/lib/room-preview";
@@ -71,6 +73,7 @@ const POLL = {
   messages: 30_000,
   memories: 30_000,
   skills: 30_000,
+  uploads: 30_000,
   // Read only while a conductor summon is being written; a room's own flows
   // change about as often as its skills.
   protocols: 60_000,
@@ -127,6 +130,7 @@ const NO_MESSAGES: RoomMessage[] = [];
 const NO_POSTERS: string[] = [];
 const NO_MEMORIES: Memory[] = [];
 const NO_SKILLS: Skill[] = [];
+const NO_UPLOADS: UploadList = { uploads: [], total: 0, accepted: [], max_bytes: 0 };
 const NO_PROTOCOLS: Protocol[] = [];
 const NO_EPISODES: EpisodeSummary[] = [];
 
@@ -137,6 +141,7 @@ type RoomResource =
   | "messages"
   | "memories"
   | "skills"
+  | "uploads"
   | "protocols"
   | "episodes"
   | "status"
@@ -491,6 +496,17 @@ export function useRoomSkills(room: string, opts: RoomQueryOptions = {}) {
     room, "skills", fetchSkills, NO_SKILLS, POLL.skills, opts,
   );
   return { skills: data, loading, refresh };
+}
+
+/** The room's uploads, and what its hub takes. One cache entry, so every
+ *  message drawing an attachment and the composer checking a file share it. */
+export function useRoomUploads(room: string, opts: RoomQueryOptions = {}) {
+  // Every message renders this hook, most with no room to read (they link no
+  // file), so the loader is only reached once SWR has a key to fetch.
+  const { data, loading, refresh } = useRoomQuery<UploadList>(
+    room, "uploads", (r) => fetchUploads(r), NO_UPLOADS, POLL.uploads, opts,
+  );
+  return { ...data, loading, refresh };
 }
 
 /** The flows the room's conductor can run. Pass `""` as the room to read nothing,

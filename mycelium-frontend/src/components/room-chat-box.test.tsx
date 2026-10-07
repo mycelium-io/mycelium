@@ -84,6 +84,21 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   fetchSkills: vi.fn().mockResolvedValue([
     { name: "summarize-room", description: "condense decisions", body: "", version: 1, created_by: "julia", created_at: "", updated_at: "" },
   ]),
+  fetchUploads: async () => ({ uploads: [], total: 0, accepted: ["png", "pdf", "md"], max_bytes: 1024 }),
+  uploadFile: (room: string, file: File) => uploadFile(room, file),
+}));
+
+const uploadFile = vi.fn(async (_room: string, file: File) => ({
+  name: file.name,
+  key: `uploads/${file.name}`,
+  filename: file.name,
+  kind: "image",
+  content_type: "image/png",
+  size: file.size,
+  sha256: "0".repeat(64),
+  created_by: "julia",
+  created_at: "",
+  url: `/api/rooms/demo/uploads/${file.name}/raw`,
 }));
 
 vi.mock("@/components/current-user", async (importOriginal) => ({
@@ -107,6 +122,80 @@ beforeEach(() => {
 async function textarea() {
   return await screen.findByPlaceholderText(/Message the room/);
 }
+
+describe("<RoomChatBox /> attachments", () => {
+  beforeEach(() => {
+    sendRoomMessage.mockClear();
+    uploadFile.mockClear();
+  });
+
+  const picker = (container: HTMLElement) => container.querySelector<HTMLInputElement>('input[type="file"]')!;
+  const png = (name: string) => new File(["png"], name, { type: "image/png" });
+
+  it("uploads every file picked and sends the message linking each", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithSWR(<RoomChatBox roomName="demo" />);
+    await user.upload(picker(container), [png("a.png"), png("b.png")]);
+    await waitFor(() => expect(uploadFile).toHaveBeenCalledTimes(2));
+    expect(await screen.findByLabelText("Remove a.png")).toBeInTheDocument();
+
+    await user.type(await textarea(), "the mockups{Enter}");
+    await waitFor(() => expect(sendRoomMessage).toHaveBeenCalled());
+    expect(sendRoomMessage.mock.calls[0][1]).toMatchObject({
+      content: "the mockups\n\n[[uploads/a.png]] [[uploads/b.png]]",
+    });
+    await waitFor(() => expect(screen.queryByLabelText("Remove a.png")).not.toBeInTheDocument());
+  });
+
+  it("offers only files from a thread's +, and opens the picker from it", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithSWR(<RoomChatBox roomName="demo" episode="urn:e:t1" />);
+    const clicked = vi.spyOn(picker(container), "click");
+    await user.click(await screen.findByRole("button", { name: "Add to this thread" }));
+    expect(screen.queryByRole("button", { name: /Task or flow…/ })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: /Files…/ }));
+    expect(clicked).toHaveBeenCalled();
+  });
+
+  it("sends files with no text", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithSWR(<RoomChatBox roomName="demo" />);
+    await user.upload(picker(container), png("shot.png"));
+    const send = screen.getByRole("button", { name: "Send message" });
+    await waitFor(() => expect(send).toBeEnabled());
+    await user.click(send);
+    await waitFor(() => expect(sendRoomMessage.mock.calls[0][1]).toMatchObject({ content: "[[uploads/shot.png]]" }));
+  });
+
+  it("says why a file won't go before sending it, and sends the rest", async () => {
+    const user = userEvent.setup({ applyAccept: false });
+    const { container } = renderWithSWR(<RoomChatBox roomName="demo" />);
+    await waitFor(() => expect(picker(container).accept).toBe(".png,.pdf,.md"));
+    await user.upload(picker(container), [new File(["MZ"], "tool.exe"), png("ok.png")]);
+    expect(await screen.findByText(/\.exe files can't be previewed/)).toBeInTheDocument();
+    await waitFor(() => expect(uploadFile).toHaveBeenCalledTimes(1));
+    expect(uploadFile.mock.calls[0][1]).toMatchObject({ name: "ok.png" });
+  });
+
+  it("waits for a file still uploading", async () => {
+    let finish: () => void = () => {};
+    uploadFile.mockImplementationOnce(
+      (_room, file) =>
+        new Promise((resolve) => {
+          finish = () =>
+            resolve({ name: file.name, key: `uploads/${file.name}`, filename: file.name, kind: "image", content_type: "image/png", size: 3, sha256: "", created_by: "julia", created_at: "", url: "" });
+        }),
+    );
+    const user = userEvent.setup();
+    const { container } = renderWithSWR(<RoomChatBox roomName="demo" />);
+    await user.upload(picker(container), png("big.png"));
+    await user.type(await textarea(), "here{Enter}");
+    expect(sendRoomMessage).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    finish();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled());
+  });
+});
 
 describe("<RoomChatBox /> drafts", () => {
   beforeEach(() => {
@@ -345,11 +434,12 @@ describe("<RoomChatBox /> commands", () => {
     expect(createMemories).not.toHaveBeenCalled();
   });
 
-  it("offers a task, a memory or an agent from the +", async () => {
+  it("offers files, a task, a memory or an agent from the +", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     await userEvent.click(await screen.findByRole("button", { name: "Add to the room" }));
 
-    expect(await screen.findByRole("button", { name: /Task or flow…/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Files…/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Task or flow…/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Agent…/ })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Memory…/ }));
     expect(await screen.findByRole("dialog", { name: /New memory in/ })).toBeInTheDocument();

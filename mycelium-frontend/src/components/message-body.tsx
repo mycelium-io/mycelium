@@ -3,10 +3,15 @@
 
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { MarkdownContent } from "@/components/markdown-content";
 import type { Highlight } from "@/components/ui/highlight-text";
+import { AttachmentStrip } from "@/components/uploads/attachment-strip";
+import { UploadPreviewDialog } from "@/components/uploads/upload-preview";
+import type { Upload } from "@/lib/api";
+import { useRoomUploads } from "@/lib/room-data";
+import { isUploadKey, uploadKeysIn, withoutTrailingUploadLinks } from "@/lib/uploads";
 
 /** How tall a message's prose gets before it clamps behind a "Show more" —
  *  roughly eight lines of body text. Long enough that ordinary messages never
@@ -33,14 +38,34 @@ export function MessageBody({
   content,
   hit,
   onOpenMemory,
+  roomName,
 }: {
   content: string;
   hit?: Highlight;
   onOpenMemory?: (key: string) => void;
+  /** The room the message is in. With it, the files the message links are
+   *  drawn under it and a link to one opens its preview. */
+  roomName?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [overflows, setOverflows] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [previewing, setPreviewing] = useState<Upload | null>(null);
+  const attached = useMemo(() => (roomName ? uploadKeysIn(content) : []), [roomName, content]);
+  // The files are drawn under the prose, so the line of links naming them isn't repeated above.
+  const prose = attached.length ? withoutTrailingUploadLinks(content) : content;
+  const { uploads } = useRoomUploads(attached.length ? (roomName ?? "") : "");
+
+  // An upload's chip in the prose opens the same preview its card does; any
+  // other memory link goes where it always went.
+  const openLink = useCallback(
+    (key: string) => {
+      const upload = isUploadKey(key) ? uploads.find((u) => u.key === key) : undefined;
+      if (upload) setPreviewing(upload);
+      else onOpenMemory?.(key);
+    },
+    [uploads, onOpenMemory],
+  );
 
   // Measure the natural height (scrollHeight ignores the clamp) and re-measure on
   // width changes, since re-wrapping changes how tall the prose is.
@@ -74,10 +99,20 @@ export function MessageBody({
             : undefined
         }
       >
-        <MarkdownContent className="contrast text-body leading-relaxed" onLinkClick={onOpenMemory} highlight={hit}>
-          {content}
+        <MarkdownContent
+          className="contrast text-body leading-relaxed"
+          onLinkClick={onOpenMemory || attached.length ? openLink : undefined}
+          highlight={hit}
+        >
+          {prose}
         </MarkdownContent>
       </div>
+      {roomName && attached.length > 0 && (
+        <>
+          <AttachmentStrip roomName={roomName} keys={attached} onOpen={setPreviewing} />
+          <UploadPreviewDialog upload={previewing} onClose={() => setPreviewing(null)} onOpenMemory={onOpenMemory} />
+        </>
+      )}
       {overflows && !forceOpen && (
         <button
           type="button"

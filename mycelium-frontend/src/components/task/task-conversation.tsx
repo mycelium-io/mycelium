@@ -239,7 +239,7 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
                         )}
                       </div>
                     )}
-                    <MessageBody content={text} onOpenMemory={onOpenMemory} />
+                    <MessageBody content={text} onOpenMemory={onOpenMemory} roomName={roomName} />
                   </div>
                 </div>
               );

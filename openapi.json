@@ -3589,7 +3589,7 @@
           "memory"
         ],
         "summary": "Delete Memory",
-        "description": "Delete a memory by key. Removes the file and its search-index entry.",
+        "description": "Delete a memory by key. Removes the file and its search-index entry.\n\nAn ``uploads/`` record takes its file's bytes with it once no other upload\nin the room names them.",
         "operationId": "delete_memory_api_rooms__room_name__memory__key__delete",
         "parameters": [
           {
@@ -4344,6 +4344,252 @@
         ],
         "responses": {
           "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/uploads": {
+      "post": {
+        "tags": [
+          "uploads"
+        ],
+        "summary": "Create Upload",
+        "description": "Add a file to the room. Refused (415) unless the app can preview it.",
+        "operationId": "create_upload_api_rooms__room_name__uploads_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_upload_api_rooms__room_name__uploads_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "uploads"
+        ],
+        "summary": "List Room Uploads",
+        "description": "The room's uploads, newest first, with what this hub accepts.",
+        "operationId": "list_room_uploads_api_rooms__room_name__uploads_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/uploads/{name}": {
+      "get": {
+        "tags": [
+          "uploads"
+        ],
+        "summary": "Get Upload",
+        "description": "One upload's record.",
+        "operationId": "get_upload_api_rooms__room_name__uploads__name__get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "uploads"
+        ],
+        "summary": "Delete Upload",
+        "description": "Remove an upload's record, and its bytes once nothing else names them.",
+        "operationId": "delete_upload_api_rooms__room_name__uploads__name__delete",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/uploads/{name}/raw": {
+      "get": {
+        "tags": [
+          "uploads"
+        ],
+        "summary": "Get Upload Bytes",
+        "description": "The file itself, sandboxed. Supports ranges, so audio and video can seek.",
+        "operationId": "get_upload_bytes_api_rooms__room_name__uploads__name__raw_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "download",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Save it rather than show it",
+              "default": false,
+              "title": "Download"
+            },
+            "description": "Save it rather than show it"
+          }
+        ],
+        "responses": {
+          "200": {
             "description": "Successful Response"
           },
           "422": {
@@ -5461,6 +5707,27 @@
         ],
         "title": "AgentRead",
         "description": "Structured view of an agent's manifest, as returned by GET /rooms/{room}/agents."
+      },
+      "Body_create_upload_api_rooms__room_name__uploads_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File",
+            "description": "The file to add"
+          },
+          "created_by": {
+            "type": "string",
+            "title": "Created By",
+            "description": "Handle adding the file"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "created_by"
+        ],
+        "title": "Body_create_upload_api_rooms__room_name__uploads_post"
       },
       "ClaimBody": {
         "properties": {
@@ -10485,6 +10752,126 @@
         ],
         "title": "TeamRead",
         "description": "A team, rolled up from the agents fielded under it and its member users."
+      },
+      "UploadListResponse": {
+        "properties": {
+          "uploads": {
+            "items": {
+              "$ref": "#/components/schemas/UploadRead"
+            },
+            "type": "array",
+            "title": "Uploads"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "accepted": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Accepted",
+            "description": "The file extensions this hub takes, lowercase, no dot"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "title": "Max Bytes",
+            "description": "The largest file this hub takes, in bytes",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "uploads",
+          "total"
+        ],
+        "title": "UploadListResponse"
+      },
+      "UploadRead": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "The upload's name in the room, unique there; its URL segment"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "The memory key, `uploads/<name>`; link it as [[key]]"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "The name the file had when it was added, for download"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "pdf",
+              "text",
+              "audio",
+              "video"
+            ],
+            "title": "Kind"
+          },
+          "content_type": {
+            "type": "string",
+            "title": "Content Type",
+            "description": "The type the file is served as"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "description": "Size in bytes, after cleaning"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "created_by": {
+            "type": "string",
+            "title": "Created By"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode",
+            "description": "The upload's own thread, as every memory has"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "Path of the file's bytes on this hub, under /api"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "key",
+          "filename",
+          "kind",
+          "content_type",
+          "size",
+          "sha256",
+          "created_by",
+          "created_at",
+          "url"
+        ],
+        "title": "UploadRead",
+        "description": "A file the room keeps: an ``uploads/<name>`` memory and the bytes it names."
       },
       "UpstreamRead": {
         "properties": {

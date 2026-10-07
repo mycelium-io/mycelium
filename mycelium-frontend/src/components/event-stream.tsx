@@ -1486,7 +1486,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                         <Ago at={ev.at} className="flex-shrink-0 whitespace-nowrap text-micro tabular text-faint" />
                       </div>
                     )}
-                    <MessageBody content={ev.content} hit={hit} onOpenMemory={onOpenMemory} />
+                    <MessageBody content={ev.content} hit={hit} onOpenMemory={onOpenMemory} roomName={roomName} />
                     {ev.edited && (
                       <span className="text-micro text-faint" title="revised by a later message">
                         (edited)

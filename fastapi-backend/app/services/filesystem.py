@@ -48,6 +48,12 @@ _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 # would be a board row claiming a conversation it was never part of.
 EPISODE_META = "episode"
 
+# The frontmatter key binding an ``uploads/`` memory to the file it records:
+# its blob's hash, size, type and original name (``services/uploads.py``).
+# Store-owned like the episode, so a memory write can't point a record at
+# another blob or change the type a file is served as.
+UPLOAD_META = "upload"
+
 # Frontmatter the store owns. Everything else in a memory's frontmatter is user
 # data: it survives a rewrite, a caller can set it via ``MemoryCreate.meta``, and
 # it is returned as ``MemoryRead.meta``.
@@ -62,6 +68,7 @@ MANAGED_META = frozenset(
         "tags",
         "value",
         EPISODE_META,
+        UPLOAD_META,
     }
 )
 
@@ -69,7 +76,7 @@ MANAGED_META = frozenset(
 # forward verbatim on every later write. Managed, so no caller sets one through
 # ``MemoryCreate.meta``; carried forward, so a write that doesn't supply one
 # keeps what the row has instead of dropping it.
-SYSTEM_META = frozenset({EPISODE_META})
+SYSTEM_META = frozenset({EPISODE_META, UPLOAD_META})
 
 
 def unmanaged_meta(meta: dict[str, Any]) -> dict[str, Any]:

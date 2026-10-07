@@ -43,6 +43,7 @@ import {
 import { memoryChangedFrame, noticeFrame, publish } from "./live";
 import { mockMessageSearch } from "./message-search";
 import { PATTERN_ROOMS, fromExplorer, patternList, patternRead } from "./patterns";
+import { handleUploads } from "./uploads";
 import type { A2aBridgeState, MemoryGraph, MemoryGraphEdge, MemoryLink, Protocol } from "@/lib/api";
 import type { SearchHit, SearchResultType } from "@/lib/search";
 
@@ -878,6 +879,9 @@ export async function handleMock(req: Request): Promise<Response | null> {
       if (sub.length !== 1 || method !== "GET") return null;
       return json(MOCK_PROTOCOLS);
     }
+
+    case "uploads":
+      return handleUploads(req, roomName, fx, sub);
 
     case "skills": {
       // GET /skills — the composer's `/` autocomplete. A skill is a `skills/…`

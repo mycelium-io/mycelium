@@ -102,6 +102,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("guides/a2a-bridge.md",          "a2a-bridge",         "guides",      "Agents",       "A2A Bridge"),
     ("guides/working-the-board.md",   "working-the-board",  "guides",      "Work",         "Working the Board"),
     ("guides/structured-memory.md",   "structured-memory",  "guides",      "Work",         "Structured Memory"),
+    ("guides/files.md",               "files",              "guides",      "Work",         "Files"),
     ("guides/security-planes.md",     "security-planes",    "guides",      "Security",     "Running a Shared Hub"),
     ("guides/auth.md",                "auth",               "guides",      "Security",     "Authentication"),
     ("guides/troubleshooting.md",     "troubleshooting",    "guides",      "Help",         "Troubleshooting"),
@@ -141,6 +142,7 @@ GROUP_CONFIG: list[tuple[str, str, str]] = [
     ("agent", "agent", "agent"),
     ("memory", "memory", "memory"),
     ("skill", "skill", "skill"),
+    ("file", "file", "file"),
     ("negotiate", "negotiate", "negotiate"),
     ("cfn", "cfn", "cfn"),
     ("config", "config", "config"),
@@ -586,6 +588,7 @@ def _generate_cli_reference() -> tuple[str, list[tuple[str, str]]]:
     import mycelium.commands.board  # noqa: F401
     import mycelium.commands.config  # noqa: F401
     import mycelium.commands.doctor  # noqa: F401
+    import mycelium.commands.file  # noqa: F401
     import mycelium.commands.hub  # noqa: F401
     import mycelium.commands.install  # noqa: F401
     import mycelium.commands.instance  # noqa: F401

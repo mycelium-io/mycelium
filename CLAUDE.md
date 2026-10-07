@@ -625,6 +625,28 @@ is no litellm dependency.
   "skill" tag in the detail view (`memory-detail.tsx`); the frontend's only
   skill-specific call is the composer's `/` autocomplete. The surface keeps prose;
   it does not execute skills — that's the participation/engine layer's concern.
+- **Uploads are memories, promoted, and only what the app can preview.** A file a
+  room keeps is an `uploads/<name>` memory plus its bytes, a blob named by its
+  SHA-256 at `rooms/{room}/uploads/.blobs/` with no extension, so no `*.md` scan
+  reads one (`app/services/uploads.py`, `routes/uploads.py`). The record's
+  `upload` frontmatter (hash, size, kind, original name) is store-owned
+  `SYSTEM_META` like the episode, so a memory write can't repoint a record at
+  another blob or change how it is served. Only images, PDFs, UTF-8 text and
+  common audio/video are taken, each on its extension and bytes agreeing;
+  images are decoded and re-encoded with Pillow, which drops EXIF. Safety is
+  mostly in serving: the type comes from the service's table keyed on the
+  name, never the record, every response is `nosniff` with a sandboxing CSP,
+  and text (`.html`, `.svg` included) is always `text/plain`. Same bytes under
+  the same name are one upload; a different file with a taken name gets
+  `name-2.ext`, so a link already sent keeps its file. A Markdown upload's key
+  is `.markdown`, because a key ending in `.md` names the file itself. Messages
+  link files as `[[uploads/<name>]]`, nothing new on the wire: the composer
+  (`components/uploads/composer-attachments.tsx`) uploads each file as it is
+  added and appends the links on send; `MessageBody` draws the linked files
+  under the prose and opens a preview (`upload-preview.tsx`; PDFs through
+  pdf.js, loaded on first use, never the browser's viewer); agents use
+  `mycelium file upload|download`. Bytes go over HTTP, never SLIM, and the hub
+  keeps them in plaintext like the rest of the room.
 - **Patterns are scenarios the hub loads, from a pack the operator provides.** A
   scenario (`app/services/patterns.py`, `routes/patterns.py`) is a room ready to
   run: a cast, some context, a task and the flow that sets them working, loaded

@@ -60,7 +60,8 @@ number. It has a few other options:
   ever read by key.
 
 The [Structured Memory](#structured-memory) guide covers a habit for agents to
-write these down as they work.
+write these down as they work. Files a room keeps are memories too, under
+`uploads/`; see [Files](#files).
 
 ## It lives on the hub
 

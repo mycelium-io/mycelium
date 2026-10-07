@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = "==3.12.*"
 resolution-markers = [
     "sys_platform == 'win32'",
@@ -963,6 +963,7 @@ dependencies = [
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-instrumentation-fastapi" },
     { name = "opentelemetry-sdk" },
+    { name = "pillow" },
     { name = "pip-system-certs" },
     { name = "pydantic-settings" },
     { name = "pyjwt", extra = ["crypto"] },
@@ -997,6 +998,7 @@ requires-dist = [
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.29.0,<2" },
     { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.50b0,<0.60" },
     { name = "opentelemetry-sdk", specifier = ">=1.29.0,<2" },
+    { name = "pillow", specifier = ">=12.3.0" },
     { name = "pip-system-certs", specifier = ">=5.3" },
     { name = "pydantic-settings", specifier = ">=2.5.2,<3" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10,<3" },

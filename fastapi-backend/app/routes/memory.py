@@ -40,12 +40,13 @@ from app.schemas import (
     SubscriptionCreate,
     SubscriptionRead,
 )
-from app.services import actor, in_memory_store, links, memory_sync, search_index
+from app.services import actor, in_memory_store, links, memory_sync, search_index, uploads
 from app.services.embedding import embed_text
 from app.services.filesystem import (
     EPISODE_META,
     MANAGED_META,
     SYSTEM_META,
+    UPLOAD_META,
     delete_memory_file,
     get_room_dir,
     list_memory_files,
@@ -259,8 +260,8 @@ async def upsert_memories(
     are all updated exactly as usual; what is skipped is telling the room, which
     a loop running every few seconds must not do.
 
-    ``system`` sets the store-owned frontmatter in :data:`SYSTEM_META` — today
-    just the ``episode`` a task is bound to.  An in-process parameter has
+    ``system`` sets the store-owned frontmatter in :data:`SYSTEM_META`: the
+    ``episode`` a task is bound to, and the ``upload`` an uploads/ record names.  An in-process parameter has
     no wire form, so nothing over HTTP can point a row at a thread it was never
     part of; the same key stays ignored in ``MemoryCreate.meta``.
 
@@ -599,10 +600,18 @@ async def get_memory(room_name: str, key: str):
 
 @router.delete("/{key:path}", status_code=204)
 async def delete_memory(room_name: str, key: str):
-    """Delete a memory by key. Removes the file and its search-index entry."""
+    """Delete a memory by key. Removes the file and its search-index entry.
+
+    An ``uploads/`` record takes its file's bytes with it once no other upload
+    in the room names them.
+    """
     room_dir = get_room_dir(room_name)
+    found = read_memory_file(room_dir, key)
     file_deleted = delete_memory_file(room_dir, key)
     index_deleted = search_index.remove(room_name, key)
     links.remove(room_name, key)
     if not file_deleted and not index_deleted:
         raise HTTPException(status_code=404, detail="Memory not found")
+    upload = found[0].get(UPLOAD_META) if found else None
+    if isinstance(upload, dict):
+        uploads.forget_blob(room_name, upload.get("sha256"))
