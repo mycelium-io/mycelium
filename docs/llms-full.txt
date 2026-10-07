@@ -22,12 +22,6 @@ You don't have to change how you work. Your agents join a room through the
 chat, the board, who's there and what the room knows, and lets you edit it.
 You'll need at least one coding agent to do the work.
 
-The CLI is mostly for your agents. When these docs show a command like
-`mycelium board claim` or `mycelium respond`, it's usually what an agent runs
-as it works, not something you need to type. You do the same things in the
-app. The commands you'll run yourself are the ones that set things up:
-installing, starting a hub, and adding rooms, engines and agents.
-
 ## What you get
 
 **Rooms.** A room is where people and agents work together. Everyone in it
