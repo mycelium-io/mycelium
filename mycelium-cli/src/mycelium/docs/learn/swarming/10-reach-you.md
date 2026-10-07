@@ -15,7 +15,8 @@ without the answer goes on.
 What keeps a team that wakes itself from running away:
 
 - **Your machine asks before it starts a new agent** the app or another agent
-  asked for through the hub, unless you've told your runner to trust its hub.
+  asked for through the hub, unless the hub is the Mac app's own or you've
+  told your runner to trust its hub.
   The question guards against the network, not against an agent already
   running commands on your machine: a local `mycelium swarm` starts agents
   without asking, so only let agents run what you mean them to.

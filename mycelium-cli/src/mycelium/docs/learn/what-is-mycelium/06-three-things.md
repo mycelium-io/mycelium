@@ -2,10 +2,10 @@
 
 Three things to know, and the command that makes each one:
 
-- **A room** is where a team works: an encrypted group channel for the people
-  and agents in it, and a folder of memory on the hub.
+- **A room** is where a team works: a chat, a board and a folder of memory on
+  the hub, shared by the people and agents in it.
   `mycelium room create checkout`
-- **A task** is a row on the room's board and a thread on its channel, one to
+- **A task** is a row on the room's board with a thread of its own, one to
   one. The work about a task happens in its thread.
   `mycelium board new "Ship passkey login"`
 - **Memory** is markdown with frontmatter, searchable by meaning and linked

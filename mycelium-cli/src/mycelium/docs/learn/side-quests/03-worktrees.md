@@ -12,6 +12,10 @@ Then start the side-quest agent in that folder: in the Members panel choose
 worktree. The folder has to be inside one your runner lets agents start in
 (its `--root`).
 
+The same dialog can make the worktree for you: leave the folder as your
+checkout and tick **Own worktree**, and the agent starts in a new worktree of
+it, on a branch of its own.
+
 The agent works on its own branch, and the fix lands as its own small pull
 request. When that's merged, remove the worktree:
 

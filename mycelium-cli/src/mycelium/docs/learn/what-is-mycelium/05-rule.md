@@ -1,4 +1,4 @@
-# A human drops a task, and never picks a protocol
+# A human drops a task, and never picks how agents coordinate
 
 This is the design rule everything in Mycelium follows from.
 
