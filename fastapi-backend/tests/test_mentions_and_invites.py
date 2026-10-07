@@ -81,7 +81,7 @@ async def test_publish_human_maps_recipients_wakes_present_invites_absent(monkey
     result = await manager.publish_human(_ROOM, sender="avery", text="@agent-x @agent-y ship it")
 
     assert result is not None
-    # Mentions map to L9 recipients.
+    # Mentions map to message recipients.
     assert result.recipients == ["agent-x", "agent-y"]
 
     # Exchange recipients match the mentions.

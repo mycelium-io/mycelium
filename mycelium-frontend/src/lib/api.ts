@@ -764,10 +764,10 @@ export async function searchMessages(
   });
 }
 
-/** The room's L9 wire history (transcript replay), for backfilling the live
+/** The room's wire history (transcript replay), for backfilling the live
  *  inspector on mount. Frames match the SSE bus shape, so the client projects
  *  backfill + live identically. Returns [] on any error (best-effort). */
-export async function fetchL9History(
+export async function fetchWireHistory(
   roomName: string,
   limit = 200,
   before?: string | null,
@@ -775,7 +775,7 @@ export async function fetchL9History(
   const params = new URLSearchParams({ limit: String(limit) });
   if (before) params.set("before", before);
   return apiFetch<Record<string, unknown>[]>(
-    `${roomApiPath(roomName)}/messages/l9?${params.toString()}`,
+    `${roomApiPath(roomName)}/messages/wire?${params.toString()}`,
     {
       cache: "no-store",
       fallback: [],
@@ -1374,25 +1374,25 @@ export async function fetchUsage(days = 30): Promise<UsageKpis | null> {
   });
 }
 
-// ── L9 protocol / episodes ─────────────────────────────────────────────────────
-// Episodes are the persisted, causally-linked L9 record of a coordination
+// ── Messages / episodes ─────────────────────────────────────────────────────
+// Episodes are the persisted, causally-linked message record of a coordination
 // session (one markdown file per session under `log/episodes/`). The protocol
 // inspector reads them for the rich causal chain + consensus metrics; wire
 // envelopes carry empty `message.parents` — the chain lives here instead.
 
-export interface L9Actor {
+export interface MessageActor {
   id: string;
   role: string;
 }
 
-export interface L9Envelope {
+export interface MyceliumMessage {
   header: {
     protocol?: string;
     subprotocol?: string;
     version?: string;
     kind: string;
     subkind?: string | null;
-    participants?: { actors?: L9Actor[]; groups?: Record<string, unknown> | null };
+    participants?: { actors?: MessageActor[]; groups?: Record<string, unknown> | null };
     message?: { id: string; parents?: string[]; episode?: string };
     context?: { topic?: string } | null;
   };
@@ -1510,7 +1510,7 @@ export interface FlowTraceEntry {
 }
 
 export interface EpisodeDetail extends EpisodeSummary {
-  messages: L9Envelope[];
+  messages: MyceliumMessage[];
 }
 
 /** Episode summaries for a room, newest first. */
@@ -1522,7 +1522,7 @@ export async function fetchEpisodes(roomName: string): Promise<EpisodeSummary[]>
   return data.episodes ?? [];
 }
 
-/** One episode plus its full L9 envelope chain, or null if unknown. */
+/** One episode plus its full message chain, or null if unknown. */
 export async function fetchEpisode(
   roomName: string,
   shortId: string,

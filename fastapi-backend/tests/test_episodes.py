@@ -4,12 +4,12 @@
 
 import pytest
 
-from app.services import l9_episode
+from app.services import episode_state
 
 
 async def _seed_episode(client, room: str, short_id: str = "abc123", *, broken: bool = False):
     await client.post("/api/rooms", json={"name": room})
-    ep = l9_episode.open_episode(
+    ep = episode_state.open_episode(
         parent_room=room,
         short_id=short_id,
         workspace_id="ws-1",
@@ -18,18 +18,18 @@ async def _seed_episode(client, room: str, short_id: str = "abc123", *, broken: 
         joined_intents="- alice: ship it\n- bob: test it",
     )
     for handle in ("alice", "bob"):
-        l9_episode.record_tick(ep, handle=handle, round_n=1, payload={"action": "respond"})
-        l9_episode.record_reply(
+        episode_state.record_tick(ep, handle=handle, round_n=1, payload={"action": "respond"})
+        episode_state.record_reply(
             ep,
             handle=handle,
             reply={"action": "accept", "confidence": 0.9, "issue": "value"},
             round_n=1,
         )
-    metrics = l9_episode.compute_metrics(ep)
-    l9_episode.build_consensus_envelope(
+    metrics = episode_state.compute_metrics(ep)
+    episode_state.build_consensus_envelope(
         ep, broken=broken, assignments={"issue": "value"}, metrics=metrics
     )
-    l9_episode.write_episode_record(
+    episode_state.write_episode_record(
         ep,
         outcome="rejected" if broken else "converged",
         metrics=metrics,
@@ -92,7 +92,7 @@ async def test_get_episode_returns_causal_chain(client):
     episode = resp.json()
 
     messages = episode["messages"]
-    assert messages, "expected the full L9 envelope chain"
+    assert messages, "expected the full message chain"
     kinds = [m["header"]["kind"] for m in messages]
     assert kinds[0] == "intent"
     assert "exchange" in kinds
@@ -153,9 +153,9 @@ async def test_get_missing_episode_is_404(client):
 
 
 def _flow_record(outcome: str, trace: list[dict], *, within: str | None = None) -> str:
-    from app.services import l9_episode
+    from app.services import episode_state
 
-    ep = l9_episode.EpisodeState(
+    ep = episode_state.EpisodeState(
         episode="urn:ioc:mycelium:episode:r:e1",
         topic="urn:concept:mycelium:r",
         parent_room="r",
@@ -193,7 +193,7 @@ def _flow_record(outcome: str, trace: list[dict], *, within: str | None = None) 
             "payload": {"type": "outcome", "data": {}},
         }
     )
-    l9_episode.write_episode_record(ep, outcome=outcome, metrics=None, tasks=None)
+    episode_state.write_episode_record(ep, outcome=outcome, metrics=None, tasks=None)
     return f"log/episodes/{ep.short_id}"
 
 

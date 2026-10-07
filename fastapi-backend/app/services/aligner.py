@@ -10,11 +10,11 @@ Three things are split apart here that would otherwise be bundled as "the CE":
    always-on backend (``room_channels`` + ``persister``); cheap, always
    listening. *Not* cognition.
 2. **Protocol machinery** — the deterministic MPC/GAR/SCR math over the
-   transcript. That already lives in :mod:`app.services.l9_episode`; this engine
+   transcript. That already lives in :mod:`app.services.episode_state`; this engine
    *calls* it and never re-derives it (a second copy would drift from the
    ``log/episodes/*`` records).
 3. **Cognitive judgment** — "is this converged, and what is the agreement?" That
-   is *this* module, and only this module. It is a **family** (one engine per L9
+   is *this* module, and only this module. It is a **family** (one engine per IoC
    sub-protocol); the MVP ships **SIEP** — convergence — only.
 
 **Cost is a first-class constraint.** The engine is **dormant by default (zero
@@ -30,7 +30,7 @@ per turn over the room channel, interpreting the real reply, and stopping the
 *instant* the mechanism reaches unanimity (the anti-theater property). It hands
 the agreed ``issue = value`` map to the ``commit:converged`` seam ``task_sync``
 consumes (a failed run commits ``rejected``). Deterministic scoring (MPC/GAR/SCR)
-still rides along via :mod:`l9_episode`, computed over the mediator's readings.
+still rides along via :mod:`episode_state`, computed over the mediator's readings.
 
 **Runtime note.** This runs **in-process in the backend** — the ``commit``
 envelope is emitted onto the channel the backend moderates, and the mediator's own
@@ -51,15 +51,15 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
-from app.services import activity, l9, l9_episode, turns
+from app.services import activity, episode_state, message_format, turns
 from app.services.agent_registry import norm_handle
 from app.services.room_channels import BACKEND_AGENT
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from app.services.l9_episode import NegotiationState
-    from app.services.l9_models import L9
+    from app.services.episode_state import NegotiationState
+    from app.services.message_models import MyceliumMessage
     from app.services.persister import RoomPersister, TranscriptRecord
     from app.services.room_channels import ManagedRoomChannel, RoomChannelManager
 
@@ -68,7 +68,7 @@ logger = logging.getLogger(__name__)
 
 # Handles that are never a participant position: the engine itself, the backend
 # moderator, and the system actor the backend signs its own envelopes with.
-_NON_PARTICIPANTS = frozenset({BACKEND_AGENT, l9.SYSTEM_ACTOR_ID})
+_NON_PARTICIPANTS = frozenset({BACKEND_AGENT, message_format.SYSTEM_ACTOR_ID})
 
 #: Engine kinds that play a teammate, and so can be a party to a deal when a
 #: summon names them. The rest (the aligner, the synthesizer, the conductor)
@@ -196,7 +196,7 @@ class AlignerEngine:
         self,
         room: str,
         handle: str,
-        envelope: L9,
+        envelope: MyceliumMessage,
         co_summons: list[str] | None = None,
         message_text: str = "",
     ) -> None:
@@ -240,7 +240,7 @@ class AlignerEngine:
         # every turn it puts to an agent is answered with the flags that name
         # that place (``respond --task <row>``, or a bare ``respond``).
         summoned_in = envelope.header.message.episode if envelope.header.message else None
-        thread = summoned_in or l9.live_episode_urn(room)
+        thread = summoned_in or message_format.live_episode_urn(room)
         task = asyncio.create_task(self._run_and_release(room, handle, scoped, thread))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
@@ -286,7 +286,7 @@ class AlignerEngine:
                 _rounds_out=_rounds,
             )
             # Derive outcome from the verdict committed to the channel.
-            # ``mediate`` returns the L9 envelope dict from ``_emit_verdict``;
+            # ``mediate`` returns the message dict from ``_emit_verdict``;
             # convergence is encoded as ``header.subkind`` ("converged" /
             # "rejected"), not a top-level "converged" key.
             if result is None:
@@ -380,15 +380,15 @@ class AlignerEngine:
 
         from app.services.tasks import row_of_episode
 
-        episode = episode or l9.live_episode_urn(room)
-        in_task = not l9.is_live_episode(room, episode)
+        episode = episode or message_format.live_episode_urn(room)
+        in_task = not message_format.is_live_episode(room, episode)
         row = row_of_episode(room, episode) if in_task else None
         episode_id = _new_episode_id()
-        topic = l9.topic_urn(room)
+        topic = message_format.topic_urn(room)
 
         self._manager.open_episode(room, episode)
         positions = self._opening_positions(persister, participants)
-        ep = l9_episode.open_episode(
+        ep = episode_state.open_episode(
             parent_room=room,
             short_id=episode_id,
             workspace_id=managed.workspace,
@@ -403,7 +403,9 @@ class AlignerEngine:
         try:
             # The mediator's own memory is per negotiation, not per thread: a
             # task's thread can host more than one negotiation over its life.
-            raw_llm_session = self._open_llm_session(l9.episode_urn(room, episode_id), room=room)
+            raw_llm_session = self._open_llm_session(
+                message_format.episode_urn(room, episode_id), room=room
+            )
             llm_session = self._signalling(raw_llm_session, room, episode)
             positions = await self._clarify_terms(
                 managed, persister, ep, me, episode, topic, positions, llm_session
@@ -475,7 +477,7 @@ class AlignerEngine:
             # agent. Independent of MPC/GAR/SCR (which need stated confidence the
             # mediated path rarely has), so it rides alongside in ``metrics``.
             if converged and assignments:
-                satisfaction = l9_episode.estimate_satisfaction(
+                satisfaction = episode_state.estimate_satisfaction(
                     ep.opening_offers, assignments, ep.issue_options
                 )
                 if satisfaction:
@@ -696,7 +698,7 @@ class AlignerEngine:
                 continue  # silence leaves that agent's opening prose as stated
             clarifications[handle] = text
             clarified[handle] = f"{positions[handle]}\n\n(clarified by @{handle}: {text})"
-        l9_episode.record_term_check(ep, mismatches=mismatches, clarifications=clarifications)
+        episode_state.record_term_check(ep, mismatches=mismatches, clarifications=clarifications)
         return clarified
 
     async def _slim_turn(
@@ -759,7 +761,7 @@ class AlignerEngine:
         )
         text = ""
         try:
-            one_shot = l9.episode_urn(room, _new_episode_id())
+            one_shot = message_format.episode_urn(room, _new_episode_id())
             llm_session = self._signalling(
                 self._open_llm_session(one_shot, room=room), room, one_shot
             )
@@ -788,11 +790,11 @@ class AlignerEngine:
         was summoned, the room by default. Any ``@`` tokens are stripped so the
         notice can't spuriously summon anyone."""
         safe = _AT_MENTION.sub("", text)
-        env = l9.build_envelope(
-            kind=l9.Kind.exchange,
-            episode=episode or l9.live_episode_urn(room),
+        env = message_format.build_envelope(
+            kind=message_format.Kind.exchange,
+            episode=episode or message_format.live_episode_urn(room),
             sender=sender,
-            topic=l9.topic_urn(room),
+            topic=message_format.topic_urn(room),
             payload_type="message",
         )
         await managed.post(env, safe)
@@ -804,7 +806,7 @@ class AlignerEngine:
 
         The mediated path's replies are prose, not epistemic payloads, so we
         synthesize a ``record_reply`` shape from the mediator's own reading — the
-        L9 episode record and the consensus envelope's MPC/GAR/SCR are then
+        episode record and the consensus envelope's MPC/GAR/SCR are then
         computed over what the mediator actually understood.
         """
         if not isinstance(reading, dict):
@@ -823,11 +825,11 @@ class AlignerEngine:
         # The wire move type, kept distinct from the collapsed metric ``action``
         # above: the mediator's raw verb when it's one of the closed vocabulary,
         # else a bare offer is a ``counter`` (the opening position included).
-        if isinstance(action, str) and action in l9.EXCHANGE_MOVE_SUBKINDS:
+        if isinstance(action, str) and action in message_format.EXCHANGE_MOVE_SUBKINDS:
             reply["move"] = action
         elif isinstance(offer, dict):
             reply["move"] = "counter"
-        l9_episode.record_reply(ep, handle=handle, reply=reply, round_n=None)
+        episode_state.record_reply(ep, handle=handle, reply=reply, round_n=None)
 
     def _mediator_text(
         self, converged: bool, assignments: dict[str, str] | None, steps: int
@@ -838,7 +840,7 @@ class AlignerEngine:
             return f"✓ agreement in {steps} steps — {terms}."
         return f"✗ no agreement — the negotiation ran {steps} steps without unanimity."
 
-    # -- scoring (delegates the math to l9_episode) --
+    # -- scoring (delegates the math to episode_state) --
 
     def _is_position(self, record: TranscriptRecord) -> bool:
         """True when a transcript record is an agent's position (not noise).
@@ -861,7 +863,7 @@ class AlignerEngine:
 
     def _verdict(self, ep: NegotiationState) -> tuple[bool, dict[str, Any] | None]:
         """(converged, metrics). Converged ⇔ metrics exist and MPC ≥ threshold."""
-        metrics = l9_episode.compute_metrics(ep)
+        metrics = episode_state.compute_metrics(ep)
         converged = metrics is not None and metrics["mpc"] >= self._threshold
         return converged, metrics
 
@@ -883,7 +885,7 @@ class AlignerEngine:
         the persister watches — ``on_converged`` is wired to ``task_compiler``.
         ``task`` is the row the negotiation was held in, carried as ``within``.
         """
-        env_dict = l9_episode.build_consensus_envelope(
+        env_dict = episode_state.build_consensus_envelope(
             ep, broken=not converged, assignments=assignments, metrics=metrics, task=task
         )
         # The verdict is a *broadcast* terminal statement. Its record-side parents
@@ -895,14 +897,14 @@ class AlignerEngine:
         # the full causal chain stays intact in the episode record (ep.messages).
         wire_dict = copy.deepcopy(env_dict)
         wire_dict["header"]["message"]["parents"] = []
-        envelope = l9.parse_envelope(wire_dict)
+        envelope = message_format.parse_envelope(wire_dict)
         if text is None:
             text = self._verdict_text(converged, metrics)
         # Record + trigger locally (deduped by message id), so the transcript,
         # UI bus, and on_converged seam fire even if SLIM never loops our own
         # broadcast back to the moderator (mirrors the human-proxy publish).
         await managed.post(envelope, text)
-        l9_episode.write_episode_record(
+        episode_state.write_episode_record(
             ep,
             outcome="converged" if converged else "rejected",
             metrics=metrics,

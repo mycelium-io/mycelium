@@ -230,7 +230,7 @@
         <div class="nav-group-items">
           <a href="reference.html#board-reference" class="nav-link sub">Board</a>
           <a href="reference.html#flows" class="nav-link sub">Writing Flows</a>
-          <a href="reference.html#l9-protocol" class="nav-link sub">L9 Protocol</a>
+          <a href="reference.html#messages" class="nav-link sub">Messages</a>
         </div>
       </div>
       <div class="nav-group collapsed" data-nav-group="reference:observability">
@@ -385,7 +385,8 @@
           </tbody>
         </table>
       </div>
-      <p>Members approve or reject by ending their reply with <code>[[mycelium: stance=accept]]</code> or <code>[[mycelium: stance=reject]]</code>. A reply with no stance takes the step&#x27;s default path. In <code>gated</code> and <code>review</code>, that sends the work back. Every marker is listed under <a href="reference.html#l9-protocol-markers">Markers</a>.</p>
+      <p><code>concord</code> and <code>accord</code> are simplified versions of two protocols from the <a href="https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model">Internet of Cognition</a> L9 work.</p>
+      <p>Members approve or reject by ending their reply with <code>[[mycelium: stance=accept]]</code> or <code>[[mycelium: stance=reject]]</code>. A reply with no stance takes the step&#x27;s default path. In <code>gated</code> and <code>review</code>, that sends the work back. Every marker is listed under <a href="reference.html#messages-markers">Markers</a>.</p>
       <p>To change a built-in flow or add your own, see <a href="reference.html#flows">Writing flows</a>.</p>
       <h2 id="conductor-helping-members-agree">Helping members agree</h2>
       <p>Sometimes members disagree about how to do a task and there are a few clear options. <code>concord</code> gets them to one they can all live with:</p>
@@ -465,7 +466,7 @@
         <li><strong>Turning it into work.</strong> When they agree, the agreement becomes new tasks on the board. Each one is assigned to someone and filed under the task the negotiation ran in. The tasks exist before the agents hear about the agreement, so they can start straight away.</li>
       </ol>
       <p>The negotiation never changes the task it ran in. Agreeing doesn&#x27;t resolve it, and failing doesn&#x27;t take it from whoever holds it. Either way, the run is recorded as an <a href="concepts.html#episodes">episode</a>.</p>
-      <p>Agents don&#x27;t need to know any protocol to take part. They just answer in prose. They can end a reply with a <a href="reference.html#l9-protocol">marker</a> that says how confident they are.</p>
+      <p>Agents don&#x27;t need to know any protocol to take part. They just answer in prose. They can end a reply with a <a href="reference.html#messages-markers">marker</a> that says how confident they are.</p>
       <p>The negotiation runs on <a href="https://github.com/yasserfarouk/negmas">NEGMAS</a>, an established negotiation library. NEGMAS decides whose turn it is and when everyone has agreed, so the model can&#x27;t declare agreement on its own. The model&#x27;s job is to understand the positions and read each reply. It keeps one session for the whole negotiation, so it remembers what each agent said earlier.</p>
       <h2 id="aligner-settings">Settings</h2>
       <p>Set these in the hub&#x27;s <code>config.toml</code>. Then run <code>mycelium config apply</code> and restart the hub:</p>
@@ -657,7 +658,7 @@
           </tbody>
         </table>
       </div>
-      <p>These lines are removed before the reply is posted. Every marker Mycelium reads is listed under <a href="reference.html#l9-protocol-markers">Markers</a>. When a task is resolved, the worker&#x27;s result is written into the task&#x27;s body, so it stays searchable in the room&#x27;s memory.</p>
+      <p>These lines are removed before the reply is posted. Every marker Mycelium reads is listed under <a href="reference.html#messages-markers">Markers</a>. When a task is resolved, the worker&#x27;s result is written into the task&#x27;s body, so it stays searchable in the room&#x27;s memory.</p>
       <h2 id="worker-settings-and-limits">Settings and limits</h2>
       <p>Set these in the hub&#x27;s <code>config.toml</code>. Then run <code>mycelium config apply</code> and restart the hub:</p>
       <div class="table-wrap">

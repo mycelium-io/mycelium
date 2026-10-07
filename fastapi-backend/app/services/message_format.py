@@ -2,21 +2,15 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-L9 (IOC / SSTP) envelope construction and validation.
+The message format: construction and validation.
 
-L9 is the Internet-of-Cognition epistemic protocol layer
-(outshift-open/ioc-protocols-models). Every L9 message is an envelope:
-a fixed header (kind/subkind, participants, episode URN, message id +
-causal parents, topic) plus a typed payload.
+Every message on a room's channel carries an envelope: a fixed header
+(kind/subkind, participants, episode URN, message id + causal parents, topic)
+plus a typed payload. It is how the hub labels and records what passes through
+a room, which is what the Network pane shows.
 
-Mycelium uses L9 two ways:
-
-1. Coordination messages (ticks, replies, consensus) carry an ``l9`` key
-   inside their existing content JSON. This is additive: agents and UIs
-   that ignore it keep working unchanged.
-2. The Go CFN service (outshift-open/ioc-cfn-svc) exposes a native
-   ``POST /api/l9/messages`` endpoint that routes envelopes to Cognition
-   Engines by kind/subkind. ``l9_cfn.py`` posts envelopes built here.
+A message's content JSON carries its envelope under the ``l9`` key. The key
+is additive: agents and UIs that ignore it keep working.
 
 In the subkind vocabulary below, a failed negotiation commits as ``rejected``.
 """
@@ -27,19 +21,19 @@ import json
 import uuid
 from typing import Any
 
-from app.services.l9_models import (
-    L9,
+from app.services.message_models import (
     Actor,
     Context,
     Kind,
-    L9Header,
-    L9Payload,
-    Message,
+    MessageHeader,
+    MessagePayload,
+    MessageRef,
+    MyceliumMessage,
     ParticipantSet,
 )
 
 PROTOCOL = "SSTP"
-VERSION = "0.0.6"  # tracks the ioc-protocols-models binding the Go CFN pins
+VERSION = "0.0.6"
 SUBPROTOCOL_MYCELIUM = "mycelium"
 
 # The handle mycelium's *backend itself* speaks as inside envelopes — genuine
@@ -98,7 +92,7 @@ PING_PAYLOAD_TYPE = "ping"
 NOTICE_PAYLOAD_TYPE = "notice"
 
 #: What a notice can be about, as a closed set frozen in
-#: ``contracts/slim-l9-wire.json``. ``filed`` also carries the row's board
+#: ``contracts/slim-wire.json``. ``filed`` also carries the row's board
 #: ``kind`` (so the line reads "New decision", not always "New task") and who it
 #: is ``for``; the custody and lifecycle subkinds carry ``by`` (who moved it).
 #: ``expired`` is the one nobody writes: a held lease drained by the clock, and
@@ -111,8 +105,8 @@ NOTICE_SUBKINDS = frozenset(
 )
 
 
-class L9ValidationError(ValueError):
-    """An envelope violates the L9 structure or the CFN subkind table."""
+class MessageValidationError(ValueError):
+    """A message violates the header structure or the subkind table."""
 
 
 def episode_urn(parent_room: str, session_id: str) -> str:
@@ -144,7 +138,7 @@ def validate_subkind(kind: Kind, subkind: str | None) -> None:
         return
     allowed = VALID_SUBKINDS.get(kind, frozenset())
     if subkind not in allowed:
-        raise L9ValidationError(
+        raise MessageValidationError(
             f"invalid subkind {subkind!r} for kind={kind.value} (allowed: {sorted(allowed)})"
         )
 
@@ -170,8 +164,8 @@ def build_envelope(
     payload_type: str = "data",
     payload_data: dict[str, Any] | None = None,
     message_id: str | None = None,
-) -> L9:
-    """Build a validated L9 envelope.
+) -> MyceliumMessage:
+    """Build a validated message.
 
     ``workspace_id``/``mas_id`` land in ``participants.groups``: the Go CFN's
     content-based routing extracts them from there, so both are required for
@@ -191,26 +185,26 @@ def build_envelope(
         if mas_id:
             groups["mas_id"] = mas_id
 
-    return L9(
-        header=L9Header(
+    return MyceliumMessage(
+        header=MessageHeader(
             protocol=PROTOCOL,
             subprotocol=SUBPROTOCOL_MYCELIUM,
             version=VERSION,
             kind=kind,
             subkind=subkind,
             participants=ParticipantSet(actors=actors, groups=groups),
-            message=Message(
+            message=MessageRef(
                 id=message_id or str(uuid.uuid4()),
                 parents=parents or [],
                 episode=episode,
             ),
             context=Context(topic=topic) if topic else None,
         ),
-        payload=L9Payload(type=payload_type, data=payload_data or {}),
+        payload=MessagePayload(type=payload_type, data=payload_data or {}),
     )
 
 
-def envelope_to_dict(envelope: L9) -> dict[str, Any]:
+def envelope_to_dict(envelope: MyceliumMessage) -> dict[str, Any]:
     """Serialize for embedding in a message's content JSON (drops None keys)."""
     data = envelope.model_dump(mode="json", exclude_none=True)
     # participants.groups is required-but-nullable in the schema; exclude_none
@@ -219,17 +213,17 @@ def envelope_to_dict(envelope: L9) -> dict[str, Any]:
     return data
 
 
-def parse_envelope(raw: dict[str, Any] | str) -> L9:
+def parse_envelope(raw: dict[str, Any] | str) -> MyceliumMessage:
     """Parse and validate an envelope from content JSON (raises on invalid)."""
     if isinstance(raw, str):
         raw = json.loads(raw)
-    envelope = L9.model_validate(raw)
+    envelope = MyceliumMessage.model_validate(raw)
     validate_subkind(envelope.header.kind, envelope.header.subkind)
     return envelope
 
 
 def extract_parent_id(content: str | dict[str, Any]) -> str | None:
-    """Pull the L9 message id out of a coordination message's content, if any.
+    """Pull the message id out of a coordination message's content, if any.
 
     Used to thread causality: a reply's envelope lists the tick's id in
     ``message.parents``; the consensus lists the final replies' ids.

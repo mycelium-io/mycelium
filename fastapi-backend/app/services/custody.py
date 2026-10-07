@@ -22,7 +22,7 @@ requires the identity provider/verifier pair, so a custodial session cannot run 
 the PSK tier.
 
 Scope boundary: because the hub holds every session's private key and plaintext, all
-backend cognition (aligner, plan compiler, memory-sync, L9) still reads plaintext.
+backend cognition (aligner, plan compiler, memory-sync, messages) still reads plaintext.
 This hardens attribution and access-by-membership and makes per-agent identity real
 at the MLS layer, but it is not end-to-end encryption from the hub: a compromised hub
 can still read and impersonate everything. Client-held (non-custodial) sessions are a
@@ -215,7 +215,7 @@ def wire_sender(context: slim_bindings.MessageContext) -> str | None:
     """Recover the sender's cryptographic Name leaf from an inbound context.
 
     Under custody the sender on the wire is the actor's own MLS identity, so this
-    is the non-forgeable attribution the moderator can cross-check against the L9
+    is the non-forgeable attribution the moderator can cross-check against the message
     envelope's stamped ``sender`` — the whole point of #666. Best-effort across the
     binding's context shape; ``None`` if no source Name is exposed.
     """

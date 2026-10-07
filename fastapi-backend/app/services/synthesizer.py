@@ -59,12 +59,12 @@ from typing import TYPE_CHECKING, Any
 from app.config import settings
 
 # Reuse the aligner's manifest-kind gate and handle-fold implementations.
-from app.services import l9
+from app.services import message_format
 from app.services.aligner import _norm, _registered_engine_kind
 
 if TYPE_CHECKING:
     from app.services.in_memory_store import StoredMessage
-    from app.services.l9_models import L9
+    from app.services.message_models import MyceliumMessage
     from app.services.room_channels import ManagedRoomChannel, RoomChannelManager
 
 logger = logging.getLogger(__name__)
@@ -341,7 +341,7 @@ class SynthesizerEngine:
         self,
         room: str,
         handle: str,
-        envelope: L9,
+        envelope: MyceliumMessage,
         co_summons: list[str] | None = None,
         message_text: str = "",
     ) -> None:
@@ -473,11 +473,11 @@ class SynthesizerEngine:
 
     async def _say(self, managed: ManagedRoomChannel, room: str, sender: str, text: str) -> None:
         """Post a plain message from the synthesizer into the room channel."""
-        env = l9.build_envelope(
-            kind=l9.Kind.exchange,
-            episode=l9.episode_urn(room, "live"),
+        env = message_format.build_envelope(
+            kind=message_format.Kind.exchange,
+            episode=message_format.episode_urn(room, "live"),
             sender=sender,
-            topic=l9.topic_urn(room),
+            topic=message_format.topic_urn(room),
             payload_type="message",
         )
         await managed.post(env, text)

@@ -38,13 +38,13 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from app.config import settings
-from app.services import custody, l9, slim_identity
+from app.services import custody, message_format, slim_identity
 from app.services.agent_registry import norm_handle
 from app.services.floor import Floor
-from app.services.l9_models import Kind
-from app.services.l9_slim import (
+from app.services.message_models import Kind
+from app.services.message_slim import (
     EpisodeLifecycle,
-    L9SlimChannel,
+    MessageChannel,
     build_episode_abort_envelope,
     serialize_content,
 )
@@ -53,7 +53,7 @@ from app.services.persister import (
     ConvergedHook,
     RoomPersister,
     SummonHook,
-    l9_bus_frame,
+    bus_frame,
     parse_mentions,
     record_from,
 )
@@ -67,23 +67,23 @@ from app.services.slim_client import (
 
 if TYPE_CHECKING:
     from app.services.custody import CustodialSession
-    from app.services.l9_models import L9
+    from app.services.message_models import MyceliumMessage
 
 # The room-aware summon hook the manager holds: unlike the persister's
 # per-message ``SummonHook`` (which knows only the handle + envelope), this
 # carries the ``room`` so the engine wired to it (the aligner) knows which
 # channel to judge. ``_start_persister`` adapts it down to the persister's
 # signature by binding the room.
-RoomSummonHook = Callable[[str, str, "L9", list[str], str], None]
+RoomSummonHook = Callable[[str, str, "MyceliumMessage", list[str], str], None]
 
 # The room-aware converged hook, same shape reasoning as ``RoomSummonHook``: the
 # persister's ``ConvergedHook`` is ``(envelope)`` only, but the consumer wired to
 # it (the plan-sync consumer) needs the room to compile that room's plan + sync its
 # memory. ``_converged_adapter`` binds the room down to the persister signature.
-RoomConvergedHook = Callable[[str, "L9"], None]
+RoomConvergedHook = Callable[[str, "MyceliumMessage"], None]
 # The room-aware addressed hook: ``(room, handle, envelope, message_text)`` for
-# each L9 recipient of a turn that named nobody in its text.
-RoomAddressedHook = Callable[[str, str, "L9", str], None]
+# each message recipient of a turn that named nobody in its text.
+RoomAddressedHook = Callable[[str, str, "MyceliumMessage", str], None]
 # The board-event hook: ``(room, data)`` for every notice raised, where ``data``
 # is the notice's payload (``subkind``, ``key``, ``title``, ``episode``, ``by``,
 # and ``for`` on a ``filed`` row given to someone).
@@ -195,7 +195,7 @@ class ManagedRoomChannel:
     room: str
     workspace: str
     client: SlimClient
-    channel: L9SlimChannel
+    channel: MessageChannel
     members: set[str] = field(default_factory=set)
     lifecycle: EpisodeLifecycle = field(default_factory=EpisodeLifecycle)
     # Threads whose floor a run of backend code holds, keyed by episode URN
@@ -212,7 +212,7 @@ class ManagedRoomChannel:
 
     async def post(
         self,
-        envelope: L9,
+        envelope: MyceliumMessage,
         text: str,
         *,
         list_write: bool = False,
@@ -223,11 +223,11 @@ class ManagedRoomChannel:
         This is the canonical one-liner that replaces the repeated
         ``serialize_content → channel.send → persister.ingest_local`` sequence
         in the bridge, server, aligner, and synthesizer. The caller builds the
-        L9 envelope (since kind/recipients/payload vary per call site); this
+        message (since kind/recipients/payload vary per call site); this
         method owns the three mechanical steps that follow it.
 
         Args:
-            envelope: A fully constructed L9 envelope from :func:`l9.build_envelope`.
+            envelope: A fully constructed message from :func:`message_format.build_envelope`.
             text: The human-readable message body, sent as the ``content`` extra.
             list_write: Passed through to ``persister.ingest_local``. Set
                 ``True`` for agent replies that must appear in the in-memory
@@ -259,7 +259,7 @@ class ManagedRoomChannel:
 class HumanPublishResult:
     """The outcome of publishing a human's message onto a room channel.
 
-    ``recipients`` are the L9 recipients the ``@``-parse resolved (present members
+    ``recipients`` are the message recipients the ``@``-parse resolved (present members
     that get woken).
     """
 
@@ -268,7 +268,7 @@ class HumanPublishResult:
     # Handles that were @-mentioned but are neither present in the room nor a
     # registered agent — they received no delivery and triggered no action.
     unrecognized: list[str] = field(default_factory=list)
-    # The published envelope's L9 message id — the correlation key the POST route
+    # The published envelope's message id — the correlation key the POST route
     # stamps on its ``in_memory_store`` row so a cold read from the durable transcript
     # dedups against it instead of showing the human's message twice.
     message_id: str | None = None
@@ -626,7 +626,7 @@ class RoomChannelManager:
         sender: str | None = None,
         episode: str | None = None,
     ) -> bool:
-        """Ring a herdr-present handle that was just put a turn (an L9 recipient).
+        """Ring a herdr-present handle that was just put a turn (a message recipient).
 
         How the aligner and the conductor reach a member: an exchange naming it,
         with nobody mentioned in the text. Without this a herdr agent only woke
@@ -790,7 +790,7 @@ class RoomChannelManager:
                 room,
                 in_memory_store.StoredMessage(
                     room_name=room,
-                    sender_handle=l9.SYSTEM_ACTOR_ID,
+                    sender_handle=message_format.SYSTEM_ACTOR_ID,
                     message_type="coordination_join",
                     content=content,
                 ),
@@ -804,7 +804,7 @@ class RoomChannelManager:
                 room_channel(room),
                 {
                     "room_name": room,
-                    "sender_handle": l9.SYSTEM_ACTOR_ID,
+                    "sender_handle": message_format.SYSTEM_ACTOR_ID,
                     "message_type": "coordination_join",
                     "content": content,
                     "created_at": datetime.now(UTC).isoformat(),
@@ -863,7 +863,7 @@ class RoomChannelManager:
                 _app_metrics.record_slim_provision(room=room, duration_ms=0.0, error=True)
                 return None
             managed = ManagedRoomChannel(
-                room=room, workspace=ws, client=client, channel=L9SlimChannel(client, session)
+                room=room, workspace=ws, client=client, channel=MessageChannel(client, session)
             )
             self._channels[room] = managed
             self._start_persister(managed)
@@ -986,7 +986,7 @@ class RoomChannelManager:
 
         def adapter(
             handle: str,
-            envelope: L9,
+            envelope: MyceliumMessage,
             co_summons: list[str],
             message_text: str = "",
             _room: str = room,
@@ -1002,7 +1002,9 @@ class RoomChannelManager:
         if hook is None:
             return None
 
-        def adapter(handle: str, envelope: L9, message_text: str = "", _room: str = room) -> None:
+        def adapter(
+            handle: str, envelope: MyceliumMessage, message_text: str = "", _room: str = room
+        ) -> None:
             hook(_room, handle, envelope, message_text)
 
         return adapter
@@ -1019,7 +1021,7 @@ class RoomChannelManager:
         if hook is None:
             return None
 
-        def adapter(envelope: L9, _room: str = room) -> None:
+        def adapter(envelope: MyceliumMessage, _room: str = room) -> None:
             hook(_room, envelope)
 
         return adapter
@@ -1199,8 +1201,8 @@ class RoomChannelManager:
     ) -> HumanPublishResult | None:
         """Publish a human's message onto the room channel as their proxy.
 
-        The human runs no connector: the backend builds an L9 ``exchange`` on
-        their behalf, maps ``@agent-x`` tokens to L9 recipients, and broadcasts
+        The human runs no connector: the backend builds an ``exchange`` message on
+        their behalf, maps ``@agent-x`` tokens to message recipients, and broadcasts
         it. In-room mentions wake through the connector's recipient match;
         mentions of a registered agent **not** on the channel invite it.
         Returns ``None`` when no channel is live.
@@ -1226,18 +1228,18 @@ class RoomChannelManager:
             return None
 
         mentioned = parse_mentions(text)
-        # Every mention is an L9 recipient (the semantic "to"); everyone else on
+        # Every mention is a message recipient (the semantic "to"); everyone else on
         # the channel is an observer. Absent mentions stay recipients so the
         # intent is recorded, but only present ones actually receive the broadcast.
-        envelope = l9.build_envelope(
+        envelope = message_format.build_envelope(
             kind=Kind.exchange,
             subkind=subkind,
-            episode=episode or l9.live_episode_urn(room),
+            episode=episode or message_format.live_episode_urn(room),
             parents=parents,
             sender=sender,
             sender_role="human",
             recipients=mentioned,
-            topic=l9.topic_urn(room),
+            topic=message_format.topic_urn(room),
             payload_type="message",
         )
         content = serialize_content(envelope, extra={"content": text})
@@ -1273,7 +1275,7 @@ class RoomChannelManager:
                 # summon seam answers the mention, and an invite would only fail.
                 continue
             if managed.lifecycle.frozen:
-                # Adding a member mid-negotiation would abort it (L9's
+                # Adding a member mid-negotiation would abort it (the
                 # stable-membership rule), so hold the invite until the episode
                 # closes. Gated on ``frozen``, not ``active``: a task's thread is an
                 # episode too, and it must not hold invites hostage.
@@ -1321,15 +1323,15 @@ class RoomChannelManager:
         Returns the ping's message id, or ``None`` when there is nothing to
         announce — a message in the room itself, which *is* the room.
         """
-        if episode is None or l9.is_live_episode(room, episode):
+        if episode is None or message_format.is_live_episode(room, episode):
             return None
-        ping = l9.build_envelope(
+        ping = message_format.build_envelope(
             kind=Kind.exchange,
-            episode=l9.live_episode_urn(room),
-            sender=l9.SYSTEM_ACTOR_ID,
-            sender_role=l9.SYSTEM_ACTOR_ROLE,
-            topic=l9.topic_urn(room),
-            payload_type=l9.PING_PAYLOAD_TYPE,
+            episode=message_format.live_episode_urn(room),
+            sender=message_format.SYSTEM_ACTOR_ID,
+            sender_role=message_format.SYSTEM_ACTOR_ROLE,
+            topic=message_format.topic_urn(room),
+            payload_type=message_format.PING_PAYLOAD_TYPE,
             payload_data={
                 "episode": episode,
                 "sender": sender,
@@ -1348,7 +1350,7 @@ class RoomChannelManager:
             # client decodes it identically either way.
             from app.bus import bus, room_channel
 
-            bus.publish(room_channel(room), l9_bus_frame(room, record_from(ping, content)))
+            bus.publish(room_channel(room), bus_frame(room, record_from(ping, content)))
         return ping.header.message.id if ping.header.message else None
 
     async def raise_notice(
@@ -1373,19 +1375,19 @@ class RoomChannelManager:
 
         Where a ping says a thread moved, a notice says the board did: it names
         the task (``key``/``title``), the thread to open (``episode``), and who
-        moved it (``by``). ``subkind`` is one of :data:`app.services.l9.NOTICE_SUBKINDS`.
+        moved it (``by``). ``subkind`` is one of :data:`app.services.message_format.NOTICE_SUBKINDS`.
         """
         data: dict[str, str] = {"subkind": subkind, "key": key}
         for name, value in (("title", title), ("episode", episode), ("by", by), *extra.items()):
             if value:
                 data[name] = value
-        notice = l9.build_envelope(
+        notice = message_format.build_envelope(
             kind=Kind.exchange,
-            episode=l9.live_episode_urn(room),
-            sender=l9.SYSTEM_ACTOR_ID,
-            sender_role=l9.SYSTEM_ACTOR_ROLE,
-            topic=l9.topic_urn(room),
-            payload_type=l9.NOTICE_PAYLOAD_TYPE,
+            episode=message_format.live_episode_urn(room),
+            sender=message_format.SYSTEM_ACTOR_ID,
+            sender_role=message_format.SYSTEM_ACTOR_ROLE,
+            topic=message_format.topic_urn(room),
+            payload_type=message_format.NOTICE_PAYLOAD_TYPE,
             payload_data=data,
         )
         content = serialize_content(notice)
@@ -1395,14 +1397,14 @@ class RoomChannelManager:
         else:
             from app.bus import bus, room_channel
 
-            bus.publish(room_channel(room), l9_bus_frame(room, record_from(notice, content)))
+            bus.publish(room_channel(room), bus_frame(room, record_from(notice, content)))
         if self.on_notice is not None:
             try:
                 self.on_notice(room, dict(data))
             except Exception:
                 logger.exception("notice hook failed for %s in %s", subkind, room)
 
-    # -- deferred invites (L9 stable membership) --
+    # -- deferred invites (stable membership) --
 
     async def flush_deferred_invites(self, room: str) -> None:
         """Apply invites an @-mention deferred during an episode, now that it closed."""
@@ -1475,7 +1477,7 @@ class RoomChannelManager:
         holds a floor, so a protocol cannot close the room around itself.
         """
         managed = self._channels.get(room)
-        if managed is None or l9.is_live_episode(room, episode):
+        if managed is None or message_format.is_live_episode(room, episode):
             return None
         floor = Floor(
             episode=episode,
@@ -1589,7 +1591,7 @@ class RoomChannelManager:
         logger.info("Membership change aborted episode %s on room %s", episode, managed.room)
         try:
             envelope = build_episode_abort_envelope(
-                episode, recipients=current_members, topic=l9.topic_urn(managed.room)
+                episode, recipients=current_members, topic=message_format.topic_urn(managed.room)
             )
             await managed.channel.send(envelope)
             # Record the abort locally so the transcript/UI see it — SLIM may not

@@ -66,7 +66,7 @@ SECTIONS: list[tuple[str, str]] = [
     ("architecture", "Architecture"),
     ("board-reference", "Board Reference"),
     ("flows", "Writing Flows"),
-    ("l9-protocol", "L9 Protocol"),
+    ("messages", "Messages"),
     ("metrics", "Metrics"),
     ("status-providers", "Adding a Status Provider"),
     ("keycloak-oidc", "Keycloak / OIDC Setup"),

@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-L9 episode read API — backs the protocol inspector.
+episode read API — backs the protocol inspector.
 
 The projection from a ``log/episodes/{short_id}.md`` record to structured fields
 lives in :mod:`app.services.episode_records`; these endpoints only serve it.
@@ -45,7 +45,7 @@ async def list_episodes(room_name: str, limit: int = 50):
 
 @router.get("/{short_id}", response_model=EpisodeDetailRead)
 async def get_episode(room_name: str, short_id: str):
-    """Return one episode: its summary plus the full L9 envelope chain."""
+    """Return one episode: its summary plus the full message chain."""
     _require_room(room_name)
     result = read_memory_file(get_room_dir(room_name), f"{EPISODES_PREFIX}{short_id}")
     if result is None:

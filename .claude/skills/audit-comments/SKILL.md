@@ -138,8 +138,6 @@ Filter to source files that carry comments — `*.py *.ts *.tsx *.js *.mjs` — 
 - generated: the whole OpenAPI client `mycelium-client/**`, any regenerated CFN
   client (`ioc_cfn_svc_api_client/**`), `*.generated.*`, `next-env.d.ts`,
   `*.d.ts`.
-- vendored: `fastapi-backend/app/services/l9_models.py` (datamodel-codegen from
-  ioc-protocols-models — don't touch its header or generated comments).
 - non-source / data: `**/*.json`, `**/node_modules/**`, `.next/**`, `public/**`,
   lock files (`uv.lock`, `pnpm-lock.yaml`, `package-lock.json`),
   `.mycelium/**` (memory data, not source).
@@ -152,7 +150,7 @@ pre-existing wart in an untouched function isn't this PR's problem).
 
 ```bash
 git ls-files '*.py' '*.ts' '*.tsx' '*.js' '*.mjs' \
-  | grep -vE '(^mycelium-client/|/ioc_cfn_svc_api_client/|l9_models\.py$)' \
+  | grep -vE '(^mycelium-client/|/ioc_cfn_svc_api_client/)' \
   | grep -vE '(\.generated\.|\.d\.ts$|/node_modules/|/\.next/)'
 ```
 
@@ -235,7 +233,7 @@ Report what changed.
   alternative, position the file against a sibling system, or congratulate the
   design. Flat and plain wins. But a single clarifying "X, not Y" that saves a
   reader from a real gotcha is load-bearing — keep it.
-- **Never touch generated or vendored files.** `mycelium-client/**`,
-  `l9_models.py`, any regenerated CFN client, and `*.d.ts` are off-limits.
+- **Never touch generated files.** `mycelium-client/**`, any regenerated
+  CFN client, and `*.d.ts` are off-limits.
 - **Read-only unless `--fix`.** No edits, no commits, no PR comments by default.
 - **Honest "clean" beats invented findings.**

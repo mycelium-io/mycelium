@@ -2,7 +2,7 @@
   "_comment": [
     "Frozen contract for @-mentions in message text. Two forms:",
     "",
-    "  @handle   a mention: the handle is an L9 recipient, its herdr doorbell",
+    "  @handle   a mention: the handle is a message recipient, its herdr doorbell",
     "            rings once it is idle, and an engine handle is summoned.",
     "  @~handle  a silent mention: it names the handle (drawn as a member, found",
     "            by mentions:handle) and never wakes, addresses or summons it.",

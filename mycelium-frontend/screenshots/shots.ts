@@ -134,7 +134,7 @@ export const SHOTS: Shot[] = [
     theme: "dark",
     viewport: "desktop",
     steps: ["Network"],
-    caption: "The network pane: SLIM channel diagnostics over a live L9 protocol feed.",
+    caption: "The network pane: SLIM channel diagnostics over a live message feed.",
   },
 
   // ── The docs' concept and guide pages ────────────────────────────────────

@@ -1,17 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Tests for L9 episode tracking, epistemic reply fields, and consensus metrics."""
+"""Tests for episode tracking, epistemic reply fields, and consensus metrics."""
 
 from typing import Any
 
 import pytest
 
-from app.services import l9_episode
+from app.services import episode_state
 
 
-def _open() -> l9_episode.NegotiationState:
-    return l9_episode.open_episode(
+def _open() -> episode_state.NegotiationState:
+    return episode_state.open_episode(
         parent_room="sprint",
         short_id="abc123",
         workspace_id="ws-1",
@@ -43,7 +43,7 @@ def test_engine_handle_signs_episode_envelopes():
     """A registered engine signs the intent/tick/consensus it authors, so the
     wire carries the engine's real identity (e.g. "aligner") rather than the
     generic system actor. The agents' own replies still carry their handles."""
-    ep = l9_episode.open_episode(
+    ep = episode_state.open_episode(
         parent_room="sprint",
         short_id="abc123",
         workspace_id="ws-1",
@@ -56,15 +56,15 @@ def test_engine_handle_signs_episode_envelopes():
     # Intent is engine-authored.
     assert ep.messages[0]["header"]["participants"]["actors"][0]["id"] == "aligner"
 
-    tick = l9_episode.record_tick(ep, handle="a1", round_n=1, payload={"action": "respond"})
+    tick = episode_state.record_tick(ep, handle="a1", round_n=1, payload={"action": "respond"})
     assert tick["header"]["participants"]["actors"][0]["id"] == "aligner"
     # The agent replies *to* the engine, so the engine is the recipient.
-    l9_episode.record_reply(ep, handle="a1", reply={"action": "accept"}, round_n=1)
+    episode_state.record_reply(ep, handle="a1", reply={"action": "accept"}, round_n=1)
     reply = ep.messages[-1]
     assert reply["header"]["participants"]["actors"][0]["id"] == "a1"
     assert reply["header"]["participants"]["actors"][1]["id"] == "aligner"
 
-    consensus = l9_episode.build_consensus_envelope(
+    consensus = episode_state.build_consensus_envelope(
         ep, broken=False, assignments={"budget": "high"}, metrics=None
     )
     assert consensus["header"]["participants"]["actors"][0]["id"] == "aligner"
@@ -75,17 +75,19 @@ def test_episode_without_engine_falls_back_to_system_actor():
     ep = _open()
     assert ep.engine_handle == ""
     assert ep.messages[0]["header"]["participants"]["actors"][0]["id"] == "system"
-    consensus = l9_episode.build_consensus_envelope(ep, broken=True, assignments={}, metrics=None)
+    consensus = episode_state.build_consensus_envelope(
+        ep, broken=True, assignments={}, metrics=None
+    )
     assert consensus["header"]["participants"]["actors"][0]["id"] == "system"
 
 
 def test_causal_threading_tick_reply_consensus():
     ep = _open()
-    tick1 = l9_episode.record_tick(ep, handle="a1", round_n=1, payload={"action": "respond"})
+    tick1 = episode_state.record_tick(ep, handle="a1", round_n=1, payload={"action": "respond"})
     # First tick parents the intent.
     assert tick1["header"]["message"]["parents"] == [ep.intent_id]
 
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a1", reply={"action": "accept", "confidence": 0.8}, round_n=1
     )
     reply1 = ep.messages[-1]
@@ -94,11 +96,11 @@ def test_causal_threading_tick_reply_consensus():
     assert reply1["header"]["participants"]["actors"][0]["id"] == "a1"
 
     # Second-round tick parents the agent's reply.
-    tick2 = l9_episode.record_tick(ep, handle="a1", round_n=2, payload={"action": "respond"})
+    tick2 = episode_state.record_tick(ep, handle="a1", round_n=2, payload={"action": "respond"})
     assert tick2["header"]["message"]["parents"] == [reply1["header"]["message"]["id"]]
 
-    l9_episode.record_reply(ep, handle="a2", reply={"action": "accept"}, round_n=2)
-    consensus = l9_episode.build_consensus_envelope(
+    episode_state.record_reply(ep, handle="a2", reply={"action": "accept"}, round_n=2)
+    consensus = episode_state.build_consensus_envelope(
         ep, broken=False, assignments={"budget": "high"}, metrics=None
     )
     assert consensus["header"]["kind"] == "commit"
@@ -109,7 +111,9 @@ def test_causal_threading_tick_reply_consensus():
 
 def test_broken_consensus_commits_as_rejected():
     ep = _open()
-    consensus = l9_episode.build_consensus_envelope(ep, broken=True, assignments={}, metrics=None)
+    consensus = episode_state.build_consensus_envelope(
+        ep, broken=True, assignments={}, metrics=None
+    )
     assert consensus["header"]["subkind"] == "rejected"
     # No replies recorded: falls back to parenting the intent.
     assert consensus["header"]["message"]["parents"] == [ep.intent_id]
@@ -117,7 +121,7 @@ def test_broken_consensus_commits_as_rejected():
 
 def test_synthesized_reply_marked():
     ep = _open()
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a1", reply={"action": "reject"}, round_n=1, synthesized=True
     )
     assert ep.messages[-1]["payload"]["data"]["synthesized"] is True
@@ -128,10 +132,10 @@ def test_synthesized_reply_marked():
 
 def test_prior_is_first_confidence_and_posterior_is_last():
     ep = _open()
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a1", reply={"action": "reject", "confidence": 0.3}, round_n=1
     )
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a1", reply={"action": "accept", "confidence": 0.9}, round_n=2
     )
     assert ep.priors["a1"] == 0.3
@@ -140,40 +144,40 @@ def test_prior_is_first_confidence_and_posterior_is_last():
 
 def test_deferred_accept_tracked_and_cleared():
     ep = _open()
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a1", reply={"action": "accept", "deferred_to": "a2"}, round_n=1
     )
     assert ep.deferred["a1"] == "a2"
     # A later genuine accept clears the deference.
-    l9_episode.record_reply(ep, handle="a1", reply={"action": "accept"}, round_n=2)
+    episode_state.record_reply(ep, handle="a1", reply={"action": "accept"}, round_n=2)
     assert "a1" not in ep.deferred
 
 
 def test_metrics_none_when_participation_thin():
     ep = _open()
     # Only one of two agents reported confidence.
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a1", reply={"action": "accept", "confidence": 0.8}, round_n=1
     )
-    assert l9_episode.compute_metrics(ep) is None
+    assert episode_state.compute_metrics(ep) is None
 
 
 def test_metrics_genuine_agreement():
     ep = _open()
     # Both agents' confidence rose toward a confident outcome (MPC > 0.5).
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a1", reply={"action": "reject", "confidence": 0.5}, round_n=1
     )
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a2", reply={"action": "reject", "confidence": 0.6}, round_n=1
     )
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a1", reply={"action": "accept", "confidence": 0.8}, round_n=2
     )
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a2", reply={"action": "accept", "confidence": 0.9}, round_n=2
     )
-    m = l9_episode.compute_metrics(ep)
+    m = episode_state.compute_metrics(ep)
     assert m is not None
     assert m["mpc"] == pytest.approx(0.85)
     assert m["gar"] == 1.0
@@ -186,10 +190,10 @@ def test_metrics_genuine_agreement():
 def test_metrics_social_compliance():
     ep = _open()
     # a2 accepts only by deference; its confidence *fell* against a confident outcome.
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a1", reply={"action": "accept", "confidence": 0.9}, round_n=1
     )
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep,
         handle="a2",
         reply={"action": "accept", "confidence": 0.4, "deferred_to": "a1"},
@@ -197,7 +201,7 @@ def test_metrics_social_compliance():
     )
     # SCR is over agents that actually revised: a2 deferred (compliance), a1
     # stated once and never moved (not a reviser), so 1/1 revisions was compliance.
-    m = l9_episode.compute_metrics(ep)
+    m = episode_state.compute_metrics(ep)
     assert m is not None
     assert m["scr"] == 1.0
     assert m["provenance_weight"] == pytest.approx((1 - 1.0) * m["gar"])
@@ -205,17 +209,17 @@ def test_metrics_social_compliance():
 
 def test_metrics_gar_detects_dragged_agent():
     ep = _open()
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a1", reply={"action": "reject", "confidence": 0.9}, round_n=1
     )
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a2", reply={"action": "reject", "confidence": 0.8}, round_n=1
     )
     # a2's confidence falls while the team outcome stays confident → not genuine.
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a2", reply={"action": "accept", "confidence": 0.6}, round_n=2
     )
-    m = l9_episode.compute_metrics(ep)
+    m = episode_state.compute_metrics(ep)
     assert m is not None
     assert m["gar"] == 0.5
 
@@ -223,16 +227,16 @@ def test_metrics_gar_detects_dragged_agent():
 def test_grounding_yields_genuine_revision_cause():
     ep = _open()
     # a1 seeds the evidence pool; a2 states a prior, then moves while engaging it.
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep,
         handle="a1",
         reply={"action": "reject", "confidence": 0.5, "supporting_evidence": ["e1", "e2"]},
         round_n=1,
     )
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a2", reply={"action": "reject", "confidence": 0.3}, round_n=1
     )
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep,
         handle="a2",
         reply={"action": "accept", "confidence": 0.8, "addresses": ["e1", "e2"]},
@@ -243,17 +247,17 @@ def test_grounding_yields_genuine_revision_cause():
 
 def test_weak_grounding_yields_social_compliance():
     ep = _open()
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep,
         handle="a1",
         reply={"action": "reject", "confidence": 0.5, "supporting_evidence": ["e1", "e2"]},
         round_n=1,
     )
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a2", reply={"action": "reject", "confidence": 0.3}, round_n=1
     )
     # a2 moves but its addresses don't overlap the pool → weak grounding → compliance.
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep,
         handle="a2",
         reply={"action": "accept", "confidence": 0.8, "addresses": ["unrelated"]},
@@ -265,10 +269,10 @@ def test_weak_grounding_yields_social_compliance():
 def test_movement_without_addresses_is_genuine():
     ep = _open()
     # No grounding flags at all: an agent that moves must not be scored as complying.
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a2", reply={"action": "reject", "confidence": 0.3}, round_n=1
     )
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a2", reply={"action": "accept", "confidence": 0.9}, round_n=2
     )
     assert ep.revision_cause["a2"] == "grounded_argument"
@@ -276,10 +280,10 @@ def test_movement_without_addresses_is_genuine():
 
 def test_explicit_revision_cause_overrides_derivation():
     ep = _open()
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a2", reply={"action": "reject", "confidence": 0.3}, round_n=1
     )
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep,
         handle="a2",
         reply={"action": "accept", "confidence": 0.9, "revision_cause": "new_evidence"},
@@ -292,19 +296,19 @@ def test_gar_guard_at_mpc_half():
     ep = _open()
     # Two agents move in opposite directions and land at mean 0.5. The direction
     # term vanishes; the guard must NOT score this maximal disagreement as gar=1.
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a1", reply={"action": "reject", "confidence": 0.6}, round_n=1
     )
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a2", reply={"action": "reject", "confidence": 0.4}, round_n=1
     )
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a1", reply={"action": "accept", "confidence": 0.4}, round_n=2
     )
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a2", reply={"action": "accept", "confidence": 0.6}, round_n=2
     )
-    m = l9_episode.compute_metrics(ep)
+    m = episode_state.compute_metrics(ep)
     assert m is not None
     assert m["mpc"] == pytest.approx(0.5)
     assert m["gar"] == 0.0
@@ -315,7 +319,7 @@ def test_gar_guard_at_mpc_half():
 
 def test_sanitize_rejects_bool_confidence():
     result: dict[str, Any] = {"action": "accept"}
-    l9_episode.sanitize_epistemic_fields({"confidence": True}, result)
+    episode_state.sanitize_epistemic_fields({"confidence": True}, result)
     assert "confidence" not in result
 
 
@@ -328,11 +332,11 @@ def test_write_episode_record(tmp_path, monkeypatch):
 
     monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
     ep = _open()
-    l9_episode.record_tick(ep, handle="a1", round_n=1, payload={"action": "respond"})
-    l9_episode.record_reply(
+    episode_state.record_tick(ep, handle="a1", round_n=1, payload={"action": "respond"})
+    episode_state.record_reply(
         ep, handle="a1", reply={"action": "accept", "confidence": 0.8}, round_n=1
     )
-    l9_episode.write_episode_record(
+    episode_state.write_episode_record(
         ep,
         outcome="converged",
         metrics={"mpc": 0.8, "gar": 1.0, "scr": 0.0, "provenance_weight": 1.0, "participants": 2},
@@ -354,7 +358,7 @@ def test_episode_record_carries_a_thread_of_its_own(tmp_path, monkeypatch):
     from app.config import settings
 
     monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
-    l9_episode.write_episode_record(_open(), outcome="converged", metrics=None, tasks=None)
+    episode_state.write_episode_record(_open(), outcome="converged", metrics=None, tasks=None)
 
     from app.services.tasks import episode_of
 
@@ -370,13 +374,13 @@ def test_rule_update_keeps_one_thread_across_its_rewrites(tmp_path, monkeypatch)
     monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
     ep = _open()
     metrics = {"mpc": 0.6, "gar": 0.5, "scr": 0.2, "provenance_weight": 0.4, "participants": 2}
-    l9_episode.write_rule_update(ep, metrics)
+    episode_state.write_rule_update(ep, metrics)
 
     from app.services.tasks import episode_of
 
     first = episode_of("sprint", "l9/rule_update/topic")
     assert first
-    l9_episode.write_rule_update(ep, metrics)
+    episode_state.write_rule_update(ep, metrics)
     assert episode_of("sprint", "l9/rule_update/topic") == first
 
 
@@ -387,12 +391,12 @@ def test_rule_update_writeback_and_local_team_prior(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
     ep = _open()
     metrics = {"mpc": 0.72, "gar": 0.8, "scr": 0.1, "provenance_weight": 0.72, "participants": 2}
-    l9_episode.write_rule_update(ep, metrics)
+    episode_state.write_rule_update(ep, metrics)
 
     rule_file = tmp_path / "rooms" / "sprint" / "l9" / "rule_update" / "topic.md"
     assert rule_file.exists()
 
-    prior = l9_episode.read_team_prior_local("sprint")
+    prior = episode_state.read_team_prior_local("sprint")
     assert prior == {
         "confidence": 0.72,
         "provenance_weight": 0.72,
@@ -408,10 +412,10 @@ def test_rule_update_episode_count_increments(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
     ep = _open()
     metrics = {"mpc": 0.6, "gar": 0.5, "scr": 0.2, "provenance_weight": 0.4, "participants": 2}
-    l9_episode.write_rule_update(ep, metrics)
-    l9_episode.write_rule_update(ep, metrics)
+    episode_state.write_rule_update(ep, metrics)
+    episode_state.write_rule_update(ep, metrics)
 
-    prior = l9_episode.read_team_prior_local("sprint")
+    prior = episode_state.read_team_prior_local("sprint")
     assert prior is not None
     assert prior["episode_count"] == 2
 
@@ -421,7 +425,7 @@ def test_read_team_prior_local_absent_returns_none(tmp_path, monkeypatch):
     from app.config import settings
 
     monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
-    assert l9_episode.read_team_prior_local("never-negotiated") is None
+    assert episode_state.read_team_prior_local("never-negotiated") is None
 
 
 # ── move subkind on the wire (#681) ───────────────────────────────────────────
@@ -435,7 +439,7 @@ def test_reply_stamps_move_subkind(move: str, expected: str):
     """A recognized move rides the exchange reply's header.subkind, so a
     negotiation move is explicit on the wire instead of inferred from prose."""
     ep = _open()
-    l9_episode.record_reply(ep, handle="a1", reply={"action": "accept", "move": move}, round_n=1)
+    episode_state.record_reply(ep, handle="a1", reply={"action": "accept", "move": move}, round_n=1)
     reply = ep.messages[-1]
     assert reply["header"]["kind"] == "exchange"
     assert reply["header"]["subkind"] == expected
@@ -445,7 +449,7 @@ def test_reply_without_move_has_no_subkind():
     """Replies predating the move vocabulary carry no subkind and round-trip
     unchanged (an absent subkind is always valid)."""
     ep = _open()
-    l9_episode.record_reply(ep, handle="a1", reply={"action": "accept"}, round_n=1)
+    episode_state.record_reply(ep, handle="a1", reply={"action": "accept"}, round_n=1)
     reply = ep.messages[-1]
     assert reply["header"]["kind"] == "exchange"
     assert "subkind" not in reply["header"]
@@ -455,7 +459,9 @@ def test_reply_ignores_unknown_move():
     """A move outside the closed vocabulary is dropped, never stamped as an
     invalid subkind (faithful, never fabricated)."""
     ep = _open()
-    l9_episode.record_reply(ep, handle="a1", reply={"action": "accept", "move": "bogus"}, round_n=1)
+    episode_state.record_reply(
+        ep, handle="a1", reply={"action": "accept", "move": "bogus"}, round_n=1
+    )
     assert "subkind" not in ep.messages[-1]["header"]
 
 
@@ -464,7 +470,7 @@ def test_reply_ignores_unknown_move():
 
 def test_open_episode_stores_opening_positions():
     """The snapshot is captured on the episode at open, before mediation."""
-    ep = l9_episode.open_episode(
+    ep = episode_state.open_episode(
         parent_room="sprint",
         short_id="abc123",
         workspace_id="ws-1",
@@ -486,7 +492,7 @@ def test_episode_record_renders_opening_positions(tmp_path, monkeypatch):
     from app.config import settings
 
     monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
-    ep = l9_episode.open_episode(
+    ep = episode_state.open_episode(
         parent_room="sprint",
         short_id="abc123",
         workspace_id="ws-1",
@@ -495,7 +501,7 @@ def test_episode_record_renders_opening_positions(tmp_path, monkeypatch):
         joined_intents="- a1: ship\n- a2: test",
         opening_positions={"a1": "ship it in Q3", "a2": "test first, Q4"},
     )
-    l9_episode.write_episode_record(ep, outcome="converged", metrics=None, tasks=None)
+    episode_state.write_episode_record(ep, outcome="converged", metrics=None, tasks=None)
     body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
     assert "## Opening Positions" in body
     assert "- **@a1**: ship it in Q3" in body
@@ -509,7 +515,7 @@ def test_episode_record_omits_opening_positions_when_absent(tmp_path, monkeypatc
     from app.config import settings
 
     monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
-    l9_episode.write_episode_record(_open(), outcome="rejected", metrics=None, tasks=None)
+    episode_state.write_episode_record(_open(), outcome="rejected", metrics=None, tasks=None)
     body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
     assert "## Opening Positions" not in body
 
@@ -522,7 +528,7 @@ _MISMATCH = [{"term": "done", "readings": {"a1": "shipped", "a2": "merged"}}]
 def test_record_term_check_stores_mismatches_and_clarifications():
     ep = _open()
     assert ep.term_mismatches == [] and ep.clarifications == {}
-    l9_episode.record_term_check(
+    episode_state.record_term_check(
         ep, mismatches=_MISMATCH, clarifications={"a1": "done means live", "a2": "   "}
     )
     assert ep.term_mismatches == _MISMATCH
@@ -533,16 +539,16 @@ def test_record_term_check_leaves_quality_metrics_alone():
     """The clarifying round is vocabulary repair, not a negotiation move: it must
     not read as a concession in MPC/GAR/SCR."""
     ep = _open()
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a1", reply={"action": "accept", "confidence": 0.9}, round_n=1
     )
-    l9_episode.record_reply(
+    episode_state.record_reply(
         ep, handle="a2", reply={"action": "accept", "confidence": 0.8}, round_n=1
     )
-    before = l9_episode.compute_metrics(ep)
+    before = episode_state.compute_metrics(ep)
     messages = len(ep.messages)
-    l9_episode.record_term_check(ep, mismatches=_MISMATCH, clarifications={"a1": "live"})
-    assert l9_episode.compute_metrics(ep) == before
+    episode_state.record_term_check(ep, mismatches=_MISMATCH, clarifications={"a1": "live"})
+    assert episode_state.compute_metrics(ep) == before
     assert len(ep.messages) == messages
 
 
@@ -552,12 +558,12 @@ def test_episode_record_renders_term_clarifications(tmp_path, monkeypatch):
 
     monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
     ep = _open()
-    l9_episode.record_term_check(
+    episode_state.record_term_check(
         ep,
         mismatches=_MISMATCH,
         clarifications={"a1": "done means live", "a2": "done means merged"},
     )
-    l9_episode.write_episode_record(ep, outcome="converged", metrics=None, tasks=None)
+    episode_state.write_episode_record(ep, outcome="converged", metrics=None, tasks=None)
     body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
     assert "## Term Clarifications" in body
     assert "- **done**" in body
@@ -572,7 +578,7 @@ def test_episode_record_omits_term_clarifications_when_absent(tmp_path, monkeypa
     from app.config import settings
 
     monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
-    l9_episode.write_episode_record(_open(), outcome="converged", metrics=None, tasks=None)
+    episode_state.write_episode_record(_open(), outcome="converged", metrics=None, tasks=None)
     body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
     assert "## Term Clarifications" not in body
 
@@ -585,7 +591,7 @@ def test_estimate_satisfaction_ordinal_distance():
     room minimum is the least-happy agent."""
     opening = {"growth": {"cap": "60"}, "risk": {"cap": "30"}}
     options = {"cap": ["30", "40", "50", "60"]}
-    sat = l9_episode.estimate_satisfaction(opening, {"cap": "50"}, options)
+    sat = episode_state.estimate_satisfaction(opening, {"cap": "50"}, options)
     assert sat["growth"] == round(1 - 1 / 3, 4)  # wanted 60, got 50 → one step
     assert sat["risk"] == round(1 - 2 / 3, 4)  # wanted 30, got 50 → two steps
     assert min(sat.values()) == sat["risk"]
@@ -594,14 +600,14 @@ def test_estimate_satisfaction_ordinal_distance():
 def test_estimate_satisfaction_exact_ask_scores_one():
     opening = {"a": {"cap": "50", "scope": "Full"}}
     options = {"cap": ["30", "40", "50"], "scope": ["Thin", "Mid", "Full"]}
-    sat = l9_episode.estimate_satisfaction(opening, {"cap": "50", "scope": "Full"}, options)
+    sat = episode_state.estimate_satisfaction(opening, {"cap": "50", "scope": "Full"}, options)
     assert sat["a"] == 1.0
 
 
 def test_estimate_satisfaction_skips_agents_and_values_it_cannot_score():
     opening = {"stated": {"cap": "40"}, "silent": {}, "offgrid": {"cap": "999"}}
     options = {"cap": ["30", "40", "50"]}
-    sat = l9_episode.estimate_satisfaction(opening, {"cap": "50"}, options)
+    sat = episode_state.estimate_satisfaction(opening, {"cap": "50"}, options)
     assert sat == {"stated": round(1 - 1 / 2, 4)}  # silent has no offer; 999 not on grid
 
 
@@ -611,7 +617,7 @@ def test_episode_record_renders_satisfaction(tmp_path, monkeypatch):
 
     monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
     metrics = {"min_satisfaction": 0.33, "satisfaction": {"a1": 0.33, "a2": 0.8}}
-    l9_episode.write_episode_record(_open(), outcome="converged", metrics=metrics, tasks=None)
+    episode_state.write_episode_record(_open(), outcome="converged", metrics=metrics, tasks=None)
     body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
     assert "- satisfaction: min 0.33 (least-happy of 2 agents" in body
 
@@ -624,7 +630,7 @@ def test_record_satisfaction_renders_without_siep_metrics(tmp_path, monkeypatch)
 
     monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
     metrics = {"min_satisfaction": 0.5, "satisfaction": {"a1": 0.5, "a2": 0.5}}
-    l9_episode.write_episode_record(_open(), outcome="converged", metrics=metrics, tasks=None)
+    episode_state.write_episode_record(_open(), outcome="converged", metrics=metrics, tasks=None)
     body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
     assert "MPC" not in body
     assert "- satisfaction: min 0.50" in body

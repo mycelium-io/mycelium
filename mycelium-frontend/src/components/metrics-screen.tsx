@@ -377,7 +377,7 @@ function EpisodesPanel({ rollup, rooms }: { rollup: EpisodeRollup; rooms: number
 
           <Note>
             Quality ratios are averaged over the {rollup.scored}{" "}
-            {rollup.scored === 1 ? "episode" : "episodes"} that committed with L9 metrics; an
+            {rollup.scored === 1 ? "episode" : "episodes"} that committed with IoC metrics; an
             episode still in progress contributes to the counts above but not to the ratios.
           </Note>
         </>

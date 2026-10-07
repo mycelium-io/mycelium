@@ -1,17 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Contract drift guard for the shared SLIM+L9 wire primitives (CLI side).
+"""Contract drift guard for the shared SLIM+wire primitives (CLI side).
 
-The CLI carries its own copy of the SLIM+L9 primitives
-(``mycelium.slim.{naming,client,l9}``) so the
+The CLI carries its own copy of the SLIM+message primitives
+(``mycelium.slim.{naming,client,message_format}``) so the
 thin ``uv tool`` CLI need not import the FastAPI/ML backend. A diverging
 ``mint_shared_secret`` / master secret / ``workspace/room`` scope / envelope
 shape / URN form means MLS group keys mismatch and this connector **silently
 can't join** the backend moderator's group, or its replies get dropped/misrouted
 (no app-level error).
 
-This test freezes the shared wire constants in ``contracts/slim-l9-wire.json`` at the
+This test freezes the shared wire constants in ``contracts/slim-wire.json`` at the
 repo root and asserts the **CLI** primitives reproduce them exactly, preventing
 silent wire-contract drift (no live SLIM node required).
 """
@@ -22,9 +22,9 @@ from pathlib import Path
 import pytest
 
 from mycelium.slim import identity as slim_identity
-from mycelium.slim import l9
-from mycelium.slim.l9 import room_episode as _room_episode
-from mycelium.slim.l9 import room_topic as _room_topic
+from mycelium.slim import message_format
+from mycelium.slim.message_format import room_episode as _room_episode
+from mycelium.slim.message_format import room_topic as _room_topic
 from mycelium.slim.naming import (
     _DEV_MASTER_SECRET,
     DEFAULT_CHANNEL_TOPIC,
@@ -36,7 +36,7 @@ from mycelium.slim.naming import (
     mint_shared_secret,
 )
 
-_CONTRACT_PATH = Path(__file__).resolve().parent.parent.parent / "contracts" / "slim-l9-wire.json"
+_CONTRACT_PATH = Path(__file__).resolve().parent.parent.parent / "contracts" / "slim-wire.json"
 
 
 def _contract() -> dict:
@@ -50,14 +50,14 @@ def test_contract_file_present():
 def test_ping_payload_matches_contract():
     """The CLI reads the ping payload type off the shared contract literal."""
     g = _contract()["ping"]
-    assert g["payload_type"] == l9.PING_PAYLOAD_TYPE
+    assert g["payload_type"] == message_format.PING_PAYLOAD_TYPE
 
     fields = dict.fromkeys(g["payload_fields"], "x")
     ping = {"l9": {"payload": {"type": g["payload_type"], "data": fields}}}
-    assert l9.ping_of(ping) == fields
+    assert message_format.ping_of(ping) == fields
     # Anything else on the channel is not a ping, however it is shaped.
-    assert l9.ping_of({"l9": {"payload": {"type": "message", "data": fields}}}) is None
-    assert l9.ping_of({"content": "hello"}) is None
+    assert message_format.ping_of({"l9": {"payload": {"type": "message", "data": fields}}}) is None
+    assert message_format.ping_of({"content": "hello"}) is None
 
 
 def test_shared_constants_match_contract():
@@ -110,7 +110,7 @@ def test_exchange_reply_serializes_to_contract():
     """The connector's serialized exchange reply is byte-for-byte the contract."""
     g = _contract()["envelope"]
     i = g["inputs"]
-    content = l9.build_reply_content(
+    content = message_format.build_reply_content(
         sender=i["sender"],
         recipients=i["recipients"],
         episode=i["episode"],
@@ -128,7 +128,7 @@ def test_knowledge_envelope_parses_to_contract_write():
 
     Guards the *parse* half of the memory-sync contract: given
     the exact envelope the backend produces (frozen in the contract), the CLI's
-    ``l9.kind_of`` / ``l9.payload_data_of`` — the two the connector's
+    ``message_format.kind_of`` / ``message_format.payload_data_of`` — the two the connector's
     ``apply_knowledge_message`` reads through — must recover every carried write
     field byte-for-byte. If the backend's produced shape and this parse ever drift,
     this gate goes red instead of silently breaking cross-machine memory sync.
@@ -139,9 +139,9 @@ def test_knowledge_envelope_parses_to_contract_write():
     # payload in ``l9.payload.data``, not the human-text field.)
     content = {"content": "", "l9": g["expected_envelope"]}
 
-    assert l9.kind_of(content) == l9.KNOWLEDGE_KIND
+    assert message_format.kind_of(content) == message_format.KNOWLEDGE_KIND
 
-    data = l9.payload_data_of(content)
+    data = message_format.payload_data_of(content)
     w = g["write"]
     assert data["key"] == w["key"]
     assert data["content"] == w["content"]
@@ -153,12 +153,12 @@ def test_knowledge_envelope_parses_to_contract_write():
 
 
 def test_valid_subkinds_match_contract():
-    """The CLI's kind/subkind vocabulary (used by the hidden `l9 send` plumbing)
-    is byte-for-byte the backend's ``app.services.l9.VALID_SUBKINDS`` table."""
+    """The CLI's kind/subkind vocabulary (used by the hidden `message send` plumbing)
+    is byte-for-byte the backend's ``app.services.message_format.VALID_SUBKINDS`` table."""
     g = {k: v for k, v in _contract()["valid_subkinds"].items() if k != "_comment"}
-    assert set(l9.VALID_KINDS) == set(g)
+    assert set(message_format.VALID_KINDS) == set(g)
     for kind, allowed in g.items():
-        assert l9.VALID_SUBKINDS[kind] == frozenset(allowed)
+        assert message_format.VALID_SUBKINDS[kind] == frozenset(allowed)
 
 
 def test_channel_name_topic_matches_contract():

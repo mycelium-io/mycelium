@@ -230,7 +230,7 @@
         <div class="nav-group-items">
           <a href="reference.html#board-reference" class="nav-link sub">Board</a>
           <a href="reference.html#flows" class="nav-link sub">Writing Flows</a>
-          <a href="reference.html#l9-protocol" class="nav-link sub">L9 Protocol</a>
+          <a href="reference.html#messages" class="nav-link sub">Messages</a>
         </div>
       </div>
       <div class="nav-group collapsed" data-nav-group="reference:observability">
@@ -1720,7 +1720,7 @@ role   = &quot;agent&quot;</code></pre>
         <li><strong>The role</strong>, from <code>auth.role_claim</code> if the token has it. Otherwise it comes from the <code>role</code> on the issuer&#x27;s block. People and agents usually come from different issuers, so most setups never need a role claim.</li>
       </ul>
       <h2 id="auth-who-wrote-it">Who wrote it</h2>
-      <p>With auth on, a write is attributed to the handle in the token. That covers memory authorship (<code>created_by</code>, <code>updated_by</code>), message senders and L9 attribution. The handle in the request itself only matters if it disagrees:</p>
+      <p>With auth on, a write is attributed to the handle in the token. That covers memory authorship (<code>created_by</code>, <code>updated_by</code>), message senders and message attribution. The handle in the request itself only matters if it disagrees:</p>
       <ul>
         <li>If the request leaves the handle out or gives the same one, the token&#x27;s handle is used. <code>@Alice</code> and <code>alice</code> count as the same.</li>
         <li>If the request names a different handle, it&#x27;s rejected with a <strong>403</strong> instead of being quietly saved under the token&#x27;s handle.</li>

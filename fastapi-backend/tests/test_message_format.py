@@ -1,24 +1,26 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Tests for the L9 envelope module (app/services/l9.py)."""
+"""Tests for the message module (app/services/message_format.py)."""
 
 import json
 import uuid
 
 import pytest
 
-from app.services import l9
-from app.services.l9_models import Kind
+from app.services import message_format
+from app.services.message_models import Kind
 
 
 def test_episode_and_topic_urns():
-    assert l9.episode_urn("sprint", "abc123") == "urn:ioc:mycelium:episode:sprint:abc123"
-    assert l9.topic_urn("sprint") == "urn:concept:mycelium:sprint"
+    assert (
+        message_format.episode_urn("sprint", "abc123") == "urn:ioc:mycelium:episode:sprint:abc123"
+    )
+    assert message_format.topic_urn("sprint") == "urn:concept:mycelium:sprint"
 
 
 def test_build_minimal_envelope_defaults():
-    env = l9.build_envelope(kind=Kind.exchange, episode="urn:ioc:mycelium:episode:r:s")
+    env = message_format.build_envelope(kind=Kind.exchange, episode="urn:ioc:mycelium:episode:r:s")
     assert env.header.protocol == "SSTP"
     assert env.header.subprotocol == "mycelium"
     assert env.header.kind is Kind.exchange
@@ -33,7 +35,7 @@ def test_build_minimal_envelope_defaults():
 
 
 def test_build_envelope_full():
-    env = l9.build_envelope(
+    env = message_format.build_envelope(
         kind=Kind.commit,
         subkind="converged",
         episode="urn:ioc:mycelium:episode:r:s",
@@ -84,19 +86,19 @@ def test_build_envelope_full():
 )
 def test_subkind_validation(kind, subkind, ok):
     if ok:
-        l9.validate_subkind(kind, subkind)
+        message_format.validate_subkind(kind, subkind)
     else:
-        with pytest.raises(l9.L9ValidationError):
-            l9.validate_subkind(kind, subkind)
+        with pytest.raises(message_format.MessageValidationError):
+            message_format.validate_subkind(kind, subkind)
 
 
 def test_build_envelope_rejects_bad_subkind():
-    with pytest.raises(l9.L9ValidationError):
-        l9.build_envelope(kind=Kind.commit, subkind="abort", episode="e")
+    with pytest.raises(message_format.MessageValidationError):
+        message_format.build_envelope(kind=Kind.commit, subkind="abort", episode="e")
 
 
 def test_envelope_roundtrip_via_dict():
-    env = l9.build_envelope(
+    env = message_format.build_envelope(
         kind=Kind.knowledge,
         subkind="query",
         episode="urn:ioc:mycelium:episode:r:s",
@@ -105,31 +107,31 @@ def test_envelope_roundtrip_via_dict():
         mas_id="mas",
         payload_data={"intent": "prior agreements on this topic"},
     )
-    as_dict = l9.envelope_to_dict(env)
+    as_dict = message_format.envelope_to_dict(env)
     # exclude_none keeps the wire shape lean
     assert "policy" not in as_dict["header"]
-    parsed = l9.parse_envelope(as_dict)
+    parsed = message_format.parse_envelope(as_dict)
     assert parsed.header.message is not None and env.header.message is not None
     assert parsed.header.message.id == env.header.message.id
     assert parsed.payload.data == env.payload.data
     # also from a JSON string
-    parsed2 = l9.parse_envelope(json.dumps(as_dict))
+    parsed2 = message_format.parse_envelope(json.dumps(as_dict))
     assert parsed2.header.kind is Kind.knowledge
 
 
 def test_parse_envelope_rejects_invalid_subkind():
-    env = l9.build_envelope(kind=Kind.commit, subkind="converged", episode="e")
-    as_dict = l9.envelope_to_dict(env)
+    env = message_format.build_envelope(kind=Kind.commit, subkind="converged", episode="e")
+    as_dict = message_format.envelope_to_dict(env)
     as_dict["header"]["subkind"] = "ready"
-    with pytest.raises(l9.L9ValidationError):
-        l9.parse_envelope(as_dict)
+    with pytest.raises(message_format.MessageValidationError):
+        message_format.parse_envelope(as_dict)
 
 
 def test_extract_parent_id():
-    env = l9.build_envelope(kind=Kind.exchange, episode="e")
+    env = message_format.build_envelope(kind=Kind.exchange, episode="e")
     assert env.header.message is not None
-    content = json.dumps({"payload": {"round": 1}, "l9": l9.envelope_to_dict(env)})
-    assert l9.extract_parent_id(content) == env.header.message.id
-    assert l9.extract_parent_id('{"payload": {}}') is None
-    assert l9.extract_parent_id("not json") is None
-    assert l9.extract_parent_id({}) is None
+    content = json.dumps({"payload": {"round": 1}, "l9": message_format.envelope_to_dict(env)})
+    assert message_format.extract_parent_id(content) == env.header.message.id
+    assert message_format.extract_parent_id('{"payload": {}}') is None
+    assert message_format.extract_parent_id("not json") is None
+    assert message_format.extract_parent_id({}) is None

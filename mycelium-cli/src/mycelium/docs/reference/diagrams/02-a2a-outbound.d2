@@ -50,7 +50,7 @@ hub.responder -> remote: "5. send_to_a2a(card, text, Bearer)\nHTTPS JSON-RPC · 
 remote -> hub.responder: "6. Message / Task (+ context_id)" {class: a2a}
 
 # --- Post the reply back onto SLIM as @researcher ---
-hub.responder -> hub.mod: "7. build L9 reply -> channel.send\na2a_bridge.py:342-365" {class: http}
+hub.responder -> hub.mod: "7. build reply message -> channel.send\na2a_bridge.py:342-365" {class: http}
 hub.mod -> slim: "8. publish as @researcher (MLS)" {class: slim}
 slim -> summoner: "9. reply delivered" {class: slim}
 

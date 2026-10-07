@@ -12,7 +12,7 @@ admin panel bolted onto the side, it is one of the two intended ways in.
   backend through the app's own origin (this is what keeps the Dockerized UI
   working without CORS special-casing).
 - `src/components/` — the workspace shell and its panels: chat, memory browser,
-  plan, agents, and the L9 protocol inspector.
+  plan, agents, and the message inspector.
 - `src/lib/` — the API client and shared helpers.
 - `src/mocks/` — fixtures for tests and offline development; see its README.
 
@@ -23,7 +23,7 @@ admin panel bolted onto the side, it is one of the two intended ways in.
   is right.
 - **Live updates arrive over two server-sent event streams**, with the transcript
   replayed on load so a freshly opened tab is never blank. Room messages and the
-  L9 wire are channels on one; app events and notifications are channels on the
+  message wire are channels on one; app events and notifications are channels on the
   other, whose URL never changes so navigation cannot interrupt a feed the
   backend does not replay (`src/lib/sse.ts` for the framing,
   `src/lib/stream-hub.ts` for the fan-out). A browser allows only ~6 concurrent
@@ -37,7 +37,7 @@ admin panel bolted onto the side, it is one of the two intended ways in.
   is guided on those terms: the "Install CLI" header button (and the dashboard,
   when no hub answers) hands over the commands to paste and watches `/health`
   to know they worked.
-- **The L9 inspector's promoted message types are contract-driven.** The
+- **The message inspector's promoted message types are contract-driven.** The
   whitelist is frozen in `contracts/` and asserted from both sides, so the UI
   and CLI can't drift on what counts as chat.
 

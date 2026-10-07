@@ -4,8 +4,8 @@
 """Projecting ``log/episodes/*`` records into the episode summary shape.
 
 Each coordination session closes with a record written to the parent room's
-memory (see :func:`app.services.l9_episode.write_episode_record`): a small
-markdown header plus the full causally-linked L9 envelope chain as a ```jsonl```
+memory (see :func:`app.services.episode_state.write_episode_record`): a small
+markdown header plus the full causally-linked message chain as a ```jsonl```
 block. This module turns one of those files back into structured fields — kind/
 subkind, episode URN, participants, and the MPC/GAR/SCR consensus metrics — for
 the episodes route and for cross-entity search.
@@ -25,7 +25,7 @@ from typing import Any
 import yaml
 
 from app.services.filesystem import get_room_dir, list_memory_files
-from app.services.l9 import SYSTEM_ACTOR_ID
+from app.services.message_format import SYSTEM_ACTOR_ID
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +174,7 @@ def live_episode_summary(room_name: str) -> dict[str, Any] | None:
     lets a caller show "in progress" (``outcome: "open"``) before the record is
     written, so a negotiation is visible while it runs, not only after it ends.
     """
-    from app.services import l9
+    from app.services import message_format
     from app.services.room_channels import BACKEND_AGENT, manager
 
     managed = manager.get(room_name)
@@ -192,7 +192,7 @@ def live_episode_summary(room_name: str) -> dict[str, Any] | None:
     return {
         "short_id": urn.rsplit(":", 1)[-1],
         "episode": urn,
-        "topic": l9.topic_urn(room_name),
+        "topic": message_format.topic_urn(room_name),
         "outcome": "open",
         "subkind": None,
         "participants": participants,
@@ -203,7 +203,7 @@ def live_episode_summary(room_name: str) -> dict[str, Any] | None:
         "updated_at": "",
         "updated_by": "",
         # A negotiation held in a task's thread is nested in it.
-        "within": None if l9.is_live_episode(room_name, urn) else urn,
+        "within": None if message_format.is_live_episode(room_name, urn) else urn,
         "flow": None,
         "trace": [],
         "current_step": None,

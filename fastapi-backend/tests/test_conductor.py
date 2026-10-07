@@ -17,21 +17,21 @@ from typing import Any
 import pytest
 import yaml
 
-from app.services import conductor, l9, protocols
+from app.services import conductor, message_format, protocols
 from app.services.filesystem import (
     get_room_dir,
     list_memory_files,
     read_memory_file,
     write_memory_file,
 )
-from app.services.l9_models import Kind
-from app.services.l9_slim import serialize_content
+from app.services.message_models import Kind
+from app.services.message_slim import serialize_content
 from app.services.persister import record_from
 from tests.fakes import FakeManaged, FakeManager, FakePersister
 
 ROOM = "conducted"
-THREAD = l9.episode_urn(ROOM, "t3aa11bb")
-LIVE = l9.live_episode_urn(ROOM)
+THREAD = message_format.episode_urn(ROOM, "t3aa11bb")
+LIVE = message_format.live_episode_urn(ROOM)
 
 
 def _reply(
@@ -48,13 +48,13 @@ def _reply(
         data = action
     else:
         data = {"action": action} if action else {"note": "no stance"}
-    env = l9.build_envelope(
+    env = message_format.build_envelope(
         kind=Kind.exchange,
         episode=episode,
         sender=handle,
         sender_role=role,
         recipients=["conductor"],
-        topic=l9.topic_urn(ROOM),
+        topic=message_format.topic_urn(ROOM),
         payload_type="reply",
         payload_data=data,
     )
@@ -561,12 +561,12 @@ async def test_a_rooms_own_protocol_runs_under_its_name():
 def _summon(text: str, *, episode: str, sender: str = "julia") -> Any:
     from app.services.persister import find_summons
 
-    env = l9.build_envelope(
+    env = message_format.build_envelope(
         kind=Kind.exchange,
         episode=episode,
         sender=sender,
         sender_role="human",
-        topic=l9.topic_urn(ROOM),
+        topic=message_format.topic_urn(ROOM),
         payload_type="message",
     )
     return env, find_summons({"content": text}), text
@@ -879,12 +879,12 @@ async def test_every_post_of_a_run_carries_a_line_a_surface_can_draw():
 def test_a_reload_carries_a_conductor_line_in_the_messages_metadata():
     from app.services.persister import stored_message_from_record
 
-    env = l9.build_envelope(
+    env = message_format.build_envelope(
         kind=Kind.exchange,
         episode=THREAD,
         sender="conductor",
         recipients=["api"],
-        topic=l9.topic_urn(ROOM),
+        topic=message_format.topic_urn(ROOM),
         payload_type="message",
         payload_data={conductor.LINE_KEY: {"event": "turn", "step": "propose", "to": "api"}},
     )

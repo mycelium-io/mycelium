@@ -207,7 +207,7 @@ async def _send_memory_write_knowledge(
     ``ingest_local`` makes the transcript/UI bus see it even if SLIM never loops
     the broadcast back; it only records, so it cannot re-enter this write path.
     """
-    from app.services.l9_slim import serialize_content
+    from app.services.message_slim import serialize_content
 
     envelope = memory_sync.build_knowledge_envelope(
         room=room_name,

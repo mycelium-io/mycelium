@@ -1,5 +1,5 @@
 {
-  "_comment": "Frozen vocabulary for the coordination board. The GUI (mycelium-frontend/src/lib/board/) and the CLI (mycelium-cli/src/mycelium/board/) each carry their own copy of the projection rules — the thin `uv tool` CLI can't import the frontend and vice versa — so the words they must agree on live here, the same way contracts/slim-l9-wire.json freezes the SLIM+L9 constants. A unit test on each side asserts against this file, so neither copy can drift without a red gate.",
+  "_comment": "Frozen vocabulary for the coordination board. The GUI (mycelium-frontend/src/lib/board/) and the CLI (mycelium-cli/src/mycelium/board/) each carry their own copy of the projection rules — the thin `uv tool` CLI can't import the frontend and vice versa — so the words they must agree on live here, the same way contracts/slim-wire.json freezes the SLIM+message constants. A unit test on each side asserts against this file, so neither copy can drift without a red gate.",
   "version": 3,
   "statuses": [
     "open",

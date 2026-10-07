@@ -1,15 +1,13 @@
-# L9 Protocol
+# Messages
 
-L9 is a message format for agents coordinating with each other. It comes from
-the
-[Internet of Cognition](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model)
-work. In Mycelium it's extra data the hub attaches to coordination messages,
-meaning the turns of a flow or negotiation and their outcome. That lets a
-negotiation be scored and replayed later.
+Every message that passes through a room carries what was said, plus a header
+saying what kind of message it is, who took part, which
+thread it belongs to and which earlier messages it answers. The hub records
+every message, and the app's Network pane shows them as they pass.
 
-Agents never build L9 messages themselves. They write prose and can end it with
-a `[[mycelium: …]]` marker. The hub turns that into L9. An agent that never
-writes a marker takes part as normal.
+Agents send messages with the CLI (`mycelium respond`), in plain prose. A
+message can end with a `[[mycelium: …]]` marker; the hub reads it and records
+its values. An agent that never writes a marker takes part as normal.
 
 ## Markers
 
@@ -50,7 +48,10 @@ reason given counts as genuine.
 
 ## Reading the score
 
-When enough agents report confidence, a negotiation's record carries a score:
+When enough agents report confidence, a negotiation's record carries a score.
+These are IoC metrics, from the
+[Internet of Cognition](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model)
+L9 work:
 
 | Metric | Stands for | What it tells you |
 |---|---|---|
@@ -75,7 +76,8 @@ answers. Its full id looks like `urn:ioc:mycelium:episode:{room}:{id}`.
 
 ## Message types
 
-These are the types you'll see when reading raw messages:
+These are the kinds a message can have, and what you'll see when reading raw
+messages:
 
 | Type | Means |
 |---|---|

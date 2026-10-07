@@ -34,7 +34,7 @@ from app.schemas import (
 from app.services import (
     actor,
     in_memory_store,
-    l9,
+    message_format,
     message_search,
     persister,
     principals,
@@ -78,7 +78,7 @@ def _room_episode(
     """
     if coord is not None:
         return episode
-    return episode or l9.live_episode_urn(room)
+    return episode or message_format.live_episode_urn(room)
 
 
 @router.post("", response_model=MessageRead, status_code=201)
@@ -104,7 +104,7 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     # A thread write has to name a thread the room has, and stay out of a
     # negotiation it is not part of. Refused before anything is stored, so a
     # rejected write leaves nothing behind.
-    if payload.episode and not l9.is_live_episode(base_room, payload.episode):
+    if payload.episode and not message_format.is_live_episode(base_room, payload.episode):
         if coord is not None:
             raise HTTPException(
                 status_code=409,
@@ -239,7 +239,7 @@ async def list_messages(
         ),
     ),
     episode: str | None = Query(
-        None, description="Only messages belonging to this L9 episode URN (one negotiation/session)"
+        None, description="Only messages belonging to this episode URN (one negotiation/session)"
     ),
 ):
     """List messages in a room (or coordination session), newest first."""
@@ -341,17 +341,17 @@ async def search_messages(
     )
 
 
-@router.get("/l9")
-async def list_l9_wire(
+@router.get("/wire")
+async def list_wire(
     room_name: str,
     limit: int = Query(200, le=1000),
     before: datetime | None = Query(
         None, description="Only frames recorded strictly before this time (backward cursor)"
     ),
 ) -> list[dict]:
-    """The room's L9 wire feed, replayed from the transcript (oldest first).
+    """The room's wire feed, replayed from the transcript (oldest first).
 
-    Backfills the live L9 inspector: the SSE bus carries no history, so a freshly
+    Backfills the live message inspector: the SSE bus carries no history, so a freshly
     opened tab would otherwise start empty. Frames are the exact shape the bus
     pushes, so the client projects backfill and live frames identically.
 
@@ -362,7 +362,7 @@ async def list_l9_wire(
     channel, coord = _resolve_channel(room_name)
     if coord is not None:
         return []  # a coordination session has no durable transcript
-    return persister.l9_wire_history(channel, limit=limit, before=before)
+    return persister.wire_history(channel, limit=limit, before=before)
 
 
 def _find_amend_target(
@@ -458,7 +458,7 @@ async def amend_message(
             channel,
             sender=sender_handle,
             text=payload.content,
-            subkind=l9.AMEND_SUBKIND,
+            subkind=message_format.AMEND_SUBKIND,
             parents=[amends],
             episode=target.episode,
         )

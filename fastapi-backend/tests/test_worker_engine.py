@@ -19,14 +19,14 @@ from typing import Any
 import pytest
 import yaml
 
-from app.services import assignments, l9, tasks, worker_engine
+from app.services import assignments, message_format, tasks, worker_engine
 from app.services.filesystem import (
     get_room_dir,
     list_memory_files,
     read_memory_file,
     write_memory_file,
 )
-from app.services.l9_models import Kind
+from app.services.message_models import Kind
 from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
 
 _ROOM = "worker-room"
@@ -268,12 +268,12 @@ async def test_off_the_floor_a_worker_says_nothing(monkeypatch: pytest.MonkeyPat
 
 
 def _env(sender: str, episode: str, recipients: list[str] | None = None) -> Any:
-    return l9.build_envelope(
+    return message_format.build_envelope(
         kind=Kind.exchange,
         episode=episode,
         sender=sender,
         recipients=recipients,
-        topic=l9.topic_urn(_ROOM),
+        topic=message_format.topic_urn(_ROOM),
         payload_type="message",
     )
 
@@ -407,7 +407,7 @@ async def test_a_revision_that_names_nobody_goes_to_the_reviewer_who_settles_it_
 def test_the_seams_gate_on_the_worker_kind(monkeypatch: pytest.MonkeyPatch):
     _register("sec", "persona")
     engine, _managed, _manager = _engine()
-    env = _env("julia", l9.live_episode_urn(_ROOM))
+    env = _env("julia", message_format.live_episode_urn(_ROOM))
     engine.handle_addressed(_ROOM, "sec", env, "hi")
     engine.handle_summon(_ROOM, "sec", env, ["sec"], "@sec hi")
     engine.handle_notice(_ROOM, {"subkind": "filed", "key": "work/x", "episode": "e", "for": "sec"})
@@ -418,7 +418,7 @@ def test_a_role_named_beside_a_conductor_is_not_asked_anything():
     _register("agent-1")
     _register("conductor", "conductor")
     engine, _managed, _manager = _engine()
-    env = _env("julia", l9.live_episode_urn(_ROOM))
+    env = _env("julia", message_format.live_episode_urn(_ROOM))
     engine.handle_summon(
         _ROOM, "agent-1", env, ["conductor", "agent-1"], "@conductor swarm @agent-1: go"
     )

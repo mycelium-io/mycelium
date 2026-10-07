@@ -50,8 +50,8 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
      "GDE-001", "GUIDES · SETUP · AGENTS · WORK · SECURITY · HELP",
      "Step-by-step guides: running Mycelium on a server, the Mac app, sharing a hub, starting and managing agents, the board, sign-in, and troubleshooting."),
     ("reference", "reference.html", "Reference · mycelium", "Reference",
-     "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · FLOWS · L9",
-     "Architecture, CLI and configuration reference, board commands, writing flows, the L9 protocol, metrics, and notes for contributors."),
+     "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · FLOWS · MESSAGES",
+     "Architecture, CLI and configuration reference, board commands, writing flows, messages, metrics, and notes for contributors."),
 ]
 
 # Sections, in render order per page.
@@ -111,7 +111,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     # CLI, config and dependency blocks are injected after architecture.
     ("reference/board-reference.md",  "board-reference",    "reference",   "Reference",    "Board"),
     ("reference/flows.md",            "flows",              "reference",   "Reference",    "Writing Flows"),
-    ("reference/l9-protocol.md",      "l9-protocol",        "reference",   "Reference",    "L9 Protocol"),
+    ("reference/messages.md",         "messages",           "reference",   "Reference",    "Messages"),
     ("reference/metrics.md",          "metrics",            "reference",   "Observability", "Metrics"),
     ("reference/status-providers.md", "status-providers",   "reference",   "Contributing", "Adding a Status Provider"),
     ("reference/keycloak-oidc.md",    "keycloak-oidc",      "reference",   "Contributing", "Keycloak / OIDC Setup"),
