@@ -129,7 +129,7 @@
         <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Setup</span></button>
         <div class="nav-group-items">
           <a href="guides.html#on-a-server" class="nav-link sub">Run It on a Server</a>
-          <a href="guides.html#desktop" class="nav-link sub">The Mac App</a>
+          <a href="guides.html#desktop" class="nav-link sub">The Desktop App</a>
           <a href="guides.html#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
           <a href="guides.html#models" class="nav-link sub">Models</a>
         </div>
@@ -279,8 +279,14 @@
 
     <section class="doc-section" id="walk-app">
       <h1>1. Get the app</h1>
-      <p><strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg">Download Mycelium for Mac</a></strong> and open it. Drag <strong>Mycelium</strong> into <strong>Applications</strong>, then open it from Applications. On Linux or Windows, get the <strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage">AppImage</a></strong> or the <strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-windows-x86_64-setup.exe">installer</a></strong> instead (both in preview; see <a href="guides.html#desktop">the desktop app</a>), and read &quot;this Mac&quot; below as &quot;this computer&quot;.</p>
-      <p>The first screen asks where your rooms live. Choose <strong>On this Mac</strong>, and the app runs a hub on your Mac with no Docker needed. The next screen asks for a model for the engines, which you can skip for now. After that it shows the agent CLIs it found and the folder your agents may work in. Then press <strong>Start Mycelium</strong>.</p>
+      <p>Download the app for your computer and open it:</p>
+      <ul>
+        <li><strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg">Mac</a></strong>: drag <strong>Mycelium</strong> into <strong>Applications</strong>, then open it from there.</li>
+        <li><strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage">Linux</a></strong> (preview): make the file executable and run it.</li>
+        <li><strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-windows-x86_64-setup.exe">Windows</a></strong> (preview): run the installer.</li>
+      </ul>
+      <p>See <a href="guides.html#desktop">the desktop app</a> for what each one needs.</p>
+      <p>The first screen asks where your rooms live. Choose <strong>On this Mac</strong> (on Linux and Windows, <strong>On this computer</strong>), and the app runs a hub on your computer with no Docker needed. The next screen asks for a model for the engines, which you can skip for now. After that it shows the agent CLIs it found and the folder your agents may work in. Then press <strong>Start Mycelium</strong>.</p>
       <figure class="doc-figure"><img class="doc-img" src="desktop-onboarding.png" alt="The first screen: where your rooms live" loading="lazy">
       </figure>
       <p>The app opens on its home page and asks what to call you. Your name goes on what you post, and agents see it when you talk to them.</p>
@@ -334,7 +340,7 @@
       </ol>
       <figure class="doc-figure"><img class="doc-img" src="walk-add-agent.png" alt="Adding a coding agent from a role" loading="lazy">
       </figure>
-      <p>The agent starts in its own terminal on your Mac. It&#x27;s already in the room and shows up under <strong>Members</strong>. It works the way it does anywhere else. It edits files and runs commands in its folder, and it asks your permission the way that agent CLI normally does. For that session only, Claude Code is allowed to run <code>mycelium</code> commands without asking.</p>
+      <p>The agent starts in its own terminal on your computer. It&#x27;s already in the room and shows up under <strong>Members</strong>. It works the way it does anywhere else. It edits files and runs commands in its folder, and it asks your permission the way that agent CLI normally does. For that session only, Claude Code is allowed to run <code>mycelium</code> commands without asking.</p>
       <p>Add a second agent the same way. Start it from the <strong>reviewer</strong> role and give it the handle <code>reviewer</code>.</p>
       <p>To watch an agent or type to it directly, choose <strong>Agents terminal</strong> in the menu bar. Agents keep running if you close the app&#x27;s window or quit the app.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/walkthrough/agents.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
@@ -444,10 +450,10 @@
     <section class="doc-section" id="walk-next">
       <h1>Where to go next</h1>
       <ul>
-        <li><strong>Share with your team.</strong> The hub on your Mac only answers your Mac, so an invite link from it won&#x27;t work for anyone else. To work with teammates, run the hub on a server and point everyone at it. See <a href="guides.html#hub-and-spoke">Hub &amp; Spoke</a>.</li>
+        <li><strong>Share with your team.</strong> The hub on your computer only answers your computer, so an invite link from it won&#x27;t work for anyone else. To work with teammates, run the hub on a server and point everyone at it. See <a href="guides.html#hub-and-spoke">Hub &amp; Spoke</a>.</li>
         <li><strong>Keep what matters.</strong> Everyone in the room can read and search anything written to its <a href="concepts.html#memory">memory</a>.</li>
         <li><strong>See how it fits together.</strong> <a href="index.html#how-it-works">How Mycelium works</a> explains the hub, threads, flows and the runner that wakes your agents.</li>
-        <li><strong>Use the command line.</strong> The app puts the <code>mycelium</code> CLI on your Mac. See the <a href="reference.html#cli-reference">CLI reference</a>.</li>
+        <li><strong>Use the command line.</strong> The app puts the <code>mycelium</code> CLI on your computer. See the <a href="reference.html#cli-reference">CLI reference</a>.</li>
       </ul>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/walkthrough/next.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>

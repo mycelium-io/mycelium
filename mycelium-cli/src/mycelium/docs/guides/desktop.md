@@ -1,60 +1,64 @@
-# The Mac App
+# The Desktop App
 
-Mycelium for Mac is the quickest way to get going. It runs everything Mycelium
-needs on your Mac with no Docker and no setup in a terminal. It also starts
-your coding agents for you when you ask.
+The desktop app is the quickest way to get going. It runs everything Mycelium
+needs on your computer, with no Docker and no setup in a terminal. It also
+starts your coding agents for you when you ask.
 
-**[Download Mycelium for Mac](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg)**
-(Apple silicon, macOS 13 or later)
+| Your computer | Download | Needs |
+|---|---|---|
+| Mac | **[Mycelium for Mac](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg)** | Apple silicon, macOS 13 or later |
+| Linux (preview) | **[Linux AppImage](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage)** | x86-64, glibc 2.35 or later (Ubuntu 22.04, Fedora 36, Debian 12 or newer) |
+| Windows (preview) | **[Windows installer](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-windows-x86_64-setup.exe)** | x64, Windows 10 or later |
 
-The same app runs on Linux and Windows, as a preview:
-
-- **[Linux AppImage](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage)**
-  (x86-64, glibc 2.35 or later: Ubuntu 22.04, Fedora 36, Debian 12 and
-  newer). Make it executable (`chmod +x Mycelium-linux-x86_64.AppImage`) and
-  run it. Nothing is installed.
-- **[Windows installer](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-windows-x86_64-setup.exe)**
-  (x64, Windows 10 or later). It installs for you alone, with no
-  administrator prompt. It isn't code-signed yet, so the first time Windows
-  asks: choose **More info**, then **Run anyway**.
-
-Everything below works the same there. Where this page says "this Mac", read
-"this computer", and ⌘ is Ctrl.
+The Linux and Windows builds are previews: every release builds them, and
+they get less testing than the Mac app.
 
 ## Install
 
-1. Open the download and drag **Mycelium** into **Applications**.
-2. Open Mycelium from Applications. The first time, macOS asks whether to open
-   an app downloaded from the internet. Choose **Open**.
-3. A few short steps set it up:
-   - **Where your rooms live.** **On this Mac** runs a hub on this Mac.
-     **On my team's hub** joins rooms someone else runs. Paste the hub's
-     address or open an invite link a teammate sent you.
-   - **A model**, for a hub on this Mac. Pick a provider and paste its key. The
-     [engines](#engines) think with it. You can skip this and add it later.
-   - **Agents on this Mac.** This shows the agent CLIs it found and the folder
-     that agents started from Mycelium may work in. It also asks whether herdr
-     should bring your agents back after it restarts. That adds a hook to each
-     agent CLI's settings, so it's your choice.
-   - **Usage stats**, for a hub on this Mac. This decides whether the hub may
-     send anonymous counts of tasks, flows and agents to an analytics address.
-     It's off unless you tick it. Nothing is sent until an address is set in
-     the hub's config (`telemetry.analytics_destination`), and the app doesn't
-     set one. See [Metrics](#metrics) for exactly what would be sent.
-   - **Ready to start.** This shows what you chose. Then press
-     **Start Mycelium**.
+- **Mac:** open the download and drag **Mycelium** into **Applications**, then
+  open it from there. The first time, macOS asks whether to open an app
+  downloaded from the internet. Choose **Open**.
+- **Linux:** make the file executable
+  (`chmod +x Mycelium-linux-x86_64.AppImage`) and run it. It runs from that one
+  file, so there's nothing to install.
+- **Windows:** run the installer. It installs for you alone, with no
+  administrator prompt. The installer isn't code-signed, so the first time
+  Windows asks before running it: choose **More info**, then **Run anyway**.
+
+The app then walks you through a few short steps. The app calls your computer
+"this Mac" on a Mac and "this computer" elsewhere; this page says "this
+computer".
+
+- **Where your rooms live.** **On this computer** runs a hub here. **On my
+  team's hub** joins rooms someone else runs. Paste the hub's address or open
+  an invite link a teammate sent you.
+- **A model**, for a hub on this computer. Pick a provider and paste its key.
+  The [engines](#engines) think with it. You can skip this and add it later.
+- **Agents on this computer.** This shows the agent CLIs it found and the
+  folder that agents started from Mycelium may work in. It also asks whether
+  herdr should bring your agents back after it restarts. That adds a hook to
+  each agent CLI's settings, so it's your choice.
+- **Usage stats**, for a hub on this computer. This decides whether the hub
+  may send anonymous counts of tasks, flows and agents to an analytics
+  address. It's off unless you tick it. Nothing is sent until an address is
+  set in the hub's config (`telemetry.analytics_destination`), and the app
+  doesn't set one. See [Metrics](#metrics) for exactly what would be sent.
+- **Ready to start.** This shows what you chose. Then press
+  **Start Mycelium**.
 
 ![The first step: where your rooms live](desktop-onboarding.png)
 
-Before you start, **What this sets up on your Mac** lists every change it
-makes. `mycelium` and `herdr` are linked into `~/.local/bin` so agents can run
-them, and your settings and rooms live in `~/.mycelium`. It needs no admin
-password and writes nothing outside your home folder.
+Before you start, **What this sets up** lists every change it makes. Your
+settings and rooms live in `~/.mycelium` (on Windows, `.mycelium` in your user
+folder). On a Mac or Linux, `mycelium` and `herdr` are linked into
+`~/.local/bin` so agents can run them; on Windows, the app puts its own folder
+on the PATH of everything it starts. It needs no administrator password and
+writes nothing outside your home folder.
 
-> **A hub on this Mac is yours alone.** It runs only while the app is running,
-> and only this Mac can reach it, so teammates can't join rooms on it. To share
-> rooms, run the hub on a server and have everyone choose **On my team's hub**.
-> See [Hub & Spoke](#hub-and-spoke).
+> **A hub on this computer is yours alone.** It runs only while the app is
+> running, and only this computer can reach it, so teammates can't join rooms
+> on it. To share rooms, run the hub on a server and have everyone choose
+> **On my team's hub**. See [Hub & Spoke](#hub-and-spoke).
 
 ## What's inside
 
@@ -80,14 +84,15 @@ agent opens in a herdr terminal and is already a member of the room. The same
 dialog adds engines, A2A services and coding agent sessions you already have
 open. See [Start Agents From the App](#machines).
 
-To watch or talk to an agent, use **Agents terminal** in the menu bar. You can
-also open the **Machines** page and choose **Open terminal**.
+To watch or talk to an agent, use **Agents terminal** in the app's menu. You
+can also open the **Machines** page and choose **Open terminal**.
 
-## The menu bar
+## The app's menu
 
-Mycelium lives in the menu bar while it runs. Closing the window leaves it
-running, and **Quit Mycelium** stops the hub. Agents you started keep running
-in herdr either way and pick up again when the hub is back.
+While it runs, Mycelium has an icon in the menu bar on a Mac, and in the
+system tray on Linux and Windows. Closing the window leaves it running, and
+**Quit Mycelium** stops the hub. Agents you started keep running in herdr
+either way and pick up again when the hub is back.
 
 The menu shows the state of the hub, the SLIM node and the runner. It also has
 these items:
@@ -97,7 +102,7 @@ these items:
 - **Health check…**, which shows each part the app runs and whether it's
   working. When something isn't, it says what to do. It runs the same checks as
   `mycelium doctor --mode desktop`.
-- **Settings…** (⌘,), for where rooms live, starting at login, the
+- **Settings…** (⌘, on a Mac, Ctrl+, elsewhere), for where rooms live, starting at login, the
   [model](#models), the agents' folder and usage stats. **Save** restarts
   Mycelium with the change.
 - **Check for Updates…**
@@ -117,7 +122,7 @@ Everything the app runs writes to `~/.mycelium/logs/desktop.log`.
 
 ## The command line
 
-The installer on the docs site installs the app too.
+On an Apple silicon Mac, the installer on the docs site installs the app too.
 `curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash` puts it in
 Applications, links its `mycelium` CLI into `~/.local/bin` and opens it.
 `mycelium desktop serve` runs the same hub without the window.

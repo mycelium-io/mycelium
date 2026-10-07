@@ -8,7 +8,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "index.html#quickstart",
     "t": "Quick Start",
-    "x": "On a Mac with Apple silicon, there are four steps: Download Mycelium for Mac and open it. When it asks where your rooms live, choose On this Mac. Press + next to Rooms to create a room. Open Members, press Add and choose Your machine. Give the agent a handle such as builder and press Add to room. Hand it a task. Type /task Add a gift message to orders @builder into the message box, using the handle you chose. On Linu",
+    "x": "With the desktop app, there are four steps: Download the app for your computer and open it: the Mac app (Apple silicon), the Linux AppImage or the Windows installer. Linux and Windows are in preview. When it asks where your rooms live, choose On this Mac (On this computer on Linux and Windows). Press + next to Rooms to create a room. Open Members, press Add and choose Your machine. Give the agent a handle such as bui",
     "p": "Get Started"
   },
   {
@@ -75,7 +75,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "walkthrough.html#walk-app",
     "t": "1. Get the app",
-    "x": "Download Mycelium for Mac and open it. Drag Mycelium into Applications, then open it from Applications. On Linux or Windows, get the AppImage or the installer instead (both in preview; see the desktop app), and read \"this Mac\" below as \"this computer\". The first screen asks where your rooms live. Choose On this Mac, and the app runs a hub on your Mac with no Docker needed. The next screen asks for a model for the eng",
+    "x": "Download the app for your computer and open it: Mac: drag Mycelium into Applications, then open it from there. Linux (preview): make the file executable and run it. Windows (preview): run the installer. See the desktop app for what each one needs. The first screen asks where your rooms live. Choose On this Mac (on Linux and Windows, On this computer), and the app runs a hub on your computer with no Docker needed. The",
     "p": "Walkthrough"
   },
   {
@@ -117,7 +117,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "walkthrough.html#walk-next",
     "t": "Where to go next",
-    "x": "Share with your team. The hub on your Mac only answers your Mac, so an invite link from it won't work for anyone else. To work with teammates, run the hub on a server and point everyone at it. See Hub & Spoke. Keep what matters. Everyone in the room can read and search anything written to its memory. See how it fits together. How Mycelium works explains the hub, threads, flows and the runner that wakes your agents. U",
+    "x": "Share with your team. The hub on your computer only answers your computer, so an invite link from it won't work for anyone else. To work with teammates, run the hub on a server and point everyone at it. See Hub & Spoke. Keep what matters. Everyone in the room can read and search anything written to its memory. See how it fits together. How Mycelium works explains the hub, threads, flows and the runner that wakes your",
     "p": "Walkthrough"
   },
   {
@@ -640,58 +640,58 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "guides.html#desktop",
-    "t": "The Mac App",
+    "t": "The Desktop App",
     "s": "Setup",
-    "x": "Mycelium for Mac is the quickest way to get going. It runs everything Mycelium needs on your Mac with no Docker and no setup in a terminal. It also starts your coding agents for you when you ask. Download Mycelium for Mac (Apple silicon, macOS 13 or later) The same app runs on Linux and Windows, as a preview: Linux AppImage (x86-64, glibc 2.35 or later: Ubuntu 22.04, Fedora 36, Debian 12 and newer). Make it executabl",
+    "x": "The desktop app is the quickest way to get going. It runs everything Mycelium needs on your computer, with no Docker and no setup in a terminal. It also starts your coding agents for you when you ask. Your computer Download Needs Mac Mycelium for Mac Apple silicon, macOS 13 or later Linux (preview) Linux AppImage x86-64, glibc 2.35 or later (Ubuntu 22.04, Fedora 36, Debian 12 or newer) Windows (preview) Windows insta",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-install",
     "t": "Install",
-    "s": "Setup › The Mac App",
-    "x": "Open the download and drag Mycelium into Applications. Open Mycelium from Applications. The first time, macOS asks whether to open an app downloaded from the internet. Choose Open. A few short steps set it up: - Where your rooms live. On this Mac runs a hub on this Mac. On my team's hub joins rooms someone else runs. Paste the hub's address or open an invite link a teammate sent you. - A model, for a hub on this Mac.",
+    "s": "Setup › The Desktop App",
+    "x": "Mac: open the download and drag Mycelium into Applications, then open it from there. The first time, macOS asks whether to open an app downloaded from the internet. Choose Open. Linux: make the file executable (chmod +x Mycelium-linux-x86_64.AppImage) and run it. It runs from that one file, so there's nothing to install. Windows: run the installer. It installs for you alone, with no administrator prompt. The installe",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-whats-inside",
     "t": "What's inside",
-    "s": "Setup › The Mac App",
+    "s": "Setup › The Desktop App",
     "x": "The app carries everything, pinned to versions tested together: the Mycelium hub and its UI; a SLIM node for the rooms' messages; herdr, where your agents run as terminals you can watch and type to; the mycelium CLI, which agents use to work in rooms; the runner, which starts your agents and wakes them; Pi, which the engines think with, and the model that powers memory search so search works offline. It doesn't inclu",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-adding-agents",
     "t": "Adding agents",
-    "s": "Setup › The Mac App",
-    "x": "In a room, open Members, press Add and pick Your machine. Start from a role or write your own instructions, then press Add to room. The agent opens in a herdr terminal and is already a member of the room. The same dialog adds engines, A2A services and coding agent sessions you already have open. See Start Agents From the App. To watch or talk to an agent, use Agents terminal in the menu bar. You can also open the Mac",
+    "s": "Setup › The Desktop App",
+    "x": "In a room, open Members, press Add and pick Your machine. Start from a role or write your own instructions, then press Add to room. The agent opens in a herdr terminal and is already a member of the room. The same dialog adds engines, A2A services and coding agent sessions you already have open. See Start Agents From the App. To watch or talk to an agent, use Agents terminal in the app's menu. You can also open the M",
     "p": "Guides"
   },
   {
-    "u": "guides.html#desktop-the-menu-bar",
-    "t": "The menu bar",
-    "s": "Setup › The Mac App",
-    "x": "Mycelium lives in the menu bar while it runs. Closing the window leaves it running, and Quit Mycelium stops the hub. Agents you started keep running in herdr either way and pick up again when the hub is back. The menu shows the state of the hub, the SLIM node and the runner. It also has these items: Open Mycelium, Agents terminal and Your agents… Start at login Health check…, which shows each part the app runs and wh",
+    "u": "guides.html#desktop-the-apps-menu",
+    "t": "The app's menu",
+    "s": "Setup › The Desktop App",
+    "x": "While it runs, Mycelium has an icon in the menu bar on a Mac, and in the system tray on Linux and Windows. Closing the window leaves it running, and Quit Mycelium stops the hub. Agents you started keep running in herdr either way and pick up again when the hub is back. The menu shows the state of the hub, the SLIM node and the runner. It also has these items: Open Mycelium, Agents terminal and Your agents… Start at l",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-updates",
     "t": "Updates",
-    "s": "Setup › The Mac App",
+    "s": "Setup › The Desktop App",
     "x": "The app checks for a new release shortly after it opens and whenever you choose Check for Updates…. If one is out, it asks before installing it and then restarts. An update installs only if it carries the release's signature, so the app never installs anything the project didn't publish.",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-logs",
     "t": "Logs",
-    "s": "Setup › The Mac App",
+    "s": "Setup › The Desktop App",
     "x": "Everything the app runs writes to ~/.mycelium/logs/desktop.log.",
     "p": "Guides"
   },
   {
     "u": "guides.html#desktop-the-command-line",
     "t": "The command line",
-    "s": "Setup › The Mac App",
-    "x": "The installer on the docs site installs the app too. curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash puts it in Applications, links its mycelium CLI into ~/.local/bin and opens it. mycelium desktop serve runs the same hub without the window.",
+    "s": "Setup › The Desktop App",
+    "x": "On an Apple silicon Mac, the installer on the docs site installs the app too. curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash puts it in Applications, links its mycelium CLI into ~/.local/bin and opens it. mycelium desktop serve runs the same hub without the window.",
     "p": "Guides"
   },
   {

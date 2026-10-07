@@ -117,15 +117,17 @@ On an Apple silicon Mac the installer puts Mycelium in Applications, links its
 
 ### On Linux or Windows: the app (preview)
 
-The same app, built by every release:
-**[Linux AppImage](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage)** (x86-64; make it
-executable and run it, nothing to install) or
-**[Windows installer](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-windows-x86_64-setup.exe)** (x64; installs
-for you alone, and isn't code-signed yet, so Windows asks before the first run).
+The same app runs on Linux and Windows:
+
+- **[Linux AppImage](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage)**
+  (x86-64): make it executable and run it. There's nothing to install.
+- **[Windows installer](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-windows-x86_64-setup.exe)**
+  (x64): it installs for you alone. The installer isn't code-signed, so
+  Windows asks before the first run.
 
 More in [The desktop app](https://mycelium-io.github.io/mycelium/#desktop).
 
-### On Linux or a server: the CLI and Docker
+### On a server: the CLI and Docker
 
 Off a Mac the same installer installs the CLI, and `mycelium install` brings up
 the stack in **Docker**:
