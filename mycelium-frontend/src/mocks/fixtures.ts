@@ -224,7 +224,7 @@ const checkoutMoves: CheckoutMove[] = [
     say: "agreed." },
 ];
 
-const checkoutPacketChain: MyceliumMessage[] = [
+const checkoutMessageChain: MyceliumMessage[] = [
   ...checkoutMoves.map((m, i) => ({
     header: {
       protocol: "ioc",
@@ -286,7 +286,7 @@ const checkoutNegotiation: MockMessage[] = (() => {
 
 // The message chain as persister bus frames: bare `{header, payload}` under content,
 // with the flat sender_handle/message_type/created_at the inspector reads.
-const checkoutWireFrames: Record<string, unknown>[] = checkoutPacketChain.map((env, i) => ({
+const checkoutWireFrames: Record<string, unknown>[] = checkoutMessageChain.map((env, i) => ({
   message_type: `l9_${env.header.kind}`,
   sender_handle: env.header.participants?.actors?.[0]?.id ?? "aligner",
   created_at: iso(44 - i),
@@ -1272,7 +1272,7 @@ const checkout: RoomFixture = {
   episodeDetails: {
     b9c1d3: { ...checkoutConcordEpisode, messages: [] },
     c3e5a7: { ...checkoutAccordEpisode, messages: [] },
-    e4f1a2: { ...checkoutEpisodeSummary, messages: checkoutPacketChain },
+    e4f1a2: { ...checkoutEpisodeSummary, messages: checkoutMessageChain },
     f10a2c: { ...checkoutGatedEpisode, messages: [] },
     a2b3c4: { ...checkoutFanOutEpisode, messages: [] },
     c7d8e9: { ...checkoutRoundRobinEpisode, messages: [] },
