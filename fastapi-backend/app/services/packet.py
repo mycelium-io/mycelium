@@ -7,12 +7,10 @@ Mycelium packets: construction and validation.
 A packet is Mycelium's own message envelope: a fixed header (kind/subkind,
 participants, episode URN, message id + causal parents, topic) plus a typed
 payload. It is how the hub labels and records what passes through a room,
-which is what the Network pane shows. The header layout started from IoC's L9
-bindings (outshift-open/ioc-protocols-models); it is not an L9 implementation.
+which is what the Network pane shows.
 
 Every message's content JSON carries its packet under the ``l9`` key. The key
-is a stored name, kept so existing transcripts read unchanged, and it is
-additive: agents and UIs that ignore it keep working.
+is additive: agents and UIs that ignore it keep working.
 
 In the subkind vocabulary below, a failed negotiation commits as ``rejected``.
 """
@@ -34,7 +32,7 @@ from app.services.packet_models import (
     ParticipantSet,
 )
 
-PROTOCOL = "SSTP"  # stored header values, kept so existing transcripts read unchanged
+PROTOCOL = "SSTP"
 VERSION = "0.0.6"
 SUBPROTOCOL_MYCELIUM = "mycelium"
 

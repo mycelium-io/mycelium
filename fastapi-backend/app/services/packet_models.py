@@ -3,11 +3,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Mycelium's packet models: the shape of every message the hub records.
-#
-# Started from the datamodel-codegen output of outshift-open/ioc-protocols-models
-# (SSTP/language_bindings/python/ai/outshift/data_model.py, commit 93773a5) and
-# owned here since. The stored field names are still IoC's, so these models
-# read every transcript the hub has written.
 
 from __future__ import annotations
 

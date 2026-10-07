@@ -151,9 +151,8 @@
         SIEP sub-protocol.
       </p>
       <p>
-        L9 is not Mycelium&#x27;s message format. Every message in a room is a <em>Mycelium packet</em>,
-        Mycelium&#x27;s own format. Each packet states its kind, who took part, which conversation it
-        belongs to, and which earlier messages it answers. It also carries a typed body. The Network
+        Every message in a room is a <em>Mycelium packet</em>. Each packet states its kind, who
+        took part, which conversation it belongs to, and which earlier messages it answers. It also carries a typed body. The Network
         pane in the app shows the packets passing through a room.
       </p>
       <p>Five parts work together:</p>
@@ -406,7 +405,7 @@ flowchart LR
           <tr>
             <td><strong>Mycelium packets</strong></td>
             <td>Mycelium&#x27;s own message format: the header (kind, who took part, the episode, the messages it answers) and a typed body. Every message in a room is one, and the Network pane shows them.</td>
-            <td><code>app/services/packet.py</code> builds packets and checks them; <code>packet_models.py</code> holds their shape. The header layout started from <code>ioc-protocols-models</code>, and its stored names are unchanged.</td>
+            <td><code>app/services/packet.py</code> builds packets and checks them; <code>packet_models.py</code> holds their shape.</td>
           </tr>
           <tr>
             <td><strong>SLIM</strong></td>
@@ -643,20 +642,19 @@ sequenceDiagram
 
     <section class="doc-section" id="versions">
       <h1>Versions</h1>
-      <p>Where each part lives, and what it was built from:</p>
+      <p>Where each part lives:</p>
       <table class="l9">
         <thead><tr><th>Part</th><th>Version</th><th>Notes</th></tr></thead>
         <tbody>
           <tr><td>Mycelium packets</td><td>header <code>version</code> <code>"0.0.6"</code>, sub-protocol <code>mycelium</code></td><td><code>app/services/packet.py</code> builds the packets and holds the list of message kinds (<code>VALID_SUBKINDS</code>).</td></tr>
-          <tr><td>Packet models</td><td>started from spec commit <code>93773a5</code></td><td><code>packet_models.py</code>. The header layout came from <code>ioc-protocols-models</code>; Mycelium owns the models now and does not track the upstream spec.</td></tr>
+          <tr><td>Packet models</td><td></td><td><code>packet_models.py</code> holds the shape of a packet.</td></tr>
           <tr><td>Episode records</td><td></td><td><code>episode_state.py</code> keeps the records, the aligner&#x27;s scores, and the conductor&#x27;s steps (<code>flow</code> and <code>trace</code>). Records are saved at <code>log/episodes/{short_id}.md</code>.</td></tr>
           <tr><td>Concord and Accord</td><td>built in</td><td><code>protocols.py</code>, with Accord&#x27;s merging in <code>frame.py</code>. Post <code>@conductor show concord</code> or <code>@conductor show accord</code> anywhere in a room to see one written out as YAML. A room can replace a series by saving its own version as a <code>protocols/&lt;name&gt;</code> memory.</td></tr>
         </tbody>
       </table>
       <p>
         Packets travel as JSON inside the room&#x27;s SLIM channel. Nothing depends on an outside
-        routing service. The L9 pieces are Concord, Accord and the IoC quality scores; everything
-        else on the wire is Mycelium&#x27;s own.
+        routing service.
       </p>
     </section>
 

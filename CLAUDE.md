@@ -161,11 +161,10 @@ agent replies. Modules: `app/services/packet.py` (construction + the subkind
 table), `packet_models.py` (the pydantic models, `MyceliumPacket`),
 `episode_state.py` (episode tracking + the IoC quality metrics MPC/GAR/SCR +
 `log/episodes/{short_id}.md` records), `packet_slim.py` (packets over SLIM).
-The header layout started from IoC's L9 bindings, so stored names still say so
-(the `l9` content key, `l9_<kind>` bus types, `urn:ioc:` episode URNs,
-`protocol: SSTP`); they are kept as they are so existing transcripts read
-unchanged. **L9 itself is Concord, Accord and the IoC metrics**, nothing else:
-the packet format is not L9.
+Some stored names carry `l9`/`ioc` (the `l9` content key, `l9_<kind>` bus
+types, `urn:ioc:` episode URNs, `protocol: SSTP`); they are part of the stored
+format. IoC L9 is the conductor's Concord and Accord flows and the MPC/GAR/SCR
+metrics.
 
 **Participation is a CLI primitive.** Any awake caller joins a room and coordinates
 with two stateless HTTP calls (`app/routes/participate.py`): `mycelium await` (a
