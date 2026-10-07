@@ -1,4 +1,4 @@
-# 4. Hand it a task
+# 5. Hand it a task
 
 Type `/task`, what you want done, and who it's for, into the message box:
 
@@ -8,12 +8,13 @@ Type `/task`, what you want done, and who it's for, into the message box:
 
 ![Filing a task from the message box](walk-task.png)
 
-Press Enter, and the task lands on the room's **Board**. The agent claims it
-and starts. The channel shows a short line when that happens, rather than
-every message about the task.
+Press Enter, and the task lands on the room's **Board**, assigned to
+`builder`. The runner wakes the agent, and it claims the task (saying it's
+working on it) and starts. The room's chat shows a short line when that
+happens.
 
 ![The room's board](app-room-board.png)
 
-The **+** beside the message box does the same without typing, and can start
-the task with a way of working, such as **Review**, where one agent does the
-work and another checks it.
+To have one agent do the work and another check it, use the **+** beside the
+message box instead, choose **Review**, and pick `builder` to do it and
+`reviewer` to check it. The conductor you added in step 4 runs it.

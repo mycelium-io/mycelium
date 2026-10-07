@@ -1,93 +1,73 @@
-# Structured Memory Guide
+# Structured Memory
 
 When an agent finishes a stretch of work and goes away, the next agent (or
 person) to pick it up starts from nothing unless the work was written down.
-This guide shows a simple set of key prefixes that makes that easy: what was
-built, why, what the user wants, where things stand, and how to do things
+This guide is a habit for writing it down as you go: why choices were made,
+what the user wants, where things stand, what failed, and how to do things
 again.
 
-The commands here are ones your agents run as they work. Put the habit in
-your agent's instructions so it writes these down as it goes.
+The commands are ones your agents run as they work. Put the habit in your
+agent's instructions (its `agents/<handle>/notes`) so it writes these down as it
+goes.
 
-## The prefixes
+## Where each thing goes
 
-```
-work/        What was built or changed
-decisions/   Why choices were made
-context/     User preferences and background
-status/      Current state of ongoing work
-procedures/  Steps you'll want to repeat later
-```
+| Write it under | When | Shows on the board? |
+|---|---|---|
+| `decisions/` | A choice was made, and why | Yes |
+| `failed/` | Something didn't work, so nobody tries it again | Yes, as blocked |
+| `status/` | Where something stands right now | Yes |
+| `context/` | Background and what the user wants | No |
+| `procedures/` | Steps you'll want to repeat | No |
 
-When a key starts with one of these, `memory set` checks the rest of the key
-and adds a timestamp to the content.
-
-`work/`, `decisions/` and `status/` are also [board](#board) namespaces, so
-memories there show up on the room's board too.
-
-## Using them
-
-### 1. Pick a room
+What was built belongs with the task it was built for: write it into the task's
+thread, and the task's body when it's resolved. Don't write it under `work/`,
+which is where tasks live: every memory there shows up on the board as a task
+someone could claim.
 
 ```bash
-mycelium room create project-x
-mycelium room use project-x
-```
-
-### 2. Write things down along the way
-
-```bash
-# What was built
-mycelium memory set work/api-server "Set up FastAPI with auth endpoints"
-mycelium memory set work/database "Created PostgreSQL schema, 3 tables"
-
 # Why the choices were made
 mycelium memory set decisions/framework "FastAPI over Flask: async + type hints"
-mycelium memory set decisions/auth "JWT tokens, 1hr expiry, refresh via cookie"
+
+# What didn't work
+mycelium memory set failed/single-writer "Serializing all writes stalled under load"
 
 # What the user wants
 mycelium memory set context/goal "Build MVP for investor demo by Friday"
-mycelium memory set context/constraints "Must run on single $20/mo VPS"
 
 # Where things stand
-mycelium memory set status/api "PASSING: all 12 endpoints tested"
 mycelium memory set status/deploy "BLOCKED: waiting on DNS propagation"
 
 # Steps to repeat later
-mycelium memory set procedures/deploy-vps "1. ssh vps  2. cd /app && git pull  3. systemctl restart app  4. curl healthcheck"
-mycelium memory set procedures/release "1. bump the version  2. tag it  3. watch the release workflow"
+mycelium memory set procedures/deploy-vps "1. ssh vps  2. cd /app && git pull  3. systemctl restart app"
 ```
 
-### 3. Read them back
+`memory set` replaces the old value, so to update one, set it again.
+
+## Reading them back
 
 ```bash
+mycelium memory decisions   # everything under decisions/
 mycelium memory status      # everything under status/
-mycelium memory work        # what's been built
-mycelium memory decisions   # why things are the way they are
-mycelium memory context     # background and preferences
-mycelium memory procedures  # how to do things again
-```
-
-### 4. Update as things change
-
-`memory set` replaces the old value, so just set the new one:
-
-```bash
-mycelium memory set status/deploy "ACTIVE: deployed to vps.example.com"
+mycelium memory context
+mycelium memory procedures
+mycelium memory search "why did we pick FastAPI"
 ```
 
 ## Key rules
 
-After the prefix, a key can use lowercase letters, numbers, hyphens, dots and
-underscores, and must start with a letter or number. Uppercase letters are
-lowercased for you. A key that breaks these rules is rejected before anything
-is sent to the hub.
+For keys under `work/`, `decisions/`, `status/`, `context/` and `procedures/`,
+`memory set` checks the name after the prefix and records when it was written.
+That name can use lowercase letters, numbers, hyphens, dots and underscores
+(capitals are lowercased for you), must start with a letter or number, and
+can't contain another `/`:
 
-- `work/api-server` works
+- `decisions/auth` works
 - `status/v2.deploy` works
 - `decisions/Why We Chose X` is rejected (spaces)
+- `context/api/shape` is rejected (a second `/`)
 
-Keys with any other prefix aren't checked:
-
-- `custom/anything`
-- `research/index-perf`
+The check runs in the CLI, before anything is sent to the hub. Keys under any
+other prefix, such as `failed/` or `research/`, aren't checked. Engines write
+deeper keys such as `context/summary/<task>` through the hub, so you can read
+those with `memory get` but not write them with `memory set`.

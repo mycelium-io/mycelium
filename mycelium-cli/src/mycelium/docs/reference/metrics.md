@@ -8,7 +8,7 @@ A hub keeps three kinds of numbers:
 | **Backend metrics** | What the backend is doing: memory, embeddings, model calls, messaging, latency | Kept in the running backend. Exported over OpenTelemetry if you turn that on |
 | **Agent telemetry** | What your agents report over OpenTelemetry | The optional collector |
 
-The app's **Metrics** page (open it from the status bar) shows the first two,
+The app's **Metrics** page (open it from the strip along the bottom of the app) shows the first two,
 as its Usage and System tabs.
 
 ## Usage
@@ -26,7 +26,7 @@ records one event each time:
 | `mycelium.agent_joined` | An agent is added to a room | its adapter (`claude_code`, `cursor`, `worker`, ...) |
 
 Each of the app's ways to start work maps onto these. A plain task is filed
-and resolved. Review, Split and Settle finish as a flow or a negotiation
+and resolved. Review, Split (a swarm) and Settle finish as a flow or a negotiation
 inside a task.
 
 Every event also carries the release, the time, and the hub's id: a random
@@ -69,9 +69,11 @@ mycelium config set telemetry.send_product_analytics true   # or false
 mycelium config apply
 ```
 
-Events are POSTed as JSON, or in Loki's push format when the address contains
-`/loki/`. The destination must be HTTPS, or plain HTTP to this machine
-(`localhost`, `127.0.0.1`, `host.docker.internal`).
+Events go only to the address in `telemetry.analytics_destination`. With
+sharing on and no destination set, nothing is sent. Events are POSTed as JSON,
+or in Loki's push format when the address contains `/loki/`. The destination
+must be HTTPS, or plain HTTP to this machine (`localhost`, `127.0.0.1`,
+`host.docker.internal`).
 
 ## Backend metrics
 
@@ -106,10 +108,14 @@ mycelium config apply
 mycelium metrics status         # is the collector running, and is the config right
 mycelium metrics show           # an overview
 mycelium metrics show mycelium  # the backend's activity in detail
-mycelium metrics show cost      # estimated cost of the backend's model calls, by room
+mycelium metrics show cost      # estimated model cost, where token counts were reported
 mycelium metrics show --json    # everything collected, as JSON
 mycelium metrics reset          # clear the metrics collected on this machine
 ```
+
+`metrics show cost` multiplies token counts by each model's price. Engine
+calls go through Pi, which reports no token counts, so for them it has nothing
+to show.
 
 ### Exporting them over OpenTelemetry (optional)
 
@@ -126,14 +132,15 @@ mycelium config apply
 
 Where to point it:
 
-- **A hosted OTLP backend**, such as Grafana Cloud or Honeycomb. Put its auth
-  header in `~/.mycelium/.env` as `OTEL_EXPORTER_OTLP_HEADERS`.
+- **A hosted OTLP backend**, such as Grafana Cloud or Honeycomb. Set the
+  endpoint to it, and its auth header with
+  `mycelium config set telemetry.otlp_headers "x-honeycomb-team=<key>"`.
 - **A local Grafana**, with the Docker stack: set the endpoint to
   `http://mycelium-grafana:4318` and run `mycelium up --grafana`. That starts
   Grafana's all-in-one image and imports Mycelium's dashboard. It opens at
-  `http://localhost:3001` (admin / admin). To also forward to a hosted
-  backend, set `OTEL_EXPORTER_OTLP_ENDPOINT` and its headers in
-  `~/.mycelium/.env`.
+  `http://localhost:3001` (admin / admin). To also forward everything it
+  receives to a hosted backend, set `telemetry.forward_endpoint` (and
+  `telemetry.otlp_headers` for its auth).
 - **The Mac app** runs no collector or Grafana, so set the endpoint to one you
   run yourself, for example `http://127.0.0.1:4318` for a collector on the
   same Mac.
@@ -177,6 +184,8 @@ Under `$MYCELIUM_DATA_DIR` (`~/.mycelium/` by default):
 [telemetry]
 enabled                = false  # export backend traces and metrics over OTLP
 otlp_endpoint          = ""     # where to; the Docker stack's collector if unset
+otlp_headers           = ""     # headers on every export, such as a hosted backend's auth
+forward_endpoint       = ""     # the local Grafana also forwards here
 send_product_analytics = false  # share usage stats
 analytics_destination  = ""     # where shared usage events go
 install_id             = ""     # set by `mycelium install`; a hub without one makes its own

@@ -1,5 +1,10 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-# Keycloak / OIDC setup
+# Keycloak / OIDC Setup
+
+*For contributors working on the Mycelium source.* The commands below run from
+a checkout of the repository and use its development compose files, which an
+installed Mycelium doesn't have. To turn on sign-in for a real hub, see
+[Authentication](#auth).
 
 This guide gets [authentication](#auth) working end to end on your machine,
 using Keycloak as the identity provider. When you're done, the hub will
@@ -196,7 +201,7 @@ agents". People and agents are often in separate realms. Add a
 `role = "agent"`. A token only passes against the issuer it came from.
 
 To give each agent its own identity on the SLIM channel as well, see
-[Security Planes](#security-planes). That's separate from the API auth this
+[Running a Shared Hub](#security-planes-per-member-slim-identity). That's separate from the API auth this
 guide sets up.
 
 ## Not for production

@@ -2,10 +2,8 @@
 
 A room's memory is the set of notes everyone in the room shares: decisions,
 what's been tried, how things work, what people are doing. Each memory is a
-markdown note with a key like `decisions/storage`. Agents and people read and
-write them from the CLI, the chat or the app, and you can search them by
-meaning, not just by exact words. People mostly use the app; agents use the
-CLI:
+markdown note with a key like `decisions/storage`. People mostly read and
+write it in the app; agents use the CLI:
 
 ```bash
 mycelium memory set decisions/storage "Rooms are folders; memory is markdown files"
@@ -13,80 +11,77 @@ mycelium memory get decisions/storage
 mycelium memory search "how do we store things"
 ```
 
+You can search it by meaning, not just by exact words. The search model runs
+on the hub, with no API key or outside service.
+
 ## What goes where
 
-There are three places information can live:
+There are two places information can live:
 
-1. **An agent's own notes.** Files your agent keeps for itself, like
-   `SOUL.md` or its own notes, stay on your machine. They aren't shared or
-   searchable by anyone else.
-2. **Room memory.** What the whole team should know. Agents read and write
-   it with `mycelium memory`, from any machine, and people in the app.
-3. **The search index.** Built automatically from room memory so you can
-   search it. You never write to it directly, and it can always be rebuilt
-   from the notes.
+1. **The agent's own files.** What a coding agent keeps for itself outside
+   Mycelium, such as its `CLAUDE.md` or notes in its folder, stays on that
+   machine. Nobody else sees it.
+2. **Room memory.** What the whole team should know. Everyone in the room can
+   read and search it, from any machine.
 
 A simple rule: if a teammate should be able to find it, put it in room memory.
 
+An agent's instructions in Mycelium are room memory too: they're saved as
+`agents/<handle>/notes`, which anyone in the room can read and edit.
+
+## Keys and folders
+
+Keys use `/` to group related memories. The names are up to you, but these are
+the usual ones:
+
+| Folder | What's in it | On the board? |
+|---|---|---|
+| `work/` | Tasks. File them with `mycelium board new`. | Yes, as tasks |
+| `decisions/` | Decisions the team made, and ones waiting on an answer | Yes |
+| `status/` | Where something stands right now | Yes |
+| `failed/` | Things that didn't work, so nobody tries them again | Yes, as blocked |
+| `context/` | Background, preferences, and what engines save (summaries, decisions) | No |
+| `procedures/` | Steps to repeat later | No |
+| `agents/` | Each member's instructions | No |
+| `protocols/` | The room's own [flows](#flows) | No |
+| `log/` | Records of flows and negotiations | No |
+
+```bash
+mycelium memory set "failed/single-writer" "Serializing all writes stalled under load"
+mycelium memory ls decisions/
+```
+
+`memory set` on a key that already exists replaces it and bumps its version
+number. Other options: `--file` (`-f`) reads the value from a file (`-` for
+stdin), `--tags` (`-t`) adds comma-separated tags, and `--no-embed` leaves a
+memory out of search, for a large note you only ever read by key.
+
+The [Structured Memory](#structured-memory) guide covers a habit for agents
+writing these down as they work.
+
 ## It lives on the hub
 
-Room memory is stored on the hub. Other machines don't keep a copy. Every
-`memory` command, including `get`, `ls`, `search` and the category views
-(`memory decisions`, `status`, `work`, `context`, `procedures`), asks the hub
-directly, and `memory set` writes straight to it.
-
-So two machines always see the same thing. It also means memory commands need
-the hub to be reachable. If it's down, or `server.api_url` points to the wrong
-place, the command says so rather than answering with something out of
-date.
+Room memory is stored only on the hub. Every `memory` command asks the hub
+directly, so two machines always see the same thing. If the hub can't be
+reached, the command says so rather than answering from something out of date:
 
 ```bash
 mycelium config get server.api_url   # which hub this machine uses
 mycelium status                      # is it up?
 ```
 
-Every memory written is indexed for search on the hub. The search model runs
-locally and doesn't need an API key or any outside service.
-
-## Naming keys
-
-Keys use `/` to group related memories. The names are up to you, but these are
-the usual ones, and they make `memory ls <prefix>/` handy:
-
-```bash
-# Decisions the team made
-mycelium memory set "decisions/storage" "Rooms are folders; memory is markdown files"
-
-# Things that didn't work, so nobody tries them again
-mycelium memory set "failed/single-writer" "Serializing all writes stalled under load"
-
-# What someone is working on (--handle says who wrote it)
-mycelium memory set "status/prometheus" "Wiring up the aligner" --handle prometheus-agent
-
-# List a group
-mycelium memory ls decisions/
-mycelium memory ls failed/
-```
-
-`memory set` on a key that already exists replaces it and bumps its version
-number, so you can see how it changed.
-
-Other useful options on `memory set`: `--file` (`-f`) reads the value from a
-file (`-` for stdin), `--tags` (`-t`) adds comma-separated tags, and
-`--no-embed` skips indexing it for search.
-
-## How it's stored
-
 On the hub, each memory is a markdown file with YAML frontmatter at
-`~/.mycelium/rooms/{room}/{key}.md`, with the search index next to it. You
-don't need to work with these files directly. Use `mycelium memory`, which
-works the same on the hub and on every other machine.
-
-To see a memory exactly as it's stored:
+`~/.mycelium/rooms/{room}/{key}.md`, with the search index beside it. To see a
+memory exactly as it's stored:
 
 ```bash
 mycelium memory get decisions/storage --raw
 ```
+
+> **If you run the hub.** The memory files are ordinary files, so you can
+> inspect them, back them up or edit them in bulk. The hub picks up changes
+> while it runs; `mycelium memory reindex` rebuilds search if it ever looks
+> out of date.
 
 ### Your own fields
 
@@ -97,118 +92,65 @@ updated later without them:
 
 ```bash
 mycelium memory set work/api-server "Blocked behind the custody change" \
-  -m status=open -m owner=@julia
+  -m status=open -m priority=high
 ```
 
-They come back as `meta`, both in `--raw` and from the API (`MemoryRead.meta`):
-
-```bash
-curl -s $HUB/api/rooms/atlas/memory/work/api-server | jq .meta
-# { "status": "open", "owner": "@julia" }
-```
-
-> **If you run the hub.** The memory files are ordinary files, so you can
-> inspect them, back them up or edit them in bulk. Edits made outside
-> Mycelium aren't in the search index until you run `mycelium memory reindex`.
-> The index is also rebuilt when the backend starts, and it picks up file
-> changes while it's running.
+They come back as `meta`, both in `--raw` and from the API.
 
 ## Discussing a memory
 
-Every memory has its own thread, the same kind of thread a [board](#board)
-task has. So a discussion about a design note can stay with the note, instead
-of scrolling past in the room:
+Every memory can have its own thread, the same kind a [board](#board) task
+has, so a discussion about a design note stays with the note:
 
 ```bash
 mycelium board send context/api-shape "this predates the v2 routes, still true?"
 mycelium board messages context/api-shape
 ```
 
-These are the board's commands. They take a task, a thread id, or any memory
-key. The room's chat only shows a short line saying the memory was discussed,
-not the messages.
-
-Any memory can be discussed, including the ones Mycelium writes itself, like
-an `agents/` profile, a `log/` record or `context/synthesis`. But only memories
-under `decisions/`, `status/`, `work/` and `failed/` show up on the board as
-work to do. A `skills/` note with a thread won't appear there as something to
-claim.
-
 ## Linking memories
 
-Memories can link to each other, like pages in a wiki. There are two ways to
-write a link, and they mean the same thing:
+Memories can link to each other, like pages in a wiki. These mean the same
+thing:
 
 ```markdown
 We chose Postgres because of [[context/stack]].
 We chose Postgres because of myc://context/stack.
 ```
 
-`[[key]]` is the one you'll usually type. `myc://key` also works in
-frontmatter and URLs. A link can point to a section and have its own text:
-
-```markdown
-[[context/stack#vector-store|how retrieval works]]
-```
-
-### Backlinks
+A link can point to a section and have its own text:
+`[[context/stack#vector-store|how retrieval works]]`.
 
 Before changing a memory, an agent can check what links to it:
 
 ```bash
 mycelium memory links context/stack
+mycelium memory links --check        # broken links, and memories nothing links to
 ```
 
-```
-context/stack
+In the app, `/room/{room}/graph` draws the room's memories as a graph.
 
-→ links to
-  ✓ procedures/deploy    wikilink
-
-← referenced by (2)
-  decisions/db           wikilink
-  work/api-server        wikilink
-```
-
-To check the whole room for broken links, and for memories nothing links to:
-
-```bash
-mycelium memory links --check
-```
-
-In the app, `/room/{room}/graph` draws the room's memories as a graph, colored
-by group, with broken links and unlinked memories marked. It's a good way to
-see the overall shape of a room and what's been left hanging.
-
-### Typed links
-
-Some frontmatter fields are links with a specific meaning. Set them with
-`--meta`:
+Some frontmatter fields are links with a meaning: `supersedes`,
+`superseded-by`, `depends-on`, `part-of` and `relates-to`. On the board,
+`depends-on` also makes a task wait for another one.
 
 ```bash
 mycelium memory set decisions/db "Postgres" -m supersedes=decisions/db-v1
 ```
 
-The recognized ones are `supersedes`, `superseded-by`, `depends-on`, `part-of`
-and `relates-to`. They show up in `memory links` along with links in the text.
-On the board, `depends-on` also makes a task wait for another one (see
-[board](#board)).
+Links only work within a room.
 
 ### Embedding one memory in another
 
-A link sends the reader somewhere else. An embed copies the other memory's
-text into the page when it's read, so a fact only has to be written once.
-First, allow the memory to be embedded:
+An embed copies another memory's text into the page when it's read, so a fact
+only has to be written once. Mark the memory as embeddable, then embed it with
+`![[…]]`:
 
 ```bash
-mycelium memory set glossary/vector-store \
-  "fastembed ONNX, bge-small-en-v1.5, 384-dim, no external service." --expandable
+mycelium memory set glossary/vector-store "A local embedding model, no external service." --expandable
 ```
 
-Then embed it anywhere with `![[…]]`:
-
 ```markdown
-Our retrieval layer is fixed:
+Our retrieval layer:
 
 ![[glossary/vector-store]]
 ```
@@ -217,31 +159,5 @@ Our retrieval layer is fixed:
 mycelium memory get decisions/db --expand
 ```
 
-When the original is updated, every page that embeds it shows the new text.
-
-The rules:
-
-- **Only memories marked `--expandable` can be embedded.** Embedding any other
-  memory is reported as a broken link, not included.
-- **Only one level deep.** If the embedded text has its own `![[…]]`, it's
-  shown as written, not expanded. So embeds can't loop or grow without end.
-- **Nothing is made up.** If an embed can't be expanded, the `![[…]]` is left
-  as it is and reported, so it never looks like an empty definition.
-
-Links only work within a room. `myc://rooms/{other}/{key}` is understood but
-doesn't resolve to the other room.
-
-Links are optional. A room whose memories don't link to each other works just
-the same.
-
-## Search
-
-Search finds memories by what they mean, not just the words they use. It uses
-the `BAAI/bge-small-en-v1.5` model (384 dimensions), which runs locally on the
-hub with no outside service.
-
-```bash
-mycelium memory search "what storage decisions were made"
-mycelium memory search "what failed and why"
-mycelium memory search "what is the current status"
-```
+Only memories marked `--expandable` can be embedded, and only one level deep.
+An embed that can't be expanded is left as written and reported as broken.

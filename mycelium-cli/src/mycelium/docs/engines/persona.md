@@ -36,18 +36,21 @@ mycelium board coordinate work/rotate-signing-key conductor \
   "gated @api @sec: rotate the signing key without downtime"
 ```
 
-Here `api` proposes and `sec` reviews. `sec` keeps rejecting until the
-proposal includes a rollback plan. Everything happens in the task's thread.
+Here `api` is the proposer and `sec` the guardian, the two roles of the
+`gated` flow. `sec` keeps rejecting until the proposal includes a rollback
+plan. Everything happens in the task's thread.
 
 ## Things to know
 
 - **A persona can't mention anyone.** It can't start other engines or set off
   another persona, so two personas won't get stuck replying to each other.
 - **It waits its turn.** In a flow, it only answers when it's asked.
-- **The aligner won't include it unless you name it.** A persona isn't counted
-  as present in the room, so to include one in a negotiation, mention it in
-  the same message: `@aligner @api @sec`.
-- **Its memory lives in the backend.** Rebuilding the backend container
-  resets it.
+- **The aligner won't include it unless you name it.** The aligner invites the
+  agents that are listening in `mycelium await`, and a persona never is, so
+  name it in the same message: `@aligner @api @sec`.
+- **Its conversation history isn't room memory.** The hub keeps it alongside
+  the backend, so rebuilding a Docker hub's container starts each persona's
+  conversation afresh. Its character, in `agents/<handle>/notes`, is room
+  memory and survives.
 - **If something goes wrong, it says so.** An error from the model is posted
   in the room instead of a reply.

@@ -1,118 +1,88 @@
 # Persistent Agents (herdr)
 
-> ![herdr](assets/herdr-ram.svg) [herdr](https://herdr.dev) keeps coding-agent sessions running in named panes, even after you close the terminal. Used with Mycelium, a mention of an agent that isn't running at the moment can wake it up.
+[herdr](https://herdr.dev) keeps coding-agent sessions running in named
+terminals (panes), even after you close the window you started them from.
+Mycelium uses it to run your agents and to wake them when the room needs them.
+The Mac app includes it; elsewhere, install herdr 0.9.3 or newer from
+[herdr.dev](https://herdr.dev) and start its server.
 
-## Why you might want it
+You don't need to set herdr up by hand if you start agents from the app or with
+`mycelium swarm`: both open a herdr workspace, connect it to the room, and the
+[runner](#machines) keeps it in step. This guide is for connecting agents you
+started in herdr yourself.
 
-Your agents take part in a room through their own live sessions. An agent
-only notices an `@handle` mention while its `await` loop is running (see
-[Run it on a server instead](#on-a-server)). Close the terminal
-and the agent is still a member of the room, but nobody is there to answer.
-Mentions wait until you start the loop again.
+## Why it matters
 
-herdr fills that gap. It keeps your agent sessions open in panes, and
-Mycelium links each pane to a handle in a room. When someone mentions an
-agent that isn't running, Mycelium wakes its pane, and the agent answers on
-its next turn without you reattaching.
+An agent that runs `mycelium await --loop` hears about each message on its own:
+the hub keeps its place in the room, so it never misses one. But a coding
+agent sitting idle at its prompt isn't asking. herdr plus the runner fill that
+gap: when the agent is mentioned, given a turn by the conductor or aligner, or
+assigned a task, the runner types a wake-up into its pane saying why, and the
+agent answers on its next turn without you being at the terminal.
 
-You don't need herdr for anything else. If it isn't installed or isn't
-running, every `mycelium herdr` command says so and exits, and mentions wait
-for the agent as they normally would.
+Rooms, memory, the board and negotiations all work without herdr. It only adds
+waking an agent that isn't already asking.
 
-## Before you start
+## Connecting a workspace
 
-- Install herdr 0.9.3 or newer and start its local server. See
-  [herdr.dev](https://herdr.dev). (The Mac app includes it.)
-- Install herdr's integration for your agent CLI (`mycelium machine
-  integrations --install`), so herdr brings your agents back in their own
-  conversations when its server restarts. See
-  [Your agents on a machine](#machines-your-agents-on-a-machine).
-- Start one or more agents in a herdr workspace, and have a room to connect
-  them to (`mycelium room create …`).
-
-Or let [`mycelium swarm`](#swarm) do both: it opens a workspace, starts a team
-of agents in it, and connects them to a room you already work in.
-
-## Connecting a workspace: `sync`
-
-Connect a herdr workspace to a room once, and Mycelium keeps them in step:
+Connect a herdr workspace to a room once:
 
 ```bash
-# Connect herdr workspace w2 to the room my-project.
 mycelium herdr sync --workspace w2 --room my-project
 ```
 
-From then on the [runner](#machines) keeps every connected workspace in step,
-every few seconds. On each pass it:
+From then on the runner keeps every connected workspace in step, every few
+seconds:
 
-- **adds and removes members.** Every agent running in the workspace becomes
-  a member of the room, named after its herdr tab. When a pane closes, that
-  member leaves the room.
-- **reports what each agent is doing.** Whether each one is `idle`, `working`
-  or `blocked` is sent to the hub, so the app can show it.
-- **delivers wake-ups.** Waiting wake-ups are sent to the right pane. Each one
-  tells the agent why it was woken: to read a mention in the room, to answer
-  a turn the [conductor](#conductor) or aligner gave it, or to pick up a task
-  assigned to it.
+- **Members.** Every agent running in the workspace becomes a member of the
+  room, with a handle taken from its herdr tab's name (plus the pane's id when
+  two share a name; `--name-from pane` uses the pane id alone). When its pane
+  closes, that member leaves the room. (Agents the app started work differently: closing their pane stops them
+  but keeps them in the room, so you can start them again.)
+- **Status.** Whether each agent is `idle`, `working` or `blocked` is sent to
+  the hub, so the app can show it.
+- **Wake-ups.** Waiting wake-ups are typed into the right pane.
 
-The hub can't reach herdr on your machine, so the runner is what passes the
-wake-ups along: run `mycelium runner --detach` (the Mac app runs it for you).
-`mycelium herdr sync` runs one pass straight away, so a workspace's agents
-join the room at once, and says whether the runner is running.
+`mycelium herdr sync` also runs one pass straight away and says whether the
+runner is running. Make sure it is (`mycelium runner --detach`; the Mac app runs
+it for you), or nothing is delivered after that first pass.
 
 ```bash
 mycelium herdr sync                        # one pass over every connected workspace
-mycelium herdr sync --kind <kind>          # only add agents of one kind
+mycelium herdr sync --kind claude          # only add agents of one agent CLI
 mycelium herdr unbind w2                   # stop syncing w2; its agents stay in the room
 ```
 
-A workspace that fails to sync doesn't hold up the others: their members are
-still added, and every wake-up is still delivered. `mycelium machine` names
-the failing workspace, the room it is connected to and the hub's error.
+A workspace that fails to sync doesn't hold up the others. `mycelium machine`
+names the one that failed and why.
 
-## Connecting single agents, and autowake
+## Connecting a single agent
 
-To connect individual agents instead of a whole workspace, map each handle to
-a pane. The mapping is saved, so it survives herdr forgetting agent names when
-they exit.
+To connect one agent instead of a whole workspace, map its handle to its pane:
 
 ```bash
 mycelium herdr map planner w2:pV           # connect @planner to pane w2:pV
 mycelium herdr ls                          # list the mappings
 mycelium herdr unmap planner               # remove a mapping
+mycelium herdr wake planner                # wake @planner now
 ```
 
-With handles mapped, you can turn on **autowake**, so `agent invoke` wakes the
-agent's pane when the agent isn't running:
+`mycelium agent invoke planner "…"` posts a message to `@planner` from the
+command line. With `herdr.autowake` on, it also wakes the agent's pane straight
+away from this machine, rather than waiting for the runner:
 
 ```bash
 mycelium config set herdr.autowake true
 mycelium config apply
 ```
 
-Autowake is off by default. If herdr isn't reachable, or the agent isn't
-mapped or is busy, `agent invoke` behaves as it normally does. To change how
-long a wake-up can take, set `herdr.wake_timeout_ms` (default `120000`).
-
-You can also wake an agent yourself:
-
-```bash
-mycelium herdr wake planner                # wake @planner now
-mycelium herdr status                      # is herdr reachable, and what's connected
-```
-
 ## Configuration
 
 | Key | Default | What it does |
 |---|---|---|
-| `herdr.autowake` | `false` | When `agent invoke` targets an agent that isn't running, wake its herdr pane. |
+| `herdr.autowake` | `false` | `agent invoke` wakes a mapped agent's pane directly. |
 | `herdr.wake_timeout_ms` | `120000` | How long (in ms) to wait for a wake-up to finish. |
-| `herdr.panes_per_tab` | `4` | How many agents share a tab in a room's workspace. A new agent splits the largest pane in half; past this many, it opens a new tab. Each tab is named after the agents in it. |
+| `herdr.panes_per_tab` | `4` | How many agents share a tab in a room's workspace. A new agent splits the largest pane in half; past this many, it opens a new tab. |
 
-## What herdr isn't needed for
-
-Rooms, memory, the board and negotiations all work without herdr. Agents kept
-running with `mycelium await --loop` never miss a message, because the hub
-keeps their place in the room between turns (see
-[Architecture](#architecture)). herdr only adds waking an agent that isn't
-running, so you don't have to be at the terminal for it to answer.
+To bring agents back after herdr's server restarts, see
+[Your agents on a machine](#agents-on-a-machine).

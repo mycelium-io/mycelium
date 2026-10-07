@@ -79,36 +79,38 @@ The card lists the room's name and its skills, taken from the room's
 POST /api/rooms/{room}/a2a
 ```
 
-The message is posted in the room like any other, and the call returns an
-acknowledgement. If it mentions an agent in the room, that agent answers as
-usual, including an A2A agent bridged into the room.
+The message is posted in the room like any other, and the call returns only an
+acknowledgement, not an answer. If it mentions an agent in the room, that agent
+answers in the room as usual.
 
-Anyone can read the card, as the A2A spec expects. Sending messages requires
-a login when [authentication](#auth) is on. With authentication
-on, the message is posted under the caller's name: a call made as
-`claude-web` shows up as `@claude-web`. Without authentication there's no way
-to know who called, so messages are posted as `@a2a-guest`.
+Anyone who can reach the hub can read any room's card, as the A2A spec
+expects, including private rooms. With [sign-in](#auth) on, sending a message
+needs a login and is posted under the caller's name (`@claude-web`).
+
+> **With sign-in off, anyone who can reach the hub can post into any room** as
+> `@a2a-guest`, by naming it. That's another reason to turn sign-in on before
+> other people can reach your hub.
 
 The card contains the room's full URL, built from the scheme the hub sees.
-Behind a proxy that handles TLS, the hub sees plain `http`, so you need to tell
-it which proxy to trust or the card will point clients at `http://`. See
-[Behind a TLS-terminating proxy](#hub-and-spoke).
+Behind a proxy that handles HTTPS, tell the hub to trust the proxy, or the card
+will point clients at `http://`. See
+[Behind an HTTPS proxy](#hub-and-spoke-behind-an-https-proxy).
 
 ![The room as an A2A agent: clients read its card and send messages that are posted in the room](diagrams/03-a2a-inbound.svg)
 
 ## Seeing what the bridge is doing
 
-`mycelium network [room]` shows the bridge for each room below the network
-table: the bridged agents with their URLs and skills, the room's own card and
-how often it's been read, and the most recent calls in each direction, with
-what came back or why it failed.
+`mycelium network [room]` shows a room's members and connections, and below
+them its A2A bridge: the bridged agents with their URLs and skills, the room's
+own card and how often it's been read, and the most recent calls in each
+direction, with what came back or why it failed.
 
 ```bash
 mycelium network my-room
 ```
 
-In the app, the **Network** pane shows the same thing in a strip under the
-SLIM view. Rooms without a bridge don't show it.
+In the app, a room's **Network** pane shows the same. Rooms without a bridge
+don't show that part.
 
 To get the raw data:
 
@@ -122,10 +124,9 @@ messages, including replies from bridged agents, are saved as usual.
 ## Privacy
 
 A bridged A2A agent can be mentioned and answers under its own name, but it
-isn't part of the room's encrypted group and never has the room's key. The hub
-reads the room's messages and sends them to the remote agent over HTTPS.
+isn't part of the room's encrypted group and never has the room's key. Each
+time it's mentioned, the hub sends it the text of that message over HTTPS.
 
-The hub can already read everything in the room. It needs to, for engines to
-work (see [SLIM](#slim)). Adding an A2A agent means sending some of
-the room's content to another service as well, so add one the way you'd give
-any outside party access to a conversation.
+The hub can already read everything in the room (see [SLIM](#slim)). Adding an
+A2A agent means sending what's said to it to another service as well, so add
+one the way you'd give any outside party access to a conversation.

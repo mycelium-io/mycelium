@@ -1,39 +1,37 @@
 # SLIM
 
-Rooms use [AGNTCY SLIM](https://github.com/agntcy) for messaging. A Mycelium
-deployment runs one SLIM node, and each [room](#rooms) is an encrypted group
-channel on it. There's no separate message broker or queue.
+Inside the hub, room messages travel over [AGNTCY SLIM](https://github.com/agntcy/slim),
+an encrypted group messaging layer. A Mycelium hub runs one SLIM node, and each
+room is a group channel on it. Most people never need to think about it: the
+app, the CLI and your agents all talk to the hub over HTTP, and the hub handles
+SLIM for them.
 
 ![Mycelium system context: every transport at once, blue HTTP, violet SLIM/MLS, orange A2A over HTTPS](diagrams/00-system-context.svg)
 
 ## What's encrypted
 
-SLIM channels are encrypted with MLS, but only between the hub's backend and
-the SLIM node. The backend holds each room's key. The node only passes
-encrypted messages along and can't read them.
-
-Everything else talks to the backend over plain HTTP or HTTPS: other machines,
-your agents, the app, and A2A callers. The backend encrypts and decrypts for
-them. The backend can read everything in a room, because the engines (the
-aligner, the synthesizer and the rest) and the message history need to.
-
-This is still true with the `signerjwt` identity setting, where the backend
-keeps a separate encrypted session for each member of each room (see
-[custodial sessions](#security-planes)). Those sessions still live inside the
-backend, so no other machine holds room keys.
-
-The exception is a debugging tool: `mycelium slim send` (and `mycelium l9 send`) connects to
-SLIM directly from the CLI and joins the channel as its own encrypted member.
-Nothing else you normally use (`await`, `respond`, the app) works that way.
+SLIM channels are encrypted with MLS between the hub's backend and the SLIM
+node, so the node only ever passes along messages it can't read. The backend
+holds each room's key and reads everything in the room, because the engines and
+the message history need to.
 
 ## What this means for you
 
 - **The hub can read your rooms.** Encryption keeps the SLIM node from reading
-  messages, not the hub. If you need something the hub itself can't read,
-  SLIM doesn't give you that.
-- **Other machines don't need the SLIM secret.** `MYCELIUM_SLIM_MASTER_SECRET`
-  controls who can join a room's encrypted channel. A machine that only talks
-  to the hub over HTTP never joins it. See [Security Planes](#security-planes).
-- **A2A agents don't change this.** An agent connected through the A2A bridge
-  talks to the hub over HTTPS, and the hub could already read everything in
-  the room. See the [A2A bridge](#a2a-bridge).
+  messages, not the hub. If you need something the hub itself can't read, SLIM
+  doesn't give you that.
+- **Encryption doesn't protect the API.** Who can read and post in a room over
+  HTTP is decided by [sign-in](#auth), not by SLIM. See
+  [Running a Shared Hub](#security-planes).
+- **Only the hub needs the SLIM secret.** Other machines talk to the hub over
+  HTTP and never join a channel.
+- **A2A agents don't change this.** An agent connected through the
+  [A2A bridge](#a2a-bridge) talks to the hub over HTTPS, and the hub could
+  already read everything in the room.
+
+The one exception is a debugging tool: `mycelium slim send` joins a room's
+channel directly from the CLI, as its own encrypted member.
+
+SLIM's `signerjwt` identity setting gives each member its own key inside the
+hub (see [Running a Shared Hub](#security-planes-per-member-slim-identity)). Those keys still live in the
+hub, so the hub can still read everything.

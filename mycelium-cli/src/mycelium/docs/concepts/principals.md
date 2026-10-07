@@ -1,80 +1,90 @@
-# Users & teams
+# Users & Identity
 
-Agents belong to people. Give an agent an owner, and optionally a team, and
-you can filter the room to your own agents, see whose agent made a change,
-and know who to ask when one needs help.
+Agents belong to people. Give an agent an owner, and optionally a team, and you
+can filter a room to your own agents, see whose agent made a change, and know
+who to ask when one needs help.
 
-There are two kinds of record:
+There are two kinds of record, both kept on the hub:
 
-- **Agents** belong to a room (`rooms/{room}/agents/{handle}`). An agent can
-  have an `owner` (a user) and a `team`.
 - **Users** belong to the whole hub (`users/{handle}`), since a person works
-  across rooms. An agent's `owner` is a user.
-
-Both are stored on the hub, so every machine and the app see the same people.
-
-## Commands
+  across rooms.
+- **Agents** belong to a room: each has a record at `agents/{handle}` in the
+  room's memory, with its instructions as `agents/{handle}/notes`. An agent can
+  have an `owner` (a user) and a `team`.
 
 ```bash
-# Add a person, once for the whole hub
 mycelium user create avery --name "Avery Quinn" --team core
-mycelium user ls
 mycelium user show avery          # the user and the agents they own
-
-# Give an agent an owner
-mycelium agent create release-agent --cwd ~/repo --owner avery --team core
+mycelium agent create release-agent --owner avery --team core
 mycelium agent ls --owner avery   # your agents
-mycelium agent ls --team core     # your team's agents
-
-# Say who you are on this machine (also creates or updates your user record)
-mycelium iam avery --name "Avery Quinn" --team core
-
-# Check who you're acting as
-mycelium whoami
 ```
 
-`mycelium iam` sets your identity on this machine as well as your user record
-on the hub. If the hub is down, your local identity is still set, and it tells
-you the user record wasn't saved.
+`agent create` only writes the agent's record; it doesn't start anything. The
+app's **Add member** dialog writes the record and starts the agent.
 
 ## Your name
 
 A user's name goes wherever their messages are shown: the app shows
-"Avery Quinn @avery" over what they post, and `room messages`, `room watch`
-and a swarm's view print `Avery Quinn (@avery)`. An agent that `await`s a
-message from them gets it too, as `sender_name` in `--json` output and
-`MYCELIUM_SENDER_NAME` for `--exec`. Anyone without a name reads as their
-handle, as before.
+"Avery Quinn @avery", and the CLI prints `Avery Quinn (@avery)`. The app asks
+for it the first time you open it, and you can change it from the account menu
+or with:
 
-The app asks for it the first time it opens in a browser ("What should we
-call you?"), makes a handle from it, and lets you pick yourself if you're
-already on the hub. Change it later from the account menu at the top right,
-or with `mycelium iam avery --name "Avery Quinn"`. The name is looked up when
-a message is shown, so a change applies to everything you've already said.
+```bash
+mycelium iam avery --name "Avery Quinn"
+```
 
-An agent with no owner or team works as before. Both fields are empty by
-default.
+`mycelium iam` sets who you are on this machine and creates or updates your
+user record on the hub. `mycelium whoami` shows who you're acting as.
 
-## How much an owner is proven
+## Who a command acts as
 
-By default, names are only claims. `owner: avery` is something anyone who
-shares the room's secret could write. That's fine for a team that trusts each
-other, or on your own network, and it needs no setup.
+Every command needs to know four things: which hub, which handle, which room,
+and which credential. Each is taken from the first of these that has a value:
 
-If you need more, you can turn on per-member credentials. Each member then
-signs with its own key, members can be told apart for certain, and you can
-revoke one member without affecting the others. An `owner` is then backed by
-a key. If a machine doesn't have the key material, it falls back to the
-shared secret.
+1. a flag on the command (`--room`, `--handle`, …)
+2. the environment (`MYCELIUM_API_URL`, `MYCELIUM_AGENT_HANDLE`,
+   `MYCELIUM_ACTIVE_ROOM`, `MYCELIUM_AGENT_AUTH_TOKEN`)
+3. the herdr terminal the command runs in, for an agent herdr started
+4. this folder's membership, from `mycelium join` (below)
+5. this machine's setup: `mycelium iam`, `mycelium login`, `room use`
 
-Separately, for a hosted or multi-user hub, you can require a verified login
-for API calls, so every write is tied to a real account. This is off by
-default. See [Authentication](#auth).
+When [sign-in](#auth) is on, the hub goes by who your token belongs to: a
+request naming a different handle is refused.
 
-## In the app
+To see each answer and where it came from:
 
-Agent rows show their owner and team. The **acting as** picker at the top of a
-room sets which user the browser represents, and the **mine** filter shows
-only agents you own or that your team runs. Without login, the acting-as
-choice is saved in your browser. With login required, it comes from your
-login.
+```bash
+mycelium whoami --sources
+```
+
+### Joining a room from anywhere
+
+When Mycelium starts an agent itself, it tells the agent which room it's in and
+which member it is. An agent started some other way (in Omnigent, say, or a
+session you already had open) can join with a code instead. Whoever starts it
+asks the hub for a code, and the agent runs:
+
+```bash
+mycelium join abcd-efgh-jkmn --hub http://your-hub:8000
+```
+
+A code works once and expires after ten minutes. Joining saves the membership
+in the current folder (readable only by you, and ignored by git), so every
+`mycelium` command run there, or in a folder below it, acts as that member. On
+a hub with sign-in, joining also gives the agent its own token. A folder holds
+one member; `mycelium leave` removes it.
+
+## How much a name is proven
+
+By default, names are only claims. Anyone who can reach the hub can post as any
+handle, and the app's **acting as** picker lets a browser choose which user it
+represents. That's fine on your own machine or a team that trusts each other,
+and it needs no setup.
+
+For a hub other people can reach, turn on [sign-in](#auth): every request then
+carries a token from your identity provider, every write is tied to a real
+account, and only a member's owner (or someone it allows) can act for it.
+
+A separate setting, `slim.identity = signerjwt`, gives each member its own key
+on the hub's internal messaging layer. It doesn't affect who can use the API;
+see [Running a Shared Hub](#security-planes-per-member-slim-identity).
