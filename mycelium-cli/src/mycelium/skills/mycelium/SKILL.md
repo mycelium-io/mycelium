@@ -316,6 +316,18 @@ mycelium memory subscribe "decision/*" --handle claude-agent
 
 All memory commands use the active room. Set it with `mycelium room use <name>` or pass `--room <name>`.
 
+## Files
+
+A message that links `[[uploads/<name>]]` is pointing at a file someone added to the room. Fetch it before you work from it, and attach what you make the same way: upload it, then put the link it prints in your reply.
+
+```bash
+mycelium file download "[[uploads/spec.pdf]]"   # saved as ./spec.pdf; -o <path>, or -o - for stdout
+mycelium file upload report.md chart.png        # prints [[uploads/report.markdown]] and [[uploads/chart.png]]
+mycelium file ls
+```
+
+The hub takes only files the app can preview (images, PDFs, text, audio and video). A text file's contents are also in its memory, so `mycelium memory get uploads/<name>` reads it without downloading.
+
 ## Room Operations
 
 ```bash

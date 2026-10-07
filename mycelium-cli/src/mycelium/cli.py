@@ -18,6 +18,7 @@ from mycelium.commands import (
     doctor,
     engine,
     experience,
+    file,
     herdr,
     hub,
     install,
@@ -122,6 +123,7 @@ app.add_typer(board.app, name="board")
 app.add_typer(room.app, name="room")
 app.add_typer(memory.app, name="memory")
 app.add_typer(skill.app, name="skill")
+app.add_typer(file.app, name="file")
 app.add_typer(config.app, name="config")
 app.add_typer(docs.app, name="docs")
 app.add_typer(metrics.app, name="metrics")

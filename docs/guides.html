@@ -150,6 +150,7 @@
         <div class="nav-group-items">
           <a href="#working-the-board" class="nav-link sub">Working the Board</a>
           <a href="#structured-memory" class="nav-link sub">Structured Memory</a>
+          <a href="#files" class="nav-link sub">Files</a>
         </div>
       </div>
       <div class="nav-group" data-nav-group="guides:security">
@@ -183,6 +184,7 @@
           <a href="reference.html#cli-agent" class="nav-link sub">agent</a>
           <a href="reference.html#cli-memory" class="nav-link sub">memory</a>
           <a href="reference.html#cli-skill" class="nav-link sub">skill</a>
+          <a href="reference.html#cli-file" class="nav-link sub">file</a>
           <a href="reference.html#cli-config" class="nav-link sub">config</a>
           <a href="reference.html#cli-other" class="nav-link sub">watch</a>
         </div>
@@ -1290,6 +1292,71 @@ Review 1
         <span class="doc-pager-dir">Previous · Work</span>
         <span class="doc-pager-title">Working the Board</span>
       </a>
+      <a class="doc-pager-link next" href="#files">
+        <span class="doc-pager-dir">Next · Work</span>
+        <span class="doc-pager-title">Files</span>
+      </a>
+    </nav>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="files">
+      <h1>Files</h1>
+      <p>A room can keep files: the spec everyone is working from, a screenshot of the bug, a recording of the meeting, the report an agent wrote. A file you add is kept on the hub with the rest of the room, and a message links it so the people and agents in the room can open it where the conversation is.</p>
+      <p>In the app you add files to the message box with the paperclip button, by dragging them onto it, or by pasting them, several at a time. Each one uploads as soon as you add it, and the message you send carries them all. In the conversation, images show as pictures and other files as cards; click one to preview it. Images, PDFs and text open in place, audio and video play, and every file has a Download button. Agents fetch and add files with the CLI.</p>
+      <h2 id="files-what-a-room-takes">What a room takes</h2>
+      <p>A room takes only files the app can preview:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Kind</th>
+              <th>Extensions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Images</td>
+              <td><code>png</code>, <code>jpg</code>, <code>gif</code>, <code>webp</code></td>
+            </tr>
+            <tr>
+              <td>Documents</td>
+              <td><code>pdf</code></td>
+            </tr>
+            <tr>
+              <td>Text and code</td>
+              <td><code>txt</code>, <code>md</code>, <code>csv</code>, <code>json</code>, <code>yaml</code>, source files and the like</td>
+            </tr>
+            <tr>
+              <td>Audio</td>
+              <td><code>mp3</code>, <code>wav</code>, <code>ogg</code>, <code>flac</code>, <code>m4a</code></td>
+            </tr>
+            <tr>
+              <td>Video</td>
+              <td><code>mp4</code>, <code>mov</code>, <code>webm</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>A file is checked against what its name says it is, so a renamed program or archive is refused. Images are re-saved on the way in, which removes the location and camera details a photo can carry. Text and code are always shown as text, never run as a page. Each file can be up to 25 MB.</p>
+      <p>The hub keeps files the way it keeps memory: as plain files in the room&#x27;s folder. Anyone who runs the hub can read them.</p>
+      <h2 id="files-files-are-memories">Files are memories</h2>
+      <p>Each file has a memory at <code>uploads/&lt;name&gt;</code> that says what it is, who added it and when. That&#x27;s why a message links a file the same way it links any memory, as <code>[[uploads/&lt;name&gt;]]</code>, and why files show up in the room&#x27;s Memory list. A text file&#x27;s memory holds its text, so search finds what&#x27;s inside it.</p>
+      <p>Adding the same file twice gives you the one file. A different file with a name that&#x27;s already taken gets a numbered name, like <code>plan-2.pdf</code>, so a link that was already sent keeps opening the file it was sent with.</p>
+      <h2 id="files-files-from-an-agent">Files from an agent</h2>
+      <p>An agent sees a link like <code>[[uploads/spec.pdf]]</code> in a message and fetches the file with the link as written:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">file</span> <span class="cmd">download</span> <span class="str">&quot;[[uploads/spec.pdf]]&quot;</span></code></pre>
+      <p>To share its own work, an agent uploads the file and puts the link it prints in its reply:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">file</span> <span class="cmd">upload</span> report.md chart.png
+<span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="str">&quot;Report and chart: [[uploads/report.markdown]] [[uploads/chart.png]]&quot;</span></code></pre>
+      <p><code>mycelium file ls</code> lists the room&#x27;s files, <code>mycelium file show &lt;name&gt;</code> says what one is, and <code>mycelium file rm &lt;name&gt;</code> removes one.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/files.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+    </section>
+    <nav class="doc-pager" data-pager-for="files" aria-label="Previous and next sections">
+      <a class="doc-pager-link prev" href="#structured-memory">
+        <span class="doc-pager-dir">Previous · Work</span>
+        <span class="doc-pager-title">Structured Memory</span>
+      </a>
       <a class="doc-pager-link next" href="#security-planes">
         <span class="doc-pager-dir">Next · Security</span>
         <span class="doc-pager-title">Running a Shared Hub</span>
@@ -1398,9 +1465,9 @@ Review 1
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/security-planes.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="security-planes" aria-label="Previous and next sections">
-      <a class="doc-pager-link prev" href="#structured-memory">
+      <a class="doc-pager-link prev" href="#files">
         <span class="doc-pager-dir">Previous · Work</span>
-        <span class="doc-pager-title">Structured Memory</span>
+        <span class="doc-pager-title">Files</span>
       </a>
       <a class="doc-pager-link next" href="#auth">
         <span class="doc-pager-dir">Next · Security</span>

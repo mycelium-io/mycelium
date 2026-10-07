@@ -36,7 +36,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { MENTION_SIGIL, SILENT_MENTION_SIGIL } from "@/lib/mentions";
 import { mentionRank, nameOf, useNames } from "@/lib/people";
 import { draftKey, loadDraft, saveDraft } from "@/lib/drafts";
-import { FileText, ListTodo, Plus, UserPlus, X } from "lucide-react";
+import { FileText, ListTodo, Paperclip, Plus, UserPlus, X } from "lucide-react";
+import { PendingAttachments, usePendingUploads } from "@/components/uploads/composer-attachments";
+import { acceptAttribute } from "@/lib/uploads";
 import { parseCapture } from "@/lib/board/capture";
 import { fileCapture } from "@/lib/board/file-capture";
 import {
@@ -241,6 +243,10 @@ export function RoomChatBox({
   const [noticeKey, setNoticeKey] = useState<string | null>(null);
   const [launch, setLaunch] = useState<Launch | null>(null);
   const dismissLaunch = useCallback(() => setLaunch(null), []);
+  // Files the next message carries: picked, dropped on the box or pasted.
+  const attachments = usePendingUploads(roomName, principal.trim() || "user");
+  const fileInput = useRef<HTMLInputElement | null>(null);
+  const [dragging, setDragging] = useState(false);
   const revalidateRoom = useRoomRevalidate(roomName);
   // Your machines are read only while an `/agent` is being typed.
   const { connected: machines, loading: machinesLoading } = useRunners({
@@ -517,9 +523,11 @@ export function RoomChatBox({
 
   const submit = useCallback(async () => {
     const body = content.trim();
-    if (!body || sending) return;
+    const files = attachments.links;
+    // A message waits for its files, so it never links one still on its way.
+    if ((!body && !files.length) || sending || attachments.busy) return;
     const handle = principal.trim() || "user";
-    const command = parseCommand(body);
+    const command = body ? parseCommand(body) : null;
     const cleared = () => {
       setContent("");
       setCursor(0);
@@ -608,7 +616,12 @@ export function RoomChatBox({
           break;
         }
         default:
-          await sendRoomMessage(roomName, { sender_handle: handle, content: body, episode });
+          await sendRoomMessage(roomName, {
+            sender_handle: handle,
+            content: [body, files.join(" ")].filter(Boolean).join("\n\n"),
+            episode,
+          });
+          attachments.clear();
       }
       cleared();
       onSent?.();
@@ -620,7 +633,12 @@ export function RoomChatBox({
       // render, so refocus after that commit lands to keep the user typing.
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [content, episode, onSent, roomName, principal, sending, startAgent, revalidateRoom, memories]);
+  }, [content, episode, onSent, roomName, principal, sending, startAgent, revalidateRoom, memories, attachments]);
+
+  const attachFrom = (list: FileList | null | undefined) => {
+    if (list?.length) attachments.add(Array.from(list));
+  };
+  const carriesFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
 
   // Where this lands is the one thing the composer must never be coy about: the
   // same box writes to the room and into a thread, and the difference is whether
@@ -632,7 +650,7 @@ export function RoomChatBox({
 
   // The button renders without chrome at rest; it colors up and grows a
   // hover surface once there is something to send.
-  const armed = content.trim().length > 0 && !sending;
+  const armed = (content.trim().length > 0 || attachments.links.length > 0) && !sending && !attachments.busy;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (trigger !== null && candidates.length > 0) {
@@ -715,12 +733,47 @@ export function RoomChatBox({
             quiet row underneath, as a chat composer draws it rather than a
             form field: nothing beside the text, so a wrapped line starts
             where the first one did. */}
-        <div className="group/composer rounded-xl border border-border bg-surface transition-colors focus-within:border-border2 focus-within:bg-bg">
+        <div
+          className={cn(
+            "group/composer relative rounded-xl border border-border bg-surface transition-colors focus-within:border-border2 focus-within:bg-bg",
+            dragging && "border-accent bg-accent-soft/30",
+          )}
+          onDragEnter={(e) => {
+            if (carriesFiles(e)) setDragging(true);
+          }}
+          onDragOver={(e) => {
+            if (!carriesFiles(e)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+          }}
+          onDrop={(e) => {
+            if (!carriesFiles(e)) return;
+            e.preventDefault();
+            setDragging(false);
+            attachFrom(e.dataTransfer.files);
+          }}
+        >
+          {dragging && (
+            <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-xl text-label font-medium text-accent">
+              Drop to attach
+            </div>
+          )}
+          <PendingAttachments items={attachments.items} onRemove={attachments.remove} />
           <TextareaAutosize
             ref={inputRef}
             value={content}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            onPaste={(e) => {
+              // A pasted screenshot or copied file attaches; pasted text stays text.
+              if (e.clipboardData.files.length) {
+                e.preventDefault();
+                attachFrom(e.clipboardData.files);
+              }
+            }}
             onSelect={(e) => setCursor(e.currentTarget.selectionStart ?? 0)}
             placeholder={placeholder}
             minRows={1}
@@ -774,6 +827,29 @@ export function RoomChatBox({
                 </PopoverContent>
               </Popover>
             )}
+            {/* Files ride on a message, in the room or a thread alike. */}
+            <button
+              type="button"
+              aria-label="Attach files"
+              title="Attach files"
+              onClick={() => fileInput.current?.click()}
+              className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent-soft hover:text-accent"
+            >
+              <Paperclip className="size-4" />
+            </button>
+            <input
+              ref={fileInput}
+              type="file"
+              multiple
+              accept={acceptAttribute(attachments.accepted)}
+              className="hidden"
+              tabIndex={-1}
+              aria-hidden
+              onChange={(e) => {
+                attachFrom(e.currentTarget.files);
+                e.currentTarget.value = "";
+              }}
+            />
             {/* What the composer answers to, said only while you're in it. The
                 sigils are typed, so they hold at every width; the keycaps name
                 keys a phone does not have, so they appear only when the box

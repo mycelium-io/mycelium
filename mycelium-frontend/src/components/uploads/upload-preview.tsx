@@ -1,0 +1,215 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Mycelium Contributors
+
+"use client";
+
+import dynamic from "next/dynamic";
+import { useMemo, useState } from "react";
+import useSWR from "swr";
+import {
+  Download,
+  FileAudio,
+  FileImage,
+  FileText,
+  FileVideo,
+  Loader2,
+  type LucideIcon,
+} from "lucide-react";
+import { MarkdownContent } from "@/components/markdown-content";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Ago } from "@/lib/relative-time";
+import { fetchUploadText, type Upload, type UploadKind } from "@/lib/api";
+import { downloadUrl, formatBytes, kindLabel, parseDelimited, textViewFor } from "@/lib/uploads";
+import { cn } from "@/lib/utils";
+
+const PdfPreview = dynamic(() => import("@/components/uploads/pdf-preview").then((m) => m.PdfPreview), {
+  ssr: false,
+  loading: () => <Loading what="the PDF" />,
+});
+
+export const KIND_ICON: Record<UploadKind, LucideIcon> = {
+  image: FileImage,
+  pdf: FileText,
+  text: FileText,
+  audio: FileAudio,
+  video: FileVideo,
+};
+
+/** Text past this is cut in the preview; the download has all of it. */
+const TEXT_PREVIEW_CHARS = 200_000;
+
+function Loading({ what }: { what: string }) {
+  return (
+    <div className="flex items-center gap-2 py-10 text-label text-muted-foreground">
+      <Loader2 className="size-4 animate-spin" /> Loading {what}…
+    </div>
+  );
+}
+
+function TextPreview({ upload, onOpenMemory }: { upload: Upload; onOpenMemory?: (key: string) => void }) {
+  const { data, error } = useSWR(["upload-text", upload.url, upload.sha256], () => fetchUploadText(upload));
+  const view = textViewFor(upload.filename);
+  const text = data && data.length > TEXT_PREVIEW_CHARS ? data.slice(0, TEXT_PREVIEW_CHARS) : data;
+  const rows = useMemo(
+    () => (text && view === "table" ? parseDelimited(text, upload.filename.toLowerCase().endsWith(".tsv") ? "\t" : ",") : []),
+    [text, view, upload.filename],
+  );
+
+  if (error) return <p className="py-6 text-label text-muted-foreground">Couldn&apos;t load this file.</p>;
+  if (text === undefined) return <Loading what="the file" />;
+  const cut = data !== undefined && data.length > TEXT_PREVIEW_CHARS && (
+    <p className="mt-2 text-micro text-faint">This preview is cut short. Download the file for all of it.</p>
+  );
+
+  if (view === "markdown") {
+    return (
+      <>
+        <MarkdownContent className="contrast text-body leading-relaxed" onLinkClick={onOpenMemory}>
+          {text}
+        </MarkdownContent>
+        {cut}
+      </>
+    );
+  }
+  if (view === "table" && rows.length) {
+    const [head, ...body] = rows;
+    return (
+      <>
+        <div className="overflow-auto rounded-lg border border-border">
+          <table className="w-full border-collapse text-micro">
+            <thead className="sticky top-0 bg-surface">
+              <tr>
+                {head.map((cell, i) => (
+                  <th key={i} className="border-b border-border px-2 py-1 text-left font-medium text-text">
+                    {cell}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {body.map((row, r) => (
+                <tr key={r} className="odd:bg-hairline/40">
+                  {row.map((cell, c) => (
+                    <td key={c} className="px-2 py-1 align-top font-mono text-text">
+                      {cell}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {(rows.length >= 500 || cut) && (
+          <p className="mt-2 text-micro text-faint">Showing the first {rows.length} rows. Download the file for all of it.</p>
+        )}
+      </>
+    );
+  }
+  return (
+    <>
+      <pre className="overflow-auto rounded-lg border border-border bg-surface p-3 font-mono text-micro leading-relaxed text-text whitespace-pre">
+        {text}
+      </pre>
+      {cut}
+    </>
+  );
+}
+
+/** The file itself, drawn the way its kind is read: an image, a PDF's pages,
+ *  text (rendered Markdown, a table, or source), or a player. */
+export function UploadPreview({
+  upload,
+  onOpenMemory,
+  className,
+}: {
+  upload: Upload;
+  onOpenMemory?: (key: string) => void;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      {upload.kind === "image" && (
+        // eslint-disable-next-line @next/next/no-img-element -- the hub's bytes, not a static asset
+        <img
+          src={upload.url}
+          alt={upload.filename}
+          className="mx-auto block max-h-[70vh] max-w-full rounded-md object-contain"
+        />
+      )}
+      {upload.kind === "pdf" && <PdfPreview url={upload.url} />}
+      {upload.kind === "text" && <TextPreview upload={upload} onOpenMemory={onOpenMemory} />}
+      {upload.kind === "audio" && <audio controls preload="metadata" src={upload.url} className="w-full" />}
+      {upload.kind === "video" && (
+        <video controls preload="metadata" src={upload.url} className="mx-auto block max-h-[70vh] max-w-full rounded-md" />
+      )}
+    </div>
+  );
+}
+
+/** What it is, who added it and when, on one line. */
+export function UploadFacts({ upload, className }: { upload: Upload; className?: string }) {
+  return (
+    <span className={cn("tabular text-micro text-muted-foreground", className)}>
+      {kindLabel(upload.kind)} · {formatBytes(upload.size)} · {upload.created_by} · <Ago at={upload.created_at} />
+    </span>
+  );
+}
+
+export function DownloadButton({ upload, size = "sm" }: { upload: Upload; size?: "sm" | "xs" }) {
+  return (
+    <a href={downloadUrl(upload)} download={upload.filename} className={buttonVariants({ variant: "outline", size })}>
+      <Download className="size-3.5" /> Download
+    </a>
+  );
+}
+
+/** The preview window: the file at a readable size, with its download. */
+export function UploadPreviewDialog({
+  upload,
+  onClose,
+  onOpenMemory,
+}: {
+  upload: Upload | null;
+  onClose: () => void;
+  onOpenMemory?: (key: string) => void;
+}) {
+  // Keep the last file drawn while the window animates closed.
+  const [shown, setShown] = useState(upload);
+  if (upload && upload !== shown) setShown(upload);
+
+  return (
+    <Dialog open={upload !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="flex max-h-[90vh] flex-col gap-0 p-0 sm:max-w-4xl">
+        {shown && (
+          <>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border py-2.5 pr-12 pl-4">
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="truncate text-label text-text">{shown.filename}</DialogTitle>
+                <DialogDescription>
+                  <UploadFacts upload={shown} />
+                </DialogDescription>
+              </div>
+              {onOpenMemory && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    onClose();
+                    onOpenMemory(shown.key);
+                  }}
+                >
+                  Open in memory
+                </Button>
+              )}
+              <DownloadButton upload={shown} />
+            </div>
+            <div className="min-h-0 overflow-auto p-4">
+              <UploadPreview upload={shown} onOpenMemory={onOpenMemory} />
+            </div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}

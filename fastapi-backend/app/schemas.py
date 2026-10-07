@@ -600,6 +600,33 @@ class SkillListResponse(BaseModel):
     total: int
 
 
+class UploadRead(BaseModel):
+    """A file the room keeps: an ``uploads/<name>`` memory and the bytes it names."""
+
+    name: str = Field(
+        ..., description="The upload's name in the room, unique there; its URL segment"
+    )
+    key: str = Field(..., description="The memory key, `uploads/<name>`; link it as [[key]]")
+    filename: str = Field(..., description="The name the file had when it was added, for download")
+    kind: Literal["image", "pdf", "text", "audio", "video"]
+    content_type: str = Field(..., description="The type the file is served as")
+    size: int = Field(..., description="Size in bytes, after cleaning")
+    sha256: str
+    created_by: str
+    created_at: datetime
+    episode: str | None = Field(None, description="The upload's own thread, as every memory has")
+    url: str = Field(..., description="Path of the file's bytes on this hub, under /api")
+
+
+class UploadListResponse(BaseModel):
+    uploads: list[UploadRead]
+    total: int
+    accepted: list[str] = Field(
+        default_factory=list, description="The file extensions this hub takes, lowercase, no dot"
+    )
+    max_bytes: int = Field(0, description="The largest file this hub takes, in bytes")
+
+
 class ProtocolSummary(BaseModel):
     """A flow the room's conductor can run, as a summon needs to know it."""
 

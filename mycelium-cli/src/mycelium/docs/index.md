@@ -21,6 +21,7 @@ The docs, in your terminal.
 - **security-planes**: Running a shared hub safely
 - **auth**: Turning on sign-in
 - **structured-memory**: Writing down decisions and status as you work
+- **files**: Adding files to a room and fetching them from an agent
 - **board-reference**: Every board command, and live pull request status
 - **flows**: Writing your own flows
 - **l9-protocol**: Markers, confidence, and how good an agreement was

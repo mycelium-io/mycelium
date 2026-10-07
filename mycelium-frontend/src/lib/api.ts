@@ -565,6 +565,92 @@ export async function fetchSkills(roomName: string): Promise<Skill[]> {
   return data.skills ?? [];
 }
 
+// ── Uploads ──────────────────────────────────────────────────────────────────
+// A file the room keeps: an `uploads/<name>` memory plus the bytes it names.
+// Linked from chat as `[[uploads/<name>]]`; the bytes are at `url`, sandboxed.
+
+export type UploadKind = "image" | "pdf" | "text" | "audio" | "video";
+
+export interface Upload {
+  name: string;
+  key: string;
+  /** The name the file had when it was added; what a download saves it as. */
+  filename: string;
+  kind: UploadKind;
+  content_type: string;
+  size: number;
+  sha256: string;
+  created_by: string;
+  created_at: string;
+  episode?: string | null;
+  /** The file's bytes, under `/api`. Add `?download=1` to save rather than show. */
+  url: string;
+}
+
+export interface UploadList {
+  uploads: Upload[];
+  total: number;
+  /** Extensions this hub takes, lowercase, no dot. */
+  accepted: string[];
+  max_bytes: number;
+}
+
+export async function fetchUploads(roomName: string): Promise<UploadList> {
+  return apiFetch<UploadList>(`${roomApiPath(roomName)}/uploads`, {
+    cache: "no-store",
+    fallback: { uploads: [], total: 0, accepted: [], max_bytes: 0 },
+  });
+}
+
+/**
+ * Add one file to the room. XHR rather than fetch, because fetch reports no
+ * upload progress and a chip with a bar is what tells someone a large file is
+ * on its way. Rejects with an `ApiError` carrying the hub's reason (a type it
+ * can't preview, a file over the cap). `signal` cancels it.
+ */
+export function uploadFile(
+  roomName: string,
+  file: File,
+  createdBy: string,
+  opts: { onProgress?: (fraction: number) => void; signal?: AbortSignal } = {},
+): Promise<Upload> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${roomApiPath(roomName)}/uploads`);
+    xhr.responseType = "json";
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) opts.onProgress?.(e.loaded / e.total);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(xhr.response as Upload);
+        return;
+      }
+      if (xhr.status === 401) window.dispatchEvent(new Event("mycelium:auth-required"));
+      const detail = (xhr.response as { detail?: unknown } | null)?.detail;
+      reject(new ApiError(typeof detail === "string" ? detail : `Upload failed (${xhr.status})`, xhr.status));
+    };
+    xhr.onerror = () => reject(new ApiError("Couldn't reach the hub", 0));
+    xhr.onabort = () => reject(new DOMException("Upload cancelled", "AbortError"));
+    opts.signal?.addEventListener("abort", () => xhr.abort(), { once: true });
+    const form = new FormData();
+    form.append("file", file);
+    form.append("created_by", createdBy);
+    xhr.send(form);
+  });
+}
+
+export async function deleteUpload(roomName: string, name: string): Promise<void> {
+  await apiFetch(`${roomApiPath(roomName)}/uploads/${encodeURIComponent(name)}`, { method: "DELETE" });
+}
+
+/** A text upload's contents, for its preview. */
+export async function fetchUploadText(upload: Upload): Promise<string> {
+  const res = await fetch(upload.url, { cache: "no-store" });
+  if (!res.ok) throw new ApiError(await errorDetail(res), res.status);
+  return res.text();
+}
+
 /** A flow the room's conductor can run: `@conductor <name> @a @b: …`. */
 export interface Protocol {
   name: string;

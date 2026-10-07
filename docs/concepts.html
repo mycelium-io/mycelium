@@ -150,6 +150,7 @@
         <div class="nav-group-items">
           <a href="guides.html#working-the-board" class="nav-link sub">Working the Board</a>
           <a href="guides.html#structured-memory" class="nav-link sub">Structured Memory</a>
+          <a href="guides.html#files" class="nav-link sub">Files</a>
         </div>
       </div>
       <div class="nav-group collapsed" data-nav-group="guides:security">
@@ -183,6 +184,7 @@
           <a href="reference.html#cli-agent" class="nav-link sub">agent</a>
           <a href="reference.html#cli-memory" class="nav-link sub">memory</a>
           <a href="reference.html#cli-skill" class="nav-link sub">skill</a>
+          <a href="reference.html#cli-file" class="nav-link sub">file</a>
           <a href="reference.html#cli-config" class="nav-link sub">config</a>
           <a href="reference.html#cli-other" class="nav-link sub">watch</a>
         </div>
@@ -503,7 +505,7 @@ PATCH /api/rooms/{name}/messages/{id}  {<span class="str">&quot;status&quot;</sp
         <li><code>--tags</code> (<code>-t</code>) adds comma-separated tags.</li>
         <li><code>--no-embed</code> leaves a memory out of search. Use it for a large note you only ever read by key.</li>
       </ul>
-      <p>The <a href="guides.html#structured-memory">Structured Memory</a> guide covers a habit for agents to write these down as they work.</p>
+      <p>The <a href="guides.html#structured-memory">Structured Memory</a> guide covers a habit for agents to write these down as they work. Files a room keeps are memories too, under <code>uploads/</code>; see <a href="guides.html#files">Files</a>.</p>
       <h2 id="memory-it-lives-on-the-hub">It lives on the hub</h2>
       <p>Room memory is stored only on the hub. Every <code>memory</code> command asks the hub directly, so two machines always see the same thing. If the hub can&#x27;t be reached, the command says so instead of answering from something out of date:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">get</span> server.api_url   # which hub this machine uses

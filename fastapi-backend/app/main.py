@@ -55,6 +55,7 @@ from app.routes.status import router as status_router
 from app.routes.stream import router as stream_router
 from app.routes.swarms import router as swarms_router
 from app.routes.tasks import router as tasks_router
+from app.routes.uploads import router as uploads_router
 from app.routes.users import router as users_router
 from app.services.auth import auth_gate
 from app.services.filesystem import UnsafePathError
@@ -388,6 +389,7 @@ app.include_router(briefing_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
+app.include_router(uploads_router, prefix="/api")
 app.include_router(patterns_router, prefix="/api")
 app.include_router(protocols_router, prefix="/api")
 app.include_router(status_router, prefix="/api")

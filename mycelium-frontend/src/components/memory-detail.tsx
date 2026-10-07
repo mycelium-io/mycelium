@@ -12,6 +12,9 @@ import { fetchMemoryLinks, type MemoryLink } from "@/lib/api";
 import { isJsonRawText, prettyPrintJsonRawText } from "@/lib/json-text";
 import { linkErrorLabel } from "@/lib/memory-links";
 import { fmtAgo } from "@/lib/metrics-format";
+import { useRoomUploads } from "@/lib/room-data";
+import { isUploadKey } from "@/lib/uploads";
+import { DownloadButton, UploadFacts, UploadPreview } from "@/components/uploads/upload-preview";
 
 export interface MemoryLike {
   key: string;
@@ -162,6 +165,41 @@ function MaybeExpandable({
   );
 }
 
+/** An upload's file where its memory's body would be: the preview, what it is,
+ *  and its download. The body (a line about the file, or a text file's text)
+ *  is still there under Raw. */
+function UploadPanel({
+  roomName,
+  memoryKey,
+  pad,
+  onNavigate,
+}: {
+  roomName: string;
+  memoryKey: string;
+  pad: string;
+  onNavigate?: (key: string) => void;
+}) {
+  const { uploads, loading } = useRoomUploads(roomName);
+  const upload = uploads.find((u) => u.key === memoryKey);
+  if (!upload) {
+    return loading ? null : (
+      <p className={`${pad} pt-4 text-label text-muted-foreground`}>This upload&apos;s file isn&apos;t on the hub.</p>
+    );
+  }
+  return (
+    <div className={`${pad} space-y-3 pt-4`}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="min-w-0 truncate text-label text-text">{upload.filename}</span>
+        <UploadFacts upload={upload} />
+        <span className="ml-auto">
+          <DownloadButton upload={upload} size="xs" />
+        </span>
+      </div>
+      <UploadPreview upload={upload} onOpenMemory={onNavigate} />
+    </div>
+  );
+}
+
 /** Read-only review/audit of one memory: metadata, its markdown body, its links. */
 export function MemoryDetail({
   memory,
@@ -285,7 +323,9 @@ export function MemoryDetail({
         </div>
       </div>
 
-      <div className={`${pad} py-4`}>
+      {roomName && isUploadKey(memory.key) && <UploadPanel roomName={roomName} memoryKey={memory.key} pad={pad} onNavigate={onNavigate} />}
+
+      <div className={`${pad} py-4`} hidden={Boolean(roomName && isUploadKey(memory.key) && !raw)}>
         <MaybeExpandable collapseAt={collapseBodyAt} fade={bodyFade}>
           {raw ? (
             <pre className="overflow-x-auto rounded-lg border border-border bg-surface p-3 font-mono text-micro leading-relaxed text-text whitespace-pre-wrap break-words">

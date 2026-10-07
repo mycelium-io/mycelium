@@ -59,6 +59,7 @@ SECTIONS: list[tuple[str, str]] = [
     ("a2a-bridge", "A2A Bridge"),
     ("working-the-board", "Working the Board"),
     ("structured-memory", "Structured Memory"),
+    ("files", "Files"),
     ("security-planes", "Running a Shared Hub"),
     ("auth", "Authentication"),
     ("troubleshooting", "Troubleshooting"),
