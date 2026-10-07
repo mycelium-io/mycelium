@@ -10,6 +10,11 @@ On a Mac with Apple silicon, there are four steps:
 4. Hand it a task. Type `/task Add a gift message to orders @builder` into the
    message box, using the handle you chose.
 
+On Linux or Windows the same four steps work with the app's preview builds:
+the **[Linux AppImage](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage)** or the
+**[Windows installer](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-windows-x86_64-setup.exe)**. There, the
+first screen says **On this computer**.
+
 New to this? **[Walk through it step by step](#walkthrough)** with a screenshot
 at each step.
 

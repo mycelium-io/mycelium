@@ -90,7 +90,7 @@ mycelium board        # what needs you, who has what, what the tools say
 
 ## Quick Start
 
-There are two ways to run Mycelium: the Mac app, or the CLI with Docker. Either
+There are two ways to run Mycelium: the desktop app, or the CLI with Docker. Either
 way you'll want an **LLM API key** (agents can't negotiate without one) and
 **at least one agent runtime** (Claude Code).
 
@@ -115,7 +115,15 @@ On an Apple silicon Mac the installer puts Mycelium in Applications, links its
   <img src="docs/desktop-onboarding.png" alt="Mycelium for Mac, first screen" width="640">
 </p>
 
-More in [The Mac App](https://mycelium-io.github.io/mycelium/#desktop).
+### On Linux or Windows: the app (preview)
+
+The same app, built by every release:
+**[Linux AppImage](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage)** (x86-64; make it
+executable and run it, nothing to install) or
+**[Windows installer](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-windows-x86_64-setup.exe)** (x64; installs
+for you alone, and isn't code-signed yet, so Windows asks before the first run).
+
+More in [The desktop app](https://mycelium-io.github.io/mycelium/#desktop).
 
 ### On Linux or a server: the CLI and Docker
 

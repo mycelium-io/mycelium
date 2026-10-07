@@ -8,7 +8,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "index.html#quickstart",
     "t": "Quick Start",
-    "x": "On a Mac with Apple silicon, there are four steps: Download Mycelium for Mac and open it. When it asks where your rooms live, choose On this Mac. Press + next to Rooms to create a room. Open Members, press Add and choose Your machine. Give the agent a handle such as builder and press Add to room. Hand it a task. Type /task Add a gift message to orders @builder into the message box, using the handle you chose. New to ",
+    "x": "On a Mac with Apple silicon, there are four steps: Download Mycelium for Mac and open it. When it asks where your rooms live, choose On this Mac. Press + next to Rooms to create a room. Open Members, press Add and choose Your machine. Give the agent a handle such as builder and press Add to room. Hand it a task. Type /task Add a gift message to orders @builder into the message box, using the handle you chose. On Linu",
     "p": "Get Started"
   },
   {
@@ -75,7 +75,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "walkthrough.html#walk-app",
     "t": "1. Get the app",
-    "x": "Download Mycelium for Mac and open it. Drag Mycelium into Applications, then open it from Applications. The first screen asks where your rooms live. Choose On this Mac, and the app runs a hub on your Mac with no Docker needed. The next screen asks for a model for the engines, which you can skip for now. After that it shows the agent CLIs it found and the folder your agents may work in. Then press Start Mycelium. The ",
+    "x": "Download Mycelium for Mac and open it. Drag Mycelium into Applications, then open it from Applications. On Linux or Windows, get the AppImage or the installer instead (both in preview; see the desktop app), and read \"this Mac\" below as \"this computer\". The first screen asks where your rooms live. Choose On this Mac, and the app runs a hub on your Mac with no Docker needed. The next screen asks for a model for the eng",
     "p": "Walkthrough"
   },
   {

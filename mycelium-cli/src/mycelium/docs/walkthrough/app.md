@@ -2,7 +2,11 @@
 
 **[Download Mycelium for Mac](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg)**
 and open it. Drag **Mycelium** into **Applications**, then open it from
-Applications.
+Applications. On Linux or Windows, get the
+**[AppImage](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage)** or the
+**[installer](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-windows-x86_64-setup.exe)** instead (both in
+preview; see [the desktop app](#desktop)), and read "this Mac" below as "this
+computer".
 
 The first screen asks where your rooms live. Choose **On this Mac**, and the
 app runs a hub on your Mac with no Docker needed. The next screen asks for a
