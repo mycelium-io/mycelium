@@ -142,7 +142,7 @@ export function formatAge(minutes: number | null): string {
 
 // ── Triage row actions ─────────────────────────────────────────────────────────────
 // The same row actions an agent drives over the ledger. Each is a pure field patch,
-// so a keystroke here and an agent's call over L9 are the same state change.
+// so a keystroke here and an agent's call over the wire are the same state change.
 
 export type RowAction =
   | "claim"

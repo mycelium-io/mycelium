@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import settings
-from app.services import l9, patterns
+from app.services import message_format, patterns
 from app.services.filesystem import read_room_meta
 
 logger = logging.getLogger(__name__)
@@ -110,7 +110,7 @@ def _said(room: str, thread: str) -> list[tuple[str, str]]:
     """What the members said in the thread, oldest first, without the conductor."""
     from app.services.persister import prose_messages
 
-    quiet = {settings.CONDUCTOR_HANDLE.lower(), patterns.CONDUCTOR, l9.SYSTEM_ACTOR_ID}
+    quiet = {settings.CONDUCTOR_HANDLE.lower(), patterns.CONDUCTOR, message_format.SYSTEM_ACTOR_ID}
     return [
         (m.sender_handle, m.content)
         for m in prose_messages(room)
@@ -177,7 +177,7 @@ async def restate(room: str, thread: str, outcome: str | None) -> bool:
                 MemoryCreate(
                     key=STANDING_KEY,
                     value=f"{headline}\n\n{detail}".strip(),
-                    created_by=l9.SYSTEM_ACTOR_ID,
+                    created_by=message_format.SYSTEM_ACTOR_ID,
                     embed=False,
                     meta=meta,
                 )

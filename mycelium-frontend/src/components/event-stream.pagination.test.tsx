@@ -23,13 +23,13 @@ import { resetStreamHub } from "@/lib/stream-hub";
 vi.mock("@/lib/api", () => ({
   fetchMessages: vi.fn(),
   fetchUsers: vi.fn().mockResolvedValue([]),
-  fetchL9History: vi.fn().mockResolvedValue([]),
+  fetchWireHistory: vi.fn().mockResolvedValue([]),
   fetchMemories: vi.fn().mockResolvedValue([]),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
   logFetchError: () => () => undefined,
 }));
 
-import { fetchL9History, fetchMessages } from "@/lib/api";
+import { fetchWireHistory, fetchMessages } from "@/lib/api";
 import { EventStream } from "@/components/event-stream";
 
 /** A minute apart, so a page's oldest message is an unambiguous cursor. */
@@ -49,7 +49,7 @@ function page(indices: number[], total: number) {
 }
 
 const mockedMessages = vi.mocked(fetchMessages);
-const mockedL9 = vi.mocked(fetchL9History);
+const mockedWire = vi.mocked(fetchWireHistory);
 
 /** The `before` cursor each `fetchMessages` call was made with. */
 function cursors() {
@@ -69,7 +69,7 @@ describe("<EventStream /> reading back", () => {
     FakeEventSource.reset();
     vi.stubGlobal("EventSource", FakeEventSource);
     mockedMessages.mockReset();
-    mockedL9.mockReset().mockResolvedValue([]);
+    mockedWire.mockReset().mockResolvedValue([]);
   });
 
   it("asks for the page before, keyed off the oldest message loaded", async () => {
@@ -95,7 +95,7 @@ describe("<EventStream /> reading back", () => {
     // The rail used to load two hundred frames of churn while the conversation
     // loaded the backend's default fifty, so the prose was the shallower half
     // of a feed assembled from both.
-    expect(mockedMessages.mock.calls[0][1]).toBe(mockedL9.mock.calls[0][1]);
+    expect(mockedMessages.mock.calls[0][1]).toBe(mockedWire.mock.calls[0][1]);
   });
 
   it("stops once the room has no page before", async () => {

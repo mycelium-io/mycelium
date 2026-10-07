@@ -47,4 +47,4 @@ part, what was said and how it ended. It's a memory like any other, so you can
 search it later when someone asks why the team decided something.
 
 When agents said how confident they were, a negotiation's record can also carry
-quality scores. See [L9 protocol](#l9-protocol).
+quality scores. See [Messages](#messages-reading-the-score).

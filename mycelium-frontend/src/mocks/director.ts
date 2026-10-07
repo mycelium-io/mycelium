@@ -88,7 +88,7 @@ export class Director {
   /** A board notice: on the stream, and in the replay a reload reads back. */
   notice(data: Parameters<typeof noticeFrame>[1]): void {
     const frame = { ...noticeFrame(this.room, data), created_at: nowIso() };
-    (this.fx.l9 ??= []).push(frame);
+    (this.fx.wire ??= []).push(frame);
     publish(this.room, frame);
   }
 

@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""``l9 send`` / ``slim send``: hidden dev/testing plumbing.
+"""``message send`` / ``slim send``: hidden dev/testing plumbing.
 
-There's no way to put **L9 wire traffic** (or arbitrary SLIM messages) into a
+There's no way to put **wire traffic** (or arbitrary SLIM messages) into a
 room without running a full aligner-mediated negotiation. These two commands
 are ``git cat-file``-style escape hatches for exercising the real path (SLIM
-channel -> backend persister -> bus -> SSE) directly, QA'ing the frontend L9
-Inspector, demoing the AOP layer, reproducing protocol edge cases (odd
+channel -> backend persister -> bus -> SSE) directly, QA'ing the frontend message
+inspector, demoing the AOP layer, reproducing protocol edge cases (odd
 subkinds, deep ``parents`` chains, missing metrics).
 
 Deliberately **undocumented**: registered ``hidden=True`` and never
@@ -27,7 +27,7 @@ from mycelium.cli_options import acts_as, in_room
 from mycelium.commands.room import _resolve_room
 from mycelium.config import MyceliumConfig
 from mycelium.error_handler import print_error
-from mycelium.slim import l9
+from mycelium.slim import message_format
 from mycelium.slim.client import SlimError
 from mycelium.slim.member import DEFAULT_WORKSPACE, publish_once
 
@@ -36,7 +36,7 @@ _BANNER = (
     "never a coordination shortcut"
 )
 
-l9_app = typer.Typer(hidden=True, help="Inject L9 wire traffic into a room (dev/testing).")
+message_app = typer.Typer(hidden=True, help="Inject wire traffic into a room (dev/testing).")
 slim_app = typer.Typer(hidden=True, help="Inject raw SLIM messages into a room (dev/testing).")
 
 
@@ -73,15 +73,17 @@ def _run_publish(
     )
 
 
-@l9_app.command("send")
+@message_app.command("send")
 @in_room()
 @acts_as("as_handle", fallback=None)
-def l9_send(
+def message_send(
     ctx: typer.Context,
     room: str | None = None,
     as_handle: str | None = None,
-    kind: str = typer.Option(..., "--kind", help=f"L9 kind ({', '.join(sorted(l9.VALID_KINDS))})"),
-    subkind: str | None = typer.Option(None, "--subkind", help="L9 subkind (kind-specific)"),
+    kind: str = typer.Option(
+        ..., "--kind", help=f"message kind ({', '.join(sorted(message_format.VALID_KINDS))})"
+    ),
+    subkind: str | None = typer.Option(None, "--subkind", help="message subkind (kind-specific)"),
     data: str | None = typer.Option(None, "--data", help="Payload data as a JSON object"),
     text: str = typer.Option("", "--text", help="Human-facing text body"),
     recipients: str | None = typer.Option(None, "--to", help="Comma-separated recipient handles"),
@@ -91,27 +93,27 @@ def l9_send(
     parents: str | None = typer.Option(
         None, "--parents", help="Comma-separated parent message ids"
     ),
-    payload_type: str = typer.Option("data", "--payload-type", help="L9 payload.type"),
-    message_id: str | None = typer.Option(None, "--message-id", help="Explicit L9 message id"),
+    payload_type: str = typer.Option("data", "--payload-type", help="message payload.type"),
+    message_id: str | None = typer.Option(None, "--message-id", help="Explicit message id"),
     workspace: str | None = typer.Option(
         None, "--workspace", help="SLIM workspace (default: the shared dev workspace)"
     ),
 ) -> None:
-    """Publish a hand-crafted L9 envelope into a room as ``--as``, over the real SLIM wire.
+    """Publish a hand-crafted message into a room as ``--as``, over the real SLIM wire.
 
     Built with the same envelope primitives every connector uses
-    (``mycelium.slim.l9``), so the wire shape matches
-    ``contracts/slim-l9-wire.json`` exactly. Kind/subkind are validated before
+    (``mycelium.slim.message_format``), so the wire shape matches
+    ``contracts/slim-wire.json`` exactly. Kind/subkind are validated before
     anything touches the wire.
 
     Example:
-        mycelium l9 send --room design --as @avery --kind commit --subkind resolved \\
+        mycelium message send --room design --as @avery --kind commit --subkind resolved \\
             --data '{"assignments": {"cap": "30"}}'
     """
     try:
-        l9.validate_kind(kind)
-        l9.validate_subkind(kind, subkind)
-    except l9.L9ValidationError as e:
+        message_format.validate_kind(kind)
+        message_format.validate_subkind(kind, subkind)
+    except message_format.MessageValidationError as e:
         typer.secho(f"  ⟫  {e}", fg=typer.colors.RED)
         raise typer.Exit(2) from e
 
@@ -121,16 +123,16 @@ def l9_send(
     try:
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
-        episode_urn = episode or l9.room_episode(room_name)
+        episode_urn = episode or message_format.room_episode(room_name)
 
-        content = l9.build_envelope_content(
+        content = message_format.build_envelope_content(
             kind=kind,
             subkind=subkind,
             sender=sender,
             recipients=_split_csv(recipients),
             episode=episode_urn,
             parents=_split_csv(parents),
-            topic=l9.room_topic(room_name),
+            topic=message_format.room_topic(room_name),
             text=text,
             message_id=message_id,
             payload_type=payload_type,
@@ -138,7 +140,7 @@ def l9_send(
         )
 
         typer.secho(f"  ⚠  {_BANNER}", fg=typer.colors.YELLOW)
-        _run_publish(config, room_name, sender, l9.serialize(content), workspace)
+        _run_publish(config, room_name, sender, message_format.serialize(content), workspace)
         label = f"{kind}:{subkind}" if subkind else kind
         typer.secho(f"  ⟫  @{sender} → {room_name}: {label}", fg=typer.colors.GREEN)
     except (typer.Exit, typer.Abort):
@@ -167,7 +169,7 @@ def slim_send(
 ) -> None:
     """Publish an arbitrary raw message onto a room's SLIM channel as ``--as``.
 
-    No L9 semantics; the lowest-level escape hatch. Exercises the real channel:
+    No message semantics; the lowest-level escape hatch. Exercises the real channel:
     other SLIM members and the moderator see it, and the persister decides
     how/whether it surfaces.
 

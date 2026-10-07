@@ -37,7 +37,7 @@ app-level (the second arg to ``service.create_app``), how a member verifies its
 ciphertext and never inspects identity.
 
 The wire constants below (mode names, issuer/audience labels, algorithm/curve, the
-``kid = @handle`` convention) are frozen in ``contracts/slim-l9-wire.json`` and
+``kid = @handle`` convention) are frozen in ``contracts/slim-wire.json`` and
 mirrored by ``mycelium-cli/src/mycelium/slim/identity.py`` — the thin CLI can't
 import the backend, so a member deriving a different issuer/audience or JWK shape
 would silently fail peer verification. Only this docstring differs between the two

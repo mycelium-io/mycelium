@@ -13,8 +13,8 @@ This module provides two things:
    carries membership (invite/remove) and a close/teardown path for the
    long-lived room connections.
 
-The L9↔SLIM binding that rides envelopes over these group sessions lives in
-``l9_slim.py``; the backend-as-moderator room provisioning that drives it lives
+The message↔SLIM binding that rides envelopes over these group sessions lives in
+``message_slim.py``; the backend-as-moderator room provisioning that drives it lives
 in ``room_channels.py``. The durable inbox/persister lives in ``persister.py``.
 
 The ``slim_bindings`` import is **lazy** (native Rust wheel, availability is

@@ -6,7 +6,7 @@
 Node-free: they drive the engine over fake channels/persisters so the observer
 verdict, the below-threshold rejection, the driver round loop, and the
 reserved-handle summon gate are all exercised as pure async logic. The live-node
-observe slice is in ``test_l9_over_slim_roundtrip.py`` (guarded on a node).
+observe slice is in ``test_message_over_slim_roundtrip.py`` (guarded on a node).
 """
 
 from __future__ import annotations
@@ -16,13 +16,13 @@ from typing import Any
 
 import pytest
 
-from app.services import aligner, l9
-from app.services.l9_models import Kind
+from app.services import aligner, message_format
+from app.services.message_models import Kind
 from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
 
 _ROOM = "align-room"
-_EPISODE = l9.episode_urn(_ROOM, "live")
-_TOPIC = l9.topic_urn(_ROOM)
+_EPISODE = message_format.episode_urn(_ROOM, "live")
+_TOPIC = message_format.topic_urn(_ROOM)
 
 
 def _engine(manager: FakeManager, **kw: Any) -> aligner.AlignerEngine:
@@ -52,7 +52,7 @@ async def test_summon_fires_only_for_the_reserved_handle():
     engine.mediate = fake_mediate  # type: ignore[method-assign]
 
     def _env(sender: str) -> Any:
-        return l9.build_envelope(
+        return message_format.build_envelope(
             kind=Kind.exchange,
             episode=_EPISODE,
             sender=sender,
@@ -89,14 +89,14 @@ async def test_a_summon_negotiates_in_the_thread_it_was_made_in():
         held_in.append(episode)
 
     engine.mediate = fake_mediate  # type: ignore[method-assign]
-    thread = l9.episode_urn(_ROOM, "t3aa11bb")
-    for where in (thread, l9.live_episode_urn(_ROOM)):
-        summon = l9.build_envelope(
+    thread = message_format.episode_urn(_ROOM, "t3aa11bb")
+    for where in (thread, message_format.live_episode_urn(_ROOM)):
+        summon = message_format.build_envelope(
             kind=Kind.exchange, episode=where, sender="human", topic=_TOPIC, payload_type="message"
         )
         engine.handle_summon(_ROOM, "aligner", summon)
         await asyncio.sleep(0.02)
-    assert held_in == [thread, l9.live_episode_urn(_ROOM)]
+    assert held_in == [thread, message_format.live_episode_urn(_ROOM)]
 
 
 @pytest.mark.asyncio
@@ -187,7 +187,7 @@ async def test_engine_runtime_host_skips_registered_engine(
     monkeypatch.setattr(settings, "ENGINE_RUNTIME", "host")
 
     def _env(sender: str) -> Any:
-        return l9.build_envelope(
+        return message_format.build_envelope(
             kind=Kind.exchange,
             episode=_EPISODE,
             sender=sender,
@@ -230,7 +230,7 @@ def test_registered_engine_kind_reads_manifest() -> None:
 
 def test_at_mention_neutralized_in_mediator_prompt() -> None:
     """The mediator strips ``@`` before a word so its broker summary (which names
-    the other agents) can't spuriously wake them — only the L9 recipient wakes."""
+    the other agents) can't spuriously wake them — only the message recipient wakes."""
     from app.services.aligner import _AT_MENTION
 
     text = "@growth holds tech at 40%; @risk wants a hard cap. Email @ home is fine."
@@ -244,9 +244,9 @@ def test_at_mention_neutralized_in_mediator_prompt() -> None:
 
 
 def _fold_episode() -> Any:
-    from app.services import l9_episode
+    from app.services import episode_state
 
-    return l9_episode.open_episode(
+    return episode_state.open_episode(
         parent_room=_ROOM,
         short_id="abc123",
         workspace_id="ws-1",

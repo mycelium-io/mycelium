@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-L9 episode tracking.
+episode tracking.
 
 :class:`EpisodeState` is what any episode is — a tagged thread over the room's
 channel, with its participants, its topic and the envelopes it has carried.
@@ -15,13 +15,13 @@ not carry an SAO scoreboard it will never fill in.
 A :class:`NegotiationState` accompanies each mediated session. It does three
 things:
 
-1. Builds the L9 envelopes that ride inside coordination message content
+1. Builds the envelopes that ride inside coordination messages
    (ticks are ``exchange``, the consensus is ``commit:converged`` /
    ``commit:rejected``) and threads causality: a tick's envelope parents the
    agent's prior reply, a reply parents the tick it answers, the consensus
-   parents the final round's replies. Agents don't speak L9 themselves:
-   the backend synthesizes reply envelopes from the parsed reply dicts, so
-   the causal graph is complete without requiring L9-aware agents.
+   parents the final round's replies. Agents reply in plain text through the
+   CLI, and the backend writes each reply's envelope from the parsed reply, so
+   the causal graph is complete.
 
 2. Tracks the epistemic fields agents volunteer (``confidence``,
    ``deferred_to``) and computes the SIEP-style agreement-quality metrics
@@ -44,8 +44,8 @@ from typing import Any
 
 import yaml
 
-from app.services import l9
-from app.services.l9_models import Kind
+from app.services import message_format
+from app.services.message_models import Kind
 
 logger = logging.getLogger(__name__)
 
@@ -147,9 +147,9 @@ class NegotiationState(EpisodeState):
     # The negotiable issues' ordered option grids (issue -> options), so
     # satisfaction can be scored as ordinal distance on the grid actually negotiated.
     issue_options: dict[str, list[str]] = field(default_factory=dict)
-    # handle -> l9 message id of the last tick sent to that agent.
+    # handle -> message id of the last tick sent to that agent.
     last_tick_ids: dict[str, str] = field(default_factory=dict)
-    # handle -> l9 message id of that agent's last recorded reply.
+    # handle -> message id of that agent's last recorded reply.
     last_reply_ids: dict[str, str] = field(default_factory=dict)
     # handle -> first confidence the agent stated (its prior).
     priors: dict[str, float] = field(default_factory=dict)
@@ -194,8 +194,8 @@ def open_episode(
     "Opening Positions" section for audit.
     """
     ep = NegotiationState(
-        episode=episode or l9.episode_urn(parent_room, short_id),
-        topic=l9.topic_urn(parent_room),
+        episode=episode or message_format.episode_urn(parent_room, short_id),
+        topic=message_format.topic_urn(parent_room),
         parent_room=parent_room,
         short_id=short_id,
         workspace_id=workspace_id,
@@ -205,11 +205,11 @@ def open_episode(
         opening_positions=dict(opening_positions or {}),
         within=within,
     )
-    intent = l9.build_envelope(
+    intent = message_format.build_envelope(
         kind=Kind.intent,
         subkind="mission",
         episode=ep.episode,
-        sender=engine_handle or l9.SYSTEM_ACTOR_ID,
+        sender=engine_handle or message_format.SYSTEM_ACTOR_ID,
         recipients=agents,
         topic=ep.topic,
         workspace_id=workspace_id or None,
@@ -218,7 +218,7 @@ def open_episode(
         payload_data={"content": joined_intents},
     )
     ep.intent_id = intent.header.message.id  # type: ignore[union-attr]
-    ep.messages.append(l9.envelope_to_dict(intent))
+    ep.messages.append(message_format.envelope_to_dict(intent))
     return ep
 
 
@@ -232,11 +232,11 @@ def record_tick(
     episode intent.
     """
     parent = ep.last_reply_ids.get(handle) or ep.intent_id
-    env = l9.build_envelope(
+    env = message_format.build_envelope(
         kind=Kind.exchange,
         episode=ep.episode,
         parents=[parent] if parent else [],
-        sender=ep.engine_handle or l9.SYSTEM_ACTOR_ID,
+        sender=ep.engine_handle or message_format.SYSTEM_ACTOR_ID,
         recipients=[handle],
         topic=ep.topic,
         payload_type="tick",
@@ -246,7 +246,7 @@ def record_tick(
             "current_offer": payload.get("current_offer"),
         },
     )
-    env_dict = l9.envelope_to_dict(env)
+    env_dict = message_format.envelope_to_dict(env)
     ep.last_tick_ids[handle] = env.header.message.id  # type: ignore[union-attr]
     ep.messages.append(env_dict)
     return env_dict
@@ -284,13 +284,13 @@ def record_reply(
     prior/posterior/deference tracking used by the consensus metrics.
     """
     action = str(reply.get("action") or "reject")
-    # The wire move type (l9.EXCHANGE_MOVE_SUBKINDS) is distinct from ``action``:
+    # The wire move type (message_format.EXCHANGE_MOVE_SUBKINDS) is distinct from ``action``:
     # ``action`` keeps its accept/hold semantics for the belief-move metrics
     # below, while ``move`` records what the agent actually did (a proposer's
     # offer folds to action=accept for the metrics but is a ``counter`` on the
     # wire). Absent or unrecognized -> no subkind, so the reply stays valid.
     move = reply.get("move")
-    subkind = move if move in l9.EXCHANGE_MOVE_SUBKINDS else None
+    subkind = move if move in message_format.EXCHANGE_MOVE_SUBKINDS else None
     payload_data: dict[str, Any] = {"round": round_n, "action": action}
     if synthesized:
         payload_data["synthesized"] = True
@@ -310,20 +310,20 @@ def record_reply(
             payload_data[k] = reply[k]
 
     parent = ep.last_tick_ids.get(handle) or ep.intent_id
-    env = l9.build_envelope(
+    env = message_format.build_envelope(
         kind=Kind.exchange,
         subkind=subkind,
         episode=ep.episode,
         parents=[parent] if parent else [],
         sender=handle,
         sender_role="agent",
-        recipients=[ep.engine_handle or l9.SYSTEM_ACTOR_ID],
+        recipients=[ep.engine_handle or message_format.SYSTEM_ACTOR_ID],
         topic=ep.topic,
         payload_type="reply",
         payload_data=payload_data,
     )
     ep.last_reply_ids[handle] = env.header.message.id  # type: ignore[union-attr]
-    ep.messages.append(l9.envelope_to_dict(env))
+    ep.messages.append(message_format.envelope_to_dict(env))
 
     # --- epistemic folding: belief move, grounding, revision cause ---
     conf = reply.get("confidence")
@@ -473,12 +473,12 @@ def build_consensus_envelope(
         payload["metrics"] = metrics
     if task:
         payload["within"] = task
-    env = l9.build_envelope(
+    env = message_format.build_envelope(
         kind=Kind.commit,
         subkind="rejected" if broken else "converged",
         episode=ep.episode,
         parents=parents,
-        sender=ep.engine_handle or l9.SYSTEM_ACTOR_ID,
+        sender=ep.engine_handle or message_format.SYSTEM_ACTOR_ID,
         recipients=ep.agents,
         topic=ep.topic,
         workspace_id=ep.workspace_id or None,
@@ -486,7 +486,7 @@ def build_consensus_envelope(
         payload_type="consensus",
         payload_data=payload,
     )
-    env_dict = l9.envelope_to_dict(env)
+    env_dict = message_format.envelope_to_dict(env)
     ep.messages.append(env_dict)
     return env_dict
 
@@ -606,7 +606,7 @@ def _append_messages(lines: list[str], ep: EpisodeState) -> None:
         "",
         "## Messages",
         "",
-        "The full causally-linked L9 message record (one JSON envelope per line):",
+        "The full causally-linked message record (one JSON envelope per line):",
         "",
         "```jsonl",
         *(json.dumps(m, sort_keys=True) for m in ep.messages),
@@ -626,8 +626,8 @@ def _write_record(ep: EpisodeState, lines: list[str]) -> None:
         base,
         key,
         "\n".join(lines),
-        created_by=l9.SYSTEM_ACTOR_ID,
-        updated_by=l9.SYSTEM_ACTOR_ID,
+        created_by=message_format.SYSTEM_ACTOR_ID,
+        updated_by=message_format.SYSTEM_ACTOR_ID,
         # This write skips the upsert that mints an episode binding; the
         # episode record is part of the conversation thread.
         extra_meta=carry_thread(ep.parent_room, key),
@@ -677,8 +677,8 @@ def write_rule_update(ep: EpisodeState, metrics: dict[str, Any]) -> None:
             base,
             _RULE_UPDATE_KEY,
             content,
-            created_by=l9.SYSTEM_ACTOR_ID,
-            updated_by=l9.SYSTEM_ACTOR_ID,
+            created_by=message_format.SYSTEM_ACTOR_ID,
+            updated_by=message_format.SYSTEM_ACTOR_ID,
             # Rewritten in place on every convergence, so its binding has to be
             # carried rather than minted: a fresh URN each time would strand the
             # conversation about the rule on the thread it used to have.

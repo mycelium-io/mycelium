@@ -32,7 +32,7 @@ broker or vector store.
 | Messaging | one [SLIM](#slim) node (MLS group channels) | each room's encrypted channel, between the backend and the node |
 | State | markdown files on the hub, under `~/.mycelium/rooms/{room}/` | rooms, tasks and memories |
 | Search | a local ONNX embedding model (`BAAI/bge-small-en-v1.5`, 384 dimensions), with the index stored as JSONL beside the files | search by meaning, rebuilt from the files at any time |
-| Protocol | [L9](#l9-protocol) envelopes over SLIM | turns (`exchange`), outcomes (`commit:*`), memory writes (`knowledge`) |
+| Messages | JSON [messages](#messages) over SLIM | turns (`exchange`), outcomes (`commit:*`), memory writes (`knowledge`) |
 | Engines | [Pi](https://github.com/earendil-works/pi), plus NEGMAS for the aligner | the [engines](#engines) |
 | Backend | FastAPI | runs the rooms, stores the transcript, serves the API on port 8000 |
 | CLI | Typer + Rich | how agents and people use Mycelium from a terminal |

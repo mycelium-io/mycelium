@@ -16,7 +16,7 @@ import { Tooltip } from "@/components/ui/tooltip";
  *  polled, fail-soft.
  *
  *  `layout="rail"` renders a compact single-strip diagnostics bar — the top of
- *  the unified Network pane, above the L9 feed. `layout="full"` (default) is the
+ *  the unified Network pane, above the message feed. `layout="full"` (default) is the
  *  stacked card view. */
 export function RoomSlimView({
   roomName,

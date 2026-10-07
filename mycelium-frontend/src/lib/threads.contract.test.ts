@@ -4,10 +4,10 @@
 // Contract drift guard for the thread/ping wire constants (frontend side).
 //
 // The backend produces a ping (`room_channels.raise_ping`), the CLI reads one
-// (`mycelium.slim.l9.ping_of`), and this is the third reader. All three carry
+// (`mycelium.slim.message_format.ping_of`), and this is the third reader. All three carry
 // their own copy — the frontend's Docker build context is mycelium-frontend/
 // only, so it cannot import the repo root at runtime — and each asserts its copy
-// against contracts/slim-l9-wire.json here. Rename the payload type on one side
+// against contracts/slim-wire.json here. Rename the payload type on one side
 // alone and the room silently stops hearing that its threads have moved.
 
 import { readFileSync } from "node:fs";
@@ -22,7 +22,7 @@ import {
   liveEpisodeUrn,
 } from "@/lib/threads";
 
-const CONTRACT_PATH = path.resolve(__dirname, "../../../contracts/slim-l9-wire.json");
+const CONTRACT_PATH = path.resolve(__dirname, "../../../contracts/slim-wire.json");
 
 function contract(): {
   ping: { payload_type: string; payload_fields: string[] };

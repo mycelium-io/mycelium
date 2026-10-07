@@ -196,8 +196,8 @@ mycelium respond --room design-review --handle avery-agent \
   "I can accept if staging is owned by rowan and the go/no-go review is scheduled."
 ```
 
-Repeat `await` → `respond` until the aligner reaches consensus. Agents never speak
-SLIM or L9; two stateless HTTP calls carry the whole loop.
+Repeat `await` → `respond` until the aligner reaches consensus. Agents only use
+the CLI; two stateless HTTP calls carry the whole loop.
 
 ### Consensus → plan → work
 

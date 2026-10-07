@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  fetchL9History,
+  fetchWireHistory,
   fetchMessages,
   logFetchError,
 } from "@/lib/api";
@@ -34,7 +34,7 @@ import { RoomBoard } from "@/components/board/room-board";
 import { ActivityRail, type ActivityItem } from "@/components/activity-rail";
 import { Ago, NowProvider } from "@/lib/relative-time";
 import { EpisodeTag } from "@/components/episode-tag";
-import { L9Inspector } from "@/components/l9-inspector";
+import { MessageInspector } from "@/components/message-inspector";
 import { RoomA2aView } from "@/components/room-a2a";
 import { RoomSlimView } from "@/components/room-slim";
 import { EmptyState } from "@/components/empty-state";
@@ -70,13 +70,13 @@ function rowNode(root: HTMLElement | null, id: string): HTMLElement | null {
   return null;
 }
 
-// The L9 "raise-up" whitelist: message types promoted from the L9 inspector
+// The "raise-up" whitelist: message types promoted from the message inspector
 // into the primary channel/chat surface. This must mirror
-// contracts/l9-surface.json's `raise_up_types` byte-for-byte — the CLI
+// contracts/channel-surface.json's `raise_up_types` byte-for-byte — the CLI
 // (mycelium-cli/src/mycelium/commands/room.py) carries an independent copy,
 // and event-stream.contract.test.ts asserts both stay in sync with the
 // contract so the two surfaces can't silently drift apart.
-export const L9_RAISE_UP_TYPES = [
+export const RAISE_UP_TYPES = [
   "coordination_join",
   "coordination_consensus",
   "l9_knowledge",
@@ -87,7 +87,7 @@ export const L9_RAISE_UP_TYPES = [
 // negotiation lifecycle ("alice joined session X", "CONSENSUS in session X
 // → 4 work rows", "TIMEOUT in session X, no agreement") instead of
 // burying it all under the EVENTS tab.
-const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...L9_RAISE_UP_TYPES, PING_TYPE, NOTICE_TYPE]);
+const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...RAISE_UP_TYPES, PING_TYPE, NOTICE_TYPE]);
 
 // Lifecycle events that render as slim system notices (not chat rows). Used to
 // decide message grouping: a chat message only groups under the sender above it
@@ -97,7 +97,7 @@ const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...L9_RAISE_UP_TYPES, PING_TY
  * is an `l9_exchange` already on the chat path, renamed here — the same
  * branch the CLI takes inside `chat_line`.
  */
-const SYSTEM_TYPES = new Set([...L9_RAISE_UP_TYPES, PING_TYPE, NOTICE_TYPE]);
+const SYSTEM_TYPES = new Set([...RAISE_UP_TYPES, PING_TYPE, NOTICE_TYPE]);
 
 /** One line of "who is responding": the system-notice scale the channel already
  *  speaks in, with the dot breathing for a turn in flight. */
@@ -426,7 +426,7 @@ const LOAD_OLDER_MARGIN_PX = 240;
 
 /** The two reads the channel is assembled from, as one page of it.
  *
- *  `/messages` is what the room *said*; the L9 replay is where a ping and a
+ *  `/messages` is what the room *said*; the wire replay is where a ping and a
  *  board notice survive, and neither reaches the conversational read. So a page
  *  is both, merged by time — the initial window and every older one land here.
  *
@@ -600,7 +600,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // The room's messages are what was *said*; a ping is a control frame and the
   // conversational read leaves it out by construction — which would mean the
   // channel's account of a busy thread survived only as long as the tab that
-  // watched it land. The transcript's L9 replay is where a ping does survive, so
+  // watched it land. The transcript's wire replay is where a ping does survive, so
   // the pings are lifted out of it and merged back in by time. Everything else
   // in that replay already reaches the feed as a message, so only pings are
   // taken; reading both is what makes a reload say what the room said.
@@ -611,7 +611,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     async (before: string | null) => {
       const [data, frames] = await Promise.all([
         fetchMessages(roomName, CHANNEL_PAGE, { before }),
-        fetchL9History(roomName, CHANNEL_PAGE, before),
+        fetchWireHistory(roomName, CHANNEL_PAGE, before),
       ]);
       const said = (data.messages || []).map((m) => parseEvent(m));
       const notices = frames
@@ -1118,7 +1118,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
       ) : view === "network" ? (
         // Unified Network pane: SLIM channel diagnostics as a rail on top, the
         // A2A bridge (the room's off-channel traffic) beneath it when there is
-        // one, and the live L9 protocol feed filling the rest.
+        // one, and the live message feed filling the rest.
         <div className="flex flex-1 min-h-0 flex-col">
           <div className="shrink-0 border-b border-border bg-surface/40">
             <RoomSlimView roomName={roomName} layout="rail" />
@@ -1127,7 +1127,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
             <RoomA2aView roomName={roomName} />
           </div>
           <div className="flex-1 min-h-0">
-            <L9Inspector roomName={roomName} />
+            <MessageInspector roomName={roomName} />
           </div>
         </div>
       ) : (

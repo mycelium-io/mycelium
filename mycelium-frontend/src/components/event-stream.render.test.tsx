@@ -12,7 +12,7 @@ import { resetStreamHub } from "@/lib/stream-hub";
 vi.mock("@/lib/api", () => ({
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
   fetchUsers: vi.fn().mockResolvedValue([]),
-  fetchL9History: vi.fn().mockResolvedValue([]),
+  fetchWireHistory: vi.fn().mockResolvedValue([]),
   fetchMemories: vi.fn().mockResolvedValue([]),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
   logFetchError: () => () => undefined,
@@ -22,10 +22,10 @@ import { EventStream } from "@/components/event-stream";
 
 const CREATED = "2026-08-04T10:00:00.000000+00:00";
 
-/** The live SSE stream wraps a human/agent message as an L9 exchange envelope.
+/** The live SSE stream wraps a human/agent message as an exchange message envelope.
  *  An amendment is the same envelope with the `amend` subkind and the id of the
  *  message it revises in its causal parents. */
-function l9Exchange(
+function exchangeMessage(
   text: string,
   { id, sender = "user", amends }: { id?: string; sender?: string; amends?: string } = {},
 ) {
@@ -63,10 +63,10 @@ describe("<EventStream /> live message rendering", () => {
 
     await act(async () => {
       es.open();
-      es.emit(l9Exchange("hello over the live channel"));
+      es.emit(exchangeMessage("hello over the live channel"));
     });
 
-    // The prose is unwrapped from the L9 envelope and rendered like a broadcast,
+    // The prose is unwrapped from the message and rendered like a broadcast,
     // so the live feed matches what a refresh (REST) would show.
     expect(await screen.findByText("hello over the live channel")).toBeInTheDocument();
   });
@@ -78,8 +78,8 @@ describe("<EventStream /> live message rendering", () => {
 
     await act(async () => {
       es.open();
-      es.emit(l9Exchange("the TTL is 30s", { id: "m-1" }));
-      es.emit(l9Exchange("the TTL is 300s", { id: "m-2", amends: "m-1" }));
+      es.emit(exchangeMessage("the TTL is 30s", { id: "m-1" }));
+      es.emit(exchangeMessage("the TTL is 300s", { id: "m-2", amends: "m-1" }));
     });
 
     // The open tab folds what a cold read would: one message, the newest text.
@@ -95,8 +95,8 @@ describe("<EventStream /> live message rendering", () => {
 
     await act(async () => {
       es.open();
-      es.emit(l9Exchange("mine", { id: "m-1" }));
-      es.emit(l9Exchange("not what they said", { id: "m-2", sender: "ops", amends: "m-1" }));
+      es.emit(exchangeMessage("mine", { id: "m-1" }));
+      es.emit(exchangeMessage("not what they said", { id: "m-2", sender: "ops", amends: "m-1" }));
     });
 
     // Folding it would put someone else's words under the original author's name.
@@ -112,7 +112,7 @@ describe("<EventStream /> live message rendering", () => {
 
     await act(async () => {
       es.open();
-      es.emit(l9Exchange("stick to bottom"));
+      es.emit(exchangeMessage("stick to bottom"));
     });
     await screen.findByText("stick to bottom");
 
@@ -288,7 +288,7 @@ describe("<EventStream /> stick-to-bottom", () => {
     const es = FakeEventSource.latest();
     await act(async () => {
       es.open();
-      es.emit(l9Exchange(text));
+      es.emit(exchangeMessage(text));
     });
     await screen.findByText(text);
     return es;
@@ -312,7 +312,7 @@ describe("<EventStream /> stick-to-bottom", () => {
     await act(async () => { scrollTo(viewport(), 0); });
 
     const scrollSpy = vi.spyOn(Element.prototype, "scrollTo");
-    await act(async () => { es.emit(l9Exchange("landed while scrolled up")); });
+    await act(async () => { es.emit(exchangeMessage("landed while scrolled up")); });
     await screen.findByText("landed while scrolled up");
 
     expect(scrollSpy).not.toHaveBeenCalled();
@@ -323,10 +323,10 @@ describe("<EventStream /> stick-to-bottom", () => {
     const es = await mountWithMessage("first");
     await act(async () => { scrollTo(viewport(), 0); });
 
-    await act(async () => { es.emit(l9Exchange("second")); });
+    await act(async () => { es.emit(exchangeMessage("second")); });
     expect(await screen.findByRole("button", { name: /1 new/ })).toHaveTextContent("1 new message");
 
-    await act(async () => { es.emit(l9Exchange("third")); });
+    await act(async () => { es.emit(exchangeMessage("third")); });
     expect(await screen.findByRole("button", { name: /2 new/ })).toHaveTextContent("2 new messages");
   });
 

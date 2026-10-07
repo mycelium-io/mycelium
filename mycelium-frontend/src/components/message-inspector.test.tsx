@@ -10,19 +10,19 @@ import { resetStreamHub } from "@/lib/stream-hub";
 vi.mock("@/lib/api", () => ({
   fetchEpisodes: vi.fn().mockResolvedValue([]),
   fetchEpisode: vi.fn().mockResolvedValue(null),
-  fetchL9History: vi.fn().mockResolvedValue([]),
+  fetchWireHistory: vi.fn().mockResolvedValue([]),
   logFetchError: () => () => undefined,
 }));
 
-import { envelopeJson, L9Inspector, MetricsRow, toL9Frame } from "@/components/l9-inspector";
-import { fetchL9History } from "@/lib/api";
+import { envelopeJson, MessageInspector, MetricsRow, toMessageFrame } from "@/components/message-inspector";
+import { fetchWireHistory } from "@/lib/api";
 
 const CREATED = "2026-08-04T10:00:00.000000+00:00";
 /** A row's kind badge, not the kind toggle in the filter bar that shares its text. */
 const ROW_KIND = "span[aria-description]";
 
 // The real bus shape: the persister feeds each SLIM-ingested message as
-// `l9_<kind>` with the bare L9 envelope (header + payload) as its content.
+// `l9_<kind>` with the bare message (header + payload) as its content.
 function commitMessage() {
   return {
     message_type: "l9_commit",
@@ -76,7 +76,7 @@ function wire(sender: string, kind: string, type: string, data: Record<string, u
 
 describe("a flow's run reads as its steps, not as a column of exchanges", () => {
   it("says which step a conductor turn is and who it went to", () => {
-    const frame = toL9Frame(
+    const frame = toMessageFrame(
       wire("conductor", "exchange", "message", {
         conductor: { event: "turn", step: "propose", to: "success", turn: 1, cap: 9 },
       }),
@@ -85,7 +85,7 @@ describe("a flow's run reads as its steps, not as a column of exchanges", () => 
   });
 
   it("says what a pick chose, how low it was, and where it went next", () => {
-    const frame = toL9Frame(
+    const frame = toMessageFrame(
       wire("conductor", "exchange", "message", {
         conductor: {
           event: "select",
@@ -98,7 +98,7 @@ describe("a flow's run reads as its steps, not as a column of exchanges", () => 
   });
 
   it("says how a run ended on its commit", () => {
-    const frame = toL9Frame(
+    const frame = toMessageFrame(
       wire(
         "conductor",
         "commit",
@@ -115,23 +115,23 @@ describe("a flow's run reads as its steps, not as a column of exchanges", () => 
   });
 
   it("shows a reply's ratings, stance and confidence", () => {
-    expect(toL9Frame(wire("legal", "exchange", "reply", { scores: { A: 25, B: 88 } }))?.summary).toBe(
+    expect(toMessageFrame(wire("legal", "exchange", "reply", { scores: { A: 25, B: 88 } }))?.summary).toBe(
       "A=25 B=88",
     );
-    expect(toL9Frame(wire("legal", "exchange", "reply", { confidence: 0.8 }))?.summary).toBe(
+    expect(toMessageFrame(wire("legal", "exchange", "reply", { confidence: 0.8 }))?.summary).toBe(
       "confidence 0.8",
     );
     expect(
-      toL9Frame(wire("legal", "exchange", "reply", { action: "accept", confidence: 0.9 }))?.summary,
+      toMessageFrame(wire("legal", "exchange", "reply", { action: "accept", confidence: 0.9 }))?.summary,
     ).toBe("accept · confidence 0.9");
   });
 
   it("says what a ping or a notice is", () => {
-    expect(toL9Frame(wire("system", "exchange", "ping", { episode: "e" }))?.summary).toBe(
+    expect(toMessageFrame(wire("system", "exchange", "ping", { episode: "e" }))?.summary).toBe(
       "ping: a thread moved",
     );
     expect(
-      toL9Frame(wire("system", "exchange", "notice", { subkind: "filed", key: "work/draft-terms" }))?.summary,
+      toMessageFrame(wire("system", "exchange", "notice", { subkind: "filed", key: "work/draft-terms" }))?.summary,
     ).toBe("notice: filed work/draft-terms");
   });
 
@@ -143,9 +143,9 @@ describe("a flow's run reads as its steps, not as a column of exchanges", () => 
   });
 });
 
-describe("toL9Frame", () => {
+describe("toMessageFrame", () => {
   it("reads kind/subkind/episode/parents from a bare persister envelope", () => {
-    const frame = toL9Frame(commitMessage());
+    const frame = toMessageFrame(commitMessage());
     expect(frame).not.toBeNull();
     expect(frame?.kind).toBe("commit");
     expect(frame?.subkind).toBe("converged");
@@ -155,7 +155,7 @@ describe("toL9Frame", () => {
   });
 
   it("also reads an envelope embedded under an `l9` key", () => {
-    const frame = toL9Frame({
+    const frame = toMessageFrame({
       message_type: "coordination_consensus",
       sender_handle: "aligner",
       created_at: CREATED,
@@ -169,7 +169,7 @@ describe("toL9Frame", () => {
   });
 
   it("falls back to message_type when no envelope is present", () => {
-    const frame = toL9Frame({
+    const frame = toMessageFrame({
       message_type: "coordination_tick",
       sender_handle: "bob",
       created_at: CREATED,
@@ -182,7 +182,7 @@ describe("toL9Frame", () => {
   it("derives the sender from the envelope actors when no flat sender_handle is present", () => {
     // A bare `{header, payload}` envelope (e.g. an episode-detail frame) carries
     // its sender as the first participant actor, not a flattened field.
-    const frame = toL9Frame({
+    const frame = toMessageFrame({
       message_type: "l9_exchange",
       created_at: CREATED,
       content: JSON.stringify({
@@ -198,7 +198,7 @@ describe("toL9Frame", () => {
   });
 
   it("prefers the flat sender_handle over the envelope actors when both are present", () => {
-    const frame = toL9Frame({
+    const frame = toMessageFrame({
       message_type: "l9_exchange",
       sender_handle: "alice",
       created_at: CREATED,
@@ -214,12 +214,12 @@ describe("toL9Frame", () => {
   });
 
   it("returns null for plain chat (non-protocol traffic)", () => {
-    expect(toL9Frame({ message_type: "broadcast", content: "hi there" })).toBeNull();
+    expect(toMessageFrame({ message_type: "broadcast", content: "hi there" })).toBeNull();
   });
 
   it("retains the raw wire message on the frame", () => {
     const msg = commitMessage();
-    const frame = toL9Frame(msg);
+    const frame = toMessageFrame(msg);
     expect(frame?.raw).toBe(msg);
   });
 });
@@ -240,7 +240,7 @@ describe("envelopeJson", () => {
   });
 });
 
-describe("<L9Inspector />", () => {
+describe("<MessageInspector />", () => {
   beforeEach(() => {
     resetStreamHub();
     FakeEventSource.reset();
@@ -248,7 +248,7 @@ describe("<L9Inspector />", () => {
   });
 
   it("renders commit + knowledge wire frames with kind and metrics", async () => {
-    render(<L9Inspector roomName="sprint" />);
+    render(<MessageInspector roomName="sprint" />);
     const es = FakeEventSource.latest();
 
     await act(async () => {
@@ -268,8 +268,8 @@ describe("<L9Inspector />", () => {
   });
 
   it("backfills history frames on mount, with no live event", async () => {
-    vi.mocked(fetchL9History).mockResolvedValueOnce([commitMessage()]);
-    render(<L9Inspector roomName="sprint" />);
+    vi.mocked(fetchWireHistory).mockResolvedValueOnce([commitMessage()]);
+    render(<MessageInspector roomName="sprint" />);
 
     // The frame comes purely from the transcript replay — nothing emitted on SSE.
     expect(await screen.findByText(/^commit/, { selector: ROW_KIND })).toBeInTheDocument();
@@ -277,8 +277,8 @@ describe("<L9Inspector />", () => {
   });
 
   it("dedups a backfilled frame against its live re-push (same envelope id)", async () => {
-    vi.mocked(fetchL9History).mockResolvedValueOnce([commitMessage()]);
-    render(<L9Inspector roomName="sprint" />);
+    vi.mocked(fetchWireHistory).mockResolvedValueOnce([commitMessage()]);
+    render(<MessageInspector roomName="sprint" />);
     expect(await screen.findByText(/^commit/, { selector: ROW_KIND })).toBeInTheDocument();
 
     const es = FakeEventSource.latest();
@@ -292,7 +292,7 @@ describe("<L9Inspector />", () => {
   });
 
   it("expands a wire row into the full envelope JSON and collapses it again", async () => {
-    render(<L9Inspector roomName="sprint" />);
+    render(<MessageInspector roomName="sprint" />);
     const es = FakeEventSource.latest();
 
     await act(async () => {
@@ -316,7 +316,7 @@ describe("<L9Inspector />", () => {
   });
 
   it("keeps other rows collapsed when one row is expanded (row-local state)", async () => {
-    render(<L9Inspector roomName="sprint" />);
+    render(<MessageInspector roomName="sprint" />);
     const es = FakeEventSource.latest();
 
     await act(async () => {
@@ -334,7 +334,7 @@ describe("<L9Inspector />", () => {
   });
 
   it("filters the wire by kind via the toggle chips", async () => {
-    render(<L9Inspector roomName="sprint" />);
+    render(<MessageInspector roomName="sprint" />);
     const es = FakeEventSource.latest();
 
     await act(async () => {
@@ -356,7 +356,7 @@ describe("<L9Inspector />", () => {
   });
 
   it("filters the wire by episode via the select", async () => {
-    render(<L9Inspector roomName="sprint" />);
+    render(<MessageInspector roomName="sprint" />);
     const es = FakeEventSource.latest();
 
     await act(async () => {

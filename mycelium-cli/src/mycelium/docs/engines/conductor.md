@@ -35,10 +35,14 @@ flows a room can run, use `mycelium engine invoke conductor "list"`.
 | `concord` | none | Helps members agree on one of a few options. See below. |
 | `accord` | none | Gets everyone to the same understanding of the task before work starts. See below. |
 
+`concord` and `accord` are simplified versions of two protocols from the
+[Internet of Cognition](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model)
+L9 work.
+
 Members approve or reject by ending their reply with
 `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`. A reply with no
 stance takes the step's default path. In `gated` and `review`, that sends the
-work back. Every marker is listed under [Markers](#l9-protocol-markers).
+work back. Every marker is listed under [Markers](#messages-markers).
 
 To change a built-in flow or add your own, see [Writing flows](#flows).
 

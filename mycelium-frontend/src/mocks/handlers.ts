@@ -144,7 +144,7 @@ const MOCK_EPOCH = new Date(0).toISOString();
 /** A board notice on the stream, kept in the room's replay so a reload shows it. */
 function publishNotice(fx: RoomFixture, room: string, data: Parameters<typeof noticeFrame>[1]): void {
   const frame = { ...noticeFrame(room, data), created_at: new Date().toISOString() };
-  (fx.l9 ??= []).push(frame);
+  (fx.wire ??= []).push(frame);
   publish(room, frame);
 }
 
@@ -629,7 +629,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
     }
 
     case "messages": {
-      // GET /messages/l9 — the L9 wire feed for the Network pane, and the half
+      // GET /messages/wire — the wire feed for the Network pane, and the half
       // of the channel's feed that carries pings and board notices. Oldest
       // first, the last `limit` of what is older than the cursor — the shape
       // the backend's transcript replay serves.
@@ -637,10 +637,10 @@ export async function handleMock(req: Request): Promise<Response | null> {
       if (sub[1] === "search" && method === "GET") {
         return json(mockMessageSearch(fx, searchParams.get("q") ?? "", Number(searchParams.get("limit") ?? "20")));
       }
-      if (sub[1] === "l9" && method === "GET") {
+      if (sub[1] === "wire" && method === "GET") {
         const limit = Number(searchParams.get("limit") ?? "200");
         const before = searchParams.get("before");
-        const frames = (fx.l9 ?? []).filter((f) => olderThan(f.created_at as string | undefined, before));
+        const frames = (fx.wire ?? []).filter((f) => olderThan(f.created_at as string | undefined, before));
         return json(limit > 0 ? frames.slice(-limit) : frames);
       }
       if (method === "GET") {
