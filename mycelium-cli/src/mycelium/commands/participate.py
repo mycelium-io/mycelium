@@ -15,7 +15,7 @@ queue, so the caller never holds a SLIM socket between turns:
 ``await`` long-polls until the next message addressed to the handle (a mediator
 tick or an ``@``-mention) is served past a persistent per-handle cursor, so a tick
 is never missed between one await and the next. ``respond`` posts the reply, which
-the backend records as an L9 ``exchange`` the aligner scores as a position.
+the backend records as an ``exchange`` packet the aligner scores as a position.
 
 No SLIM connection, no background process, no compound shell, which is exactly
 what a headless / allowlisted agent (a Claude Code session, a subagent) can safely
@@ -431,7 +431,7 @@ def respond(
     """Publish the caller's reply, in the room or in one task's thread.
 
     A position marker may be appended to the text (e.g.
-    `[[mycelium: confidence=0.85 stance=accept]]`); the backend lifts it onto the L9
+    `[[mycelium: confidence=0.85 stance=accept]]`); the backend lifts it onto the
     payload so the aligner can score it, and strips it from the posted prose.
 
     Where a reply lands is the flags, never a guess: with ``--task`` it lands in

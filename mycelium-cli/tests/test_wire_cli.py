@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""``mycelium l9 send`` / ``mycelium slim send`` — hidden dev/testing plumbing.
+"""``mycelium packet send`` / ``mycelium slim send`` — hidden dev/testing plumbing.
 
 Node-free: ``wire.publish_once`` (the SLIM join/publish primitive) is stubbed so
 these exercise the CLI plumbing — hidden-from-help registration, kind/subkind
@@ -19,7 +19,7 @@ from typer.testing import CliRunner
 from mycelium.cli import app
 from mycelium.commands import wire
 from mycelium.config import MyceliumConfig
-from mycelium.slim import l9
+from mycelium.slim import packet
 from mycelium.slim.member import SlimSendError
 
 runner = CliRunner()
@@ -32,14 +32,16 @@ def _stub_config(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(wire.MyceliumConfig, "load", classmethod(lambda _cls: fake_config))
 
 
-def test_l9_and_slim_are_hidden_from_top_level_help() -> None:
+def test_packet_and_slim_are_hidden_from_top_level_help() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert " l9 " not in result.output
+    assert " packet " not in result.output
     assert " slim " not in result.output
 
 
-def test_l9_send_rejects_invalid_kind_before_publishing(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_packet_send_rejects_invalid_kind_before_publishing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     called = False
 
     def _fake_publish(*_a, **_k):
@@ -48,12 +50,12 @@ def test_l9_send_rejects_invalid_kind_before_publishing(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(wire, "publish_once", _fake_publish)
 
-    result = runner.invoke(app, ["l9", "send", "--as", "avery", "--kind", "not-a-kind"])
+    result = runner.invoke(app, ["packet", "send", "--as", "avery", "--kind", "not-a-kind"])
     assert result.exit_code == 2
     assert not called
 
 
-def test_l9_send_rejects_mismatched_subkind_before_publishing(
+def test_packet_send_rejects_mismatched_subkind_before_publishing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     called = False
@@ -66,13 +68,13 @@ def test_l9_send_rejects_mismatched_subkind_before_publishing(
 
     result = runner.invoke(
         app,
-        ["l9", "send", "--as", "avery", "--kind", "exchange", "--subkind", "converged"],
+        ["packet", "send", "--as", "avery", "--kind", "exchange", "--subkind", "converged"],
     )
     assert result.exit_code == 2
     assert not called
 
 
-def test_l9_send_builds_envelope_and_publishes(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_packet_send_builds_envelope_and_publishes(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict = {}
 
     async def _fake_publish(**kwargs):
@@ -83,7 +85,7 @@ def test_l9_send_builds_envelope_and_publishes(monkeypatch: pytest.MonkeyPatch) 
     result = runner.invoke(
         app,
         [
-            "l9",
+            "packet",
             "send",
             "--as",
             "@avery",
@@ -103,30 +105,30 @@ def test_l9_send_builds_envelope_and_publishes(monkeypatch: pytest.MonkeyPatch) 
     assert captured["room"] == "demo"
     assert captured["handle"] == "avery"
 
-    content = l9.parse(captured["payload"])
+    content = packet.parse(captured["payload"])
     assert content is not None
-    assert l9.kind_of(content) == "commit"
+    assert packet.kind_of(content) == "commit"
     assert content["l9"]["header"]["subkind"] == "resolved"
     assert content["l9"]["header"]["message"]["parents"] == ["p1", "p2"]
-    assert l9.recipients_of(content) == ["bob", "rowan"]
-    assert l9.payload_data_of(content) == {"assignments": {"cap": "30"}}
+    assert packet.recipients_of(content) == ["bob", "rowan"]
+    assert packet.payload_data_of(content) == {"assignments": {"cap": "30"}}
 
 
-def test_l9_send_rejects_non_object_data(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_packet_send_rejects_non_object_data(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(wire, "publish_once", lambda **_k: None)
     result = runner.invoke(
         app,
-        ["l9", "send", "--as", "avery", "--kind", "exchange", "--data", "[1, 2, 3]"],
+        ["packet", "send", "--as", "avery", "--kind", "exchange", "--data", "[1, 2, 3]"],
     )
     assert result.exit_code == 2
 
 
-def test_l9_send_surfaces_slim_send_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_packet_send_surfaces_slim_send_error(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _boom(**_k):
         raise SlimSendError("SLIM node unreachable at http://x")
 
     monkeypatch.setattr(wire, "publish_once", _boom)
-    result = runner.invoke(app, ["l9", "send", "--as", "avery", "--kind", "exchange"])
+    result = runner.invoke(app, ["packet", "send", "--as", "avery", "--kind", "exchange"])
     assert result.exit_code == 1
     assert "unreachable" in result.output
 

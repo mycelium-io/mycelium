@@ -97,7 +97,7 @@ export interface EpisodeRollup {
   tasks: number;
   /** Mean distinct agents per episode, or null with nothing to average. */
   avgParticipants: number | null;
-  /** Means over the episodes that carry L9 quality metrics — only converged
+  /** Means over the episodes that carry IoC quality metrics — only converged
    *  episodes do, so `scored` is the honest denominator, not `total`. */
   scored: number;
   mpc: number | null;

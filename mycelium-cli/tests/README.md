@@ -11,7 +11,7 @@ exactly one of each fake — don't re-declare them per file.
 | --- | --- | --- |
 | A command that calls the backend (`room`, `memory`, `plan`, …) | the `backend` fixture + patch the one generated `…​.sync` | the typed `mycelium_backend_client` plumbing |
 | Connector HTTP (`slim.member.announce_presence`, briefing fetch) | the `fake_httpx` fixture, `FakeResp` | `httpx.AsyncClient` / `httpx.Client` |
-| Joining/publishing over SLIM (`slim.member.publish_once`, the `l9 send`/`slim send` plumbing) | `FakeSlimClient` (or the `fake_slim_client` fixture) | `slim.client.SlimClient` |
+| Joining/publishing over SLIM (`slim.member.publish_once`, the `packet send`/`slim send` plumbing) | `FakeSlimClient` (or the `fake_slim_client` fixture) | `slim.client.SlimClient` |
 | Anything that touches `~/.mycelium` | the `isolated_home` fixture | points `Path.home()` at a temp dir |
 
 ### Example — a command test (typed backend client)
@@ -49,9 +49,9 @@ from tests.conftest import FakeSlimClient
 monkeypatch.setattr(member, "SlimClient", fake_slim_client)   # the fixture, reset per test
 await member.publish_once(
     api_url="http://localhost:8000", node_endpoint="http://127.0.0.1:46357",
-    room="r", handle="agent-a", payload=l9.serialize(content),
+    room="r", handle="agent-a", payload=packet.serialize(content),
 )
-assert FakeSlimClient.published == [l9.serialize(content)]
+assert FakeSlimClient.published == [packet.serialize(content)]
 ```
 
 ## Commands

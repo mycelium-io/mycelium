@@ -13,10 +13,10 @@ from pathlib import Path
 import pytest
 from httpx import AsyncClient
 
-from app.services import facet_query, l9, message_search, persister, tasks
+from app.services import facet_query, message_search, packet, persister, tasks
 from app.services.filesystem import get_room_dir
-from app.services.l9_models import Kind
-from app.services.l9_slim import serialize_content
+from app.services.packet_models import Kind
+from app.services.packet_slim import serialize_content
 
 NOW = datetime(2026, 9, 10, 12, 0, tzinfo=UTC)
 ROOM = "checkout"
@@ -112,11 +112,11 @@ def _say(
     recipients: list[str] | None = None,
     stance: str | None = None,
 ) -> None:
-    env = l9.build_envelope(
+    env = packet.build_envelope(
         kind=Kind.exchange,
-        episode=episode or l9.live_episode_urn(ROOM),
+        episode=episode or packet.live_episode_urn(ROOM),
         sender=sender,
-        recipients=recipients or [l9.SYSTEM_ACTOR_ID],
+        recipients=recipients or [packet.SYSTEM_ACTOR_ID],
         topic=f"urn:concept:mycelium:{ROOM}",
         message_id=message_id,
         payload_type="reply",

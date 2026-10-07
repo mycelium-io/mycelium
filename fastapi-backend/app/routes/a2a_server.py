@@ -51,7 +51,7 @@ from a2a.types import (
 from fastapi import APIRouter, HTTPException, Request
 from starlette.responses import JSONResponse, Response
 
-from app.services import a2a_activity, l9
+from app.services import a2a_activity, packet
 from app.services.actor import bind_optional_actor
 from app.services.filesystem import room_exists
 from app.services.skills import list_room_skills
@@ -117,12 +117,12 @@ async def _inject_into_room(room: str, text: str, sender: str = _GUEST_HANDLE) -
         ack = f"Room '{room}' is not active."
         a2a_activity.record_inbound(room, handle=sender, status="error", prompt=text, detail=ack)
         return ack
-    env = l9.build_envelope(
-        kind=l9.Kind.exchange,
-        episode=l9.episode_urn(room, "live"),
+    env = packet.build_envelope(
+        kind=packet.Kind.exchange,
+        episode=packet.episode_urn(room, "live"),
         sender=sender,
         sender_role="agent",
-        topic=l9.topic_urn(room),
+        topic=packet.topic_urn(room),
         payload_type="message",
     )
     await managed.post(env, text, list_write=True)

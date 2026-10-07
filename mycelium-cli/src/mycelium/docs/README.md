@@ -14,7 +14,7 @@ file for giving to a model. Edit the markdown here, not the generated HTML.
 | `concepts/` | How it works, rooms, the board, memory, episodes, swarms, identity, SLIM |
 | `engines/` | The engines a room runs: conductor, aligner, synthesizer, persona, worker, hello |
 | `guides/` | Step-by-step guides, from the quick start to sign-in and troubleshooting |
-| `reference/` | Architecture, board and flow reference, L9, metrics, and contributor notes |
+| `reference/` | Architecture, board and flow reference, messages, metrics, and contributor notes |
 
 The site reads in this order: Get Started, Walkthrough, Concepts, Engines,
 Guides, Reference. Learn (`learn.html`) is its own place beside them, linked

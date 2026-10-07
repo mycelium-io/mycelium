@@ -93,7 +93,7 @@ describe("stream hub", () => {
       </>,
     );
 
-    // Four feeds — the room channel, the L9 inspector's view of it, app events
+    // Four feeds — the room channel, the packet inspector's view of it, app events
     // and notifications — on two connections: the globals, and the open room.
     expect(liveUrls()).toEqual(["/api/stream", "/api/stream?room=sprint"]);
   });

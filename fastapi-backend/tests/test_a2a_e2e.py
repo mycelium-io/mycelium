@@ -20,8 +20,8 @@ import os
 
 import pytest
 
-from app.services import a2a_bridge, l9, room_channels
-from app.services.l9_models import Kind
+from app.services import a2a_bridge, packet, room_channels
+from app.services.packet_models import Kind
 from tests.fakes import FakeChannel, FakeManaged, FakePersister
 
 pytestmark = pytest.mark.skipif(
@@ -52,13 +52,13 @@ async def test_register_then_chat_with_a_live_a2a_agent(client, monkeypatch):
     monkeypatch.setattr(room_channels.manager, "get", lambda _r: managed)
 
     responder = a2a_bridge.A2aResponder(room_channels.manager)
-    env = l9.build_envelope(
+    env = packet.build_envelope(
         kind=Kind.exchange,
-        episode=l9.episode_urn(_ROOM, "live"),
+        episode=packet.episode_urn(_ROOM, "live"),
         sender="avery",
         sender_role="human",
         recipients=["echo"],
-        topic=l9.topic_urn(_ROOM),
+        topic=packet.topic_urn(_ROOM),
         payload_type="message",
         message_id="m1",
     )

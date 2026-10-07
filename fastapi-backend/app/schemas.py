@@ -239,7 +239,7 @@ class MessageRead(BaseModel):
     content: str
     metadata: dict | None = Field(None, validation_alias="event_metadata")
     episode: str | None = Field(
-        None, description="L9 episode URN this message belongs to, if any (for grouping/folding)"
+        None, description="episode URN this message belongs to, if any (for grouping/folding)"
     )
     edited_at: datetime | None = Field(
         None,
@@ -1095,64 +1095,64 @@ class SubscriptionRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── L9 episodes (protocol inspector) ─────────────────────────────────────────
+# ── episodes (protocol inspector) ─────────────────────────────────────────
 #
-# The episode read API projects persisted L9 episode records into JSON the UI
+# The episode read API projects persisted episode records into JSON the UI
 # inspector renders. These models are the typed seam: the backend routes declare
 # them as `response_model`, so FastAPI validates + filters the raw parsed dicts
-# into exactly this shape. They mirror the frontend `L9Envelope` / `EpisodeDetail`
+# into exactly this shape. They mirror the frontend `MyceliumPacket` / `EpisodeDetail`
 # TypeScript interfaces 1:1, so neither side can silently read a field the other
 # doesn't send. Fields are permissive (most optional) because these records are
 # historical markdown files, not freshly minted objects — a single odd envelope
 # must not 500 the whole inspector. The one invariant: every envelope has a kind.
 
 
-class L9ActorRead(BaseModel):
+class PacketActorRead(BaseModel):
     id: str
     role: str
 
 
-class L9ParticipantsRead(BaseModel):
-    actors: list[L9ActorRead] = Field(default_factory=list)
+class PacketParticipantsRead(BaseModel):
+    actors: list[PacketActorRead] = Field(default_factory=list)
     groups: dict | None = None
 
 
-class L9MessageRef(BaseModel):
+class PacketMessageRef(BaseModel):
     id: str = ""
     parents: list[str] = Field(default_factory=list)
     episode: str | None = None
 
 
-class L9ContextRead(BaseModel):
+class PacketContextRead(BaseModel):
     topic: str | None = None
 
 
-class L9HeaderRead(BaseModel):
+class PacketHeaderRead(BaseModel):
     protocol: str | None = None
     subprotocol: str | None = None
     version: str | None = None
     kind: str
     subkind: str | None = None
-    participants: L9ParticipantsRead | None = None
-    message: L9MessageRef | None = None
-    context: L9ContextRead | None = None
+    participants: PacketParticipantsRead | None = None
+    message: PacketMessageRef | None = None
+    context: PacketContextRead | None = None
 
 
-class L9PayloadRead(BaseModel):
+class PacketPayloadRead(BaseModel):
     type: str | None = None
     data: dict | None = None
 
 
-class L9EnvelopeRead(BaseModel):
-    """One faithful L9 envelope in an episode's causal chain.
+class PacketRead(BaseModel):
+    """One faithful packet in an episode's causal chain.
 
     The sender is the first actor (`header.participants.actors[0].id`) by the
-    bus convention in `app.services.l9`; there is deliberately no flattened
+    bus convention in `app.services.packet`; there is deliberately no flattened
     `sender_handle` on the wire envelope — the frontend derives it from actors.
     """
 
-    header: L9HeaderRead
-    payload: L9PayloadRead | None = None
+    header: PacketHeaderRead
+    payload: PacketPayloadRead | None = None
 
 
 class EpisodeMetricsRead(BaseModel):
@@ -1193,7 +1193,7 @@ class EpisodeListResponse(BaseModel):
 
 
 class EpisodeDetailRead(EpisodeSummaryRead):
-    messages: list[L9EnvelopeRead] = Field(default_factory=list)
+    messages: list[PacketRead] = Field(default_factory=list)
 
 
 # ── Cross-entity search ───────────────────────────────────────────────────────

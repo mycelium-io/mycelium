@@ -74,7 +74,7 @@ class ParsedQuery:
     actors: tuple[str, ...] = ()
     #: Result types to keep; empty means every type.
     types: tuple[str, ...] = ()
-    #: L9 kind/subkind values to keep; empty means every kind.
+    #: packet kind/subkind values to keep; empty means every kind.
     kinds: tuple[str, ...] = ()
 
     @property

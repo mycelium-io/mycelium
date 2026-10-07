@@ -96,7 +96,7 @@ export const KEYMAP: Binding[] = [
 
   { id: "pane.channel", keys: ["alt+c"], label: "Channel", group: "Panes", scope: "room" },
   { id: "pane.board", keys: ["alt+p"], label: "Board", group: "Panes", scope: "room" },
-  // Network = the merged SLIM diagnostics rail + L9 protocol feed.
+  // Network = the merged SLIM diagnostics rail + packet feed.
   { id: "pane.network", keys: ["alt+n"], label: "Network", group: "Panes", scope: "room" },
 
   { id: "rail.agents", keys: ["alt+a"], label: "Members", group: "Inspector", scope: "room" },

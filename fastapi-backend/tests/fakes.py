@@ -11,7 +11,7 @@ What stands in for what:
 * :class:`FakeSlimClient` / :class:`FakeSession` — the ``slim_bindings`` transport
   (``app.services.slim_client.SlimClient``), so ``room_channels`` provisioning /
   membership / channel lifecycle run without a node.
-* :class:`FakeChannel` — an ``L9SlimChannel`` (``app.services.l9_slim``): records
+* :class:`FakeChannel` — an ``PacketChannel`` (``app.services.packet_slim``): records
   broadcasts and can simulate a prompted participant replying.
 * :class:`FakePersister` — the transcript side of ``RoomPersister``
   (``app.services.persister``): a ``DeliveryLog`` plus ``ingest_local``.
@@ -33,9 +33,9 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from app.services import l9
-from app.services.l9_models import Kind
-from app.services.l9_slim import serialize_content
+from app.services import packet
+from app.services.packet_models import Kind
+from app.services.packet_slim import serialize_content
 from app.services.persister import DeliveryLog, TranscriptRecord, record_from
 
 if TYPE_CHECKING:
@@ -47,8 +47,8 @@ if TYPE_CHECKING:
 # negotiation over a differently-named room (this preserves the historical
 # behavior when these fakes lived in ``test_aligner``).
 DEFAULT_ROOM = "align-room"
-EPISODE = l9.episode_urn(DEFAULT_ROOM, "live")
-TOPIC = l9.topic_urn(DEFAULT_ROOM)
+EPISODE = packet.episode_urn(DEFAULT_ROOM, "live")
+TOPIC = packet.topic_urn(DEFAULT_ROOM)
 
 
 def position_record(
@@ -72,12 +72,12 @@ def position_record(
     data: dict[str, Any] = {"action": action}
     if confidence is not None:
         data["confidence"] = confidence
-    env = l9.build_envelope(
+    env = packet.build_envelope(
         kind=Kind.exchange,
         episode=episode,
         sender=sender,
         sender_role=role,
-        recipients=[l9.SYSTEM_ACTOR_ID],
+        recipients=[packet.SYSTEM_ACTOR_ID],
         topic=topic,
         payload_type=payload_type,
         payload_data=data,
@@ -88,13 +88,13 @@ def position_record(
     )
 
 
-# ── L9 channel + persister (the aligner/plan-sync/mediator layer) ─────────────
+# ── Packet channel + persister (the aligner/plan-sync/mediator layer) ─────────────
 
 
 class FakeChannel:
     """Records broadcasts; optionally simulates a prompted participant replying.
 
-    Stands in for ``app.services.l9_slim.L9SlimChannel``. With ``reply_conf`` set,
+    Stands in for ``app.services.packet_slim.PacketChannel``. With ``reply_conf`` set,
     every ``exchange`` prompt draws a simulated reply from each addressed actor
     into the paired persister's log — enough to drive the SAO mediator to
     agreement node-free (see ``test_mediator``).

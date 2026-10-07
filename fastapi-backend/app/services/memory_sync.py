@@ -2,10 +2,10 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Memory sync over SLIM — the L9 ``knowledge`` write path.
+Memory sync over SLIM — the ``knowledge`` packet write path.
 
 Memory content is canonical markdown; the JSONL index is derived. Cross-machine
-sync is **not** git: an L9 ``knowledge`` message **carries the content** so a
+sync is **not** git: an ``knowledge`` packet message **carries the content** so a
 running agent's working set updates mid-task (the one thing git can't stream).
 This module owns both halves of that seam:
 
@@ -36,16 +36,16 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from app.services import l9
-from app.services.l9_models import Kind
+from app.services import packet
+from app.services.packet_models import Kind
 
 if TYPE_CHECKING:
-    from app.services.l9_models import L9
+    from app.services.packet_models import MyceliumPacket
 
 logger = logging.getLogger(__name__)
 
 # The ``knowledge`` subkinds a memory-sync write rides as (both from the
-# SLIM-native subkind table, l9.VALID_SUBKINDS). ``distillation`` is converged
+# SLIM-native subkind table, packet.VALID_SUBKINDS). ``distillation`` is converged
 # content distilled to a shareable artifact — the compiled plan
 # (:mod:`app.services.task_sync`). ``extraction`` is a raw ``memory set`` write
 # broadcast as-is, with no negotiation behind it — kept distinct so a reader
@@ -99,7 +99,7 @@ class KnowledgeWrite:
             base_version = int(base_version_raw) if base_version_raw is not None else None
         except (TypeError, ValueError):
             base_version = None
-        actor = str(data.get("updated_by") or data.get("created_by") or l9.SYSTEM_ACTOR_ID)
+        actor = str(data.get("updated_by") or data.get("created_by") or packet.SYSTEM_ACTOR_ID)
         return cls(
             key=key,
             content=content,
@@ -111,7 +111,7 @@ class KnowledgeWrite:
         )
 
 
-def knowledge_write_from_envelope(envelope: L9) -> KnowledgeWrite | None:
+def knowledge_write_from_envelope(envelope: MyceliumPacket) -> KnowledgeWrite | None:
     """Extract the :class:`KnowledgeWrite` an envelope carries, or ``None``."""
     payload = envelope.payload
     if payload is None or not isinstance(payload.data, dict):
@@ -119,7 +119,7 @@ def knowledge_write_from_envelope(envelope: L9) -> KnowledgeWrite | None:
     return KnowledgeWrite.from_payload(payload.data)
 
 
-def is_knowledge(envelope: L9) -> bool:
+def is_knowledge(envelope: MyceliumPacket) -> bool:
     """True for a ``knowledge`` envelope (the memory-sync write trigger)."""
     return envelope.header.kind == Kind.knowledge
 
@@ -130,7 +130,7 @@ def build_knowledge_envelope(
     write: KnowledgeWrite,
     recipients: list[str],
     subkind: str = KNOWLEDGE_SUBKIND,
-) -> L9:
+) -> MyceliumPacket:
     """Build the ``knowledge`` envelope that carries ``write``.
 
     Broadcast on the room channel; every connector applies it locally. Emitted
@@ -142,12 +142,12 @@ def build_knowledge_envelope(
     payload's ``type`` always mirrors ``subkind`` so a reader can tell the two
     apart without unpacking ``data``.
     """
-    return l9.build_envelope(
+    return packet.build_envelope(
         kind=Kind.knowledge,
         subkind=subkind,
-        episode=l9.episode_urn(room, "knowledge"),
+        episode=packet.episode_urn(room, "knowledge"),
         recipients=recipients,
-        topic=l9.topic_urn(room),
+        topic=packet.topic_urn(room),
         payload_type=subkind,
         payload_data=write.to_payload(),
     )

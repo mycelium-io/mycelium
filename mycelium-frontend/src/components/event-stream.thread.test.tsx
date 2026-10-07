@@ -13,12 +13,12 @@ import { renderWithSWR } from "@/test/swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { resetStreamHub } from "@/lib/stream-hub";
-import { fetchL9History, fetchMessages, fetchMemories } from "@/lib/api";
+import { fetchWireHistory, fetchMessages, fetchMemories } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
   fetchUsers: vi.fn().mockResolvedValue([]),
-  fetchL9History: vi.fn().mockResolvedValue([]),
+  fetchWireHistory: vi.fn().mockResolvedValue([]),
   fetchMemories: vi.fn().mockResolvedValue([]),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
   logFetchError: () => () => undefined,
@@ -31,7 +31,7 @@ const LIVE = "urn:ioc:mycelium:episode:atlas:live";
 const THREAD = "urn:ioc:mycelium:episode:atlas:t3aa11bb";
 const CREATED = "2026-08-04T10:00:00.000000+00:00";
 
-/** A message as the live stream carries it: prose inside an L9 exchange. */
+/** A message as the live stream carries it: prose inside an exchange packet. */
 function said(text: string, episode: string | null, sender = "growth") {
   return {
     id: `m-${text.length}-${sender}`,
@@ -72,7 +72,7 @@ describe("<EventStream /> and the threads inside the room", () => {
     FakeEventSource.reset();
     vi.stubGlobal("EventSource", FakeEventSource);
     vi.mocked(fetchMessages).mockResolvedValue({ messages: [] });
-    vi.mocked(fetchL9History).mockResolvedValue([]);
+    vi.mocked(fetchWireHistory).mockResolvedValue([]);
     vi.mocked(fetchMemories).mockResolvedValue([]);
   });
 
@@ -216,10 +216,10 @@ describe("<EventStream /> and the threads inside the room", () => {
 
   it("recovers the pings on a cold read, where the message list has none", async () => {
     // A ping is a control frame, so the conversational read drops it; only the
-    // transcript's L9 replay keeps it. Without merging both, a reload would show
+    // transcript's wire replay keeps it. Without merging both, a reload would show
     // a quiet room that had been busy all morning.
     vi.mocked(fetchMessages).mockResolvedValue({ messages: [said("morning", LIVE, "operator")] });
-    vi.mocked(fetchL9History).mockResolvedValue([ping("risk", "m-1")]);
+    vi.mocked(fetchWireHistory).mockResolvedValue([ping("risk", "m-1")]);
 
     renderWithSWR(<EventStream roomName={ROOM} />);
     await act(async () => {});
@@ -228,7 +228,7 @@ describe("<EventStream /> and the threads inside the room", () => {
     expect(screen.getByText("Recently updated")).toBeInTheDocument();
   });
 
-  it("takes only the pings from the L9 replay, so nothing lands twice", async () => {
+  it("takes only the pings from the wire replay, so nothing lands twice", async () => {
     // Every other frame in that replay already reaches the feed as a message.
     const knowledge = {
       id: "k-1",
@@ -242,12 +242,12 @@ describe("<EventStream /> and the threads inside the room", () => {
       }),
     };
     vi.mocked(fetchMessages).mockResolvedValue({ messages: [knowledge] });
-    vi.mocked(fetchL9History).mockResolvedValue([knowledge]);
+    vi.mocked(fetchWireHistory).mockResolvedValue([knowledge]);
 
     renderWithSWR(<EventStream roomName={ROOM} />);
     await act(async () => {});
 
-    // One update, not two: the L9 replay and the message list both carry this
+    // One update, not two: the wire replay and the message list both carry this
     // frame, and a rail that counted it twice would report a duplicate as work.
     expect(await screen.findByRole("button", { name: /^Show 1 update to / })).toBeInTheDocument();
   });

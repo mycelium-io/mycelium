@@ -33,19 +33,19 @@ from mycelium.error_handler import print_error
 from mycelium.exceptions import MyceliumError
 from mycelium.identity import resolve_actor
 from mycelium.names import who
-from mycelium.slim.l9 import room_episode
+from mycelium.slim.packet import room_episode
 from mycelium.text_input import takes_text
 
-# The L9 "raise-up" whitelist: message types promoted onto the primary channel
+# The "raise-up" whitelist: message types promoted onto the primary channel
 # surface (here, `room watch`'s live stream) rather than staying inspector-only.
-# Must mirror contracts/l9-surface.json's `raise_up_types` byte-for-byte; the
+# Must mirror contracts/channel-surface.json's `raise_up_types` byte-for-byte; the
 # frontend (mycelium-frontend/src/components/event-stream.tsx) carries an
-# independent copy, and tests/test_l9_surface_contract.py asserts both stay in
+# independent copy, and tests/test_channel_surface_contract.py asserts both stay in
 # sync with the contract so the two surfaces can't silently drift apart.
 # (`room watch` also renders CLI-native detail: ticks, session start, raw
 # memory_changed; that has no frontend-inspector equivalent to hide behind;
 # that detail is intentionally outside this shared list.)
-L9_RAISE_UP_TYPES = frozenset(
+RAISE_UP_TYPES = frozenset(
     {
         "coordination_join",
         "coordination_consensus",
@@ -528,7 +528,7 @@ def frame_episode(mtype: str, msg: dict, data: dict) -> str | None:
     """The episode a tail frame belongs to, however it reached the tail.
 
     Chat arrives two ways — the history replay's folded row, which carries the
-    episode as a plain field, and the live stream's raw L9 envelope, which
+    episode as a plain field, and the live stream's raw packet, which
     carries it in the header — so the question "which conversation is this?" has
     to be asked of both shapes to be worth asking at all.
     """
@@ -565,7 +565,7 @@ def _ping_line(data: dict, stamp: str) -> str | None:
     a line that has already scrolled past is what this surface declines to do
     for an amendment too.
     """
-    from mycelium.slim.l9 import ping_of
+    from mycelium.slim.packet import ping_of
 
     ping = ping_of(data)
     if ping is None:
@@ -584,7 +584,7 @@ def chat_line(mtype: str, msg: dict, data: dict, sender: str, stamp: str, own: s
     Chat reaches the tail two ways: the history replay hands back a plain
     ``broadcast`` the backend has already folded (so a revised message arrives as
     its newest text, stamped ``edited_at``), while the live stream carries the raw
-    L9 envelope — including an amendment, which arrives as the message it is. A
+    packet — including an amendment, which arrives as the message it is. A
     tail is a tail: it shows the amendment as it lands rather than rewriting a line
     that already scrolled past, but marks it an edit and names what it revises.
     """
@@ -703,9 +703,9 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
             return "\n".join(lines)
 
         if mtype == "l9_knowledge":
-            l9_payload = data.get("l9", {}).get("payload", {}).get("data", {})
-            key = l9_payload.get("key", "memory")
-            by = l9_payload.get("updated_by")
+            packet_payload = data.get("l9", {}).get("payload", {}).get("data", {})
+            key = packet_payload.get("key", "memory")
+            by = packet_payload.get("updated_by")
             text = data.get("content") or f"{key} updated"
             suffix = f" [dim]by {by}[/]" if by else ""
             return f"  {ts()}  [yellow]knowledge[/] {text}{suffix}"

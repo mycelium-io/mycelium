@@ -23,7 +23,7 @@ The docs, in your terminal.
 - **structured-memory**: Writing down decisions and status as you work
 - **board-reference**: Every board command, and live pull request status
 - **flows**: Writing your own flows
-- **l9-protocol**: Markers, confidence, and how good an agreement was
+- **messages**: Markers, message types, and how good an agreement was
 - **troubleshooting**: Common problems, the settings reference, and how to reset
 
 `mycelium docs --list` shows every section.

@@ -16,7 +16,7 @@ changes nothing about attribution: every write path still took its actor from th
 request body (``created_by`` / ``sender_handle`` / the reply ``handle``), which is
 pure self-assertion — a valid token for ``@bob`` could still author a memory as
 ``@alice``. This module is where a verified token becomes the actor of record, so
-memory authorship, the transcript sender, and L9 actor attribution all name
+memory authorship, the transcript sender, and packet actor attribution all name
 whoever the token says is calling.
 
 Two rules, and the first one is the load-bearing one:

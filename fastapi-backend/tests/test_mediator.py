@@ -21,7 +21,7 @@ from typing import Any
 
 import pytest
 
-from app.services import aligner, l9, mediator
+from app.services import aligner, mediator, packet
 from tests.fakes import (
     FakeChannel,
     FakeManaged,
@@ -179,11 +179,11 @@ async def test_mediate_terminates_at_agreement() -> None:
     # convening gets a unique episode id, so assert the shape — one
     # room-scoped episode opened — not a fixed suffix.
     assert len(manager.opened) == 1
-    assert manager.opened[0].startswith(l9.episode_urn(_ROOM, ""))
+    assert manager.opened[0].startswith(packet.episode_urn(_ROOM, ""))
     assert manager.closed == [_ROOM]
     # Anti-theater: it stopped the moment agreement was reached — the number of
     # agent turns (exchange prompts) is far below the step cap, not a full run.
-    from app.services.l9_models import Kind
+    from app.services.packet_models import Kind
 
     prompts = [s for s, _ in channel.sent if s.header.kind == Kind.exchange]
     assert 0 < len(prompts) < 12
@@ -252,7 +252,7 @@ async def test_two_convenings_write_distinct_episode_records() -> None:
     ep2 = await _convene()
 
     # Both are held where they were summoned (the room, here) ...
-    assert ep1 == ep2 == l9.live_episode_urn(_ROOM)
+    assert ep1 == ep2 == packet.live_episode_urn(_ROOM)
     # ... and still write two distinct records on disk (no clobber of a single record).
     records = sorted(p.name for p in (room_dir / "log" / "episodes").glob("*.md"))
     assert len(records) == 2, records
@@ -262,7 +262,7 @@ async def test_two_convenings_write_distinct_episode_records() -> None:
 async def test_mediate_scopes_to_named_participants() -> None:
     """A scoped summon (``@aligner @growth``) negotiates only the named subset —
     the other room members are never addressed by the mediator."""
-    from app.services.l9_models import Kind as _Kind
+    from app.services.packet_models import Kind as _Kind
     from app.services.persister import envelope_recipients
 
     persister = FakePersister()
@@ -393,7 +393,7 @@ def test_clarification_prompt_asks_for_a_definition_not_an_offer() -> None:
 async def test_mediate_injects_one_clarifying_round_on_term_mismatch() -> None:
     """A mismatch buys exactly ONE clarifying round — one turn per participant,
     before the first SAO step — and its answers reach issue discovery."""
-    from app.services.l9_models import Kind as _Kind
+    from app.services.packet_models import Kind as _Kind
     from app.services.persister import envelope_recipients
 
     persister = FakePersister()
@@ -458,7 +458,7 @@ async def test_mediate_records_the_term_check_on_the_episode() -> None:
 async def test_mediate_without_term_mismatch_adds_no_round() -> None:
     """A room that shares its vocabulary negotiates exactly as before: no
     clarifying tick, no extra reply wait."""
-    from app.services.l9_models import Kind as _Kind
+    from app.services.packet_models import Kind as _Kind
 
     persister = FakePersister()
     channel = FakeChannel(persister, reply_conf=0.9)
@@ -637,7 +637,7 @@ async def test_a_negotiation_summoned_in_a_task_is_held_in_its_thread(
     the compiled work is filed under it."""
     from app.services import tasks
     from app.services.filesystem import ensure_room_structure, get_room_dir
-    from app.services.l9_models import Kind
+    from app.services.packet_models import Kind
 
     monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
     ensure_room_structure(get_room_dir(_ROOM))
@@ -668,7 +668,7 @@ async def test_a_negotiation_summoned_in_a_task_is_held_in_its_thread(
 async def test_a_negotiation_summoned_in_the_room_is_held_in_the_room() -> None:
     """Summoned in the room, its questions are asked in the room, where a bare
     ``respond`` answers them, and the commit names no task."""
-    from app.services.l9_models import Kind
+    from app.services.packet_models import Kind
 
     persister = FakePersister()
     channel = FakeChannel(persister, reply_conf=0.9)
@@ -679,5 +679,5 @@ async def test_a_negotiation_summoned_in_the_room_is_held_in_the_room() -> None:
 
     assert verdict is not None
     prompts = [s for s, _ in channel.sent if s.header.kind == Kind.exchange]
-    assert {p.header.message.episode for p in prompts} == {l9.live_episode_urn(_ROOM)}
+    assert {p.header.message.episode for p in prompts} == {packet.live_episode_urn(_ROOM)}
     assert "within" not in verdict["payload"]["data"]

@@ -673,7 +673,7 @@
       <div class="sec-label">Pillar 1 · Shared intent</div>
       <h2 class="sec-title">Mediated Negotiation</h2>
       <p class="sec-body">When agents need to agree, a human summons <strong>the aligner</strong>, a first-party mediator registered in the room. Its brain is a persistent Pi coding-agent session; it runs a real <strong>NEGMAS Stacked Alternating Offers</strong> negotiation. It discovers the issues from the agents' opening positions, brokers each round by <code>@</code>-addressing one agent at a time, and interprets each reply. NEGMAS owns termination: it stops the instant the agents agree.</p>
-      <p class="sec-body" style="margin-top:12px;">The complexity is tucked behind the CLI: agents post plain-prose positions with <code>mycelium respond</code>; the backend synthesizes the L9 envelopes so agents never write raw protocol. Agents propose, respond, and reach consensus, all mediated, never direct.</p>
+      <p class="sec-body" style="margin-top:12px;">The complexity is tucked behind the CLI: agents post plain-prose positions with <code>mycelium respond</code>; the backend synthesizes the packets so agents never write raw protocol. Agents propose, respond, and reach consensus, all mediated, never direct.</p>
       <div class="sec-detail">
         <span class="hi">discover issues</span><span style="margin-top:2px;">  &#8594; ["budget","timeline","scope","quality"]</span>
         <span style="margin-top:6px;" class="hi">broker each round</span><span style="margin-top:2px;">&#8594; @-address one agent at a time over SLIM</span>
@@ -686,7 +686,7 @@
       <div class="sec-label yellow">Pillar 1 · Live Flow</div>
       <h2 class="sec-title">Position &#8594; Respond &#8594; Consensus</h2>
       <p class="sec-body">Coordination rides <strong>one SLIM group channel per room</strong>. Each participant posts an opening position. A human summons the aligner, which drives the rounds.</p>
-      <p class="sec-body" style="margin-top:12px;">Each round, the aligner <code>@</code>-addresses one agent over SLIM. The agent long-polls with <code>mycelium await</code> until a message is addressed to its handle, reads the prompt, and answers with <code>mycelium respond</code>. NEGMAS advances. The backend synthesizes an L9 <code>exchange</code> envelope for every tick and reply; agents never speak SLIM or L9.</p>
+      <p class="sec-body" style="margin-top:12px;">Each round, the aligner <code>@</code>-addresses one agent over SLIM. The agent long-polls with <code>mycelium await</code> until a message is addressed to its handle, reads the prompt, and answers with <code>mycelium respond</code>. NEGMAS advances. The backend synthesizes an <code>exchange</code> packet for every tick and reply; agents never speak SLIM or build packets.</p>
       <div class="sec-detail yellow">
         <span class="hi-y">mycelium respond</span><span>: agent posts its opening position</span>
         <span style="margin-top:4px;" class="hi-y">mycelium await</span><span>: long-polls until a tick is addressed to the handle</span>
@@ -727,7 +727,7 @@
       <div class="sec-label">Architecture</div>
       <h2 class="sec-title">How It's Built</h2>
       <p class="sec-body">There is <strong>no database</strong>. State is files on disk; coordination rides <strong>one AGNTCY SLIM node</strong>: a group channel per room, MLS-encrypted with shared-secret PSK auth.</p>
-      <p class="sec-body" style="margin-top:12px;">A thin always-on <strong>FastAPI</strong> backend is each room's moderator: agents (and the human, by proxy) are members. The <strong>aligner</strong> (the NEGMAS mediator with a Pi brain) is registered in the room and summoned by <code>@</code>-mention. The <strong>L9 protocol</strong> rides SLIM as additive JSON envelopes; the backend synthesizes them so agents never speak L9.</p>
+      <p class="sec-body" style="margin-top:12px;">A thin always-on <strong>FastAPI</strong> backend is each room's moderator: agents (and the human, by proxy) are members. The <strong>aligner</strong> (the NEGMAS mediator with a Pi brain) is registered in the room and summoned by <code>@</code>-mention. <strong>Mycelium packets</strong> ride SLIM as additive JSON envelopes; the backend synthesizes them so agents never build them.</p>
       <div class="sec-detail">
         <span class="hi">mycelium-cli:</span> <span>agent adapters for Claude Code (hooks + skill), cross-machine hub / spoke</span>
         <span style="margin-top:4px;" class="hi">mycelium-backend:</span> <span>FastAPI moderator &middot; the aligner (NEGMAS + Pi) &middot; plan compiler</span>
@@ -739,7 +739,7 @@
     <div class="section" data-scene="8b">
         <div class="sec-label">Architecture</div>
         <h2 class="sec-title">Standing on Shoulders</h2>
-        <p class="sec-body">Mycelium is built on OSS projects we found invaluable in this space. Negotiation is powered by <strong>NEGMAS</strong>, a multi-issue negotiation framework. Coordination transport rides <strong>AGNTCY SLIM</strong>, a group-messaging fabric with MLS encryption. The epistemic layer follows the <strong>Internet of Cognition L9</strong> envelope protocol.</p>
+        <p class="sec-body">Mycelium is built on OSS projects we found invaluable in this space. Negotiation is powered by <strong>NEGMAS</strong>, a multi-issue negotiation framework. Coordination transport rides <strong>AGNTCY SLIM</strong>, a group-messaging fabric with MLS encryption. Consensus flows (Concord, Accord) and the agreement-quality metrics come from the <strong>Internet of Cognition L9</strong> work.</p>
         <p class="sec-body" style="margin-top:12px;">A single host runs everything self-contained: agents, memory, and the aligner. To span machines, one host runs the hub (<code>mycelium hub host</code>) and others connect as spokes (<code>mycelium hub connect</code>), joining the same room's SLIM channel without any single point of control over their local state.</p>
       </div>
 
@@ -1009,7 +1009,7 @@
             <div style="padding:12px 12px; background:rgba(195,162,224,0.05); border:1px solid rgba(195,162,224,0.25); border-radius:10px;">
               <div style="font-size:13px; font-weight:700; color:var(--purple);">SLIM node</div>
               <div style="font-size:12px; color:var(--muted); margin-top:4px; line-height:1.5;">one group channel per room<br>MLS encryption · PSK auth</div>
-              <div style="font-size:12px; color:var(--purple); font-family:'Geist Mono', 'SF Mono',monospace; margin-top:6px; opacity:0.7;">L9 over SLIM</div>
+              <div style="font-size:12px; color:var(--purple); font-family:'Geist Mono', 'SF Mono',monospace; margin-top:6px; opacity:0.7;">packets over SLIM</div>
             </div>
             <div style="padding:12px 12px; background:rgba(79,194,150,0.05); border:1px solid rgba(79,194,150,0.25); border-radius:10px;">
               <div style="font-size:13px; font-weight:700; color:var(--green);">file store</div>
@@ -1115,7 +1115,7 @@
           <div class="final-summary">
             <div class="fs-item">
               <div class="fs-k">transport</div>
-              <div class="fs-v">L9 envelopes over one SLIM channel</div>
+              <div class="fs-v">Mycelium packets over one SLIM channel</div>
             </div>
             <div class="fs-item">
               <div class="fs-k">participation</div>

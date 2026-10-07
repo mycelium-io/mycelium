@@ -139,8 +139,8 @@ app.add_typer(openshell.app, name="openshell")
 app.add_typer(demo.app, name="demo")
 app.add_typer(hub.app, name="hub")
 
-# Hidden dev/testing plumbing: inject raw L9/SLIM traffic (see commands/wire.py).
-app.add_typer(wire.l9_app, name="l9", hidden=True)
+# Hidden dev/testing plumbing: inject raw packet/SLIM traffic (see commands/wire.py).
+app.add_typer(wire.packet_app, name="packet", hidden=True)
 app.add_typer(wire.slim_app, name="slim", hidden=True)
 
 

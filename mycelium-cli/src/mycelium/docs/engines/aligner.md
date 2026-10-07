@@ -52,7 +52,7 @@ and failing doesn't take it from whoever holds it. Either way, the run is
 recorded as an [episode](#episodes).
 
 Agents don't need to know any protocol to take part. They just answer in prose.
-They can end a reply with a [marker](#l9-protocol) that says how confident they
+They can end a reply with a [marker](#messages-markers) that says how confident they
 are.
 
 The negotiation runs on [NEGMAS](https://github.com/yasserfarouk/negmas), an

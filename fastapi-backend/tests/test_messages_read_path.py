@@ -12,18 +12,18 @@ what ``_read_messages`` returns.
 from datetime import UTC, datetime
 
 from app.routes.messages import _read_messages
-from app.services import in_memory_store, l9, persister
+from app.services import in_memory_store, packet, persister
 from app.services.filesystem import get_room_dir
-from app.services.l9_models import Kind
-from app.services.l9_slim import serialize_content
+from app.services.packet_models import Kind
+from app.services.packet_slim import serialize_content
 
 
 def _record(message_id: str, *, sender: str, text: str):
-    env = l9.build_envelope(
+    env = packet.build_envelope(
         kind=Kind.exchange,
         episode="urn:ioc:mycelium:episode:r:s",
         sender=sender,
-        recipients=[l9.SYSTEM_ACTOR_ID],
+        recipients=[packet.SYSTEM_ACTOR_ID],
         topic="urn:concept:mycelium:r",
         message_id=message_id,
         payload_type="reply",
@@ -102,7 +102,7 @@ def _knowledge_record(message_id: str, *, key: str, recorded_at: str | None):
     env = memory_sync.build_knowledge_envelope(
         room="r",
         write=write,
-        recipients=[l9.SYSTEM_ACTOR_ID],
+        recipients=[packet.SYSTEM_ACTOR_ID],
         subkind=memory_sync.MEMORY_WRITE_SUBKIND,
     )
     record = persister.record_from(

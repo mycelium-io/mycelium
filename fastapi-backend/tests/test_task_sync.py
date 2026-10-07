@@ -18,30 +18,30 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.services import l9, task_sync, tasks
+from app.services import packet, task_sync, tasks
 from app.services.filesystem import (
     EPISODE_META,
     get_room_dir,
     list_memory_files,
     read_memory_file,
 )
-from app.services.l9_models import L9, Kind
+from app.services.packet_models import Kind, MyceliumPacket
 from app.services.task_compiler import CompiledTask
 from tests.fakes import FakeManager
 
 
-def _converged(assignments: dict, within: str | None = None) -> L9:
+def _converged(assignments: dict, within: str | None = None) -> MyceliumPacket:
     """A ``commit:converged`` envelope carrying ``assignments`` (aligner output),
     and the task it was reached in when one is named."""
     data: dict = {"assignments": assignments, "metrics": {"mpc": 0.82}}
     if within:
         data["within"] = within
-    return l9.build_envelope(
+    return packet.build_envelope(
         kind=Kind.commit,
         subkind="converged",
-        episode=l9.episode_urn("r", "live"),
+        episode=packet.episode_urn("r", "live"),
         recipients=["a", "b"],
-        topic=l9.topic_urn("r"),
+        topic=packet.topic_urn("r"),
         payload_type="consensus",
         payload_data=data,
     )
@@ -139,7 +139,7 @@ class TestConvergedToRows:
         await _run("r6", [CompiledTask(title="ship auth", assignee="a")], {"a": "auth"})
         meta, _ = _row("r6", "work/ship-auth")
         assert meta[EPISODE_META]
-        assert meta[EPISODE_META] != l9.episode_urn("r", "live")
+        assert meta[EPISODE_META] != packet.episode_urn("r", "live")
 
     async def test_two_rows_from_one_verdict_are_two_threads(self):
         await _run(
@@ -163,12 +163,12 @@ class TestConvergedToRows:
         first = _row("r7", "work/ship-auth")[0][EPISODE_META]
         mgr = FakeManager()
         engine = task_sync.TaskSyncEngine(mgr)  # type: ignore[arg-type]
-        later = l9.build_envelope(
+        later = packet.build_envelope(
             kind=Kind.commit,
             subkind="converged",
-            episode=l9.episode_urn("r", "second"),
+            episode=packet.episode_urn("r", "second"),
             recipients=["a"],
-            topic=l9.topic_urn("r"),
+            topic=packet.topic_urn("r"),
             payload_type="consensus",
             payload_data={"assignments": {"a": "auth"}},
         )
@@ -261,12 +261,12 @@ class TestOnlyTheAlignersAgreementIsCompiled:
 
     async def test_a_converged_commit_without_assignments_compiles_nothing(self):
         engine = task_sync.TaskSyncEngine(FakeManager())  # type: ignore[arg-type]
-        commit = l9.build_envelope(
+        commit = packet.build_envelope(
             kind=Kind.commit,
             subkind="converged",
-            episode=l9.episode_urn("r13", "t1"),
+            episode=packet.episode_urn("r13", "t1"),
             recipients=["a", "b"],
-            topic=l9.topic_urn("r13"),
+            topic=packet.topic_urn("r13"),
             payload_type="outcome",
             payload_data={"protocol": "concord", "memory": "context/decision/x"},
         )

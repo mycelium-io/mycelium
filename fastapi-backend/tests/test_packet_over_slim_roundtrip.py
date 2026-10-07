@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""L9-over-SLIM round-trip integration test.
+"""packet-over-SLIM round-trip integration test.
 
 Needs a running ``slim`` node. Guarded so the default task suite stays green
 without one (mirrors ``test_slim_roundtrip.py``): point at a node with
 ``MYCELIUM_SLIM_ENDPOINT`` (default ``http://127.0.0.1:46357``); run one via
 ``mycelium hub host``.
 
-Verifies that an L9 ``exchange`` envelope published by one participant
+Verifies that an ``exchange`` packet envelope published by one participant
 is received and correctly parsed by another over a room channel, and the
 envelope (kind/parents/episode) survives the serialize→publish→receive→parse
 round trip in causal order.
@@ -45,9 +45,9 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.mark.asyncio
-async def test_l9_exchange_round_trip_over_channel():
-    """Two causally-linked L9 envelopes arrive, parsed and in causal order."""
-    from scripts.l9_slim_roundtrip import _CHILD_ID, _ROOT_ID, run_roundtrip
+async def test_packet_exchange_round_trip_over_channel():
+    """Two causally-linked packets arrive, parsed and in causal order."""
+    from scripts.packet_slim_roundtrip import _CHILD_ID, _ROOT_ID, run_roundtrip
 
     received = await run_roundtrip(_ENDPOINT)
     assert len(received) == 2
@@ -64,7 +64,7 @@ async def test_l9_exchange_round_trip_over_channel():
 @pytest.mark.asyncio
 async def test_mid_episode_membership_change_aborts_over_slim():
     """A member joining mid-episode aborts it: peers receive commit:rejected."""
-    from scripts.l9_slim_roundtrip import run_episode_abort
+    from scripts.packet_slim_roundtrip import run_episode_abort
 
     abort = await run_episode_abort(_ENDPOINT)
 
@@ -83,7 +83,7 @@ async def test_durable_inbox_reserves_missed_message_on_reconnect(tmp_path, monk
     """
     # Persister writes the transcript to the data dir; isolate it to a temp path.
     monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
-    from scripts.l9_slim_roundtrip import _MISSED_ID, run_durable_inbox
+    from scripts.packet_slim_roundtrip import _MISSED_ID, run_durable_inbox
 
     received = await run_durable_inbox(_ENDPOINT)
 

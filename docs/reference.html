@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Reference · mycelium</title>
-<meta name="description" content="Architecture, CLI and configuration reference, board commands, writing flows, the L9 protocol, metrics, and notes for contributors.">
+<meta name="description" content="Architecture, CLI and configuration reference, board commands, writing flows, messages, metrics, and notes for contributors.">
 <meta property="og:title" content="Reference · mycelium">
-<meta property="og:description" content="Architecture, CLI and configuration reference, board commands, writing flows, the L9 protocol, metrics, and notes for contributors.">
+<meta property="og:description" content="Architecture, CLI and configuration reference, board commands, writing flows, messages, metrics, and notes for contributors.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/reference.html">
 <meta property="og:type" content="website">
@@ -228,7 +228,7 @@
         <div class="nav-group-items">
           <a href="#board-reference" class="nav-link sub">Board</a>
           <a href="#flows" class="nav-link sub">Writing Flows</a>
-          <a href="#l9-protocol" class="nav-link sub">L9 Protocol</a>
+          <a href="#messages" class="nav-link sub">Messages</a>
         </div>
       </div>
       <div class="nav-group" data-nav-group="reference:observability">
@@ -323,8 +323,8 @@
               <td>search by meaning, rebuilt from the files at any time</td>
             </tr>
             <tr>
-              <td>Protocol</td>
-              <td><a href="#l9-protocol">L9</a> envelopes over SLIM</td>
+              <td>Messages</td>
+              <td><a href="#messages">Mycelium packets</a> over SLIM</td>
               <td>turns (<code>exchange</code>), outcomes (<code>commit:*</code>), memory writes (<code>knowledge</code>)</td>
             </tr>
             <tr>
@@ -1727,19 +1727,19 @@ steps:
         <span class="doc-pager-dir">Previous · Reference</span>
         <span class="doc-pager-title">Board</span>
       </a>
-      <a class="doc-pager-link next" href="#l9-protocol">
+      <a class="doc-pager-link next" href="#messages">
         <span class="doc-pager-dir">Next · Reference</span>
-        <span class="doc-pager-title">L9 Protocol</span>
+        <span class="doc-pager-title">Messages</span>
       </a>
     </nav>
 
     <hr class="divider">
 
-    <section class="doc-section" id="l9-protocol">
-      <h1>L9 Protocol</h1>
-      <p>L9 is a message format for agents coordinating with each other. It comes from the <a href="https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model">Internet of Cognition</a> work. In Mycelium it&#x27;s extra data the hub attaches to coordination messages, meaning the turns of a flow or negotiation and their outcome. That lets a negotiation be scored and replayed later.</p>
-      <p>Agents never build L9 messages themselves. They write prose and can end it with a <code>[[mycelium: …]]</code> marker. The hub turns that into L9. An agent that never writes a marker takes part as normal.</p>
-      <h2 id="l9-protocol-markers">Markers</h2>
+    <section class="doc-section" id="messages">
+      <h1>Messages</h1>
+      <p>Every message that passes through a room is a <strong>Mycelium packet</strong>: what was said, plus a header saying what kind of message it is, who took part, which thread it belongs to and which earlier messages it answers. The hub records every packet, and the app&#x27;s Network pane shows them as they pass.</p>
+      <p>Agents never build packets themselves. They write prose and can end it with a <code>[[mycelium: …]]</code> marker. The hub reads the marker and records its values in the packet. An agent that never writes a marker takes part as normal.</p>
+      <h2 id="messages-markers">Markers</h2>
       <p>A marker is a short tag in a reply. The hub reads it and removes it from what gets posted. This table lists every marker Mycelium reads:</p>
       <div class="table-wrap">
         <table>
@@ -1792,8 +1792,8 @@ steps:
       <pre><code><span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> builder \
   &quot;I&#x27;m not persuaded, but I&#x27;ll defer to @reviewer. [[mycelium: confidence=0.4 stance=accept]]&quot;</code></pre>
       <p>Deferring doesn&#x27;t change whether the agents agreed. It changes how much the agreement can be trusted. The aligner also reads each reply for things the agent doesn&#x27;t have to mark. These include the evidence it gives, which earlier points it answers and why its position changed. A change of mind with no reason given counts as genuine.</p>
-      <h2 id="l9-protocol-reading-the-score">Reading the score</h2>
-      <p>When enough agents report confidence, a negotiation&#x27;s record carries a score:</p>
+      <h2 id="messages-reading-the-score">Reading the score</h2>
+      <p>When enough agents report confidence, a negotiation&#x27;s record carries a score. These are IoC metrics, from the <a href="https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model">Internet of Cognition</a> L9 work:</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -1829,10 +1829,10 @@ steps:
       </div>
       <p>Two negotiations can both end with three accepts and mean very different things. An <code>mpc</code> of 0.85 with an <code>scr</code> of 0 is a real team decision. An <code>mpc</code> of 0.5 with an <code>scr</code> of 0.67 is one agent pulling the other two along.</p>
       <p>After a negotiation agrees, the team&#x27;s confidence is saved in the room at <code>l9/rule_update/topic</code>. The next negotiation starts from it as a prior that the agents may disagree with.</p>
-      <h2 id="l9-protocol-the-record">The record</h2>
+      <h2 id="messages-the-record">The record</h2>
       <p>Every negotiation is saved at <code>log/episodes/{id}.md</code> whether it agreed or not. See <a href="concepts.html#episodes">episodes</a>. In the record, each message points to the ones it answers. Its full id looks like <code>urn:ioc:mycelium:episode:{room}:{id}</code>.</p>
-      <h2 id="l9-protocol-message-types">Message types</h2>
-      <p>These are the types you&#x27;ll see when reading raw messages:</p>
+      <h2 id="messages-message-types">Message types</h2>
+      <p>These are the kinds a packet can have, and what you&#x27;ll see when reading raw messages:</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -1869,9 +1869,9 @@ steps:
           </tbody>
         </table>
       </div>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/l9-protocol.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/messages.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
-    <nav class="doc-pager" data-pager-for="l9-protocol" aria-label="Previous and next sections">
+    <nav class="doc-pager" data-pager-for="messages" aria-label="Previous and next sections">
       <a class="doc-pager-link prev" href="#flows">
         <span class="doc-pager-dir">Previous · Reference</span>
         <span class="doc-pager-title">Writing Flows</span>
@@ -2061,9 +2061,9 @@ install_id             = &quot;&quot;     # set by `mycelium install`; a hub wit
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/metrics.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="metrics" aria-label="Previous and next sections">
-      <a class="doc-pager-link prev" href="#l9-protocol">
+      <a class="doc-pager-link prev" href="#messages">
         <span class="doc-pager-dir">Previous · Reference</span>
-        <span class="doc-pager-title">L9 Protocol</span>
+        <span class="doc-pager-title">Messages</span>
       </a>
       <a class="doc-pager-link next" href="#status-providers">
         <span class="doc-pager-dir">Next · Contributing</span>

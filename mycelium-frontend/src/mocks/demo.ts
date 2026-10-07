@@ -217,7 +217,7 @@ export function demoCheckout(): RoomFixture {
     episodeDetails: {},
     presence,
     floors: [],
-    l9: [],
+    wire: [],
   };
 }
 

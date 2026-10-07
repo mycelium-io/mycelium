@@ -6,7 +6,7 @@
 ``[[mycelium: confidence=0.85 stance=accept]]`` is the one convention a
 participant speaks: how sure it is, and whether it can live with what is on
 the table. A flow that asks for ratings reads them from the same marker, one
-capital letter per option: ``[[mycelium: A=82 B=41]]``. The reply route lifts the fields onto the L9 payload (so the
+capital letter per option: ``[[mycelium: A=82 B=41]]``. The reply route lifts the fields onto the packet payload (so the
 aligner scores them) and strips the marker from the prose; the conductor
 reads a stance back off either place, since a human writing into a thread
 through the message route leaves the marker in the text.
@@ -226,7 +226,7 @@ def _a_piece(raw: Any) -> dict[str, Any] | None:
 def pieces_of(content: dict[str, Any]) -> list[dict[str, Any]]:
     """The labelled pieces a transcript record states, in the order written.
 
-    Read like :func:`scores_of`: the L9 payload first (the reply route lifted
+    Read like :func:`scores_of`: the packet payload first (the reply route lifted
     the labels there), then the markers still in the prose (a person typing
     into the thread). Only well-formed pieces count.
     """
@@ -245,7 +245,7 @@ def pieces_of(content: dict[str, Any]) -> list[dict[str, Any]]:
 def scores_of(content: dict[str, Any]) -> dict[str, int]:
     """The option ratings a transcript record states, or ``{}``.
 
-    Read like :func:`stance_of`: the L9 payload first (the reply route lifted
+    Read like :func:`stance_of`: the packet payload first (the reply route lifted
     the marker there), then a marker still in the prose. Only well-formed
     ratings count; nothing is guessed from what the prose says.
     """
@@ -273,7 +273,7 @@ def scores_of(content: dict[str, Any]) -> dict[str, int]:
 def stance_of(content: dict[str, Any]) -> str | None:
     """``accept`` / ``reject`` as a transcript record states it, or ``None``.
 
-    The L9 payload's ``action`` wins — that is where the reply route put a
+    The packet payload's ``action`` wins — that is where the reply route put a
     marker it stripped. A marker still in the prose (a human's write through
     the message route) is read next. Anything else stated no stance.
     """

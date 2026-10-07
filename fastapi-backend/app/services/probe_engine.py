@@ -43,13 +43,13 @@ from app.config import settings
 
 # Reuse the aligner's manifest-kind gate and handle-fold, and the synthesizer's
 # fence-stripping, rather than growing a third copy of each.
-from app.services import l9
+from app.services import packet
 from app.services.aligner import _norm, _registered_engine_kind
-from app.services.l9_slim import serialize_content
+from app.services.packet_slim import serialize_content
 from app.services.synthesizer import _strip_fences
 
 if TYPE_CHECKING:
-    from app.services.l9_models import L9
+    from app.services.packet_models import MyceliumPacket
     from app.services.room_channels import ManagedRoomChannel, RoomChannelManager
 
 logger = logging.getLogger(__name__)
@@ -136,7 +136,7 @@ class ProbeEngine:
         self,
         room: str,
         handle: str,
-        envelope: L9,
+        envelope: MyceliumPacket,
         co_summons: list[str] | None = None,
         message_text: str = "",
     ) -> None:
@@ -225,11 +225,11 @@ class ProbeEngine:
         if managed is None:
             logger.warning("hello: no channel for room %s; dropping reply", room)
             return
-        env = l9.build_envelope(
-            kind=l9.Kind.exchange,
-            episode=l9.episode_urn(room, "live"),
+        env = packet.build_envelope(
+            kind=packet.Kind.exchange,
+            episode=packet.episode_urn(room, "live"),
             sender=sender,
-            topic=l9.topic_urn(room),
+            topic=packet.topic_urn(room),
             payload_type="message",
         )
         content = serialize_content(env, extra={"content": text})

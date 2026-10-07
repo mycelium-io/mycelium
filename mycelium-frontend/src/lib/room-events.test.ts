@@ -245,7 +245,7 @@ describe("parseEvent", () => {
     expect(parseEvent({ message_type: "broadcast", sender_handle: "a", content: "hi" }).episode).toBeNull();
   });
 
-  it("reads an amendment's target off the L9 header, and a folded edit off edited_at", () => {
+  it("reads an amendment's target off the packet header, and a folded edit off edited_at", () => {
     const amendment = parseEvent({
       message_type: "l9_exchange",
       sender_handle: "growth",

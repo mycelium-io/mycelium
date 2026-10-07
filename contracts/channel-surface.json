@@ -1,9 +1,9 @@
 {
   "_comment": [
-    "Frozen 'raise-up' whitelist \u2014 the L9 / coordination message types promoted",
-    "from the L9 inspector into the primary channel/chat surface, alongside real",
+    "Frozen 'raise-up' whitelist \u2014 the packet / coordination message types promoted",
+    "from the packet inspector into the primary channel/chat surface, alongside real",
     "chat (broadcast/direct/announce/delegate). Everything else stays confined",
-    "to the detail view (the frontend's L9 inspector tab; the CLI has no",
+    "to the detail view (the frontend's packet inspector tab; the CLI has no",
     "separate inspector, so its own richer `room watch` branches \u2014 ticks,",
     "session start, raw memory_changed \u2014 are a CLI-native superset, not part",
     "of this shared list).",
@@ -17,7 +17,7 @@
     "lifecycle event the other omits (or vice versa).",
     "",
     "Tests: mycelium-frontend/src/components/event-stream.contract.test.ts,",
-    "mycelium-cli/tests/test_l9_surface_contract.py"
+    "mycelium-cli/tests/test_channel_surface_contract.py"
   ],
   "raise_up_types": [
     "coordination_join",

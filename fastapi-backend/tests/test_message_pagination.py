@@ -3,7 +3,7 @@
 
 """The backward cursor both channel reads page by.
 
-``GET /messages`` and ``GET /messages/l9`` answer newest-first inside a window,
+``GET /messages`` and ``GET /messages/wire`` answer newest-first inside a window,
 paged backward by ``before=``, a timestamp rather than an offset — an offset
 would shift under every message the live stream lands while a reader is
 walking back.
@@ -14,10 +14,10 @@ from urllib.parse import quote
 
 import pytest
 
-from app.services import l9, persister
+from app.services import packet, persister
 from app.services.filesystem import get_room_dir
-from app.services.l9_models import Kind
-from app.services.l9_slim import serialize_content
+from app.services.packet_models import Kind
+from app.services.packet_slim import serialize_content
 
 ROOM = "paging-room"
 START = datetime(2026, 8, 20, 9, 0, tzinfo=UTC)
@@ -25,11 +25,11 @@ START = datetime(2026, 8, 20, 9, 0, tzinfo=UTC)
 
 def _record(index: int):
     """One transcript line, a minute after the one before it."""
-    env = l9.build_envelope(
+    env = packet.build_envelope(
         kind=Kind.exchange,
         episode=f"urn:ioc:mycelium:episode:{ROOM}:live",
         sender="julia",
-        recipients=[l9.SYSTEM_ACTOR_ID],
+        recipients=[packet.SYSTEM_ACTOR_ID],
         topic=f"urn:concept:mycelium:{ROOM}",
         message_id=f"m-{index:03d}",
         payload_type="reply",
@@ -105,14 +105,14 @@ async def test_paging_back_reaches_the_start_and_stops(client, transcript):
 
 
 @pytest.mark.asyncio
-async def test_the_l9_replay_takes_the_same_cursor(client, transcript):
+async def test_the_packet_replay_takes_the_same_cursor(client, transcript):
     """The channel's feed is both reads merged, so paging only the prose would
     hand back older pages with the pings and board notices missing."""
-    frames = (await client.get(f"/api/rooms/{ROOM}/messages/l9?limit=4")).json()
+    frames = (await client.get(f"/api/rooms/{ROOM}/messages/wire?limit=4")).json()
     assert [f["id"] for f in frames] == ["m-008", "m-009", "m-010", "m-011"]
 
     cursor = quote(frames[0]["created_at"])
-    older = (await client.get(f"/api/rooms/{ROOM}/messages/l9?limit=4&before={cursor}")).json()
+    older = (await client.get(f"/api/rooms/{ROOM}/messages/wire?limit=4&before={cursor}")).json()
     assert [f["id"] for f in older] == ["m-004", "m-005", "m-006", "m-007"]
 
 
@@ -129,5 +129,5 @@ async def test_an_unreadable_stamp_survives_the_cursor(client):
     persister._conversational_cache.clear()
 
     cursor = quote(START.isoformat())
-    frames = (await client.get(f"/api/rooms/{ROOM}/messages/l9?before={cursor}")).json()
+    frames = (await client.get(f"/api/rooms/{ROOM}/messages/wire?before={cursor}")).json()
     assert [f["id"] for f in frames] == ["m-002"]

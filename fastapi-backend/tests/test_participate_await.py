@@ -15,9 +15,9 @@ import pytest
 from starlette.requests import Request
 
 from app.routes import participate
-from app.services import l9, persister
-from app.services.l9_models import Kind
-from app.services.l9_slim import serialize_content
+from app.services import packet, persister
+from app.services.packet_models import Kind
+from app.services.packet_slim import serialize_content
 
 # A bare ASGI request — ``authorize_handle`` is stubbed out, so the route never
 # reads it; it exists only to satisfy the ``Request`` parameter type.
@@ -25,15 +25,15 @@ _REQUEST = Request({"type": "http", "method": "GET", "path": "/await", "headers"
 
 
 def _addressed_record(message_id: str, *, to: str, sender: str = "avery"):
-    """A human exchange @-addressed to ``to`` (an L9 recipient, as the send path
+    """A human exchange @-addressed to ``to`` (a packet recipient, as the send path
     builds it), recorded as a transcript record."""
-    env = l9.build_envelope(
+    env = packet.build_envelope(
         kind=Kind.exchange,
-        episode=l9.episode_urn("r", "live"),
+        episode=packet.episode_urn("r", "live"),
         sender=sender,
         sender_role="human",
         recipients=[to],
-        topic=l9.topic_urn("r"),
+        topic=packet.topic_urn("r"),
         message_id=message_id,
         payload_type="message",
     )
@@ -142,13 +142,13 @@ async def test_await_ignores_turns_addressed_to_others(wired):
 def test_a_silent_mention_is_not_a_turn():
     """``@~handle`` names a member without asking it anything: the send path
     makes it no recipient, and the text alone does not address it either."""
-    env = l9.build_envelope(
+    env = packet.build_envelope(
         kind=Kind.exchange,
-        episode=l9.episode_urn("r", "live"),
+        episode=packet.episode_urn("r", "live"),
         sender="avery",
         sender_role="human",
         recipients=persister.parse_mentions("@reviewer look, cc @~claude-code-agent"),
-        topic=l9.topic_urn("r"),
+        topic=packet.topic_urn("r"),
         payload_type="message",
     )
     content = serialize_content(env, extra={"content": "@reviewer look, cc @~claude-code-agent"})
@@ -184,7 +184,7 @@ async def test_a_served_turn_says_the_handle_is_responding(wired):
     assert frame["type"] == activity.ACTIVITY_TYPE
     assert frame["handle"] == "claude-code-agent"
     assert frame["state"] == "responding"
-    assert frame["episode"] == l9.episode_urn("r", "live")
+    assert frame["episode"] == packet.episode_urn("r", "live")
     assert len(log.records) == 1  # nothing was written to the transcript
 
 
@@ -198,13 +198,13 @@ def _said(
     payload_type: str = "message",
 ):
     """A message said in the room (or ``thread``), addressed to ``to`` if given."""
-    env = l9.build_envelope(
+    env = packet.build_envelope(
         kind=Kind.exchange,
-        episode=l9.episode_urn("r", thread),
+        episode=packet.episode_urn("r", thread),
         sender=sender,
         sender_role="human",
         recipients=to or [],
-        topic=l9.topic_urn("r"),
+        topic=packet.topic_urn("r"),
         message_id=message_id,
         payload_type=payload_type,
     )
@@ -299,7 +299,7 @@ async def test_earlier_carries_only_what_was_said(wired):
     wired(
         _log(
             _said("m1", "a real message"),
-            _said("m2", "", payload_type=l9.PING_PAYLOAD_TYPE),
+            _said("m2", "", payload_type=packet.PING_PAYLOAD_TYPE),
             _said("m3", "@agent see above"),
         )
     )
@@ -337,7 +337,7 @@ async def test_a_turn_in_a_tasks_thread_names_the_task(wired, monkeypatch):
     """Asked in a row's thread, the turn names the row, which is what the caller
     passes as ``respond --task`` to answer there: a reply never follows the turn
     on its own."""
-    thread = l9.episode_urn("r", "t3")
+    thread = packet.episode_urn("r", "t3")
     rows = {thread: ("work/fix-receipt", "Fix the receipt")}
     monkeypatch.setattr(participate.tasks, "row_of_episode", lambda _room, ep: rows.get(ep))
     wired(_log(_said("m1", "@agent can you review?", thread="t3")))

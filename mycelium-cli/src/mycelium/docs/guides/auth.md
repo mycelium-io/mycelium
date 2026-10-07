@@ -300,7 +300,7 @@ When a token is accepted, the hub reads two things from it:
 ## Who wrote it
 
 With auth on, a write is attributed to the handle in the token. That covers
-memory authorship (`created_by`, `updated_by`), message senders and L9
+memory authorship (`created_by`, `updated_by`), message senders and packet
 attribution. The handle in the request itself only matters if it disagrees:
 
 - If the request leaves the handle out or gives the same one, the token's

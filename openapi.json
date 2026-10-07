@@ -866,10 +866,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Only messages belonging to this L9 episode URN (one negotiation/session)",
+              "description": "Only messages belonging to this episode URN (one negotiation/session)",
               "title": "Episode"
             },
-            "description": "Only messages belonging to this L9 episode URN (one negotiation/session)"
+            "description": "Only messages belonging to this episode URN (one negotiation/session)"
           }
         ],
         "responses": {
@@ -995,14 +995,14 @@
         }
       }
     },
-    "/api/rooms/{room_name}/messages/l9": {
+    "/api/rooms/{room_name}/messages/wire": {
       "get": {
         "tags": [
           "messages"
         ],
-        "summary": "List L9 Wire",
-        "description": "The room's L9 wire feed, replayed from the transcript (oldest first).\n\nBackfills the live L9 inspector: the SSE bus carries no history, so a freshly\nopened tab would otherwise start empty. Frames are the exact shape the bus\npushes, so the client projects backfill and live frames identically.\n\n``before`` is the same backward cursor ``GET /messages`` takes, and the\nchannel needs both: its feed is those two reads merged, so paging only the\nprose would hand back older pages with the control frames missing.",
-        "operationId": "list_l9_wire_api_rooms__room_name__messages_l9_get",
+        "summary": "List Wire",
+        "description": "The room's wire feed, replayed from the transcript (oldest first).\n\nBackfills the live packet inspector: the SSE bus carries no history, so a freshly\nopened tab would otherwise start empty. Frames are the exact shape the bus\npushes, so the client projects backfill and live frames identically.\n\n``before`` is the same backward cursor ``GET /messages`` takes, and the\nchannel needs both: its feed is those two reads merged, so paging only the\nprose would hand back older pages with the control frames missing.",
+        "operationId": "list_wire_api_rooms__room_name__messages_wire_get",
         "parameters": [
           {
             "name": "room_name",
@@ -1055,7 +1055,7 @@
                     "type": "object",
                     "additionalProperties": true
                   },
-                  "title": "Response List L9 Wire Api Rooms  Room Name  Messages L9 Get"
+                  "title": "Response List Wire Api Rooms  Room Name  Messages Wire Get"
                 }
               }
             }
@@ -2512,7 +2512,7 @@
           "episodes"
         ],
         "summary": "Get Episode",
-        "description": "Return one episode: its summary plus the full L9 envelope chain.",
+        "description": "Return one episode: its summary plus the full packet chain.",
         "operationId": "get_episode_api_rooms__room_name__episodes__short_id__get",
         "parameters": [
           {
@@ -2642,7 +2642,7 @@
           "participate"
         ],
         "summary": "Post Reply",
-        "description": "Publish ``handle``'s reply as an L9 agent exchange the aligner scores.",
+        "description": "Publish ``handle``'s reply as an agent exchange packet the aligner scores.",
         "operationId": "post_reply_api_rooms__room_name__reply_post",
         "parameters": [
           {
@@ -5868,7 +5868,7 @@
           },
           "messages": {
             "items": {
-              "$ref": "#/components/schemas/L9EnvelopeRead"
+              "$ref": "#/components/schemas/PacketRead"
             },
             "type": "array",
             "title": "Messages"
@@ -6547,234 +6547,6 @@
           "code"
         ],
         "title": "JoinRedeem"
-      },
-      "L9ActorRead": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "role": {
-            "type": "string",
-            "title": "Role"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "role"
-        ],
-        "title": "L9ActorRead"
-      },
-      "L9ContextRead": {
-        "properties": {
-          "topic": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Topic"
-          }
-        },
-        "type": "object",
-        "title": "L9ContextRead"
-      },
-      "L9EnvelopeRead": {
-        "properties": {
-          "header": {
-            "$ref": "#/components/schemas/L9HeaderRead"
-          },
-          "payload": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/L9PayloadRead"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "header"
-        ],
-        "title": "L9EnvelopeRead",
-        "description": "One faithful L9 envelope in an episode's causal chain.\n\nThe sender is the first actor (`header.participants.actors[0].id`) by the\nbus convention in `app.services.l9`; there is deliberately no flattened\n`sender_handle` on the wire envelope \u2014 the frontend derives it from actors."
-      },
-      "L9HeaderRead": {
-        "properties": {
-          "protocol": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Protocol"
-          },
-          "subprotocol": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subprotocol"
-          },
-          "version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Version"
-          },
-          "kind": {
-            "type": "string",
-            "title": "Kind"
-          },
-          "subkind": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subkind"
-          },
-          "participants": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/L9ParticipantsRead"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "message": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/L9MessageRef"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "context": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/L9ContextRead"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "kind"
-        ],
-        "title": "L9HeaderRead"
-      },
-      "L9MessageRef": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id",
-            "default": ""
-          },
-          "parents": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Parents"
-          },
-          "episode": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Episode"
-          }
-        },
-        "type": "object",
-        "title": "L9MessageRef"
-      },
-      "L9ParticipantsRead": {
-        "properties": {
-          "actors": {
-            "items": {
-              "$ref": "#/components/schemas/L9ActorRead"
-            },
-            "type": "array",
-            "title": "Actors"
-          },
-          "groups": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Groups"
-          }
-        },
-        "type": "object",
-        "title": "L9ParticipantsRead"
-      },
-      "L9PayloadRead": {
-        "properties": {
-          "type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Type"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Data"
-          }
-        },
-        "type": "object",
-        "title": "L9PayloadRead"
       },
       "MachineAgentRead": {
         "properties": {
@@ -7704,7 +7476,7 @@
               }
             ],
             "title": "Episode",
-            "description": "L9 episode URN this message belongs to, if any (for grouping/folding)"
+            "description": "episode URN this message belongs to, if any (for grouping/folding)"
           },
           "edited_at": {
             "anyOf": [
@@ -8062,6 +7834,234 @@
         ],
         "title": "OwnedAgentRead",
         "description": "One agent bound to a principal, with its room."
+      },
+      "PacketActorRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "role"
+        ],
+        "title": "PacketActorRead"
+      },
+      "PacketContextRead": {
+        "properties": {
+          "topic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic"
+          }
+        },
+        "type": "object",
+        "title": "PacketContextRead"
+      },
+      "PacketHeaderRead": {
+        "properties": {
+          "protocol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protocol"
+          },
+          "subprotocol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subprotocol"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "subkind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subkind"
+          },
+          "participants": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PacketParticipantsRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PacketMessageRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PacketContextRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "PacketHeaderRead"
+      },
+      "PacketMessageRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "default": ""
+          },
+          "parents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Parents"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode"
+          }
+        },
+        "type": "object",
+        "title": "PacketMessageRef"
+      },
+      "PacketParticipantsRead": {
+        "properties": {
+          "actors": {
+            "items": {
+              "$ref": "#/components/schemas/PacketActorRead"
+            },
+            "type": "array",
+            "title": "Actors"
+          },
+          "groups": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groups"
+          }
+        },
+        "type": "object",
+        "title": "PacketParticipantsRead"
+      },
+      "PacketPayloadRead": {
+        "properties": {
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "title": "PacketPayloadRead"
+      },
+      "PacketRead": {
+        "properties": {
+          "header": {
+            "$ref": "#/components/schemas/PacketHeaderRead"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PacketPayloadRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "header"
+        ],
+        "title": "PacketRead",
+        "description": "One faithful packet in an episode's causal chain.\n\nThe sender is the first actor (`header.participants.actors[0].id`) by the\nbus convention in `app.services.packet`; there is deliberately no flattened\n`sender_handle` on the wire envelope \u2014 the frontend derives it from actors."
       },
       "PairingOutcome": {
         "properties": {

@@ -302,7 +302,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "concepts.html#episodes-the-record",
     "t": "The record",
     "s": "Episodes",
-    "x": "Every flow and negotiation is saved in the room's memory at log/episodes/{id}.md whether it succeeded or not. The record says who took part, what was said and how it ended. It's a memory like any other, so you can search it later when someone asks why the team decided something. When agents said how confident they were, a negotiation's record can also carry quality scores. See L9 protocol.",
+    "x": "Every flow and negotiation is saved in the room's memory at log/episodes/{id}.md whether it succeeded or not. The record says who took part, what was said and how it ended. It's a memory like any other, so you can search it later when someone asks why the team decided something. When agents said how confident they were, a negotiation's record can also carry quality scores. See Messages.",
     "p": "Concepts"
   },
   {
@@ -1328,7 +1328,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-who-wrote-it",
     "t": "Who wrote it",
     "s": "Security › Authentication",
-    "x": "With auth on, a write is attributed to the handle in the token. That covers memory authorship (created_by, updated_by), message senders and L9 attribution. The handle in the request itself only matters if it disagrees: If the request leaves the handle out or gives the same one, the token's handle is used. @Alice and alice count as the same. If the request names a different handle, it's rejected with a 403 instead of ",
+    "x": "With auth on, a write is attributed to the handle in the token. That covers memory authorship (created_by, updated_by), message senders and packet attribution. The handle in the request itself only matters if it disagrees: If the request leaves the handle out or gives the same one, the token's handle is used. @Alice and alice count as the same. If the request names a different handle, it's rejected with a 403 instead",
     "p": "Guides"
   },
   {
@@ -2355,37 +2355,37 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Reference"
   },
   {
-    "u": "reference.html#l9-protocol",
-    "t": "L9 Protocol",
-    "x": "L9 is a message format for agents coordinating with each other. It comes from the Internet of Cognition work. In Mycelium it's extra data the hub attaches to coordination messages, meaning the turns of a flow or negotiation and their outcome. That lets a negotiation be scored and replayed later. Agents never build L9 messages themselves. They write prose and can end it with a [[mycelium: …]] marker. The hub turns tha",
+    "u": "reference.html#messages",
+    "t": "Messages",
+    "x": "Every message that passes through a room is a Mycelium packet: what was said, plus a header saying what kind of message it is, who took part, which thread it belongs to and which earlier messages it answers. The hub records every packet, and the app's Network pane shows them as they pass. Agents never build packets themselves. They write prose and can end it with a [[mycelium: …]] marker. The hub reads the marker and",
     "p": "Reference"
   },
   {
-    "u": "reference.html#l9-protocol-markers",
+    "u": "reference.html#messages-markers",
     "t": "Markers",
-    "s": "L9 Protocol",
+    "s": "Messages",
     "x": "A marker is a short tag in a reply. The hub reads it and removes it from what gets posted. This table lists every marker Mycelium reads: Marker Used for [[mycelium: stance=accept]] / stance=reject Approving or rejecting, in a flow step or a negotiation. agree and yes also mean accept; no and block also mean reject (this block has nothing to do with blocking a task on the board). [[mycelium: confidence=0.8]] How sure ",
     "p": "Reference"
   },
   {
-    "u": "reference.html#l9-protocol-reading-the-score",
+    "u": "reference.html#messages-reading-the-score",
     "t": "Reading the score",
-    "s": "L9 Protocol",
-    "x": "When enough agents report confidence, a negotiation's record carries a score: Metric Stands for What it tells you mpc mean final confidence How sure the team is at the end, from 0 to 1. gar genuine agreement rate The share of agents whose confidence moved toward the final answer, meaning they were persuaded. 0 to 1. scr social compliance ratio The share of changes of mind that were agents going along rather than bein",
+    "s": "Messages",
+    "x": "When enough agents report confidence, a negotiation's record carries a score. These are IoC metrics, from the Internet of Cognition L9 work: Metric Stands for What it tells you mpc mean final confidence How sure the team is at the end, from 0 to 1. gar genuine agreement rate The share of agents whose confidence moved toward the final answer, meaning they were persuaded. 0 to 1. scr social compliance ratio The share o",
     "p": "Reference"
   },
   {
-    "u": "reference.html#l9-protocol-the-record",
+    "u": "reference.html#messages-the-record",
     "t": "The record",
-    "s": "L9 Protocol",
+    "s": "Messages",
     "x": "Every negotiation is saved at log/episodes/{id}.md whether it agreed or not. See episodes. In the record, each message points to the ones it answers. Its full id looks like urn:ioc:mycelium:episode:{room}:{id}.",
     "p": "Reference"
   },
   {
-    "u": "reference.html#l9-protocol-message-types",
+    "u": "reference.html#messages-message-types",
     "t": "Message types",
-    "s": "L9 Protocol",
-    "x": "These are the types you'll see when reading raw messages: Type Means exchange A turn. commit:converged An agreement. commit:resolved A flow that finished. commit:rejected A failed negotiation or flow. knowledge A memory write. exchange:amend A message that edits an earlier one.",
+    "s": "Messages",
+    "x": "These are the kinds a packet can have, and what you'll see when reading raw messages: Type Means exchange A turn. commit:converged An agreement. commit:resolved A flow that finished. commit:rejected A failed negotiation or flow. knowledge A memory write. exchange:amend A message that edits an earlier one.",
     "p": "Reference"
   },
   {

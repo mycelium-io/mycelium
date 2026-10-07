@@ -508,7 +508,7 @@ jobs:
         run: >-
           uv run pytest -q
           tests/test_slim_roundtrip.py
-          tests/test_l9_over_slim_roundtrip.py
+          tests/test_packet_over_slim_roundtrip.py
 
       # The CLI has no live-node slices: `await`/`respond` are pure HTTP (the
       # SLIM member connector that needed a node was removed with the daemon).

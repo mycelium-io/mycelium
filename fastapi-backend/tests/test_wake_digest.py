@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from app.services import l9, wake_digest
+from app.services import packet, wake_digest
 from app.services.filesystem import get_room_dir, write_memory_file
 from app.services.persister import TranscriptRecord
 
@@ -19,7 +19,7 @@ THREAD = "urn:ioc:mycelium:episode:digest-room:t1"
 def _said(
     n: int, sender: str, text: str, minutes_ago: int, episode: str | None = None
 ) -> TranscriptRecord:
-    ep = episode or l9.live_episode_urn(ROOM)
+    ep = episode or packet.live_episode_urn(ROOM)
     return TranscriptRecord(
         message_id=f"m{n}",
         sender=sender,
@@ -42,7 +42,7 @@ def _said(
 
 def _notice(n: int, minutes_ago: int) -> TranscriptRecord:
     record = _said(n, "system", "", minutes_ago)
-    record.content["l9"]["payload"] = {"type": l9.NOTICE_PAYLOAD_TYPE}
+    record.content["l9"]["payload"] = {"type": packet.NOTICE_PAYLOAD_TYPE}
     return record
 
 

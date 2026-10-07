@@ -14,10 +14,10 @@ import asyncio
 import pytest
 import yaml
 
-from app.services import a2a_activity, a2a_bridge, l9
+from app.services import a2a_activity, a2a_bridge, packet
 from app.services.a2a_bridge import A2aReply
 from app.services.filesystem import get_room_dir, write_memory_file
-from app.services.l9_models import Kind
+from app.services.packet_models import Kind
 from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
 
 _ROOM = "portfolio"
@@ -48,13 +48,13 @@ def _register_engine(handle: str = "aligner") -> None:
 
 
 def _summon_envelope(sender: str, *, message_id: str = "m1"):
-    return l9.build_envelope(
+    return packet.build_envelope(
         kind=Kind.exchange,
-        episode=l9.episode_urn(_ROOM, "live"),
+        episode=packet.episode_urn(_ROOM, "live"),
         sender=sender,
         sender_role="human",
         recipients=["researcher"],
-        topic=l9.topic_urn(_ROOM),
+        topic=packet.topic_urn(_ROOM),
         payload_type="message",
         message_id=message_id,
     )

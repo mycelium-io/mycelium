@@ -20,22 +20,22 @@ import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
-  fetchL9History,
+  fetchWireHistory,
   logFetchError,
   type EpisodeMetrics,
-  type L9Envelope,
+  type MyceliumPacket,
 } from "@/lib/api";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { unwrapContent } from "@/lib/room-events";
 
-// The L9 protocol inspector renders the AOP layer legibly: the live L9 payloads
+// The packet inspector renders the AOP layer legibly: the live packet payloads
 // crossing a room's channel (exchange ticks/replies, commit verdicts with
 // MPC/GAR/SCR, knowledge pushes) as a wire feed, plus the persisted episode
 // records and their causal chain.
 
 // ── frame model ────────────────────────────────────────────────────────────────
 
-export interface L9Frame {
+export interface PacketFrame {
   id: string;
   kind: string; // exchange | commit | knowledge | intent | contingency
   subkind: string | null;
@@ -162,12 +162,12 @@ function frameSummary(
 }
 
 /**
- * Project a room-bus message into an L9 wire frame, or null when the message
+ * Project a room-bus message into an wire frame, or null when the message
  * isn't protocol traffic (plain chat). Prefers the embedded `l9` envelope (the
  * source of truth); falls back to the message_type when a raw event carries no
  * envelope.
  */
-export function toL9Frame(msg: Record<string, unknown>): L9Frame | null {
+export function toPacketFrame(msg: Record<string, unknown>): PacketFrame | null {
   const mtype = String(msg.message_type ?? msg.type ?? "");
   const created = String(msg.created_at ?? "");
   const time = created.length >= 19 ? created.slice(11, 19) : "";
@@ -177,8 +177,8 @@ export function toL9Frame(msg: Record<string, unknown>): L9Frame | null {
   // The envelope may be embedded under `l9`, OR be the content itself (the
   // persister feeds the bus a bare `{header, payload}` envelope as `l9_<kind>`),
   // OR be absent (route-level events like memory_changed carry only fields).
-  const embedded = content.l9 && typeof content.l9 === "object" ? (content.l9 as L9Envelope) : null;
-  const bare = content.header && typeof content.header === "object" ? (content as unknown as L9Envelope) : null;
+  const embedded = content.l9 && typeof content.l9 === "object" ? (content.l9 as MyceliumPacket) : null;
+  const bare = content.header && typeof content.header === "object" ? (content as unknown as MyceliumPacket) : null;
   const env = embedded ?? bare;
   const header = env?.header;
   // Sender: prefer the flat `sender_handle` the persister stamps on bus frames;
@@ -371,7 +371,7 @@ function FrameRow({
   frame,
   onExpandedChange,
 }: {
-  frame: L9Frame;
+  frame: PacketFrame;
   onExpandedChange: (delta: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -452,8 +452,8 @@ interface Props {
 
 const MAX_FRAMES = 200;
 
-export function L9Inspector({ roomName }: Props) {
-  const [frames, setFrames] = useState<L9Frame[]>([]);
+export function PacketInspector({ roomName }: Props) {
+  const [frames, setFrames] = useState<PacketFrame[]>([]);
   const connected = useRoomConnected(roomName);
   // Kinds toggled off; empty by default so new kinds auto-show.
   const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
@@ -480,11 +480,11 @@ export function L9Inspector({ roomName }: Props) {
     // here drops the previous room's frames before the new ones arrive.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setFrames([]);
-    fetchL9History(roomName).then((rows) => {
+    fetchWireHistory(roomName).then((rows) => {
       if (canceled) return;
-      const seeded: L9Frame[] = [];
+      const seeded: PacketFrame[] = [];
       for (const row of rows) {
-        const frame = toL9Frame(row);
+        const frame = toPacketFrame(row);
         if (frame && !seenIds.current.has(frame.id)) {
           seenIds.current.add(frame.id);
           seeded.push(frame);
@@ -492,13 +492,13 @@ export function L9Inspector({ roomName }: Props) {
       }
       // Prepend history ahead of any live frames that arrived during the fetch.
       setFrames((prev) => [...seeded, ...prev].slice(-MAX_FRAMES));
-    }).catch(logFetchError("fetchL9History"));
+    }).catch(logFetchError("fetchWireHistory"));
     return () => { canceled = true; };
   }, [roomName]);
 
-  // Live L9 wire: the room feed the channel view reads, projected into envelopes.
+  // Live wire: the room feed the channel view reads, projected into envelopes.
   useRoomStream(roomName, (data) => {
-    const frame = toL9Frame(data as Record<string, unknown>);
+    const frame = toPacketFrame(data as Record<string, unknown>);
     if (!frame || seenIds.current.has(frame.id)) return;
     seenIds.current.add(frame.id);
     setFrames((prev) => [...prev, frame].slice(-MAX_FRAMES));
@@ -542,7 +542,7 @@ export function L9Inspector({ roomName }: Props) {
   const filtered = frames.length > 0 && wire.length === 0;
 
   return (
-    <div className="flex flex-col h-full" data-testid="l9-inspector">
+    <div className="flex flex-col h-full" data-testid="packet-inspector">
       {/* No title bar; pane tab already reads "Network". */}
       {!connected && (
         <div className="flex items-center gap-1.5 px-4 shrink-0 h-7 border-b border-border bg-paper label-mono-sm text-yellow">
@@ -553,7 +553,7 @@ export function L9Inspector({ roomName }: Props) {
 
       {frames.length > 0 && (
         <div className="flex h-8 items-center gap-3 px-4 border-b border-border shrink-0 bg-paper">
-          <span className="label-mono-sm text-faint">L9 protocol</span>
+          <span className="label-mono-sm text-faint">Mycelium packets</span>
           <span className="h-3 w-px bg-border" aria-hidden />
           <div className="flex flex-wrap items-center gap-3">
             {kindsPresent.map((kind) => {
@@ -602,7 +602,7 @@ export function L9Inspector({ roomName }: Props) {
           <EmptyState
             className="h-full"
             icon={Radio}
-            title={filtered ? "No frames match the current filters" : "No L9 traffic yet"}
+            title={filtered ? "No frames match the current filters" : "No packets yet"}
             description={
               filtered
                 ? "Try clearing a kind toggle or switching episodes."

@@ -30,7 +30,7 @@ from app.services.filesystem import (
     read_memory_file,
     write_memory_file,
 )
-from app.services.l9_slim import serialize_content
+from app.services.packet_slim import serialize_content
 from app.services.persister import (
     envelope_recipients,
     find_summons,

@@ -1,7 +1,7 @@
 """What the live tail (`mycelium room watch`) shows for chat and for an edit.
 
 Chat reaches the tail two ways — the history replay's already-folded broadcast
-and the live stream's raw L9 envelope — and both go through ``chat_line``.
+and the live stream's raw packet — and both go through ``chat_line``.
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 from mycelium.commands.room import chat_line
 
 
-def _l9(text: str, *, subkind: str | None = None, parents: list[str] | None = None) -> dict:
+def _packet(text: str, *, subkind: str | None = None, parents: list[str] | None = None) -> dict:
     header: dict = {"kind": "exchange", "message": {"parents": parents or []}}
     if subkind:
         header["subkind"] = subkind
@@ -19,7 +19,7 @@ def _l9(text: str, *, subkind: str | None = None, parents: list[str] | None = No
 def test_live_chat_is_unwrapped_from_its_envelope() -> None:
     """Without this the tail drops every live message: chat rides SSE as l9_exchange."""
     line = chat_line(
-        "l9_exchange", {}, _l9("hello over the live channel"), "growth", "12:00:00", ""
+        "l9_exchange", {}, _packet("hello over the live channel"), "growth", "12:00:00", ""
     )
 
     assert line is not None
@@ -28,14 +28,16 @@ def test_live_chat_is_unwrapped_from_its_envelope() -> None:
 
 
 def test_a_control_payload_carries_no_prose() -> None:
-    assert chat_line("l9_exchange", {}, _l9(""), "growth", "12:00:00", "") is None
+    assert chat_line("l9_exchange", {}, _packet(""), "growth", "12:00:00", "") is None
 
 
 def test_a_live_amendment_reads_as_an_edit_of_what_it_revises() -> None:
     line = chat_line(
         "l9_exchange",
         {},
-        _l9("the TTL is 300s", subkind="amend", parents=["a1b2c3d4-dead-beef-0000-000000000000"]),
+        _packet(
+            "the TTL is 300s", subkind="amend", parents=["a1b2c3d4-dead-beef-0000-000000000000"]
+        ),
         "growth",
         "12:00:00",
         "",

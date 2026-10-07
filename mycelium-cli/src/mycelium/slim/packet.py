@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Lean L9 envelope helpers for the daemon connector (stdlib only).
+"""Lean packet helpers for the daemon connector (stdlib only).
 
-The connector only needs to do two L9 things, so this is a small, dependency-free
-counterpart to ``fastapi-backend/app/services/l9.py`` rather than a copy of its
+The connector only needs to do two packet things, so this is a small, dependency-free
+counterpart to ``fastapi-backend/app/services/packet.py`` rather than a copy of its
 pydantic model tree:
 
 1. **Read** an inbound message: pull the sender, recipients, message id, kind,
@@ -13,11 +13,11 @@ pydantic model tree:
    the agent, wrapped in a content dict under the additive ``l9`` key.
 
 The reply is emitted in the **exact shape** the backend's
-``l9.envelope_to_dict(l9.build_envelope(kind=exchange, ...))`` produces, so the
-backend persister's ``l9.parse_envelope`` (pydantic-validating) accepts it
-unchanged. Keep this shape in sync with the backend if the L9 binding version
-moves; the source of truth for the shape is ``app.services.l9`` /
-``app.services.l9_models``.
+``packet.envelope_to_dict(packet.build_envelope(kind=exchange, ...))`` produces, so the
+backend persister's ``packet.parse_envelope`` (pydantic-validating) accepts it
+unchanged. Keep this shape in sync with the backend if the packet version
+moves; the source of truth for the shape is ``app.services.packet`` /
+``app.services.packet_models``.
 """
 
 from __future__ import annotations
@@ -26,14 +26,14 @@ import json
 import uuid
 from typing import Any
 
-# Mirror the backend envelope constants (``app.services.l9``). The version
+# Mirror the backend envelope constants (``app.services.packet``). The version
 # tracks the vendored ioc-protocols-models binding.
 PROTOCOL = "SSTP"
 SUBPROTOCOL = "mycelium"
 VERSION = "0.0.6"
 
-# The additive key an L9 envelope rides under inside a message's content JSON.
-CONTENT_L9_KEY = "l9"
+# The additive key a packet rides under inside a message's content JSON.
+CONTENT_PACKET_KEY = "l9"
 
 # The content field carrying the human-facing message body (matches the HTTP
 # ``MessageCreate.content`` semantics). A connector reads it to prompt the turn
@@ -53,18 +53,18 @@ KNOWLEDGE_KIND = "knowledge"
 # The payload type of a **ping**: the one line a write into a thread raises into
 # the room. It carries the thread's URN, who wrote and the message id — never the
 # prose, which is the whole reason a room with six agents arguing inside a task
-# stays readable. Mirrors the backend's ``app.services.l9.PING_PAYLOAD_TYPE``;
-# ``contracts/slim-l9-wire.json`` is the drift guard both suites assert against.
+# stays readable. Mirrors the backend's ``app.services.packet.PING_PAYLOAD_TYPE``;
+# ``contracts/slim-wire.json`` is the drift guard both suites assert against.
 PING_PAYLOAD_TYPE = "ping"
 
 
-class L9ValidationError(ValueError):
+class PacketValidationError(ValueError):
     """A hand-crafted envelope's kind/subkind falls outside the wire vocabulary."""
 
 
 # Kind -> allowed subkinds. Mirrors the backend's authoritative table
-# (``app.services.l9.VALID_SUBKINDS``) byte-for-byte; see
-# ``contracts/slim-l9-wire.json`` for the drift guard both suites assert
+# (``app.services.packet.VALID_SUBKINDS``) byte-for-byte; see
+# ``contracts/slim-wire.json`` for the drift guard both suites assert
 # against. An empty/None subkind is always valid, whatever the kind.
 VALID_SUBKINDS: dict[str, frozenset[str]] = {
     "knowledge": frozenset({"query", "distillation", "extraction", "feedback"}),
@@ -82,9 +82,9 @@ VALID_KINDS: frozenset[str] = frozenset(VALID_SUBKINDS)
 
 
 def validate_kind(kind: str) -> None:
-    """Reject a kind outside the L9 vocabulary."""
+    """Reject a kind outside the packet vocabulary."""
     if kind not in VALID_KINDS:
-        raise L9ValidationError(f"invalid kind {kind!r} (allowed: {sorted(VALID_KINDS)})")
+        raise PacketValidationError(f"invalid kind {kind!r} (allowed: {sorted(VALID_KINDS)})")
 
 
 def validate_subkind(kind: str, subkind: str | None) -> None:
@@ -93,18 +93,18 @@ def validate_subkind(kind: str, subkind: str | None) -> None:
         return
     allowed = VALID_SUBKINDS.get(kind, frozenset())
     if subkind not in allowed:
-        raise L9ValidationError(
+        raise PacketValidationError(
             f"invalid subkind {subkind!r} for kind={kind} (allowed: {sorted(allowed)})"
         )
 
 
 def room_episode(room: str) -> str:
-    """The room's live-episode URN; must match the backend's ``l9.episode_urn``."""
+    """The room's live-episode URN; must match the backend's ``packet.episode_urn``."""
     return f"urn:ioc:mycelium:episode:{room}:live"
 
 
 def room_topic(room: str) -> str:
-    """The room's topic URN; must match the backend's ``l9.topic_urn``."""
+    """The room's topic URN; must match the backend's ``packet.topic_urn``."""
     return f"urn:concept:mycelium:{room}"
 
 
@@ -127,7 +127,7 @@ def build_envelope_content(
     The general form: :func:`build_reply_content` is the ``exchange``-reply
     specialization every connector uses; this is the escape hatch for crafting
     anything else (a ``commit``, a ``knowledge`` push, an odd subkind): the CLI's
-    ``mycelium l9 send`` plumbing. Raises :class:`L9ValidationError` before
+    ``mycelium packet send`` plumbing. Raises :class:`PacketValidationError` before
     touching the wire if ``subkind`` isn't valid for ``kind``.
     """
     validate_subkind(kind, subkind)
@@ -159,7 +159,7 @@ def build_envelope_content(
         "header": header,
         "payload": {"type": payload_type, "data": payload_data or {}},
     }
-    return {CONTENT_TEXT_KEY: text, CONTENT_L9_KEY: envelope}
+    return {CONTENT_TEXT_KEY: text, CONTENT_PACKET_KEY: envelope}
 
 
 def build_reply_content(
@@ -211,7 +211,7 @@ def parse(data: bytes) -> dict[str, Any] | None:
 
 def envelope_of(content: dict[str, Any]) -> dict[str, Any] | None:
     """The ``l9`` envelope embedded in a content dict, if any."""
-    env = content.get(CONTENT_L9_KEY)
+    env = content.get(CONTENT_PACKET_KEY)
     return env if isinstance(env, dict) else None
 
 
@@ -237,7 +237,7 @@ def recipients_of(content: dict[str, Any]) -> list[str]:
 
 
 def message_id_of(content: dict[str, Any]) -> str | None:
-    """The L9 message id (used to parent a reply)."""
+    """The packet message id (used to parent a reply)."""
     env = envelope_of(content) or {}
     mid = env.get("header", {}).get("message", {}).get("id")
     return mid if isinstance(mid, str) else None
@@ -262,7 +262,7 @@ def kind_of(content: dict[str, Any]) -> str | None:
 
 
 def payload_data_of(content: dict[str, Any]) -> dict[str, Any]:
-    """The L9 payload ``data`` dict of a message (empty when absent).
+    """The packet payload ``data`` dict of a message (empty when absent).
 
     Used to read a ``knowledge`` message's carried memory write (key + markdown
     content + version) so the connector can apply it locally.
@@ -273,7 +273,7 @@ def payload_data_of(content: dict[str, Any]) -> dict[str, Any]:
 
 
 def payload_type_of(content: dict[str, Any]) -> str | None:
-    """The L9 payload ``type`` of a message (e.g. ``message``/``reply``/``keepalive``)."""
+    """The packet payload ``type`` of a message (e.g. ``message``/``reply``/``keepalive``)."""
     env = envelope_of(content) or {}
     ptype = env.get("payload", {}).get("type")
     return ptype if isinstance(ptype, str) else None
@@ -316,7 +316,7 @@ def human_text_of(content: dict[str, Any]) -> str:
         return text
     parts: list[str] = []
     for key, value in content.items():
-        if key == CONTENT_L9_KEY:
+        if key == CONTENT_PACKET_KEY:
             continue
         parts.extend(t for t in _iter_text(value) if t.strip())
     return "\n".join(parts)

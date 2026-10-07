@@ -13,9 +13,9 @@
  * who wrote, and the message's id. Deliberately no prose — a thread exists so
  * an argument inside a task does not become the room's problem, and echoing it
  * here would undo that. The backend produces the ping
- * (`room_channels.raise_ping`) and the CLI reads it (`slim.l9.ping_of`); this
+ * (`room_channels.raise_ping`) and the CLI reads it (`slim.packet.ping_of`); this
  * is the third reader, so the constants below are frozen in
- * `contracts/slim-l9-wire.json` and asserted by `threads.contract.test.ts`.
+ * `contracts/slim-wire.json` and asserted by `threads.contract.test.ts`.
  */
 
 /** The session literal naming a room's own channel among its episodes. */
@@ -73,7 +73,7 @@ export interface Ping {
 /**
  * The ping a wire frame carries, or null when it isn't one.
  *
- * Reads the L9 envelope's own payload rather than the frame's `episode` field:
+ * Reads the packet's own payload rather than the frame's `episode` field:
  * a ping rides in `live` (that is the point of it) and names the thread it is
  * about in its payload, so the two answer different questions.
  */
@@ -98,7 +98,7 @@ export const NOTICE_PAYLOAD_TYPE = "notice";
 export const NOTICE_TYPE = "notice";
 
 /** What a board event did to a task — the closed set the backend raises, frozen
- *  in `contracts/slim-l9-wire.json` and asserted by `threads.contract.test.ts`. */
+ *  in `contracts/slim-wire.json` and asserted by `threads.contract.test.ts`. */
 export const NOTICE_SUBKINDS = [
   "filed",
   "claimed",

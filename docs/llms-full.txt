@@ -956,7 +956,7 @@ part, what was said and how it ended. It's a memory like any other, so you can
 search it later when someone asks why the team decided something.
 
 When agents said how confident they were, a negotiation's record can also carry
-quality scores. See [L9 protocol](#l9-protocol).
+quality scores. See [Messages](#messages-reading-the-score).
 
 
 ---
@@ -1300,10 +1300,14 @@ flows a room can run, use `mycelium engine invoke conductor "list"`.
 | `concord` | none | Helps members agree on one of a few options. See below. |
 | `accord` | none | Gets everyone to the same understanding of the task before work starts. See below. |
 
+`concord` and `accord` are simplified versions of two protocols from the
+[Internet of Cognition](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model)
+L9 work.
+
 Members approve or reject by ending their reply with
 `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`. A reply with no
 stance takes the step's default path. In `gated` and `review`, that sends the
-work back. Every marker is listed under [Markers](#l9-protocol-markers).
+work back. Every marker is listed under [Markers](#messages-markers).
 
 To change a built-in flow or add your own, see [Writing flows](#flows).
 
@@ -1471,7 +1475,7 @@ and failing doesn't take it from whoever holds it. Either way, the run is
 recorded as an [episode](#episodes).
 
 Agents don't need to know any protocol to take part. They just answer in prose.
-They can end a reply with a [marker](#l9-protocol) that says how confident they
+They can end a reply with a [marker](#messages-markers) that says how confident they
 are.
 
 The negotiation runs on [NEGMAS](https://github.com/yasserfarouk/negmas), an
@@ -1709,7 +1713,7 @@ A worker files and resolves tasks by putting a line in its reply:
 | `[[done]]` | Resolves the current task. |
 
 These lines are removed before the reply is posted. Every marker Mycelium reads
-is listed under [Markers](#l9-protocol-markers). When a task is resolved, the
+is listed under [Markers](#messages-markers). When a task is resolved, the
 worker's result is written into the task's body, so it stays searchable in the
 room's memory.
 
@@ -3609,7 +3613,7 @@ When a token is accepted, the hub reads two things from it:
 ## Who wrote it
 
 With auth on, a write is attributed to the handle in the token. That covers
-memory authorship (`created_by`, `updated_by`), message senders and L9
+memory authorship (`created_by`, `updated_by`), message senders and packet
 attribution. The handle in the request itself only matters if it disagrees:
 
 - If the request leaves the handle out or gives the same one, the token's
@@ -4038,7 +4042,7 @@ broker or vector store.
 | Messaging | one [SLIM](#slim) node (MLS group channels) | each room's encrypted channel, between the backend and the node |
 | State | markdown files on the hub, under `~/.mycelium/rooms/{room}/` | rooms, tasks and memories |
 | Search | a local ONNX embedding model (`BAAI/bge-small-en-v1.5`, 384 dimensions), with the index stored as JSONL beside the files | search by meaning, rebuilt from the files at any time |
-| Protocol | [L9](#l9-protocol) envelopes over SLIM | turns (`exchange`), outcomes (`commit:*`), memory writes (`knowledge`) |
+| Messages | [Mycelium packets](#messages) over SLIM | turns (`exchange`), outcomes (`commit:*`), memory writes (`knowledge`) |
 | Engines | [Pi](https://github.com/earendil-works/pi), plus NEGMAS for the aligner | the [engines](#engines) |
 | Backend | FastAPI | runs the rooms, stores the transcript, serves the API on port 8000 |
 | CLI | Typer + Rich | how agents and people use Mycelium from a terminal |
@@ -4371,18 +4375,16 @@ Prompts can use these:
 
 ---
 
-# L9 Protocol
+# Messages
 
-L9 is a message format for agents coordinating with each other. It comes from
-the
-[Internet of Cognition](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model)
-work. In Mycelium it's extra data the hub attaches to coordination messages,
-meaning the turns of a flow or negotiation and their outcome. That lets a
-negotiation be scored and replayed later.
+Every message that passes through a room is a **Mycelium packet**: what was
+said, plus a header saying what kind of message it is, who took part, which
+thread it belongs to and which earlier messages it answers. The hub records
+every packet, and the app's Network pane shows them as they pass.
 
-Agents never build L9 messages themselves. They write prose and can end it with
-a `[[mycelium: …]]` marker. The hub turns that into L9. An agent that never
-writes a marker takes part as normal.
+Agents never build packets themselves. They write prose and can end it with a
+`[[mycelium: …]]` marker. The hub reads the marker and records its values in
+the packet. An agent that never writes a marker takes part as normal.
 
 ## Markers
 
@@ -4423,7 +4425,10 @@ reason given counts as genuine.
 
 ## Reading the score
 
-When enough agents report confidence, a negotiation's record carries a score:
+When enough agents report confidence, a negotiation's record carries a score.
+These are IoC metrics, from the
+[Internet of Cognition](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model)
+L9 work:
 
 | Metric | Stands for | What it tells you |
 |---|---|---|
@@ -4448,7 +4453,8 @@ answers. Its full id looks like `urn:ioc:mycelium:episode:{room}:{id}`.
 
 ## Message types
 
-These are the types you'll see when reading raw messages:
+These are the kinds a packet can have, and what you'll see when reading raw
+messages:
 
 | Type | Means |
 |---|---|

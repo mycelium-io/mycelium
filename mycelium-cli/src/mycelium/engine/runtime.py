@@ -31,14 +31,14 @@ logger = logging.getLogger(__name__)
 
 # Same fix as the backend: neutralize ``@`` in outgoing prompts so the broker's
 # summary (which names the other agents) doesn't spuriously wake them; only the
-# L9 recipient should wake, one agent per turn.
+# packet recipient should wake, one agent per turn.
 _AT_MENTION = re.compile(r"@(?=\w)")
 
 
 class EngineChannel(Protocol):
     """The SLIM seam the drive loop needs: publish a content dict, receive one.
 
-    ``publish`` broadcasts one L9 content dict onto the room channel. ``receive``
+    ``publish`` broadcasts one packet content dict onto the room channel. ``receive``
     returns the next inbound content dict (already parsed) or ``None`` on timeout.
     A real implementation wraps the CLI ``SlimClient``; tests inject a fake.
     """
@@ -53,7 +53,7 @@ def _norm(handle: str) -> str:
 
 
 def _episode_urn(room: str) -> str:
-    # Matches the backend aligner's ``l9.episode_urn(room, "align")`` form so the
+    # Matches the backend aligner's ``packet.episode_urn(room, "align")`` form so the
     # persister/plan_sync correlate the engine's turns + verdict to one episode.
     return f"urn:ioc:mycelium:episode:{room}:align"
 
@@ -93,7 +93,7 @@ class NegotiationRunner:
         already excluded by the caller). ``openings`` maps each to its latest
         opening prose (used only for issue discovery).
         """
-        from mycelium.slim import l9
+        from mycelium.slim import packet
 
         issues = await asyncio.to_thread(
             mediator.discover_issues,
@@ -103,7 +103,7 @@ class NegotiationRunner:
         )
         if not issues:
             logger.info("engine %s: no issues discovered; rejecting", self._handle)
-            await self._emit_verdict(l9, {}, converged=False)
+            await self._emit_verdict(packet, {}, converged=False)
             return None
 
         loop = asyncio.get_running_loop()
@@ -128,7 +128,7 @@ class NegotiationRunner:
             mech.current_step,
             assignments,
         )
-        await self._emit_verdict(l9, assignments or {}, converged=converged)
+        await self._emit_verdict(packet, assignments or {}, converged=converged)
         return assignments
 
     async def _slim_turn(self, handle: str, prompt: str, round_n: int) -> str:
@@ -139,10 +139,10 @@ class NegotiationRunner:
         worker thread; the publish/receive is bridged to this loop by
         ``MediatedNegotiation``.
         """
-        from mycelium.slim import l9
+        from mycelium.slim import packet
 
         safe_prompt = _AT_MENTION.sub("", prompt)
-        content = l9.build_reply_content(
+        content = packet.build_reply_content(
             sender=self._handle,
             recipients=[handle],
             episode=self._episode,
@@ -168,17 +168,19 @@ class NegotiationRunner:
             inbound = await self._channel.receive(timeout_s=max(0.1, deadline - loop.time()))
             if inbound is None:
                 continue
-            if l9.payload_type_of(inbound) == "keepalive":
+            if packet.payload_type_of(inbound) == "keepalive":
                 continue  # an idle keepalive ping, never a negotiation reply
-            sender = l9.sender_of(inbound)
+            sender = packet.sender_of(inbound)
             if sender is None or _norm(sender) != pending:
                 continue  # not the addressed agent's reply; ignore (own prompt, others)
-            if (l9.payload_data_of(inbound) or {}).get("action") == "position":
+            if (packet.payload_data_of(inbound) or {}).get("action") == "position":
                 continue  # a prompt echo, not a reply
-            return l9.human_text_of(inbound) or ""
+            return packet.human_text_of(inbound) or ""
         return ""
 
-    async def _emit_verdict(self, l9: Any, assignments: dict[str, str], *, converged: bool) -> None:  # noqa: ANN401
+    async def _emit_verdict(
+        self, packet: Any, assignments: dict[str, str], *, converged: bool
+    ) -> None:  # noqa: ANN401
         """Publish the ``commit:converged``/``rejected`` as the engine, onto the channel.
 
         The backend's persister sees this and fires ``task_sync`` → task compile
@@ -189,7 +191,7 @@ class NegotiationRunner:
             if converged
             else "✗ not converged"
         )
-        content = l9.build_reply_content(
+        content = packet.build_reply_content(
             sender=self._handle,
             recipients=[],
             episode=self._episode,
@@ -228,20 +230,20 @@ class SlimEngineChannel:
         self._session = session
 
     async def publish(self, content: dict[str, Any]) -> None:
-        from mycelium.slim import l9
+        from mycelium.slim import packet
         from mycelium.slim.client import SlimClient
 
-        await SlimClient.publish(self._session, l9.serialize(content))
+        await SlimClient.publish(self._session, packet.serialize(content))
 
     async def receive(self, *, timeout_s: float) -> dict[str, Any] | None:
-        from mycelium.slim import l9
+        from mycelium.slim import packet
         from mycelium.slim.client import SlimClient, SlimReceiveTimeout
 
         try:
             message = await SlimClient.receive_message(self._session, timeout_s=timeout_s)
         except SlimReceiveTimeout:
             return None
-        return l9.parse(message.payload)
+        return packet.parse(message.payload)
 
 
 async def run_negotiation_over_channel(

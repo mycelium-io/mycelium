@@ -490,7 +490,7 @@ def least_satisfied_order(
     """
     if not standing or not opening_offers:
         return list(order)
-    from app.services.l9_episode import estimate_satisfaction
+    from app.services.episode_state import estimate_satisfaction
 
     satisfaction = estimate_satisfaction(opening_offers, standing, issue_options)
     if not satisfaction:

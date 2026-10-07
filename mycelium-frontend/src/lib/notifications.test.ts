@@ -6,7 +6,7 @@ import { classify, DEFAULT_SETTINGS, isAdmitted, isAlert, roomLevel, roomOfPath 
 
 const CREATED = "2026-08-15T10:00:00.000000+00:00";
 
-function l9Exchange(text: string, opts: Partial<Record<string, unknown>> = {}) {
+function exchangePacket(text: string, opts: Partial<Record<string, unknown>> = {}) {
   return {
     id: "msg-1",
     room_name: "sprint",
@@ -20,27 +20,27 @@ function l9Exchange(text: string, opts: Partial<Record<string, unknown>> = {}) {
 
 describe("classify", () => {
   it("recognizes an @-mention addressed to the acting principal", () => {
-    const n = classify(l9Exchange("hey @bob can you take a look?"), "bob");
+    const n = classify(exchangePacket("hey @bob can you take a look?"), "bob");
     expect(n).toMatchObject({ room: "sprint", kind: "mention", needsMe: true });
   });
 
   it("classifies a message that doesn't mention you as ambient (badge-only)", () => {
-    const n = classify(l9Exchange("hey @carol can you take a look?"), "bob");
+    const n = classify(exchangePacket("hey @carol can you take a look?"), "bob");
     expect(n).toMatchObject({ kind: "message", needsMe: false });
   });
 
   it("lets a silent @~mention of you pass without ringing", () => {
-    const n = classify(l9Exchange("@carol please check, cc @~bob"), "bob");
+    const n = classify(exchangePacket("@carol please check, cc @~bob"), "bob");
     expect(n).toMatchObject({ kind: "message", needsMe: false });
   });
 
   it("ignores your own post", () => {
-    const n = classify(l9Exchange("just thinking out loud"), "alice");
+    const n = classify(exchangePacket("just thinking out loud"), "alice");
     expect(n).toBeNull();
   });
 
   it("recognizes a direct message by recipient handle, case-insensitively", () => {
-    const n = classify(l9Exchange("here's the plan", { recipient_handle: "Bob" }), "bob");
+    const n = classify(exchangePacket("here's the plan", { recipient_handle: "Bob" }), "bob");
     expect(n).toMatchObject({ kind: "direct", needsMe: true });
   });
 
@@ -109,7 +109,7 @@ describe("classify", () => {
 });
 
 describe("isAdmitted", () => {
-  const mention = classify(l9Exchange("hey @bob"), "bob")!;
+  const mention = classify(exchangePacket("hey @bob"), "bob")!;
   const join = classify(
     {
       room_name: "sprint",
@@ -159,8 +159,8 @@ describe("roomLevel", () => {
 });
 
 describe("isAlert", () => {
-  const mention = classify(l9Exchange("hey @bob"), "bob")!;
-  const message = classify(l9Exchange("morning all"), "bob")!;
+  const mention = classify(exchangePacket("hey @bob"), "bob")!;
+  const message = classify(exchangePacket("morning all"), "bob")!;
 
   it("is loud for a mention under the default (mentions) level", () => {
     expect(isAlert(mention, DEFAULT_SETTINGS)).toBe(true);

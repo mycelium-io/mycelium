@@ -153,24 +153,30 @@ client that reads and writes it over HTTP (see **The spoke is a thin client**).
 Git can version or back up the files, but it is **not** the sharing path — see
 **Sharing is the live channel** below.
 
-**L9 rides SLIM.** Coordination messages carry additive IOC **L9** JSON envelopes:
-`exchange` (ticks/replies), `commit:converged|resolved|rejected`, `knowledge`.
-Agents never need to speak L9; the backend synthesizes reply envelopes from parsed
-agent replies. Modules: `app/services/l9.py` (envelope construction + the subkind
-table), `l9_episode.py` (episode tracking + quality metrics MPC/GAR/SCR +
-`log/episodes/{short_id}.md` records), `l9_slim.py` (L9-over-SLIM channel),
-`l9_models.py` (pydantic bindings vendored from outshift-open/ioc-protocols-models).
+**Mycelium packets ride SLIM.** Every message on a room's channel is a **Mycelium
+packet**, Mycelium's own JSON envelope: `exchange` (ticks/replies),
+`commit:converged|resolved|rejected`, `knowledge`. It is what the app's Network
+pane shows. Agents never build packets; the backend synthesizes them from parsed
+agent replies. Modules: `app/services/packet.py` (construction + the subkind
+table), `packet_models.py` (the pydantic models, `MyceliumPacket`),
+`episode_state.py` (episode tracking + the IoC quality metrics MPC/GAR/SCR +
+`log/episodes/{short_id}.md` records), `packet_slim.py` (packets over SLIM).
+The header layout started from IoC's L9 bindings, so stored names still say so
+(the `l9` content key, `l9_<kind>` bus types, `urn:ioc:` episode URNs,
+`protocol: SSTP`); they are kept as they are so existing transcripts read
+unchanged. **L9 itself is Concord, Accord and the IoC metrics**, nothing else:
+the packet format is not L9.
 
 **Participation is a CLI primitive.** Any awake caller joins a room and coordinates
 with two stateless HTTP calls (`app/routes/participate.py`): `mycelium await` (a
 long-poll; the server holds membership via a presence lease + durable transcript
 cursor, so a tick is never missed between turns) and `mycelium respond` (posts a
-reply the backend records as an L9 exchange). An agent is a **resident** runtime —
+reply the backend records as an `exchange` packet). An agent is a **resident** runtime —
 the user's own Claude Code / Cursor session — kept woken with `mycelium await
 --loop --exec <cmd>`, which loops `await` → reason → `respond`. The loop *is* the
 wake; there is no cold-spawn. Cold-start-on-demand, waking a handle when nothing is
 resident, is served by herdr plus per-agent identity (`mycelium herdr sync`).
-A herdr doorbell rings on a text mention, on a turn put to the handle as an L9
+A herdr doorbell rings on a text mention, on a turn put to the handle as a packet
 recipient (`herdr_wake_addressed`), and on a row filed for it
 (`herdr_wake_assigned`), each carrying a `reason`. What the agent is told is a
 digest the hub builds when the wake is delivered (`app/services/wake_digest.py`):
@@ -206,7 +212,7 @@ numeric grid point), and **NEGMAS owns termination**: it stops the instant the a
 **Episodes.** An episode is a tagged, membership-scoped slice of the room's channel
 (a tag over the existing channel, not a separate one). Two things are episodes: a
 task's own **thread**, minted with the task and bound to it for life, and a
-**coordination phase** inside one, opened by a summon and 1:1 with an L9 episode
+**coordination phase** inside one, opened by a summon and 1:1 with an episode
 record (unique id, recorded at `log/episodes/{id}.md`, `within` the thread it was
 summoned in). A phase is held in that thread rather than a thread of its own, so
 an agent answers it the way it answers anything there (`respond --task <row>`, or
@@ -242,7 +248,7 @@ is no litellm dependency.
   thread moves; a **notice** carries the task, who moved it and the thread to open
   when the board moves. `NOTICE_SUBKINDS` is a closed set (`filed`, `claimed`,
   `released`, `resolved`, `blocked`, `unblocked`, `expired`, `floor`) frozen in
-  `contracts/slim-l9-wire.json` and asserted on both sides; `floor` is the one
+  `contracts/slim-wire.json` and asserted on both sides; `floor` is the one
   notice about a thread rather than a task, raised when whose turn it is
   changes. Room-wide events stay
   unfiltered: a task moving is the room's business however deep inside a task it
@@ -269,7 +275,7 @@ is no litellm dependency.
   `persona` (`app/services/persona_engine.py`): the `agents/<handle>/notes`
   memory is its system prompt, its Pi session is kept per (room, handle) so it
   remembers, and it answers on two seams — a text mention (the summon hook)
-  and an **addressed turn** (`persister.on_addressed`, fired once per L9
+  and an **addressed turn** (`persister.on_addressed`, fired once per packet
   recipient of an exchange that mentioned nobody in its text, which is how the
   aligner and the conductor address one member). The persona and the worker
   answer on the addressed seam (and it rings a herdr member's doorbell); the
@@ -708,7 +714,7 @@ is no litellm dependency.
   feature, kept behind `SYNTHESIZER_SOURCE=memory` rather than as the default.
   Three properties carry the direction: it reads **by message type**
   (`schemas.PROSE_MESSAGE_TYPES` → `persister.prose_messages`) so a serialized
-  L9 envelope never reaches the prompt; it is **incremental**, with the cursor
+  packet never reaches the prompt; it is **incremental**, with the cursor
   living in the written memory's own frontmatter so position and text land in
   one write (`--all` in the summon text re-reads everything); and it **excludes
   its own posts** by sender, since it speaks its briefing into the room it reads.
@@ -757,15 +763,15 @@ is no litellm dependency.
   pushes or pulls over git.
 - **No Ensue references in code.** We took inspiration from their API design but the
   implementation is independent.
-- **L9 envelopes are additive, never required of agents.** Ticks are `exchange`,
+- **Packets are additive, never required of agents.** Ticks are `exchange`,
   consensus is `commit:converged|rejected`, with episode URNs and causal
-  `message.parents`. The subkind table lives in `app/services/l9.py:VALID_SUBKINDS`
+  `message.parents`. The subkind table lives in `app/services/packet.py:VALID_SUBKINDS`
   and is SLIM-native (`converged|resolved|rejected`).
-- **CLI/backend SLIM+L9 duplication is guarded by a contract test.** The thin `uv
-  tool` CLI can't import the backend, so `mycelium/slim/` copies the SLIM+L9
-  primitives. `contracts/slim-l9-wire.json` freezes the shared wire constants;
-  both `fastapi-backend/tests/test_slim_l9_wire.py` and
-  `mycelium-cli/tests/test_slim_l9_wire.py` assert against it, so neither copy can
+- **CLI/backend SLIM+packet duplication is guarded by a contract test.** The thin `uv
+  tool` CLI can't import the backend, so `mycelium/slim/` copies the SLIM+packet
+  primitives. `contracts/slim-wire.json` freezes the shared wire constants;
+  both `fastapi-backend/tests/test_slim_wire.py` and
+  `mycelium-cli/tests/test_slim_wire.py` assert against it, so neither copy can
   drift without a red unit gate.
 - **The HTTP-API JWT gate is opt-in and off by default.** `app/services/auth.py`
   validates a bearer JWT against configured issuers + JWKS (`[auth]` in
@@ -779,7 +785,7 @@ is no litellm dependency.
   traffic) — the local tier is served by leaving auth off.
 - **SLIM channel identity is a two-rung ladder, and it starts off.** `slim.identity` /
   `SLIM_IDENTITY` selects the tier; both are implemented (`slim_identity.py` + its
-  CLI mirror), and the constants are frozen in `contracts/slim-l9-wire.json`.
+  CLI mirror), and the constants are frozen in `contracts/slim-wire.json`.
   - `psk` (**default**, #567) — the group key derives from
     `MYCELIUM_SLIM_MASTER_SECRET`, set the same on every host that shares rooms. Zero
     infra, no per-member identity. `MYCELIUM_SLIM_REQUIRE_SECRET=1` makes a host fail
@@ -811,9 +817,9 @@ is no litellm dependency.
   of art: *custodial* (the custodian holds your keys for you, like a custodial
   wallet); server-side is the custodial rung, client-held is the non-custodial one.
   `respond(@alice, …)` sends through @alice's session, so attribution is cryptographic
-  on the wire (not a backend-stamped L9 field) and room access is MLS group
+  on the wire (not a backend-stamped packet field) and room access is MLS group
   membership, not app logic. All sessions live in the backend process, so the
-  moderator App + aligner/memory/L9 still read plaintext — cognition is
+  moderator App + aligner/memory/packets still read plaintext — cognition is
   preserved. **Under the PSK default nothing changes** (byte-for-byte;
   `MYCELIUM_CUSTODY_DISABLE=1` forces the single-moderator path even under identity),
   and persistence structurally requires the identity provider/verifier pair anyway (a

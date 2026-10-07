@@ -14,7 +14,7 @@ Two properties everything downstream reads off this module:
 **The container outlives what happens inside it.**  A task's episode is minted
 when the task is created, not when someone argues about it.  A negotiation
 inside a task is its own, later episode with its own lifecycle
-(:class:`~app.services.l9_slim.EpisodeLifecycle`), and closing or aborting one
+(:class:`~app.services.packet_slim.EpisodeLifecycle`), and closing or aborting one
 touches neither the row's custody nor its status.  A task can be created,
 claimed, worked and resolved with no negotiation ever opened.
 
@@ -43,7 +43,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from app.services import l9
+from app.services import packet
 from app.services.agent_registry import norm_handle
 from app.services.filesystem import (
     EPISODE_META,
@@ -130,7 +130,7 @@ def mint_episode_id() -> str:
 
 def mint_episode_urn(room: str) -> str:
     """A fresh episode URN over ``room``'s own channel."""
-    return l9.episode_urn(room, mint_episode_id())
+    return packet.episode_urn(room, mint_episode_id())
 
 
 def short_id_of(episode: str) -> str:
@@ -234,7 +234,7 @@ def episode_write_rejection(
     how one comes into being, or the transcript grows threads nobody opened.
 
     A thread that is a **frozen negotiation** is refused to anyone outside the
-    roster it froze on (403). That is L9's stable-membership rule: an
+    roster it froze on (403). That is the stable-membership rule: an
     offer/counter exchange scored across a set of participants means nothing if
     an outsider can drop a position into it.
 
@@ -247,7 +247,7 @@ def episode_write_rejection(
 
     A **container** — a task's thread — refuses none of these on its own, and
     that is deliberate rather than unfinished. Freezing membership is a negotiation's
-    policy, not an episode's (:class:`~app.services.l9_slim.EpisodeLifecycle`):
+    policy, not an episode's (:class:`~app.services.packet_slim.EpisodeLifecycle`):
     a task outlives what happens inside it, so an agent that claims a row after
     the thread opened must be able to speak in it.  The honest boundary: a task's
     thread is scoped to the room, not narrower.  Everyone who may write in the
@@ -256,7 +256,7 @@ def episode_write_rejection(
     still has to pass.  The two narrowings above are the only exceptions, and
     both are held by a run of backend code for as long as it runs.
     """
-    if episode is None or l9.is_live_episode(room, episode):
+    if episode is None or packet.is_live_episode(room, episode):
         return None
     if not known_episode(room, episode, transcript=transcript):
         return ThreadRefusal(404, f"No thread {short_id_of(episode)!r} in room {room!r}")
@@ -282,7 +282,7 @@ def thread_write_refusal(room: str, handle: str, episode: str | None) -> ThreadR
     has no negotiation to be outside of and no transcript to recognize a thread
     by, so the rule falls back to what the store knows.
     """
-    if episode is None or l9.is_live_episode(room, episode):
+    if episode is None or packet.is_live_episode(room, episode):
         return None
 
     from app.services.room_channels import manager
@@ -340,7 +340,7 @@ async def bind_episode(room: str, key: str, *, episode: str | None = None) -> st
                     embed=False,
                     created_by=meta.get("updated_by")
                     or meta.get("created_by")
-                    or l9.SYSTEM_ACTOR_ID,
+                    or packet.SYSTEM_ACTOR_ID,
                 )
             ]
         ),
@@ -412,7 +412,7 @@ def backfill_room(room: str) -> int:
                 new_text = serialize_memory(
                     locked_content,
                     key=locked_meta.get("key", key),
-                    created_by=locked_meta.get("created_by", l9.SYSTEM_ACTOR_ID),
+                    created_by=locked_meta.get("created_by", packet.SYSTEM_ACTOR_ID),
                     updated_by=locked_meta.get("updated_by"),
                     version=locked_meta.get("version", 1),
                     tags=locked_meta.get("tags"),

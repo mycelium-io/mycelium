@@ -14,11 +14,11 @@ import asyncio
 
 import pytest
 
-from app.services import l9, turns
+from app.services import packet, turns
 from tests.fakes import DEFAULT_ROOM, FakeChannel, FakeManaged, FakePersister, position_record
 
-EPISODE = l9.episode_urn(DEFAULT_ROOM, "e1")
-TOPIC = l9.topic_urn(DEFAULT_ROOM)
+EPISODE = packet.episode_urn(DEFAULT_ROOM, "e1")
+TOPIC = packet.topic_urn(DEFAULT_ROOM)
 
 
 def _is_position(record) -> bool:

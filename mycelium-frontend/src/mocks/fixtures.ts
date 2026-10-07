@@ -27,7 +27,7 @@ import type {
   EpisodeDetail,
   EpisodeSummary,
   FlowStep,
-  L9Envelope,
+  MyceliumPacket,
   MemoryGraph,
   MemoryGraphEdge,
   MemoryGraphNode,
@@ -111,10 +111,10 @@ export interface RoomFixture {
   /** The room's link graph (#599/#611) — undefined means "no link index yet",
    *  the same degrade-to-empty case the real backend serves for an unlinked room. */
   links?: MemoryGraph;
-  // Wire frames served at GET /messages/l9, feeding the Network pane's L9 feed.
+  // Wire frames served at GET /messages/wire, feeding the Network pane's packet feed.
   // Shaped like the persister's bus frames (a bare `{header, payload}` envelope
   // under `content`, plus the flat fields the inspector reads).
-  l9?: Record<string, unknown>[];
+  wire?: Record<string, unknown>[];
   /** The room's A2A bridge, served at GET /a2a/state. Undefined means "no
    *  bridge" — the handler answers with an empty one, like the backend. */
   a2a?: A2aBridgeState;
@@ -176,7 +176,7 @@ const checkoutEpisode = (shortId: string): string =>
 // The launch-day call the aligner brokered. It is an *orphan* episode — no board
 // row is bound to it — because a task's thread is the task's own, not the
 // conversation that produced it. The two tasks it compiled each carry their own
-// thread below; this URN stays the negotiation's record (Episodes rail, L9 feed).
+// thread below; this URN stays the negotiation's record (Episodes rail, packet feed).
 const CHECKOUT_EPISODE = checkoutEpisode("e4f1a2");
 // The room's own channel. A message with no thread lands here, and a ping about
 // a thread is raised here — which is why the ping's own episode is this one and
@@ -197,9 +197,9 @@ const APPLE_PAY_THREAD = checkoutEpisode("d6f8b0");
 // email. A short, ordinary decision, not a set piece.
 //
 // The *chat* is the source. Each reply is a channel broadcast (`say`), and the
-// aligner reads it and emits the structured L9 it implies. So one move drives
+// aligner reads it and emits the structured packets it implies. So one move drives
 // three things — the broadcast, the coordination_tick it interprets that from,
-// and the L9 envelope the Network feed shows — and they can't disagree. `ask`
+// and the packet the Network feed shows — and they can't disagree. `ask`
 // is the aligner's prompt that precedes a reply (it addresses one at a time).
 const CHECKOUT_CONSENSUS = { launch: "friday am" };
 interface CheckoutMove {
@@ -224,7 +224,7 @@ const checkoutMoves: CheckoutMove[] = [
     say: "agreed." },
 ];
 
-const checkoutL9Chain: L9Envelope[] = [
+const checkoutPacketChain: MyceliumPacket[] = [
   ...checkoutMoves.map((m, i) => ({
     header: {
       protocol: "ioc",
@@ -262,7 +262,7 @@ const checkoutL9Chain: L9Envelope[] = [
 // aligner's optional prompt and the agent's reply (both chat broadcasts, shown
 // in the channel), then the coordination_tick the aligner emits from that reply
 // (feeds the Network pane, filtered out of the channel). Interleaved and
-// timestamped so the transcript reads in order — the chat drives the L9.
+// timestamped so the transcript reads in order — the chat drives the packets.
 const checkoutNegotiation: MockMessage[] = (() => {
   const out: MockMessage[] = [];
   let at = 46; // minutes ago; ticks down as the exchange proceeds
@@ -284,9 +284,9 @@ const checkoutNegotiation: MockMessage[] = (() => {
   return out;
 })();
 
-// The L9 chain as persister bus frames: bare `{header, payload}` under content,
+// The packet chain as persister bus frames: bare `{header, payload}` under content,
 // with the flat sender_handle/message_type/created_at the inspector reads.
-const checkoutL9Frames: Record<string, unknown>[] = checkoutL9Chain.map((env, i) => ({
+const checkoutWireFrames: Record<string, unknown>[] = checkoutPacketChain.map((env, i) => ({
   message_type: `l9_${env.header.kind}`,
   sender_handle: env.header.participants?.actors?.[0]?.id ?? "aligner",
   created_at: iso(44 - i),
@@ -300,7 +300,7 @@ const checkoutL9Frames: Record<string, unknown>[] = checkoutL9Chain.map((env, i)
  * envelope in `live` naming the thread that moved, who wrote and which message,
  * carrying no prose, so there is nothing here to echo even by accident.
  *
- * A ping is a control frame: it belongs to the L9 wire feed, not the message
+ * A ping is a control frame: it belongs to the wire feed, not the message
  * list. The conversational read drops it; the transcript replay is where it
  * survives a reload.
  */
@@ -1272,7 +1272,7 @@ const checkout: RoomFixture = {
   episodeDetails: {
     b9c1d3: { ...checkoutConcordEpisode, messages: [] },
     c3e5a7: { ...checkoutAccordEpisode, messages: [] },
-    e4f1a2: { ...checkoutEpisodeSummary, messages: checkoutL9Chain },
+    e4f1a2: { ...checkoutEpisodeSummary, messages: checkoutPacketChain },
     f10a2c: { ...checkoutGatedEpisode, messages: [] },
     a2b3c4: { ...checkoutFanOutEpisode, messages: [] },
     c7d8e9: { ...checkoutRoundRobinEpisode, messages: [] },
@@ -1296,8 +1296,8 @@ const checkout: RoomFixture = {
   // just after the chat line that sets it up, so the channel reads talk → filing
   // for all ten, not just the two the negotiation compiled. The episode on each
   // matches its board row, so a notice opens the same thread the row's chip does.
-  l9: [
-    ...checkoutL9Frames,
+  wire: [
+    ...checkoutWireFrames,
     // Every board row's origin — a `filed` notice — and, for two of them, the rest
     // of the lifecycle the room saw: Stripe payments resolved long ago, the
     // Apple Pay switch claimed by builder just before staging it. Read in order
@@ -1869,7 +1869,7 @@ const storefrontExtraMemories: MockMemory[] = [
   },
 ];
 
-const storefrontL9: Record<string, unknown>[] = [
+const storefrontWire: Record<string, unknown>[] = [
   storefrontNotice("filed", "work/426-show-which-coffees-are-back-in-stock", "426: show which coffees are back in stock", "task-426", 86),
   storefrontNotice("claimed", "work/426-show-which-coffees-are-back-in-stock", "426: show which coffees are back in stock", "task-426", 86),
   storefrontPing("work/426-show-which-coffees-are-back-in-stock", "task-426", "m5-0", 86),
@@ -2133,7 +2133,7 @@ const storefront: RoomFixture = {
   ),
   episodes: [],
   episodeDetails: {},
-  l9: storefrontL9,
+  wire: storefrontWire,
   // A handful live or awaiting; the rest read as idle. This is what splits the
   // roster into its lifecycle groups.
   presence: [

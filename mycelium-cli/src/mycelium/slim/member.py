@@ -3,7 +3,7 @@
 
 """Ephemeral SLIM room membership: join, publish once, leave (dev/testing).
 
-The CLI's ``l9 send`` / ``slim send`` plumbing (see ``mycelium.commands.wire``)
+The CLI's ``packet send`` / ``slim send`` plumbing (see ``mycelium.commands.wire``)
 needs to put real bytes on a room's SLIM channel so the backend's own
 already-running persister sees them, records them to the durable transcript, and
 republishes to its in-process bus (which feeds SSE). A separate process writing

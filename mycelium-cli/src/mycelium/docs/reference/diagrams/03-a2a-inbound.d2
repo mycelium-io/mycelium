@@ -49,7 +49,7 @@ ext -> hub.rpc: "3. POST message/send  (JSON-RPC)" {class: a2a}
 hub.rpc -> hub.inject: "4. execute() -> inject" {class: http}
 
 # --- Onto the channel ---
-hub.inject -> hub.mod: "5. build L9 envelope -> channel.send" {class: http}
+hub.inject -> hub.mod: "5. build packet -> channel.send" {class: http}
 hub.mod -> slim: "6. publish (MLS ciphertext)" {class: slim}
 slim -> room_members: "7. delivered as a normal room message" {class: slim}
 hub.rpc -> ext: "8. ack: Delivered to room" {class: a2a}
