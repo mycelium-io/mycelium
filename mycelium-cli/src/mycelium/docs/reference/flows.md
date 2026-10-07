@@ -1,9 +1,10 @@
 # Writing Flows
 
-A flow is what the [conductor](#conductor) runs: a set of steps, each asking
-someone something and saying where to go next. A room's own flows are memories
-under `protocols/`, written in YAML. Saving one as `protocols/review` replaces
-the built-in `review` in that room, and a new name adds a new flow.
+A flow is what the [conductor](#conductor) runs. It's a set of steps. Each step
+asks someone something and says where to go next. A room's own flows are
+memories under `protocols/`, written in YAML. Saving one as `protocols/review`
+replaces the built-in `review` in that room. Saving one under a new name adds a
+new flow.
 
 To start from a built-in, print it and edit it:
 
@@ -30,14 +31,15 @@ steps:
     end: resolved
 ```
 
-If a flow doesn't make sense (a step leads nowhere, or there's no end step),
-the conductor refuses to run it and says why. Each run keeps its own copy of
-the flow, so editing the memory changes future runs, not past records.
+If a flow doesn't make sense, the conductor refuses to run it and says why. For
+example, a step might lead nowhere or there might be no end step. Each run
+keeps its own copy of the flow. Editing the memory changes future runs but not
+past records.
 
 ## Steps
 
-Each step has an `id`, and either asks someone (`to`) and says where to go next
-(`next`), or ends the flow (`end: resolved` or `end: rejected`).
+Each step has an `id`. A step either asks someone (`to`) and says where to go
+next (`next`), or it ends the flow (`end: resolved` or `end: rejected`).
 
 `to` can be:
 
@@ -49,40 +51,47 @@ Each step has an `id`, and either asks someone (`to`) and says where to go next
 - `contested`: everyone who means something different by a word (only after a
   check of the words)
 
-`next` is either a step id, or a map that picks the next step from the answer:
-`accept`, `reject`, `silent` (no answer in time) and `default`.
+`next` is either a step id or a map that picks the next step from the answer.
+The map's keys are `accept`, `reject`, `silent` (no answer in time) and
+`default`.
 
 Other options:
 
 - `rounds: 2` repeats an `each` or `all` step.
 - `wait: none` asks without waiting for an answer.
 - `max_steps` limits how many steps a run can take. A step counts once however
-  many members it asks; the thread's "turn 2 of 6" counts the same steps.
-- `collect: options` makes each reply an option; `collect: scores` records each
-  reply's ratings; `collect: pieces` merges each reply's labelled points, words
+  many members it asks. The thread's "turn 2 of 6" counts the same steps.
+- `collect: options` makes each reply an option. `collect: scores` records each
+  reply's ratings. `collect: pieces` merges each reply's labelled points, words
   and checks into the shared summary being built.
-- `require: stance`, `require: scores` or `require: pieces` asks a reply that's
-  missing it once more. A stance still missing after that counts as a
-  rejection; a reply that still has no labels is kept as written.
+- `require: stance`, `require: scores` or `require: pieces` asks once more for a
+  reply that's missing it. A stance still missing after that counts as a
+  rejection. A reply that still has no labels is kept as written.
 
 ## Steps that ask nobody
 
-A **pick** is a step with `kind: select`. It takes a `threshold` (0.7 means
-everyone rates it 70 or more) and `max_repairs`, and goes on by how the pick
-went: `feasible` (everyone's on board), `infeasible` (someone can fix it),
-`stuck` (a fix can't help) and `default`. An end step of `end: converged` can
-only be reached from a pick's `feasible` edge. `show concord` prints one in
-full.
+A **pick** is a step with `kind: select`. It takes a `threshold` and
+`max_repairs`. A threshold of 0.7 means everyone rates the pick 70 or more. It
+goes on by how the pick went:
 
-`accord` is built from two more (`show accord`):
+- `feasible`: everyone's on board.
+- `infeasible`: someone can fix it.
+- `stuck`: a fix can't help.
+- `default`.
+
+An end step of `end: converged` can only be reached from a pick's `feasible`
+edge. `show concord` prints one in full.
+
+`accord` is built from two more kinds of step. `show accord` prints it.
 
 - `kind: tally` looks at what's been gathered so far. With `of: points` it goes
-  on by `grew` (the last round added a point), `settled` (it added none) or
-  `empty` (nobody has given any). With `of: terms` it goes on by `contested`
-  (two people mean different things by a word) or `clear`. `max_rounds` is how
-  many times it can run before it moves on.
+  on by `grew` when the last round added a point, `settled` when it added none
+  and `empty` when nobody has given any. With `of: terms` it goes on by
+  `contested` when two people mean different things by a word, and `clear`
+  otherwise. `max_rounds` is how many times it can run before it moves on.
 - `kind: lock` puts the shared summary together and saves it to the room's
-  memory, then goes on by `locked`, or by `empty` when there's nothing to save.
+  memory. It then goes on by `locked`, or by `empty` when there's nothing to
+  save.
 
 To have everyone approve the summary before it's saved, save your own
 `protocols/accord` with an ask step before the lock that requires a stance.

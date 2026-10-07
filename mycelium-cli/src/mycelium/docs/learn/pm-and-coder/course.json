@@ -1,20 +1,20 @@
 {
   "order": 1,
   "title": "Hand off a feature, come back to a reviewed PR",
-  "tagline": "Pair a PM agent with a coder, hold them to a definition of done you wrote, and let them run for hours.",
+  "tagline": "Pair a PM agent with a coder and hold them to a definition of done you wrote. Then let them run for hours.",
   "track": "Core workflow",
   "thumb": "walk-thread.png",
   "needs": [
-    "A coding agent you already use (Claude Code, Codex, or another)",
-    "Mycelium on your machine with its runner going (the Mac app runs it for you)",
+    "A coding agent you already use, such as Claude Code or Codex",
+    "Mycelium on your machine with its runner going. The Mac app runs it for you.",
     "A repository with a task you'd normally spend an afternoon on"
   ],
-  "takeaway": "A PM brief tuned to how you work, and a pair you can hand features to.",
+  "takeaway": "A PM brief tuned to how you work and a pair you can hand features to.",
   "outcomes": [
     "Write a definition of done an agent can be held to",
     "Hand a feature to a pair and leave for hours",
     "Check in by reading one thread, not babysitting",
-    "Spot a pair that's going in circles, and fix it"
+    "Spot a pair that's going in circles and fix it"
   ],
   "modules": [
     {
@@ -33,7 +33,7 @@
             "question": "The coder says a piece is done. What does the PM do?",
             "options": [
               "Fixes anything it doesn't like in the code itself",
-              "Checks it against the list of what done means, and sends it back with specifics if it falls short",
+              "Checks it against the list of what done means and sends it back with specifics if it falls short",
               "Asks you to review it"
             ],
             "answer": 1,
@@ -43,7 +43,7 @@
       ],
       "video": {
         "take": "pair-idea",
-        "about": "A PM and a coder working one task: the checks first, then a piece sent back and fixed."
+        "about": "A PM and a coder working one task. The checks come first, then a piece is sent back and fixed."
       }
     },
     {
@@ -101,7 +101,7 @@
       ],
       "video": {
         "take": "pair-checkin",
-        "about": "Checking in an hour later: answering the PM's question, and the task resolved with a PR to review."
+        "about": "Checking in an hour later to answer the PM's question. The task is resolved with a PR to review."
       }
     }
   ]

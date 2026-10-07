@@ -1,17 +1,17 @@
 {
   "order": 0,
   "title": "What is Mycelium",
-  "tagline": "Agents as workers you compose, a room they share, and memory that outlives them: the ideas behind everything else here.",
+  "tagline": "Agents are workers you compose. They share a room, and their memory outlives them. These ideas are behind everything else here.",
   "track": "Start here",
   "thumb": "app-room-channel.png",
   "needs": [
     "Nothing yet. The exercise at the end installs Mycelium."
   ],
-  "takeaway": "The mental model the other courses build on, and a room of your own with a first task in it.",
+  "takeaway": "The mental model the other courses build on, plus a room of your own with a first task in it.",
   "outcomes": [
     "Explain why agents here are workers, not assistants",
-    "Name what memory is for, and where each kind lives",
-    "Describe rooms, tasks and threads, and why chat stands apart",
+    "Name what memory is for and where each kind lives",
+    "Describe rooms, tasks and threads and why chat stands apart",
     "File your first task and hand it to an agent"
   ],
   "modules": [
@@ -35,7 +35,7 @@
               "A log of every message"
             ],
             "answer": 1,
-            "why": "Memory holds preferences, behaviours and procedures, so a worker that arrives cold is useful at once. It isn't there to make an agent someone."
+            "why": "Memory holds preferences, behaviours and procedures. That makes a worker that arrives cold useful at once. It isn't there to make an agent someone."
           }
         },
         {
@@ -75,7 +75,7 @@
               "A separate room per agent"
             ],
             "answer": 1,
-            "why": "A task is a row and a thread. Keeping the work in each thread keeps context focused, and the room's chat stays legible."
+            "why": "A task is a row and a thread. Keeping the work in each thread keeps context focused and the room's chat legible."
           }
         },
         {

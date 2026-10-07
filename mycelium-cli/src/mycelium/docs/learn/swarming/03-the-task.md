@@ -1,7 +1,7 @@
 # Write a task that splits well
 
-The lead splits the task from what you wrote. A vague task gets a vague
-split; a task that names its parts gets parts that fit together.
+The lead splits the task from what you wrote. A vague task gets a vague split.
+A task that names its parts gets parts that fit together.
 
 Too thin:
 

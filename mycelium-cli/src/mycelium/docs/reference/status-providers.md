@@ -3,8 +3,9 @@
 *For contributors working on the Mycelium source.*
 
 A status provider lets board rows show the live state of something in another
-tool, as [live pull request status](#board-reference) does for GitHub. Providers
-run only on the hub, where the token is, so the whole room shares one cache.
+tool. [Live pull request status](#board-reference) does this for GitHub.
+Providers run only on the hub, where the token is, so the whole room shares one
+cache.
 
 A provider is a small class in `fastapi-backend/app/services/status/providers/`.
 `providers/github.py` is a good one to copy. It sets a few options and
@@ -26,11 +27,10 @@ class JiraProvider:
         """Look up a batch. Return one Ok or Err per reference, in any order."""
 ```
 
-Only the provider knows what its references look like, so supporting a new
-kind (Jira ticket keys, say) means adding a provider; nobody lists what to
-watch.
+Only the provider knows what its references look like. Supporting a new kind,
+such as Jira ticket keys, means adding a provider. Nobody lists what to watch.
 
-`auth` says how the tool expects credentials, and which names to look up:
+`auth` says how the tool expects credentials and which names to look up:
 
 | Auth | Sends | For |
 |------|-------|-----|
@@ -40,7 +40,7 @@ watch.
 | `Header("KEY", header="X-Api-Key")` | the raw token in a header you name | tools with their own header |
 
 The provider never sees the token. `ctx.http` is already set up with the base
-URL, the credentials, a timeout and retries, and refuses requests to any other
+URL, the credentials, a timeout and retries. It refuses requests to any other
 host, so a redirect or a hard-coded URL can't send credentials elsewhere. The
 hub handles batching, de-duplication, caching and backing off when
 rate-limited.
@@ -53,7 +53,7 @@ The hub also enforces two rules:
 - **Each reference succeeds or fails on its own.** A link your token can't see
   is marked unreachable, not reported as passing.
 
-Map the tool's states onto the board's six (`ok`, `pending`, `blocked`,
-`failed`, `done`, `unknown`) and keep the tool's own wording as the label. The
-answer lands on the row as `upstream`, never `status`, which is the task's own
-stage. In the backend this is the `Liveness` type.
+Map the tool's states onto the board's six: `ok`, `pending`, `blocked`,
+`failed`, `done` and `unknown`. Keep the tool's own wording as the label. The
+answer lands on the row as `upstream`. It never goes in `status`, which is the
+task's own stage. In the backend this is the `Liveness` type.

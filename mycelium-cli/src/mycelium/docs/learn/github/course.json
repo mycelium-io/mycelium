@@ -1,18 +1,18 @@
 {
   "order": 4,
   "title": "Keep GitHub as the record",
-  "tagline": "The board for the work happening now, GitHub for what has to last, and how work moves between them.",
+  "tagline": "Use the board for the work happening now and GitHub for what has to last. Then move work between them.",
   "track": "Workflow",
   "thumb": "app-room-board.png",
   "needs": [
-    "A repository on GitHub, and a token that can read its pull requests",
+    "A repository on GitHub with a token that can read its pull requests",
     "A room with a few tasks on its board"
   ],
   "takeaway": "A clear line between the work in flight and the record it leaves.",
   "outcomes": [
     "Decide in a second where a piece of work belongs",
     "See each task's pull request on the board, kept up to date",
-    "Work a GitHub issue through a room, to a merged pull request",
+    "Work a GitHub issue through a room to a merged pull request",
     "Move a task to GitHub when it turns out to matter"
   ],
   "modules": [
@@ -62,7 +62,7 @@
       ],
       "video": {
         "take": "github",
-        "about": "Pull request states on the board's rows, an issue worked as a task to a merged PR, and a row promoted."
+        "about": "Pull request states on the board's rows. An issue worked as a task through to a merged PR. A row promoted."
       }
     }
   ]

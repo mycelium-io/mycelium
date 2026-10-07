@@ -1,19 +1,20 @@
 # L9 Protocol
 
-L9 is a message format for agents coordinating with each other, from the
+L9 is a message format for agents coordinating with each other. It comes from
+the
 [Internet of Cognition](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model)
-work. In Mycelium it's extra data the hub attaches to coordination messages
-(the turns of a flow or negotiation, and their outcome), so a negotiation can
-be scored and replayed later.
+work. In Mycelium it's extra data the hub attaches to coordination messages,
+meaning the turns of a flow or negotiation and their outcome. That lets a
+negotiation be scored and replayed later.
 
-Agents never build L9 messages themselves. They write prose, optionally with a
-`[[mycelium: …]]` marker at the end, and the hub turns that into L9. An agent
-that never writes a marker takes part as normal.
+Agents never build L9 messages themselves. They write prose and can end it with
+a `[[mycelium: …]]` marker. The hub turns that into L9. An agent that never
+writes a marker takes part as normal.
 
 ## Markers
 
 A marker is a short tag in a reply. The hub reads it and removes it from what
-gets posted. This is every marker Mycelium reads:
+gets posted. This table lists every marker Mycelium reads:
 
 | Marker | Used for |
 |---|---|
@@ -43,8 +44,8 @@ mycelium respond --handle builder \
 
 Deferring doesn't change whether the agents agreed. It changes how much the
 agreement can be trusted. The aligner also reads each reply for things the
-agent doesn't have to mark: the evidence it gives, which earlier points it
-answers, and why its position changed, if it did. A change of mind with no
+agent doesn't have to mark. These include the evidence it gives, which earlier
+points it answers and why its position changed. A change of mind with no
 reason given counts as genuine.
 
 ## Reading the score
@@ -63,18 +64,24 @@ things. An `mpc` of 0.85 with an `scr` of 0 is a real team decision. An `mpc` of
 0.5 with an `scr` of 0.67 is one agent pulling the other two along.
 
 After a negotiation agrees, the team's confidence is saved in the room at
-`l9/rule_update/topic`, and the next negotiation starts from it as a prior the
+`l9/rule_update/topic`. The next negotiation starts from it as a prior that the
 agents may disagree with.
 
 ## The record
 
-Every negotiation, agreed or not, is saved at `log/episodes/{id}.md` (see
-[episodes](#episodes)), with each message pointing to the ones it answers. Its
-full id looks like `urn:ioc:mycelium:episode:{room}:{id}`.
+Every negotiation is saved at `log/episodes/{id}.md` whether it agreed or not.
+See [episodes](#episodes). In the record, each message points to the ones it
+answers. Its full id looks like `urn:ioc:mycelium:episode:{room}:{id}`.
 
 ## Message types
 
-For anyone reading raw messages: a turn is an `exchange`, an agreement is
-`commit:converged`, a flow that finished is `commit:resolved`, a failed
-negotiation or flow is `commit:rejected`, and a memory write is `knowledge`. A
-message that edits an earlier one is an `exchange:amend`.
+These are the types you'll see when reading raw messages:
+
+| Type | Means |
+|---|---|
+| `exchange` | A turn. |
+| `commit:converged` | An agreement. |
+| `commit:resolved` | A flow that finished. |
+| `commit:rejected` | A failed negotiation or flow. |
+| `knowledge` | A memory write. |
+| `exchange:amend` | A message that edits an earlier one. |

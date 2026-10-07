@@ -12,14 +12,14 @@ entry when the tag is cut.
 
 ## [3.0.25] - 2026-10-06
 
-The docs were rewritten after a blind newcomer read, and the engines' settings can now be set from `config.toml`.
+The docs were rewritten after a blind newcomer read. The engines' settings can now be set from `config.toml`.
 
 ### Added
-- **Config keys for the engines' settings:** `[aligner]` (handle, term check, round timeout, step cap, model timeout), `[synthesizer]` (source), `[worker]` (tools, timeout, turn cap), `[board]` (dependency gate), and `telemetry.otlp_headers`. `config apply` passes them to the backend, so you no longer edit `.env`, which it overwrites ([#1184](https://github.com/mycelium-io/mycelium/pull/1184))
+- **Config keys for the engines' settings.** These are `[aligner]` (handle, term check, round timeout, step cap and model timeout), `[synthesizer]` (source), `[worker]` (tools, timeout and turn cap), `[board]` (dependency gate) and `telemetry.otlp_headers`. `config apply` passes them to the backend. You no longer edit `.env`, which `config apply` overwrites ([#1184](https://github.com/mycelium-io/mycelium/pull/1184))
 
 ### Changed
-- **The docs read in order for someone new:** a "How it works" page after Quick Start, an "Add the engines" step in the walkthrough, memory before engines, one word for each thing, and the Board, Conductor and runner pages split into concept, how-to and reference. Pages that contradicted each other or the code now agree with the code ([#1184](https://github.com/mycelium-io/mycelium/pull/1184), [#1186](https://github.com/mycelium-io/mycelium/pull/1186))
-- **The docs say plainly what is open by default** (sign-in off, public A2A cards, the "acting as" picker) and what a shared hub needs before others can reach it, with a "which command when" table and one list of every reply marker ([#1186](https://github.com/mycelium-io/mycelium/pull/1186))
+- **The docs read in order for someone new.** A "How it works" page follows Quick Start, the walkthrough has an "Add the engines" step and memory comes before engines. Each thing has one name. The Board, Conductor and runner pages are split into concept, how-to and reference pages. Pages that contradicted each other or the code now agree with the code ([#1184](https://github.com/mycelium-io/mycelium/pull/1184), [#1186](https://github.com/mycelium-io/mycelium/pull/1186))
+- **The docs say plainly what is open by default**, such as sign-in being off, public A2A cards and the "acting as" picker. They also say what a shared hub needs before others can reach it. There's a "which command when" table and one list of every reply marker ([#1186](https://github.com/mycelium-io/mycelium/pull/1186))
 - **The Learn courses use the same words and facts as the docs** ([#1185](https://github.com/mycelium-io/mycelium/pull/1185))
 
 ## [3.0.24] - 2026-10-06

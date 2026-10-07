@@ -1,8 +1,8 @@
 # Board Reference
 
-Every board command, and how rows show live pull request status. For what the
-board is, see [board](#board); for using it day to day, see
-[Working the board](#working-the-board).
+This page lists every board command and explains how rows show live pull
+request status. For what the board is, see [board](#board). For using it day to
+day, see [Working the board](#working-the-board).
 
 ## Commands
 
@@ -26,7 +26,7 @@ mycelium board log --last-week            # what the room did, by day and by per
 mycelium await --lease work/auth-spike    # wake when that task changes hands
 ```
 
-All of these take `--room` (`-r`); without it they use the room set for this
+All of these take `--room` (`-r`). Without it they use the room set for this
 folder.
 
 ## Fields
@@ -44,19 +44,19 @@ folder.
 
 ## Live pull request status
 
-Mention a pull request anywhere in a row (`owner/repo#123` or its full URL),
-and the row shows its state in the app and in `mycelium board`. Nothing to
-register: the hub reads the rows under `decisions/`, `status/`, `work/` and
-`failed/` and looks up every pull request they mention.
+Mention a pull request anywhere in a row as `owner/repo#123` or by its full
+URL. The row then shows its state in the app and in `mycelium board`. There's
+nothing to register. The hub reads the rows under `decisions/`, `status/`,
+`work/` and `failed/` and looks up every pull request they mention.
 
 ```bash
 mycelium memory set work/double-charge-fix \
   "land the double-charge fix: coffee-shop/web#504"
 ```
 
-The row shows GitHub's own wording (`CI failing`, `changes requested`,
-`draft`, `merged`) and how old it is (`CI green · 4m`), sorted into one of six
-states in its `upstream` field:
+The row shows GitHub's own wording, such as `CI failing`, `changes requested`,
+`draft` or `merged`. It also shows how old that is, as in `CI green · 4m`. The
+state is sorted into one of six values in the row's `upstream` field:
 
 | State | What it means |
 |---|---|
@@ -67,14 +67,15 @@ states in its `upstream` field:
 | `done` | Finished, however it ended. The label says how. |
 | `unknown` | The provider saw a state it didn't recognize. |
 
-The board never waits on GitHub: it shows the last known state and refreshes
+The board never waits on GitHub. It shows the last known state and refreshes
 in the background. A row that mentions two pull requests shows the one in the
-worse state, and how many there are.
+worse state along with how many there are.
 
 ### Giving the hub a token
 
-The hub needs a GitHub token to read pull requests: read-only access, plus
-`repo` scope for private repositories. Set it on the machine the hub runs on:
+The hub needs a GitHub token to read pull requests. Read-only access is enough,
+plus `repo` scope for private repositories. Set it on the machine the hub runs
+on:
 
 ```bash
 mycelium board credential set GITHUB_TOKEN            # type it at a hidden prompt
@@ -82,16 +83,16 @@ mycelium board credential set GITHUB_TOKEN --stdin < token.txt
 mycelium board credential ls                          # names and whether they're set, never values
 ```
 
-It's saved in `~/.mycelium/status-credentials.json`, readable only by you,
-which the hub reads directly. Don't put it in `config.toml` or `.env`. The hub
-looks for a token in this order:
+It's saved in `~/.mycelium/status-credentials.json`, which only you can read
+and which the hub reads directly. Don't put it in `config.toml` or `.env`. The
+hub looks for a token in this order:
 
 1. `MYCELIUM_STATUS_GITHUB_TOKEN` in the environment
 2. the value saved with `mycelium board credential set`
 3. `GITHUB_TOKEN` in the environment
 
-Without a token, rows say so (`github: GITHUB_TOKEN not configured`) rather
-than showing nothing.
+Without a token, rows say so instead of showing nothing:
+`github: GITHUB_TOKEN not configured`.
 
 The same data is at `GET /api/rooms/{room}/status`. `?refresh=true` fetches
 before answering, and `?max_age=<seconds>` reports older answers as `missing`.
