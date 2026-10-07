@@ -9,7 +9,8 @@ when one of your machines is connected, where they run:
   worktree of the clone.
 - **On your machine:** your own agent CLI, each in its own pane, in the folder
   you pick. Tick "Give each agent its own git worktree" so they never share a
-  checkout. Your machine asks you before it starts them.
+  checkout. Unless the hub is the Mac app's own, your machine asks you before
+  it starts them.
 
 Or from a terminal in the repository, in the room you work in:
 

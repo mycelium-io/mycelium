@@ -4,6 +4,9 @@ Two people working one problem, each bringing their own agent. Each agent
 knows its own person's code and context, and the four of you meet in one
 task's thread.
 
+- **One hub you can both reach.** A hub inside the Mac app answers only on
+  that Mac, so for two people it runs on a server. See **Hub & Spoke** in the
+  Guides.
 - **One room, both of you in it.** In the Members panel, **Invite** copies a
   link to the room. It opens the room in your teammate's Mac app, or in their
   browser.

@@ -55,7 +55,7 @@
       "lessons": [
         {
           "id": "05-rule",
-          "title": "A human drops a task, and never picks a protocol",
+          "title": "A human drops a task, and never picks how agents coordinate",
           "minutes": 3
         },
         {

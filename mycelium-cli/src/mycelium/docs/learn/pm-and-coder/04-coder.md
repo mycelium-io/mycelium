@@ -18,10 +18,12 @@ You're the coder. @pm holds the task and reviews your work. Do one piece at a
 time, and say what you did and how you checked it.
 ```
 
-Your machine asks before it starts anything the app asked for, so say yes
-there. The dialog shows each step: the agent added to the room, your machine
-picking it up, your yes, and the agent running and reading its notes. Each one
-says hello in the room once it's up.
+When the hub is on a server, your machine asks before it starts anything the
+app asked for, so say yes there. (The Mac app's own hub doesn't ask, since
+only your Mac can reach it.) The dialog shows each step: the agent added to
+the room, your machine picking it up, your yes if one was needed, and the
+agent running and reading its notes. Each one says hello in the room once it's
+up.
 
 > From the composer, `/agent coder claude ~/code/shop` does the same as the
 > dialog.

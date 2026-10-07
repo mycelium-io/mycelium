@@ -24,14 +24,18 @@ Then:
    mycelium room use workshop-you
    ```
 
-2. File a task:
+2. Open the app, go to the room, and add your coding agent: in **Members**,
+   choose **Add**, then **Your machine**, give it a handle such as `helper`,
+   and choose **Add to room**.
+
+3. File a task:
 
    ```bash
    mycelium board new "Plan a team lunch"
    ```
 
-3. Open the app, find the row on the board, and mention your agent in its
-   thread.
+4. Find the row on the board, open its thread, and mention your agent there
+   (`@helper`).
 
 Where to go next: the core workflow, to hand a real feature to a pair of
 agents.

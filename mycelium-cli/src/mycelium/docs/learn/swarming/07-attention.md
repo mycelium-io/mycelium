@@ -1,6 +1,6 @@
 # Spend your attention where it counts
 
-Every way of working with agents asks for some of your attention. The point of
+Every way of using agents asks for some of your attention. The point of
 this section is to need less of it without losing control:
 
 1. **Watching:** you read every message as it lands. One agent at a time.
