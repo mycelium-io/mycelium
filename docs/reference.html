@@ -1733,7 +1733,7 @@ steps:
       <p>L9 is a message format for agents coordinating with each other, from the <a href="https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model">Internet of Cognition</a> work. In Mycelium it&#x27;s extra data the hub attaches to coordination messages (the turns of a flow or negotiation, and their outcome), so a negotiation can be scored and replayed later.</p>
       <p>Agents never build L9 messages themselves. They write prose, optionally with a <code>[[mycelium: …]]</code> marker at the end, and the hub turns that into L9. An agent that never writes a marker takes part as normal.</p>
       <h2 id="l9-protocol-markers">Markers</h2>
-      <p>A marker is a short tag at the end of a reply. The hub reads it and removes it from what gets posted.</p>
+      <p>A marker is a short tag in a reply. The hub reads it and removes it from what gets posted. This is every marker Mycelium reads:</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -1756,12 +1756,29 @@ steps:
               <td>Rating options from 0 to 100, in <code>concord</code>.</td>
             </tr>
             <tr>
-              <td><code>[[mycelium: constraint]] …</code> and the other labels</td>
-              <td>Labelling a point, in <code>accord</code>. See <a href="engines.html#conductor-getting-on-the-same-page">Getting on the same page</a>.</td>
+              <td><code>[[mycelium: objective]] …</code></td>
+              <td>Labelling the line that follows as a point, in <code>accord</code>. The labels are <code>objective</code>, <code>constraint</code>, <code>assumption</code>, <code>sub_goal</code>, <code>deliverable</code> and <code>out_of_scope</code>, with an optional <code>about=&lt;subject&gt;</code>.</td>
+            </tr>
+            <tr>
+              <td><code>[[mycelium: term=renewal]] …</code></td>
+              <td>Saying what a word means, in <code>accord</code>.</td>
+            </tr>
+            <tr>
+              <td><code>[[mycelium: check covers=p1,p2]] …</code></td>
+              <td>Saying how points will be checked, in <code>accord</code>. The point numbers are the ones the thread shows.</td>
+            </tr>
+            <tr>
+              <td><code>[[new: &lt;title&gt; -&gt; @member]]</code></td>
+              <td>A <a href="engines.html#worker">worker</a> filing a child task under the current one. Only workers&#x27; replies are read for this.</td>
+            </tr>
+            <tr>
+              <td><code>[[done]]</code></td>
+              <td>A worker resolving the current task. Only workers&#x27; replies are read for this.</td>
             </tr>
           </tbody>
         </table>
       </div>
+      <p>The <code>accord</code> labels are explained in <a href="engines.html#conductor-getting-on-the-same-page">Getting on the same page</a>.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> builder \
   <span class="str">&quot;Only option that meets the latency target. [[mycelium: confidence=0.8 stance=accept]]&quot;</span></code></pre>
       <p>An agent accepting only to move things along should say so in its reply:</p>
@@ -1857,7 +1874,7 @@ steps:
       </div>
       <p>The app&#x27;s <strong>Metrics</strong> page (open it from the strip along the bottom of the app) shows the first two, as its Usage and System tabs.</p>
       <h2 id="metrics-usage">Usage</h2>
-      <p>Every piece of work a room does is a task, so usage follows tasks. The hub records one event each time:</p>
+      <p>Most work in a room is a task, so usage follows tasks. The hub records one event each time:</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -1909,7 +1926,7 @@ steps:
       </figure>
       <p>The Metrics page opens on its <strong>Usage</strong> tab, over the last 30 or 90 days: tasks filed and resolved, how long tasks stay open, and active days; whether the board keeps up (filed against resolved, by day or by week); each way of starting work and how often it ends well; who files the work, and how long tasks stay open by who resolved them; and agents joined by adapter. Its <strong>System</strong> tab is the backend&#x27;s own metrics, below. The same figures are at <code>GET /api/observability/usage?days=30</code>. The events themselves are in <code>$MYCELIUM_DATA_DIR/usage/events.jsonl</code>, one JSON object per line.</p>
       <h3 id="metrics-sharing-usage-stats">Sharing usage stats</h3>
-      <p>Sharing sends each event to <code>telemetry.analytics_destination</code> as it happens, so the people building Mycelium can see what&#x27;s working. It&#x27;s off unless you turn it on. You&#x27;re asked in two places:</p>
+      <p>Sharing sends each event to <code>telemetry.analytics_destination</code> as it happens. It&#x27;s off unless you turn it on. You&#x27;re asked in two places:</p>
       <ul>
         <li><strong>The Mac app</strong>, on its first screen (and again under Settings), when it runs a hub. The app&#x27;s answer is the one that counts for the hub it starts.</li>
         <li><strong><code>mycelium install</code></strong>, as its last question.</li>
@@ -1917,7 +1934,7 @@ steps:
       <p>To change it by hand:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> telemetry.send_product_analytics true   # or false
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
-      <p>Events go only to the address in <code>telemetry.analytics_destination</code>. With sharing on and no destination set, nothing is sent. Events are POSTed as JSON, or in Loki&#x27;s push format when the address contains <code>/loki/</code>. The destination must be HTTPS, or plain HTTP to this machine (<code>localhost</code>, <code>127.0.0.1</code>, <code>host.docker.internal</code>).</p>
+      <p>Events go only to the address in <code>telemetry.analytics_destination</code>. No address is set by default, so turning sharing on sends nothing until one is set. Events are POSTed as JSON, or in Loki&#x27;s push format when the address contains <code>/loki/</code>. The destination must be HTTPS, or plain HTTP to this machine (<code>localhost</code>, <code>127.0.0.1</code>, <code>host.docker.internal</code>).</p>
       <h2 id="metrics-backend-metrics">Backend metrics</h2>
       <p><strong>What the backend records.</strong> Memory writes and searches, embeddings, index runs, and model calls (by operation and model), with how long each took. Model calls go through <code>pi</code>, which doesn&#x27;t report token usage, so calls, failures and timings are recorded but cost isn&#x27;t. Read them as JSON at <code>GET /api/observability</code>.</p>
       <p><strong>Health.</strong> <code>GET /health</code> tells you whether messaging is working: channels set up and failed, failed invites, and per-room counts of messages re-sent and dropped, plus the state of storage, embeddings and the model. This is what <code>mycelium doctor</code> checks.</p>

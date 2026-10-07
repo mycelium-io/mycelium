@@ -270,7 +270,7 @@
       <h2 id="rooms-room-names">Room names</h2>
       <p>A room&#x27;s name can be up to 100 characters, and can include spaces, accents and ordinary punctuation. Put quotes around a name with spaces in the shell:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> <span class="str">&quot;CE-Area Team&quot;</span></code></pre>
-      <p>A name can&#x27;t be blank, <code>.</code> or <code>..</code>, and can&#x27;t contain slashes, control characters or <code>:session:</code>. The name is also the room&#x27;s folder on the hub, so it can&#x27;t be changed later. Its display title can: change it in the app.</p>
+      <p>A name can&#x27;t be blank, <code>.</code> or <code>..</code>, and can&#x27;t contain slashes, control characters or the text <code>:session:</code>, which Mycelium uses internally. The name is also the room&#x27;s folder on the hub, so it can&#x27;t be changed later. Its display title can: change it in the app.</p>
       <h2 id="rooms-private-rooms">Private rooms</h2>
       <p>A private room is listed only for you and the members you add, so it doesn&#x27;t crowd other people&#x27;s room lists, notifications or search.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> scratch <span class="flag">--private</span></code></pre>
@@ -358,7 +358,7 @@ PATCH /api/rooms/{name}/messages/{id}  {<span class="str">&quot;status&quot;</sp
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span></code></pre>
       <pre><code>✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb
   talk about it in there: <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> t3aa11bb <span class="str">&quot;…&quot;</span></code></pre>
-      <p>Every task gets its own thread when it&#x27;s created, and keeps it for life. Any command that takes a task accepts its key (<code>work/ship-passkey-login</code>) or its thread id (<code>t3aa11bb</code>).</p>
+      <p>Every task gets its own thread when it&#x27;s created, and keeps it for life. Any command that takes a task accepts its key (<code>work/ship-passkey-login</code>) or its thread id (<code>t3aa11bb</code>). <code>mycelium board</code> prints each key cut to 12 characters to fit its column, and the board actions (<code>claim</code>, <code>release</code>, <code>resolve</code>, <code>block</code>) accept that short form too. A <code>#502</code> on a row is a pull request it links to, not a task.</p>
       <p>To say who a task is for, use <code>--assign</code>:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Pick token storage&quot;</span> <span class="flag">--assign</span> @sec</code></pre>
       <p>A concern typed into the board&#x27;s capture bar with no one named is short-lived: if nobody claims it within two days, it expires, so the board doesn&#x27;t turn into a backlog.</p>
