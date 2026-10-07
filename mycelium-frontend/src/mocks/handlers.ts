@@ -76,8 +76,8 @@ const MOCK_PROTOCOLS: Protocol[] = [
   {
     name: "accord",
     description:
-      "Get on the same page. Agree what the task is, what's out of scope, what done means and what the key words mean, before work starts.",
-    roles: ["lead"],
+      "Get on the same page. Everyone says what the task is, what's out of scope, what done means and what the key words mean; it's merged into one shared summary, with anything that doesn't line up flagged, and saved.",
+    roles: [],
   },
   {
     name: "concord",

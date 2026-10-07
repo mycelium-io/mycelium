@@ -33,7 +33,7 @@ To see the flows a room can run, use
 | `swarm` | lead | Each member says which part of the task it would take. Then the lead splits the task into one child task per member. [`mycelium swarm`](#swarm) starts with this. |
 | `review` | author, reviewer | The author does the work. The reviewer checks it and approves it or sends findings back, until it's approved. |
 | `concord` | none | Help them agree. Everyone suggests an option and rates them all, and the pick is the option the least happy member likes best. See [Helping members agree](#conductor-helping-members-agree). |
-| `accord` | lead | Get on the same page before work starts. Everyone says what the task is, what's out of scope and what done means; the lead writes one shared summary; it's locked once nobody objects. |
+| `accord` | none | Get on the same page before work starts. Everyone says what the task is, what's out of scope and what done means, and code merges it into one shared summary that's saved to the room's memory. See [Getting on the same page](#conductor-getting-on-the-same-page). |
 
 Members approve or reject by ending their reply with
 `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`.
@@ -63,13 +63,66 @@ mycelium board coordinate decisions/double-charge-refunds conductor \
 After each rating round the thread shows a scorecard: the options, everyone's
 ratings, and who is below the bar. It ends with one line, such as
 "Everyone's on board: going with C" or "Couldn't get everyone there. Best was
-B". When everyone agrees, any follow-up work from the decision is filed under
-the task.
+B". When everyone agrees, the decision is saved to the room's memory as
+`context/decision/<task>`, next to the task.
 
 A reply without readable ratings is asked once more. A missing rating is
 never guessed from what someone wrote: it counts against the option it's
 missing from, so an option can't win just because the people who dislike it
 didn't answer.
+
+## Getting on the same page
+
+Before work starts, `accord` gets everyone to the same understanding of the
+task. Everyone takes part the same way:
+
+```bash
+mycelium board coordinate work/acme-renewal conductor \
+  "accord @success @finance @legal: agree what the Acme renewal is before we start"
+```
+
+1. **Say what the task is.** Each member gives the few points that matter most
+   to them, each on its own line after a label that says what kind of point it
+   is:
+
+   ```
+   [[mycelium: objective]] Renew Acme on terms finance can sign.
+   [[mycelium: constraint about=pricing]] A discount of at most 15%.
+   [[mycelium: out_of_scope]] Changing the product tier.
+   ```
+
+   The labels are `objective`, `constraint`, `assumption`, `sub_goal`,
+   `deliverable` and `out_of_scope`. You can add `about=` to say what a point
+   is about. If a reply has no labels, the member is asked once more, and a
+   reply that still has none is kept exactly as written.
+2. **Merge.** Points of the same kind that say the same thing are combined,
+   and each point records who said it. The thread shows the points so far, and
+   everyone adds anything important that's missing. This repeats until a round
+   brings nothing new, for up to three rounds.
+3. **Define the words.** Everyone says what they mean by any word they use in
+   a specific sense, and how they would check a point:
+
+   ```
+   [[mycelium: term=renewal]] The same product for a new 12-month term.
+   [[mycelium: check covers=p1,p2]] Finance signs the order form.
+   ```
+
+   If two people mean different things by the same word, those two are asked
+   to say what they mean once more. Both meanings go into the summary.
+4. **Save.** The shared summary is saved to the room's memory as
+   `context/summary/<task>`. Read it with
+   `mycelium memory get context/summary/acme-renewal`.
+
+The summary ends with a list of open items: points only one person made, two
+people saying different things about the same subject, words used in
+different senses, points nobody has said how to check, and anyone who didn't
+answer. To disagree with something in the summary, say so in the task's
+thread. Running `accord` on the same task again updates the summary.
+
+Everything that runs on the task afterwards sees the summary. Later flows
+include it in their prompts, and an agent woken about the task is told where
+the summary is and what's still open. A subtask with no summary of its own
+uses its parent's.
 
 ## Who can take part
 
@@ -112,8 +165,8 @@ played each role, and every step taken.
 
 A flow ends at one of its end steps, as either `resolved` or `rejected`. If it
 reaches its step limit first, it ends as `rejected`. A `concord` run that
-everyone agrees on ends as `converged`: the one ending that files follow-up
-work, as sub-tasks of the task it ran in.
+everyone agrees on ends as `converged`. What `accord` and `concord` agree is
+saved to the room's memory, and the last line of the run says where.
 
 Finishing a flow doesn't finish the task. To mark the task done, resolve it as
 usual with `mycelium board resolve`.
@@ -159,6 +212,8 @@ next (`next`), or ends the flow (`end: resolved` or `end: rejected`).
 - `all`: every member at once
 - `workers`: every member that doesn't have a role
 - `bottleneck`: the member the last pick left least happy (only after a pick)
+- `contested`: everyone who means something different by a word (only after
+  a check of the words)
 
 `next` is either a step id, or a map that picks the next step from the answer:
 `accept`, `reject`, `silent` (no answer in time) and `default`.
@@ -170,10 +225,12 @@ Other options:
 - `max_steps` limits how many steps a run can take. A step counts once
   however many members it asks.
 - `collect: options` makes each reply an option; `collect: scores` records
-  each reply's ratings of the options.
-- `require: stance` or `require: scores` asks a reply that's missing it once
-  more. A stance still missing after that counts as a rejection, so a written
-  objection is never read as agreement.
+  each reply's ratings of the options; `collect: pieces` merges each reply's
+  labelled points, words and checks into the shared summary being built.
+- `require: stance`, `require: scores` or `require: pieces` asks a reply
+  that's missing it once more. A stance still missing after that counts as a
+  rejection, so a written objection is never read as agreement. A reply that
+  still has no labels is kept exactly as written.
 
 A pick is a step with `kind: select`. It asks nobody, takes a `threshold`
 (0.7 means everyone rates it 70 or more) and `max_repairs`, and goes on by how
@@ -181,6 +238,21 @@ the pick went: `feasible` (everyone's on board), `infeasible` (someone can fix
 it), `stuck` (a fix can't help) and `default`. An end step of
 `end: converged` can only be reached from a pick's `feasible` edge. Print
 `concord` with `show concord` to see one in full.
+
+Two more kinds of step ask nobody. `accord` is built from them; print it with
+`show accord` to see how:
+
+- `kind: tally` looks at what has been gathered so far. With `of: points` it
+  goes on by `grew` (the last round added a point), `settled` (it added none)
+  or `empty` (nobody has given any). With `of: terms` it goes on by
+  `contested` (two people mean different things by a word) or `clear`.
+  `max_rounds` is how many times it can run before it moves on.
+- `kind: lock` puts the shared summary together and saves it to the room's
+  memory, then goes on by `locked`, or by `empty` when there's nothing to
+  save.
+
+To have everyone approve the summary before it's saved, save your own
+`protocols/accord` with an ask step before the lock that requires a stance.
 
 Prompts can use these placeholders:
 
@@ -197,6 +269,10 @@ Prompts can use these placeholders:
 | `{new_options}`, `{new_labels}` | The options no one has rated yet, and the marker to rate them with, such as `C=..`. |
 | `{pick}`, `{scores}` | The best option so far in full, and the last pick's scorecard. |
 | `{shortfall}` | What the least happy member is short by, such as "You rated option B 38; the bar is 70". |
+| `{frame}` | The points gathered so far, one per line, each with its id, its kind and how many stated it. |
+| `{terms}` | The words members defined, with any used in different senses shown side by side. |
+| `{checks}` | The checks members gave, with the points each covers. |
+| `{agreed}` | What the team already agreed for this task (its shared summary and decision), or nothing. |
 
 If a flow doesn't make sense, for example a step leads nowhere or there's no
 end step, the conductor refuses to run it and says why. Each run keeps its own

@@ -9,24 +9,29 @@ and names the step after it — by one edge, or by one edge per stance the
 reply took. The graph is data, not cognition: the conductor walks it in code
 and the only judgment in a run is inside the members it addresses.
 
-Three protocols ship built in, and a room can add its own or override one
+Several protocols ship built in, and a room can add its own or override one
 of these by writing a ``protocols/<name>`` memory whose body is the same YAML
 (:func:`load_protocol`). Like skills, a protocol is a memory promoted: no
 separate store, and one is readable as a memory too.
 
 Step targets: a **role** the summon bound (``@conductor gated @a @b`` binds
 ``a`` and ``b`` to the protocol's roles in order), ``each`` (every member,
-one at a time), ``all`` (every member, at once), or ``workers`` (every
-member not bound to a named role, at once).
+one at a time), ``all`` (every member, at once), ``workers`` (every member
+not bound to a named role, at once), ``bottleneck`` (the member the latest
+pick left least happy) or ``contested`` (the members the latest tally of
+words found using one in different senses).
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -42,12 +47,30 @@ BOTTLENECK = "bottleneck"
 #: The stances an edge can branch on, plus the two fallbacks.
 EDGE_KEYS = frozenset({"accept", "reject", "silent", "default"})
 
+#: Everyone who gave a meaning to a word the latest ``tally`` of terms found
+#: used in different senses.
+CONTESTED = "contested"
+
 #: How a ``select`` step's pick went: everyone's on board, someone can fix it,
 #: or a fix can't help.
 SELECT_EDGES = frozenset({"feasible", "infeasible", "stuck", "default"})
 
-#: ``converged`` is the one end that compiles work: an agreement a ``select``
-#: step certified. Every other flow ends ``resolved`` or ``rejected``.
+#: How a ``tally`` went. Of points: the last round added some, added none, or
+#: nobody has given any. Of terms: a word is used in different senses, or not.
+TALLY_EDGES = {
+    "points": frozenset({"grew", "settled", "empty", "default"}),
+    "terms": frozenset({"contested", "clear", "default"}),
+}
+
+#: How a ``lock`` went: the shared summary was assembled, or there was nothing
+#: to assemble it from.
+LOCK_EDGES = frozenset({"locked", "empty", "default"})
+
+#: Steps that ask nobody: code decides where they lead.
+CODE_KINDS = frozenset({"select", "tally", "lock"})
+
+#: ``converged`` is the end an agreement a ``select`` step certified reaches.
+#: Every other flow ends ``resolved`` or ``rejected``.
 Outcome = Literal["resolved", "rejected", "converged"]
 
 #: The outcomes that read as success wherever a run's end is drawn.
@@ -55,6 +78,8 @@ SUCCESS = frozenset({"resolved", "converged"})
 
 DEFAULT_THRESHOLD = 0.7
 DEFAULT_MAX_REPAIRS = 2
+#: How many rounds a tally lets its points or words go before it settles.
+DEFAULT_MAX_ROUNDS = {"points": 3, "terms": 2}
 
 
 class Step(BaseModel):
@@ -62,30 +87,39 @@ class Step(BaseModel):
 
     A ``select`` step asks nobody: it picks among the options the members
     suggested, by the ratings they gave (:mod:`app.services.select`), and
-    branches on whether everyone is on board.
+    branches on whether everyone is on board. A ``tally`` asks nobody either:
+    it reads the points or words the members labelled (:mod:`app.services.frame`)
+    and branches on whether the last round added any, or whether a word is
+    used in different senses. A ``lock`` assembles everything gathered into
+    the shared summary and saves it to the room's memory.
     """
 
     id: str = Field(..., min_length=1)
-    kind: Literal["ask", "select"] = "ask"
+    kind: Literal["ask", "select", "tally", "lock"] = "ask"
     to: str | None = Field(
         None,
-        description="A role, or each / all / workers / bottleneck. Absent on an end or select step.",
+        description=(
+            "A role, or each / all / workers / bottleneck / contested. Absent on an "
+            "end step and on a step that asks nobody."
+        ),
     )
     prompt: str = ""
     wait: Literal["reply", "none"] = "reply"
     rounds: int = Field(1, ge=1, description="How many times an each/all step repeats.")
-    collect: Literal["options", "scores"] | None = Field(
+    collect: Literal["options", "scores", "pieces"] | None = Field(
         None,
         description=(
-            "What the replies add to the run: each reply becomes an option, or "
-            "each reply's ratings are recorded."
+            "What the replies add to the run: each reply becomes an option, each "
+            "reply's ratings are recorded, or each reply's labelled pieces (points, "
+            "words, checks) are merged into the frame."
         ),
     )
-    require: Literal["stance", "scores"] | None = Field(
+    require: Literal["stance", "scores", "pieces"] | None = Field(
         None,
         description=(
             "What every reply must carry. A reply without it is asked once more; "
-            "an unmarked stance after that counts as reject."
+            "an unmarked stance after that counts as reject, and unlabelled text "
+            "is kept as one unlabelled statement."
         ),
     )
     threshold: float | None = Field(
@@ -94,12 +128,24 @@ class Step(BaseModel):
     max_repairs: int | None = Field(
         None, ge=0, description="How many fixes a select step sends for before it is stuck."
     )
+    of: Literal["points", "terms"] | None = Field(
+        None, description="What a tally step reads: the points gathered, or the words."
+    )
+    max_rounds: int | None = Field(
+        None,
+        ge=1,
+        description=(
+            "How many times a tally can run before it settles: points still being "
+            "added, or words still used in different senses, are then flagged."
+        ),
+    )
     next: str | dict[str, str] | None = Field(
         None,
         description=(
             "The step after this one: a step id, or a map of accept / reject / "
-            "silent / default (a select: feasible / infeasible / stuck / default) "
-            "to step ids."
+            "silent / default (a select: feasible / infeasible / stuck; a tally of "
+            "points: grew / settled / empty; of terms: contested / clear; a lock: "
+            "locked / empty; each with default) to step ids."
         ),
     )
     end: Outcome | None = Field(None, description="Set on a terminal step: how the run ends.")
@@ -116,13 +162,31 @@ class Step(BaseModel):
                 msg = f"step {self.id!r} ends the run and cannot also address, pick or continue"
                 raise ValueError(msg)
             return self
-        if self.kind == "select":
-            return self._a_select()
-        if self.threshold is not None or self.max_repairs is not None:
+        if self.kind in CODE_KINDS and (
+            self.to is not None or self.prompt or self.collect or self.require
+        ):
+            msg = (
+                f"{self.kind} step {self.id!r} asks nobody: it takes no to, prompt, "
+                "collect or require"
+            )
+            raise ValueError(msg)
+        if self.kind != "select" and (self.threshold is not None or self.max_repairs is not None):
             msg = f"step {self.id!r}: threshold and max_repairs belong to a select step"
             raise ValueError(msg)
+        if self.kind != "tally" and (self.of is not None or self.max_rounds is not None):
+            msg = f"step {self.id!r}: of and max_rounds belong to a tally step"
+            raise ValueError(msg)
+        if self.kind == "select":
+            return self._a_select()
+        if self.kind == "tally":
+            return self._a_tally()
+        if self.kind == "lock":
+            return self._branches(LOCK_EDGES)
         if self.collect == "scores" and self.require not in (None, "scores"):
             msg = f"step {self.id!r} collects ratings, so it requires ratings, not a stance"
+            raise ValueError(msg)
+        if self.require == "pieces" and self.collect != "pieces":
+            msg = f"step {self.id!r} requires labelled pieces, so it must collect them"
             raise ValueError(msg)
         if not self.to:
             msg = f"step {self.id!r} addresses nobody and ends nothing"
@@ -130,9 +194,6 @@ class Step(BaseModel):
         return self._branches(EDGE_KEYS)
 
     def _a_select(self) -> Step:
-        if self.to is not None or self.prompt or self.collect or self.require:
-            msg = f"select step {self.id!r} asks nobody: it takes no to, prompt, collect or require"
-            raise ValueError(msg)
         if not isinstance(self.next, dict):
             msg = f"select step {self.id!r} branches by map: {sorted(SELECT_EDGES)}"
             raise ValueError(msg)
@@ -142,6 +203,18 @@ class Step(BaseModel):
         if self.max_repairs is None:
             self.max_repairs = DEFAULT_MAX_REPAIRS
         return self._branches(SELECT_EDGES)
+
+    def _a_tally(self) -> Step:
+        if self.of is None:
+            msg = f"tally step {self.id!r} needs of: points or of: terms"
+            raise ValueError(msg)
+        if not isinstance(self.next, dict):
+            msg = f"tally step {self.id!r} branches by map: {sorted(TALLY_EDGES[self.of])}"
+            raise ValueError(msg)
+        # Written out, like a select's bar, so the app can say the cap.
+        if self.max_rounds is None:
+            self.max_rounds = DEFAULT_MAX_ROUNDS[self.of]
+        return self._branches(TALLY_EDGES[self.of])
 
     def _branches(self, allowed: frozenset[str]) -> Step:
         if self.next is None:
@@ -191,7 +264,7 @@ class Protocol(BaseModel):
         if len(set(clean)) != len(clean):
             msg = "role names must be distinct"
             raise ValueError(msg)
-        reserved = set(clean) & (GROUP_TARGETS | {BOTTLENECK})
+        reserved = set(clean) & (GROUP_TARGETS | {BOTTLENECK, CONTESTED})
         if reserved:
             msg = f"a role cannot be named {sorted(reserved)}"
             raise ValueError(msg)
@@ -208,7 +281,7 @@ class Protocol(BaseModel):
             if (
                 step.to is not None
                 and step.to not in GROUP_TARGETS
-                and step.to != BOTTLENECK
+                and step.to not in (BOTTLENECK, CONTESTED)
                 and step.to not in self.roles
             ):
                 msg = f"step {step.id!r} addresses {step.to!r}, which is neither a role nor a group"
@@ -220,13 +293,33 @@ class Protocol(BaseModel):
         if not any(s.end for s in self.steps):
             msg = "a protocol needs at least one end step"
             raise ValueError(msg)
-        self._bottleneck_follows_a_select()
+        # ``to: bottleneck`` names whoever the latest pick found least happy;
+        # ``to: contested``, whoever the latest tally of words found using one
+        # in a different sense. Either has to be defined before it is asked.
+        self._target_follows(
+            BOTTLENECK, lambda s: s.kind == "select", "infeasible", "the bottleneck", "select"
+        )
+        self._target_follows(
+            CONTESTED,
+            lambda s: s.kind == "tally" and s.of == "terms",
+            "contested",
+            "the contested",
+            "tally of terms",
+        )
         self._converged_is_certified()
         return self
 
-    def _bottleneck_follows_a_select(self) -> None:
-        """``to: bottleneck`` names whoever the latest pick found least happy, so
-        every path from the first step to it has to pass a ``select`` first."""
+    def _target_follows(
+        self,
+        target: str,
+        defines: Callable[[Step], bool],
+        edge: str,
+        said: str,
+        definer: str,
+    ) -> None:
+        """Every path from the first step to a step addressed to ``target`` has to
+        pass a step that ``defines`` it, and of those steps' edges only ``edge``
+        may lead straight to one: on any other way out there is nobody to ask."""
         by_id = {s.id: s for s in self.steps}
         seen: set[str] = set()
         frontier = [self.first.id]
@@ -235,24 +328,20 @@ class Protocol(BaseModel):
             if step.id in seen:
                 continue
             seen.add(step.id)
-            if step.to == BOTTLENECK:
-                msg = (
-                    f"step {step.id!r} asks the bottleneck, but a path reaches it before any select"
-                )
+            if step.to == target:
+                msg = f"step {step.id!r} asks {said}, but a path reaches it before any {definer}"
                 raise ValueError(msg)
-            if step.kind == "select":
-                continue  # past a pick, a bottleneck is defined
+            if defines(step):
+                continue  # past it, the target is defined
             frontier.extend(_targets_of(step))
-        # And only a pick that fell short names one: out of a feasible or stuck
-        # pick there is nobody least happy to ask.
         for step in self.steps:
-            if step.kind != "select":
+            if not defines(step):
                 continue
-            for key, target in _edges_of(step):
-                if key != "infeasible" and by_id[target].to == BOTTLENECK:
+            for key, then in _edges_of(step):
+                if key != edge and by_id[then].to == target:
                     msg = (
-                        f"select {step.id!r} goes to the bottleneck on {key!r}; "
-                        "only its infeasible edge has one"
+                        f"{step.kind} {step.id!r} goes to {said} on {key!r}; "
+                        f"only its {edge} edge has one"
                     )
                     raise ValueError(msg)
 
@@ -476,7 +565,7 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
                 # Each reply becomes an option on the table word for word, so
                 # the prompt asks for the option and nothing around it.
                 "prompt": (
-                    "{ask}\n\nReply with just the one option you think best serves "
+                    "{agreed}{ask}\n\nReply with just the one option you think best serves "
                     "your role for {title}: the concrete terms, in one or two "
                     "sentences, with no preamble. Don't hedge or pre-compromise; "
                     "everyone will rate everyone's option next."
@@ -534,60 +623,100 @@ BUILTIN_PROTOCOLS: dict[str, dict[str, Any]] = {
             {"id": "no_deal", "end": "rejected"},
         ],
     },
-    # IoC L9's Accord, cut down: everyone frames the task, one lead merges, and
-    # the frame locks once nobody objects.
+    # IoC L9's Accord, cut down: everyone labels what they understand the task
+    # to be, code merges it into one frame, checks the words, and saves the
+    # result. No lead and no vote: what doesn't line up is flagged, not argued.
     "accord": {
         "name": "accord",
         "description": (
-            "Get on the same page. Agree what the task is, what's out of scope, what "
-            "done means and what the key words mean, before work starts."
+            "Get on the same page. Everyone says what the task is, what's out of "
+            "scope, what done means and what the key words mean; it's merged into one "
+            "shared summary, with anything that doesn't line up flagged, and saved."
         ),
-        "roles": ["lead"],
-        # Frame, merge, lock, a re-ask, then one full revision with its re-ask.
+        "roles": [],
+        # Frame, its re-ask, two more rounds, the words, one restatement.
         "max_steps": 8,
         "steps": [
             {
                 "id": "frame",
                 "to": "all",
+                "collect": "pieces",
+                "require": "pieces",
                 "prompt": (
-                    "Before we start on {title}: in a few lines, what is it asking, "
-                    "what's out of scope, and what does done look like? Name any word "
-                    "you're using in a specific sense and say what you mean by it."
+                    "{agreed}Before we start on {title}: {ask}\n\nSay what you understand "
+                    "the task to be. Put each point on its own line, starting with a "
+                    "label for what kind of point it is:\n\n"
+                    "[[mycelium: objective]] what it's for\n"
+                    "[[mycelium: constraint]] a limit the work has to respect\n"
+                    "[[mycelium: assumption]] something you're taking as given\n"
+                    "[[mycelium: sub_goal]] a part of the work\n"
+                    "[[mycelium: deliverable]] what gets handed over when it's done\n"
+                    "[[mycelium: out_of_scope]] what this task does not include\n\n"
+                    "Give only the points that matter most from where you sit, five "
+                    "or fewer, one or two sentences each. To say what a point is "
+                    "about, add about=<subject>, like [[mycelium: constraint "
+                    "about=pricing]]. Everyone's points are merged in code, so say "
+                    "yours plainly rather than trying to cover everyone's."
                 ),
-                "next": "merge",
+                "next": "added",
             },
             {
-                "id": "merge",
-                "to": "lead",
-                "prompt": (
-                    "Everyone's take:\n\n{replies}\n\nWrite ONE shared summary: Objective, "
-                    "Out of scope, Done when, Key words (word: meaning), Who checks what. "
-                    "Name anything you couldn't reconcile instead of papering over it."
-                ),
-                # With no summary from the lead there is nothing to lock: the
-                # lock would show whoever spoke last as "the shared summary".
-                "next": {"silent": "no_summary", "default": "lock"},
+                "id": "added",
+                "kind": "tally",
+                "of": "points",
+                "max_rounds": 3,
+                "next": {"grew": "more", "settled": "ground", "empty": "nothing"},
             },
             {
-                "id": "lock",
+                "id": "more",
                 "to": "all",
-                "require": "stance",
+                "collect": "pieces",
                 "prompt": (
-                    "The shared summary:\n\n{reply}\n\nCan you work to this? End with "
-                    "[[mycelium: stance=accept]], or [[mycelium: stance=reject]] and the "
-                    "one change you need."
+                    "What the team has said about {title} so far:\n\n{frame}\n\nIs something "
+                    "important missing, something the work would go wrong without? If so, "
+                    "add it on its own labelled line as before, two at most. Don't add "
+                    "detail to points already there. Usually nothing is missing: then "
+                    "say so in a few words, with no label."
                 ),
-                # Only real silence is no objection: an unmarked reply was asked
-                # again, and still unmarked it counts as reject.
-                "next": {
-                    "accept": "locked",
-                    "reject": "merge",
-                    "silent": "merge",
-                    "default": "locked",
-                },
+                "next": "added",
             },
+            {
+                "id": "ground",
+                "to": "all",
+                "collect": "pieces",
+                "prompt": (
+                    "The points for {title}:\n\n{frame}\n\nTwo last things. For any word "
+                    "you're using in a specific sense, say what you mean by it:\n\n"
+                    "[[mycelium: term=<word>]] what you mean by it\n\n"
+                    "And for any point you could confirm, say how, naming the points it "
+                    "covers:\n\n"
+                    "[[mycelium: check covers=p1,p2]] what you would do to confirm them\n\n"
+                    "If there's nothing to add, say so in a few words."
+                ),
+                "next": "words",
+            },
+            {
+                "id": "words",
+                "kind": "tally",
+                "of": "terms",
+                "max_rounds": 2,
+                "next": {"contested": "restate", "clear": "lock"},
+            },
+            {
+                "id": "restate",
+                "to": "contested",
+                "collect": "pieces",
+                "prompt": (
+                    "Some words are being used in different senses:\n\n{terms}\n\n"
+                    "Given what the others mean, say again what you mean by each word "
+                    "you defined, with [[mycelium: term=<word>]]. Keep your meaning if "
+                    "it's the one you need; nobody has to give way."
+                ),
+                "next": "words",
+            },
+            {"id": "lock", "kind": "lock", "next": {"locked": "locked", "empty": "nothing"}},
             {"id": "locked", "end": "resolved"},
-            {"id": "no_summary", "end": "rejected"},
+            {"id": "nothing", "end": "rejected"},
         ],
     },
 }
@@ -615,7 +744,13 @@ def describe(protocol: Protocol) -> str:
                 f"(up to {step.max_repairs} fixes), then ({edges})"
             )
             continue
-        who = step.to or ""
+        if step.kind == "tally":
+            lines.append(f"- {step.id}: {_tally_said(step)}")
+            continue
+        if step.kind == "lock":
+            lines.append(f"- {step.id}: {_lock_said(step)}")
+            continue
+        who = "whoever means a word differently" if step.to == CONTESTED else (step.to or "")
         turns = f", {step.rounds} rounds" if step.rounds > 1 else ""
         asks = "tells" if step.wait == "none" else "asks"
         if isinstance(step.next, str):
@@ -627,10 +762,44 @@ def describe(protocol: Protocol) -> str:
     return "\n".join(lines)
 
 
+def _edges_said(step: Step, words: dict[str, str]) -> str:
+    """A code step's edges in plain words: ``new points: more, nothing new: ground``."""
+    if isinstance(step.next, str):
+        return f"then {step.next}"
+    return ", ".join(f"{words.get(k, k)}: {v}" for k, v in (step.next or {}).items())
+
+
+def _tally_said(step: Step) -> str:
+    if step.of == "terms":
+        return (
+            f"sees whether a word is used in different senses, at most {step.max_rounds} "
+            "times; "
+            + _edges_said(step, {"contested": "yes", "clear": "no", "default": "otherwise"})
+        )
+    return (
+        f"sees whether the last round added a point, up to {step.max_rounds} rounds; "
+        + _edges_said(
+            step,
+            {
+                "grew": "new points",
+                "settled": "nothing new",
+                "empty": "nobody gave any",
+                "default": "otherwise",
+            },
+        )
+    )
+
+
+def _lock_said(step: Step) -> str:
+    return "saves the shared summary; " + _edges_said(
+        step, {"locked": "saved", "empty": "nothing to save", "default": "otherwise"}
+    )
+
+
 def edge_line(step: Step, stance: str | None, who: str) -> str | None:
     """One line saying which way a branching step went, or ``None`` for a plain
-    edge. A select step says where it went in its scorecard instead."""
-    if not isinstance(step.next, dict) or step.kind == "select":
+    edge. A step that asks nobody says where it went in its own post instead."""
+    if not isinstance(step.next, dict) or step.kind in CODE_KINDS:
         return None
     target = step.edge(stance)
     said = {

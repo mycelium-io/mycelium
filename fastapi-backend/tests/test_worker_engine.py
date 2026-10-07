@@ -160,6 +160,21 @@ def test_the_prompt_names_the_team_the_task_and_the_thread():
     assert "work/fix-flake: Fix the flaky test" in prompt
     assert "- agent-1: I'll split it." in prompt
     assert prompt.endswith("Check in.")
+    assert "already agreed" not in prompt
+
+
+def test_the_prompt_carries_what_the_team_agreed_for_the_task():
+    prompt = worker_engine.build_prompt(
+        _ROOM,
+        "agent-2",
+        team=["agent-1", "agent-2"],
+        task=("work/fix-flake", "Fix the flaky test"),
+        thread="(nothing yet)",
+        ask="Do it.",
+        agreed="What the team already agreed for this task:\n\nFrom context/summary/x:\nNo retries.\n\n",
+    )
+    assert "From context/summary/x:\nNo retries." in prompt
+    assert prompt.index("No retries.") < prompt.index("The thread so far")
 
 
 # ── a turn ─────────────────────────────────────────────────────────────────────

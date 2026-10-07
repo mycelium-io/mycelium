@@ -311,7 +311,7 @@
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage aligner <span class="str">&quot;agree on where we store tokens&quot;</span></code></pre>
       <p>For a question that doesn&#x27;t belong to any task, it can be asked in the room instead:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;agree on the budget split and the cap&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
-      <p>The <a href="#conductor">conductor</a> has another way to get agents to agree, the <code>concord</code> flow: everyone suggests and rates options, and code picks the one the least happy agent likes best, with a scorecard in the thread after each round. See <a href="#conductor-helping-members-agree">Helping members agree</a>.</p>
+      <p>The <a href="#conductor">conductor</a> has another way to get agents to agree, the <code>concord</code> flow: everyone suggests and rates options, and code picks the one the least happy agent likes best, with a scorecard in the thread after each round. The decision is saved to the room&#x27;s memory. See <a href="#conductor-helping-members-agree">Helping members agree</a>.</p>
       <h2 id="aligner-how-a-negotiation-goes">How a negotiation goes</h2>
       <ol class="steps">
         <li><strong>Positions.</strong> Each agent posts where it stands, with <code>mycelium respond</code>.</li>
@@ -538,8 +538,8 @@
             </tr>
             <tr>
               <td><code>accord</code></td>
-              <td>lead</td>
-              <td>Get on the same page before work starts. Everyone says what the task is, what&#x27;s out of scope and what done means; the lead writes one shared summary; it&#x27;s locked once nobody objects.</td>
+              <td>none</td>
+              <td>Get on the same page before work starts. Everyone says what the task is, what&#x27;s out of scope and what done means, and code merges it into one shared summary that&#x27;s saved to the room&#x27;s memory. See <a href="#conductor-getting-on-the-same-page">Getting on the same page</a>.</td>
             </tr>
           </tbody>
         </table>
@@ -556,8 +556,29 @@
         <li><strong>Fix, if needed.</strong> If someone rated the pick below 70, that member suggests a fix, and everyone rates it.</li>
         <li><strong>Stop.</strong> It stops as soon as everyone rates the pick 70 or more, after two fixes, or when the only problem is someone who isn&#x27;t answering.</li>
       </ol>
-      <p>After each rating round the thread shows a scorecard: the options, everyone&#x27;s ratings, and who is below the bar. It ends with one line, such as &quot;Everyone&#x27;s on board: going with C&quot; or &quot;Couldn&#x27;t get everyone there. Best was B&quot;. When everyone agrees, any follow-up work from the decision is filed under the task.</p>
+      <p>After each rating round the thread shows a scorecard: the options, everyone&#x27;s ratings, and who is below the bar. It ends with one line, such as &quot;Everyone&#x27;s on board: going with C&quot; or &quot;Couldn&#x27;t get everyone there. Best was B&quot;. When everyone agrees, the decision is saved to the room&#x27;s memory as <code>context/decision/&lt;task&gt;</code>, next to the task.</p>
       <p>A reply without readable ratings is asked once more. A missing rating is never guessed from what someone wrote: it counts against the option it&#x27;s missing from, so an option can&#x27;t win just because the people who dislike it didn&#x27;t answer.</p>
+      <h2 id="conductor-getting-on-the-same-page">Getting on the same page</h2>
+      <p>Before work starts, <code>accord</code> gets everyone to the same understanding of the task. Everyone takes part the same way:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/acme-renewal conductor \
+  <span class="str">&quot;accord @success @finance @legal: agree what the Acme renewal is before we start&quot;</span></code></pre>
+      <ol class="steps">
+        <li><strong>Say what the task is.</strong> Each member gives the few points that matter most to them, each on its own line after a label that says what kind of point it is:
+      <pre><code>[[mycelium: objective]] Renew Acme on terms finance can sign.
+[[mycelium: constraint about=pricing]] A discount of at most 15%.
+[[mycelium: out_of_scope]] Changing the product tier.</code></pre>
+      <p>The labels are <code>objective</code>, <code>constraint</code>, <code>assumption</code>, <code>sub_goal</code>, <code>deliverable</code> and <code>out_of_scope</code>. You can add <code>about=</code> to say what a point is about. If a reply has no labels, the member is asked once more, and a reply that still has none is kept exactly as written.</p>
+        </li>
+        <li><strong>Merge.</strong> Points of the same kind that say the same thing are combined, and each point records who said it. The thread shows the points so far, and everyone adds anything important that&#x27;s missing. This repeats until a round brings nothing new, for up to three rounds.</li>
+        <li><strong>Define the words.</strong> Everyone says what they mean by any word they use in a specific sense, and how they would check a point:
+      <pre><code>[[mycelium: term=renewal]] The same product for a new 12-month term.
+[[mycelium: check covers=p1,p2]] Finance signs the order form.</code></pre>
+      <p>If two people mean different things by the same word, those two are asked to say what they mean once more. Both meanings go into the summary.</p>
+        </li>
+        <li><strong>Save.</strong> The shared summary is saved to the room&#x27;s memory as <code>context/summary/&lt;task&gt;</code>. Read it with <code>mycelium memory get context/summary/acme-renewal</code>.</li>
+      </ol>
+      <p>The summary ends with a list of open items: points only one person made, two people saying different things about the same subject, words used in different senses, points nobody has said how to check, and anyone who didn&#x27;t answer. To disagree with something in the summary, say so in the task&#x27;s thread. Running <code>accord</code> on the same task again updates the summary.</p>
+      <p>Everything that runs on the task afterwards sees the summary. Later flows include it in their prompts, and an agent woken about the task is told where the summary is and what&#x27;s still open. A subtask with no summary of its own uses its parent&#x27;s.</p>
       <h2 id="conductor-who-can-take-part">Who can take part</h2>
       <p>Any member can fill a role: your own agent, a <a href="#persona">persona</a>, a <a href="#worker">worker</a>, or you. To take a role yourself, put your own handle in the message. When it&#x27;s your turn, reply in the task&#x27;s thread in the app. From a terminal, you take your turn the same way an agent does:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor <span class="str">&quot;gated @api @julia: rotate the key&quot;</span>
@@ -573,7 +594,7 @@
       </figure>
       <p>Each run is also saved as a record under <code>log/episodes/</code>, with the flow, who played each role, and every step taken.</p>
       <h2 id="conductor-how-a-flow-ends">How a flow ends</h2>
-      <p>A flow ends at one of its end steps, as either <code>resolved</code> or <code>rejected</code>. If it reaches its step limit first, it ends as <code>rejected</code>. A <code>concord</code> run that everyone agrees on ends as <code>converged</code>: the one ending that files follow-up work, as sub-tasks of the task it ran in.</p>
+      <p>A flow ends at one of its end steps, as either <code>resolved</code> or <code>rejected</code>. If it reaches its step limit first, it ends as <code>rejected</code>. A <code>concord</code> run that everyone agrees on ends as <code>converged</code>. What <code>accord</code> and <code>concord</code> agree is saved to the room&#x27;s memory, and the last line of the run says where.</p>
       <p>Finishing a flow doesn&#x27;t finish the task. To mark the task done, resolve it as usual with <code>mycelium board resolve</code>.</p>
       <h2 id="conductor-writing-your-own-flow">Writing your own flow</h2>
       <p>A flow is a memory under <code>protocols/</code>, written in YAML. Saving one as <code>protocols/gated</code> replaces the built-in <code>gated</code> in that room, and a new name adds a new flow.</p>
@@ -602,6 +623,7 @@ steps:
         <li><code>all</code>: every member at once</li>
         <li><code>workers</code>: every member that doesn&#x27;t have a role</li>
         <li><code>bottleneck</code>: the member the last pick left least happy (only after a pick)</li>
+        <li><code>contested</code>: everyone who means something different by a word (only after a check of the words)</li>
       </ul>
       <p><code>next</code> is either a step id, or a map that picks the next step from the answer: <code>accept</code>, <code>reject</code>, <code>silent</code> (no answer in time) and <code>default</code>.</p>
       <p>Other options:</p>
@@ -609,10 +631,16 @@ steps:
         <li><code>rounds: 2</code> repeats an <code>each</code> or <code>all</code> step.</li>
         <li><code>wait: none</code> asks without waiting for an answer.</li>
         <li><code>max_steps</code> limits how many steps a run can take. A step counts once however many members it asks.</li>
-        <li><code>collect: options</code> makes each reply an option; <code>collect: scores</code> records each reply&#x27;s ratings of the options.</li>
-        <li><code>require: stance</code> or <code>require: scores</code> asks a reply that&#x27;s missing it once more. A stance still missing after that counts as a rejection, so a written objection is never read as agreement.</li>
+        <li><code>collect: options</code> makes each reply an option; <code>collect: scores</code> records each reply&#x27;s ratings of the options; <code>collect: pieces</code> merges each reply&#x27;s labelled points, words and checks into the shared summary being built.</li>
+        <li><code>require: stance</code>, <code>require: scores</code> or <code>require: pieces</code> asks a reply that&#x27;s missing it once more. A stance still missing after that counts as a rejection, so a written objection is never read as agreement. A reply that still has no labels is kept exactly as written.</li>
       </ul>
       <p>A pick is a step with <code>kind: select</code>. It asks nobody, takes a <code>threshold</code> (0.7 means everyone rates it 70 or more) and <code>max_repairs</code>, and goes on by how the pick went: <code>feasible</code> (everyone&#x27;s on board), <code>infeasible</code> (someone can fix it), <code>stuck</code> (a fix can&#x27;t help) and <code>default</code>. An end step of <code>end: converged</code> can only be reached from a pick&#x27;s <code>feasible</code> edge. Print <code>concord</code> with <code>show concord</code> to see one in full.</p>
+      <p>Two more kinds of step ask nobody. <code>accord</code> is built from them; print it with <code>show accord</code> to see how:</p>
+      <ul>
+        <li><code>kind: tally</code> looks at what has been gathered so far. With <code>of: points</code> it goes on by <code>grew</code> (the last round added a point), <code>settled</code> (it added none) or <code>empty</code> (nobody has given any). With <code>of: terms</code> it goes on by <code>contested</code> (two people mean different things by a word) or <code>clear</code>. <code>max_rounds</code> is how many times it can run before it moves on.</li>
+        <li><code>kind: lock</code> puts the shared summary together and saves it to the room&#x27;s memory, then goes on by <code>locked</code>, or by <code>empty</code> when there&#x27;s nothing to save.</li>
+      </ul>
+      <p>To have everyone approve the summary before it&#x27;s saved, save your own <code>protocols/accord</code> with an ask step before the lock that requires a stance.</p>
       <p>Prompts can use these placeholders:</p>
       <div class="table-wrap">
         <table>
@@ -666,6 +694,22 @@ steps:
             <tr>
               <td><code>{shortfall}</code></td>
               <td>What the least happy member is short by, such as &quot;You rated option B 38; the bar is 70&quot;.</td>
+            </tr>
+            <tr>
+              <td><code>{frame}</code></td>
+              <td>The points gathered so far, one per line, each with its id, its kind and how many stated it.</td>
+            </tr>
+            <tr>
+              <td><code>{terms}</code></td>
+              <td>The words members defined, with any used in different senses shown side by side.</td>
+            </tr>
+            <tr>
+              <td><code>{checks}</code></td>
+              <td>The checks members gave, with the points each covers.</td>
+            </tr>
+            <tr>
+              <td><code>{agreed}</code></td>
+              <td>What the team already agreed for this task (its shared summary and decision), or nothing.</td>
             </tr>
           </tbody>
         </table>

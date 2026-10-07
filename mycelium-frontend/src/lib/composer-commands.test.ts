@@ -82,6 +82,7 @@ describe("parseSummon", () => {
   const flows = [
     { name: "gated", description: "A proposer proposes…", roles: ["proposer", "guardian"] },
     { name: "concord", description: "Help them agree…", roles: [] },
+    { name: "accord", description: "Get on the same page…", roles: [] },
   ];
   const at = (text: string, cursor = text.length) => parseSummon(text, cursor, ["conductor"], flows);
 
@@ -106,6 +107,12 @@ describe("parseSummon", () => {
   it("keeps taking members for a flow with no roles until the ask starts", () => {
     expect(at("@conductor concord @a @b @c ")).toMatchObject({ active: "member", slot: 3 });
     expect(at("@conductor concord @a pick a name ")?.active).toBe("ask");
+  });
+
+  it("gives accord no lead to name: every member is one of the cast", () => {
+    expect(at("@conductor accord ")).toMatchObject({ active: "member", slot: 0 });
+    expect(at("@conductor accord @a @b @c ")).toMatchObject({ active: "member", slot: 3 });
+    expect(at("@conductor accord @a @b what done means")?.active).toBe("ask");
   });
 
   it("reads the flow the way the conductor does: the first word that isn't a mention", () => {

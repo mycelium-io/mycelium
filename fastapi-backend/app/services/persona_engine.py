@@ -65,12 +65,17 @@ DEFAULT_PERSONA = (
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
-def _build_prompt(room: str, handle: str, sender: str, text: str, *, in_thread: bool) -> str:
-    """Assemble the turn prompt. Pure — no I/O, directly unit-testable."""
+def _build_prompt(
+    room: str, handle: str, sender: str, text: str, *, in_thread: bool, agreed: str = ""
+) -> str:
+    """Assemble the turn prompt. Pure — no I/O, directly unit-testable.
+
+    ``agreed`` is what the team already agreed for the task, when it did."""
     where = "in a task's thread" if in_thread else "in the room"
     return (
         f"You are @{handle}, a member of the Mycelium coordination room '{room}', "
         f"speaking {where}. Stay in character as described in your instructions.\n\n"
+        f"{agreed}"
         f"{sender} said to you:\n\n{text}\n\n"
         "Reply directly, in a few sentences, as plain markdown with no preamble and no "
         "code fences. Do not put @ in front of anyone's name. If you are being asked "
@@ -78,6 +83,19 @@ def _build_prompt(room: str, handle: str, sender: str, text: str, *, in_thread: 
         "[[mycelium: stance=accept]] or [[mycelium: stance=reject]]; if you are "
         "stating a position in a negotiation, end with [[mycelium: confidence=<0-1>]]."
     )
+
+
+def _agreed_in(room: str, episode: str) -> str:
+    """What the team agreed for the task whose thread ``episode`` is, or ``""``."""
+    if l9.is_live_episode(room, episode):
+        return ""
+    from app.services import agreed, tasks
+
+    try:
+        row = tasks.row_of_episode(room, episode)
+    except Exception:
+        return ""
+    return agreed.for_prompt(room, row[0]) if row else ""
 
 
 def _persona_text(room: str, handle: str) -> str:
@@ -244,7 +262,8 @@ class PersonaEngine:
         where = episode or l9.live_episode_urn(room)
         in_thread = not l9.is_live_episode(room, where)
         system = _persona_text(room, me)
-        prompt = _build_prompt(room, me, sender, text, in_thread=in_thread)
+        said = await asyncio.to_thread(_agreed_in, room, where)
+        prompt = _build_prompt(room, me, sender, text, in_thread=in_thread, agreed=said)
         activity.signal(room, me, "responding", episode=where)
         try:
             raw = await asyncio.wait_for(

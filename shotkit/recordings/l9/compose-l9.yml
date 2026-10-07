@@ -1,7 +1,9 @@
 # Layered over compose.yml and compose-dev.yml for the L9 recordings. Its own
 # container names let it run beside your everyday stack, the alias keeps the
 # backend's SLIM address working under the new name, and a longer step timeout
-# gives a slow model reply time to arrive.
+# gives a slow model reply time to arrive. The embedding model the image ships
+# is used rather than compose-dev's stub, so Accord folds points the way it
+# does for a user.
 services:
   slim:
     container_name: mycelium-l9-slim
@@ -12,3 +14,4 @@ services:
     container_name: mycelium-l9-backend
     environment:
       CONDUCTOR_STEP_TIMEOUT_S: "240"
+      MYCELIUM_STUB_EMBEDDINGS: "0"

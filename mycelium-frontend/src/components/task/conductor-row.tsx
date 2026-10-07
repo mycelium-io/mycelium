@@ -5,8 +5,16 @@
 
 import { useState } from "react";
 import { ChevronRight, Workflow } from "lucide-react";
-import { isSuccess, pickSummary, type ConductorLine, type PickRecord } from "@/lib/conductor-line";
+import {
+  isSuccess,
+  lockSummary,
+  pickSummary,
+  tallySummary,
+  type ConductorLine,
+  type PickRecord,
+} from "@/lib/conductor-line";
 import { MessageBody } from "@/components/message-body";
+import { MemoryKeyLink } from "@/components/markdown-content";
 
 interface Props {
   line: ConductorLine;
@@ -17,6 +25,19 @@ interface Props {
 
 function Handle({ children }: { children: string }) {
   return <span className="font-medium text-text">{children}</span>;
+}
+
+/** Where a run saved what it settled to, as a link to the memory, or that it
+ *  could not be saved (`null`). Nothing when the run saved nothing. */
+function Saved({ memory, onOpenMemory }: { memory: string | null | undefined; onOpenMemory?: (key: string) => void }) {
+  if (memory === undefined) return null;
+  if (memory === null) return <span className="flex-shrink-0 text-faint">could not be saved</span>;
+  return (
+    <span className="flex flex-shrink-0 items-center gap-1 text-faint">
+      saved as
+      <MemoryKeyLink memoryKey={memory} onClick={onOpenMemory} />
+    </span>
+  );
 }
 
 /**
@@ -32,6 +53,9 @@ export function ConductorRow({ line, text, onOpenMemory }: Props) {
   const expandable = line.event === "turn" || line.event === "open";
 
   let body: React.ReactNode;
+  // Where the run saved its result, drawn beside the line rather than inside
+  // it, so a narrow thread cuts the summary and never the link to it.
+  let saved: string | null | undefined;
   switch (line.event) {
     case "open":
       body = (
@@ -100,6 +124,19 @@ export function ConductorRow({ line, text, onOpenMemory }: Props) {
         </>
       );
       break;
+    case "tally":
+      body = (
+        <>
+          <span className="font-medium text-accent">{line.step}</span>
+          <span>: </span>
+          <span>{tallySummary(line.tally)}</span>
+        </>
+      );
+      break;
+    case "lock":
+      body = <span>{lockSummary(line.lock)}</span>;
+      saved = line.lock.outcome !== "locked" ? undefined : line.lock.saved ? line.lock.memory : null;
+      break;
     case "close": {
       const good = isSuccess(line.outcome);
       // A run that picked says what it went with, or that it couldn't get there.
@@ -124,6 +161,7 @@ export function ConductorRow({ line, text, onOpenMemory }: Props) {
           )}
         </>
       );
+      saved = line.memory;
       break;
     }
   }
@@ -135,6 +173,7 @@ export function ConductorRow({ line, text, onOpenMemory }: Props) {
           <Workflow className="size-3.5" />
         </span>
         <span className="min-w-0 flex-1 truncate">{body}</span>
+        <Saved memory={saved} onOpenMemory={onOpenMemory} />
         {expandable && text.trim() && (
           <button
             type="button"

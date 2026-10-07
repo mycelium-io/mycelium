@@ -117,6 +117,8 @@ class EpisodeState:
     # The thread this episode was opened from, when it was opened inside a
     # task: the link back to the row a nested episode belongs to.
     within: str | None = None
+    # The memory a run saved its result to (a shared summary, a decision).
+    memory: str | None = None
 
 
 @dataclass
@@ -522,6 +524,8 @@ def write_episode_record(
             lines.append("- work: " + ", ".join(f"`{key}`" for key in tasks))
         if ep.within:
             lines.append(f"- within: `{ep.within}`")
+        if ep.memory:
+            lines.append(f"- memory: `{ep.memory}`")
         _append_flow(lines, ep)
         # The header and the envelope chain are any thread's; the sections below
         # exist only where a negotiation actually ran.

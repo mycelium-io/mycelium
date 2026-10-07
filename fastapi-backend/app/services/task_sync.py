@@ -120,7 +120,17 @@ class TaskSyncEngine:
     # -- the on_converged seam (sync; room-bound by the manager's adapter) --
 
     def handle_converged(self, room: str, envelope: L9) -> None:
-        """Schedule the compile run for a room's converged verdict."""
+        """Schedule the compile run for a room's converged verdict.
+
+        Only a verdict that carries ``assignments`` (the aligner's) is work to
+        compile. A conductor's agreement carries none: its decision is saved to
+        memory instead, so there is nothing here for it to file.
+        """
+        payload = envelope.payload
+        data = payload.data if payload is not None and isinstance(payload.data, dict) else {}
+        if "assignments" not in data:
+            logger.debug("room %s: converged with no assignments; nothing to compile", room)
+            return
         if room in self._active:
             logger.debug("task-sync already active on room %s; ignoring re-converge", room)
             return

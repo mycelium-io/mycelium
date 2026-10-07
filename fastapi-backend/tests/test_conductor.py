@@ -34,8 +34,20 @@ THREAD = l9.episode_urn(ROOM, "t3aa11bb")
 LIVE = l9.live_episode_urn(ROOM)
 
 
-def _reply(handle: str, prose: str, *, episode: str, action: str | None, role: str = "agent"):
-    """A member's reply as the transcript records it."""
+def _reply(
+    handle: str,
+    prose: str,
+    *,
+    episode: str,
+    action: str | dict[str, Any] | None,
+    role: str = "agent",
+):
+    """A member's reply as the transcript records it. ``action`` is a stance, or
+    a whole payload as the reply route lifts one off a marker."""
+    if isinstance(action, dict):
+        data = action
+    else:
+        data = {"action": action} if action else {"note": "no stance"}
     env = l9.build_envelope(
         kind=Kind.exchange,
         episode=episode,
@@ -44,7 +56,7 @@ def _reply(handle: str, prose: str, *, episode: str, action: str | None, role: s
         recipients=["conductor"],
         topic=l9.topic_urn(ROOM),
         payload_type="reply",
-        payload_data={"action": action} if action else {"note": "no stance"},
+        payload_data=data,
     )
     return record_from(env, serialize_content(env, extra={"content": prose}))
 
@@ -135,6 +147,11 @@ def _backend_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.config import settings
 
     monkeypatch.setattr(settings, "ENGINE_RUNTIME", "backend")
+    # Saving a result writes a memory, which embeds it: stub vectors, as CI
+    # does, so no test loads the model.
+    from app.services import embedding
+
+    monkeypatch.setattr(embedding, "_STUB", True)
     get_room_dir(ROOM)
 
 
@@ -933,15 +950,19 @@ async def test_concord_agrees_the_first_time_everyone_clears_the_bar(in_a_task):
     assert "A. 20% off\nB. 10% off" in channel.ticks()[3][2]
     commit = channel.commit()
     assert commit.header.subkind == "converged"
-    assert is_converged(commit), "the compile seam fires on this commit"
+    assert is_converged(commit)
     data = commit.payload.data
-    assert data["assignments"] == {"decision": "10% off"}
-    assert data["within"] == TASK_KEY
+    # A conductor run files no rows: nothing on the commit for the compile
+    # seam, and the decision is saved to memory instead.
+    assert "assignments" not in data
+    assert "within" not in data
+    assert data["memory"] == "context/decision/acme-renewal"
     assert data["steps"] == 2
     assert data["select"]["pick"] == "B"
     assert data["metrics"]["min_satisfaction"] == 0.72
     said = [(x or {}).get("content", "") for e, x in channel.sent if e.header.kind == Kind.commit]
     assert said[0].startswith("✓ Everyone's on board: going with B: 10% off.")
+    assert "The decision is saved as context/decision/acme-renewal." in said[0]
     (card,) = _selects(channel)
     assert card["outcome"] == "feasible"
     assert card["table"]["A"] == {"success": 95, "finance": 30, "legal": 80}
@@ -988,7 +1009,7 @@ async def test_concord_asks_only_the_least_happy_for_a_fix_then_everyone_rates_i
     assert "A. 20% off" not in rescore_prompt, "only the new option is put to a rating"
     assert "[[mycelium: C=..]]" in rescore_prompt
     commit = channel.commit()
-    assert commit.payload.data["assignments"] == {"decision": "15% off for a two-year term"}
+    assert commit.payload.data["select"]["text"] == "15% off for a two-year term"
     said = [(x or {}).get("content", "") for e, x in channel.sent if e.header.kind == Kind.commit]
     assert "success went from 50 to 85." in said[0]
     # The conductor talks about members, never to them: a mention in a post
@@ -1031,7 +1052,8 @@ async def test_concord_stops_after_two_fixes_and_says_who_is_still_short(in_a_ta
     assert [c["outcome"] for c in _selects(channel)] == ["infeasible", "infeasible", "stuck"]
     commit = channel.commit()
     assert commit.header.subkind == "rejected"
-    assert "assignments" not in commit.payload.data, "only an agreement becomes work"
+    assert "assignments" not in commit.payload.data
+    assert "memory" not in commit.payload.data, "only an agreement is saved"
     said = [(x or {}).get("content", "") for e, x in channel.sent if e.header.kind == Kind.commit]
     assert said[0].startswith("✗ Couldn't get everyone there. Best was")
     assert "finance at 10" in said[0]
@@ -1170,96 +1192,438 @@ async def test_no_other_built_in_can_converge():
         assert all(s.end != "converged" for s in spec.steps), name
 
 
-# ── accord: frame, merge, lock once nobody objects ────────────────────────────
+# ── accord: labelled points merged in code, words checked, the summary saved ──
+
+TEAM = ["a", "b", "c"]
+SUMMARY_KEY = "context/summary/acme-renewal"
+NOTHING_MORE = ("Nothing more to add.", None)
 
 
 def _accord(script: dict[str, list[tuple]]):
-    return _engine(script), "accord @lead @a @b: plan the migration"
+    return _engine(script), "accord @a @b @c: agree what the renewal is"
+
+
+def _commit_text(channel: ScriptedChannel) -> str:
+    (said,) = [
+        (x or {}).get("content", "") for e, x in channel.sent if e.header.kind == Kind.commit
+    ]
+    return said
+
+
+def _saved(key: str = SUMMARY_KEY) -> tuple[dict[str, Any], str]:
+    found = read_memory_file(get_room_dir(ROOM), key)
+    assert found is not None, f"{key} was not saved"
+    return found[0], found[1]
+
+
+#: A run where everyone frames, one more point arrives in the second round,
+#: nothing in the third, and the one word two members define means the same.
+AGREEING = {
+    "a": [
+        (
+            "[[mycelium: objective]] Renew Acme on terms finance can sign.\n"
+            "[[mycelium: constraint about=pricing]] A discount of at most 15%.",
+            None,
+        ),
+        NOTHING_MORE,
+        NOTHING_MORE,
+        (
+            "[[mycelium: term=renewal]] The same product for a new 12-month term.\n\n"
+            "[[mycelium: check covers=p1]] Finance signs the order form.",
+            None,
+        ),
+    ],
+    "b": [
+        (
+            "[[mycelium: objective]] Renew Acme on terms   finance can sign.\n"
+            "[[mycelium: out_of_scope]] Changing the product tier.",
+            None,
+        ),
+        NOTHING_MORE,
+        NOTHING_MORE,
+        ("[[mycelium: term=Renewal]] the same product for a new 12-month term.", None),
+    ],
+    "c": [
+        ("[[mycelium: constraint about=pricing]] A discount of up to 20% is fine.", None),
+        ("[[mycelium: deliverable]] A signed order form.", None),
+        NOTHING_MORE,
+        ("Nothing to add.", None),
+    ],
+}
 
 
 @pytest.mark.asyncio
-async def test_accord_locks_when_some_accept_and_the_rest_are_silent():
+async def test_accord_merges_what_everyone_labelled_with_no_lead_and_saves_it(in_a_task):
+    (engine, _manager, channel), directive = _accord(AGREEING)
+
+    outcome = await engine.run(ROOM, episode=THREAD, directive=directive, named=TEAM)
+
+    assert outcome == "resolved"
+    steps = [s for s, _to, _p in channel.ticks()]
+    # Everyone is asked every round: nobody leads, nobody merges, nobody votes.
+    assert steps == ["frame"] * 3 + ["more"] * 3 + ["more"] * 3 + ["ground"] * 3
+    meta, body = _saved()
+    made = meta["contract"]
+    assert meta["relates-to"] == TASK_KEY
+    assert made["cast"] == TEAM
+    points = {p["id"]: p for p in made["points"]}
+    # Equal text folds (case and spacing aside) and is credited to both.
+    assert points["p1"]["type"] == "objective"
+    assert points["p1"]["authors"] == ["a", "b"]
+    assert points["p1"]["support"] == 2
+    assert [p["type"] for p in made["points"]] == [
+        "objective",
+        "constraint",
+        "out_of_scope",
+        "constraint",
+        "deliverable",
+    ]
+    # Two different things said about pricing: both kept, both flagged.
+    assert points["p2"]["text"] == "A discount of at most 15%."
+    assert points["p4"]["text"] == "A discount of up to 20% is fine."
+    assert "conflict" in points["p2"]["flags"]
+    assert "conflict" in points["p4"]["flags"]
+    assert "single" in points["p3"]["flags"]
+    assert made["glossary"] == [
+        {
+            "term": "renewal",
+            "status": "agreed",
+            "meanings": [
+                {"text": "The same product for a new 12-month term.", "members": ["a", "b"]}
+            ],
+        }
+    ]
+    assert made["checks"] == [
+        {"text": "Finance signs the order form.", "covers": ["p1"], "owner": "a"}
+    ]
+    assert made["unchecked"] == ["p2", "p4", "p5"]
+    kinds = [f["kind"] for f in made["flags"]]
+    assert "conflict" in kinds
+    assert "unchecked" in kinds
+    assert "ambiguous" not in kinds
+    assert "## Out of scope" in body
+    assert "People said different things about pricing: p2, p4" in body
+    assert "- Only one person said this: p2, p3, p4, p5" in body
+    commit = channel.commit()
+    assert commit.header.subkind == "resolved"
+    assert commit.payload.data["memory"] == SUMMARY_KEY
+    assert "assignments" not in commit.payload.data
+    said = _commit_text(channel)
+    assert said.startswith("✓ accord: resolved after 4 step(s).")
+    assert "5 point(s), 1 stated by more than one person" in said
+    assert f"The shared summary is saved as {SUMMARY_KEY}." in said
+    lines = _lines(channel)
+    tallies = [line["tally"]["outcome"] for line in lines if line.get("event") == "tally"]
+    assert tallies == ["grew", "grew", "settled", "clear"]
+    (lock,) = [line for line in lines if line.get("event") == "lock"]
+    assert lock["lock"]["memory"] == SUMMARY_KEY
+    assert lock["lock"]["points"] == 5
+    assert lines[-1]["memory"] == SUMMARY_KEY, "the close line says where it went"
+
+
+@pytest.mark.asyncio
+async def test_accord_shows_the_frame_so_far_and_asks_only_for_what_is_missing(in_a_task):
+    (engine, _manager, channel), directive = _accord(AGREEING)
+
+    await engine.run(ROOM, episode=THREAD, directive=directive, named=TEAM)
+
+    more = channel.ticks()[3][2]
+    assert "p1 (objective, stated by 2 of 3): Renew Acme on terms finance can sign." in more
+    assert "Is something important missing" in more
+    ground = channel.ticks()[9][2]
+    assert "p5 (deliverable, stated by 1 of 3): A signed order form." in ground
+    assert "[[mycelium: term=<word>]]" in ground
+
+
+@pytest.mark.asyncio
+async def test_a_second_accord_in_the_same_task_updates_the_same_summary(in_a_task):
+    (engine, _m, _c), directive = _accord(AGREEING)
+    await engine.run(ROOM, episode=THREAD, directive=directive, named=TEAM)
+    (engine, _m, channel), directive = _accord(AGREEING)
+
+    await engine.run(ROOM, episode=THREAD, directive=directive, named=TEAM)
+
+    meta, _body = _saved()
+    assert meta["version"] == 2
+    # The second run's prompts carry the first run's summary.
+    assert "What the team already agreed for this task" in channel.ticks()[0][2]
+    assert f"From {SUMMARY_KEY}:" in channel.ticks()[0][2]
+
+
+@pytest.mark.asyncio
+async def test_a_word_used_in_different_senses_is_asked_of_those_members_once_then_kept_apart(
+    in_a_task,
+):
+    framing_ = [
+        ("[[mycelium: objective]] Renew Acme.", None),
+        NOTHING_MORE,
+    ]
+    (engine, manager, channel), directive = _accord(
+        {
+            "a": [
+                *framing_,
+                ("[[mycelium: term=renewal]] A new 12-month term.", None),
+                ("[[mycelium: term=renewal]] A new 12-month term, nothing else.", None),
+            ],
+            "b": [
+                *framing_,
+                ("[[mycelium: term=renewal]] Any contract signed after the old one ends.", None),
+                ("[[mycelium: term=renewal]] Any contract after the old one ends.", None),
+            ],
+            "c": [*framing_, ("No special words from me.", None)],
+        }
+    )
+
+    outcome = await engine.run(ROOM, episode=THREAD, directive=directive, named=TEAM)
+
+    assert outcome == "resolved"
+    restated = [(to, p) for s, to, p in channel.ticks() if s == "restate"]
+    assert [to for to, _p in restated] == ["a", "b"], "only the members whose meanings differ"
+    assert "renewal is used in different senses" in restated[0][1]
+    assert ["a", "b"] in [sorted(f.speakers) for f in manager.floor_log]
+    made = _saved()[0]["contract"]
+    (word,) = made["glossary"]
+    assert word["status"] == "contested"
+    # Never picked between, never merged: both restated meanings, side by side.
+    assert word["meanings"] == [
+        {"text": "A new 12-month term, nothing else.", "members": ["a"]},
+        {"text": "Any contract after the old one ends.", "members": ["b"]},
+    ]
+    assert {
+        "kind": "ambiguous",
+        "text": "A word used in different senses: renewal",
+        "term": "renewal",
+    } in made["flags"]
+    assert "1 word(s) used in different senses" in _commit_text(channel)
+
+
+@pytest.mark.asyncio
+async def test_a_reply_in_plain_words_is_asked_once_then_kept_as_written(in_a_task):
+    """A person who answers without labels is never lost, never mistyped, and
+    never counted as agreeing with anyone else."""
+    (engine, manager, channel), directive = _accord(
+        {
+            "a": [("[[mycelium: objective]] Renew Acme.", None), NOTHING_MORE],
+            "b": [("[[mycelium: objective]] Renew Acme.", None), NOTHING_MORE],
+            "c": [
+                ("I think we should renew Acme, but not below list price.", None),
+                ("Same as before: renew, not below list price.", None),
+                NOTHING_MORE,
+            ],
+        }
+    )
+
+    await engine.run(ROOM, episode=THREAD, directive=directive, named=TEAM)
+
+    steps = [(s, to) for s, to, _p in channel.ticks()]
+    assert steps[3] == ("frame", "c"), "only the reply with no label is asked again"
+    assert "I couldn't find a label in your reply" in channel.ticks()[3][2]
+    assert ["c"] in [sorted(f.speakers) for f in manager.floor_log]
+    made = _saved()[0]["contract"]
+    statement = made["points"][1]
+    assert statement["type"] == "statement"
+    assert statement["text"] == "Same as before: renew, not below list price."
+    assert statement["authors"] == ["c"]
+    assert made["points"][0]["authors"] == ["a", "b"], "c's words joined nobody's point"
+
+
+@pytest.mark.asyncio
+async def test_a_silent_member_is_recorded_as_not_answering_never_as_agreeing(in_a_task):
     (engine, _manager, channel), directive = _accord(
+        {
+            "a": [("[[mycelium: objective]] Renew Acme.", None), NOTHING_MORE],
+            "b": [("[[mycelium: objective]] Renew Acme.", None), NOTHING_MORE],
+            "c": [],
+        }
+    )
+
+    outcome = await engine.run(ROOM, episode=THREAD, directive=directive, named=TEAM)
+
+    assert outcome == "resolved"
+    made = _saved()[0]["contract"]
+    assert made["points"][0]["authors"] == ["a", "b"]
+    assert {"kind": "quiet_member", "text": "No answer from c", "members": ["c"]} in made["flags"]
+    assert "No answer from c." in _commit_text(channel)
+
+
+@pytest.mark.asyncio
+async def test_accord_with_nobody_answering_ends_rejected_and_saves_nothing(in_a_task):
+    (engine, _manager, channel), directive = _accord({"a": [], "b": [], "c": []})
+
+    outcome = await engine.run(ROOM, episode=THREAD, directive=directive, named=TEAM)
+
+    assert outcome == "rejected"
+    assert read_memory_file(get_room_dir(ROOM), SUMMARY_KEY) is None
+    commit = channel.commit()
+    assert "memory" not in commit.payload.data
+    said = _commit_text(channel)
+    assert "reached `nothing`" in said
+    assert "No answer from a, b, c." in said
+
+
+@pytest.mark.asyncio
+async def test_a_failed_save_leaves_the_outcome_and_says_so(in_a_task, monkeypatch):
+    async def fails(*_a: Any, **_k: Any) -> bool:
+        return False
+
+    monkeypatch.setattr(conductor.agreed, "save", fails)
+    (engine, _manager, channel), directive = _accord(AGREEING)
+
+    outcome = await engine.run(ROOM, episode=THREAD, directive=directive, named=TEAM)
+
+    assert outcome == "resolved"
+    assert channel.commit().payload.data["memory"] is None
+    assert "The shared summary could not be saved." in _commit_text(channel)
+    assert any("could not be saved; it is in this thread" in s for s in channel.said())
+
+
+@pytest.mark.asyncio
+async def test_points_still_arriving_when_the_rounds_run_out_are_flagged(in_a_task):
+    def keeps_adding(who: str) -> list[tuple]:
+        return [(f"[[mycelium: sub_goal]] {who} part {n}.", None) for n in range(1, 4)]
+
+    (engine, _manager, channel), directive = _accord(
+        {h: [*keeps_adding(h), ("Nothing to add.", None)] for h in TEAM}
+    )
+
+    outcome = await engine.run(ROOM, episode=THREAD, directive=directive, named=TEAM)
+
+    assert outcome == "resolved"
+    assert [s for s, _to, _p in channel.ticks()].count("more") == 6, "three rounds, no more"
+    made = _saved()[0]["contract"]
+    assert "frame_cap_reached" in [f["kind"] for f in made["flags"]]
+
+
+@pytest.mark.asyncio
+async def test_labels_lifted_onto_the_payload_by_the_reply_route_are_read(in_a_task):
+    """An agent's reply arrives with its markers stripped from the prose and its
+    pieces on the payload; the conductor reads them there."""
+    lifted = {
+        "pieces": [{"label": "objective", "text": "Renew Acme."}],
+        "note": "lifted by the reply route",
+    }
+    (engine, _manager, _channel), directive = _accord(
+        {h: [("Renew Acme.", lifted), NOTHING_MORE] for h in TEAM}
+    )
+
+    outcome = await engine.run(ROOM, episode=THREAD, directive=directive, named=TEAM)
+
+    assert outcome == "resolved"
+    (point,) = _saved()[0]["contract"]["points"]
+    assert point == {
+        "id": "p1",
+        "type": "objective",
+        "text": "Renew Acme.",
+        "support": 3,
+        "authors": TEAM,
+        "flags": ["unchecked"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_near_duplicates_fold_by_similarity_and_an_unavailable_model_falls_back(in_a_task):
+    script = {
+        "a": [("[[mycelium: objective]] Renew Acme for a year.", None), NOTHING_MORE],
+        "b": [("[[mycelium: objective]] Renew the Acme account for one year.", None), NOTHING_MORE],
+        "c": [],
+    }
+    (engine, _m, _c), directive = _accord(script)
+    engine.similarity = lambda: lambda _x, _y: 0.97
+    await engine.run(ROOM, episode=THREAD, directive=directive, named=TEAM)
+    (folded,) = _saved()[0]["contract"]["points"]
+    assert folded["authors"] == ["a", "b"]
+
+    def broken(_x: str, _y: str) -> float:
+        raise RuntimeError("no model")
+
+    (engine, _m, _c), directive = _accord(script)
+    engine.similarity = lambda: broken
+    await engine.run(ROOM, episode=THREAD, directive=directive, named=TEAM)
+    made = _saved()[0]["contract"]
+    assert len(made["points"]) == 2, "equal text only, once the model fails"
+    assert "similarity_unavailable" in [f["kind"] for f in made["flags"]]
+
+
+@pytest.mark.asyncio
+async def test_the_same_replies_in_the_same_order_give_the_same_summary(in_a_task):
+    (engine, _m, _c), directive = _accord(AGREEING)
+    await engine.run(ROOM, episode=THREAD, directive=directive, named=TEAM)
+    first = _saved()[0]["contract"]
+    (engine, _m, _c), directive = _accord(AGREEING)
+    await engine.run(ROOM, episode=THREAD, directive=directive, named=TEAM)
+
+    assert _saved()[0]["contract"] == first
+
+
+@pytest.mark.asyncio
+async def test_a_later_concord_in_the_task_is_shown_what_was_agreed(in_a_task):
+    (engine, _m, _c), directive = _accord(AGREEING)
+    await engine.run(ROOM, episode=THREAD, directive=directive, named=TEAM)
+    (engine, _m, channel), directive = _concord(
+        {
+            "success": [("20% off", None), ("[[mycelium: A=90]]", None)],
+            "finance": [("20% off", None), ("[[mycelium: A=90]]", None)],
+            "legal": [("20% off", None), ("[[mycelium: A=90]]", None)],
+        }
+    )
+
+    outcome = await engine.run(ROOM, episode=THREAD, directive=directive, named=CAST)
+
+    assert outcome == "converged"
+    propose = channel.ticks()[0][2]
+    assert "What the team already agreed for this task" in propose
+    assert "Renew Acme on terms finance can sign." in propose
+    meta, body = _saved("context/decision/acme-renewal")
+    assert meta["decision"]["text"] == "20% off"
+    assert meta["relates-to"] == TASK_KEY
+    assert "Going with A: 20% off" in body
+
+
+@pytest.mark.asyncio
+async def test_a_room_override_of_accord_in_the_old_shape_still_runs(in_a_task):
+    """A room that saved the lead-and-confirm accord keeps running its own."""
+    old = {
+        "roles": ["lead"],
+        "max_steps": 8,
+        "steps": [
+            {"id": "frame", "to": "all", "prompt": "Frame {title}.", "next": "merge"},
+            {
+                "id": "merge",
+                "to": "lead",
+                "prompt": "Everyone's take:\n\n{replies}\n\nWrite one summary.",
+                "next": {"silent": "no_summary", "default": "lock"},
+            },
+            {
+                "id": "lock",
+                "to": "all",
+                "require": "stance",
+                "prompt": "The summary:\n\n{reply}\n\nCan you work to this?",
+                "next": {
+                    "accept": "locked",
+                    "reject": "merge",
+                    "silent": "merge",
+                    "default": "locked",
+                },
+            },
+            {"id": "locked", "end": "resolved"},
+            {"id": "no_summary", "end": "rejected"},
+        ],
+    }
+    write_memory_file(
+        get_room_dir(ROOM), "protocols/accord", yaml.safe_dump(old), created_by="julia"
+    )
+    (engine, _manager, channel), _directive = _accord(
         {
             "lead": [("my take", None), ("the summary", None), ("works", "accept")],
             "a": [("a take", None), ("fine", "accept")],
-            "b": [("b take", None)],  # silent at the lock
+            "b": [("b take", None), ("fine", "accept")],
         }
     )
 
-    outcome = await engine.run(ROOM, episode=THREAD, directive=directive, named=["lead", "a", "b"])
+    outcome = await engine.run(
+        ROOM, episode=THREAD, directive="accord @lead @a @b: plan it", named=["lead", "a", "b"]
+    )
 
     assert outcome == "resolved"
     assert [s for s, _to, _p in channel.ticks()] == ["frame"] * 3 + ["merge"] + ["lock"] * 3
-    assert "- a: a take" in channel.ticks()[3][2], "the merge sees everyone's take"
-
-
-@pytest.mark.asyncio
-async def test_accord_ends_when_the_lead_writes_no_summary():
-    """A silent lead leaves nothing to lock; no member's framing stands in for it."""
-    (engine, _manager, channel), directive = _accord(
-        {"lead": [("my take", None)], "a": [("a take", None)], "b": [("b take", None)]}
-    )
-
-    outcome = await engine.run(ROOM, episode=THREAD, directive=directive, named=["lead", "a", "b"])
-
-    assert outcome == "rejected"
-    assert "lock" not in [s for s, _to, _p in channel.ticks()]
-    said = [(x or {}).get("content", "") for e, x in channel.sent if e.header.kind == Kind.commit]
-    assert "reached `no_summary`" in said[0]
-    assert "No answer from lead." in said[0]
-
-
-@pytest.mark.asyncio
-async def test_accords_close_names_who_let_it_lock_by_silence():
-    (engine, _manager, channel), directive = _accord(
-        {
-            "lead": [("t", None), ("the summary", None), ("works", "accept")],
-            "a": [("t", None), ("fine", "accept")],
-            "b": [("t", None)],
-        }
-    )
-
-    await engine.run(ROOM, episode=THREAD, directive=directive, named=["lead", "a", "b"])
-
-    said = [(x or {}).get("content", "") for e, x in channel.sent if e.header.kind == Kind.commit]
-    assert said[0].startswith("✓ accord: resolved")
-    assert "No answer from b." in said[0]
-
-
-@pytest.mark.asyncio
-async def test_accord_goes_back_to_merge_when_everyone_is_silent_at_the_lock():
-    (engine, _manager, channel), directive = _accord(
-        {"lead": [("t", None), ("s1", None)], "a": [("t", None)], "b": [("t", None)]}
-    )
-
-    outcome = await engine.run(ROOM, episode=THREAD, directive=directive, named=["lead", "a", "b"])
-
-    assert outcome == "rejected"
-    assert "merge" in [s for s, _to, _p in channel.ticks()][4:]
-
-
-@pytest.mark.asyncio
-async def test_accord_asks_again_and_a_still_unmarked_reply_is_an_objection():
-    """A written objection without a marker is never read as consent."""
-    (engine, _manager, channel), directive = _accord(
-        {
-            "lead": [("t", None), ("s1", None), ("ok", "accept"), ("s2", None), ("ok", "accept")],
-            "a": [
-                ("t", None),
-                ("I can't work to this, the scope is wrong", None),
-                ("still no", None),
-                ("better", "accept"),
-            ],
-            "b": [("t", None), ("fine", "accept"), ("fine", "accept")],
-        }
-    )
-
-    outcome = await engine.run(ROOM, episode=THREAD, directive=directive, named=["lead", "a", "b"])
-
-    steps = [(s, to) for s, to, _p in channel.ticks()]
-    # frame x3, merge, lock x3, then the one re-ask to a alone, then back to merge.
-    assert steps[7] == ("lock", "a")
-    assert "I couldn't tell whether you accept this" in channel.ticks()[7][2]
-    assert steps[8] == ("merge", "lead")
-    assert outcome == "resolved"
+    assert read_memory_file(get_room_dir(ROOM), SUMMARY_KEY) is None, "it locks no summary"

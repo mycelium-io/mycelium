@@ -723,6 +723,165 @@ function refundThread(): MockMessage[] {
   ];
 }
 
+// "Get on the same page" (accord) run on the payment-alerts task before the
+// work starts: everyone says what the alert is for, what's out of scope and
+// what done means, a second round adds nothing new, "failing" turns out to
+// mean two things and is restated, and the points are merged into a shared
+// summary saved as a memory. The counts, the summary and the close carry
+// structured lines, so the thread draws them as lines rather than prose.
+const ALERTS_THREAD = checkoutEpisode("e7a9c1");
+const ALERTS_CAST = ["builder", "reviewer", "operator"];
+const ALERTS_SUMMARY = "context/summary/payment-alerts";
+const accordSteps: FlowStep[] = [
+  { id: "frame", to: "all", collect: "pieces", require: "pieces", next: "added" },
+  { id: "added", kind: "tally", of: "points", max_rounds: 3, next: { grew: "more", settled: "ground", empty: "nothing" } },
+  { id: "more", to: "all", collect: "pieces", next: "added" },
+  { id: "ground", to: "all", collect: "pieces", next: "words" },
+  { id: "words", kind: "tally", of: "terms", max_rounds: 2, next: { contested: "restate", clear: "lock" } },
+  { id: "restate", to: "contested", collect: "pieces", next: "words" },
+  { id: "lock", kind: "lock", next: { locked: "locked", empty: "nothing" } },
+  { id: "locked", end: "resolved" },
+  { id: "nothing", end: "rejected" },
+];
+const alertsFirstCount = {
+  of: "points" as const,
+  round: 1,
+  max_rounds: 3,
+  outcome: "grew" as const,
+  added: 5,
+  points: 5,
+  capped: false,
+};
+const alertsSecondCount = { ...alertsFirstCount, round: 2, outcome: "settled" as const, added: 0 };
+const alertsWordsSplit = {
+  of: "terms" as const,
+  round: 1,
+  max_rounds: 2,
+  outcome: "contested" as const,
+  words: 2,
+  contested: ["failing"],
+  asked: ["builder", "operator"],
+};
+const alertsWordsClear = { ...alertsWordsSplit, round: 2, outcome: "clear" as const, contested: [], asked: [] };
+const alertsLock = {
+  outcome: "locked" as const,
+  memory: ALERTS_SUMMARY,
+  saved: true,
+  points: 5,
+  shared: 3,
+  contested: 0,
+  checks: 1,
+  flagged: 2,
+  quiet: [],
+};
+const checkoutAccordEpisode: EpisodeSummary = {
+  short_id: "c3e5a7",
+  episode: ALERTS_THREAD,
+  topic: "urn:concept:mycelium:checkout",
+  outcome: "resolved",
+  subkind: "resolved",
+  participants: [...ALERTS_CAST, "conductor"],
+  metrics: null,
+  assignments: null,
+  tasks: [],
+  message_count: 22,
+  updated_at: iso(3.4),
+  updated_by: "conductor",
+  within: ALERTS_THREAD,
+  current_step: null,
+  flow: {
+    name: "accord",
+    description:
+      "Get on the same page. Everyone says what the task is, what's out of scope, what done means and what the key words mean; it's merged into one shared summary, with anything that doesn't line up flagged, and saved.",
+    roles: [],
+    max_steps: 8,
+    bound: {},
+    cast: ALERTS_CAST,
+    ask: "agree what the payment alert is for before building it",
+    steps: accordSteps,
+  },
+  trace: [
+    { step: "frame", turn: 1, asked: ALERTS_CAST, stances: {}, stance: null, next: "added", at: iso(9.0) },
+    { step: "added", turn: 1, tally: alertsFirstCount, next: "more", at: iso(8.9) },
+    { step: "more", turn: 2, asked: ALERTS_CAST, stances: {}, stance: null, next: "added", at: iso(7.6) },
+    { step: "added", turn: 2, tally: alertsSecondCount, next: "ground", at: iso(7.5) },
+    { step: "ground", turn: 3, asked: ALERTS_CAST, stances: {}, stance: null, next: "words", at: iso(6.2) },
+    { step: "words", turn: 3, tally: alertsWordsSplit, next: "restate", at: iso(6.1) },
+    { step: "restate", turn: 4, asked: ["builder", "operator"], stances: {}, stance: null, next: "words", at: iso(4.4) },
+    { step: "words", turn: 4, tally: alertsWordsClear, next: "lock", at: iso(4.3) },
+    { step: "lock", turn: 4, lock: alertsLock, next: "locked", at: iso(3.5) },
+  ],
+};
+
+/** The run's posts in the payment-alerts thread, oldest first. */
+function alertsThread(): MockMessage[] {
+  let n = 0;
+  const post = (sender: string, content: string, mins: number, conductor?: Record<string, unknown>): MockMessage => ({
+    id: `ac${++n}`,
+    sender_handle: sender,
+    message_type: "broadcast",
+    content,
+    created_at: iso(mins),
+    episode: ALERTS_THREAD,
+    ...(conductor ? { metadata: { conductor } } : {}),
+  });
+  const turn = (step: string, to: string, turnNo: number, mins: number) =>
+    post("conductor", `accord · ${step} · turn ${turnNo} of 8 · ${to}`, mins, {
+      event: "turn",
+      protocol: "accord",
+      step,
+      to,
+      turn: turnNo,
+      cap: 8,
+    });
+  return [
+    post("conductor", "Running accord with builder, reviewer, operator as members.", 9.6, {
+      event: "open",
+      protocol: "accord",
+      roles: {},
+      members: ALERTS_CAST,
+      steps: accordSteps,
+    }),
+    ...ALERTS_CAST.map((h) => turn("frame", h, 1, 9.5)),
+    post("builder", "It's for hearing about broken payments before customers do. Out of scope: alerts for slow pages. Done means the alert fires in a test where I make payments fail on purpose.", 9.3),
+    post("reviewer", "It's for hearing about broken payments before customers do. Done means one message to the team channel, not one per failed payment.", 9.2),
+    post("operator", "It's for catching a broken checkout during the sale. More than 3 failing payments in 10 minutes should alert us.", 9.1),
+    post("conductor", "Round 1: 5 new points, 5 in all", 8.9, { event: "tally", step: "added", next: "more", tally: alertsFirstCount }),
+    ...ALERTS_CAST.map((h) => turn("more", h, 2, 8.8)),
+    post("builder", "Nothing to add.", 8.0),
+    post("reviewer", "Nothing new from me.", 7.9),
+    post("operator", "That covers it.", 7.8),
+    post("conductor", "Nobody added anything new: 5 points", 7.5, { event: "tally", step: "added", next: "ground", tally: alertsSecondCount }),
+    ...ALERTS_CAST.map((h) => turn("ground", h, 3, 7.4)),
+    post("builder", "\"Failing\" means Stripe returned an error. \"The team channel\" is #checkout.", 6.8),
+    post("reviewer", "\"The team channel\" is #checkout.", 6.6),
+    post("operator", "\"Failing\" means the customer didn't get through checkout, whatever the reason.", 6.4),
+    post("conductor", "Words used in different senses: failing. Asking builder, operator again", 6.1, {
+      event: "tally",
+      step: "words",
+      next: "restate",
+      tally: alertsWordsSplit,
+    }),
+    turn("restate", "builder", 4, 6.0),
+    turn("restate", "operator", 4, 6.0),
+    post("builder", "Fair: a card the bank declines is the customer's problem, not ours. \"Failing\" means Stripe returned an error.", 5.0),
+    post("operator", "Agreed, a declined card isn't a broken checkout. \"Failing\" means Stripe returned an error.", 4.6),
+    post("conductor", "No word used in different senses", 4.3, { event: "tally", step: "words", next: "lock", tally: alertsWordsClear }),
+    post("conductor", "Shared summary: 5 points, 3 stated by more than one person, 1 check, 2 open items", 3.5, {
+      event: "lock",
+      step: "lock",
+      next: "locked",
+      lock: alertsLock,
+    }),
+    post(
+      "conductor",
+      `✓ accord: resolved after 4 step(s). 5 point(s), 3 stated by more than one person, 1 check(s). The shared summary is saved as ${ALERTS_SUMMARY}.`,
+      3.4,
+      { event: "close", protocol: "accord", outcome: "resolved", steps: 4, reason: "reached `locked`", memory: ALERTS_SUMMARY },
+    ),
+  ];
+}
+
 // Coordination-state memories the board projects into rows. Every one is what
 // the docs promise a task is: a markdown file with frontmatter — prose in the
 // body (`value`), the row's typed fields in `meta`. The board reads status,
@@ -992,6 +1151,38 @@ const checkout: RoomFixture = {
       updated_at: iso(38),
       episode: checkoutEpisode("b9d1f3"),
     },
+    // The shared summary the payment-alerts run saved, as the hub writes it.
+    {
+      key: ALERTS_SUMMARY,
+      value:
+        "# Shared summary: Alert us when payments start failing\n\n" +
+        "The ask: agree what the payment alert is for before building it\n\n" +
+        "Worked out by builder, reviewer, operator.\n\n" +
+        "## What it's for\n\n" +
+        "- **p1** Hear about broken payments before customers do (stated by 3 of 3: builder, reviewer, operator)\n\n" +
+        "## Constraints\n\n" +
+        "- **p2** Alert when more than 3 payments fail in 10 minutes (stated by 1 of 3: operator)\n\n" +
+        "## Out of scope\n\n" +
+        "- **p3** Alerts for slow pages (stated by 1 of 3: builder)\n\n" +
+        "## What gets delivered\n\n" +
+        "- **p4** One message to #checkout, not one per failed payment (stated by 2 of 3: reviewer, builder)\n" +
+        "- **p5** The alert fires in a test that makes payments fail on purpose (stated by 2 of 3: builder, operator)\n\n" +
+        "## Words\n\n" +
+        "- **failing**: Stripe returned an error; a card the bank declines is not a failure (builder, operator)\n" +
+        "- **the team channel**: #checkout (builder, reviewer)\n\n" +
+        "## How we'll check\n\n" +
+        "- Make payments fail on purpose on staging and see one message in #checkout (builder; covers p4, p5)\n\n" +
+        "## Open items\n\n" +
+        "- Only one person said this: p2 (operator)\n" +
+        "- Only one person said this: p3 (builder)\n",
+      content_text: "Shared summary for the payment alert: what it's for, what's out of scope, what done means, and what failing means.",
+      meta: { "part-of": ["work/payment-alerts"] },
+      created_by: "conductor",
+      updated_by: "conductor",
+      version: 1,
+      updated_at: iso(3.5),
+      episode: checkoutEpisode("d1f3b5"),
+    },
     ...checkoutBoardRows,
   ],
   // The channel is the room's whole history, so every row on the board is a thing
@@ -1041,6 +1232,8 @@ const checkout: RoomFixture = {
     { id: "r2", sender_handle: "builder", message_type: "broadcast", content: "cleared the cache. every order today went through stripe.", created_at: iso(15), episode: OLD_FORM_THREAD },
     // The double-charge decision's thread: a "help them agree" run, start to finish.
     ...refundThread(),
+    // The payment-alerts thread: a "get on the same page" run before the work.
+    ...alertsThread(),
     // Two deliberately long, multi-paragraph messages — the wall-of-text case the
     // channel has to handle without swallowing everything around it.
     {
@@ -1071,12 +1264,14 @@ const checkout: RoomFixture = {
     checkoutReleaseEpisode,
     checkoutGatedEpisode,
     checkoutConcordEpisode,
+    checkoutAccordEpisode,
     checkoutFanOutEpisode,
     checkoutEpisodeSummary,
     checkoutRoundRobinEpisode,
   ],
   episodeDetails: {
     b9c1d3: { ...checkoutConcordEpisode, messages: [] },
+    c3e5a7: { ...checkoutAccordEpisode, messages: [] },
     e4f1a2: { ...checkoutEpisodeSummary, messages: checkoutL9Chain },
     f10a2c: { ...checkoutGatedEpisode, messages: [] },
     a2b3c4: { ...checkoutFanOutEpisode, messages: [] },
