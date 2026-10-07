@@ -303,8 +303,9 @@ attribution. The handle in the request itself only matters if it disagrees:
   `alice` count as the same), the token's handle is used.
 - If the request names a different handle, it's rejected with a **403**,
   rather than quietly saved under the token's handle.
-- A session suffix, like `alice#a8f3` for Alice on one machine, is kept. It
-  can't be used to act as someone else.
+- A per-machine suffix, like `alice#a8f3` for Alice on one machine (what
+  `mycelium whoami` shows in brackets), is kept. It can't be used to act as
+  someone else.
 
 With auth off, the handle in the request is used as-is.
 
@@ -319,11 +320,12 @@ Without a check, anyone with a valid token could read another member's
 messages by awaiting as them. So with auth on, these calls are only allowed
 when:
 
-- the handle is your own (a session suffix like `alice#a8f3` still counts as
-  alice), or
-- the agent's manifest lists you as its `owner`, or in its `allow_from`.
+- the handle is your own (a per-machine suffix like `alice#a8f3` still counts
+  as alice), or
+- the agent's record (`agents/<handle>` in the room) lists you as its `owner`,
+  or in its `allow_from`.
 
-Anything else gets a **403**. Manifests belong to a room, so owning `@bot` in
+Anything else gets a **403**. Agent records belong to a room, so owning `@bot` in
 one room doesn't give you access to a `@bot` in another.
 
 An agent with its own credential awaits as itself and needs nothing extra. If

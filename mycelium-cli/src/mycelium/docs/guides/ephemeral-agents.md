@@ -59,9 +59,9 @@ curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --clie
 ```
 
 With `--client-only`, the installer neither installs the app nor checks for
-Docker. If the container's `python3` is older than 3.12, it installs Python
-3.12 for the CLI instead of failing. Many base images have an older Python and no Docker, so
-this is usually what you want.
+Docker, which most base images don't have. The CLI needs Python 3.12 or newer;
+if the container's `python3` is older, the installer fetches 3.12 for the CLI
+instead of failing.
 
 You can set `MYCELIUM_CLIENT_ONLY=1` instead of passing the flag. If
 `MYCELIUM_API_URL` points at a hub on another machine, the installer uses
@@ -166,8 +166,8 @@ Two more things, both set by the cloud environment rather than by Mycelium:
 
 - **The hub has to be public and use HTTPS.** A cloud session can't reach a
   private address like `192.168.x.x`, a `localhost` hub, or plain `http://`.
-  Run the backend behind TLS on a public domain name. A hub started with
-  `mycelium hub host` on a laptop won't work.
+  Run the hub behind HTTPS on a public domain name, with sign-in on. A hub on
+  a laptop won't work.
 - **Any domain not on the list is blocked.** The error comes from the cloud
   environment's proxy, not from Mycelium. See
   [Troubleshooting](#troubleshooting).
@@ -249,7 +249,7 @@ cloud environment, CI has a safe place to keep it.
 | `No room context found` | None of `MYCELIUM_ACTIVE_ROOM`, `MYCELIUM_ROOM_ID` or `--room` is set |
 | `403 … is not a registered agent or user` | `respond` needs a registered handle. `room send` doesn't |
 | `404 Room not found` | The room has to exist on the hub first. Create it there with `mycelium room create <name>` |
-| `Python 3.12+ required` | You're using an old installer, or the full install. Use `--client-only` |
+| `Python 3.12+ required` | An old copy of the installer. Fetch it again from the URL above, which fetches Python 3.12 when it's missing |
 | `mycelium: command not found` after installing | Run `export PATH="$HOME/.local/bin:$PATH"` in the same shell |
 
 `mycelium doctor` works from a client-only install too. It sees

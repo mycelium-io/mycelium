@@ -266,7 +266,8 @@
       <h2 id="on-a-server-start-the-hub">Start the hub</h2>
       <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash
 <span class="bin">mycelium</span> <span class="cmd">install</span></code></pre>
-      <p>On a Mac, add <code>--docker</code> to the installer (<code>… | bash -s -- --docker</code>), or it installs the Mac app instead.</p>
+      <p>On an Apple silicon Mac, add <code>--docker</code> to the installer (<code>… | bash -s -- --docker</code>), or it installs the Mac app instead. An Intel Mac gets this Docker path either way.</p>
+      <p>You need Docker running. The CLI needs Python 3.12 or newer; if the machine has an older one, the installer fetches 3.12 for the CLI rather than failing.</p>
       <p>The installer puts the <code>mycelium</code> CLI on your PATH. <code>mycelium install</code> then sets up its config in <code>~/.mycelium/</code> and starts the hub: a SLIM messaging node, the backend on port 8000, and the app on port 3000. It asks for a model provider and API key along the way; rooms and memory work without one, and you can add one later (see <a href="#models">Models</a>).</p>
       <p>To manage the hub after that:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">up</span>       # start it, or restart it with new settings
@@ -287,6 +288,67 @@
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span> <span class="flag">--assign</span> @planner
 <span class="bin">mycelium</span> <span class="cmd">board</span>                       # what needs you right now</code></pre>
       <p>See <a href="concepts.html#board">board</a> for the rest, and <a href="concepts.html#swarm">Swarm</a> to put a whole team of agents on one task.</p>
+      <h2 id="on-a-server-which-command-when">Which command when</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>You want to</th>
+              <th>Run</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Set up a hub on this machine, the first time</td>
+              <td><code>mycelium install</code></td>
+            </tr>
+            <tr>
+              <td>Start, stop or restart the hub</td>
+              <td><code>mycelium up</code>, <code>mycelium down</code></td>
+            </tr>
+            <tr>
+              <td>Check that everything works</td>
+              <td><code>mycelium doctor</code> (or <code>mycelium status</code> for a quick look)</td>
+            </tr>
+            <tr>
+              <td>Apply a setting you changed</td>
+              <td><code>mycelium config apply</code>, then <code>mycelium up</code></td>
+            </tr>
+            <tr>
+              <td>Update</td>
+              <td><code>mycelium upgrade</code> (the CLI), then <code>mycelium pull</code> (the hub&#x27;s images, and restarts it)</td>
+            </tr>
+            <tr>
+              <td>Point this machine at a hub somewhere else</td>
+              <td><code>mycelium init --api-url &lt;address&gt;</code></td>
+            </tr>
+            <tr>
+              <td>Sign in, on a hub with sign-in on</td>
+              <td><code>mycelium login</code></td>
+            </tr>
+            <tr>
+              <td>Say who you are, on a hub without sign-in</td>
+              <td><code>mycelium iam &lt;handle&gt;</code></td>
+            </tr>
+            <tr>
+              <td>Pick the room for the folder you&#x27;re in</td>
+              <td><code>mycelium room use &lt;room&gt;</code></td>
+            </tr>
+            <tr>
+              <td>Let the app start agents on this machine</td>
+              <td><code>mycelium runner --detach</code></td>
+            </tr>
+            <tr>
+              <td>Join an agent session to a room with a code</td>
+              <td><code>mycelium join &lt;code&gt;</code></td>
+            </tr>
+            <tr>
+              <td>Run the Mac app&#x27;s hub without its window</td>
+              <td><code>mycelium desktop serve</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/server.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="on-a-server" aria-label="Previous and next sections">
@@ -310,7 +372,7 @@
       <ol class="steps">
         <li>Open the download and drag <strong>Mycelium</strong> into <strong>Applications</strong>.</li>
         <li>Open Mycelium from Applications. The first time, macOS asks whether to open an app downloaded from the internet; choose <strong>Open</strong>.</li>
-        <li>A few short steps set it up: - <strong>Where your rooms live.</strong> <strong>On this Mac</strong> runs a hub on this Mac. <strong>On my team&#x27;s hub</strong> joins rooms someone else runs: paste the hub&#x27;s address, or open an invite link a teammate sent you. - <strong>A model</strong>, for a hub on this Mac: pick a provider and paste its key. The <a href="engines.html#engines">engines</a> think with it. You can skip this and add it later. - <strong>Agents on this Mac</strong>: the agent CLIs it found, the folder agents started from Mycelium may work in, and whether herdr should bring your agents back after it restarts (this adds a hook to each agent CLI&#x27;s settings, so it&#x27;s your choice). - <strong>Usage stats</strong>, for a hub on this Mac: whether to share anonymous counts of tasks, flows and agents with the people building Mycelium. Off unless you tick it; see <a href="reference.html#metrics">Metrics</a> for exactly what&#x27;s sent. - <strong>Ready to start</strong>: what you chose, then <strong>Start Mycelium</strong>.</li>
+        <li>A few short steps set it up: - <strong>Where your rooms live.</strong> <strong>On this Mac</strong> runs a hub on this Mac. <strong>On my team&#x27;s hub</strong> joins rooms someone else runs: paste the hub&#x27;s address, or open an invite link a teammate sent you. - <strong>A model</strong>, for a hub on this Mac: pick a provider and paste its key. The <a href="engines.html#engines">engines</a> think with it. You can skip this and add it later. - <strong>Agents on this Mac</strong>: the agent CLIs it found, the folder agents started from Mycelium may work in, and whether herdr should bring your agents back after it restarts (this adds a hook to each agent CLI&#x27;s settings, so it&#x27;s your choice). - <strong>Usage stats</strong>, for a hub on this Mac: whether the hub may send anonymous counts of tasks, flows and agents to an analytics address. Off unless you tick it, and nothing is sent until an address is set in the hub&#x27;s config (<code>telemetry.analytics_destination</code>); the app doesn&#x27;t set one. See <a href="reference.html#metrics">Metrics</a> for exactly what would be sent. - <strong>Ready to start</strong>: what you chose, then <strong>Start Mycelium</strong>.</li>
       </ol>
       <figure class="doc-figure"><img class="doc-img" src="desktop-onboarding.png" alt="The first step: where your rooms live" loading="lazy">
       </figure>
@@ -513,7 +575,7 @@
       </div>
       <p>A name is always the provider, a slash, then the model.</p>
       <h2 id="models-under-the-hood">Under the hood</h2>
-      <p>Mycelium&#x27;s agents run on <a href="https://github.com/earendil-works/pi">Pi</a>, an open-source agent runtime that talks to many model providers. Any <code>provider/model</code> that Pi knows works here. Its <a href="https://pi.dev/models">model catalog</a> lists every provider and model name, with their context limits and prices.</p>
+      <p>The engines run on <a href="https://github.com/earendil-works/pi">Pi</a>, an open-source agent runtime that talks to many model providers. Any <code>provider/model</code> that Pi knows works here. Its <a href="https://pi.dev/models">model catalog</a> lists every provider and model name, with their context limits and prices.</p>
       <h2 id="models-check-it">Check it</h2>
       <p>In the Mac app, <strong>Settings → Model</strong> says whether the model answered, and <strong>Health check…</strong> shows it under <strong>Models</strong>. From the command line, <code>mycelium doctor</code> asks the model for a real reply and says what went wrong if it can&#x27;t get one: a missing key, a key the provider refuses, or a model name it doesn&#x27;t know.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/models.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
@@ -801,7 +863,7 @@
       <h2 id="ephemeral-agents-install-the-cli-without-docker">Install the CLI without Docker</h2>
       <p>The normal installer sets up a hub on the machine: the Mac app on a Mac, or the CLI for the Docker stack anywhere else. An ephemeral agent only talks to an existing hub, so it only needs the CLI:</p>
       <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash <span class="flag">-s</span> -- <span class="flag">--client-only</span></code></pre>
-      <p>With <code>--client-only</code>, the installer neither installs the app nor checks for Docker. If the container&#x27;s <code>python3</code> is older than 3.12, it installs Python 3.12 for the CLI instead of failing. Many base images have an older Python and no Docker, so this is usually what you want.</p>
+      <p>With <code>--client-only</code>, the installer neither installs the app nor checks for Docker, which most base images don&#x27;t have. The CLI needs Python 3.12 or newer; if the container&#x27;s <code>python3</code> is older, the installer fetches 3.12 for the CLI instead of failing.</p>
       <p>You can set <code>MYCELIUM_CLIENT_ONLY=1</code> instead of passing the flag. If <code>MYCELIUM_API_URL</code> points at a hub on another machine, the installer uses client-only mode automatically.</p>
       <h2 id="ephemeral-agents-post-a-message">Post a message</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">send</span> <span class="str">&quot;Moved the session store to Redis. Tests pass, PR is up.&quot;</span></code></pre>
@@ -839,7 +901,7 @@ MYCELIUM_AGENT_HANDLE=claude-web</code></pre>
       <p>Leave <strong>Also include default list of common package managers</strong> ticked, or the installer won&#x27;t be able to download anything.</p>
       <p>Two more things, both set by the cloud environment rather than by Mycelium:</p>
       <ul>
-        <li><strong>The hub has to be public and use HTTPS.</strong> A cloud session can&#x27;t reach a private address like <code>192.168.x.x</code>, a <code>localhost</code> hub, or plain <code>http://</code>. Run the backend behind TLS on a public domain name. A hub started with <code>mycelium hub host</code> on a laptop won&#x27;t work.</li>
+        <li><strong>The hub has to be public and use HTTPS.</strong> A cloud session can&#x27;t reach a private address like <code>192.168.x.x</code>, a <code>localhost</code> hub, or plain <code>http://</code>. Run the hub behind HTTPS on a public domain name, with sign-in on. A hub on a laptop won&#x27;t work.</li>
         <li><strong>Any domain not on the list is blocked.</strong> The error comes from the cloud environment&#x27;s proxy, not from Mycelium. See <a href="#troubleshooting">Troubleshooting</a>.</li>
       </ul>
       <h3 id="ephemeral-agents-3-install-the-cli-in-the-setup-script">3. Install the CLI in the setup script</h3>
@@ -908,7 +970,7 @@ EOF
             </tr>
             <tr>
               <td><code>Python 3.12+ required</code></td>
-              <td>You&#x27;re using an old installer, or the full install. Use <code>--client-only</code></td>
+              <td>An old copy of the installer. Fetch it again from the URL above, which fetches Python 3.12 when it&#x27;s missing</td>
             </tr>
             <tr>
               <td><code>mycelium: command not found</code> after installing</td>
@@ -1241,11 +1303,12 @@ Review 1
       <h2 id="security-planes-whats-open-by-default">What&#x27;s open by default</h2>
       <p>With the default setup:</p>
       <ul>
-        <li><strong>Anyone who can reach port 8000 can read and write every room</strong>, and post as any <code>@handle</code>. Names are only claims.</li>
+        <li><strong>Anyone who can reach port 8000 can read and write every room</strong>, and post as any <code>@handle</code>. Names are only claims: the app&#x27;s <strong>acting as</strong> picker lets any browser choose which user it represents.</li>
         <li><strong>Private rooms are hidden, not locked.</strong> Anyone who knows a room&#x27;s name can open it.</li>
         <li><strong>Every room is an <a href="#a2a-bridge">A2A</a> endpoint.</strong> Its card (name and skills) is public, and without sign-in anyone can post into it as <code>@a2a-guest</code>.</li>
         <li><strong>The hub reads everything.</strong> Room messages are encrypted between the hub and its SLIM node, not end to end; see <a href="concepts.html#slim">SLIM</a>.</li>
         <li><strong><a href="engines.html#worker">Workers</a> can reach anything the hub can</strong>, including every room&#x27;s files and the model&#x27;s API key.</li>
+        <li><strong>Anything that can reach the hub can ask a runner to start an agent.</strong> The runner asks on its machine before starting anything, except for the Mac app&#x27;s own hub, which only its own Mac can reach. There, any program on the Mac can start agents without a question. See <a href="#machines-you-say-yes-on-the-machine">You say yes on the machine</a>.</li>
       </ul>
       <h2 id="security-planes-what-to-do-about-it">What to do about it</h2>
       <ol class="steps">
@@ -1593,7 +1656,7 @@ role   = &quot;agent&quot;</code></pre>
       <ul>
         <li>If the request leaves the handle out, or gives the same one (<code>@Alice</code> and <code>alice</code> count as the same), the token&#x27;s handle is used.</li>
         <li>If the request names a different handle, it&#x27;s rejected with a <strong>403</strong>, rather than quietly saved under the token&#x27;s handle.</li>
-        <li>A session suffix, like <code>alice#a8f3</code> for Alice on one machine, is kept. It can&#x27;t be used to act as someone else.</li>
+        <li>A per-machine suffix, like <code>alice#a8f3</code> for Alice on one machine (what <code>mycelium whoami</code> shows in brackets), is kept. It can&#x27;t be used to act as someone else.</li>
       </ul>
       <p>With auth off, the handle in the request is used as-is.</p>
       <h2 id="auth-acting-for-an-agent">Acting for an agent</h2>
@@ -1604,10 +1667,10 @@ role   = &quot;agent&quot;</code></pre>
       </ul>
       <p>Without a check, anyone with a valid token could read another member&#x27;s messages by awaiting as them. So with auth on, these calls are only allowed when:</p>
       <ul>
-        <li>the handle is your own (a session suffix like <code>alice#a8f3</code> still counts as alice), or</li>
-        <li>the agent&#x27;s manifest lists you as its <code>owner</code>, or in its <code>allow_from</code>.</li>
+        <li>the handle is your own (a per-machine suffix like <code>alice#a8f3</code> still counts as alice), or</li>
+        <li>the agent&#x27;s record (<code>agents/&lt;handle&gt;</code> in the room) lists you as its <code>owner</code>, or in its <code>allow_from</code>.</li>
       </ul>
-      <p>Anything else gets a <strong>403</strong>. Manifests belong to a room, so owning <code>@bot</code> in one room doesn&#x27;t give you access to a <code>@bot</code> in another.</p>
+      <p>Anything else gets a <strong>403</strong>. Agent records belong to a room, so owning <code>@bot</code> in one room doesn&#x27;t give you access to a <code>@bot</code> in another.</p>
       <p>An agent with its own credential awaits as itself and needs nothing extra. If you want to drive an agent&#x27;s loop from your own session, grant yourself access:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> bot <span class="flag">--owner</span> alice          # alice can await <span class="flag">--handle</span> bot
 <span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> bot <span class="flag">--allow-from</span> ops-lead  # and so can @ops-lead</code></pre>
@@ -1694,8 +1757,10 @@ role   = &quot;agent&quot;</code></pre>
         <li><strong>Is the agent itself running?</strong> <code>mycelium machine</code> lists every agent on this machine and what&#x27;s wrong with it: <strong>stopped</strong>, <strong>pane gone</strong>, or <strong>blocked</strong> at a prompt waiting for you to answer in its terminal. It prints the command that fixes each one. See <a href="#agents-on-a-machine">Your agents on a machine</a>.</li>
         <li><strong>Is it the right handle, in the right room?</strong> <code>mycelium agent ls -r &lt;room&gt;</code> lists the room&#x27;s members.</li>
         <li><strong>Is it an engine?</strong> Engines only answer when they&#x27;re in the room (<code>mycelium engine ls -r &lt;room&gt;</code>) and, except the conductor, need a model (below).</li>
+        <li><strong>Did it come back after herdr restarted?</strong> Without herdr&#x27;s integration for its agent CLI, a restart of herdr leaves the agent stopped. <code>mycelium machine integrations --install</code> fixes that for next time, and <code>mycelium machine restart --all</code> starts the stopped ones now.</li>
+        <li><strong>Is it missing a negotiation&#x27;s rounds?</strong> The aligner gives each agent 30 seconds a round, and an agent the runner has to wake can take longer. Raise <code>aligner.round_timeout_s</code> (see <a href="engines.html#aligner-settings">Aligner</a>).</li>
       </ol>
-      <p>An agent that loops on <code>mycelium await</code> itself doesn&#x27;t need the runner: check that its loop is still running.</p>
+      <p>An agent that loops on <code>mycelium await</code> itself doesn&#x27;t need the runner: check that its loop is still running. An agent you connected with <code>mycelium herdr map</code> is woken by the runner too; <code>mycelium herdr wake &lt;handle&gt;</code> wakes it by hand.</p>
       <hr class="divider">
       <h3 id="troubleshooting-mycelium-command-not-found"><code>mycelium: command not found</code></h3>
       <p>The CLI isn&#x27;t installed, or isn&#x27;t on your <code>PATH</code>. Install it (on an Apple silicon Mac this installs the Mac app, which links its CLI into <code>~/.local/bin</code>; add <code>bash -s -- --client-only</code> for the CLI alone):</p>

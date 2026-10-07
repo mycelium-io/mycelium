@@ -23,6 +23,10 @@ who's there and what the room knows, and lets you change any of it. The
 `mycelium` **CLI** is how your agents take part, and you can use it too. You'll
 need at least one coding agent, such as Claude Code, to do the work.
 
+Most of the examples in these docs are about code, because that's what most
+teams use it for. A room works the same way for any work that's written down:
+a plan, a comparison of vendors, the terms of a contract renewal.
+
 ## What you get
 
 **Rooms.** A room is where a team works. Everyone in it shares the same chat,
@@ -88,8 +92,9 @@ its `mycelium` CLI on your PATH, and opens it:
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 ```
 
-On Linux, or on a server your team shares, the same script installs the CLI,
-and `mycelium install` then runs the hub in Docker. See
+On Linux, on an Intel Mac (the Mac app is built for Apple silicon only), or on
+a server your team shares, the same script installs the CLI, and
+`mycelium install` then runs the hub in Docker. See
 [Run it on a server instead](#on-a-server).
 
 
@@ -429,7 +434,8 @@ mycelium room create "CE-Area Team"
 ```
 
 A name can't be blank, `.` or `..`, and can't contain slashes, control
-characters or `:session:`. The name is also the room's folder on the hub, so it
+characters or the text `:session:`, which Mycelium uses internally. The name is
+also the room's folder on the hub, so it
 can't be changed later. Its display title can: change it in the app.
 
 ## Private rooms
@@ -604,7 +610,10 @@ mycelium board new "Ship passkey login"
 
 Every task gets its own thread when it's created, and keeps it for life. Any
 command that takes a task accepts its key (`work/ship-passkey-login`) or its
-thread id (`t3aa11bb`).
+thread id (`t3aa11bb`). `mycelium board` prints each key cut to 12 characters
+to fit its column, and the board actions (`claim`, `release`, `resolve`,
+`block`) accept that short form too. A `#502` on a row is a pull request it
+links to, not a task.
 
 To say who a task is for, use `--assign`:
 
@@ -1284,7 +1293,7 @@ a room can run, use `mycelium engine invoke conductor "list"`.
 Members approve or reject by ending their reply with
 `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`. A reply with no
 stance takes the step's default path, which in `gated` and `review` sends the
-work back.
+work back. Every marker is listed under [Markers](#l9-protocol-markers).
 
 To change a built-in flow or add your own, see [Writing flows](#flows).
 
@@ -1684,7 +1693,8 @@ A worker files and resolves tasks by putting a line in its reply:
 | `[[new: <title> -> @member]]` | Adds a child task under the current task, assigned to that member. |
 | `[[done]]` | Resolves the current task. |
 
-These lines are removed before the reply is posted. When a task is resolved,
+These lines are removed before the reply is posted. (Every marker Mycelium
+reads is listed under [Markers](#l9-protocol-markers).) When a task is resolved,
 the worker's result is written into the task's body, so it stays searchable in
 the room's memory.
 
@@ -1775,8 +1785,12 @@ curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 mycelium install
 ```
 
-On a Mac, add `--docker` to the installer
-(`… | bash -s -- --docker`), or it installs the Mac app instead.
+On an Apple silicon Mac, add `--docker` to the installer
+(`… | bash -s -- --docker`), or it installs the Mac app instead. An Intel Mac
+gets this Docker path either way.
+
+You need Docker running. The CLI needs Python 3.12 or newer; if the machine has
+an older one, the installer fetches 3.12 for the CLI rather than failing.
 
 The installer puts the `mycelium` CLI on your PATH. `mycelium install` then
 sets up its config in `~/.mycelium/` and starts the hub: a SLIM messaging node,
@@ -1835,6 +1849,23 @@ mycelium board                       # what needs you right now
 See [board](#board) for the rest, and [Swarm](#swarm) to put a whole team of
 agents on one task.
 
+## Which command when
+
+| You want to | Run |
+|---|---|
+| Set up a hub on this machine, the first time | `mycelium install` |
+| Start, stop or restart the hub | `mycelium up`, `mycelium down` |
+| Check that everything works | `mycelium doctor` (or `mycelium status` for a quick look) |
+| Apply a setting you changed | `mycelium config apply`, then `mycelium up` |
+| Update | `mycelium upgrade` (the CLI), then `mycelium pull` (the hub's images, and restarts it) |
+| Point this machine at a hub somewhere else | `mycelium init --api-url <address>` |
+| Sign in, on a hub with sign-in on | `mycelium login` |
+| Say who you are, on a hub without sign-in | `mycelium iam <handle>` |
+| Pick the room for the folder you're in | `mycelium room use <room>` |
+| Let the app start agents on this machine | `mycelium runner --detach` |
+| Join an agent session to a room with a code | `mycelium join <code>` |
+| Run the Mac app's hub without its window | `mycelium desktop serve` |
+
 
 ---
 
@@ -1862,9 +1893,11 @@ coding agents for you when you ask.
      from Mycelium may work in, and whether herdr should bring your agents back
      after it restarts (this adds a hook to each agent CLI's settings, so it's
      your choice).
-   - **Usage stats**, for a hub on this Mac: whether to share anonymous counts
-     of tasks, flows and agents with the people building Mycelium. Off unless
-     you tick it; see [Metrics](#metrics) for exactly what's sent.
+   - **Usage stats**, for a hub on this Mac: whether the hub may send anonymous
+     counts of tasks, flows and agents to an analytics address. Off unless you
+     tick it, and nothing is sent until an address is set in the hub's config
+     (`telemetry.analytics_destination`); the app doesn't set one. See
+     [Metrics](#metrics) for exactly what would be sent.
    - **Ready to start**: what you chose, then **Start Mycelium**.
 
 ![The first step: where your rooms live](desktop-onboarding.png)
@@ -2155,7 +2188,7 @@ A name is always the provider, a slash, then the model.
 
 ## Under the hood
 
-Mycelium's agents run on [Pi](https://github.com/earendil-works/pi), an
+The engines run on [Pi](https://github.com/earendil-works/pi), an
 open-source agent runtime that talks to many model providers. Any
 `provider/model` that Pi knows works here. Its
 [model catalog](https://pi.dev/models) lists every provider and model name,
@@ -2537,9 +2570,9 @@ curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --clie
 ```
 
 With `--client-only`, the installer neither installs the app nor checks for
-Docker. If the container's `python3` is older than 3.12, it installs Python
-3.12 for the CLI instead of failing. Many base images have an older Python and no Docker, so
-this is usually what you want.
+Docker, which most base images don't have. The CLI needs Python 3.12 or newer;
+if the container's `python3` is older, the installer fetches 3.12 for the CLI
+instead of failing.
 
 You can set `MYCELIUM_CLIENT_ONLY=1` instead of passing the flag. If
 `MYCELIUM_API_URL` points at a hub on another machine, the installer uses
@@ -2644,8 +2677,8 @@ Two more things, both set by the cloud environment rather than by Mycelium:
 
 - **The hub has to be public and use HTTPS.** A cloud session can't reach a
   private address like `192.168.x.x`, a `localhost` hub, or plain `http://`.
-  Run the backend behind TLS on a public domain name. A hub started with
-  `mycelium hub host` on a laptop won't work.
+  Run the hub behind HTTPS on a public domain name, with sign-in on. A hub on
+  a laptop won't work.
 - **Any domain not on the list is blocked.** The error comes from the cloud
   environment's proxy, not from Mycelium. See
   [Troubleshooting](#troubleshooting).
@@ -2727,7 +2760,7 @@ cloud environment, CI has a safe place to keep it.
 | `No room context found` | None of `MYCELIUM_ACTIVE_ROOM`, `MYCELIUM_ROOM_ID` or `--room` is set |
 | `403 … is not a registered agent or user` | `respond` needs a registered handle. `room send` doesn't |
 | `404 Room not found` | The room has to exist on the hub first. Create it there with `mycelium room create <name>` |
-| `Python 3.12+ required` | You're using an old installer, or the full install. Use `--client-only` |
+| `Python 3.12+ required` | An old copy of the installer. Fetch it again from the URL above, which fetches Python 3.12 when it's missing |
 | `mycelium: command not found` after installing | Run `export PATH="$HOME/.local/bin:$PATH"` in the same shell |
 
 `mycelium doctor` works from a client-only install too. It sees
@@ -3165,7 +3198,8 @@ reach your hub, know what's open by default and turn on what protects it.
 With the default setup:
 
 - **Anyone who can reach port 8000 can read and write every room**, and post as
-  any `@handle`. Names are only claims.
+  any `@handle`. Names are only claims: the app's **acting as** picker lets any
+  browser choose which user it represents.
 - **Private rooms are hidden, not locked.** Anyone who knows a room's name can
   open it.
 - **Every room is an [A2A](#a2a-bridge) endpoint.** Its card (name and skills)
@@ -3174,6 +3208,11 @@ With the default setup:
   its SLIM node, not end to end; see [SLIM](#slim).
 - **[Workers](#worker) can reach anything the hub can**, including every room's
   files and the model's API key.
+- **Anything that can reach the hub can ask a runner to start an agent.** The
+  runner asks on its machine before starting anything, except for the Mac app's
+  own hub, which only its own Mac can reach. There, any program on the Mac can
+  start agents without a question. See
+  [You say yes on the machine](#machines-you-say-yes-on-the-machine).
 
 ## What to do about it
 
@@ -3545,8 +3584,9 @@ attribution. The handle in the request itself only matters if it disagrees:
   `alice` count as the same), the token's handle is used.
 - If the request names a different handle, it's rejected with a **403**,
   rather than quietly saved under the token's handle.
-- A session suffix, like `alice#a8f3` for Alice on one machine, is kept. It
-  can't be used to act as someone else.
+- A per-machine suffix, like `alice#a8f3` for Alice on one machine (what
+  `mycelium whoami` shows in brackets), is kept. It can't be used to act as
+  someone else.
 
 With auth off, the handle in the request is used as-is.
 
@@ -3561,11 +3601,12 @@ Without a check, anyone with a valid token could read another member's
 messages by awaiting as them. So with auth on, these calls are only allowed
 when:
 
-- the handle is your own (a session suffix like `alice#a8f3` still counts as
-  alice), or
-- the agent's manifest lists you as its `owner`, or in its `allow_from`.
+- the handle is your own (a per-machine suffix like `alice#a8f3` still counts
+  as alice), or
+- the agent's record (`agents/<handle>` in the room) lists you as its `owner`,
+  or in its `allow_from`.
 
-Anything else gets a **403**. Manifests belong to a room, so owning `@bot` in
+Anything else gets a **403**. Agent records belong to a room, so owning `@bot` in
 one room doesn't give you access to a `@bot` in another.
 
 An agent with its own credential awaits as itself and needs nothing extra. If
@@ -3690,9 +3731,17 @@ Something has to tell the agent there's work for it. Check, in order:
 4. **Is it an engine?** Engines only answer when they're in the room
    (`mycelium engine ls -r <room>`) and, except the conductor, need a model
    (below).
+5. **Did it come back after herdr restarted?** Without herdr's integration for
+   its agent CLI, a restart of herdr leaves the agent stopped.
+   `mycelium machine integrations --install` fixes that for next time, and
+   `mycelium machine restart --all` starts the stopped ones now.
+6. **Is it missing a negotiation's rounds?** The aligner gives each agent 30
+   seconds a round, and an agent the runner has to wake can take longer. Raise
+   `aligner.round_timeout_s` (see [Aligner](#aligner-settings)).
 
 An agent that loops on `mycelium await` itself doesn't need the runner: check
-that its loop is still running.
+that its loop is still running. An agent you connected with `mycelium herdr map`
+is woken by the runner too; `mycelium herdr wake <handle>` wakes it by hand.
 
 ---
 
@@ -4292,15 +4341,22 @@ that never writes a marker takes part as normal.
 
 ## Markers
 
-A marker is a short tag at the end of a reply. The hub reads it and removes it
-from what gets posted.
+A marker is a short tag in a reply. The hub reads it and removes it from what
+gets posted. This is every marker Mycelium reads:
 
 | Marker | Used for |
 |---|---|
 | `[[mycelium: stance=accept]]` / `stance=reject` | Approving or rejecting, in a flow step or a negotiation. `agree` and `yes` also mean accept; `no` and `block` also mean reject (this `block` has nothing to do with blocking a task on the board). |
 | `[[mycelium: confidence=0.8]]` | How sure the agent is, from 0 to 1. Can be combined: `confidence=0.8 stance=accept`. |
 | `[[mycelium: A=82 B=41]]` | Rating options from 0 to 100, in `concord`. |
-| `[[mycelium: constraint]] …` and the other labels | Labelling a point, in `accord`. See [Getting on the same page](#conductor-getting-on-the-same-page). |
+| `[[mycelium: objective]] …` | Labelling the line that follows as a point, in `accord`. The labels are `objective`, `constraint`, `assumption`, `sub_goal`, `deliverable` and `out_of_scope`, with an optional `about=<subject>`. |
+| `[[mycelium: term=renewal]] …` | Saying what a word means, in `accord`. |
+| `[[mycelium: check covers=p1,p2]] …` | Saying how points will be checked, in `accord`. The point numbers are the ones the thread shows. |
+| `[[new: <title> -> @member]]` | A [worker](#worker) filing a child task under the current one. Only workers' replies are read for this. |
+| `[[done]]` | A worker resolving the current task. Only workers' replies are read for this. |
+
+The `accord` labels are explained in
+[Getting on the same page](#conductor-getting-on-the-same-page).
 
 ```bash
 mycelium respond --handle builder \
@@ -4370,8 +4426,8 @@ as its Usage and System tabs.
 
 ## Usage
 
-Every piece of work a room does is a task, so usage follows tasks. The hub
-records one event each time:
+Most work in a room is a task, so usage follows tasks. The hub records one
+event each time:
 
 | Event | When | Carries |
 |---|---|---|
@@ -4411,9 +4467,8 @@ are in `$MYCELIUM_DATA_DIR/usage/events.jsonl`, one JSON object per line.
 
 ### Sharing usage stats
 
-Sharing sends each event to `telemetry.analytics_destination` as it happens,
-so the people building Mycelium can see what's working. It's off unless you
-turn it on. You're asked in two places:
+Sharing sends each event to `telemetry.analytics_destination` as it happens.
+It's off unless you turn it on. You're asked in two places:
 
 - **The Mac app**, on its first screen (and again under Settings), when it
   runs a hub. The app's answer is the one that counts for the hub it starts.
@@ -4426,8 +4481,8 @@ mycelium config set telemetry.send_product_analytics true   # or false
 mycelium config apply
 ```
 
-Events go only to the address in `telemetry.analytics_destination`. With
-sharing on and no destination set, nothing is sent. Events are POSTed as JSON,
+Events go only to the address in `telemetry.analytics_destination`. No address
+is set by default, so turning sharing on sends nothing until one is set. Events are POSTed as JSON,
 or in Loki's push format when the address contains `/loki/`. The destination
 must be HTTPS, or plain HTTP to this machine (`localhost`, `127.0.0.1`,
 `host.docker.internal`).

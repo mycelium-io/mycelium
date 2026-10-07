@@ -383,7 +383,7 @@
           </tbody>
         </table>
       </div>
-      <p>Members approve or reject by ending their reply with <code>[[mycelium: stance=accept]]</code> or <code>[[mycelium: stance=reject]]</code>. A reply with no stance takes the step&#x27;s default path, which in <code>gated</code> and <code>review</code> sends the work back.</p>
+      <p>Members approve or reject by ending their reply with <code>[[mycelium: stance=accept]]</code> or <code>[[mycelium: stance=reject]]</code>. A reply with no stance takes the step&#x27;s default path, which in <code>gated</code> and <code>review</code> sends the work back. Every marker is listed under <a href="reference.html#l9-protocol-markers">Markers</a>.</p>
       <p>To change a built-in flow or add your own, see <a href="reference.html#flows">Writing flows</a>.</p>
       <h2 id="conductor-helping-members-agree">Helping members agree</h2>
       <p>When members disagree about how to do a task and there are a few clear options, <code>concord</code> gets them to one they can all live with:</p>
@@ -655,7 +655,7 @@
           </tbody>
         </table>
       </div>
-      <p>These lines are removed before the reply is posted. When a task is resolved, the worker&#x27;s result is written into the task&#x27;s body, so it stays searchable in the room&#x27;s memory.</p>
+      <p>These lines are removed before the reply is posted. (Every marker Mycelium reads is listed under <a href="reference.html#l9-protocol-markers">Markers</a>.) When a task is resolved, the worker&#x27;s result is written into the task&#x27;s body, so it stays searchable in the room&#x27;s memory.</p>
       <h2 id="worker-settings-and-limits">Settings and limits</h2>
       <p>Set these in the hub&#x27;s <code>config.toml</code>, then run <code>mycelium config apply</code> and restart the hub:</p>
       <div class="table-wrap">

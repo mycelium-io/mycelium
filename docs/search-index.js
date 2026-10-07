@@ -130,7 +130,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "concepts.html#rooms-room-names",
     "t": "Room names",
     "s": "Rooms",
-    "x": "A room's name can be up to 100 characters, and can include spaces, accents and ordinary punctuation. Put quotes around a name with spaces in the shell: mycelium room create \"CE-Area Team\" A name can't be blank, . or .., and can't contain slashes, control characters or :session:. The name is also the room's folder on the hub, so it can't be changed later. Its display title can: change it in the app.",
+    "x": "A room's name can be up to 100 characters, and can include spaces, accents and ordinary punctuation. Put quotes around a name with spaces in the shell: mycelium room create \"CE-Area Team\" A name can't be blank, . or .., and can't contain slashes, control characters or the text :session:, which Mycelium uses internally. The name is also the room's folder on the hub, so it can't be changed later. Its display title can:",
     "p": "Concepts"
   },
   {
@@ -566,7 +566,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#worker-changing-the-board",
     "t": "Changing the board",
     "s": "Worker",
-    "x": "A worker files and resolves tasks by putting a line in its reply: Line What it does [[new: <title> -> @member]] Adds a child task under the current task, assigned to that member. [[done]] Resolves the current task. These lines are removed before the reply is posted. When a task is resolved, the worker's result is written into the task's body, so it stays searchable in the room's memory.",
+    "x": "A worker files and resolves tasks by putting a line in its reply: Line What it does [[new: <title> -> @member]] Adds a child task under the current task, assigned to that member. [[done]] Resolves the current task. These lines are removed before the reply is posted. (Every marker Mycelium reads is listed under Markers.) When a task is resolved, the worker's result is written into the task's body, so it stays searchab",
     "p": "Engines"
   },
   {
@@ -607,7 +607,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#on-a-server-start-the-hub",
     "t": "Start the hub",
     "s": "Setup › Run It on a Server",
-    "x": "curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash mycelium install On a Mac, add --docker to the installer (… | bash -s -- --docker), or it installs the Mac app instead. The installer puts the mycelium CLI on your PATH. mycelium install then sets up its config in ~/.mycelium/ and starts the hub: a SLIM messaging node, the backend on port 8000, and the app on port 3000. It asks for a model provider a",
+    "x": "curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash mycelium install On an Apple silicon Mac, add --docker to the installer (… | bash -s -- --docker), or it installs the Mac app instead. An Intel Mac gets this Docker path either way. You need Docker running. The CLI needs Python 3.12 or newer; if the machine has an older one, the installer fetches 3.12 for the CLI rather than failing. The installer pu",
     "p": "Guides"
   },
   {
@@ -629,6 +629,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Put work on the board",
     "s": "Setup › Run It on a Server",
     "x": "mycelium board new \"Ship passkey login\" --assign @planner mycelium board # what needs you right now See board for the rest, and Swarm to put a whole team of agents on one task.",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#on-a-server-which-command-when",
+    "t": "Which command when",
+    "s": "Setup › Run It on a Server",
+    "x": "You want to Run Set up a hub on this machine, the first time mycelium install Start, stop or restart the hub mycelium up, mycelium down Check that everything works mycelium doctor (or mycelium status for a quick look) Apply a setting you changed mycelium config apply, then mycelium up Update mycelium upgrade (the CLI), then mycelium pull (the hub's images, and restarts it) Point this machine at a hub somewhere else m",
     "p": "Guides"
   },
   {
@@ -782,7 +789,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#models-under-the-hood",
     "t": "Under the hood",
     "s": "Setup › Models",
-    "x": "Mycelium's agents run on Pi, an open-source agent runtime that talks to many model providers. Any provider/model that Pi knows works here. Its model catalog lists every provider and model name, with their context limits and prices.",
+    "x": "The engines run on Pi, an open-source agent runtime that talks to many model providers. Any provider/model that Pi knows works here. Its model catalog lists every provider and model name, with their context limits and prices.",
     "p": "Guides"
   },
   {
@@ -936,7 +943,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#ephemeral-agents-install-the-cli-without-docker",
     "t": "Install the CLI without Docker",
     "s": "Agents › Ephemeral Agents",
-    "x": "The normal installer sets up a hub on the machine: the Mac app on a Mac, or the CLI for the Docker stack anywhere else. An ephemeral agent only talks to an existing hub, so it only needs the CLI: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only With --client-only, the installer neither installs the app nor checks for Docker. If the container's python3 is older than 3.12, it inst",
+    "x": "The normal installer sets up a hub on the machine: the Mac app on a Mac, or the CLI for the Docker stack anywhere else. An ephemeral agent only talks to an existing hub, so it only needs the CLI: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only With --client-only, the installer neither installs the app nor checks for Docker, which most base images don't have. The CLI needs Pytho",
     "p": "Guides"
   },
   {
@@ -1174,7 +1181,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#security-planes-whats-open-by-default",
     "t": "What's open by default",
     "s": "Security › Running a Shared Hub",
-    "x": "With the default setup: Anyone who can reach port 8000 can read and write every room, and post as any @handle. Names are only claims. Private rooms are hidden, not locked. Anyone who knows a room's name can open it. Every room is an A2A endpoint. Its card (name and skills) is public, and without sign-in anyone can post into it as @a2a-guest. The hub reads everything. Room messages are encrypted between the hub and it",
+    "x": "With the default setup: Anyone who can reach port 8000 can read and write every room, and post as any @handle. Names are only claims: the app's acting as picker lets any browser choose which user it represents. Private rooms are hidden, not locked. Anyone who knows a room's name can open it. Every room is an A2A endpoint. Its card (name and skills) is public, and without sign-in anyone can post into it as @a2a-guest.",
     "p": "Guides"
   },
   {
@@ -1328,7 +1335,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#auth-acting-for-an-agent",
     "t": "Acting for an agent",
     "s": "Security › Authentication",
-    "x": "Two calls take a handle that isn't about authorship: mycelium await reads and consumes that handle's queue of messages. Joining a room records that handle as present. Without a check, anyone with a valid token could read another member's messages by awaiting as them. So with auth on, these calls are only allowed when: the handle is your own (a session suffix like alice#a8f3 still counts as alice), or the agent's mani",
+    "x": "Two calls take a handle that isn't about authorship: mycelium await reads and consumes that handle's queue of messages. Joining a room records that handle as present. Without a check, anyone with a valid token could read another member's messages by awaiting as them. So with auth on, these calls are only allowed when: the handle is your own (a per-machine suffix like alice#a8f3 still counts as alice), or the agent's ",
     "p": "Guides"
   },
   {
@@ -2357,7 +2364,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#l9-protocol-markers",
     "t": "Markers",
     "s": "L9 Protocol",
-    "x": "A marker is a short tag at the end of a reply. The hub reads it and removes it from what gets posted. Marker Used for [[mycelium: stance=accept]] / stance=reject Approving or rejecting, in a flow step or a negotiation. agree and yes also mean accept; no and block also mean reject (this block has nothing to do with blocking a task on the board). [[mycelium: confidence=0.8]] How sure the agent is, from 0 to 1. Can be c",
+    "x": "A marker is a short tag in a reply. The hub reads it and removes it from what gets posted. This is every marker Mycelium reads: Marker Used for [[mycelium: stance=accept]] / stance=reject Approving or rejecting, in a flow step or a negotiation. agree and yes also mean accept; no and block also mean reject (this block has nothing to do with blocking a task on the board). [[mycelium: confidence=0.8]] How sure the agent",
     "p": "Reference"
   },
   {
@@ -2392,7 +2399,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#metrics-usage",
     "t": "Usage",
     "s": "Observability › Metrics",
-    "x": "Every piece of work a room does is a task, so usage follows tasks. The hub records one event each time: Event When Carries mycelium.hub_started The hub starts how it runs (desktop, docker, server), OS mycelium.task_filed A row lands on a board its kind, who filed it (person, agent, engine), whether it was for someone mycelium.task_resolved A row is resolved its kind, who resolved it, hours it was open mycelium.flow_c",
+    "x": "Most work in a room is a task, so usage follows tasks. The hub records one event each time: Event When Carries mycelium.hub_started The hub starts how it runs (desktop, docker, server), OS mycelium.task_filed A row lands on a board its kind, who filed it (person, agent, engine), whether it was for someone mycelium.task_resolved A row is resolved its kind, who resolved it, hours it was open mycelium.flow_completed A c",
     "p": "Reference"
   },
   {
@@ -2406,7 +2413,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#metrics-sharing-usage-stats",
     "t": "Sharing usage stats",
     "s": "Observability › Metrics",
-    "x": "Sharing sends each event to telemetry.analytics_destination as it happens, so the people building Mycelium can see what's working. It's off unless you turn it on. You're asked in two places: The Mac app, on its first screen (and again under Settings), when it runs a hub. The app's answer is the one that counts for the hub it starts. mycelium install, as its last question. To change it by hand: mycelium config set tel",
+    "x": "Sharing sends each event to telemetry.analytics_destination as it happens. It's off unless you turn it on. You're asked in two places: The Mac app, on its first screen (and again under Settings), when it runs a hub. The app's answer is the one that counts for the hub it starts. mycelium install, as its last question. To change it by hand: mycelium config set telemetry.send_product_analytics true # or false mycelium c",
     "p": "Reference"
   },
   {

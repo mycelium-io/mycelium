@@ -13,8 +13,8 @@ as its Usage and System tabs.
 
 ## Usage
 
-Every piece of work a room does is a task, so usage follows tasks. The hub
-records one event each time:
+Most work in a room is a task, so usage follows tasks. The hub records one
+event each time:
 
 | Event | When | Carries |
 |---|---|---|
@@ -54,9 +54,8 @@ are in `$MYCELIUM_DATA_DIR/usage/events.jsonl`, one JSON object per line.
 
 ### Sharing usage stats
 
-Sharing sends each event to `telemetry.analytics_destination` as it happens,
-so the people building Mycelium can see what's working. It's off unless you
-turn it on. You're asked in two places:
+Sharing sends each event to `telemetry.analytics_destination` as it happens.
+It's off unless you turn it on. You're asked in two places:
 
 - **The Mac app**, on its first screen (and again under Settings), when it
   runs a hub. The app's answer is the one that counts for the hub it starts.
@@ -69,8 +68,8 @@ mycelium config set telemetry.send_product_analytics true   # or false
 mycelium config apply
 ```
 
-Events go only to the address in `telemetry.analytics_destination`. With
-sharing on and no destination set, nothing is sent. Events are POSTed as JSON,
+Events go only to the address in `telemetry.analytics_destination`. No address
+is set by default, so turning sharing on sends nothing until one is set. Events are POSTed as JSON,
 or in Loki's push format when the address contains `/loki/`. The destination
 must be HTTPS, or plain HTTP to this machine (`localhost`, `127.0.0.1`,
 `host.docker.internal`).

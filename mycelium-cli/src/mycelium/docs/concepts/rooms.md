@@ -33,7 +33,8 @@ mycelium room create "CE-Area Team"
 ```
 
 A name can't be blank, `.` or `..`, and can't contain slashes, control
-characters or `:session:`. The name is also the room's folder on the hub, so it
+characters or the text `:session:`, which Mycelium uses internally. The name is
+also the room's folder on the hub, so it
 can't be changed later. Its display title can: change it in the app.
 
 ## Private rooms

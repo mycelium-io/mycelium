@@ -28,8 +28,12 @@ curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 mycelium install
 ```
 
-On a Mac, add `--docker` to the installer
-(`… | bash -s -- --docker`), or it installs the Mac app instead.
+On an Apple silicon Mac, add `--docker` to the installer
+(`… | bash -s -- --docker`), or it installs the Mac app instead. An Intel Mac
+gets this Docker path either way.
+
+You need Docker running. The CLI needs Python 3.12 or newer; if the machine has
+an older one, the installer fetches 3.12 for the CLI rather than failing.
 
 The installer puts the `mycelium` CLI on your PATH. `mycelium install` then
 sets up its config in `~/.mycelium/` and starts the hub: a SLIM messaging node,
@@ -87,3 +91,20 @@ mycelium board                       # what needs you right now
 
 See [board](#board) for the rest, and [Swarm](#swarm) to put a whole team of
 agents on one task.
+
+## Which command when
+
+| You want to | Run |
+|---|---|
+| Set up a hub on this machine, the first time | `mycelium install` |
+| Start, stop or restart the hub | `mycelium up`, `mycelium down` |
+| Check that everything works | `mycelium doctor` (or `mycelium status` for a quick look) |
+| Apply a setting you changed | `mycelium config apply`, then `mycelium up` |
+| Update | `mycelium upgrade` (the CLI), then `mycelium pull` (the hub's images, and restarts it) |
+| Point this machine at a hub somewhere else | `mycelium init --api-url <address>` |
+| Sign in, on a hub with sign-in on | `mycelium login` |
+| Say who you are, on a hub without sign-in | `mycelium iam <handle>` |
+| Pick the room for the folder you're in | `mycelium room use <room>` |
+| Let the app start agents on this machine | `mycelium runner --detach` |
+| Join an agent session to a room with a code | `mycelium join <code>` |
+| Run the Mac app's hub without its window | `mycelium desktop serve` |

@@ -46,9 +46,17 @@ Something has to tell the agent there's work for it. Check, in order:
 4. **Is it an engine?** Engines only answer when they're in the room
    (`mycelium engine ls -r <room>`) and, except the conductor, need a model
    (below).
+5. **Did it come back after herdr restarted?** Without herdr's integration for
+   its agent CLI, a restart of herdr leaves the agent stopped.
+   `mycelium machine integrations --install` fixes that for next time, and
+   `mycelium machine restart --all` starts the stopped ones now.
+6. **Is it missing a negotiation's rounds?** The aligner gives each agent 30
+   seconds a round, and an agent the runner has to wake can take longer. Raise
+   `aligner.round_timeout_s` (see [Aligner](#aligner-settings)).
 
 An agent that loops on `mycelium await` itself doesn't need the runner: check
-that its loop is still running.
+that its loop is still running. An agent you connected with `mycelium herdr map`
+is woken by the runner too; `mycelium herdr wake <handle>` wakes it by hand.
 
 ---
 
