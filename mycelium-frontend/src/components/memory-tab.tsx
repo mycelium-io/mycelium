@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Eye, FileQuestion, Pencil, Sparkles } from "lucide-react";
 import { IntentDialog } from "@/components/intent-dialog";
 import { fetchMemory, fetchMemoryExpanded, type Memory } from "@/lib/api";
@@ -12,8 +12,7 @@ import { isLiveEpisode } from "@/lib/threads";
 import { EmptyState } from "@/components/empty-state";
 import { MemoryDetail } from "@/components/memory-detail";
 import { MemoryEditor } from "@/components/memory-editor";
-import { RoomChatBox } from "@/components/room-chat-box";
-import { TaskConversation } from "@/components/task/task-conversation";
+import { TaskDiscussion } from "@/components/task/task-discussion";
 import { useCurrentUser } from "@/components/current-user";
 import { useUnsavedGuard } from "@/components/unsaved-changes";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -74,12 +73,6 @@ export function MemoryTab({
       live = false;
     };
   }, [roomName, memoryKey, listedVersion]);
-
-  // The discussion refreshes itself when a message is sent from its composer.
-  const threadRefresh = useRef<(() => void) | null>(null);
-  const onThreadReady = useCallback((refresh: () => void) => {
-    threadRefresh.current = refresh;
-  }, []);
 
   if (memory === undefined) {
     return (
@@ -169,22 +162,12 @@ export function MemoryTab({
               actions={actions}
             />
             {hasDiscussion && memory.episode && (
-              <section className="border-t border-border px-6 py-3 md:px-8">
-                <h2 className="mb-2 text-micro font-medium text-faint">Discussion</h2>
-                <div className="max-w-prose [&_[data-testid=thread-conversation]_p]:px-0">
-                  <TaskConversation
-                    roomName={roomName}
-                    episode={memory.episode}
-                    onOpenMemory={onOpenMemory}
-                    onReady={onThreadReady}
-                  />
-                  <RoomChatBox
-                    roomName={roomName}
-                    episode={memory.episode}
-                    onSent={() => threadRefresh.current?.()}
-                  />
-                </div>
-              </section>
+              <TaskDiscussion
+                roomName={roomName}
+                episode={memory.episode}
+                onOpenMemory={onOpenMemory}
+                className="px-6 md:px-8"
+              />
             )}
           </>
         )}
