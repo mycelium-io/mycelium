@@ -298,7 +298,9 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
+/** A path under the home folder as `~/…`, where people read paths that way; Windows shows it whole. */
 function tilde(path: string, home: string): string {
+  if (ON_WINDOWS) return path;
   return home && path.startsWith(home) ? "~" + path.slice(home.length) : path;
 }
 
@@ -858,9 +860,9 @@ function hubReadOnly(at: "model" | "experiences" | "privacy", answer: Promise<Hu
 function setsUpPiece(c: Choices): HTMLElement {
   const items: [string, string][] = [
     ON_WINDOWS
-      ? ["mycelium and herdr on your agents' PATH", "The app's own folder comes first on the PATH of everything it starts, so agents can run them."]
+      ? ["mycelium and herdr on your PATH", "The app's folder is added to your own PATH, so agents and your terminals can run them."]
       : ["mycelium and herdr on your PATH", "Links in ~/.local/bin, so agents can run them. A file you already have there is left alone."],
-    ["~/.mycelium", `Your settings, and these choices. Rooms on this ${MACHINE} keep their notes here too.`],
+    [ON_WINDOWS ? "%USERPROFILE%\\.mycelium" : "~/.mycelium", `Your settings, and these choices. Rooms on this ${MACHINE} keep their notes here too.`],
     c.mode === "hub"
       ? [`Rooms on this ${MACHINE}, while Mycelium is open`, `SLIM, the hub and its UI, reachable only from this ${MACHINE} (127.0.0.1).`]
       : ["The runner, while Mycelium is open", `It tells the hub which agents this ${MACHINE} can start, and starts them in herdr.`],

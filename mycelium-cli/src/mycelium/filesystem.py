@@ -150,6 +150,21 @@ def parse_memory(text: str) -> tuple[dict[str, Any], str]:
 # ── File operations ──────────────────────────────────────────────────────────
 
 
+def _memory_path(base_dir: Path, key: str) -> Path:
+    """Where a memory's file is, for a key that names one inside ``base_dir``.
+
+    Keys come from the hub (``sync``, ``room clone``), so one that would leave
+    the folder (``..``, an absolute path), names no file, or holds a ``\\``
+    (a separator on Windows, so ``a\\b`` and ``a/b`` would be one file) raises
+    ``ValueError`` rather than landing wherever it points.
+    """
+    parts = key.split("/")
+    if "\\" in key or key.startswith("/") or any(p.strip() in ("", ".", "..") for p in parts):
+        msg = f"not a valid memory key: {key!r}"
+        raise ValueError(msg)
+    return base_dir / (key if key.endswith(".md") else key + ".md")
+
+
 def write_memory(
     base_dir: Path,
     key: str,
@@ -163,8 +178,7 @@ def write_memory(
     updated_at: datetime | None = None,
 ) -> Path:
     """Write a memory as a markdown file."""
-    filename = key + ".md" if not key.endswith(".md") else key
-    file_path = base_dir / filename
+    file_path = _memory_path(base_dir, key)
     file_path.parent.mkdir(parents=True, exist_ok=True)
 
     text = serialize_memory(
@@ -183,8 +197,10 @@ def write_memory(
 
 def read_memory(base_dir: Path, key: str) -> tuple[dict[str, Any], str] | None:
     """Read a memory file. Returns (metadata, content) or None."""
-    filename = key + ".md" if not key.endswith(".md") else key
-    file_path = base_dir / filename
+    try:
+        file_path = _memory_path(base_dir, key)
+    except ValueError:
+        return None
     if not file_path.exists():
         return None
     text = file_path.read_text(encoding="utf-8")
@@ -300,7 +316,7 @@ def list_memories(
         try:
             text = f.read_text(encoding="utf-8")
             meta, content = parse_memory(text)
-            key = str(f.relative_to(base_dir))
+            key = f.relative_to(base_dir).as_posix()  # `/` on Windows too
             if key.endswith(".md"):
                 key = key[:-3]
         except Exception:

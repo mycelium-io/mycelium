@@ -401,17 +401,23 @@ def clone_room(
                 content = value.get("text", _json.dumps(value))
             else:
                 content = str(value)
-            write_memory(
-                target,
-                mem["key"],
-                content,
-                created_by=mem.get("created_by"),
-                updated_by=mem.get("updated_by"),
-                version=mem.get("version", 1),
-                tags=mem.get("tags"),
-                created_at=_parse_dt(mem.get("created_at")),
-                updated_at=_parse_dt(mem.get("updated_at")),
-            )
+            # A hub on Windows before 3.0.31 sent its own separator in keys.
+            key = mem["key"].replace("\\", "/")
+            try:
+                write_memory(
+                    target,
+                    key,
+                    content,
+                    created_by=mem.get("created_by"),
+                    updated_by=mem.get("updated_by"),
+                    version=mem.get("version", 1),
+                    tags=mem.get("tags"),
+                    created_at=_parse_dt(mem.get("created_at")),
+                    updated_at=_parse_dt(mem.get("updated_at")),
+                )
+            except ValueError as e:
+                typer.echo(f"Skipped: {e}", err=True)
+                continue
             written += 1
 
         typer.secho(f"Cloned room: {room_name} ({written} memories)", fg=typer.colors.GREEN)

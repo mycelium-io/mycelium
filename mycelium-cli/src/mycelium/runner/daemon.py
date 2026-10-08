@@ -70,6 +70,7 @@ from mycelium.integrations.herdr import HerdrBridge, HerdrError
 from mycelium.runner import approvals, frameworks, pairing
 from mycelium.runner.hosts import AgentHost, HerdrHost, HostError, OmnigentHost
 from mycelium.runner.log import failing, log, ms, open_log, recovered
+from mycelium.utils.process import pid_alive
 
 #: Jobs that start something on this machine, and so wait for a yes here.
 ASK_FIRST = frozenset({"launch", "swarm", "restart"})
@@ -130,12 +131,8 @@ def registered(base: Path | None = None) -> tuple[int, str] | None:
         pid = int((folder / _PID).read_text().strip())
     except (OSError, ValueError):
         return None
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+    if not pid_alive(pid):
         return None
-    except PermissionError:
-        pass
     try:
         started_by = (folder / _STARTED_BY).read_text().strip() or TERMINAL
     except OSError:
@@ -175,12 +172,8 @@ def read_sync(path: Path | None = None) -> dict[str, Any] | None:
         return None
     if datetime.now(UTC) - at > timedelta(seconds=WATCH_S * 6):
         return None
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+    if not pid_alive(pid):
         return None
-    except PermissionError:
-        pass
     return body
 
 

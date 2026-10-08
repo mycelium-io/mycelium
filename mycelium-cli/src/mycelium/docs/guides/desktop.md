@@ -51,9 +51,9 @@ computer".
 Before you start, **What this sets up** lists every change it makes. Your
 settings and rooms live in `~/.mycelium` (on Windows, `.mycelium` in your user
 folder). On a Mac or Linux, `mycelium` and `herdr` are linked into
-`~/.local/bin` so agents can run them; on Windows, the app puts its own folder
-on the PATH of everything it starts. It needs no administrator password and
-writes nothing outside your home folder.
+`~/.local/bin` so agents can run them; on Windows, the app adds its own folder
+to your PATH, so agents and the terminals you open next can run them. It needs
+no administrator password and writes nothing outside your home folder.
 
 > **A hub on this computer is yours alone.** It runs only while the app is
 > running, and only this computer can reach it, so teammates can't join rooms
@@ -84,8 +84,9 @@ agent opens in a herdr terminal and is already a member of the room. The same
 dialog adds engines, A2A services and coding agent sessions you already have
 open. See [Start Agents From the App](#machines).
 
-To watch or talk to an agent, use **Agents terminal** in the app's menu. You
-can also open the **Machines** page and choose **Open terminal**.
+To watch or talk to an agent, open the agents terminal: **terminal** in the
+bar at the bottom of the window, **Agents terminal** on the home screen or in
+the app's menu, or **Open terminal** beside an agent on the **Machines** page.
 
 ## The app's menu
 

@@ -279,7 +279,9 @@ def on_path() -> CheckResult:
         message=f"missing: {', '.join(missing)}",
         details=[
             "Agents run these commands, so they must be on PATH.",
-            'Add this to your shell profile: export PATH="$HOME/.local/bin:$PATH"',
+            "Open Mycelium again, which adds its folder to your PATH, then open a new terminal."
+            if sys.platform == "win32"
+            else 'Add this to your shell profile: export PATH="$HOME/.local/bin:$PATH"',
         ],
     )
 

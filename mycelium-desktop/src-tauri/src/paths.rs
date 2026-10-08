@@ -104,13 +104,88 @@ pub fn shell_path() -> &'static str {
 
 /// Whether the user's own shell will find the bundled programs (before this
 /// app adds their folder for the processes it starts).
+#[cfg(unix)]
 pub fn local_bin_on_user_path() -> bool {
-    #[cfg(unix)]
-    let user_path = login_shell_path();
-    #[cfg(windows)]
-    let user_path = std::env::var("PATH").ok();
     let first = first_dir();
-    user_path.is_some_and(|p| std::env::split_paths(&p).any(|d| d == first))
+    login_shell_path().is_some_and(|p| std::env::split_paths(&p).any(|d| d == first))
+}
+
+/// On Windows, whether the user's PATH (the registry's, not this process's)
+/// has the app's folder.
+#[cfg(windows)]
+pub fn local_bin_on_user_path() -> bool {
+    windows_path::has(&first_dir())
+}
+
+/// The user's own PATH on Windows: the `Path` value under HKCU\Environment,
+/// which every terminal and program started from then on reads. Not the
+/// app's process PATH, which was fixed when the app started.
+#[cfg(windows)]
+mod windows_path {
+    use std::path::Path;
+
+    use winreg::enums::{RegType, HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
+    use winreg::{RegKey, RegValue};
+
+    fn same(a: &str, b: &Path) -> bool {
+        let b = b.to_string_lossy();
+        a.trim().trim_end_matches('\\').eq_ignore_ascii_case(b.trim_end_matches('\\'))
+    }
+
+    fn read() -> Option<(String, RegType)> {
+        let env = RegKey::predef(HKEY_CURRENT_USER).open_subkey("Environment").ok()?;
+        let raw = env.get_raw_value("Path").ok()?;
+        let value: String = env.get_value("Path").ok()?;
+        Some((value, raw.vtype))
+    }
+
+    /// Whether `dir` is one of the entries of the user's PATH.
+    pub fn has(dir: &Path) -> bool {
+        read().is_some_and(|(value, _)| value.split(';').any(|entry| same(entry, dir)))
+    }
+
+    /// Add `dir` to the end of the user's PATH, keeping its type (most are
+    /// REG_EXPAND_SZ, holding `%USERPROFILE%`-style entries that a REG_SZ
+    /// would stop expanding), then tell running programs the environment
+    /// changed, so a terminal opened from now on finds it.
+    pub fn add(dir: &Path) -> std::io::Result<()> {
+        if has(dir) {
+            return Ok(());
+        }
+        let (env, _) =
+            RegKey::predef(HKEY_CURRENT_USER).create_subkey_with_flags("Environment", KEY_READ | KEY_WRITE)?;
+        let (current, vtype) = read().unwrap_or((String::new(), RegType::REG_EXPAND_SZ));
+        let current = current.trim_end_matches(';');
+        let value = if current.is_empty() {
+            dir.to_string_lossy().to_string()
+        } else {
+            format!("{current};{}", dir.display())
+        };
+        let mut bytes: Vec<u8> = value.encode_utf16().chain(std::iter::once(0)).flat_map(u16::to_le_bytes).collect();
+        bytes.shrink_to_fit();
+        env.set_raw_value("Path", &RegValue { bytes: bytes.into(), vtype })?;
+        broadcast();
+        Ok(())
+    }
+
+    fn broadcast() {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            SendMessageTimeoutW, HWND_BROADCAST, SMTO_ABORTIFHUNG, WM_SETTINGCHANGE,
+        };
+        let what: Vec<u16> = "Environment".encode_utf16().chain(std::iter::once(0)).collect();
+        // SAFETY: `what` outlives the call, which copies the string before returning.
+        unsafe {
+            SendMessageTimeoutW(
+                HWND_BROADCAST,
+                WM_SETTINGCHANGE,
+                0,
+                what.as_ptr() as isize,
+                SMTO_ABORTIFHUNG,
+                5000,
+                std::ptr::null_mut(),
+            );
+        }
+    }
 }
 
 /// A program shipped inside the app bundle, beside the app's executable.
@@ -168,15 +243,22 @@ pub struct PathSetup {
 /// Only a symlink is ever replaced: a real file there is the user's own
 /// install and is left alone. In development nothing is bundled, so there is
 /// nothing to link and the installed copies are used as they are. On Windows
-/// nothing is linked: the app's folder is what goes on the PATH.
+/// nothing is linked: the app's folder goes on the user's PATH, as an
+/// installer would put it, so a terminal (and an agent in one) finds
+/// `mycelium`. The installer keeps that folder across updates.
 #[cfg(windows)]
 pub fn link_bundled() -> PathSetup {
     let dir = first_dir();
-    let linked = ["mycelium", "herdr"]
+    let linked: Vec<String> = ["mycelium", "herdr"]
         .into_iter()
         .filter(|name| bundled(name).is_some())
         .map(String::from)
         .collect();
+    if !linked.is_empty() {
+        if let Err(e) = windows_path::add(&dir) {
+            eprintln!("[mycelium] could not add {} to your PATH: {e}", dir.display());
+        }
+    }
     PathSetup {
         linked,
         skipped: Vec::new(),

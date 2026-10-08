@@ -187,6 +187,12 @@ def memory_set(
     )
     from mycelium_backend_client.models import MemoryBatchCreate, MemoryCreate
 
+    if not key.strip() or "\\" in key or key.endswith("/"):
+        console.print(
+            f"[red]Error:[/red] {key!r} isn't a memory key. Use `/` between its parts, like context/goal."
+        )
+        raise typer.Exit(1)
+
     room_name = _get_active_room(room)
     handle = identity.resolve_actor(MyceliumConfig.load(), override=handle)
 
@@ -261,7 +267,9 @@ def memory_set(
             version_info = f"v{mem.version}" if hasattr(mem, "version") else ""
             console.print(f"[green]Memory set:[/green] {room_name}/{key} ({version_info})")
         else:
-            console.print(f"[green]Memory set:[/green] {room_name}/{key}")
+            # The hub refused it (a validation error comes back as a value, not a raise).
+            console.print(f"[red]Error:[/red] the hub didn't save {room_name}/{key}: {result}")
+            raise typer.Exit(1)
 
 
 @doc_ref(
@@ -913,17 +921,23 @@ def memory_sync(
             content = value.get("text", json.dumps(value))
         else:
             content = str(value)
-        write_memory(
-            room_dir,
-            mem["key"],
-            content,
-            created_by=mem.get("created_by"),
-            updated_by=mem.get("updated_by"),
-            version=mem.get("version", 1),
-            tags=mem.get("tags"),
-            created_at=_parse_dt(mem.get("created_at")),
-            updated_at=_parse_dt(mem.get("updated_at")),
-        )
+        # A hub on Windows before 3.0.31 sent its own separator in keys.
+        key = mem["key"].replace("\\", "/")
+        try:
+            write_memory(
+                room_dir,
+                key,
+                content,
+                created_by=mem.get("created_by"),
+                updated_by=mem.get("updated_by"),
+                version=mem.get("version", 1),
+                tags=mem.get("tags"),
+                created_at=_parse_dt(mem.get("created_at")),
+                updated_at=_parse_dt(mem.get("updated_at")),
+            )
+        except ValueError as e:
+            console.print(f"[yellow]Skipped:[/yellow] {e}")
+            continue
         written += 1
 
     console.print(f"[green]Synced:[/green] {written} memories")

@@ -16,7 +16,7 @@ import { CommandPaletteButton, KeymapHelpButton } from "@/components/keymap-prov
 import { InstallModalProvider, useOpenInstallModal } from "@/components/install-modal";
 import { DocsLink } from "@/components/docs-link";
 import { useAppDownload, useIsDesktop } from "@/lib/desktop";
-import { HubStatus, MachinesStatusLink, MetricsStatusLink } from "@/components/status-items";
+import { HubStatus, MachinesStatusLink, MetricsStatusLink, TerminalStatusLink } from "@/components/status-items";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
@@ -281,6 +281,7 @@ export function AppShell({
             </DockToggle>
             <HubStatus />
             <MachinesStatusLink />
+            <TerminalStatusLink />
             {statusLeft && (
               <>
                 <span aria-hidden className="h-3 w-px flex-shrink-0 bg-border" />

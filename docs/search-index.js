@@ -663,7 +663,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#desktop-adding-agents",
     "t": "Adding agents",
     "s": "Setup › The Desktop App",
-    "x": "In a room, open Members, press Add and pick Your machine. Start from a role or write your own instructions, then press Add to room. The agent opens in a herdr terminal and is already a member of the room. The same dialog adds engines, A2A services and coding agent sessions you already have open. See Start Agents From the App. To watch or talk to an agent, use Agents terminal in the app's menu. You can also open the M",
+    "x": "In a room, open Members, press Add and pick Your machine. Start from a role or write your own instructions, then press Add to room. The agent opens in a herdr terminal and is already a member of the room. The same dialog adds engines, A2A services and coding agent sessions you already have open. See Start Agents From the App. To watch or talk to an agent, open the agents terminal: terminal in the bar at the bottom of",
     "p": "Guides"
   },
   {

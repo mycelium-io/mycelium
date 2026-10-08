@@ -25,6 +25,7 @@ from rich.table import Table
 from mycelium.cli_options import emits_json
 from mycelium.collector import _ensure_shared_dir
 from mycelium.commands.traces import app as traces_app
+from mycelium.utils.process import pid_alive
 
 app = typer.Typer(
     help="See the hub's usage and cost, and the traces it has collected.",
@@ -436,11 +437,12 @@ def _read_collector_pid() -> int | None:
         return None
     try:
         pid = int(pf.read_text().strip())
-        os.kill(pid, 0)
+    except ValueError:
+        pid = 0
+    if pid_alive(pid):
         return pid
-    except (ValueError, ProcessLookupError, PermissionError):
-        pf.unlink(missing_ok=True)
-        return None
+    pf.unlink(missing_ok=True)
+    return None
 
 
 @app.command("collect")

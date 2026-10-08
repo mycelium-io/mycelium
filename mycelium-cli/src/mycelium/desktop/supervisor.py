@@ -380,6 +380,9 @@ class Supervisor:
             "MYCELIUM_SLIM_ENDPOINT": f"http://{HOST}:{SLIM_PORT}",
             "FASTEMBED_CACHE_PATH": str(loc.models()),
             "MYCELIUM_HUB_MODE": "desktop",
+            # Files read and written as UTF-8 on Windows too (the bundled
+            # hub is built in this mode; a checkout's `uv run` needs telling).
+            "PYTHONUTF8": "1",
         }
         if self.share_usage is not None:
             hub_env_vars["TELEMETRY_SEND_PRODUCT_ANALYTICS"] = (
@@ -481,6 +484,9 @@ class Supervisor:
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
                 text=True,
+                # Not the code page Windows would otherwise decode with.
+                encoding="utf-8",
+                errors="replace",
                 **_own_group(),
             )
         except OSError as e:
