@@ -118,145 +118,175 @@ const SELF_PACED = new Set([
  * @param {import("playwright").Page} page
  * @param {string[]} actions
  * @param {{baseUrl?:string, timeout?:number, log?:(m:string)=>void, cursor?:Cursor}} ctx
- * @returns {Promise<{action:string, ms:number}[]>}
+ * @returns {Promise<{action:string, ms:number, value?:any}[]>}
  */
 export async function runActions(page, actions, ctx = {}) {
   const timeout = ctx.timeout ?? 15_000;
   const cursor = ctx.cursor;
   const trace = [];
-  for (const raw of actions ?? []) {
+  for (const [i, raw] of (actions ?? []).entries()) {
     const started = Date.now();
-    const { verb, arg } = parseAction(raw);
-    switch (verb) {
-      case "click":
-        if (cursor) await cursor.click(await locate(page, arg), { timeout });
-        else await (await locate(page, arg)).click({ timeout });
-        break;
-      case "dblclick":
-        if (cursor) await cursor.click(await locate(page, arg), { timeout, dblclick: true });
-        else await (await locate(page, arg)).dblclick({ timeout });
-        break;
-      case "hover":
-        if (cursor) await cursor.glide(await locate(page, arg), { timeout });
-        else await (await locate(page, arg)).hover({ timeout });
-        break;
-      case "focus":
-        await (await locate(page, arg)).focus({ timeout });
-        break;
-      case "check":
-        await (await locate(page, arg)).check({ timeout });
-        break;
-      case "uncheck":
-        await (await locate(page, arg)).uncheck({ timeout });
-        break;
-      case "fill": {
-        const [sel, value] = splitPair(arg);
-        const field = await locate(page, sel);
-        if (!cursor) {
-          await field.fill(value, { timeout });
-          break;
-        }
-        // A field that fills in one frame reads as a glitch. On camera the
-        // pointer goes to it, it is cleared, and the text is typed.
-        await cursor.click(field, { timeout });
-        await field.fill("", { timeout });
-        const type = (t) => field.pressSequentially(t, { delay: cursor.typeDelay, timeout });
-        await (cursor.typing ? cursor.typing(value, type) : type(value));
-        break;
-      }
-      case "select": {
-        const [sel, value] = splitPair(arg);
-        const option = await locate(page, sel);
-        if (cursor) await cursor.glide(option, { timeout });
-        await option.selectOption(value, { timeout });
-        break;
-      }
-      case "press":
-        cursor?.key?.(arg);
-        await page.keyboard.press(arg);
-        break;
-      case "typekeys": {
-        const type = (t) => page.keyboard.type(t, { delay: cursor?.typeDelay ?? 20 });
-        await (cursor?.typing ? cursor.typing(arg, type) : type(arg));
-        break;
-      }
-      case "goto":
-        await page.goto(arg.startsWith("http") ? arg : `${ctx.baseUrl ?? ""}${arg}`, {
-          waitUntil: "domcontentloaded",
-          timeout,
-        });
-        break;
-      case "back":
-        await page.goBack({ waitUntil: "domcontentloaded" });
-        break;
-      case "forward":
-        await page.goForward({ waitUntil: "domcontentloaded" });
-        break;
-      case "reload":
-        await page.reload({ waitUntil: "domcontentloaded" });
-        break;
-      case "scroll":
-        // Scrolling is done at 1x: the camera is a crop of the painted frame,
-        // and the page repaints for the scroll, not for the crop.
-        if (cursor) await cursor.zoomOut();
-        if (arg === "bottom") await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-        else if (arg === "top") await page.evaluate(() => window.scrollTo(0, 0));
-        else if (/^-?\d+$/.test(arg)) await page.evaluate((y) => window.scrollBy(0, y), Number(arg));
-        else await (await locate(page, arg)).scrollIntoViewIfNeeded({ timeout });
-        break;
-      case "wait":
-        await page.locator(arg).first().waitFor({ state: "visible", timeout });
-        break;
-      case "wait-hidden":
-        await page.locator(arg).first().waitFor({ state: "hidden", timeout });
-        break;
-      case "wait-text":
-        await page.waitForFunction((t) => document.body.innerText.includes(t), arg, { timeout });
-        break;
-      case "wait-url":
-        await page.waitForURL(arg.includes("*") ? arg : `**${arg}`, { timeout });
-        break;
-      case "sleep":
-      case "hold":
-        await page.waitForTimeout(Number(arg) || 0);
-        break;
-      case "zoom":
-        // Camera work is a no-op outside a recording, so one action list can
-        // serve both a take and the stills pulled from the same flow.
-        await cursor?.zoom(arg, { timeout, locate: (sel) => locate(page, sel) });
-        break;
-      case "zoomout":
-        await cursor?.zoomOut();
-        break;
-      case "caption":
-        // `caption:<text>` puts words on screen for what follows; `caption:`
-        // takes them down. A recording's business, like the camera.
-        await cursor?.caption(arg.trim());
-        break;
-      case "speed": {
-        const n = Number(arg);
-        if (!Number.isFinite(n) || n < 1) throw new Error(`speed wants a factor of 1 or more, got "${arg}"`);
-        cursor?.speed(n);
-        break;
-      }
-      case "eval":
-        await page.evaluate(arg);
-        break;
-      case "emulate":
-        // `emulate:dark` / `emulate:light` — flip the media query mid-session
-        // without tearing down and rebuilding the context.
-        await page.emulateMedia({ colorScheme: arg });
-        break;
-      default:
-        // With the vocabulary attached: the verbs are close enough to each
-        // other's names that a wrong guess is the likely reason to be here.
-        throw new Error(`unknown action "${verb}" in "${raw}"${ACTION_HELP}`);
+    let value;
+    try {
+      value = await runAction(page, raw, { ...ctx, timeout, cursor });
+    } catch (e) {
+      throw stepError(e, i + 1, raw);
     }
-    if (cursor && !SELF_PACED.has(verb)) await cursor.dwell();
-    trace.push({ action: raw, ms: Date.now() - started });
+    if (cursor && !SELF_PACED.has(parseAction(raw).verb)) await cursor.dwell();
+    trace.push({ action: raw, ms: Date.now() - started, ...(value === undefined ? {} : { value }) });
     ctx.log?.(`${raw} (${Date.now() - started}ms)`);
   }
   return trace;
+}
+
+/**
+ * A failed step, said in one line that names it: `step 2, wait:.drawer: …`.
+ * Playwright's own message trails a multi-line call log, which is detail for
+ * `--verbose`, so it moves to the stack where only that prints it.
+ */
+function stepError(e, n, raw) {
+  const message = String(e?.message ?? e);
+  const cut = message.indexOf("\nCall log:");
+  const head = (cut === -1 ? message : message.slice(0, cut)).trimEnd();
+  const wrapped = new Error(`step ${n}, ${raw}: ${head}`);
+  wrapped.stack = `${wrapped.message}\n${e?.stack ?? message}`;
+  return wrapped;
+}
+
+/**
+ * One step.
+ * @returns {Promise<any>} what an `eval` gave back, so a script can read the page and say so
+ */
+async function runAction(page, raw, { timeout, cursor, baseUrl }) {
+  const { verb, arg } = parseAction(raw);
+  switch (verb) {
+    case "click":
+      if (cursor) await cursor.click(await locate(page, arg), { timeout });
+      else await (await locate(page, arg)).click({ timeout });
+      return;
+    case "dblclick":
+      if (cursor) await cursor.click(await locate(page, arg), { timeout, dblclick: true });
+      else await (await locate(page, arg)).dblclick({ timeout });
+      return;
+    case "hover":
+      if (cursor) await cursor.glide(await locate(page, arg), { timeout });
+      else await (await locate(page, arg)).hover({ timeout });
+      return;
+    case "focus":
+      await (await locate(page, arg)).focus({ timeout });
+      return;
+    case "check":
+      await (await locate(page, arg)).check({ timeout });
+      return;
+    case "uncheck":
+      await (await locate(page, arg)).uncheck({ timeout });
+      return;
+    case "fill": {
+      const [sel, value] = splitPair(arg);
+      const field = await locate(page, sel);
+      if (!cursor) {
+        await field.fill(value, { timeout });
+        return;
+      }
+      // A field that fills in one frame reads as a glitch. On camera the
+      // pointer goes to it, it is cleared, and the text is typed.
+      await cursor.click(field, { timeout });
+      await field.fill("", { timeout });
+      const type = (t) => field.pressSequentially(t, { delay: cursor.typeDelay, timeout });
+      await (cursor.typing ? cursor.typing(value, type) : type(value));
+      return;
+    }
+    case "select": {
+      const [sel, value] = splitPair(arg);
+      const option = await locate(page, sel);
+      if (cursor) await cursor.glide(option, { timeout });
+      await option.selectOption(value, { timeout });
+      return;
+    }
+    case "press":
+      cursor?.key?.(arg);
+      await page.keyboard.press(arg);
+      return;
+    case "typekeys": {
+      const type = (t) => page.keyboard.type(t, { delay: cursor?.typeDelay ?? 20 });
+      await (cursor?.typing ? cursor.typing(arg, type) : type(arg));
+      return;
+    }
+    case "goto":
+      await page.goto(arg.startsWith("http") ? arg : `${baseUrl ?? ""}${arg}`, {
+        waitUntil: "domcontentloaded",
+        timeout,
+      });
+      return;
+    case "back":
+      await page.goBack({ waitUntil: "domcontentloaded" });
+      return;
+    case "forward":
+      await page.goForward({ waitUntil: "domcontentloaded" });
+      return;
+    case "reload":
+      await page.reload({ waitUntil: "domcontentloaded" });
+      return;
+    case "scroll":
+      // Scrolling is done at 1x: the camera is a crop of the painted frame,
+      // and the page repaints for the scroll, not for the crop.
+      if (cursor) await cursor.zoomOut();
+      if (arg === "bottom") await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      else if (arg === "top") await page.evaluate(() => window.scrollTo(0, 0));
+      else if (/^-?\d+$/.test(arg)) await page.evaluate((y) => window.scrollBy(0, y), Number(arg));
+      else await (await locate(page, arg)).scrollIntoViewIfNeeded({ timeout });
+      return;
+    case "wait":
+      // A bare number is never a useful selector, and `wait:600` after a
+      // click that starts a transition reads as "wait 600ms" — so it is.
+      if (/^\d+$/.test(arg.trim())) await page.waitForTimeout(Number(arg));
+      else await page.locator(arg).first().waitFor({ state: "visible", timeout });
+      return;
+    case "wait-hidden":
+      await page.locator(arg).first().waitFor({ state: "hidden", timeout });
+      return;
+    case "wait-text":
+      await page.waitForFunction((t) => document.body.innerText.includes(t), arg, { timeout });
+      return;
+    case "wait-url":
+      await page.waitForURL(arg.includes("*") ? arg : `**${arg}`, { timeout });
+      return;
+    case "sleep":
+    case "hold":
+      await page.waitForTimeout(Number(arg) || 0);
+      return;
+    case "zoom":
+      // Camera work is a no-op outside a recording, so one action list can
+      // serve both a take and the stills pulled from the same flow.
+      await cursor?.zoom(arg, { timeout, locate: (sel) => locate(page, sel) });
+      return;
+    case "zoomout":
+      await cursor?.zoomOut();
+      return;
+    case "caption":
+      // `caption:<text>` puts words on screen for what follows; `caption:`
+      // takes them down. A recording's business, like the camera.
+      await cursor?.caption(arg.trim());
+      return;
+    case "speed": {
+      const n = Number(arg);
+      if (!Number.isFinite(n) || n < 1) throw new Error(`speed wants a factor of 1 or more, got "${arg}"`);
+      cursor?.speed(n);
+      return;
+    }
+    case "eval":
+      // Awaited in the page, so an async expression's result comes back too.
+      return page.evaluate(arg);
+    case "emulate":
+      // `emulate:dark` / `emulate:light` — flip the media query mid-session
+      // without tearing down and rebuilding the context.
+      await page.emulateMedia({ colorScheme: arg });
+      return;
+    default:
+      // With the vocabulary attached: the verbs are close enough to each
+      // other's names that a wrong guess is the likely reason to be here.
+      throw new Error(`unknown action "${verb}"${ACTION_HELP}`);
+  }
 }
 
 export const ACTION_HELP = `
@@ -269,8 +299,9 @@ export const ACTION_HELP = `
   reload               reload the page         emulate:<scheme>   dark | light
   scroll:<px|top|bottom|sel>                    sleep:<ms> / hold:<ms>
   wait:<sel>           until visible           wait-hidden:<sel>  until gone
+  wait:<ms>            a fixed pause, same as sleep:<ms> (a bare number is never a selector)
   wait-text:<text>     until text appears      wait-url:<glob>    until routed
-  eval:<js>            run JS in the page
+  eval:<js>            run JS in the page; what it returns is printed
 
   Recording only (\`shot video\`), and ignored elsewhere:
   zoom:<sel>           push in on it        zoom:2             push in on the cursor

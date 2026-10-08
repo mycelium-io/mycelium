@@ -69,7 +69,11 @@ export function send(op, payload = {}, { timeout = 180_000 } = {}) {
       sock.end();
       try {
         const msg = JSON.parse(buffer.slice(0, nl));
-        if (msg.ok === false) reject(Object.assign(new Error(msg.error), { remote: true }));
+        if (msg.ok === false) {
+          const e = Object.assign(new Error(msg.error), { remote: true });
+          if (msg.stack) e.stack = msg.stack;
+          reject(e);
+        }
         else resolvePromise(msg);
       } catch (err) {
         reject(err);
