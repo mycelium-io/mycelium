@@ -1445,4 +1445,14 @@ async function boot() {
   await loading();
 }
 
-void boot();
+// A failure before any page draws would otherwise leave an empty window.
+boot().catch((e) => {
+  app.replaceChildren(
+    el(
+      "section",
+      { class: "card" },
+      head("Mycelium couldn't start."),
+      el("p", { class: "error", role: "alert" }, String(e)),
+    ),
+  );
+});

@@ -69,6 +69,18 @@ pub(crate) fn set_update_status(app: &AppHandle, status: Option<&str>) {
 
 // ── pages ───────────────────────────────────────────────────────────────────
 
+/// Where Tauri serves the app's own pages: the dev server, or the bundle.
+/// Known from the platform rather than read off the window, whose URL isn't
+/// settled when it is built (WebView2 navigates after `build()` returns).
+fn app_base(app: &AppHandle) -> Option<Url> {
+    if tauri::is_dev() {
+        return app.config().build.dev_url.clone();
+    }
+    // Windows serves a custom protocol as http://<scheme>.localhost.
+    let base = if cfg!(windows) { "http://tauri.localhost/" } else { "tauri://localhost/" };
+    Url::parse(base).ok()
+}
+
 fn local_url(app: &AppHandle, page: &str) -> Option<Url> {
     let base = app.state::<Shell>().local_base.lock().unwrap().clone()?;
     base.join(page).ok()
@@ -936,15 +948,23 @@ fn terminal_close(app: AppHandle, webview: Webview) -> Result<(), String> {
 
 // ── the app ─────────────────────────────────────────────────────────────────
 
-/// WKWebView's own user agent on macOS.
-const WEBKIT_UA: &str =
+/// The webview's own user agent on this platform, which the pages read to
+/// name the machine and its keys.
+#[cfg(target_os = "macos")]
+const WEBVIEW_UA: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)";
+#[cfg(windows)]
+const WEBVIEW_UA: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)";
+#[cfg(target_os = "linux")]
+const WEBVIEW_UA: &str =
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko)";
 
 /// The main window. Its user agent ends in `MyceliumDesktop/<version>`, which
 /// is how the room UI knows to offer links only the app can open (the
 /// agents terminal, through `mycelium://terminal`).
 fn main_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
-    let ua = format!("{WEBKIT_UA} MyceliumDesktop/{}", app.package_info().version);
+    let ua = format!("{WEBVIEW_UA} MyceliumDesktop/{}", app.package_info().version);
     WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .title("Mycelium")
         .inner_size(1320.0, 860.0)
@@ -1014,8 +1034,8 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
-            let window = main_window(&handle)?;
-            *app.state::<Shell>().local_base.lock().unwrap() = window.url().ok();
+            *app.state::<Shell>().local_base.lock().unwrap() = app_base(&handle);
+            main_window(&handle)?;
             build_tray(&handle)?;
 
             // macOS and the Windows installer register mycelium:// links with
