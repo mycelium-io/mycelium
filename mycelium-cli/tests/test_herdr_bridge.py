@@ -579,6 +579,45 @@ def test_reconcile_keeps_a_member_whose_pane_is_open_but_empty(
     assert bridge.registry.get("r", "builder") is not None
 
 
+def test_reconcile_leaves_a_member_whose_pane_is_open_in_another_workspace(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    """A room bound to two workspaces: each pass sees the other's members in the
+    registry. A pane open in the other workspace is not closed, so this pass
+    must not retire it (and the other pass then re-enroll it, every pass)."""
+    from mycelium.commands import herdr as herdr_cmd
+
+    reg = HerdrRegistry()
+    reg.set(HerdrPaneMapping(room="r", handle="voice", pane="w2:p36", kind="claude", managed=True))
+    deleted: list[str] = []
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    monkeypatch.setattr(
+        "mycelium.commands.agent._delete_manifest",
+        lambda config, room, manifest, **_kw: deleted.append(manifest.handle),
+    )
+    agents = [
+        {"pane_id": "w2:p36", "workspace_id": "w2", "agent": "claude", "agent_status": "idle"}
+    ]
+    panes = [
+        {"pane_id": "w2:p36", "workspace_id": "w2"},
+        {"pane_id": "wS:p1", "workspace_id": "wS"},
+    ]
+    bridge = HerdrBridge(
+        runner=ScriptedRunner(
+            {
+                "agent list": _proc(_ok({"agents": agents})),
+                "tab list": _proc(_ok({"tabs": []})),
+                "pane list": _proc(_ok({"panes": panes})),
+            }
+        )
+    )
+    _enrolled, retired = herdr_cmd._reconcile_workspace(
+        cast("MyceliumConfig", _Cfg()), bridge, "wS", "r", name_from="tab", prefix="", kind=None
+    )
+    assert retired == [] and deleted == []
+    assert bridge.registry.get("r", "voice") is not None
+
+
 def test_reconcile_retires_nothing_when_herdr_cant_list_panes(
     monkeypatch: pytest.MonkeyPatch, isolated_home: Path
 ) -> None:

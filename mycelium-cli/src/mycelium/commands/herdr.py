@@ -475,12 +475,12 @@ def _reconcile_workspace(
     # Retire on the pane closing, not on its agent stopping. After herdr's server
     # restarts, every pane comes back at a bare shell: those agents stopped, they
     # didn't leave, and retiring them would delete them from the room.
+    # A pane is closed only when no workspace has it open: a room can be bound
+    # to several workspaces, and each one's pass sees the others' members in the
+    # registry. Counting only this workspace's panes, two bindings retired and
+    # re-enrolled each other's members on every pass.
     try:
-        open_panes = {
-            str(p["pane_id"])
-            for p in bridge.list_panes()
-            if p.get("workspace_id") == workspace and p.get("pane_id")
-        }
+        open_panes = {str(p["pane_id"]) for p in bridge.list_panes() if p.get("pane_id")}
     except HerdrError:
         return enrolled, []  # can't tell which panes are open: retire nothing
     retired: list[str] = []
