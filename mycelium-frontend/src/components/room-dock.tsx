@@ -11,10 +11,13 @@ import {
   type DockviewApi,
   type DockviewReadyEvent,
   type DockviewTheme,
+  type IDockviewHeaderActionsProps,
   type IDockviewPanelHeaderProps,
   type IDockviewPanelProps,
 } from "dockview-react";
-import { Copy, FileText, Link2, MessageSquare, X } from "lucide-react";
+import { Copy, FileText, Link2, MessageSquare, Plus, X } from "lucide-react";
+import { KbdChord } from "@/components/ui/kbd";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { EventStream } from "@/components/event-stream";
 import { RoomBoard } from "@/components/board/room-board";
 import { MessageInspector } from "@/components/message-inspector";
@@ -285,6 +288,59 @@ function DockTab({ api, containerApi }: IDockviewPanelHeaderProps) {
         )}
       </ContextMenuContent>
     </ContextMenu>
+  );
+}
+
+// ── The strip's + ───────────────────────────────────────────────────────────
+
+/** The room's own views that aren't open anywhere in the dock. */
+function useClosedViews(api: DockviewApi): View[] {
+  const closedNow = useCallback(() => VIEW_ORDER.filter(v => !api.getPanel(v)), [api]);
+  const [closed, setClosed] = useState<View[]>(closedNow);
+  useEffect(() => {
+    const update = () => setClosed(closedNow());
+    const subs = [api.onDidAddPanel(update), api.onDidRemovePanel(update)];
+    return () => subs.forEach(s => s.dispose());
+  }, [api, closedNow]);
+  return closed;
+}
+
+/**
+ * After a group's tabs: a + that brings back a room view that was closed,
+ * into this group. Shown only while there is one to bring back.
+ */
+function GroupActions({ containerApi, group }: IDockviewHeaderActionsProps) {
+  const closed = useClosedViews(containerApi);
+  const [open, setOpen] = useState(false);
+  if (closed.length === 0) return null;
+  return (
+    <div className="flex h-full items-center px-1">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          aria-label="Open a view"
+          title="Open a view"
+          className="flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text data-[popup-open]:bg-hairline data-[popup-open]:text-text"
+        >
+          <Plus className="size-3.5" />
+        </PopoverTrigger>
+        <PopoverContent side="bottom" align="start" className="w-48 p-1">
+          {closed.map(view => (
+            <button
+              key={view}
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                addView(containerApi, view, { referenceGroup: group });
+              }}
+              className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-label text-text transition-colors hover:bg-hairline"
+            >
+              {VIEW_LABELS[view]}
+              <KbdChord action={`pane.${view}`} size="sm" />
+            </button>
+          ))}
+        </PopoverContent>
+      </Popover>
+    </div>
   );
 }
 
@@ -565,6 +621,7 @@ export function RoomDock({
         theme={THEME}
         components={COMPONENTS}
         defaultTabComponent={DockTab}
+        leftHeaderActionsComponent={GroupActions}
         onReady={ready}
         disableDnd={narrow}
         disableFloatingGroups
