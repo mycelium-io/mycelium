@@ -125,6 +125,11 @@ def serve(
         if not json_out and event.get("type") != "log":
             _human(event)
 
+    from mycelium.old_daemon import remove_old_daemon
+
+    for unit in remove_old_daemon():
+        emit({"type": "log", "component": "app", "line": f"removed the old daemon's job {unit}"})
+
     roots = [p.expanduser().resolve() for p in (root or [Path.home()])]
     sup = Supervisor(
         cast("Mode", mode), hub_url=hub_url, roots=roots, emit=emit, share_usage=share_usage

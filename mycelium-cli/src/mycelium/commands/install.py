@@ -801,6 +801,11 @@ def install(
     """
     import sys
 
+    from mycelium.old_daemon import remove_old_daemon
+
+    for unit in remove_old_daemon():
+        typer.secho(f"  Removed the old daemon's job {unit}", fg=typer.colors.YELLOW)
+
     try:
         # ── Detect existing install and redirect ──────────────────────────
         _existing_env = Path.home() / ".mycelium" / ".env"
