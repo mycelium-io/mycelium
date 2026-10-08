@@ -714,8 +714,10 @@ export function RoomChatBox({
     </StatusLine>
   ) : null;
 
+  // The strip paints no background of its own: it sits on the channel, a
+  // thread's surface, a memory tab's paper or a card, and should match each.
   return (
-    <div data-tour="composer" className={`@container border-t border-border bg-bg px-4 py-3 flex-shrink-0${className ? ` ${className}` : ""}`}>
+    <div data-tour="composer" className={`@container border-t border-border px-4 py-3 flex-shrink-0${className ? ` ${className}` : ""}`}>
       <div className="relative">
         {/* Over the box, nearest it last: what the word being typed can be,
             the command's signature with that argument lit, then what the
