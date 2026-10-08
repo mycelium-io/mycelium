@@ -91,7 +91,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("engines/hello.md",              "hello",              "engines",     "Engines",      "Hello"),
     # ── guides (guides.html) ──
     ("guides/server.md",              "on-a-server",        "guides",      "Setup",        "Run It on a Server"),
-    ("guides/desktop.md",             "desktop",            "guides",      "Setup",        "The Mac App"),
+    ("guides/desktop.md",             "desktop",            "guides",      "Setup",        "The Desktop App"),
     ("guides/hub-and-spoke.md",       "hub-and-spoke",      "guides",      "Setup",        "Hub & Spoke"),
     ("guides/models.md",              "models",             "guides",      "Setup",        "Models"),
     ("guides/machines.md",            "machines",           "guides",      "Agents",       "Start Agents From the App"),

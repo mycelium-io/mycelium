@@ -10,7 +10,8 @@ import { TitleBar, hubLabel } from "./title-bar";
 describe("hubLabel", () => {
   it("names a hub on this computer, never by its port", () => {
     expect(hubLabel("localhost:59370", false)).toBe("This computer");
-    expect(hubLabel("127.0.0.1:8000", true)).toBe("This Mac");
+    expect(hubLabel("127.0.0.1:8000", true, "Mac")).toBe("This Mac");
+    expect(hubLabel("127.0.0.1:8000", true, "computer")).toBe("This computer");
     expect(hubLabel("[::1]:3000", false)).toBe("This computer");
   });
 

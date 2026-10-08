@@ -1,27 +1,38 @@
-# Mycelium for macOS
+# Mycelium for Mac, Linux and Windows
 
 The desktop app. A thin [Tauri 2](https://v2.tauri.app) shell over
-`mycelium desktop serve`, which runs everything a Mac needs: the SLIM node,
+`mycelium desktop serve`, which runs everything a machine needs: the SLIM node,
 the hub, the room UI and the runner in hub mode, or only the runner when the
-Mac joins someone else's hub.
+machine joins someone else's hub. One codebase, three packages:
+
+| Platform | Package | Updates |
+| --- | --- | --- |
+| macOS (Apple silicon) | `Mycelium-macos-arm64.dmg`, signed and notarized | in place, from the app |
+| Linux (x86-64) | `Mycelium-linux-x86_64.AppImage`, one file, no install | in place, from the app |
+| Windows (x64) | `Mycelium-windows-x86_64-setup.exe`, a per-user installer | in place, from the app |
+
+Linux and Windows are a preview: built by every release, but a failed build
+there doesn't hold a release back (`.github/workflows/desktop.yml`).
 
 The shell adds:
 
 - **first run**: run a hub here, or connect to one; the agent CLIs found on
-  this Mac; the folder agents may start in. Saved to `~/.mycelium/desktop.json`.
+  this machine; the folder agents may start in. Saved to `~/.mycelium/desktop.json`.
 - **the main window**: a loading screen while the supervisor starts, then the
   room UI itself. Its user agent ends in `MyceliumDesktop/<version>`, which is
   how the UI knows it can offer app-only links.
 - **the tray**: what is running, the agents terminal, start at login, switch
   hub, quit.
 - **`mycelium://` links**: `mycelium://join?hub=<url>&room=<name>` switches
-  this Mac to that hub (after asking) and opens the room;
+  this machine to that hub (after asking) and opens the room;
   `mycelium://terminal?pane=<herdr pane>` opens the agents terminal on it.
 - **the agents terminal**: herdr, attached in a window. The only program the
   terminal commands can start is herdr.
-- **PATH**: the bundled `mycelium` and `herdr` are linked into `~/.local/bin`,
-  because agents in herdr run `mycelium` commands from their own shells. An
-  existing file there that isn't a link is left alone.
+- **PATH**: the bundled `mycelium` and `herdr` are linked into `~/.local/bin`
+  (macOS, Linux), because agents in herdr run `mycelium` commands from their
+  own shells. An existing file there that isn't a link is left alone. On
+  Windows nothing is linked: the app's folder goes first on the PATH of
+  everything it starts.
 
 The hub's UI, once loaded, gets no IPC: the capability lists only the app's
 own pages, and every command also checks the calling page's origin.
@@ -44,22 +55,42 @@ already installed (on PATH or in `~/.local/bin`). Useful overrides:
 
 ## Build the app
 
-The app carries everything it runs, so it works on a Mac with nothing else
-installed. `scripts/stage-sidecars.sh` stages it all, pinned:
+The app carries everything it runs, so it works with nothing else installed.
+`scripts/stage-sidecars.sh` stages it all, pinned, for the platform it runs on
+(on Windows, in Git Bash):
 
 - programs, into `src-tauri/binaries/` with the target triple Tauri expects:
   `mycelium` (PyInstaller), `herdr`, `slimctl` (2.1.x, to match the hub's
   `slim-bindings`) and `node`;
 - directories, into `src-tauri/resources/`: `hub/` (the hub, PyInstaller),
-  `ui/` (the UI's standalone build), `models/` (the search model) and `pi/`
-  (Pi, which engines think with).
+  `ui/` (the UI's standalone build), `models/` (the search model), `pi/`
+  (Pi, which engines think with) and, on Windows, `conpty/` (the console
+  host herdr runs its panes in).
+
+Where they end up differs by platform, and the supervisor
+(`mycelium/desktop/supervisor.py`, `Locator`) looks in all three: programs
+beside the app's executable (`Contents/MacOS`, the AppImage's `usr/bin`, the
+install folder), resources in `Contents/Resources`, `usr/lib/Mycelium`, or
+the install folder itself.
 
 ```bash
 npm run sidecars                  # all of it, several minutes
 bash scripts/stage-sidecars.sh ui # or just the steps you changed
+
+# macOS
 npx tauri build --bundles app --config src-tauri/tauri.bundle.conf.json
 bash scripts/package-mac.sh       # sign it, then make the disk image
+# Linux (needs Tauri's prerequisites: webkit2gtk 4.1 and friends)
+bash scripts/package-linux.sh     # the AppImage
+# Windows (Git Bash)
+bash scripts/package-windows.sh   # the installer
 ```
+
+Each packaging script, given `TAURI_SIGNING_PRIVATE_KEY`, also signs what the
+updater installs and writes `updater-<platform>.json`; the release merges
+those into the one `latest.json` every copy of the app checks
+(`scripts/updater.sh`). To try a Linux or Windows build without releasing,
+run the **Desktop app** workflow by hand from the Actions tab.
 
 `package-mac.sh` signs every program inside the app and then the app, and
 makes `src-tauri/target/release/bundle/dmg/Mycelium-macos-arm64.dmg` with
@@ -79,7 +110,21 @@ app opens from **Show log** on its loading and health screens.
 
 ## Signing
 
-Not configured yet. A build runs on the machine that made it, but macOS will
-refuse a downloaded copy until the app and every bundled program are signed
-with an Apple Developer ID and notarized. That needs the team's Developer ID
-certificate and a notarization login in CI.
+On a Mac, every program and the app are signed with the project's Developer
+ID and notarized in CI (`APPLE_*` secrets); without them a build is signed
+ad hoc. The Windows installer isn't Authenticode-signed yet, so SmartScreen
+asks before its first run; signing it needs a code-signing certificate and
+Tauri's `bundle.windows.signCommand`. An AppImage needs no signature to run.
+
+## Platform notes
+
+- **Linux**: built on Ubuntu 22.04, so it runs where glibc is 2.35 or newer.
+  It registers `mycelium://` links itself on first start, and turns off
+  WebKitGTK's DMA-BUF renderer (a blank window on some GPUs) unless
+  `WEBKIT_DISABLE_DMABUF_RENDERER` is already set. An AppImage's files live
+  in a mount that only exists while it runs, so the app copies `mycelium` and
+  `herdr` to `~/.local/share/mycelium/bin` and links `~/.local/bin` to those
+  copies. Agents in herdr keep working after the app closes.
+- **Windows**: installs to `%LOCALAPPDATA%\Mycelium` with no administrator
+  prompt. herdr's Windows build is in beta upstream. Programs the app starts
+  open no console window.

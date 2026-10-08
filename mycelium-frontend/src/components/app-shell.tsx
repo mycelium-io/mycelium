@@ -15,8 +15,7 @@ import { GlobalSearch, GlobalSearchButton } from "@/components/global-search";
 import { CommandPaletteButton, KeymapHelpButton } from "@/components/keymap-provider";
 import { InstallModalProvider, useOpenInstallModal } from "@/components/install-modal";
 import { DocsLink } from "@/components/docs-link";
-import { DMG_URL, useIsDesktop } from "@/lib/desktop";
-import { useIsMac } from "@/lib/client-hooks";
+import { useAppDownload, useIsDesktop } from "@/lib/desktop";
 import { HubStatus, MachinesStatusLink, MetricsStatusLink } from "@/components/status-items";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -56,28 +55,29 @@ interface Props {
 }
 
 /**
- * In a browser on a Mac, says the app exists: someone sent a link lands here
- * with no idea there is more, and the app is what starts agents on their own
- * machine. Hidden inside the app, and on other systems, which it doesn't run on.
+ * In a browser on a Mac, Windows or Linux, says the app exists: someone sent
+ * a link lands here with no idea there is more, and the app is what starts
+ * agents on their own machine. Hidden inside the app, and on phones and
+ * tablets, which it doesn't run on.
  */
-function GetMacAppButton() {
+function GetAppButton() {
   const desktop = useIsDesktop();
-  const mac = useIsMac();
-  if (desktop || !mac) return null;
+  const download = useAppDownload();
+  if (desktop || !download) return null;
   return (
-    <Tooltip content="Mycelium for Mac starts your coding agents on this computer and adds them to a room">
+    <Tooltip content={`Mycelium for ${download.platform} starts your coding agents on this computer and adds them to a room`}>
       <a
-        href={DMG_URL}
+        href={download.url}
         className="flex h-7 items-center gap-1.5 rounded-md px-2 text-label text-accent transition-colors hover:bg-accent-soft"
       >
         <Download className="size-3.5" />
-        <span className="hidden sm:inline">Get the Mac app</span>
+        <span className="hidden sm:inline">Get the {download.platform} app</span>
       </a>
     </Tooltip>
   );
 }
 
-/** Hidden inside the Mac app, which puts the CLI on this Mac's PATH itself. */
+/** Hidden inside the app, which puts the CLI on this computer's PATH itself. */
 function InstallCliButton() {
   const openInstallModal = useOpenInstallModal();
   if (useIsDesktop()) return null;
@@ -184,7 +184,7 @@ export function AppShell({
             right={
               <>
                 {headerRight}
-                <GetMacAppButton />
+                <GetAppButton />
                 <InstallCliButton />
                 <DocsLink />
                 <ThemeToggle />

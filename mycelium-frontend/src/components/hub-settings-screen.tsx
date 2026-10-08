@@ -8,7 +8,7 @@ import { useSyncExternalStore } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { hubSummary, StatusDot, TONE_COLOR } from "@/components/status-items";
 import { useHubLabel } from "@/components/title-bar";
-import { settingsLink, useIsDesktop } from "@/lib/desktop";
+import { desktopMachine, settingsLink, useIsDesktop } from "@/lib/desktop";
 import { DOCS_URL } from "@/lib/install";
 import { useHubHealth } from "@/lib/use-status";
 
@@ -57,7 +57,7 @@ export function HubSettingsScreen() {
   const desktop = useIsDesktop();
   const origin = useSyncExternalStore(noSubscribe, () => window.location.origin, () => "");
   const summary = hubSummary(health);
-  const ownHub = desktop && hub === "This Mac";
+  const ownHub = desktop && hub === `This ${desktopMachine()}`;
   const store = health?.storage?.host_path || health?.storage?.path || null;
   const identity = health?.identity?.mode ?? null;
 

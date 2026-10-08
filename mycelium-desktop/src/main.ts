@@ -25,6 +25,14 @@ interface Found {
   bundled: boolean;
 }
 
+/** What copy calls this machine, and the keys for Settings, on this platform. */
+const ON_MAC = navigator.userAgent.includes("Mac");
+const ON_WINDOWS = navigator.userAgent.includes("Windows");
+const MACHINE = ON_MAC ? "Mac" : "computer";
+const SETTINGS_KEYS = ON_MAC ? "⌘," : "Ctrl+,";
+/** Where the app's icon and menu live: the menu bar on a Mac, the tray elsewhere. */
+const TRAY = ON_MAC ? "the menu bar icon" : "the tray icon";
+
 /** A hub on this Mac, as `mycelium.hubs` found it. */
 interface HubSeen {
   source: "docker" | "process" | "port";
@@ -259,14 +267,14 @@ const PREVIEW_HUB: HubSettings = {
   share_usage: false,
 };
 const PREVIEW_CHECKS: Check[] = [
-  { section: "This Mac", name: "Hub", status: "ok", message: "answering at http://127.0.0.1:8000", details: [] },
+  { section: `This ${MACHINE}`, name: "Hub", status: "ok", message: "answering at http://127.0.0.1:8000", details: [] },
   { section: "Agents", name: "herdr", status: "ok", message: "running (0.9.1)", details: [] },
   {
     section: "Models",
     name: "LLM connectivity",
     status: previewSetUp ? "ok" : "warning",
     message: previewSetUp ? "anthropic/claude-sonnet-4-6: completion probe succeeded" : "Not configured",
-    details: previewSetUp ? [] : ["Choose a model and add its key in Settings (⌘,)"],
+    details: previewSetUp ? [] : [`Choose a model and add its key in Settings (${SETTINGS_KEYS})`],
   },
 ];
 
@@ -397,7 +405,7 @@ function placePiece(c: Choices, onModeChange: () => void): { el: HTMLElement; pr
     });
     return b;
   };
-  const here = choice("hub", "On this Mac", "Everything stays on this Mac. Good for trying it out or giving a demo.");
+  const here = choice("hub", `On this ${MACHINE}`, `Everything stays on this ${MACHINE}. Good for trying it out or giving a demo.`);
   const team = choice("client", "On my team's hub", "Join rooms someone else hosts. You'll need the hub's address.");
   const render = () => {
     here.setAttribute("aria-checked", String(c.mode === "hub"));
@@ -524,7 +532,7 @@ async function modelPiece(variant: "wizard" | "settings"): Promise<{ el: HTMLEle
     keyField.placeholder = provider.key ?? "";
     keyHint.replaceChildren(
       provider.keyFrom ? `Get one at ${provider.keyFrom}. ` : "",
-      "It stays on this Mac. ",
+      `It stays on this ${MACHINE}. `,
       variant === "wizard" ? outLink(MODELS_DOC, "What uses this?") : "",
     );
     baseRow.hidden = provider.baseUrl === undefined;
@@ -849,20 +857,22 @@ function hubReadOnly(at: "model" | "experiences" | "privacy", answer: Promise<Hu
 /** Everything Start changes on this Mac, said before anything happens. */
 function setsUpPiece(c: Choices): HTMLElement {
   const items: [string, string][] = [
-    ["mycelium and herdr on your PATH", "Links in ~/.local/bin, so agents can run them. A file you already have there is left alone."],
-    ["~/.mycelium", "Your settings, and these choices. Rooms on this Mac keep their notes here too."],
+    ON_WINDOWS
+      ? ["mycelium and herdr on your agents' PATH", "The app's own folder comes first on the PATH of everything it starts, so agents can run them."]
+      : ["mycelium and herdr on your PATH", "Links in ~/.local/bin, so agents can run them. A file you already have there is left alone."],
+    ["~/.mycelium", `Your settings, and these choices. Rooms on this ${MACHINE} keep their notes here too.`],
     c.mode === "hub"
-      ? ["Rooms on this Mac, while Mycelium is open", "SLIM, the hub and its UI, reachable only from this Mac (127.0.0.1)."]
-      : ["The runner, while Mycelium is open", "It tells the hub which agents this Mac can start, and starts them in herdr."],
+      ? [`Rooms on this ${MACHINE}, while Mycelium is open`, `SLIM, the hub and its UI, reachable only from this ${MACHINE} (127.0.0.1).`]
+      : ["The runner, while Mycelium is open", `It tells the hub which agents this ${MACHINE} can start, and starts them in herdr.`],
     ...(c.restore
       ? ([["herdr's integrations", "A hook in each agent program's own settings, so herdr can reopen its agents after a restart."]] as [string, string][])
       : []),
-    ["Start at login", "Only if you turn it on, in Settings or from the menu bar icon."],
+    ["Start at login", `Only if you turn it on, in Settings or from ${TRAY}.`],
   ];
   return el(
     "details",
     { class: "sets-up-box" },
-    el("summary", {}, "What this sets up on your Mac"),
+    el("summary", {}, `What this sets up on your ${MACHINE}`),
     el("ul", { class: "sets-up" }, ...items.map(([what, why]) => el("li", {}, el("strong", {}, what), el("span", {}, why)))),
     el("p", { class: "hint" }, "No admin password, and nothing outside your home folder."),
   );
@@ -913,7 +923,7 @@ async function wizard() {
         "Mycelium comes with agents of its own: one helps your agents agree, others play a role in a scenario, another keeps notes. They need a model to think with. Agents you bring, like Claude Code, sign in on their own.";
       body = model.el;
     } else if (at === "agents") {
-      title = "Agents on this Mac";
+      title = `Agents on this ${MACHINE}`;
       lede = "Mycelium can start these for you and bring them into a room.";
       body = agents;
     } else if (at === "experiences") {
@@ -923,9 +933,9 @@ async function wizard() {
     } else {
       title = "Ready to start";
       const summary: [string, string][] = [
-        ["Rooms", c.mode === "hub" ? "On this Mac, reachable only from it" : `On ${c.hubUrl.trim()}`],
+        ["Rooms", c.mode === "hub" ? `On this ${MACHINE}, reachable only from it` : `On ${c.hubUrl.trim()}`],
       ];
-      if (c.mode === "hub") summary.push(["Model", skippedModel ? "Not set yet. Add one in Settings (⌘,)." : model.summary()]);
+      if (c.mode === "hub") summary.push(["Model", skippedModel ? `Not set yet. Add one in Settings (${SETTINGS_KEYS}).` : model.summary()]);
       summary.push(["Agents work in", c.root]);
       const added = c.mode === "hub" ? experiences.added() : [];
       if (added.length > 0) summary.push(["Added", added.map((x) => x.title).join(", ")]);
@@ -1010,7 +1020,7 @@ async function settingsWindow(open: Section = "mac") {
   // The same sections whatever is chosen: one that doesn't apply says why,
   // rather than leaving the sidebar.
   const sections = (): [Section, string][] => [
-    ["mac", "This Mac"],
+    ["mac", `This ${MACHINE}`],
     ["model", "Model"],
     ["agents", "Agents"],
     ["experiences", "Experiences"],
@@ -1177,7 +1187,7 @@ function otherHubNotice(h: OtherHub, home: string): HTMLElement {
         ? `Docker, project ${h.project}`
         : `Docker, container ${h.container ?? "unknown"}`
       : h.source === "process"
-        ? `A process on this Mac (${h.pid})`
+        ? `A process on this ${MACHINE} (${h.pid})`
         : "Something Mycelium can't identify";
   const older = h.version && !h.dev_build && olderThan(h.version, h.app_version);
   const data = h.data_path ? tilde(h.data_path, home) : "unknown";
@@ -1255,16 +1265,27 @@ async function loading(setup: PathSetup | null = null) {
 
   const pathNote =
     setup && !setup.onPath && setup.linked.length > 0
-      ? el(
-          "div",
-          { class: "note" },
-          "Mycelium put ",
-          el("code", {}, "mycelium"),
-          " and ",
-          el("code", {}, "herdr"),
-          " in ~/.local/bin, which your shell doesn't search yet. Add this line to your shell profile so your own terminals find them too: ",
-          el("code", {}, setup.line),
-        )
+      ? ON_WINDOWS
+        ? el(
+            "div",
+            { class: "note" },
+            "Your agents can run ",
+            el("code", {}, "mycelium"),
+            " and ",
+            el("code", {}, "herdr"),
+            ". So your own terminals find them too, add the app's folder to your PATH by running this once in PowerShell: ",
+            el("code", {}, setup.line),
+          )
+        : el(
+            "div",
+            { class: "note" },
+            "Mycelium put ",
+            el("code", {}, "mycelium"),
+            " and ",
+            el("code", {}, "herdr"),
+            " in ~/.local/bin, which your shell doesn't search yet. Add this line to your shell profile so your own terminals find them too: ",
+            el("code", {}, setup.line),
+          )
       : null;
   const skipped =
     setup && setup.skipped.length > 0
@@ -1300,7 +1321,7 @@ async function loading(setup: PathSetup | null = null) {
     error.hidden = false;
   }
 
-  const where = mode === "hub" ? "Starting on this Mac" : `Connecting to ${snap.settings?.hubUrl ?? "the hub"}`;
+  const where = mode === "hub" ? `Starting on this ${MACHINE}` : `Connecting to ${snap.settings?.hubUrl ?? "the hub"}`;
   app.replaceChildren(
     el(
       "section",
@@ -1404,7 +1425,7 @@ async function doctor() {
     el(
       "section",
       { class: "card" },
-      head("Health check. Each part Mycelium runs on this Mac, and whether it's working."),
+      head(`Health check. Each part Mycelium runs on this ${MACHINE}, and whether it's working.`),
       body,
       el("div", { class: "card-foot" }, verdict, el("div", { class: "actions" }, showLog, again, back)),
     ),

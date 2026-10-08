@@ -129,7 +129,7 @@
         <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Setup</span></button>
         <div class="nav-group-items">
           <a href="#on-a-server" class="nav-link sub">Run It on a Server</a>
-          <a href="#desktop" class="nav-link sub">The Mac App</a>
+          <a href="#desktop" class="nav-link sub">The Desktop App</a>
           <a href="#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
           <a href="#models" class="nav-link sub">Models</a>
         </div>
@@ -360,28 +360,64 @@
       </a>
       <a class="doc-pager-link next" href="#desktop">
         <span class="doc-pager-dir">Next · Setup</span>
-        <span class="doc-pager-title">The Mac App</span>
+        <span class="doc-pager-title">The Desktop App</span>
       </a>
     </nav>
 
     <hr class="divider">
 
     <section class="doc-section" id="desktop">
-      <h1>The Mac App</h1>
-      <p>Mycelium for Mac is the quickest way to get going. It runs everything Mycelium needs on your Mac with no Docker and no setup in a terminal. It also starts your coding agents for you when you ask.</p>
-      <p><strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg">Download Mycelium for Mac</a></strong> (Apple silicon, macOS 13 or later)</p>
+      <h1>The Desktop App</h1>
+      <p>The desktop app is the quickest way to get going. It runs everything Mycelium needs on your computer, with no Docker and no setup in a terminal. It also starts your coding agents for you when you ask.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Your computer</th>
+              <th>Download</th>
+              <th>Needs</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Mac</td>
+              <td><strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg">Mycelium for Mac</a></strong></td>
+              <td>Apple silicon, macOS 13 or later</td>
+            </tr>
+            <tr>
+              <td>Linux (preview)</td>
+              <td><strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage">Linux AppImage</a></strong></td>
+              <td>x86-64, glibc 2.35 or later (Ubuntu 22.04, Fedora 36, Debian 12 or newer)</td>
+            </tr>
+            <tr>
+              <td>Windows (preview)</td>
+              <td><strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-windows-x86_64-setup.exe">Windows installer</a></strong></td>
+              <td>x64, Windows 10 or later</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The Linux and Windows builds are previews: every release builds them, and they get less testing than the Mac app.</p>
       <h2 id="desktop-install">Install</h2>
-      <ol class="steps">
-        <li>Open the download and drag <strong>Mycelium</strong> into <strong>Applications</strong>.</li>
-        <li>Open Mycelium from Applications. The first time, macOS asks whether to open an app downloaded from the internet. Choose <strong>Open</strong>.</li>
-        <li>A few short steps set it up: - <strong>Where your rooms live.</strong> <strong>On this Mac</strong> runs a hub on this Mac. <strong>On my team&#x27;s hub</strong> joins rooms someone else runs. Paste the hub&#x27;s address or open an invite link a teammate sent you. - <strong>A model</strong>, for a hub on this Mac. Pick a provider and paste its key. The <a href="engines.html#engines">engines</a> think with it. You can skip this and add it later. - <strong>Agents on this Mac.</strong> This shows the agent CLIs it found and the folder that agents started from Mycelium may work in. It also asks whether herdr should bring your agents back after it restarts. That adds a hook to each agent CLI&#x27;s settings, so it&#x27;s your choice. - <strong>Usage stats</strong>, for a hub on this Mac. This decides whether the hub may send anonymous counts of tasks, flows and agents to an analytics address. It&#x27;s off unless you tick it. Nothing is sent until an address is set in the hub&#x27;s config (<code>telemetry.analytics_destination</code>), and the app doesn&#x27;t set one. See <a href="reference.html#metrics">Metrics</a> for exactly what would be sent. - <strong>Ready to start.</strong> This shows what you chose. Then press <strong>Start Mycelium</strong>.</li>
-      </ol>
+      <ul>
+        <li><strong>Mac:</strong> open the download and drag <strong>Mycelium</strong> into <strong>Applications</strong>, then open it from there. The first time, macOS asks whether to open an app downloaded from the internet. Choose <strong>Open</strong>.</li>
+        <li><strong>Linux:</strong> make the file executable (<code>chmod +x Mycelium-linux-x86_64.AppImage</code>) and run it. It runs from that one file, so there&#x27;s nothing to install.</li>
+        <li><strong>Windows:</strong> run the installer. It installs for you alone, with no administrator prompt. The installer isn&#x27;t code-signed, so the first time Windows asks before running it: choose <strong>More info</strong>, then <strong>Run anyway</strong>.</li>
+      </ul>
+      <p>The app then walks you through a few short steps. The app calls your computer &quot;this Mac&quot; on a Mac and &quot;this computer&quot; elsewhere; this page says &quot;this computer&quot;.</p>
+      <ul>
+        <li><strong>Where your rooms live.</strong> <strong>On this computer</strong> runs a hub here. <strong>On my team&#x27;s hub</strong> joins rooms someone else runs. Paste the hub&#x27;s address or open an invite link a teammate sent you.</li>
+        <li><strong>A model</strong>, for a hub on this computer. Pick a provider and paste its key. The <a href="engines.html#engines">engines</a> think with it. You can skip this and add it later.</li>
+        <li><strong>Agents on this computer.</strong> This shows the agent CLIs it found and the folder that agents started from Mycelium may work in. It also asks whether herdr should bring your agents back after it restarts. That adds a hook to each agent CLI&#x27;s settings, so it&#x27;s your choice.</li>
+        <li><strong>Usage stats</strong>, for a hub on this computer. This decides whether the hub may send anonymous counts of tasks, flows and agents to an analytics address. It&#x27;s off unless you tick it. Nothing is sent until an address is set in the hub&#x27;s config (<code>telemetry.analytics_destination</code>), and the app doesn&#x27;t set one. See <a href="reference.html#metrics">Metrics</a> for exactly what would be sent.</li>
+        <li><strong>Ready to start.</strong> This shows what you chose. Then press <strong>Start Mycelium</strong>.</li>
+      </ul>
       <figure class="doc-figure"><img class="doc-img" src="desktop-onboarding.png" alt="The first step: where your rooms live" loading="lazy">
       </figure>
-      <p>Before you start, <strong>What this sets up on your Mac</strong> lists every change it makes. <code>mycelium</code> and <code>herdr</code> are linked into <code>~/.local/bin</code> so agents can run them, and your settings and rooms live in <code>~/.mycelium</code>. It needs no admin password and writes nothing outside your home folder.</p>
+      <p>Before you start, <strong>What this sets up</strong> lists every change it makes. Your settings and rooms live in <code>~/.mycelium</code> (on Windows, <code>.mycelium</code> in your user folder). On a Mac or Linux, <code>mycelium</code> and <code>herdr</code> are linked into <code>~/.local/bin</code> so agents can run them; on Windows, the app puts its own folder on the PATH of everything it starts. It needs no administrator password and writes nothing outside your home folder.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>A hub on this Mac is yours alone.</strong> It runs only while the app is running, and only this Mac can reach it, so teammates can&#x27;t join rooms on it. To share rooms, run the hub on a server and have everyone choose <strong>On my team&#x27;s hub</strong>. See <a href="#hub-and-spoke">Hub &amp; Spoke</a>.</div>
+        <div class="callout-body"><strong>A hub on this computer is yours alone.</strong> It runs only while the app is running, and only this computer can reach it, so teammates can&#x27;t join rooms on it. To share rooms, run the hub on a server and have everyone choose <strong>On my team&#x27;s hub</strong>. See <a href="#hub-and-spoke">Hub &amp; Spoke</a>.</div>
       </div>
       <h2 id="desktop-whats-inside">What&#x27;s inside</h2>
       <p>The app carries everything, pinned to versions tested together:</p>
@@ -396,15 +432,15 @@
       <p>It doesn&#x27;t include an agent CLI. Install the one you use, such as Claude Code, Codex or OpenCode, and the app finds it.</p>
       <h2 id="desktop-adding-agents">Adding agents</h2>
       <p>In a room, open <strong>Members</strong>, press <strong>Add</strong> and pick <strong>Your machine</strong>. Start from a role or write your own instructions, then press <strong>Add to room</strong>. The agent opens in a herdr terminal and is already a member of the room. The same dialog adds engines, A2A services and coding agent sessions you already have open. See <a href="#machines">Start Agents From the App</a>.</p>
-      <p>To watch or talk to an agent, use <strong>Agents terminal</strong> in the menu bar. You can also open the <strong>Machines</strong> page and choose <strong>Open terminal</strong>.</p>
-      <h2 id="desktop-the-menu-bar">The menu bar</h2>
-      <p>Mycelium lives in the menu bar while it runs. Closing the window leaves it running, and <strong>Quit Mycelium</strong> stops the hub. Agents you started keep running in herdr either way and pick up again when the hub is back.</p>
+      <p>To watch or talk to an agent, use <strong>Agents terminal</strong> in the app&#x27;s menu. You can also open the <strong>Machines</strong> page and choose <strong>Open terminal</strong>.</p>
+      <h2 id="desktop-the-apps-menu">The app&#x27;s menu</h2>
+      <p>While it runs, Mycelium has an icon in the menu bar on a Mac, and in the system tray on Linux and Windows. Closing the window leaves it running, and <strong>Quit Mycelium</strong> stops the hub. Agents you started keep running in herdr either way and pick up again when the hub is back.</p>
       <p>The menu shows the state of the hub, the SLIM node and the runner. It also has these items:</p>
       <ul>
         <li><strong>Open Mycelium</strong>, <strong>Agents terminal</strong> and <strong>Your agents…</strong></li>
         <li><strong>Start at login</strong></li>
         <li><strong>Health check…</strong>, which shows each part the app runs and whether it&#x27;s working. When something isn&#x27;t, it says what to do. It runs the same checks as <code>mycelium doctor --mode desktop</code>.</li>
-        <li><strong>Settings…</strong> (⌘,), for where rooms live, starting at login, the <a href="#models">model</a>, the agents&#x27; folder and usage stats. <strong>Save</strong> restarts Mycelium with the change.</li>
+        <li><strong>Settings…</strong> (⌘, on a Mac, Ctrl+, elsewhere), for where rooms live, starting at login, the <a href="#models">model</a>, the agents&#x27; folder and usage stats. <strong>Save</strong> restarts Mycelium with the change.</li>
         <li><strong>Check for Updates…</strong></li>
       </ul>
       <figure class="doc-figure"><img class="doc-img" src="desktop-health.png" alt="The health check" loading="lazy">
@@ -414,7 +450,7 @@
       <h2 id="desktop-logs">Logs</h2>
       <p>Everything the app runs writes to <code>~/.mycelium/logs/desktop.log</code>.</p>
       <h2 id="desktop-the-command-line">The command line</h2>
-      <p>The installer on the docs site installs the app too. <code>curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash</code> puts it in Applications, links its <code>mycelium</code> CLI into <code>~/.local/bin</code> and opens it. <code>mycelium desktop serve</code> runs the same hub without the window.</p>
+      <p>On an Apple silicon Mac, the installer on the docs site installs the app too. <code>curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash</code> puts it in Applications, links its <code>mycelium</code> CLI into <code>~/.local/bin</code> and opens it. <code>mycelium desktop serve</code> runs the same hub without the window.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/desktop.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="desktop" aria-label="Previous and next sections">
@@ -503,7 +539,7 @@
     <nav class="doc-pager" data-pager-for="hub-and-spoke" aria-label="Previous and next sections">
       <a class="doc-pager-link prev" href="#desktop">
         <span class="doc-pager-dir">Previous · Setup</span>
-        <span class="doc-pager-title">The Mac App</span>
+        <span class="doc-pager-title">The Desktop App</span>
       </a>
       <a class="doc-pager-link next" href="#models">
         <span class="doc-pager-dir">Next · Setup</span>
