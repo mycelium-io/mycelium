@@ -201,6 +201,21 @@ def _safe_prompt_arg(prompt: str) -> str:
     return f" {prompt}" if prompt[:1] in ("@", "-") else prompt
 
 
+def pi_argv(binary: str) -> list[str] | None:
+    """The command that starts Pi for ``binary``, or ``None`` when it can't be found.
+
+    A path to Pi's JavaScript entry point runs on ``node`` directly. On Windows
+    that is the only safe way: Pi's npm launcher there is a batch file, and
+    arguments passed through ``cmd.exe`` are cut at the first newline, read
+    ``% & | ^ "`` as syntax and capped at 8191 characters, while every prompt
+    is multi-line prose.
+    """
+    if binary.endswith((".js", ".mjs", ".cjs")):
+        node = shutil.which("node")
+        return [node, binary] if node and Path(binary).is_file() else None
+    return [binary] if shutil.which(binary) else None
+
+
 def ensure_provider_config(
     *,
     provider: str,
@@ -409,7 +424,7 @@ class PiSession:
 
     def _build_command(self, prompt: str, system: str) -> list[str]:
         cmd = [
-            self._binary,
+            *(pi_argv(self._binary) or [self._binary]),
             "--print",
             "--mode",
             "json",
@@ -453,7 +468,7 @@ class PiSession:
         """
         del temperature  # no pi CLI knob; kept for LLM-callable signature parity
         binary = self._binary
-        if shutil.which(binary) is None:
+        if pi_argv(binary) is None:
             raise PiSessionError(
                 f"`{binary}` not found on PATH; the engine's mediator runs on Pi; "
                 "install Pi (earendil-works/pi) or set ALIGNER_PI_BINARY to its path."

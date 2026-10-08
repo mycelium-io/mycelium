@@ -121,9 +121,10 @@ Tauri's `bundle.windows.signCommand`. An AppImage needs no signature to run.
 - **Linux**: built on Ubuntu 22.04, so it runs where glibc is 2.35 or newer.
   It registers `mycelium://` links itself on first start, and turns off
   WebKitGTK's DMA-BUF renderer (a blank window on some GPUs) unless
-  `WEBKIT_DISABLE_DMABUF_RENDERER` is already set. The `~/.local/bin` links
-  point into the running AppImage, so they work while the app is open, like
-  the agents they serve.
+  `WEBKIT_DISABLE_DMABUF_RENDERER` is already set. An AppImage's files live
+  in a mount that only exists while it runs, so the app copies `mycelium` and
+  `herdr` to `~/.local/share/mycelium/bin` and links `~/.local/bin` to those
+  copies. Agents in herdr keep working after the app closes.
 - **Windows**: installs to `%LOCALAPPDATA%\Mycelium` with no administrator
   prompt. herdr's Windows build is in beta upstream. Programs the app starts
   open no console window.

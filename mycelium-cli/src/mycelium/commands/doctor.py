@@ -401,13 +401,17 @@ def _check_mediator_pi_binary() -> CheckResult:
             message="backend is dockerized (Pi ships in the image)",
         )
 
+    from mycelium.engine.pi_session import pi_argv
+
     binary = os.environ.get("ALIGNER_PI_BINARY") or "pi"
-    resolved = shutil.which(binary)
-    if resolved is not None:
+    argv = pi_argv(binary)
+    if argv is not None:
+        # A JavaScript entry point shows the node it runs on; a program, where it is.
+        where = " ".join(argv) if len(argv) > 1 else (shutil.which(binary) or binary)
         return CheckResult(
             name="mediator Pi session",
             status="ok",
-            message=f"pi on PATH ({resolved})",
+            message=f"pi on PATH ({where})",
         )
     return CheckResult(
         name="mediator Pi session",

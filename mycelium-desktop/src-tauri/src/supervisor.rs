@@ -11,7 +11,8 @@
 
 use std::io::{BufRead, BufReader};
 use std::process::{ChildStdin, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -31,7 +32,9 @@ const STOP_GRACE: Duration = Duration::from_secs(8);
 #[derive(Default)]
 struct Inner {
     generation: u64,
-    pid: Option<i32>,
+    /// The running supervisor's pid, and whether it has exited since: a pid
+    /// is only signalled while its process is still the one we started.
+    pid: Option<(i32, Arc<AtomicBool>)>,
     stdin: Option<ChildStdin>,
     status: Option<Value>,
     last_error: Option<String>,
@@ -100,11 +103,14 @@ fn stop_child(inner: &mut Inner) {
     // Closing stdin asks it to stop; SIGTERM says so again; a supervisor
     // still there after the grace period is killed.
     inner.stdin.take();
-    if let Some(pid) = inner.pid.take() {
+    if let Some((pid, exited)) = inner.pid.take() {
         signal(pid, false);
         thread::spawn(move || {
             thread::sleep(STOP_GRACE);
-            signal(pid, true);
+            // Once it has exited its pid may belong to another program.
+            if !exited.load(Ordering::SeqCst) {
+                signal(pid, true);
+            }
         });
     }
 }
@@ -120,13 +126,15 @@ fn signal(pid: i32, kill: bool) {
     }
 }
 
-/// Windows has no SIGTERM to ask with: closing stdin is the ask, and after
-/// the grace period the supervisor and what it started are ended as a tree.
+/// Windows has no SIGTERM to ask with: closing stdin is the ask, and the
+/// supervisor stops what it runs. After the grace period only the supervisor
+/// itself is ended, never its tree: herdr runs under it, and the agents in
+/// herdr outlive the supervisor here as they do on macOS and Linux.
 #[cfg(windows)]
 fn signal(pid: i32, kill: bool) {
     if kill {
         let _ = paths::command("taskkill")
-            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .args(["/PID", &pid.to_string(), "/F"])
             .output();
     }
 }
@@ -224,6 +232,7 @@ fn run(app: AppHandle, settings: Settings, generation: u64) {
         let started = Instant::now();
         match command(&settings).and_then(|mut c| c.spawn().map_err(|e| e.to_string())) {
             Ok(mut child) => {
+                let exited = Arc::new(AtomicBool::new(false));
                 {
                     let mut inner = sup.inner.lock().unwrap();
                     if inner.generation != generation {
@@ -231,7 +240,7 @@ fn run(app: AppHandle, settings: Settings, generation: u64) {
                         let _ = child.kill();
                         return;
                     }
-                    inner.pid = Some(child.id() as i32);
+                    inner.pid = Some((child.id() as i32, Arc::clone(&exited)));
                     inner.stdin = child.stdin.take();
                 }
                 if let Some(stderr) = child.stderr.take() {
@@ -250,6 +259,7 @@ fn run(app: AppHandle, settings: Settings, generation: u64) {
                     }
                 }
                 let _ = child.wait();
+                exited.store(true, Ordering::SeqCst);
             }
             Err(message) => report_error(&app, generation, "app", &message),
         }

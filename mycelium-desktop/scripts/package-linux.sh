@@ -90,4 +90,4 @@ chmod +x "$out"
 echo "made $out"
 
 source "$here/scripts/updater.sh"
-updater_manifest "$out" "linux-$arch" || true
+updater_manifest "$out" "linux-$arch"

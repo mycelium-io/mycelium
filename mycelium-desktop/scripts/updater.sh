@@ -12,13 +12,16 @@
 #
 # Reads the key and its password from TAURI_SIGNING_PRIVATE_KEY(_PASSWORD),
 # and the release tag from RELEASE_TAG or GITHUB_REF_NAME. Without the key (a
-# local build) it says so and returns 1, which a caller takes as "skip".
+# local build) it says so and does nothing. With the key, any failure returns
+# non-zero, and no manifest is written without a signature in it: a manifest
+# with an empty signature would offer every installed app an update it then
+# refuses.
 
 updater_manifest() {
   local file="$1" platform="$2"
   if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
     echo "no TAURI_SIGNING_PRIVATE_KEY; skipping the update manifest"
-    return 1
+    return 0
   fi
   local here tag version outdir
   here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -27,7 +30,16 @@ updater_manifest() {
   outdir="$(cd "$(dirname "$file")" && pwd)"
 
   rm -f "$file.sig"
-  (cd "$here" && npx tauri signer sign "$file" >/dev/null)
+  # Checked by hand: `set -e` doesn't apply inside a function a caller runs as
+  # part of `||` or `if`, so a failed signing would otherwise carry on.
+  (cd "$here" && npx tauri signer sign "$file" >/dev/null) || {
+    echo "signing $file for the updater failed" >&2
+    return 1
+  }
+  if [ ! -s "$file.sig" ]; then
+    echo "signing $file for the updater left no signature" >&2
+    return 1
+  fi
   # node, not python: it is on every machine that just ran tauri build.
   node -e '
     const [path, version, platform, signature, url] = process.argv.slice(1);

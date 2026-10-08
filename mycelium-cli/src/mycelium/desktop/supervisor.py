@@ -73,6 +73,9 @@ TAIL_LINES = 40
 #: Everything the supervisor says, for when something goes wrong.
 LOG_PATH = Path.home() / ".mycelium" / "logs" / "desktop.log"
 WINDOWS = sys.platform == "win32"
+#: Pi's JavaScript entry point inside the app's resources, which the hub runs
+#: on node on Windows (see ``Locator.pi``).
+PI_ENTRY = "pi/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js"
 
 
 class LocateError(Exception):
@@ -171,12 +174,17 @@ class Locator:
         return [str(exe), "server"]
 
     def pi(self) -> str | None:
-        """Pi, which the engines think with: the app's own, else one on PATH."""
+        """Pi, which the engines think with: the app's own, else one on PATH.
+
+        On Windows the app's Pi is its JavaScript entry point, which the hub
+        runs on the app's node (``pi_session.pi_argv``): a batch-file launcher
+        would pass every prompt through ``cmd.exe``, which mangles it.
+        """
         return (
             os.environ.get("ALIGNER_PI_BINARY")
             or (
                 str(bundled)
-                if (bundled := self._bundled("pi/pi.cmd" if WINDOWS else "pi/pi"))
+                if (bundled := self._bundled(PI_ENTRY if WINDOWS else "pi/pi"))
                 else None
             )
             or shutil.which("pi")
@@ -225,7 +233,10 @@ def _signal_group(proc: subprocess.Popen[str], *, force: bool) -> None:
     """Ask a program and everything it started to stop; ``force`` kills them."""
     if WINDOWS:
         # Windows has no process groups to signal; taskkill walks the tree.
-        argv = ["taskkill", "/PID", str(proc.pid), "/T", *(["/F"] if force else [])]
+        # Always /F: without it taskkill only asks a window to close, and these
+        # programs have none, so a polite ask would just wait out the timeout
+        # and push the app past its own stop grace.
+        argv = ["taskkill", "/PID", str(proc.pid), "/T", "/F"]
         subprocess.run(argv, capture_output=True, check=False)  # noqa: S603, S607
         return
     with contextlib.suppress(ProcessLookupError, PermissionError):

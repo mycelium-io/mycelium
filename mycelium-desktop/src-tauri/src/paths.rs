@@ -181,7 +181,14 @@ pub fn link_bundled() -> PathSetup {
         linked,
         skipped: Vec::new(),
         on_path: local_bin_on_user_path(),
-        line: format!("setx PATH \"%PATH%;{}\"", dir.display()),
+        // PowerShell, adding to the user's own PATH only. Not `setx PATH
+        // "%PATH%;…"`: that copies the system PATH into the user's and cuts the
+        // result at 1024 characters, which damages a typical developer's PATH.
+        line: format!(
+            "[Environment]::SetEnvironmentVariable(\"Path\", \
+             [Environment]::GetEnvironmentVariable(\"Path\", \"User\") + \";{}\", \"User\")",
+            dir.display()
+        ),
     }
 }
 
@@ -192,6 +199,14 @@ pub fn link_bundled() -> PathSetup {
     let mut skipped = Vec::new();
     for name in ["mycelium", "herdr"] {
         let Some(source) = bundled(name) else { continue };
+        // An AppImage's programs live in a mount that is new on every launch
+        // and gone once the app exits, while the agents in herdr keep running.
+        // Link to a copy kept outside it instead, so their `mycelium` commands
+        // still work after the app closes.
+        let Some(source) = stable_copy(&source, name) else {
+            skipped.push(name.to_string());
+            continue;
+        };
         let _ = std::fs::create_dir_all(&dir);
         let target = dir.join(name);
         match std::fs::symlink_metadata(&target) {
@@ -221,6 +236,41 @@ pub fn link_bundled() -> PathSetup {
 #[cfg(unix)]
 fn symlink(source: &Path, target: &Path) -> std::io::Result<()> {
     std::os::unix::fs::symlink(source, target)
+}
+
+/// Where a bundled program can be linked from for as long as it's installed.
+///
+/// Inside an AppImage (`$APPIMAGE` is set) that's a copy under
+/// ~/.local/share/mycelium/bin, refreshed when this launch's program differs.
+/// The copy is written beside the old one and renamed over it, so an agent
+/// still running the old copy keeps running. Anywhere else the bundled
+/// program already has a lasting path.
+#[cfg(unix)]
+fn stable_copy(source: &Path, name: &str) -> Option<PathBuf> {
+    if std::env::var_os("APPIMAGE").is_none() {
+        return Some(source.to_path_buf());
+    }
+    let dir = home().join(".local").join("share").join("mycelium").join("bin");
+    let target = dir.join(name);
+    let same = |a: &Path, b: &Path| -> bool {
+        let (Ok(a), Ok(b)) = (std::fs::metadata(a), std::fs::metadata(b)) else { return false };
+        a.len() == b.len() && a.modified().ok() == b.modified().ok()
+    };
+    if same(source, &target) {
+        return Some(target);
+    }
+    std::fs::create_dir_all(&dir).ok()?;
+    let partial = dir.join(format!(".{name}.partial"));
+    std::fs::copy(source, &partial).ok()?;
+    // Keep the source's modified time, so the next launch can tell it's current.
+    if let Ok(modified) = std::fs::metadata(source).and_then(|m| m.modified()) {
+        let _ = std::fs::File::options()
+            .write(true)
+            .open(&partial)
+            .and_then(|f| f.set_modified(modified));
+    }
+    std::fs::rename(&partial, &target).ok()?;
+    Some(target)
 }
 
 /// Open a web or mail link, or a file, with what this machine opens it with.

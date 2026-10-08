@@ -22,8 +22,8 @@
 #   hub/      the hub, a PyInstaller directory build
 #   ui/       the UI's standalone build, with its static files
 #   models/   the embedding model, so memory search works offline
-#   pi/       Pi, which the engines think with, and a launcher that runs it
-#             on the bundled node (pi, or pi.cmd on Windows)
+#   pi/       Pi, which the engines think with, and (Mac, Linux) a launcher
+#             that runs it on the bundled node
 #   conpty/   Windows only: the console host herdr runs its panes in
 #
 # Usage: bash scripts/stage-sidecars.sh [step...]
@@ -252,13 +252,13 @@ stage_pi() {
   find "$res/pi/node_modules" -type f \
     \( -name "*.map" -o -name "*.d.ts" -o -name "*.d.mts" -o -name "*.d.cts" \) -delete
   find "$res/pi/node_modules" -type d -name .bin -prune -exec rm -rf {} +
-  # The hub runs `pi` as a program; this is that program, on the app's node,
-  # which sits where the app's programs do: from pi/, Contents/MacOS on a
-  # Mac, usr/bin in an AppImage, and the install folder on Windows.
+  # The hub runs `pi` as a program; on a Mac and in an AppImage this is that
+  # program, on the app's node, which sits where the app's programs do: from
+  # pi/, Contents/MacOS on a Mac and usr/bin in an AppImage. Windows gets no
+  # launcher: a batch file would pass every prompt through cmd.exe, which cuts
+  # it at the first newline, so the hub runs cli.js on node itself there.
   local cli='node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js'
-  if [ "$os" = windows ]; then
-    printf '@"%%~dp0..\\node.exe" "%%~dp0%s" %%*\r\n' "${cli//\//\\}" > "$res/pi/pi.cmd"
-  else
+  if [ "$os" != windows ]; then
     local node='../../MacOS/node'
     [ "$os" = linux ] && node='../../../bin/node'
     cat > "$res/pi/pi" <<LAUNCHER

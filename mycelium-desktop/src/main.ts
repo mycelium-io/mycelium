@@ -27,8 +27,11 @@ interface Found {
 
 /** What copy calls this machine, and the keys for Settings, on this platform. */
 const ON_MAC = navigator.userAgent.includes("Mac");
+const ON_WINDOWS = navigator.userAgent.includes("Windows");
 const MACHINE = ON_MAC ? "Mac" : "computer";
 const SETTINGS_KEYS = ON_MAC ? "⌘," : "Ctrl+,";
+/** Where the app's icon and menu live: the menu bar on a Mac, the tray elsewhere. */
+const TRAY = ON_MAC ? "the menu bar icon" : "the tray icon";
 
 /** A hub on this Mac, as `mycelium.hubs` found it. */
 interface HubSeen {
@@ -854,7 +857,9 @@ function hubReadOnly(at: "model" | "experiences" | "privacy", answer: Promise<Hu
 /** Everything Start changes on this Mac, said before anything happens. */
 function setsUpPiece(c: Choices): HTMLElement {
   const items: [string, string][] = [
-    ["mycelium and herdr on your PATH", "Links in ~/.local/bin, so agents can run them. A file you already have there is left alone."],
+    ON_WINDOWS
+      ? ["mycelium and herdr on your agents' PATH", "The app's own folder comes first on the PATH of everything it starts, so agents can run them."]
+      : ["mycelium and herdr on your PATH", "Links in ~/.local/bin, so agents can run them. A file you already have there is left alone."],
     ["~/.mycelium", `Your settings, and these choices. Rooms on this ${MACHINE} keep their notes here too.`],
     c.mode === "hub"
       ? [`Rooms on this ${MACHINE}, while Mycelium is open`, `SLIM, the hub and its UI, reachable only from this ${MACHINE} (127.0.0.1).`]
@@ -862,7 +867,7 @@ function setsUpPiece(c: Choices): HTMLElement {
     ...(c.restore
       ? ([["herdr's integrations", "A hook in each agent program's own settings, so herdr can reopen its agents after a restart."]] as [string, string][])
       : []),
-    ["Start at login", "Only if you turn it on, in Settings or from the menu bar icon."],
+    ["Start at login", `Only if you turn it on, in Settings or from ${TRAY}.`],
   ];
   return el(
     "details",
@@ -1260,16 +1265,27 @@ async function loading(setup: PathSetup | null = null) {
 
   const pathNote =
     setup && !setup.onPath && setup.linked.length > 0
-      ? el(
-          "div",
-          { class: "note" },
-          "Mycelium put ",
-          el("code", {}, "mycelium"),
-          " and ",
-          el("code", {}, "herdr"),
-          " in ~/.local/bin, which your shell doesn't search yet. Add this line to your shell profile so your own terminals find them too: ",
-          el("code", {}, setup.line),
-        )
+      ? ON_WINDOWS
+        ? el(
+            "div",
+            { class: "note" },
+            "Your agents can run ",
+            el("code", {}, "mycelium"),
+            " and ",
+            el("code", {}, "herdr"),
+            ". So your own terminals find them too, add the app's folder to your PATH by running this once in PowerShell: ",
+            el("code", {}, setup.line),
+          )
+        : el(
+            "div",
+            { class: "note" },
+            "Mycelium put ",
+            el("code", {}, "mycelium"),
+            " and ",
+            el("code", {}, "herdr"),
+            " in ~/.local/bin, which your shell doesn't search yet. Add this line to your shell profile so your own terminals find them too: ",
+            el("code", {}, setup.line),
+          )
       : null;
   const skipped =
     setup && setup.skipped.length > 0

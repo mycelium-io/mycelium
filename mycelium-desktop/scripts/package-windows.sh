@@ -36,4 +36,4 @@ cp "$built" "$out"
 echo "made $out"
 
 source "$here/scripts/updater.sh"
-updater_manifest "$out" windows-x86_64 || true
+updater_manifest "$out" windows-x86_64

@@ -301,8 +301,10 @@ def test_programs_are_found_in_each_platforms_bundle(
     (res / "hub" / f"mycelium-hub{exe}").write_text("")
     (res / "ui" / ".next" / "static").mkdir(parents=True)
     (res / "ui" / "server.js").write_text("")
-    (res / "pi").mkdir()
-    pi = res / "pi" / ("pi.cmd" if windows else "pi")
+    # On Windows the hub runs Pi's entry point on node; a batch launcher would
+    # mangle every prompt on its way through cmd.exe.
+    pi = res / sv.PI_ENTRY if windows else res / "pi" / "pi"
+    pi.parent.mkdir(parents=True)
     pi.write_text("")
     (res / "models").mkdir()
     loc = Locator(bundle=bin_dir, repo=None)
