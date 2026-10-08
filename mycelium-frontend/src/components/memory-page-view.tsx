@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, Pencil, Eye } from "lucide-react";
 import {
   fetchMemory,
@@ -17,8 +17,7 @@ import { memoryHref } from "@/lib/memory-routes";
 import { isLiveEpisode } from "@/lib/threads";
 import { MemoryDetail } from "@/components/memory-detail";
 import { MemoryEditor } from "@/components/memory-editor";
-import { RoomChatBox } from "@/components/room-chat-box";
-import { TaskConversation } from "@/components/task/task-conversation";
+import { TaskDiscussion } from "@/components/task/task-discussion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useCurrentUser } from "@/components/current-user";
@@ -68,13 +67,6 @@ export function MemoryPageView({ roomName, memoryKey }: Props) {
     (key: string) => router.push(memoryHref(roomName, key)),
     [router, roomName],
   );
-
-  // The thread conversation owns its own read; it hands us its refresh so the
-  // page composer's send can re-read the episode.
-  const threadRefresh = useRef<(() => void) | null>(null);
-  const onThreadReady = useCallback((refresh: () => void) => {
-    threadRefresh.current = refresh;
-  }, []);
 
   if (memory === undefined) {
     return (
@@ -183,26 +175,12 @@ export function MemoryPageView({ roomName, memoryKey }: Props) {
             written before threading carries the room's own live episode (or
             none), and reading that as a thread would empty the room's history. */}
         {!isEditing && hasDiscussion && memory.episode && (
-          <section className="mt-8 px-6 md:px-8">
-            <h2 className="mb-2 text-micro uppercase tracking-wide text-faint">Discussion</h2>
-            {/* The card frames the discussion; it does not scroll it. The page
-                is one scroll from the memory's metadata through its body to the
-                last reply, so the conversation grows the card rather than
-                filling a box of its own. */}
-            <div className="rounded-xl border border-border bg-surface">
-              <TaskConversation
-                roomName={roomName}
-                episode={memory.episode}
-                onOpenMemory={onNavigate}
-                onReady={onThreadReady}
-              />
-              <RoomChatBox
-                roomName={roomName}
-                episode={memory.episode}
-                onSent={() => threadRefresh.current?.()}
-              />
-            </div>
-          </section>
+          <TaskDiscussion
+            roomName={roomName}
+            episode={memory.episode}
+            onOpenMemory={onNavigate}
+            className="mt-6 px-6 md:px-8"
+          />
         )}
       </div>
 

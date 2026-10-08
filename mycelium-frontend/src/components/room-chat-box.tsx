@@ -82,6 +82,10 @@ interface Props {
   threadLabel?: string | null;
   /** Opens a memory by key, e.g. the one the + or `/memory` just wrote. */
   onOpenMemory?: (key: string) => void;
+  /** Set inside a column of content (a task's Discussion) rather than at the
+   *  foot of a pane: no rule above it and no inset of its own, so its box lines
+   *  up with the text above it. */
+  inline?: boolean;
 }
 
 /** What the composer's + adds. Files ride on the message, so they're offered
@@ -201,6 +205,7 @@ export function RoomChatBox({
   episode = null,
   threadLabel = null,
   onOpenMemory,
+  inline = false,
 }: Props) {
   const [content, setContent] = useState("");
   // What's typed is kept per room (and per thread) until it's sent, so moving
@@ -715,9 +720,12 @@ export function RoomChatBox({
   ) : null;
 
   // The strip paints no background of its own: it sits on the channel, a
-  // thread's surface, a memory tab's paper or a card, and should match each.
+  // thread's pane or a task's page, and should match each.
   return (
-    <div data-tour="composer" className={`@container border-t border-border px-4 py-3 flex-shrink-0${className ? ` ${className}` : ""}`}>
+    <div
+      data-tour="composer"
+      className={cn("@container flex-shrink-0", inline ? "pt-2" : "border-t border-border px-4 py-3", className)}
+    >
       <div className="relative">
         {/* Over the box, nearest it last: what the word being typed can be,
             the command's signature with that argument lit, then what the

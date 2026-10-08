@@ -53,8 +53,7 @@ import { MemoryDetail } from "@/components/memory-detail";
 import { MemoryEditor } from "@/components/memory-editor";
 import { NewMemoryDialog } from "@/components/new-memory-dialog";
 import { Button } from "@/components/ui/button";
-import { RoomChatBox } from "@/components/room-chat-box";
-import { TaskConversation } from "@/components/task/task-conversation";
+import { TaskDiscussion } from "@/components/task/task-discussion";
 import { isLiveEpisode } from "@/lib/threads";
 import { useCurrentUser } from "@/components/current-user";
 import { useUnsavedGuard } from "@/components/unsaved-changes";
@@ -359,14 +358,6 @@ export function MemoryPanel({
   const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { principal } = useCurrentUser();
   const revalidate = useRoomRevalidate(roomName);
-
-  // The drawer's discussion refreshes itself when a message is sent, the same
-  // way the full page and the thread pane do — the conversation hands back its
-  // reload, and the composer calls it on send.
-  const threadRefresh = useRef<(() => void) | null>(null);
-  const onThreadReady = useCallback((refresh: () => void) => {
-    threadRefresh.current = refresh;
-  }, []);
 
   // Hovering a row opens a preview card after a beat of hover intent. It is
   // anchored to the pane's left edge rather than the row, so it never covers
@@ -798,24 +789,12 @@ export function MemoryPanel({
                   episode (or none) is not a thread, and reading it as one would
                   empty the room's history. */}
               {hasDiscussion && selected.episode && (
-                <section className="mt-6 border-t border-border px-5 py-4">
-                  <h2 className="mb-2 text-micro uppercase tracking-wide text-faint">Discussion</h2>
-                  {/* The card frames the discussion; the drawer scrolls it, same
-                      as the full page. */}
-                  <div className="rounded-xl border border-border bg-surface">
-                    <TaskConversation
-                      roomName={roomName}
-                      episode={selected.episode}
-                      onOpenMemory={openMemoryByKey}
-                      onReady={onThreadReady}
-                    />
-                    <RoomChatBox
-                      roomName={roomName}
-                      episode={selected.episode}
-                      onSent={() => threadRefresh.current?.()}
-                    />
-                  </div>
-                </section>
+                <TaskDiscussion
+                  roomName={roomName}
+                  episode={selected.episode}
+                  onOpenMemory={openMemoryByKey}
+                  className="mt-6 px-5"
+                />
               )}
             </>
           )
