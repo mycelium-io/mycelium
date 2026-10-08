@@ -897,6 +897,17 @@ is no litellm dependency.
   rather than threading a refresh counter down as a prop. A store (Zustand) is
   reserved for genuine client state — which rail is open, what's selected — not
   for anything the hub owns.
+- **The room's center is tabs and splits, one kind of tab for every view.**
+  `components/room-dock.tsx` lays the center out with dockview: Channel, Board,
+  Network, each open memory and each open thread is a tab (`lib/room-dock.ts`
+  names them: fixed ids for the three views, `memory:<key>` and
+  `thread:<episode>` for the rest, so opening one that is open shows it). Tabs
+  drag to reorder and onto an edge to split; a thread opens in a group beside
+  the Channel's. The layout is this browser's, per room, and a saved one this
+  version can't fully draw is dropped rather than half-restored. The Channel
+  never closes and renders with `visibility: hidden` behind another tab, so it
+  keeps its scroll and never reads as an empty viewport. Too narrow to split,
+  every tab sits in one group. A new view is a new tab kind, not a new pane.
 - **A2A bridge is proxied, not an MLS member (be honest).** The A2A bridge (epic
   #719) makes a room speak Agent2Agent both ways: `adapter: a2a` registers a
   remote endpoint as a room member (`a2a_bridge.py` answers its `@`-mentions by

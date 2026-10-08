@@ -98,6 +98,11 @@ export const KEYMAP: Binding[] = [
   { id: "pane.board", keys: ["alt+p"], label: "Board", group: "Panes", scope: "room" },
   // Network = the merged SLIM diagnostics rail + message feed.
   { id: "pane.network", keys: ["alt+n"], label: "Network", group: "Panes", scope: "room" },
+  { id: "tab.close", keys: ["alt+w"], label: "Close the tab", group: "Panes", scope: "room" },
+  { id: "tab.reopen", keys: ["alt+r"], label: "Reopen the last closed tab", group: "Panes", scope: "room" },
+  { id: "tab.split", keys: ["alt+s"], label: "Split the tab to the right", group: "Panes", scope: "room" },
+  { id: "group.next", keys: ["alt+BracketRight"], label: "Next group of tabs", group: "Panes", scope: "room" },
+  { id: "group.prev", keys: ["alt+BracketLeft"], label: "Previous group of tabs", group: "Panes", scope: "room" },
 
   { id: "rail.agents", keys: ["alt+a"], label: "Members", group: "Inspector", scope: "room" },
   { id: "rail.memory", keys: ["alt+m"], label: "Memory", group: "Inspector", scope: "room" },
@@ -153,7 +158,12 @@ export function eventToChord(e: KeyboardEvent, mac: boolean): string {
   return parts.join("+");
 }
 
-const CHORD_LABELS: Record<string, string> = { Escape: "Esc", Backslash: "\\" };
+const CHORD_LABELS: Record<string, string> = {
+  Escape: "Esc",
+  Backslash: "\\",
+  BracketLeft: "[",
+  BracketRight: "]",
+};
 
 /** True for a chord the reveal modifier fires — the only kind a badge can
  *  honestly draw, since a badge is read while that modifier is held. */

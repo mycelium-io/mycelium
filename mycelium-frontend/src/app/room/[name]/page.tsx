@@ -7,18 +7,17 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDefaultLayout } from "react-resizable-panels";
 import { type EpisodeSummary } from "@/lib/api";
-import { useRoom, useRoomRevalidate, useRoomThreads } from "@/lib/room-data";
+import { useRoom, useRoomRevalidate } from "@/lib/room-data";
 import { useAppStream } from "@/lib/stream-hub";
 import { parseFocus, type FocusTarget } from "@/lib/search";
 import { parseRoomNameParam } from "@/lib/memory-routes";
 import { AppShell } from "@/components/app-shell";
-import { EventStream, type View } from "@/components/event-stream";
-import { RoomChatBox } from "@/components/room-chat-box";
-import { ThreadView } from "@/components/thread-view";
+import { RoomDock, type RoomDockHandle } from "@/components/room-dock";
 import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
 import { StatusButton } from "@/components/status-items";
 import { episodeUrn } from "@/lib/threads";
+import { parsePanelId, type View } from "@/lib/room-dock";
 import { useCommands, useKeyAction, useKeyScope } from "@/components/keymap-provider";
 import type { PaletteCommand } from "@/lib/commands";
 import { useRoomStatus } from "@/lib/use-status";
@@ -27,16 +26,10 @@ import {
   INSPECTOR_FOLD_WIDTH,
   INSPECTOR_PANEL,
   MAIN_PANEL,
-  MAIN_WITH_THREAD_MIN,
   PANEL_INSPECTOR,
   PANEL_MAIN,
-  PANEL_ROOM_SURFACE,
-  PANEL_THREAD,
   ROOM_GROUP_ID,
   ROOM_PANEL_IDS,
-  THREAD_GROUP_ID,
-  THREAD_PANEL,
-  THREAD_PANEL_IDS,
   layoutStorage,
 } from "@/lib/panel-layout";
 import { useCollapsibleRail } from "@/lib/use-collapsible-rail";
@@ -45,8 +38,6 @@ import { RailSheet } from "@/components/rail-sheet";
 import { RoomMenu } from "@/components/room-menu";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Lock } from "lucide-react";
-import { MemoryTab, type GuardHandle } from "@/components/memory-tab";
-import { MemoryTabs } from "@/components/memory-tabs";
 
 function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string; color: string } | null {
   if (!episodes || episodes.length === 0) return null;
@@ -78,16 +69,12 @@ function RoomWorkspace() {
   const [connected, setConnected] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<Tab>("agents");
   const [inspectorOpen, setInspectorOpen] = useState(true);
-  const [editorView, setEditorView] = useState<View>("channel");
   // Hoisted above the state below so the tour flag can be seeded from the URL.
   const searchParamsEarly = useSearchParams();
   // `?tour=1` seeds the tour once on mount; exiting is client-only state after that.
   const [tourActive, setTourActive] = useState(() => searchParamsEarly.get("tour") === "1");
   const [inviteEngine, setInviteEngine] = useState(false);
   const [focusMemory, setFocusMemory] = useState<{ key: string; nonce: number } | null>(null);
-  // The open thread, as a URN. A transient pane and nothing more: no rail holds
-  // it, no route names it, and closing it leaves the room exactly as it was.
-  const [threadEpisode, setThreadEpisode] = useState<string | null>(null);
 
   const handleTourExit = useCallback(() => {
     setTourActive(false);
@@ -106,74 +93,43 @@ function RoomWorkspace() {
     setInspectorOpen(true);
   }, []);
 
-  // Memories open as tabs beside Channel, Board and Network, from the Memory
-  // rail's tree or a `[[wikilink]]` anywhere in the room. The tree reveals the
-  // one opened. Leaving a memory with edits in progress asks first.
-  const [openMemories, setOpenMemories] = useState<string[]>([]);
-  const [activeMemory, setActiveMemory] = useState<string | null>(null);
-  const memoryGuards = useRef(new Map<string, GuardHandle>());
-  const onMemoryGuard = useCallback((key: string, guard: GuardHandle | null) => {
-    if (guard) memoryGuards.current.set(key, guard);
-    else memoryGuards.current.delete(key);
-  }, []);
-  const leaveMemory = useCallback(
-    (then: () => void) => {
-      const guard = activeMemory ? memoryGuards.current.get(activeMemory) : undefined;
-      if (guard) guard(then);
-      else then();
+  // The room's center is a dock of tabs (`RoomDock`). What arrives before it
+  // is ready (a `?focus=` on first load) waits for it rather than being lost.
+  const dock = useRef<RoomDockHandle | null>(null);
+  const pending = useRef<((d: RoomDockHandle) => void)[]>([]);
+  const withDock = useCallback(
+    (run: (d: RoomDockHandle) => void) => {
+      if (dock.current?.room === roomName) run(dock.current);
+      else pending.current.push(run);
     },
-    [activeMemory],
+    [roomName],
   );
+  const onDockReady = useCallback((handle: RoomDockHandle) => {
+    dock.current = handle;
+    const queued = pending.current;
+    pending.current = [];
+    queued.forEach(run => run(handle));
+  }, []);
+  const [activePanel, setActivePanel] = useState<string | null>("channel");
+  const activeParsed = activePanel ? parsePanelId(activePanel) : null;
+  const activeMemory = activeParsed?.kind === "memory" ? activeParsed.key : null;
+
+  // Memories open as tabs, from the Memory rail's tree or a `[[wikilink]]`
+  // anywhere in the room. The tree reveals the one opened.
   const openMemory = useCallback(
     (key: string) => {
-      leaveMemory(() => {
-        setOpenMemories(open => (open.includes(key) ? open : [...open, key]));
-        setActiveMemory(key);
-      });
+      withDock(d => d.openMemory(key));
       setFocusMemory(prev => ({ key, nonce: (prev?.nonce ?? 0) + 1 }));
     },
-    [leaveMemory],
+    [withDock],
   );
-  const closeMemory = useCallback(
-    (key: string) => {
-      const close = () => {
-        setOpenMemories(open => {
-          const at = open.indexOf(key);
-          const rest = open.filter(k => k !== key);
-          // Closing the open tab shows its neighbor, or the room's view when it was the last.
-          setActiveMemory(active => (active === key ? (rest[Math.min(at, rest.length - 1)] ?? null) : active));
-          return rest;
-        });
-      };
-      const guard = memoryGuards.current.get(key);
-      if (guard) guard(close);
-      else close();
-    },
-    [],
-  );
-  const showView = useCallback(
-    (view: View) => leaveMemory(() => {
-      setActiveMemory(null);
-      setEditorView(view);
-    }),
-    [leaveMemory],
-  );
+  const showView = useCallback((view: View) => withDock(d => d.showView(view)), [withDock]);
 
   const handleEngineInviteShown = useCallback(() => setInviteEngine(false), []);
 
   // A board row's thread chip, or a ping in the channel. Both name the same
   // thing — the episode — because a row and its thread are one object.
-  const openThread = useCallback((episode: string) => setThreadEpisode(episode), []);
-  const closeThread = useCallback(() => setThreadEpisode(null), []);
-
-  // The task a thread belongs to, when the room knows of one. A coordination
-  // phase opens its own episode and records no back-link, so the pane names the
-  // thread instead of guessing at a row.
-  const threads = useRoomThreads(roomName);
-  const threadTarget = useMemo(
-    () => (threadEpisode ? { episode: threadEpisode, title: threads.get(threadEpisode)?.title ?? null } : null),
-    [threadEpisode, threads],
-  );
+  const openThread = useCallback((episode: string) => withDock(d => d.openThread(episode)), [withDock]);
 
   // Arriving from search: `?focus=<type>:<id>` names one item in this room.
   // Reveal the surface it lives on, then hand the id to the panel that owns the
@@ -212,29 +168,30 @@ function RoomWorkspace() {
     setFocus(target);
     if (target.type === "episode") openThread(episodeUrn(roomName, target.id));
     else if (target.type === "agent") openTab("agents");
-    else if (target.type === "message") setEditorView("channel");
+    else if (target.type === "message") showView("channel");
     router.replace(`/room/${encodeURIComponent(roomName)}`, { scroll: false });
-  }, [focusParam, openMemory, openTab, openThread, roomName, router]);
+  }, [focusParam, openMemory, openTab, openThread, showView, roomName, router]);
 
-  // Room-scoped keybinds: the panes, the inspector rails, and the composer are
-  // all reachable without a pointer. The chat box focuses the textarea itself;
-  // this only makes sure the pane holding it is the one on screen.
+  // Room-scoped keybinds: the panes, the tabs, the inspector rails, and the
+  // composer are all reachable without a pointer. The chat box focuses the
+  // textarea itself; this only makes sure the pane holding it is the one on
+  // screen.
   useKeyScope("room");
-  // ⌘F belongs to the page rather than to the feed: find is a channel surface,
-  // so the pane has to be the channel before there is anything to find in. The
-  // counter is the message — the channel opens (or re-focuses) its find bar on
-  // every press, including the ones where the bar is already open.
+  // ⌘F belongs to the page rather than to the feed: find is a channel surface.
+  // The counter is the message — the channel opens (or re-focuses) its find bar
+  // on every press, including the ones where the bar is already open.
   const [findRequest, setFindRequest] = useState(0);
-  // Only while the channel is what's showing: over a memory or the board, ⌘F
+  // Only while the channel is the tab in front: over a memory or the board, ⌘F
   // is left to the browser's own find rather than yanking the reader away.
-  useKeyAction(
-    "chat.find",
-    () => setFindRequest(n => n + 1),
-    { enabled: editorView === "channel" && !activeMemory },
-  );
+  useKeyAction("chat.find", () => setFindRequest(n => n + 1), { enabled: activePanel === "channel" });
   useKeyAction("pane.channel", () => showView("channel"));
   useKeyAction("pane.board", () => showView("board"));
   useKeyAction("pane.network", () => showView("network"));
+  useKeyAction("tab.close", () => withDock(d => d.closeActive()));
+  useKeyAction("tab.reopen", () => withDock(d => d.reopenClosed()));
+  useKeyAction("tab.split", () => withDock(d => d.splitActive()));
+  useKeyAction("group.next", () => withDock(d => d.focusGroup(1)));
+  useKeyAction("group.prev", () => withDock(d => d.focusGroup(-1)));
   useKeyAction("rail.agents", () => openTab("agents"));
   useKeyAction("rail.memory", () => openTab("memory"));
   useKeyAction("rail.toggle", () => setInspectorOpen(open => !open));
@@ -275,64 +232,6 @@ function RoomWorkspace() {
     storage: layoutStorage,
     panelIds: ROOM_PANEL_IDS,
   });
-
-  // The room-surface / thread split remembers its own width, so dragging the
-  // thread wider does not disturb where the inspector sits.
-  const {
-    defaultLayout: threadLayout,
-    onLayoutChange: onThreadLayoutChange,
-    onLayoutChanged: onThreadLayoutChanged,
-  } = useDefaultLayout({
-    id: THREAD_GROUP_ID,
-    storage: layoutStorage,
-    panelIds: THREAD_PANEL_IDS,
-  });
-
-  // The room's own surface — the feed/board and its composer — as one element,
-  // so it renders identically whether it stands alone or sits in the split
-  // beside an open thread.
-  const roomSurface = (
-    <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="flex-1 overflow-hidden">
-        <EventStream
-          roomName={roomName}
-          onMemoryChanged={handleMemoryChanged}
-          onConnectionChange={setConnected}
-          onOpenMemory={openMemory}
-          onOpenThread={openThread}
-          view={editorView}
-          onViewChange={showView}
-          focusMessageId={focus?.type === "message" ? focus.id : null}
-          onFocusConsumed={clearFocus}
-          openFind={findRequest}
-          extraTabs={
-            <MemoryTabs
-              keys={openMemories}
-              active={activeMemory}
-              onSelect={key => leaveMemory(() => setActiveMemory(key))}
-              onClose={closeMemory}
-            />
-          }
-          override={
-            activeMemory ? (
-              <MemoryTab
-                key={activeMemory}
-                roomName={roomName}
-                memoryKey={activeMemory}
-                onOpenMemory={openMemory}
-                onGuard={onMemoryGuard}
-              />
-            ) : undefined
-          }
-        />
-      </div>
-      <RoomChatBox
-        roomName={roomName}
-        className={editorView !== "channel" || activeMemory ? "hidden" : undefined}
-        onOpenMemory={openMemory}
-      />
-    </div>
-  );
 
   // Folded, the inspector is a plain strip beside the group rather than a panel
   // inside it: a panel that isn't there can't be squeezed, and it comes back at
@@ -460,56 +359,29 @@ function RoomWorkspace() {
         >
           <ResizablePanel
             id={PANEL_MAIN}
-            // While a thread is open PANEL_MAIN holds the room surface AND the
-            // thread split, so its floor rises to fit both — the inspector gives
-            // way rather than the split having nowhere to go. Under the sheet
-            // layout it holds one surface at whatever width the window has, and
-            // a floor wider than the window is a constraint nothing satisfies.
-            minSize={sheetLayout ? "0px" : threadTarget ? MAIN_WITH_THREAD_MIN : MAIN_PANEL.min}
+            // Under the sheet layout it holds one surface at whatever width the
+            // window has, and a floor wider than the window is a constraint
+            // nothing satisfies.
+            minSize={sheetLayout ? "0px" : MAIN_PANEL.min}
             className="flex min-w-0"
           >
             <main className="flex min-w-0 flex-1 overflow-hidden">
-              {threadTarget && sheetLayout ? (
-                // No room for two surfaces: the thread takes the window, and
-                // closing it hands the window back to the room.
-                <ThreadView
-                  roomName={roomName}
-                  target={threadTarget}
-                  onClose={closeThread}
-                  onOpenMemory={openMemory}
-                />
-              ) : threadTarget ? (
-                // The room surface and the task's thread, split by a handle the
-                // reader can drag. Its own group so the width it is dragged to is
-                // remembered independently of the inspector's.
-                <ResizablePanelGroup
-                  className="min-h-0 flex-1"
-                  defaultLayout={threadLayout}
-                  onLayoutChange={onThreadLayoutChange}
-                  onLayoutChanged={onThreadLayoutChanged}
-                >
-                  <ResizablePanel id={PANEL_ROOM_SURFACE} minSize={MAIN_PANEL.min} className="flex min-w-0">
-                    {roomSurface}
-                  </ResizablePanel>
-                  <ResizableHandle withHandle />
-                  <ResizablePanel
-                    id={PANEL_THREAD}
-                    defaultSize={THREAD_PANEL.default}
-                    minSize={THREAD_PANEL.min}
-                    maxSize={THREAD_PANEL.max}
-                    className="flex min-w-0"
-                  >
-                    <ThreadView
-                      roomName={roomName}
-                      target={threadTarget}
-                      onClose={closeThread}
-                      onOpenMemory={openMemory}
-                    />
-                  </ResizablePanel>
-                </ResizablePanelGroup>
-              ) : (
-                roomSurface
-              )}
+              <RoomDock
+                // One dock per room: its layout, its tabs and their state are
+                // the room's, and switching rooms starts from that room's own.
+                key={roomName}
+                roomName={roomName}
+                onMemoryChanged={handleMemoryChanged}
+                onConnectionChange={setConnected}
+                focusMessageId={focus?.type === "message" ? focus.id : null}
+                onFocusConsumed={clearFocus}
+                openFind={findRequest}
+                narrow={sheetLayout}
+                onActiveChange={setActivePanel}
+                onReady={onDockReady}
+                onOpenMemory={openMemory}
+                onOpenThread={openThread}
+              />
             </main>
           </ResizablePanel>
           {inspectorInPanel && (
@@ -553,7 +425,7 @@ function RoomWorkspace() {
 
       <RoomTour
         active={tourActive}
-        setEditorView={setEditorView}
+        setEditorView={showView}
         setInspectorTab={setInspectorTab}
         onExit={handleTourExit}
       />

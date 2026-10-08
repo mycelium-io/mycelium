@@ -10,7 +10,7 @@
 
 import { driver, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
-import type { View } from "@/components/event-stream";
+import type { View } from "@/lib/room-dock";
 import type { Tab as InspectorTab } from "@/components/room-inspector";
 
 export interface TourDeps {

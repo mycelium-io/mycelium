@@ -40,6 +40,9 @@ interface Props {
   roomName: string;
   target: ThreadTarget;
   onClose: () => void;
+  /** Whether the pane draws its own close button and closes on Esc. Off where
+   *  something else closes it, like a tab with its ×. */
+  showClose?: boolean;
   /** A `[[wikilink]]` in a thread message opens the memory, same as in chat. */
   onOpenMemory?: (key: string) => void;
 }
@@ -59,7 +62,7 @@ interface Props {
  * this episode. The read is the conversation's own SWR entry, so opening this
  * never replaces the room's feed with a filtered slice of itself.
  */
-export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
+export function ThreadView({ roomName, target, onClose, showClose = true, onOpenMemory }: Props) {
   // The task this thread is of, resolved by its episode — the row is the thread,
   // so the pane opens with the task itself (its body and fields) above the
   // conversation about it, the way an issue shows its description over its
@@ -93,6 +96,7 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
   // Esc closes: the pane is transient, so leaving it must be as cheap as
   // opening it was.
   useEffect(() => {
+    if (!showClose) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       const el = e.target as HTMLElement | null;
@@ -101,7 +105,7 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, showClose]);
 
   return (
     <section
@@ -164,16 +168,18 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
               )}
             </Tooltip>
           )}
-          <Tooltip content="Close (Esc)">
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close thread"
-              className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-            >
-              <X className="size-3.5" strokeWidth={1.9} />
-            </button>
-          </Tooltip>
+          {showClose && (
+            <Tooltip content="Close (Esc)">
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close thread"
+                className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+              >
+                <X className="size-3.5" strokeWidth={1.9} />
+              </button>
+            </Tooltip>
+          )}
         </span>
       </header>
 
