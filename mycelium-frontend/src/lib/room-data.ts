@@ -35,6 +35,7 @@ import {
   fetchRoomFolders,
   fetchProtocols,
   fetchRooms,
+  fetchSchedules,
   fetchSkills,
   fetchUploads,
   logFetchError,
@@ -51,6 +52,7 @@ import {
   type RoomFloor,
   type RoomPresence,
   type RoomMessage,
+  type ScheduleList,
   type Skill,
   type UploadList,
 } from "@/lib/api";
@@ -73,6 +75,8 @@ const POLL = {
   messages: 30_000,
   memories: 30_000,
   skills: 30_000,
+  // A run is pushed (`schedule_changed`); this only catches a missed push.
+  schedules: 30_000,
   uploads: 30_000,
   // Read only while a conductor summon is being written; a room's own flows
   // change about as often as its skills.
@@ -130,6 +134,7 @@ const NO_MESSAGES: RoomMessage[] = [];
 const NO_POSTERS: string[] = [];
 const NO_MEMORIES: Memory[] = [];
 const NO_SKILLS: Skill[] = [];
+const NO_SCHEDULES: ScheduleList = { schedules: [], total: 0, checks: {} };
 const NO_UPLOADS: UploadList = { uploads: [], total: 0, accepted: [], max_bytes: 0 };
 const NO_PROTOCOLS: Protocol[] = [];
 const NO_EPISODES: EpisodeSummary[] = [];
@@ -141,6 +146,7 @@ type RoomResource =
   | "messages"
   | "memories"
   | "skills"
+  | "schedules"
   | "uploads"
   | "protocols"
   | "episodes"
@@ -496,6 +502,28 @@ export function useRoomSkills(room: string, opts: RoomQueryOptions = {}) {
     room, "skills", fetchSkills, NO_SKILLS, POLL.skills, opts,
   );
   return { skills: data, loading, refresh };
+}
+
+/** The room's schedules, and the pre-checks its hub runs. One cache entry, so
+ *  the Schedules tab and the Members rail's clock badges share one read. */
+export function useRoomSchedules(room: string, opts: RoomQueryOptions = {}) {
+  const { data, loading, refresh } = useRoomQuery(
+    room, "schedules", fetchSchedules, NO_SCHEDULES, POLL.schedules, opts,
+  );
+  return { schedules: data.schedules, checks: data.checks ?? {}, loading, refresh };
+}
+
+/** Handles that own a live (not expired) schedule, for the Members rail's clock. */
+export function useScheduledHandles(room: string): Map<string, number> {
+  const { schedules } = useRoomSchedules(room);
+  return useMemo(() => {
+    const out = new Map<string, number>();
+    for (const s of schedules) {
+      if (s.state === "expired") continue;
+      out.set(s.owner, (out.get(s.owner) ?? 0) + 1);
+    }
+    return out;
+  }, [schedules]);
 }
 
 /** The room's uploads, and what its hub takes. One cache entry, so every

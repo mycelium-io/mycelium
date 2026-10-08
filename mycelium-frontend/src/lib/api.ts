@@ -565,6 +565,106 @@ export async function fetchSkills(roomName: string): Promise<Skill[]> {
   return data.skills ?? [];
 }
 
+// ── Schedules ────────────────────────────────────────────────────────────────
+// An agent's recurring check-in, kept and fired by the hub. Each run asks a
+// cheap pre-check first; only one that finds something wakes the agent (a
+// model turn), and nothing a run does is said in the room.
+
+export type ScheduleResult = "woke" | "quiet" | "held" | "busy" | "error";
+
+export interface ScheduleRun {
+  at: string;
+  result: ScheduleResult;
+  trigger: "schedule" | "manual";
+  missed?: number;
+  found?: string[];
+  found_total?: number;
+  detail?: string | null;
+}
+
+export interface Schedule {
+  name: string;
+  owner: string;
+  every?: string | null;
+  cron?: string | null;
+  prompt?: string;
+  check: string;
+  task?: string | null;
+  state: "active" | "paused" | "expired";
+  paused: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  expires_at: string;
+  next_run?: string | null;
+  last_run?: string | null;
+  last_result?: ScheduleResult | null;
+  runs?: number;
+  wakes?: number;
+  quiet?: number;
+  history?: ScheduleRun[];
+}
+
+export interface ScheduleList {
+  schedules: Schedule[];
+  total: number;
+  checks?: Record<string, string>;
+}
+
+export interface ScheduleEdit {
+  every?: string;
+  cron?: string;
+  prompt?: string;
+  check?: string;
+  task?: string;
+  paused?: boolean;
+  renew?: boolean;
+  renew_days?: number;
+}
+
+function schedulePath(roomName: string, name?: string): string {
+  const base = `${roomApiPath(roomName)}/schedules`;
+  return name ? `${base}/${encodeURIComponent(name)}` : base;
+}
+
+export async function fetchSchedules(roomName: string): Promise<ScheduleList> {
+  return apiFetch<ScheduleList>(schedulePath(roomName), {
+    cache: "no-store",
+    fallback: { schedules: [], total: 0, checks: {} },
+  });
+}
+
+export async function createSchedule(
+  roomName: string,
+  body: ScheduleEdit & { name: string; owner: string; prompt: string; created_by?: string },
+): Promise<Schedule> {
+  return apiFetch<Schedule>(schedulePath(roomName), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateSchedule(roomName: string, name: string, body: ScheduleEdit): Promise<Schedule> {
+  return apiFetch<Schedule>(schedulePath(roomName, name), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function runSchedule(roomName: string, name: string, wake = false): Promise<ScheduleRun> {
+  return apiFetch<ScheduleRun>(`${schedulePath(roomName, name)}/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ wake }),
+  });
+}
+
+export async function deleteSchedule(roomName: string, name: string): Promise<void> {
+  await apiFetch<void>(schedulePath(roomName, name), { method: "DELETE" });
+}
+
 // ── Uploads ──────────────────────────────────────────────────────────────────
 // A file the room keeps: an `uploads/<name>` memory plus the bytes it names.
 // Linked from chat as `[[uploads/<name>]]`; the bytes are at `url`, sandboxed.

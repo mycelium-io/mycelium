@@ -48,6 +48,7 @@ from app.routes.patterns import router as patterns_router
 from app.routes.protocols import router as protocols_router
 from app.routes.rooms import router as rooms_router
 from app.routes.runners import router as runners_router
+from app.routes.schedules import router as schedules_router
 from app.routes.search import router as search_router
 from app.routes.sessions import router as sessions_router
 from app.routes.skills import router as skills_router
@@ -137,6 +138,11 @@ async def lifespan(app: FastAPI):
     from app.services.lease_sweep import start_lease_sweep, stop_lease_sweep
 
     start_lease_sweep()
+
+    # Schedules: fires each agent's due check-ins (pre-check, then the wake).
+    from app.services import schedules as _schedules
+
+    _schedules.start_sweep()
 
     # Pre-load embedding model so first request isn't slow
     from app.services.embedding import warmup as warmup_embeddings
@@ -285,6 +291,7 @@ async def lifespan(app: FastAPI):
     stop_watcher()
     stop_event_sweep()
     stop_lease_sweep()
+    _schedules.stop_sweep()
 
     # Flush and shut down the OTel SDK so spans are not lost on a clean restart.
     from app.services import telemetry as telemetry_service
@@ -388,6 +395,7 @@ app.include_router(links_router, prefix="/api")
 app.include_router(briefing_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
+app.include_router(schedules_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
 app.include_router(uploads_router, prefix="/api")
 app.include_router(patterns_router, prefix="/api")

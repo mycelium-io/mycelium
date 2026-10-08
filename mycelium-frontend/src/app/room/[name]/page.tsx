@@ -187,6 +187,7 @@ function RoomWorkspace() {
   useKeyAction("pane.channel", () => showView("channel"));
   useKeyAction("pane.board", () => showView("board"));
   useKeyAction("pane.network", () => showView("network"));
+  useKeyAction("pane.schedules", () => showView("schedules"));
   useKeyAction("tab.close", () => withDock(d => d.closeActive()));
   useKeyAction("tab.reopen", () => withDock(d => d.reopenClosed()));
   useKeyAction("tab.split", () => withDock(d => d.splitActive()));

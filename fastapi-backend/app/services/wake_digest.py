@@ -136,6 +136,20 @@ def board(room: str, handle: str, now: datetime) -> tuple[list[str], str]:
     return mine, ", ".join(parts) or "nothing open"
 
 
+def _schedule_lines(room: str, name: str) -> list[str]:
+    """The schedule's prompt and its latest findings, as the owner is told them."""
+    from app.services import schedules
+
+    try:
+        schedule = schedules.get(room, name)
+    except schedules.ScheduleError:
+        return []
+    run = schedule.history[0] if schedule.history else None
+    if run is None:
+        return [schedule.prompt] if schedule.prompt else []
+    return schedules.wake_text(schedule, run, room).splitlines()[1:]
+
+
 def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | None = None) -> str:
     """The digest typed into ``wake``'s agent: why, what changed, what asked for it."""
     from app.routes.participate import _addressed_to
@@ -180,6 +194,8 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
     if reason == "assigned":
         task = f'"{wake.get("title") or wake.get("key")}" ({wake.get("key")})'
         why = f"{sender} gave you a task: {task}"
+    elif reason == "schedule":
+        why = f'your schedule "{wake.get("title")}" fired'
     elif reason == "turn":
         who = f"@{asked[-1].sender}" if asked and asked[-1].sender else sender
         why = f"it's your turn in {_place(room, where)}; {who} is asking"
@@ -218,6 +234,10 @@ def build(room: str, wake: dict[str, Any], records: list[Any], now: datetime | N
         if pointers:
             lines.append(f"Agreed:  {pointers[0]}")
             lines.extend(f"         {p}" for p in pointers[1:])
+
+    # What the schedule says to do, and what its pre-check found.
+    if reason == "schedule" and wake.get("title"):
+        lines += ["", *_schedule_lines(room, str(wake["title"]))]
 
     # The messages that asked for it, newest kept, the latest given the most room.
     shown = asked[-SHOWN:]

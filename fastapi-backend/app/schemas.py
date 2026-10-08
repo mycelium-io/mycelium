@@ -1269,3 +1269,86 @@ class SearchResponse(BaseModel):
         default_factory=dict,
         description="Matches per type before the result list was trimmed",
     )
+
+
+# ── Schedules ─────────────────────────────────────────────────────────────────
+
+ScheduleResult = Literal["woke", "quiet", "held", "busy", "error"]
+
+
+class ScheduleCreate(BaseModel):
+    name: str = Field(
+        ..., min_length=1, max_length=64, pattern=SLUG_PATTERN, description="Schedule slug"
+    )
+    owner: str = Field(..., description="The agent the schedule wakes")
+    every: str | None = Field(None, description="An interval like 30m, 2h or 1d")
+    cron: str | None = Field(None, description="A five-field cron line, read in UTC")
+    prompt: str = Field("", max_length=4000, description="What the owner is told when it wakes")
+    check: str | None = Field(
+        None,
+        description=(
+            "The pre-check that decides whether the owner wakes: always, mentions, "
+            "assigned, stale, silent, task, or search:<query>"
+        ),
+    )
+    task: str | None = Field(None, description="A board row the schedule is bound to")
+    expires_in_days: float | None = Field(
+        None, description="How long until it has to be renewed (hub default when omitted)"
+    )
+    created_by: str | None = Field(None, description="Who is setting it up")
+
+
+class ScheduleUpdate(BaseModel):
+    every: str | None = None
+    cron: str | None = None
+    prompt: str | None = None
+    check: str | None = None
+    task: str | None = Field(None, description="A row key, or an empty string to unbind")
+    paused: bool | None = None
+    renew: bool = Field(False, description="Start its expiry again from now")
+    renew_days: float | None = Field(None, description="Renew for this many days")
+
+
+class ScheduleRunRequest(BaseModel):
+    wake: bool = Field(False, description="Skip the pre-check and wake the owner")
+
+
+class ScheduleRunRead(BaseModel):
+    at: datetime
+    result: ScheduleResult
+    trigger: Literal["schedule", "manual"]
+    missed: int = 0
+    found: list[str] = []
+    found_total: int = 0
+    detail: str | None = None
+
+
+class ScheduleRead(BaseModel):
+    name: str
+    owner: str
+    every: str | None = None
+    cron: str | None = None
+    prompt: str = ""
+    check: str
+    task: str | None = None
+    state: Literal["active", "paused", "expired"]
+    paused: bool
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+    expires_at: datetime
+    next_run: datetime | None = None
+    last_run: datetime | None = None
+    last_result: ScheduleResult | None = None
+    runs: int = 0
+    wakes: int = Field(0, description="Runs that woke the owner: each one is a model turn")
+    quiet: int = Field(0, description="Runs whose pre-check found nothing, costing no turn")
+    history: list[ScheduleRunRead] = []
+
+
+class ScheduleListResponse(BaseModel):
+    schedules: list[ScheduleRead]
+    total: int
+    checks: dict[str, str] = Field(
+        default_factory=dict, description="The pre-checks the hub runs, and what each finds"
+    )

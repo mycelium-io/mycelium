@@ -72,6 +72,10 @@ const WRITES: { path: string; body: unknown }[] = [
   },
   { path: "/api/rooms/{room_name}/memory/search", body: { query: "cutover" } },
   { path: "/api/rooms", body: { name: "a-new-room" } },
+  {
+    path: "/api/rooms/{room_name}/schedules",
+    body: { name: "from-a-test", owner: "builder", every: "1h", prompt: "look in" },
+  },
 ];
 
 interface Route {
