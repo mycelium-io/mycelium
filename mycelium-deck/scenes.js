@@ -21,7 +21,7 @@
   let C = {};
   const readColors = () => {
     const cs = getComputedStyle(document.documentElement), v = n => cs.getPropertyValue(n).trim();
-    C = { accent: v('--accent'), violet: v('--accent2'), green: v('--green'), yellow: v('--yellow'), text: v('--text'), muted: v('--muted'), faint: v('--faint'), bg: v('--bg'), dark: document.documentElement.dataset.theme !== 'light' };
+    C = { accent: v('--accent'), violet: v('--accent2'), green: v('--green'), yellow: v('--yellow'), red: v('--red'), text: v('--text'), muted: v('--muted'), faint: v('--faint'), bg: v('--bg'), dark: document.documentElement.dataset.theme !== 'light' };
   };
   readColors();
   new MutationObserver(readColors).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
@@ -74,8 +74,8 @@
       label(text, x, y, a = 1, color = C.muted, size = 20, align = 'center') {
         if (a < 0.01) return;
         ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'middle';
-        ctx.font = `500 ${size}px "Geist Mono", ui-monospace, monospace`;
-        ctx.letterSpacing = '0.12em';
+        ctx.font = `500 ${size}px "IBM Plex Sans", system-ui, sans-serif`;
+        ctx.letterSpacing = '0.08em';
         ctx.fillText(text.toUpperCase(), x, y); ctx.restore();
       },
     };
@@ -104,170 +104,136 @@
 
   // ════ The scenes ════
 
-  // ── A roleplay, then a network ──
-  // Stage 0: one orchestrator hands turns to agent a and agent b, one message
-  // at a time, always through itself. Stage 1: the orchestrator goes; agents
-  // link to the ones near them, pass work along in chains, and invoke new
-  // agents that later finish and go.
-  defs.roleplay = () => {
+  // ── One agent, an orchestrator, its failure, then coworkers ──
+  // Stage 0: one agent making tool calls; the ring around it is its context
+  // window, which fills and compacts. Stage 1: it becomes an orchestrator
+  // handing work to subagents, each with a few tools; each sends a summary up
+  // and goes, and the summaries pile into the orchestrator's context until
+  // it is full. Stage 2: one bad instruction at the top goes wrong all the
+  // way down. Stage 3: the orchestrator goes; agents that each own a piece
+  // of the work stay, keep the context they build up, and talk directly.
+  defs.coworkers = () => {
     const rnd = seeded(11);
-    const hub = node(960, 610, 0, 0);
-    const spots = [];
-    for (let tries = 0; spots.length < 13 && tries < 900; tries++) {
-      const p = { x: 330 + rnd() * 1260, y: 360 + rnd() * 560 };
-      if (spots.every(q => dist(p, q) > 190)) spots.push(p);
-    }
-    const agents = spots.map(p => node(p.x, p.y));
-    let pulses = [], clock = 0, turn = 0, spawned = [];
+    const lead = node(960, 580, 0, 0);
+    const TOOLS = ['read', 'edit', 'search', 'run tests', 'shell'].map((name, i) => {
+      const ang = -Math.PI / 2 + i * (2 * Math.PI / 5);
+      return { name, x: 960 + Math.cos(ang) * 330, y: 590 + Math.sin(ang) * 250 };
+    });
+    const SLOTS = [480, 720, 960, 1200, 1440];
+    const peers = [['api', 520, 500], ['ui', 960, 400], ['release', 1400, 500], ['qa', 700, 800], ['design', 1220, 800]]
+      .map(([name, x, y]) => Object.assign(node(x, y), { name, context: [] }));
+    const vis = { tools: 0, subs: 0, fail: 0, peers: 0 };
+    let pulses = [], subs = [], piled = [], fill = 0, full = 0;
+    const subagent = (x, life) => {
+      const n = node(x, 780, 0, 0);
+      n.tr = 24; n.ta = 1; n.age = 0; n.life = life; n.sent = false; n.bad = false;
+      n.kit = 1 + Math.floor(rnd() * 2);
+      return n;
+    };
+    // The context window: a track, and an arc as full as it is.
+    const gauge = (d, n, f, a) => {
+      if (a < 0.01) return;
+      const r = n.r + 24, ctx = d.ctx;
+      d.ring(n.x, n.y, r, C.muted, a * 0.25, 4);
+      ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = f > 0.85 ? C.red : C.yellow; ctx.lineWidth = 6; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(n.x, n.y, r, -Math.PI / 2, -Math.PI / 2 + f * 2 * Math.PI); ctx.stroke(); ctx.restore();
+    };
     return {
-      stage(s) { if (s === 0) { spawned.forEach(n => { n.ta = 0; n.tr = 0; }); } pulses = []; },
+      stage(s) {
+        pulses = [];
+        subs.forEach(n => { n.ta = 0; n.tr = 0; });
+        if (s === 0) { fill = 0; piled = []; }
+        if (s === 1) { fill = 0.15; piled = []; }
+        if (s === 2) { subs = SLOTS.slice(1).map(x => subagent(x - 120, Infinity)); }
+        if (s < 3) peers.forEach(p => { p.context = []; });
+      },
       frame(d, dt, s) {
-        clock += dt;
-        const A = agents[0], B = agents[1];
+        ease(vis, 'tools', s === 0 ? 1 : 0, 5, dt);
+        ease(vis, 'subs', s === 1 || s === 2 ? 1 : 0, 5, dt);
+        ease(vis, 'fail', s === 2 ? 1 : 0, 5, dt);
+        ease(vis, 'peers', s === 3 ? 1 : 0, 5, dt);
         if (s === 0) {
-          hub.tx = 960; hub.ty = 610; hub.tr = 46; hub.ta = 1;
-          A.tx = 600; A.ty = 610; B.tx = 1320; B.ty = 610;
-          agents.forEach((n, i) => { n.tr = i < 2 ? 30 : 0; n.ta = i < 2 ? 1 : 0; });
-          // Scripted turns: through the hub, one at a time, in order.
-          if (!pulses.length && clock > 0.25) {
-            const seq = [[hub, A], [A, hub], [hub, B], [B, hub]][turn++ % 4];
-            pulses.push({ a: seq[0], b: seq[1], u: 0, v: 1.25, color: seq[0] === hub ? C.violet : C.accent });
-            clock = 0;
+          lead.tx = 960; lead.ty = 580; lead.tr = 46; lead.ta = 1;
+          // Tool calls: out to a tool and back. A full window holds, then compacts.
+          if (rnd() < dt * 1.8 && pulses.length < 3) pulses.push({ a: lead, b: TOOLS[Math.floor(rnd() * TOOLS.length)], u: 0, v: 1.4, color: C.yellow, back: true });
+          if (fill >= 1 && (full += dt) > 1) { fill = 0.3; full = 0; lead.flash = 1; }
+        } else if (s === 1) {
+          lead.tx = 960; lead.ty = 320; lead.tr = 46; lead.ta = 1;
+          // Hand a piece of work to a new subagent in a free slot.
+          const free = SLOTS.filter(x => subs.every(n => n.ta === 0 || Math.abs(n.tx - x) > 60));
+          if (free.length && rnd() < dt * 1.3) {
+            const n = subagent(free[Math.floor(rnd() * free.length)], 2.2 + rnd() * 1.6);
+            subs.push(n);
+            pulses.push({ a: lead, b: n, u: 0, v: 1.5, color: C.violet });
           }
+          // When it's done, its summary goes up and it goes.
+          subs.forEach(n => { n.age += dt; if (!n.sent && n.age > n.life) { n.sent = true; pulses.push({ a: n, b: lead, u: 0, v: 1.2, color: C.yellow, done: n, summary: true }); } });
+        } else if (s === 2) {
+          lead.tx = 960; lead.ty = 320; lead.tr = 46; lead.ta = 1;
+          // The bad instruction goes down; what comes back up is bad too.
+          if (rnd() < dt * 2.4) {
+            const n = subs[Math.floor(rnd() * subs.length)];
+            if (n) pulses.push(n.bad ? { a: n, b: lead, u: 0, v: 1.2, color: C.red } : { a: lead, b: n, u: 0, v: 1.3, color: C.red, poison: n });
+          }
+          subs.forEach(n => { n.age += dt; });
         } else {
-          hub.tr = 0; hub.ta = 0;
-          agents.forEach((n, i) => { n.tx = spots[i].x; n.ty = spots[i].y; n.tr = 24; n.ta = 1; });
-          // Messages between neighbours, several at once; one that arrives
-          // is often passed on, so work travels in chains nobody planned.
-          const live = agents.concat(spawned.filter(n => n.ta > 0.5));
-          if (rnd() < dt * 3.2) {
-            const a = live[Math.floor(rnd() * live.length)], near = live.filter(n => n !== a && dist(n, a) < 380);
-            if (near.length) pulses.push({ a, b: near[Math.floor(rnd() * near.length)], u: 0, v: 1.1, color: C.accent, hops: 2 });
+          lead.tr = 0; lead.ta = 0;
+          // Peers talk directly, and keep adding to their own context.
+          if (rnd() < dt * 2.6) {
+            const a = peers[Math.floor(rnd() * peers.length)], others = peers.filter(p => p !== a);
+            pulses.push({ a, b: others[Math.floor(rnd() * others.length)], u: 0, v: 1.1, color: C.accent });
           }
-          // Now and then an agent invokes a new one beside it.
-          if (rnd() < dt * 0.45 && spawned.filter(n => n.ta > 0).length < 5) {
-            const parent = agents[Math.floor(rnd() * agents.length)];
-            const ang = rnd() * 6.28, n = node(parent.x, parent.y, 0, 0);
-            n.tx = parent.x + Math.cos(ang) * 120; n.ty = parent.y + Math.sin(ang) * 100; n.tr = 15; n.ta = 1;
-            n.parent = parent; n.life = 5 + rnd() * 3;
-            spawned.push(n);
-            pulses.push({ a: parent, b: n, u: 0, v: 1.6, color: C.green });
+          if (rnd() < dt * 2.2) {
+            const p = peers[Math.floor(rnd() * peers.length)];
+            if (p.context.length < 14) { p.context.push({ ang: rnd() * 6.28, rad: 46 + rnd() * 16, spin: 0.25 + rnd() * 0.35, a: 0 }); p.flash = 1; }
           }
         }
-        spawned.forEach(n => { if (n.life !== undefined && (n.life -= dt) < 0) { n.ta = 0; n.tr = 0; } });
-        spawned = spawned.filter(n => n.ta > 0.01 || n.a > 0.01);
+        peers.forEach(p => { p.tr = s === 3 ? 28 : 0; p.ta = s === 3 ? 1 : 0; });
+        subs = subs.filter(n => n.ta > 0 || n.a > 0.01);
+        [lead, ...subs, ...peers].forEach(n => settle(n, dt));
 
-        [hub, ...agents, ...spawned].forEach(n => settle(n, dt));
         // Hyphae first, then messages, then beads on top.
-        d.edge(hub, A, hub.a * 0.7, C.muted, 0.05); d.edge(hub, B, hub.a * 0.7, C.muted, -0.05);
-        if (s > 0) {
-          for (let i = 0; i < agents.length; i++) for (let j = i + 1; j < agents.length; j++) {
-            const a = agents[i], b = agents[j], k = dist(a, b);
-            if (k < 380) d.edge(a, b, Math.min(a.a, b.a) * 0.45 * (1 - k / 520), C.muted, 0.1);
-          }
-          spawned.forEach(n => n.parent && d.edge(n.parent, n, n.a * 0.6, C.green, 0.15, 1.5));
-        }
+        TOOLS.forEach(t => d.edge(lead, t, vis.tools * 0.4, C.muted, 0.05));
+        subs.forEach(n => d.edge(lead, n, Math.min(lead.a, n.a) * 0.5, n.bad ? C.red : C.muted, 0.05));
+        for (let i = 0; i < peers.length; i++) for (let j = i + 1; j < peers.length; j++) d.edge(peers[i], peers[j], vis.peers * 0.3, C.muted, 0.1);
         pulses.forEach(p => {
           p.u += dt * p.v;
-          if (p.u >= 1) {
-            p.b.flash = 1;
-            if (p.hops && rnd() < 0.6) {
-              const live = agents.filter(n => n !== p.a && n !== p.b && dist(n, p.b) < 380);
-              if (live.length) pulses.push({ a: p.b, b: live[Math.floor(rnd() * live.length)], u: 0, v: 1.1, color: C.accent, hops: p.hops - 1 });
-            }
+          if (p.u >= 1 && !p.arrived) {
+            p.arrived = true;
+            if (p.b.flash !== undefined) p.b.flash = 1;
+            if (p.back) { pulses.push({ a: p.b, b: p.a, u: 0, v: 1.4, color: C.yellow }); fill = Math.min(1, fill + 0.07); }
+            if (p.done) { p.done.ta = 0; p.done.tr = 0; }
+            if (p.summary) { fill = Math.min(1, fill + 0.09); if (piled.length < 40) piled.push({ ang: rnd() * 6.28, rad: 96 + rnd() * 34, spin: 0.15 + rnd() * 0.3, a: 0 }); }
+            if (p.poison) p.poison.bad = true;
           }
-          d.pulse(p.a, p.b, Math.min(1, p.u), p.color, 0.1);
+          d.pulse(p.a, p.b, Math.min(1, p.u), p.color, 0.08);
         });
         pulses = pulses.filter(p => p.u < 1);
-        d.bead(hub.x, hub.y, hub.r * (1 + hub.flash * 0.12), C.violet, hub.a);
-        d.label('supervisor', hub.x, hub.y + 82, hub.a);
-        agents.forEach((n, i) => {
-          d.bead(n.x, n.y, n.r * (1 + n.flash * 0.18), C.accent, n.a);
-          if (i < 2) d.label(i ? 'agent b' : 'agent a', n.x, n.y + 62, hub.a);
-        });
-        spawned.forEach(n => d.bead(n.x, n.y, n.r * (1 + n.flash * 0.2), C.green, n.a));
-      },
-    };
-  };
 
-  // ── An assistant, then workers, then memory ──
-  // Stage 0: one assistant takes in every piece of work and keeps it, and
-  // swells. Stage 1: workers arrive, work, and die, each compacting what it
-  // learned into the tray below. Stage 2: the tray's three kinds are named,
-  // and each new worker reads from it before it starts.
-  defs.lifecycle = () => {
-    const rnd = seeded(5);
-    const big = node(960, 520, 0, 0);
-    const KINDS = ['accent', 'violet', 'green'];
-    const TRAY = { x: 520, y: 900, w: 880 };
-    let tray = [], workers = [], drops = [], bits = [], inside = [], clock = 0, swell = 0;
-    // The tray has a section per kind; beads fill each from the left, then stack.
-    const SEC = TRAY.w / 3;
-    const slot = (kind, i) => ({ x: TRAY.x + KINDS.indexOf(kind) * SEC + 34 + (i % 9) * 28, y: TRAY.y - 6 - Math.floor(i / 9) * 26 });
-    const count = kind => tray.filter(k => k === kind).length;
-    return {
-      stage(s) { if (s === 0) { tray = []; workers = []; drops = []; inside = []; swell = 0; } },
-      frame(d, dt, s) {
-        clock += dt;
-        if (s === 0) {
-          big.tr = 70 + swell; big.ta = 1;
-          // Work flies in, and stays: the assistant just gets bigger.
-          if (rnd() < dt * 2.2) { const ang = rnd() * 6.28; bits.push({ x: 960 + Math.cos(ang) * 520, y: 520 + Math.sin(ang) * 330, u: 0 }); }
-        } else { big.tr = 0; big.ta = 0; }
-        bits.forEach(b => { b.u += dt * 0.9; if (b.u >= 1) { swell = Math.min(110, swell + 2.2); big.flash = 1; if (inside.length < 60) inside.push({ ang: rnd() * 6.28, rad: rnd(), spin: 0.2 + rnd() * 0.5, kind: KINDS[Math.floor(rnd() * 3)] }); } });
-        bits = bits.filter(b => b.u < 1 && s === 0);
-
-        if (s >= 1) {
-          if (rnd() < dt * 1.3 && workers.length < 7) {
-            let p; for (let k = 0; k < 20; k++) { p = { x: 380 + rnd() * 1160, y: 320 + rnd() * 420 }; if (workers.every(w => dist(w, p) > 150)) break; }
-            const w = node(p.x, p.y, 0, 0);
-            w.tr = 26; w.ta = 1; w.kind = KINDS[Math.floor(rnd() * 3)]; w.age = 0;
-            const have = KINDS.filter(count);
-            const k = have[Math.floor(rnd() * have.length)];
-            w.read = s >= 2 && have.length ? { from: slot(k, Math.floor(rnd() * count(k))), u: 0, kind: k } : null;
-            w.life = w.read ? 1.6 + rnd() : 2.6 + rnd() * 1.2;
-            workers.push(w);
-          }
-        }
-        workers.forEach(w => {
-          w.age += dt;
-          if (w.read && w.read.u < 1) { w.read.u += dt * 1.8; w.age = Math.min(w.age, 0.2); }
-          if (w.age > w.life && w.ta > 0) {
-            w.ta = 0; w.tr = 0;
-            const queued = count(w.kind) + drops.filter(p => p.kind === w.kind).length;
-            if (queued < 27) drops.push({ x: w.x, y: w.y, vy: -80, kind: w.kind, to: slot(w.kind, queued) });
-          }
-          settle(w, dt, 5);
-        });
-        workers = workers.filter(w => w.ta > 0 || w.a > 0.02);
-        drops.forEach(p => { p.vy += 1400 * dt; p.y += p.vy * dt; p.x += (p.to.x - p.x) * Math.min(1, dt * 4); if (p.y >= p.to.y) { p.done = true; tray.push(p.kind); } });
-        drops = drops.filter(p => !p.done);
-        settle(big, dt, 3);
-
-        // Draw.
-        const showTray = s >= 1 ? 1 : 0;
-        d.ctx.save(); d.ctx.globalAlpha = 0.55 * showTray;
-        d.ctx.strokeStyle = C.muted; d.ctx.lineWidth = 2;
-        d.ctx.beginPath(); d.ctx.moveTo(TRAY.x, TRAY.y + 18); d.ctx.lineTo(TRAY.x + TRAY.w, TRAY.y + 18); d.ctx.stroke();
-        d.ctx.restore();
-        bits.forEach(b => d.pulse({ x: b.x, y: b.y }, big, b.u, C.yellow, 0.1, 6));
-        d.bead(big.x, big.y, big.r * (1 + big.flash * 0.04), C.violet, big.a);
-        // What it was given stays inside it, turning slowly: its memory is itself.
-        inside.forEach(m => { m.ang += m.spin * dt; const rr = big.r * 0.72 * Math.sqrt(m.rad); d.bead(big.x + Math.cos(m.ang) * rr, big.y + Math.sin(m.ang) * rr, 6, C[m.kind], big.a * 0.9); });
-        workers.forEach(w => {
-          if (w.read && w.read.u < 1.05) d.edge(w.read.from, w, Math.min(1, w.read.u * 2) * w.a * 0.8, C[w.read.kind], 0.12, 2);
-          if (w.read && w.read.u < 1) d.pulse(w.read.from, w, w.read.u, C[w.read.kind], 0.12, 6);
-          d.bead(w.x, w.y, w.r, C[w.kind], w.a);
+        TOOLS.forEach(t => { d.ring(t.x, t.y, 12, C.yellow, vis.tools * 0.8, 2); d.label(t.name, t.x, t.y + 40, vis.tools, C.muted, 18); });
+        // Summaries the orchestrator has to hold, circling it.
+        piled.forEach(m => { m.ang += m.spin * dt; m.a = approach(m.a, 1, 4, dt); d.bead(lead.x + Math.cos(m.ang) * m.rad, lead.y + Math.sin(m.ang) * m.rad * 0.6, 6, C.yellow, lead.a * m.a * (1 - vis.fail * 0.6)); });
+        gauge(d, lead, fill, lead.a * (1 - vis.fail));
+        d.bead(lead.x, lead.y, lead.r * (1 + lead.flash * 0.12), s === 0 ? C.accent : s === 2 ? C.red : C.violet, lead.a);
+        d.label('agent', lead.x, lead.y + 100, vis.tools);
+        d.label('ring: context window', lead.x, lead.y + 132, vis.tools * 0.8, C.yellow, 15);
+        d.label('orchestrator', lead.x - 190, lead.y, vis.subs, C.muted, 20, 'right');
+        subs.forEach(n => {
+          d.bead(n.x, n.y, n.r * (1 + n.flash * 0.2), n.bad ? C.red : C.green, n.a);
+          // Its few tools, beside it.
+          for (let k = 0; k < n.kit; k++) d.ring(n.x + 46, n.y - 14 + k * 28, 8, C.yellow, n.a * 0.7, 2);
           // Working: two motes circling it.
-          if (w.a > 0.5 && (!w.read || w.read.u >= 1)) for (let k = 0; k < 2; k++) {
-            const t = w.age * 4 + k * 3.14; d.ctx.save(); d.ctx.globalAlpha = w.a * 0.8; d.ctx.fillStyle = C[w.kind];
-            d.ctx.beginPath(); d.ctx.arc(w.x + Math.cos(t) * 42, w.y + Math.sin(t) * 42, 4, 0, 6.28); d.ctx.fill(); d.ctx.restore();
+          if (!n.sent) for (let k = 0; k < 2; k++) {
+            const t = n.age * 4 + k * 3.14; d.ctx.save(); d.ctx.globalAlpha = n.a * 0.8; d.ctx.fillStyle = n.bad ? C.red : C.green;
+            d.ctx.beginPath(); d.ctx.arc(n.x + Math.cos(t) * 40, n.y + Math.sin(t) * 40, 4, 0, 6.28); d.ctx.fill(); d.ctx.restore();
           }
         });
-        drops.forEach(p => d.bead(p.x, p.y, 9, C[p.kind], 1));
-        KINDS.forEach(k => { for (let i = 0; i < count(k); i++) { const p = slot(k, i); d.bead(p.x, p.y, 10, C[k], showTray); } });
-        const named = s >= 2 ? 1 : 0;
-        ['preferences', 'behaviours', 'procedures'].forEach((t, i) => d.label(t, TRAY.x + SEC * i + SEC / 2, TRAY.y + 56, named, C[KINDS[i]], 19));
+        d.label('subagents', 960, 880, vis.subs);
+        peers.forEach(p => {
+          p.context.forEach(m => { m.ang += m.spin * dt; m.a = approach(m.a, 1, 4, dt); d.bead(p.x + Math.cos(m.ang) * m.rad, p.y + Math.sin(m.ang) * m.rad, 5, C.green, p.a * m.a * 0.9); });
+          d.bead(p.x, p.y, p.r * (1 + p.flash * 0.18), C.accent, p.a);
+          d.label(p.name, p.x, p.y + 92, vis.peers);
+        });
       },
     };
   };

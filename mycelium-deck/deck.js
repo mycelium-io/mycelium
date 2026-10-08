@@ -56,7 +56,8 @@
     const s = slides[index];
     const shown = steps(s).filter(e => e.classList.contains('shown') && e.dataset.lens);
     const spec = shown.length ? shown[shown.length - 1].dataset.lens : s.dataset.lens;
-    const list = overview ? [] : parseLens(spec).map(l => ({ x: ox + l.x * scale, y: oy + l.y * scale, r: l.r * scale }));
+    // Only a slide that holds the logo shows a lens; elsewhere it shrinks away.
+    const list = overview || !s.hasAttribute('data-logo') ? [] : parseLens(spec).map(l => ({ x: ox + l.x * scale, y: oy + l.y * scale, r: l.r * scale }));
     window.Lens.set(list, index, !overview && s.hasAttribute('data-logo'));
   }
 

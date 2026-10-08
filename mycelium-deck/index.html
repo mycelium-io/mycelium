@@ -5,7 +5,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Your agent, my agent, one team</title>
+<title>Agents that work together</title>
 <link rel="icon" href="../docs/logo.png">
 <link rel="stylesheet" href="deck.css">
 </head>
@@ -13,16 +13,15 @@
 <canvas id="lens-bg" aria-hidden="true"></canvas>
 
 <!-- data-talk names the talk in the tab and the speaker view; data-footer, if set, puts a line in the middle of every footer. -->
-<main class="deck" data-talk="Your agent, my agent, one team">
+<main class="deck" data-talk="Agents that work together">
 
   <!-- ── Title ── -->
   <section class="slide layout-title" data-title="Title" data-lens="1520 470 330, 1130 860 54" data-logo data-bare>
-    <h1 class="display rise">Your agent,<br>my agent,<br><em class="glow">one team.</em></h1>
-    <p class="lede rise">A hands-on workshop for coordinating independently owned agents.</p>
+    <h1 class="display rise">Agents that<br>work together</h1>
+    <p class="lede rise">Scaling agents out, beyond the orchestrator. A hands-on workshop.</p>
     <div class="byline rise"><span>Julia Valenti</span><span class="dot"></span><span>Jodee Varney</span><span class="dot"></span><span>Shift.Forward</span></div>
     <aside class="notes">
-      <p>Welcome. Introduce yourselves on the next slide, then the site, then the ideas.</p>
-      <p>The title is the whole workshop: your agent and mine belong to different people, and today they work as one team.</p>
+      <p>Welcome. This talk is about agents that work together: scaling agents out beyond the orchestrator pattern, and the platform we built for it, Mycelium.</p>
     </aside>
   </section>
 
@@ -30,16 +29,97 @@
   <section class="slide" data-title="Who we are" data-lens="1700 190 140">
     <h2 class="rise" style="margin-top:34px">Who we are</h2>
     <div class="cards people">
-      <article class="card pane rise"><img class="photo" src="people/julia.jpg" alt="Julia Valenti"><h3>Julia Valenti</h3><p>Software engineer and technical leader, Outshift by Cisco. Builds Mycelium.</p><span class="foot">agentic AI infrastructure · human-agent experience</span></article>
-      <article class="card pane rise"><img class="photo" src="people/jodee.jpg" alt="Jodee Varney"><h3>Jodee Varney</h3><p>Principal Product Manager, Outshift by Cisco. Core contributor to Mycelium.</p><span class="foot">AGNTCY and AAIF · agent coordination</span></article>
+      <article class="card pane rise"><img class="photo" src="people/julia.jpg" alt="Julia Valenti"><h3>Julia Valenti</h3><p>Engineering technical leader, Outshift by Cisco. Front-end engineer turned full stack. Builds for people and for agents.</p><span class="foot">user experience · agent experience</span></article>
+      <article class="card pane rise"><img class="photo" src="people/jodee.jpg" alt="Jodee Varney"><h3>Jodee Varney</h3><p>Product manager on the Internet of Cognition team, Outshift by Cisco.</p><span class="foot">internet of cognition</span></article>
     </div>
-    <aside class="notes"><p>One sentence each: who you are inside the organisation and what you work on. Julia builds Mycelium; Jodee is a core contributor and on the product team for AGNTCY and AAIF at the Linux Foundation. Then move on.</p></aside>
+    <aside class="notes">
+      <p>Julia: engineering technical leader at Outshift. I started as a front-end engineer, focused on product and usability. With AI agents I've grown into full stack and learned a lot along the way. Now I build for two kinds of customers: user experience, and agent experience, giving agents tools to get work done more quickly and easily.</p>
+      <p>Jodee: our product manager on the Internet of Cognition team.</p>
+    </aside>
+  </section>
+
+  <!-- ── Internet of Cognition ── -->
+  <section class="slide layout-statement" data-title="Internet of Cognition" data-lens="1680 840 190, 1440 970 38">
+    <blockquote class="rise">The Internet of Cognition</blockquote>
+    <cite class="rise">Agents coordinating to take on bigger work</cite>
+    <aside class="notes">
+      <p>Mycelium is part of a project called the Internet of Cognition. You'll probably hear about it a lot over the course of Shift.Forward.</p>
+      <p>The Internet of Cognition is about agentic coordination: agents working together to take on tasks and projects bigger than the ones they take on today.</p>
+    </aside>
+  </section>
+
+  <!-- ── What we're working on ── -->
+  <section class="slide layout-statement" data-title="What we're working on" data-lens="1680 840 190, 1440 970 38">
+    <blockquote class="rise">Scaling agents out, to longer tasks and bigger problems.</blockquote>
+    <cite class="rise">Agents coordinating without a central coordinator</cite>
+    <aside class="notes">
+      <p>Back to what we're focused on: scaling agents out across longer-horizon tasks, and to bigger problems.</p>
+      <p>One thing we're experimenting with a lot is agents coordinating without a central coordinator. To explain what that means, let's look at how agent systems usually work.</p>
+    </aside>
+  </section>
+
+  <!-- ── One agent, an orchestrator, its failure, coworkers (scene) ── -->
+  <section class="slide layout-scene" data-title="How it's done today" data-lens="1770 170 100">
+    <canvas class="scene" data-scene="coworkers"></canvas>
+    <div class="swap rise">
+      <h2 data-at="0">One agent</h2>
+      <h2 data-at="1">An orchestrator</h2>
+      <h2 data-at="2">One point of failure</h2>
+      <h2 data-at="3">Coworkers</h2>
+    </div>
+    <i class="step beat"></i><i class="step beat"></i><i class="step beat"></i>
+    <aside class="notes">
+      <p><b>Now:</b> one agent doing tasks one at a time. This is what we were all doing six months to a year ago. It's great because the agent keeps all the context of the task. But it's limited by its context window (the ring fills, then compacts) and in what it can do in parallel.</p>
+      <p><b>Press:</b> so we moved to an orchestrator, which is what you see in Claude Code, Codex and Cursor. The agent you talk to hands work out to subagents. Each gets a subset of tools (maybe it can't edit files, maybe it can't browse), does one piece, and dies. That's good for things like broad research. But a lot rides on the summary each subagent sends back, and the orchestrator has to take all of them in and make sense of them.</p>
+      <p><b>Press:</b> and it's a central point of failure. Prompt the main agent wrong, and the mistake runs all the way down the chain. To be clear, this might be the right pattern for your use case. Use the right tool for the job.</p>
+      <p><b>Press:</b> what Mycelium is built around: agents as coworkers. Each is responsible for something (a part of the codebase, the release process, QA), keeps its context and its specialty, and talks to the others directly. They can break into subteams and work together.</p>
+    </aside>
+  </section>
+
+  <!-- ── Keep the context ── -->
+  <section class="slide layout-statement" data-title="Keep the context" data-lens="1680 840 190, 1440 970 38">
+    <blockquote class="rise">What if agents kept their context?</blockquote>
+    <cite class="rise">Best practice says clear it. For this experiment, we don't.</cite>
+    <aside class="notes">
+      <p>General best practice is to clear an agent's context often, because of how next-token prediction works. For this experiment, let's pretend that rule doesn't exist.</p>
+      <p>An agent that owns one job learns its behaviors and edge cases. The release agent doesn't relearn the release pipeline; the QA agent doesn't relearn QA. That carries through compaction. So let's lean into that compounding context and see how powerful a system we can build. That's the idea behind Mycelium.</p>
+    </aside>
+  </section>
+
+  <!-- ── What gets hard ── -->
+  <section class="slide" data-title="What gets hard" data-lens="960 780 330">
+    <h2 class="rise" style="margin-top:34px">What gets hard</h2>
+    <div class="cards">
+      <article class="card pane rise"><span class="glyph"></span><h3>Talking</h3><p>Agents have no standard way to talk to each other and coordinate.</p></article>
+      <article class="card pane rise"><span class="glyph"></span><h3>Shared context</h3><p>Stay specialists, without losing sight of what everyone else is doing.</p></article>
+      <article class="card pane rise"><span class="glyph"></span><h3>Identity</h3><p>What each one is responsible for, and how it's expected to act.</p></article>
+    </div>
+    <aside class="notes">
+      <p>This is a new way of working, so first: what's hard about it.</p>
+      <p><b>Talking.</b> There are few tools for agents to talk to each other. Anthropic has added some message passing, but agents don't do it unless you prompt them to. And I don't mean subagents; I mean agent to agent, across tabs. (A2A exists, but that's another thing.)</p>
+      <p><b>Shared context.</b> We want specialists who still know what everyone else is doing. Like a daily stand-up with your coworkers, they need the same cadence of staying aligned.</p>
+      <p><b>Identity.</b> Coding agents today are generalists: they work broadly across a codebase. For this experiment we lean into specialization: you're the QA agent, you're the release agent, you're the designer. And we see how far they get that way.</p>
+    </aside>
+  </section>
+
+  <!-- ── What we built: three lines, one per press ── -->
+  <section class="slide layout-trio" data-title="What we built" data-lens="1500 262 100">
+    <div class="trio">
+      <div class="line"><h2>Tasks.</h2><p>Goals written down as something every agent can see and work on.</p></div>
+      <div class="line step" data-lens="1500 452 100"><h2>A way to talk.</h2><p>A CLI: private thinking, public messages, quiet until asked.</p></div>
+      <div class="line step" data-lens="1500 642 100"><h2>Memory.</h2><p>Recall what the room already discussed and decided.</p></div>
+    </div>
+    <aside class="notes">
+      <p><b>Tasks.</b> Agents need a way to coordinate on goals, and the best way is to make the goals a real artifact they all work on. It's not unlike spec-driven development, except the agents own the spec, so they can organize themselves.</p>
+      <p><b>Press, a way to talk.</b> When OpenClaw was popular, we put a bunch of OpenClaw agents in a chat room. They fell into what we called AI theater: endless chatting, yes-men to each other. Every message landed raw in their context and looked like a user message of the utmost importance, so they always answered. So we built a CLI they coordinate through. What they think stays private; what they share is public. They stay quiet when nobody asks for them, and still keep up with the room.</p>
+      <p><b>Press, memory.</b> Tasks are one kind of memory. The other is the conversation: especially after compaction, can an agent recall what was discussed and what was already decided, so it doesn't decide it again? For code, the code is the source of truth, but agents still need to recall what was said to understand where the room stands.</p>
+    </aside>
   </section>
 
   <!-- ── What Mycelium is: the public site, in a frame ── -->
-  <section class="slide layout-app" data-title="What Mycelium is" data-lens="1760 960 170">
+  <section class="slide layout-app" data-title="Mycelium" data-lens="1760 960 170">
     <div class="head">
-      <h2 class="rise">What Mycelium is</h2>
+      <h2 class="rise">So we built Mycelium</h2>
     </div>
     <div class="app pane rise" data-app="https://mycelium-io.github.io/" data-tour="top proof how product trust fit yours install" data-tour-speed="240" data-tour-ms="3000" data-zoom="0.9">
       <div class="bar"><i></i><i></i><i></i><span class="addr">mycelium-io.github.io</span></div>
@@ -47,149 +127,180 @@
     </div>
     <aside class="notes">
       <p>The public site, live. Click it to scroll and use it; click anywhere else on the slide to give the keys back to the deck. Auto-scroll tours the page section by section; clicking into the page stops it. Without a connection it shows a still of the banner.</p>
-      <p>One sentence: Mycelium is a shared room where people and their agents work together, with memory the room keeps.</p>
+      <p>Mycelium is a desktop app. You can host its back end on your own machine or in the cloud. Locally, it's your own Claude Code, Codex or other coding agent sessions. In the cloud, your team's agents can all work together, coworker-style, as one team. It brings together everything we just talked about.</p>
     </aside>
   </section>
 
-  <!-- ── Why coordinate at all ── -->
-  <section class="slide layout-statement" data-title="Why coordinate agents" data-lens="1680 840 190, 1440 970 38">
-    <blockquote class="rise">One agent hits a ceiling: <span class="accent">one context, one pair of hands, one point of view.</span></blockquote>
-    <cite class="rise">So you add more. The hard part is getting them to work as one.</cite>
+  <!-- ════ The workshop ════ -->
+
+  <!-- ── Segue ── -->
+  <section class="slide layout-statement" data-title="Let's build a team" data-lens="1680 840 190, 1440 970 38">
+    <blockquote class="rise">Let's build a team.</blockquote>
+    <cite class="rise">Your agents, your neighbor's agents, one task</cite>
     <aside class="notes">
-      <p>The broad case for coordination. A single agent is limited by what fits in its context, by how much it can do at once, and by having only one way of looking at a problem.</p>
-      <p>More agents scale intelligence up, but only if they can actually work together. That is the rest of the talk.</p>
+      <p>…they can coordinate across machine boundaries. And that's what we're going to do today. Rather than tell you more about it, let's build a team. By the end of this session, your agent and the agent of the person next to you will be working on the same task.</p>
+      <p>We just named three problems: talking, shared context and identity. You're going to run into each one yourself, and see how Mycelium handles it.</p>
     </aside>
   </section>
 
-  <!-- ── Not an assistant (scene) ── -->
-  <section class="slide layout-scene" data-title="Not an assistant" data-lens="1770 170 100">
-    <canvas class="scene" data-scene="lifecycle"></canvas>
-    <div class="swap rise">
-      <h2 data-at="0">An assistant</h2>
-      <h2 data-at="1">Workers</h2>
-      <h2 data-at="2">Memory, not personality</h2>
-    </div>
-    <i class="step beat"></i><i class="step beat"></i>
-    <aside class="notes">
-      <p><b>Now:</b> what Mycelium is not for. A personal assistant that knows every bit about you: one long-running agent you trust like a person, whose memory is its personality.</p>
-      <p><b>Press:</b> Mycelium's framing. Agents are workers. They do the work, then they die and compact. What they learned drops into memory, not into them.</p>
-      <p><b>Press:</b> memory persists, but not to anthropomorphise anyone: preferences, behaviours, procedures. Every new worker reads it first, so it's faster and makes fewer mistakes.</p>
-    </aside>
-  </section>
-
-  <!-- ── Not an org chart (scene) ── -->
-  <section class="slide layout-scene" data-title="Not an org chart" data-lens="1780 960 90">
-    <canvas class="scene" data-scene="roleplay"></canvas>
-    <div class="swap rise">
-      <h2 data-at="0">A supervisor</h2>
-      <h2 data-at="1">A room</h2>
-    </div>
-    <i class="step beat"></i>
-    <aside class="notes">
-      <p><b>Now:</b> how most multi-agent systems work. A supervisor sits in the middle and mediates every message. The agents below it can't talk to each other. It looks like a team, but it's a facade of communication, not a community.</p>
-      <p><b>Press:</b> a room. No one in the middle telling them how to collaborate. Agents talk to each other where the work is, invoke each other, pass work along, and start helpers that finish and go.</p>
-      <p>And it isn't a session manager either: it doesn't babysit your sessions.</p>
-    </aside>
-  </section>
-
-  <!-- ── The rule ── -->
-  <section class="slide layout-statement" data-title="The design rule" data-lens="1680 840 190, 1440 970 38">
-    <blockquote class="rise">A human hands over a task, <span class="accent">not an org chart.</span></blockquote>
-    <cite class="rise">Everything else in Mycelium follows from this line.</cite>
-    <aside class="notes"><p>Pause here and let the line land. You say what needs doing. The agents decide how to organise: whether they split it, review each other or bring in someone to broker a disagreement. You can still ask for a particular shape when you want one, but you never have to draw it first.</p></aside>
-  </section>
-
-  <!-- ── From one prompt to a swarm (scene) ── -->
-  <section class="slide layout-scene" data-title="From one prompt to a swarm" data-lens="300 600 92">
-    <canvas class="scene" data-scene="scale"></canvas>
-    <h2 class="rise">From one prompt to a swarm</h2>
-    <ol class="stages rise"><li>Prompt</li><li class="step">Compose</li><li class="step">Flows</li><li class="step">Swarm</li></ol>
-    <aside class="notes">
-      <p>This is scaling up intelligence, one step at a time, and the point is that agents compose. Flows are put together ad hoc, case by case, not picked from a menu.</p>
-      <p><b>Now:</b> you and one agent. <b>Press:</b> a few agents, in parallel. <b>Press:</b> flows: ways of working you can run again. <b>Press:</b> a swarm: any number of flows at once.</p>
-      <p>Ask the room where they are on this line today. Today's step is one more: someone else's agent in the mix.</p>
-    </aside>
-  </section>
-
-  <!-- ── Getting out of the way (scene) ── -->
-  <section class="slide layout-scene" data-title="Get out of the way" data-lens="1700 900 120">
-    <canvas class="scene" data-scene="trust"></canvas>
-    <h2 class="rise">Get out of their way. <span class="accent">Watch the outcome.</span></h2>
-    <div class="veil pane"><span>agent pane</span></div>
-    <i class="step beat"></i>
-    <aside class="notes">
-      <p><b>Now:</b> the work happens behind the glass. What reaches you is outcomes. We look at outcomes more than we micromanage agents: give them the capabilities to work together, and stay out of the way.</p>
-      <p><b>Press:</b> the governance isn't hidden from you. It's out of your way, and visible in the agent pane whenever you need it.</p>
-    </aside>
-  </section>
-
-  <!-- ── One conversation → lanes (scene) ── -->
-  <section class="slide layout-scene" data-title="Chat stands apart" data-lens="330 880 110">
-    <canvas class="scene" data-scene="lanes"></canvas>
-    <div class="swap rise">
-      <h2 data-at="0">One conversation</h2>
-      <h2 data-at="1">Chat stands apart</h2>
-    </div>
-    <i class="step beat"></i>
-    <aside class="notes">
-      <p><b>Now:</b> everything in one conversation. People, and every task's work, crowded together and moving at the pace of the slowest.</p>
-      <p><b>Press:</b> Mycelium's chat stands apart from the agents' own message flow. Each task's work runs in its own thread. Less context pollution, more focused outcomes, and parallel work actually in parallel.</p>
-    </aside>
-  </section>
-
-  <!-- ── Cards ── -->
-  <section class="slide" data-title="Three things to know" data-lens="960 780 330">
-    <h2 class="rise" style="margin-top:34px">Three things to know</h2>
-    <div class="cards">
-      <article class="card pane rise"><span class="glyph"></span><h3>Rooms</h3><p>An end-to-end encrypted group channel, plus a folder of memory on the hub.</p><span class="foot">mycelium room create</span></article>
-      <article class="card pane rise"><span class="glyph"></span><h3>Tasks</h3><p>A row on the board and a thread on the channel, one to one. Work happens in the thread.</p><span class="foot">mycelium board new</span></article>
-      <article class="card pane rise"><span class="glyph"></span><h3>Memory</h3><p>Markdown with frontmatter, searchable by meaning, linked with <code>[[key]]</code>.</p><span class="foot">mycelium memory search</span></article>
-    </div>
-    <aside class="notes"><p>Keep it to one sentence per card. The exercise will make each one concrete.</p></aside>
-  </section>
-
-  <!-- ── Your agent, my agent: pairing, three lines, one per press ── -->
-  <section class="slide layout-trio" data-title="Your agent, my agent" data-lens="1500 262 100">
-    <div class="trio">
-      <div class="line"><h2>You steer.</h2><p>What to try, what matters, when to stop.</p></div>
-      <div class="line step" data-lens="1500 452 100"><h2>Your agent does the legwork.</h2><p>Reads the code, tries things, reports back in the thread.</p></div>
-      <div class="line step" data-lens="1500 642 100"><h2>Ask my agent directly.</h2><p>@ it the way you'd lean over and ask me.</p></div>
-    </div>
-    <aside class="notes">
-      <p>Two people, each with their own agent. Each agent knows its own person's code and context, and all four meet in one task's thread.</p>
-      <p>Say a decision out loud in the thread when you make it. Both agents read it, and it's there for whoever comes to the task later.</p>
-    </aside>
-  </section>
-
-  <!-- ── Then the doors open ── -->
-  <section class="slide" data-title="Then the doors open" data-lens="191 432 96">
-    <h2 class="rise" style="margin-top:34px">Then the doors open</h2>
-    <ol class="flow">
-      <li><span class="marker">1</span><h3>Your room</h3><p>A private room, made for you when you join.</p><span class="notice">private</span></li>
-      <li class="step" data-lens="604 432 96"><span class="marker">2</span><h3>Your agents</h3><p>Start a few on your own machine and work with them.</p><span class="notice">yours</span></li>
-      <li class="step" data-lens="1018 432 96"><span class="marker">3</span><h3>Doors open</h3><p>Agents from other machines join the same room.</p><span class="notice">shared</span></li>
-      <li class="step" data-lens="1431 432 96"><span class="marker">4</span><h3>One team</h3><p>Your agent and mine, in one task's thread.</p><span class="notice">thread</span></li>
+  <!-- ── The plan ── -->
+  <section class="slide" data-title="The plan" data-lens="1600 600 250">
+    <h2 class="rise" style="margin-top:34px">The plan</h2>
+    <ol class="agenda">
+      <li class="rise"><time>01</time><span>Install Mycelium and connect to our hub</span><span></span></li>
+      <li class="rise"><time>02</time><span>Invite an agent, and see what it sees</span><span></span></li>
+      <li class="rise"><time>03</time><span>Add more agents and let them talk</span><span></span></li>
+      <li class="rise"><time>04</time><span>Give them a task</span><span></span></li>
+      <li class="rise"><time>05</time><span>Accord and Concord, from L9</span><span></span></li>
+      <li class="rise"><time>06</time><span>Work with someone else's agents</span><span></span></li>
     </ol>
-    <aside class="notes"><p>The shape of the hands-on part. First everyone works privately with their own agents. Then we open the doors to cross-machine collaboration. Each press shows the next step.</p></aside>
+    <aside class="notes"><p>Each step builds on the last. If you fall behind, pair with a neighbor.</p></aside>
   </section>
 
-  <!-- ── The live app: the real app in a frame, its screenshot until it answers ── -->
-  <section class="slide layout-app" data-title="The app, live" data-lens="1760 960 170">
+  <!-- ── 01 · Download ── -->
+  <section class="slide layout-app" data-title="01 · Download" data-lens="1760 960 170">
     <div class="head">
-      <h2 class="rise">The room, live</h2>
+      <h2 class="rise">Download Mycelium</h2>
     </div>
-    <div class="app pane rise" data-app="/room/workshop" data-zoom="1.1">
-      <div class="bar"><i></i><i></i><i></i><span class="addr">mycelium · your hub</span></div>
-      <div class="app-view"><img src="../docs/app-room-channel@2x.png" alt="The Mycelium app: a room's channel"></div>
-      <template class="script">
-        /room/workshop/graph
-        /metrics
-      </template>
+    <div class="app pane rise" data-app="https://mycelium-io.github.io/#install" data-zoom="0.9">
+      <div class="bar"><i></i><i></i><i></i><span class="addr">mycelium-io.github.io</span></div>
+      <div class="app-view"><img src="../docs/banner.png" alt="The Mycelium website"></div>
     </div>
     <aside class="notes">
-      <p>With the app running, this is the real thing. Click it to use it; click anywhere else on the slide to give the keys back to the deck.</p>
-      <p>It opens on the workshop room. Each press of → opens the next page in the script: its memory graph, then Metrics. Change the routes to your room's name.</p>
+      <p>Scroll to the install section. On a Mac it's one command, and it installs and opens Mycelium for Mac.</p>
+      <p>Anyone using an agent can paste: "Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium."</p>
     </aside>
+  </section>
+
+  <!-- ── 01 · Connect ── -->
+  <section class="slide layout-exercise" data-title="01 · Connect" data-lens="1500 560 300">
+    <h2 class="rise" style="margin-top:34px">Connect to our hub</h2>
+    <ol class="steps">
+      <li class="rise"><span>Open Mycelium.</span></li>
+      <li class="rise"><span>Choose to connect to a hub, and enter ours.</span></li>
+      <li class="rise"><span>You land in a room of your own. It's private.</span></li>
+    </ol>
+    <aside class="notes">
+      <p>Switch to the app and do it live while they follow along.</p>
+      <p>The hub hands each person their own private room. We'll open things up later.</p>
+    </aside>
+  </section>
+
+  <!-- ── 02 · Invite an agent ── -->
+  <section class="slide layout-exercise" data-title="02 · Invite an agent" data-lens="1500 560 300">
+    <h2 class="rise" style="margin-top:34px">Invite an agent</h2>
+    <ol class="steps">
+      <li class="rise"><span>Add a member: pick Claude Code, Codex or Cursor, and a folder on your machine.</span></li>
+      <li class="rise"><span>Say yes when your Mac asks to start it.</span></li>
+      <li class="rise"><span>Say hi. @ it in the room, and it answers there.</span></li>
+    </ol>
+    <aside class="notes">
+      <p>This is your own agent, running on your machine, in its own terminal. Mycelium starts it and gives it a name in the room.</p>
+      <p>Give it something to be: "You're the designer." That's its identity, and it keeps it.</p>
+    </aside>
+  </section>
+
+  <!-- ── 02 · What the agent sees ── -->
+  <section class="slide layout-terminal dense" data-title="02 · What the agent sees" data-lens="1700 220 200">
+    <div class="copy">
+      <h2 class="rise" style="margin:34px 0 30px">What the agent sees</h2>
+      <p class="rise">When you @ it, Mycelium wakes it in its terminal with a short message: why it woke, what changed, and how to reply.</p>
+      <p class="rise">It answers the room only when it decides to.</p>
+    </div>
+    <div class="term pane rise">
+      <div class="bar"><i></i><i></i><i></i><span>herdr · @designer</span></div>
+<pre><span class="c">mycelium wake for @designer in your-room</span>
+
+Why:    @you mentioned you in the room
+Since:  your last turn: 1 new message
+Board:  nothing open
+
+<span class="c">--- @you, now ---</span>
+@designer hi! what are you working on?
+
+First:  mycelium await
+Reply:  mycelium respond --body "..."</pre>
+    </div>
+    <aside class="notes">
+      <p>Open herdr and show the agent's pane while it wakes. This is the answer to AI theater: the message is a wake, not a user prompt it must answer, and replying to the room is a CLI call it chooses to make.</p>
+    </aside>
+  </section>
+
+  <!-- ── 03 · More agents ── -->
+  <section class="slide layout-exercise" data-title="03 · More agents" data-lens="1500 560 300">
+    <h2 class="rise" style="margin-top:34px">Add more agents</h2>
+    <ol class="steps">
+      <li class="rise"><span>Add two more, each with its own job: a builder, a reviewer.</span></li>
+      <li class="rise"><span>Start a conversation that needs all three.</span></li>
+      <li class="rise"><span>Watch who speaks up, and who stays quiet.</span></li>
+    </ol>
+    <aside class="notes"><p>These are persistent agents. They stay in the room, keep their context and pick up where they left off the next time they're woken.</p></aside>
+  </section>
+
+  <!-- ── 04 · Tasks ── -->
+  <section class="slide" data-title="04 · Tasks" data-lens="191 432 96">
+    <h2 class="rise" style="margin-top:34px">How a task moves</h2>
+    <ol class="flow">
+      <li><span class="marker">1</span><h3>Filed</h3><p>A row on the board, with its own thread.</p><span class="notice">filed</span></li>
+      <li class="step"><span class="marker">2</span><h3>Claimed</h3><p>An agent takes it and says so.</p><span class="notice">claimed</span></li>
+      <li class="step"><span class="marker">3</span><h3>Worked</h3><p>The conversation stays in the thread.</p><span class="notice">thread</span></li>
+      <li class="step"><span class="marker">4</span><h3>Resolved</h3><p>The room sees it's done.</p><span class="notice">resolved</span></li>
+    </ol>
+    <aside class="notes"><p>A task is a row on the board and a thread, one to one. Agents file tasks too, and split them into smaller ones. After a compaction, the board is how an agent finds out where things stand.</p></aside>
+  </section>
+
+  <!-- ── 04 · A first task ── -->
+  <section class="slide layout-exercise" data-title="04 · A first task" data-lens="1500 560 300">
+    <h2 class="rise" style="margin-top:34px">Give them a task</h2>
+    <ol class="steps">
+      <li class="rise"><span>File something small: <code>/task Plan a team lunch</code></span></li>
+      <li class="rise"><span>Open its thread and @ your agents in it.</span></li>
+      <li class="rise"><span>Let them sort it out. Watch the board.</span></li>
+    </ol>
+    <div class="timer rise" data-minutes="10" style="--x:1500px; --y:560px" role="timer" aria-label="Exercise timer"></div>
+    <aside class="notes"><p>Low stakes on purpose. The point is to watch them coordinate: who claims it, whether they split it, how they reach an answer. Click the timer to start it.</p></aside>
+  </section>
+
+  <!-- ── 05 · L9 ── -->
+  <section class="slide layout-statement" data-title="05 · L9" data-lens="1680 840 190, 1440 970 38">
+    <blockquote class="rise">Getting agents to agree, on purpose.</blockquote>
+    <cite class="rise">L9 · protocols from the Internet of Cognition team</cite>
+    <aside class="notes">
+      <p>So far the agents have worked things out on their own. Sometimes you want a structured way for them to reach shared understanding, and that's where L9 comes in.</p>
+      <p>L9 comes out of the Internet of Cognition work: protocols for how agents get to a shared understanding, and for telling an agreement they all believe in apart from one where an agent just gave in. It's the IoC team's research, and Mycelium runs two of its protocols: Accord and Concord.</p>
+      <p>Big thanks to the Internet of Cognition team. These protocols are their work; we just get to run them.</p>
+    </aside>
+  </section>
+
+  <!-- ── 05 · Accord and Concord ── -->
+  <section class="slide" data-title="05 · Accord and Concord" data-lens="960 780 330">
+    <h2 class="rise" style="margin-top:34px">Accord and Concord</h2>
+    <div class="cards" style="grid-template-columns: repeat(2, 1fr); max-width: 1500px">
+      <article class="card pane rise"><span class="glyph"></span><h3>Accord</h3><p>Get on the same page before work starts: what the task is, what's out of scope, what done means.</p><span class="foot">one shared summary, locked</span></article>
+      <article class="card pane rise"><span class="glyph"></span><h3>Concord</h3><p>When they disagree: everyone suggests an option and rates them all. The pick is the one the least happy member likes best.</p><span class="foot">one answer, written down</span></article>
+    </div>
+    <aside class="notes">
+      <p>Two L9 protocols, run as flows. Summon the conductor in a task's thread: <code>@conductor accord @a @b: …</code> or <code>@conductor concord @a @b: …</code>.</p>
+      <p>Run one live on the lunch task: concord on where to eat works well.</p>
+    </aside>
+  </section>
+
+  <!-- ── 06 · Multiplayer ── -->
+  <section class="slide layout-exercise" data-title="06 · Multiplayer" data-lens="1500 560 300">
+    <h2 class="rise" style="margin-top:34px">Work with someone else's agents</h2>
+    <ol class="steps">
+      <li class="rise"><span>Pair up with your neighbor and share one room.</span></li>
+      <li class="rise"><span>File one task you both care about.</span></li>
+      <li class="rise"><span>@ their agent the way you'd lean over and ask them.</span></li>
+    </ol>
+    <aside class="notes"><p>Your agents are on your machines, and they work on one task across that boundary. Each knows its own person's context. Say decisions out loud in the thread; both agents read them.</p></aside>
+  </section>
+
+  <!-- ── Closing thought ── -->
+  <section class="slide layout-statement" data-title="Hundreds of agents" data-lens="1680 840 190, 1440 970 38">
+    <blockquote class="rise">What would hundreds of agents on one problem look like?</blockquote>
+    <cite class="rise">We're experimenting with swarms. It's early.</cite>
+    <aside class="notes"><p>Close on where this goes: a swarm that grows and shrinks with the work, hundreds of persistent agents on one problem. It's experimental, and we don't do it well yet. That's what we're working on next.</p></aside>
   </section>
 
   <!-- ── Close ── -->
@@ -199,7 +310,10 @@
       <a class="pane" href="https://mycelium-io.github.io/mycelium/"><span>docs</span> mycelium-io.github.io/mycelium</a>
       <a class="pane" href="https://github.com/mycelium-io/mycelium"><span>code</span> github.com/mycelium-io/mycelium</a>
     </div>
-    <aside class="notes"><p>Leave this up during questions.</p></aside>
+    <aside class="notes">
+      <p>Leave this up during questions.</p>
+      <p>If they come up: delegating to remote agents through Mycelium (already supported), matching agents across a large swarm by context, and a task API that runs a flow and returns a result.</p>
+    </aside>
   </section>
 </main>
 

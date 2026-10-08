@@ -6,9 +6,9 @@
 A slide deck in plain HTML, for talks and workshops. It uses the docs' palette
 and type (Cormorant Garamond italic for display, IBM Plex Sans, Geist Mono).
 The background is a dark field of drifting motes (the docs' spores) with one
-glass lens over it. The lens magnifies whatever is under it, and it moves from
-slide to slide like a drop of gel, stretching along its path. A slide marked
-`data-logo` holds the Mycelium mark inside its lens.
+glass lens over it. The lens magnifies whatever is under it, and shows only
+on a slide marked `data-logo`, holding the Mycelium mark; on every other
+slide it shrinks away.
 
 ## Presenting
 
@@ -147,8 +147,8 @@ change with it:
 
 ```html
 <div class="swap">
-  <h2 data-at="0">A roleplay</h2>
-  <h2 data-at="1">Mycelium</h2>
+  <h2 data-at="0">One agent</h2>
+  <h2 data-at="1">An orchestrator</h2>
 </div>
 ```
 
@@ -156,9 +156,8 @@ The scenes, in `scenes.js`:
 
 | | stages |
 |---|---|
-| `lifecycle` | one assistant that keeps everything → workers that work, die and compact into memory → new workers that read it first |
+| `coworkers` | one agent making tool calls → an orchestrator handing work to subagents that send summaries up and go → agents that each own a piece of the codebase, keep their context and talk to each other |
 | `scale` | you and one agent → three in parallel → three repeatable chains → a swarm (with `.stages` words as its steps) |
-| `roleplay` | an orchestrator passing turns to agent a and b → agents linking, passing work on and invoking helpers themselves |
 | `lanes` | everything in one conversation → the chat apart, each task's thread in its own lane |
 | `trust` | a swarm behind frosted glass (`.veil`) with outcomes coming out → the glass clears to show the agent pane |
 
