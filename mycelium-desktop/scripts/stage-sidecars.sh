@@ -202,7 +202,15 @@ stage_models() {
   rm -rf "$res/models" && mkdir -p "$res/models"
   (
     cd "$repo/fastapi-backend"
-    uv run python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='$EMBEDDING_MODEL', cache_dir='$tmp/models')"
+    # The folder goes in as an argument, not inside the code: Git Bash on
+    # Windows translates a /tmp/... argument to the real Windows path, but not
+    # one inside a string, which Python would read as \tmp\... on the current
+    # drive and download to somewhere copy_tree below never looks.
+    uv run python -c '
+import sys
+from fastembed import TextEmbedding
+TextEmbedding(model_name=sys.argv[1], cache_dir=sys.argv[2])
+' "$EMBEDDING_MODEL" "$tmp/models"
   )
   # The download is a Hugging Face cache: the files in blobs/, and links to
   # them in snapshots/. The app bundle turns links into copies, which would
