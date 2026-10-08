@@ -180,7 +180,7 @@
         });
         pulses = pulses.filter(p => p.u < 1);
         d.bead(hub.x, hub.y, hub.r * (1 + hub.flash * 0.12), C.violet, hub.a);
-        d.label('orchestrator', hub.x, hub.y + 82, hub.a);
+        d.label('supervisor', hub.x, hub.y + 82, hub.a);
         agents.forEach((n, i) => {
           d.bead(n.x, n.y, n.r * (1 + n.flash * 0.18), C.accent, n.a);
           if (i < 2) d.label(i ? 'agent b' : 'agent a', n.x, n.y + 62, hub.a);

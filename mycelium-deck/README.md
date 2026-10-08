@@ -5,11 +5,10 @@
 
 A slide deck in plain HTML, for talks and workshops. It uses the docs' palette
 and type (Cormorant Garamond italic for display, IBM Plex Sans, Geist Mono).
-The background is new: instead of a field of glass droplets, one glass lens
-moves across a mycelial network. The network keeps growing for as long as the
-deck is open, and pulses run along its hyphae. The lens magnifies whatever is
-under it, and it moves from slide to slide like a drop of gel, stretching
-along its path.
+The background is a dark field of drifting motes (the docs' spores) with one
+glass lens over it. The lens magnifies whatever is under it, and it moves from
+slide to slide like a drop of gel, stretching along its path. A slide marked
+`data-logo` holds the Mycelium mark inside its lens.
 
 ## Presenting
 
@@ -111,6 +110,15 @@ An app pane shows the real Mycelium app in a frame:
 - **Base size.** `data-zoom` sets how large the app is drawn at fit, so the
   room can read it.
 
+A website works the same way: give `data-app` a full URL and the pane frames
+that page at once, with no local app to find. Add `data-tour` (the ids of the
+page's sections, in order) and the bar gets an **Auto-scroll** button. A page
+that answers the deck's `hello` message with `ready` is told to glide to the
+bottom at `data-tour-speed` px/s (default 110); `mycelium-io.github.io` does
+this in its `site.js`. A page that doesn't is toured by jumping the frame
+between the anchors, `data-tour-ms` apart (default 4500). Clicking into the
+page, the Stop button or leaving the slide ends either.
+
 The app keeps its own theme, whatever the deck's. Present from the app
 `mycelium up` or the Mac app serves: a `next dev` server draws its own
 error badge over the page.
@@ -162,6 +170,12 @@ The URL hash is the slide number (`index.html#7`). To make a PDF, print from
 Chrome with background graphics on. Each slide prints as one 1920×1080 page
 with a still lens drawn in CSS.
 
+## Photos
+
+The "Who we are" slide reads `people/julia.jpg` and `people/jodee.jpg`. That
+folder is kept out of git (a public repo), so on a fresh clone those two
+images are missing until you drop your own in.
+
 ## Writing slides
 
 Each slide is a `<section class="slide">` on a 1920×1080 stage. Lay slides
@@ -169,7 +183,6 @@ out in stage pixels and the deck scales them to fit the screen.
 
 ```html
 <section class="slide" data-title="Agenda" data-lens="1600 600 250">
-  <span class="kicker rise">The next 90 minutes</span>
   <h2 class="rise">Agenda</h2>
   …
   <aside class="notes"><p>Shown in the speaker view.</p></aside>
@@ -180,6 +193,7 @@ out in stage pixels and the deck scales them to fit the screen.
   pixels. Give up to three, separated by commas (`"1520 470 330, 1130 860 54"`
   is a lens with a bead beside it), or `none`.
 - `data-title` names the slide in the tab and the speaker view.
+- `data-logo` puts the Mycelium mark inside the slide's first lens.
 - `data-bare` hides the footer. On the `.deck` itself, `data-talk` names the
   talk in the tab and the speaker view, and `data-footer` puts a line in the
   middle of every footer.
@@ -191,7 +205,7 @@ out in stage pixels and the deck scales them to fit the screen.
   countdown centred on that point: click to start or pause, double-click to
   reset. The exercise slide centres one on its lens.
 
-The sample deck has one slide for each layout: `layout-title`, a terminal
+`deck.css` has a layout for each of these, and `index.html` uses some of them: `layout-title`, a terminal
 (`layout-terminal`), an agenda (`.agenda`), `layout-section`,
 `layout-statement`, `.cards`, `layout-diagram` (an SVG in stage coordinates
 with the lens over its centre), a flow of `.step`s, `.numbers`,
@@ -208,12 +222,13 @@ Copy the one closest to what you need.
 | `index.html` | the slides |
 | `deck.css` | palette (dark, and light under `data-theme="light"`), type, layouts, print |
 | `deck.js` | fitting the stage, keys, steps, overview, speaker view, timers |
-| `lens.js` | the background: grows the network on a 2D canvas, then draws it with the lens in one WebGL shader |
+| `lens.js` | the background: the motes and the lens, in one WebGL shader |
+| `logo.js` | the Mycelium mark, inlined, because a WebGL texture can't come from a `file://` image |
 | `term.js` | live terminals: xterm.js panes over the shells `serve.py` runs |
 | `app.js` | live app panes: the Mycelium app in a frame, its screenshot until it answers, with smooth zoom |
 | `ink.js` | drawing over the deck: pen, highlighter and laser ink, kept per slide |
 | `scenes.js` | the living diagrams: one canvas per scene slide, moved on by the slide's steps |
 | `serve.py` | serves the deck on 127.0.0.1 and runs a shell on a pseudo-terminal per pane |
 
-With `prefers-reduced-motion`, the network is drawn once and the lens jumps
+With `prefers-reduced-motion`, the motes hold still and the lens jumps
 between positions. Without WebGL, the CSS lens from print is used on screen.

@@ -2,131 +2,38 @@
 // Copyright 2026 Mycelium Contributors
 
 // ── The lens (background) ──
-// One glass lens, not a field of droplets. Behind the slides a mycelial
-// network grows for as long as the deck is open: hyphae reaching from node to
-// node, with message pulses running along them. The lens sits over a part of
-// it, magnifies it with per-channel dispersion and a thin-film rim, and moves
-// between slides like a drop of gel, stretching along its path. A slide can
-// ask for up to three lenses (a big one and a bead or two); one it stops
-// asking for shrinks away.
+// One glass lens over a dark field of drifting motes (the docs' spores). The
+// lens magnifies what is under it with per-channel dispersion and a thin-film
+// rim, and moves between slides like a drop of gel, stretching along its
+// path. A slide can ask for up to three lenses (a big one and a bead or two);
+// one it stops asking for shrinks away. A slide marked data-logo holds the
+// Mycelium mark inside its first lens.
 //
-// Interface: window.Lens.set(lenses, index) with lenses in viewport CSS px
-// ({x, y, r}, y down), and window.Lens.theme(dark). deck.js drives both.
+// Interface: window.Lens.set(lenses, index, logo) with lenses in viewport CSS
+// px ({x, y, r}, y down), and window.Lens.theme(dark). deck.js drives both.
 (function () {
   const canvas = document.getElementById('lens-bg');
-  const noop = { set() {}, theme() {}, grow() {} };
+  const noop = { set() {}, theme() {} };
   const gl = canvas && canvas.getContext('webgl', { antialias: false, alpha: false, premultipliedAlpha: false });
   if (!gl) { document.documentElement.classList.add('no-webgl'); window.Lens = noop; return; }
 
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const MAX_LENS = 3;
-  const MAX_P = 12;   // message pulses
-  const OVER = 1.22;  // the network is wider than the view, so slides can pan across it
-
-  // ── The network: a 2D canvas, uploaded as a texture while it grows ──
-  // Channels: R hyphae, B nodes. Pulses are drawn by the shader from uniforms.
-  const NW = Math.round(Math.min(1700, innerWidth) * OVER);
-  const NH = Math.round(NW * Math.max(0.5, Math.min(0.75, innerHeight / innerWidth)));
-  const SC = NW / (1700 * OVER);
-  const net = document.createElement('canvas');
-  net.width = NW; net.height = NH;
-  const nx = net.getContext('2d');
-  nx.fillStyle = '#000'; nx.fillRect(0, 0, NW, NH);
-  nx.globalCompositeOperation = 'lighten';   // max, not sum: joints and crossings don't bead
-  nx.lineCap = 'round';
-
-  let seed = 7;   // fixed, so the deck grows the same network every time
-  const rand = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-
-  const nodes = [];
-  for (let tries = 0; nodes.length < 9 && tries < 400; tries++) {
-    const x = NW * (0.06 + rand() * 0.88), y = NH * (0.08 + rand() * 0.84);
-    if (nodes.every(n => Math.hypot(n.x - x, n.y - y) > NW * 0.19)) nodes.push({ x, y });
-  }
-  const paths = [], tips = [];
-  let segments = 0;
-  const CAP = 7000;
-
-  function sprout(x, y, a, w, life, gen, home) {
-    const path = { pts: [x, y] };
-    paths.push(path);
-    tips.push({ x, y, a, w, life, gen, home, path });
-  }
-  function bead(n, r) {
-    const g = nx.createRadialGradient(n.x, n.y, 0, n.x, n.y, r);
-    g.addColorStop(0, 'rgba(0,0,255,1)'); g.addColorStop(0.35, 'rgba(0,0,255,.55)'); g.addColorStop(1, 'rgba(0,0,0,0)');
-    nx.fillStyle = g; nx.beginPath(); nx.arc(n.x, n.y, r, 0, 6.2832); nx.fill();
-  }
-  nodes.forEach((n, i) => {
-    bead(n, 13 * SC + 4);
-    const k = 2 + Math.floor(rand() * 3);
-    for (let j = 0; j < k; j++) sprout(n.x, n.y, rand() * 6.2832, 2.6 * SC + 0.6, 260 + rand() * 260, 0, i);
-  });
-
-  const STEP = 3.2 * SC + 0.8;
-  function step() {
-    for (let t = tips.length - 1; t >= 0; t--) {
-      const tip = tips[t];
-      // Reach for the nearest other node, gently: hyphae wander, then find.
-      let best = null, bd = 1e9;
-      for (let i = 0; i < nodes.length; i++) {
-        if (i === tip.home) continue;
-        const d = Math.hypot(nodes[i].x - tip.x, nodes[i].y - tip.y);
-        if (d < bd) { bd = d; best = nodes[i]; }
-      }
-      if (best && bd < NW * 0.3) {
-        let da = Math.atan2(best.y - tip.y, best.x - tip.x) - tip.a;
-        da = Math.atan2(Math.sin(da), Math.cos(da));
-        tip.a += da * (bd < NW * 0.08 ? 0.12 : 0.03);
-      }
-      tip.a += (rand() - 0.5) * 0.36;
-      const x = tip.x + Math.cos(tip.a) * STEP, y = tip.y + Math.sin(tip.a) * STEP;
-      nx.strokeStyle = `rgba(255,0,0,${0.3 + 0.35 * Math.min(1, tip.w / 2.5)})`;
-      nx.lineWidth = tip.w;
-      nx.beginPath(); nx.moveTo(tip.x, tip.y); nx.lineTo(x, y); nx.stroke();
-      tip.x = x; tip.y = y; tip.path.pts.push(x, y);
-      tip.life--; tip.w = Math.max(0.55, tip.w * 0.9975);
-      segments++;
-      if (tip.gen < 3 && rand() < 0.016) {
-        sprout(x, y, tip.a + (rand() < 0.5 ? -1 : 1) * (0.45 + rand() * 0.5), tip.w * 0.72, tip.life * 0.7, tip.gen + 1, tip.home);
-      }
-      const out = x < -20 || y < -20 || x > NW + 20 || y > NH + 20;
-      if (tip.life <= 0 || out || (best && bd < 5)) {
-        if (best && bd < 5) bead(best, 7 * SC + 3);   // a hypha reached a node: it flares
-        tips.splice(t, 1);
-      }
-    }
-  }
-  // Bud a new hypha off a random point of an existing one.
-  function bud(n) {
-    for (let k = 0; k < n && segments < CAP; k++) {
-      const p = paths[Math.floor(rand() * paths.length)];
-      if (!p || p.pts.length < 8) continue;
-      const i = 2 * Math.floor(rand() * (p.pts.length / 2 - 1));
-      sprout(p.pts[i], p.pts[i + 1], rand() * 6.2832, 1.4 * SC + 0.4, 120 + rand() * 160, 2, -1);
-    }
-  }
-  // Start most of the way grown, so the first slide is not an empty field.
-  for (let i = 0; i < 260 && tips.length; i++) step();
-  bud(6);
-  for (let i = 0; i < 90 && tips.length; i++) step();
 
   // ── GL ──
   const VERT = 'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
   const FRAG = `
 precision highp float;
-uniform vec2 uRes, uPan, uNet;
-uniform float uTime, uDark, uScale;
-uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform float uTime, uDark, uScale, uLogoOn;
+uniform sampler2D uLogo;      // the mark, suspended in the first lens
 uniform vec4 uL[${MAX_LENS}];   // x, y (device px, y up), radius, film seed
 uniform vec3 uS[${MAX_LENS}];   // stretch direction xy, amount
-uniform vec3 uP[${MAX_P}];      // pulse u, v, brightness
 
 const vec3 CYAN = vec3(.365,.831,.878);
 const vec3 VIOLET = vec3(.725,.604,.941);
 const vec3 COBALT = vec3(.086,.314,.824);
 const vec3 INDIGO = vec3(.416,.271,.78);
-const float OVER = ${OVER.toFixed(3)};
 
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 
@@ -143,30 +50,28 @@ vec3 ground(vec2 uv){
   return mix(sky, night, uDark);
 }
 
-// Hyphae, pulses and nodes at a point on the network (texture uv, y up).
-vec3 netAt(vec2 t){
-  vec3 n = texture2D(uTex, t).rgb;
-  float pul = 0.;
-  for (int i=0;i<${MAX_P};i++){
-    vec2 d = (t-uP[i].xy)*uNet;
-    float d2 = dot(d,d);
-    pul += uP[i].z*(exp(-d2*.12) + .35*exp(-d2*.012));
+// Motes: two parallax layers drifting upward (the docs' spores).
+float spores(vec2 q){
+  float acc = 0.;
+  for (int L=0;L<2;L++){
+    float fl = float(L), dens = mix(5.,12.,fl);
+    vec2 p = q*dens + vec2(0., uTime*mix(.05,.025,fl)*dens);
+    vec2 cell = floor(p), f = fract(p)-.5, h = fract(sin(vec2(dot(cell+fl*17.3,vec2(127.1,311.7)),dot(cell+fl*17.3,vec2(269.5,183.3))))*43758.5453);
+    if (h.x > .8){
+      vec2 o = (fract(sin(vec2(dot(cell+3.1,vec2(127.1,311.7)),dot(cell+3.1,vec2(269.5,183.3))))*43758.5453)-.5)*.5;
+      float r = mix(.05,.14,h.y)*mix(1.,.6,fl);
+      float a = 1.-smoothstep(r*mix(.2,.6,fl), r, length(f-o));
+      acc += a*(.6+.4*sin(uTime*1.2+h.y*40.))*mix(.5,1.,fl);
+    }
   }
-  return vec3(n.r, pul, n.b);
+  return acc;
 }
 
 vec3 shade(vec2 uv, float boost){
-  vec2 t = uv/OVER + uPan;
   vec3 g = ground(uv);
-  vec3 n = netAt(t);
-  float drift = smoothstep(.15,.95, t.x + .18*sin(t.y*5.+uTime*.05));
-  float breathe = .9 + .1*sin(uTime*.8 + t.x*9.);
-  vec3 hd = mix(CYAN, VIOLET, drift);
-  vec3 dark = g + hd*n.r*.36*boost + vec3(.8,.97,1.)*n.g*.9*boost + mix(CYAN, vec3(1.), .4)*n.b*breathe*.7*min(boost,1.);
-  vec3 hl = mix(COBALT, INDIGO, drift);
-  vec3 light = mix(g, hl, clamp(n.r*.3*boost,0.,1.));
-  light = mix(light, COBALT*.9, clamp(n.g*.7*boost,0.,1.));
-  light = mix(light, hl*.85, clamp(n.b*breathe*.6*min(boost,1.),0.,1.));
+  float sp = spores(vec2(uv.x*uRes.x/uRes.y, uv.y));
+  vec3 dark = g + sp*vec3(.45,.9,1.)*.2*min(boost,1.5);
+  vec3 light = mix(g, vec3(.2,.4,.85), clamp(sp*.26*min(boost,1.5),0.,1.));
   return mix(light, dark, uDark);
 }
 
@@ -221,6 +126,17 @@ void main(){
     c.r = shade((L.xy + dir*f*(1.-.04*(1.-z))*R)/uRes, 2.5).r;
     c.g = shade((L.xy + dir*f*R)/uRes, 2.5).g;
     c.b = shade((L.xy + dir*f*(1.+.04*(1.-z))*R)/uRes, 2.5).b;
+
+    // The mark, set in the first lens like something in a paperweight: read
+    // at the refracted point so the glass magnifies and bends it, strongest
+    // face-on and fading toward the rim.
+    if (i == 0 && uLogoOn > .01) {
+      vec2 luv = dir*f/1.24 + .5;
+      if (luv.x > 0. && luv.y > 0. && luv.x < 1. && luv.y < 1.) {
+        vec4 lg = texture2D(uLogo, luv);
+        c = mix(c, lg.rgb*1.08, lg.a*uLogoOn*smoothstep(.2,.65,z));
+      }
+    }
 
     c *= mix(mix(vec3(.88,.92,1.), vec3(.86,.97,1.), uDark), vec3(1.), z);
     float far = smoothstep(-.2,.9, dot(dir, vec2(.6,-.8)));
@@ -278,19 +194,28 @@ void main(){
   gl.enableVertexAttribArray(aLoc);
   gl.vertexAttribPointer(aLoc, 2, gl.FLOAT, false, 0, 0);
   const U = {};
-  ['uRes', 'uPan', 'uNet', 'uTime', 'uDark', 'uScale', 'uTex', 'uL', 'uS', 'uP'].forEach(n => { U[n] = gl.getUniformLocation(prog, n); });
+  ['uRes', 'uTime', 'uDark', 'uScale', 'uLogo', 'uLogoOn', 'uL', 'uS'].forEach(n => { U[n] = gl.getUniformLocation(prog, n); });
 
-  const tex = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  const upload = () => gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, net);
-  upload();
-  gl.uniform1i(U.uTex, 0);
-  gl.uniform2f(U.uNet, NW, NH);
+  // The mark. Until it has loaded the shader just doesn't draw it.
+  const logoTex = gl.createTexture();
+  let logoReady = false;
+  gl.bindTexture(gl.TEXTURE_2D, logoTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+  gl.uniform1i(U.uLogo, 0);
+  const img = new Image();
+  img.onload = () => {
+    gl.bindTexture(gl.TEXTURE_2D, logoTex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    logoReady = true;
+    dirty = true;
+    if (reduce) requestAnimationFrame(frame);
+  };
+  img.src = window.LENS_LOGO || 'logo-512.png';
 
   let dpr = 1;
   function resize() {
@@ -301,12 +226,11 @@ void main(){
     dirty = true;
   }
 
-  // ── Motion: each lens and the pan ride a spring ──
+  // ── Motion: each lens rides a spring ──
   const lens = Array.from({ length: MAX_LENS }, (_, i) => ({ x: 0, y: 0, r: 0, vx: 0, vy: 0, vr: 0, tx: 0, ty: 0, tr: 0, seed: (i * 0.37 + 0.13) % 1 }));
-  const pan = { x: 0.08, y: 0.06, vx: 0, vy: 0, tx: 0.08, ty: 0.06 };
-  let dark = 1, darkT = 1, dirty = true;
+  let dark = 1, darkT = 1, logo = 0, logoT = 0, dirty = true;
 
-  function set(list, index) {
+  function set(list, withLogo) {
     for (let i = 0; i < MAX_LENS; i++) {
       const L = lens[i], t = list[i];
       if (t) {
@@ -317,54 +241,22 @@ void main(){
       }
       if (reduce) { L.x = L.tx; L.y = L.ty; L.r = L.tr; }
     }
-    const span = 1 - 1 / OVER, k = index || 0;
-    pan.tx = span * (0.5 + 0.45 * Math.sin(k * 1.9 + 0.4));
-    pan.ty = span * (0.5 + 0.45 * Math.cos(k * 1.3 + 0.9));
-    if (reduce) { pan.x = pan.tx; pan.y = pan.ty; }
+    logoT = withLogo ? 1 : 0;
+    if (reduce) logo = logoT;
     dirty = true;
   }
   function theme(isDark) { darkT = isDark ? 1 : 0; if (reduce) dark = darkT; dirty = true; }
-  function grow(n) { bud(n || 3); }
 
   function spring(o, key, vkey, target, k, c, dt) {
     const a = -k * (o[key] - target) - c * o[vkey];
     o[vkey] += a * dt; o[key] += o[vkey] * dt;
   }
 
-  // ── Pulses: a message running down a hypha ──
-  const pulses = [];
-  const P = new Float32Array(MAX_P * 3);
-  function spawnPulse() {
-    for (let k = 0; k < 6; k++) {
-      const p = paths[Math.floor(rand() * paths.length)];
-      if (p && p.pts.length > 40) { pulses.push({ p, i: 0, v: 0.9 + rand() * 1.4 }); return; }
-    }
-  }
-
   const Lb = new Float32Array(MAX_LENS * 4), Sb = new Float32Array(MAX_LENS * 3);
-  let last = performance.now(), t0 = last, uploadEvery = 0;
+  let last = performance.now(), t0 = last;
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
     const time = (now - t0) / 1000;
-
-    if (!reduce) {
-      if (tips.length) { step(); if (++uploadEvery % 3 === 0) upload(); }
-      else if (segments < CAP && rand() < 0.004) bud(1);   // keeps growing, slowly, all talk long
-      if (pulses.length < MAX_P && rand() < 0.025) spawnPulse();
-    }
-    for (let i = pulses.length - 1; i >= 0; i--) {
-      const q = pulses[i];
-      q.i += q.v * 60 * dt;
-      if (q.i >= q.p.pts.length / 2 - 1) pulses.splice(i, 1);
-    }
-    P.fill(0);
-    pulses.slice(0, MAX_P).forEach((q, j) => {
-      const n = q.p.pts.length / 2, k = Math.floor(q.i), f = q.i - k;
-      const x = q.p.pts[2 * k] * (1 - f) + q.p.pts[2 * k + 2] * f;
-      const y = q.p.pts[2 * k + 1] * (1 - f) + q.p.pts[2 * k + 3] * f;
-      const life = Math.min(1, q.i / 8, (n - 1 - q.i) / 8);
-      P[3 * j] = x / NW; P[3 * j + 1] = 1 - y / NH; P[3 * j + 2] = Math.max(0, life);
-    });
 
     if (!reduce) {
       for (const L of lens) {
@@ -373,9 +265,8 @@ void main(){
         spring(L, 'r', 'vr', L.tr, 40, 9.5, dt);
         if (L.r < 0) { L.r = 0; L.vr = 0; }
       }
-      spring(pan, 'x', 'vx', pan.tx, 5, 4.4, dt);
-      spring(pan, 'y', 'vy', pan.ty, 5, 4.4, dt);
       dark += (darkT - dark) * Math.min(1, dt * 4);
+      logo += (logoT - logo) * Math.min(1, dt * 3);
     }
 
     lens.forEach((L, i) => {
@@ -385,14 +276,14 @@ void main(){
       Sb[3 * i] = sp ? L.vx / sp : 0; Sb[3 * i + 1] = sp ? -L.vy / sp : 0; Sb[3 * i + 2] = s;
     });
 
+    gl.bindTexture(gl.TEXTURE_2D, logoTex);
     gl.uniform2f(U.uRes, canvas.width, canvas.height);
-    gl.uniform2f(U.uPan, pan.x, pan.y);
     gl.uniform1f(U.uTime, reduce ? 0 : time);
     gl.uniform1f(U.uDark, dark);
     gl.uniform1f(U.uScale, dpr);
+    gl.uniform1f(U.uLogoOn, logoReady ? logo : 0);
     gl.uniform4fv(U.uL, Lb);
     gl.uniform3fv(U.uS, Sb);
-    gl.uniform3fv(U.uP, P);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
     if (reduce) { dirty = false; return; }
@@ -402,9 +293,8 @@ void main(){
   addEventListener('resize', () => { resize(); if (reduce) requestAnimationFrame(frame); });
   resize();
   window.Lens = {
-    set(list, index) { set(list, index); if (reduce) requestAnimationFrame(frame); },
+    set(list, index, withLogo) { set(list, withLogo); if (reduce) requestAnimationFrame(frame); },
     theme(isDark) { theme(isDark); if (reduce) requestAnimationFrame(frame); },
-    grow,
   };
   requestAnimationFrame(frame);
 })();

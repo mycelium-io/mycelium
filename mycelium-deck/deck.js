@@ -57,7 +57,7 @@
     const shown = steps(s).filter(e => e.classList.contains('shown') && e.dataset.lens);
     const spec = shown.length ? shown[shown.length - 1].dataset.lens : s.dataset.lens;
     const list = overview ? [] : parseLens(spec).map(l => ({ x: ox + l.x * scale, y: oy + l.y * scale, r: l.r * scale }));
-    window.Lens.set(list, index);
+    window.Lens.set(list, index, !overview && s.hasAttribute('data-logo'));
   }
 
   // ── Steps ──
@@ -81,7 +81,6 @@
     progress.style.width = `${(index / Math.max(1, slides.length - 1)) * 100}%`;
     if (location.hash !== '#' + (index + 1)) history.replaceState(null, '', '#' + (index + 1));
     document.title = `${s.dataset.title || 'Slide ' + (index + 1)} · ${talk || 'Mycelium'}`;
-    if (changed && window.Lens) window.Lens.grow(3);
     if (started === null && index > 0) started = Date.now();
     window.DeckTerm?.activate(s);
     window.DeckApp?.activate(s);

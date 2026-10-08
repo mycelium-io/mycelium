@@ -5,7 +5,7 @@
 // A .app[data-app="/route"] pane shows its screenshot until the Mycelium app
 // answers, then the real app in a frame. The app is looked for at ?app=… on
 // the deck's URL, else the Docker stack's port (8080), else the Mac app's
-// (3717).
+// (3717). A data-app that is a full URL is a website and opens at once.
 //
 // A frame that has focus keeps every key, a clicker's included, so the frame
 // sits under a shield until it is clicked; a click anywhere else on the slide
@@ -35,7 +35,11 @@
   }
 
   async function activate(slide) {
-    const els = [...slide.querySelectorAll('.app[data-app]')].filter(el => !panes.has(el));
+    const all = [...slide.querySelectorAll('.app[data-app]')].filter(el => !panes.has(el));
+    // A pane whose data-app is a full URL is a website, not the local app: it
+    // needs nothing found first.
+    all.filter(el => /^https?:/.test(el.dataset.app)).forEach(el => start(el, ''));
+    const els = all.filter(el => !/^https?:/.test(el.dataset.app));
     if (!els.length) return;
     let url;
     try { url = await find(); } catch { return; }   // no app: the screenshots stay
@@ -65,6 +69,48 @@
       bar.querySelector('.app-zoom .in').addEventListener('click', () => magnify(s, s.tm * 1.25, centre()));
       bar.querySelector('.app-zoom .out').addEventListener('click', () => magnify(s, s.tm / 1.25, centre()));
       bar.querySelector('.app-zoom .pct').addEventListener('click', () => magnify(s, 1));
+    }
+
+    // A website pane can scroll itself on a button. The page is another
+    // origin, so the deck asks it to: if it answers "hello" with "ready" it
+    // glides to the bottom at data-tour-speed px/s. If it doesn't, the deck
+    // falls back to hopping the frame between the anchors in data-tour, which
+    // the page's own smooth scrolling animates.
+    const tour = (el.dataset.tour || '').split(/\s+/).filter(Boolean);
+    if (bar && el.dataset.app.startsWith('http')) {
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'app-tour'; btn.textContent = 'Auto-scroll';
+      const zoomBox = bar.querySelector('.app-zoom');
+      if (zoomBox) zoomBox.before(btn); else bar.append(btn);
+      const base = el.dataset.app.replace(/#.*$/, '');
+      const origin = new URL(base).origin;
+      const every = parseInt(el.dataset.tourMs || '4500', 10);
+      const speed = parseInt(el.dataset.tourSpeed || '110', 10);
+      const say = (type, extra) => { try { frame.contentWindow.postMessage({ source: 'mycelium-deck', type, ...extra }, origin); } catch { /* not ready */ } };
+      let smooth = false, timer = null, at = 0, running = false;
+      const idle = () => { clearInterval(timer); timer = null; running = false; btn.classList.remove('on'); btn.textContent = 'Auto-scroll'; };
+      const stop = () => { if (smooth) say('stop'); idle(); };
+      const hop = () => {
+        if (!el.closest('.slide').classList.contains('active')) { stop(); return; }
+        frame.src = `${base}#${tour[at]}`;
+        if (++at >= tour.length) idle();   // the last section stays on screen
+      };
+      addEventListener('message', e => {
+        if (e.source !== frame.contentWindow || !e.data || e.data.source !== 'mycelium-site') return;
+        if (e.data.type === 'ready') smooth = true;
+        else if (e.data.type === 'autoscroll-done') idle();
+      });
+      frame.addEventListener('load', () => say('hello'));
+      btn.addEventListener('mousedown', e => e.preventDefault());   // keep the keys with the deck
+      btn.addEventListener('click', () => {
+        if (running) { stop(); return; }
+        running = true; btn.classList.add('on'); btn.textContent = 'Stop';
+        if (smooth) { say('autoscroll', { pxPerSec: speed }); return; }
+        if (!tour.length) { idle(); return; }
+        at = 0; hop();
+        if (running) timer = setInterval(hop, every);
+      });
+      shield.addEventListener('click', stop);   // clicking into the page takes over
     }
 
     const open = route => {

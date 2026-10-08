@@ -103,13 +103,6 @@ body {
 .step.current .marker { background: var(--accent); color: var(--accent-ink); border-color: transparent; box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent) 18%, transparent); }
 
 /* ── Type ── */
-.kicker {
-  font: 500 22px/1 var(--mono);
-  letter-spacing: 0.22em; text-transform: uppercase;
-  color: var(--accent);
-  display: inline-flex; align-items: center; gap: 18px;
-}
-.kicker::before { content: ""; width: 44px; height: 1px; background: currentColor; opacity: 0.7; }
 h1, h2, h3 { margin: 0; font-weight: 600; }
 .display { font: italic 600 172px/0.92 var(--display); letter-spacing: -0.02em; }
 h2, .h2 { font: italic 600 104px/1 var(--display); letter-spacing: -0.015em; }
@@ -152,7 +145,7 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 
 /* ── Layout: title ── */
 .layout-title { justify-content: center; }
-.layout-title .display { margin: 40px 0 44px; max-width: 1100px; }
+.layout-title .display { margin: 40px 0 44px; max-width: 1100px; font-size: 128px; }
 .layout-title .byline { margin-top: 70px; display: flex; gap: 28px; align-items: center; font: 500 24px/1.2 var(--mono); color: var(--muted); letter-spacing: 0.06em; }
 .layout-title .byline .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 
@@ -197,6 +190,9 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 .card h3 { font: italic 600 64px/1 var(--display); }
 .card p { font-size: 29px; color: var(--muted); margin: 0; }
 .card .foot { margin-top: auto; font: 500 21px/1.3 var(--mono); color: var(--accent); }
+.cards.people { grid-template-columns: repeat(2, 1fr); max-width: 1500px; }
+.cards.people .card { min-height: 0; }
+.card .photo { width: 170px; height: 170px; border-radius: 50%; object-fit: cover; object-position: 50% 25%; border: 2px solid var(--border-hi); box-shadow: 0 14px 30px color-mix(in srgb, var(--accent) 22%, transparent); }
 
 /* ── Layout: diagram ── */
 .layout-diagram svg.diagram { position: absolute; inset: 0; width: 1920px; height: 1080px; pointer-events: none; }
@@ -294,6 +290,11 @@ p code, li code { font-size: 0.82em; padding: 0.08em 0.36em; border-radius: 8px;
 .app.live .bar::after { margin-left: 18px; }
 .app-zoom button { font: 500 17px var(--mono); color: var(--text); background: transparent; border: 0; border-radius: 8px; padding: 5px 11px; cursor: pointer; text-shadow: none; }
 .app-zoom button:hover { background: var(--border); }
+.app .app-tour { display: none; margin-left: auto; font: 500 17px var(--mono); color: var(--text); background: var(--pane); border: 1px solid var(--border); border-radius: 11px; padding: 7px 16px; cursor: pointer; text-shadow: none; }
+.app.live .app-tour { display: inline-block; }
+.app .app-tour:hover { background: var(--border); }
+.app .app-tour.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+.app-tour + .app-zoom { margin-left: 12px; }
 .app-zoom .pct { min-width: 70px; color: var(--muted); font-size: 15px; }
 .app.magnified .app-zoom .pct { color: var(--accent); }
 .app.magnified .app-shield { cursor: grab; }
