@@ -45,7 +45,7 @@ import { RailSheet } from "@/components/rail-sheet";
 import { RoomMenu } from "@/components/room-menu";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Lock } from "lucide-react";
-import { MemoryTab, type GuardHandle } from "@/components/memory-tab";
+import { MemoryView, type GuardHandle } from "@/components/memory-view";
 import { MemoryTabs } from "@/components/memory-tabs";
 
 function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string; color: string } | null {
@@ -315,7 +315,7 @@ function RoomWorkspace() {
           }
           override={
             activeMemory ? (
-              <MemoryTab
+              <MemoryView
                 key={activeMemory}
                 roomName={roomName}
                 memoryKey={activeMemory}

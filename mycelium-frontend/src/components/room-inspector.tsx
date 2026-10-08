@@ -54,8 +54,8 @@ interface Props {
   onFocusConsumed?: () => void;
   /** Reveal a memory by key in the Memory tab (e.g. a clicked chat wikilink). */
   focusMemory?: { key: string; nonce: number } | null;
-  /** Open a memory as a tab in the room, instead of in the Memory rail's drawer. */
-  onOpenMemory?: (key: string) => void;
+  /** Open a memory as a tab in the room, where every memory is read. */
+  onOpenMemory: (key: string) => void;
   /** The memory open in the room's tabs, marked in the tree. */
   activeMemoryKey?: string | null;
 }

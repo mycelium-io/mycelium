@@ -25,161 +25,12 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-vi.mock("@/components/memory-detail", () => ({
-  MemoryDetail: (props: {
-    renderedBody?: string | null;
-    collapseBodyAt?: number | null;
-  }) => (
-    <div
-      data-testid="memory-detail"
-      data-rendered-body={props.renderedBody ?? ""}
-      data-collapse-body-at={props.collapseBodyAt ?? ""}
-    />
-  ),
-}));
-
-vi.mock("@/components/detail-drawer", () => ({
-  DetailDrawer: ({
-    open,
-    children,
-  }: {
-    open: boolean;
-    children: React.ReactNode;
-  }) => (open ? <div data-testid="memory-drawer">{children}</div> : null),
-}));
-
-vi.mock("@/components/current-user", () => ({
-  useCurrentUser: () => ({ principal: "alice" }),
-}));
-
-// The drawer's Discussion, stubbed: this file is about what the panel hands its
-// children, and the conversation's own reads belong to its own tests.
-vi.mock("@/components/task/task-conversation", () => ({
-  TaskConversation: () => <div data-testid="task-conversation" />,
-}));
-
-vi.mock("@/components/room-chat-box", () => ({
-  RoomChatBox: () => <div data-testid="room-chat-box" />,
-}));
-
 vi.mock("@/lib/api", () => ({
   fetchMemories: vi.fn(),
-  fetchMemory: vi.fn(),
-  fetchMemoryExpanded: vi.fn(),
   searchMemories: vi.fn(),
-  fetchMemoryLinks: vi.fn(),
 }));
 
-import {
-  fetchMemories,
-  fetchMemory,
-  fetchMemoryExpanded,
-  fetchMemoryLinks,
-} from "@/lib/api";
-
-const EMPTY_EXPAND = { key: "", rendered: "", expansions: [], found: false };
-
-const offTree = {
-  key: "context/off-tree",
-  value: { text: "not in the first page" },
-  content_text: "not in the first page",
-  version: 1,
-  created_by: "alice",
-  updated_at: "2026-01-01T00:00:00Z",
-};
-
-describe("<MemoryPanel /> peek navigation", () => {
-  beforeEach(() => {
-    push.mockClear();
-    vi.mocked(fetchMemories).mockResolvedValue([]);
-    vi.mocked(fetchMemory).mockReset();
-    vi.mocked(fetchMemoryLinks).mockResolvedValue({
-      key: offTree.key,
-      outbound: [],
-      backlinks: [],
-    });
-    vi.mocked(fetchMemoryExpanded).mockResolvedValue(EMPTY_EXPAND);
-  });
-
-  it("routes to full page when focusMemory targets a missing key", async () => {
-    vi.mocked(fetchMemory).mockResolvedValue(null);
-
-    renderWithSWR(
-      <MemoryPanel
-        roomName="demo"
-        focusMemory={{ key: "missing/key", nonce: 1 }}
-      />,
-    );
-
-    await act(async () => {});
-    await waitFor(() =>
-      expect(push).toHaveBeenCalledWith("/room/demo/memory/missing/key"),
-    );
-  });
-
-  it("opens the drawer via fetch when focusMemory targets a key outside the loaded list", async () => {
-    vi.mocked(fetchMemory).mockImplementation(async (room, key) => {
-      expect(room).toBe("demo");
-      expect(key).toBe(offTree.key);
-      return offTree;
-    });
-
-    renderWithSWR(
-      <MemoryPanel
-        roomName="demo"
-        focusMemory={{ key: offTree.key, nonce: 1 }}
-      />,
-    );
-
-    await waitFor(() => expect(fetchMemory).toHaveBeenCalled());
-    expect(await screen.findByTestId("memory-drawer")).toBeInTheDocument();
-    expect(push).not.toHaveBeenCalled();
-  });
-
-  it("passes the expanded body into the drawer's MemoryDetail (#599)", async () => {
-    vi.mocked(fetchMemory).mockResolvedValue(offTree);
-    vi.mocked(fetchMemoryExpanded).mockResolvedValue({
-      key: offTree.key,
-      rendered: "expanded transclusion body",
-      expansions: [],
-      found: true,
-    });
-
-    renderWithSWR(
-      <MemoryPanel
-        roomName="demo"
-        focusMemory={{ key: offTree.key, nonce: 1 }}
-      />,
-    );
-
-    const detail = await screen.findByTestId("memory-detail");
-    await waitFor(() => expect(fetchMemoryExpanded).toHaveBeenCalledWith("demo", offTree.key));
-    expect(detail).toHaveAttribute("data-rendered-body", "expanded transclusion body");
-  });
-
-  it("clamps the body only where a discussion follows it (#887)", async () => {
-    // The drawer is one scroll from the metadata to the last reply, so a long
-    // body is clamped behind an Expand button rather than boxed off in a
-    // scrollbox of its own. A memory with no thread under it is all body, and
-    // hiding half of it would buy nothing.
-    vi.mocked(fetchMemory).mockResolvedValue(offTree);
-    const { unmount } = renderWithSWR(
-      <MemoryPanel roomName="demo" focusMemory={{ key: offTree.key, nonce: 1 }} />,
-    );
-    expect(await screen.findByTestId("memory-detail")).toHaveAttribute("data-collapse-body-at", "");
-    unmount();
-
-    const threaded = { ...offTree, episode: "urn:ioc:mycelium:episode:demo:t9f0" };
-    vi.mocked(fetchMemory).mockResolvedValue(threaded);
-    renderWithSWR(
-      <MemoryPanel roomName="demo" focusMemory={{ key: threaded.key, nonce: 2 }} />,
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId("memory-detail")).not.toHaveAttribute("data-collapse-body-at", ""),
-    );
-    expect(screen.getByTestId("task-conversation")).toBeInTheDocument();
-  });
-});
+import { fetchMemories } from "@/lib/api";
 
 const treeMemory = {
   key: "decisions/ship-it",
@@ -192,22 +43,74 @@ const treeMemory = {
   tags: ["consensus"],
 };
 
+// The tree opens folded to its namespaces, so reveal the folder before the leaf.
+const expandDecisions = async () => {
+  fireEvent.click(await screen.findByText("decisions"));
+};
+
+describe("<MemoryPanel /> opening a memory", () => {
+  beforeEach(() => {
+    vi.mocked(fetchMemories).mockResolvedValue([treeMemory]);
+  });
+
+  it("opens a picked memory in the room's tabs; the panel only lists", async () => {
+    const onOpenMemory = vi.fn();
+    renderWithSWR(<MemoryPanel roomName="demo" onOpenMemory={onOpenMemory} />);
+    await expandDecisions();
+
+    fireEvent.click(await screen.findByText("ship-it.md"));
+
+    expect(onOpenMemory).toHaveBeenCalledWith("decisions/ship-it");
+  });
+
+  it("opens a memory arrived at from search, and says it's done", async () => {
+    const onOpenMemory = vi.fn();
+    const onFocusConsumed = vi.fn();
+    renderWithSWR(
+      <MemoryPanel
+        roomName="demo"
+        onOpenMemory={onOpenMemory}
+        focusKey="context/off-tree"
+        onFocusConsumed={onFocusConsumed}
+      />,
+    );
+
+    await waitFor(() => expect(onOpenMemory).toHaveBeenCalledWith("context/off-tree"));
+    expect(onFocusConsumed).toHaveBeenCalled();
+  });
+
+  it("only reveals a memory the room already opened from a link", async () => {
+    // A `[[link]]` in chat opens the memory in the room's tabs itself; the
+    // tree's part is to unfold its folder and mark it.
+    const onOpenMemory = vi.fn();
+    const { rerender } = renderWithSWR(<MemoryPanel roomName="demo" onOpenMemory={onOpenMemory} />);
+    // The tree opens folded to its namespaces.
+    await screen.findByText("decisions");
+    expect(screen.queryByText("ship-it.md")).not.toBeInTheDocument();
+
+    rerender(
+      <MemoryPanel
+        roomName="demo"
+        onOpenMemory={onOpenMemory}
+        focusMemory={{ key: "decisions/ship-it", nonce: 1 }}
+        activeKey="decisions/ship-it"
+      />,
+    );
+
+    expect(await screen.findByText("ship-it.md")).toBeInTheDocument();
+    expect(onOpenMemory).not.toHaveBeenCalled();
+  });
+});
+
 describe("<MemoryPanel /> preview hovercard", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.mocked(fetchMemories).mockResolvedValue([treeMemory]);
-    vi.mocked(fetchMemory).mockReset();
-    vi.mocked(fetchMemoryExpanded).mockResolvedValue(EMPTY_EXPAND);
   });
 
   afterEach(() => {
     vi.useRealTimers();
   });
-
-  // The tree opens folded to its namespaces, so reveal the folder before the leaf.
-  const expandDecisions = async () => {
-    fireEvent.click(await screen.findByText("decisions"));
-  };
 
   const hoverRow = async () => {
     await expandDecisions();
@@ -217,7 +120,7 @@ describe("<MemoryPanel /> preview hovercard", () => {
   };
 
   it("opens a preview of the memory body after the hover delay", async () => {
-    renderWithSWR(<MemoryPanel roomName="demo" />);
+    renderWithSWR(<MemoryPanel roomName="demo" onOpenMemory={vi.fn()} />);
     const row = await hoverRow();
 
     expect(screen.queryByTestId("memory-preview-card")).toBeNull();
@@ -232,7 +135,7 @@ describe("<MemoryPanel /> preview hovercard", () => {
   });
 
   it("does not open when the pointer leaves before the delay elapses", async () => {
-    renderWithSWR(<MemoryPanel roomName="demo" />);
+    renderWithSWR(<MemoryPanel roomName="demo" onOpenMemory={vi.fn()} />);
     const row = await hoverRow();
 
     await act(async () => { vi.advanceTimersByTime(200); });
@@ -243,7 +146,7 @@ describe("<MemoryPanel /> preview hovercard", () => {
   });
 
   it("closes the preview once the pointer leaves the row", async () => {
-    renderWithSWR(<MemoryPanel roomName="demo" />);
+    renderWithSWR(<MemoryPanel roomName="demo" onOpenMemory={vi.fn()} />);
     const row = await hoverRow();
     await act(async () => { vi.advanceTimersByTime(400); });
     expect(screen.getByTestId("memory-preview-card")).toBeInTheDocument();
@@ -253,12 +156,13 @@ describe("<MemoryPanel /> preview hovercard", () => {
   });
 
   it("closes the preview when the row is clicked open", async () => {
-    renderWithSWR(<MemoryPanel roomName="demo" />);
+    const onOpenMemory = vi.fn();
+    renderWithSWR(<MemoryPanel roomName="demo" onOpenMemory={onOpenMemory} />);
     await hoverRow();
     await act(async () => { vi.advanceTimersByTime(400); });
 
     fireEvent.click(screen.getByText("ship-it.md"));
-    await waitFor(() => expect(screen.getByTestId("memory-drawer")).toBeInTheDocument());
+    expect(onOpenMemory).toHaveBeenCalledWith("decisions/ship-it");
     expect(screen.queryByTestId("memory-preview-card")).toBeNull();
   });
 });

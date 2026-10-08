@@ -42,7 +42,7 @@ async function railWidth(width: number): Promise<void> {
 }
 
 function renderInspector() {
-  render(<RoomInspector roomName="atlas" />);
+  render(<RoomInspector roomName="atlas" onOpenMemory={() => undefined} />);
   return userEvent.setup();
 }
 
