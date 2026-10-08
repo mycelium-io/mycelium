@@ -8,15 +8,16 @@
  * asked for by content rather than position, that it stops at the start of
  * the room, and that it does not double what is already on screen.
  *
- * jsdom does no layout, so the viewport never overflows: the fill pass (the one
- * that keeps pulling until there is something to scroll) is what drives paging
- * here, which is the same code path a scroll to the top takes.
+ * jsdom does no layout, so each test says what the viewport measures: by
+ * default a 400px viewport over less than that to scroll, so the fill pass (the
+ * one that keeps pulling until there is something to scroll) is what drives
+ * paging here, the same code path a scroll to the top takes.
  */
 
 import { act } from "react";
 import { screen } from "@testing-library/react";
 import { renderWithSWR } from "@/test/swr";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { resetStreamHub } from "@/lib/stream-hub";
 
@@ -56,6 +57,12 @@ function cursors() {
   return mockedMessages.mock.calls.map((call) => call[2]?.before ?? null);
 }
 
+/** What every element measures, since jsdom lays nothing out. */
+function measure({ scrollHeight, clientHeight }: { scrollHeight: number; clientHeight: number }) {
+  Object.defineProperty(HTMLElement.prototype, "scrollHeight", { value: scrollHeight, configurable: true });
+  Object.defineProperty(HTMLElement.prototype, "clientHeight", { value: clientHeight, configurable: true });
+}
+
 async function render() {
   renderWithSWR(<EventStream roomName="sprint" />);
   await act(async () => {});
@@ -70,6 +77,25 @@ describe("<EventStream /> reading back", () => {
     vi.stubGlobal("EventSource", FakeEventSource);
     mockedMessages.mockReset();
     mockedWire.mockReset().mockResolvedValue([]);
+    measure({ scrollHeight: 100, clientHeight: 400 });
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(HTMLElement.prototype, "scrollHeight");
+    Reflect.deleteProperty(HTMLElement.prototype, "clientHeight");
+  });
+
+  it("does not page while the viewport has no height (a tab behind another)", async () => {
+    // A hidden or unsized viewport measures 0 by 0, which is not an empty one:
+    // filling it walked a heavy room's whole history while a memory tab was open.
+    measure({ scrollHeight: 0, clientHeight: 0 });
+    mockedMessages
+      .mockResolvedValueOnce(page([3, 4, 5], 6))
+      .mockResolvedValue(page([0, 1, 2], 3));
+
+    await render();
+
+    expect(mockedMessages).toHaveBeenCalledTimes(1);
   });
 
   it("asks for the page before, keyed off the oldest message loaded", async () => {
@@ -126,9 +152,7 @@ describe("<EventStream /> reading back", () => {
     // A viewport with something to scroll, so the fill pass holds off and the
     // page before is fetched by the reader reaching the top — off the tail,
     // which is the state the count is about.
-    const geometry = { value: 0, configurable: true };
-    Object.defineProperty(HTMLElement.prototype, "scrollHeight", { ...geometry, value: 1000 });
-    Object.defineProperty(HTMLElement.prototype, "clientHeight", { ...geometry, value: 400 });
+    measure({ scrollHeight: 1000, clientHeight: 400 });
 
     renderWithSWR(<EventStream roomName="sprint" />);
     await act(async () => {});
@@ -149,9 +173,6 @@ describe("<EventStream /> reading back", () => {
     // count, because everything that landed came from before the mark.
     expect(screen.getByRole("button", { name: "Jump to latest" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /\d+ new/ })).not.toBeInTheDocument();
-
-    Reflect.deleteProperty(HTMLElement.prototype, "scrollHeight");
-    Reflect.deleteProperty(HTMLElement.prototype, "clientHeight");
   });
 
   it("shows a message once when an older page overlaps what is on screen", async () => {

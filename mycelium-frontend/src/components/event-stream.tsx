@@ -30,16 +30,11 @@ import { freeText, hasScope, type MessageSearchHit } from "@/lib/message-search"
 import { ChatMinimap, type MinimapTick } from "@/components/chat-minimap";
 import { SenderName } from "@/components/sender-name";
 import { hasMatch, stepIndex } from "@/lib/chat-search";
-import { RoomBoard } from "@/components/board/room-board";
 import { ActivityRail, type ActivityItem } from "@/components/activity-rail";
 import { Ago, NowProvider } from "@/lib/relative-time";
 import { EpisodeTag } from "@/components/episode-tag";
-import { MessageInspector } from "@/components/message-inspector";
-import { RoomA2aView } from "@/components/room-a2a";
-import { RoomSlimView } from "@/components/room-slim";
 import { EmptyState } from "@/components/empty-state";
 import { RoomStarters } from "@/components/room-starters";
-import { KeyBadge } from "@/components/key-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Monogram } from "@/components/ui/monogram";
@@ -472,8 +467,6 @@ function foldAmendment(events: Event[], amendment: Event): Event[] {
   );
 }
 
-export type View = "channel" | "board" | "network";
-
 interface Props {
   roomName: string;
   onMemoryChanged?: () => void;
@@ -485,9 +478,6 @@ interface Props {
    *  board row the thread belongs to, or from an episode tag on a coordination
    *  notice. */
   onOpenThread?: (episode: string) => void;
-  /** Optional controlled tab (e.g. driven by the onboarding tour). */
-  view?: View;
-  onViewChange?: (view: View) => void;
   /** A message to reveal in the channel, arrived at from search. */
   focusMessageId?: string | null;
   onFocusConsumed?: () => void;
@@ -495,11 +485,8 @@ interface Props {
    *  page owns the key because it owns the pane switch that has to happen
    *  first; the channel owns the search itself. */
   openFind?: number;
-  /** More tabs after Channel, Board and Network (the memories open in the room). */
-  extraTabs?: React.ReactNode;
-  /** What one of those tabs shows, in front of the room's own views. While
-   *  it is set, none of Channel, Board or Network reads as the open tab. */
-  override?: React.ReactNode;
+  /** How many rows the channel draws, for its tab. */
+  onCountChange?: (count: number) => void;
 }
 
 /**
@@ -547,7 +534,7 @@ function MessageMenu({
   );
 }
 
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onOpenMemory, onOpenThread, view: viewProp, onViewChange, focusMessageId = null, onFocusConsumed, openFind = 0, extraTabs, override }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onOpenMemory, onOpenThread, focusMessageId = null, onFocusConsumed, openFind = 0, onCountChange }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const connected = useRoomConnected(roomName);
@@ -556,9 +543,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   useEffect(() => {
     onConnectionChange?.(connected);
   }, [connected, onConnectionChange]);
-  const [viewInternal, setViewInternal] = useState<View>("channel");
-  const view = viewProp ?? viewInternal;
-  const setView = (v: View) => { if (viewProp === undefined) setViewInternal(v); onViewChange?.(v); };
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Know which senders are registered agents (to badge their replies) and whom
@@ -995,13 +979,8 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   const lastVisible = useRef<string | null>(null);
 
   useEffect(() => {
-    // Only the channel renders this viewport; the other views replace it, so
-    // the ref is null for them and the pin is left as they found it.
     const el = scrollRef.current;
     if (!el) return;
-    // A view switch unmounts the viewport, and a remount starts at the top;
-    // put a pinned reader back on the tail rather than in the archive.
-    if (atBottomRef.current) el.scrollTop = el.scrollHeight;
     const measure = () => {
       if (el.scrollTop <= LOAD_OLDER_MARGIN_PX) loadOlder();
       const pinned = el.scrollHeight - el.scrollTop - el.clientHeight <= PIN_TOLERANCE_PX;
@@ -1012,7 +991,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     };
     el.addEventListener("scroll", measure, { passive: true });
     return () => el.removeEventListener("scroll", measure);
-  }, [view, loadOlder]);
+  }, [loadOlder]);
 
   // Put the reader back where they were reading. Before paint, and before the
   // follow-the-tail effect below runs — which it won't, since anyone reading
@@ -1030,12 +1009,18 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // messages can leave a handful of rows and nothing to scroll. Keep pulling
   // until the viewport actually overflows — otherwise the one gesture that
   // reaches the older pages is a gesture the reader has no way to make.
+  // A viewport with no height is not laid out (hidden, or not yet sized), not
+  // empty: filling it would page through the whole room.
   useEffect(() => {
     if (!historyLoaded) return;
     const el = scrollRef.current;
-    if (!el) return;
+    if (!el || el.clientHeight === 0) return;
     if (el.scrollHeight <= el.clientHeight + LOAD_OLDER_MARGIN_PX) loadOlder();
   }, [historyLoaded, visible, loadOlder]);
+
+  useEffect(() => {
+    onCountChange?.(visible.length);
+  }, [visible.length, onCountChange]);
 
   const jumpToLatest = () => {
     const el = scrollRef.current;
@@ -1054,6 +1039,17 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // Auto-scroll when new events arrive — but not over a message the user was
   // just sent to, which is the one place in the feed they're looking, and not
   // over history they scrolled up to read.
+  // The first page lands at the newest message at once, before paint. Animated,
+  // the scroll is still under way when the scroll handler measures it, which
+  // reads as the reader having left the tail, and the feed then stops following.
+  const landed = useRef(false);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (landed.current || !historyLoaded || !el || visible.length === 0) return;
+    landed.current = true;
+    if (!highlight && atBottomRef.current) el.scrollTop = el.scrollHeight;
+  }, [historyLoaded, visible, highlight]);
+
   useEffect(() => {
     lastVisible.current = visible[visible.length - 1]?.id ?? null;
     // A live message must not pull the view off the hit the reader stepped to,
@@ -1067,70 +1063,8 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     highlightRow.current?.scrollIntoView({ block: "center" });
   }, [highlight, historyLoaded, visible]);
 
-  const channelCount = visible.length;
-
   return (
     <div className="flex flex-col h-full">
-      {/* An editor's tab strip: flat tabs flush to the edges, the open one in
-          the pane's own color so it reads as attached to what it shows.
-          Connection state lives in the shell status bar. */}
-      <div className="flex h-8 shrink-0 items-stretch overflow-x-auto border-b border-border bg-surface [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="flex flex-shrink-0 items-stretch">
-          {([
-            { id: "channel" as const, label: "Channel", count: channelCount as number | null },
-            { id: "board" as const,   label: "Board",   count: null },
-            { id: "network" as const, label: "Network", count: null },
-          ]).map(t => {
-            // Hold the reveal modifier and each tab wears the key that selects it.
-            const active = view === t.id && !override;
-            return (
-              <button
-                key={t.id}
-                data-tour={`tab-${t.id}`}
-                onClick={() => setView(t.id)}
-                className={`relative -mb-px flex items-center gap-1.5 border-r border-border px-3 text-label transition-colors ${
-                  active
-                    ? "bg-paper text-text"
-                    : "text-muted-foreground hover:bg-hairline hover:text-text"
-                }`}
-              >
-                {t.label}
-                <KeyBadge action={`pane.${t.id}`} />
-                {t.count !== null && (
-                  <span className={`text-micro tabular ${active ? "text-accent" : "text-muted-foreground"}`}>
-                    {t.count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        {extraTabs}
-      </div>
-      {/* Another tab (an open memory) in front: the room's own views stay
-          mounted behind it, so the channel keeps its place and its stream. */}
-      {override && <div className="flex min-h-0 flex-1 flex-col">{override}</div>}
-      <div className={override ? "hidden" : "contents"}>
-      {view === "board" ? (
-        <div className="flex-1 min-h-0">
-          <RoomBoard roomName={roomName} onOpenThread={onOpenThread} />
-        </div>
-      ) : view === "network" ? (
-        // Unified Network pane: SLIM channel diagnostics as a rail on top, the
-        // A2A bridge (the room's off-channel traffic) beneath it when there is
-        // one, and the live message feed filling the rest.
-        <div className="flex flex-1 min-h-0 flex-col">
-          <div className="shrink-0 border-b border-border bg-surface/40">
-            <RoomSlimView roomName={roomName} layout="rail" />
-          </div>
-          <div className="shrink-0">
-            <RoomA2aView roomName={roomName} />
-          </div>
-          <div className="flex-1 min-h-0">
-            <MessageInspector roomName={roomName} />
-          </div>
-        </div>
-      ) : (
       <div className="relative flex flex-1 min-h-0 flex-col">
       {findOpen && (
         <ChatFindBar
@@ -1521,8 +1455,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
             {unread > 0 ? `${unread} new ${unread === 1 ? "message" : "messages"}` : "Jump to latest"}
           </Button>
         </div>
-      )}
-      </div>
       )}
       </div>
     </div>
