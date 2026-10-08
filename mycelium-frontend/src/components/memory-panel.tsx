@@ -5,18 +5,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Brain,
   ChevronRight,
-  ExternalLink,
   Folder,
   FolderOpen,
   FileText,
   AlertCircle,
   Network,
-  Pencil,
-  Eye,
   X,
   Search,
   Loader2,
@@ -34,29 +31,20 @@ import {
 } from "@/components/ui/context-menu";
 import { absoluteUrl, copyText } from "@/lib/clipboard";
 import {
-  fetchMemory,
-  fetchMemoryExpanded,
   searchMemories,
   type Memory,
   type MemorySearchResult,
 } from "@/lib/api";
-import { useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
+import { useRoomMemories } from "@/lib/room-data";
 import { memoryGraphHref, memoryHref } from "@/lib/memory-routes";
-import { expandedPathsForKey, resolveMemoryPeekNavigation } from "@/lib/memory-panel-nav";
+import { expandedPathsForKey } from "@/lib/memory-panel-nav";
 import { MemoryPreviewCard, type PreviewAnchor } from "@/components/memory-preview-card";
 import { memoryValueText } from "@/lib/memory-preview";
-import { DetailDrawer } from "@/components/detail-drawer";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
-import { MemoryDetail } from "@/components/memory-detail";
-import { MemoryEditor } from "@/components/memory-editor";
 import { NewMemoryDialog } from "@/components/new-memory-dialog";
 import { Button } from "@/components/ui/button";
-import { TaskDiscussion } from "@/components/task/task-discussion";
-import { isLiveEpisode } from "@/lib/threads";
-import { useCurrentUser } from "@/components/current-user";
-import { useUnsavedGuard } from "@/components/unsaved-changes";
 
 /** The folder a key sits in, so a new memory starts beside the one that's open. */
 function folderOf(key: string | null): string {
@@ -80,9 +68,10 @@ interface Props {
   /** Select and reveal a memory by key (e.g. a chat `[[wikilink]]` was clicked).
    *  The nonce lets the same key re-open after the reader has browsed elsewhere. */
   focusMemory?: { key: string; nonce: number } | null;
-  /** Open a memory in the room's tabs. Given, a memory opens there rather than
-   *  in this panel's drawer, and `focusMemory` only reveals it in the tree. */
-  onOpenMemory?: (key: string) => void;
+  /** Open a memory in the room's tabs, where every memory is read
+   *  (`MemoryView`). The panel is the list and search; `focusMemory` only
+   *  reveals a memory in the tree. */
+  onOpenMemory: (key: string) => void;
   /** The memory open in the room's tabs, marked in the tree. */
   activeKey?: string | null;
 }
@@ -156,9 +145,6 @@ function fileName(node: TreeNode): string {
 const ROW_H = 22; // px, matches vscode compact density
 const INDENT = 12; // px per depth level
 const PEEK_DELAY = 350; // ms of hover intent before the preview card opens
-/** How tall a memory body gets in the drawer before it clamps behind an Expand
- *  button — the drawer is narrower than the page, so it clamps sooner. */
-const BODY_CLAMP_PX = 480;
 
 /**
  * A memory's right-click menu in the tree: open it, open its full page (a
@@ -340,7 +326,6 @@ export function MemoryPanel({
   onOpenMemory,
   activeKey = null,
 }: Props) {
-  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   // Find-file: a live, client-side filter on the key path — the plain "I know the
   // name" complement to the semantic Search below it.
@@ -348,16 +333,11 @@ export function MemoryPanel({
   const [searchResults, setSearchResults] = useState<MemorySearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Memory | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [renderedBody, setRenderedBody] = useState<string | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
   const [peek, setPeek] = useState<{ memory: Memory; anchor: PreviewAnchor } | null>(null);
   const [adding, setAdding] = useState(false);
   const paneRef = useRef<HTMLDivElement>(null);
   const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { principal } = useCurrentUser();
-  const revalidate = useRoomRevalidate(roomName);
 
   // Hovering a row opens a preview card after a beat of hover intent. It is
   // anchored to the pane's left edge rather than the row, so it never covers
@@ -388,55 +368,18 @@ export function MemoryPanel({
 
   useEffect(() => endPeek, [endPeek]);
 
-  // Anything that would replace or unmount the editor goes through `guard`,
-  // so in-progress edits are never dropped without asking.
-  const { setDirty, guard, dialog: unsavedDialog } = useUnsavedGuard();
+  // Picking a memory opens it in the room's tabs; the panel only lists.
   const selectMemory = useCallback(
-    (m: Memory | null) => {
+    (m: Memory) => {
       endPeek();
-      if (onOpenMemory) {
-        if (m) onOpenMemory(m.key);
-        return;
-      }
-      guard(() => setSelected(m));
+      onOpenMemory(m.key);
     },
-    [endPeek, guard, onOpenMemory],
+    [endPeek, onOpenMemory],
   );
 
   // The tree revalidates when a memory write reaches the room, so it needs no
   // refresh prop.
   const { memories, loading } = useRoomMemories(roomName);
-  const memoriesRef = useRef(memories);
-  useLayoutEffect(() => { memoriesRef.current = memories; }, [memories]);
-
-  // Exit edit mode whenever the selection changes. Compared in render rather
-  // than reset in an effect, so the new selection never flashes in edit mode.
-  const [prevSelectedKey, setPrevSelectedKey] = useState(selected?.key);
-  if (prevSelectedKey !== selected?.key) {
-    setPrevSelectedKey(selected?.key);
-    setIsEditing(false);
-  }
-
-  // Expanded transclusions for whichever memory is open in the drawer, so the
-  // rail peek matches the full page instead of leaving `![[…]]` markers as
-  // unexpanded chips (#599).
-  useEffect(() => {
-    if (!selected) {
-      // Clear the body when the selection clears, so the previous memory's
-      // never shows under the next one.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setRenderedBody(null);
-      return;
-    }
-    let live = true;
-    setRenderedBody(null);
-    fetchMemoryExpanded(roomName, selected.key).then(exp => {
-      if (live && exp.found && exp.rendered) setRenderedBody(exp.rendered);
-    });
-    return () => {
-      live = false;
-    };
-  }, [roomName, selected]);
 
   const contributors = useMemo(
     () => Array.from(new Set(memories.map(m => m.created_by).filter(Boolean))),
@@ -452,41 +395,24 @@ export function MemoryPanel({
     });
   }, []);
 
+  // Open a memory by key and reveal it in the tree. The room's tab says for
+  // itself when a key names no memory.
   const openMemoryByKey = useCallback(
-    async (key: string) => {
-      // The room's tab says for itself when a key names no memory.
-      if (onOpenMemory) {
-        revealKeyInTree(key, true);
-        onOpenMemory(key);
-        return;
-      }
-      const nav = await resolveMemoryPeekNavigation(
-        roomName,
-        key,
-        memoriesRef.current,
-        fetchMemory,
-      );
-      if (nav.action === "drawer") {
-        selectMemory(nav.memory);
-        revealKeyInTree(key, true);
-        return;
-      }
-      router.push(nav.href);
+    (key: string) => {
+      revealKeyInTree(key, true);
+      onOpenMemory(key);
     },
-    [roomName, revealKeyInTree, router, selectMemory, onOpenMemory],
+    [revealKeyInTree, onOpenMemory],
   );
 
-  // Arriving from search: open the named memory and reveal its folder. The tree
-  // only holds the first page of keys, so the memory is fetched by key rather
-  // than looked up in what happens to be loaded.
+  // Arriving from search: open the named memory and reveal its folder.
   useEffect(() => {
     if (!focusKey) return;
-    // Consumed only once the memory is in hand: clearing the request first would
-    // unmount the effect that is still fetching what it asked for. A one-shot
-    // request from outside, so acting on it here is the point.
+    // A one-shot request from outside, so acting on it here is the point.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void openMemoryByKey(focusKey).finally(() => onFocusConsumed?.());
-  }, [roomName, focusKey, onFocusConsumed, openMemoryByKey]);
+    openMemoryByKey(focusKey);
+    onFocusConsumed?.();
+  }, [focusKey, onFocusConsumed, openMemoryByKey]);
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) { setSearchResults(null); setSearchError(null); return; }
@@ -545,19 +471,15 @@ export function MemoryPanel({
     setCollapsed(folderPaths(tree));
   }
 
-  // A chat `[[wikilink]]` (or any external focus request) selects that memory.
-  // The nonce re-fires the same key on a repeat click.
-  // With the room's tabs, the room already opened it: the tree only reveals it.
+  // A chat `[[wikilink]]` (or any external focus request) has already opened
+  // the memory in the room's tabs; the tree reveals it. The nonce re-fires the
+  // same key on a repeat click.
   useEffect(() => {
     if (!focusMemory?.key) return;
     // A one-shot request from outside (the nonce): revealing is the response.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (onOpenMemory) revealKeyInTree(focusMemory.key, true);
-    else void openMemoryByKey(focusMemory.key);
-  }, [focusMemory, openMemoryByKey, onOpenMemory, revealKeyInTree]);
-
-  const hasDiscussion =
-    Boolean(selected?.episode) && !isLiveEpisode(roomName, selected?.episode ?? "");
+    revealKeyInTree(focusMemory.key, true);
+  }, [focusMemory, revealKeyInTree]);
 
   const toggleNs = useCallback((path: string) =>
     setCollapsed(prev => {
@@ -592,8 +514,8 @@ export function MemoryPanel({
         open={adding}
         onOpenChange={setAdding}
         roomName={roomName}
-        initialFolder={folderOf(activeKey ?? selected?.key ?? null)}
-        onCreated={key => void openMemoryByKey(key)}
+        initialFolder={folderOf(activeKey)}
+        onCreated={openMemoryByKey}
       />
 
       {/* One field for both ways of finding a memory: typing narrows the tree
@@ -712,7 +634,7 @@ export function MemoryPanel({
                 collapsed={filterCollapsed ?? collapsed}
                 onToggle={toggleNs}
                 onSelect={selectMemory}
-                selectedKey={onOpenMemory ? activeKey : (selected?.key ?? null)}
+                selectedKey={activeKey}
                 onPeek={startPeek}
                 onPeekEnd={endPeek}
                 activePaths={activePaths}
@@ -722,88 +644,7 @@ export function MemoryPanel({
         )}
       </div>
 
-      <DetailDrawer
-        open={selected !== null}
-        onClose={() => guard(() => { setSelected(null); setIsEditing(false); })}
-        title={selected?.key}
-        subtitle={selected ? `v${selected.version} · ${selected.created_by}` : undefined}
-        actions={
-          selected ? (
-            <div className="flex items-center gap-1">
-              <Tooltip content={isEditing ? "Back to the rendered memory" : "Edit this memory"}>
-                <button
-                  type="button"
-                  onClick={() =>
-                    isEditing ? guard(() => setIsEditing(false)) : setIsEditing(true)
-                  }
-                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-                >
-                  {isEditing ? <Eye className="size-3.5" /> : <Pencil className="size-3.5" />}
-                  {isEditing ? "View" : "Edit"}
-                </button>
-              </Tooltip>
-              <Tooltip content="Open full page">
-                <Link
-                  href={memoryHref(roomName, selected.key)}
-                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-                >
-                  <ExternalLink className="size-3.5" />
-                  Full page
-                </Link>
-              </Tooltip>
-            </div>
-          ) : undefined
-        }
-      >
-        {selected && (
-          isEditing ? (
-            <MemoryEditor
-              key={selected.key}
-              memory={selected}
-              roomName={roomName}
-              actor={principal}
-              onDirtyChange={setDirty}
-              onNavigate={key => guard(() => { setIsEditing(false); void openMemoryByKey(key); })}
-              onSaved={() => {
-                revalidate();
-                setIsEditing(false);
-                // Refresh the selected memory to show updated content.
-                fetchMemory(roomName, selected.key).then(m => { if (m) setSelected(m); });
-              }}
-              onCancel={() => guard(() => setIsEditing(false))}
-            />
-          ) : (
-            <>
-              <MemoryDetail
-                memory={selected}
-                roomName={roomName}
-                onNavigate={openMemoryByKey}
-                renderedBody={renderedBody}
-                    // Only where a discussion follows the body — see the full page.
-                collapseBodyAt={hasDiscussion ? BODY_CLAMP_PX : null}
-                bodyFade="elevated"
-              />
-              {/* The memory's discussion, below its body — the drawer equivalent
-                  of the full page's Discussion and the thread pane's conversation.
-                  Only a real thread has one: a memory on the room's own live
-                  episode (or none) is not a thread, and reading it as one would
-                  empty the room's history. */}
-              {hasDiscussion && selected.episode && (
-                <TaskDiscussion
-                  roomName={roomName}
-                  episode={selected.episode}
-                  onOpenMemory={openMemoryByKey}
-                  className="mt-6 px-5"
-                />
-              )}
-            </>
-          )
-        )}
-      </DetailDrawer>
-
-      {peek && !selected && <MemoryPreviewCard memory={peek.memory} anchor={peek.anchor} />}
-
-      {unsavedDialog}
+      {peek && <MemoryPreviewCard memory={peek.memory} anchor={peek.anchor} />}
     </div>
   );
 }

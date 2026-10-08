@@ -1,4 +1,5 @@
 {
+  "setup": "signed-in",
   "app": {
     "dir": "mycelium-frontend",
     "mockScript": "dev:mock",

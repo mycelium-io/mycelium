@@ -6,8 +6,11 @@
 //! A bundled app ships `mycelium` and `herdr` beside its own executable. In
 //! development they are whatever is installed. Either way, the agents that
 //! herdr starts run `mycelium` commands from a shell, so both have to be on
-//! the user's PATH, not just the app's.
+//! the user's PATH, not just the app's: on macOS and Linux they are linked
+//! into ~/.local/bin; on Windows the app's own folder is put on the PATH of
+//! everything it starts.
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
@@ -15,7 +18,65 @@ use std::sync::OnceLock;
 use serde::Serialize;
 
 pub fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
+    std::env::home_dir().unwrap_or_else(|| PathBuf::from("/"))
+}
+
+/// A program to run in the background. On Windows it gets no console window,
+/// which a windowed app would otherwise open for every console program it runs.
+pub fn command(program: impl AsRef<OsStr>) -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
+/// A program's file name on this platform.
+pub fn exe(name: &str) -> String {
+    format!("{name}{}", std::env::consts::EXE_SUFFIX)
+}
+
+/// The shell to ask for a login PATH: the user's own, else the platform's.
+#[cfg(unix)]
+fn login_shell() -> String {
+    let fallback = if cfg!(target_os = "macos") { "/bin/zsh" } else { "/bin/sh" };
+    std::env::var("SHELL").unwrap_or_else(|_| fallback.into())
+}
+
+#[cfg(unix)]
+fn login_path() -> Option<String> {
+    login_shell_path()
+}
+
+#[cfg(unix)]
+fn login_shell_path() -> Option<String> {
+    command(login_shell())
+        .args(["-lc", "printf %s \"$PATH\""])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|p| !p.is_empty())
+}
+
+/// Windows has no login shell: a GUI app starts with the user's PATH already.
+#[cfg(windows)]
+fn login_path() -> Option<String> {
+    None
+}
+
+/// The folder the programs the app starts should find first: ~/.local/bin,
+/// where macOS and Linux link them, or on Windows the app's own folder.
+fn first_dir() -> PathBuf {
+    #[cfg(windows)]
+    if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
+        return dir;
+    }
+    local_bin()
 }
 
 pub fn local_bin() -> PathBuf {
@@ -27,50 +88,42 @@ pub fn local_bin() -> PathBuf {
 pub fn shell_path() -> &'static str {
     static PATH: OnceLock<String> = OnceLock::new();
     PATH.get_or_init(|| {
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-        let from_shell = Command::new(shell)
-            .args(["-lc", "printf %s \"$PATH\""])
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-            .filter(|p| !p.is_empty());
-        let base = from_shell
+        let base = login_path()
             .or_else(|| std::env::var("PATH").ok())
             .unwrap_or_else(|| "/usr/bin:/bin:/usr/sbin:/sbin".into());
-        let local = local_bin().to_string_lossy().to_string();
-        if base.split(':').any(|p| p == local) {
-            base
-        } else {
-            format!("{local}:{base}")
+        let first = first_dir();
+        let mut dirs: Vec<PathBuf> = std::env::split_paths(&base).collect();
+        if !dirs.contains(&first) {
+            dirs.insert(0, first);
         }
+        std::env::join_paths(dirs)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or(base)
     })
 }
 
-/// Whether the user's own login shell has ~/.local/bin on its PATH (before
-/// this app adds it for the processes it starts).
+/// Whether the user's own shell will find the bundled programs (before this
+/// app adds their folder for the processes it starts).
 pub fn local_bin_on_user_path() -> bool {
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-    let local = local_bin().to_string_lossy().to_string();
-    Command::new(shell)
-        .args(["-lc", "printf %s \"$PATH\""])
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).split(':').any(|p| p == local))
-        .unwrap_or(false)
+    #[cfg(unix)]
+    let user_path = login_shell_path();
+    #[cfg(windows)]
+    let user_path = std::env::var("PATH").ok();
+    let first = first_dir();
+    user_path.is_some_and(|p| std::env::split_paths(&p).any(|d| d == first))
 }
 
 /// A program shipped inside the app bundle, beside the app's executable.
 pub fn bundled(name: &str) -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let candidate = exe.parent()?.join(name);
+    let current = std::env::current_exe().ok()?;
+    let candidate = current.parent()?.join(exe(name));
     candidate.is_file().then_some(candidate)
 }
 
 fn on_path(name: &str) -> Option<PathBuf> {
     std::iter::once(local_bin())
-        .chain(shell_path().split(':').map(PathBuf::from))
-        .map(|dir| dir.join(name))
+        .chain(std::env::split_paths(shell_path()))
+        .map(|dir| dir.join(exe(name)))
         .find(|p| p.is_file())
 }
 
@@ -114,13 +167,46 @@ pub struct PathSetup {
 ///
 /// Only a symlink is ever replaced: a real file there is the user's own
 /// install and is left alone. In development nothing is bundled, so there is
-/// nothing to link and the installed copies are used as they are.
+/// nothing to link and the installed copies are used as they are. On Windows
+/// nothing is linked: the app's folder is what goes on the PATH.
+#[cfg(windows)]
+pub fn link_bundled() -> PathSetup {
+    let dir = first_dir();
+    let linked = ["mycelium", "herdr"]
+        .into_iter()
+        .filter(|name| bundled(name).is_some())
+        .map(String::from)
+        .collect();
+    PathSetup {
+        linked,
+        skipped: Vec::new(),
+        on_path: local_bin_on_user_path(),
+        // PowerShell, adding to the user's own PATH only. Not `setx PATH
+        // "%PATH%;…"`: that copies the system PATH into the user's and cuts the
+        // result at 1024 characters, which damages a typical developer's PATH.
+        line: format!(
+            "[Environment]::SetEnvironmentVariable(\"Path\", \
+             [Environment]::GetEnvironmentVariable(\"Path\", \"User\") + \";{}\", \"User\")",
+            dir.display()
+        ),
+    }
+}
+
+#[cfg(unix)]
 pub fn link_bundled() -> PathSetup {
     let dir = local_bin();
     let mut linked = Vec::new();
     let mut skipped = Vec::new();
     for name in ["mycelium", "herdr"] {
         let Some(source) = bundled(name) else { continue };
+        // An AppImage's programs live in a mount that is new on every launch
+        // and gone once the app exits, while the agents in herdr keep running.
+        // Link to a copy kept outside it instead, so their `mycelium` commands
+        // still work after the app closes.
+        let Some(source) = stable_copy(&source, name) else {
+            skipped.push(name.to_string());
+            continue;
+        };
         let _ = std::fs::create_dir_all(&dir);
         let target = dir.join(name);
         match std::fs::symlink_metadata(&target) {
@@ -152,7 +238,53 @@ fn symlink(source: &Path, target: &Path) -> std::io::Result<()> {
     std::os::unix::fs::symlink(source, target)
 }
 
-#[cfg(not(unix))]
-fn symlink(source: &Path, target: &Path) -> std::io::Result<()> {
-    std::fs::copy(source, target).map(|_| ())
+/// Where a bundled program can be linked from for as long as it's installed.
+///
+/// Inside an AppImage (`$APPIMAGE` is set) that's a copy under
+/// ~/.local/share/mycelium/bin, refreshed when this launch's program differs.
+/// The copy is written beside the old one and renamed over it, so an agent
+/// still running the old copy keeps running. Anywhere else the bundled
+/// program already has a lasting path.
+#[cfg(unix)]
+fn stable_copy(source: &Path, name: &str) -> Option<PathBuf> {
+    if std::env::var_os("APPIMAGE").is_none() {
+        return Some(source.to_path_buf());
+    }
+    let dir = home().join(".local").join("share").join("mycelium").join("bin");
+    let target = dir.join(name);
+    let same = |a: &Path, b: &Path| -> bool {
+        let (Ok(a), Ok(b)) = (std::fs::metadata(a), std::fs::metadata(b)) else { return false };
+        a.len() == b.len() && a.modified().ok() == b.modified().ok()
+    };
+    if same(source, &target) {
+        return Some(target);
+    }
+    std::fs::create_dir_all(&dir).ok()?;
+    let partial = dir.join(format!(".{name}.partial"));
+    std::fs::copy(source, &partial).ok()?;
+    // Keep the source's modified time, so the next launch can tell it's current.
+    if let Ok(modified) = std::fs::metadata(source).and_then(|m| m.modified()) {
+        let _ = std::fs::File::options()
+            .write(true)
+            .open(&partial)
+            .and_then(|f| f.set_modified(modified));
+    }
+    std::fs::rename(&partial, &target).ok()?;
+    Some(target)
+}
+
+/// Open a web or mail link, or a file, with what this machine opens it with.
+pub fn open(target: &OsStr) -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    let mut cmd = command("open");
+    #[cfg(target_os = "linux")]
+    let mut cmd = command("xdg-open");
+    #[cfg(windows)]
+    let mut cmd = {
+        // Not `cmd /c start`, which reads `&` in a URL as a second command.
+        let mut c = command("rundll32");
+        c.arg("url.dll,FileProtocolHandler");
+        c
+    };
+    cmd.arg(target).spawn().map(|_| ())
 }

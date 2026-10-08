@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-//! Mycelium for macOS: a thin shell over `mycelium desktop serve`.
+//! Mycelium for macOS, Linux and Windows: a thin shell over `mycelium desktop serve`.
 //!
 //! The shell starts the supervisor, shows its progress on a local page, then
 //! points the main window at the room UI it serves (or at the remote hub).
@@ -15,7 +15,6 @@ mod supervisor;
 mod terminal;
 mod updates;
 
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
@@ -178,7 +177,7 @@ pub(crate) fn on_status(app: &AppHandle, generation: u64, status: &Value) {
 /// agent CLIs on this Mac, and the person's answer about them.
 fn machine_integrations(args: &[&str]) -> Option<std::process::Output> {
     let bin = paths::resolve("mycelium")?;
-    Command::new(bin)
+    paths::command(bin)
         .args(["machine", "integrations"])
         .args(args)
         .env("PATH", paths::shell_path())
@@ -388,8 +387,13 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(true);
     // A template image: one colour with transparency, which macOS tints to
     // match the menu bar (white on dark, black on light) like its own icons.
-    let template = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-template.png"))?;
-    tray = tray.icon(template).icon_as_template(true);
+    // Other platforms don't tint, so they get the app's own icon.
+    if cfg!(target_os = "macos") {
+        let template = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-template.png"))?;
+        tray = tray.icon(template).icon_as_template(true);
+    } else {
+        tray = tray.icon(tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))?);
+    }
     tray.build(app)?;
     *app.state::<Shell>().tray.lock().unwrap() = Some(TrayItems {
         status,
@@ -645,7 +649,7 @@ async fn scan_agents(app: AppHandle, webview: Webview) -> Result<Value, String> 
     local_only(&app, &webview)?;
     let bin = paths::resolve("mycelium").ok_or("The mycelium program isn't available.")?;
     let out = tauri::async_runtime::spawn_blocking(move || {
-        Command::new(bin)
+        paths::command(bin)
             .args(["runner", "scan", "--json"])
             .env("PATH", paths::shell_path())
             .output()
@@ -665,7 +669,7 @@ async fn run_doctor(app: AppHandle, webview: Webview) -> Result<Value, String> {
     local_only(&app, &webview)?;
     let bin = paths::resolve("mycelium").ok_or("The mycelium program isn't available.")?;
     let out = tauri::async_runtime::spawn_blocking(move || {
-        Command::new(bin)
+        paths::command(bin)
             .args(["--json", "doctor", "--mode", "desktop"])
             .env("PATH", paths::shell_path())
             .output()
@@ -705,7 +709,7 @@ async fn model_cli(input: Option<String>) -> Result<Value, String> {
 
     let bin = paths::resolve("mycelium").ok_or("The mycelium program isn't available.")?;
     let out = tauri::async_runtime::spawn_blocking(move || {
-        let mut cmd = Command::new(bin);
+        let mut cmd = paths::command(bin);
         cmd.args(["desktop", "model"])
             .env("PATH", paths::shell_path())
             .stdin(Stdio::piped())
@@ -772,7 +776,7 @@ async fn remove_experience(app: AppHandle, webview: Webview, id: String) -> Resu
 async fn experiences_cli(args: Vec<String>) -> Result<Value, String> {
     let bin = paths::resolve("mycelium").ok_or("The mycelium program isn't available.")?;
     let out = tauri::async_runtime::spawn_blocking(move || {
-        Command::new(bin)
+        paths::command(bin)
             .args(["desktop", "experiences"])
             .args(&args)
             .env("PATH", paths::shell_path())
@@ -801,7 +805,7 @@ async fn get_hub_settings(app: AppHandle, webview: Webview) -> Result<Value, Str
 async fn hub_settings_cli(hub: Option<String>) -> Result<Value, String> {
     let bin = paths::resolve("mycelium").ok_or("The mycelium program isn't available.")?;
     let out = tauri::async_runtime::spawn_blocking(move || {
-        let mut cmd = Command::new(bin);
+        let mut cmd = paths::command(bin);
         cmd.args(["hub", "settings", "--json"])
             .env("PATH", paths::shell_path())
             .env("NO_COLOR", "1");
@@ -834,7 +838,8 @@ fn open_experience(app: AppHandle, webview: Webview, path: String) -> Result<(),
     Ok(())
 }
 
-/// Open the supervisor's log (`~/.mycelium/logs/desktop.log`) in Console.
+/// Open the supervisor's log (`~/.mycelium/logs/desktop.log`): in Console on
+/// a Mac, elsewhere in whatever opens text files.
 #[tauri::command]
 fn open_log(app: AppHandle, webview: Webview) -> Result<(), String> {
     local_only(&app, &webview)?;
@@ -842,12 +847,11 @@ fn open_log(app: AppHandle, webview: Webview) -> Result<(), String> {
     if !log.exists() {
         return Err("There's no log yet. It starts when Mycelium does.".into());
     }
-    Command::new("open")
-        .args(["-a", "Console"])
-        .arg(&log)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    #[cfg(target_os = "macos")]
+    let opened = paths::command("open").args(["-a", "Console"]).arg(&log).spawn().map(|_| ());
+    #[cfg(not(target_os = "macos"))]
+    let opened = paths::open(log.as_os_str());
+    opened.map_err(|e| e.to_string())
 }
 
 /// Back to the room UI from one of the app's own pages, once it is up.
@@ -959,7 +963,7 @@ fn main_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
         // web window of its own, and only web and mail links are passed on.
         .on_new_window(|url, _features| {
             if matches!(url.scheme(), "http" | "https" | "mailto") {
-                let _ = Command::new("open").arg(url.as_str()).spawn();
+                let _ = paths::open(url.as_str().as_ref());
             }
             tauri::webview::NewWindowResponse::Deny
         })
@@ -967,6 +971,12 @@ fn main_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
 }
 
 pub fn run() {
+    // WebKitGTK's DMA-BUF renderer draws a blank window on some GPUs (NVIDIA's
+    // driver among them) and in VMs; the person can still turn it back on.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
     let app = tauri::Builder::default()
         // First, so a second launch (or a link opened while running) lands here.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| show_main(app)))
@@ -1008,6 +1018,12 @@ pub fn run() {
             *app.state::<Shell>().local_base.lock().unwrap() = window.url().ok();
             build_tray(&handle)?;
 
+            // macOS and the Windows installer register mycelium:// links with
+            // the system; an AppImage has no installer, so it registers itself.
+            #[cfg(target_os = "linux")]
+            if let Err(e) = app.deep_link().register_all() {
+                eprintln!("[mycelium] could not register mycelium:// links: {e}");
+            }
             let links = handle.clone();
             app.deep_link().on_open_url(move |event| {
                 for url in event.urls() {

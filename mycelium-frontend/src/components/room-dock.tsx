@@ -24,7 +24,7 @@ import { MessageInspector } from "@/components/message-inspector";
 import { RoomA2aView } from "@/components/room-a2a";
 import { RoomSlimView } from "@/components/room-slim";
 import { RoomChatBox } from "@/components/room-chat-box";
-import { MemoryTab, type GuardHandle } from "@/components/memory-tab";
+import { MemoryView, type GuardHandle } from "@/components/memory-view";
 import { ThreadView } from "@/components/thread-view";
 import { KeyBadge } from "@/components/key-badge";
 import {
@@ -136,7 +136,7 @@ function NetworkPanel() {
 function MemoryPanel({ params }: IDockviewPanelProps<{ key: string }>) {
   const d = useDock();
   return (
-    <MemoryTab
+    <MemoryView
       key={params.key}
       roomName={d.roomName}
       memoryKey={params.key}

@@ -337,6 +337,30 @@ def test_call_raises_on_missing_binary(tmp_path: Path, monkeypatch: pytest.Monke
         _brain(tmp_path)("p")
 
 
+def test_a_javascript_entry_point_runs_on_node(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Windows app points Pi at its cli.js: it runs on node, with the
+    prompt one argument whatever it holds, never through a batch launcher."""
+    cli = tmp_path / "cli.js"
+    cli.write_text("")
+    monkeypatch.setattr(
+        pi_session.shutil, "which", lambda b: "/app/node.exe" if b == "node" else None
+    )
+    assert pi_session.pi_argv(str(cli)) == ["/app/node.exe", str(cli)]
+    assert pi_session.pi_argv(str(tmp_path / "missing.js")) is None
+    prompt = 'line one\nline two with 50% & a "quote" | pipe'
+    cmd = _brain(tmp_path, binary=str(cli))._build_command(prompt, "")
+    assert cmd[:2] == ["/app/node.exe", str(cli)]
+    assert cmd[-1] == prompt
+
+
+def test_a_plain_binary_is_looked_up_on_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pi_session.shutil, "which", lambda b: "/usr/bin/pi" if b == "pi" else None)
+    assert pi_session.pi_argv("pi") == ["pi"]
+    assert pi_session.pi_argv("nope") is None
+
+
 def test_call_raises_on_nonzero_exit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     patch_pi_run(monkeypatch, stdout="", returncode=2)
     with pytest.raises(PiSessionError, match="exited 2"):

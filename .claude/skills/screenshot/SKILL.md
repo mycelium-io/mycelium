@@ -87,6 +87,23 @@ descendant selector. Words that are also tag names are no exception, so
 `click:table` finds a button labeled "table" before it considers a `<table>`.
 For a selector use `#id`, `.class`, `role=button[name="Save"]`, `text=Save`, or
 `css=` when it is only tag names and spaces. `shot help shoot` lists every verb.
+`wait:<ms>` pauses; `wait-text:` matches rendered text, so it misses a
+placeholder and text that CSS uppercases (wait on a selector for those).
+
+## Flows: states this repo already knows how to reach
+
+`shotkit/flows/*.json` are committed recipes for getting the app into a state.
+List them before writing your own steps, and add one when you work out a state
+someone else will want:
+
+```bash
+node shotkit/bin/shot.mjs flows
+node shotkit/bin/shot.mjs app --flow task-tab --offline
+```
+
+`signed-in` is the setup flow (`shotkit.config.json`): it runs before every app
+capture and signs the mock in as @operator, so a shot never opens on "What
+should we call you?". `--no-setup` skips it, for a shot of that dialog.
 
 ## Record a short video
 

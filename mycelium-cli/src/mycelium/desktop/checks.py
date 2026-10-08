@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -53,11 +54,11 @@ def app_setting() -> CheckResult:
             name="Desktop app",
             status="warning",
             message="not set up yet",
-            details=["Open Mycelium and choose how this Mac takes part."],
+            details=["Open Mycelium and choose how this computer takes part."],
         )
     if s.get("mode") == "client":
         return CheckResult(name="Desktop app", status="ok", message=f"joins {s.get('hubUrl')}")
-    return CheckResult(name="Desktop app", status="ok", message="runs a hub on this Mac")
+    return CheckResult(name="Desktop app", status="ok", message="runs a hub on this computer")
 
 
 def slim_node() -> CheckResult:
@@ -109,21 +110,21 @@ def hubs_here(*, client: bool = False) -> CheckResult:
     listed = [h.describe() for h in found]
     if not found:
         return CheckResult(
-            name="Hubs on this Mac",
+            name="Hubs on this computer",
             status="info" if client else "error",
             message="none running",
         )
     if client:
         # Joined elsewhere: a hub here gets nothing from the app.
         return CheckResult(
-            name="Hubs on this Mac",
+            name="Hubs on this computer",
             status="info",
             message=f"{len(found)} running, not used by the app",
             details=listed,
         )
     there = at_port(found, HUB_PORT)
     if not said:
-        return CheckResult(name="Hubs on this Mac", status="ok", message=listed[0])
+        return CheckResult(name="Hubs on this computer", status="ok", message=listed[0])
     fix = []
     if there is not None:
         stop = (
@@ -137,7 +138,7 @@ def hubs_here(*, client: bool = False) -> CheckResult:
         )
         fix.append(f"To use Mycelium's own hub: {stop}, then reopen Mycelium.")
     return CheckResult(
-        name="Hubs on this Mac",
+        name="Hubs on this computer",
         status="warning",
         message=said[0],
         details=[*said[1:], *listed, *fix],
@@ -160,7 +161,7 @@ def runner(api_url: str) -> CheckResult:
         return CheckResult(
             name="Runner",
             status="error",
-            message="the hub hasn't heard from this Mac",
+            message="the hub hasn't heard from this computer",
             details=["Without it the app can't start agents here."],
         )
     seen = resp.json()
@@ -326,4 +327,5 @@ def desktop_checks() -> list[tuple[str, list[CheckResult]]]:
         agents.append(paired)
     if not client:
         agents.append(embedding_model())
-    return [("This Mac", services), ("Agents", agents)]
+    here = "This Mac" if sys.platform == "darwin" else "This computer"
+    return [(here, services), ("Agents", agents)]

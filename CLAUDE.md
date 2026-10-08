@@ -22,13 +22,16 @@ fastapi-backend/    FastAPI backend, room moderator + persister (Python 3.12).
 mycelium-cli/       CLI tool (typer, Rich, typed OpenAPI client)
 mycelium-client/    Generated OpenAPI client (openapi-python-client)
 mycelium-frontend/  Next.js frontend (TypeScript, Tailwind)
-mycelium-desktop/   Mycelium for Mac: a Tauri 2 shell over `mycelium desktop
+mycelium-desktop/   The desktop app: a Tauri 2 shell over `mycelium desktop
                     serve`, with the hub, UI, SLIM node (slimctl), herdr, Node,
                     Pi and the search model inside
-                    (`scripts/stage-sidecars.sh`). Released as
+                    (`scripts/stage-sidecars.sh`, per platform). Released by
+                    `.github/workflows/desktop.yml` as
                     Mycelium-macos-arm64.dmg, signed with a Developer ID and
-                    notarized (`scripts/package-mac.sh`), and updated in
-                    place from the release's `latest.json`.
+                    notarized (`scripts/package-mac.sh`), and, in preview,
+                    Mycelium-linux-x86_64.AppImage (`package-linux.sh`) and
+                    Mycelium-windows-x86_64-setup.exe (`package-windows.sh`);
+                    each updated in place from the release's `latest.json`.
 docs/               Docs site (generated from mycelium-cli/src/mycelium/docs/),
                     demo script, design notes
 shotkit/            The repo's camera: fast screenshots of the running app and of

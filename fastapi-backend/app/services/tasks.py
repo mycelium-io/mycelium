@@ -35,9 +35,9 @@ namespaces are *worked*.
 
 from __future__ import annotations
 
-import fcntl
 import logging
 import re
+import sys
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -60,6 +60,20 @@ if TYPE_CHECKING:
     from app.services.floor import Floor
 
 logger = logging.getLogger(__name__)
+
+
+def _lock_exclusive(fh: Any) -> None:
+    """Hold ``fh`` exclusively until it is closed (flock; a byte lock on Windows)."""
+    if sys.platform == "win32":
+        import msvcrt
+
+        fh.seek(0)
+        msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+        return
+    import fcntl
+
+    fcntl.flock(fh, fcntl.LOCK_EX)
+
 
 #: The namespace a task lives in — the one the board leases against.
 WORK_NAMESPACE = "work"
@@ -403,7 +417,7 @@ def backfill_room(room: str) -> int:
         path = base / f"{key}.md"
         try:
             with path.open("r+", encoding="utf-8") as fh:
-                fcntl.flock(fh, fcntl.LOCK_EX)
+                _lock_exclusive(fh)
                 locked_meta, locked_content = parse_memory(fh.read())
                 if system_meta(locked_meta).get(EPISODE_META):
                     continue

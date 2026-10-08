@@ -2,7 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { describe, expect, it } from "vitest";
-import { appJoinLink, desktopVersion, inviteLink, isDesktop, settingsLink, terminalLink } from "@/lib/desktop";
+import { APP_DOWNLOADS, appJoinLink, appPlatform, desktopMachine, desktopVersion, inviteLink, isDesktop, settingsLink, terminalLink } from "@/lib/desktop";
 
 describe("desktop links", () => {
   it("knows the app by its user agent", () => {
@@ -31,5 +31,32 @@ describe("desktop links", () => {
       "https://hub.example.com/join?room=atlas+migration",
     );
     expect(inviteLink("http://127.0.0.1:3717")).toBe("http://127.0.0.1:3717/join");
+  });
+
+  it("calls the machine a Mac on a Mac, and a computer elsewhere", () => {
+    expect(desktopMachine("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) MyceliumDesktop/1.0")).toBe("Mac");
+    expect(desktopMachine("Mozilla/5.0 (X11; Linux x86_64) MyceliumDesktop/1.0")).toBe("computer");
+    expect(desktopMachine("Mozilla/5.0 (Windows NT 10.0; Win64; x64) MyceliumDesktop/1.0")).toBe("computer");
+  });
+
+  it("offers the app for the system a browser runs on, and none where it doesn't run", () => {
+    const ua = {
+      mac: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15",
+      windows: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36",
+      linux: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36",
+      android: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36",
+      iphone: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+      chromeos: "Mozilla/5.0 (X11; CrOS x86_64 15000.0.0) AppleWebKit/537.36 Chrome/130.0 Safari/537.36",
+    };
+    expect(appPlatform(ua.mac, 0)).toBe("Mac");
+    // An iPad's Safari asks for the desktop site as a Mac; its touch screen gives it away.
+    expect(appPlatform(ua.mac, 5)).toBeNull();
+    expect(appPlatform(ua.windows, 0)).toBe("Windows");
+    expect(appPlatform(ua.linux, 0)).toBe("Linux");
+    expect(appPlatform(ua.android, 5)).toBeNull();
+    expect(appPlatform(ua.iphone, 5)).toBeNull();
+    expect(appPlatform(ua.chromeos, 0)).toBeNull();
+    expect(APP_DOWNLOADS.Windows.url).toMatch(/\/Mycelium-windows-x86_64-setup\.exe$/);
+    expect(APP_DOWNLOADS.Linux.url).toMatch(/\/Mycelium-linux-x86_64\.AppImage$/);
   });
 });

@@ -25,7 +25,7 @@ import { useOpenInstallModal } from "@/components/install-modal";
 import { useOpenSearch } from "@/components/global-search";
 import { useOpenPalette } from "@/components/keymap-provider";
 import { type EpisodeSummary, type Room } from "@/lib/api";
-import { useIsDesktop } from "@/lib/desktop";
+import { desktopMachine, useIsDesktop } from "@/lib/desktop";
 import { useRoomEpisodes, useRoomLatest, useRooms, type RoomQueryOptions } from "@/lib/room-data";
 import { useBackendHealth } from "@/lib/use-status";
 
@@ -153,7 +153,7 @@ export function HomeDashboard() {
             <ActionRow icon={Plus} label="New room" onClick={() => setShowCreate(true)} />
             <ActionRow icon={Search} label="Search everything" action="search.open" onClick={() => openSearch?.()} />
             <ActionRow icon={Command} label="All commands" action="palette.open" onClick={openPalette} />
-            <ActionRow icon={Laptop} label={desktop ? "This Mac's agents" : "Machines"} href="/machines" />
+            <ActionRow icon={Laptop} label={desktop ? `This ${desktopMachine()}'s agents` : "Machines"} href="/machines" />
             <ActionRow icon={Sparkles} label="Run a sample" href={SAMPLE_TOUR_HREF} />
             {!desktop && <ActionRow icon={Terminal} label="Install the CLI" onClick={openInstallModal} />}
           </section>

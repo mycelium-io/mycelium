@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 #
-# Stage everything Mycelium.app carries, so it runs on a Mac with nothing
-# else installed.
+# Stage everything the Mycelium app carries, so it runs with nothing else
+# installed: on a Mac (Mycelium.app), on Linux (an AppImage) or on Windows
+# (an installer). Runs on the platform it stages for; on Windows, in Git Bash.
 #
-# Programs, into src-tauri/binaries as <name>-<target triple> (Tauri's
-# externalBin, which lands in Contents/MacOS):
+# Programs, into src-tauri/binaries as <name>-<target triple>[.exe] (Tauri's
+# externalBin, which lands beside the app's own executable: Contents/MacOS,
+# usr/bin, or the install folder):
 #
 #   mycelium  the CLI and the supervisor (PyInstaller, as the release builds it)
 #   herdr     pinned release; where agents run
@@ -14,13 +16,15 @@
 #             the hub speaks, or the handshake fails
 #   node      runs the UI server and Pi
 #
-# Directories, into src-tauri/resources (Contents/Resources):
+# Directories, into src-tauri/resources (Contents/Resources on a Mac,
+# usr/lib/Mycelium in an AppImage, the install folder on Windows):
 #
 #   hub/      the hub, a PyInstaller directory build
 #   ui/       the UI's standalone build, with its static files
 #   models/   the embedding model, so memory search works offline
-#   pi/       Pi, which the engines think with, and a launcher that runs it
-#             on the bundled node
+#   pi/       Pi, which the engines think with, and (Mac, Linux) a launcher
+#             that runs it on the bundled node
+#   conpty/   Windows only: the console host herdr runs its panes in
 #
 # Usage: bash scripts/stage-sidecars.sh [step...]
 #   steps: herdr slimctl node mycelium hub models ui pi (default: all)
@@ -43,38 +47,64 @@ work="$here/src-tauri/target/stage"
 triple="$(rustc --print host-tuple)"
 mkdir -p "$bin" "$res" "$work"
 
+# Per target: herdr's and slimctl's release assets, node's build, and the
+# esbuild package Pi needs (esbuild names Windows win32, node names it win).
+x=""
 case "$triple" in
-  aarch64-apple-darwin) herdr_asset="herdr-macos-aarch64"; slim_asset="slimctl-darwin-arm64.tar.gz"; node_arch="darwin-arm64" ;;
-  x86_64-apple-darwin) herdr_asset="herdr-macos-x86_64"; slim_asset="slimctl-darwin-amd64.tar.gz"; node_arch="darwin-x64" ;;
+  aarch64-apple-darwin) os=mac; herdr_asset="herdr-macos-aarch64"; slim_asset="slimctl-darwin-arm64.tar.gz"; node_arch="darwin-arm64"; esbuild_arch="darwin-arm64" ;;
+  x86_64-apple-darwin) os=mac; herdr_asset="herdr-macos-x86_64"; slim_asset="slimctl-darwin-amd64.tar.gz"; node_arch="darwin-x64"; esbuild_arch="darwin-x64" ;;
+  x86_64-unknown-linux-gnu) os=linux; herdr_asset="herdr-linux-x86_64"; slim_asset="slimctl-linux-amd64-gnu.tar.gz"; node_arch="linux-x64"; esbuild_arch="linux-x64" ;;
+  aarch64-unknown-linux-gnu) os=linux; herdr_asset="herdr-linux-aarch64"; slim_asset="slimctl-linux-arm64-gnu.tar.gz"; node_arch="linux-arm64"; esbuild_arch="linux-arm64" ;;
+  x86_64-pc-windows-msvc) os=windows; x=".exe"; herdr_asset="herdr-windows-x86_64.zip"; slim_asset="slimctl-windows-amd64.zip"; node_arch="win-x64"; esbuild_arch="win32-x64" ;;
   *) echo "no pinned builds for $triple" >&2; exit 1 ;;
 esac
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-place() { cp "$1" "$bin/$2-$triple"; chmod +x "$bin/$2-$triple"; echo "staged $2"; }
+place() { cp "$1" "$bin/$2-$triple$x"; chmod +x "$bin/$2-$triple$x"; echo "staged $2"; }
 
-# Drop a program's debug symbols (a fifth of node, a sixth of slimctl), then
-# sign it ad hoc again: stripping breaks its signature, and macOS won't run
-# an arm64 program without a valid one. package-mac.sh signs it for real.
-# Never the mycelium CLI: its code is an archive appended to the program,
-# which strip cuts off.
+# A release asset, downloaded over plain HTTPS so no GitHub login is needed.
+fetch() { curl -fsSL "https://github.com/$1/releases/download/$2/$3" -o "$tmp/$3"; }
+
+# Unpack an archive into $tmp: zips on Windows, tarballs elsewhere.
+unpack() {
+  case "$1" in
+    *.zip) unzip -q -o "$tmp/$1" -d "$tmp/${1%.zip}" ;;
+    *) tar -xzf "$tmp/$1" -C "$tmp" ;;
+  esac
+}
+
+# On a Mac, drop a program's debug symbols (a fifth of node, a sixth of
+# slimctl), then sign it ad hoc again: stripping breaks its signature, and
+# macOS won't run an arm64 program without a valid one. package-mac.sh signs
+# it for real. Never the mycelium CLI: its code is an archive appended to the
+# program, which strip cuts off. Linux and Windows builds come stripped
+# already, and stripping herdr's static-pie Linux build again breaks it.
 strip_program() {
+  [ "$os" = mac ] || return 0
   # strip warns that the signature is now invalid; it is signed again below.
   strip -x "$bin/$1-$triple" 2>/dev/null
   codesign --force --sign - "$bin/$1-$triple" 2>/dev/null
 }
 
 stage_herdr() {
-  gh release download "$HERDR_TAG" -R herdrdev/herdr -p "$herdr_asset" -D "$tmp"
+  fetch herdrdev/herdr "$HERDR_TAG" "$herdr_asset"
+  if [ "$os" = windows ]; then
+    # herdr runs its panes in the ConPTY console host it ships beside it.
+    unpack "$herdr_asset"
+    place "$tmp/${herdr_asset%.zip}/herdr.exe" herdr
+    rm -rf "$res/conpty" && cp -R "$tmp/${herdr_asset%.zip}/conpty" "$res/conpty"
+    return
+  fi
   place "$tmp/$herdr_asset" herdr
   strip_program herdr
 }
 
 stage_slimctl() {
-  gh release download "$SLIMCTL_TAG" -R agntcy/slim -p "$slim_asset" -D "$tmp"
-  tar -xzf "$tmp/$slim_asset" -C "$tmp"
-  place "$(find "$tmp" -type f -name slimctl | head -n 1)" slimctl
+  fetch agntcy/slim "$SLIMCTL_TAG" "$slim_asset"
+  unpack "$slim_asset"
+  place "$(find "$tmp" -type f -name "slimctl$x" | head -n 1)" slimctl
   strip_program slimctl
 }
 
@@ -84,10 +114,33 @@ stage_node() {
     return
   fi
   local node_dir="node-v$NODE_VERSION-$node_arch"
+  if [ "$os" = windows ]; then
+    curl -fsSL "https://nodejs.org/dist/v$NODE_VERSION/$node_dir.zip" -o "$tmp/node.zip"
+    unzip -q "$tmp/node.zip" "$node_dir/node.exe" -d "$tmp"
+    place "$tmp/$node_dir/node.exe" node
+    return
+  fi
   curl -fsSL "https://nodejs.org/dist/v$NODE_VERSION/$node_dir.tar.gz" -o "$tmp/node.tar.gz"
   tar -xzf "$tmp/node.tar.gz" -C "$tmp" "$node_dir/bin/node"
   place "$tmp/$node_dir/bin/node" node
   strip_program node
+}
+
+# Copy a directory, following links and leaving out the names given. Python,
+# not rsync, which Git Bash on Windows doesn't have.
+copy_tree() {
+  local src="$1" dst="$2"
+  shift 2
+  uv run --no-project python -c '
+import shutil, sys
+src, dst, *skip = sys.argv[1:]
+shutil.copytree(src, dst, ignore=shutil.ignore_patterns(*skip), dirs_exist_ok=True)
+' "$src" "$dst" "$@"
+}
+
+# A virtualenv's own programs: bin/ everywhere but Windows, which has Scripts/.
+venv_bin() {
+  if [ "$os" = windows ]; then echo "$1/Scripts/$2.exe"; else echo "$1/bin/$2"; fi
 }
 
 client_built=""
@@ -111,14 +164,14 @@ stage_mycelium() {
   (
     cd "$repo/mycelium-cli"
     uv venv "$work/cli-venv" --allow-existing
-    uv pip install --python "$work/cli-venv/bin/python" -e . ../mycelium-client/dist/*.whl pyinstaller
-    "$work/cli-venv/bin/pyinstaller" --noconfirm --onefile --name mycelium \
+    uv pip install --python "$(venv_bin "$work/cli-venv" python)" -e . ../mycelium-client/dist/*.whl pyinstaller
+    "$(venv_bin "$work/cli-venv" pyinstaller)" --noconfirm --onefile --name mycelium \
       --collect-all mycelium --collect-all pyfiglet \
       --hidden-import mycelium_backend_client \
       --distpath "$work/cli-dist" --workpath "$work/cli-build" --specpath "$work" \
       -p src src/mycelium/cli.py
   )
-  place "$work/cli-dist/mycelium" mycelium
+  place "$work/cli-dist/mycelium$x" mycelium
 }
 
 stage_hub() {
@@ -154,7 +207,7 @@ stage_models() {
   # The download is a Hugging Face cache: the files in blobs/, and links to
   # them in snapshots/. The app bundle turns links into copies, which would
   # carry the model twice; the snapshot's files alone are what loads it.
-  rsync -aL --exclude blobs "$tmp/models/" "$res/models/"
+  copy_tree "$tmp/models" "$res/models" blobs
   echo "staged the embedding model"
 }
 
@@ -170,8 +223,7 @@ stage_ui() {
   local src="$tmp/mycelium-frontend"
   rm -rf "$src" && mkdir -p "$src"
   # screenshots/ is repo tooling that reaches outside the frontend (../../shotkit).
-  rsync -a --exclude node_modules --exclude .next --exclude screenshots \
-    "$repo/mycelium-frontend/" "$src/"
+  copy_tree "$repo/mycelium-frontend" "$src" node_modules .next screenshots
   (
     cd "$src"
     npm ci --no-audit --no-fund
@@ -193,20 +245,29 @@ stage_pi() {
   npm install --prefix "$res/pi" --omit=dev --no-audit --no-fund --no-package-lock \
     "@earendil-works/pi-coding-agent@$PI_VERSION"
   # Pi's lockfile pulls esbuild's native binary for every platform (~290 MB);
-  # a Mac needs its own.
-  find "$res/pi/node_modules" -type d -path "*/@esbuild/*" -prune ! -name "$node_arch" -exec rm -rf {} +
+  # this platform needs its own.
+  find "$res/pi/node_modules" -type d -path "*/@esbuild/*" -prune ! -name "$esbuild_arch" -exec rm -rf {} +
   # Half of what is left is for building against Pi, not running it: source
   # maps, type declarations, and npm's .bin shims (copies, once in the bundle).
   find "$res/pi/node_modules" -type f \
     \( -name "*.map" -o -name "*.d.ts" -o -name "*.d.mts" -o -name "*.d.cts" \) -delete
   find "$res/pi/node_modules" -type d -name .bin -prune -exec rm -rf {} +
-  # The hub runs `pi` as a program; this is that program, on the app's node.
-  cat > "$res/pi/pi" <<'LAUNCHER'
+  # The hub runs `pi` as a program; on a Mac and in an AppImage this is that
+  # program, on the app's node, which sits where the app's programs do: from
+  # pi/, Contents/MacOS on a Mac and usr/bin in an AppImage. Windows gets no
+  # launcher: a batch file would pass every prompt through cmd.exe, which cuts
+  # it at the first newline, so the hub runs cli.js on node itself there.
+  local cli='node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js'
+  if [ "$os" != windows ]; then
+    local node='../../MacOS/node'
+    [ "$os" = linux ] && node='../../../bin/node'
+    cat > "$res/pi/pi" <<LAUNCHER
 #!/bin/sh
-here="$(cd "$(dirname "$0")" && pwd)"
-exec "$here/../../MacOS/node" "$here/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js" "$@"
+here="\$(cd "\$(dirname "\$0")" && pwd)"
+exec "\$here/$node" "\$here/$cli" "\$@"
 LAUNCHER
-  chmod +x "$res/pi/pi"
+    chmod +x "$res/pi/pi"
+  fi
   echo "staged pi $PI_VERSION"
 }
 

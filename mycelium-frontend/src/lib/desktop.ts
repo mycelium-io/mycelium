@@ -20,6 +20,11 @@ export function desktopVersion(userAgent: string = globalThis.navigator?.userAge
   return /\bMyceliumDesktop\/([\w.+-]+)/.exec(userAgent)?.[1] ?? null;
 }
 
+/** What copy calls the machine the app runs on: a Mac, or (Linux, Windows) a computer. */
+export function desktopMachine(userAgent: string = globalThis.navigator?.userAgent ?? ""): "Mac" | "computer" {
+  return /\bMacintosh\b/.test(userAgent) ? "Mac" : "computer";
+}
+
 const noSubscribe = () => () => {};
 
 /** Whether this page is inside the desktop app. Always false while rendering on the server. */
@@ -58,6 +63,38 @@ export function inviteLink(hubUrl: string, room?: string | null): string {
 /** Where the app is downloaded from. */
 export const DOWNLOAD_URL = "https://github.com/mycelium-io/mycelium/releases/latest";
 
+const LATEST = `${DOWNLOAD_URL}/download`;
+
 /** The app's disk image itself, for a one-click download on a Mac. */
-export const DMG_URL =
-  "https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg";
+export const DMG_URL = `${LATEST}/Mycelium-macos-arm64.dmg`;
+
+/** The app for each system it runs on, one click each. */
+export const APP_DOWNLOADS = {
+  Mac: { platform: "Mac", url: DMG_URL },
+  Windows: { platform: "Windows", url: `${LATEST}/Mycelium-windows-x86_64-setup.exe` },
+  Linux: { platform: "Linux", url: `${LATEST}/Mycelium-linux-x86_64.AppImage` },
+} as const;
+
+export type AppDownload = (typeof APP_DOWNLOADS)[keyof typeof APP_DOWNLOADS];
+
+/**
+ * Which system a browser runs on, for the app to offer: none on a phone or a
+ * tablet (an iPad's Safari says Macintosh, but has a touch screen) or on
+ * ChromeOS, which the app doesn't run on.
+ */
+export function appPlatform(
+  userAgent: string = globalThis.navigator?.userAgent ?? "",
+  touchPoints: number = globalThis.navigator?.maxTouchPoints ?? 0,
+): keyof typeof APP_DOWNLOADS | null {
+  if (/Android|iPhone|iPad|iPod|CrOS/.test(userAgent)) return null;
+  if (/Windows NT/.test(userAgent)) return "Windows";
+  if (/Macintosh/.test(userAgent)) return touchPoints > 1 ? null : "Mac";
+  if (/Linux|X11/.test(userAgent)) return "Linux";
+  return null;
+}
+
+/** The app's download for this browser's system; null on the server and where it doesn't run. */
+export function useAppDownload(): AppDownload | null {
+  const platform = useSyncExternalStore(noSubscribe, () => appPlatform(), () => null);
+  return platform ? APP_DOWNLOADS[platform] : null;
+}

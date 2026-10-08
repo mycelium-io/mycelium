@@ -18,10 +18,12 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       is_prerelease: ${{ steps.detect.outputs.is_prerelease }}
+      version: ${{ steps.detect.outputs.version }}
     steps:
       - id: detect
         run: |
           tag="${GITHUB_REF_NAME}"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
           if [[ "$tag" =~ (rc|alpha|beta|preview)[0-9]* ]]; then
             echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
             echo "→ $tag is a prerelease (skipping :latest promotion)"
@@ -205,123 +207,16 @@ jobs:
           name: mycelium-${{ matrix.platform }}
           path: mycelium-cli/dist/mycelium-${{ matrix.platform }}
 
-  # Mycelium for Mac: the desktop app, with the hub, UI, SLIM node, herdr and
-  # Pi inside (mycelium-desktop/scripts/stage-sidecars.sh). Attached to the
-  # release under a fixed name, so the docs' download link
-  # (releases/latest/download/Mycelium-macos-arm64.dmg) always resolves.
-  # Signed with the project's Developer ID and notarized by Apple.
+  # The desktop app for Mac, Linux and Windows (desktop.yml), each attached
+  # to the release under a fixed name so the docs' download links
+  # (releases/latest/download/Mycelium-…) always resolve.
   build-desktop:
-    needs: build-binaries
-    name: Build Mycelium for Mac
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-
-      - name: Set up Python
-        run: uv python install 3.12
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-
-      - name: Download the darwin CLI binary
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: mycelium-darwin-arm64
-          path: dist/cli
-
-      - name: Set the app's version from the tag
-        working-directory: mycelium-desktop
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          # Tauri wants semver; a PEP 440 prerelease (0.2.0rc1) becomes 0.2.0-rc1.
-          SEMVER="$(echo "$VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+)([a-z].*)$/\1-\2/')"
-          sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$SEMVER\"/" src-tauri/tauri.conf.json
-          rm -f src-tauri/tauri.conf.json.bak
-          # The bundled hub reports the version in the pyproject.toml it carries.
-          sed -i.bak "s/^version = .*/version = \"$VERSION\"/" ../fastapi-backend/pyproject.toml
-          rm -f ../fastapi-backend/pyproject.toml.bak
-
-      - name: Stage what the app carries
-        working-directory: mycelium-desktop
-        env:
-          GH_TOKEN: ${{ github.token }}
-          MYCELIUM_BIN: ${{ github.workspace }}/dist/cli/mycelium-darwin-arm64
-        run: |
-          npm install --no-audit --no-fund
-          bash scripts/stage-sidecars.sh
-
-      # The Developer ID certificate goes into a keychain that lives only for
-      # this job, beside Apple's intermediate, and the notarization key into a
-      # file. Without the secrets (a fork) the app is signed ad hoc as before.
-      - name: Set up signing and notarization
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-        run: |
-          if [ -z "$APPLE_CERTIFICATE" ]; then
-            echo "no Developer ID certificate; the app will be signed ad hoc"
-            exit 0
-          fi
-          keychain="$RUNNER_TEMP/signing.keychain-db"
-          password="$(openssl rand -base64 24)"
-          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
-          curl -fsSL -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
-          security create-keychain -p "$password" "$keychain"
-          security set-keychain-settings -lut 21600 "$keychain"
-          security unlock-keychain -p "$password" "$keychain"
-          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -f pkcs12 \
-            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          # The .p12 usually carries Apple's intermediate already; importing it
-          # again is refused as a duplicate, which is fine.
-          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$keychain" 2>/dev/null \
-            || echo "Apple's intermediate is already in the keychain"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" >/dev/null
-          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
-          rm -f "$RUNNER_TEMP/developer-id.p12"
-          identity="$(security find-identity -v -p codesigning "$keychain" \
-            | awk '/Developer ID Application/ { print $2; exit }')"
-          if [ -z "$identity" ]; then
-            echo "the certificate didn't import as a valid signing identity" >&2
-            exit 1
-          fi
-          echo "SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
-          if [ -n "$APPLE_API_KEY" ]; then
-            printf '%s' "$APPLE_API_KEY" > "$RUNNER_TEMP/notary.p8"
-            {
-              echo "APPLE_API_KEY=$RUNNER_TEMP/notary.p8"
-              echo "APPLE_API_KEY_ID=$APPLE_API_KEY_ID"
-              echo "APPLE_API_ISSUER=$APPLE_API_ISSUER"
-            } >> "$GITHUB_ENV"
-          fi
-
-      - name: Build the app and its disk image
-        working-directory: mycelium-desktop
-        env:
-          # Signs the update archive the app's updater installs (latest.json).
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          npx tauri build --bundles app --config src-tauri/tauri.bundle.conf.json
-          # Signs every program and the app with the Developer ID (SIGN_IDENTITY),
-          # notarizes the app and the disk image, and makes the disk image with
-          # its layout written directly, no Finder.
-          bash scripts/package-mac.sh "$GITHUB_WORKSPACE/dist/desktop/Mycelium-macos-arm64.dmg"
-
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: mycelium-desktop-macos-arm64
-          path: |
-            dist/desktop/Mycelium-macos-arm64.dmg
-            dist/desktop/Mycelium-macos-arm64.app.tar.gz
-            dist/desktop/latest.json
-          if-no-files-found: error
+    needs: detect-release-type
+    name: Build the desktop app
+    uses: ./.github/workflows/desktop.yml
+    with:
+      version: ${{ needs.detect-release-type.outputs.version }}
+    secrets: inherit
 
   build-and-release:
     needs: [detect-release-type, publish-images, build-binaries, build-desktop]
@@ -368,16 +263,29 @@ jobs:
           name: mycelium-darwin-arm64
           path: mycelium-cli/dist/binaries
 
-      - name: Download Mycelium for Mac
+      # Every platform the desktop build made; Linux and Windows may be
+      # missing while they are new (desktop.yml lets them fail).
+      - name: Download the desktop app
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: mycelium-desktop-macos-arm64
+          pattern: mycelium-desktop-*
+          merge-multiple: true
           path: mycelium-cli/dist/binaries
+
+      # One latest.json for the app's updater, naming each platform built.
+      - name: Merge the updater manifest
+        working-directory: mycelium-cli/dist/binaries
+        run: |
+          ls updater-*.json
+          jq -s '{version: .[0].version, pub_date: .[0].pub_date, platforms: (map(.platforms) | add)}' \
+            updater-*.json > latest.json
+          rm updater-*.json
+          jq -r '.platforms | keys | join(", ")' latest.json
 
       - name: Generate checksums
         run: |
           cd mycelium-cli/dist
-          sha256sum *.whl binaries/mycelium-* binaries/Mycelium-*.dmg binaries/Mycelium-*.app.tar.gz > binaries/checksums.txt
+          sha256sum *.whl binaries/mycelium-* binaries/Mycelium-* > binaries/checksums.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
@@ -392,6 +300,8 @@ jobs:
             ## Install
 
             **On a Mac:** download [Mycelium for Mac](https://github.com/mycelium-io/mycelium/releases/download/${{ github.ref_name }}/Mycelium-macos-arm64.dmg) (Apple silicon), drag it into Applications and open it. Already have it? It offers the update itself, or use Check for Updates… in its menu.
+
+            **On Linux or Windows (preview):** download [the AppImage](https://github.com/mycelium-io/mycelium/releases/download/${{ github.ref_name }}/Mycelium-linux-x86_64.AppImage) (x86-64; `chmod +x` it and run it) or [the Windows installer](https://github.com/mycelium-io/mycelium/releases/download/${{ github.ref_name }}/Mycelium-windows-x86_64-setup.exe) (x64; not yet code-signed, so SmartScreen asks first: More info → Run anyway). The same app as on a Mac, updating itself the same way.
 
             **From a terminal:** on an Apple silicon Mac this installs the same app (no Docker) and links its `mycelium` CLI; on Linux or a server it installs the CLI, and `mycelium install` brings up the Docker stack (`--docker` picks that on a Mac too).
 
@@ -410,8 +320,7 @@ jobs:
           files: |
             mycelium-cli/dist/*.whl
             mycelium-cli/dist/binaries/mycelium-*
-            mycelium-cli/dist/binaries/Mycelium-macos-arm64.dmg
-            mycelium-cli/dist/binaries/Mycelium-macos-arm64.app.tar.gz
+            mycelium-cli/dist/binaries/Mycelium-*
             mycelium-cli/dist/binaries/latest.json
             mycelium-cli/dist/binaries/checksums.txt
           fail_on_unmatched_files: true

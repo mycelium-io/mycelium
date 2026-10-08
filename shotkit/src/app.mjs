@@ -11,12 +11,12 @@
  * lives until `shot stop` or the daemon's idle timeout, and dies with it.
  */
 
-import { spawn } from "node:child_process";
-import { closeSync, existsSync, openSync, readFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { closeSync, existsSync, openSync, readFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:net";
-import { APP_DIR, MOCK_ENV, MOCK_HEADER, MOCK_PROBE, MOCK_SCRIPT } from "./project.mjs";
+import { APP_DIR, MOCK_ENV, MOCK_HEADER, MOCK_PROBE, MOCK_SCRIPT, PROJECT_ROOT } from "./project.mjs";
 
 export const FRONTEND_DIR = APP_DIR;
 
@@ -108,7 +108,7 @@ let mockServer = null;
 
 export function mockStatus() {
   if (!mockServer) return { running: false };
-  return { running: true, url: mockServer.url, pid: mockServer.proc?.pid ?? null, adopted: mockServer.adopted };
+  return { running: true, url: mockServer.url, dir: FRONTEND_DIR, pid: mockServer.proc?.pid ?? null, adopted: mockServer.adopted };
 }
 
 /** Next refuses a second dev server per directory, and says where the first is. */
@@ -237,20 +237,90 @@ export function stopMockServer() {
  * @returns {Promise<string>}
  */
 export async function resolveBaseUrl(opts = {}) {
-  if (opts.baseUrl) return opts.baseUrl.replace(/\/$/, "");
-  if (opts.mock) return ensureMockServer(opts);
+  return (await findApp(opts)).url;
+}
+
+/** `/private/tmp` and `/tmp` are one folder; compare them as one. */
+const real = (p) => {
+  try {
+    return realpathSync(p);
+  } catch {
+    return p;
+  }
+};
+
+/** @type {Map<string, {dir: string | null, at: number}>} */
+const servedFromCache = new Map();
+
+/**
+ * The folder the process listening on a localhost URL runs from, when `lsof`
+ * can say (macOS and most Linux); null otherwise. Held for a few seconds, since
+ * a run of shots asks about the same server each time.
+ */
+export function servedFrom(url) {
+  let port;
+  try {
+    const u = new URL(url);
+    if (!["localhost", "127.0.0.1", "[::1]"].includes(u.hostname)) return null;
+    port = u.port || (u.protocol === "https:" ? "443" : "80");
+  } catch {
+    return null;
+  }
+  const hit = servedFromCache.get(port);
+  if (hit && Date.now() - hit.at < 15_000) return hit.dir;
+  let dir = null;
+  try {
+    const run = (args) => execFileSync("lsof", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 2000 });
+    const pid = run(["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"]).trim().split("\n")[0];
+    if (pid) dir = /^n(.+)$/m.exec(run(["-a", "-p", pid, "-d", "cwd", "-Fn"]))?.[1] ?? null;
+  } catch {
+    /* no lsof, or nothing it may look at */
+  }
+  servedFromCache.set(port, { dir, at: Date.now() });
+  return dir;
+}
+
+/**
+ * A dev server found by probing, rather than named, may belong to another
+ * checkout: a worktree's app shot against main's server on :3000 is the wrong
+ * code with nothing to say so. Said, then, not refused — a server in a
+ * container or run from elsewhere on purpose is a legitimate target.
+ */
+function foreignHint(url, dir) {
+  if (!dir) return undefined;
+  const root = real(PROJECT_ROOT);
+  const d = real(dir);
+  if (d === root || d.startsWith(`${root}/`)) return undefined;
+  return (
+    `the app at ${url} runs from ${dir}, not this project (${PROJECT_ROOT}). ` +
+    "--mock boots this project's own, --base-url names another, --project shoots that folder."
+  );
+}
+
+/**
+ * Where the app is, which folder it is served from when that is known, and a
+ * hint when it is not this project's.
+ *
+ * @param {{baseUrl?:string, mock?:boolean, log?:(m:string)=>void}} opts
+ * @returns {Promise<{url: string, dir?: string | null, hint?: string}>}
+ */
+export async function findApp(opts = {}) {
+  if (opts.baseUrl) return { url: opts.baseUrl.replace(/\/$/, "") };
+  if (opts.mock) return { url: await ensureMockServer(opts), dir: FRONTEND_DIR };
   const fromEnv = process.env.SHOTKIT_APP_URL;
-  if (fromEnv) return fromEnv.replace(/\/$/, "");
+  if (fromEnv) return { url: fromEnv.replace(/\/$/, "") };
   // A remembered server is still checked: a dev server can wedge or be killed
   // between shots, and returning its URL anyway turns that into a 30s
   // navigation timeout instead of a clear "no app found".
-  if (mockServer && (await alive(`${mockServer.url}/`, 1500))) return mockServer.url;
+  if (mockServer && (await alive(`${mockServer.url}/`, 1500))) return { url: mockServer.url, dir: FRONTEND_DIR };
   mockServer = null;
   const locked = lockedDevServer();
-  if (locked && (await alive(`${locked}/`))) return locked;
+  if (locked && (await alive(`${locked}/`))) return { url: locked, dir: FRONTEND_DIR };
   for (const port of PROBE_PORTS) {
     const url = `http://localhost:${port}`;
-    if (await alive(`${url}/`)) return url;
+    if (!(await alive(`${url}/`))) continue;
+    const dir = servedFrom(url);
+    return { url, dir, hint: foreignHint(url, dir) };
   }
   throw new Error(
     `no app found${locked ? ` (${locked} from .next/dev/lock is not answering)` : ""} ` +

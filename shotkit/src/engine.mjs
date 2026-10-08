@@ -189,8 +189,8 @@ export class Engine {
   async capturePage(opts) {
     const frame = frameOf(opts);
     const ctx = await this.context(frame, policyOf(opts));
-    if (opts.storage) await seedStorage(ctx, opts.storage);
     const page = await ctx.newPage();
+    await seedPooledStorage(ctx, page, opts.storage ?? {});
     try {
       await page.goto(opts.url, { waitUntil: opts.waitUntil ?? "domcontentloaded", timeout: opts.timeout ?? 30_000 });
       const trace = await preparePage(page, opts);
@@ -347,6 +347,46 @@ export async function seedStorage(context, storage) {
       }
     }
   }, Object.entries(storage));
+}
+
+/** The keys each pooled context has been seeded with, across its shots. */
+const seededKeys = new WeakMap();
+
+/**
+ * Seed one shot's storage into a pooled context, without the last shot's.
+ *
+ * A pooled context outlives the shot, and so does its localStorage: seeded at
+ * the context, every shot's keys would pile up and a later shot would start
+ * from an earlier one's state — `--no-setup` after a setup flow still signed
+ * in. So the seed goes on the page, and keys an earlier shot seeded that this
+ * one does not are taken out first (once per page, so a navigation mid-flow
+ * keeps what the app wrote since). Only shotkit's own keys are touched: what a
+ * saved login (`--storage-state`) brought in stays.
+ *
+ * @param {import("playwright").BrowserContext} ctx
+ * @param {import("playwright").Page} page
+ * @param {Record<string, string>} storage
+ */
+async function seedPooledStorage(ctx, page, storage) {
+  const seen = seededKeys.get(ctx) ?? new Set();
+  const stale = [...seen].filter((k) => !(k in storage));
+  for (const k of Object.keys(storage)) seen.add(k);
+  seededKeys.set(ctx, seen);
+  if (!stale.length && !Object.keys(storage).length) return;
+  await page.addInitScript(
+    ({ entries, stale }) => {
+      try {
+        if (!window.sessionStorage.getItem("shotkit:seeded")) {
+          for (const k of stale) window.localStorage.removeItem(k);
+          window.sessionStorage.setItem("shotkit:seeded", "1");
+        }
+        for (const [k, v] of entries) window.localStorage.setItem(k, v);
+      } catch {
+        /* storage may be blocked; the shot is still worth taking */
+      }
+    },
+    { entries: Object.entries(storage), stale },
+  );
 }
 
 /** Waits, ordered actions, and the cosmetic fixes every shot wants. */

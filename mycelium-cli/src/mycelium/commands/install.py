@@ -910,10 +910,7 @@ def install(
                 "\n  ✗ Non-interactive terminal detected. Interactive install requires a TTY.\n",
                 fg=typer.colors.RED,
             )
-            import click
-
-            click_ctx = click.get_current_context()
-            typer.echo(click_ctx.get_help())
+            typer.echo(ctx.get_help())
             raise typer.Exit(1) from None
 
         from mycelium.animations import run_animation_live

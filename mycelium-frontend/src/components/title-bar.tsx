@@ -9,18 +9,18 @@ import Link from "next/link";
 import { AccountMenu } from "@/components/account-menu";
 import { KeyBadge } from "@/components/key-badge";
 import { NotificationBell } from "@/components/notification-bell";
-import { useIsDesktop } from "@/lib/desktop";
+import { desktopMachine, useIsDesktop } from "@/lib/desktop";
 
 const noSubscribe = () => () => {};
 
 /**
  * Which hub this is, as the title bar names it: a hub on this computer by
- * that ("This Mac" in the Mac app), any other by its host name. Never a port,
+ * that ("This Mac" in the app on a Mac), any other by its host name. Never a port,
  * which says nothing to a person. Empty while rendering on the server.
  */
-export function hubLabel(host: string, desktop: boolean): string {
+export function hubLabel(host: string, desktop: boolean, machine: string = desktopMachine()): string {
   const name = host.replace(/:\d+$/, "");
-  if (/^(127\.0\.0\.1|localhost|\[::1\])$/.test(name)) return desktop ? "This Mac" : "This computer";
+  if (/^(127\.0\.0\.1|localhost|\[::1\])$/.test(name)) return desktop ? `This ${machine}` : "This computer";
   return name;
 }
 
