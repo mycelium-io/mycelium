@@ -1,0 +1,6 @@
+{
+  "description": "The mock checkout room with the right rail on Memory (the tree of the room's memories)",
+  "uses": ["signed-in"],
+  "route": "/room/checkout",
+  "do": ["click:role=button[name=\"Memory\"]"]
+}

@@ -8,7 +8,8 @@
 # script; an edit made only here is overwritten on the next sync.
 #
 # Kept across a sync: shotkit/recordings/ (mycelium's own recording scripts,
-# which the standalone repo does not carry). Left behind: the repo's LICENSE,
+# which the standalone repo does not carry) and shotkit/flows/ (mycelium's
+# flows, how to get its UI into a state; `shot flows` lists them). Left behind: the repo's LICENSE,
 # .gitignore and Claude Code skill (mycelium has its own screenshot skill).
 #
 # Usage:
@@ -41,6 +42,7 @@ git -C "$SRC" archive "$SHA" | tar -x -C "$WORK/tree"
 
 rsync -a --delete \
   --exclude '/recordings/' \
+  --exclude '/flows/' \
   --exclude '/node_modules/' \
   --exclude '/UPSTREAM' \
   --exclude '/LICENSE' \
