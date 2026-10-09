@@ -26,6 +26,7 @@ import { Monogram } from "@/components/ui/monogram";
 import { agentTag } from "@/lib/agent-label";
 import { SenderName } from "@/components/sender-name";
 import { Ago, NowProvider } from "@/lib/relative-time";
+import { cn } from "@/lib/utils";
 
 interface Props {
   roomName: string;
@@ -40,6 +41,9 @@ interface Props {
    * duplicating the hook.
    */
   onReady?: (refresh: () => void) => void;
+  /** The surface it sits on, so the pinned "responding" line covers what
+   *  scrolls under it. */
+  surface?: "bg" | "paper";
   /** What an empty thread shows, for a host that frames it its own way. */
   empty?: ReactNode;
 }
@@ -86,7 +90,7 @@ function scrollParentOf(el: HTMLElement | null): HTMLElement | null {
  * rendering. The read is its own SWR entry (`useThreadMessages`), so showing a
  * conversation never replaces the room's feed with a filtered slice of itself.
  */
-export function TaskConversation({ roomName, episode, onOpenMemory, onReady, empty }: Props) {
+export function TaskConversation({ roomName, episode, onOpenMemory, onReady, empty, surface = "bg" }: Props) {
   const { messages, loading, refresh, hasOlder, loadOlder, loadingOlder } =
     useThreadMessages(roomName, episode);
   const { agents } = useRoomAgents(roomName);
@@ -287,7 +291,12 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady, emp
           role="status"
           aria-live="polite"
           data-testid="responding-line"
-          className="mt-2 flex items-center gap-2 px-5 py-1 text-micro text-muted-foreground"
+          // Sticks to the bottom of whatever scrolls this conversation, so it
+          // stays by the composer however far up the thread is scrolled.
+          className={cn(
+            "sticky bottom-0 mt-2 flex items-center gap-2 px-5 py-1 text-micro text-muted-foreground",
+            surface === "paper" ? "bg-paper" : "bg-bg",
+          )}
         >
           <span
             aria-hidden

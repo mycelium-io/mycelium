@@ -63,6 +63,7 @@ export function TaskDiscussion({ roomName, episode, onOpenMemory, className }: P
           onOpenMemory={onOpenMemory}
           onReady={onReady}
           empty={<NoReplies />}
+          surface="paper"
         />
       </div>
       <RoomChatBox roomName={roomName} episode={episode} inline onSent={() => refresh.current?.()} />

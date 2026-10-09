@@ -380,4 +380,16 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     const rows = within(rail()).getAllByRole("button", { name: /^Open task / });
     expect(rows[0]).toHaveAccessibleName(new RegExp(OTHER_TITLE));
   });
+
+  it("pins who is responding outside the scrolling messages, by the composer", async () => {
+    await stream([
+      said("can someone look at the flag rollout?"),
+      { type: "agent_activity", handle: "aligner", state: "responding", episode: LIVE },
+    ]);
+
+    const line = await screen.findByTestId("responding-line");
+    expect(line).toHaveTextContent("aligner is responding…");
+    // Inside the viewport it would scroll away under whatever is sent next.
+    expect(line.closest('[data-slot="scroll-area-viewport"]')).toBeNull();
+  });
 });

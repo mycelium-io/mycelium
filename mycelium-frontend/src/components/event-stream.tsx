@@ -111,8 +111,8 @@ function RespondingRow({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** "@aligner is responding…" under the last message, gone the moment the reply
- *  lands. A turn going into a task's thread does not land here — the channel
+/** "@aligner is responding…" pinned over the composer, gone the moment the
+ *  reply lands. A turn going into a task's thread does not land here — the channel
  *  never shows a thread's prose — so that line says where instead, and opens
  *  it, the way the ping for the reply will: "@aligner is responding in <task>". */
 function RespondingLine({
@@ -132,7 +132,7 @@ function RespondingLine({
       role="status"
       aria-live="polite"
       data-testid="responding-line"
-      className="mt-3 flex flex-col px-5 py-1 motion-safe:animate-in motion-safe:fade-in-0"
+      className="flex flex-shrink-0 flex-col px-5 py-1 motion-safe:animate-in motion-safe:fade-in-0"
     >
       {here.length > 0 && <RespondingRow>{respondingLabel(here)}</RespondingRow>}
       {[...elsewhere.entries()].map(([thread, group]) => {
@@ -1469,9 +1469,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
             previousSender={lastChatSender(visible)}
             onOpenMemory={onOpenMemory}
           />
-          {responding.length > 0 && (
-            <RespondingLine entries={responding} room={roomName} threads={threads} onOpenThread={onOpenThread} />
-          )}
         </div>
         )}
       </ScrollArea>
@@ -1494,6 +1491,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
         </div>
       )}
       </div>
+      {/* Outside the scroll, so it stays over the composer wherever the
+          channel is scrolled to, and sending a message can't push it away. */}
+      {responding.length > 0 && (
+        <RespondingLine entries={responding} room={roomName} threads={threads} onOpenThread={onOpenThread} />
+      )}
     </div>
   );
 }
