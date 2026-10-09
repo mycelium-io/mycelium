@@ -107,12 +107,7 @@ export function MessageBody({
           {prose}
         </MarkdownContent>
       </div>
-      {roomName && attached.length > 0 && (
-        <>
-          <AttachmentStrip roomName={roomName} keys={attached} onOpen={setPreviewing} />
-          <UploadPreviewDialog upload={previewing} onClose={() => setPreviewing(null)} onOpenMemory={onOpenMemory} />
-        </>
-      )}
+      {/* With the prose it opens, above any files the message carries. */}
       {overflows && !forceOpen && (
         <button
           type="button"
@@ -125,6 +120,12 @@ export function MessageBody({
             <>Show more <ChevronDown className="size-3" /></>
           )}
         </button>
+      )}
+      {roomName && attached.length > 0 && (
+        <>
+          <AttachmentStrip roomName={roomName} keys={attached} onOpen={setPreviewing} />
+          <UploadPreviewDialog upload={previewing} onClose={() => setPreviewing(null)} onOpenMemory={onOpenMemory} />
+        </>
       )}
     </>
   );
