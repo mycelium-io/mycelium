@@ -112,23 +112,27 @@ export function RoomInspector({
   const memoryRef = usePanelRef();
   const panels: Record<Tab, typeof agentsRef> = { agents: agentsRef, memory: memoryRef };
   const [folded, setFolded] = useState<Record<Tab, boolean>>({ agents: false, memory: false });
+  // Folding is the reader's own choice and asks for nothing: it never moves
+  // `tab`, so it can't trip the reveal below and spring back open.
   const toggleSection = (id: Tab) => {
     const panel = panels[id].current;
     if (!panel) return;
     if (panel.isCollapsed()) panel.expand();
     else panel.collapse();
-    setTab(id);
   };
 
-  // Asked to show a section (its key, the status bar, search): open the one
-  // asked for, however it was left. `reveal` changes on every ask, so asking
-  // for the section already named still opens it.
+  // Asked to show a section (its key, the status bar, search, the collapsed
+  // strip): open the one asked for, however it was left. Only an ask does
+  // this. Mounting is not one, so a section folded and saved stays folded on
+  // the next load, and `reveal`/`asked` change on every ask, so asking for
+  // the section already named still opens it.
+  const [asked, setAsked] = useState(0);
   useEffect(() => {
-    if (!open) return;
+    if (!open || reveal + asked === 0) return;
     const panel = panels[tab].current;
     if (panel?.isCollapsed()) panel.expand();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the refs are stable
-  }, [tab, reveal, open]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs per ask; the refs are stable
+  }, [reveal, asked]);
 
   // Collapsed: a slim strip of the tab icons; clicking one expands to it.
   if (!open) {
@@ -147,7 +151,7 @@ export function RoomInspector({
         {TABS.map(({ id, label, icon: Icon }) => (
           <Tooltip key={id} content={label} side="left">
             <button
-              onClick={() => { setTab(id); setOpen(true); }}
+              onClick={() => { setTab(id); setAsked(n => n + 1); setOpen(true); }}
               aria-label={label}
               className={`relative flex size-6 items-center justify-center rounded transition-colors hover:bg-hairline hover:text-text ${
                 tab === id ? "text-text" : "text-muted-foreground"
