@@ -125,7 +125,8 @@ export const SHOTS: Shot[] = [
     route: "/room/checkout",
     theme: "dark",
     viewport: "desktop",
-    steps: ["Memory"],
+    // Memory sits under Members in the rail; folding Members gives it the rail.
+    actions: ['click:role=button[name="Collapse Members"]', "sleep:600"],
     caption: "The memory rail: namespaced markdown files with versions and contributors.",
   },
   {
@@ -210,7 +211,8 @@ export const SHOTS: Shot[] = [
     theme: "dark",
     viewport: "desktop",
     actions: [
-      'click:role=button[name="Add"]',
+      // The rail stacks Members over Memory, each with an Add; Members' is first.
+      'click:role=button[name="Add"] >> nth=0',
       'click:[role="dialog"] button:has-text("implementer")',
       "fill:#member-handle=builder",
       "sleep:400",
