@@ -5,15 +5,12 @@
 
 /**
  * The room's schedules: each agent's recurring check-in, kept and fired by the
- * hub. A row per schedule (who it wakes, when, its pre-check, what its last
- * run did, and how many runs woke the agent against how many stayed quiet),
- * with Pause/Resume, Run now, Renew, Edit and Delete. Opening a row shows its
- * runs, quiet ones folded together. The footer is the cost: every run that
- * woke an agent was a model turn.
+ * hub. One row per schedule, with its actions behind a ⋯ menu. Clicking a row
+ * opens its details and its recent runs.
  */
 
-import { Fragment, useState } from "react";
-import { ChevronDown, ChevronRight, Clock, Loader2, Plus } from "lucide-react";
+import { useState } from "react";
+import { Clock, Loader2, MoreHorizontal, Plus } from "lucide-react";
 import {
   createSchedule,
   deleteSchedule,
@@ -22,7 +19,6 @@ import {
   type Schedule,
   type ScheduleEdit,
   type ScheduleResult,
-  type ScheduleRun,
 } from "@/lib/api";
 import { useRoomSchedules } from "@/lib/room-data";
 import { useRoomStream } from "@/lib/stream-hub";
@@ -31,6 +27,7 @@ import { useCurrentUser } from "@/components/current-user";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -43,30 +40,23 @@ import { cn } from "@/lib/utils";
 
 export const SCHEDULE_CHANGED = "schedule_changed";
 
-const STATE_TONE: Record<Schedule["state"], string> = {
-  active: "var(--accent)",
-  paused: "var(--yellow)",
-  expired: "var(--faint)",
+const STATE_LABEL: Record<Schedule["state"], { word: string; tone: string }> = {
+  active: { word: "Active", tone: "var(--accent)" },
+  paused: { word: "Paused", tone: "var(--yellow)" },
+  expired: { word: "Expired", tone: "var(--faint)" },
 };
 
-const RESULT_TONE: Record<ScheduleResult, string> = {
-  woke: "text-accent",
-  quiet: "text-faint",
-  held: "text-yellow",
-  busy: "text-yellow",
-  error: "text-red",
-};
-
-const RESULT_HINT: Record<ScheduleResult, string> = {
-  woke: "the agent was woken (a model turn)",
-  quiet: "the pre-check found nothing; no turn spent",
-  held: "a wake was already waiting for the agent",
-  busy: "the agent was mid-turn",
-  error: "the pre-check failed",
+/** How each run result reads, and its color. */
+export const RESULT_LABEL: Record<ScheduleResult, { word: string; className: string }> = {
+  woke: { word: "Woke agent", className: "text-accent" },
+  quiet: { word: "Nothing to do", className: "text-muted-foreground" },
+  held: { word: "Already queued", className: "text-yellow" },
+  busy: { word: "Agent busy", className: "text-yellow" },
+  error: { word: "Check failed", className: "text-red" },
 };
 
 export function when(s: Pick<Schedule, "every" | "cron">): string {
-  return s.every ? `every ${s.every}` : `cron ${s.cron ?? ""}`;
+  return s.every ? `Every ${s.every}` : `Cron ${s.cron ?? ""}`;
 }
 
 /** "in 12m", "in 3h", "in 2d"; "due" once it has passed. */
@@ -81,41 +71,24 @@ export function until(at: string | null | undefined, now: number): string {
   return `in ${Math.floor(h / 24)}d`;
 }
 
-/** The run history with consecutive quiet runs folded into one line. */
-export function foldQuiet(runs: ScheduleRun[]): ({ run: ScheduleRun } | { quiet: number; key: string })[] {
-  const out: ({ run: ScheduleRun } | { quiet: number; key: string })[] = [];
-  for (const run of runs) {
-    const last = out[out.length - 1];
-    if (run.result === "quiet") {
-      if (last && "quiet" in last) last.quiet += 1;
-      else out.push({ quiet: 1, key: run.at });
-    } else {
-      out.push({ run });
-    }
-  }
-  return out;
-}
-
 export function RoomSchedules({ roomName }: { roomName: string }) {
   const { schedules, checks, loading, refresh } = useRoomSchedules(roomName);
   const [editing, setEditing] = useState<Schedule | "new" | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
   // A run, a pause, an edit: the hub pushes that it moved.
   useRoomStream(roomName, (data) => {
     if ((data as { type?: string }).type === SCHEDULE_CHANGED) refresh();
   });
-
-  const turns = schedules.reduce((n, s) => n + (s.wakes ?? 0), 0);
-  const quiet = schedules.reduce((n, s) => n + (s.quiet ?? 0), 0);
+  const shown = schedules.find((s) => s.name === viewing) ?? null;
 
   return (
     <NowProvider>
       <div className="flex h-full min-h-0 flex-col bg-bg">
         <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-          <Clock className="size-3.5 text-faint" />
           <span className="text-label text-text">Schedules</span>
-          <span className="text-micro text-faint">check-ins the hub fires for agents in this room</span>
+          {schedules.length > 0 && <span className="text-micro text-faint">{schedules.length}</span>}
           <Button size="xs" variant="outline" className="ml-auto" onClick={() => setEditing("new")}>
-            <Plus className="size-3" /> New
+            <Plus className="size-3" /> New schedule
           </Button>
         </div>
         <div className="min-h-0 flex-1 overflow-auto">
@@ -125,8 +98,8 @@ export function RoomSchedules({ roomName }: { roomName: string }) {
                 icon={Clock}
                 size="sm"
                 className="h-full"
-                title="No schedules"
-                description="A schedule wakes an agent on an interval, after a cheap check finds something worth a turn."
+                title="No schedules yet"
+                description="A schedule wakes an agent on a timer, when a quick check finds something for it to do."
                 action={
                   <Button size="xs" onClick={() => setEditing("new")}>
                     New schedule
@@ -135,16 +108,17 @@ export function RoomSchedules({ roomName }: { roomName: string }) {
               />
             )
           ) : (
-            <ScheduleTable roomName={roomName} schedules={schedules} onEdit={setEditing} onChanged={refresh} />
+            <ScheduleTable
+              roomName={roomName}
+              schedules={schedules}
+              onOpen={(s) => setViewing(s.name)}
+              onEdit={setEditing}
+              onChanged={refresh}
+            />
           )}
         </div>
-        {schedules.length > 0 && (
-          <div className="shrink-0 border-t border-border px-3 py-1.5 text-micro text-faint">
-            {turns} model {turns === 1 ? "turn" : "turns"} spent by schedules here · {quiet} quiet{" "}
-            {quiet === 1 ? "run" : "runs"} that cost none
-          </div>
-        )}
       </div>
+      <ScheduleDetailDialog schedule={shown} onClose={() => setViewing(null)} />
       <ScheduleDialog
         roomName={roomName}
         editing={editing}
@@ -159,53 +133,46 @@ export function RoomSchedules({ roomName }: { roomName: string }) {
   );
 }
 
+const TH = "px-3 py-1.5 text-left font-normal";
+const TD = "px-3 py-2";
+
 function ScheduleTable({
   roomName,
   schedules,
+  onOpen,
   onEdit,
   onChanged,
 }: {
   roomName: string;
   schedules: Schedule[];
+  onOpen: (s: Schedule) => void;
   onEdit: (s: Schedule) => void;
   onChanged: () => void;
 }) {
-  const [open, setOpen] = useState<string | null>(null);
   return (
     <table className="w-full text-label">
-      <thead>
-        <tr className="border-b border-border bg-surface text-left text-micro text-faint">
-          <th className="w-5" />
-          <th className="px-2.5 py-1.5 font-normal">Schedule</th>
-          <th className="px-2.5 py-1.5 font-normal">Check</th>
-          <th className="px-2.5 py-1.5 font-normal">Next</th>
-          <th className="px-2.5 py-1.5 font-normal">Last run</th>
-          <th className="whitespace-nowrap px-2.5 py-1.5 text-right font-normal" title="Runs that woke the agent / stayed quiet">
-            Woke · quiet
-          </th>
-          <th className="px-2.5 py-1.5" />
+      <thead className="sticky top-0 z-10">
+        <tr className="border-b border-border bg-surface text-micro text-faint">
+          <th className={TH}>Name</th>
+          <th className={TH}>Agent</th>
+          <th className={TH}>Schedule</th>
+          <th className={TH}>Check</th>
+          <th className={TH}>Status</th>
+          <th className={TH}>Next run</th>
+          <th className={TH}>Last run</th>
+          <th className="w-10" />
         </tr>
       </thead>
       <tbody>
         {schedules.map((s) => (
-          <Fragment key={s.name}>
-            <ScheduleRow
-              roomName={roomName}
-              schedule={s}
-              open={open === s.name}
-              onToggle={() => setOpen(open === s.name ? null : s.name)}
-              onEdit={() => onEdit(s)}
-              onChanged={onChanged}
-            />
-            {open === s.name && (
-              <tr className="border-b border-hairline bg-surface/40">
-                <td />
-                <td colSpan={6} className="px-2.5 pb-2.5 pt-1">
-                  <ScheduleDetail schedule={s} />
-                </td>
-              </tr>
-            )}
-          </Fragment>
+          <ScheduleRow
+            key={s.name}
+            roomName={roomName}
+            schedule={s}
+            onOpen={() => onOpen(s)}
+            onEdit={() => onEdit(s)}
+            onChanged={onChanged}
+          />
         ))}
       </tbody>
     </table>
@@ -215,162 +182,244 @@ function ScheduleTable({
 function ScheduleRow({
   roomName,
   schedule: s,
-  open,
-  onToggle,
+  onOpen,
   onEdit,
   onChanged,
 }: {
   roomName: string;
   schedule: Schedule;
-  open: boolean;
-  onToggle: () => void;
+  onOpen: () => void;
   onEdit: () => void;
   onChanged: () => void;
 }) {
   const now = useNow();
-  const [busy, setBusy] = useState<string | null>(null);
+  const state = STATE_LABEL[s.state];
+  const last = s.last_result ? RESULT_LABEL[s.last_result] : null;
+  return (
+    <tr
+      onClick={onOpen}
+      className="cursor-pointer border-b border-hairline transition-colors hover:bg-hairline"
+    >
+      <td className={cn(TD, "font-mono text-text")}>{s.name}</td>
+      <td className={cn(TD, "font-mono text-muted-foreground")}>@{s.owner}</td>
+      <td className={cn(TD, "whitespace-nowrap text-muted-foreground")}>{when(s)}</td>
+      <td className={cn(TD, "font-mono text-muted-foreground")}>{s.check}</td>
+      <td className={TD}>
+        <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-text">
+          <span aria-hidden className="size-1.5 rounded-full" style={{ background: state.tone }} />
+          {state.word}
+        </span>
+      </td>
+      <td className={cn(TD, "whitespace-nowrap text-muted-foreground")}>
+        {s.state === "active" ? until(s.next_run, now) : "–"}
+      </td>
+      <td className={cn(TD, "whitespace-nowrap")}>
+        {s.last_run && last ? (
+          <>
+            <span className={last.className}>{last.word}</span>{" "}
+            <Ago at={s.last_run} className="text-faint" />
+          </>
+        ) : (
+          <span className="text-faint">Never</span>
+        )}
+      </td>
+      <td className="px-1 py-1 text-right" onClick={(e) => e.stopPropagation()}>
+        <RowMenu roomName={roomName} schedule={s} onEdit={onEdit} onChanged={onChanged} />
+      </td>
+    </tr>
+  );
+}
+
+function RowMenu({
+  roomName,
+  schedule: s,
+  onEdit,
+  onChanged,
+}: {
+  roomName: string;
+  schedule: Schedule;
+  onEdit: () => void;
+  onChanged: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const act = async (label: string, fn: () => Promise<unknown>) => {
-    setBusy(label);
+  const act = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
     setError(null);
     try {
       await fn();
       onChanged();
+      setOpen(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : `Could not ${label.toLowerCase()}`);
+      setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   };
 
-  const Chevron = open ? ChevronDown : ChevronRight;
+  const item =
+    "flex w-full items-center rounded-md px-2 py-1.5 text-left text-label text-text transition-colors hover:bg-hairline disabled:opacity-50";
   return (
-    <>
-      <tr className={cn("border-b border-hairline align-top", open && "border-b-0")}>
-        <td className="pl-2 pt-2">
-          <button type="button" onClick={onToggle} aria-label={open ? "Hide runs" : "Show runs"} className="text-faint hover:text-text">
-            <Chevron className="size-3.5" />
-          </button>
-        </td>
-        <td className="px-2.5 py-1.5">
-          <button type="button" onClick={onToggle} className="inline-flex items-center gap-1.5 whitespace-nowrap text-left">
-            <span
-              aria-hidden
-              className="size-1.5 rounded-full"
-              style={{ background: STATE_TONE[s.state] }}
-              title={s.state}
-            />
-            <span className="font-mono text-text">{s.name}</span>
-            <span className="font-mono text-micro text-muted-foreground">@{s.owner}</span>
-          </button>
-          <span className="block text-micro text-faint">
-            {when(s)}
-            {s.state !== "active" && ` · ${s.state}`}
-            {s.task && ` · ${s.task}`}
-          </span>
-          {error && <span className="block text-micro text-red">{error}</span>}
-        </td>
-        <td className="px-2.5 py-1.5 font-mono text-micro text-muted-foreground">{s.check}</td>
-        <td className="px-2.5 py-1.5 text-micro text-muted-foreground">
-          {s.state === "active" ? until(s.next_run, now) : "–"}
-          <span className="block text-faint" title={s.expires_at}>
-            {s.state === "expired" || until(s.expires_at, now) === "due"
-              ? "expired"
-              : `expires ${until(s.expires_at, now)}`}
-          </span>
-        </td>
-        <td className="px-2.5 py-1.5 text-micro">
-          {s.last_run && s.last_result ? (
-            <span title={RESULT_HINT[s.last_result]}>
-              <span className={RESULT_TONE[s.last_result]}>{s.last_result}</span>{" "}
-              <Ago at={s.last_run} className="text-faint" />
-            </span>
-          ) : (
-            <span className="text-faint">never</span>
-          )}
-        </td>
-        <td className="px-2.5 py-1.5 text-right font-mono text-micro">
-          <span className="text-text">{s.wakes ?? 0}</span>
-          <span className="text-faint"> · {s.quiet ?? 0}</span>
-        </td>
-        <td className="whitespace-nowrap px-2.5 py-1.5 text-right">
-          {busy && <Loader2 className="mr-1 inline size-3 animate-spin text-faint" />}
-          {s.state !== "expired" && (
-            <Button
-              size="xs"
-              variant="ghost"
-              disabled={!!busy}
-              onClick={() => void act(s.paused ? "Resume" : "Pause", () => updateSchedule(roomName, s.name, { paused: !s.paused }))}
-            >
-              {s.paused ? "Resume" : "Pause"}
-            </Button>
-          )}
-          <Button size="xs" variant="ghost" disabled={!!busy} onClick={() => void act("Run", () => runSchedule(roomName, s.name))}>
-            Run now
-          </Button>
-          <Button size="xs" variant="ghost" disabled={!!busy} onClick={() => void act("Renew", () => updateSchedule(roomName, s.name, { renew: true }))}>
-            Renew
-          </Button>
-          <Button size="xs" variant="ghost" disabled={!!busy} onClick={onEdit}>
-            Edit
-          </Button>
-          <Button
-            size="xs"
-            variant="ghost"
-            className="text-red"
-            disabled={!!busy}
-            onClick={() => {
-              if (window.confirm(`Delete schedule ${s.name}?`)) void act("Delete", () => deleteSchedule(roomName, s.name));
-            }}
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setError(null);
+      }}
+    >
+      <PopoverTrigger
+        aria-label={`${s.name} options`}
+        className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+      >
+        {busy ? <Loader2 className="size-3.5 animate-spin" /> : <MoreHorizontal className="size-4" />}
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-44 p-1">
+        <button type="button" disabled={busy} className={item} onClick={() => void act(() => runSchedule(roomName, s.name))}>
+          Run now
+        </button>
+        {s.state !== "expired" && (
+          <button
+            type="button"
+            disabled={busy}
+            className={item}
+            onClick={() => void act(() => updateSchedule(roomName, s.name, { paused: !s.paused }))}
           >
-            Delete
-          </Button>
-        </td>
-      </tr>
-    </>
+            {s.paused ? "Resume" : "Pause"}
+          </button>
+        )}
+        <button
+          type="button"
+          disabled={busy}
+          className={item}
+          onClick={() => void act(() => updateSchedule(roomName, s.name, { renew: true }))}
+        >
+          Renew
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          className={item}
+          onClick={() => {
+            setOpen(false);
+            onEdit();
+          }}
+        >
+          Edit
+        </button>
+        <div className="my-1 h-px bg-hairline" />
+        <button
+          type="button"
+          disabled={busy}
+          className={cn(item, "text-red")}
+          onClick={() => {
+            if (window.confirm(`Delete the schedule "${s.name}"?`)) void act(() => deleteSchedule(roomName, s.name));
+          }}
+        >
+          Delete
+        </button>
+        {error && <p className="px-2 py-1 text-micro text-red">{error}</p>}
+      </PopoverContent>
+    </Popover>
   );
 }
 
-function ScheduleDetail({ schedule: s }: { schedule: Schedule }) {
-  const runs = foldQuiet(s.history ?? []);
+function ScheduleDetailDialog({ schedule: s, onClose }: { schedule: Schedule | null; onClose: () => void }) {
+  const now = useNow();
   return (
-    <div className="space-y-2">
-      {s.prompt && <p className="whitespace-pre-wrap text-label text-muted-foreground">{s.prompt}</p>}
-      {runs.length === 0 ? (
-        <p className="text-micro text-faint">No runs yet.</p>
-      ) : (
-        <ol className="space-y-1">
-          {runs.map((item) =>
-            "quiet" in item ? (
-              <li key={`q-${item.key}`} className="text-micro text-faint">
-                … {item.quiet} quiet {item.quiet === 1 ? "run" : "runs"}
-              </li>
-            ) : (
-              <li key={item.run.at} className="text-micro">
-                <span className={RESULT_TONE[item.run.result]} title={RESULT_HINT[item.run.result]}>
-                  {item.run.result}
-                </span>{" "}
-                <Ago at={item.run.at} className="text-faint" />
-                {item.run.trigger === "manual" && <span className="text-faint"> · by hand</span>}
-                {!!item.run.missed && <span className="text-faint"> · stood in for {item.run.missed} missed</span>}
-                {item.run.detail && <span className="block text-red">{item.run.detail}</span>}
-                {(item.run.found ?? []).map((line) => (
-                  <span key={line} className="block pl-3 text-muted-foreground">
-                    – {line}
-                  </span>
-                ))}
-                {(item.run.found_total ?? 0) > (item.run.found?.length ?? 0) && (
-                  <span className="block pl-3 text-faint">
-                    and {(item.run.found_total ?? 0) - (item.run.found?.length ?? 0)} more
-                  </span>
-                )}
-              </li>
-            ),
-          )}
-        </ol>
-      )}
-    </div>
+    <Dialog open={s !== null} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="sm:max-w-2xl">
+        {s && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="font-mono">{s.name}</DialogTitle>
+              <DialogDescription>
+                Wakes @{s.owner} · {when(s).toLowerCase()} · check: {s.check}
+              </DialogDescription>
+            </DialogHeader>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-label">
+              <dt className="text-faint">Status</dt>
+              <dd className="text-text">{STATE_LABEL[s.state].word}</dd>
+              <dt className="text-faint">Next run</dt>
+              <dd className="text-text">{s.state === "active" ? until(s.next_run, now) : "–"}</dd>
+              <dt className="text-faint">Expires</dt>
+              <dd className="text-text">
+                {s.state === "expired" || until(s.expires_at, now) === "due" ? "Expired" : until(s.expires_at, now)}
+              </dd>
+              {s.task && (
+                <>
+                  <dt className="text-faint">Task</dt>
+                  <dd className="font-mono text-text">{s.task}</dd>
+                </>
+              )}
+              <dt className="text-faint">Runs</dt>
+              <dd className="text-text">
+                {s.runs ?? 0} total, {s.wakes ?? 0} woke the agent
+              </dd>
+              {s.prompt && (
+                <>
+                  <dt className="text-faint">Prompt</dt>
+                  <dd className="whitespace-pre-wrap text-text">{s.prompt}</dd>
+                </>
+              )}
+            </dl>
+            <div className="max-h-72 overflow-auto rounded-md border border-border">
+              {(s.history ?? []).length === 0 ? (
+                <p className="px-3 py-2 text-label text-faint">No runs yet.</p>
+              ) : (
+                <table className="w-full text-label">
+                  <thead className="sticky top-0">
+                    <tr className="border-b border-border bg-surface text-micro text-faint">
+                      <th className={TH}>When</th>
+                      <th className={TH}>Result</th>
+                      <th className={TH}>Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(s.history ?? []).map((run) => {
+                      const result = RESULT_LABEL[run.result];
+                      const notes = [
+                        ...(run.found ?? []),
+                        ...((run.found_total ?? 0) > (run.found?.length ?? 0)
+                          ? [`and ${(run.found_total ?? 0) - (run.found?.length ?? 0)} more`]
+                          : []),
+                        ...(run.detail ? [run.detail] : []),
+                      ];
+                      return (
+                        <tr key={run.at} className="border-b border-hairline align-top last:border-b-0">
+                          <td className={cn(TD, "whitespace-nowrap text-muted-foreground")}>
+                            <Ago at={run.at} />
+                          </td>
+                          <td className={cn(TD, "whitespace-nowrap", result.className)}>
+                            {result.word}
+                            {run.trigger === "manual" && <span className="text-faint"> (manual)</span>}
+                          </td>
+                          <td className={cn(TD, "text-muted-foreground")}>
+                            {notes.length === 0 && !run.missed ? (
+                              <span className="text-faint">–</span>
+                            ) : (
+                              notes.map((line) => (
+                                <span key={line} className="block">
+                                  {line}
+                                </span>
+                              ))
+                            )}
+                            {!!run.missed && (
+                              <span className="block text-faint">Caught up {run.missed} missed runs</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -469,8 +518,7 @@ function ScheduleForm({
       <DialogHeader>
         <DialogTitle>{schedule ? `Edit ${schedule.name}` : "New schedule"}</DialogTitle>
         <DialogDescription>
-          The hub wakes the agent on this schedule, after its check finds something. A run that finds nothing costs no
-          turn and posts nothing to the room.
+          On each run the hub does a quick check first, and only wakes the agent if the check finds something.
         </DialogDescription>
       </DialogHeader>
       {!schedule && (

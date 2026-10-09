@@ -3344,8 +3344,8 @@ and what the pre-check found, and then works the way it does on any turn.
 Every wake is a full model turn, and most check-ins find nothing. `--check`
 names a query the hub runs first. Only when that query finds something does the
 agent wake, and what it found is handed to the agent with the wake. A run that
-finds nothing is recorded as **quiet**: it costs no model turn and posts nothing
-to the room.
+finds nothing is recorded as **Nothing to do**: it costs no model turn and posts
+nothing to the room.
 
 | Check | Wakes the agent when |
 |---|---|
@@ -3374,9 +3374,9 @@ schedule's `next_run` is always shown, so you don't have to work it out.
 
 If runs are missed, because the hub was down or the agent was busy, they don't
 pile up. The next run fires once and records how many runs it stood in for. A
-run that comes due while the agent is working is recorded as **busy**, and a
-run that comes due while the last wake is still waiting to be taken is
-**held**. Neither queues a second wake.
+run that comes due while the agent is working is recorded as **Agent busy**,
+and a run that comes due while the last wake is still waiting to be taken is
+**Already queued**. Neither queues a second wake.
 
 ## Guardrails
 
@@ -3387,7 +3387,7 @@ run that comes due while the last wake is still waiting to be taken is
 - **An expiry.** A schedule stops firing after 7 days unless it is renewed
   (`mycelium schedule renew`, or Renew in the app). It can be renewed for up to
   30 days at a time. The expiry is always shown.
-- **Quiet means quiet.** A run never posts to the room. Only its owner hears
+- **Nothing in the room.** A run never posts to the room. Only its owner hears
   about it.
 - **Writing one is acting as its owner.** On a hub with sign-in turned on, you
   can create, edit or run a schedule only for an agent you may act as: your own
@@ -3395,18 +3395,17 @@ run that comes due while the last wake is still waiting to be taken is
 
 ## In the app
 
-The room's **Schedules** tab (open it from the tab strip's + menu or the
-command palette) lists every schedule: who it wakes, when, its check, when it
-last ran and what happened, and how many runs woke the agent compared with how
-many stayed quiet. The tab's footer counts the model turns schedules have spent
-in the room. Each schedule has Pause/Resume, Run now, Renew, Edit and Delete.
-Its run history folds quiet runs together. In the Members rail, an agent with a
-schedule shows a small clock.
+The room's **Schedules** tab (Alt+K, or the tab strip's + menu) lists every
+schedule: its agent, when it runs, its check, its status, the next run and the
+last one. The ⋯ menu on a row has Run now, Pause/Resume, Renew, Edit and
+Delete. Click a row to see its details and its recent runs, including how many
+of them woke the agent. In the Members rail, an agent with a schedule shows a
+small clock.
 
 ## From the CLI
 
 ```bash
-mycelium schedule ls                       # the room's schedules, with turns spent
+mycelium schedule ls                       # the room's schedules
 mycelium schedule show board-check         # one, with its recent runs
 mycelium schedule run board-check          # run it now (check first)
 mycelium schedule run board-check --wake   # run it now and wake the agent anyway

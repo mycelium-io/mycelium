@@ -135,12 +135,13 @@ def test_add_wakes_whoever_is_acting_by_default(calls) -> None:
     assert calls[0]["body"].cron == "0 9 * * 1-5"
 
 
-def test_ls_shows_what_each_schedule_has_cost(calls) -> None:
+def test_ls_is_one_row_per_schedule(calls) -> None:
     result = runner.invoke(schedule_cmd.app, ["ls", "--room", "ops"], env={"COLUMNS": "160"})
     assert result.exit_code == 0, result.output
-    assert "board-check" in result.output
-    assert "@builder" in result.output
-    assert "1 model turn(s) spent on schedules in ops" in result.output
+    row = next(line for line in result.output.splitlines() if "board-check" in line)
+    assert "@builder" in row
+    assert "every 17m" in row
+    assert "nothing to do" in row
 
 
 def test_ls_json_is_the_list(calls) -> None:
@@ -148,13 +149,16 @@ def test_ls_json_is_the_list(calls) -> None:
     assert json.loads(result.output)[0]["name"] == "board-check"
 
 
-def test_show_folds_quiet_runs_together(calls) -> None:
-    result = runner.invoke(schedule_cmd.app, ["show", "board-check", "--room", "ops"])
+def test_show_lists_every_run(calls) -> None:
+    result = runner.invoke(
+        schedule_cmd.app, ["show", "board-check", "--room", "ops"], env={"COLUMNS": "160"}
+    )
     assert result.exit_code == 0, result.output
-    assert "… 2 quiet run(s)" in result.output
-    assert "… 1 quiet run(s)" in result.output
-    assert "+2 missed" in result.output
+    assert result.output.count("nothing to do") == 3
+    assert "woke agent" in result.output
+    assert "caught up 2 missed runs" in result.output
     assert "your lease is stale" in result.output
+    assert "(manual)" in result.output
 
 
 def test_pause_resume_and_renew_patch_only_what_they_change(calls) -> None:

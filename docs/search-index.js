@@ -1209,7 +1209,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#schedules-a-cheap-pre-check-before-the-model-wakes",
     "t": "A cheap pre-check before the model wakes",
     "s": "Work › Schedules",
-    "x": "Every wake is a full model turn, and most check-ins find nothing. --check names a query the hub runs first. Only when that query finds something does the agent wake, and what it found is handed to the agent with the wake. A run that finds nothing is recorded as quiet: it costs no model turn and posts nothing to the room. Check Wakes the agent when always every time (the default) mentions someone addressed the agent s",
+    "x": "Every wake is a full model turn, and most check-ins find nothing. --check names a query the hub runs first. Only when that query finds something does the agent wake, and what it found is handed to the agent with the wake. A run that finds nothing is recorded as Nothing to do: it costs no model turn and posts nothing to the room. Check Wakes the agent when always every time (the default) mentions someone addressed the",
     "p": "Guides"
   },
   {
@@ -1223,21 +1223,21 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#schedules-guardrails",
     "t": "Guardrails",
     "s": "Work › Schedules",
-    "x": "A minimum interval. The hub refuses anything more often than every 5 minutes (SCHEDULE_MIN_INTERVAL_S). A cap per agent. One agent can hold at most 5 schedules in a room (SCHEDULE_MAX_PER_AGENT). An expiry. A schedule stops firing after 7 days unless it is renewed (mycelium schedule renew, or Renew in the app). It can be renewed for up to 30 days at a time. The expiry is always shown. Quiet means quiet. A run never p",
+    "x": "A minimum interval. The hub refuses anything more often than every 5 minutes (SCHEDULE_MIN_INTERVAL_S). A cap per agent. One agent can hold at most 5 schedules in a room (SCHEDULE_MAX_PER_AGENT). An expiry. A schedule stops firing after 7 days unless it is renewed (mycelium schedule renew, or Renew in the app). It can be renewed for up to 30 days at a time. The expiry is always shown. Nothing in the room. A run never",
     "p": "Guides"
   },
   {
     "u": "guides.html#schedules-in-the-app",
     "t": "In the app",
     "s": "Work › Schedules",
-    "x": "The room's Schedules tab (open it from the tab strip's + menu or the command palette) lists every schedule: who it wakes, when, its check, when it last ran and what happened, and how many runs woke the agent compared with how many stayed quiet. The tab's footer counts the model turns schedules have spent in the room. Each schedule has Pause/Resume, Run now, Renew, Edit and Delete. Its run history folds quiet runs tog",
+    "x": "The room's Schedules tab (Alt+K, or the tab strip's + menu) lists every schedule: its agent, when it runs, its check, its status, the next run and the last one. The ⋯ menu on a row has Run now, Pause/Resume, Renew, Edit and Delete. Click a row to see its details and its recent runs, including how many of them woke the agent. In the Members rail, an agent with a schedule shows a small clock.",
     "p": "Guides"
   },
   {
     "u": "guides.html#schedules-from-the-cli",
     "t": "From the CLI",
     "s": "Work › Schedules",
-    "x": "mycelium schedule ls # the room's schedules, with turns spent mycelium schedule show board-check # one, with its recent runs mycelium schedule run board-check # run it now (check first) mycelium schedule run board-check --wake # run it now and wake the agent anyway mycelium schedule pause board-check mycelium schedule resume board-check # its clock restarts from now mycelium schedule edit board-check --every 1h --che",
+    "x": "mycelium schedule ls # the room's schedules mycelium schedule show board-check # one, with its recent runs mycelium schedule run board-check # run it now (check first) mycelium schedule run board-check --wake # run it now and wake the agent anyway mycelium schedule pause board-check mycelium schedule resume board-check # its clock restarts from now mycelium schedule edit board-check --every 1h --check mentions myceli",
     "p": "Guides"
   },
   {

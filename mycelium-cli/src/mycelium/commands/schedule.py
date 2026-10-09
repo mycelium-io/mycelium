@@ -35,12 +35,13 @@ app = typer.Typer(
 )
 console = Console()
 
-_RESULT_STYLE = {
-    "woke": "green",
-    "quiet": "dim",
-    "held": "yellow",
-    "busy": "yellow",
-    "error": "red",
+#: How each run result reads, and its color; the same words the app uses.
+_RESULT = {
+    "woke": ("woke agent", "green"),
+    "quiet": ("nothing to do", "dim"),
+    "held": ("already queued", "yellow"),
+    "busy": ("agent busy", "yellow"),
+    "error": ("check failed", "red"),
 }
 
 
@@ -96,7 +97,8 @@ def _rel(raw: str | None, now: datetime) -> str:
 def _result(value: str | None) -> str:
     if not value:
         return "[dim]-[/dim]"
-    return f"[{_RESULT_STYLE.get(value, 'white')}]{value}[/]"
+    word, style = _RESULT.get(value, (value, "white"))
+    return f"[{style}]{word}[/]"
 
 
 @doc_ref(
@@ -164,7 +166,7 @@ def schedule_add(
 
 @doc_ref(
     usage="mycelium schedule ls [--for <handle>]",
-    desc="A room's schedules: who each wakes, when, its pre-check, its last result, and how many runs woke the agent (each a model turn) or stayed quiet.",
+    desc="A room's schedules: who each wakes, when, its check, its status and its last run.",
     group="schedule",
 )
 @app.command(name="ls")
@@ -191,12 +193,8 @@ def schedule_ls(
         return
     now = datetime.now(UTC)
     table = Table(box=None, pad_edge=False, header_style="dim")
-    for col in ("name", "agent", "when", "check", "state", "next", "last", "woke", "quiet"):
-        table.add_column(
-            col,
-            justify="right" if col in ("woke", "quiet") else "left",
-            no_wrap=col in ("name", "agent"),
-        )
+    for col in ("name", "agent", "schedule", "check", "status", "next run", "last run"):
+        table.add_column(col, no_wrap=col in ("name", "agent"))
     for s in items:
         state = s["state"]
         style = {"active": "green", "paused": "yellow", "expired": "red"}.get(state, "white")
@@ -208,18 +206,14 @@ def schedule_ls(
             s["check"],
             f"[{style}]{state}[/]",
             _rel(s.get("next_run"), now) if state == "active" else "-",
-            last if s.get("last_run") else "[dim]-[/dim]",
-            str(s.get("wakes", 0)),
-            f"[dim]{s.get('quiet', 0)}[/dim]",
+            last if s.get("last_run") else "[dim]never[/dim]",
         )
     console.print(table)
-    turns = sum(s.get("wakes", 0) for s in items)
-    console.print(f"\n[dim]{turns} model turn(s) spent on schedules in {room}[/dim]")
 
 
 @doc_ref(
     usage="mycelium schedule show <name>",
-    desc="One schedule and its recent runs, newest first, with runs that stayed quiet folded together.",
+    desc="One schedule and its recent runs, newest first.",
     group="schedule",
 )
 @app.command(name="show")
@@ -247,30 +241,29 @@ def schedule_show(
     if s.get("task"):
         console.print(f"  task     {s['task']}")
     console.print(f"  expires  {_rel(s.get('expires_at'), now)}")
-    console.print(f"  runs     {s['runs']}: {s['wakes']} woke, {s['quiet']} quiet")
+    console.print(f"  runs     {s['runs']} total, {s['wakes']} woke the agent")
     if s.get("prompt"):
         console.print(f"\n{s['prompt']}")
     history = s.get("history") or []
     if not history:
         return
-    console.print("\n[bold]Runs[/bold]")
-    quiet = 0
+    table = Table(box=None, pad_edge=False, header_style="dim", title_justify="left")
+    for col in ("when", "result", "details"):
+        table.add_column(col, no_wrap=col != "details")
     for run in history:
-        if run["result"] == "quiet":
-            quiet += 1
-            continue
-        if quiet:
-            console.print(f"  [dim]… {quiet} quiet run(s)[/dim]")
-            quiet = 0
-        trigger = " (by hand)" if run.get("trigger") == "manual" else ""
-        missed = f" [dim]+{run['missed']} missed[/dim]" if run.get("missed") else ""
-        console.print(f"  {_rel(run['at'], now):>8}  {_result(run['result'])}{trigger}{missed}")
-        for line in run.get("found") or []:
-            console.print(f"            [dim]- {line}[/dim]")
+        notes = list(run.get("found") or [])
         if run.get("detail"):
-            console.print(f"            [red]{run['detail']}[/red]")
-    if quiet:
-        console.print(f"  [dim]… {quiet} quiet run(s)[/dim]")
+            notes.append(f"[red]{run['detail']}[/red]")
+        if run.get("missed"):
+            notes.append(f"[dim]caught up {run['missed']} missed runs[/dim]")
+        manual = " [dim](manual)[/dim]" if run.get("trigger") == "manual" else ""
+        table.add_row(
+            _rel(run["at"], now),
+            _result(run["result"]) + manual,
+            "\n".join(notes) or "[dim]-[/dim]",
+        )
+    console.print()
+    console.print(table)
 
 
 def _patch(room: str, name: str, **fields: Any) -> dict[str, Any]:
