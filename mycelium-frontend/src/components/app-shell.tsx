@@ -261,7 +261,7 @@ export function AppShell({
               then what the page is showing (`statusLeft`, e.g. the room's
               connection and counts), then metrics and the keys. Every value
               carries a word saying what it is. */}
-          <footer className="flex h-6 flex-shrink-0 items-center gap-3 overflow-x-auto border-t border-border bg-surface px-2 text-micro whitespace-nowrap text-muted-foreground [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <footer data-tour="status-bar" className="flex h-6 flex-shrink-0 items-center gap-3 overflow-x-auto border-t border-border bg-surface px-2 text-micro whitespace-nowrap text-muted-foreground [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <DockToggle
               label={roomsOpen ? "Hide rooms" : "Show rooms"}
               action="rooms.toggle"

@@ -24,6 +24,67 @@ export interface TourHandle {
   destroy: () => void;
 }
 
+interface TourStop {
+  element: string;
+  title: string;
+  text: string;
+  side: "top" | "right" | "bottom" | "left";
+  align: "start" | "center" | "end";
+  /** Show this view in the center before pointing at it. */
+  view?: View;
+  /** Open this rail section before pointing at it. */
+  rail?: InspectorTab;
+}
+
+/** A walk around the room you are in: where things are and what they're for. */
+export const TOUR_STOPS: TourStop[] = [
+  {
+    element: '[data-tour="rooms"]',
+    title: "Your rooms",
+    text: "A room is a team: the people and agents in it, the work they share, and what they've learned. Make one for each project.",
+    side: "right",
+    align: "start",
+  },
+  {
+    element: '[data-tour="composer"]',
+    title: "Talk to the room",
+    text: "Write to everyone here. @ someone to ask them directly, and start with / for a command, like /task to put work on the board.",
+    side: "top",
+    align: "start",
+  },
+  {
+    element: '[data-tour="tab-board"]',
+    title: "The board",
+    text: "The room's tasks, and who has each one. Every task has its own thread, so the talk about it stays with it instead of filling the channel.",
+    side: "bottom",
+    align: "start",
+    view: "board",
+  },
+  {
+    element: '[data-tour="inspector-agents"]',
+    title: "Who's here",
+    text: "The people and agents in this room. Add starts a coding agent on your machine and brings it in.",
+    side: "left",
+    align: "start",
+    rail: "agents",
+  },
+  {
+    element: '[data-tour="inspector-memory"]',
+    title: "What the room knows",
+    text: "Decisions, notes and context, kept as files every member can read and search. Fold a section by its header, or drag the line between them.",
+    side: "left",
+    align: "start",
+    rail: "memory",
+  },
+  {
+    element: '[data-tour="status-bar"]',
+    title: "Status at a glance",
+    text: "Your hub, the machines your agents run on, and this room. A dot appears when something needs a look.",
+    side: "top",
+    align: "start",
+  },
+];
+
 export function startRoomTour(deps: TourDeps): TourHandle {
   const d: Driver = driver({
     showProgress: true,
@@ -38,81 +99,17 @@ export function startRoomTour(deps: TourDeps): TourHandle {
     doneBtnText: "Done",
     progressText: "{{current}} of {{total}}",
     onDestroyed: () => deps.onExit(),
-    steps: [
-      {
-        element: '[data-tour="rooms"]',
-        popover: {
-          title: "Your workspaces",
-          description:
-            "Every room is a coordination space with its own agents, plan, and memory. This sample was seeded for you.",
-          side: "right",
-          align: "start",
-        },
-      },
-      {
-        element: '[data-tour="composer"]',
-        popover: {
-          title: "Post a position",
-          description:
-            "Agents (and you) speak in plain language here. No protocol to learn: you state a goal, others respond.",
-          side: "top",
-          align: "start",
-        },
-      },
-      {
-        element: '[data-tour="tab-board"]',
-        popover: {
-          title: "The board is the surface",
-          description:
-            "Work lives here. A human drops a task and never picks a protocol; agents claim it, decompose it, and coordinate inside it.",
-          side: "bottom",
-          align: "end",
-        },
-        onHighlightStarted: () => deps.setEditorView("board"),
-      },
-      {
-        element: '[data-tour="board"]',
-        popover: {
-          title: "A row is a task, and a task is a thread",
-          description:
-            "Every row carries its own conversation. Open one and the argument about the work sits next to the work, instead of scrolling past in the channel.",
-          side: "left",
-          align: "start",
-        },
-      },
-      {
-        element: '[data-tour="board"]',
-        popover: {
-          title: "Summon the aligner inside a task",
-          description:
-            "When agents genuinely disagree, the aligner brokers a real NEGMAS negotiation in that row's thread. It stops the instant they agree, and the agreement compiles back into rows.",
-          side: "left",
-          align: "start",
-        },
-      },
-      {
-        element: '[data-tour="inspector-memory"]',
-        popover: {
-          title: "Summon the synthesizer",
-          description:
-            "A second engine. On @-summon, the synthesizer distills the whole room — goal, the new decision, the plan — into one shared briefing at context/synthesis.",
-          side: "left",
-          align: "start",
-        },
-        onHighlightStarted: () => deps.setInspectorTab("memory"),
-      },
-      {
-        element: '[data-tour="inspector-memory"]',
-        popover: {
-          title: "And it persists",
-          description:
-            "Decisions, context, and the plan sync to the room's memory — durable, searchable, and shared across sessions.",
-          side: "left",
-          align: "start",
-        },
-        onHighlightStarted: () => deps.setInspectorTab("memory"),
-      },
-    ],
+    // A stop whose target isn't on the page (a folded rail, a narrow window)
+    // is left out rather than shown pointing at nothing.
+    steps: TOUR_STOPS.filter((s) => document.querySelector(s.element)).map((s) => ({
+      element: s.element,
+      popover: { title: s.title, description: s.text, side: s.side, align: s.align },
+      onHighlightStarted: s.view
+        ? () => deps.setEditorView(s.view as View)
+        : s.rail
+          ? () => deps.setInspectorTab(s.rail as InspectorTab)
+          : undefined,
+    })),
   });
 
   d.drive();
