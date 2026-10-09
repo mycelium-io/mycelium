@@ -1961,6 +1961,15 @@ role   = &quot;agent&quot;</code></pre>
       </ol>
       <p>An agent that loops on <code>mycelium await</code> itself doesn&#x27;t need the runner. Check that its loop is still running. The runner also wakes an agent you connected with <code>mycelium herdr map</code>. <code>mycelium herdr wake &lt;handle&gt;</code> wakes it by hand.</p>
       <hr class="divider">
+      <h3 id="troubleshooting-an-agent-you-added-wont-start">An agent you added won&#x27;t start</h3>
+      <p><strong>You see:</strong> <strong>Add member</strong> (or <code>/agent</code>) adds the agent to the room, but it doesn&#x27;t start on your machine.</p>
+      <p>The dialog shows each step on the machine and says which one stopped, with what to do. The two most common:</p>
+      <ul>
+        <li><strong>The terminal&#x27;s shell didn&#x27;t get to a prompt in time.</strong> The runner opens a terminal in herdr and waits up to 30 seconds for its shell. A shell whose startup files (<code>~/.zshrc</code>, <code>~/.bash_profile</code>) are slow or fail never gets there. Open a new terminal window on that machine to check it starts normally.</li>
+        <li><strong>The agent CLI is waiting for you.</strong> It started, but stopped at its own update, sign-in or first-run question. Answer it in its terminal.</li>
+      </ul>
+      <p>Either way the terminal stays open, and <strong>Try again</strong> starts the agent in that same terminal rather than opening another. In the Mac app, <strong>Open its terminal</strong> goes straight to it. For the full error, open <strong>Logs → Agent starts</strong> in the app&#x27;s menu, or <code>~/.mycelium/runner/runner.log</code>.</p>
+      <hr class="divider">
       <h3 id="troubleshooting-mycelium-command-not-found"><code>mycelium: command not found</code></h3>
       <p>The CLI isn&#x27;t installed or isn&#x27;t on your <code>PATH</code>. Install it with the command below. On an Apple silicon Mac this installs the Mac app, which links its CLI into <code>~/.local/bin</code>. Add <code>bash -s -- --client-only</code> for the CLI alone.</p>
       <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash</code></pre>

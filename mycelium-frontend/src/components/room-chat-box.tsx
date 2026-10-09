@@ -61,9 +61,13 @@ import {
   hostOf,
   launchable,
   runnerName,
+  startHelp,
+  startReport,
+  startsInHerdr,
   useRunnerJob,
   useRunners,
 } from "@/lib/runners";
+import { terminalLink, useIsDesktop } from "@/lib/desktop";
 import { STANDARD_FOLDERS, keyProblem } from "@/lib/memory-location";
 import { agentLabel } from "@/lib/agent-label";
 import { cn } from "@/lib/utils";
@@ -197,6 +201,11 @@ interface Launch {
   runner: string;
   job: string;
   handle: string;
+  /** The machine's name and the agent CLI's, as a failure says them. */
+  machine: string;
+  cli: string;
+  /** Whether it starts in herdr, whose terminal the app can open. */
+  herdr: boolean;
 }
 
 export function RoomChatBox({
@@ -534,7 +543,14 @@ export function RoomChatBox({
         created_by: me,
         ...(signature ? { signature } : {}),
       });
-      return { runner: runner.id, job: job.id, handle };
+      return {
+        runner: runner.id,
+        job: job.id,
+        handle,
+        machine: runnerName(runner),
+        cli: framework.name,
+        herdr: startsInHerdr(runner),
+      };
     },
     [machines, machinesLoading, roomName],
   );
@@ -1043,6 +1059,7 @@ function StatusLine({
 function LaunchStatus({ launch, roomName, onDismiss }: { launch: Launch; roomName: string; onDismiss: () => void }) {
   const { job } = useRunnerJob(launch.runner, launch.job);
   const revalidate = useRoomRevalidate(roomName);
+  const desktop = useIsDesktop();
   const status = job?.status ?? "queued";
   useEffect(() => {
     if (status !== "done") return;
@@ -1051,9 +1068,24 @@ function LaunchStatus({ launch, roomName, onDismiss }: { launch: Launch; roomNam
     return () => clearTimeout(t);
   }, [status, revalidate, onDismiss]);
   if (status === "failed") {
+    const report = startReport(job);
+    // The whole account (what happened, what to do, what the terminal shows)
+    // is the Add member dialog's; the line names the cause and the way to it.
+    const short = report.why ? startHelp(report.why, launch).short : null;
     return (
       <StatusLine tone="error" onDismiss={onDismiss}>
-        @{launch.handle} didn&apos;t start: {job?.error ?? "the machine said no more"}
+        @{launch.handle} didn&apos;t start:{" "}
+        {short
+          ? `${short}. It's still in the room, so you can try again from Add member.`
+          : (job?.error ?? "the machine said no more")}
+        {short && desktop && launch.herdr && report.pane && (
+          <>
+            {" "}
+            <a href={terminalLink(report.pane)} className="underline underline-offset-2 hover:text-text">
+              Open its terminal
+            </a>
+          </>
+        )}
       </StatusLine>
     );
   }

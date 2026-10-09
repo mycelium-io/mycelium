@@ -299,36 +299,58 @@ def member_worktree(repo: Path, room: str, handle: str) -> Path:
     return path
 
 
-#: How many times, and how far apart, to try starting an agent in a new pane.
+#: How many times, and how far apart, to try a start that failed for any
+#: reason other than the pane's shell still starting.
 START_ATTEMPTS = 3
 START_RETRY_S = 1.5
+#: How long a new pane's shell gets to reach its prompt. A login shell with a
+#: heavy profile (nvm, conda, a prompt theme) can take many seconds.
+SHELL_WAIT_S = 30.0
+#: A start that took this long got as far as running the agent CLI, which
+#: herdr then waited on: trying again would only wait again.
+SLOW_START_S = 10.0
 
 
 def _start_when_ready(bridge: Any, handle: str, kind: str, pane: str) -> dict | None:
     """Start ``kind`` in ``pane``, giving a just-opened pane's shell time to come up.
 
     herdr starts an agent only in a pane sitting at its shell prompt, and a
-    pane split a moment ago may still be starting its shell. A start herdr
+    pane split a moment ago may still be starting its shell, so a start herdr
+    refuses for that is tried again for up to ``SHELL_WAIT_S``. A start herdr
     reports as failed with an agent on the pane all the same (one stopped at a
     prompt never reads as ready) is not tried again, since a second start would
     find the name taken: that agent is returned, for the caller to read its
     state. ``None`` means it started and is ready.
+
+    Raises :class:`ShellNotReadyError` when the shell never reached its prompt,
+    :class:`AgentNotReadyError` when the agent CLI ran but never came up as an
+    agent, and :class:`HerdrError` for anything else.
     """
     from mycelium.integrations.agents import of_kind
-    from mycelium.integrations.herdr import HerdrError
+    from mycelium.integrations.herdr import AgentNotReadyError, HerdrError, ShellNotReadyError
+    from mycelium.integrations.herdr.bridge import NOT_A_SHELL
 
-    for attempt in range(1, START_ATTEMPTS + 1):
+    deadline = time.monotonic() + SHELL_WAIT_S
+    failures = 0
+    while True:
+        began = time.monotonic()
         try:
             bridge.start_agent(handle, kind, pane, agent_args=of_kind(kind).launch_args() or None)
-        except HerdrError:
+        except HerdrError as e:
             if (agent := bridge.get_agent(pane)) is not None:
                 return agent
-            if attempt == START_ATTEMPTS:
-                raise
+            if time.monotonic() - began >= SLOW_START_S:
+                raise AgentNotReadyError(str(e)) from e
+            if NOT_A_SHELL in str(e):
+                if time.monotonic() >= deadline:
+                    raise ShellNotReadyError(str(e)) from e
+            else:
+                failures += 1
+                if failures >= START_ATTEMPTS:
+                    raise
             time.sleep(START_RETRY_S)
         else:
             return None
-    return None
 
 
 def _start_unblocked(bridge: Any, handle: str, kind: str, pane: str) -> None:

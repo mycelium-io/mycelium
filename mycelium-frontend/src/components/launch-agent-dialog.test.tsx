@@ -184,6 +184,89 @@ describe("LaunchAgentForm", () => {
     expect(screen.getByLabelText("Handle")).toHaveValue("scout");
   });
 
+  it("says which step a start is on while the machine works through it", async () => {
+    connected = [runner()];
+    launchRunnerAgent.mockResolvedValue(job());
+    fetchRunnerJob.mockResolvedValue(job({ status: "running", result: { step: "shell" } }));
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+
+    const shell = await screen.findByText(/Wait for the terminal's shell, then start Claude Code/);
+    expect(within(shell.closest("li")!).getByLabelText("in progress")).toBeInTheDocument();
+    const terminal = screen.getByText("Open a terminal for it in herdr").closest("li")!;
+    expect(within(terminal).getByLabelText("done")).toBeInTheDocument();
+  });
+
+  it("walks the person through a terminal whose shell never got to a prompt", async () => {
+    connected = [runner()];
+    launchRunnerAgent.mockResolvedValue(job());
+    fetchRunnerJob.mockResolvedValue(
+      job({
+        status: "failed",
+        error: "Claude Code couldn't start on julias-mbp: …",
+        result: {
+          step: "shell",
+          why: "shell",
+          pane: "w5:p1",
+          detail: "agent target pane w5:p1 is not an available shell",
+        },
+      }),
+    );
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("didn't get to its shell prompt in time");
+    expect(alert).toHaveTextContent("What to do");
+    expect(alert).toHaveTextContent("It reuses the same terminal");
+    // The machine's own words are kept, behind a toggle, for whoever debugs it.
+    expect(alert).toHaveTextContent("not an available shell");
+    const shell = screen.getByText(/Wait for the terminal's shell/).closest("li")!;
+    expect(within(shell).getByLabelText("failed")).toBeInTheDocument();
+  });
+
+  it("says an agent CLI that didn't come up is likely waiting on the person, and shows its screen", async () => {
+    connected = [runner()];
+    launchRunnerAgent.mockResolvedValue(job());
+    fetchRunnerJob.mockResolvedValue(
+      job({
+        status: "failed",
+        error: "Codex didn't finish starting on julias-mbp.",
+        result: { step: "agent", why: "cli", pane: "w7:p1", screen: "Update available: 0.9 -> 1.0\nUpdate now? [Y/n]" },
+      }),
+    );
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("an update, a sign-in, or a first-run question");
+    expect(alert).toHaveTextContent("Its terminal shows");
+    expect(alert).toHaveTextContent("Update now? [Y/n]");
+  });
+
+  it("tries a failed start again without going back to the form", async () => {
+    connected = [runner()];
+    launchRunnerAgent.mockResolvedValueOnce(job()).mockResolvedValueOnce(job({ id: "job-0010" }));
+    fetchRunnerJob.mockImplementation((_runner: string, id: string) =>
+      Promise.resolve(
+        id === "job-0010"
+          ? job({ id, status: "done" })
+          : job({ status: "failed", result: { step: "shell", why: "shell", pane: "w5:p1" } }),
+      ),
+    );
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
+    expect(await screen.findByText(/Running on julias-mbp/)).toBeInTheDocument();
+    expect(launchRunnerAgent).toHaveBeenCalledTimes(2);
+    expect(launchRunnerAgent.mock.calls[1][1]).toEqual(launchRunnerAgent.mock.calls[0][1]);
+  });
+
   it("can't start anything on a machine without herdr, and says why", () => {
     connected = [runner({ herdr: false })];
     renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);

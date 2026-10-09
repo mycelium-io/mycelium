@@ -50,7 +50,7 @@ import sys
 import threading
 import time
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -68,7 +68,15 @@ from mycelium.filesystem import get_mycelium_dir
 from mycelium.integrations import agents
 from mycelium.integrations.herdr import HerdrBridge, HerdrError
 from mycelium.runner import approvals, frameworks, pairing
-from mycelium.runner.hosts import AgentHost, HerdrHost, HostError, OmnigentHost
+from mycelium.runner.hosts import (
+    STEP_AGENT,
+    STEP_SHELL,
+    AgentHost,
+    HerdrHost,
+    HostError,
+    OmnigentHost,
+    StartHooks,
+)
 from mycelium.runner.log import failing, log, ms, open_log, recovered
 from mycelium.utils.process import pid_alive
 
@@ -101,7 +109,42 @@ _OPAQUE_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a
 
 
 class JobError(Exception):
-    """A job this runner could not do, said as a sentence for the app to show."""
+    """A job this runner could not do, said as a sentence for the app to show.
+
+    ``result`` goes with the failure to the app: for a start, the step it
+    stopped at and the terminal it left open.
+    """
+
+    def __init__(self, message: str, *, result: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.result = result
+
+
+class _JobStart(StartHooks):
+    """A start the hub asked for: each step is reported on its job, and the wait
+    on the agent runs with the runner's pane lock let go.
+
+    Only for a start running under that lock (``_do_and_report``), which
+    ``unlocked`` gives back and takes again.
+    """
+
+    def __init__(self, runner: Runner, job_id: str) -> None:
+        self._runner = runner
+        self._job_id = job_id
+
+    def step(self, step: str) -> None:
+        self._runner._report(self._job_id, "running", {"step": step}, None)  # noqa: SLF001 - the job's own report
+
+    @contextlib.contextmanager
+    def unlocked(self) -> Iterator[None]:
+        # The pane is mapped by now, so a sync pass that runs meanwhile can't
+        # take the agent for a new one; it only has to not wait out this start.
+        panes = self._runner._panes  # noqa: SLF001
+        panes.release()
+        try:
+            yield
+        finally:
+            panes.acquire()
 
 
 def runner_dir() -> Path:
@@ -652,10 +695,16 @@ class Runner:
     def has_notes(self, room: str, handle: str) -> bool:
         return self.notes(room, handle) is not None
 
-    def launch(self, spec: dict[str, Any]) -> dict[str, Any]:
-        """Start one agent on this machine's host, as ``@handle`` in ``room``, and tell it who it is."""
+    def launch(self, spec: dict[str, Any], job_id: str | None = None) -> dict[str, Any]:
+        """Start one agent on this machine's host, as ``@handle`` in ``room``, and tell it who it is.
+
+        ``job_id`` is the hub's job when the start runs as one, under the pane
+        lock: its steps are reported on it as they're reached.
+        """
         if not self.herdr:
-            raise JobError(f"{self.host.name} isn't running on {self.label}.")
+            raise JobError(
+                f"{self.host.name} isn't running on {self.label}. Start it, then try again."
+            )
         room, handle = str(spec["room"]), str(spec["handle"])
         known = self.framework(str(spec["framework"]))
         cwd = self.folder(spec.get("cwd"))
@@ -685,9 +734,10 @@ class Runner:
                 cwd=cwd,
                 env=self.pane_env(room, handle),
                 intro=intro,
+                hooks=_JobStart(self, job_id) if job_id else None,
             )
         except HostError as e:
-            raise JobError(f"{self.host.name} could not start {known.name}: {e}") from e
+            raise self._start_failed(e, known.name, handle) from e
         agent = Tracked(
             handle=handle,
             room=room,
@@ -718,6 +768,49 @@ class Runner:
                 f"[green]started[/green] @{handle} ({known.name}) in {room} → {started.ref}"
             )
         return result
+
+    def _start_failed(self, e: HostError, name: str, handle: str) -> JobError:
+        """A start that didn't come up, said as what happened and what to do next.
+
+        What the host said stays in the result's ``detail`` and in the log, for
+        whoever is debugging; the sentence is for the person who asked.
+        """
+        from mycelium.commands.swarm import SHELL_WAIT_S
+        from mycelium.integrations.herdr import AgentNotReadyError
+
+        where = (
+            f"It's still open in herdr (pane {e.ref})" if e.ref else "Its terminal is still open"
+        )
+        # Why, in one word the app picks its guidance by: the shell never got to
+        # a prompt, the agent CLI ran but is showing something of its own, or
+        # the host refused for a reason of its own.
+        if e.step == STEP_SHELL:
+            why = "shell"
+            message = (
+                f"{name} couldn't start on {self.label}: the terminal opened for @{handle} "
+                f"didn't reach a shell prompt within {SHELL_WAIT_S:.0f} seconds. {where}. "
+                f"When it shows a prompt, start @{handle} again: it goes back to that terminal."
+            )
+        elif e.step == STEP_AGENT and isinstance(e.__cause__, AgentNotReadyError):
+            why = "cli"
+            message = (
+                f"{name} didn't finish starting on {self.label}. Often it's waiting for an "
+                f"update, a sign-in or a first-run question. {where}: answer what it shows "
+                f"there, then start @{handle} again."
+            )
+        else:
+            why = "host"
+            message = f"{self.host.name} couldn't start {name} on {self.label}: {e}."
+            if e.ref:
+                message += f" {where}, and starting @{handle} again tries in it once more."
+        result = {
+            "step": e.step,
+            "why": why,
+            "pane": e.ref,
+            "screen": e.screen,
+            "detail": str(e),
+        }
+        return JobError(message, result={k: v for k, v in result.items() if v})
 
     def _mark_waiting(self, agent: Tracked) -> None:
         """Say ``agent`` is waiting for input, on which machine, and for how long once that's long."""
@@ -907,7 +1000,7 @@ class Runner:
     def do(self, job: dict[str, Any]) -> dict[str, Any]:
         kind, spec = job.get("kind"), job.get("spec") or {}
         if kind == "launch":
-            return self.launch(spec)
+            return self.launch(spec, job_id=str(job["id"]) if job.get("id") else None)
         if kind == "stop":
             return self.stop_agent(spec)
         if kind == "scan":
@@ -1056,8 +1149,16 @@ class Runner:
             with self._panes:
                 result = self.do(job)
         except JobError as e:
-            log.warning("job %s %s failed %dms: %s", job_id, kind, ms(started), e)
-            self._report(job_id, "failed", None, str(e), paired)
+            detail = (e.result or {}).get("detail")
+            log.warning(
+                "job %s %s failed %dms: %s%s",
+                job_id,
+                kind,
+                ms(started),
+                e,
+                f" ({detail})" if detail else "",
+            )
+            self._report(job_id, "failed", e.result, str(e), paired)
             self.log.print(f"[red]job {job_id} failed:[/red] {e}")
         except Exception as e:  # noqa: BLE001 - a job must always be reported
             log.exception("job %s %s failed %dms", job_id, kind, ms(started))

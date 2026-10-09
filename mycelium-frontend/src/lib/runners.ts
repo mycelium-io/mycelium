@@ -181,6 +181,97 @@ export function pairingNote(job: Pick<RunnerJob, "pairing">): string | null {
   return p.reason ? `Needs approval on the machine: ${p.reason}.` : null;
 }
 
+/**
+ * How far a start got on its machine, as the runner reports it on the job
+ * (`hosts.STEP_*`): a terminal opened for the agent, then its shell and the
+ * agent CLI in it, then the agent itself.
+ */
+export type StartStep = "terminal" | "shell" | "agent";
+
+/**
+ * Why a start stopped, in the runner's one word for it: the terminal's shell
+ * never reached a prompt, the agent CLI ran but is showing something of its
+ * own (an update, a sign-in, a first-run question), or the host refused.
+ */
+export type StartWhy = "shell" | "cli" | "host";
+
+export interface StartReport {
+  step: StartStep | null;
+  why: StartWhy | null;
+  /** The terminal the start left open, for the person to look at. */
+  pane: string | null;
+  /** The last lines that terminal showed. */
+  screen: string | null;
+  /** What the host said, word for word, for whoever is debugging. */
+  detail: string | null;
+}
+
+const STEPS: readonly string[] = ["terminal", "shell", "agent"];
+const WHYS: readonly string[] = ["shell", "cli", "host"];
+
+/** What a start job's result says about how far it got. Empty for any other job. */
+export function startReport(job: Pick<RunnerJob, "result"> | null | undefined): StartReport {
+  const r = (job?.result ?? {}) as Record<string, unknown>;
+  const text = (v: unknown) => (typeof v === "string" && v ? v : null);
+  const step = text(r.step);
+  const why = text(r.why);
+  return {
+    step: step && STEPS.includes(step) ? (step as StartStep) : null,
+    why: why && WHYS.includes(why) ? (why as StartWhy) : null,
+    pane: text(r.pane),
+    screen: text(r.screen),
+    detail: text(r.detail),
+  };
+}
+
+/** What happened to a start that stopped, and what to do, step by step. */
+export interface StartHelp {
+  /** One sentence: what happened. */
+  happened: string;
+  /** What to do next, in order. */
+  steps: string[];
+  /** A few words for a status line with no room for the rest. */
+  short: string;
+}
+
+/** The person's way through a start that stopped, by why it stopped. */
+export function startHelp(
+  why: StartWhy | null,
+  { machine, cli, handle }: { machine: string; cli: string; handle: string },
+): StartHelp {
+  if (why === "shell") {
+    return {
+      happened: `The terminal opened for @${handle} on ${machine} didn't get to its shell prompt in time, so ${cli} never started.`,
+      steps: [
+        `Look at the terminal on ${machine}. It's still open, and may just need a few more seconds.`,
+        `If it stays blank or shows an error, the shell's startup files (like ~/.zshrc) are slow or failing. Open a new terminal window on ${machine} to check that it starts normally.`,
+        `Once it shows a prompt, try again. It reuses the same terminal.`,
+      ],
+      short: `its terminal on ${machine} didn't get to a prompt in time`,
+    };
+  }
+  if (why === "cli") {
+    return {
+      happened: `${cli} opened on ${machine} but didn't finish starting. It's most likely waiting for you: an update, a sign-in, or a first-run question.`,
+      steps: [
+        `Look at its terminal on ${machine}. It's still open.`,
+        `Answer what ${cli} is asking: let it update, sign in, or pick an option.`,
+        `Once ${cli} shows its normal prompt, try again.`,
+      ],
+      short: `${cli} is waiting for something in its terminal on ${machine}`,
+    };
+  }
+  return {
+    happened: `${machine} couldn't start ${cli}.`,
+    steps: [
+      `Check that ${cli} starts when you run it yourself in a terminal on ${machine}.`,
+      `For the full error, open Logs → Agent starts in the Mycelium menu on ${machine}, or ~/.mycelium/runner/runner.log.`,
+      `Then try again.`,
+    ],
+    short: `${machine} couldn't start ${cli}`,
+  };
+}
+
 export const JOB_STATUS_LABEL: Record<RunnerJob["status"], string> = {
   queued: "Waiting for the machine",
   running: "Starting",

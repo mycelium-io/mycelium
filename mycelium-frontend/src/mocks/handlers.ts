@@ -24,6 +24,7 @@ import {
   launchedHandles,
   listJobs,
   listRunners,
+  mockStartOutcome,
   pairDevice,
   queueJob,
   runnerAgentOf,
@@ -282,7 +283,16 @@ async function handleRunners(req: Request, method: string, rest: string[]): Prom
       framework: framework.id,
       cwd: typeof body.cwd === "string" ? body.cwd : runner.roots[0],
     };
-    const job = queueJob(runner.id, "launch", spec, typeof body.created_by === "string" ? body.created_by : null);
+    const outcome = mockStartOutcome(handle, framework.name, runner.label);
+    const job = queueJob(
+      runner.id,
+      "launch",
+      spec,
+      typeof body.created_by === "string" ? body.created_by : null,
+      outcome?.failWith ?? null,
+      null,
+      outcome?.failResult ?? null,
+    );
     const fx = isDemoScenario() ? getRoomFixture(spec.room) : undefined;
     if (fx) demoOnLaunch(fx, spec.room, handle);
     const lfx = isLearnScenario() ? getRoomFixture(spec.room) : undefined;
