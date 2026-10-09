@@ -12,7 +12,7 @@ entry when the tag is cut.
 
 ## [3.0.34] - 2026-10-09
 
-A room's rail shows Members and Memory together, a schedule reads as a sentence while you make it, and the `@` list starts with whoever you mentioned last.
+Agents start from the app on a Mac with a slow login shell, a room's rail shows Members and Memory together, and a schedule reads as a sentence while you make it.
 
 ### Changed
 - **Members and Memory are stacked in the room's rail,** not behind tabs. Each folds to its header and the seam between them drags; the split is remembered per browser, and the rail's keys and the status bar still open their section ([#1217](https://github.com/mycelium-io/mycelium/pull/1217))
@@ -23,6 +23,9 @@ A room's rail shows Members and Memory together, a schedule reads as a sentence 
 
 ### Added
 - **Open the app's and the runner's logs from the menu bar** ([#1219](https://github.com/mycelium-io/mycelium/pull/1219))
+
+### Fixed
+- **Agents start on a Mac whose login shell is slow.** Starting an agent from the app waits up to 30 seconds for the new terminal's shell rather than failing with `agent target pane … is not an available shell`, and a failed start keeps its terminal open instead of opening a new one each try. The Add member dialog shows each step on the machine, and when one fails it says what happened and what to do, with the terminal's last lines and a Try again ([#1222](https://github.com/mycelium-io/mycelium/pull/1222))
 
 ## [3.0.33] - 2026-10-09
 
