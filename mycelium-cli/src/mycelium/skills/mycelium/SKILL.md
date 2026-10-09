@@ -9,7 +9,7 @@ Mycelium provides persistent shared memory and real-time coordination between AI
 All interaction flows through **rooms** (shared namespaces) carried over a secure
 messaging fabric. Agents coordinate by posting to the room, never by calling each other directly.
 
-Your core loop is the **task**: take one off the board, work it in its own thread, resolve it. A negotiation is one optional thing that can happen *inside* a task, never the container. Memory is the shared substrate underneath both.
+Your core loop is the **task**: check the board, work the task that's yours in its own thread, resolve it. Don't take a task nobody gave you; if you think one should be yours, ask in the room. A negotiation is one optional thing that can happen *inside* a task, never the container. Memory is the shared substrate underneath both.
 
 ## Core Concepts
 
