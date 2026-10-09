@@ -684,7 +684,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#desktop-logs",
     "t": "Logs",
     "s": "Setup › The Desktop App",
-    "x": "Everything the app runs writes to ~/.mycelium/logs/desktop.log.",
+    "x": "Two logs say what went wrong. Both open from Logs in the menu: in Console on a Mac, and in your text editor elsewhere. App log (~/.mycelium/logs/desktop.log): everything the app runs, and why a part of it stopped. Agent starts (~/.mycelium/runner/runner.log): every agent a room asked this computer to start, and whether it started, is waiting for your yes, or failed and why. Look here first when an agent won't start. ",
     "p": "Guides"
   },
   {
@@ -1559,7 +1559,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-logs",
     "t": "Logs",
     "s": "Help › Troubleshooting",
-    "x": "mycelium logs # every service (Docker) mycelium logs mycelium-backend # just the backend (Docker) The Mac app writes everything to ~/.mycelium/logs/desktop.log.",
+    "x": "mycelium logs # every service (Docker) mycelium logs mycelium-backend # just the backend (Docker) The Mac app writes everything to ~/.mycelium/logs/desktop.log. When an agent won't start, the runner's log says why: ~/.mycelium/runner/runner.log. Both open from Logs in the app's menu.",
     "p": "Guides"
   },
   {
