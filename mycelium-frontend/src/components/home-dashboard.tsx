@@ -34,8 +34,11 @@ import { useBackendHealth } from "@/lib/use-status";
  *  glance, not a watch. Opening a room is what starts watching it. */
 const NO_POLL: RoomQueryOptions = { refreshInterval: 0 };
 
-// The seeded sample room the "Run a sample coordination" onboarding routes into.
-const SAMPLE_TOUR_HREF = "/room/subscription-pricing?tour=1";
+/** The tour runs in a room, since a room is where nearly everything is: the one
+ *  you were in last, so it points at your own work rather than a made-up one. */
+function tourHref(room: string): string {
+  return `/room/${encodeURIComponent(room)}?tour=1`;
+}
 
 function relativeTime(iso: string): string {
   if (!iso) return "";
@@ -164,7 +167,12 @@ export function HomeDashboard() {
             <ActionRow icon={Command} label="All commands" action="palette.open" onClick={openPalette} />
             <ActionRow icon={Laptop} label={desktop ? `This ${desktopMachine()}'s agents` : "Machines"} href="/machines" />
             {desktop && <ActionRow icon={SquareTerminal} label="Agents terminal" href={terminalLink()} />}
-            <ActionRow icon={Sparkles} label="Run a sample" href={SAMPLE_TOUR_HREF} />
+            {/* With no room yet there is nothing to show around, so it starts one. */}
+            {ordered.length > 0 ? (
+              <ActionRow icon={Sparkles} label="Take a tour" href={tourHref(ordered[0].name)} />
+            ) : (
+              <ActionRow icon={Sparkles} label="Take a tour" onClick={() => setShowCreate(true)} />
+            )}
             {!desktop && <ActionRow icon={Terminal} label="Install the CLI" onClick={openInstallModal} />}
           </section>
         )}
@@ -184,7 +192,7 @@ export function HomeDashboard() {
           </section>
         ) : rooms.length === 0 ? (
           <p className="px-2 text-label text-muted-foreground">
-            No rooms yet. Make one, or run the sample to see a room at work.
+            No rooms yet. Make one, and take the tour from inside it.
           </p>
         ) : (
           <section>
