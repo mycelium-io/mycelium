@@ -125,6 +125,51 @@ describe("<ThreadView />", () => {
     expect(sendRoomMessage.mock.calls[0][1]).toMatchObject({ episode: THREAD });
   });
 
+  it("draws a reply the moment it is sent, and frees the box while the hub answers", async () => {
+    let answer: (value: unknown) => void = () => {};
+    sendRoomMessage.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    renderWithSWR(
+      <ThreadView roomName="atlas" target={{ episode: THREAD, title: "flip reads" }} onClose={vi.fn()} />,
+    );
+    await screen.findByText(/hold the flip/);
+    const box = await screen.findByPlaceholderText(/Reply in flip reads/);
+    await userEvent.type(box, "flag is wired{Enter}");
+
+    expect(screen.getByText("flag is wired")).toBeInTheDocument();
+    expect(screen.getByText("Sending…")).toBeInTheDocument();
+    expect(box).toHaveValue("");
+    expect(box).toBeEnabled();
+
+    // The hub has it and the thread's next read carries it: one copy, not two.
+    fetchMessages.mockResolvedValue({
+      messages: [
+        { id: "m3", sender_handle: "julia", content: "flag is wired", created_at: new Date().toISOString() },
+        ...NEWEST_FIRST.messages,
+      ],
+    });
+    await act(async () => answer({ id: "m3" }));
+    await waitFor(() => expect(screen.queryByTestId("pending-message")).not.toBeInTheDocument());
+    expect(screen.getAllByText("flag is wired")).toHaveLength(1);
+  });
+
+  it("keeps a reply the hub refused, says why, and sends it again on Retry", async () => {
+    sendRoomMessage.mockRejectedValueOnce(new Error("the floor is @risk's"));
+    renderWithSWR(
+      <ThreadView roomName="atlas" target={{ episode: THREAD, title: "flip reads" }} onClose={vi.fn()} />,
+    );
+    await screen.findByText(/hold the flip/);
+    const box = await screen.findByPlaceholderText(/Reply in flip reads/);
+    await userEvent.type(box, "flag is wired{Enter}");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't send: the floor is @risk's");
+    expect(screen.getByText("flag is wired")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(sendRoomMessage).toHaveBeenCalledTimes(2));
+    expect(sendRoomMessage.mock.calls[1][1]).toMatchObject({ content: "flag is wired", episode: THREAD });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("closes on Esc and on the close button, because it is a pane and not a rail", async () => {
     const onClose = vi.fn();
     renderWithSWR(

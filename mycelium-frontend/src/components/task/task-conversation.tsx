@@ -3,8 +3,10 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { RoomMessage } from "@/lib/api";
+import { usePendingMessages, type Landed } from "@/lib/pending-messages";
+import { PendingMessageRows } from "@/components/pending-message-rows";
 import {
   applyActivity,
   expireActivity,
@@ -140,17 +142,42 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
   // anybody said. Selecting on whether a message has prose keeps this a
   // conversation without it having to know which types aren't one; what the
   // lifecycle amounts to is the row's own state, which the board already draws.
-  const ordered = [...messages]
-    .reverse()
-    .map(message => ({ message, text: textOf(message), line: conductorLineOf(message) }))
-    .filter(({ text, line }) => line !== null || text.trim().length > 0);
+  const ordered = useMemo(
+    () =>
+      [...messages]
+        .reverse()
+        .map(message => ({ message, text: textOf(message), line: conductorLineOf(message) }))
+        .filter(({ text, line }) => line !== null || text.trim().length > 0),
+    [messages],
+  );
+
+  // What you sent here that the read doesn't have yet, drawn under it.
+  const landed = useMemo<Landed[]>(
+    () =>
+      ordered.map(({ message, text }) => ({
+        id: message.id ?? null,
+        sender: message.sender_handle ?? message.updated_by ?? "",
+        content: text,
+        at: message.created_at ?? null,
+      })),
+    [ordered],
+  );
+  const pending = usePendingMessages(roomName, episode, landed);
+  const last = ordered[ordered.length - 1];
+  const lastSender = last && !last.line ? (last.message.sender_handle ?? last.message.updated_by ?? null) : null;
+
+  // What you just sent is where you are looking, wherever you had scrolled to.
+  const newest = pending[pending.length - 1]?.id ?? null;
+  useEffect(() => {
+    if (newest) endRef.current?.scrollIntoView({ block: "end" });
+  }, [newest]);
 
   // A reply that lands while you are reading the bottom pulls you down with it;
   // one that lands while you are further up does not, and opening the task lands
   // on the task rather than on its last comment. With one scroll for the whole
   // column, sticking unconditionally would scroll the body out of view the
   // moment anything arrived.
-  const count = ordered.length;
+  const count = ordered.length + pending.length;
   const seen = useRef<number | null>(null);
   useEffect(() => {
     const first = seen.current === null;
@@ -166,12 +193,12 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
 
   return (
     <div data-testid="thread-conversation">
-      {loading && ordered.length === 0 ? (
+      {loading && ordered.length === 0 && pending.length === 0 ? (
         <div className="flex flex-col gap-4 px-5 py-4">
           <Skeleton className="h-3 w-2/5" />
           <Skeleton className="h-3 w-3/5" />
         </div>
-      ) : ordered.length === 0 ? (
+      ) : ordered.length === 0 && pending.length === 0 ? (
         // A quiet line, not a card: an empty thread is where every task starts.
         <p className="px-5 py-3 text-micro text-faint">
           No replies yet. Reply below, or @-mention an agent: it lands in this task, not in the room.
@@ -244,6 +271,12 @@ export function TaskConversation({ roomName, episode, onOpenMemory, onReady }: P
                 </div>
               );
             })}
+            <PendingMessageRows
+              roomName={roomName}
+              pending={pending}
+              previousSender={lastSender}
+              onOpenMemory={onOpenMemory}
+            />
           </div>
         </NowProvider>
       )}
