@@ -91,6 +91,7 @@ export function MemoryView({
   }, [roomName, memoryKey, listedVersion]);
 
   const page = layout === "page";
+  const centered = page ? "mx-auto w-full max-w-3xl" : undefined;
   const backToRoom = page ? (
     <Link
       href={`/room/${encodeURIComponent(roomName)}`}
@@ -138,9 +139,9 @@ export function MemoryView({
     <>
       {hasDiscussion && (
         <Tooltip content="Put agents to work on this task">
-          <Button variant="ghost" size="xs" className="gap-1" onClick={() => setAsking(true)}>
+          <Button variant="ghost" size="xs" className="gap-1" aria-label="Ask agents" onClick={() => setAsking(true)}>
             <Sparkles className="size-3.5" />
-            Ask agents
+            <span className="hidden @2xl:inline">Ask agents</span>
           </Button>
         </Tooltip>
       )}
@@ -149,20 +150,22 @@ export function MemoryView({
           variant="ghost"
           size="xs"
           className="gap-1"
+          aria-label={editing ? "View" : "Edit"}
           onClick={() => (editing ? guard(() => setEditing(false)) : setEditing(true))}
         >
           {editing ? <Eye className="size-3.5" /> : <Pencil className="size-3.5" />}
-          {editing ? "View" : "Edit"}
+          <span className="hidden @2xl:inline">{editing ? "View" : "Edit"}</span>
         </Button>
       </Tooltip>
     </>
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-paper">
+    <div className="@container flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-paper">
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className={page ? "mx-auto w-full max-w-3xl pb-12" : undefined}>
-          {backToRoom && <div className="px-6 pt-6 md:px-8">{backToRoom}</div>}
+        {/* The toolbar spans the view, as every tab's does; a page centers
+            what is under it. The app's breadcrumb already leads back to the room. */}
+        <div className={page ? "pb-12" : undefined}>
           {editing ? (
             <MemoryEditor
               key={memory.key}
@@ -195,14 +198,17 @@ export function MemoryView({
                 bodyFade="paper"
                 showKey
                 actions={actions}
+                bodyClassName={centered}
               />
               {hasDiscussion && memory.episode && (
-                <TaskDiscussion
-                  roomName={roomName}
-                  episode={memory.episode}
-                  onOpenMemory={open}
-                  className="px-6 md:px-8"
-                />
+                <div className={centered}>
+                  <TaskDiscussion
+                    roomName={roomName}
+                    episode={memory.episode}
+                    onOpenMemory={open}
+                    className="px-6 md:px-8"
+                  />
+                </div>
               )}
             </>
           )}

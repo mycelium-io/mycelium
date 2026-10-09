@@ -4,7 +4,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, CornerDownLeft } from "lucide-react";
+import { ArrowUpRight, CornerDownLeft, Download, FileImage, FileText } from "lucide-react";
 import { highlightJson } from "@/components/message-inspector";
 import { MarkdownContent } from "@/components/markdown-content";
 import { Expandable } from "@/components/ui/expandable";
@@ -13,10 +13,11 @@ import { isJsonRawText, prettyPrintJsonRawText } from "@/lib/json-text";
 import { linkErrorLabel } from "@/lib/memory-links";
 import { fmtAgo } from "@/lib/metrics-format";
 import { useRoomUploads } from "@/lib/room-data";
-import { formatBytes, isUploadKey, kindLabel } from "@/lib/uploads";
+import { downloadUrl, formatBytes, isUploadKey, kindLabel } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { DownloadButton, UploadPreview } from "@/components/uploads/upload-preview";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
+import { UploadPreview } from "@/components/uploads/upload-preview";
 
 export interface MemoryLike {
   key: string;
@@ -142,10 +143,13 @@ interface Props {
   collapseBodyAt?: number | null;
   /** The surface the body sits on, so its fade matches. */
   bodyFade?: "bg" | "paper" | "surface" | "elevated";
-  /** Lead the meta line with the memory's key, for a surface that shows it nowhere else. */
+  /** Head it with a sticky toolbar naming the key, for a surface that shows it nowhere else. */
   showKey?: boolean;
-  /** More controls at the end of the meta line (a tab's Edit and its own page). */
+  /** More controls at the end of the header (a tab's Edit and its own page). */
   actions?: React.ReactNode;
+  /** Classes for everything under the header, so a page can center its body
+   *  while the toolbar spans the width. */
+  bodyClassName?: string;
 }
 
 /** The body, clamped where the surface asked for it and untouched where it
@@ -167,13 +171,17 @@ function MaybeExpandable({
   );
 }
 
-/** A key as a title: the folder it sits in quiet, its own name in full. */
-function KeyTitle({ memoryKey }: { memoryKey: string }) {
-  const cut = memoryKey.lastIndexOf("/") + 1;
+/** A key as breadcrumbs, the way the editor's header writes it. */
+function KeyCrumbs({ memoryKey }: { memoryKey: string }) {
+  const parts = memoryKey.split("/");
   return (
-    <h1 className="min-w-0 truncate font-mono text-body text-text" title={memoryKey}>
-      {cut > 0 && <span className="text-faint">{memoryKey.slice(0, cut)}</span>}
-      {memoryKey.slice(cut)}
+    <h1 className="max-w-full shrink-0 truncate font-mono text-label" title={memoryKey}>
+      {parts.map((part, i) => (
+        <span key={i} className={i === parts.length - 1 ? "text-text" : "text-muted-foreground"}>
+          {i > 0 && <span className="text-faint">/</span>}
+          {part}
+        </span>
+      ))}
     </h1>
   );
 }
@@ -211,6 +219,7 @@ export function MemoryDetail({
   bodyFade = "bg",
   showKey = false,
   actions,
+  bodyClassName,
 }: Props) {
   const pad = variant === "page" ? "px-6 md:px-8" : "px-5";
   const [raw, setRaw] = useState(false);
@@ -271,59 +280,99 @@ export function MemoryDetail({
 
   const hasLinks = outbound.length > 0 || backlinks.length > 0;
 
+  const facts = (
+    <span className="tabular" title={memory.file_path || undefined}>
+      v{memory.version} · {memory.updated_by || memory.created_by}
+      {memory.updated_at && (
+        <>
+          {" · "}
+          <time dateTime={memory.updated_at} title={new Date(memory.updated_at).toLocaleString()}>
+            {fmtAgo(memory.updated_at)}
+          </time>
+        </>
+      )}
+      {upload && ` · ${kindLabel(upload.kind)} · ${formatBytes(upload.size)}`}
+    </span>
+  );
+  const tags = memory.tags?.map(tag => (
+    <span key={tag} className="flex-shrink-0 rounded bg-hairline px-1.5 font-mono text-faint">
+      {tag}
+    </span>
+  ));
+  // A skill is just a `skills/…` memory — no special pane, just a tag.
+  const skill = memory.key.startsWith("skills/") && (
+    <span className="flex-shrink-0 rounded border border-accent/30 bg-accent-soft/40 px-1.5 text-micro font-medium text-accent">
+      skill
+    </span>
+  );
+  const controls = (
+    <div className="ml-auto flex flex-shrink-0 items-center gap-1">
+      {raw && rawIsJson && (
+        <Button
+          variant="ghost"
+          size="xs"
+          aria-pressed={effectiveJsonView}
+          aria-label="Pretty-print JSON"
+          onClick={() => setJsonView(on => !on)}
+          className={effectiveJsonView ? "text-accent" : undefined}
+        >
+          Format JSON
+        </Button>
+      )}
+      <ViewToggle raw={raw} onChange={setRaw} />
+      {upload && (
+        <Tooltip content={`Download ${upload.filename}`}>
+          <a
+            href={downloadUrl(upload)}
+            download={upload.filename}
+            aria-label="Download"
+            className={cn(buttonVariants({ variant: "ghost", size: "xs" }), "gap-1")}
+          >
+            <Download className="size-3.5" />
+            <span className="hidden @2xl:inline">Download</span>
+          </a>
+        </Tooltip>
+      )}
+      {actions}
+    </div>
+  );
+
   return (
     <div>
-      {/* A skill is just a `skills/…` memory — no special pane, just a tag. */}
-      {memory.key.startsWith("skills/") && (
-        <div className={`${pad} pt-4`}>
-          <span className="inline-flex items-center rounded-md border border-accent/30 bg-accent-soft/40 px-2 py-0.5 text-micro font-medium text-accent">
-            skill
-          </span>
-        </div>
-      )}
-      {/* One header: the key as a title on its own line (a page names what it
-          shows), then what it is (version, who, when, an upload's kind and
-          size, its tags) with how to read it and what to do with it. */}
-      <header className={cn("border-b border-border", pad, showKey ? "space-y-0.5 pt-3 pb-1.5" : "py-1")}>
-        {showKey && <KeyTitle memoryKey={memory.key} />}
-        <div className="flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1.5 text-micro text-muted-foreground">
-          <span className="tabular" title={memory.file_path || undefined}>
-            v{memory.version} · {memory.updated_by || memory.created_by}
-            {memory.updated_at && (
-              <>
-                {" · "}
-                <time dateTime={memory.updated_at} title={new Date(memory.updated_at).toLocaleString()}>
-                  updated {fmtAgo(memory.updated_at)}
-                </time>
-              </>
+      {showKey ? (
+        // The page's toolbar, the editor's header in read mode: the key as
+        // breadcrumbs, what it is in a quiet line beside it, and the controls.
+        <header className="sticky top-0 z-10 flex min-h-10 items-center gap-3 border-b border-border bg-paper/95 px-5 py-1.5 backdrop-blur-sm">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            {upload ? (
+              <FileImage className="size-3.5 flex-shrink-0 text-muted-foreground" />
+            ) : (
+              <FileText className="size-3.5 flex-shrink-0 text-muted-foreground" />
             )}
-            {upload && ` · ${kindLabel(upload.kind)} · ${formatBytes(upload.size)}`}
-          </span>
-          {memory.tags?.map(tag => (
-            <span key={tag} className="rounded bg-hairline px-1.5 font-mono text-faint">
-              {tag}
+            <KeyCrumbs memoryKey={memory.key} />
+            {skill}
+            {/* Gives way before the key does. */}
+            <span className="hidden min-w-0 shrink-[100] truncate text-micro text-faint @xl:block">
+              {facts}
+              {memory.tags?.map(tag => (
+                <span key={tag} className="ml-2 rounded bg-hairline px-1.5 font-mono">
+                  {tag}
+                </span>
+              ))}
             </span>
-          ))}
-          <div className="ml-auto flex items-center gap-1">
-            {raw && rawIsJson && (
-              <Button
-                variant="ghost"
-                size="xs"
-                aria-pressed={effectiveJsonView}
-                aria-label="Pretty-print JSON"
-                onClick={() => setJsonView(on => !on)}
-                className={effectiveJsonView ? "text-accent" : undefined}
-              >
-                Format JSON
-              </Button>
-            )}
-            <ViewToggle raw={raw} onChange={setRaw} />
-            {upload && <DownloadButton upload={upload} size="xs" variant="ghost" />}
-            {actions}
           </div>
-        </div>
-      </header>
+          {controls}
+        </header>
+      ) : (
+        <header className={`flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border ${pad} py-1 text-micro text-muted-foreground`}>
+          {skill}
+          {facts}
+          {tags}
+          {controls}
+        </header>
+      )}
 
+      <div className={bodyClassName}>
       {isUpload && !raw && (
         <div className={`${pad} pt-4`}>
           {upload ? (
@@ -370,6 +419,7 @@ export function MemoryDetail({
           />
         </div>
       )}
+      </div>
     </div>
   );
 }
