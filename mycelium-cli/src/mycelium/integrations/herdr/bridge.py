@@ -104,6 +104,26 @@ class HerdrUnavailableError(HerdrError):
     """
 
 
+class ShellNotReadyError(HerdrError):
+    """A new pane's shell never reached its prompt, so nothing could start in it.
+
+    herdr starts an agent only in a pane sitting at a shell prompt, and a login
+    shell with a heavy profile can take a while to get there.
+    """
+
+
+class AgentNotReadyError(HerdrError):
+    """herdr started the agent CLI in its pane, but it never came up as an agent.
+
+    Most often the CLI is showing something of its own first: an update, a
+    sign-in or a first-run question, which the person at the machine answers.
+    """
+
+
+#: herdr's word for a pane with no shell prompt to start an agent at.
+NOT_A_SHELL = "not an available shell"
+
+
 @dataclass(frozen=True)
 class HerdrPaneMapping:
     """A durable binding of a mycelium ``handle`` (in a ``room``) to a herdr pane.

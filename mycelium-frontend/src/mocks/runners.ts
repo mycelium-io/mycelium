@@ -254,6 +254,8 @@ if (isLearnScenario()) {
 interface StoredJob extends Omit<RunnerJob, "status" | "updated_at"> {
   /** When the mock job settles, and how. */
   failWith: string | null;
+  /** What a failed start reports: the step it stopped at, why, and its terminal. */
+  failResult?: Record<string, unknown> | null;
 }
 
 const jobs: StoredJob[] = [
@@ -345,16 +347,63 @@ function settle(job: StoredJob): void {
   }
 }
 
+/** The step a running start has reached, as a runner reports it: a terminal
+ *  opened, then its shell and the agent CLI in it. */
+function stepOf(job: StoredJob): Record<string, unknown> | null {
+  if (job.kind !== "launch") return null;
+  const age = Date.now() - Date.parse(job.created_at);
+  return { step: age < 1_700 ? "terminal" : "shell" };
+}
+
 function view(job: StoredJob): RunnerJob {
   settle(job);
   const status = statusOf(job);
-  const { failWith, ...rest } = job;
+  const { failWith, failResult, ...rest } = job;
+  const result =
+    status === "failed" ? (failResult ?? rest.result) : status === "running" ? (stepOf(job) ?? rest.result) : rest.result;
   return {
     ...rest,
     status,
+    result,
     error: status === "failed" ? failWith : null,
     updated_at: new Date().toISOString(),
   };
+}
+
+/**
+ * How a mock start ends, read off its handle so a failure can be seen without
+ * a machine: `slow-…` has a terminal whose shell never reaches a prompt, and
+ * `update-…` an agent CLI stopped at an update prompt. Anything else starts.
+ */
+export function mockStartOutcome(
+  handle: string,
+  cli: string,
+  machine: string,
+): { failWith: string; failResult: Record<string, unknown> } | null {
+  if (handle.startsWith("slow-")) {
+    return {
+      failWith: `${cli} couldn't start on ${machine}: the terminal opened for @${handle} didn't reach a shell prompt within 30 seconds. It's still open in herdr (pane w5:p1). When it shows a prompt, start @${handle} again: it goes back to that terminal.`,
+      failResult: {
+        step: "shell",
+        why: "shell",
+        pane: "w5:p1",
+        detail: "agent target pane w5:p1 is not an available shell",
+      },
+    };
+  }
+  if (handle.startsWith("update-")) {
+    return {
+      failWith: `${cli} didn't finish starting on ${machine}. Often it's waiting for an update, a sign-in or a first-run question. It's still open in herdr (pane w7:p1): answer what it shows there, then start @${handle} again.`,
+      failResult: {
+        step: "agent",
+        why: "cli",
+        pane: "w7:p1",
+        screen: `A new version of ${cli} is available (1.4.0 -> 1.5.2).\n\n  1. Update now\n  2. Skip this version\n\nPress enter to continue`,
+        detail: "agent target pane w7:p1 is not an available shell",
+      },
+    };
+  }
+  return null;
 }
 
 export function listRunners(): Runner[] {
@@ -405,6 +454,7 @@ export function queueJob(
   createdBy: string | null = null,
   failWith: string | null = null,
   result: Record<string, unknown> | null = null,
+  failResult: Record<string, unknown> | null = null,
 ): RunnerJob {
   const job: StoredJob = {
     id: `job-${String(seq++).padStart(4, "0")}`,
@@ -416,6 +466,7 @@ export function queueJob(
     created_by: createdBy,
     created_at: new Date().toISOString(),
     failWith,
+    failResult,
   };
   jobs.push(job);
   return view(job);

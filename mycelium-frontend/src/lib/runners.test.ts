@@ -6,10 +6,41 @@ import {
   isMine,
   launchable,
   sortFrameworks,
+  startHelp,
+  startReport,
   startsInHerdr,
 } from "./runners";
 import { framework, runner } from "./runners.fixture";
 import type { RunnerJob } from "./api";
+
+describe("a start that stopped", () => {
+  it("reads how far it got off the job, and nothing it doesn't know", () => {
+    expect(startReport({ result: { step: "shell", why: "shell", pane: "w5:p1", detail: "not a shell" } })).toEqual({
+      step: "shell",
+      why: "shell",
+      pane: "w5:p1",
+      screen: null,
+      detail: "not a shell",
+    });
+    expect(startReport({ result: { step: "warp", why: 3 } })).toMatchObject({ step: null, why: null });
+    expect(startReport(null)).toMatchObject({ step: null, why: null, pane: null });
+  });
+
+  it("says what happened and what to do, in order, for each reason", () => {
+    const names = { machine: "studio-mini", cli: "Codex", handle: "reviewer" };
+    const shell = startHelp("shell", names);
+    expect(shell.happened).toContain("didn't get to its shell prompt in time");
+    expect(shell.steps.at(-1)).toContain("reuses the same terminal");
+    const cli = startHelp("cli", names);
+    expect(cli.happened).toContain("Codex opened on studio-mini but didn't finish starting");
+    expect(cli.short).toBe("Codex is waiting for something in its terminal on studio-mini");
+    expect(startHelp("host", names).steps.join(" ")).toContain("runner.log");
+    // Plain words for people: no em dashes anywhere in it.
+    for (const help of [shell, cli, startHelp(null, names)]) {
+      expect([help.happened, help.short, ...help.steps].join(" ")).not.toContain("—");
+    }
+  });
+});
 
 describe("which machines are yours", () => {
   it("lists a machine added to this browser, or owned by who you say you are", () => {

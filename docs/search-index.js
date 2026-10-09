@@ -1472,6 +1472,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#troubleshooting-an-agent-you-added-wont-start",
+    "t": "An agent you added won't start",
+    "s": "Help › Troubleshooting",
+    "x": "You see: Add member (or /agent) adds the agent to the room, but it doesn't start on your machine. The dialog shows each step on the machine and says which one stopped, with what to do. The two most common: The terminal's shell didn't get to a prompt in time. The runner opens a terminal in herdr and waits up to 30 seconds for its shell. A shell whose startup files (~/.zshrc, ~/.bash_profile) are slow or fail never get",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#troubleshooting-mycelium-command-not-found",
     "t": "mycelium: command not found",
     "s": "Help › Troubleshooting",

@@ -63,6 +63,10 @@ class Herdr:
         #: ``agent start`` fails, but leaves an agent on the pane in this state,
         #: the way one stopped at a first-run prompt never reads as ready.
         self.start_leaves: str | None = None
+        #: How many ``agent start`` calls find the pane's shell still starting.
+        self.shell_starting = 0
+        #: Called on every ``agent start``, to look at the runner while herdr waits.
+        self.on_start: Any = None
         #: What ``pane read`` shows.
         self.screen = "Do you trust the files in this folder?\n\n  1. Yes, proceed\n  2. No, exit\n"
         self.layout = HerdrLayout(self._pane)
@@ -87,6 +91,12 @@ class Herdr:
             return _proc(_ok(result))
         if head == "agent start":
             pane = args[args.index("--pane") + 1]
+            if self.on_start:
+                self.on_start()
+            if self.shell_starting:
+                self.shell_starting -= 1
+                not_a_shell = f"agent target pane {pane} is not an available shell"
+                return _proc(stderr=json.dumps({"error": not_a_shell}), returncode=1)
             if pane in self.live:
                 taken = f"agent name {args[2]} is already used; candidates: pane_id={pane}"
                 return _proc(stderr=json.dumps({"error": taken}), returncode=1)
@@ -436,13 +446,99 @@ def test_a_launch_this_machine_should_not_do_is_refused(
     assert herdr.of("agent start") == []
 
 
-def test_an_agent_herdr_could_not_start_leaves_no_pane(make_runner, herdr: Herdr, hub: Hub):
+def test_a_start_herdr_refused_keeps_its_pane_and_tries_there_again(
+    make_runner, herdr: Herdr, hub: Hub
+):
     herdr.fail_start = True
     r = make_runner()
-    with pytest.raises(daemon.JobError, match="could not start Claude Code"):
+    with pytest.raises(daemon.JobError, match="herdr couldn't start Claude Code") as failed:
         r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
-    assert [c[2] for c in herdr.of("pane close")] == ["w9:p1"]
+    # Left open, so starting again doesn't open one more terminal each time.
+    assert herdr.of("pane close") == []
+    assert failed.value.result is not None
+    assert failed.value.result["why"] == "host"
+    assert failed.value.result["pane"] == "w9:p1"
     assert r.hello_body()["agents"] == []
+
+    herdr.fail_start = False
+    result = r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    assert result["pane"] == "w9:p1"
+    assert herdr.panes == ["w9:p1"]
+
+
+def test_a_shell_slow_to_start_is_waited_for(make_runner, herdr: Herdr, hub: Hub):
+    herdr.shell_starting = 5
+    r = make_runner()
+    result = r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    assert result["pane"] == "w9:p1"
+    assert len(herdr.of("agent start")) == 6
+    assert r.hello_body()["agents"][0]["status"] == "running"
+
+
+def test_a_shell_that_never_comes_up_says_so_and_keeps_its_terminal(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr("mycelium.commands.swarm.SHELL_WAIT_S", 0)
+    herdr.shell_starting = 1
+    r = make_runner()
+    with pytest.raises(daemon.JobError, match="didn't reach a shell prompt") as failed:
+        r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    assert "start @scout again" in str(failed.value)
+    assert failed.value.result is not None
+    assert failed.value.result["step"] == "shell"
+    assert failed.value.result["why"] == "shell"
+    assert "not an available shell" in failed.value.result["detail"]
+    assert herdr.of("pane close") == []
+
+    # Its shell came up: starting again goes back to that terminal.
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    assert herdr.panes == ["w9:p1"]
+    assert r.hello_body()["agents"][0]["status"] == "running"
+
+
+def test_an_agent_cli_that_never_comes_up_says_what_it_may_be_waiting_on(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    # Every start counts as one that ran the CLI and waited on it.
+    monkeypatch.setattr("mycelium.commands.swarm.SLOW_START_S", 0)
+    herdr.fail_start = True
+    r = make_runner()
+    with pytest.raises(daemon.JobError, match="didn't finish starting") as failed:
+        r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    assert "update, a sign-in or a first-run question" in str(failed.value)
+    assert failed.value.result is not None
+    assert failed.value.result["why"] == "cli"
+    assert "2. No, exit" in failed.value.result["screen"]
+    # Started once, not again into a CLI that is waiting on the person.
+    assert len(herdr.of("agent start")) == 1
+    assert herdr.of("pane close") == []
+
+
+def test_a_start_reports_its_steps_and_lets_the_sync_pass_run_while_herdr_waits(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr("mycelium.commands.swarm.SHELL_WAIT_S", 0)
+    herdr.shell_starting = 1
+    r = make_runner()
+    locked_during_start: list[bool] = []
+    herdr.on_start = lambda: locked_during_start.append(r._panes.locked())  # noqa: SLF001
+    r.take(
+        {
+            "id": "a1a1a1",
+            "kind": "launch",
+            "spec": {"room": "eng", "handle": "scout", "framework": "claude"},
+        }
+    )
+
+    failed = _until(lambda: _report(hub, "a1a1a1", "failed"))
+    assert locked_during_start == [False]
+    steps = [b["result"]["step"] for b in hub.of("PATCH", "a1a1a1") if b["status"] == "running"]
+    assert steps == ["terminal", "shell"]
+    assert failed["result"]["step"] == "shell"
+    assert failed["result"]["pane"] == "w9:p1"
+    assert "didn't reach a shell prompt" in failed["error"]
+    # The lock is the runner's again once the job is over.
+    assert not r._panes.locked()  # noqa: SLF001
 
 
 def test_a_launch_stopped_at_a_prompt_keeps_its_pane_and_waits_for_the_person(
@@ -590,14 +686,15 @@ def test_every_job_is_reported_done_or_failed(make_runner, herdr: Herdr, hub: Hu
 
 def test_no_sync_pass_runs_while_a_job_opens_panes(make_runner, herdr: Herdr, hub: Hub):
     # A sync pass that saw a new pane before the launch mapped it would enroll
-    # it as a second member (seen live as `@1`), so jobs and passes take turns.
+    # it as a second member (seen live as `@1`), so a job opens and maps its
+    # panes under the lock. Only the wait on herdr after that runs without it.
     r = make_runner()
     during: list[bool] = []
     real_launch = r.launch
 
-    def launch(spec: dict) -> dict:
+    def launch(spec: dict, job_id: str | None = None) -> dict:
         during.append(r._panes.locked())
-        return real_launch(spec)
+        return real_launch(spec, job_id=job_id)
 
     r.launch = launch
     r.take(

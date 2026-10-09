@@ -433,7 +433,15 @@ is no litellm dependency.
   comes up stopped at a prompt (herdr's `blocked`, a first-run one included) is
   started, not failed: its pane stays open, the app shows it waiting for input
   on that machine with its last screen lines, and its introduction is handed
-  over once it is idle; only a start with no agent on the pane closes it.
+  over once it is idle. A start that fails leaves its pane open too (a shell
+  still starting, or a CLI showing an update or sign-in herdr doesn't read as
+  an agent, is the person's to see), mapped before anything starts in it, and
+  starting the same handle again goes back to that pane rather than opening
+  another. A new pane's shell gets `SHELL_WAIT_S` to reach a prompt. The job
+  reports each step it reaches (`hosts.STEP_*`) and, on failure, the step, a
+  one-word why (`shell`, `cli`, `host`), the pane and its screen, which the
+  Add member dialog turns into what to do. The runner's pane lock covers
+  opening and mapping the pane, not the wait on herdr after it.
   Everything known about an agent CLI lives in one package,
   `integrations/agents/`: the table the scan reads (`KNOWN`: name, binaries,
   herdr kind), an `AgentKind` per CLI with what it starts with

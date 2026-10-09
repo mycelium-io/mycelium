@@ -3995,6 +3995,29 @@ with `mycelium herdr map`. `mycelium herdr wake <handle>` wakes it by hand.
 
 ---
 
+### An agent you added won't start
+
+**You see:** **Add member** (or `/agent`) adds the agent to the room, but it
+doesn't start on your machine.
+
+The dialog shows each step on the machine and says which one stopped, with
+what to do. The two most common:
+
+- **The terminal's shell didn't get to a prompt in time.** The runner opens a
+  terminal in herdr and waits up to 30 seconds for its shell. A shell whose
+  startup files (`~/.zshrc`, `~/.bash_profile`) are slow or fail never gets
+  there. Open a new terminal window on that machine to check it starts
+  normally.
+- **The agent CLI is waiting for you.** It started, but stopped at its own
+  update, sign-in or first-run question. Answer it in its terminal.
+
+Either way the terminal stays open, and **Try again** starts the agent in that
+same terminal rather than opening another. In the Mac app, **Open its
+terminal** goes straight to it. For the full error, open **Logs → Agent
+starts** in the app's menu, or `~/.mycelium/runner/runner.log`.
+
+---
+
 ### `mycelium: command not found`
 
 The CLI isn't installed or isn't on your `PATH`. Install it with the command

@@ -21,6 +21,7 @@ import logging
 import platform
 import re
 import time
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
@@ -45,8 +46,43 @@ if TYPE_CHECKING:
 _log = logging.getLogger("mycelium.runner.sync")
 
 
+#: The steps of a start, as the runner reports them and the app draws them:
+#: a terminal opened for the agent, its shell reached a prompt and the agent
+#: CLI started in it, and the agent came up.
+STEP_TERMINAL, STEP_SHELL, STEP_AGENT = "terminal", "shell", "agent"
+
+
 class HostError(Exception):
-    """A host couldn't do what it was asked; the message says why, for a person."""
+    """A host couldn't do what it was asked; the message says why, for a person.
+
+    A start that got partway also says which step it stopped at (``step``), the
+    terminal it left open for the person to look at (``ref``) and what that
+    terminal showed (``screen``).
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        step: str | None = None,
+        ref: str | None = None,
+        screen: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.step = step
+        self.ref = ref
+        self.screen = screen
+
+
+class StartHooks:
+    """What a host tells the runner while it starts an agent. Does nothing by default."""
+
+    def step(self, step: str) -> None:
+        """The start reached ``step`` (``STEP_TERMINAL``, ``STEP_SHELL``...)."""
+
+    def unlocked(self) -> AbstractContextManager[None]:
+        """Held while the host waits on the agent, with nothing of the runner's locked."""
+        return nullcontext()
 
 
 @dataclass
@@ -96,8 +132,13 @@ class AgentHost(Protocol):
         cwd: Path,
         env: dict[str, str],
         intro: str,
+        hooks: StartHooks | None = None,
     ) -> Started:
-        """Start ``kind`` as ``@handle`` and give it ``intro``. Raises :class:`HostError`."""
+        """Start ``kind`` as ``@handle`` and give it ``intro``. Raises :class:`HostError`.
+
+        ``hooks`` hears each step as it's reached, and is asked to unlock the
+        runner while the host waits on the agent.
+        """
         ...
 
     def alive(self, ref: str) -> bool:
@@ -191,6 +232,32 @@ class HerdrHost:
         state.workspaces[room] = (workspace, pane)
         return workspace, pane
 
+    def _left_open(
+        self, state: State, room: str, handle: str, kind: str, cwd: Path
+    ) -> tuple[str, str] | None:
+        """The pane an earlier start of ``@handle`` left open, if it's still there to start in.
+
+        A start that fails leaves its pane open, so starting again goes back to
+        it rather than opening another one each time. Only a pane in the same
+        folder, and not holding some other kind of agent, is taken back.
+        """
+        mapping = self.bridge.registry.get(room, handle)
+        if mapping is None or mapping.cwd != str(cwd):
+            return None
+        try:
+            panes = self.bridge.list_panes()
+        except HerdrError:
+            return None
+        found = next((p for p in panes if str(p.get("pane_id")) == mapping.pane), None)
+        workspace = str(found.get("workspace_id") or "") if found else ""
+        if not workspace:
+            return None
+        agent = self.bridge.get_agent(mapping.pane)
+        if agent is not None and mapping.kind != kind:
+            return None
+        state.workspaces[room] = (workspace, mapping.pane)
+        return workspace, mapping.pane
+
     def start(
         self,
         state: State,
@@ -201,16 +268,18 @@ class HerdrHost:
         cwd: Path,
         env: dict[str, str],
         intro: str,
+        hooks: StartHooks | None = None,
     ) -> Started:
         from mycelium.commands.swarm import _start_when_ready
+        from mycelium.integrations.herdr import ShellNotReadyError
 
-        workspace, pane = self._open_pane(state, room, handle, cwd, env)
-        try:
-            came_up = _start_when_ready(self.bridge, handle, kind, pane)
-        except HerdrError as e:
-            # No agent on the pane: nothing started, so nothing is left open.
-            self._close_quietly(pane)
-            raise HostError(str(e)) from e
+        hooks = hooks or StartHooks()
+        hooks.step(STEP_TERMINAL)
+        workspace, pane = self._left_open(state, room, handle, kind, cwd) or self._open_pane(
+            state, room, handle, cwd, env
+        )
+        # Mapped before anything starts in it, so a sync pass that finds the
+        # agent knows whose it is, and the wait below needs no lock against one.
         # Not ``managed``: a closed pane stops the agent, it does not delete it
         # from the room, so the app can start it again with its notes intact.
         # Its folder is kept so it can be restarted there.
@@ -219,6 +288,20 @@ class HerdrHost:
         )
         self.bridge.registry.bind(workspace, room)
         state.owned[workspace] = room
+        hooks.step(STEP_SHELL)
+        try:
+            with hooks.unlocked():
+                came_up = _start_when_ready(self.bridge, handle, kind, pane)
+        except HerdrError as e:
+            # The pane stays open: whatever it shows (a shell still starting, an
+            # update or sign-in the agent CLI asks for first) is the person's to
+            # see and answer, and starting again goes back to it.
+            raise HostError(
+                str(e),
+                step=STEP_SHELL if isinstance(e, ShellNotReadyError) else STEP_AGENT,
+                ref=pane,
+                screen=self.bridge.read_pane(pane, lines=_BLOCKER_LINES),
+            ) from e
         if came_up is not None:
             # It started but never read as ready, most often stopped at a prompt.
             # The pane stays open for the person to answer, and the introduction
@@ -424,6 +507,7 @@ class OmnigentHost:
         cwd: Path,
         env: dict[str, str],  # noqa: ARG002 - a session takes no environment; the join code carries it
         intro: str,
+        hooks: StartHooks | None = None,  # noqa: ARG002 - a session starts in one call, with no steps to say
     ) -> Started:
         from mycelium.integrations.agents import of_kind
 

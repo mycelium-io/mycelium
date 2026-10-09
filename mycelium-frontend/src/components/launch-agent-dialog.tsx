@@ -4,7 +4,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Circle, Laptop, Loader2, Sparkles, Undo2, X } from "lucide-react";
+import { Check, Circle, Laptop, Loader2, Sparkles, SquareTerminal, Undo2, X } from "lucide-react";
 import {
   draftMemberNotes,
   launchRunnerAgent,
@@ -18,12 +18,15 @@ import {
   pairingNote,
   launchable,
   runnerName,
+  startHelp,
+  startReport,
   startsInHerdr,
   useRunnerJob,
   useRunners,
   useRunnersRevalidate,
 } from "@/lib/runners";
 import { signFor } from "@/lib/device-key";
+import { terminalLink, useIsDesktop } from "@/lib/desktop";
 import {
   BUILT_IN,
   deleteTemplate,
@@ -33,7 +36,7 @@ import {
 } from "@/lib/instruction-templates";
 import { useRoomRevalidate } from "@/lib/room-data";
 import { useCurrentUser } from "@/components/current-user";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Monogram } from "@/components/ui/monogram";
 import {
@@ -126,11 +129,13 @@ export function LaunchAgentForm({
     if (!handleTouched) setHandle(t ? handleFromName(t.name) : "");
   };
 
-  const submit = async () => {
+  /** Queue the start. `again` keeps the progress on screen while it is queued
+   *  again, rather than flashing the form back up in between. */
+  const submit = async (again = false) => {
     if (!canSubmit || !runner || !framework) return;
     setSubmitting(true);
     setError(null);
-    setJobId(null);
+    if (!again) setJobId(null);
     try {
       const folder = expandPath(folderShown.trim(), runner.roots);
       const signature = await signFor(runner, {
@@ -184,6 +189,8 @@ export function LaunchAgentForm({
         room={roomName}
         handle={trimmed}
         frameworkName={framework?.name ?? "the agent"}
+        onTryAgain={() => void submit(true)}
+        retrying={submitting}
         onRetry={() => setJobId(null)}
         onAnother={startOver}
         onClose={onClose}
@@ -248,7 +255,7 @@ export function LaunchAgentForm({
         onFolder={setFolderTyped}
         onWorktree={setWorktreePick}
       >
-        <Button onClick={submit} disabled={!canSubmit}>
+        <Button onClick={() => void submit()} disabled={!canSubmit}>
           {/* A fixed label: the handle is in the field above, and a button that
               grows with each keystroke moves under the pointer. */}
           {submitting ? "Adding…" : "Add to room"}
@@ -694,6 +701,49 @@ function RunsOn({
 
 type StepState = "done" | "active" | "waiting" | "failed";
 
+/**
+ * The steps on the machine after it picked a start up, as far as each got:
+ * for herdr a terminal, then its shell and the agent CLI in it, then the agent.
+ * `at` is the step the runner last reported; a start that failed stopped there.
+ */
+function machineSteps({
+  herdr,
+  host,
+  cli,
+  status,
+  at,
+}: {
+  herdr: boolean;
+  host: string;
+  cli: string;
+  status: RunnerJob["status"];
+  at: "terminal" | "shell" | "agent" | null;
+}): { label: string; state: StepState }[] {
+  const failed = status === "failed";
+  const done = status === "done";
+  const started = status === "running" || done || failed;
+  if (!herdr) {
+    return [
+      {
+        label: `${cli} running in ${host}, reading its notes`,
+        state: done ? "done" : failed ? "failed" : status === "running" ? "active" : "waiting",
+      },
+    ];
+  }
+  const order = ["terminal", "shell", "agent"] as const;
+  // A runner that says nothing of its steps (an older one) counts as at the last.
+  const reached = done ? order.length : at ? order.indexOf(at) : failed ? order.length - 1 : started ? 0 : -1;
+  const state = (i: number): StepState =>
+    done || i < reached ? "done" : i === reached ? (failed ? "failed" : "active") : "waiting";
+  return [
+    // Said as what is being done, so each reads right whether it is still to
+    // come, under way, done, or the step that failed.
+    { label: `Open a terminal for it in ${host}`, state: state(0) },
+    { label: `Wait for the terminal's shell, then start ${cli} in it`, state: state(1) },
+    { label: `${cli} comes up and reads its notes`, state: state(2) },
+  ];
+}
+
 /** The start, step by step, from the hub's write to the agent running on the machine. */
 function LaunchProgress({
   job,
@@ -701,6 +751,8 @@ function LaunchProgress({
   room,
   handle,
   frameworkName,
+  retrying,
+  onTryAgain,
   onRetry,
   onAnother,
   onClose,
@@ -710,6 +762,9 @@ function LaunchProgress({
   room: string;
   handle: string;
   frameworkName: string;
+  /** A try again is being queued. */
+  retrying: boolean;
+  onTryAgain: () => void;
   onRetry: () => void;
   onAnother: () => void;
   onClose: () => void;
@@ -717,6 +772,9 @@ function LaunchProgress({
   const status = job?.status ?? "queued";
   const failed = status === "failed";
   const machine = runnerName(runner);
+  const desktop = useIsDesktop();
+  const herdr = startsInHerdr(runner);
+  const report = startReport(job);
   // Started, but stopped at a prompt only the person at that machine can answer.
   const waiting = status === "done" && typeof job?.result?.waiting === "string" ? job.result.waiting : null;
   // A machine asks the person there before starting what a hub sent it,
@@ -724,6 +782,8 @@ function LaunchProgress({
   const [asked, setAsked] = useState(false);
   if (status === "waiting" && !asked) setAsked(true);
   const paired = job?.pairing?.accepted ? job.pairing.name : null;
+  // Nothing past the approval reads as failed when the approval is what failed.
+  const declined = failed && asked && !report.step;
   const steps: { label: string; state: StepState }[] = [
     { label: `@${handle} added to ${room}, with its notes`, state: "done" },
     { label: `${machine} picked it up`, state: status === "queued" ? "active" : "done" },
@@ -731,16 +791,21 @@ function LaunchProgress({
     ...(asked
       ? [
           {
-            label: `Yes given on ${machine}`,
-            state: (status === "waiting" ? "active" : failed ? "failed" : "done") as StepState,
+            label: `Approved on ${machine}`,
+            state: (status === "waiting" ? "active" : declined ? "failed" : "done") as StepState,
           },
         ]
       : []),
-    {
-      label: `${frameworkName} running in ${hostOf(runner).name}, reading its notes`,
-      state: status === "done" ? "done" : failed ? "failed" : status === "running" ? "active" : "waiting",
-    },
+    ...machineSteps({
+      herdr,
+      host: hostOf(runner).name,
+      cli: frameworkName,
+      status: declined ? "queued" : status,
+      at: report.step,
+    }),
   ];
+  const help = failed && report.why ? startHelp(report.why, { machine, cli: frameworkName, handle }) : null;
+  const terminal = desktop && herdr && report.pane ? terminalLink(report.pane) : null;
   return (
     <div className="px-5 py-4">
       <div className="flex items-center gap-3">
@@ -755,9 +820,9 @@ function LaunchProgress({
                 ? `Running on ${machine}, in herdr workspace ${room}.`
                 : `Running on ${machine}, in ${hostOf(runner).where}.`
               : failed
-                ? `Added to ${room}, but ${machine} could not start it.`
+                ? `It's in ${room}, but it didn't start on ${machine}.`
                 : status === "waiting"
-                  ? `Waiting for a yes on ${machine}: it asks there before starting anything.`
+                  ? `Waiting for someone on ${machine} to approve it. ${machine} asks before it starts anything.`
                   : `Starting on ${machine}…`}
           </p>
           {job && pairingNote(job) && <p className="text-micro text-muted-foreground">{pairingNote(job)}</p>}
@@ -776,16 +841,55 @@ function LaunchProgress({
           {waiting}
         </p>
       )}
-      {failed && (
+      {failed && help && (
+        <div role="alert" className="mt-4 space-y-3 rounded-lg border border-red/30 bg-red/5 px-3 py-3 text-label text-text">
+          <p>{help.happened}</p>
+          <div>
+            <p className="font-medium">What to do</p>
+            <ol className="mt-1 list-decimal space-y-1 pl-5">
+              {help.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+          </div>
+          {report.screen && (
+            <div>
+              <p className="font-medium">Its terminal shows</p>
+              <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-bg px-2 py-1.5 font-mono text-micro text-muted-foreground">
+                {report.screen}
+              </pre>
+            </div>
+          )}
+          {report.detail && (
+            <details className="text-micro text-muted-foreground">
+              <summary className="cursor-pointer select-none">Details for troubleshooting</summary>
+              <p className="mt-1 break-words font-mono">{report.detail}</p>
+              {report.pane && <p className="mt-1 font-mono">herdr pane {report.pane}</p>}
+            </details>
+          )}
+        </div>
+      )}
+      {failed && !help && (
         <p role="alert" className="mt-4 break-words rounded-lg border border-red/30 bg-red/5 px-3 py-2 text-label text-red">
-          {job?.error ?? "The machine could not start it."}
+          {job?.error ?? "The machine couldn't start it."}
         </p>
       )}
-      <div className="mt-6 flex justify-end gap-2">
+      <div className="mt-6 flex flex-wrap justify-end gap-2">
         {failed ? (
-          <Button variant="secondary" onClick={onRetry}>
-            Back
-          </Button>
+          <>
+            <Button variant="secondary" onClick={onRetry}>
+              Back
+            </Button>
+            {terminal && (
+              <a href={terminal} className={buttonVariants({ variant: "secondary" })}>
+                <SquareTerminal className="size-3.5" />
+                Open its terminal
+              </a>
+            )}
+            <Button variant="secondary" onClick={onTryAgain} disabled={retrying}>
+              {retrying ? "Trying again…" : "Try again"}
+            </Button>
+          </>
         ) : (
           jobSettled(job) && (
             <Button variant="secondary" onClick={onAnother}>
