@@ -684,7 +684,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#desktop-logs",
     "t": "Logs",
     "s": "Setup › The Desktop App",
-    "x": "Two logs say what went wrong. Both open from Logs in the menu: in Console on a Mac, and in your text editor elsewhere. App log (~/.mycelium/logs/desktop.log): everything the app runs, and why a part of it stopped. Agent starts (~/.mycelium/runner/runner.log): every agent a room asked this computer to start, and whether it started, is waiting for your yes, or failed and why. Look here first when an agent won't start. ",
+    "x": "Two logs say what went wrong. Both open from Logs in the menu, in whatever opens log files on your computer (Console, on a Mac). App log (~/.mycelium/logs/desktop.log): everything the app runs, and why a part of it stopped. Agent starts (~/.mycelium/runner/runner.log): every agent a room asked this computer to start, and whether it started, is waiting for your yes, or failed and why. Look here first when an agent won",
     "p": "Guides"
   },
   {

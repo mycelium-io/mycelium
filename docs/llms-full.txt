@@ -2026,8 +2026,8 @@ app never installs anything the project didn't publish.
 
 ## Logs
 
-Two logs say what went wrong. Both open from **Logs** in the menu: in Console
-on a Mac, and in your text editor elsewhere.
+Two logs say what went wrong. Both open from **Logs** in the menu, in whatever
+opens log files on your computer (Console, on a Mac).
 
 - **App log** (`~/.mycelium/logs/desktop.log`): everything the app runs, and
   why a part of it stopped.

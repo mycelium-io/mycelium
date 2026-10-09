@@ -895,16 +895,12 @@ fn runner_log() -> std::path::PathBuf {
     paths::home().join(".mycelium").join("runner").join("runner.log")
 }
 
-/// Open a log in Console on a Mac, elsewhere in whatever opens text files.
+/// Open a log in whatever this machine opens it with (Console, on a Mac).
 fn open_log_file(log: &std::path::Path) -> Result<(), String> {
     if !log.exists() {
         return Err("There's no log yet. It starts when Mycelium does.".into());
     }
-    #[cfg(target_os = "macos")]
-    let opened = paths::command("open").args(["-a", "Console"]).arg(log).spawn().map(|_| ());
-    #[cfg(not(target_os = "macos"))]
-    let opened = paths::open(log.as_os_str());
-    opened.map_err(|e| e.to_string())
+    paths::open(log.as_os_str()).map_err(|e| e.to_string())
 }
 
 /// A log opened from the menu bar, which has no page to show an error on.
