@@ -112,6 +112,7 @@ vi.mock("@/components/keymap-provider", () => ({
 }));
 
 import { RoomChatBox } from "@/components/room-chat-box";
+import { recordMentions } from "@/lib/recent-mentions";
 
 // A draft outlives its composer, which is the point, so each case starts
 // with none rather than inheriting the last one's typing.
@@ -296,6 +297,30 @@ describe("<RoomChatBox /> composer triggers", () => {
     await userEvent.click(option);
 
     expect((box as HTMLTextAreaElement).value).toContain("@watcher ");
+  });
+
+  it("lists whoever you mentioned last first", async () => {
+    recordMentions("demo", ["sam"]);
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "@");
+
+    await screen.findByRole("button", { name: /@sam/ });
+    const options = screen.getAllByRole("button").filter((b) => /^@|@\w/.test(b.textContent ?? ""));
+    expect(options[0]?.textContent).toMatch(/@sam/);
+  });
+
+  it("puts a handle you just mentioned at the top of the next @ list", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "@conductor hello{Enter}");
+    await userEvent.type(box, "@");
+
+    await screen.findByRole("button", { name: /@conductor/ });
+    const options = screen.getAllByRole("button").filter((b) => /^@|@\w/.test(b.textContent ?? ""));
+    expect(options[0]?.textContent).toMatch(/@conductor/);
   });
 
   it("autocompletes a poster who isn't currently present (Members-panel parity)", async () => {

@@ -32,7 +32,8 @@ import { NewMemoryDialog } from "@/components/new-memory-dialog";
 import { AddMemberDialog, ENGINE_KINDS } from "@/components/add-member-dialog";
 import { expandPath, handleValid, normHandle, tildePath } from "@/components/launch-agent-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { MENTION_SIGIL, SILENT_MENTION_SIGIL } from "@/lib/mentions";
+import { MENTION_SIGIL, SILENT_MENTION_SIGIL, parseMentions, parseSilentMentions } from "@/lib/mentions";
+import { RECENT_MENTIONS_CHANGED, readRecentMentions, recordMentions } from "@/lib/recent-mentions";
 import { mentionRank, nameOf, useNames } from "@/lib/people";
 import { draftKey, loadDraft, saveDraft } from "@/lib/drafts";
 import { sendPending } from "@/lib/pending-messages";
@@ -341,6 +342,14 @@ export function RoomChatBox({
   // Agents first, then people — the roster's order, labeled for the popover.
   // A person who gave a name is found by it and shown by it.
   const names = useNames();
+  // Who you mentioned last, newest first among equally good matches.
+  const [recent, setRecent] = useState(() => readRecentMentions(roomName));
+  useEffect(() => {
+    const read = () => setRecent(readRecentMentions(roomName));
+    read();
+    window.addEventListener(RECENT_MENTIONS_CHANGED, read);
+    return () => window.removeEventListener(RECENT_MENTIONS_CHANGED, read);
+  }, [roomName]);
   const mentionRoster = useMemo(
     () => [
       ...agents.map((a) => ({
@@ -396,11 +405,13 @@ export function RoomChatBox({
         }));
     }
     if (trigger.kind === "agent") {
-      // Best match first; the roster's own order breaks ties.
+      // Best match first; among equal matches whoever you mentioned last,
+      // then the roster's own order.
+      const last = (h: string) => recent[h.toLowerCase()] ?? 0;
       const pool = mentionRoster
         .map((r, i) => ({ r, i, rank: mentionRank(trigger.query, r.handle, r.name) }))
         .filter((x): x is typeof x & { rank: number } => x.rank !== null)
-        .sort((a, b) => a.rank - b.rank || a.i - b.i)
+        .sort((a, b) => a.rank - b.rank || last(b.r.handle) - last(a.r.handle) || a.i - b.i)
         .map((x) => x.r);
       return pool.slice(0, 8).map((r) => ({
         id: r.handle,
@@ -445,7 +456,7 @@ export function RoomChatBox({
         tertiary: s.description || undefined,
       })),
     ];
-  }, [choicesFor, mentionRoster, memories, parsed, protocols, skills, summon, trigger]);
+  }, [choicesFor, mentionRoster, memories, parsed, protocols, recent, skills, summon, trigger]);
 
   const accept = useCallback(
     (candidate: Candidate) => {
@@ -577,6 +588,8 @@ export function RoomChatBox({
       setNotice(null);
       cleared();
       attachments.clear();
+      // Whoever this names goes to the top of the next `@` list.
+      recordMentions(roomName, [...parseMentions(body), ...parseSilentMentions(body)]);
       void sendPending(roomName, {
         sender: handle,
         content: [body, files.join(" ")].filter(Boolean).join("\n\n"),
