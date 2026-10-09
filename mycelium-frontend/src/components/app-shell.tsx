@@ -8,7 +8,6 @@ import Link from "next/link";
 import { Download, PanelLeft, Terminal } from "lucide-react";
 import { TitleBar } from "@/components/title-bar";
 import { Tooltip } from "@/components/ui/tooltip";
-import { KbdChord } from "@/components/ui/kbd";
 import { useDefaultLayout } from "react-resizable-panels";
 import { RoomsSidebar } from "@/components/rooms-sidebar";
 import { GlobalSearch, GlobalSearchButton } from "@/components/global-search";
@@ -18,7 +17,8 @@ import { DocsLink } from "@/components/docs-link";
 import { useAppDownload, useIsDesktop } from "@/lib/desktop";
 import { HubStatus, MachinesStatusLink, MetricsStatusLink, TerminalStatusLink } from "@/components/status-items";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -66,10 +66,9 @@ function GetAppButton() {
   if (desktop || !download) return null;
   return (
     <Tooltip content={`Mycelium for ${download.platform} starts your coding agents on this computer and adds them to a room`}>
-      <a
-        href={download.url}
-        className="flex h-7 items-center gap-1.5 rounded-md px-2 text-label text-accent transition-colors hover:bg-accent-soft"
-      >
+      {/* A header action like Install CLI beside it: same height, same quiet
+          color. The title bar spends no color on a promotion. */}
+      <a href={download.url} className={buttonVariants({ variant: "ghost", size: "sm", className: "gap-1.5" })}>
         <Download className="size-3.5" />
         <span className="hidden sm:inline">Get the {download.platform} app</span>
       </a>
@@ -115,17 +114,9 @@ function DockToggle({
   children: ReactNode;
 }) {
   return (
-    <Tooltip content={<>{label} <KbdChord size="xs" tone="muted" action={action} /></>} side="top">
-      <button
-        type="button"
-        aria-label={label}
-        aria-pressed={active}
-        onClick={onClick}
-        className={`flex size-5 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-hairline hover:text-text ${active ? "text-text" : ""}`}
-      >
-        {children}
-      </button>
-    </Tooltip>
+    <IconButton label={label} action={action} size="xs" side="top" pressed={active} onClick={onClick}>
+      {children}
+    </IconButton>
   );
 }
 

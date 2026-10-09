@@ -15,7 +15,7 @@ import { AppShell } from "@/components/app-shell";
 import { RoomDock, type RoomDockHandle } from "@/components/room-dock";
 import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
-import { StatusButton } from "@/components/status-items";
+import { CELL, StatusButton, StatusDot } from "@/components/status-items";
 import { episodeUrn } from "@/lib/threads";
 import { parsePanelId, type View } from "@/lib/room-dock";
 import { useCommands, useKeyAction, useKeyScope } from "@/components/keymap-provider";
@@ -37,7 +37,7 @@ import { useSheetLayout } from "@/lib/use-viewport";
 import { RailSheet } from "@/components/rail-sheet";
 import { RoomMenu } from "@/components/room-menu";
 import { Tooltip } from "@/components/ui/tooltip";
-import { Lock } from "lucide-react";
+import { Bot, Handshake, ListTodo, Lock } from "lucide-react";
 
 function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string; color: string } | null {
   if (!episodes || episodes.length === 0) return null;
@@ -289,16 +289,17 @@ function RoomWorkspace() {
         // actually connected — the screenshot pipeline gates on this rather
         // than on the label text, which is a translation away from breaking.
         data-connection={connected ? "live" : "reconnecting"}
-        className="flex flex-shrink-0 items-center gap-1.5 px-1.5 font-medium"
-        style={{ color: connected ? "var(--green)" : "var(--yellow)" }}
+        // The bar's one standing color: whether this room is connected.
+        className={`${CELL} flex-shrink-0 hover:bg-transparent`}
       >
-        <span aria-hidden className="inline-block size-1.5 rounded-full bg-current" />
+        <StatusDot tone={connected ? "ok" : "warn"} />
         {connected ? "Live" : "Reconnecting…"}
       </span>
       {episodeLabel && (
         // A plain, ambient signal that a negotiation is live in the room —
         // shown without interaction.
-        <span className="flex-shrink-0 px-1.5 py-0.5 text-micro font-medium" style={{ color: episodeLabel.color }}>
+        <span className={`${CELL} flex-shrink-0 hover:bg-transparent`}>
+          <Handshake />
           {episodeLabel.text}
         </span>
       )}
@@ -309,8 +310,10 @@ function RoomWorkspace() {
           action="pane.board"
           className="flex-shrink-0"
         >
-          <span className="tabular">{openTasks}</span>
-          <span className="text-faint">open task{openTasks === 1 ? "" : "s"}</span>
+          <ListTodo />
+          <span className="tabular">
+            {openTasks} open task{openTasks === 1 ? "" : "s"}
+          </span>
         </StatusButton>
       )}
       {agents !== null && (
@@ -320,8 +323,10 @@ function RoomWorkspace() {
           action="rail.agents"
           className="flex-shrink-0"
         >
-          <span className="tabular">{agents}</span>
-          <span className="text-faint">agent{agents === 1 ? "" : "s"}</span>
+          <Bot />
+          <span className="tabular">
+            {agents} agent{agents === 1 ? "" : "s"}
+          </span>
         </StatusButton>
       )}
     </>

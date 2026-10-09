@@ -71,7 +71,7 @@ describe("machinesSummary", () => {
 
   it("counts several, and warns when one is offline", () => {
     const s = machinesSummary([runner(), runner({ id: "r2", connected: false })]);
-    expect(s).toEqual({ text: "2", tone: "warn", problems: 0 });
+    expect(s).toEqual({ text: "2 machines", tone: "warn", problems: 0 });
     expect(machinesSummary([runner({ connected: false })]).tone).toBe("bad");
   });
 

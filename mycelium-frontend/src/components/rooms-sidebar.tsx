@@ -70,6 +70,7 @@ import { useNotifications } from "@/components/notifications-provider";
 import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip } from "@/components/ui/tooltip";
+import { iconButtonClass } from "@/components/ui/icon-button";
 import { KeyBadge } from "@/components/key-badge";
 import { RoomAvatar } from "@/components/ui/room-avatar";
 import { useCommands, useKeyAction } from "@/components/keymap-provider";
@@ -518,9 +519,9 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
           <button
             onClick={() => onCollapsedChange?.(true)}
             aria-label={railToggleTitle(true)}
-            className="relative flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+            className={iconButtonClass("sm", "relative")}
           >
-            <PanelLeftClose className="size-4" />
+            <PanelLeftClose />
             <KeyBadge action="rooms.toggle" overlay />
           </button>
         </Tooltip>
@@ -759,9 +760,9 @@ function AddMenu({ onRoom, onFolder }: { onRoom: () => void; onFolder: () => voi
       <Tooltip content="New room or folder">
         <PopoverTrigger
           aria-label="New room or folder"
-          className="ml-auto flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text data-[popup-open]:bg-surface data-[popup-open]:text-text"
+          className={iconButtonClass("sm", "ml-auto data-[popup-open]:bg-hairline data-[popup-open]:text-text")}
         >
-          <Plus className="size-4" />
+          <Plus />
         </PopoverTrigger>
       </Tooltip>
       <PopoverContent align="end" className="w-44 p-1">

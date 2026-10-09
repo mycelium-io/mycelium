@@ -17,6 +17,7 @@ import {
 } from "dockview-react";
 import { Copy, FileText, Link2, MessageSquare, Plus, X } from "lucide-react";
 import { KbdChord } from "@/components/ui/kbd";
+import { iconButtonClass } from "@/components/ui/icon-button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { EventStream } from "@/components/event-stream";
 import { RoomBoard } from "@/components/board/room-board";
@@ -330,9 +331,9 @@ function GroupActions({ containerApi, group }: IDockviewHeaderActionsProps) {
         <PopoverTrigger
           aria-label="Open a view"
           title="Open a view"
-          className="flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text data-[popup-open]:bg-hairline data-[popup-open]:text-text"
+          className={iconButtonClass("sm", "data-[popup-open]:bg-hairline data-[popup-open]:text-text")}
         >
-          <Plus className="size-3.5" />
+          <Plus />
         </PopoverTrigger>
         <PopoverContent side="bottom" align="start" className="w-48 p-1">
           {closed.map(view => (

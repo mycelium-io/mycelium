@@ -18,6 +18,7 @@ import { AgentsPanel } from "@/components/agents-panel";
 import { KeyBadge } from "@/components/key-badge";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { iconButtonClass } from "@/components/ui/icon-button";
 import { MemoryPanel } from "@/components/memory-panel";
 import { chordFor, chordKey } from "@/lib/keymap";
 import { layoutStorage } from "@/lib/panel-layout";
@@ -237,9 +238,9 @@ export function RoomInspector({
                     <button
                       onClick={() => setOpen(false)}
                       aria-label={railToggleTitle(true)}
-                      className="flex size-6 flex-shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+                      className={iconButtonClass("sm")}
                     >
-                      <PanelRightClose className="size-3.5" />
+                      <PanelRightClose />
                     </button>
                   </Tooltip>
                 )}

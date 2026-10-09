@@ -15,7 +15,12 @@ import { useHubLabel } from "@/components/title-bar";
 import { Tooltip } from "@/components/ui/tooltip";
 import { KbdChord } from "@/components/ui/kbd";
 
-const CELL = "flex items-center gap-1.5 rounded px-1.5 py-0.5 -my-0.5 transition-colors hover:bg-hairline hover:text-text";
+/** Every cell in the bar reads the same way: a quiet icon, then its words in
+ *  one muted color, value first ("2 machines", "5 open tasks"). Text is never
+ *  colored. Color belongs to `StatusDot` alone, and a dot shows only when
+ *  something needs a look (the room's own connection is the one exception). */
+export const CELL =
+  "flex items-center gap-1.5 rounded px-1.5 py-0.5 -my-0.5 text-muted-foreground transition-colors hover:bg-hairline hover:text-text [&>svg]:size-3.5 [&>svg]:flex-shrink-0 [&>svg]:text-faint hover:[&>svg]:text-muted-foreground";
 
 interface CellProps {
   tooltip?: ReactNode;
@@ -83,9 +88,16 @@ export function StatusDot({ tone }: { tone: Tone }) {
   );
 }
 
-/** The quiet word ahead of a cell's value, so a value never stands unnamed. */
-function CellLabel({ children }: { children: ReactNode }) {
-  return <span className="text-faint">{children}</span>;
+/** What needs a look, after a cell's value: a dot in its tone and a word or
+ *  two in the cell's own color. Nothing when all is well. */
+function CellProblem({ tone, children }: { tone: Tone; children?: ReactNode }) {
+  if (tone === "ok") return null;
+  return (
+    <>
+      <StatusDot tone={tone} />
+      {children && <span className="tabular">{children}</span>}
+    </>
+  );
 }
 
 /** A tooltip laid out as a small card: a heading, then lines under it. */
@@ -112,7 +124,7 @@ export function machinesSummary(runners: Runner[]): MachinesSummary {
   if (runners.length === 0) return { text: "no machines", tone: "off", problems: 0 };
   const connected = runners.filter(r => r.connected);
   const problems = connected.reduce((n, r) => n + (r.machine?.problems.length ?? 0), 0);
-  const text = runners.length === 1 ? runners[0].label || runners[0].id : `${runners.length}`;
+  const text = runners.length === 1 ? runners[0].label || runners[0].id : `${runners.length} machines`;
   const tone: Tone =
     connected.length === 0 ? "bad" : connected.length < runners.length || problems > 0 ? "warn" : "ok";
   return { text, tone, problems };
@@ -157,18 +169,12 @@ export function MachinesStatusLink() {
         aria-current={active ? "page" : undefined}
         className={`${CELL} flex-shrink-0 ${active ? "text-text" : ""}`}
       >
-        <Laptop className="size-3.5" />
-        {runners.length > 0 && (
-          <CellLabel>
-            <span className="hidden md:inline">machine{runners.length === 1 ? "" : "s"}</span>
-          </CellLabel>
-        )}
+        <Laptop />
         {!loading && <span className="max-w-32 truncate">{summary.text}</span>}
-        {!loading && runners.length > 0 && <StatusDot tone={summary.tone} />}
-        {summary.problems > 0 && (
-          <span className="tabular" style={{ color: TONE_COLOR.warn }}>
-            {summary.problems} to fix
-          </span>
+        {!loading && runners.length > 0 && (
+          <CellProblem tone={summary.tone}>
+            {summary.problems > 0 ? `${summary.problems} to fix` : summary.tone === "bad" ? "offline" : null}
+          </CellProblem>
         )}
       </Link>
     </Tooltip>
@@ -207,15 +213,11 @@ export function HubStatus() {
         aria-current={active ? "page" : undefined}
         className={`${CELL} flex-shrink-0 ${active ? "text-text" : ""}`}
       >
-        <Server className="size-3.5" />
-        <CellLabel>
-          <span className="hidden md:inline">hub</span>
-        </CellLabel>
+        <Server />
         <span className="max-w-40 truncate">{hub || "hub"}</span>
-        <StatusDot tone={summary.tone} />
-        {(summary.tone === "bad" || summary.tone === "warn") && (
-          <span style={{ color: TONE_COLOR[summary.tone] }}>{health === null ? "unreachable" : "degraded"}</span>
-        )}
+        <CellProblem tone={summary.tone === "off" ? "ok" : summary.tone}>
+          {health === null ? "unreachable" : "degraded"}
+        </CellProblem>
       </Link>
     </Tooltip>
   );
@@ -229,7 +231,7 @@ export function TerminalStatusLink() {
   return (
     <Tooltip content="Agents terminal" side="top">
       <a href={terminalLink()} aria-label="Open the agents terminal" className={`${CELL} flex-shrink-0`}>
-        <SquareTerminal className="size-3.5" />
+        <SquareTerminal />
         <span className="hidden md:inline">terminal</span>
       </a>
     </Tooltip>
@@ -249,8 +251,8 @@ export function MetricsStatusLink() {
         aria-current={active ? "page" : undefined}
         className={`${CELL} ${active ? "text-text" : ""}`}
       >
-        <BarChart3 className="size-3.5" />
-        <span className="hidden xl:inline">metrics</span>
+        <BarChart3 />
+        <span className="hidden md:inline">metrics</span>
       </Link>
     </Tooltip>
   );
