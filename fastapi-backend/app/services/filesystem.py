@@ -18,11 +18,14 @@ File format:
 """
 
 import contextlib
+import copy
 import json
 import logging
 import re
+import threading
 import uuid
 import zlib
+from collections import OrderedDict
 from datetime import UTC, datetime
 from pathlib import Path, PurePath
 from typing import Any
@@ -293,6 +296,42 @@ def parse_memory(text: str) -> tuple[dict[str, Any], str]:
     return meta, match.group(2).strip()
 
 
+# ── Parsed-file cache ────────────────────────────────────────────────────────
+#
+# Parsing a memory's YAML frontmatter is most of what listing a room costs, and
+# the app lists memories on every poll. A file is parsed again only when its
+# modification time or size changes; otherwise its last parse is reused. The
+# file stays the source of truth: a write, an edit on disk or a restore changes
+# the stamp, and the next read parses it afresh.
+
+#: How many parsed files the hub keeps, oldest dropped first.
+PARSE_CACHE_MAX = 20_000
+_parse_cache: OrderedDict[str, tuple[int, int, dict[str, Any], str]] = OrderedDict()
+_parse_lock = threading.Lock()
+
+
+def parse_memory_file(path: Path) -> tuple[dict[str, Any], str]:
+    """``parse_memory`` of the file at ``path``, from cache when it hasn't changed.
+
+    Each call gets its own copy of the metadata, so a caller that edits it (as
+    ``list_memory_files`` does) can't change what the next caller sees.
+    """
+    stat = path.stat()
+    key = str(path)
+    with _parse_lock:
+        hit = _parse_cache.get(key)
+        if hit is not None and hit[0] == stat.st_mtime_ns and hit[1] == stat.st_size:
+            _parse_cache.move_to_end(key)
+            return copy.deepcopy(hit[2]), hit[3]
+    meta, content = parse_memory(path.read_text(encoding="utf-8"))
+    with _parse_lock:
+        _parse_cache[key] = (stat.st_mtime_ns, stat.st_size, copy.deepcopy(meta), content)
+        _parse_cache.move_to_end(key)
+        while len(_parse_cache) > PARSE_CACHE_MAX:
+            _parse_cache.popitem(last=False)
+    return meta, content
+
+
 # ── File operations ──────────────────────────────────────────────────────────
 
 
@@ -337,8 +376,7 @@ def read_memory_file(base_dir: Path, key: str) -> tuple[dict[str, Any], str] | N
         return None
     if not file_path.exists():
         return None
-    text = file_path.read_text(encoding="utf-8")
-    return parse_memory(text)
+    return parse_memory_file(file_path)
 
 
 def delete_memory_file(base_dir: Path, key: str) -> bool:
@@ -385,8 +423,7 @@ def list_memory_files(
     dated: list[tuple[datetime, tuple[str, dict[str, Any], str]]] = []
     for f in files:
         try:
-            text = f.read_text(encoding="utf-8")
-            meta, content = parse_memory(text)
+            meta, content = parse_memory_file(f)
             key = _key_from_path(f, base_dir)
         except Exception:
             logger.warning("Failed to read memory file: %s", f)
