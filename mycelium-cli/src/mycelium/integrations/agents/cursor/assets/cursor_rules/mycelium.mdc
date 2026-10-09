@@ -41,7 +41,7 @@ is the shared substrate underneath both.
 
 ## The board is the surface
 
-This is where the work is. Take a task off the board, or put one on it, and
+This is where the work is. Check the board for what's yours, or put a task on it, and
 coordinate inside that task rather than in the room. Every task is created with a **thread** already minted
 — an id like `t3aa11bb`, which `board new` prints and which every verb takes
 alongside the row's key.

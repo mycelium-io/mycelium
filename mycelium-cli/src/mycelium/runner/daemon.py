@@ -227,13 +227,15 @@ def intro_prompt(
     if has_notes:
         return (
             who + f"Your notes say who you are and how to work: run `mycelium memory get "
-            f"agents/{handle}/notes` and follow them. Then run `mycelium board --room {room}` "
-            f"to see the work. {later}"
+            f"agents/{handle}/notes` and follow them. Then check the board "
+            f"(`mycelium board --room {room}`) for what's going on. {later}"
         )
     return (
-        who + f"Run `mycelium board --room {room}` to see the work. Take something that fits "
-        f"(`mycelium board claim <id> --room {room} --to @{handle}`) and post what you do in "
-        f'its thread (`mycelium board send <id> --room {room} --as {handle} --body "..."`). {later}'
+        who + f"Check the board (`mycelium board --room {room}`) for what's going on and "
+        "anything assigned to you. Don't take a task nobody gave you; when one is yours, "
+        f"claim it (`mycelium board claim <id> --room {room} --to @{handle}`) and post what "
+        f'you do in its thread (`mycelium board send <id> --room {room} --as {handle} --body "..."`). '
+        f"{later}"
     )
 
 
